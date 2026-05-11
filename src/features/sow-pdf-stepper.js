@@ -371,73 +371,39 @@
     try { window.__scwSowPdfLastHtml = fullHtml; } catch (e) { /* ignore */ }
 
     // ──────────────────────────────────────────────────────────
-    // POST as multipart/form-data, NOT application/json.
+    // POST as application/json — same wire format ops-stepper.js
+    // uses for publish-proposals. Make's webhook auto-parses the JSON
+    // body, so {{1.html}} in the next module is the raw HTML string
+    // with real " and real newlines — pipe it straight into the PDF
+    // converter, no JSON Parse / Unescape step needed.
     //
-    // Why: when this was wrapped as a JSON object {html: "<...>"},
-    // Make stored `1.html` as a JSON-escaped string (every `"` became
-    // `\"`, every newline became `\n`). Piping that into Make's
-    // HTML→PDF module fed the escaped string in as-is, producing a
-    // PDF rendered from the literal text `\"en\">\n\n\n` instead of
-    // from `<html lang="en">` + actual newlines.
-    //
-    // multipart/form-data avoids the JSON-escape layer entirely.
-    // Each form field arrives at Make as its own first-class value;
-    // `{{1.html}}` is the raw HTML string ready to pipe into the
-    // PDF converter, no parsing/unescaping needed.
+    // If a previous version of this webhook was configured against a
+    // different shape (e.g. multipart), open it in Make and click
+    // "Redetermine data structure" so {{1.html}} reappears as a
+    // first-class field.
     // ──────────────────────────────────────────────────────────
-    var fd = new FormData();
-    fd.append('stepId',         'generate-sow-pdf');
-    fd.append('sourceRecordId', sowId);
-    fd.append('html',           fullHtml);
-    fd.append('htmlBytes',      String(fullHtml.length));
-    fd.append('bodyBytes',      String(sceneBodyHtml.length));
-    fd.append('viewCount',      String(viewCount));
-    fd.append('tableCount',     String(tableCount));
-    fd.append('rowCount',       String(rowCount));
-    fd.append('imgCount',       String(imgCount));
-    fd.append('styleTagCount',  String(styleTagCount));
-    fd.append('linkTagCount',   String(linkTagCount));
-    fd.append('pageTitle',      document.title || '');
-    fd.append('pageUrl',        window.location.href);
-    var tb = getTriggeredBy();
-    fd.append('triggeredById',    tb.id);
-    fd.append('triggeredByName',  tb.name);
-    fd.append('triggeredByEmail', tb.email);
-
-    $.ajax({
-      url:         webhook,
-      method:      'POST',
-      data:        fd,
-      processData: false, // don't let jQuery turn FormData into a query string
-      contentType: false, // let the browser set the multipart boundary
-      timeout:     60000
+    fetch(webhook, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify(payload)
     })
-      .done(function (resp) {
-        // Treat any 200 as success — Make handles deposit, no polling.
-        var ok = !resp || resp.success !== false;
-        if (ok) {
+      .then(function (resp) {
+        if (resp.ok) {
           setState('is-done',
             'SOW sent for PDF generation',
             'Make is rendering the PDF and depositing it shortly.');
         } else {
           setState('is-error',
             'PDF generation failed',
-            (resp && resp.error) || 'Unknown error returned from Make.');
+            'Webhook returned ' + resp.status + '. Try again.');
         }
       })
-      .fail(function (xhr) {
-        // status 0 = CORS/no-response — common when Make returns before
-        // the browser's preflight resolves. Treat as success since the
-        // webhook fired and Make is handling the deposit out-of-band.
-        if (xhr && xhr.status === 0) {
-          setState('is-done',
-            'SOW sent for PDF generation',
-            'Make is rendering the PDF and depositing it shortly.');
-          return;
-        }
-        setState('is-error',
-          'PDF generation failed',
-          'Webhook returned ' + (xhr && xhr.status ? xhr.status : 'error') + '. Try again.');
+      .catch(function () {
+        // CORS / no-response: webhook fired and Make is handling the
+        // deposit out-of-band. Treat as success.
+        setState('is-done',
+          'SOW sent for PDF generation',
+          'Make is rendering the PDF and depositing it shortly.');
       });
   }
 

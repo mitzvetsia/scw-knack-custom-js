@@ -83,15 +83,17 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   // Fires on the "Generate SOW PDF" stepper action on scene_833 (the SOW
   // detail page).
   //
-  // Sent as multipart/form-data (NOT JSON) so that the `html` field
-  // arrives at Make as a raw string with real quotes and real newlines.
-  // Earlier JSON wrapping caused Make to store `1.html` as a JSON-
-  // escaped string (every `"` → `\"`, every newline → `\n`); the
-  // HTML→PDF module then rendered the literal escape sequences instead
-  // of the document, producing a blank PDF.
+  // Sent as application/json — identical wire format to the
+  // publish-proposals webhook in ops-stepper.js. Make's webhook
+  // auto-parses the JSON body and exposes each top-level key
+  // (`html`, `sourceRecordId`, etc.) as a first-class field
+  // ({{1.html}}, {{1.sourceRecordId}}, …) with real quotes and real
+  // newlines. Pipe `{{1.html}}` directly into your HTML→PDF module
+  // — no JSON Parse / Unescape step needed.
   //
-  // Pipe `{{1.html}}` directly into your HTML→PDF renderer (DocRaptor,
-  // API2PDF, etc.) — no JSON parser, no extra unescaping needed.
+  // ⚠️  After changing the payload shape, click "Redetermine data
+  // structure" on the webhook module in Make so {{1.html}} reappears
+  // as a parsed field instead of an opaque body blob.
   //
   // The `html` field is a COMPLETE STANDALONE HTML DOCUMENT —
   // <!DOCTYPE html><html><head>…</head><body>…</body></html> — with
@@ -100,23 +102,23 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   // `<style>` block (where every SCW feature injects its rules), plus
   // a `<base href>` so relative asset URLs resolve back to Knack.
   //
-  //   Request body (multipart/form-data fields):
-  //     stepId:           'generate-sow-pdf'
-  //     sourceRecordId:   <SOW record id from URL hash>
-  //     html:             <full standalone HTML document, see above>
-  //     htmlBytes:        <length of html string, sanity check>
-  //     bodyBytes:        <length of just the scraped scene>
-  //     viewCount:        <# of .kn-view elements in the scrape>
-  //     tableCount:       <# of <table> elements>
-  //     rowCount:         <# of <tr> elements>
-  //     imgCount:         <# of <img> elements>
-  //     styleTagCount:    <# of <style> tags in the html>
-  //     linkTagCount:     <# of <link> tags in the html>
-  //     pageTitle:        <document.title>
-  //     pageUrl:          <window.location.href>
-  //     triggeredById:    <Knack user id>
-  //     triggeredByName:  <Knack user display name>
-  //     triggeredByEmail: <Knack user email>
+  //   Request body (application/json):
+  //   {
+  //     stepId:         'generate-sow-pdf',
+  //     sourceRecordId: <SOW record id from URL hash>,
+  //     html:           <full standalone HTML document, see above>,
+  //     htmlBytes:      <length of html string, sanity check>,
+  //     bodyBytes:      <length of just the scraped scene>,
+  //     viewCount:      <# of .kn-view elements in the scrape>,
+  //     tableCount:     <# of <table> elements>,
+  //     rowCount:       <# of <tr> elements>,
+  //     imgCount:       <# of <img> elements>,
+  //     styleTagCount:  <# of <style> tags in the html>,
+  //     linkTagCount:   <# of <link> tags in the html>,
+  //     pageTitle:      <document.title>,
+  //     pageUrl:        <window.location.href>,
+  //     triggeredBy:    { id, name, email }
+  //   }
   //
   //   Response body: { success: true, message?: "..." }
   //             or:  { success: false, error: "<message>" }
