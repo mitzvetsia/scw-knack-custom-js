@@ -195,20 +195,22 @@
 
           // ── Detail panel ──
           mounting:         { key: 'field_2818', type: 'readOnly' },
-          // Networking topology — same pattern as view_3505/view_3313
-          // (readOnly + summary, gated on the product's "map connections"
-          // flag).  field_2820 is the canonical connected-devices field;
-          // field_2821 is the reverse-direction lookup.
-          connectedDevices: { key: 'field_2820', type: 'readOnly', summary: true, label: 'Connected Devices', showWhenFieldIsYes: 'field_2796' },
-          connectedTo:      { key: 'field_2821', type: 'readOnly', summary: true, label: 'Connected To',      showWhenFieldIsYes: 'field_2796' },
+          // Networking topology — same pattern as view_3505 (field_2380
+          // nativeEdit + field_2381 readOnly) and view_3586 (field_1957
+          // nativeEdit + field_2197 readOnly). The trigger field
+          // (field_2820) is the editable multi-connection that drives
+          // the silent-regroup cascade in mirror-connection-sync.js;
+          // field_2821 is the auto-updated back-connection on children.
+          connectedDevices: { key: 'field_2820', type: 'nativeEdit', label: 'Connected Devices', showWhenFieldIsYes: 'field_2796' },
+          connectedTo:      { key: 'field_2821', type: 'readOnly',   label: 'Connected To',      showWhenFieldIsYes: 'field_2796' },
           laborDescription: { key: 'field_2809', type: 'readOnly' },
           scwNotes:         { key: 'field_2808', type: 'directEdit', notes: true },
           dropLength:       { key: 'field_2804', type: 'readOnly' },
           conduitFeet:      { key: 'field_2803', type: 'readOnly' }
         },
-        summaryLayout: ['connectedDevices', 'connectedTo', 'installStatus'],
+        summaryLayout: ['installStatus'],
         detailLayout: {
-          left:  ['mounting', 'laborDescription'],
+          left:  ['mounting', 'connectedDevices', 'connectedTo', 'laborDescription'],
           right: ['existingCabling', 'exteriorChit', 'plenumChit', 'dropLength', 'conduitFeet', 'scwNotes']
         },
         bucketField: 'field_2822',

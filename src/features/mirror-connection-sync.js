@@ -1367,6 +1367,22 @@
     PUBLIC_API_NAME:     'silentRegroupView3921'
   });
 
+  // view_3915 (INSTALL line items on the Implementation page).
+  // Same regroup semantics as the SOW/Survey worksheets, just bound
+  // to the install-line-item field map:
+  //   TRIGGER_FIELD     = field_2820  (REL_networking device → connection device)
+  //   CONNECTIONS_FIELD = field_2821  (REL_connected device → network device)
+  //   GROUPING_FIELD    = field_2818  (REL_OPS_MDF-IDF — the L1 group key)
+  // No accessory cascade wired yet — add ACCESSORIES_* if/when mounting
+  // hardware on the install side needs its MDF cascaded from the parent.
+  createMirror({
+    VIEW_ID:           'view_3915',
+    TRIGGER_FIELD:     'field_2820',
+    CONNECTIONS_FIELD: 'field_2821',
+    GROUPING_FIELD:    'field_2818',
+    PUBLIC_API_NAME:   'silentRegroupView3915'
+  });
+
   // Backward-compat alias for any lingering DevTools snippets that
   // referenced the old "silentPoll" name.
   window.SCW = window.SCW || {};
