@@ -51,35 +51,39 @@
       '  display: flex; flex-wrap: wrap; align-items: center;',
       '  gap: 6px; margin: 0 0 12px;',
       '  padding: 8px 10px;',
-      '  background: #f8fafc;',
-      '  border: 1px solid #e2e8f0;',
+      '  background: var(--scw-surface-subtle);',
+      '  border: 1px solid var(--scw-border-subtle);',
       '  border-radius: 6px;',
       '  font: 12px/1.3 system-ui, -apple-system, sans-serif;',
       '}',
       '.' + STRIP_CLS + '__label {',
-      '  font-weight: 600; color: #475569; margin-right: 4px;',
+      '  font-weight: 600; color: var(--scw-text-caption); margin-right: 4px;',
       '  letter-spacing: 0.02em; text-transform: uppercase; font-size: 11px;',
       '}',
       // Pill base
       '.' + STRIP_CLS + '__pill {',
       '  display: inline-flex; align-items: center; gap: 4px;',
       '  padding: 4px 10px;',
-      '  border: 1px solid #cbd5e1;',
-      '  background: #fff; color: #1f2937;',
+      '  border: 1px solid var(--scw-border-default);',
+      '  background: var(--scw-surface-base); color: var(--scw-text-default);',
       '  border-radius: 999px;',
       '  font-weight: 600; font-size: 12px;',
       '  cursor: pointer; user-select: none;',
       '  transition: background 120ms ease, border-color 120ms ease, color 120ms ease;',
       '}',
       '.' + STRIP_CLS + '__pill:hover {',
-      '  background: #f1f5f9; border-color: #94a3b8;',
+      '  background: var(--scw-surface-muted); border-color: var(--scw-border-strong);',
       '}',
-      // Active pill — primary teal, matches the ops-review pill language
+      // Active pill — brand accent slate-blue, matches the "Add to
+      // Scope" CTA so the active state reads as "this filter is on" in
+      // the same language as the page\'s primary action. Cyan/teal read
+      // as a notification badge in this context and competed with the
+      // rest of the brand chrome.
       '.' + STRIP_CLS + '__pill.is-active {',
-      '  background: #0891b2; border-color: #0e7490; color: #fff;',
+      '  background: var(--scw-accent); border-color: var(--scw-accent-strong); color: var(--scw-surface-base);',
       '}',
       '.' + STRIP_CLS + '__pill.is-active:hover {',
-      '  background: #0e7490;',
+      '  background: var(--scw-accent-strong);',
       '}',
       // "All" pill — slightly different so it reads as a reset
       '.' + STRIP_CLS + '__pill--all:not(.is-active) {',
@@ -89,11 +93,11 @@
       '.' + STRIP_CLS + '__count {',
       '  display: inline-flex; align-items: center; justify-content: center;',
       '  min-width: 18px; padding: 0 5px;',
-      '  background: rgba(15, 23, 42, 0.08); color: #475569;',
+      '  background: rgba(15, 23, 42, 0.08); color: var(--scw-text-caption);',
       '  border-radius: 9px; font-size: 11px; font-weight: 600;',
       '}',
       '.' + STRIP_CLS + '__pill.is-active .' + STRIP_CLS + '__count {',
-      '  background: rgba(255, 255, 255, 0.25); color: #fff;',
+      '  background: rgba(255, 255, 255, 0.25); color: var(--scw-surface-base);',
       '}',
       // Filter-hidden rows — !important so we can't be defeated by
       // jQuery .show() that group-collapse runs when expanding an
@@ -194,7 +198,12 @@
   function indexRows(target) {
     var view = document.getElementById(target.viewId);
     if (!view) return null;
-    var tbody = view.querySelector('table tbody');
+    // Scope to the data grid's tbody specifically — mdf-summary-panel
+    // injects its own <table class="scw-mdf-summary-table"> above
+    // table.kn-table, so an unscoped `table tbody` selector matches
+    // the summary panel first and the filter would target the wrong
+    // rows (and find no scw-ws-row card rows).
+    var tbody = view.querySelector('table.kn-table tbody');
     if (!tbody) return null;
 
     var ID_RE = /^[a-f0-9]{24}$/i;

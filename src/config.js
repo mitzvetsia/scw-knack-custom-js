@@ -79,5 +79,72 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   //     triggeredBy:    { id, name, email }
   //   }
   //   Response body: ignored (fire-and-forget).
-  MAKE_CLONE_SOW_TO_PROJECT_WEBHOOK: "https://hook.us1.make.com/1lvnsaugc5eqpxpsngbpatit35ki1s0u"
+  MAKE_CLONE_SOW_TO_PROJECT_WEBHOOK: "https://hook.us1.make.com/1lvnsaugc5eqpxpsngbpatit35ki1s0u",
+  // Fires on stepper actions on scene_833 (the SOW detail page).
+  // The same webhook URL is reused across step variants — Make
+  // branches on `payload.stepId` to decide which downstream PDF
+  // template to render and where to deposit the file.
+  //
+  // Current stepIds:
+  //   • 'generate-sow-pdf'                — the dense landscape SOW PDF.
+  //                                         payload.html is the live
+  //                                         scene wrapped in a complete
+  //                                         standalone document plus
+  //                                         the print stylesheet.
+  //   • 'generate-location-approval-pdf'  — the customer-facing
+  //                                         camera-mounting approval
+  //                                         form. payload.html is a
+  //                                         purpose-built portrait
+  //                                         document with sign-off
+  //                                         gutter per camera, equipment
+  //                                         table, and project
+  //                                         assumptions panel. Same
+  //                                         source data as the SOW.
+  //
+  // Sent as application/json — identical wire format to the
+  // publish-proposals webhook in ops-stepper.js. Make's webhook
+  // auto-parses the JSON body and exposes each top-level key
+  // (`html`, `sourceRecordId`, etc.) as a first-class field
+  // ({{1.html}}, {{1.sourceRecordId}}, …) with real quotes and real
+  // newlines. Pipe `{{1.html}}` directly into your HTML→PDF module
+  // — no JSON Parse / Unescape step needed.
+  //
+  // ⚠️  After changing the payload shape, click "Redetermine data
+  // structure" on the webhook module in Make so {{1.html}} reappears
+  // as a parsed field instead of an opaque body blob.
+  //
+  // The `html` field is a COMPLETE STANDALONE HTML DOCUMENT —
+  // <!DOCTYPE html><html><head>…</head><body>…</body></html> — with
+  // every `<link rel="stylesheet">` from the live page re-emitted
+  // (Knack core CSS, Font Awesome, Google Fonts) plus every inline
+  // `<style>` block (where every SCW feature injects its rules), plus
+  // a `<base href>` so relative asset URLs resolve back to Knack.
+  //
+  //   Request body (application/json):
+  //   {
+  //     stepId:         'generate-sow-pdf',
+  //     sourceRecordId: <SOW record id from URL hash>,
+  //     html:           <full standalone HTML document, see above>,
+  //     htmlBytes:      <length of html string, sanity check>,
+  //     bodyBytes:      <length of just the scraped scene>,
+  //     viewCount:      <# of .kn-view elements in the scrape>,
+  //     tableCount:     <# of <table> elements>,
+  //     rowCount:       <# of <tr> elements>,
+  //     imgCount:       <# of <img> elements>,
+  //     styleTagCount:  <# of <style> tags in the html>,
+  //     linkTagCount:   <# of <link> tags in the html>,
+  //     pageTitle:      <document.title>,
+  //     pageUrl:        <window.location.href>,
+  //     triggeredBy:    { id, name, email }
+  //   }
+  //
+  //   Response body: { success: true, message?: "..." }
+  //             or:  { success: false, error: "<message>" }
+  //
+  // ⚠️  Image auth caveat: <img src> tags point at Knack's S3 with
+  // presigned URLs that require the browser's Knack session. A
+  // headless renderer in Make WILL get 403s on those images. Either
+  // strip images, swap to a public mirror, or proxy through a module
+  // that re-uploads them server-side before rendering.
+  MAKE_GENERATE_SOW_PDF_WEBHOOK: "https://hook.us1.make.com/tyrrisxjgai5hufsl722lcdsewiw9ryz"
 };

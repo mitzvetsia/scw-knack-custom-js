@@ -1066,7 +1066,7 @@
       '  vertical-align: top;',
       '  font-size: 12px;',
       '  position: relative;',
-      '  padding-right: 160px;', /* room for the top-right Revise + Disconnect stack */
+      '  padding-right: 200px;', /* room for the top-right Revise + Disconnect stack — must clear the widest button ("Revise bid to match →") */
       '}',
       /* Bid package data cells share the same top-right action zone.
          Drop :not(:last-child) — when the Sub Bid Revisions column is
@@ -1076,7 +1076,7 @@
          document body. */
       '.scw-bid-review__row > td:nth-child(n+3) {',
       '  position: relative;',
-      '  padding-right: 78px;',
+      '  padding-right: 100px;', /* clears the Revise / Remove stack with breathing room */
       '}',
       /* Top-right action stack — Revise (SOW + bid) and Remove (bid). */
       '.scw-bid-review__cell-actions {',
@@ -1098,6 +1098,7 @@
       '  padding: 3px 7px;',
       '  cursor: pointer;',
       '  letter-spacing: 0.02em;',
+      '  white-space: nowrap;', /* never wrap inside an action button — keeps the absolute stack a predictable width */
       '}',
       '.scw-bid-review__cell-action--revise {',
       '  color: #0369a1;',

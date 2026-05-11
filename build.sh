@@ -14,6 +14,7 @@ trap 'rm -f "$TMP_BUNDLE"' EXIT
 cat \
   src/config.js \
   src/util.js \
+  src/features/_design-tokens.js \
   src/features/preserve-scroll-on-refresh.js \
   src/features/modal-refresh-redirect.js \
   src/features/modal-scroll-restore.js \
@@ -65,6 +66,7 @@ cat \
   src/features/sync-checkboxes \
   src/features/survey-form-drag-drop-files.js \
   src/features/hide-navigation.js \
+  src/features/strip-register-buttons.js \
   src/features/calc-install-fee-adjustment.js \
   src/features/instructions-placement.js \
   src/features/sales-edit-proposal-refresh-controls.js \
@@ -88,6 +90,7 @@ cat \
   src/features/connected-records.js \
   src/features/device-worksheet.js \
   src/features/device-worksheet-expand-all.js \
+  src/features/device-worksheet-toolbar.js \
   src/features/chit-bulk-edit-fix.js \
   src/features/sales-change-request/config.js \
   src/features/sales-change-request/state.js \
@@ -114,6 +117,7 @@ cat \
   src/features/hide-view-conditional.js \
   src/features/survey-worksheet-pdf-export.js \
   src/features/sub-portal-survey-request-export.js \
+  src/features/sow-pdf-stepper.js \
   src/features/connected-device-bid-check.js \
   src/features/default-sort.js \
   src/features/mirror-connection-sync.js \
