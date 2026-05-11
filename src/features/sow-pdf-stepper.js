@@ -199,6 +199,88 @@
     if (subEl   && sub)   subEl.textContent   = sub;
   }
 
+  // ── Build a complete standalone HTML document ───────────────
+  // Make/headless-browser PDF renderers need a full document with
+  // <head> + styles, not bare body markup. We assemble:
+  //   • <!DOCTYPE html><html><head>…</head><body>…</body></html>
+  //   • All <link rel="stylesheet"> tags from the current page (Knack's
+  //     CSS, Google Fonts, etc. — these resolve from public CDNs so a
+  //     headless browser in Make can fetch them).
+  //   • All inline <style> blocks (this is where every SCW feature
+  //     injects its styles, plus Knack's per-page rules).
+  //   • A <base href> so any relative image/asset URLs in the scraped
+  //     content resolve against the original page.
+  //   • The scraped scene HTML as the body content (stepper removed).
+  function buildStandaloneHtml(sceneClone) {
+    var parts = [];
+    parts.push('<!DOCTYPE html>');
+    parts.push('<html lang="en">');
+    parts.push('<head>');
+    parts.push('<meta charset="utf-8">');
+    parts.push('<meta name="viewport" content="width=device-width, initial-scale=1">');
+
+    // Base href — so <img src="/path/..."> in scraped content resolves
+    // back to the Knack-hosted origin instead of breaking in Make's
+    // renderer.
+    parts.push('<base href="' + window.location.origin + '/">');
+
+    parts.push('<title>' + escapeHtml(document.title || 'SOW') + '</title>');
+
+    // External stylesheets — Knack's main CSS, Font Awesome, Google
+    // Fonts, etc. We re-emit the <link> tags verbatim so the renderer
+    // fetches the same CSS the user is looking at.
+    var links = document.querySelectorAll('link[rel="stylesheet"]');
+    for (var i = 0; i < links.length; i++) {
+      var href = links[i].getAttribute('href');
+      if (!href) continue;
+      // Resolve protocol-relative + relative refs to absolute so the
+      // renderer doesn't have to guess.
+      var abs = links[i].href || href;
+      parts.push('<link rel="stylesheet" href="' + escapeAttr(abs) + '">');
+    }
+
+    // Inline <style> blocks — this is where every SCW feature injects
+    // its styles (including the workflow-stepper, group-collapse,
+    // mdf-summary, etc.) plus any per-page Knack rules.
+    var styles = document.querySelectorAll('style');
+    for (var j = 0; j < styles.length; j++) {
+      var css = styles[j].textContent || '';
+      if (!css.trim()) continue;
+      parts.push('<style>' + css + '</style>');
+    }
+
+    // Print-friendly tweaks: drop the app shell chrome (header / nav /
+    // mobile menu) that the scraped scene doesn't include but which
+    // would still take up page space if any wrapper rules cascade.
+    parts.push(
+      '<style>' +
+      '  body { background: #ffffff !important; margin: 0; padding: 16px; }' +
+      '  #kn-app-header, #kn-mobile-menu, #kn-popover, #kn-overlay,' +
+      '  .kn-info-bar, #knack-logo a { display: none !important; }' +
+      '  .kn-scene { display: block !important; }' +
+      '  @page { size: letter; margin: 0.5in; }' +
+      '</style>'
+    );
+
+    parts.push('</head>');
+    parts.push('<body>');
+    parts.push(sceneClone.outerHTML);
+    parts.push('</body>');
+    parts.push('</html>');
+
+    return parts.join('\n');
+  }
+
+  function escapeHtml(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+      .replace(/"/g, '&quot;');
+  }
+  function escapeAttr(s) {
+    return String(s == null ? '' : s)
+      .replace(/&/g, '&amp;').replace(/"/g, '&quot;');
+  }
+
   // ── Click handler — scrape + POST ───────────────────────────
   function onClick() {
     var host = document.getElementById(HOST_ID);
@@ -228,20 +310,32 @@
       stepperInClone.parentNode.removeChild(stepperInClone);
     }
 
-    var payload = {
-      stepId:         'generate-sow-pdf',
-      sourceRecordId: sowId,
-      html:           sceneClone.outerHTML,
-      pageTitle:      document.title || '',
-      pageUrl:        window.location.href,
-      triggeredBy:    getTriggeredBy()
-    };
-
     var webhook = (window.SCW && SCW.CONFIG && SCW.CONFIG.MAKE_GENERATE_SOW_PDF_WEBHOOK) || '';
     if (!webhook) {
       setState('is-error', 'Webhook not configured', 'MAKE_GENERATE_SOW_PDF_WEBHOOK is empty in config.js.');
       return;
     }
+
+    // Build a complete, standalone HTML document with embedded styles
+    // and external stylesheet refs — what a PDF renderer actually needs.
+    var fullHtml = buildStandaloneHtml(sceneClone);
+
+    var payload = {
+      stepId:         'generate-sow-pdf',
+      sourceRecordId: sowId,
+      html:           fullHtml,
+      htmlBytes:      fullHtml.length,
+      pageTitle:      document.title || '',
+      pageUrl:        window.location.href,
+      triggeredBy:    getTriggeredBy()
+    };
+
+    // eslint-disable-next-line no-console
+    console.log('[SCW SOW PDF] sending payload', {
+      sowId: sowId,
+      htmlBytes: fullHtml.length,
+      url: webhook
+    });
 
     $.ajax({
       url:         webhook,

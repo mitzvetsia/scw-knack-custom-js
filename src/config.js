@@ -81,13 +81,22 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   //   Response body: ignored (fire-and-forget).
   MAKE_CLONE_SOW_TO_PROJECT_WEBHOOK: "https://hook.us1.make.com/1lvnsaugc5eqpxpsngbpatit35ki1s0u",
   // Fires on the "Generate SOW PDF" stepper action on scene_833 (the SOW
-  // detail page). Payload is the full scraped HTML of the rendered SOW
-  // page plus identifying fields. Make handles HTML → PDF rendering and
-  // deposits the file into the appropriate Knack record / external store.
+  // detail page). The `html` field is a COMPLETE STANDALONE HTML
+  // DOCUMENT — <!DOCTYPE html><html><head>…</head><body>…</body></html>
+  // — with all the page's <link rel="stylesheet"> tags re-emitted
+  // (Knack core CSS, Font Awesome, Google Fonts, etc.) plus every
+  // inline <style> block from the live page (where every SCW feature
+  // injects its rules). A <base href> is set so relative asset URLs
+  // (images, etc.) resolve back to the Knack origin.
+  //
+  // Pipe `payload.html` directly into your HTML→PDF renderer (DocRaptor,
+  // API2PDF, Puppeteer service, etc.) — no extra wrapping needed.
+  //
   //   Request body:  {
   //     stepId:         'generate-sow-pdf',
   //     sourceRecordId: <SOW record id from URL hash>,
-  //     html:           <document.documentElement.outerHTML of the page>,
+  //     html:           <full standalone HTML document, see above>,
+  //     htmlBytes:      <number — length of html string, for sanity check>,
   //     pageTitle:      <document.title>,
   //     pageUrl:        <window.location.href>,
   //     triggeredBy:    { id, name, email }
