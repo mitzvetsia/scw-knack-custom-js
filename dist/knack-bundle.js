@@ -1325,59 +1325,53 @@ The line item itself will NOT be deleted. It will stay on any other SOWs it is c
       }
 
       /* \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550
-         L1 \u2014 Modern tinted accent style
-         Uses CSS custom properties set per-row in JS:
-           --scw-grp-accent      (hex colour)
-           --scw-grp-accent-rgb  (r, g, b)
+         L1 \u2014 Bid-review aesthetic: flat slate-100 background,
+         per-view accent expressed only through the left border,
+         chevron, and count pill. No tinted-fill ramping on
+         expand/collapse \u2014 multiple stacked L1s don't wash the
+         page in accent color, and themed L1s (orange/slate/navy)
+         differ only in the accent line, not the entire fill.
          \u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550\u2550 */
       ${de(".scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header")} {
         font-size: 13px;
-        font-weight: 600 !important;
-        background: rgba(var(--scw-grp-accent-rgb, 237,131,38), 0.08) !important;
-        color: #1e293b !important;
+        font-weight: 700 !important;
+        background: #f1f5f9 !important;
+        color: #334155 !important;
         text-align: left !important;
-        transition: background 180ms ease;
+        transition: background 150ms ease;
       }
       ${de(".scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header > td")},
       ${de(".scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header > td *")} {
-        color: #1e293b !important;
+        color: #334155 !important;
       }
       ${de(".scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header > td")} {
-        padding: 10px 14px 10px 10px !important;
-        border-bottom: 1px solid rgba(var(--scw-grp-accent-rgb, 237,131,38), 0.15);
+        padding: 10px 12px !important;
+        border-bottom: 1px solid #cbd5e1;
         border-left: 4px solid var(--scw-grp-accent, ${M});
       }
 
-      /* L1 hover */
+      /* L1 hover \u2014 slightly darker slate, no accent wash */
       ${de(".scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header:hover")} {
-        background: rgba(var(--scw-grp-accent-rgb, 237,131,38), 0.13) !important;
+        background: #e8edf3 !important;
         filter: none;
       }
 
-      /* L1 collapsed */
-      ${de(".scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header.scw-collapsed")} {
-        font-size: 13px;
-      }
+      /* L1 collapsed/expanded \u2014 same chrome. Bid-review's calm
+         aesthetic doesn't change size or fill on toggle; the
+         chevron rotation alone signals state. */
       ${de(".scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header.scw-collapsed > td")} {
-        border-bottom: 1px solid rgba(var(--scw-grp-accent-rgb, 237,131,38), 0.10);
-      }
-
-      /* L1 expanded \u2014 stronger tint, larger text, no bottom border
-         (content flows directly beneath) */
-      ${de(".scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header:not(.scw-collapsed)")} {
-        background: rgba(var(--scw-grp-accent-rgb, 237,131,38), 0.15) !important;
-        font-size: 14px;
+        border-bottom: 1px solid #cbd5e1;
       }
       ${de(".scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header:not(.scw-collapsed) > td")} {
-        padding: 12px 10px !important;
-        border-bottom: none;
+        border-bottom: 1px solid #cbd5e1;
         box-shadow: none;
       }
 
       /* \u2500\u2500 Bridge: content rows beneath an expanded L1 \u2500\u2500
          Continue the left accent border on the first content row
-         so the header and content feel like one unit.
-         Also replace the worksheet card's grey border-top with accent. */
+         (and retint the worksheet card's top border) so the
+         header and content read as one unit. Kept at a low
+         opacity so the accent doesn't dominate the page. */
       ${de(".scw-group-collapse-enabled .kn-table-group.kn-group-level-1.scw-group-header:not(.scw-collapsed) + tr:not(.kn-table-group) > td:first-child")} {
         border-left: 4px solid rgba(var(--scw-grp-accent-rgb, 237,131,38), 0.30);
       }
