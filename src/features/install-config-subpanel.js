@@ -75,6 +75,40 @@
       '  margin-bottom: 6px;',
       '}',
 
+      /* 4-column grid — each config row uses one full grid line. */
+      '.' + SUBPANEL_CLS + '-grid {',
+      '  display: grid;',
+      '  grid-template-columns: repeat(4, minmax(0, 1fr));',
+      '  gap: 8px 16px;',
+      '  align-items: start;',
+      '}',
+      '.' + SUBPANEL_CLS + '-cell {',
+      '  display: flex;',
+      '  flex-direction: column;',
+      '  gap: 2px;',
+      '  min-width: 0;',
+      '}',
+      '.' + SUBPANEL_CLS + '-cell-label {',
+      '  font-size: 11px;',
+      '  font-weight: 600;',
+      '  color: #4b5563;',
+      '  text-transform: uppercase;',
+      '  letter-spacing: 0.3px;',
+      '}',
+      '.' + SUBPANEL_CLS + '-cell-value {',
+      '  font-size: 13px;',
+      '  color: #1f2937;',
+      '  word-break: break-word;',
+      '  overflow-wrap: anywhere;',
+      '}',
+      '.' + SUBPANEL_CLS + '-cell-empty {',
+      '  color: #94a3b8;',
+      '}',
+      /* On narrower viewports collapse to 2 cols */
+      '@media (max-width: 900px) {',
+      '  .' + SUBPANEL_CLS + '-grid { grid-template-columns: 1fr 1fr; }',
+      '}',
+
       '#' + TOGGLE_BTN_ID + ' {',
       '  display: inline-flex;',
       '  align-items: center;',
@@ -166,28 +200,35 @@
 
     for (var c = 0; c < configs.length; c++) {
       var cfg = configs[c];
+      var grid = document.createElement('div');
+      grid.className = SUBPANEL_CLS + '-grid';
+
       for (var f = 0; f < FIELDS.length; f++) {
         var spec = FIELDS[f];
         var val = cfg.fields[spec.key] || { html: '', text: '' };
-        var fieldRow = document.createElement('div');
-        fieldRow.className = FIELD_CLS;
+
+        var cell = document.createElement('div');
+        cell.className = SUBPANEL_CLS + '-cell';
 
         var lbl = document.createElement('div');
-        lbl.className = LABEL_CLS;
+        lbl.className = SUBPANEL_CLS + '-cell-label';
         lbl.textContent = spec.label;
-        fieldRow.appendChild(lbl);
+        cell.appendChild(lbl);
 
         var v = document.createElement('div');
-        v.className = VALUE_CLS;
+        v.className = SUBPANEL_CLS + '-cell-value';
         if (val.text) {
           v.innerHTML = val.html || val.text;
         } else {
           v.textContent = '—';
-          v.style.color = '#94a3b8';
+          v.classList.add(SUBPANEL_CLS + '-cell-empty');
         }
-        fieldRow.appendChild(v);
-        panel.appendChild(fieldRow);
+        cell.appendChild(v);
+        grid.appendChild(cell);
       }
+
+      panel.appendChild(grid);
+
       if (c < configs.length - 1) {
         var sep = document.createElement('hr');
         sep.style.cssText = 'border: 0; border-top: 1px dashed #e2e8f0; margin: 8px 0;';

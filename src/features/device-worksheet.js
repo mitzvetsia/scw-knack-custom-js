@@ -195,10 +195,11 @@
 
           // ── Detail panel ──
           mounting:         { key: 'field_2818', type: 'readOnly' },
-          // Networking topology — only meaningful when the product maps
-          // camera/reader connections (field_2795 = Yes).
-          networkingDevice: { key: 'field_2820', type: 'readOnly', label: 'Connected devices', showWhenFieldIsYes: 'field_2795' },
-          connectedDevice:  { key: 'field_2821', type: 'readOnly', label: 'Connected to',      showWhenFieldIsYes: 'field_2795' },
+          // Networking topology — render on Camera/Reader rows whenever
+          // the cells have values.  bucketOverride excludes these for
+          // mounting-hardware / assumption rows.
+          networkingDevice: { key: 'field_2820', type: 'readOnly', label: 'Connected devices', skipEmpty: true },
+          connectedDevice:  { key: 'field_2821', type: 'readOnly', label: 'Connected to',      skipEmpty: true },
           laborDescription: { key: 'field_2809', type: 'readOnly' },
           scwNotes:         { key: 'field_2808', type: 'directEdit', notes: true },
           dropLength:       { key: 'field_2804', type: 'readOnly' },
