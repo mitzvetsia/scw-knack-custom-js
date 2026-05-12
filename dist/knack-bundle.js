@@ -2529,22 +2529,24 @@ td.${e}-sum-move {
    vertical alignment of the chits' left edge. */
 .${e}-sum-group--req-photos {
   width: 220px;
+  padding-right: 15px;
+  box-sizing: border-box;
   flex-shrink: 0;
 }
 .${e}-req-photos {
   display: flex;
   flex-direction: column;
-  align-items: flex-start;
+  align-items: stretch;
   gap: 3px;
   width: 100%;
   min-width: 0;
 }
 .${e}-req-photo-chit {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: 4px;
   height: 18px;
-  max-width: 100%;
+  width: 100%;
   padding: 0 8px 0 6px;
   border-radius: 999px;
   border: 1px solid transparent;
@@ -2555,6 +2557,7 @@ td.${e}-sum-move {
   line-height: 1;
   white-space: nowrap;
   overflow: hidden;
+  box-sizing: border-box;
   flex-shrink: 0;
   cursor: help;
 }
