@@ -34,8 +34,8 @@
     file:      'field_68'
   };
 
-  // Placeholder slugs — rename to match the Knack pages you create.
-  var ADD_DOC_SLUG  = 'add-doc-to-closeout';
+  var ADD_DOC_SLUG  = 'add-file-to-closeout';
+  // Edit slug still a placeholder — update when the Knack page exists.
   var EDIT_DOC_SLUG = 'edit-closeout-doc';
 
   // ── CSS injection ────────────────────────────────────────────────
