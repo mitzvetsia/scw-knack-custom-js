@@ -113,6 +113,24 @@
       '  background: var(--scw-accent);',
       '  color: var(--scw-surface-base);',
       '  font-weight: 600;',
+      '}',
+      // Menu item layout: label fills, direction glyph right-aligned.
+      '.' + DD_CLS + '__item {',
+      '  display: flex; align-items: center; justify-content: space-between;',
+      '  gap: 12px;',
+      '}',
+      '.' + DD_CLS + '__item-label { flex: 1 1 auto; }',
+      '.' + DD_CLS + '__item-dir {',
+      '  flex: 0 0 auto;',
+      '  font-size: 13px; line-height: 1;',
+      '  opacity: 0.30;',  // hint glyph on inactive items
+      '}',
+      '.' + DD_CLS + '__item-dir.is-active {',
+      '  opacity: 1;',
+      '}',
+      '.' + DD_CLS + '__item.is-active .' + DD_CLS + '__item-dir {',
+      '  opacity: 1;',
+      '  color: var(--scw-surface-base);',
       '}'
     ].join('\n');
     document.head.appendChild(s);
@@ -142,11 +160,33 @@
     try { return localStorage.getItem(storageKey(viewId)) || ''; }
     catch (e) { return ''; }
   }
-  function saveSelected(viewId, presetId) {
+  function saveSelected(viewId, value) {
     try {
-      if (presetId) localStorage.setItem(storageKey(viewId), presetId);
-      else          localStorage.removeItem(storageKey(viewId));
+      if (value) localStorage.setItem(storageKey(viewId), value);
+      else       localStorage.removeItem(storageKey(viewId));
     } catch (e) { /* ignore */ }
+  }
+
+  // Stored value shape:
+  //   ''                        → no selection (use viewCfg.rowSort default)
+  //   '<presetId>'              → preset with a fixed compound rule
+  //   '<presetId>|asc' / '|desc'→ bidirectional preset + current direction
+  function parseSelected(value) {
+    if (!value) return { presetId: '', direction: '' };
+    var bar = value.indexOf('|');
+    if (bar < 0) return { presetId: value, direction: '' };
+    return { presetId: value.substring(0, bar), direction: value.substring(bar + 1) };
+  }
+  function serializeSelected(presetId, direction) {
+    if (!presetId) return '';
+    return direction ? presetId + '|' + direction : presetId;
+  }
+
+  // Default direction when first activating a bidirectional preset:
+  // text fields → asc (A→Z reads naturally), numeric → desc (most users
+  // who pick "Total" want highest-first).
+  function defaultDirection(preset) {
+    return (preset && preset.type === 'text') ? 'asc' : 'desc';
   }
 
   // ── Active preset lookup ────────────────────────────────────────────
@@ -160,17 +200,40 @@
     return presets[0];  // stale selection → default
   }
 
+  function isBidirectional(preset) {
+    return !!(preset && preset.field && !preset.rule);
+  }
+
+  function findViewCfg(viewId) {
+    var ws = window.SCW && window.SCW.deviceWorksheet;
+    var configs = ws && ws._configs;
+    if (!configs) return null;
+    for (var i = 0; i < configs.length; i++) {
+      if (configs[i] && configs[i].viewId === viewId) return configs[i];
+    }
+    return null;
+  }
+
   // Returns the rowSort rule array to apply, or null if device-worksheet
   // should fall back to its existing viewCfg.rowSort / hardcoded default.
   function getActiveSortRules(viewCfg) {
     var presets = viewCfg && viewCfg.sortPresets;
     if (!presets || !presets.length) return null;
-    var presetId = loadSelected(viewCfg.viewId);
-    var preset = findPreset(viewCfg, presetId);
+    var sel = parseSelected(loadSelected(viewCfg.viewId));
+    var preset = findPreset(viewCfg, sel.presetId);
     if (!preset) return null;
-    // First preset with no explicit rule = "Default" = let device-worksheet
-    // use its own viewCfg.rowSort.
-    return preset.rule || null;
+
+    // Bidirectional preset (field+type) → single-rule with stored or default direction.
+    if (isBidirectional(preset)) {
+      var dir = sel.direction || defaultDirection(preset);
+      return [{ field: preset.field, order: dir, type: preset.type || 'text' }];
+    }
+
+    // Compound preset with an explicit multi-field rule.
+    if (preset.rule) return preset.rule;
+
+    // Default preset (no field, no rule) → fall back to viewCfg.rowSort.
+    return null;
   }
 
   // ── Dropdown render ─────────────────────────────────────────────────
@@ -188,8 +251,12 @@
     var prior = nav.querySelector('.' + DD_CLS + '[data-view-id="' + viewCfg.viewId + '"]');
     if (prior) prior.parentNode.removeChild(prior);
 
-    var selectedId = loadSelected(viewCfg.viewId);
-    var active = findPreset(viewCfg, selectedId);
+    var sel = parseSelected(loadSelected(viewCfg.viewId));
+    var active = findPreset(viewCfg, sel.presetId);
+    var activeDir = '';
+    if (active && isBidirectional(active)) {
+      activeDir = sel.direction || defaultDirection(active);
+    }
 
     var dd = document.createElement('div');
     dd.className = DD_CLS;
@@ -204,7 +271,8 @@
       '<svg class="' + DD_CLS + '__caret" viewBox="0 0 24 24" fill="none" ' +
         'stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">' +
         '<polyline points="6 9 12 15 18 9"></polyline></svg>';
-    btn.querySelector('.' + DD_CLS + '__current').textContent = (active && active.label) || 'Default';
+    btn.querySelector('.' + DD_CLS + '__current').textContent =
+      ((active && active.label) || 'Default') + (activeDir ? ' ' + dirGlyph(activeDir) : '');
     dd.appendChild(btn);
 
     var menu = document.createElement('div');
@@ -213,14 +281,38 @@
       var item = document.createElement('button');
       item.type = 'button';
       item.className = DD_CLS + '__item';
-      if (active && active.id === preset.id) item.classList.add('is-active');
+      var isActive = active && active.id === preset.id;
+      if (isActive) item.classList.add('is-active');
       item.setAttribute('data-preset-id', preset.id);
-      item.textContent = preset.label;
+
+      var labelSpan = document.createElement('span');
+      labelSpan.className = DD_CLS + '__item-label';
+      labelSpan.textContent = preset.label;
+      item.appendChild(labelSpan);
+
+      // Show direction glyph on the active bidirectional preset; hint
+      // glyph (faded) on inactive bidirectional presets so the affordance
+      // is discoverable. Compound and Default presets get no glyph.
+      if (isBidirectional(preset)) {
+        var dirSpan = document.createElement('span');
+        dirSpan.className = DD_CLS + '__item-dir';
+        if (isActive) {
+          dirSpan.classList.add('is-active');
+          dirSpan.textContent = dirGlyph(activeDir);
+        } else {
+          dirSpan.textContent = dirGlyph(defaultDirection(preset));
+        }
+        item.appendChild(dirSpan);
+      }
       menu.appendChild(item);
     });
     dd.appendChild(menu);
 
     nav.insertBefore(dd, nav.firstChild);
+  }
+
+  function dirGlyph(direction) {
+    return direction === 'desc' ? '↓' : '↑';
   }
 
   // ── Click handling (delegated) ──────────────────────────────────────
@@ -235,13 +327,27 @@
       var viewId = dd.getAttribute('data-view-id');
       var presetId = item.getAttribute('data-preset-id') || '';
 
-      saveSelected(viewId, presetId);
+      // Look up the preset on the live config so we can decide whether
+      // this click is a direction-toggle (active bidirectional preset) or
+      // a fresh selection.
+      var viewCfg = findViewCfg(viewId);
+      var preset = findPreset(viewCfg, presetId);
+      var prev = parseSelected(loadSelected(viewId));
+      var nextDir = '';
+      if (preset && isBidirectional(preset)) {
+        if (prev.presetId === presetId) {
+          // Clicking the active bidirectional preset flips direction.
+          var curDir = prev.direction || defaultDirection(preset);
+          nextDir = (curDir === 'desc') ? 'asc' : 'desc';
+        } else {
+          nextDir = defaultDirection(preset);
+        }
+      }
+
+      saveSelected(viewId, serializeSelected(presetId, nextDir));
       dd.classList.remove('is-open');
 
       // Trigger view re-render so transformView re-reads the active rules.
-      // model.fetch() costs one round trip but guarantees a clean rebuild
-      // (rows are PROCESSED_ATTR-gated, in-place re-sort would need
-      // significant extra logic to reorder existing card triplets).
       try {
         if (window.Knack && Knack.views[viewId] && Knack.views[viewId].model &&
             typeof Knack.views[viewId].model.fetch === 'function') {
@@ -249,17 +355,9 @@
         }
       } catch (err) { /* ignore */ }
 
-      // Update active class + button label locally so the UI reflects the
-      // change immediately even before the re-render completes.
-      var siblings = dd.querySelectorAll('.' + DD_CLS + '__item');
-      for (var i = 0; i < siblings.length; i++) {
-        siblings[i].classList.toggle(
-          'is-active',
-          (siblings[i].getAttribute('data-preset-id') || '') === presetId
-        );
-      }
-      var current = dd.querySelector('.' + DD_CLS + '__current');
-      if (current) current.textContent = item.textContent;
+      // Re-render the dropdown locally so the UI reflects the change
+      // immediately (active class, direction glyph, button label).
+      if (viewCfg) renderDropdown(viewCfg);
       return;
     }
 
