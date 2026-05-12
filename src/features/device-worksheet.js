@@ -203,7 +203,7 @@
           // bucketOverride=field_2380 nativeEdit.
           connectedTo:      { key: 'field_2821', type: 'readOnly',   label: 'Connected To', skipEmpty: true },
           laborDescription: { key: 'field_2809', type: 'readOnly' },
-          scwNotes:         { key: 'field_2808', type: 'directEdit', notes: true },
+          scwNotes:         { key: 'field_2808', type: 'directEdit', notes: true, rows: 4 },
           dropLength:       { key: 'field_2804', type: 'readOnly' },
           conduitFeet:      { key: 'field_2803', type: 'readOnly' }
         },
@@ -233,7 +233,7 @@
             // (Yes) and stays hidden on mounting hardware / assumption
             // rows (No).  Same shape as view_3505 line 146.
             connectedDevices: { key: 'field_2820', type: 'nativeEdit', label: 'Connected Devices', showWhenFieldIsYes: 'field_2795' },
-            scwNotes:         { key: 'field_2808', type: 'directEdit', notes: true }
+            scwNotes:         { key: 'field_2808', type: 'directEdit', notes: true, rows: 4 }
           },
           summaryLayout: ['hardwareLabel', 'laborDescription', 'installStatus'],
           // Same edit-vs-info split as the main config: left = actions,

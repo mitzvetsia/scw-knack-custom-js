@@ -42,13 +42,12 @@
     { key: 'field_2843', label: 'Client notes' }
   ];
 
-  var SUBPANEL_CLS  = 'scw-install-config';
-  var FIELD_CLS     = 'scw-ws-field';
-  var LABEL_CLS     = 'scw-ws-field-label';
-  var VALUE_CLS     = 'scw-ws-field-value';
-  var CSS_ID        = 'scw-install-config-css';
-  var TOGGLE_BTN_ID = 'scw-install-config-toggle';
-  var SHOWN_STATE   = 'scw-install-config-grid-shown';
+  var SUBPANEL_CLS    = 'scw-install-config';
+  var FLAGS_STRIP_CLS = 'scw-install-flags-strip';
+  var FLAG_FIELDS     = ['field_2807', 'field_2805', 'field_2806'];   // existing-cabling, exterior, plenum
+  var CSS_ID          = 'scw-install-config-css';
+  var TOGGLE_BTN_ID   = 'scw-install-config-toggle';
+  var SHOWN_STATE     = 'scw-install-config-grid-shown';
 
   // ── CSS ─────────────────────────────────────────────────────────
   function injectCss() {
@@ -88,25 +87,27 @@
       '  content: "Info";',
       '}',
 
-      /* ── Existing / Exterior / Plenum as flag callouts ──
+      /* ── Existing / Exterior / Plenum as a flag-callout strip ──
          showWhenFieldIsYes hides the row when value != Yes, so any time
          these render the value IS Yes — collapse the label/value layout
-         to a chip-style flag. */
-      '#' + INSTALL_VIEW + ' .scw-ws-field[data-scw-field="field_2807"],',
-      '#' + INSTALL_VIEW + ' .scw-ws-field[data-scw-field="field_2805"],',
-      '#' + INSTALL_VIEW + ' .scw-ws-field[data-scw-field="field_2806"] {',
+         to a chip-style flag and lift them into their own strip at the
+         top of the detail panel (handled by relocateFlagChips()). */
+      '.' + FLAGS_STRIP_CLS + ' {',
+      '  display: flex;',
+      '  flex-wrap: wrap;',
+      '  gap: 6px;',
+      '  padding: 12px 20px 4px 70px;',
+      '}',
+      '#' + INSTALL_VIEW + ' .' + FLAGS_STRIP_CLS + ' .scw-ws-field {',
       '  display: inline-flex !important;',
       '  align-items: center;',
-      '  gap: 0;',
       '  padding: 4px 12px;',
-      '  margin: 0 8px 8px 0;',
+      '  margin: 0;',
       '  background: #fef3c7;',
       '  border: 1px solid #fcd34d;',
       '  border-radius: 999px;',
       '}',
-      '#' + INSTALL_VIEW + ' .scw-ws-field[data-scw-field="field_2807"] .scw-ws-field-label,',
-      '#' + INSTALL_VIEW + ' .scw-ws-field[data-scw-field="field_2805"] .scw-ws-field-label,',
-      '#' + INSTALL_VIEW + ' .scw-ws-field[data-scw-field="field_2806"] .scw-ws-field-label {',
+      '#' + INSTALL_VIEW + ' .' + FLAGS_STRIP_CLS + ' .scw-ws-field-label {',
       '  font-size: 12px;',
       '  font-weight: 700;',
       '  color: #92400e;',
@@ -116,9 +117,7 @@
       '  min-width: 0;',
       '  white-space: nowrap;',
       '}',
-      '#' + INSTALL_VIEW + ' .scw-ws-field[data-scw-field="field_2807"] .scw-ws-field-value,',
-      '#' + INSTALL_VIEW + ' .scw-ws-field[data-scw-field="field_2805"] .scw-ws-field-value,',
-      '#' + INSTALL_VIEW + ' .scw-ws-field[data-scw-field="field_2806"] .scw-ws-field-value {',
+      '#' + INSTALL_VIEW + ' .' + FLAGS_STRIP_CLS + ' .scw-ws-field-value {',
       '  display: none;',
       '}',
       '.' + SUBPANEL_CLS + '-title {',
@@ -227,6 +226,42 @@
       index[lineItemId].push(cfg);
     }
     return index;
+  }
+
+  /** Lift Existing-Cabling / Exterior / Plenum out of the detail
+   *  sections (where they sit awkwardly between Mounting and Drop
+   *  Length) into a dedicated chip strip at the top of the detail
+   *  panel.  These render only when the value is Yes (gated by
+   *  showWhenFieldIsYes in the WORKSHEET_CONFIG), so their presence
+   *  alone signals the flag is set. */
+  function relocateFlagChips(wsTr) {
+    var detail = wsTr.querySelector('.scw-ws-card > .scw-ws-detail');
+    if (!detail) return;
+
+    var chips = [];
+    for (var i = 0; i < FLAG_FIELDS.length; i++) {
+      var node = detail.querySelector(
+        '.scw-ws-sections .scw-ws-field[data-scw-field="' + FLAG_FIELDS[i] + '"]'
+      );
+      if (node) chips.push(node);
+    }
+
+    var existing = detail.querySelector(':scope > .' + FLAGS_STRIP_CLS);
+    if (!chips.length) {
+      if (existing) existing.parentNode.removeChild(existing);
+      return;
+    }
+
+    var strip = existing;
+    if (!strip) {
+      strip = document.createElement('div');
+      strip.className = FLAGS_STRIP_CLS;
+      detail.insertBefore(strip, detail.firstChild);
+    } else {
+      // Wipe previous chips so reorder runs cleanly.
+      while (strip.firstChild) strip.removeChild(strip.firstChild);
+    }
+    for (var c = 0; c < chips.length; c++) strip.appendChild(chips[c]);
   }
 
   /** Reorder a card's children so visual order is:
@@ -386,6 +421,9 @@
         if (needsInject) {
           injectSubpanel(wsRows[i], index[wsRows[i].id] || []);
         }
+        // Lift the Existing/Exterior/Plenum chips into a flag strip
+        // at the top of the detail panel.
+        relocateFlagChips(wsRows[i]);
         // Always re-assert visual order — Knack/device-worksheet may
         // have rebuilt the card and reset the photo-wrap position even
         // when no config data changed.
