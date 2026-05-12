@@ -23,9 +23,16 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   //     dataBase64:    <pure base64 string, no "data:..." prefix>,
   //     triggeredBy:   { id, name, email }
   //   }
-  //   Response body: { success: true } or { success: false, error: "..." }
-  // ⚠️  TODO: set this URL once the Make scenario exists. While empty,
-  //     clicking a missing-photo card falls back to Knack's edit modal.
+  //   Response body — fire the "Webhook response" module AT THE END of
+  //   the Make scenario (after the Knack upload module), so the browser
+  //   waits for completion rather than polling:
+  //     { "success": true }                           → stops polling,
+  //                                                     one fetch to refresh
+  //     { "success": false, "error": "human msg" }    → shows the error
+  //                                                     verbatim on the card
+  //   If Make 408s out (40s timeout) or no JSON body is returned, the
+  //   client falls back to polling so a slow background upload still
+  //   surfaces eventually.
   MAKE_PHOTO_UPLOAD_WEBHOOK: "https://hook.us1.make.com/6n07ovcxexg4ygckwh8scydh22n71s3o",
   // Closeout-deliverables doc upload (view_3940 .scw-cd-doc cards).
   // Fires when the user drags a file onto, or clicks, a missing doc

@@ -967,12 +967,39 @@
         })
       });
     }).then(function (resp) {
-      // No-cors webhooks return opaque responses sometimes; treat 0 + ok
-      // both as "accepted" and let the poll loop decide success.
+      // Webhook contract:
+      //   { success: true }              → Knack upload finished, stop polling
+      //   { success: false, error: "..."} → show error, stop polling
+      //   anything else (no body, opaque CORS, 408 from Make's 40s
+      //   timeout, network glitch) → fall back to polling so a slow
+      //   scenario that finishes in the background still updates the UI.
       if (resp && resp.status && resp.status >= 400) {
         throw new Error('Webhook returned ' + resp.status);
       }
-      pollForPhotoArrival(photoRecordId, viewId);
+      return resp.json().catch(function () { return null; }).then(function (body) {
+        if (body && body.success === false) {
+          delete pendingUploads[photoRecordId];
+          ui.setError(body.error || 'Upload failed');
+          return;
+        }
+        if (body && body.success === true) {
+          // Make says the Knack record is updated. One fetch to refresh.
+          var v = window.Knack && Knack.views && Knack.views[viewId];
+          if (v && v.model && typeof v.model.fetch === 'function') v.model.fetch();
+          // Grace period for the re-render; stop polling if the image
+          // landed, else fall through to short-poll as a safety net.
+          setTimeout(function () {
+            if (photoHasImageInDOM(viewId, photoRecordId)) {
+              delete pendingUploads[photoRecordId];
+            } else {
+              pollForPhotoArrival(photoRecordId, viewId);
+            }
+          }, 1500);
+          return;
+        }
+        // No structured response → original polling behaviour.
+        pollForPhotoArrival(photoRecordId, viewId);
+      });
     }).catch(function (err) {
       console.error('[SCW] Photo upload error:', err);
       delete pendingUploads[photoRecordId];

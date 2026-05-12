@@ -559,10 +559,33 @@
         })
       });
     }).then(function (resp) {
+      // Webhook contract — same as photo upload:
+      //   { success: true }              → Knack upload finished, stop polling
+      //   { success: false, error: "..."} → show error, stop polling
+      //   anything else → fall back to polling.
       if (resp && resp.status && resp.status >= 400) {
         throw new Error('Webhook returned ' + resp.status);
       }
-      pollForDocArrival(docId);
+      return resp.json().catch(function () { return null; }).then(function (body) {
+        if (body && body.success === false) {
+          delete pendingUploads[docId];
+          setCardError(card, body.error || 'Upload failed');
+          return;
+        }
+        if (body && body.success === true) {
+          var v = window.Knack && Knack.views && Knack.views[VIEW_ID];
+          if (v && v.model && typeof v.model.fetch === 'function') v.model.fetch();
+          setTimeout(function () {
+            if (docHasFileInDOM(docId)) {
+              delete pendingUploads[docId];
+            } else {
+              pollForDocArrival(docId);
+            }
+          }, 1500);
+          return;
+        }
+        pollForDocArrival(docId);
+      });
     }).catch(function (err) {
       console.error('[SCW] Doc upload error:', err);
       delete pendingUploads[docId];
