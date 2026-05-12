@@ -195,21 +195,13 @@
 
           // ── Detail panel ──
           mounting:         { key: 'field_2818', type: 'readOnly' },
-          // Networking topology — same pattern as view_3505 (field_2380
-          // nativeEdit + field_2381 readOnly) and view_3586 (field_1957
-          // nativeEdit + field_2197 readOnly). The trigger field
-          // (field_2820) is the editable multi-connection that drives
-          // the silent-regroup cascade in mirror-connection-sync.js;
-          // field_2821 is the auto-updated back-connection on children.
-          //
-          // Gate: field_2795 ("PRODUCT STORED FLAG_map camera or reader
-          // connections") — Yes on parent network-device products,
-          // No on camera/reader endpoints.  This is what hides the
-          // Connected Devices editor on cameras (which only point AT a
-          // network device, never have devices pointing back at them)
-          // while exposing it on the network-device rows.
-          connectedDevices: { key: 'field_2820', type: 'nativeEdit', label: 'Connected Devices', showWhenFieldIsYes: 'field_2795' },
-          connectedTo:      { key: 'field_2821', type: 'readOnly',   label: 'Connected To',      skipEmpty: true },
+          // Camera/Reader rows are CHILDREN in the connection cascade —
+          // they only show the back-connection to their parent network
+          // device.  The forward "Connected Devices" editor lives in
+          // bucketOverride (network devices are non-Camera/Reader).
+          // Same shape view_3505 uses: main=field_2381 readOnly,
+          // bucketOverride=field_2380 nativeEdit.
+          connectedTo:      { key: 'field_2821', type: 'readOnly',   label: 'Connected To', skipEmpty: true },
           laborDescription: { key: 'field_2809', type: 'readOnly' },
           scwNotes:         { key: 'field_2808', type: 'directEdit', notes: true },
           dropLength:       { key: 'field_2804', type: 'readOnly' },
@@ -217,7 +209,7 @@
         },
         summaryLayout: ['installStatus'],
         detailLayout: {
-          left:  ['mounting', 'connectedDevices', 'connectedTo', 'laborDescription'],
+          left:  ['mounting', 'connectedTo', 'laborDescription'],
           right: ['existingCabling', 'exteriorChit', 'plenumChit', 'dropLength', 'conduitFeet', 'scwNotes']
         },
         bucketField: 'field_2822',
@@ -232,11 +224,16 @@
             hardwareLabel:    { key: 'field_2853', type: 'readOnly', summary: true, label: 'Hardware', group: 'fill' },
             installStatus:    { key: 'field_2825', type: 'singleChip', segmented: true, options: ['Not Started', 'In Progress', 'Blocked', 'Done'], summary: true, label: 'Status', group: 'right', groupCls: 'sum-group--install-status' },
             laborDescription: { key: 'field_2809', type: 'readOnly', summary: true, label: 'Description', group: 'fill', multiline: true },
+            // Editable forward connection (TRIGGER_FIELD for the cascade).
+            // Gated on field_2795 so it appears on network-device products
+            // (Yes) and stays hidden on mounting hardware / assumption
+            // rows (No).  Same shape as view_3505 line 146.
+            connectedDevices: { key: 'field_2820', type: 'nativeEdit', label: 'Connected Devices', showWhenFieldIsYes: 'field_2795' },
             scwNotes:         { key: 'field_2808', type: 'directEdit', notes: true }
           },
           summaryLayout: ['hardwareLabel', 'laborDescription', 'installStatus'],
           detailLayout: {
-            left:  [],
+            left:  ['connectedDevices'],
             right: ['scwNotes']
           }
         },
