@@ -231,6 +231,12 @@
           { field: 'field_2218', order: 'asc', type: 'number' },
           { field: 'field_2819', order: 'asc', type: 'text'   }
         ],
+        // Knack Builder's default table sort on view_3915 is field_2816
+        // (SYS_auto increment) asc.  Without this flag, device-worksheet
+        // detects th.sorted-asc on field_2816 and uses THAT as the sole
+        // sort rule — silently overriding our rowSort.  forceRowSort:
+        // true keeps our config-side rowSort authoritative.
+        forceRowSort: true,
         syntheticGroupsPosition: 'bottom',
         bucketField: 'field_2822',
         // ── Override: used for all NON-camera/reader rows
@@ -5922,7 +5928,11 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     // and use the clicked column as the sole rule, otherwise every click
     // would be visually reset by the hard-coded default here.
     var rowSortRules;
-    var _sortedTh = thead && thead.querySelector('th.sorted-asc, th.sorted-desc');
+    // viewCfg.forceRowSort = true → ignore Knack's th.sorted-asc and use
+    // the rowSort defined on viewCfg.  Use this when Knack Builder's
+    // default sort doesn't match the worksheet's intended ordering and
+    // changing the Builder default isn't feasible.
+    var _sortedTh = (!viewCfg.forceRowSort) && thead && thead.querySelector('th.sorted-asc, th.sorted-desc');
     if (_sortedTh) {
       var _sFk = null;
       var _sClasses = _sortedTh.className.split(/\s+/);
