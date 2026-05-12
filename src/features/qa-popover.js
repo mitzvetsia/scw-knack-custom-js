@@ -685,8 +685,13 @@
     chit.title = photoType + ' — ' + chitStateTooltip(newState);
     chit.innerHTML = chitStateIcon(newState);
     var nameSpan = document.createElement('span');
+    nameSpan.className = 'scw-ws-req-photo-chit-name';
     nameSpan.textContent = photoType;
     chit.appendChild(nameSpan);
+    var stateSpan = document.createElement('span');
+    stateSpan.className = 'scw-ws-req-photo-chit-state';
+    stateSpan.textContent = chitStateLabel(newState);
+    chit.appendChild(stateSpan);
 
     // 2) Mirror the saved field values into the source <tr>'s cells
     // so the next read (e.g. when the view re-renders) starts from a
@@ -751,22 +756,35 @@
     }
   }
 
+  function chitStateLabel(state) {
+    switch (state) {
+      case 'missing':    return 'Upload';
+      case 'qa-pending': return 'Needs QA';
+      case 'half-pass':  return 'Client pending';
+      case 'done':       return 'Signed off';
+      case 'fail':       return 'Failed';
+      default:           return '';
+    }
+  }
+
   function chitStateIcon(state) {
     var checkSvg =
-      '<svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+      '<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
     var warnSvg =
-      '<svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>';
+      '<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>';
     var xSvg =
-      '<svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
-    var dotSvg =
-      '<svg viewBox="0 0 24 24" width="10" height="10" fill="currentColor"><circle cx="12" cy="12" r="4"/></svg>';
+      '<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+    var clockSvg =
+      '<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>';
+    var halfSvg =
+      '<svg viewBox="0 0 24 24" width="11" height="11" stroke="currentColor" stroke-width="2.4"><circle cx="12" cy="12" r="9" fill="none"/><path d="M12 3 A9 9 0 0 1 12 21 Z" fill="currentColor"/></svg>';
     switch (state) {
       case 'done':       return checkSvg;
-      case 'half-pass':  return checkSvg;
+      case 'half-pass':  return halfSvg;
       case 'missing':    return warnSvg;
       case 'fail':       return xSvg;
-      case 'qa-pending': return dotSvg;
-      default:           return dotSvg;
+      case 'qa-pending': return clockSvg;
+      default:           return clockSvg;
     }
   }
 

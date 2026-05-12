@@ -1674,6 +1674,28 @@ td.${P}-sum-move {
 .${P}-req-photo-chit svg {
   flex-shrink: 0;
 }
+.${P}-req-photo-chit-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.${P}-req-photo-chit-state {
+  flex-shrink: 0;
+  margin-left: auto;
+  padding-left: 8px;
+  font-weight: 600;
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  opacity: 0.75;
+}
+.${P}-req-photo-chit-state::before {
+  content: '·';
+  display: inline-block;
+  margin-right: 6px;
+  opacity: 0.6;
+}
 /* photo missing (not yet uploaded) — amber */
 .${P}-req-photo-chit.is-missing {
   background: #fef3c7;
@@ -4938,8 +4960,13 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
           phChit.title = (ph.type || 'Photo') + ' — ' + chitStateTooltip(chitState);
           phChit.innerHTML = chitStateIcon(chitState);
           var phName = document.createElement('span');
+          phName.className = P + '-req-photo-chit-name';
           phName.textContent = ph.type || 'Photo';
           phChit.appendChild(phName);
+          var phState = document.createElement('span');
+          phState.className = P + '-req-photo-chit-state';
+          phState.textContent = chitStateLabel(chitState);
+          phChit.appendChild(phState);
           phRow.appendChild(phChit);
         }
         if (doneCount === photoList.length) {
@@ -4964,22 +4991,39 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     }
   }
 
+  /** Short suffix label rendered inside the chit so the state reads
+      explicitly without relying on color alone. */
+  function chitStateLabel(state) {
+    switch (state) {
+      case 'missing':    return 'Upload';
+      case 'qa-pending': return 'Needs QA';
+      case 'half-pass':  return 'Client pending';
+      case 'done':       return 'Signed off';
+      case 'fail':       return 'Failed';
+      default:           return '';
+    }
+  }
+
   function chitStateIcon(state) {
     var checkSvg =
-      '<svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+      '<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
     var warnSvg =
-      '<svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>';
+      '<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>';
     var xSvg =
-      '<svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
-    var dotSvg =
-      '<svg viewBox="0 0 24 24" width="10" height="10" fill="currentColor"><circle cx="12" cy="12" r="4"/></svg>';
+      '<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+    // Clock-face icon — clearly says "waiting / not yet done"
+    var clockSvg =
+      '<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>';
+    // Half-filled circle — clearly intermediate state
+    var halfSvg =
+      '<svg viewBox="0 0 24 24" width="11" height="11" stroke="currentColor" stroke-width="2.4"><circle cx="12" cy="12" r="9" fill="none"/><path d="M12 3 A9 9 0 0 1 12 21 Z" fill="currentColor"/></svg>';
     switch (state) {
       case 'done':       return checkSvg;
-      case 'half-pass':  return checkSvg;
+      case 'half-pass':  return halfSvg;
       case 'missing':    return warnSvg;
       case 'fail':       return xSvg;
-      case 'qa-pending': return dotSvg;
-      default:           return dotSvg;
+      case 'qa-pending': return clockSvg;
+      default:           return clockSvg;
     }
   }
 
