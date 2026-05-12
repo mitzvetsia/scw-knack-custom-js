@@ -189,6 +189,12 @@
           product:          { key: 'field_2790', type: 'readOnly',   summary: true, productStyle: true },
           // TODO: confirm field_2825's actual Knack dropdown option list — guesses below.
           installStatus:    { key: 'field_2825', type: 'singleChip', segmented: true, options: ['Not Started', 'In Progress', 'Blocked', 'Done'], summary: true, label: 'Status', group: 'right', groupCls: 'sum-group--install-status' },
+          // Header QA chits — one small icon per required photo, green
+          // check = captured, amber warning = missing. Photo data is
+          // scraped from the same field_2445/2446/2447 connection cells
+          // that inline-photo-row reads, so they must remain as columns
+          // on view_3915 in the Builder.
+          requiredPhotos:   { type: 'requiredPhotos', summary: true, label: 'Photos', group: 'right', groupCls: 'sum-group--req-photos' },
           existingCabling:  { key: 'field_2807', type: 'readOnly', label: 'Existing cabling', showWhenFieldIsYes: 'field_2807' },
           exteriorChit:     { key: 'field_2805', type: 'readOnly', label: 'Exterior',         showWhenFieldIsYes: 'field_2805' },
           plenumChit:       { key: 'field_2806', type: 'readOnly', label: 'Plenum',           showWhenFieldIsYes: 'field_2806' },
@@ -212,7 +218,7 @@
           dropLength:       { key: 'field_2804', type: 'readOnly' },
           conduitFeet:      { key: 'field_2803', type: 'readOnly' }
         },
-        summaryLayout: ['installStatus'],
+        summaryLayout: ['requiredPhotos', 'installStatus'],
         // Detail-panel groupings: left = the action / editable bits;
         // right = read-only / info.  Existing-cabling, exterior, and
         // plenum sit in Info as flag-chip rows (showWhenFieldIsYes
@@ -253,6 +259,7 @@
           fields: {
             product:          { key: 'field_2790', type: 'readOnly', summary: true, productStyle: true },
             installStatus:    { key: 'field_2825', type: 'singleChip', segmented: true, options: ['Not Started', 'In Progress', 'Blocked', 'Done'], summary: true, label: 'Status', group: 'right', groupCls: 'sum-group--install-status' },
+            requiredPhotos:   { type: 'requiredPhotos', summary: true, label: 'Photos', group: 'right', groupCls: 'sum-group--req-photos' },
             laborDescription: { key: 'field_2809', type: 'readOnly', summary: true, label: 'Description', group: 'fill', multiline: true },
             // Editable forward connection (TRIGGER_FIELD for the cascade).
             // Gated on field_2795 so it appears on network-device products
@@ -269,7 +276,7 @@
             accessories:      { key: 'field_2852', type: 'connectedRecords', skipEmpty: true },
             scwNotes:         { key: 'field_2808', type: 'directEdit', notes: true, rows: 4 }
           },
-          summaryLayout: ['laborDescription', 'installStatus'],
+          summaryLayout: ['requiredPhotos', 'installStatus'],
           // Same Edit/Info split as the main config; MDF/IDF is omitted
           // because the Knack-native group header above the row already
           // shows it.
@@ -1559,6 +1566,36 @@ td.${P}-sum-move {
   display: none;
 }
 
+/* ── Required-photo header chits (QA-glance) ────────────────────── */
+.${P}-req-photos {
+  display: inline-flex;
+  gap: 3px;
+  align-items: center;
+  flex-wrap: wrap;
+  max-width: 140px;
+}
+.${P}-req-photo-chit {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  border: 1px solid transparent;
+  flex-shrink: 0;
+  cursor: help;
+}
+.${P}-req-photo-chit.is-done {
+  background: #dcfce7;
+  color: #16a34a;
+  border-color: #86efac;
+}
+.${P}-req-photo-chit.is-missing {
+  background: #fef3c7;
+  color: #b45309;
+  border-color: #fbbf24;
+}
+
 /* ── Summary chip host td — visible for KTL bulk-edit but visually transparent ── */
 td.${P}-sum-chip-host {
   display: inline-flex !important;
@@ -2650,6 +2687,48 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       if (cls) return cls;
     }
     return '';
+  }
+
+  /**
+   * Walk three parallel connection cells on a source <tr> (type / required /
+   * completed, all keyed by photo record id) and return the list of REQUIRED
+   * photos with their completion state. Used by the requiredPhotos summary
+   * field type to render header-level QA chits.
+   */
+  function readRequiredPhotos(tr, typeKey, reqKey, doneKey) {
+    var photos = {};
+    function ensure(id) {
+      if (!photos[id]) photos[id] = { id: id, type: '', required: false, completed: false };
+      return photos[id];
+    }
+    function walk(cellSel, apply) {
+      var cell = tr.querySelector('td.' + cellSel);
+      if (!cell) return;
+      var outers = cell.querySelectorAll('span[id][data-kn="connection-value"]');
+      for (var i = 0; i < outers.length; i++) {
+        var id = (outers[i].id || '').trim();
+        if (!id) continue;
+        apply(ensure(id), outers[i]);
+      }
+    }
+    walk(typeKey, function (rec, span) {
+      var inner = span.querySelector('span[data-kn="connection-value"]');
+      rec.type = inner ? inner.textContent.trim() : span.textContent.trim();
+    });
+    walk(reqKey, function (rec, span) {
+      var v = (span.textContent || '').trim().toLowerCase();
+      rec.required = (v === 'yes' || v === 'true');
+    });
+    walk(doneKey, function (rec, span) {
+      var v = (span.textContent || '').trim().toLowerCase();
+      rec.completed = (v === 'yes' || v === 'true');
+    });
+    var out = [];
+    for (var k in photos) {
+      if (photos.hasOwnProperty(k) && photos[k].required) out.push(photos[k]);
+    }
+    out.sort(function (a, b) { return (a.type || '').localeCompare(b.type || ''); });
+    return out;
   }
 
   /**
@@ -4638,6 +4717,58 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         chitWrap.appendChild(chitLabel);
         chitWrap.appendChild(td);
         target.appendChild(chitWrap);
+        break;
+
+      case 'requiredPhotos':
+        // Header-level QA indicator: one small icon-chit per required
+        // photo on the row. Green check = captured, amber warning =
+        // missing. Hover title = photo type name.
+        var photoList = readRequiredPhotos(
+          tr,
+          desc.typeField      || 'field_2445',
+          desc.requiredField  || 'field_2446',
+          desc.completedField || 'field_2447'
+        );
+        if (!photoList.length) {
+          // Reserve a spacer so stacked-summary alignment doesn't shift
+          // between rows that have required photos and ones that don't.
+          if (desc.alwaysReserveSpace !== false) {
+            var phEmpty = document.createElement('span');
+            phEmpty.className = P + '-sum-group ' + (desc.groupCls ? P + '-' + desc.groupCls : '');
+            phEmpty.style.visibility = 'hidden';
+            var phEmptyLbl = document.createElement('span');
+            phEmptyLbl.className = P + '-sum-label';
+            phEmptyLbl.innerHTML = '&nbsp;';
+            phEmpty.appendChild(phEmptyLbl);
+            target.appendChild(phEmpty);
+          }
+          break;
+        }
+        var phGroup = document.createElement('span');
+        phGroup.className = P + '-sum-group' + (desc.groupCls ? ' ' + P + '-' + desc.groupCls : '');
+        var phLabel = document.createElement('span');
+        phLabel.className = P + '-sum-label';
+        phLabel.textContent = desc.label || 'Photos';
+        phGroup.appendChild(phLabel);
+        var phRow = document.createElement('span');
+        phRow.className = P + '-req-photos';
+        var doneCount = 0;
+        for (var pp = 0; pp < photoList.length; pp++) {
+          var ph = photoList[pp];
+          if (ph.completed) doneCount++;
+          var phChit = document.createElement('span');
+          phChit.className = P + '-req-photo-chit ' + (ph.completed ? 'is-done' : 'is-missing');
+          phChit.title = (ph.type || 'Photo') + (ph.completed ? ' — captured' : ' — missing');
+          phChit.innerHTML = ph.completed
+            ? '<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>'
+            : '<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>';
+          phRow.appendChild(phChit);
+        }
+        if (doneCount === photoList.length) {
+          phGroup.classList.add(P + '-req-photos-all-done');
+        }
+        phGroup.appendChild(phRow);
+        target.appendChild(phGroup);
         break;
     }
   }
