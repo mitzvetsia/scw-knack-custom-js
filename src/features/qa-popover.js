@@ -74,7 +74,7 @@
       '}',
       '.scw-qa-popover__head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }',
       '.scw-qa-popover__thumb {',
-      '  width: 64px; height: 64px; border-radius: 6px; background: #f3f4f6 center/cover no-repeat;',
+      '  width: 96px; height: 96px; border-radius: 6px; background: #f3f4f6 center/cover no-repeat;',
       '  border: 1px solid #e5e7eb; flex-shrink: 0;',
       '  cursor: zoom-in;',
       '}',

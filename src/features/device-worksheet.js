@@ -1651,12 +1651,12 @@ td.${P}-sum-move {
   display: flex;
   align-items: center;
   gap: 4px;
-  height: 18px;
+  height: 22px;
   width: 100%;
-  padding: 0 8px 0 6px;
+  padding: 0 10px 0 8px;
   border-radius: 999px;
   border: 1px solid transparent;
-  font-size: 10px;
+  font-size: 12px;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.02em;
@@ -1692,8 +1692,8 @@ td.${P}-sum-move {
   color: #15803d;
   border-color: #fbbf24;
   border-width: 2px;
-  padding: 0 7px 0 5px;       /* compensate for thicker border */
-  height: 18px;
+  padding: 0 9px 0 7px;       /* compensate for thicker border */
+  height: 22px;
 }
 /* fully signed off — solid green */
 .${P}-req-photo-chit.is-done {
