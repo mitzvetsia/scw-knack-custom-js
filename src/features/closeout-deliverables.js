@@ -35,8 +35,7 @@
   };
 
   var ADD_DOC_SLUG  = 'add-file-to-closeout';
-  // Edit slug still a placeholder — update when the Knack page exists.
-  var EDIT_DOC_SLUG = 'edit-closeout-doc';
+  var EDIT_DOC_SLUG = 'edit-doc-file';
 
   // ── CSS injection ────────────────────────────────────────────────
 
