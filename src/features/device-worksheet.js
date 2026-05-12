@@ -194,7 +194,7 @@
           // scraped from the same field_2445/2446/2447 connection cells
           // that inline-photo-row reads, so they must remain as columns
           // on view_3915 in the Builder.
-          requiredPhotos:   { type: 'requiredPhotos', summary: true, label: 'Photos', group: 'right', groupCls: 'sum-group--req-photos' },
+          requiredPhotos:   { type: 'requiredPhotos', summary: true, label: 'QA', group: 'right', groupCls: 'sum-group--req-photos' },
           existingCabling:  { key: 'field_2807', type: 'readOnly', label: 'Existing cabling', showWhenFieldIsYes: 'field_2807' },
           exteriorChit:     { key: 'field_2805', type: 'readOnly', label: 'Exterior',         showWhenFieldIsYes: 'field_2805' },
           plenumChit:       { key: 'field_2806', type: 'readOnly', label: 'Plenum',           showWhenFieldIsYes: 'field_2806' },
@@ -259,7 +259,7 @@
           fields: {
             product:          { key: 'field_2790', type: 'readOnly', summary: true, productStyle: true },
             installStatus:    { key: 'field_2825', type: 'singleChip', segmented: true, options: ['Not Started', 'In Progress', 'Blocked', 'Done'], summary: true, label: 'Status', group: 'right', groupCls: 'sum-group--install-status' },
-            requiredPhotos:   { type: 'requiredPhotos', summary: true, label: 'Photos', group: 'right', groupCls: 'sum-group--req-photos' },
+            requiredPhotos:   { type: 'requiredPhotos', summary: true, label: 'QA', group: 'right', groupCls: 'sum-group--req-photos' },
             laborDescription: { key: 'field_2809', type: 'readOnly', summary: true, label: 'Description', group: 'fill', multiline: true },
             // Editable forward connection (TRIGGER_FIELD for the cascade).
             // Gated on field_2795 so it appears on network-device products
