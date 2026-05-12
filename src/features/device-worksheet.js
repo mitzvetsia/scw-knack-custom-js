@@ -252,9 +252,6 @@
           keepBuckets: ['6481e5ba38f283002898113c'],   // Camera or Reader
           fields: {
             product:          { key: 'field_2790', type: 'readOnly', summary: true, productStyle: true },
-            // Drop number (field_2798) — keeps brackets/accessories
-            // adjacent to the camera they belong to in the user's eye.
-            dropNumber:       { key: 'field_2798', type: 'readOnly', summary: true, label: 'Drop' },
             installStatus:    { key: 'field_2825', type: 'singleChip', segmented: true, options: ['Not Started', 'In Progress', 'Blocked', 'Done'], summary: true, label: 'Status', group: 'right', groupCls: 'sum-group--install-status' },
             laborDescription: { key: 'field_2809', type: 'readOnly', summary: true, label: 'Description', group: 'fill', multiline: true },
             // Editable forward connection (TRIGGER_FIELD for the cascade).
@@ -272,7 +269,7 @@
             accessories:      { key: 'field_2852', type: 'connectedRecords', skipEmpty: true },
             scwNotes:         { key: 'field_2808', type: 'directEdit', notes: true, rows: 4 }
           },
-          summaryLayout: ['dropNumber', 'laborDescription', 'installStatus'],
+          summaryLayout: ['laborDescription', 'installStatus'],
           // Same Edit/Info split as the main config; MDF/IDF is omitted
           // because the Knack-native group header above the row already
           // shows it.
