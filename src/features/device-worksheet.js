@@ -314,12 +314,13 @@
           mdfIdf:           { key: 'field_1641', type: 'singleChip', options: ['HEADEND', 'IDF'], segmented: true, headerTrigger: true },
           mdfNumber:        { key: 'field_2458', type: 'directEdit', headerTrigger: true, hideWhenFieldEquals: { field: 'field_1641', value: 'HEADEND' } },
           name:             { key: 'field_1943', type: 'directEdit', headerTrigger: true },
+          status:           { key: 'field_2845', type: 'nativeEdit' },
           surveyNotes:      { key: 'field_2457', type: 'directEdit', summary: true, label: 'Survey Notes', group: 'fill', multiline: true },
           notes:            { key: 'field_1643', type: 'directEdit' }
         },
         summaryLayout: ['surveyNotes'],
         detailLayout: {
-          left:  ['mdfIdf', 'mdfNumber', 'name'],
+          left:  ['mdfIdf', 'mdfNumber', 'name', 'status'],
           right: ['notes']
         }
       },
@@ -5221,6 +5222,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     mdfIdf:           'MDF/IDF',
     mdfNumber:        '##',
     name:             'Name',
+    status:           'Status',
     dropPrefix:       'Drop Prefix',
     dropNumber:       'Label #',
     laborDescription: 'Labor\nDesc',
