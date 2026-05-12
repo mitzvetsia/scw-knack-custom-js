@@ -194,7 +194,10 @@
           plenumChit:       { key: 'field_2806', type: 'readOnly', label: 'Plenum',           showWhenFieldIsYes: 'field_2806' },
 
           // ── Detail panel ──
-          mdfIdf:           { key: 'field_2818', type: 'readOnly', skipEmpty: true },
+          // MDF/IDF (field_2818) is an editable connection — sits in
+          // the Edit group so installers can correct location wiring
+          // on the camera directly.
+          mdfIdf:           { key: 'field_2818', type: 'nativeEdit' },
           // Camera/Reader rows are CHILDREN in the connection cascade —
           // they only show the back-connection to their parent network
           // device.  The forward "Connected Devices" editor lives in
@@ -213,8 +216,8 @@
         // plenum sit in Info as flag-chip rows (showWhenFieldIsYes
         // hides them when off, install-config-subpanel restyles them).
         detailLayout: {
-          left:  ['connectedTo', 'scwNotes'],
-          right: ['existingCabling', 'exteriorChit', 'plenumChit', 'mdfIdf', 'dropLength', 'conduitFeet', 'laborDescription']
+          left:  ['mdfIdf', 'connectedTo', 'scwNotes'],
+          right: ['existingCabling', 'exteriorChit', 'plenumChit', 'dropLength', 'conduitFeet', 'laborDescription']
         },
         // Row sort — by the proposal bucket's sort-order field, same
         // as the SOW/Survey worksheets (view_3596 line 651, view_3610
@@ -248,6 +251,7 @@
             // (Yes) and stays hidden on mounting hardware / assumption
             // rows (No).  Same shape as view_3505 line 146.
             connectedDevices: { key: 'field_2820', type: 'nativeEdit', label: 'Connected Devices', showWhenFieldIsYes: 'field_2795' },
+            mdfIdf:           { key: 'field_2818', type: 'nativeEdit' },
             scwNotes:         { key: 'field_2808', type: 'directEdit', notes: true, rows: 4 }
           },
           summaryLayout: ['sku', 'dropNumber', 'hardwareLabel', 'laborDescription', 'installStatus'],
@@ -255,7 +259,7 @@
           // right = info.  laborDescription already appears in summary so
           // no need to repeat it in the info column for these buckets.
           detailLayout: {
-            left:  ['connectedDevices', 'scwNotes'],
+            left:  ['mdfIdf', 'connectedDevices', 'scwNotes'],
             right: []
           }
         },
@@ -264,9 +268,9 @@
             label: 'ASSUMPTION',
             descLabel: 'Assumption',
             hideProduct: true,
-            // SKU, drop number, and hardware label only make sense
-            // for physical line items.
-            hideFields: ['field_2791', 'field_2798', 'field_2853'],
+            // SKU, drop number, hardware label, and MDF/IDF only
+            // make sense for physical line items.
+            hideFields: ['field_2791', 'field_2798', 'field_2853', 'field_2818'],
             rowClass: 'scw-row--assumptions',
           },
           '594a94536877675816984cb9': {                       // Mounting Hardware
