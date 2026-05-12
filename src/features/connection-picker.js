@@ -642,6 +642,14 @@
       TARGET: 'field_2380', RECIPROCAL: 'field_2381',
       BUCKET: 'field_2366', GROUPING: 'field_2375',
       IDENTIFIER: 'field_2365'
+    },
+    // Deploy / Install line items (view_3915): same picker shape as the
+    // others, mapped to the install-line-item field set.  Mirrors
+    // view_3505's role on the survey side.
+    view_3915: {
+      TARGET: 'field_2820', RECIPROCAL: 'field_2821',
+      BUCKET: 'field_2822', GROUPING: 'field_2818',
+      IDENTIFIER: 'field_2819'
     }
   };
 
