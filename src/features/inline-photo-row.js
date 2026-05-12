@@ -542,17 +542,8 @@
     if (viewId && SOW_VIEWS[viewId]) {
       var sowBase = getBuildSowBasePath();
       if (!sowBase) return '';
-      // sales-portal/scope-of-work-details → edit-doc-photo2
-      // implementation (view_3915)        → edit-doc-photo3
-      // build-sow/build-quote (default)   → edit-photo
-      var editSlug;
-      if (viewId === 'view_3915') {
-        editSlug = 'edit-doc-photo3';
-      } else if (sowBase.indexOf('scope-of-work-details') !== -1) {
-        editSlug = 'edit-doc-photo2';
-      } else {
-        editSlug = 'edit-photo';
-      }
+      // sales-portal/scope-of-work-details uses edit-doc-photo2; build-sow/build-quote uses edit-photo
+      var editSlug = sowBase.indexOf('scope-of-work-details') !== -1 ? 'edit-doc-photo2' : 'edit-photo';
       return sowBase + '/' + editSlug + '/' + photoRecordId;
     }
     var surveyId = getSurveyRequestId();
@@ -588,20 +579,6 @@
     return null;
   }
 
-  /**
-   * Find ALL cells matching data-field-key. Some views render the same
-   * field as multiple columns (e.g. raw field_771 + field_771:thumb_14)
-   * where only the thumb cell carries the data-kn-img-gallery img.
-   */
-  function findAllCellsByFieldKey(tr, fieldKey) {
-    var out = [];
-    var cells = tr.getElementsByTagName('td');
-    for (var i = 0; i < cells.length; i++) {
-      if (cells[i].getAttribute('data-field-key') === fieldKey) out.push(cells[i]);
-    }
-    return out;
-  }
-
   // ── Photo record extraction ─────────────────────────────────────
 
   /**
@@ -621,22 +598,16 @@
       return map[rid];
     }
 
-    // 1) field_771 — images. Some views render two field_771 columns
-    // (raw + thumb_14); only the thumb cell has the data-kn-img-gallery
-    // attribute. Walk every matching cell and prefer the first non-empty
-    // image URL per record.
-    var imgCells = findAllCellsByFieldKey(tr, 'field_771');
-    for (var ic = 0; ic < imgCells.length; ic++) {
-      var imgSpans = imgCells[ic].querySelectorAll('span[id][data-kn="connection-value"]');
+    // 1) field_771 — images
+    var imgCell = findCellByFieldKey(tr, 'field_771');
+    if (imgCell) {
+      var imgSpans = imgCell.querySelectorAll('span[id][data-kn="connection-value"]');
       for (var i = 0; i < imgSpans.length; i++) {
         var rid = (imgSpans[i].id || '').trim();
         if (!rid) continue;
         var rec = ensure(rid);
-        if (rec.imgUrl) continue;
         var img = imgSpans[i].querySelector('img[data-kn-img-gallery]');
-        var url = img ? img.getAttribute('data-kn-img-gallery') : '';
-        if (!url && img) url = img.getAttribute('src') || '';
-        if (url) rec.imgUrl = url;
+        rec.imgUrl = img ? img.getAttribute('data-kn-img-gallery') : '';
       }
     }
 
