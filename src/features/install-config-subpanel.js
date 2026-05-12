@@ -42,6 +42,16 @@
     { key: 'field_2843', label: 'Client notes' }
   ];
 
+  // QA fields on the camera-config object — read by readConfigQA below
+  // and written by config-qa-popover when the user clicks Verify/Revert.
+  var QA = {
+    status:        'field_2896',  // Multiple Choice: Pending / Verified
+    completedBy:   'field_2897',  // Connection → user
+    completedDate: 'field_2898',  // Date
+    notes:         'field_2899',  // Paragraph
+    history:       'field_2900'   // Paragraph (append-only audit)
+  };
+
   var SUBPANEL_CLS  = 'scw-install-config';
   var CSS_ID        = 'scw-install-config-css';
   // (former toggle-button constants removed — the camera-config grid is
@@ -167,6 +177,35 @@
       /* On narrower viewports collapse to 2 cols */
       '@media (max-width: 900px) {',
       '  .' + SUBPANEL_CLS + '-grid { grid-template-columns: 1fr 1fr; }',
+      '}',
+
+      /* Per-config section header + QA chit */
+      '.' + SUBPANEL_CLS + '-section-head {',
+      '  display: flex; justify-content: space-between; align-items: center;',
+      '  margin: 6px 0 4px;',
+      '}',
+      '.' + SUBPANEL_CLS + '-section-label {',
+      '  font-size: 11px; font-weight: 700; color: #6b7280;',
+      '  text-transform: uppercase; letter-spacing: 0.04em;',
+      '}',
+      '.' + SUBPANEL_CLS + '-qa-chit {',
+      '  display: inline-flex; align-items: center; gap: 5px;',
+      '  height: 22px; padding: 0 10px 0 8px;',
+      '  border-radius: 999px; border: 1px solid transparent;',
+      '  font-size: 11px; font-weight: 700;',
+      '  letter-spacing: 0.04em; text-transform: uppercase;',
+      '  line-height: 1; white-space: nowrap;',
+      '  cursor: pointer; user-select: none;',
+      '  transition: filter 0.12s, box-shadow 0.12s;',
+      '}',
+      '.' + SUBPANEL_CLS + '-qa-chit:hover {',
+      '  filter: brightness(0.97); box-shadow: 0 1px 2px rgba(0,0,0,0.08);',
+      '}',
+      '.' + SUBPANEL_CLS + '-qa-chit.is-pending {',
+      '  background: #eef2ff; color: #4338ca; border-color: #a5b4fc;',
+      '}',
+      '.' + SUBPANEL_CLS + '-qa-chit.is-verified {',
+      '  background: #dcfce7; color: #15803d; border-color: #86efac;',
       '}'
     ].join('\n');
     document.head.appendChild(s);
@@ -178,6 +217,25 @@
   function tdText(td) {
     if (!td) return "";
     return (td.textContent || "").replace(/\s+/g, " ").trim();
+  }
+
+  /** Pull the QA snapshot off a config row's <tr>. */
+  function readConfigQA(tr) {
+    function statusOf(raw) {
+      var v = (raw || '').toLowerCase();
+      if (v === 'verified') return 'Verified';
+      return 'Pending';
+    }
+    function historyHtml(td) {
+      if (!td) return '';
+      var inner = td.querySelector('span[class^="col-"]') || td;
+      return (inner.innerHTML || '').trim();
+    }
+    return {
+      status:  statusOf(tdText(tr.querySelector('td.' + QA.status))),
+      notes:   tdText(tr.querySelector('td.' + QA.notes)),
+      history: historyHtml(tr.querySelector('td.' + QA.history))
+    };
   }
 
   /** Read the connected install-line-item record id from a config row. */
@@ -208,7 +266,7 @@
       var tr = rows[i];
       var lineItemId = readLineItemId(tr);
       if (!lineItemId) continue;
-      var cfg = { id: tr.id, cells: {} };
+      var cfg = { id: tr.id, cells: {}, qa: readConfigQA(tr) };
       for (var f = 0; f < FIELDS.length; f++) {
         cfg.cells[FIELDS[f].key] = tr.querySelector('td.' + FIELDS[f].key) || null;
       }
@@ -216,6 +274,28 @@
       index[lineItemId].push(cfg);
     }
     return index;
+  }
+
+  /** Build the QA state chit for a single config record. */
+  function buildQaChit(cfg) {
+    var state = (cfg.qa && cfg.qa.status === 'Verified') ? 'verified' : 'pending';
+    var chit = document.createElement('span');
+    chit.className = SUBPANEL_CLS + '-qa-chit is-' + state;
+    chit.setAttribute('data-config-id', cfg.id);
+    chit.setAttribute('data-qa-state', state);
+    var iconCheck = '<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+    var iconClock = '<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>';
+    chit.innerHTML = (state === 'verified' ? iconCheck : iconClock) +
+      '<span>' + (state === 'verified' ? 'Verified' : 'Pending') + '</span>';
+    chit.title = state === 'verified'
+      ? 'Config verified — click to revert'
+      : 'Click to verify this config';
+    chit.addEventListener('click', function () {
+      if (window.SCW && SCW.configQaPopover && typeof SCW.configQaPopover.open === 'function') {
+        SCW.configQaPopover.open(chit, cfg.id, cfg.qa);
+      }
+    });
+    return chit;
   }
 
   /** Inject the configs sub-panel into one worksheet card. The panel
@@ -241,6 +321,22 @@
 
     for (var c = 0; c < configs.length; c++) {
       var cfg = configs[c];
+
+      // Per-config header row with a QA state chit (one chit per
+      // config record).  Click → opens config-qa-popover.
+      if (configs.length > 1 || cfg.qa) {
+        var header = document.createElement('div');
+        header.className = SUBPANEL_CLS + '-section-head';
+        var hLabel = document.createElement('span');
+        hLabel.className = SUBPANEL_CLS + '-section-label';
+        hLabel.textContent = configs.length > 1 ? 'Config ' + (c + 1) : '';
+        header.appendChild(hLabel);
+        if (cfg.qa) {
+          header.appendChild(buildQaChit(cfg));
+        }
+        panel.appendChild(header);
+      }
+
       var grid = document.createElement('div');
       grid.className = SUBPANEL_CLS + '-grid';
 
@@ -313,6 +409,8 @@
         for (var f = 0; f < FIELDS.length; f++) {
           parts.push(tdText(cfg.cells[FIELDS[f].key]));
         }
+        parts.push((cfg.qa && cfg.qa.status) || '');
+        parts.push((cfg.qa && cfg.qa.notes)  || '');
       }
     }
     for (var w = 0; w < wsRows.length; w++) parts.push(wsRows[w].id);

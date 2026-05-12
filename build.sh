@@ -93,6 +93,7 @@ cat \
   src/features/device-worksheet-toolbar.js \
   src/features/install-config-subpanel.js \
   src/features/qa-popover.js \
+  src/features/config-qa-popover.js \
   src/features/closeout-deliverables.js \
   src/features/chit-bulk-edit-fix.js \
   src/features/sales-change-request/config.js \
