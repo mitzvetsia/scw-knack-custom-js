@@ -30,7 +30,7 @@
 
   var POPOVER_ID = 'scw-qa-popover';
 
-  // The hidden DOC_photos grid on the implementation scene.  Saves go
+  // The hidden DOC_photos grid on the deploy scene.  Saves go
   // through Knack's view-based PUT endpoint (which is CORS-safe and
   // honors the user's session token) — the object-based endpoint
   // requires a server-side API key, which we don't have client-side.
