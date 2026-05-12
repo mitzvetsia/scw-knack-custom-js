@@ -1569,25 +1569,34 @@ td.${P}-sum-move {
 /* ── Required-photo header chits (QA-glance) ────────────────────── */
 .${P}-req-photos {
   display: inline-flex;
-  gap: 3px;
+  gap: 4px;
   align-items: center;
   flex-wrap: wrap;
-  max-width: 140px;
+  max-width: 280px;
 }
 .${P}-req-photo-chit {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  width: 20px;
+  gap: 4px;
   height: 20px;
-  border-radius: 50%;
+  padding: 0 8px 0 6px;
+  border-radius: 999px;
   border: 1px solid transparent;
+  font-size: 10px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  line-height: 1;
+  white-space: nowrap;
   flex-shrink: 0;
   cursor: help;
 }
+.${P}-req-photo-chit svg {
+  flex-shrink: 0;
+}
 .${P}-req-photo-chit.is-done {
   background: #dcfce7;
-  color: #16a34a;
+  color: #15803d;
   border-color: #86efac;
 }
 .${P}-req-photo-chit.is-missing {
@@ -4759,9 +4768,13 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
           var phChit = document.createElement('span');
           phChit.className = P + '-req-photo-chit ' + (ph.completed ? 'is-done' : 'is-missing');
           phChit.title = (ph.type || 'Photo') + (ph.completed ? ' — captured' : ' — missing');
-          phChit.innerHTML = ph.completed
-            ? '<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>'
-            : '<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>';
+          var phIcon = ph.completed
+            ? '<svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>'
+            : '<svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>';
+          var phName = document.createElement('span');
+          phName.textContent = ph.type || 'Photo';
+          phChit.innerHTML = phIcon;
+          phChit.appendChild(phName);
           phRow.appendChild(phChit);
         }
         if (doneCount === photoList.length) {
