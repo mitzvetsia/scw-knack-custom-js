@@ -289,14 +289,16 @@
 
     // Desired left-to-right order:
     //   1. Mode segmented control     (.scw-ws-bulk-toggle)
-    //   2. SOW filter pills            (.scw-conn-filter-strip)
-    //   3. spring (push remainder right)
-    //   4. Knack pagination/summary    (.kn-records-nav-summary, .kn-pagination)
-    //   5. Knack filter controls       (.kn-filters-nav)
-    //   6. Bulk-ops cluster            ([id^="bulkOpsControlsDiv-"])
-    //   7. Primary CTA                 (.scw-acc-actions)
+    //   2. Sort preset dropdown        (.scw-ws-sort)
+    //   3. SOW filter pills            (.scw-conn-filter-strip)
+    //   4. spring (push remainder right)
+    //   5. Knack pagination/summary    (.kn-records-nav-summary, .kn-pagination)
+    //   6. Knack filter controls       (.kn-filters-nav)
+    //   7. Bulk-ops cluster            ([id^="bulkOpsControlsDiv-"])
+    //   8. Primary CTA                 (.scw-acc-actions)
     var orderSelectors = [
       '.scw-ws-bulk-toggle',
+      '.scw-ws-sort',
       '.scw-conn-filter-strip',
       '.scw-tb-spring',
       '.kn-records-nav-summary',

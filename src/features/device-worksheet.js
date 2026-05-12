@@ -124,6 +124,16 @@
           conduitFeet:      { key: 'field_2368', type: 'directEdit' }
         },
         summaryLayout: ['laborDescription', 'existingCabling', 'exteriorChit', 'plenumChit', 'labor', 'bid'],
+        // Sort presets — exposed in the worksheet toolbar's "Sort ▾"
+        // dropdown. First preset = "Default", rule:null means "use
+        // viewCfg.rowSort or device-worksheet's hardcoded default".
+        sortPresets: [
+          { id: 'default',  label: 'Default',          rule: null },
+          { id: 'label',    label: 'Label A→Z',        rule: [{ field: 'field_2365', order: 'asc',  type: 'text'   }] },
+          { id: 'labor-hi', label: 'Highest labor',    rule: [{ field: 'field_2400', order: 'desc', type: 'number' }] },
+          { id: 'bid',      label: 'By bid',           rule: [{ field: 'field_2415', order: 'asc',  type: 'text'   },
+                                                              { field: 'field_2365', order: 'asc',  type: 'text'   }] }
+        ],
         detailLayout: {
           left:  ['mounting', 'scwNotes'],
           right: ['connections', 'mountingHeight', 'dropLength', 'conduitFeet', 'surveyNotes']
@@ -250,6 +260,12 @@
         // sort rule — silently overriding our rowSort.  forceRowSort:
         // true keeps our config-side rowSort authoritative.
         forceRowSort: true,
+        sortPresets: [
+          { id: 'default',  label: 'Default',          rule: null },
+          { id: 'label',    label: 'Label A→Z',        rule: [{ field: 'field_2819', order: 'asc',  type: 'text'   }] },
+          { id: 'product',  label: 'By product',       rule: [{ field: 'field_2790', order: 'asc',  type: 'text'   },
+                                                              { field: 'field_2819', order: 'asc',  type: 'text'   }] }
+        ],
         syntheticGroupsPosition: 'bottom',
         bucketField: 'field_2822',
         // ── Override: used for all NON-camera/reader rows
@@ -448,10 +464,13 @@
           mountingHardware: { key: 'field_1958', type: 'connectedRecords' }
         },
         summaryLayout: ['laborDescription', 'quantity', 'subBid', 'plusHrs', 'plusMat', 'installFee', 'sow'],
-        detailLayout: {
-          left:  ['connectedDevice', 'mountingHardware'],
-          right: ['scwNotes', 'selectedSubBid', 'surveyNotes', 'subBidLock']
-        },
+        sortPresets: [
+          { id: 'default',     label: 'Default',           rule: null },
+          { id: 'label',       label: 'Label A→Z',         rule: [{ field: 'field_1950', order: 'asc',  type: 'text'   }] },
+          { id: 'sub-bid-hi',  label: 'Highest sub bid',   rule: [{ field: 'field_2150', order: 'desc', type: 'number' }] },
+          { id: 'sow',         label: 'By SOW',            rule: [{ field: 'field_2154', order: 'asc',  type: 'text'   },
+                                                                  { field: 'field_1950', order: 'asc',  type: 'text'   }] }
+        ],
         // recordLockField disabled — field_2634 lock not used on view_3610
         conditionalHide: [
           {
@@ -578,6 +597,13 @@
           { field: 'field_2240', order: 'asc', type: 'text'   },
           { field: 'field_1951', order: 'asc', type: 'number' }
         ],
+        sortPresets: [
+          { id: 'default',     label: 'Default',           rule: null },
+          { id: 'label',       label: 'Label A→Z',         rule: [{ field: 'field_1950', order: 'asc',  type: 'text'   }] },
+          { id: 'total-hi',    label: 'Highest total',     rule: [{ field: 'field_2269', order: 'desc', type: 'number' }] },
+          { id: 'product',     label: 'By product',        rule: [{ field: 'field_1949', order: 'asc',  type: 'text'   },
+                                                                  { field: 'field_1950', order: 'asc',  type: 'text'   }] }
+        ],
         detailLayout: {
           left:  ['retailPrice', 'quantity', 'customDiscPct', 'appliedDiscount', 'total'],
           right: ['connectedDevice', 'mountingHardware', 'laborDescription']
@@ -684,6 +710,13 @@
           { field: 'field_2218', order: 'asc', type: 'number' },
           { field: 'field_2240', order: 'asc', type: 'text'   },
           { field: 'field_1951', order: 'asc', type: 'number' }
+        ],
+        sortPresets: [
+          { id: 'default',     label: 'Default',           rule: null },
+          { id: 'label',       label: 'Label A→Z',         rule: [{ field: 'field_1950', order: 'asc',  type: 'text'   }] },
+          { id: 'total-hi',    label: 'Highest total',     rule: [{ field: 'field_2269', order: 'desc', type: 'number' }] },
+          { id: 'product',     label: 'By product',        rule: [{ field: 'field_1949', order: 'asc',  type: 'text'   },
+                                                                  { field: 'field_1950', order: 'asc',  type: 'text'   }] }
         ],
         detailLayout: {
           left:  ['dropPrefix', 'dropNumber', 'retailPrice', 'discountDlr', 'appliedDiscount', 'total', 'dropLength'],
@@ -6353,7 +6386,19 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       }
       rowSortRules = _sFk ? [{ field: _sFk, order: _sOrder, type: _sType }] : [];
     } else {
-      rowSortRules = viewCfg.rowSort || [
+      // Consult the worksheet-sort feature for a user-selected preset.
+      // If the user has not made a selection (or the first/default preset
+      // is active), getActiveSortRules returns null and we fall back to
+      // the view's own rowSort, then to the hardcoded default.
+      var _wsSortRules = null;
+      try {
+        if (window.SCW && window.SCW.worksheetSort &&
+            typeof window.SCW.worksheetSort.getActiveSortRules === 'function') {
+          _wsSortRules = window.SCW.worksheetSort.getActiveSortRules(viewCfg);
+        }
+      } catch (e) { /* ignore */ }
+
+      rowSortRules = _wsSortRules || viewCfg.rowSort || [
         { field: 'field_2218', order: 'asc',  type: 'number' },
         { field: 'field_2240', order: 'asc',  type: 'text'   },
         { field: 'field_1951', order: 'asc',  type: 'number' }
@@ -7062,6 +7107,9 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   window.SCW = window.SCW || {};
   window.SCW.syncKnackModel = syncKnackModel;
   window.SCW.deviceWorksheet = {
+    /** Per-view configs — read by device-worksheet-sort.js to discover
+     *  which views opt into the sort-preset dropdown. */
+    _configs: WORKSHEET_CONFIG.views,
     /** Capture expanded panel state for all worksheet views. */
     captureState: captureAllExpandedStates,
     /** Force re-transform a view (idempotent). */

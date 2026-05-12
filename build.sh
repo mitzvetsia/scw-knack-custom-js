@@ -91,6 +91,7 @@ cat \
   src/features/device-worksheet.js \
   src/features/device-worksheet-expand-all.js \
   src/features/device-worksheet-toolbar.js \
+  src/features/device-worksheet-sort.js \
   src/features/install-config-subpanel.js \
   src/features/qa-popover.js \
   src/features/config-qa-popover.js \
