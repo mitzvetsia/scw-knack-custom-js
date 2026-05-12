@@ -497,10 +497,9 @@
   function openDocFilePicker(card, docId, closeoutId) {
     var input = document.createElement('input');
     input.type = 'file';
-    // Common deliverable formats — pdf primary, but allow images and
-    // office docs in case the user wants to attach a scanned floor plan
-    // or filled-in spreadsheet.
-    input.accept = '.pdf,.png,.jpg,.jpeg,.gif,.heic,.doc,.docx,.xls,.xlsx,image/*,application/pdf';
+    // Documents only — PDFs primary, plus office formats.  Images are
+    // intentionally excluded; deliverables are forms/PDFs, not photos.
+    input.accept = '.pdf,.doc,.docx,.xls,.xlsx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
     input.style.display = 'none';
     input.addEventListener('change', function () {
       var file = input.files && input.files[0];
@@ -511,12 +510,28 @@
     input.click();
   }
 
+  function isImageFile(file) {
+    if (!file) return false;
+    if (file.type && file.type.indexOf('image/') === 0) return true;
+    // Fallback for files with no MIME (some camera/scan exports): check
+    // the extension.
+    var name = (file.name || '').toLowerCase();
+    return /\.(jpe?g|png|gif|bmp|webp|heic|heif|tiff?|svg)$/.test(name);
+  }
+
   function dispatchDocUpload(card, docId, closeoutId, file) {
     var webhookUrl = window.SCW && window.SCW.CONFIG &&
                      window.SCW.CONFIG.MAKE_DOC_UPLOAD_WEBHOOK;
     if (!webhookUrl) {
       console.error('[SCW] MAKE_DOC_UPLOAD_WEBHOOK not configured');
       setCardError(card, 'Upload not configured');
+      return;
+    }
+    if (isImageFile(file)) {
+      // Deliverables are forms/PDFs, not photos. Photos belong on the
+      // line-item photo strip — sending one through here would land in
+      // the wrong Knack object entirely.
+      setCardError(card, 'PDFs/docs only — not images');
       return;
     }
     if (file.size > 25 * 1024 * 1024) {
