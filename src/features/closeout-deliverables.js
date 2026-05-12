@@ -248,25 +248,27 @@
 
   // ── URL helpers ──────────────────────────────────────────────────
 
-  /** Resolve the deploy-scene base URL from the current hash. */
-  function deployBasePath() {
+  /**
+   * Take the current URL hash, strip any `?…` query params and trailing
+   * slashes, and append `/{slug}/{recordId}/`.  Works regardless of how
+   * many path segments precede the closeout view, so we don't have to
+   * hardcode a regex for the deploy scene structure.
+   */
+  function buildHashFromCurrent(slug, recordId) {
+    if (!slug || !recordId) return '';
     var hash = window.location.hash || '';
-    var m = hash.match(
-      /(team-calendar\/project-dashboard\/[a-f0-9]{24}\/deploy\/[a-f0-9]{24})/
-    );
-    return m ? m[1] : '';
+    var qIdx = hash.indexOf('?');
+    if (qIdx >= 0) hash = hash.substring(0, qIdx);
+    hash = hash.replace(/\/+$/, '');
+    return hash + '/' + slug + '/' + recordId + '/';
   }
 
   function addDocHash(closeoutId) {
-    var base = deployBasePath();
-    if (!base || !closeoutId) return '';
-    return '#' + base + '/' + ADD_DOC_SLUG + '/' + closeoutId;
+    return buildHashFromCurrent(ADD_DOC_SLUG, closeoutId);
   }
 
   function editDocHash(docId) {
-    var base = deployBasePath();
-    if (!base || !docId) return '';
-    return '#' + base + '/' + EDIT_DOC_SLUG + '/' + docId;
+    return buildHashFromCurrent(EDIT_DOC_SLUG, docId);
   }
 
   function navigate(hash) {
