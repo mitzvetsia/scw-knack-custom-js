@@ -194,10 +194,6 @@
           plenumChit:       { key: 'field_2806', type: 'readOnly', label: 'Plenum',           showWhenFieldIsYes: 'field_2806' },
 
           // ── Detail panel ──
-          // MDF/IDF (field_2818) is an editable connection — sits in
-          // the Edit group so installers can correct location wiring
-          // on the camera directly.
-          mdfIdf:           { key: 'field_2818', type: 'nativeEdit' },
           // Camera/Reader rows are CHILDREN in the connection cascade —
           // they only show the back-connection to their parent network
           // device.  The forward "Connected Devices" editor lives in
@@ -205,6 +201,12 @@
           // Same shape view_3505 uses: main=field_2381 readOnly,
           // bucketOverride=field_2380 nativeEdit.
           connectedTo:      { key: 'field_2821', type: 'readOnly',   label: 'Connected To', skipEmpty: true },
+          // Accessories — mounting brackets and other connected
+          // hardware records.  Same shape as view_3505 line 117
+          // (mountingHardware: field_1958 connectedRecords) — the
+          // connectedRecords widget renders each connected accessory
+          // as a clickable chip that opens the accessory's edit page.
+          accessories:      { key: 'field_2852', type: 'connectedRecords', skipEmpty: true },
           laborDescription: { key: 'field_2809', type: 'readOnly' },
           scwNotes:         { key: 'field_2808', type: 'directEdit', notes: true, rows: 4 },
           dropLength:       { key: 'field_2804', type: 'readOnly' },
@@ -215,9 +217,14 @@
         // right = read-only / info.  Existing-cabling, exterior, and
         // plenum sit in Info as flag-chip rows (showWhenFieldIsYes
         // hides them when off, install-config-subpanel restyles them).
+        //
+        // MDF/IDF is NOT in the detail panel — Knack's native grouping
+        // emits a kn-table-group header above each row that already
+        // shows the MDF/IDF, so repeating it as a row-level field
+        // would be redundant noise.
         detailLayout: {
-          left:  ['mdfIdf', 'connectedTo', 'scwNotes'],
-          right: ['existingCabling', 'exteriorChit', 'plenumChit', 'dropLength', 'conduitFeet', 'laborDescription']
+          left:  ['connectedTo', 'scwNotes'],
+          right: ['accessories', 'existingCabling', 'exteriorChit', 'plenumChit', 'dropLength', 'conduitFeet', 'laborDescription']
         },
         // Row sort within each group section.  Two-rule shape mirrors
         // view_3596 line 685, view_3610 line 662 etc.:
@@ -245,14 +252,8 @@
           keepBuckets: ['6481e5ba38f283002898113c'],   // Camera or Reader
           fields: {
             product:          { key: 'field_2790', type: 'readOnly', summary: true, productStyle: true },
-            // Mounting-hardware identifier — field_2852 is the
-            // per-piece hardware label.  Lives in the detail panel,
-            // not the summary.  Needs to be exposed as a column on
-            // view_3915 in Builder for this to render.  Hidden on
-            // assumption rows via bucketRules.hideFields.
-            hardwareLabel:    { key: 'field_2852', type: 'readOnly', label: 'Hardware', skipEmpty: true },
-            // Drop number (field_2798) is also surfaced so brackets
-            // sit next to the camera they belong to in the user's eye.
+            // Drop number (field_2798) — keeps brackets/accessories
+            // adjacent to the camera they belong to in the user's eye.
             dropNumber:       { key: 'field_2798', type: 'readOnly', summary: true, label: 'Drop' },
             installStatus:    { key: 'field_2825', type: 'singleChip', segmented: true, options: ['Not Started', 'In Progress', 'Blocked', 'Done'], summary: true, label: 'Status', group: 'right', groupCls: 'sum-group--install-status' },
             laborDescription: { key: 'field_2809', type: 'readOnly', summary: true, label: 'Description', group: 'fill', multiline: true },
@@ -261,17 +262,23 @@
             // (Yes) and stays hidden on mounting hardware / assumption
             // rows (No).  Same shape as view_3505 line 146.
             connectedDevices: { key: 'field_2820', type: 'nativeEdit', label: 'Connected Devices', showWhenFieldIsYes: 'field_2795' },
-            mdfIdf:           { key: 'field_2818', type: 'nativeEdit' },
+            // Accessories on non-Camera/Reader rows — same widget as
+            // the main config.  On a network device (Imperial 32 etc.)
+            // this lists the hard drive / rack / UPS / WattBox.  On a
+            // mounting-hardware row field_2852 points back at the
+            // parent camera, which is the per-piece "what does this
+            // bracket belong to?" identifier.  skipEmpty hides the
+            // row entirely when blank (e.g. on assumption rows).
+            accessories:      { key: 'field_2852', type: 'connectedRecords', skipEmpty: true },
             scwNotes:         { key: 'field_2808', type: 'directEdit', notes: true, rows: 4 }
           },
           summaryLayout: ['dropNumber', 'laborDescription', 'installStatus'],
-          // Same edit-vs-info split as the main config: left = actions,
-          // right = info (hardware label lives here for mounting-hardware
-          // rows; skipEmpty hides the row for assumptions / network
-          // devices where field_2852 is blank).
+          // Same Edit/Info split as the main config; MDF/IDF is omitted
+          // because the Knack-native group header above the row already
+          // shows it.
           detailLayout: {
-            left:  ['mdfIdf', 'connectedDevices', 'scwNotes'],
-            right: ['hardwareLabel']
+            left:  ['connectedDevices', 'scwNotes'],
+            right: ['accessories']
           }
         },
         bucketRules: {
@@ -279,9 +286,9 @@
             label: 'ASSUMPTION',
             descLabel: 'Assumption',
             hideProduct: true,
-            // Drop number, hardware label, and MDF/IDF only make
-            // sense for physical line items.
-            hideFields: ['field_2798', 'field_2852', 'field_2818'],
+            // Drop number doesn't apply to project-wide assumption
+            // rows.  Accessories (field_2852) skip-empty on their own.
+            hideFields: ['field_2798'],
             rowClass: 'scw-row--assumptions',
           },
           '594a94536877675816984cb9': {                       // Mounting Hardware
