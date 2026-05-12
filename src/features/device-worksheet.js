@@ -208,9 +208,13 @@
           conduitFeet:      { key: 'field_2803', type: 'readOnly' }
         },
         summaryLayout: ['installStatus'],
+        // Detail panel groups action-able fields on the left and
+        // read-only/info fields on the right.  Section headers ("Edit"
+        // / "Info") are painted in via #view_3915 CSS in
+        // install-config-subpanel.js.
         detailLayout: {
-          left:  ['mounting', 'connectedTo', 'laborDescription'],
-          right: ['existingCabling', 'exteriorChit', 'plenumChit', 'dropLength', 'conduitFeet', 'scwNotes']
+          left:  ['connectedTo', 'scwNotes'],
+          right: ['mounting', 'existingCabling', 'exteriorChit', 'plenumChit', 'dropLength', 'conduitFeet', 'laborDescription']
         },
         bucketField: 'field_2822',
         // ── Override: used for all NON-camera/reader rows
@@ -232,9 +236,12 @@
             scwNotes:         { key: 'field_2808', type: 'directEdit', notes: true }
           },
           summaryLayout: ['hardwareLabel', 'laborDescription', 'installStatus'],
+          // Same edit-vs-info split as the main config: left = actions,
+          // right = info.  laborDescription already appears in summary so
+          // no need to repeat it in the info column for these buckets.
           detailLayout: {
-            left:  ['connectedDevices'],
-            right: ['scwNotes']
+            left:  ['connectedDevices', 'scwNotes'],
+            right: []
           }
         },
         bucketRules: {

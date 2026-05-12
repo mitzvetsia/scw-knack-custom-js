@@ -66,6 +66,61 @@
       '  border-top: 1px dashed #e2e8f0;',
       '  padding: 14px 20px 14px 70px;',
       '}',
+
+      /* ── view_3915 detail-panel sectioning ──
+         Two sections, "Edit" on the left, "Info" on the right. */
+      '#' + INSTALL_VIEW + ' .scw-ws-sections > .scw-ws-section::before {',
+      '  display: block;',
+      '  font-size: 11px;',
+      '  font-weight: 700;',
+      '  letter-spacing: 0.6px;',
+      '  text-transform: uppercase;',
+      '  color: #4b5563;',
+      '  margin-bottom: 10px;',
+      '  padding-bottom: 4px;',
+      '  border-bottom: 1px solid #e5e7eb;',
+      '}',
+      '#' + INSTALL_VIEW + ' .scw-ws-sections > .scw-ws-section:first-child::before {',
+      '  content: "Edit";',
+      '  color: #0f4c75;',
+      '}',
+      '#' + INSTALL_VIEW + ' .scw-ws-sections > .scw-ws-section:last-child:not(:first-child)::before {',
+      '  content: "Info";',
+      '}',
+
+      /* ── Existing / Exterior / Plenum as flag callouts ──
+         showWhenFieldIsYes hides the row when value != Yes, so any time
+         these render the value IS Yes — collapse the label/value layout
+         to a chip-style flag. */
+      '#' + INSTALL_VIEW + ' .scw-ws-field[data-scw-field="field_2807"],',
+      '#' + INSTALL_VIEW + ' .scw-ws-field[data-scw-field="field_2805"],',
+      '#' + INSTALL_VIEW + ' .scw-ws-field[data-scw-field="field_2806"] {',
+      '  display: inline-flex !important;',
+      '  align-items: center;',
+      '  gap: 0;',
+      '  padding: 4px 12px;',
+      '  margin: 0 8px 8px 0;',
+      '  background: #fef3c7;',
+      '  border: 1px solid #fcd34d;',
+      '  border-radius: 999px;',
+      '}',
+      '#' + INSTALL_VIEW + ' .scw-ws-field[data-scw-field="field_2807"] .scw-ws-field-label,',
+      '#' + INSTALL_VIEW + ' .scw-ws-field[data-scw-field="field_2805"] .scw-ws-field-label,',
+      '#' + INSTALL_VIEW + ' .scw-ws-field[data-scw-field="field_2806"] .scw-ws-field-label {',
+      '  font-size: 12px;',
+      '  font-weight: 700;',
+      '  color: #92400e;',
+      '  text-transform: uppercase;',
+      '  letter-spacing: 0.4px;',
+      '  padding: 0;',
+      '  min-width: 0;',
+      '  white-space: nowrap;',
+      '}',
+      '#' + INSTALL_VIEW + ' .scw-ws-field[data-scw-field="field_2807"] .scw-ws-field-value,',
+      '#' + INSTALL_VIEW + ' .scw-ws-field[data-scw-field="field_2805"] .scw-ws-field-value,',
+      '#' + INSTALL_VIEW + ' .scw-ws-field[data-scw-field="field_2806"] .scw-ws-field-value {',
+      '  display: none;',
+      '}',
       '.' + SUBPANEL_CLS + '-title {',
       '  font-size: 11px;',
       '  font-weight: 700;',
@@ -174,17 +229,34 @@
     return index;
   }
 
+  /** Reorder a card's children so visual order is:
+   *    summary → photo strip → camera config → detail panel
+   *  appendChild on an existing child just moves it, no clone. */
+  function reorderCard(wsTr) {
+    var card = wsTr.querySelector('.scw-ws-card');
+    if (!card) return;
+    var summary  = card.querySelector(':scope > .scw-ws-summary');
+    var photo    = card.querySelector(':scope > .scw-ws-photo-wrap');
+    var subpanel = card.querySelector(':scope > .' + SUBPANEL_CLS);
+    var detail   = card.querySelector(':scope > .scw-ws-detail');
+    if (summary)  card.appendChild(summary);
+    if (photo)    card.appendChild(photo);
+    if (subpanel) card.appendChild(subpanel);
+    if (detail)   card.appendChild(detail);
+  }
+
   /** Inject the configs sub-panel into one worksheet card. */
   function injectSubpanel(wsTr, configs) {
     var prior = wsTr.querySelector('.' + SUBPANEL_CLS);
     if (prior) prior.parentNode.removeChild(prior);
     if (!configs || !configs.length) return;
 
-    // Mount into .scw-ws-detail (full card width). NOT .scw-ws-sections —
-    // that's the 2-column grid for left/right and would constrain us.
-    var mount =
-      wsTr.querySelector('.scw-ws-detail') ||
-      wsTr.querySelector('.scw-ws-card');
+    // Mount as a direct child of .scw-ws-card, NOT inside .scw-ws-detail.
+    // reorderCard() will slot it between the photo strip and the detail
+    // panel.  Falls back to .scw-ws-detail if for some reason the card
+    // wrapper isn't found.
+    var card = wsTr.querySelector('.scw-ws-card');
+    var mount = card || wsTr.querySelector('.scw-ws-detail');
     if (!mount) return;
 
     var panel = document.createElement('div');
@@ -235,7 +307,16 @@
       }
     }
 
-    mount.appendChild(panel);
+    // If mounting on the card and the detail panel exists, insert the
+    // sub-panel BEFORE the detail panel so the visual order is
+    // photo → config → detail.  reorderCard() will further ensure the
+    // photo strip slots between summary and config.
+    var detail = mount.querySelector(':scope > .scw-ws-detail');
+    if (detail) {
+      mount.insertBefore(panel, detail);
+    } else {
+      mount.appendChild(panel);
+    }
   }
 
   /** Ensure the "Show config grid" toggle is mounted above view_3915. */
@@ -296,13 +377,19 @@
     if (!wsRows.length) return;
     var index = buildConfigIndex();
     var hash = computeHash(index, wsRows);
-    if (hash === _lastHash) return;
+    var needsInject = (hash !== _lastHash);
     _lastHash = hash;
 
     _selfMutating = true;
     try {
       for (var i = 0; i < wsRows.length; i++) {
-        injectSubpanel(wsRows[i], index[wsRows[i].id] || []);
+        if (needsInject) {
+          injectSubpanel(wsRows[i], index[wsRows[i].id] || []);
+        }
+        // Always re-assert visual order — Knack/device-worksheet may
+        // have rebuilt the card and reset the photo-wrap position even
+        // when no config data changed.
+        reorderCard(wsRows[i]);
       }
     } finally {
       // Defer clearing so the observer ignores the microtask batch
