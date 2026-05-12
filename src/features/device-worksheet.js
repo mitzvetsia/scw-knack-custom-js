@@ -218,7 +218,7 @@
           dropLength:       { key: 'field_2804', type: 'readOnly' },
           conduitFeet:      { key: 'field_2803', type: 'readOnly' }
         },
-        summaryLayout: ['requiredPhotos', 'installStatus'],
+        summaryLayout: ['requiredPhotos'],
         // Detail-panel groupings: left = the action / editable bits;
         // right = read-only / info.  Existing-cabling, exterior, and
         // plenum sit in Info as flag-chip rows (showWhenFieldIsYes
@@ -276,7 +276,7 @@
             accessories:      { key: 'field_2852', type: 'connectedRecords', skipEmpty: true },
             scwNotes:         { key: 'field_2808', type: 'directEdit', notes: true, rows: 4 }
           },
-          summaryLayout: ['requiredPhotos', 'installStatus'],
+          summaryLayout: ['requiredPhotos'],
           // Same Edit/Info split as the main config; MDF/IDF is omitted
           // because the Knack-native group header above the row already
           // shows it.
