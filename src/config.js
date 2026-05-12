@@ -26,7 +26,7 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   //   Response body: { success: true } or { success: false, error: "..." }
   // ⚠️  TODO: set this URL once the Make scenario exists. While empty,
   //     clicking a missing-photo card falls back to Knack's edit modal.
-  MAKE_PHOTO_UPLOAD_WEBHOOK: "",
+  MAKE_PHOTO_UPLOAD_WEBHOOK: "https://hook.us1.make.com/6n07ovcxexg4ygckwh8scydh22n71s3o",
   MAKE_DELETE_RECORD_WEBHOOK: "https://hook.us1.make.com/uyxdq04zudssvoatvnwywxcjxxil15q7",
   // Fires on "Clone SOW / Create Alternative SOW" button click. Expects:
   //   Request body:  {
