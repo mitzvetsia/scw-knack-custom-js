@@ -42,9 +42,13 @@
   function injectCSS() {
     if (document.getElementById('scw-closeout-deliverables-css')) return;
     var css = [
-      /* Hide the raw closeout table — we replace it with the strip card. */
+      /* Hide the raw closeout grid — title, records-nav, table — we
+         replace it with the strip card.  Easy to bring back: comment out
+         this block (or selectively re-show parts) when the grid view
+         becomes useful again. */
+      '#' + VIEW_ID + ' > .view-header,',
       '#' + VIEW_ID + ' > .kn-records-nav,',
-      '#' + VIEW_ID + ' > .kn-table-wrapper { display: none; }',
+      '#' + VIEW_ID + ' > .kn-table-wrapper { display: none !important; }',
 
       /* Container card */
       '.scw-cd-card {',
