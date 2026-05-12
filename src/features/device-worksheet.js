@@ -201,8 +201,15 @@
           // (field_2820) is the editable multi-connection that drives
           // the silent-regroup cascade in mirror-connection-sync.js;
           // field_2821 is the auto-updated back-connection on children.
-          connectedDevices: { key: 'field_2820', type: 'nativeEdit', label: 'Connected Devices', showWhenFieldIsYes: 'field_2796' },
-          connectedTo:      { key: 'field_2821', type: 'readOnly',   label: 'Connected To',      showWhenFieldIsYes: 'field_2796' },
+          //
+          // Gate: field_2795 ("PRODUCT STORED FLAG_map camera or reader
+          // connections") — Yes on parent network-device products,
+          // No on camera/reader endpoints.  This is what hides the
+          // Connected Devices editor on cameras (which only point AT a
+          // network device, never have devices pointing back at them)
+          // while exposing it on the network-device rows.
+          connectedDevices: { key: 'field_2820', type: 'nativeEdit', label: 'Connected Devices', showWhenFieldIsYes: 'field_2795' },
+          connectedTo:      { key: 'field_2821', type: 'readOnly',   label: 'Connected To',      skipEmpty: true },
           laborDescription: { key: 'field_2809', type: 'readOnly' },
           scwNotes:         { key: 'field_2808', type: 'directEdit', notes: true },
           dropLength:       { key: 'field_2804', type: 'readOnly' },
