@@ -1665,7 +1665,7 @@ td.${P}-sum-move {
   overflow: hidden;
   box-sizing: border-box;
   flex-shrink: 0;
-  cursor: help;
+  cursor: pointer;
 }
 .${P}-req-photo-chit > span {
   overflow: hidden;
