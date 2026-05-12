@@ -1696,11 +1696,11 @@ td.${P}-sum-move {
   margin-right: 6px;
   opacity: 0.6;
 }
-/* photo missing (not yet uploaded) — amber */
+/* photo missing (not yet uploaded) — red */
 .${P}-req-photo-chit.is-missing {
-  background: #fef3c7;
-  color: #b45309;
-  border-color: #fbbf24;
+  background: #fee2e2;
+  color: #991b1b;
+  border-color: #fca5a5;
 }
 /* uploaded but QA not yet done — neutral indigo-tinted */
 .${P}-req-photo-chit.is-qa-pending {
@@ -4995,7 +4995,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       explicitly without relying on color alone. */
   function chitStateLabel(state) {
     switch (state) {
-      case 'missing':    return 'Upload';
+      case 'missing':    return 'Missing';
       case 'qa-pending': return 'Needs QA';
       case 'half-pass':  return 'Client pending';
       case 'done':       return 'Signed off';

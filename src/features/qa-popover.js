@@ -758,7 +758,7 @@
 
   function chitStateLabel(state) {
     switch (state) {
-      case 'missing':    return 'Upload';
+      case 'missing':    return 'Missing';
       case 'qa-pending': return 'Needs QA';
       case 'half-pass':  return 'Client pending';
       case 'done':       return 'Signed off';
