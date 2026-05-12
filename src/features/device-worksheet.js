@@ -1674,15 +1674,38 @@ td.${P}-sum-move {
 .${P}-req-photo-chit svg {
   flex-shrink: 0;
 }
+/* photo missing (not yet uploaded) — amber */
+.${P}-req-photo-chit.is-missing {
+  background: #fef3c7;
+  color: #b45309;
+  border-color: #fbbf24;
+}
+/* uploaded but QA not yet done — neutral indigo-tinted */
+.${P}-req-photo-chit.is-qa-pending {
+  background: #eef2ff;
+  color: #4338ca;
+  border-color: #a5b4fc;
+}
+/* internal pass, client signoff still pending — green fill, amber outline */
+.${P}-req-photo-chit.is-half-pass {
+  background: #dcfce7;
+  color: #15803d;
+  border-color: #fbbf24;
+  border-width: 2px;
+  padding: 0 7px 0 5px;       /* compensate for thicker border */
+  height: 18px;
+}
+/* fully signed off — solid green */
 .${P}-req-photo-chit.is-done {
   background: #dcfce7;
   color: #15803d;
   border-color: #86efac;
 }
-.${P}-req-photo-chit.is-missing {
-  background: #fef3c7;
-  color: #b45309;
-  border-color: #fbbf24;
+/* QA failed — red */
+.${P}-req-photo-chit.is-fail {
+  background: #fee2e2;
+  color: #991b1b;
+  border-color: #fca5a5;
 }
 
 /* ── Summary chip host td — visible for KTL bulk-edit but visually transparent ── */
@@ -2779,18 +2802,32 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   }
 
   /**
-   * Walk three parallel connection cells on a source <tr> (type / required /
-   * completed, all keyed by photo record id) and return the list of REQUIRED
-   * photos with their completion state. Used by the requiredPhotos summary
-   * field type to render header-level QA chits.
+   * Walk parallel connection cells on a source <tr> (each keyed by the
+   * connected photo record id) and return the list of REQUIRED photos
+   * with their type / completion / QA state.
+   *
+   * opts: {
+   *   typeKey, reqKey, doneKey,                         // photo metadata
+   *   qaStatusKey, qaClientKey, qaNotesKey, qaHistoryKey // optional QA fields
+   * }
+   *
+   * Used by the requiredPhotos summary field type to render the header-
+   * level QA chits and by qa-popover to seed the picker.
    */
-  function readRequiredPhotos(tr, typeKey, reqKey, doneKey) {
+  function readRequiredPhotos(tr, opts) {
+    opts = opts || {};
     var photos = {};
     function ensure(id) {
-      if (!photos[id]) photos[id] = { id: id, type: '', required: false, completed: false };
+      if (!photos[id]) {
+        photos[id] = {
+          id: id, type: '', required: false, completed: false,
+          qaStatus: '', qaClient: '', qaNotes: '', qaHistory: ''
+        };
+      }
       return photos[id];
     }
     function walk(cellSel, apply) {
+      if (!cellSel) return;
       var cell = tr.querySelector('td.' + cellSel);
       if (!cell) return;
       var outers = cell.querySelectorAll('span[id][data-kn="connection-value"]');
@@ -2800,17 +2837,30 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         apply(ensure(id), outers[i]);
       }
     }
-    walk(typeKey, function (rec, span) {
+    walk(opts.typeKey, function (rec, span) {
       var inner = span.querySelector('span[data-kn="connection-value"]');
       rec.type = inner ? inner.textContent.trim() : span.textContent.trim();
     });
-    walk(reqKey, function (rec, span) {
+    walk(opts.reqKey, function (rec, span) {
       var v = (span.textContent || '').trim().toLowerCase();
       rec.required = (v === 'yes' || v === 'true');
     });
-    walk(doneKey, function (rec, span) {
+    walk(opts.doneKey, function (rec, span) {
       var v = (span.textContent || '').trim().toLowerCase();
       rec.completed = (v === 'yes' || v === 'true');
+    });
+    walk(opts.qaStatusKey, function (rec, span) {
+      rec.qaStatus = (span.textContent || '').trim();
+    });
+    walk(opts.qaClientKey, function (rec, span) {
+      rec.qaClient = (span.textContent || '').trim();
+    });
+    walk(opts.qaNotesKey, function (rec, span) {
+      rec.qaNotes = (span.textContent || '').trim();
+    });
+    walk(opts.qaHistoryKey, function (rec, span) {
+      // Paragraph text — preserve linebreaks via innerHTML
+      rec.qaHistory = (span.innerHTML || '').trim();
     });
     var out = [];
     for (var k in photos) {
@@ -2818,6 +2868,31 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     }
     out.sort(function (a, b) { return (a.type || '').localeCompare(b.type || ''); });
     return out;
+  }
+
+  /**
+   * Compute the QA-aware visual state of a required-photo chit.
+   * Returns one of: 'missing' | 'qa-pending' | 'half-pass' | 'done' | 'fail'.
+   *
+   * hasQAColumns: pass false when the QA fields aren't exposed as
+   * columns on the view (graceful degrade — treat any uploaded photo
+   * as 'done' so existing views aren't visually regressed before the
+   * columns are added).
+   */
+  function computePhotoChitState(ph, hasQAColumns) {
+    if (!ph.completed) return 'missing';
+    if (!hasQAColumns) return 'done';
+    var s = (ph.qaStatus || '').toLowerCase();
+    if (s === 'fail') return 'fail';
+    if (s === 'pass') {
+      var c = (ph.qaClient || '').toLowerCase();
+      // No client gate OR client gate already cleared → fully signed off
+      if (c === '' || c === 'n/a' || c === 'approved' || c === 'bypassed') return 'done';
+      // Internal pass but client signoff still pending → partial
+      return 'half-pass';
+    }
+    // Empty / "pending" / anything else → uploaded but QA not yet done
+    return 'qa-pending';
   }
 
   /**
@@ -4809,15 +4884,25 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         break;
 
       case 'requiredPhotos':
-        // Header-level QA indicator: one small icon-chit per required
-        // photo on the row. Green check = captured, amber warning =
-        // missing. Hover title = photo type name.
-        var photoList = readRequiredPhotos(
-          tr,
-          desc.typeField      || 'field_2445',
-          desc.requiredField  || 'field_2446',
-          desc.completedField || 'field_2447'
-        );
+        // Header-level QA indicator: one chit per required photo on the
+        // row, color-coded by the photo's QA state (missing / qa-pending
+        // / half-pass / done / fail). Hover title = photo type + state.
+        // Each chit carries data-photo-id so the qa-popover module can
+        // identify which PIC record a click corresponds to.
+        var qaStatusKey  = desc.qaStatusField  || 'field_2859';
+        var qaClientKey  = desc.qaClientField  || 'field_2860';
+        var qaNotesKey   = desc.qaNotesField   || 'field_2861';
+        var qaHistoryKey = desc.qaHistoryField || 'field_2865';
+        var photoList = readRequiredPhotos(tr, {
+          typeKey:      desc.typeField      || 'field_2445',
+          reqKey:       desc.requiredField  || 'field_2446',
+          doneKey:      desc.completedField || 'field_2447',
+          qaStatusKey:  qaStatusKey,
+          qaClientKey:  qaClientKey,
+          qaNotesKey:   qaNotesKey,
+          qaHistoryKey: qaHistoryKey
+        });
+        var hasQAColumns = !!tr.querySelector('td.' + qaStatusKey);
         if (!photoList.length) {
           // Reserve a spacer so stacked-summary alignment doesn't shift
           // between rows that have required photos and ones that don't.
@@ -4844,16 +4929,16 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         var doneCount = 0;
         for (var pp = 0; pp < photoList.length; pp++) {
           var ph = photoList[pp];
-          if (ph.completed) doneCount++;
+          var chitState = computePhotoChitState(ph, hasQAColumns);
+          if (chitState === 'done') doneCount++;
           var phChit = document.createElement('span');
-          phChit.className = P + '-req-photo-chit ' + (ph.completed ? 'is-done' : 'is-missing');
-          phChit.title = (ph.type || 'Photo') + (ph.completed ? ' — captured' : ' — missing');
-          var phIcon = ph.completed
-            ? '<svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>'
-            : '<svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>';
+          phChit.className = P + '-req-photo-chit is-' + chitState;
+          phChit.setAttribute('data-photo-id', ph.id);
+          phChit.setAttribute('data-photo-state', chitState);
+          phChit.title = (ph.type || 'Photo') + ' — ' + chitStateTooltip(chitState);
+          phChit.innerHTML = chitStateIcon(chitState);
           var phName = document.createElement('span');
           phName.textContent = ph.type || 'Photo';
-          phChit.innerHTML = phIcon;
           phChit.appendChild(phName);
           phRow.appendChild(phChit);
         }
@@ -4863,6 +4948,38 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         phGroup.appendChild(phRow);
         target.appendChild(phGroup);
         break;
+    }
+  }
+
+  // ── Photo chit visual helpers ───────────────────────────────────
+
+  function chitStateTooltip(state) {
+    switch (state) {
+      case 'missing':    return 'photo not uploaded';
+      case 'qa-pending': return 'photo uploaded, QA not yet done';
+      case 'half-pass':  return 'internal pass, awaiting client signoff';
+      case 'done':       return 'signed off';
+      case 'fail':       return 'QA failed';
+      default:           return state;
+    }
+  }
+
+  function chitStateIcon(state) {
+    var checkSvg =
+      '<svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+    var warnSvg =
+      '<svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>';
+    var xSvg =
+      '<svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+    var dotSvg =
+      '<svg viewBox="0 0 24 24" width="10" height="10" fill="currentColor"><circle cx="12" cy="12" r="4"/></svg>';
+    switch (state) {
+      case 'done':       return checkSvg;
+      case 'half-pass':  return checkSvg;
+      case 'missing':    return warnSvg;
+      case 'fail':       return xSvg;
+      case 'qa-pending': return dotSvg;
+      default:           return dotSvg;
     }
   }
 

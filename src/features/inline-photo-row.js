@@ -466,7 +466,17 @@
       '#view_3915 th.field_2446,',
       '#view_3915 td.field_2446,',
       '#view_3915 th.field_2447,',
-      '#view_3915 td.field_2447 {',
+      '#view_3915 td.field_2447,',
+      // QA fields on PIC — read by device-worksheet for chit state,
+      // never displayed as their own column.
+      '#view_3915 th.field_2859,',
+      '#view_3915 td.field_2859,',
+      '#view_3915 th.field_2860,',
+      '#view_3915 td.field_2860,',
+      '#view_3915 th.field_2861,',
+      '#view_3915 td.field_2861,',
+      '#view_3915 th.field_2865,',
+      '#view_3915 td.field_2865 {',
       '  display: none !important;',
       '}'
     ].join('\n');

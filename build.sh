@@ -92,6 +92,7 @@ cat \
   src/features/device-worksheet-expand-all.js \
   src/features/device-worksheet-toolbar.js \
   src/features/install-config-subpanel.js \
+  src/features/qa-popover.js \
   src/features/chit-bulk-edit-fix.js \
   src/features/sales-change-request/config.js \
   src/features/sales-change-request/state.js \
