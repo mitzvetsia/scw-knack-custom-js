@@ -170,6 +170,22 @@
       '.scw-cd-empty {',
       '  text-align: center; color: #6b7280; padding: 40px 20px;',
       '  font-size: 13px;',
+      '}',
+
+      /* Drag-and-drop visual states for file upload (drop a file from
+         desktop onto a doc card). Matches the photo-strip drop styling
+         so the affordance reads the same across features. */
+      '.scw-cd-doc.is-drop-hover {',
+      '  border-color: #2563eb !important; background: #eff6ff !important;',
+      '  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.20);',
+      '}',
+      '.scw-cd-doc.is-pending {',
+      '  pointer-events: none; opacity: 0.85;',
+      '}',
+      '.scw-cd-doc.is-pending .scw-cd-doc__icon svg { animation: scw-cd-spin 1s linear infinite; }',
+      '@keyframes scw-cd-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }',
+      '.scw-cd-doc.is-error {',
+      '  border-color: #dc2626 !important; background: #fef2f2 !important;',
       '}'
     ].join('\n');
 
@@ -301,7 +317,7 @@
     ].join('');
   }
 
-  function buildDocCard(doc) {
+  function buildDocCard(doc, closeoutId) {
     var card = document.createElement('div');
     card.className = 'scw-cd-doc';
     card.setAttribute('data-doc-id', doc.id);
@@ -314,6 +330,12 @@
     else if (isComplete) card.classList.add('is-complete');
     else if (isUploaded) card.classList.add('is-uploaded');
     else if (!doc.required && !hasFile) card.classList.add('is-empty-optional');
+
+    // Re-apply pending state if an upload is still polling for this doc
+    // (the card gets rebuilt on every renderInto call).
+    if (pendingUploads[doc.id]) {
+      card.classList.add('is-pending');
+    }
 
     // Thumbnail / icon area
     var thumb = document.createElement('div');
@@ -355,17 +377,222 @@
     }
     card.appendChild(chip);
 
-    // Click: open file if exists, else go to edit-doc form
+    // Click behaviour:
+    //  - Filed doc → open the file in a new tab
+    //  - Missing/empty doc with upload webhook configured → file picker
+    //  - Otherwise → Knack edit-doc form (existing fallback)
+    var uploadEnabled = !hasFile && !!(
+      window.SCW && window.SCW.CONFIG && window.SCW.CONFIG.MAKE_DOC_UPLOAD_WEBHOOK
+    );
     card.addEventListener('click', function () {
+      if (card.classList.contains('is-pending')) return;
       if (hasFile && doc.fileUrl.indexOf('http') === 0) {
         window.open(doc.fileUrl, '_blank');
-      } else {
-        var h = editDocHash(doc.id);
-        if (h) navigate(h);
+        return;
       }
+      if (uploadEnabled) {
+        openDocFilePicker(card, doc.id, closeoutId);
+        return;
+      }
+      var h = editDocHash(doc.id);
+      if (h) navigate(h);
     });
 
+    // Drag-and-drop from desktop. Bound on every card (filed and empty)
+    // because a filed doc could still be replaced by dropping a new file
+    // — same record, same field, fresh upload. uploadEnabled gates the
+    // *drop* handler, not the dragenter/over, so we don't paint a hover
+    // ring on a card we can't actually accept.
+    if (uploadEnabled || hasFile) {
+      card.addEventListener('dragenter', handleDocDragEnter);
+      card.addEventListener('dragover',  handleDocDragOver);
+      card.addEventListener('dragleave', handleDocDragLeave);
+      card.addEventListener('drop', function (e) {
+        e.preventDefault();
+        card.classList.remove('is-drop-hover');
+        if (card.classList.contains('is-pending')) return;
+        var docWebhook = window.SCW && window.SCW.CONFIG &&
+                         window.SCW.CONFIG.MAKE_DOC_UPLOAD_WEBHOOK;
+        if (!docWebhook) {
+          console.warn('[SCW] MAKE_DOC_UPLOAD_WEBHOOK not configured — drop ignored');
+          return;
+        }
+        var file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+        if (!file) return;
+        dispatchDocUpload(card, doc.id, closeoutId, file);
+      });
+    }
+
     return card;
+  }
+
+  // ── Drag-and-drop helpers ────────────────────────────────────────
+  function handleDocDragEnter(e) {
+    if (!eventHasFiles(e)) return;
+    e.preventDefault();
+    this.classList.add('is-drop-hover');
+  }
+  function handleDocDragOver(e) {
+    if (!eventHasFiles(e)) return;
+    e.preventDefault();   // required for drop to fire
+    if (e.dataTransfer) e.dataTransfer.dropEffect = 'copy';
+  }
+  function handleDocDragLeave(e) {
+    // Only clear if the drag actually leaves the card, not when it moves
+    // over a child element.
+    if (this.contains(e.relatedTarget)) return;
+    this.classList.remove('is-drop-hover');
+  }
+  function eventHasFiles(e) {
+    var dt = e.dataTransfer;
+    if (!dt || !dt.types) return false;
+    for (var i = 0; i < dt.types.length; i++) {
+      if (dt.types[i] === 'Files') return true;
+    }
+    return false;
+  }
+
+  // ── Upload via Make webhook ──────────────────────────────────────
+  // Same shape as inline-photo-row's upload + poll flow: read file as
+  // base64, POST to MAKE_DOC_UPLOAD_WEBHOOK, then poll the view until
+  // field_68 (the file URL) shows up on the DOC record.
+  var pendingUploads = {};
+  var POLL_INTERVAL_MS = 4000;
+  var POLL_TIMEOUT_MS  = 90000;
+
+  function readFileAsBase64(file) {
+    return new Promise(function (resolve, reject) {
+      var reader = new FileReader();
+      reader.onload = function () {
+        var s = String(reader.result || '');
+        var comma = s.indexOf(',');
+        resolve(comma >= 0 ? s.substring(comma + 1) : s);
+      };
+      reader.onerror = function () { reject(reader.error); };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function getTriggeredBy() {
+    try {
+      var u = window.Knack && Knack.getUserAttributes && Knack.getUserAttributes();
+      if (u) return { id: u.id || '', name: u.name || '', email: u.email || '' };
+    } catch (e) { /* ignore */ }
+    return { id: '', name: '', email: '' };
+  }
+
+  function setCardPending(card) {
+    card.classList.remove('is-error');
+    card.classList.add('is-pending');
+    var iconLabel = card.querySelector('.scw-cd-doc__icon-label');
+    if (iconLabel) iconLabel.textContent = 'Uploading…';
+  }
+  function setCardError(card, msg) {
+    card.classList.remove('is-pending');
+    card.classList.add('is-error');
+    var iconLabel = card.querySelector('.scw-cd-doc__icon-label');
+    if (iconLabel) iconLabel.textContent = msg || 'Error';
+  }
+
+  function openDocFilePicker(card, docId, closeoutId) {
+    var input = document.createElement('input');
+    input.type = 'file';
+    // Common deliverable formats — pdf primary, but allow images and
+    // office docs in case the user wants to attach a scanned floor plan
+    // or filled-in spreadsheet.
+    input.accept = '.pdf,.png,.jpg,.jpeg,.gif,.heic,.doc,.docx,.xls,.xlsx,image/*,application/pdf';
+    input.style.display = 'none';
+    input.addEventListener('change', function () {
+      var file = input.files && input.files[0];
+      if (file) dispatchDocUpload(card, docId, closeoutId, file);
+      document.body.removeChild(input);
+    });
+    document.body.appendChild(input);
+    input.click();
+  }
+
+  function dispatchDocUpload(card, docId, closeoutId, file) {
+    var webhookUrl = window.SCW && window.SCW.CONFIG &&
+                     window.SCW.CONFIG.MAKE_DOC_UPLOAD_WEBHOOK;
+    if (!webhookUrl) {
+      console.error('[SCW] MAKE_DOC_UPLOAD_WEBHOOK not configured');
+      setCardError(card, 'Upload not configured');
+      return;
+    }
+    if (file.size > 25 * 1024 * 1024) {
+      setCardError(card, 'File too large');
+      return;
+    }
+
+    pendingUploads[docId] = true;
+    setCardPending(card);
+
+    readFileAsBase64(file).then(function (b64) {
+      return fetch(webhookUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          kind:        'document',
+          docRecordId: docId,
+          closeoutId:  closeoutId,
+          viewId:      VIEW_ID,
+          filename:    file.name || 'document.pdf',
+          mimeType:    file.type || 'application/pdf',
+          sizeBytes:   file.size,
+          dataBase64:  b64,
+          triggeredBy: getTriggeredBy()
+        })
+      });
+    }).then(function (resp) {
+      if (resp && resp.status && resp.status >= 400) {
+        throw new Error('Webhook returned ' + resp.status);
+      }
+      pollForDocArrival(docId);
+    }).catch(function (err) {
+      console.error('[SCW] Doc upload error:', err);
+      delete pendingUploads[docId];
+      setCardError(card, 'Upload failed');
+    });
+  }
+
+  function pollForDocArrival(docId) {
+    var startedAt = Date.now();
+    function tick() {
+      if (!pendingUploads[docId]) return;
+      var v = window.Knack && Knack.views && Knack.views[VIEW_ID];
+      if (!v || !v.model || typeof v.model.fetch !== 'function') {
+        delete pendingUploads[docId];
+        return;
+      }
+      v.model.fetch();
+      setTimeout(function () {
+        if (docHasFileInDOM(docId)) {
+          delete pendingUploads[docId];
+          return;
+        }
+        if (Date.now() - startedAt >= POLL_TIMEOUT_MS) {
+          delete pendingUploads[docId];
+          console.warn('[SCW] Doc upload poll timed out for', docId);
+          return;
+        }
+        setTimeout(tick, POLL_INTERVAL_MS);
+      }, 1000);
+    }
+    setTimeout(tick, POLL_INTERVAL_MS);
+  }
+
+  function docHasFileInDOM(docId) {
+    var viewEl = document.getElementById(VIEW_ID);
+    if (!viewEl) return false;
+    var spans = viewEl.querySelectorAll(
+      'td.' + F.file + ' span[id][data-kn="connection-value"],' +
+      'td[data-field-key="' + F.file + '"] span[id][data-kn="connection-value"]'
+    );
+    for (var i = 0; i < spans.length; i++) {
+      if (spans[i].id !== docId) continue;
+      if (spans[i].querySelector('a[href]')) return true;
+    }
+    return false;
   }
 
   function buildAddCard(closeoutId) {
@@ -428,7 +655,7 @@
       strip.appendChild(empty);
     } else {
       for (var i = 0; i < docs.length; i++) {
-        strip.appendChild(buildDocCard(docs[i]));
+        strip.appendChild(buildDocCard(docs[i], closeoutId));
       }
     }
     strip.appendChild(buildAddCard(closeoutId));

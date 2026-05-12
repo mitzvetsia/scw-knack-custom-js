@@ -27,6 +27,21 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   // ⚠️  TODO: set this URL once the Make scenario exists. While empty,
   //     clicking a missing-photo card falls back to Knack's edit modal.
   MAKE_PHOTO_UPLOAD_WEBHOOK: "https://hook.us1.make.com/6n07ovcxexg4ygckwh8scydh22n71s3o",
+  // Closeout-deliverables doc upload (view_3940 .scw-cd-doc cards).
+  // Fires when the user drags a file onto, or clicks, a missing doc
+  // square.  Browser reads the file as base64 and posts:
+  //   {
+  //     kind:         'document',
+  //     docRecordId:  <DOC record id, 24-char hex>,
+  //     closeoutId:   <parent closeout record id>,
+  //     viewId:       'view_3940',
+  //     filename, mimeType, sizeBytes, dataBase64,
+  //     triggeredBy:  { id, name, email }
+  //   }
+  // Make decodes base64 and uploads to Knack on field_68 of the DOC
+  // record.  Response shape mirrors photo upload.  Same TODO note —
+  // empty URL falls back to Knack's edit-form click navigation.
+  MAKE_DOC_UPLOAD_WEBHOOK: "",
   MAKE_DELETE_RECORD_WEBHOOK: "https://hook.us1.make.com/uyxdq04zudssvoatvnwywxcjxxil15q7",
   // Fires on "Clone SOW / Create Alternative SOW" button click. Expects:
   //   Request body:  {
