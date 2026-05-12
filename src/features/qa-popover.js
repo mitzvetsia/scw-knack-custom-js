@@ -528,28 +528,35 @@
       (isClientGateActive(_initialState.client) ? ', client=' + photo.client : '');
     fields[F.history] = prependHistory(photo.history, 'SIGNED OFF', detail);
 
-    sendSave(fields, 'Signed off.');
+    sendSave(fields, photo, 'Signed off.');
   }
 
   function onRevert(photo) {
     if (_isSaving) return;
+    // Reset QA state back to Pending so the chit visibly leaves the
+    // "signed off" appearance.  Audit fields cleared.  Notes preserved
+    // so the prior context is retained.  History prepends the revert
+    // event with the state that was reverted FROM.
+    var prevStatus = _initialState.status;
+    var prevClient = _initialState.client;
+    var clientActive = isClientGateActive(prevClient);
+
+    photo.status = 'Pending';
+    if (clientActive) photo.client = 'Pending';
+
     var fields = {};
-    // Keep current radio selections (the user may have changed them in the
-    // popover before clicking revert), but clear the completion audit.
-    fields[F.status] = photo.status;
-    if (isClientGateActive(_initialState.client)) {
-      fields[F.client] = photo.client;
-    }
+    fields[F.status] = 'Pending';
+    if (clientActive) fields[F.client] = 'Pending';
     fields[F.notes] = photo.notes || '';
     fields[F.completedBy]   = '';
     fields[F.completedDate] = '';
     fields[F.history] = prependHistory(
       photo.history,
       'SIGN-OFF REVERTED',
-      'status=' + photo.status +
-        (isClientGateActive(_initialState.client) ? ', client=' + photo.client : '')
+      'was status=' + prevStatus +
+        (clientActive ? ', client=' + prevClient : '')
     );
-    sendSave(fields, 'Sign-off reverted.');
+    sendSave(fields, photo, 'Sign-off reverted.');
   }
 
   function autoSaveIfDirty(onDone) {
@@ -588,9 +595,27 @@
     }
 
     _isSaving = true;
+    var chit = _popover && _popover._triggerChit;
     saveFields(fields, function (err) {
       _isSaving = false;
-      if (err) console.warn('[scw-qa] autosave failed:', err);
+      if (err) {
+        console.warn('[scw-qa] autosave failed:', err);
+        onDone && onDone();
+        return;
+      }
+      // Build a minimal photo snapshot so the chit reflects the
+      // autosaved values (note: completion isn't toggled here — that
+      // only happens via the explicit Sign Off button).
+      if (chit) {
+        var snapshot = {
+          id:        _photoId,
+          type:      (chit.querySelector('span:last-child') || {}).textContent || '',
+          completed: true,
+          status:    status,
+          client:    client
+        };
+        refreshChitAndCells(chit, snapshot, fields);
+      }
       onDone && onDone();
     });
   }
@@ -617,10 +642,11 @@
     return null;
   }
 
-  function sendSave(fields, _successMsg) {
+  function sendSave(fields, photo, _successMsg) {
     if (_isSaving) return;
     _isSaving = true;
     if (_popover) _popover.classList.add('is-saving');
+    var chit = _popover && _popover._triggerChit;
     saveFields(fields, function (err) {
       _isSaving = false;
       if (err) {
@@ -628,16 +654,120 @@
         showError(err.message || 'Save failed');
         return;
       }
+      // Optimistic in-page refresh: update the chit visual + the
+      // hidden source-tr cells so subsequent reads (and the next
+      // view-render pass) see the new values without waiting on a
+      // model.fetch() roundtrip.
+      if (chit) refreshChitAndCells(chit, photo, fields);
       closePopover(true);
-      // Trigger Knack view re-render so the chits reflect the new state.
-      try {
-        var viewId = findCurrentViewId();
-        if (viewId && Knack.views[viewId] && Knack.views[viewId].model &&
-            typeof Knack.views[viewId].model.fetch === 'function') {
-          Knack.views[viewId].model.fetch();
-        }
-      } catch (e) { /* swallow */ }
     });
+  }
+
+  // ── Optimistic DOM refresh after save ───────────────────────────
+
+  /**
+   * Recompute the chit state from the saved photo object, swap the
+   * is-* class + icon + tooltip on the chit, and write the new field
+   * values back into the source <tr>'s hidden cells so future reads
+   * (and the next view-render pass) stay consistent.
+   */
+  function refreshChitAndCells(chit, photo, fields) {
+    if (!chit) return;
+    // 1) New chit visual state
+    var newState = computeChitState(photo);
+    var statesToStrip = ['is-missing', 'is-qa-pending', 'is-half-pass', 'is-done', 'is-fail'];
+    for (var i = 0; i < statesToStrip.length; i++) {
+      chit.classList.remove(statesToStrip[i]);
+    }
+    chit.classList.add('is-' + newState);
+    chit.setAttribute('data-photo-state', newState);
+    var photoType = (photo.type || 'Photo');
+    chit.title = photoType + ' — ' + chitStateTooltip(newState);
+    chit.innerHTML = chitStateIcon(newState);
+    var nameSpan = document.createElement('span');
+    nameSpan.textContent = photoType;
+    chit.appendChild(nameSpan);
+
+    // 2) Mirror the saved field values into the source <tr>'s cells
+    // so the next read (e.g. when the view re-renders) starts from a
+    // consistent state.
+    var sourceTr = findSourceTr(chit);
+    if (sourceTr) {
+      var keys = Object.keys(fields);
+      for (var k = 0; k < keys.length; k++) {
+        writeSourceCell(sourceTr, photo.id, keys[k], fields[keys[k]]);
+      }
+    }
+  }
+
+  /**
+   * Update the inner <span id="photoId" data-kn="connection-value">
+   * inside td.fieldKey on the source tr.  For text values we set
+   * textContent; for fields not yet shown for this photo (cell shows
+   * &nbsp;) we create the inner span first.
+   */
+  function writeSourceCell(tr, photoId, fieldKey, value) {
+    var cell = tr.querySelector('td.' + fieldKey);
+    if (!cell) return;
+    var span = cell.querySelector(
+      'span[id="' + photoId + '"][data-kn="connection-value"]'
+    );
+    if (!span) {
+      // Cell was empty (showing &nbsp;) — inject a fresh span so future
+      // reads find the value.
+      var wrapper = cell.querySelector('span[class^="col-"]') || cell;
+      span = document.createElement('span');
+      span.id = photoId;
+      span.setAttribute('data-kn', 'connection-value');
+      wrapper.appendChild(span);
+    }
+    span.textContent = value == null ? '' : String(value);
+  }
+
+  /**
+   * Chit state computation — mirrors device-worksheet's
+   * computePhotoChitState(ph, true).  Inlined here to avoid coupling.
+   */
+  function computeChitState(photo) {
+    if (!photo.completed) return 'missing';
+    var s = (photo.status || '').toLowerCase();
+    if (s === 'fail') return 'fail';
+    if (s === 'pass') {
+      var c = (photo.client || '').toLowerCase();
+      if (c === '' || c === 'n/a' || c === 'approved' || c === 'bypassed') return 'done';
+      return 'half-pass';
+    }
+    return 'qa-pending';
+  }
+
+  function chitStateTooltip(state) {
+    switch (state) {
+      case 'missing':    return 'photo not uploaded';
+      case 'qa-pending': return 'photo uploaded, QA not yet done';
+      case 'half-pass':  return 'internal pass, awaiting client signoff';
+      case 'done':       return 'signed off';
+      case 'fail':       return 'QA failed';
+      default:           return state;
+    }
+  }
+
+  function chitStateIcon(state) {
+    var checkSvg =
+      '<svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+    var warnSvg =
+      '<svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>';
+    var xSvg =
+      '<svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+    var dotSvg =
+      '<svg viewBox="0 0 24 24" width="10" height="10" fill="currentColor"><circle cx="12" cy="12" r="4"/></svg>';
+    switch (state) {
+      case 'done':       return checkSvg;
+      case 'half-pass':  return checkSvg;
+      case 'missing':    return warnSvg;
+      case 'fail':       return xSvg;
+      case 'qa-pending': return dotSvg;
+      default:           return dotSvg;
+    }
   }
 
   function showError(msg) {
