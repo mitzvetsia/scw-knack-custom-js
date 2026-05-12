@@ -41,7 +41,7 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   // Make decodes base64 and uploads to Knack on field_68 of the DOC
   // record.  Response shape mirrors photo upload.  Same TODO note —
   // empty URL falls back to Knack's edit-form click navigation.
-  MAKE_DOC_UPLOAD_WEBHOOK: "",
+  MAKE_DOC_UPLOAD_WEBHOOK: "https://hook.us1.make.com/6n07ovcxexg4ygckwh8scydh22n71s3o",
   MAKE_DELETE_RECORD_WEBHOOK: "https://hook.us1.make.com/uyxdq04zudssvoatvnwywxcjxxil15q7",
   // Fires on "Clone SOW / Create Alternative SOW" button click. Expects:
   //   Request body:  {
