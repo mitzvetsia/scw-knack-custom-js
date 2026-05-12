@@ -245,15 +245,15 @@
           keepBuckets: ['6481e5ba38f283002898113c'],   // Camera or Reader
           fields: {
             product:          { key: 'field_2790', type: 'readOnly', summary: true, productStyle: true },
-            // SKU + drop number give mounting-hardware rows something
-            // visible (the bracket name is in the identity zone, but
-            // without SKU and drop the row otherwise reads as blank).
-            // Hidden on assumption rows via bucketRules.hideFields.
-            sku:              { key: 'field_2791', type: 'readOnly', summary: true, label: 'SKU' },
+            // Mounting-hardware identifier — field_2852 is the
+            // per-piece hardware label.  Lives in the detail panel,
+            // not the summary.  Needs to be exposed as a column on
+            // view_3915 in Builder for this to render.  Hidden on
+            // assumption rows via bucketRules.hideFields.
+            hardwareLabel:    { key: 'field_2852', type: 'readOnly', label: 'Hardware', skipEmpty: true },
+            // Drop number (field_2798) is also surfaced so brackets
+            // sit next to the camera they belong to in the user's eye.
             dropNumber:       { key: 'field_2798', type: 'readOnly', summary: true, label: 'Drop' },
-            // Mounting-hardware label / per-piece tag.  Knack Builder needs to
-            // expose field_2853 as a column on view_3915 for this to render.
-            hardwareLabel:    { key: 'field_2853', type: 'readOnly', summary: true, label: 'Hardware', group: 'fill' },
             installStatus:    { key: 'field_2825', type: 'singleChip', segmented: true, options: ['Not Started', 'In Progress', 'Blocked', 'Done'], summary: true, label: 'Status', group: 'right', groupCls: 'sum-group--install-status' },
             laborDescription: { key: 'field_2809', type: 'readOnly', summary: true, label: 'Description', group: 'fill', multiline: true },
             // Editable forward connection (TRIGGER_FIELD for the cascade).
@@ -264,13 +264,14 @@
             mdfIdf:           { key: 'field_2818', type: 'nativeEdit' },
             scwNotes:         { key: 'field_2808', type: 'directEdit', notes: true, rows: 4 }
           },
-          summaryLayout: ['sku', 'dropNumber', 'hardwareLabel', 'laborDescription', 'installStatus'],
+          summaryLayout: ['dropNumber', 'laborDescription', 'installStatus'],
           // Same edit-vs-info split as the main config: left = actions,
-          // right = info.  laborDescription already appears in summary so
-          // no need to repeat it in the info column for these buckets.
+          // right = info (hardware label lives here for mounting-hardware
+          // rows; skipEmpty hides the row for assumptions / network
+          // devices where field_2852 is blank).
           detailLayout: {
             left:  ['mdfIdf', 'connectedDevices', 'scwNotes'],
-            right: []
+            right: ['hardwareLabel']
           }
         },
         bucketRules: {
@@ -278,9 +279,9 @@
             label: 'ASSUMPTION',
             descLabel: 'Assumption',
             hideProduct: true,
-            // SKU, drop number, hardware label, and MDF/IDF only
-            // make sense for physical line items.
-            hideFields: ['field_2791', 'field_2798', 'field_2853', 'field_2818'],
+            // Drop number, hardware label, and MDF/IDF only make
+            // sense for physical line items.
+            hideFields: ['field_2798', 'field_2852', 'field_2818'],
             rowClass: 'scw-row--assumptions',
           },
           '594a94536877675816984cb9': {                       // Mounting Hardware
