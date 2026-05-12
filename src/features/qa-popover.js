@@ -30,6 +30,13 @@
 
   var POPOVER_ID = 'scw-qa-popover';
 
+  // The hidden DOC_photos grid on the implementation scene.  Saves go
+  // through Knack's view-based PUT endpoint (which is CORS-safe and
+  // honors the user's session token) — the object-based endpoint
+  // requires a server-side API key, which we don't have client-side.
+  // This view must include every field qa-popover writes to.
+  var PIC_SAVE_VIEW = 'view_3937';
+
   // PIC field keys
   var F = {
     img:           'field_771',
@@ -47,9 +54,6 @@
   // Multiple-choice option labels (must match the Knack option values exactly).
   var STATUS_OPTIONS = ['Pending', 'Pass', 'Fail'];
   var CLIENT_OPTIONS = ['Pending', 'Approved', 'Bypassed'];
-
-  // Cached object key for the PIC object (looked up once per session).
-  var _picObjectKey = null;
 
   // Currently open popover state.
   var _popover = null;          // DOM element
@@ -143,25 +147,21 @@
     document.head.appendChild(style);
   }
 
-  // ── Knack object key resolution ─────────────────────────────────
+  // ── Value normalization ─────────────────────────────────────────
 
-  function resolvePicObjectKey() {
-    if (_picObjectKey) return _picObjectKey;
-    try {
-      var models = Knack.objects.models;
-      for (var i = 0; i < models.length; i++) {
-        var fields = models[i].attributes.fields;
-        for (var j = 0; j < fields.length; j++) {
-          if (fields[j].key === F.status) {
-            _picObjectKey = models[i].attributes.key;
-            return _picObjectKey;
-          }
-        }
-      }
-    } catch (e) {
-      console.warn('[scw-qa] Could not resolve PIC object key:', e);
+  /**
+   * Knack often renders Multiple Choice option values in UPPERCASE
+   * (theme-dependent), but the stored value uses the option's actual
+   * casing (e.g. "Pending"). Map back to the canonical option label
+   * so chip-selection comparisons match.
+   */
+  function normalizeOption(raw, options) {
+    if (!raw) return '';
+    var lower = String(raw).trim().toLowerCase();
+    for (var i = 0; i < options.length; i++) {
+      if (options[i].toLowerCase() === lower) return options[i];
     }
-    return null;
+    return raw;
   }
 
   // ── Reading photo data from the worksheet DOM ───────────────────
@@ -229,11 +229,13 @@
       return '';
     }
 
+    var rawStatus = readSpanText(F.status);
+    var rawClient = readSpanText(F.client);
     return {
       id:         photoId,
       type:       readType(),
-      status:     readSpanText(F.status)  || 'Pending',
-      client:     readSpanText(F.client)  || 'N/A',
+      status:     normalizeOption(rawStatus, STATUS_OPTIONS) || 'Pending',
+      client:     normalizeOption(rawClient, ['N/A'].concat(CLIENT_OPTIONS)) || 'N/A',
       notes:      readSpanText(F.notes)   || '',
       history:    readSpanHtml(F.history) || '',
       imgUrl:     readImgUrl(),
@@ -261,6 +263,16 @@
     var p = function (n) { return n < 10 ? '0' + n : '' + n; };
     return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) +
       ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+  }
+
+  /**
+   * Knack date fields expect MM/DD/YYYY on PUT (US-style by default
+   * for this account — matches the rendered "05/12/2026" cell value).
+   */
+  function todayForKnack() {
+    var d = new Date();
+    var p = function (n) { return n < 10 ? '0' + n : '' + n; };
+    return p(d.getMonth() + 1) + '/' + p(d.getDate()) + '/' + d.getFullYear();
   }
 
   function currentUserName() {
@@ -296,17 +308,14 @@
   // ── Save ────────────────────────────────────────────────────────
 
   function saveFields(fields, onDone) {
-    var key = resolvePicObjectKey();
-    if (!key) {
-      onDone && onDone(new Error('PIC object key unresolved'));
-      return;
-    }
-    if (typeof SCW === 'undefined' || typeof SCW.knackAjax !== 'function') {
-      onDone && onDone(new Error('SCW.knackAjax unavailable'));
+    if (typeof SCW === 'undefined' ||
+        typeof SCW.knackAjax !== 'function' ||
+        typeof SCW.knackRecordUrl !== 'function') {
+      onDone && onDone(new Error('SCW.knackAjax/knackRecordUrl unavailable'));
       return;
     }
     SCW.knackAjax({
-      url: Knack.api_url + '/v1/objects/' + key + '/records/' + _photoId,
+      url: SCW.knackRecordUrl(PIC_SAVE_VIEW, _photoId),
       type: 'PUT',
       data: JSON.stringify(fields),
       success: function () { onDone && onDone(null); },
@@ -510,7 +519,7 @@
     }
     fields[F.notes] = photo.notes || '';
     fields[F.completedBy]   = currentUserId();
-    fields[F.completedDate] = nowStamp();
+    fields[F.completedDate] = todayForKnack();
     var detail = 'status=' + photo.status +
       (isClientGateActive(_initialState.client) ? ', client=' + photo.client : '');
     fields[F.history] = prependHistory(photo.history, 'SIGNED OFF', detail);
