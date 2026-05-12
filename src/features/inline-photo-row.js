@@ -508,12 +508,14 @@
    *   #team-calendar/project-dashboard/{id}/build-sow/{id}/...
    *   #team-calendar/project-dashboard/{id}/build-quote/{id}/...
    *   #sales-portal/company-details/{id}/scope-of-work-details/{id}/...
+   *   #team-calendar/project-dashboard/{id}/implementation/{id}/...
    */
   function getBuildSowBasePath() {
     var hash = window.location.hash || '';
     var patterns = [
       /(team-calendar\/project-dashboard\/[a-f0-9]{24}\/build-(?:sow|quote)\/[a-f0-9]{24})/,
       /(team-calendar\/project-dashboard\/[a-f0-9]{24}\/review-bids\/[a-f0-9]{24})/,
+      /(team-calendar\/project-dashboard\/[a-f0-9]{24}\/implementation\/[a-f0-9]{24})/,
       /(sales-portal\/company-details\/[a-f0-9]{24}\/scope-of-work-details\/[a-f0-9]{24})/,
       /(proposals\/scope-of-work\/[a-f0-9]{24})/
     ];
@@ -529,8 +531,11 @@
     window.location.hash = hashPath;
   }
 
-  // Views that use the build-sow URL structure instead of survey
-  var SOW_VIEWS = { 'view_3313': true, 'view_3577': true, 'view_3602': true, 'view_3586': true, 'view_3610': true, 'view_3921': true, 'view_3596': true };
+  // Views that use the build-sow URL structure instead of survey.
+  // Also covers the implementation page (view_3915) which uses the
+  // same #team-calendar/project-dashboard/{id}/implementation/{id}/
+  // base path — extracted by getBuildSowBasePath().
+  var SOW_VIEWS = { 'view_3313': true, 'view_3577': true, 'view_3602': true, 'view_3586': true, 'view_3610': true, 'view_3921': true, 'view_3596': true, 'view_3915': true };
 
   /** Build the edit-photo hash path for a photo record. */
   function editPhotoHash(photoRecordId, viewId) {
