@@ -1567,18 +1567,23 @@ td.${P}-sum-move {
 }
 
 /* ── Required-photo header chits (QA-glance) ────────────────────── */
+/* Stacked layout — one chit per row so labels read top-down and
+   the column has a predictable width across all rows (so the
+   left edge lines up between cam/reader rows and other rows). */
+.${P}-sum-group--req-photos {
+  min-width: 140px;
+}
 .${P}-req-photos {
-  display: inline-flex;
-  gap: 4px;
-  align-items: center;
-  flex-wrap: wrap;
-  max-width: 280px;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 3px;
 }
 .${P}-req-photo-chit {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  height: 20px;
+  height: 18px;
   padding: 0 8px 0 6px;
   border-radius: 999px;
   border: 1px solid transparent;
@@ -1588,6 +1593,7 @@ td.${P}-sum-move {
   letter-spacing: 0.02em;
   line-height: 1;
   white-space: nowrap;
+  align-self: flex-start;
   flex-shrink: 0;
   cursor: help;
 }
