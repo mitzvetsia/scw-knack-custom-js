@@ -44,8 +44,8 @@
 
   var SUBPANEL_CLS  = 'scw-install-config';
   var CSS_ID        = 'scw-install-config-css';
-  var TOGGLE_BTN_ID = 'scw-install-config-toggle';
-  var SHOWN_STATE   = 'scw-install-config-grid-shown';
+  // (former toggle-button constants removed — the camera-config grid is
+  // now always hidden; configs are folded into the worksheet detail panel.)
 
   // ── CSS ─────────────────────────────────────────────────────────
   function injectCss() {
@@ -53,9 +53,9 @@
     var s = document.createElement('style');
     s.id = CSS_ID;
     s.textContent = [
-      'body:not(.' + SHOWN_STATE + ') #' + CONFIG_VIEW + ' {',
-      '  display: none !important;',
-      '}',
+      /* Camera-config grid view is always hidden — its data is folded
+         into each worksheet card's detail panel via the merge() pass. */
+      '#' + CONFIG_VIEW + ' { display: none !important; }',
 
       /* Match .scw-ws-section padding so the camera-config left edge
          lines up with the detail-panel field labels above. */
@@ -134,26 +134,6 @@
       /* On narrower viewports collapse to 2 cols */
       '@media (max-width: 900px) {',
       '  .' + SUBPANEL_CLS + '-grid { grid-template-columns: 1fr 1fr; }',
-      '}',
-
-      '#' + TOGGLE_BTN_ID + ' {',
-      '  display: inline-flex;',
-      '  align-items: center;',
-      '  gap: 6px;',
-      '  padding: 4px 10px;',
-      '  margin: 6px 0;',
-      '  font-size: 12px;',
-      '  font-weight: 600;',
-      '  color: #0f4c75;',
-      '  background: #f1f5f9;',
-      '  border: 1px solid #cbd5e1;',
-      '  border-radius: 4px;',
-      '  cursor: pointer;',
-      '}',
-      '#' + TOGGLE_BTN_ID + ':hover { background: #e2e8f0; }',
-      'body.' + SHOWN_STATE + ' #' + TOGGLE_BTN_ID + ' {',
-      '  background: #dbeafe;',
-      '  border-color: #93c5fd;',
       '}'
     ].join('\n');
     document.head.appendChild(s);
@@ -267,29 +247,6 @@
     detail.insertBefore(panel, detail.firstChild);
   }
 
-  /** Ensure the "Show config grid" toggle is mounted above view_3915. */
-  function ensureToggleButton() {
-    var installView = document.getElementById(INSTALL_VIEW);
-    if (!installView) return;
-    if (document.getElementById(TOGGLE_BTN_ID)) return;
-
-    var btn = document.createElement('button');
-    btn.id = TOGGLE_BTN_ID;
-    btn.type = 'button';
-    btn.textContent = 'Show camera-config grid';
-    btn.addEventListener('click', function () {
-      var on = document.body.classList.toggle(SHOWN_STATE);
-      btn.textContent = on ? 'Hide camera-config grid' : 'Show camera-config grid';
-    });
-
-    var header = installView.querySelector('.view-header');
-    if (header && header.parentNode) {
-      header.parentNode.insertBefore(btn, header.nextSibling);
-    } else {
-      installView.insertBefore(btn, installView.firstChild);
-    }
-  }
-
   // Set true while we're writing our own DOM so the MutationObserver
   // doesn't re-fire merge() in response to our own injections.
   var _selfMutating = false;
@@ -373,7 +330,6 @@
     if (!window.SCW || typeof window.SCW.onViewRender !== 'function') return;
 
     window.SCW.onViewRender(INSTALL_VIEW, function () {
-      ensureToggleButton();
       // tbody is re-built; row set may have changed.
       invalidate();
       installMutationObserver();
