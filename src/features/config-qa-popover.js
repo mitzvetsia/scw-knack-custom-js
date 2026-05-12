@@ -60,6 +60,11 @@
       '  font-size: 12px; font-weight: 700; text-transform: uppercase;',
       '  letter-spacing: 0.04em; color: #374151; margin-bottom: 10px;',
       '}',
+      '.scw-cqa-popover__signoff {',
+      '  font-size: 11px; color: #15803d; margin-bottom: 10px;',
+      '  padding: 6px 10px; background: #f0fdf4; border-radius: 6px;',
+      '  border: 1px solid #bbf7d0;',
+      '}',
       '.scw-cqa-popover__section { margin-bottom: 12px; }',
       '.scw-cqa-popover__label {',
       '  font-size: 11px; font-weight: 700; text-transform: uppercase;',
@@ -179,6 +184,18 @@
     title.className = 'scw-cqa-popover__title';
     title.textContent = 'Camera Config QA';
     pop.appendChild(title);
+
+    if (initial.status === 'Verified') {
+      var sig = document.createElement('div');
+      sig.className = 'scw-cqa-popover__signoff';
+      var who  = (initial.completedBy   || '').trim();
+      var when = (initial.completedDate || '').trim();
+      if (who && when)      sig.textContent = 'Verified by ' + who + ' on ' + when + '.';
+      else if (who)         sig.textContent = 'Verified by ' + who + '.';
+      else if (when)        sig.textContent = 'Verified on ' + when + '.';
+      else                  sig.textContent = 'Verified.';
+      pop.appendChild(sig);
+    }
 
     // Status chips
     var section = document.createElement('div');
@@ -320,6 +337,12 @@
 
   function refreshChit(chit, newState) {
     var state = newState.status === 'Verified' ? 'verified' : 'pending';
+    var stateText = state === 'verified' ? 'Verified' : 'Pending';
+    // Preserve the existing name label (Config 1 / Camera config) that
+    // was set when the chit was first rendered.
+    var nameEl = chit.querySelector('.scw-install-config-qa-chit-name');
+    var nameText = nameEl ? nameEl.textContent : 'Camera config';
+
     chit.classList.remove('is-verified', 'is-pending');
     chit.classList.add('is-' + state);
     chit.setAttribute('data-qa-state', state);
@@ -329,7 +352,8 @@
     var iconCheck = '<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
     var iconClock = '<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>';
     chit.innerHTML = (state === 'verified' ? iconCheck : iconClock) +
-      '<span>' + (state === 'verified' ? 'Verified' : 'Pending') + '</span>';
+      '<span class="scw-install-config-qa-chit-name">' + nameText + '</span>' +
+      '<span class="scw-install-config-qa-chit-state">' + stateText + '</span>';
   }
 
   function showError(msg) {
@@ -350,9 +374,11 @@
     _configId = configId;
     _anchor = anchorEl;
     _initial = {
-      status:  (qaSnapshot && qaSnapshot.status)  || 'Pending',
-      notes:   (qaSnapshot && qaSnapshot.notes)   || '',
-      history: (qaSnapshot && qaSnapshot.history) || ''
+      status:        (qaSnapshot && qaSnapshot.status)        || 'Pending',
+      notes:         (qaSnapshot && qaSnapshot.notes)         || '',
+      history:       (qaSnapshot && qaSnapshot.history)       || '',
+      completedBy:   (qaSnapshot && qaSnapshot.completedBy)   || '',
+      completedDate: (qaSnapshot && qaSnapshot.completedDate) || ''
     };
     _isSaving = false;
 

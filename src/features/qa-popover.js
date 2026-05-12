@@ -233,6 +233,18 @@
       return '';
     }
 
+    // Connection fields render as inner connection-value span with the
+    // identifier text; just textContent the outer for compatibility.
+    function readConnText(fieldKey) {
+      var cell = tr.querySelector('td.' + fieldKey);
+      if (!cell) return '';
+      var span = cell.querySelector(
+        'span[id="' + photoId + '"][data-kn="connection-value"]'
+      );
+      if (!span) return '';
+      var inner = span.querySelector('span[data-kn="connection-value"]');
+      return ((inner ? inner.textContent : span.textContent) || '').trim();
+    }
     var rawStatus = readSpanText(F.status);
     var rawClient = readSpanText(F.client);
     return {
@@ -243,6 +255,8 @@
       notes:      readSpanText(F.notes)   || '',
       history:    readSpanHtml(F.history) || '',
       imgUrl:     readImgUrl(),
+      completedBy:   readConnText(F.completedBy),
+      completedDate: readSpanText(F.completedDate),
       // The completed flag — used to decide whether QA is even possible.
       completed:  /^(yes|true)$/i.test(readSpanText(F.completed) || '')
     };
@@ -412,7 +426,14 @@
     if (alreadySignedOff) {
       var foot = document.createElement('div');
       foot.className = 'scw-qa-popover__signoff';
-      foot.textContent = 'Signed off — click Revert to re-open for review.';
+      var who  = (photo.completedBy   || '').trim();
+      var when = (photo.completedDate || '').trim();
+      var meta = '';
+      if (who && when) meta = 'Signed off by ' + who + ' on ' + when + '.';
+      else if (who)    meta = 'Signed off by ' + who + '.';
+      else if (when)   meta = 'Signed off on ' + when + '.';
+      else             meta = 'Signed off.';
+      foot.textContent = meta + ' Click Revert to re-open for review.';
       pop.appendChild(foot);
     }
 

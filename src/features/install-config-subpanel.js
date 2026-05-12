@@ -188,18 +188,32 @@
       '  font-size: 11px; font-weight: 700; color: #6b7280;',
       '  text-transform: uppercase; letter-spacing: 0.04em;',
       '}',
+      /* Same dimensions as .scw-ws-req-photo-chit so when the chit is
+         injected into the photo strip column it aligns flush with the
+         photo chits above. */
       '.' + SUBPANEL_CLS + '-qa-chit {',
-      '  display: inline-flex; align-items: center; gap: 5px;',
-      '  height: 22px; padding: 0 10px 0 8px;',
+      '  display: flex; align-items: center; gap: 4px;',
+      '  height: 22px; width: 100%; padding: 0 10px 0 8px;',
       '  border-radius: 999px; border: 1px solid transparent;',
-      '  font-size: 11px; font-weight: 700;',
-      '  letter-spacing: 0.04em; text-transform: uppercase;',
-      '  line-height: 1; white-space: nowrap;',
+      '  font-size: 12px; font-weight: 700;',
+      '  letter-spacing: 0.02em; text-transform: uppercase;',
+      '  line-height: 1; white-space: nowrap; overflow: hidden;',
+      '  box-sizing: border-box; flex-shrink: 0;',
       '  cursor: pointer; user-select: none;',
       '  transition: filter 0.12s, box-shadow 0.12s;',
       '}',
       '.' + SUBPANEL_CLS + '-qa-chit:hover {',
       '  filter: brightness(0.97); box-shadow: 0 1px 2px rgba(0,0,0,0.08);',
+      '}',
+      '.' + SUBPANEL_CLS + '-qa-chit-name {',
+      '  overflow: hidden; text-overflow: ellipsis; min-width: 0;',
+      '}',
+      '.' + SUBPANEL_CLS + '-qa-chit-state {',
+      '  flex-shrink: 0; margin-left: auto; padding-left: 8px;',
+      '  font-weight: 600; font-size: 9px; opacity: 0.75;',
+      '}',
+      '.' + SUBPANEL_CLS + '-qa-chit-state::before {',
+      '  content: "·"; display: inline-block; margin-right: 6px; opacity: 0.6;',
       '}',
       '.' + SUBPANEL_CLS + '-qa-chit.is-pending {',
       '  background: #eef2ff; color: #4338ca; border-color: #a5b4fc;',
@@ -231,10 +245,18 @@
       var inner = td.querySelector('span[class^="col-"]') || td;
       return (inner.innerHTML || '').trim();
     }
+    function connText(td) {
+      if (!td) return '';
+      var inner = td.querySelector('span[data-kn="connection-value"] span[data-kn="connection-value"]')
+                || td.querySelector('span[data-kn="connection-value"]');
+      return inner ? (inner.textContent || '').trim() : tdText(td);
+    }
     return {
-      status:  statusOf(tdText(tr.querySelector('td.' + QA.status))),
-      notes:   tdText(tr.querySelector('td.' + QA.notes)),
-      history: historyHtml(tr.querySelector('td.' + QA.history))
+      status:        statusOf(tdText(tr.querySelector('td.' + QA.status))),
+      notes:         tdText(tr.querySelector('td.' + QA.notes)),
+      history:       historyHtml(tr.querySelector('td.' + QA.history)),
+      completedBy:   connText(tr.querySelector('td.' + QA.completedBy)),
+      completedDate: tdText(tr.querySelector('td.' + QA.completedDate))
     };
   }
 
@@ -276,21 +298,28 @@
     return index;
   }
 
-  /** Build the QA state chit for a single config record. */
-  function buildQaChit(cfg) {
-    var state = (cfg.qa && cfg.qa.status === 'Verified') ? 'verified' : 'pending';
+  /** Build the QA state chit for a single config record.  Structure
+   *  mirrors .scw-ws-req-photo-chit (icon · name · state suffix) so it
+   *  drops into the photo strip and inherits the column's width and
+   *  visual rhythm. */
+  function buildQaChit(cfg, index, total) {
+    var state    = (cfg.qa && cfg.qa.status === 'Verified') ? 'verified' : 'pending';
+    var stateText = state === 'verified' ? 'Verified' : 'Pending';
+    var nameText  = (total && total > 1) ? ('Config ' + (index + 1)) : 'Camera config';
     var chit = document.createElement('span');
     chit.className = SUBPANEL_CLS + '-qa-chit is-' + state;
     chit.setAttribute('data-config-id', cfg.id);
     chit.setAttribute('data-qa-state', state);
-    var iconCheck = '<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
-    var iconClock = '<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>';
-    chit.innerHTML = (state === 'verified' ? iconCheck : iconClock) +
-      '<span>' + (state === 'verified' ? 'Verified' : 'Pending') + '</span>';
     chit.title = state === 'verified'
       ? 'Config verified — click to revert'
       : 'Click to verify this config';
-    chit.addEventListener('click', function () {
+    var iconCheck = '<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+    var iconClock = '<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>';
+    chit.innerHTML = (state === 'verified' ? iconCheck : iconClock) +
+      '<span class="' + SUBPANEL_CLS + '-qa-chit-name">' + nameText + '</span>' +
+      '<span class="' + SUBPANEL_CLS + '-qa-chit-state">' + stateText + '</span>';
+    chit.addEventListener('click', function (e) {
+      e.stopPropagation();
       if (window.SCW && SCW.configQaPopover && typeof SCW.configQaPopover.open === 'function') {
         SCW.configQaPopover.open(chit, cfg.id, cfg.qa);
       }
@@ -322,18 +351,17 @@
     for (var c = 0; c < configs.length; c++) {
       var cfg = configs[c];
 
-      // Per-config header row with a QA state chit (one chit per
-      // config record).  Click → opens config-qa-popover.
-      if (configs.length > 1 || cfg.qa) {
+      // When there are multiple configs, label each section with
+      // "Config N".  The QA chit itself lives in the photo-strip
+      // column above (see injectQaChitsIntoPhotoStrip below) so it
+      // visually aligns directly under the photo QA chits.
+      if (configs.length > 1) {
         var header = document.createElement('div');
         header.className = SUBPANEL_CLS + '-section-head';
         var hLabel = document.createElement('span');
         hLabel.className = SUBPANEL_CLS + '-section-label';
-        hLabel.textContent = configs.length > 1 ? 'Config ' + (c + 1) : '';
+        hLabel.textContent = 'Config ' + (c + 1);
         header.appendChild(hLabel);
-        if (cfg.qa) {
-          header.appendChild(buildQaChit(cfg));
-        }
         panel.appendChild(header);
       }
 
@@ -387,6 +415,33 @@
     // accordion is closed, since it lives inside the collapsible
     // panel).
     detail.insertBefore(panel, detail.firstChild);
+
+    // Mirror the per-config QA chits into the row's photo-strip column
+    // so they stack directly beneath the photo QA chits at matching
+    // width — same QA-at-a-glance treatment for both photos and configs.
+    injectQaChitsIntoPhotoStrip(wsTr, configs);
+  }
+
+  /**
+   * Append one QA chit per config into the row header's photo-strip
+   * column (.scw-ws-req-photos).  The chit shares the column's flex
+   * layout so width matches the photo chits above and the icons +
+   * state suffix align vertically with the photo chit content.
+   */
+  function injectQaChitsIntoPhotoStrip(wsTr, configs) {
+    var photoStrip = wsTr.querySelector(
+      '.scw-ws-card .scw-ws-summary .scw-ws-req-photos'
+    );
+    if (!photoStrip) return;
+
+    // Remove any chits we injected on a prior merge.
+    var prior = photoStrip.querySelectorAll('.' + SUBPANEL_CLS + '-qa-chit');
+    for (var p = 0; p < prior.length; p++) prior[p].remove();
+
+    for (var c = 0; c < configs.length; c++) {
+      if (!configs[c].qa) continue;
+      photoStrip.appendChild(buildQaChit(configs[c], c, configs.length));
+    }
   }
 
   // Set true while we're writing our own DOM so the MutationObserver

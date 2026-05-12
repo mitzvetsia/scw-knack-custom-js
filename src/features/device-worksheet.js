@@ -6034,7 +6034,13 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
           if (orVal === 'no' || orVal === 'false') allowShow = true;
         }
         if (!allowShow) {
-          var targetGroup = card.querySelector('[data-scw-fields="' + swDesc.key + '"]');
+          // Summary groups use [data-scw-fields="<key>"] (plural);
+          // detail-panel rows use [data-scw-field="<key>"] (singular).
+          // Hide whichever is present.
+          var targetGroup = card.querySelector(
+            '[data-scw-fields="' + swDesc.key + '"], ' +
+            '[data-scw-field="'  + swDesc.key + '"]'
+          );
           if (targetGroup) targetGroup.style.display = 'none';
         }
       }
