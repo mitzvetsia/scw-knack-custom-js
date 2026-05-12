@@ -131,6 +131,39 @@
       '.' + SUBPANEL_CLS + '-cell-empty {',
       '  color: #94a3b8;',
       '}',
+      /* Moved-in source td — strip table styling, give it a clean
+         editable surface that matches the rest of the detail panel. */
+      'td.' + SUBPANEL_CLS + '-cell-td {',
+      '  display: block !important;',
+      '  width: 100% !important;',
+      '  padding: 4px 8px !important;',
+      '  margin: 0 !important;',
+      '  border: 1px solid #e5e7eb !important;',
+      '  border-radius: 4px;',
+      '  background: #fff !important;',
+      '  font-size: 13px !important;',
+      '  color: #1f2937 !important;',
+      '  word-break: break-word;',
+      '  overflow-wrap: anywhere;',
+      '  min-height: 26px;',
+      '  box-sizing: border-box;',
+      '  cursor: pointer;',
+      '  transition: border-color 0.12s, box-shadow 0.12s;',
+      '}',
+      'td.' + SUBPANEL_CLS + '-cell-td:hover {',
+      '  border-color: #93c5fd !important;',
+      '  box-shadow: 0 0 0 2px rgba(59,130,246,0.12);',
+      '}',
+      'td.' + SUBPANEL_CLS + '-cell-td.' + SUBPANEL_CLS + '-cell-empty {',
+      '  color: #94a3b8 !important;',
+      '  font-style: italic;',
+      '}',
+      'td.' + SUBPANEL_CLS + '-cell-td.' + SUBPANEL_CLS + '-cell-empty::before {',
+      '  content: "Click to add";',
+      '}',
+      'td.' + SUBPANEL_CLS + '-cell-td.' + SUBPANEL_CLS + '-cell-empty > * {',
+      '  display: none !important;',
+      '}',
       /* On narrower viewports collapse to 2 cols */
       '@media (max-width: 900px) {',
       '  .' + SUBPANEL_CLS + '-grid { grid-template-columns: 1fr 1fr; }',
@@ -141,15 +174,10 @@
 
   // ── Helpers ─────────────────────────────────────────────────────
 
-  /** Read a cell's html + text. Preserves spaces; only strips &nbsp;. */
-  function readCell(tr, fieldKey) {
-    var td = tr.querySelector('td.' + fieldKey);
-    if (!td) return { html: '', text: '' };
-    // The col-N wrapper exists for table cells; fall back to td if missing.
-    var wrapper = td.querySelector('span[class^="col-"]') || td;
-    var html = (wrapper.innerHTML || '').replace(/&nbsp;/g, ' ').trim();
-    var text = (wrapper.textContent || '').replace(/ /g, ' ').trim();
-    return { html: html, text: text };
+  /** Plain text from a td (for hash diffing). */
+  function tdText(td) {
+    if (!td) return "";
+    return (td.textContent || "").replace(/\s+/g, " ").trim();
   }
 
   /** Read the connected install-line-item record id from a config row. */
@@ -161,7 +189,16 @@
     return (span.className || '').trim();
   }
 
-  /** Build { lineItemId → [configRec, ...] } from view_3916 DOM. */
+  /**
+   * Build { lineItemId → [configRec, ...] } from view_3916 DOM.
+   *
+   * Each configRec holds REFERENCES to the source <td> elements (not
+   * copies of text), so injectSubpanel can MOVE them into the worksheet
+   * detail panel.  Keeping the actual td means Knack's native inline-
+   * edit (cell-edit class + click handler) still works — click opens
+   * Knack's modal, save fires view_3916 re-render which triggers our
+   * merge() and re-grafts the fresh cells.
+   */
   function buildConfigIndex() {
     var index = {};
     var configView = document.getElementById(CONFIG_VIEW);
@@ -171,9 +208,9 @@
       var tr = rows[i];
       var lineItemId = readLineItemId(tr);
       if (!lineItemId) continue;
-      var cfg = { id: tr.id, fields: {} };
+      var cfg = { id: tr.id, cells: {} };
       for (var f = 0; f < FIELDS.length; f++) {
-        cfg.fields[FIELDS[f].key] = readCell(tr, FIELDS[f].key);
+        cfg.cells[FIELDS[f].key] = tr.querySelector('td.' + FIELDS[f].key) || null;
       }
       if (!index[lineItemId]) index[lineItemId] = [];
       index[lineItemId].push(cfg);
@@ -209,7 +246,7 @@
 
       for (var f = 0; f < FIELDS.length; f++) {
         var spec = FIELDS[f];
-        var val = cfg.fields[spec.key] || { html: '', text: '' };
+        var sourceTd = cfg.cells[spec.key];
 
         var cell = document.createElement('div');
         cell.className = SUBPANEL_CLS + '-cell';
@@ -219,15 +256,24 @@
         lbl.textContent = spec.label;
         cell.appendChild(lbl);
 
-        var v = document.createElement('div');
-        v.className = SUBPANEL_CLS + '-cell-value';
-        if (val.text) {
-          v.innerHTML = val.html || val.text;
+        if (sourceTd) {
+          // Move the actual td so Knack's cell-edit click handler keeps
+          // firing and saves go through Knack's native modal.  Add a
+          // local class so we can restyle it (strip table borders,
+          // align with the rest of the detail panel typography).
+          sourceTd.classList.add(SUBPANEL_CLS + '-cell-td');
+          if (tdText(sourceTd) === '') {
+            sourceTd.classList.add(SUBPANEL_CLS + '-cell-empty');
+          } else {
+            sourceTd.classList.remove(SUBPANEL_CLS + '-cell-empty');
+          }
+          cell.appendChild(sourceTd);
         } else {
+          var v = document.createElement('div');
+          v.className = SUBPANEL_CLS + '-cell-value ' + SUBPANEL_CLS + '-cell-empty';
           v.textContent = '—';
-          v.classList.add(SUBPANEL_CLS + '-cell-empty');
+          cell.appendChild(v);
         }
-        cell.appendChild(v);
         grid.appendChild(cell);
       }
 
@@ -265,8 +311,7 @@
         var cfg = arr[a];
         parts.push(cfg.id);
         for (var f = 0; f < FIELDS.length; f++) {
-          var v = cfg.fields[FIELDS[f].key];
-          parts.push(v ? v.text : '');
+          parts.push(tdText(cfg.cells[FIELDS[f].key]));
         }
       }
     }
