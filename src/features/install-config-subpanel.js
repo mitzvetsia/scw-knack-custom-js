@@ -42,12 +42,10 @@
     { key: 'field_2843', label: 'Client notes' }
   ];
 
-  var SUBPANEL_CLS    = 'scw-install-config';
-  var FLAGS_STRIP_CLS = 'scw-install-flags-strip';
-  var FLAG_FIELDS     = ['field_2807', 'field_2805', 'field_2806'];   // existing-cabling, exterior, plenum
-  var CSS_ID          = 'scw-install-config-css';
-  var TOGGLE_BTN_ID   = 'scw-install-config-toggle';
-  var SHOWN_STATE     = 'scw-install-config-grid-shown';
+  var SUBPANEL_CLS  = 'scw-install-config';
+  var CSS_ID        = 'scw-install-config-css';
+  var TOGGLE_BTN_ID = 'scw-install-config-toggle';
+  var SHOWN_STATE   = 'scw-install-config-grid-shown';
 
   // ── CSS ─────────────────────────────────────────────────────────
   function injectCss() {
@@ -66,59 +64,33 @@
       '  padding: 14px 20px 14px 70px;',
       '}',
 
-      /* ── view_3915 detail-panel sectioning ──
-         Two sections, "Edit" on the left, "Info" on the right. */
-      '#' + INSTALL_VIEW + ' .scw-ws-sections > .scw-ws-section::before {',
-      '  display: block;',
-      '  font-size: 11px;',
-      '  font-weight: 700;',
-      '  letter-spacing: 0.6px;',
-      '  text-transform: uppercase;',
-      '  color: #4b5563;',
-      '  margin-bottom: 10px;',
-      '  padding-bottom: 4px;',
-      '  border-bottom: 1px solid #e5e7eb;',
-      '}',
-      '#' + INSTALL_VIEW + ' .scw-ws-sections > .scw-ws-section:first-child::before {',
-      '  content: "Edit";',
-      '  color: #0f4c75;',
-      '}',
-      '#' + INSTALL_VIEW + ' .scw-ws-sections > .scw-ws-section:last-child:not(:first-child)::before {',
-      '  content: "Info";',
-      '}',
-
-      /* ── Existing / Exterior / Plenum as an informational flag strip ──
-         showWhenFieldIsYes hides the row when value != Yes, and
-         relocateFlagChips additionally filters out display:none nodes
-         before moving them, so any chip in this strip ⇒ the flag is
-         set.  Slate-blue palette, NOT amber — these are informational
-         tags, not warnings. */
-      '.' + FLAGS_STRIP_CLS + ' {',
-      '  display: flex;',
-      '  flex-wrap: wrap;',
-      '  gap: 6px;',
-      '  padding: 12px 20px 4px 70px;',
-      '}',
-      '#' + INSTALL_VIEW + ' .' + FLAGS_STRIP_CLS + ' .scw-ws-field {',
-      '  display: inline-flex;',
-      '  align-items: center;',
-      '  padding: 4px 12px;',
-      '  margin: 0;',
-      '  background: #e0f2fe;',         /* sky-100 */
-      '  border: 1px solid #7dd3fc;',    /* sky-300 */
+      /* ── Existing-cabling / Exterior / Plenum as inline info chips ──
+         The fields live in the detail's Info section as normal field
+         rows.  showWhenFieldIsYes hides the row when value != Yes via
+         inline style="display: none", so we MUST NOT override the
+         host .scw-ws-field's display — we only restyle the LABEL
+         (which becomes the chip) and HIDE the value.  Sky-blue
+         palette so it reads informational, not as a warning. */
+      '#' + INSTALL_VIEW + ' .scw-ws-field[data-scw-field="field_2807"] .scw-ws-field-label,',
+      '#' + INSTALL_VIEW + ' .scw-ws-field[data-scw-field="field_2805"] .scw-ws-field-label,',
+      '#' + INSTALL_VIEW + ' .scw-ws-field[data-scw-field="field_2806"] .scw-ws-field-label {',
+      '  display: inline-block;',
+      '  width: auto;',
+      '  min-width: 0;',
+      '  padding: 3px 10px;',
+      '  background: #e0f2fe;',
+      '  border: 1px solid #7dd3fc;',
+      '  color: #075985;',
       '  border-radius: 999px;',
-      '}',
-      '#' + INSTALL_VIEW + ' .' + FLAGS_STRIP_CLS + ' .scw-ws-field-label {',
       '  font-size: 12px;',
       '  font-weight: 700;',
-      '  color: #075985;',               /* sky-800 */
       '  text-transform: uppercase;',
       '  letter-spacing: 0.4px;',
-      '  padding: 0;',
-      '  min-width: 0;',
       '  white-space: nowrap;',
       '}',
-      '#' + INSTALL_VIEW + ' .' + FLAGS_STRIP_CLS + ' .scw-ws-field-value {',
+      '#' + INSTALL_VIEW + ' .scw-ws-field[data-scw-field="field_2807"] .scw-ws-field-value,',
+      '#' + INSTALL_VIEW + ' .scw-ws-field[data-scw-field="field_2805"] .scw-ws-field-value,',
+      '#' + INSTALL_VIEW + ' .scw-ws-field[data-scw-field="field_2806"] .scw-ws-field-value {',
       '  display: none;',
       '}',
       '.' + SUBPANEL_CLS + '-title {',
@@ -227,48 +199,6 @@
       index[lineItemId].push(cfg);
     }
     return index;
-  }
-
-  /** Lift Existing-Cabling / Exterior / Plenum out of the detail
-   *  sections (where they sit awkwardly between Mounting and Drop
-   *  Length) into a dedicated chip strip at the top of the detail
-   *  panel.  These render only when the value is Yes (gated by
-   *  showWhenFieldIsYes in the WORKSHEET_CONFIG), so we filter to
-   *  visible chips only — device-worksheet sets inline display:none
-   *  on rows whose gate fails. */
-  function relocateFlagChips(wsTr) {
-    var detail = wsTr.querySelector('.scw-ws-card > .scw-ws-detail');
-    if (!detail) return;
-
-    var chips = [];
-    for (var i = 0; i < FLAG_FIELDS.length; i++) {
-      var node = detail.querySelector(
-        '.scw-ws-sections .scw-ws-field[data-scw-field="' + FLAG_FIELDS[i] + '"]'
-      );
-      if (!node) continue;
-      // Skip rows that showWhenFieldIsYes already hid.
-      if (node.style.display === 'none') continue;
-      chips.push(node);
-    }
-
-    var existing = detail.querySelector(':scope > .' + FLAGS_STRIP_CLS);
-    if (!chips.length) {
-      if (existing) existing.parentNode.removeChild(existing);
-      return;
-    }
-
-    var strip = existing;
-    if (!strip) {
-      strip = document.createElement('div');
-      strip.className = FLAGS_STRIP_CLS;
-      // Insert at the top of the detail panel so the strip lives
-      // INSIDE the accordion (hidden when the row is collapsed) and
-      // appears before the sections grid when open.
-      detail.insertBefore(strip, detail.firstChild);
-    } else {
-      while (strip.firstChild) strip.removeChild(strip.firstChild);
-    }
-    for (var c = 0; c < chips.length; c++) strip.appendChild(chips[c]);
   }
 
   /** Inject the configs sub-panel into one worksheet card. The panel
@@ -404,9 +334,6 @@
         if (needsInject) {
           injectSubpanel(wsRows[i], index[wsRows[i].id] || []);
         }
-        // Lift the Existing/Exterior/Plenum chips into a flag strip
-        // at the top of the detail panel.
-        relocateFlagChips(wsRows[i]);
       }
     } finally {
       // Defer clearing so the observer ignores the microtask batch

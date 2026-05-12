@@ -194,7 +194,7 @@
           plenumChit:       { key: 'field_2806', type: 'readOnly', label: 'Plenum',           showWhenFieldIsYes: 'field_2806' },
 
           // ── Detail panel ──
-          mounting:         { key: 'field_2818', type: 'readOnly' },
+          mdfIdf:           { key: 'field_2818', type: 'readOnly', skipEmpty: true },
           // Camera/Reader rows are CHILDREN in the connection cascade —
           // they only show the back-connection to their parent network
           // device.  The forward "Connected Devices" editor lives in
@@ -208,14 +208,26 @@
           conduitFeet:      { key: 'field_2803', type: 'readOnly' }
         },
         summaryLayout: ['installStatus'],
-        // Detail panel groups action-able fields on the left and
-        // read-only/info fields on the right.  Section headers ("Edit"
-        // / "Info") are painted in via #view_3915 CSS in
-        // install-config-subpanel.js.
+        // Detail-panel groupings: left = the action / editable bits;
+        // right = read-only / info.  Existing-cabling, exterior, and
+        // plenum sit in Info as flag-chip rows (showWhenFieldIsYes
+        // hides them when off, install-config-subpanel restyles them).
         detailLayout: {
           left:  ['connectedTo', 'scwNotes'],
-          right: ['mounting', 'existingCabling', 'exteriorChit', 'plenumChit', 'dropLength', 'conduitFeet', 'laborDescription']
+          right: ['existingCabling', 'exteriorChit', 'plenumChit', 'mdfIdf', 'dropLength', 'conduitFeet', 'laborDescription']
         },
+        // Row sort.  view_3915's table is the install line items
+        // object — none of device-worksheet's default sort fields
+        // (field_2218 / field_2240 / field_1951) live on that object,
+        // so without an explicit rule the worksheet ends up reordering
+        // unpredictably.  Sort by drop number then source-line label
+        // so cameras and their accessories sit next to each other.
+        rowSort: [
+          { field: 'field_2798', order: 'asc', type: 'number' },  // LABEL_drop number
+          { field: 'field_2819', order: 'asc', type: 'text'   },  // REL_SOURCE_SOW_proposed line item (E-001 etc.)
+          { field: 'field_2816', order: 'asc', type: 'number' }   // SYS_auto increment as final tiebreaker
+        ],
+        syntheticGroupsPosition: 'bottom',
         bucketField: 'field_2822',
         // ── Override: used for all NON-camera/reader rows
         //    (Assumptions, Mounting Hardware) ──
