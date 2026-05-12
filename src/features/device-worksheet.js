@@ -1585,6 +1585,59 @@ td.${P}-sum-move {
   box-sizing: border-box;
   flex-shrink: 0;
 }
+
+/* ── Install status segmented picker ──────────────────────────────
+   Width pinned so labels render in full (no "In Progres" / "Not
+   Starte" truncation) and the column lines up across rows.  Selected
+   chip is color-coded by state so the row's status reads at a glance
+   without having to parse which of four segments is highlighted. */
+.${P}-sum-right .${P}-sum-group--install-status {
+  width: 360px;
+  flex-shrink: 0;
+}
+.${P}-sum-group--install-status .${P}-radio-chips {
+  width: 100%;
+}
+.${P}-sum-group--install-status .${P}-radio-chip {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 4px 6px;
+  font-size: 11px;
+}
+/* Selected-state colors — override the generic green is-selected
+   style.  Higher specificity (group--install-status .is-selected) so
+   these win against the global .radio-chip.is-selected rule. */
+.${P}-sum-group--install-status .${P}-radio-chip.is-selected[data-option="Not Started"] {
+  background: #e5e7eb;
+  color: #374151;
+  border-color: #9ca3af;
+  box-shadow: none;
+}
+.${P}-sum-group--install-status .${P}-radio-chip.is-selected[data-option="In Progress"] {
+  background: #fef3c7;
+  color: #92400e;
+  border-color: #fbbf24;
+  box-shadow: none;
+}
+.${P}-sum-group--install-status .${P}-radio-chip.is-selected[data-option="Blocked"] {
+  background: #fee2e2;
+  color: #991b1b;
+  border-color: #fca5a5;
+  box-shadow: none;
+}
+.${P}-sum-group--install-status .${P}-radio-chip.is-selected[data-option="Done"] {
+  background: #dcfce7;
+  color: #15803d;
+  border-color: #86efac;
+  box-shadow: none;
+}
+/* Segmented border-merge fix: when In Progress / Blocked / Done is
+   selected, the adjacent unselected chip's left border still inherits
+   green from the global .is-selected + .is-unselected rule.  Reset
+   that to the gray default so the seam color matches the new palette. */
+.${P}-sum-group--install-status .${P}-radio-chip.is-selected + .${P}-radio-chip.is-unselected {
+  border-left-color: #d1d5db;
+}
 .${P}-req-photos {
   display: flex;
   flex-direction: column;
