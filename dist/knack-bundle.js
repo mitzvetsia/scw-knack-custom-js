@@ -2532,7 +2532,7 @@ td.${e}-sum-move {
    specificity, the fixed 220px column never applies and long photo
    labels still inflate the column on those rows. */
 .${e}-sum-right .${e}-sum-group--req-photos {
-  width: 220px;
+  width: 300px;
   padding-right: 15px;
   box-sizing: border-box;
   flex-shrink: 0;
