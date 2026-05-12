@@ -1575,7 +1575,11 @@ td.${P}-sum-move {
    column on that row, which under .sum-right { margin-left: auto }
    shifts the whole right cluster left and breaks across-row
    vertical alignment of the chits' left edge. */
-.${P}-sum-group--req-photos {
+/* Scope under .sum-right to win over the generic
+   sum-right > sum-group fit-content rule above — without that extra
+   specificity, the fixed 220px column never applies and long photo
+   labels still inflate the column on those rows. */
+.${P}-sum-right .${P}-sum-group--req-photos {
   width: 220px;
   padding-right: 15px;
   box-sizing: border-box;
