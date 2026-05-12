@@ -219,15 +219,20 @@
           left:  ['mdfIdf', 'connectedTo', 'scwNotes'],
           right: ['existingCabling', 'exteriorChit', 'plenumChit', 'dropLength', 'conduitFeet', 'laborDescription']
         },
-        // Row sort — by the proposal bucket's sort-order field, same
-        // as the SOW/Survey worksheets (view_3596 line 651, view_3610
-        // line 662 etc.).  Requires field_2218 to be exposed as a
-        // column on view_3915 in Knack Builder so the worksheet can
-        // read it from each row's td.
+        // Row sort — within each Knack-native MDF/IDF group, order
+        // by the proposal bucket's sort-order field (field_2218).
+        // Same shape as view_3596 line 651, view_3610 line 662 etc.
+        // Requires field_2218 to be exposed as a column on view_3915
+        // in Knack Builder so the worksheet can read it from each
+        // row's td.
+        //
+        // No syntheticBucketGroups / syntheticGroupsPosition here —
+        // we want Knack's native grouping (by MDF/IDF) preserved
+        // verbatim, not Assumptions pulled into a separate synthetic
+        // section.
         rowSort: [
           { field: 'field_2218', order: 'asc', type: 'number' }
         ],
-        syntheticGroupsPosition: 'bottom',
         bucketField: 'field_2822',
         // ── Override: used for all NON-camera/reader rows
         //    (Assumptions, Mounting Hardware) ──
@@ -278,10 +283,7 @@
             descLabel: 'Mounting Hardware',
             rowClass: 'scw-row--mounting-hw',
           },
-        },
-        syntheticBucketGroups: [
-          { cls: 'scw-row--assumptions', label: 'Project Wide Assumptions' },
-        ]
+        }
       },
       {
         viewIds: ['view_3559', 'view_3577', 'view_3617', 'view_3803'],
