@@ -87,11 +87,12 @@
       '  content: "Info";',
       '}',
 
-      /* ── Existing / Exterior / Plenum as a flag-callout strip ──
-         showWhenFieldIsYes hides the row when value != Yes, so any time
-         these render the value IS Yes — collapse the label/value layout
-         to a chip-style flag and lift them into their own strip at the
-         top of the detail panel (handled by relocateFlagChips()). */
+      /* ── Existing / Exterior / Plenum as an informational flag strip ──
+         showWhenFieldIsYes hides the row when value != Yes, and
+         relocateFlagChips additionally filters out display:none nodes
+         before moving them, so any chip in this strip ⇒ the flag is
+         set.  Slate-blue palette, NOT amber — these are informational
+         tags, not warnings. */
       '.' + FLAGS_STRIP_CLS + ' {',
       '  display: flex;',
       '  flex-wrap: wrap;',
@@ -99,18 +100,18 @@
       '  padding: 12px 20px 4px 70px;',
       '}',
       '#' + INSTALL_VIEW + ' .' + FLAGS_STRIP_CLS + ' .scw-ws-field {',
-      '  display: inline-flex !important;',
+      '  display: inline-flex;',
       '  align-items: center;',
       '  padding: 4px 12px;',
       '  margin: 0;',
-      '  background: #fef3c7;',
-      '  border: 1px solid #fcd34d;',
+      '  background: #e0f2fe;',         /* sky-100 */
+      '  border: 1px solid #7dd3fc;',    /* sky-300 */
       '  border-radius: 999px;',
       '}',
       '#' + INSTALL_VIEW + ' .' + FLAGS_STRIP_CLS + ' .scw-ws-field-label {',
       '  font-size: 12px;',
       '  font-weight: 700;',
-      '  color: #92400e;',
+      '  color: #075985;',               /* sky-800 */
       '  text-transform: uppercase;',
       '  letter-spacing: 0.4px;',
       '  padding: 0;',
@@ -232,8 +233,9 @@
    *  sections (where they sit awkwardly between Mounting and Drop
    *  Length) into a dedicated chip strip at the top of the detail
    *  panel.  These render only when the value is Yes (gated by
-   *  showWhenFieldIsYes in the WORKSHEET_CONFIG), so their presence
-   *  alone signals the flag is set. */
+   *  showWhenFieldIsYes in the WORKSHEET_CONFIG), so we filter to
+   *  visible chips only — device-worksheet sets inline display:none
+   *  on rows whose gate fails. */
   function relocateFlagChips(wsTr) {
     var detail = wsTr.querySelector('.scw-ws-card > .scw-ws-detail');
     if (!detail) return;
@@ -243,7 +245,10 @@
       var node = detail.querySelector(
         '.scw-ws-sections .scw-ws-field[data-scw-field="' + FLAG_FIELDS[i] + '"]'
       );
-      if (node) chips.push(node);
+      if (!node) continue;
+      // Skip rows that showWhenFieldIsYes already hid.
+      if (node.style.display === 'none') continue;
+      chips.push(node);
     }
 
     var existing = detail.querySelector(':scope > .' + FLAGS_STRIP_CLS);
@@ -256,43 +261,26 @@
     if (!strip) {
       strip = document.createElement('div');
       strip.className = FLAGS_STRIP_CLS;
+      // Insert at the top of the detail panel so the strip lives
+      // INSIDE the accordion (hidden when the row is collapsed) and
+      // appears before the sections grid when open.
       detail.insertBefore(strip, detail.firstChild);
     } else {
-      // Wipe previous chips so reorder runs cleanly.
       while (strip.firstChild) strip.removeChild(strip.firstChild);
     }
     for (var c = 0; c < chips.length; c++) strip.appendChild(chips[c]);
   }
 
-  /** Reorder a card's children so visual order is:
-   *    summary → photo strip → camera config → detail panel
-   *  appendChild on an existing child just moves it, no clone. */
-  function reorderCard(wsTr) {
-    var card = wsTr.querySelector('.scw-ws-card');
-    if (!card) return;
-    var summary  = card.querySelector(':scope > .scw-ws-summary');
-    var photo    = card.querySelector(':scope > .scw-ws-photo-wrap');
-    var subpanel = card.querySelector(':scope > .' + SUBPANEL_CLS);
-    var detail   = card.querySelector(':scope > .scw-ws-detail');
-    if (summary)  card.appendChild(summary);
-    if (photo)    card.appendChild(photo);
-    if (subpanel) card.appendChild(subpanel);
-    if (detail)   card.appendChild(detail);
-  }
-
-  /** Inject the configs sub-panel into one worksheet card. */
+  /** Inject the configs sub-panel into one worksheet card. The panel
+   *  lives INSIDE .scw-ws-detail so it follows the accordion (hidden
+   *  when the row is collapsed). */
   function injectSubpanel(wsTr, configs) {
     var prior = wsTr.querySelector('.' + SUBPANEL_CLS);
     if (prior) prior.parentNode.removeChild(prior);
     if (!configs || !configs.length) return;
 
-    // Mount as a direct child of .scw-ws-card, NOT inside .scw-ws-detail.
-    // reorderCard() will slot it between the photo strip and the detail
-    // panel.  Falls back to .scw-ws-detail if for some reason the card
-    // wrapper isn't found.
-    var card = wsTr.querySelector('.scw-ws-card');
-    var mount = card || wsTr.querySelector('.scw-ws-detail');
-    if (!mount) return;
+    var detail = wsTr.querySelector('.scw-ws-card > .scw-ws-detail');
+    if (!detail) return;
 
     var panel = document.createElement('div');
     panel.className = SUBPANEL_CLS;
@@ -342,16 +330,11 @@
       }
     }
 
-    // If mounting on the card and the detail panel exists, insert the
-    // sub-panel BEFORE the detail panel so the visual order is
-    // photo → config → detail.  reorderCard() will further ensure the
-    // photo strip slots between summary and config.
-    var detail = mount.querySelector(':scope > .scw-ws-detail');
-    if (detail) {
-      mount.insertBefore(panel, detail);
-    } else {
-      mount.appendChild(panel);
-    }
+    // Mount as the FIRST child of .scw-ws-detail so the camera config
+    // sits above the sections grid (and stays hidden when the row
+    // accordion is closed, since it lives inside the collapsible
+    // panel).
+    detail.insertBefore(panel, detail.firstChild);
   }
 
   /** Ensure the "Show config grid" toggle is mounted above view_3915. */
@@ -424,10 +407,6 @@
         // Lift the Existing/Exterior/Plenum chips into a flag strip
         // at the top of the detail panel.
         relocateFlagChips(wsRows[i]);
-        // Always re-assert visual order — Knack/device-worksheet may
-        // have rebuilt the card and reset the photo-wrap position even
-        // when no config data changed.
-        reorderCard(wsRows[i]);
       }
     } finally {
       // Defer clearing so the observer ignores the microtask batch
