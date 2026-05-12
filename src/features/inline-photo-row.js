@@ -896,6 +896,162 @@
     });
   }
 
+  // ── Direct upload via Make webhook ──────────────────────────────
+  // Browser reads the file as base64 and POSTs to MAKE_PHOTO_UPLOAD_WEBHOOK.
+  // Make decodes + uploads to Knack's REST API. We can't call the REST
+  // API directly because that needs the X-Knack-REST-API-Key, which we
+  // can't ship in client JS.
+
+  // photoRecordId → true while an upload + post-upload poll is in flight.
+  // processView consults this to re-apply the spinner overlay if the
+  // strip re-renders during the poll window.
+  var pendingUploads = {};
+  var POLL_INTERVAL_MS = 4000;
+  var POLL_TIMEOUT_MS  = 90000;
+
+  function readFileAsBase64(file) {
+    return new Promise(function (resolve, reject) {
+      var reader = new FileReader();
+      reader.onload = function () {
+        // result is "data:image/jpeg;base64,XXXXX" — strip the prefix.
+        var s = reader.result || '';
+        var comma = String(s).indexOf(',');
+        resolve(comma >= 0 ? String(s).substring(comma + 1) : String(s));
+      };
+      reader.onerror = function () { reject(reader.error); };
+      reader.readAsDataURL(file);
+    });
+  }
+
+  function getTriggeredBy() {
+    try {
+      var u = window.Knack && Knack.getUserAttributes && Knack.getUserAttributes();
+      if (u) return { id: u.id || '', name: u.name || '', email: u.email || '' };
+    } catch (e) { /* ignore */ }
+    return { id: '', name: '', email: '' };
+  }
+
+  function dispatchPhotoUpload(card, photoRecordId, lineItemId, viewId, file) {
+    var ui = buildDropUI(card);
+    var webhookUrl = (window.SCW && window.SCW.CONFIG &&
+                      window.SCW.CONFIG.MAKE_PHOTO_UPLOAD_WEBHOOK) || '';
+    if (!webhookUrl) {
+      console.error('[SCW] MAKE_PHOTO_UPLOAD_WEBHOOK not configured');
+      ui.setError('Upload not configured');
+      return;
+    }
+    if (!file) return;
+    // Conservative cap — base64 inflates by 4/3, Make webhooks bog down
+    // past ~25MB body. iPhone photos are typically 3–8MB so this is plenty.
+    if (file.size > 20 * 1024 * 1024) {
+      ui.setError('File too large (max 20MB)');
+      return;
+    }
+
+    pendingUploads[photoRecordId] = true;
+    ui.setPending();
+
+    readFileAsBase64(file).then(function (b64) {
+      return fetch(webhookUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          photoRecordId: photoRecordId,
+          lineItemId:    lineItemId,
+          viewId:        viewId,
+          filename:      file.name || 'photo.jpg',
+          mimeType:      file.type || 'image/jpeg',
+          sizeBytes:     file.size,
+          dataBase64:    b64,
+          triggeredBy:   getTriggeredBy()
+        })
+      });
+    }).then(function (resp) {
+      // No-cors webhooks return opaque responses sometimes; treat 0 + ok
+      // both as "accepted" and let the poll loop decide success.
+      if (resp && resp.status && resp.status >= 400) {
+        throw new Error('Webhook returned ' + resp.status);
+      }
+      pollForPhotoArrival(photoRecordId, viewId);
+    }).catch(function (err) {
+      console.error('[SCW] Photo upload error:', err);
+      delete pendingUploads[photoRecordId];
+      ui.setError('Upload failed — click to retry');
+    });
+  }
+
+  // After the webhook succeeds, Make's actual upload to Knack runs
+  // asynchronously. Poll the view's model until the photo record's
+  // field_771 has an image URL, then stop — the natural re-render path
+  // (model.fetch → knack-view-render → processView) will swap the spinner
+  // card for the real image card.
+  function pollForPhotoArrival(photoRecordId, viewId) {
+    var startedAt = Date.now();
+
+    function tick() {
+      if (!pendingUploads[photoRecordId]) return;
+
+      var v = window.Knack && Knack.views && Knack.views[viewId];
+      if (!v || !v.model || typeof v.model.fetch !== 'function') {
+        delete pendingUploads[photoRecordId];
+        return;
+      }
+
+      v.model.fetch();
+
+      // Give the fetch + view re-render a beat to settle, then check the
+      // DOM. processView re-runs on knack-view-render and will re-apply
+      // the spinner if pendingUploads still has us.
+      setTimeout(function () {
+        if (photoHasImageInDOM(viewId, photoRecordId)) {
+          delete pendingUploads[photoRecordId];
+          return;
+        }
+        if (Date.now() - startedAt >= POLL_TIMEOUT_MS) {
+          delete pendingUploads[photoRecordId];
+          console.warn('[SCW] Photo upload poll timed out for', photoRecordId);
+          return;
+        }
+        setTimeout(tick, POLL_INTERVAL_MS);
+      }, 1000);
+    }
+
+    setTimeout(tick, POLL_INTERVAL_MS);
+  }
+
+  function photoHasImageInDOM(viewId, photoRecordId) {
+    var viewEl = document.getElementById(viewId);
+    if (!viewEl) return false;
+    // field_771 may render two cells (raw + thumb_14) — either with an
+    // <img> means the upload landed.
+    var spans = viewEl.querySelectorAll(
+      'td[data-field-key="field_771"] span[id][data-kn="connection-value"],' +
+      'td.field_771 span[id][data-kn="connection-value"]'
+    );
+    for (var i = 0; i < spans.length; i++) {
+      if (spans[i].id !== photoRecordId) continue;
+      if (spans[i].querySelector('img')) return true;
+    }
+    return false;
+  }
+
+  function openFilePickerForUpload(card, photoRecordId, lineItemId, viewId) {
+    // Per-click <input type=file> — disposable so the same file can be
+    // re-picked after a failed upload without resetting any persistent
+    // input element.
+    var input = document.createElement('input');
+    input.type = 'file';
+    input.accept = 'image/*';
+    input.style.display = 'none';
+    input.addEventListener('change', function () {
+      var file = input.files && input.files[0];
+      if (file) dispatchPhotoUpload(card, photoRecordId, lineItemId, viewId, file);
+      document.body.removeChild(input);
+    });
+    document.body.appendChild(input);
+    input.click();
+  }
+
   /**
    * Build a UI control object for the target card.
    * Lets the callback (or default handler) drive visual state
@@ -1049,16 +1205,41 @@
             empty.innerHTML =
               '<span class="scw-empty-icon">&#128247;</span>' +
               '<span>' + (isMissing ? 'Required' : 'Upload photo') + '</span>';
-            empty.title = photo.type
-              ? 'Upload: ' + photo.type
-              : 'Click to edit photo';
-            (function (rid, vid) {
-              empty.addEventListener('click', function () {
-                var h = editPhotoHash(rid, vid);
-                if (h) navigateToHash(h);
-              });
-            })(photo.id, viewId);
+
+            // Click behaviour: if the upload webhook is configured AND
+            // this is a missing-required card, open a file picker for
+            // inline upload via Make. Otherwise fall back to Knack's edit
+            // modal (the existing affordance).
+            var uploadEnabled = isMissing &&
+              !!(window.SCW && window.SCW.CONFIG &&
+                 window.SCW.CONFIG.MAKE_PHOTO_UPLOAD_WEBHOOK);
+            if (uploadEnabled) {
+              empty.title = 'Click to upload' + (photo.type ? ': ' + photo.type : '');
+              empty.style.cursor = 'pointer';
+              (function (rid, lid, vid, c) {
+                empty.addEventListener('click', function () {
+                  openFilePickerForUpload(c, rid, lid, vid);
+                });
+              })(photo.id, lineItemId, viewId, card);
+            } else {
+              empty.title = photo.type
+                ? 'Upload: ' + photo.type
+                : 'Click to edit photo';
+              (function (rid, vid) {
+                empty.addEventListener('click', function () {
+                  var h = editPhotoHash(rid, vid);
+                  if (h) navigateToHash(h);
+                });
+              })(photo.id, viewId);
+            }
             card.appendChild(empty);
+
+            // If an upload+poll cycle is still in flight for this record,
+            // re-apply the spinner so the visual state survives the
+            // re-render that model.fetch triggers each poll tick.
+            if (pendingUploads[photo.id]) {
+              buildDropUI(card).setPending();
+            }
 
             // Drop helper text (hidden until drag starts)
             if (photo.required && !photo.completed) {

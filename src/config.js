@@ -3,6 +3,30 @@ window.SCW = window.SCW || {};
 window.SCW.CONFIG = window.SCW.CONFIG || {
   VERSION: "dev",
   MAKE_PHOTO_MOVE_WEBHOOK: "https://hook.us1.make.com/7oetygbj2g2hu5fspgtt5kcydjojid81",
+  // Fires when a user clicks an empty *required* photo card and picks a
+  // file. The browser reads the file as base64 and POSTs to this hook.
+  // Make's scenario should:
+  //   1. Decode payload.dataBase64 into a binary file
+  //   2. Upload it to Knack via REST API on the photo record
+  //      (PUT /v1/objects/<photoObject>/records/<photoRecordId> with
+  //       field_771 as a base64-encoded file upload)
+  //   3. Return { success: true } when done (the browser doesn't wait —
+  //      it polls the view until field_771 is populated, then re-renders)
+  //   Request body (application/json):
+  //   {
+  //     photoRecordId: <24-char hex of the photo record being filled>,
+  //     lineItemId:    <24-char hex of the line item the photo belongs to>,
+  //     viewId:        <Knack view id where the upload was triggered>,
+  //     filename:      <original file name from the browser>,
+  //     mimeType:      <e.g. "image/jpeg">,
+  //     sizeBytes:     <pre-base64 byte count, sanity check>,
+  //     dataBase64:    <pure base64 string, no "data:..." prefix>,
+  //     triggeredBy:   { id, name, email }
+  //   }
+  //   Response body: { success: true } or { success: false, error: "..." }
+  // ⚠️  TODO: set this URL once the Make scenario exists. While empty,
+  //     clicking a missing-photo card falls back to Knack's edit modal.
+  MAKE_PHOTO_UPLOAD_WEBHOOK: "",
   MAKE_DELETE_RECORD_WEBHOOK: "https://hook.us1.make.com/uyxdq04zudssvoatvnwywxcjxxil15q7",
   // Fires on "Clone SOW / Create Alternative SOW" button click. Expects:
   //   Request body:  {
