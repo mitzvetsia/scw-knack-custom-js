@@ -467,11 +467,11 @@
           // Restored from commit eaf720f — was accidentally dropped in
           // 7794df2 ('Worksheet sort presets: dropdown replaces thead')
           // while adding sortPresets, which silently broke chevron
-          // expansion for non-camera rows on view_3610 (Networking,
-          // Other Equipment, Mounting Hardware). Cameras kept working
-          // because their bucketOverride has its own detailLayout.
+          // expansion for non-camera rows on view_3610. selectedSubBid
+          // (field_2630) and subBidLock (field_2634) intentionally
+          // omitted at user request.
           left:  ['connectedDevice', 'mountingHardware'],
-          right: ['scwNotes', 'selectedSubBid', 'surveyNotes', 'subBidLock']
+          right: ['scwNotes', 'surveyNotes']
         },
         sortPresets: [
           { id: 'default',  label: 'Default' },
@@ -559,8 +559,10 @@
             'subBid', 'plusHrs', 'plusMat', 'installFee', 'sow'
           ],
           detailLayout: {
+            // selectedSubBid (field_2630) and subBidLock (field_2634)
+            // intentionally omitted at user request.
             left:  ['dropPrefix', 'dropNumber', 'mountingHardware'],
-            right: ['connectedDevice', 'dropLength', 'conduit', 'scwNotes', 'selectedSubBid', 'subBidLock']
+            right: ['connectedDevice', 'dropLength', 'conduit', 'scwNotes']
           }
         }
       },
