@@ -49,6 +49,32 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   // record.  Response shape mirrors photo upload.  Same TODO note —
   // empty URL falls back to Knack's edit-form click navigation.
   MAKE_DOC_UPLOAD_WEBHOOK: "https://hook.us1.make.com/6n07ovcxexg4ygckwh8scydh22n71s3o",
+  // Closeout-doc QA update webhook.  Fires from the QA popover when the
+  // reviewer marks a doc Pending/Pass/Fail + saves notes.
+  //   Request body (application/json):
+  //   {
+  //     kind:         'doc-qa-update',
+  //     docRecordId:  <DOC record id>,
+  //     closeoutId:   <parent closeout id>,
+  //     viewId:       'view_3940',
+  //     fields: {
+  //       field_2879: 'Pass' | 'Fail' | 'Pending',
+  //       field_2880: '<notes>',
+  //       field_2881: '<user id or empty>',
+  //       field_2882: 'MM/DD/YYYY' | '',
+  //       field_2883: '<appended history HTML — stamp + notes>',
+  //       field_2895: 'Yes' | 'No'   // FLAG_complete mirrors Pass/!Pass
+  //     },
+  //     triggeredBy:  { id, name, email }
+  //   }
+  //   Make's scenario: branch on kind, PUT to /v1/objects/<DOC>/records/<id>
+  //   with the fields object.  Response: { success: true } or
+  //   { success: false, error: "..." } (browser surfaces the error in
+  //   an alert and leaves the popover open for retry).
+  // Default to the upload webhook URL so a single Make scenario can
+  // handle both flows via the `kind` branch.  Override with a separate
+  // URL if you want them split.
+  MAKE_DOC_QA_WEBHOOK: "https://hook.us1.make.com/6n07ovcxexg4ygckwh8scydh22n71s3o",
   MAKE_DELETE_RECORD_WEBHOOK: "https://hook.us1.make.com/uyxdq04zudssvoatvnwywxcjxxil15q7",
   // Fires on "Clone SOW / Create Alternative SOW" button click. Expects:
   //   Request body:  {

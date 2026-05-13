@@ -28,11 +28,22 @@
   // Connection-displayed columns on view_3940 (each row has one
   // connection-value span per connected DOC, keyed by DOC record id).
   var F = {
-    type:      'field_2877',
-    required:  'field_2894',
-    completed: 'field_2895',
-    file:      'field_68'
+    type:          'field_2877',
+    required:      'field_2894',
+    completed:     'field_2895',
+    file:          'field_68',
+    // QA fields on the DOC object — exposed as connection-displayed
+    // columns on view_3940 so we can read them without an extra view.
+    // Writes go through MAKE_DOC_QA_WEBHOOK (Knack's REST API needs an
+    // API key we can't ship client-side).
+    qaStatus:      'field_2879',  // Pending / Pass / Fail
+    qaNotes:       'field_2880',
+    qaCompletedBy: 'field_2881',
+    qaCompletedDt: 'field_2882',
+    qaHistory:     'field_2883'
   };
+
+  var QA_STATUS_OPTIONS = ['Pending', 'Pass', 'Fail'];
 
   var ADD_DOC_SLUG  = 'add-file-to-closeout';
   var EDIT_DOC_SLUG = 'edit-doc-file';
@@ -87,26 +98,41 @@
       '  transform: translateY(-1px);',
       '}',
 
-      /* Empty + required = amber dashed (matches photo "Required" placeholder) */
-      '.scw-cd-doc.is-missing {',
-      '  border: 2px dashed #fbbf24; background: #fffbeb;',
+      /* State colours — three-tier QA model:
+           no file          → red (urgent, blocks closeout)
+           file, QA pending → purple (in flight — needs review)
+           file, QA passed  → green (done)
+         Optional + no-file stays gentle dashed-grey so it doesn\'t read
+         as an error state on cards that aren\'t required. */
+      '.scw-cd-doc.is-no-file {',
+      '  border: 2px dashed #f87171; background: #fef2f2;',
       '}',
-      '.scw-cd-doc.is-missing:hover {',
-      '  background: #fef3c7; border-color: #f59e0b;',
+      '.scw-cd-doc.is-no-file:hover {',
+      '  background: #fee2e2; border-color: #dc2626;',
       '}',
-
-      /* Empty + optional = light dashed grey */
-      '.scw-cd-doc.is-empty-optional {',
+      '.scw-cd-doc.is-no-file .scw-cd-doc__icon { color: #b91c1c; }',
+      '.scw-cd-doc.is-no-file.is-optional {',
       '  border: 2px dashed #d1d5db; background: #f9fafb;',
       '}',
+      '.scw-cd-doc.is-no-file.is-optional .scw-cd-doc__icon { color: #6b7280; }',
 
-      /* Filled + complete = solid green tint */
-      '.scw-cd-doc.is-complete {',
-      '  border-color: #86efac; background: #f0fdf4;',
+      '.scw-cd-doc.is-qa-pending {',
+      '  border: 1px solid #c4b5fd; background: #f5f3ff;',
       '}',
+      '.scw-cd-doc.is-qa-pending:hover { background: #ede9fe; border-color: #8b5cf6; }',
+      '.scw-cd-doc.is-qa-pending .scw-cd-doc__icon { color: #6d28d9; }',
 
-      /* Filled but not flagged complete = neutral */
-      '.scw-cd-doc.is-uploaded { border-color: #93c5fd; background: #eff6ff; }',
+      '.scw-cd-doc.is-qa-pass {',
+      '  border: 1px solid #86efac; background: #f0fdf4;',
+      '}',
+      '.scw-cd-doc.is-qa-pass:hover { background: #dcfce7; border-color: #16a34a; }',
+      '.scw-cd-doc.is-qa-pass .scw-cd-doc__icon { color: #15803d; }',
+
+      /* Fail state — explicit red border but file is still there */
+      '.scw-cd-doc.is-qa-fail {',
+      '  border: 1px solid #dc2626; background: #fef2f2;',
+      '}',
+      '.scw-cd-doc.is-qa-fail .scw-cd-doc__icon { color: #b91c1c; }',
 
       /* Thumbnail / icon area */
       '.scw-cd-doc__thumb {',
@@ -136,21 +162,27 @@
       '  min-height: 32px;',
       '}',
 
-      /* Required chip — mirrors photo strip pattern */
+      /* State chip — single source of truth, matches card colour. */
       '.scw-cd-doc__chip {',
       '  display: inline-flex; align-items: center; gap: 4px;',
       '  font-size: 10px; font-weight: 700; text-transform: uppercase;',
       '  letter-spacing: 0.04em; padding: 2px 8px; border-radius: 999px;',
       '  align-self: flex-start;',
       '}',
-      '.scw-cd-doc__chip.is-req-missing {',
-      '  background: #fef3c7; color: #b45309; border: 1px solid #fbbf24;',
+      '.scw-cd-doc__chip.is-missing-required {',
+      '  background: #fee2e2; color: #b91c1c; border: 1px solid #f87171;',
       '}',
-      '.scw-cd-doc__chip.is-req-done {',
+      '.scw-cd-doc__chip.is-missing-optional {',
+      '  background: #f3f4f6; color: #6b7280; border: 1px solid #d1d5db;',
+      '}',
+      '.scw-cd-doc__chip.is-pending {',
+      '  background: #ede9fe; color: #6d28d9; border: 1px solid #c4b5fd;',
+      '}',
+      '.scw-cd-doc__chip.is-pass {',
       '  background: #dcfce7; color: #15803d; border: 1px solid #86efac;',
       '}',
-      '.scw-cd-doc__chip.is-optional {',
-      '  background: #f3f4f6; color: #6b7280; border: 1px solid #d1d5db;',
+      '.scw-cd-doc__chip.is-fail {',
+      '  background: #fee2e2; color: #b91c1c; border: 1px solid #fca5a5;',
       '}',
 
       /* "Add another" — for optional docs the user wants to attach beyond required set */
@@ -211,7 +243,9 @@
       if (!docs[id]) {
         docs[id] = {
           id: id, type: '', typeId: '',
-          required: false, completed: false, fileUrl: '', fileName: ''
+          required: false, completed: false, fileUrl: '', fileName: '',
+          qaStatus: 'Pending', qaNotes: '', qaHistory: '',
+          qaCompletedBy: '', qaCompletedDt: ''
         };
       }
       return docs[id];
@@ -253,6 +287,25 @@
         rec.fileUrl  = a.getAttribute('href') || '';
         rec.fileName = (a.getAttribute('data-file-name') || a.textContent || '').trim();
       }
+    });
+    eachSpan(F.qaStatus, function (rec, span) {
+      var inner = span.querySelector('span[data-kn="connection-value"]');
+      var txt   = ((inner ? inner.textContent : span.textContent) || '').trim();
+      if (txt) rec.qaStatus = txt;
+    });
+    eachSpan(F.qaNotes, function (rec, span) {
+      rec.qaNotes = (span.textContent || '').trim();
+    });
+    eachSpan(F.qaCompletedBy, function (rec, span) {
+      var inner = span.querySelector('span[data-kn="connection-value"]');
+      rec.qaCompletedBy = ((inner ? inner.textContent : span.textContent) || '').trim();
+    });
+    eachSpan(F.qaCompletedDt, function (rec, span) {
+      rec.qaCompletedDt = (span.textContent || '').trim();
+    });
+    eachSpan(F.qaHistory, function (rec, span) {
+      // History is paragraph-text — preserve <br>s via innerHTML.
+      rec.qaHistory = span.innerHTML || '';
     });
 
     // Sort: missing-required first, then alphabetical by type
@@ -328,13 +381,25 @@
     card.setAttribute('data-doc-id', doc.id);
 
     var hasFile = !!doc.fileUrl;
-    var isMissing = doc.required && !doc.completed;
-    var isComplete = doc.completed && hasFile;
-    var isUploaded = doc.completed && !hasFile; // marked complete but no file URL visible
-    if (isMissing) card.classList.add('is-missing');
-    else if (isComplete) card.classList.add('is-complete');
-    else if (isUploaded) card.classList.add('is-uploaded');
-    else if (!doc.required && !hasFile) card.classList.add('is-empty-optional');
+    var qaStatus = doc.qaStatus || 'Pending';
+    var isPass = (qaStatus === 'Pass');
+    var isFail = (qaStatus === 'Fail');
+
+    // State classes for the three-tier visual:
+    //   no file              → is-no-file (+ .is-optional for soft grey)
+    //   file, QA pending     → is-qa-pending (purple)
+    //   file, QA pass        → is-qa-pass (green)
+    //   file, QA fail        → is-qa-fail (red border, file still present)
+    if (!hasFile) {
+      card.classList.add('is-no-file');
+      if (!doc.required) card.classList.add('is-optional');
+    } else if (isPass) {
+      card.classList.add('is-qa-pass');
+    } else if (isFail) {
+      card.classList.add('is-qa-fail');
+    } else {
+      card.classList.add('is-qa-pending');
+    }
 
     // Re-apply pending state if an upload is still polling for this doc
     // (the card gets rebuilt on every renderInto call).
@@ -347,10 +412,16 @@
     thumb.className = 'scw-cd-doc__thumb';
     var iconBox = document.createElement('div');
     iconBox.className = 'scw-cd-doc__icon';
+    var iconLabel;
     if (hasFile) {
+      // Icon label encodes QA state so the eye gets all three cues
+      // (colour, chip, label) consistently.
+      if (isPass)      iconLabel = 'View PDF';
+      else if (isFail) iconLabel = 'QA Fail';
+      else             iconLabel = 'Review QA';
       iconBox.innerHTML = pdfIconSvg() +
-        '<span class="scw-cd-doc__icon-label">View PDF</span>';
-    } else if (isMissing) {
+        '<span class="scw-cd-doc__icon-label">' + iconLabel + '</span>';
+    } else if (doc.required) {
       iconBox.innerHTML = uploadIconSvg() +
         '<span class="scw-cd-doc__icon-label">Required</span>';
     } else {
@@ -367,40 +438,41 @@
     type.title = doc.type || '';
     card.appendChild(type);
 
-    // Required chip
+    // State chip — single chip drives all three colours.
     var chip = document.createElement('div');
     chip.className = 'scw-cd-doc__chip';
-    if (doc.required && doc.completed) {
-      chip.classList.add('is-req-done');
-      chip.textContent = '✓ Required';
-    } else if (doc.required) {
-      chip.classList.add('is-req-missing');
-      chip.textContent = 'Required';
+    if (!hasFile) {
+      if (doc.required) {
+        chip.classList.add('is-missing-required');
+        chip.textContent = 'Missing';
+      } else {
+        chip.classList.add('is-missing-optional');
+        chip.textContent = 'Optional';
+      }
+    } else if (isPass) {
+      chip.classList.add('is-pass');
+      chip.textContent = '✓ QA Pass';
+    } else if (isFail) {
+      chip.classList.add('is-fail');
+      chip.textContent = '✗ QA Fail';
     } else {
-      chip.classList.add('is-optional');
-      chip.textContent = 'Optional';
+      chip.classList.add('is-pending');
+      chip.textContent = 'QA Pending';
     }
     card.appendChild(chip);
 
     // Click behaviour:
-    //  - Filed doc → open the file in a new tab
-    //  - Missing/empty doc with upload webhook configured → file picker
-    //  - Otherwise → Knack edit-doc form (existing fallback)
+    //   No file              → file picker (or Knack edit form if webhook off)
+    //   File, any QA state   → open QA popover (which has a "View file"
+    //                          button to dispatch to Knack's preview).
     var uploadEnabled = !hasFile && !!(
       window.SCW && window.SCW.CONFIG && window.SCW.CONFIG.MAKE_DOC_UPLOAD_WEBHOOK
     );
-    card.addEventListener('click', function () {
+    card.addEventListener('click', function (e) {
       if (card.classList.contains('is-pending')) return;
       if (hasFile) {
-        // Prefer dispatching a click on the source <a> so Knack's native
-        // file-preview handler picks it up (in-page overlay, not a new
-        // tab). Fall back to window.open only if the anchor is missing
-        // or its click handler doesn't intercept.
-        if (doc.fileAnchor && document.contains(doc.fileAnchor)) {
-          doc.fileAnchor.click();
-        } else if (doc.fileUrl && doc.fileUrl.indexOf('http') === 0) {
-          window.open(doc.fileUrl, '_blank');
-        }
+        e.stopPropagation();
+        openQAPopover(card, doc, closeoutId);
         return;
       }
       if (uploadEnabled) {
@@ -667,6 +739,399 @@
       if (h) navigate(h);
     });
     return add;
+  }
+
+  // ── Doc QA popover ──────────────────────────────────────────────
+  // Click a card with a file → this popover anchors over it. Lets the
+  // reviewer mark Pass/Fail, add notes, view the file, and save in one
+  // place. Save goes through MAKE_DOC_QA_WEBHOOK because the DOC fields
+  // aren't exposed inline-editable on view_3940; Make's scenario does
+  // the actual REST PUT (it has the API key, we don't).
+
+  var POPOVER_ID = 'scw-cd-qa-popover';
+  var _popover = null;
+  var _popoverDoc = null;       // working copy — mutated by chip clicks
+  var _popoverOrig = null;      // snapshot for change detection / history
+  var _popoverCard = null;
+  var _popoverCloseoutId = null;
+
+  function injectPopoverCSS() {
+    if (document.getElementById('scw-cd-qa-popover-css')) return;
+    var css = [
+      '.' + POPOVER_ID + '__overlay {',
+      '  position: fixed; inset: 0; background: rgba(15, 23, 42, 0.45);',
+      '  z-index: 9998; display: flex; align-items: center; justify-content: center;',
+      '}',
+      '.' + POPOVER_ID + ' {',
+      '  position: relative; background: #fff; border-radius: 10px;',
+      '  box-shadow: 0 10px 30px rgba(0,0,0,0.18);',
+      '  width: 460px; max-width: 92vw; max-height: 92vh; overflow: auto;',
+      '  padding: 18px 20px;',
+      '  font: 12px/1.4 system-ui, -apple-system, sans-serif;',
+      '}',
+      '.' + POPOVER_ID + '__head {',
+      '  display: flex; align-items: flex-start; gap: 12px;',
+      '  border-bottom: 1px solid #e5e7eb; padding-bottom: 12px; margin-bottom: 14px;',
+      '}',
+      '.' + POPOVER_ID + '__type { font-size: 14px; font-weight: 700; color: #111827; }',
+      '.' + POPOVER_ID + '__sub  { font-size: 11px; color: #6b7280; margin-top: 2px; }',
+      '.' + POPOVER_ID + '__view-btn {',
+      '  margin-left: auto; padding: 6px 12px; border-radius: 6px;',
+      '  background: #f3f4f6; color: #1f2937; border: 1px solid #d1d5db;',
+      '  font: 600 11px/1.2 system-ui; text-transform: uppercase;',
+      '  letter-spacing: 0.04em; cursor: pointer;',
+      '}',
+      '.' + POPOVER_ID + '__view-btn:hover { background: #e5e7eb; border-color: #9ca3af; }',
+      '.' + POPOVER_ID + '__section { margin-bottom: 14px; }',
+      '.' + POPOVER_ID + '__label {',
+      '  font-size: 11px; font-weight: 700; text-transform: uppercase;',
+      '  color: #6b7280; letter-spacing: 0.04em; margin-bottom: 6px;',
+      '}',
+      '.' + POPOVER_ID + '__chips { display: flex; gap: 6px; }',
+      '.' + POPOVER_ID + '__chip {',
+      '  flex: 1; padding: 8px 10px; border-radius: 8px;',
+      '  border: 1px solid #d1d5db; background: #fff;',
+      '  font: 600 12px/1.2 system-ui; cursor: pointer;',
+      '  transition: all 0.12s;',
+      '}',
+      '.' + POPOVER_ID + '__chip:hover { background: #f3f4f6; }',
+      '.' + POPOVER_ID + '__chip.is-selected[data-value="Pending"] {',
+      '  background: #ede9fe; color: #6d28d9; border-color: #8b5cf6;',
+      '}',
+      '.' + POPOVER_ID + '__chip.is-selected[data-value="Pass"] {',
+      '  background: #dcfce7; color: #15803d; border-color: #16a34a;',
+      '}',
+      '.' + POPOVER_ID + '__chip.is-selected[data-value="Fail"] {',
+      '  background: #fee2e2; color: #b91c1c; border-color: #dc2626;',
+      '}',
+      '.' + POPOVER_ID + '__notes {',
+      '  width: 100%; min-height: 70px; resize: vertical;',
+      '  border: 1px solid #d1d5db; border-radius: 6px;',
+      '  padding: 8px 10px; font: inherit; box-sizing: border-box;',
+      '}',
+      '.' + POPOVER_ID + '__notes:focus { outline: none; border-color: #6b7280; }',
+      '.' + POPOVER_ID + '__hint {',
+      '  font-size: 11px; color: #b91c1c; margin-top: 4px; display: none;',
+      '}',
+      '.' + POPOVER_ID + '__signoff {',
+      '  font-size: 11px; color: #6b7280;',
+      '  background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px;',
+      '  padding: 6px 10px;',
+      '}',
+      '.' + POPOVER_ID + '__signoff strong { color: #111827; font-weight: 600; }',
+      '.' + POPOVER_ID + '__actions {',
+      '  display: flex; gap: 8px; justify-content: flex-end;',
+      '  border-top: 1px solid #e5e7eb; padding-top: 12px; margin-top: 4px;',
+      '}',
+      '.' + POPOVER_ID + '__btn {',
+      '  padding: 7px 16px; border-radius: 6px; font: 600 12px/1.2 system-ui;',
+      '  cursor: pointer; border: 1px solid #d1d5db; background: #fff;',
+      '  color: #1f2937;',
+      '}',
+      '.' + POPOVER_ID + '__btn:hover { background: #f3f4f6; }',
+      '.' + POPOVER_ID + '__btn--primary {',
+      '  background: #2563eb; color: #fff; border-color: #1d4ed8;',
+      '}',
+      '.' + POPOVER_ID + '__btn--primary:hover { background: #1d4ed8; }',
+      '.' + POPOVER_ID + '__btn--primary:disabled {',
+      '  background: #93c5fd; border-color: #93c5fd; color: #fff; cursor: not-allowed;',
+      '}',
+      '.' + POPOVER_ID + '__btn--danger {',
+      '  background: #fff; color: #b91c1c; border-color: #fca5a5;',
+      '}',
+      '.' + POPOVER_ID + '__btn--danger:hover { background: #fef2f2; }',
+      '.' + POPOVER_ID + '__saving {',
+      '  pointer-events: none; opacity: 0.7;',
+      '}'
+    ].join('\n');
+    var s = document.createElement('style');
+    s.id = 'scw-cd-qa-popover-css';
+    s.textContent = css;
+    document.head.appendChild(s);
+  }
+
+  function openQAPopover(card, doc, closeoutId) {
+    injectPopoverCSS();
+    closeQAPopover();  // tear down any open instance first
+
+    // Shallow-clone doc into a working copy so chip clicks mutate the
+    // popover state, not the source record (which the next renderInto
+    // will overwrite anyway).
+    _popoverDoc = {};
+    for (var k in doc) if (doc.hasOwnProperty(k)) _popoverDoc[k] = doc[k];
+    _popoverOrig = {};
+    for (var k2 in doc) if (doc.hasOwnProperty(k2)) _popoverOrig[k2] = doc[k2];
+    _popoverCard = card;
+    _popoverCloseoutId = closeoutId;
+
+    var overlay = document.createElement('div');
+    overlay.className = POPOVER_ID + '__overlay';
+    overlay.addEventListener('click', function (e) {
+      if (e.target === overlay) closeQAPopover();
+    });
+
+    var pop = document.createElement('div');
+    pop.className = POPOVER_ID;
+    pop.id = POPOVER_ID;
+
+    // Header — doc type + "View file" shortcut.
+    var head = document.createElement('div');
+    head.className = POPOVER_ID + '__head';
+    var meta = document.createElement('div');
+    var typeEl = document.createElement('div');
+    typeEl.className = POPOVER_ID + '__type';
+    typeEl.textContent = doc.type || 'Document';
+    var subEl = document.createElement('div');
+    subEl.className = POPOVER_ID + '__sub';
+    subEl.textContent = doc.fileName || (doc.required ? 'Required' : 'Optional');
+    meta.appendChild(typeEl);
+    meta.appendChild(subEl);
+    head.appendChild(meta);
+
+    if (doc.fileUrl) {
+      var viewBtn = document.createElement('button');
+      viewBtn.type = 'button';
+      viewBtn.className = POPOVER_ID + '__view-btn';
+      viewBtn.textContent = 'View file';
+      viewBtn.addEventListener('click', function () {
+        if (doc.fileAnchor && document.contains(doc.fileAnchor)) {
+          doc.fileAnchor.click();
+        } else if (doc.fileUrl) {
+          window.open(doc.fileUrl, '_blank');
+        }
+      });
+      head.appendChild(viewBtn);
+    }
+    pop.appendChild(head);
+
+    // Status chips
+    var statusSec = document.createElement('div');
+    statusSec.className = POPOVER_ID + '__section';
+    var statusLbl = document.createElement('div');
+    statusLbl.className = POPOVER_ID + '__label';
+    statusLbl.textContent = 'QA Status';
+    statusSec.appendChild(statusLbl);
+    var chips = document.createElement('div');
+    chips.className = POPOVER_ID + '__chips';
+    QA_STATUS_OPTIONS.forEach(function (opt) {
+      var c = document.createElement('button');
+      c.type = 'button';
+      c.className = POPOVER_ID + '__chip';
+      c.setAttribute('data-value', opt);
+      c.textContent = opt;
+      if (opt === _popoverDoc.qaStatus) c.classList.add('is-selected');
+      c.addEventListener('click', function () {
+        var siblings = chips.querySelectorAll('.' + POPOVER_ID + '__chip');
+        for (var i = 0; i < siblings.length; i++) siblings[i].classList.remove('is-selected');
+        c.classList.add('is-selected');
+        _popoverDoc.qaStatus = opt;
+        refreshActions(pop);
+      });
+      chips.appendChild(c);
+    });
+    statusSec.appendChild(chips);
+    pop.appendChild(statusSec);
+
+    // Notes
+    var notesSec = document.createElement('div');
+    notesSec.className = POPOVER_ID + '__section';
+    var notesLbl = document.createElement('div');
+    notesLbl.className = POPOVER_ID + '__label';
+    notesLbl.textContent = 'Notes';
+    notesSec.appendChild(notesLbl);
+    var notes = document.createElement('textarea');
+    notes.className = POPOVER_ID + '__notes';
+    notes.value = _popoverDoc.qaNotes || '';
+    notes.addEventListener('input', function () {
+      _popoverDoc.qaNotes = notes.value;
+      refreshActions(pop);
+    });
+    notesSec.appendChild(notes);
+    var hint = document.createElement('div');
+    hint.className = POPOVER_ID + '__hint';
+    hint.textContent = 'Notes required when marking Fail.';
+    notesSec.appendChild(hint);
+    pop.appendChild(notesSec);
+
+    // Sign-off metadata
+    if (doc.qaCompletedBy || doc.qaCompletedDt) {
+      var signoff = document.createElement('div');
+      signoff.className = POPOVER_ID + '__signoff';
+      signoff.innerHTML =
+        'Last signed off by <strong>' + escapeHtml(doc.qaCompletedBy || '—') +
+        '</strong> on <strong>' + escapeHtml(doc.qaCompletedDt || '—') + '</strong>';
+      pop.appendChild(signoff);
+    }
+
+    // Action row
+    var actions = document.createElement('div');
+    actions.className = POPOVER_ID + '__actions';
+    pop.appendChild(actions);
+
+    overlay.appendChild(pop);
+    document.body.appendChild(overlay);
+    _popover = overlay;
+    refreshActions(pop);
+
+    // ESC closes
+    document.addEventListener('keydown', escListener);
+  }
+
+  function escHtmlChar(c) {
+    return ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&#39;' })[c] || c;
+  }
+  function escapeHtml(s) { return String(s || '').replace(/[<>&"']/g, escHtmlChar); }
+
+  function escListener(e) {
+    if (e.key === 'Escape') closeQAPopover();
+  }
+
+  function refreshActions(pop) {
+    var actions = pop.querySelector('.' + POPOVER_ID + '__actions');
+    if (!actions) return;
+    actions.innerHTML = '';
+    var hint = pop.querySelector('.' + POPOVER_ID + '__hint');
+
+    var status = _popoverDoc.qaStatus;
+    var notes = (_popoverDoc.qaNotes || '').trim();
+    var needsNotes = (status === 'Fail') && !notes;
+    if (hint) hint.style.display = needsNotes ? '' : 'none';
+
+    var dirty = (status !== _popoverOrig.qaStatus) ||
+                ((_popoverDoc.qaNotes || '') !== (_popoverOrig.qaNotes || ''));
+
+    var cancel = document.createElement('button');
+    cancel.type = 'button';
+    cancel.className = POPOVER_ID + '__btn';
+    cancel.textContent = 'Cancel';
+    cancel.addEventListener('click', function () { closeQAPopover(); });
+    actions.appendChild(cancel);
+
+    var save = document.createElement('button');
+    save.type = 'button';
+    save.className = POPOVER_ID + '__btn ' + POPOVER_ID + '__btn--primary';
+    save.textContent = (status === 'Pass') ? 'Sign off' :
+                       (status === 'Fail') ? 'Mark fail' : 'Save';
+    save.disabled = !dirty || needsNotes;
+    save.addEventListener('click', function () { saveQA(); });
+    actions.appendChild(save);
+  }
+
+  function closeQAPopover() {
+    if (_popover && _popover.parentNode) {
+      _popover.parentNode.removeChild(_popover);
+    }
+    _popover = null;
+    _popoverDoc = null;
+    _popoverOrig = null;
+    _popoverCard = null;
+    _popoverCloseoutId = null;
+    document.removeEventListener('keydown', escListener);
+  }
+
+  function saveQA() {
+    var webhookUrl = window.SCW && window.SCW.CONFIG &&
+                     (window.SCW.CONFIG.MAKE_DOC_QA_WEBHOOK ||
+                      window.SCW.CONFIG.MAKE_DOC_UPLOAD_WEBHOOK);
+    if (!webhookUrl) {
+      console.error('[SCW] MAKE_DOC_QA_WEBHOOK / MAKE_DOC_UPLOAD_WEBHOOK not configured');
+      return;
+    }
+    if (!_popover) return;
+
+    var pop = _popover.querySelector('.' + POPOVER_ID);
+    if (pop) pop.classList.add(POPOVER_ID + '__saving');
+
+    var status = _popoverDoc.qaStatus;
+    var notes  = _popoverDoc.qaNotes || '';
+
+    // Build the field payload Make should PUT onto the DOC record.
+    var fields = {};
+    fields[F.qaStatus] = status;
+    fields[F.qaNotes]  = notes;
+
+    // Sign-off math: status === 'Pass' → mark completed, set by/date,
+    // append history. Anything else → clear by/date, log status change.
+    var nowDate = todayUS();
+    var who = getTriggeredBy();
+    var historyLine = stampLine(
+      (status === 'Pass') ? 'Signed off' :
+      (status === 'Fail') ? 'Marked Fail' : ('Status set to ' + status),
+      notes,
+      who.name || who.email || 'Unknown user'
+    );
+    var newHistory = _popoverDoc.qaHistory || '';
+    if (newHistory && !/^<br/.test(newHistory)) newHistory = '<br>' + newHistory;
+    newHistory = historyLine + newHistory;
+    fields[F.qaHistory] = newHistory;
+
+    if (status === 'Pass') {
+      // qaCompletedBy is a connection → user field. Make's scenario
+      // should write [{id: <userId>}] or just the id string; we pass
+      // the id and let Make format. If you can't get the user id on
+      // the server side, the qaCompletedBy will stay blank.
+      fields[F.qaCompletedBy] = who.id || '';
+      fields[F.qaCompletedDt] = nowDate;
+      // Flip FLAG_complete to Yes so the card's "QA complete = green"
+      // mapping kicks in even if Knack doesn't auto-derive it.
+      fields[F.completed]     = 'Yes';
+    } else {
+      fields[F.qaCompletedBy] = '';
+      fields[F.qaCompletedDt] = '';
+      fields[F.completed]     = 'No';
+    }
+
+    fetch(webhookUrl, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        kind:        'doc-qa-update',
+        docRecordId: _popoverDoc.id,
+        closeoutId:  _popoverCloseoutId,
+        viewId:      VIEW_ID,
+        fields:      fields,
+        triggeredBy: who
+      })
+    }).then(function (resp) {
+      if (resp.status >= 400) throw new Error('Webhook ' + resp.status);
+      return resp.text().then(function (txt) {
+        var body = null;
+        try { body = txt ? JSON.parse(txt) : null; } catch (e) { body = null; }
+        console.log('[SCW] doc QA webhook response:', resp.status, txt);
+        return body;
+      });
+    }).then(function (body) {
+      if (body && body.success === false) {
+        if (pop) pop.classList.remove(POPOVER_ID + '__saving');
+        alert(body.error || 'Save failed');
+        return;
+      }
+      // Optimistically dismiss; trigger model.fetch so the view picks up
+      // the new state on the next render.
+      closeQAPopover();
+      var v = window.Knack && Knack.views && Knack.views[VIEW_ID];
+      if (v && v.model && typeof v.model.fetch === 'function') v.model.fetch();
+    }).catch(function (err) {
+      console.error('[SCW] doc QA save error:', err);
+      if (pop) pop.classList.remove(POPOVER_ID + '__saving');
+      alert('Save failed: ' + (err.message || err));
+    });
+  }
+
+  function todayUS() {
+    var d = new Date();
+    var p = function (n) { return n < 10 ? '0' + n : '' + n; };
+    return p(d.getMonth() + 1) + '/' + p(d.getDate()) + '/' + d.getFullYear();
+  }
+
+  function stampLine(event, detail, who) {
+    var d = new Date();
+    var p = function (n) { return n < 10 ? '0' + n : '' + n; };
+    var stamp = d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) +
+                ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+    var line = stamp + ' — ' + who + ' — ' + event;
+    if (detail) line += ': ' + detail;
+    return escapeHtml(line);
   }
 
   function buildCloseoutDate(tr) {
