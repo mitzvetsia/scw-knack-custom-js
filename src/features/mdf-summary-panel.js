@@ -246,14 +246,25 @@
       '  border-bottom: 1px solid var(--scw-border-subtle);' +
       '  vertical-align: middle !important;' +
       '}' +
+      // Default th — transparent, no border. Only the labeled subbid
+      // cell has any visible styling now (rule below). Empty colspan
+      // cells contribute zero visual weight.
       '.scw-mdf-summary-table th {' +
-      '  font-size: 10px; font-weight: 700;' +
-      '  color: var(--scw-text-caption);' +
-      '  text-transform: uppercase; letter-spacing: 0.05em;' +
       '  background: transparent;' +
-      '  border-bottom: 1px solid var(--scw-border-default);' +
+      '  border-bottom: 0;' +
+      '  padding: 0 !important;' +
+      '}' +
+      // The single labeled thead cell — Total Sub Bid above the
+      // rightmost column, matching the bucket-head visual treatment
+      // so the panel reads as one tightly-related set of section labels.
+      '.scw-mdf-summary-table th.scw-mdf-subbid-h {' +
+      '  font: 600 9.5px/1.15 system-ui, -apple-system, "Segoe UI", sans-serif !important;' +
+      '  color: var(--scw-text-caption) !important;' +
+      '  text-transform: uppercase;' +
+      '  letter-spacing: 0.04em;' +
       '  white-space: nowrap;' +
-      '  padding-top: 4px !important; padding-bottom: 8px !important;' +
+      '  text-align: right !important;' +
+      '  padding: 10px 14px 4px !important;' +
       '}' +
       '.scw-mdf-summary-table th.scw-mdf-product-h,' +
       '.scw-mdf-summary-table td.scw-mdf-product {' +
@@ -761,11 +772,15 @@
           '<col style="width:6%">' +      // Qty
           (hideSubbid ? '' : '<col style="width:10%">') +  // Total Sub Bid
         '</colgroup>' +
+        // Thead is now just a small "Total Sub Bid" label above the
+        // rightmost column — same muted typography as the bucket-head
+        // section labels. Product and Qty don't need explicit headers:
+        // the columns are obvious from context, and dropping them
+        // removes a heavy banded row at the top of every panel. When
+        // there's no subbid (hideSubbid), the thead is empty entirely.
         '<thead><tr>' +
-          '<th class="scw-mdf-product-h">Product</th>' +
-          '<th colspan="5"></th>' +
-          '<th class="scw-mdf-num-h">Qty</th>' +
-          (hideSubbid ? '' : '<th class="scw-mdf-num-h">Total Sub Bid</th>') +
+          '<th colspan="7"></th>' +
+          (hideSubbid ? '' : '<th class="scw-mdf-subbid-h">Total Sub Bid</th>') +
         '</tr></thead>' +
         '<tbody>' + rows + totalRow + '</tbody>' +
       '</table>';
