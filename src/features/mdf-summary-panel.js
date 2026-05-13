@@ -485,9 +485,11 @@
       (showCR ? num(p.interior)     : blankCell()) +
       (showCR ? num(p.plenum)       : blankCell()) +
       num(p.count) +
-      (totalBid != null
-        ? '<td class="scw-mdf-num">' + fmtMoney(totalBid) + '</td>'
-        : blankCell()) +
+      (opts.hideSubbid
+        ? ''
+        : (totalBid != null
+            ? '<td class="scw-mdf-num">' + fmtMoney(totalBid) + '</td>'
+            : blankCell())) +
     '</tr>';
   }
 
@@ -514,8 +516,14 @@
     return st;
   }
 
-  function buildPanelHtml(data) {
+  function buildPanelHtml(data, fields) {
     if (!data || !data.products.length) return '';
+    // Views without a sub-bid field on their underlying object (e.g.
+    // view_3915 install records) suppress the Total Sub Bid column
+    // entirely — it'd just render as "$0.00" everywhere, which is
+    // misleading.
+    var hideSubbid = !!(fields && !fields.subbid);
+    var subbidColspan = hideSubbid ? 7 : 8;  // colspan on bucket-head full-width row
 
     // Walk products in their already-sorted order (by minBucketSort,
     // then firstSeenIdx). Whenever the bucket changes, emit a subtotal
@@ -564,21 +572,21 @@
             '<td class="scw-mdf-bh-col">Interior</td>' +
             '<td class="scw-mdf-bh-col">Plenum</td>' +
             '<td></td>' +
-            '<td></td>' +
+            (hideSubbid ? '' : '<td></td>') +
           '</tr>';
       } else if (hasMultipleBuckets) {
         rows += '<tr class="scw-mdf-bucket-head">' +
-          '<td colspan="8">' + escapeHtml(grp.label) + '</td>' +
+          '<td colspan="' + subbidColspan + '">' + escapeHtml(grp.label) + '</td>' +
         '</tr>';
       }
 
       for (var k = 0; k < grp.items.length; k++) {
-        rows += productRowHtml(grp.items[k]);
+        rows += productRowHtml(grp.items[k], { hideSubbid: hideSubbid });
       }
 
       if (hasMultipleBuckets) {
         var st = bucketSubtotal(grp.items, 'Subtotal');
-        rows += productRowHtml(st, { isSubtotal: true, bucketIsCR: isCR });
+        rows += productRowHtml(st, { isSubtotal: true, bucketIsCR: isCR, hideSubbid: hideSubbid });
       }
     }
 
@@ -596,9 +604,11 @@
       blankCell() +
       blankCell() +
       num(t.count) +
-      (grandTotal != null
-        ? '<td class="scw-mdf-num">' + fmtMoney(grandTotal) + '</td>'
-        : blankCell()) +
+      (hideSubbid
+        ? ''
+        : (grandTotal != null
+            ? '<td class="scw-mdf-num">' + fmtMoney(grandTotal) + '</td>'
+            : blankCell())) +
     '</tr>';
 
     // Fixed colgroup so every L1 summary table renders with the same
@@ -613,7 +623,8 @@
     // the cabling/exterior/etc block sits in the middle and is empty
     // for non-cam/reader rows.
     return '' +
-      '<table class="scw-mdf-summary-table">' +
+      '<table class="scw-mdf-summary-table' +
+        (hideSubbid ? ' scw-mdf-summary-table--no-subbid' : '') + '">' +
         '<colgroup>' +
           '<col style="width:42%">' +     // Product
           '<col style="width:10%">' +     // Existing Cabling
@@ -622,13 +633,13 @@
           '<col style="width:8%">' +      // Interior
           '<col style="width:6%">' +      // Plenum
           '<col style="width:6%">' +      // Qty
-          '<col style="width:10%">' +     // Avg Sub Bid
+          (hideSubbid ? '' : '<col style="width:10%">') +  // Total Sub Bid
         '</colgroup>' +
         '<thead><tr>' +
           '<th class="scw-mdf-product-h">Product</th>' +
           '<th colspan="5"></th>' +
           '<th>Qty</th>' +
-          '<th>Total Sub Bid</th>' +
+          (hideSubbid ? '' : '<th>Total Sub Bid</th>') +
         '</tr></thead>' +
         '<tbody>' + rows + totalRow + '</tbody>' +
       '</table>';
@@ -691,7 +702,7 @@
       // MDF/IDF, so the summary doesn't make sense for them.
       if (_l1.classList.contains('scw-synthetic-group')) return;
       var data = aggregate(_list, fields);
-      var html = buildPanelHtml(data);
+      var html = buildPanelHtml(data, fields);
       if (!html) return;
       var summaryRow = document.createElement('tr');
       summaryRow.className = ROW_CLASS;
@@ -749,7 +760,7 @@
     if (prev) prev.remove();
     if (!list.length) return;
 
-    var html = buildPanelHtml(aggregate(list, fields));
+    var html = buildPanelHtml(aggregate(list, fields), fields);
     if (!html) return;
 
     var wrap = document.createElement('div');
