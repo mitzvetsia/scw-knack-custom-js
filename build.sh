@@ -29,7 +29,6 @@ cat \
   src/features/heavy-grid-perf.js \
   src/features/ktl-accordion/ktl-accordion.js \
   src/features/accordion-menu-inject.js \
-  src/features/accordion-tier-styling.js \
   src/features/workflow-stepper.js \
   src/features/ratking/modal-backdrop-click-disable.js \
   src/features/ratking/default-field-values.js \
