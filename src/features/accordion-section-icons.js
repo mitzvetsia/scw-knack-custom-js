@@ -37,7 +37,7 @@
   var SECTIONS = [
     { match: /closeout/i,                     icon: 'checkCircle' },
     { match: /\bacceptance\b/i,               icon: 'clipboardCheck' },
-    { match: /what.?s? we.?re installing|deploy worksheet|install/i, icon: 'camera' },
+    { match: /what.?s? we.?re installing|deploy worksheet|install/i, icon: 'wrench' },
     { match: /(manage )?(mdfs?\s*\/?\s*idfs?|mdf|idf)/i,             icon: 'server' },
     { match: /(additional )?photos?/i,        icon: 'image' },
     { match: /(other )?files?|attachments?/i, icon: 'paperclip' }
@@ -63,6 +63,11 @@
     camera: svg(
       '<path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/>' +
       '<circle cx="12" cy="13" r="3"/>'
+    ),
+    // Lucide "wrench" — used for the install/deploy section so it
+    // reads as "installation tool" rather than "photography".
+    wrench: svg(
+      '<path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/>'
     ),
     server: svg(
       '<rect x="2" y="2" width="20" height="8" rx="2" ry="2"/>' +
