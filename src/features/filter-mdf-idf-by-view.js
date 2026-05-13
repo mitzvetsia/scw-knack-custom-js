@@ -22,7 +22,7 @@
     TARGET_FIELD:   'field_2375',
     SOURCE_VIEW:    'view_3617',
     SOURCE_LABEL:   'field_1642',  // identifier on the MDF/IDF object
-    DEBUG:          false
+    DEBUG:          true
   };
 
   function log() {
@@ -101,15 +101,56 @@
   }
 
   // ── Read records from the source view's model ──────────────────
+  // Try several paths — Knack.views[viewId].model is the obvious one,
+  // but the view's Backbone View can be torn down/rebuilt while the
+  // model lives on under Knack.models[viewId]. We also scan Knack.models
+  // for any model whose view.key matches, since some views (filtered,
+  // wrapped) register the model under a derived key.
+  function findSourceModel() {
+    if (typeof Knack === 'undefined') return null;
+    if (Knack.views && Knack.views[CFG.SOURCE_VIEW] &&
+        Knack.views[CFG.SOURCE_VIEW].model) {
+      return Knack.views[CFG.SOURCE_VIEW].model;
+    }
+    if (Knack.models && Knack.models[CFG.SOURCE_VIEW]) {
+      return Knack.models[CFG.SOURCE_VIEW];
+    }
+    if (Knack.models) {
+      var keys = Object.keys(Knack.models);
+      for (var i = 0; i < keys.length; i++) {
+        var m = Knack.models[keys[i]];
+        if (m && m.view && m.view.key === CFG.SOURCE_VIEW) return m;
+      }
+    }
+    return null;
+  }
+
+  function extractRecords(model) {
+    if (!model) return [];
+    if (model.data) {
+      if (Array.isArray(model.data)) return model.data;
+      if (model.data.models && Array.isArray(model.data.models)) {
+        return model.data.models.map(function (m) {
+          return (m && m.attributes) || m;
+        });
+      }
+      if (typeof model.data.toJSON === 'function') return model.data.toJSON();
+    }
+    if (model.models && Array.isArray(model.models)) {
+      return model.models.map(function (m) {
+        return (m && m.attributes) || m;
+      });
+    }
+    return [];
+  }
+
   function getSourceRecords() {
-    if (typeof Knack === 'undefined' || !Knack.views) return [];
-    var view = Knack.views[CFG.SOURCE_VIEW];
-    if (!view || !view.model) return [];
-    var records = (view.model.data && view.model.data.models) || view.model.models || [];
+    var model = findSourceModel();
+    var records = extractRecords(model);
     var out = [];
     for (var i = 0; i < records.length; i++) {
-      var attrs = records[i].attributes || records[i];
-      if (!attrs || !attrs.id) continue;
+      var attrs = records[i] || {};
+      if (!attrs.id) continue;
       var label = '';
       var raw = attrs[CFG.SOURCE_LABEL];
       if (typeof raw === 'string' && raw.trim()) {
@@ -129,13 +170,15 @@
 
   // ── Read the line item's currently-selected MDF/IDF id ─────────
   function getCurrentSelection(recordId) {
-    if (typeof Knack === 'undefined' || !Knack.views) return null;
-    var view = Knack.views[CFG.TARGET_VIEW];
-    if (!view || !view.model) return null;
-    var records = (view.model.data && view.model.data.models) || view.model.models || [];
+    if (typeof Knack === 'undefined') return null;
+    var model = (Knack.views && Knack.views[CFG.TARGET_VIEW] &&
+                 Knack.views[CFG.TARGET_VIEW].model) ||
+                (Knack.models && Knack.models[CFG.TARGET_VIEW]) ||
+                null;
+    var records = extractRecords(model);
     for (var i = 0; i < records.length; i++) {
-      var attrs = records[i].attributes || records[i];
-      if (!attrs || attrs.id !== recordId) continue;
+      var attrs = records[i] || {};
+      if (attrs.id !== recordId) continue;
       var raw = attrs[CFG.TARGET_FIELD + '_raw'];
       if (Array.isArray(raw) && raw[0] && raw[0].id) return raw[0].id;
       if (raw && raw.id) return raw.id;
@@ -180,8 +223,19 @@
     if (!records.length) {
       var empty = document.createElement('div');
       empty.className = CLASS_PFX + '-empty';
-      empty.textContent = 'No MDF/IDF records on this survey yet.';
+      var sourceModel = findSourceModel();
+      if (!sourceModel) {
+        empty.innerHTML =
+          'Could not read MDF/IDF choices.<br>' +
+          '<small style="color:#9ca3af">' +
+          'Source view ' + CFG.SOURCE_VIEW + ' is not on this scene. ' +
+          'Reload the page and try again — if this persists, share the ' +
+          'console output.</small>';
+      } else {
+        empty.textContent = 'No MDF/IDF records on this survey yet.';
+      }
       body.appendChild(empty);
+      log('source model:', sourceModel, 'records:', records);
     } else {
       // "Unassigned" option first — clears the connection
       var clearRow = document.createElement('div');
@@ -280,7 +334,20 @@
       saveSelection(recordId, newId, function (err) {
         if (err) {
           setSaving(false);
-          showError('Failed to save. Please try again.');
+          var msg = 'Failed to save.';
+          if (err && err.status) msg += ' HTTP ' + err.status + '.';
+          if (err && err.responseText) {
+            var body;
+            try { body = JSON.parse(err.responseText); }
+            catch (parseErr) { body = null; }
+            if (body && body.errors && body.errors[0] && body.errors[0].message) {
+              msg += ' ' + body.errors[0].message;
+            } else if (typeof err.responseText === 'string' &&
+                       err.responseText.length < 200) {
+              msg += ' ' + err.responseText;
+            }
+          }
+          showError(msg + ' (See console for details.)');
           return;
         }
         close();
