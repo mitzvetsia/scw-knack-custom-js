@@ -31,6 +31,7 @@ cat \
   src/features/ktl-accordion/ktl-accordion.js \
   src/features/accordion-menu-inject.js \
   src/features/workflow-stepper.js \
+  src/features/accordion-section-icons.js \
   src/features/ratking/modal-backdrop-click-disable.js \
   src/features/ratking/default-field-values.js \
   src/features/ratking/post-inline-edit-behavior.js \
