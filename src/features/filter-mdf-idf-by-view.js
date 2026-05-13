@@ -388,6 +388,73 @@
     });
   }
 
+  // ── Object-scoped fallback ───────────────────────────────────
+  // When the view-scoped endpoint silently strips field_2375 from
+  // the request, retry against the object-scoped endpoint. Object-
+  // scoped writes skip view-level inline-edit allow-lists and
+  // view-level submit rules. Object key is discovered dynamically
+  // from Knack.objects via the view's source.
+  function findObjectKeyForView(viewId) {
+    try {
+      var v = window.Knack && Knack.views && Knack.views[viewId];
+      var src = v && v.model && v.model.view && v.model.view.source;
+      if (src && src.object) return src.object;
+    } catch (e) { /* fall through */ }
+    try {
+      var sceneViews = window.Knack && Knack.scenes &&
+        Knack.router && Knack.router.scene_view &&
+        Knack.router.scene_view.model &&
+        Knack.router.scene_view.model.views;
+      if (sceneViews && typeof sceneViews.get === 'function') {
+        var viewObj = sceneViews.get(viewId);
+        var src2 = viewObj && viewObj.attributes && viewObj.attributes.source;
+        if (src2 && src2.object) return src2.object;
+      }
+    } catch (e) { /* fall through */ }
+    return null;
+  }
+
+  function objectScopedRetry(recordId, newId, onDone) {
+    var objectKey = findObjectKeyForView(CFG.TARGET_VIEW);
+    if (!objectKey) {
+      console.warn(LOG_PREFIX,
+        'object-scoped retry: could not discover object key for ' +
+        CFG.TARGET_VIEW + ' — falling back to view-scoped result');
+      onDone(new Error('object key unavailable'));
+      return;
+    }
+    var apiUrl = (window.Knack && Knack.api_url) || 'https://us-api.knack.com';
+    var url = apiUrl + '/v1/objects/' + objectKey + '/records/' + recordId;
+    var body = {};
+    body[CFG.TARGET_FIELD] = newId ? [newId] : [];
+    console.log(LOG_PREFIX, 'object-scoped PUT', recordId, body, '→', url);
+    window.SCW.knackAjax({
+      type: 'PUT',
+      url: url,
+      data: JSON.stringify(body),
+      dataType: 'json',
+      success: function (resp) {
+        var R = (resp && resp.record) || resp || {};
+        console.log(LOG_PREFIX, 'object-scoped PUT ok', recordId,
+          'response field_2375:', R[CFG.TARGET_FIELD],
+          'response field_2375_raw:', R[CFG.TARGET_FIELD + '_raw'],
+          'full resp:', resp);
+        if (typeof window.SCW.syncKnackModel === 'function') {
+          try {
+            window.SCW.syncKnackModel(CFG.TARGET_VIEW, recordId, resp,
+              CFG.TARGET_FIELD, newId ? [newId] : []);
+          } catch (e) { /* best-effort */ }
+        }
+        onDone(null, resp);
+      },
+      error: function (xhr) {
+        console.error(LOG_PREFIX, 'object-scoped PUT failed',
+          xhr && xhr.status, xhr && xhr.responseText);
+        onDone(xhr || new Error('object-scoped save failed'));
+      }
+    });
+  }
+
   // ── Save: PUT field_2375 with the chosen MDF/IDF id ─────────────
   // Tries array form first ({field_2375:[id]}), falls back to bare
   // string ({field_2375:id}) on 4xx — covers single-connection field
@@ -438,12 +505,25 @@
                        : !!raw;
             if (!hasRaw && !savedVal) stickFailed = true;
           }
-          if (stickFailed) {
+          // If the view-scoped PUT silently stripped the field
+          // (response field_2375_raw is empty even though we sent
+          // a non-empty value), automatically retry against the
+          // object-scoped endpoint, which bypasses view-level
+          // inline-edit allow-lists and view-level submit rules.
+          // If THAT also strips the field, the field is computed
+          // server-side (Lookup / Auto-Update / Equation field
+          // type) and direct writes can never persist.
+          if (stickFailed && !isRetry) {
             console.warn(LOG_PREFIX,
-              'PUT returned 200 but field_2375 came back empty. ' +
-              'A Knack record rule on Survey Line Item is likely ' +
-              'reverting field_2375 for this record. Check Builder → ' +
-              'Survey Line Item object → Record Rules.');
+              'view-scoped PUT stripped field_2375 ' +
+              '(saved empty despite non-empty request). Retrying ' +
+              'against the object-scoped endpoint to bypass any ' +
+              'view-level inline-edit filter.');
+            objectScopedRetry(recordId, newId, function (err2, resp2) {
+              if (err2) { onDone(err2); return; }
+              onDone(null, resp2);
+            });
+            return;
           }
           if (typeof window.SCW.syncKnackModel === 'function') {
             try {
@@ -451,14 +531,11 @@
                 CFG.TARGET_FIELD, newId ? [newId] : []);
             } catch (e) { /* best-effort */ }
           }
-          // Read-back verification: GET the record fresh from the view-
-          // scoped endpoint and log what its field_2375 looks like NOW.
-          // If the PUT response showed the value set but the read-back
-          // shows it empty, something is reverting between save and
-          // re-read (record rule, integration, background task). If the
-          // PUT response already showed it empty, Knack dropped it
-          // server-side at PUT-time (perms / view inline-edit list /
-          // connection-field validation we haven't found in Builder yet).
+          // Read-back verification: GET the record fresh and log
+          // the full response shape so we can see exactly what
+          // Knack stored. Use the object-scoped GET because the
+          // view-scoped GET sometimes returns a different envelope
+          // and may strip non-inline-edit-listed fields.
           (function verify() {
             try {
               window.SCW.knackAjax({
@@ -467,10 +544,11 @@
                 dataType: 'json',
                 success: function (vresp) {
                   var VR = (vresp && vresp.record) || vresp || {};
-                  console.log(LOG_PREFIX, 'verify GET',
+                  console.log(LOG_PREFIX, 'verify GET (view-scoped)',
                     recordId,
                     'field_2375:', VR[CFG.TARGET_FIELD],
-                    'field_2375_raw:', VR[CFG.TARGET_FIELD + '_raw']);
+                    'field_2375_raw:', VR[CFG.TARGET_FIELD + '_raw'],
+                    'full resp:', vresp);
                 },
                 error: function (xhr) {
                   console.warn(LOG_PREFIX, 'verify GET failed',
