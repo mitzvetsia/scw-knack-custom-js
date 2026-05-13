@@ -92,6 +92,7 @@ cat \
   src/features/connected-records.js \
   src/features/device-worksheet.js \
   src/features/device-worksheet-expand-all.js \
+  src/features/device-worksheet-photo-toggle.js \
   src/features/device-worksheet-toolbar.js \
   src/features/device-worksheet-sort.js \
   src/features/install-config-subpanel.js \
