@@ -451,6 +451,34 @@
                 CFG.TARGET_FIELD, newId ? [newId] : []);
             } catch (e) { /* best-effort */ }
           }
+          // Read-back verification: GET the record fresh from the view-
+          // scoped endpoint and log what its field_2375 looks like NOW.
+          // If the PUT response showed the value set but the read-back
+          // shows it empty, something is reverting between save and
+          // re-read (record rule, integration, background task). If the
+          // PUT response already showed it empty, Knack dropped it
+          // server-side at PUT-time (perms / view inline-edit list /
+          // connection-field validation we haven't found in Builder yet).
+          (function verify() {
+            try {
+              window.SCW.knackAjax({
+                type: 'GET',
+                url: url,
+                dataType: 'json',
+                success: function (vresp) {
+                  var VR = (vresp && vresp.record) || vresp || {};
+                  console.log(LOG_PREFIX, 'verify GET',
+                    recordId,
+                    'field_2375:', VR[CFG.TARGET_FIELD],
+                    'field_2375_raw:', VR[CFG.TARGET_FIELD + '_raw']);
+                },
+                error: function (xhr) {
+                  console.warn(LOG_PREFIX, 'verify GET failed',
+                    xhr && xhr.status);
+                }
+              });
+            } catch (e) { /* best-effort */ }
+          })();
           onDone(null, resp);
         },
         error: function (xhr) {
