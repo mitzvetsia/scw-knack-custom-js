@@ -25,18 +25,39 @@
 (function () {
   'use strict';
 
-  // Known Yes/No chit fields used by device-worksheet's toggleChit
-  // type. Boolean values for these get coerced into "Yes" / "No"
-  // strings before the request ships.
+  // Known chit fields. Value declares the SHAPE the field's API
+  // expects on PUT/POST:
+  //   'yesno'   → string "Yes" / "No"   (Yes/No object field type)
+  //   'boolean' → JSON true / false     (Boolean object field type)
+  //
+  // For each field, whichever shape is canonical we coerce the body
+  // into — regardless of which form (boolean, "true"/"false" string,
+  // or "Yes"/"No" string) the caller sent. Knack silently no-ops
+  // mis-shaped writes for these fields, which is what produced the
+  // "bulk-edit looks like it ran but the cell doesn't flip" bug.
   var CHIT_FIELDS = {
-    field_2370: true,   // Existing cabling (view_3505 / survey side)
-    field_2371: true,   // Plenum         (view_3505 / survey side)
-    field_2372: true,   // Exterior       (view_3505 / survey side)
-    field_2461: true,   // Existing cabling (view_3313 / view_3610 / SOW side)
-    field_1984: true,   // Exterior         (SOW side)
-    field_1983: true,   // Plenum           (SOW side)
-    field_2634: true    // Lock Record
+    field_2370: 'yesno',   // Existing cabling (view_3505 / survey)
+    field_2371: 'boolean', // Plenum           (view_3505 / survey) — Boolean type
+    field_2372: 'yesno',   // Exterior         (view_3505 / survey)
+    field_2461: 'yesno',   // Existing cabling (view_3313 / view_3610 / SOW)
+    field_1984: 'yesno',   // Exterior         (SOW)
+    field_1983: 'yesno',   // Plenum           (SOW)
+    field_2634: 'yesno'    // Lock Record
   };
+
+  // Returns:
+  //   true / false  if the value is recognizably yes-ish or no-ish
+  //   null          if we shouldn't touch it (unknown shape)
+  function asBool(v) {
+    if (v === true) return true;
+    if (v === false) return false;
+    if (typeof v === 'string') {
+      var lc = v.trim().toLowerCase();
+      if (lc === 'yes' || lc === 'true')  return true;
+      if (lc === 'no'  || lc === 'false') return false;
+    }
+    return null;
+  }
 
   function coerceBody(body) {
     if (typeof body !== 'string' || !body) return { body: body, hadChit: false };
@@ -56,23 +77,17 @@
     var changed = false;
     for (var key in parsed) {
       if (!parsed.hasOwnProperty(key)) continue;
-      if (!CHIT_FIELDS[key]) continue;
-      var v = parsed[key];
-      // Boolean form — KTL bulk-edit's most common shape.
-      if (typeof v === 'boolean') {
-        parsed[key] = v ? 'Yes' : 'No';
-        changed = true;
-        continue;
-      }
-      // String form — KTL on some Knack versions serializes Yes/No
-      // booleans as the literal strings "true"/"false" before PUT.
-      // Knack's API silently no-ops those for chit fields the same
-      // way it no-ops actual booleans, so coerce them too.
-      if (typeof v === 'string') {
-        var lc = v.trim().toLowerCase();
-        if (lc === 'true')  { parsed[key] = 'Yes'; changed = true; continue; }
-        if (lc === 'false') { parsed[key] = 'No';  changed = true; continue; }
-      }
+      var shape = CHIT_FIELDS[key];
+      if (!shape) continue;
+      var b = asBool(parsed[key]);
+      if (b === null) continue; // unrecognized — leave it alone
+      var target;
+      if (shape === 'yesno') target = b ? 'Yes' : 'No';
+      else                   target = b;                // 'boolean'
+      // Skip if already in the target shape.
+      if (parsed[key] === target) continue;
+      parsed[key] = target;
+      changed = true;
     }
     if (!changed) return { body: body, hadChit: true };
     try {
