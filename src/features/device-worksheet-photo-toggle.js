@@ -95,17 +95,13 @@
     // both placements are detected.
     var existingBtn = nav.querySelector('.' + BTN_CLS);
 
-    // No real photos anywhere on the view → remove any stale button
-    // (rows may have been deleted since last mount) and bail.
-    if (!countRowsWithPhotos(viewEl)) {
-      if (existingBtn) {
-        // Pull the button (and its standalone-host wrapper if any).
-        var hostWrap = existingBtn.closest('.' + HOST_CLS + ':not(.' + BTN_CLS + ')');
-        var toRemove = hostWrap || existingBtn;
-        toRemove.parentNode.removeChild(toRemove);
-      }
-      return false;
-    }
+    // Always render the button when the toolbar is present — even if
+    // no rows currently have uploaded photos. The previous count-gate
+    // had false negatives during page load when inline-photo-row.js
+    // hadn't built the strips yet by the time of our scan, leaving
+    // view_3610 without the toggle even though photos existed. The
+    // CSS override the button drives is a no-op on rows with no real
+    // photos, so always showing it costs nothing.
 
     var bulkToggle = nav.querySelector('.scw-ws-bulk-toggle');
 
