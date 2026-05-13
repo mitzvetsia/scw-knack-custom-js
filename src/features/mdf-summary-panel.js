@@ -219,11 +219,13 @@
     var s = document.createElement('style');
     s.id = STYLE_ID;
     s.textContent =
+      // L1 panel container — transparent so the card chrome inside is
+      // identical to the grand-summary card (no extra grey frame around
+      // the per-L1 card).
       'tr.' + ROW_CLASS + ' > td {' +
-      '  background: var(--scw-surface-subtle);' +
-      '  padding: 10px 14px;' +
-      '  border-top: 1px solid var(--scw-border-subtle);' +
-      '  border-bottom: 1px solid var(--scw-border-subtle);' +
+      '  background: transparent;' +
+      '  padding: 6px 0 10px;' +
+      '  border: 0;' +
       '}' +
       '.scw-mdf-card .scw-mdf-summary-table {' +
       '  width: 100%;' +
