@@ -46,7 +46,10 @@
     qaNotes:       'field_2880',
     qaCompletedBy: 'field_2881',
     qaCompletedDt: 'field_2882',
-    qaHistory:     'field_2883'
+    qaHistory:     'field_2883',
+    // Upload audit — populated by Make's upload scenario.
+    uploadedBy:    'field_2902',  // Connection → user
+    uploadedDate:  'field_2903'   // Date/Time
   };
 
   var QA_STATUS_OPTIONS = ['Pending', 'Pass', 'Fail'];
@@ -71,15 +74,28 @@
       if (!m || !m.id) continue;
       var raw = m.attributes && m.attributes[F.file + '_raw'];
       if (!raw || !raw.url) continue;
+
+      // Connection field — Knack stores as [{id, identifier}].
+      var upByArr = m.attributes[F.uploadedBy + '_raw'];
+      var uploadedBy = (Array.isArray(upByArr) && upByArr.length && upByArr[0].identifier)
+        ? String(upByArr[0].identifier) : '';
+      // Date field — m.attributes[fk] is the formatted display string
+      // ("05/13/2026 9:42 AM"); fk + '_raw' has the parsed components.
+      var uploadedDate = String(m.attributes[F.uploadedDate] || '').trim();
+
       var prev = docFileMeta[m.id];
       var next = {
-        url:      raw.url,
-        thumbUrl: raw.thumb_url || '',
-        filename: raw.filename || '',
-        size:     raw.size || 0,
-        type:     raw.type || ''
+        url:          raw.url,
+        thumbUrl:     raw.thumb_url || '',
+        filename:     raw.filename || '',
+        size:         raw.size || 0,
+        type:         raw.type || '',
+        uploadedBy:   uploadedBy,
+        uploadedDate: uploadedDate
       };
-      if (!prev || prev.url !== next.url || prev.thumbUrl !== next.thumbUrl) {
+      if (!prev || prev.url !== next.url || prev.thumbUrl !== next.thumbUrl ||
+          prev.uploadedBy !== next.uploadedBy ||
+          prev.uploadedDate !== next.uploadedDate) {
         docFileMeta[m.id] = next;
         changed = true;
       }
@@ -367,8 +383,10 @@
     Object.keys(docs).forEach(function (id) {
       var meta = docFileMeta[id];
       if (!meta) return;
-      docs[id].rawUrl   = meta.url;
-      docs[id].thumbUrl = meta.thumbUrl;
+      docs[id].rawUrl       = meta.url;
+      docs[id].thumbUrl     = meta.thumbUrl;
+      docs[id].uploadedBy   = meta.uploadedBy;
+      docs[id].uploadedDate = meta.uploadedDate;
       if (!docs[id].fileName && meta.filename) docs[id].fileName = meta.filename;
       docs[id].fileSize = meta.size;
     });
@@ -1147,6 +1165,18 @@
     hint.textContent = 'Notes required when marking Fail.';
     notesSec.appendChild(hint);
     sbContent.appendChild(notesSec);
+
+    // Upload audit — who uploaded this file and when (from field_2902/2903
+    // on the DOC record, captured by Make at upload time).
+    if (doc.uploadedBy || doc.uploadedDate) {
+      var uploadAudit = document.createElement('div');
+      uploadAudit.className = POPOVER_ID + '__signoff';
+      uploadAudit.style.marginBottom = '8px';
+      uploadAudit.innerHTML =
+        'Uploaded by <strong>' + escapeHtml(doc.uploadedBy || '—') +
+        '</strong> on <strong>' + escapeHtml(doc.uploadedDate || '—') + '</strong>';
+      sbContent.appendChild(uploadAudit);
+    }
 
     // Sign-off metadata (read-only summary)
     if (doc.qaCompletedBy || doc.qaCompletedDt) {
