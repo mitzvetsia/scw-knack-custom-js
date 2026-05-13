@@ -464,13 +464,14 @@
         },
         summaryLayout: ['laborDescription', 'quantity', 'subBid', 'plusHrs', 'plusMat', 'installFee', 'sow'],
         detailLayout: {
-          // Non-camera/reader rows on view_3610 (Networking, Other
-          // Equipment, Mounting Hardware, etc.). Without this layout
-          // the main-config rows have nothing to expand into and the
-          // chevron click was a no-op — only the bucketOverride for
-          // cameras had its own detailLayout.
-          left:  ['mountingHardware', 'surveyNotes', 'scwNotes'],
-          right: ['connectedDevice', 'selectedSubBid', 'subBidLock']
+          // Restored from commit eaf720f — was accidentally dropped in
+          // 7794df2 ('Worksheet sort presets: dropdown replaces thead')
+          // while adding sortPresets, which silently broke chevron
+          // expansion for non-camera rows on view_3610 (Networking,
+          // Other Equipment, Mounting Hardware). Cameras kept working
+          // because their bucketOverride has its own detailLayout.
+          left:  ['connectedDevice', 'mountingHardware'],
+          right: ['scwNotes', 'selectedSubBid', 'surveyNotes', 'subBidLock']
         },
         sortPresets: [
           { id: 'default',  label: 'Default' },
