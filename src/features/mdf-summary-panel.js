@@ -219,13 +219,14 @@
     var s = document.createElement('style');
     s.id = STYLE_ID;
     s.textContent =
-      // L1 panel container — transparent so the card chrome inside is
-      // identical to the grand-summary card (no extra grey frame around
-      // the per-L1 card).
+      // L1 panel container — fully reset so the parent <td>\'s styling
+      // (Knack\'s .kn-table td borders/padding/zebra-stripe) can\'t
+      // distinguish the L1 panel from the grand panel.  All chrome
+      // comes from the inner .scw-mdf-grand-summary wrap + .scw-mdf-card.
       'tr.' + ROW_CLASS + ' > td {' +
-      '  background: transparent;' +
-      '  padding: 6px 0 10px;' +
-      '  border: 0;' +
+      '  background: transparent !important;' +
+      '  padding: 0 !important;' +
+      '  border: 0 !important;' +
       '}' +
       '.scw-mdf-card .scw-mdf-summary-table {' +
       '  width: 100%;' +
@@ -890,7 +891,12 @@
       }
       var td = document.createElement('td');
       td.colSpan = colCount;
-      td.innerHTML = carded;
+      // Wrap the card in the same .scw-mdf-grand-summary div the grand
+      // panel uses so the L1 + grand panels share byte-identical outer
+      // chrome (margins, transparent background, no border). Without
+      // this the L1 card inherits the parent <td>'s context and reads
+      // visibly different even when the .scw-mdf-card itself matches.
+      td.innerHTML = '<div class="' + GRAND_CLASS + '">' + carded + '</div>';
       summaryRow.appendChild(td);
       // Insert immediately after the L1 header so the row lives in
       // the group's row block (group-collapse toggles the whole block).
