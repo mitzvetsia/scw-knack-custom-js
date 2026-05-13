@@ -830,6 +830,15 @@
   // is fetchable.  Resolves with `null` (we don't need the data, the
   // Knack model updates in place — we just need to know when it's safe
   // to re-check).
+  //
+  // Each per-view Promise is racing a 4s timeout: if a jqXHR's always()
+  // never fires (Knack/Backbone throwing inside its own success/error
+  // handler can strand the deferred indefinitely), the timeout resolves
+  // for us and the outer poll tick keeps going.  Without this, an
+  // upstream "Cannot read properties of undefined" inside Knack would
+  // leave our spinner pinned.
+  var FETCH_RESOLVE_TIMEOUT_MS = 4000;
+
   function fetchBothViewsForDoc() {
     var ids = [VIEW_ID, DOC_SAVE_VIEW];
     var promises = [];
@@ -842,12 +851,19 @@
       } catch (e) { continue; }
       try {
         var jq = v.model.fetch();
-        // Knack returns a jqXHR.  Wrap as a Promise so we can Promise.all
-        // and chain a check after BOTH fetches resolve. Always-fires
-        // (success or failure) so a single failure doesn't strand us.
         if (jq && typeof jq.always === 'function') {
           promises.push(new Promise(function (resolve) {
-            jq.always(function () { resolve(); });
+            var settled = false;
+            var done = function () {
+              if (settled) return;
+              settled = true;
+              resolve();
+            };
+            try { jq.always(done); } catch (e) { /* swallow */ }
+            // Safety timeout — Knack-internal exceptions inside the
+            // deferred's success/error chain can prevent .always from
+            // firing.  Don't strand the outer poll.
+            setTimeout(done, FETCH_RESOLVE_TIMEOUT_MS);
           }));
         }
       } catch (e) { /* swallow */ }
