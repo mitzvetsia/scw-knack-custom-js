@@ -410,20 +410,21 @@
         var accordion = accordions[i];
         var body = accordion.querySelector('.scw-ktl-accordion__body');
         if (!body) { skipped.noHeader++; continue; }
-        // Check the ACTUAL button container, not just the attribute.
-        // Knack re-renders the accordion's inner view body on
-        // knack-view-render, which tears out the .scw-acc-actions
-        // container we injected. The data-scw-menu-injected attribute
-        // sits on the accordion WRAPPER (which Knack doesn't rebuild),
-        // so a stale attribute survives the body teardown. Relying
-        // on it alone left the buttons gone after every view-render
-        // refresh, requiring a full page reload to bring them back.
-        if (body.querySelector('.scw-acc-actions .scw-acc-action-btn')) {
+        // Check the ACTUAL button container, not just the attribute,
+        // and scan the WHOLE accordion (not just the body). device-
+        // worksheet-toolbar.js re-parents .scw-acc-actions out of the
+        // body and into the inner view's .kn-records-nav for layout —
+        // that nav is still nested inside the accordion, so an
+        // accordion-rooted search finds the buttons wherever the
+        // toolbar parked them. A body-only scan would miss them and
+        // race-re-inject every render, producing the "hide and seek"
+        // behavior on views with toolbar hoisting.
+        if (accordion.querySelector('.scw-acc-actions .scw-acc-action-btn')) {
           skipped.alreadyInjected++;
           continue;
         }
-        // Buttons aren't currently in the body — clear the stale
-        // attribute so the rest of the logic re-injects.
+        // Buttons aren't currently anywhere in this accordion — clear
+        // the stale attribute so the rest of the logic re-injects.
         if (accordion.hasAttribute(INJECTED)) {
           accordion.removeAttribute(INJECTED);
         }
