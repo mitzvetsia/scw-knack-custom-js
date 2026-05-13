@@ -455,6 +455,63 @@
     });
   }
 
+  // ── model.updateRecord retry ─────────────────────────────────
+  // Some Knack views handle inline-edit field permissions only
+  // through their Backbone view's updateRecord() helper, which
+  // wraps the same view-scoped endpoint but with different
+  // session/CSRF context than raw $.ajax. Worth one shot when
+  // direct PUT got silently stripped.
+  function modelUpdateRetry(recordId, newId, onDone) {
+    try {
+      var view = window.Knack && Knack.views && Knack.views[CFG.TARGET_VIEW];
+      if (!view || !view.model || typeof view.model.updateRecord !== 'function') {
+        console.warn(LOG_PREFIX,
+          'model.updateRecord retry: view or updateRecord unavailable');
+        onDone(new Error('updateRecord unavailable'));
+        return;
+      }
+      var body = {};
+      body[CFG.TARGET_FIELD] = newId ? [newId] : [];
+      console.log(LOG_PREFIX, 'model.updateRecord', recordId, body);
+      // Backbone callback signature varies by Knack version. Try
+      // promise first, fall back to options.success/error.
+      var maybePromise = view.model.updateRecord(recordId, body, {
+        success: function (resp) {
+          var R = (resp && resp.record) || resp || {};
+          console.log(LOG_PREFIX, 'model.updateRecord ok', recordId,
+            'response field_2375_raw:', R[CFG.TARGET_FIELD + '_raw'],
+            'full resp:', resp);
+          onDone(null, resp);
+        },
+        error: function (xhr) {
+          console.error(LOG_PREFIX, 'model.updateRecord failed',
+            xhr && xhr.status, xhr && xhr.responseText);
+          onDone(xhr || new Error('updateRecord save failed'));
+        }
+      });
+      if (maybePromise && typeof maybePromise.then === 'function') {
+        maybePromise.then(
+          function (resp) {
+            var R = (resp && resp.record) || resp || {};
+            console.log(LOG_PREFIX, 'model.updateRecord ok (promise)',
+              recordId,
+              'response field_2375_raw:', R[CFG.TARGET_FIELD + '_raw'],
+              'full resp:', resp);
+            onDone(null, resp);
+          },
+          function (err) {
+            console.error(LOG_PREFIX,
+              'model.updateRecord failed (promise)', err);
+            onDone(err || new Error('updateRecord save failed'));
+          }
+        );
+      }
+    } catch (e) {
+      console.error(LOG_PREFIX, 'model.updateRecord threw', e);
+      onDone(e);
+    }
+  }
+
   // ── Save: PUT field_2375 with the chosen MDF/IDF id ─────────────
   // Tries array form first ({field_2375:[id]}), falls back to bare
   // string ({field_2375:id}) on 4xx — covers single-connection field
@@ -507,19 +564,20 @@
           }
           // If the view-scoped PUT silently stripped the field
           // (response field_2375_raw is empty even though we sent
-          // a non-empty value), automatically retry against the
-          // object-scoped endpoint, which bypasses view-level
-          // inline-edit allow-lists and view-level submit rules.
-          // If THAT also strips the field, the field is computed
-          // server-side (Lookup / Auto-Update / Equation field
-          // type) and direct writes can never persist.
+          // a non-empty value), try going through Knack's internal
+          // Backbone model.updateRecord() instead. On some Knack
+          // versions that path handles inline-edit field permissions
+          // differently than raw $.ajax. Object-scoped retry was
+          // tried previously but 403s for non-admin sessions, so
+          // skip it.
           if (stickFailed && !isRetry) {
             console.warn(LOG_PREFIX,
               'view-scoped PUT stripped field_2375 ' +
               '(saved empty despite non-empty request). Retrying ' +
-              'against the object-scoped endpoint to bypass any ' +
-              'view-level inline-edit filter.');
-            objectScopedRetry(recordId, newId, function (err2, resp2) {
+              'through Knack.views.' + CFG.TARGET_VIEW +
+              '.model.updateRecord() to use Knack\'s internal ' +
+              'save path.');
+            modelUpdateRetry(recordId, newId, function (err2, resp2) {
               if (err2) { onDone(err2); return; }
               onDone(null, resp2);
             });
