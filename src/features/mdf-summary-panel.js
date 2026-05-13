@@ -38,6 +38,69 @@
   var NS          = '.scwMdfSummary';
   var ROW_CLASS   = 'scw-mdf-summary-row';
   var GRAND_CLASS = 'scw-mdf-grand-summary';
+  var CARD_CLASS  = 'scw-mdf-card';
+
+  // ── Per-panel collapsed-state persistence ────────────────────
+  // Keyed by (scene, view, panelKey).  panelKey is "grand" for the
+  // grand summary, the L1 group's label text for per-group panels.
+  function getMdfSceneId() {
+    var bodyId = document.body && document.body.id;
+    if (bodyId) {
+      var m = bodyId.match(/scene_\d+/);
+      if (m) return m[0];
+    }
+    return 'unknown_scene';
+  }
+  function panelStorageKey(viewId, panelKey) {
+    return 'scw:mdf-panel:' + getMdfSceneId() + ':' + viewId + ':' + panelKey;
+  }
+  function isPanelCollapsed(viewId, panelKey) {
+    try { return localStorage.getItem(panelStorageKey(viewId, panelKey)) === 'collapsed'; }
+    catch (e) { return false; }
+  }
+  function savePanelCollapsed(viewId, panelKey, collapsed) {
+    try {
+      if (collapsed) localStorage.setItem(panelStorageKey(viewId, panelKey), 'collapsed');
+      else           localStorage.removeItem(panelStorageKey(viewId, panelKey));
+    } catch (e) { /* ignore */ }
+  }
+
+  function wrapInCard(html, opts) {
+    var collapsed = isPanelCollapsed(opts.viewId, opts.panelKey);
+    return '<div class="' + CARD_CLASS +
+      (collapsed ? ' ' + CARD_CLASS + '--collapsed' : '') + '" ' +
+      'data-view-id="' + escapeHtml(opts.viewId) + '" ' +
+      'data-panel-key="' + escapeHtml(opts.panelKey) + '">' +
+      '<button type="button" class="' + CARD_CLASS + '__head">' +
+        '<span class="' + CARD_CLASS + '__title">' + escapeHtml(opts.title) + '</span>' +
+        '<svg class="' + CARD_CLASS + '__chevron" viewBox="0 0 24 24" ' +
+          'fill="none" stroke="currentColor" stroke-width="2.5" ' +
+          'stroke-linecap="round" stroke-linejoin="round">' +
+          '<polyline points="6 9 12 15 18 9"></polyline></svg>' +
+      '</button>' +
+      '<div class="' + CARD_CLASS + '__body">' + html + '</div>' +
+    '</div>';
+  }
+
+  // Document-level click handler — one binding, handles every card.
+  // Idempotent via the data-attribute flag so reloads don't stack
+  // duplicate listeners.
+  if (!document.documentElement.hasAttribute('data-scw-mdf-card-bound')) {
+    document.documentElement.setAttribute('data-scw-mdf-card-bound', '1');
+    document.addEventListener('click', function (e) {
+      var head = e.target && e.target.closest && e.target.closest('.' + CARD_CLASS + '__head');
+      if (!head) return;
+      var card = head.closest('.' + CARD_CLASS);
+      if (!card) return;
+      var nowCollapsed = !card.classList.contains(CARD_CLASS + '--collapsed');
+      card.classList.toggle(CARD_CLASS + '--collapsed', nowCollapsed);
+      savePanelCollapsed(
+        card.getAttribute('data-view-id') || '',
+        card.getAttribute('data-panel-key') || '',
+        nowCollapsed
+      );
+    });
+  }
 
   // ── Per-view field maps ─────────────────────────────────
   // The default targets SOW Line Items (view_3610 family). Other
@@ -266,22 +329,66 @@
       '  text-transform: uppercase; letter-spacing: 0.05em;' +
       '  padding-left: 14px !important;' +
       '}' +
-      // Grand-summary wrapper — transparent now. Lives directly on the
-      // page background (or whatever surface its parent provides) so it
-      // doesn\'t stack a "card within a card" against the toolbar above
-      // and the L1 group headers below.
+      // Grand-summary outer wrapper — just margins; the card chrome
+      // inside does the actual styling.
       '.' + GRAND_CLASS + ' {' +
       '  margin: 4px 0 14px;' +
       '  padding: 0;' +
       '  background: transparent;' +
       '  border: 0;' +
       '}' +
-      '.' + GRAND_CLASS + ' .scw-mdf-grand-title {' +
-      '  font: 700 10.5px/1 system-ui, -apple-system, "Segoe UI", sans-serif;' +
-      '  color: var(--scw-text-muted);' +
+      // ── Card chrome (shared between grand + per-L1 panels) ──
+      '.' + CARD_CLASS + ' {' +
+      '  background: var(--scw-surface-base, #fff);' +
+      '  border: 1px solid var(--scw-border-default, #d1d5db);' +
+      '  border-left: 4px solid var(--scw-accent, #0f4c75);' +
+      '  border-radius: 8px;' +
+      '  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);' +
+      '  overflow: hidden;' +
+      '  margin: 0;' +
+      '}' +
+      '.' + ROW_CLASS + ' .' + CARD_CLASS + ' {' +
+      // L1 panel sits inside a table row; tighten outer margins so it
+      // hugs the row container rather than floating.
+      '  margin: 4px 0;' +
+      '}' +
+      '.' + CARD_CLASS + '__head {' +
+      '  display: flex; align-items: center; gap: 8px;' +
+      '  width: 100%;' +
+      '  padding: 10px 14px;' +
+      '  background: var(--scw-surface-subtle, #f8fafc);' +
+      '  border: 0; border-bottom: 1px solid var(--scw-border-subtle, #e2e8f0);' +
+      '  cursor: pointer; text-align: left;' +
+      '  font: 700 11px/1 system-ui, -apple-system, "Segoe UI", sans-serif;' +
       '  text-transform: uppercase;' +
       '  letter-spacing: 0.08em;' +
-      '  margin: 0 0 6px 2px;' +
+      '  color: var(--scw-text-default, #1f2937);' +
+      '  transition: background 120ms ease;' +
+      '}' +
+      '.' + CARD_CLASS + '__head:hover {' +
+      '  background: var(--scw-surface-muted, #f1f5f9);' +
+      '}' +
+      '.' + CARD_CLASS + '__title { flex: 1 1 auto; }' +
+      '.' + CARD_CLASS + '__chevron {' +
+      '  width: 14px; height: 14px; flex: 0 0 auto;' +
+      '  color: var(--scw-text-muted, #64748b);' +
+      '  transition: transform 150ms ease;' +
+      '}' +
+      '.' + CARD_CLASS + '--collapsed .' + CARD_CLASS + '__chevron {' +
+      '  transform: rotate(-90deg);' +
+      '}' +
+      '.' + CARD_CLASS + '--collapsed .' + CARD_CLASS + '__head {' +
+      '  border-bottom-color: transparent;' +
+      '}' +
+      '.' + CARD_CLASS + '__body {' +
+      '  padding: 10px 14px 14px;' +
+      '}' +
+      '.' + CARD_CLASS + '--collapsed .' + CARD_CLASS + '__body {' +
+      '  display: none;' +
+      '}' +
+      // Inner table needs no extra border now that the card has it.
+      '.' + CARD_CLASS + ' .scw-mdf-summary-table {' +
+      '  border: 0; border-radius: 0;' +
       '}';
     document.head.appendChild(s);
   }
@@ -704,6 +811,16 @@
       var data = aggregate(_list, fields);
       var html = buildPanelHtml(data, fields);
       if (!html) return;
+      // Derive a stable panelKey from the L1 group's label so collapse
+      // state survives re-renders. Strip surplus whitespace + the
+      // trailing colons Knack appends ("HEADEND: :" → "HEADEND").
+      var l1Label = (_l1.textContent || '').replace(/\s+/g, ' ').trim()
+                                              .replace(/[:\s]+$/, '');
+      var carded = wrapInCard(html, {
+        viewId:   viewId,
+        panelKey: 'l1:' + (l1Label || 'unknown'),
+        title:    'Summary — ' + (l1Label || 'Group')
+      });
       var summaryRow = document.createElement('tr');
       summaryRow.className = ROW_CLASS;
       // Mirror the L1 header's current collapse state. group-collapse
@@ -715,7 +832,7 @@
       }
       var td = document.createElement('td');
       td.colSpan = colCount;
-      td.innerHTML = html;
+      td.innerHTML = carded;
       summaryRow.appendChild(td);
       // Insert immediately after the L1 header so the row lives in
       // the group's row block (group-collapse toggles the whole block).
@@ -760,13 +877,17 @@
     if (prev) prev.remove();
     if (!list.length) return;
 
+    var viewId = view.id || '';
     var html = buildPanelHtml(aggregate(list, fields), fields);
     if (!html) return;
 
     var wrap = document.createElement('div');
     wrap.className = GRAND_CLASS;
-    wrap.innerHTML =
-      '<div class="scw-mdf-grand-title">Summary — All Groups</div>' + html;
+    wrap.innerHTML = wrapInCard(html, {
+      viewId:   viewId,
+      panelKey: 'grand',
+      title:    'Summary — All Groups'
+    });
 
     // Mount just above the kn-table so the grand summary sits outside
     // Knack's grouping/pagination machinery (and isn't toggled by
