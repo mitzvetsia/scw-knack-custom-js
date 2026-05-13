@@ -250,9 +250,10 @@
       '  font-size: 10px; font-weight: 700;' +
       '  color: var(--scw-text-caption);' +
       '  text-transform: uppercase; letter-spacing: 0.05em;' +
-      '  background: var(--scw-border-subtle);' +
-      '  border-bottom: 2px solid var(--scw-border-strong);' +
+      '  background: transparent;' +
+      '  border-bottom: 1px solid var(--scw-border-default);' +
       '  white-space: nowrap;' +
+      '  padding-top: 4px !important; padding-bottom: 8px !important;' +
       '}' +
       '.scw-mdf-summary-table th.scw-mdf-product-h,' +
       '.scw-mdf-summary-table td.scw-mdf-product {' +
@@ -275,59 +276,68 @@
       '.scw-mdf-summary-table td.scw-mdf-empty {' +
       '  color: var(--scw-border-default);' +
       '}' +
-      // Bucket section heading — light slate band with dark text.
-      // Neutral chrome, no per-view accent stripe.
+      // Bucket section heading — no fill, just a small uppercase muted
+      // label that acts as a section header. Section separation is a
+      // thin top-border for every bucket head except the first.
       '.scw-mdf-summary-table tr.scw-mdf-bucket-head td {' +
-      '  background: var(--scw-surface-muted) !important;' +
-      '  color: var(--scw-text-body) !important;' +
-      '  font: 700 10.5px/1 system-ui, -apple-system, "Segoe UI", sans-serif !important;' +
+      '  background: transparent !important;' +
+      '  color: var(--scw-text-caption) !important;' +
+      '  font: 600 10px/1 system-ui, -apple-system, "Segoe UI", sans-serif !important;' +
       '  text-transform: uppercase;' +
       '  letter-spacing: 0.08em;' +
-      '  padding: 7px 14px !important;' +
+      '  padding: 14px 14px 4px !important;' +
       '  text-align: left !important;' +
-      '  border-bottom: 1px solid var(--scw-border-subtle);' +
+      '  border-bottom: 0 !important;' +
       '}' +
       // Camera-or-Reader band carries inline column labels for the
-      // cabling/exterior/interior/plenum block. Smaller centered headers
-      // — same band background as the bucket-head, muted text.
+      // cabling/exterior/interior/plenum block. Same muted treatment as
+      // the rest of the section header so it doesn\'t shout.
       '.scw-mdf-summary-table tr.scw-mdf-bucket-head--cr td.scw-mdf-bh-col {' +
-      '  font: 700 9.5px/1.15 system-ui, -apple-system, "Segoe UI", sans-serif !important;' +
+      '  font: 600 9.5px/1.15 system-ui, -apple-system, "Segoe UI", sans-serif !important;' +
       '  text-align: center !important;' +
       '  text-transform: uppercase;' +
       '  letter-spacing: 0.04em;' +
-      '  padding: 7px 4px !important;' +
+      '  padding: 14px 4px 4px !important;' +
       '  white-space: normal;' +
       '  color: var(--scw-text-caption) !important;' +
       '  border-left: 0 !important;' +
       '}' +
-      // Visual gap between bucket sections — a sliver of the panel
-      // background shows through above every bucket-head except the
-      // first. Reduced from 6px to 4px since the band itself is lighter.
+      // Thin hairline at the top of each bucket section (skip first).
+      // This is the only chrome separating sections — no band needed.
       '.scw-mdf-summary-table tbody tr.scw-mdf-bucket-head:not(:first-child) td {' +
-      '  border-top: 4px solid var(--scw-surface-base);' +
+      '  border-top: 1px solid var(--scw-border-subtle);' +
       '}' +
-      // Bucket subtotal — slate-100 band with emphasis text.
+      // Bucket subtotal — no fill, top hairline + slightly bolder text.
       '.scw-mdf-summary-table tr.scw-mdf-subtotal td {' +
-      '  background: var(--scw-border-subtle); color: var(--scw-text-emphasis);' +
-      '  font-weight: 700;' +
-      '  border-top: 1px solid var(--scw-border-default);' +
-      '  border-bottom: 1px solid var(--scw-border-default);' +
+      '  background: transparent !important;' +
+      '  color: var(--scw-text-body);' +
+      '  font-weight: 600;' +
+      '  border-top: 1px solid var(--scw-border-subtle);' +
+      '  border-bottom: 0;' +
       '}' +
       '.scw-mdf-summary-table tr.scw-mdf-subtotal td.scw-mdf-product {' +
-      '  color: var(--scw-text-emphasis); text-align: left; padding-left: 22px !important;' +
+      '  color: var(--scw-text-muted); text-align: left; padding-left: 22px !important;' +
       '}' +
-      // Grand Total — quiet bottom anchor. Slate-100 background, dark
-      // emphasis text, thick neutral slate top-border.
+      // Grand Total — no fill, double-strength top border + bold text
+      // as the table\'s closing emphasis.
       '.scw-mdf-summary-table tr.scw-mdf-total td {' +
-      '  background: var(--scw-border-subtle); color: var(--scw-text-emphasis);' +
-      '  font-weight: 800; font-size: 12.5px;' +
-      '  border-top: 2px solid var(--scw-border-strong);' +
+      '  background: transparent !important;' +
+      '  color: var(--scw-text-emphasis);' +
+      '  font-weight: 700; font-size: 12.5px;' +
+      '  border-top: 2px solid var(--scw-border-default);' +
       '  border-bottom: none;' +
+      '  padding-top: 8px !important;' +
       '}' +
       '.scw-mdf-summary-table tr.scw-mdf-total td.scw-mdf-product {' +
       '  color: var(--scw-text-emphasis); text-align: left;' +
       '  text-transform: uppercase; letter-spacing: 0.05em;' +
       '  padding-left: 14px !important;' +
+      '}' +
+      // Per-row dividers — tone down so they read as alignment lines
+      // not a striped pattern.  Skip on the last visible row of a group
+      // (subtotal/total already carry their own top border).
+      '.scw-mdf-summary-table tbody td {' +
+      '  border-bottom-color: transparent !important;' +
       '}' +
       // Grand-summary outer wrapper — just margins; the card chrome
       // inside does the actual styling.
