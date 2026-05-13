@@ -463,6 +463,15 @@
           mountingHardware: { key: 'field_1958', type: 'connectedRecords' }
         },
         summaryLayout: ['laborDescription', 'quantity', 'subBid', 'plusHrs', 'plusMat', 'installFee', 'sow'],
+        detailLayout: {
+          // Non-camera/reader rows on view_3610 (Networking, Other
+          // Equipment, Mounting Hardware, etc.). Without this layout
+          // the main-config rows have nothing to expand into and the
+          // chevron click was a no-op — only the bucketOverride for
+          // cameras had its own detailLayout.
+          left:  ['mountingHardware', 'surveyNotes', 'scwNotes'],
+          right: ['connectedDevice', 'selectedSubBid', 'subBidLock']
+        },
         sortPresets: [
           { id: 'default',  label: 'Default' },
           { id: 'label',    label: 'Label',   field: 'field_1950', type: 'text'   },
