@@ -770,6 +770,13 @@
                     'found=' + found);
         if (found) {
           delete pendingUploads[docId];
+          // Trigger a strip rebuild directly. We can't rely on the
+          // view_3941 onViewRender hook to do it — by the time that
+          // event fires, our own docHasFileUploaded → rebuildFileMetaIndex
+          // has already updated docFileMeta in place, so the hook sees
+          // no change and skips the rebuild. Force it from here.
+          var viewEl = document.getElementById(VIEW_ID);
+          if (viewEl) renderInto(viewEl);
           return;
         }
         if (Date.now() - startedAt >= POLL_TIMEOUT_MS) {
