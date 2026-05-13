@@ -102,6 +102,19 @@
         else if (mode === 'collapse') show = false;
         else show = !!(r.classList && r.classList.contains(SUMMARY_CLASS));
         r.style.display = show ? '' : 'none';
+
+        // In summary mode the per-L1 mdf-summary-panel strip is the
+        // only useful content under each group header — force it open
+        // so the user sees actual summary tables instead of a row of
+        // collapsed "Summary ▾" bars. We don't touch strip state in
+        // expand/collapse mode (user's choice survives).
+        if (mode === 'summary' &&
+            r.classList && r.classList.contains(SUMMARY_CLASS)) {
+          var strips = r.querySelectorAll('.scw-mdf-strip');
+          for (var s = 0; s < strips.length; s++) {
+            strips[s].classList.add('scw-mdf-strip--open');
+          }
+        }
       }
     }
 
