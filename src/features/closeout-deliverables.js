@@ -764,35 +764,101 @@
   function injectPopoverCSS() {
     if (document.getElementById('scw-cd-qa-popover-css')) return;
     var css = [
+      // Overlay
       '.' + POPOVER_ID + '__overlay {',
-      '  position: fixed; inset: 0; background: rgba(15, 23, 42, 0.45);',
+      '  position: fixed; inset: 0; background: rgba(15, 23, 42, 0.55);',
       '  z-index: 9998; display: flex; align-items: center; justify-content: center;',
       '}',
+
+      // Modal shell — large viewer, not a popover.
       '.' + POPOVER_ID + ' {',
       '  position: relative; background: #fff; border-radius: 10px;',
-      '  box-shadow: 0 10px 30px rgba(0,0,0,0.18);',
-      '  width: 460px; max-width: 92vw; max-height: 92vh; overflow: auto;',
-      '  padding: 18px 20px;',
+      '  box-shadow: 0 20px 50px rgba(0,0,0,0.25);',
+      '  width: 95vw; height: 92vh; max-width: 1400px; max-height: 1000px;',
+      '  display: flex; flex-direction: column;',
       '  font: 12px/1.4 system-ui, -apple-system, sans-serif;',
+      '  overflow: hidden;',
       '}',
+
+      // Header strip
       '.' + POPOVER_ID + '__head {',
-      '  display: flex; align-items: flex-start; gap: 12px;',
-      '  border-bottom: 1px solid #e5e7eb; padding-bottom: 12px; margin-bottom: 14px;',
+      '  display: flex; align-items: center; gap: 16px;',
+      '  padding: 12px 18px;',
+      '  border-bottom: 1px solid #e5e7eb;',
+      '  background: #f9fafb;',
+      '  flex: 0 0 auto;',
       '}',
-      '.' + POPOVER_ID + '__type { font-size: 14px; font-weight: 700; color: #111827; }',
-      '.' + POPOVER_ID + '__sub  { font-size: 11px; color: #6b7280; margin-top: 2px; }',
-      '.' + POPOVER_ID + '__view-btn {',
-      '  margin-left: auto; padding: 6px 12px; border-radius: 6px;',
-      '  background: #f3f4f6; color: #1f2937; border: 1px solid #d1d5db;',
-      '  font: 600 11px/1.2 system-ui; text-transform: uppercase;',
-      '  letter-spacing: 0.04em; cursor: pointer;',
+      '.' + POPOVER_ID + '__type {',
+      '  font-size: 15px; font-weight: 700; color: #111827;',
       '}',
-      '.' + POPOVER_ID + '__view-btn:hover { background: #e5e7eb; border-color: #9ca3af; }',
-      '.' + POPOVER_ID + '__section { margin-bottom: 14px; }',
+      '.' + POPOVER_ID + '__sub  {',
+      '  font-size: 12px; color: #6b7280; margin-top: 2px;',
+      '  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;',
+      '  max-width: 600px;',
+      '}',
+      '.' + POPOVER_ID + '__head-meta { flex: 1 1 auto; min-width: 0; }',
+      '.' + POPOVER_ID + '__head-actions { display: flex; gap: 8px; flex: 0 0 auto; }',
+      '.' + POPOVER_ID + '__head-btn {',
+      '  padding: 7px 14px; border-radius: 6px;',
+      '  background: #fff; color: #1f2937; border: 1px solid #d1d5db;',
+      '  font: 600 12px/1.2 system-ui;',
+      '  cursor: pointer;',
+      '}',
+      '.' + POPOVER_ID + '__head-btn:hover { background: #f3f4f6; border-color: #9ca3af; }',
+      '.' + POPOVER_ID + '__head-btn--close {',
+      '  background: #fff; color: #6b7280; border-color: #d1d5db;',
+      '  width: 32px; padding: 0; font-size: 18px; line-height: 30px;',
+      '}',
+
+      // Body split — preview area + sidebar.
+      '.' + POPOVER_ID + '__body {',
+      '  display: flex; flex: 1 1 auto; min-height: 0;',
+      '}',
+      '.' + POPOVER_ID + '__viewer {',
+      '  flex: 1 1 auto; min-width: 0;',
+      '  background: #1f2937;',         // dark bg so PDF whitespace stands out
+      '  position: relative;',
+      '  display: flex; align-items: center; justify-content: center;',
+      '  overflow: hidden;',
+      '}',
+      '.' + POPOVER_ID + '__viewer iframe {',
+      '  width: 100%; height: 100%; border: 0; background: #fff;',
+      '}',
+      '.' + POPOVER_ID + '__viewer img {',
+      '  max-width: 100%; max-height: 100%; object-fit: contain;',
+      '  background: #fff;',
+      '}',
+      '.' + POPOVER_ID + '__viewer-empty {',
+      '  color: #9ca3af; padding: 40px; text-align: center;',
+      '  font-size: 14px;',
+      '}',
+      '.' + POPOVER_ID + '__viewer-fallback {',
+      '  color: #f3f4f6; padding: 40px; text-align: center; font-size: 13px;',
+      '}',
+      '.' + POPOVER_ID + '__viewer-fallback a {',
+      '  display: inline-block; margin-top: 10px;',
+      '  background: #2563eb; color: #fff; padding: 8px 18px;',
+      '  border-radius: 6px; text-decoration: none; font-weight: 600;',
+      '}',
+
+      // Sidebar — QA controls + replace action.
+      '.' + POPOVER_ID + '__sidebar {',
+      '  flex: 0 0 340px;',
+      '  border-left: 1px solid #e5e7eb;',
+      '  display: flex; flex-direction: column;',
+      '  background: #fff;',
+      '}',
+      '.' + POPOVER_ID + '__sidebar-content {',
+      '  flex: 1 1 auto; overflow-y: auto;',
+      '  padding: 16px 18px;',
+      '}',
+      '.' + POPOVER_ID + '__section { margin-bottom: 16px; }',
       '.' + POPOVER_ID + '__label {',
       '  font-size: 11px; font-weight: 700; text-transform: uppercase;',
       '  color: #6b7280; letter-spacing: 0.04em; margin-bottom: 6px;',
       '}',
+
+      // Status chips
       '.' + POPOVER_ID + '__chips { display: flex; gap: 6px; }',
       '.' + POPOVER_ID + '__chip {',
       '  flex: 1; padding: 8px 10px; border-radius: 8px;',
@@ -810,8 +876,10 @@
       '.' + POPOVER_ID + '__chip.is-selected[data-value="Fail"] {',
       '  background: #fee2e2; color: #b91c1c; border-color: #dc2626;',
       '}',
+
+      // Notes
       '.' + POPOVER_ID + '__notes {',
-      '  width: 100%; min-height: 70px; resize: vertical;',
+      '  width: 100%; min-height: 80px; resize: vertical;',
       '  border: 1px solid #d1d5db; border-radius: 6px;',
       '  padding: 8px 10px; font: inherit; box-sizing: border-box;',
       '}',
@@ -822,15 +890,37 @@
       '.' + POPOVER_ID + '__signoff {',
       '  font-size: 11px; color: #6b7280;',
       '  background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px;',
-      '  padding: 6px 10px;',
+      '  padding: 8px 10px;',
       '}',
       '.' + POPOVER_ID + '__signoff strong { color: #111827; font-weight: 600; }',
-      '.' + POPOVER_ID + '__actions {',
+
+      // Replace-file action — visually distinct from save/QA flow.
+      '.' + POPOVER_ID + '__replace {',
+      '  border-top: 1px solid #e5e7eb;',
+      '  padding: 12px 18px;',
+      '  background: #f9fafb;',
+      '}',
+      '.' + POPOVER_ID + '__replace-btn {',
+      '  width: 100%; padding: 10px 14px;',
+      '  border-radius: 6px; background: #fff;',
+      '  border: 1px dashed #9ca3af; color: #374151;',
+      '  font: 600 12px/1.2 system-ui;',
+      '  cursor: pointer; transition: all 0.12s;',
+      '}',
+      '.' + POPOVER_ID + '__replace-btn:hover {',
+      '  background: #eff6ff; border-color: #2563eb; color: #1d4ed8;',
+      '}',
+
+      // Footer — Cancel / Save (save only enabled when QA changes).
+      '.' + POPOVER_ID + '__footer {',
       '  display: flex; gap: 8px; justify-content: flex-end;',
-      '  border-top: 1px solid #e5e7eb; padding-top: 12px; margin-top: 4px;',
+      '  padding: 12px 18px;',
+      '  border-top: 1px solid #e5e7eb; background: #fff;',
+      '  flex: 0 0 auto;',
       '}',
       '.' + POPOVER_ID + '__btn {',
-      '  padding: 7px 16px; border-radius: 6px; font: 600 12px/1.2 system-ui;',
+      '  padding: 8px 18px; border-radius: 6px;',
+      '  font: 600 12px/1.2 system-ui;',
       '  cursor: pointer; border: 1px solid #d1d5db; background: #fff;',
       '  color: #1f2937;',
       '}',
@@ -840,15 +930,10 @@
       '}',
       '.' + POPOVER_ID + '__btn--primary:hover { background: #1d4ed8; }',
       '.' + POPOVER_ID + '__btn--primary:disabled {',
-      '  background: #93c5fd; border-color: #93c5fd; color: #fff; cursor: not-allowed;',
+      '  background: #cbd5e1; border-color: #cbd5e1; color: #fff;',
+      '  cursor: not-allowed;',
       '}',
-      '.' + POPOVER_ID + '__btn--danger {',
-      '  background: #fff; color: #b91c1c; border-color: #fca5a5;',
-      '}',
-      '.' + POPOVER_ID + '__btn--danger:hover { background: #fef2f2; }',
-      '.' + POPOVER_ID + '__saving {',
-      '  pointer-events: none; opacity: 0.7;',
-      '}'
+      '.' + POPOVER_ID + '__saving { pointer-events: none; opacity: 0.7; }'
     ].join('\n');
     var s = document.createElement('style');
     s.id = 'scw-cd-qa-popover-css';
@@ -880,35 +965,68 @@
     pop.className = POPOVER_ID;
     pop.id = POPOVER_ID;
 
-    // Header — doc type + "View file" shortcut.
+    // ── Header ────────────────────────────────────────────────────────
     var head = document.createElement('div');
     head.className = POPOVER_ID + '__head';
-    var meta = document.createElement('div');
+
+    var headMeta = document.createElement('div');
+    headMeta.className = POPOVER_ID + '__head-meta';
     var typeEl = document.createElement('div');
     typeEl.className = POPOVER_ID + '__type';
     typeEl.textContent = doc.type || 'Document';
     var subEl = document.createElement('div');
     subEl.className = POPOVER_ID + '__sub';
-    subEl.textContent = doc.fileName || (doc.required ? 'Required' : 'Optional');
-    meta.appendChild(typeEl);
-    meta.appendChild(subEl);
-    head.appendChild(meta);
+    subEl.textContent = doc.fileName ||
+      (doc.required ? 'Required deliverable' : 'Optional deliverable');
+    subEl.title = subEl.textContent;
+    headMeta.appendChild(typeEl);
+    headMeta.appendChild(subEl);
+    head.appendChild(headMeta);
 
+    var headActions = document.createElement('div');
+    headActions.className = POPOVER_ID + '__head-actions';
+
+    // "Open in tab" — escape hatch so users can pop the file out to a
+    // full window if the embedded viewer is awkward for what they need.
     if (doc.fileUrl) {
-      var viewBtn = document.createElement('button');
-      viewBtn.type = 'button';
-      viewBtn.className = POPOVER_ID + '__view-btn';
-      viewBtn.textContent = 'View file';
-      viewBtn.addEventListener('click', function () {
+      var openBtn = document.createElement('button');
+      openBtn.type = 'button';
+      openBtn.className = POPOVER_ID + '__head-btn';
+      openBtn.textContent = 'Open in tab';
+      openBtn.addEventListener('click', function () {
         if (doc.fileAnchor && document.contains(doc.fileAnchor)) {
           doc.fileAnchor.click();
         } else if (doc.fileUrl) {
           window.open(doc.fileUrl, '_blank');
         }
       });
-      head.appendChild(viewBtn);
+      headActions.appendChild(openBtn);
     }
+    var closeBtn = document.createElement('button');
+    closeBtn.type = 'button';
+    closeBtn.className = POPOVER_ID + '__head-btn ' + POPOVER_ID + '__head-btn--close';
+    closeBtn.innerHTML = '&times;';
+    closeBtn.title = 'Close';
+    closeBtn.addEventListener('click', function () { closeQAPopover(); });
+    headActions.appendChild(closeBtn);
+    head.appendChild(headActions);
+
     pop.appendChild(head);
+
+    // ── Body: viewer on left, sidebar on right ────────────────────────
+    var body = document.createElement('div');
+    body.className = POPOVER_ID + '__body';
+
+    var viewer = document.createElement('div');
+    viewer.className = POPOVER_ID + '__viewer';
+    renderViewerInto(viewer, doc);
+    body.appendChild(viewer);
+
+    var sidebar = document.createElement('div');
+    sidebar.className = POPOVER_ID + '__sidebar';
+
+    var sbContent = document.createElement('div');
+    sbContent.className = POPOVER_ID + '__sidebar-content';
 
     // Status chips
     var statusSec = document.createElement('div');
@@ -936,7 +1054,7 @@
       chips.appendChild(c);
     });
     statusSec.appendChild(chips);
-    pop.appendChild(statusSec);
+    sbContent.appendChild(statusSec);
 
     // Notes
     var notesSec = document.createElement('div');
@@ -957,22 +1075,53 @@
     hint.className = POPOVER_ID + '__hint';
     hint.textContent = 'Notes required when marking Fail.';
     notesSec.appendChild(hint);
-    pop.appendChild(notesSec);
+    sbContent.appendChild(notesSec);
 
-    // Sign-off metadata
+    // Sign-off metadata (read-only summary)
     if (doc.qaCompletedBy || doc.qaCompletedDt) {
       var signoff = document.createElement('div');
       signoff.className = POPOVER_ID + '__signoff';
       signoff.innerHTML =
         'Last signed off by <strong>' + escapeHtml(doc.qaCompletedBy || '—') +
         '</strong> on <strong>' + escapeHtml(doc.qaCompletedDt || '—') + '</strong>';
-      pop.appendChild(signoff);
+      sbContent.appendChild(signoff);
     }
 
-    // Action row
-    var actions = document.createElement('div');
-    actions.className = POPOVER_ID + '__actions';
-    pop.appendChild(actions);
+    sidebar.appendChild(sbContent);
+
+    // ── Replace file panel — separate from QA save ─────────────────────
+    // Disabled when QA is already Pass — once a doc is signed off it
+    // shouldn't be quietly replaced; reviewer must flip status first.
+    var replacePanel = document.createElement('div');
+    replacePanel.className = POPOVER_ID + '__replace';
+    var replaceBtn = document.createElement('button');
+    replaceBtn.type = 'button';
+    replaceBtn.className = POPOVER_ID + '__replace-btn';
+    var qaIsPass = (_popoverDoc.qaStatus === 'Pass');
+    if (qaIsPass) {
+      replaceBtn.disabled = true;
+      replaceBtn.textContent = 'Replace locked (QA already signed off)';
+      replaceBtn.title = 'Mark QA Pending or Fail to enable file replacement';
+    } else {
+      replaceBtn.textContent = doc.fileUrl ? 'Replace file…' : 'Upload file…';
+      replaceBtn.addEventListener('click', function () {
+        // Reuse the existing picker + upload pipeline. Close the modal
+        // when the picker fires so the user sees the upload spinner on
+        // the card rather than a stale modal preview.
+        closeQAPopover();
+        openDocFilePicker(card, doc.id, closeoutId);
+      });
+    }
+    replacePanel.appendChild(replaceBtn);
+    sidebar.appendChild(replacePanel);
+
+    body.appendChild(sidebar);
+    pop.appendChild(body);
+
+    // ── Footer: Cancel / Save ─────────────────────────────────────────
+    var footer = document.createElement('div');
+    footer.className = POPOVER_ID + '__footer';
+    pop.appendChild(footer);
 
     overlay.appendChild(pop);
     document.body.appendChild(overlay);
@@ -981,6 +1130,55 @@
 
     // ESC closes
     document.addEventListener('keydown', escListener);
+  }
+
+  // Embed the file inside the viewer pane.  Knack file links are
+  // S3-presigned URLs that include the user's session — they render
+  // inline in most browsers for PDF/image MIME types. If the browser
+  // rejects inline (download instead of render), the user can still hit
+  // "Open in tab" in the header.
+  function renderViewerInto(viewerEl, doc) {
+    viewerEl.innerHTML = '';
+    if (!doc.fileUrl) {
+      var empty = document.createElement('div');
+      empty.className = POPOVER_ID + '__viewer-empty';
+      empty.textContent = 'No file uploaded yet.';
+      viewerEl.appendChild(empty);
+      return;
+    }
+    var ext = ((doc.fileName || doc.fileUrl).toLowerCase().match(/\.([a-z0-9]+)(?:\?|$)/) || [])[1] || '';
+    var isImage = /^(png|jpe?g|gif|bmp|webp|heic|heif|tiff?|svg)$/.test(ext);
+
+    if (isImage) {
+      var img = document.createElement('img');
+      img.src = doc.fileUrl;
+      img.alt = doc.fileName || 'Document';
+      viewerEl.appendChild(img);
+      return;
+    }
+
+    // Default: PDF (or other inline-capable doc) → iframe.
+    var iframe = document.createElement('iframe');
+    iframe.src = doc.fileUrl;
+    iframe.setAttribute('title', doc.fileName || 'Document preview');
+    viewerEl.appendChild(iframe);
+
+    // Fallback link in case the iframe blocks rendering (some servers
+    // send Content-Disposition: attachment which makes browsers download
+    // instead of render). The fallback is layered behind the iframe
+    // visually but visible when the iframe is empty/blank.
+    var fallback = document.createElement('div');
+    fallback.className = POPOVER_ID + '__viewer-fallback';
+    fallback.innerHTML =
+      'If the preview is blank, the browser blocked inline rendering. ' +
+      '<br><a href="' + doc.fileUrl + '" target="_blank" rel="noopener">' +
+      'Open file in new tab</a>';
+    fallback.style.position = 'absolute';
+    fallback.style.bottom = '12px';
+    fallback.style.left = '50%';
+    fallback.style.transform = 'translateX(-50%)';
+    fallback.style.pointerEvents = 'auto';
+    viewerEl.appendChild(fallback);
   }
 
   function escHtmlChar(c) {
@@ -993,9 +1191,9 @@
   }
 
   function refreshActions(pop) {
-    var actions = pop.querySelector('.' + POPOVER_ID + '__actions');
-    if (!actions) return;
-    actions.innerHTML = '';
+    var footer = pop.querySelector('.' + POPOVER_ID + '__footer');
+    if (!footer) return;
+    footer.innerHTML = '';
     var hint = pop.querySelector('.' + POPOVER_ID + '__hint');
 
     var status = _popoverDoc.qaStatus;
@@ -1006,21 +1204,37 @@
     var dirty = (status !== _popoverOrig.qaStatus) ||
                 ((_popoverDoc.qaNotes || '') !== (_popoverOrig.qaNotes || ''));
 
-    var cancel = document.createElement('button');
-    cancel.type = 'button';
-    cancel.className = POPOVER_ID + '__btn';
-    cancel.textContent = 'Cancel';
-    cancel.addEventListener('click', function () { closeQAPopover(); });
-    actions.appendChild(cancel);
+    // Reflect the QA-Pass lock on the Replace button live (so flipping
+    // status from Pass → Pending inside this modal immediately unlocks
+    // the Replace action without a re-open).
+    var replaceBtn = pop.querySelector('.' + POPOVER_ID + '__replace-btn');
+    if (replaceBtn) {
+      var locked = (status === 'Pass');
+      replaceBtn.disabled = locked;
+      if (locked) {
+        replaceBtn.textContent = 'Replace locked (QA signed off)';
+        replaceBtn.title = 'Set QA back to Pending or Fail to enable replacement';
+      } else {
+        replaceBtn.textContent = _popoverDoc.fileUrl ? 'Replace file…' : 'Upload file…';
+        replaceBtn.removeAttribute('title');
+      }
+    }
+
+    var closeBtn = document.createElement('button');
+    closeBtn.type = 'button';
+    closeBtn.className = POPOVER_ID + '__btn';
+    closeBtn.textContent = dirty ? 'Cancel' : 'Close';
+    closeBtn.addEventListener('click', function () { closeQAPopover(); });
+    footer.appendChild(closeBtn);
 
     var save = document.createElement('button');
     save.type = 'button';
     save.className = POPOVER_ID + '__btn ' + POPOVER_ID + '__btn--primary';
     save.textContent = (status === 'Pass') ? 'Sign off' :
-                       (status === 'Fail') ? 'Mark fail' : 'Save';
+                       (status === 'Fail') ? 'Mark fail' : 'Save QA';
     save.disabled = !dirty || needsNotes;
     save.addEventListener('click', function () { saveQA(); });
-    actions.appendChild(save);
+    footer.appendChild(save);
   }
 
   function closeQAPopover() {
