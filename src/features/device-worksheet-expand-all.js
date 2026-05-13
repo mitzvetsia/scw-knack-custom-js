@@ -138,6 +138,27 @@
     saveState(sceneId, viewId, state);
   }
 
+  // Returns true when every L1 group on the view is currently open
+  // (no .scw-collapsed). The combined Expand/Collapse button uses
+  // this to decide whether the next click should expand or collapse.
+  // Summary mode counts as "open" (L1s are expanded), which is
+  // intentional — clicking the toggle from summary state should
+  // collapse everything in one move.
+  function allExpanded(viewEl) {
+    var headers = viewEl.querySelectorAll(L1_SEL);
+    if (!headers.length) return false;
+    for (var i = 0; i < headers.length; i++) {
+      if (headers[i].classList.contains('scw-collapsed')) return false;
+    }
+    return true;
+  }
+
+  function updateToggleLabel(btn, viewEl) {
+    var expanded = allExpanded(viewEl);
+    btn.textContent = expanded ? 'Collapse' : 'Expand';
+    btn.setAttribute('aria-pressed', expanded ? 'true' : 'false');
+  }
+
   function buildBtn(label, onClick) {
     var b = document.createElement('button');
     b.type = 'button';
@@ -147,7 +168,7 @@
     b.addEventListener('click', function (e) {
       e.preventDefault();
       e.stopPropagation();
-      onClick();
+      onClick(b);
     });
     return b;
   }
@@ -202,17 +223,30 @@
       host.className = BTN_HOST_CLS;
       host.style.cssText = 'display:inline-flex;gap:0;margin-right:10px;';
 
-      host.appendChild(buildBtn('Expand all', function () {
-        applyMode(viewEl, 'expand');
-      }));
+      // Single Expand/Collapse toggle — label reflects what the next
+      // click will do based on the current expansion state. Saves a
+      // toolbar slot for the photo Show/Hide button next to Summary.
+      var toggleBtn = buildBtn('', function (self) {
+        applyMode(viewEl, allExpanded(viewEl) ? 'collapse' : 'expand');
+        updateToggleLabel(self, viewEl);
+      });
+      updateToggleLabel(toggleBtn, viewEl);
+      host.appendChild(toggleBtn);
+
       host.appendChild(buildBtn('Summary only', function () {
         applyMode(viewEl, 'summary');
-      }));
-      host.appendChild(buildBtn('Collapse all', function () {
-        applyMode(viewEl, 'collapse');
+        // After applying summary mode L1s are open, so the toggle's
+        // next action becomes Collapse. Keep the label in sync.
+        updateToggleLabel(toggleBtn, viewEl);
       }));
 
       nav.insertBefore(host, nav.firstChild);
+    } else {
+      // Already mounted — refresh the toggle label since state may
+      // have changed since the last render (group-collapse persists
+      // L1 open/closed across navigations).
+      var tBtn = existing.querySelector('button');
+      if (tBtn) updateToggleLabel(tBtn, viewEl);
     }
 
     bindSummaryClickInterceptor(viewEl);

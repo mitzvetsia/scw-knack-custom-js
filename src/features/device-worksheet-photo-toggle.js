@@ -59,7 +59,10 @@
 
   function updateBtnLabel(btn, viewEl) {
     var on = viewEl.classList.contains(SHOW_CLS);
-    btn.textContent = on ? 'Hide all photos' : 'Show all photos';
+    // Short labels per request — single word matches the Expand/
+    // Collapse and Summary toggle widths in the same cluster.
+    btn.textContent = on ? 'Hide' : 'Show';
+    btn.title = on ? 'Hide all photo strips' : 'Show all photo strips';
     btn.setAttribute('aria-pressed', on ? 'true' : 'false');
   }
 
@@ -86,33 +89,46 @@
     var nav = viewEl.querySelector('.kn-records-nav');
     if (!nav) return false;
 
-    var existing = nav.querySelector('.' + HOST_CLS);
+    // Look up an existing button. It may live inside the expand-all
+    // bulk-toggle host (preferred placement) OR inside our own host
+    // span (fallback). Either way, find it via the button class so
+    // both placements are detected.
+    var existingBtn = nav.querySelector('.' + BTN_CLS);
 
     // No real photos anywhere on the view → remove any stale button
     // (rows may have been deleted since last mount) and bail.
     if (!countRowsWithPhotos(viewEl)) {
-      if (existing) existing.parentNode.removeChild(existing);
+      if (existingBtn) {
+        // Pull the button (and its standalone-host wrapper if any).
+        var hostWrap = existingBtn.closest('.' + HOST_CLS + ':not(.' + BTN_CLS + ')');
+        var toRemove = hostWrap || existingBtn;
+        toRemove.parentNode.removeChild(toRemove);
+      }
       return false;
     }
 
-    if (existing) {
-      // Refresh the label in case state changed externally.
-      var b = existing.querySelector('.' + BTN_CLS);
-      if (b) updateBtnLabel(b, viewEl);
+    // Already mounted — refresh the label (state may have changed
+    // externally) and bail.
+    if (existingBtn) {
+      updateBtnLabel(existingBtn, viewEl);
       return true;
     }
 
-    var host = document.createElement('span');
-    host.className = HOST_CLS;
-    host.style.cssText = 'display:inline-flex;align-items:center;margin-right:10px;';
-    host.appendChild(buildBtn(viewEl));
-
-    // Mount alongside the expand-all bulk-toggle host if present, so
-    // both mode-toggle clusters live side by side in the toolbar.
+    // Prefer to live INSIDE the expand-all bulk-toggle cluster, so
+    // [Expand/Collapse] [Summary only] [Show/Hide] read as one
+    // logical mode-toggle group. Fall back to a standalone host
+    // next to the toolbar if the bulk-toggle isn't present yet
+    // (race during scene init — the observer will retry).
+    var btn = buildBtn(viewEl);
     var bulkToggle = nav.querySelector('.scw-ws-bulk-toggle');
-    if (bulkToggle && bulkToggle.parentNode === nav) {
-      nav.insertBefore(host, bulkToggle.nextSibling);
+    if (bulkToggle) {
+      btn.classList.add(HOST_CLS);
+      bulkToggle.appendChild(btn);
     } else {
+      var host = document.createElement('span');
+      host.className = HOST_CLS;
+      host.style.cssText = 'display:inline-flex;align-items:center;margin-right:10px;';
+      host.appendChild(btn);
       nav.insertBefore(host, nav.firstChild);
     }
     return true;
