@@ -88,20 +88,39 @@
   // to a thin "▴" strip and the panel body shows below.  No card
   // chrome — visually anchored to the parent group, not floating.
   var STRIP_CLASS = 'scw-mdf-strip';
+  // Two-bar layout: an "Summary ▾" bar at the top (visible when
+  // collapsed) and a "Collapse ▴" bar at the bottom (visible when
+  // open).  Either bar click toggles the strip.  Putting the collapse
+  // affordance at the BOTTOM keeps the user's eye at the end of the
+  // table content when they're done reading it.
   function wrapInStrip(html, opts) {
     var collapsed = isPanelCollapsed(opts.viewId, opts.panelKey);
     return '<div class="' + STRIP_CLASS + ' scw-mdf-panel' +
       (collapsed ? '' : ' ' + STRIP_CLASS + '--open') + '" ' +
       'data-view-id="' + escapeHtml(opts.viewId) + '" ' +
       'data-panel-key="' + escapeHtml(opts.panelKey) + '">' +
-      '<button type="button" class="' + STRIP_CLASS + '__bar">' +
+
+      '<button type="button" class="' + STRIP_CLASS + '__bar ' +
+        STRIP_CLASS + '__bar--open">' +
         '<span class="' + STRIP_CLASS + '__bar-label">Summary</span>' +
         '<svg class="' + STRIP_CLASS + '__bar-caret" viewBox="0 0 24 24" ' +
           'fill="none" stroke="currentColor" stroke-width="2.5" ' +
           'stroke-linecap="round" stroke-linejoin="round">' +
           '<polyline points="6 9 12 15 18 9"></polyline></svg>' +
       '</button>' +
+
       '<div class="' + STRIP_CLASS + '__panel">' + html + '</div>' +
+
+      '<button type="button" class="' + STRIP_CLASS + '__bar ' +
+        STRIP_CLASS + '__bar--close">' +
+        '<span class="' + STRIP_CLASS + '__bar-label">Collapse</span>' +
+        '<svg class="' + STRIP_CLASS + '__bar-caret" viewBox="0 0 24 24" ' +
+          'fill="none" stroke="currentColor" stroke-width="2.5" ' +
+          'stroke-linecap="round" stroke-linejoin="round" ' +
+          'style="transform: rotate(180deg);">' +
+          '<polyline points="6 9 12 15 18 9"></polyline></svg>' +
+      '</button>' +
+
     '</div>';
   }
 
@@ -504,27 +523,26 @@
       '  width: 12px; height: 12px; flex: 0 0 auto;' +
       '  margin-left: auto;' +
       '  color: var(--scw-text-muted, #64748b);' +
-      '  transition: transform 180ms ease;' +
       '}' +
-      // When OPEN: shrink the bar (thinner strip, hide the label,' +
-      // rotate the caret) so it reads as a quiet "close" tab rather
-      // than a duplicate header.
-      '.' + STRIP_CLASS + '--open .' + STRIP_CLASS + '__bar {' +
-      '  padding: 2px 14px;' +
-      '  justify-content: center;' +
+      // Hide the "Collapse" bar by default; hide the "Summary" bar
+      // when open. Either bar still uses the same baseline styling
+      // (above), so visually they read identical — just the label
+      // and caret direction differ.
+      '.' + STRIP_CLASS + '__bar--close {' +
+      '  display: none;' +
+      '  border-bottom: 0;' +
+      '  border-top: 1px solid var(--scw-border-subtle, #e2e8f0);' +
       '}' +
-      '.' + STRIP_CLASS + '--open .' + STRIP_CLASS + '__bar-label {' +
+      '.' + STRIP_CLASS + '--open .' + STRIP_CLASS + '__bar--open {' +
       '  display: none;' +
       '}' +
-      '.' + STRIP_CLASS + '--open .' + STRIP_CLASS + '__bar-caret {' +
-      '  transform: rotate(180deg);' +
-      '  margin-left: 0;' +
+      '.' + STRIP_CLASS + '--open .' + STRIP_CLASS + '__bar--close {' +
+      '  display: flex;' +
       '}' +
       // Panel body — hidden by default, shown when --open.
       '.' + STRIP_CLASS + '__panel {' +
       '  display: none;' +
       '  padding: 0;' +
-      '  border-bottom: 1px solid var(--scw-border-subtle, #e2e8f0);' +
       '}' +
       '.' + STRIP_CLASS + '--open .' + STRIP_CLASS + '__panel {' +
       '  display: block;' +
