@@ -25,6 +25,12 @@
 
   var VIEW_ID = 'view_3940';
 
+  // Hidden inline-editable grid of DOC records — used as the save target
+  // for QA updates. Same pattern as qa-popover.js using view_3937 for
+  // PIC photo records. The view must expose every field we PUT to as a
+  // cell-edit column: field_2879/2880/2881/2882/2883/2895.
+  var DOC_SAVE_VIEW = 'view_3941';
+
   // Connection-displayed columns on view_3940 (each row has one
   // connection-value span per connected DOC, keyed by DOC record id).
   var F = {
@@ -1030,30 +1036,27 @@
   }
 
   function saveQA() {
-    var webhookUrl = window.SCW && window.SCW.CONFIG &&
-                     (window.SCW.CONFIG.MAKE_DOC_QA_WEBHOOK ||
-                      window.SCW.CONFIG.MAKE_DOC_UPLOAD_WEBHOOK);
-    if (!webhookUrl) {
-      console.error('[SCW] MAKE_DOC_QA_WEBHOOK / MAKE_DOC_UPLOAD_WEBHOOK not configured');
+    if (!_popover) return;
+    if (typeof SCW === 'undefined' || typeof SCW.knackAjax !== 'function' ||
+        typeof SCW.knackRecordUrl !== 'function') {
+      alert('Save unavailable (SCW.knackAjax missing)');
       return;
     }
-    if (!_popover) return;
 
     var pop = _popover.querySelector('.' + POPOVER_ID);
     if (pop) pop.classList.add(POPOVER_ID + '__saving');
 
     var status = _popoverDoc.qaStatus;
     var notes  = _popoverDoc.qaNotes || '';
+    var who    = getTriggeredBy();
 
-    // Build the field payload Make should PUT onto the DOC record.
+    // Build the field payload to PUT onto the DOC record via view_3941.
     var fields = {};
     fields[F.qaStatus] = status;
     fields[F.qaNotes]  = notes;
 
-    // Sign-off math: status === 'Pass' → mark completed, set by/date,
-    // append history. Anything else → clear by/date, log status change.
-    var nowDate = todayUS();
-    var who = getTriggeredBy();
+    // Sign-off math — same shape as qa-popover.js: Pass → set by/date,
+    // anything else → clear them. History line prepended on every save.
     var historyLine = stampLine(
       (status === 'Pass') ? 'Signed off' :
       (status === 'Fail') ? 'Marked Fail' : ('Status set to ' + status),
@@ -1062,18 +1065,12 @@
     );
     var newHistory = _popoverDoc.qaHistory || '';
     if (newHistory && !/^<br/.test(newHistory)) newHistory = '<br>' + newHistory;
-    newHistory = historyLine + newHistory;
-    fields[F.qaHistory] = newHistory;
+    fields[F.qaHistory] = historyLine + newHistory;
 
     if (status === 'Pass') {
-      // qaCompletedBy is a connection → user field. Make's scenario
-      // should write [{id: <userId>}] or just the id string; we pass
-      // the id and let Make format. If you can't get the user id on
-      // the server side, the qaCompletedBy will stay blank.
-      fields[F.qaCompletedBy] = who.id || '';
-      fields[F.qaCompletedDt] = nowDate;
-      // Flip FLAG_complete to Yes so the card's "QA complete = green"
-      // mapping kicks in even if Knack doesn't auto-derive it.
+      // Connection → user field: Knack accepts the bare user id string.
+      if (who.id) fields[F.qaCompletedBy] = who.id;
+      fields[F.qaCompletedDt] = todayUS();
       fields[F.completed]     = 'Yes';
     } else {
       fields[F.qaCompletedBy] = '';
@@ -1081,40 +1078,24 @@
       fields[F.completed]     = 'No';
     }
 
-    fetch(webhookUrl, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        kind:        'doc-qa-update',
-        docRecordId: _popoverDoc.id,
-        closeoutId:  _popoverCloseoutId,
-        viewId:      VIEW_ID,
-        fields:      fields,
-        triggeredBy: who
-      })
-    }).then(function (resp) {
-      if (resp.status >= 400) throw new Error('Webhook ' + resp.status);
-      return resp.text().then(function (txt) {
-        var body = null;
-        try { body = txt ? JSON.parse(txt) : null; } catch (e) { body = null; }
-        console.log('[SCW] doc QA webhook response:', resp.status, txt);
-        return body;
-      });
-    }).then(function (body) {
-      if (body && body.success === false) {
+    SCW.knackAjax({
+      url:  SCW.knackRecordUrl(DOC_SAVE_VIEW, _popoverDoc.id),
+      type: 'PUT',
+      data: JSON.stringify(fields),
+      success: function () {
+        closeQAPopover();
+        // Refresh both views so the strip and the underlying DOC grid
+        // both reflect the new state.
+        var v1 = window.Knack && Knack.views && Knack.views[VIEW_ID];
+        if (v1 && v1.model && typeof v1.model.fetch === 'function') v1.model.fetch();
+        var v2 = window.Knack && Knack.views && Knack.views[DOC_SAVE_VIEW];
+        if (v2 && v2.model && typeof v2.model.fetch === 'function') v2.model.fetch();
+      },
+      error: function (xhr) {
         if (pop) pop.classList.remove(POPOVER_ID + '__saving');
-        alert(body.error || 'Save failed');
-        return;
+        console.error('[SCW] doc QA save error:', xhr.status, xhr.responseText);
+        alert('Save failed (' + xhr.status + ')');
       }
-      // Optimistically dismiss; trigger model.fetch so the view picks up
-      // the new state on the next render.
-      closeQAPopover();
-      var v = window.Knack && Knack.views && Knack.views[VIEW_ID];
-      if (v && v.model && typeof v.model.fetch === 'function') v.model.fetch();
-    }).catch(function (err) {
-      console.error('[SCW] doc QA save error:', err);
-      if (pop) pop.classList.remove(POPOVER_ID + '__saving');
-      alert('Save failed: ' + (err.message || err));
     });
   }
 
