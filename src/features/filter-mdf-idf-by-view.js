@@ -413,7 +413,38 @@
         data: JSON.stringify(body),
         dataType: 'json',
         success: function (resp) {
-          console.log(LOG_PREFIX, 'PUT ok', recordId, resp);
+          // Dig out the record's field_2375 value from the response so
+          // we can see whether Knack actually persisted the change or
+          // whether a record rule stripped it back out. Knack wraps
+          // single records under `record` and sometimes also surfaces
+          // them at top level.
+          var R = (resp && resp.record) || resp || {};
+          var savedRaw = R[CFG.TARGET_FIELD + '_raw'];
+          var savedVal = R[CFG.TARGET_FIELD];
+          console.log(LOG_PREFIX, 'PUT ok', recordId,
+            'requested:', newId || '(clear)',
+            'response field_2375:', savedVal,
+            'response field_2375_raw:', savedRaw,
+            'full resp:', resp);
+          // Heuristic: if we tried to set a value but the response
+          // came back with empty/no value, a Knack rule probably
+          // reverted it. Surface a warning so it doesn't read as
+          // "save worked" when it actually didn't stick.
+          var stickFailed = false;
+          if (newId) {
+            var raw = savedRaw;
+            var hasRaw = Array.isArray(raw) ? raw.length > 0
+                       : (raw && typeof raw === 'object') ? !!raw.id
+                       : !!raw;
+            if (!hasRaw && !savedVal) stickFailed = true;
+          }
+          if (stickFailed) {
+            console.warn(LOG_PREFIX,
+              'PUT returned 200 but field_2375 came back empty. ' +
+              'A Knack record rule on Survey Line Item is likely ' +
+              'reverting field_2375 for this record. Check Builder → ' +
+              'Survey Line Item object → Record Rules.');
+          }
           if (typeof window.SCW.syncKnackModel === 'function') {
             try {
               window.SCW.syncKnackModel(CFG.TARGET_VIEW, recordId, resp,
