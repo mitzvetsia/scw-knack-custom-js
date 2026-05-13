@@ -554,6 +554,25 @@
       '.' + STRIP_CLASS + ' .scw-mdf-summary-table {' +
       '  border: 0; border-radius: 0;' +
       '  background: transparent;' +
+      '}' +
+      // Strip mode: kill all internal hairlines on the inner table.
+      // In a card the section/subtotal/total rules read as structure;
+      // inside a strip-mode L1 panel they pile up as gray banding and
+      // make the panel look noisy. Strip mode keeps just the bold-text
+      // emphasis on subtotal/total rows for structure.
+      '.' + STRIP_CLASS + ' .scw-mdf-summary-table tbody tr.scw-mdf-bucket-head:not(:first-child) td,' +
+      '.' + STRIP_CLASS + ' .scw-mdf-summary-table tr.scw-mdf-subtotal td,' +
+      '.' + STRIP_CLASS + ' .scw-mdf-summary-table tr.scw-mdf-total td {' +
+      '  border-top: 0 !important;' +
+      '  border-bottom: 0 !important;' +
+      '}' +
+      // Strip bar — drop the bottom hairline; the bar background
+      // already separates it from the panel body visually.
+      '.' + STRIP_CLASS + ' .' + STRIP_CLASS + '__bar {' +
+      '  border-bottom: 0 !important;' +
+      '}' +
+      '.' + STRIP_CLASS + ' .' + STRIP_CLASS + '__bar--close {' +
+      '  border-top: 0 !important;' +
       '}';
     document.head.appendChild(s);
   }
