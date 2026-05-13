@@ -67,7 +67,7 @@
 
   function wrapInCard(html, opts) {
     var collapsed = isPanelCollapsed(opts.viewId, opts.panelKey);
-    return '<div class="' + CARD_CLASS +
+    return '<div class="' + CARD_CLASS + ' scw-mdf-panel' +
       (collapsed ? ' ' + CARD_CLASS + '--collapsed' : '') + '" ' +
       'data-view-id="' + escapeHtml(opts.viewId) + '" ' +
       'data-panel-key="' + escapeHtml(opts.panelKey) + '">' +
@@ -82,23 +82,68 @@
     '</div>';
   }
 
+  // Per-L1 panel wrapper — a narrow toggle bar that sits as an
+  // extension of the L1 accordion header.  Collapsed: bar shows
+  // "Summary ▾" and acts as the click target. Expanded: bar shrinks
+  // to a thin "▴" strip and the panel body shows below.  No card
+  // chrome — visually anchored to the parent group, not floating.
+  var STRIP_CLASS = 'scw-mdf-strip';
+  function wrapInStrip(html, opts) {
+    var collapsed = isPanelCollapsed(opts.viewId, opts.panelKey);
+    return '<div class="' + STRIP_CLASS + ' scw-mdf-panel' +
+      (collapsed ? '' : ' ' + STRIP_CLASS + '--open') + '" ' +
+      'data-view-id="' + escapeHtml(opts.viewId) + '" ' +
+      'data-panel-key="' + escapeHtml(opts.panelKey) + '">' +
+      '<button type="button" class="' + STRIP_CLASS + '__bar">' +
+        '<span class="' + STRIP_CLASS + '__bar-label">Summary</span>' +
+        '<svg class="' + STRIP_CLASS + '__bar-caret" viewBox="0 0 24 24" ' +
+          'fill="none" stroke="currentColor" stroke-width="2.5" ' +
+          'stroke-linecap="round" stroke-linejoin="round">' +
+          '<polyline points="6 9 12 15 18 9"></polyline></svg>' +
+      '</button>' +
+      '<div class="' + STRIP_CLASS + '__panel">' + html + '</div>' +
+    '</div>';
+  }
+
   // Document-level click handler — one binding, handles every card.
   // Idempotent via the data-attribute flag so reloads don't stack
   // duplicate listeners.
   if (!document.documentElement.hasAttribute('data-scw-mdf-card-bound')) {
     document.documentElement.setAttribute('data-scw-mdf-card-bound', '1');
     document.addEventListener('click', function (e) {
-      var head = e.target && e.target.closest && e.target.closest('.' + CARD_CLASS + '__head');
-      if (!head) return;
-      var card = head.closest('.' + CARD_CLASS);
-      if (!card) return;
-      var nowCollapsed = !card.classList.contains(CARD_CLASS + '--collapsed');
-      card.classList.toggle(CARD_CLASS + '--collapsed', nowCollapsed);
-      savePanelCollapsed(
-        card.getAttribute('data-view-id') || '',
-        card.getAttribute('data-panel-key') || '',
-        nowCollapsed
-      );
+      var t = e.target;
+
+      // Card chrome (grand summary): click head to toggle.
+      var head = t && t.closest && t.closest('.' + CARD_CLASS + '__head');
+      if (head) {
+        var card = head.closest('.' + CARD_CLASS);
+        if (!card) return;
+        var nowCollapsed = !card.classList.contains(CARD_CLASS + '--collapsed');
+        card.classList.toggle(CARD_CLASS + '--collapsed', nowCollapsed);
+        savePanelCollapsed(
+          card.getAttribute('data-view-id') || '',
+          card.getAttribute('data-panel-key') || '',
+          nowCollapsed
+        );
+        return;
+      }
+
+      // Strip toggle (per-L1 panel): bar click flips open/closed.
+      var bar = t && t.closest && t.closest('.' + STRIP_CLASS + '__bar');
+      if (bar) {
+        var strip = bar.closest('.' + STRIP_CLASS);
+        if (!strip) return;
+        var nowOpen = !strip.classList.contains(STRIP_CLASS + '--open');
+        strip.classList.toggle(STRIP_CLASS + '--open', nowOpen);
+        // Storage uses 'collapsed' as the truthy state to match the
+        // existing card-based panels' key shape.
+        savePanelCollapsed(
+          strip.getAttribute('data-view-id') || '',
+          strip.getAttribute('data-panel-key') || '',
+          !nowOpen
+        );
+        return;
+      }
     });
   }
 
@@ -228,7 +273,7 @@
       '  padding: 0 !important;' +
       '  border: 0 !important;' +
       '}' +
-      '.scw-mdf-card .scw-mdf-summary-table {' +
+      '.scw-mdf-panel .scw-mdf-summary-table {' +
       '  width: 100%;' +
       '  table-layout: fixed;' +
       '  border-collapse: collapse;' +
@@ -242,8 +287,8 @@
       // !important on the alignment rules — Knack's .kn-table td
       // selector has the same specificity (0,2,0) as ours and may load
       // after, so center alignment was bleeding to whatever Knack set.
-      '.scw-mdf-card .scw-mdf-summary-table th,' +
-      '.scw-mdf-card .scw-mdf-summary-table td {' +
+      '.scw-mdf-panel .scw-mdf-summary-table th,' +
+      '.scw-mdf-panel .scw-mdf-summary-table td {' +
       '  padding: 5px 10px !important;' +
       '  text-align: center !important;' +
       '  border-bottom: 1px solid var(--scw-border-subtle);' +
@@ -252,7 +297,7 @@
       // Default th — transparent, no border. Only the labeled subbid
       // cell has any visible styling now (rule below). Empty colspan
       // cells contribute zero visual weight.
-      '.scw-mdf-card .scw-mdf-summary-table th {' +
+      '.scw-mdf-panel .scw-mdf-summary-table th {' +
       '  background: transparent;' +
       '  border-bottom: 0;' +
       '  padding: 0 !important;' +
@@ -260,7 +305,7 @@
       // The single labeled thead cell — Total Sub Bid above the
       // rightmost column, matching the bucket-head visual treatment
       // so the panel reads as one tightly-related set of section labels.
-      '.scw-mdf-card .scw-mdf-summary-table th.scw-mdf-subbid-h {' +
+      '.scw-mdf-panel .scw-mdf-summary-table th.scw-mdf-subbid-h {' +
       '  font: 600 9.5px/1.15 system-ui, -apple-system, "Segoe UI", sans-serif !important;' +
       '  color: var(--scw-text-caption) !important;' +
       '  text-transform: uppercase;' +
@@ -269,22 +314,22 @@
       '  text-align: right !important;' +
       '  padding: 10px 14px 4px !important;' +
       '}' +
-      '.scw-mdf-card .scw-mdf-summary-table th.scw-mdf-product-h,' +
-      '.scw-mdf-card .scw-mdf-summary-table td.scw-mdf-product {' +
+      '.scw-mdf-panel .scw-mdf-summary-table th.scw-mdf-product-h,' +
+      '.scw-mdf-panel .scw-mdf-summary-table td.scw-mdf-product {' +
       '  text-align: left !important;' +
       '}' +
-      '.scw-mdf-card .scw-mdf-summary-table td.scw-mdf-product {' +
+      '.scw-mdf-panel .scw-mdf-summary-table td.scw-mdf-product {' +
       '  color: var(--scw-text-default); font-weight: 500;' +
       '  padding-left: 22px !important;' +
       '}' +
-      '.scw-mdf-card .scw-mdf-summary-table td.scw-mdf-product .scw-mdf-label-list {' +
+      '.scw-mdf-panel .scw-mdf-summary-table td.scw-mdf-product .scw-mdf-label-list {' +
       '  display: block;' +
       '  margin-top: 4px;' +
       '  font: 400 11px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;' +
       '  color: var(--scw-text-muted);' +
       '  word-break: break-word;' +
       '}' +
-      '.scw-mdf-card .scw-mdf-summary-table td.scw-mdf-num {' +
+      '.scw-mdf-panel .scw-mdf-summary-table td.scw-mdf-num {' +
       '  font-variant-numeric: tabular-nums;' +
       '}' +
       // Right-align ONLY the Qty + Total Sub Bid columns (marked with
@@ -292,18 +337,18 @@
       // / interior / plenum chip-count cells in the cam-or-reader band
       // stay center-aligned so their digits sit under the centered
       // column labels in the bucket-head row.
-      '.scw-mdf-card .scw-mdf-summary-table th.scw-mdf-subbid-h,' +
-      '.scw-mdf-card .scw-mdf-summary-table td.scw-mdf-num--right {' +
+      '.scw-mdf-panel .scw-mdf-summary-table th.scw-mdf-subbid-h,' +
+      '.scw-mdf-panel .scw-mdf-summary-table td.scw-mdf-num--right {' +
       '  text-align: right !important;' +
       '  padding-right: 14px !important;' +
       '}' +
-      '.scw-mdf-card .scw-mdf-summary-table td.scw-mdf-empty {' +
+      '.scw-mdf-panel .scw-mdf-summary-table td.scw-mdf-empty {' +
       '  color: var(--scw-border-default);' +
       '}' +
       // Bucket section heading — no fill, just a small uppercase muted
       // label that acts as a section header. Section separation is a
       // thin top-border for every bucket head except the first.
-      '.scw-mdf-card .scw-mdf-summary-table tr.scw-mdf-bucket-head td {' +
+      '.scw-mdf-panel .scw-mdf-summary-table tr.scw-mdf-bucket-head td {' +
       '  background: transparent !important;' +
       '  color: var(--scw-text-caption) !important;' +
       '  font: 600 10px/1 system-ui, -apple-system, "Segoe UI", sans-serif !important;' +
@@ -316,7 +361,7 @@
       // Camera-or-Reader band carries inline column labels for the
       // cabling/exterior/interior/plenum block. Same muted treatment as
       // the rest of the section header so it doesn\'t shout.
-      '.scw-mdf-card .scw-mdf-summary-table tr.scw-mdf-bucket-head--cr td.scw-mdf-bh-col {' +
+      '.scw-mdf-panel .scw-mdf-summary-table tr.scw-mdf-bucket-head--cr td.scw-mdf-bh-col {' +
       '  font: 600 9.5px/1.15 system-ui, -apple-system, "Segoe UI", sans-serif !important;' +
       '  text-align: center !important;' +
       '  text-transform: uppercase;' +
@@ -328,23 +373,23 @@
       '}' +
       // Thin hairline at the top of each bucket section (skip first).
       // This is the only chrome separating sections — no band needed.
-      '.scw-mdf-card .scw-mdf-summary-table tbody tr.scw-mdf-bucket-head:not(:first-child) td {' +
+      '.scw-mdf-panel .scw-mdf-summary-table tbody tr.scw-mdf-bucket-head:not(:first-child) td {' +
       '  border-top: 1px solid var(--scw-border-subtle);' +
       '}' +
       // Bucket subtotal — no fill, top hairline + slightly bolder text.
-      '.scw-mdf-card .scw-mdf-summary-table tr.scw-mdf-subtotal td {' +
+      '.scw-mdf-panel .scw-mdf-summary-table tr.scw-mdf-subtotal td {' +
       '  background: transparent !important;' +
       '  color: var(--scw-text-body);' +
       '  font-weight: 600;' +
       '  border-top: 1px solid var(--scw-border-subtle);' +
       '  border-bottom: 0;' +
       '}' +
-      '.scw-mdf-card .scw-mdf-summary-table tr.scw-mdf-subtotal td.scw-mdf-product {' +
+      '.scw-mdf-panel .scw-mdf-summary-table tr.scw-mdf-subtotal td.scw-mdf-product {' +
       '  color: var(--scw-text-muted); text-align: left; padding-left: 22px !important;' +
       '}' +
       // Grand Total — no fill, double-strength top border + bold text
       // as the table\'s closing emphasis.
-      '.scw-mdf-card .scw-mdf-summary-table tr.scw-mdf-total td {' +
+      '.scw-mdf-panel .scw-mdf-summary-table tr.scw-mdf-total td {' +
       '  background: transparent !important;' +
       '  color: var(--scw-text-emphasis);' +
       '  font-weight: 700; font-size: 12.5px;' +
@@ -352,7 +397,7 @@
       '  border-bottom: none;' +
       '  padding-top: 8px !important;' +
       '}' +
-      '.scw-mdf-card .scw-mdf-summary-table tr.scw-mdf-total td.scw-mdf-product {' +
+      '.scw-mdf-panel .scw-mdf-summary-table tr.scw-mdf-total td.scw-mdf-product {' +
       '  color: var(--scw-text-emphasis); text-align: left;' +
       '  text-transform: uppercase; letter-spacing: 0.05em;' +
       '  padding-left: 14px !important;' +
@@ -360,7 +405,7 @@
       // Per-row dividers — tone down so they read as alignment lines
       // not a striped pattern.  Skip on the last visible row of a group
       // (subtotal/total already carry their own top border).
-      '.scw-mdf-card .scw-mdf-summary-table tbody td {' +
+      '.scw-mdf-panel .scw-mdf-summary-table tbody td {' +
       '  border-bottom-color: transparent !important;' +
       '}' +
       // Grand-summary outer wrapper — just margins; the card chrome
@@ -423,6 +468,71 @@
       // Inner table needs no extra border now that the card has it.
       '.' + CARD_CLASS + ' .scw-mdf-summary-table {' +
       '  border: 0; border-radius: 0;' +
+      '}' +
+
+      // ── Strip toggle (per-L1 panels) ──────────────────────────
+      // Narrow bar that sits below the L1 accordion header as a
+      // toggle.  Collapsed: bar shows "Summary ▾", panel hidden.
+      // Open: bar collapses to a thin "▴" strip, panel visible
+      // below.  No card chrome — visually anchored to the parent
+      // group, not a floating standalone card.
+      '.' + STRIP_CLASS + ' {' +
+      '  margin: 0;' +
+      '  border-left: 4px solid var(--scw-accent, #0f4c75);' +
+      '  background: var(--scw-surface-base, #fff);' +
+      '  overflow: hidden;' +
+      '}' +
+      '.' + STRIP_CLASS + '__bar {' +
+      '  display: flex; align-items: center; gap: 6px;' +
+      '  width: 100%;' +
+      '  padding: 4px 14px;' +
+      '  background: var(--scw-surface-subtle, #f8fafc);' +
+      '  border: 0;' +
+      '  border-bottom: 1px solid var(--scw-border-subtle, #e2e8f0);' +
+      '  cursor: pointer; text-align: left;' +
+      '  font: 600 10px/1 system-ui, -apple-system, "Segoe UI", sans-serif;' +
+      '  color: var(--scw-text-caption, #64748b);' +
+      '  text-transform: uppercase;' +
+      '  letter-spacing: 0.08em;' +
+      '  transition: background 120ms ease, padding 150ms ease;' +
+      '}' +
+      '.' + STRIP_CLASS + '__bar:hover {' +
+      '  background: var(--scw-surface-muted, #f1f5f9);' +
+      '  color: var(--scw-text-default, #1f2937);' +
+      '}' +
+      '.' + STRIP_CLASS + '__bar-caret {' +
+      '  width: 12px; height: 12px; flex: 0 0 auto;' +
+      '  margin-left: auto;' +
+      '  color: var(--scw-text-muted, #64748b);' +
+      '  transition: transform 180ms ease;' +
+      '}' +
+      // When OPEN: shrink the bar (thinner strip, hide the label,' +
+      // rotate the caret) so it reads as a quiet "close" tab rather
+      // than a duplicate header.
+      '.' + STRIP_CLASS + '--open .' + STRIP_CLASS + '__bar {' +
+      '  padding: 2px 14px;' +
+      '  justify-content: center;' +
+      '}' +
+      '.' + STRIP_CLASS + '--open .' + STRIP_CLASS + '__bar-label {' +
+      '  display: none;' +
+      '}' +
+      '.' + STRIP_CLASS + '--open .' + STRIP_CLASS + '__bar-caret {' +
+      '  transform: rotate(180deg);' +
+      '  margin-left: 0;' +
+      '}' +
+      // Panel body — hidden by default, shown when --open.
+      '.' + STRIP_CLASS + '__panel {' +
+      '  display: none;' +
+      '  padding: 0;' +
+      '  border-bottom: 1px solid var(--scw-border-subtle, #e2e8f0);' +
+      '}' +
+      '.' + STRIP_CLASS + '--open .' + STRIP_CLASS + '__panel {' +
+      '  display: block;' +
+      '}' +
+      // Inner table sits flush — no card chrome around it now.
+      '.' + STRIP_CLASS + ' .scw-mdf-summary-table {' +
+      '  border: 0; border-radius: 0;' +
+      '  background: transparent;' +
       '}';
     document.head.appendChild(s);
   }
@@ -875,10 +985,14 @@
         l1Label = (_l1.textContent || '').replace(/\s+/g, ' ').trim();
       }
       l1Label = l1Label.replace(/[:\s]+$/, '');
-      var carded = wrapInCard(html, {
+      // Per-L1 panel: narrow toggle bar that extends the L1 group
+      // header.  Drops the card chrome (no border / shadow / "Summary —
+      // X" header bar), shows just a "Summary ▾" strip when collapsed,
+      // and the table body when open. The grand summary keeps its card
+      // chrome (renderGrand still uses wrapInCard).
+      var stripped = wrapInStrip(html, {
         viewId:   viewId,
-        panelKey: 'l1:' + (l1Label || 'unknown'),
-        title:    'Summary — ' + (l1Label || 'Group')
+        panelKey: 'l1:' + (l1Label || 'unknown')
       });
       var summaryRow = document.createElement('tr');
       summaryRow.className = ROW_CLASS;
@@ -891,12 +1005,7 @@
       }
       var td = document.createElement('td');
       td.colSpan = colCount;
-      // Wrap the card in the same .scw-mdf-grand-summary div the grand
-      // panel uses so the L1 + grand panels share byte-identical outer
-      // chrome (margins, transparent background, no border). Without
-      // this the L1 card inherits the parent <td>'s context and reads
-      // visibly different even when the .scw-mdf-card itself matches.
-      td.innerHTML = '<div class="' + GRAND_CLASS + '">' + carded + '</div>';
+      td.innerHTML = stripped;
       summaryRow.appendChild(td);
       // Insert immediately after the L1 header so the row lives in
       // the group's row block (group-collapse toggles the whole block).
