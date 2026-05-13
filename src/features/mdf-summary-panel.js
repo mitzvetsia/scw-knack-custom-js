@@ -217,7 +217,10 @@
       cabling:  'field_2461',
       exterior: 'field_1984',
       plenum:   'field_1983',
-      subbid:   'field_2269'
+      subbid:   'field_2269',
+      // view_3586 aggregates line-item totals (field_2269) rather than
+      // a sub-bid figure, so the column reads "Total" not "Total Sub Bid".
+      subbidLabel: 'Total'
     },
     // Deploy / Install Line Items — view_3915. Install records have one
     // device per row with no quantity field, so qtyMode:'count' makes
@@ -916,7 +919,9 @@
         // there's no subbid (hideSubbid), the thead is empty entirely.
         '<thead><tr>' +
           '<th colspan="7"></th>' +
-          (hideSubbid ? '' : '<th class="scw-mdf-subbid-h">Total Sub Bid</th>') +
+          (hideSubbid ? '' : '<th class="scw-mdf-subbid-h">' +
+            escapeHtml((fields && fields.subbidLabel) || 'Total Sub Bid') +
+            '</th>') +
         '</tr></thead>' +
         '<tbody>' + rows + totalRow + '</tbody>' +
       '</table>';
