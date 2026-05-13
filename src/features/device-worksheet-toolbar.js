@@ -57,8 +57,8 @@
       // Transparent — the toolbar already lives inside the parent KTL
       // accordion card. Adding another bordered/filled rectangle here
       // stacks a third "card within a card" against the summary panel
-      // and the data grid below. Border-bottom is the only chrome we
-      // keep, so the toolbar still reads as a distinct strip.
+      // and the data grid below. The toolbar is signaled by its own
+      // controls (pills, segmented buttons) — no chrome needed.
       '.kn-records-nav[' + BAR_ATTR + '] {',
       '  display: flex !important;',
       '  flex-wrap: wrap;',
@@ -68,7 +68,6 @@
       '  margin: 0 0 10px;',
       '  background: transparent;',
       '  border: 0;',
-      '  border-bottom: 1px solid var(--scw-border-subtle);',
       '  border-radius: 0;',
       '  font: 12px/1.3 system-ui, -apple-system, sans-serif;',
       '}',

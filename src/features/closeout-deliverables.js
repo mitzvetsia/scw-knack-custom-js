@@ -286,6 +286,18 @@
       '@keyframes scw-cd-spin { from { transform: rotate(0deg); } to { transform: rotate(360deg); } }',
       '.scw-cd-doc.is-error {',
       '  border-color: #dc2626 !important; background: #fef2f2 !important;',
+      '}',
+
+      // Brief green-pulse flash applied to a card immediately after an
+      // upload succeeds.  Fades out over ~1.6s so the user gets a clear
+      // "done" signal without lingering UI noise.
+      '.scw-cd-doc.is-upload-success {',
+      '  animation: scw-cd-flash 1.6s ease-out 1;',
+      '}',
+      '@keyframes scw-cd-flash {',
+      '  0%   { box-shadow: 0 0 0 0   rgba(34, 197, 94, 0.0); }',
+      '  20%  { box-shadow: 0 0 0 6px rgba(34, 197, 94, 0.55); }',
+      '  100% { box-shadow: 0 0 0 0   rgba(34, 197, 94, 0.0); }',
       '}'
     ].join('\n');
 
@@ -777,6 +789,20 @@
           // no change and skips the rebuild. Force it from here.
           var viewEl = document.getElementById(VIEW_ID);
           if (viewEl) renderInto(viewEl);
+          // Flash a green pulse on the freshly-rebuilt card so the user
+          // sees the upload land. The class is removed after the
+          // animation completes so subsequent uploads on the same card
+          // re-trigger it.
+          setTimeout(function () {
+            var fresh = document.querySelector(
+              '.scw-cd-doc[data-doc-id="' + docId + '"]'
+            );
+            if (!fresh) return;
+            fresh.classList.add('is-upload-success');
+            setTimeout(function () {
+              fresh.classList.remove('is-upload-success');
+            }, 1700);
+          }, 0);
           return;
         }
         if (Date.now() - startedAt >= POLL_TIMEOUT_MS) {
