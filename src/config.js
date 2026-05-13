@@ -1,5 +1,11 @@
 // src/config.js
 window.SCW = window.SCW || {};
+// Knack's loader (main.js) logs a warning if window.SCW.init is missing.
+// We don't actually use it — each feature initializes itself via IIFE —
+// so expose a no-op stub purely to silence the console noise.
+if (typeof window.SCW.init !== 'function') {
+  window.SCW.init = function () { /* no-op */ };
+}
 window.SCW.CONFIG = window.SCW.CONFIG || {
   VERSION: "dev",
   MAKE_PHOTO_MOVE_WEBHOOK: "https://hook.us1.make.com/7oetygbj2g2hu5fspgtt5kcydjojid81",
