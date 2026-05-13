@@ -715,40 +715,26 @@
         })
       });
     }).then(function (resp) {
-      // Webhook contract — same as photo upload.
       if (resp && resp.status && resp.status >= 400) {
         throw new Error('Webhook returned ' + resp.status);
       }
       return resp.text().then(function (txt) {
         var body = null;
         try { body = txt ? JSON.parse(txt) : null; } catch (e) { body = null; }
-        console.log('[SCW] doc upload webhook response:', resp.status, txt);
+        console.log('[SCW] doc upload webhook response:', resp.status, JSON.stringify(txt));
         return body;
       }).then(function (body) {
+        // Explicit failure → stop and surface error.
         if (body && body.success === false) {
           delete pendingUploads[docId];
           setCardError(card, body.error || 'Upload failed');
           return;
         }
-        if (body && body.success === true) {
-          fetchBothViewsForDoc();
-          var ticks = 0;
-          (function fastCheck() {
-            if (!pendingUploads[docId]) return;
-            if (docHasFileUploaded(docId)) {
-              delete pendingUploads[docId];
-              return;
-            }
-            ticks++;
-            if (ticks < 12) {
-              setTimeout(fastCheck, 500);
-            } else {
-              pollForDocArrival(docId);
-            }
-          })();
-          return;
-        }
-        pollForDocArrival(docId);
+        // Anything else (success: true, "Accepted", empty body, plain
+        // text response) → start the fast check pipeline.  Even with
+        // {success: true} we still need to refetch view_3941 because
+        // that's where the file metadata lives.
+        startDocUploadPolling(docId);
       });
     }).catch(function (err) {
       console.error('[SCW] Doc upload error:', err);
@@ -757,36 +743,63 @@
     });
   }
 
-  function pollForDocArrival(docId) {
+  // Unified upload-arrival polling pipeline.  Refetches view_3941 every
+  // tick and checks docHasFileUploaded(docId) until the file lands or
+  // we hit the timeout.  Cadence ramps: 700ms × 8 for the first ~5.6s
+  // (most uploads land in this window), then 4s × N until 90s total.
+  function startDocUploadPolling(docId) {
     var startedAt = Date.now();
+    var ticks = 0;
+    var FAST_TICKS    = 8;
+    var FAST_INTERVAL = 700;
+    var SLOW_INTERVAL = 4000;
+
     function tick() {
       if (!pendingUploads[docId]) return;
-      // Fire fetches against both views every tick (view_3940 for the
-      // closeout-side connection display, view_3941 for the underlying
-      // DOC record — that's where the file actually lives).
-      fetchBothViewsForDoc();
-      setTimeout(function () {
-        if (docHasFileUploaded(docId)) {
+      var fastPhase = ticks < FAST_TICKS;
+      var interval  = fastPhase ? FAST_INTERVAL : SLOW_INTERVAL;
+
+      var promise = fetchBothViewsForDoc();
+      promise.then(function () {
+        if (!pendingUploads[docId]) return;
+        var found = docHasFileUploaded(docId);
+        console.log('[SCW] doc upload poll tick', ticks,
+                    'phase=' + (fastPhase ? 'fast' : 'slow'),
+                    'docId=' + docId,
+                    'fileMeta=' + (docFileMeta[docId] ? 'YES' : 'no'),
+                    'found=' + found);
+        if (found) {
           delete pendingUploads[docId];
           return;
         }
         if (Date.now() - startedAt >= POLL_TIMEOUT_MS) {
           delete pendingUploads[docId];
-          console.warn('[SCW] Doc upload poll timed out for', docId);
+          console.warn('[SCW] Doc upload poll timed out for', docId,
+                       '— check Make scenario or field_68 wiring');
           return;
         }
-        setTimeout(tick, POLL_INTERVAL_MS);
-      }, 1000);
+        ticks++;
+        setTimeout(tick, interval);
+      });
     }
-    setTimeout(tick, POLL_INTERVAL_MS);
+
+    // First tick fires immediately (don't wait the full interval) so a
+    // file that landed before the webhook returned shows up fast.
+    tick();
   }
 
-  // Fetch BOTH views: view_3940 (closeout-side connection display) and
-  // view_3941 (DOC inline-edit grid). view_3941 is the source of truth
-  // for the DOC's file field; view_3940 only mirrors it via connection
-  // display, which doesn't always refresh promptly on its own.
+  // Legacy entry point — kept so existing callers in case any other
+  // path triggers it.  Delegates to the unified pipeline.
+  function pollForDocArrival(docId) { startDocUploadPolling(docId); }
+
+  // Fetch BOTH views and return a Promise that resolves when both have
+  // either completed or been skipped.  Returns immediately if no view
+  // is fetchable.  Resolves with `null` (we don't need the data, the
+  // Knack model updates in place — we just need to know when it's safe
+  // to re-check).
   function fetchBothViewsForDoc() {
     var ids = [VIEW_ID, DOC_SAVE_VIEW];
+    var promises = [];
     for (var i = 0; i < ids.length; i++) {
       var v = window.Knack && Knack.views && Knack.views[ids[i]];
       if (!v || !v.model || typeof v.model.fetch !== 'function') continue;
@@ -794,8 +807,20 @@
         var u = (typeof v.model.url === 'function') ? v.model.url.call(v.model) : v.model.url;
         if (!u) continue;
       } catch (e) { continue; }
-      try { v.model.fetch(); } catch (e) { /* swallow */ }
+      try {
+        var jq = v.model.fetch();
+        // Knack returns a jqXHR.  Wrap as a Promise so we can Promise.all
+        // and chain a check after BOTH fetches resolve. Always-fires
+        // (success or failure) so a single failure doesn't strand us.
+        if (jq && typeof jq.always === 'function') {
+          promises.push(new Promise(function (resolve) {
+            jq.always(function () { resolve(); });
+          }));
+        }
+      } catch (e) { /* swallow */ }
     }
+    if (!promises.length) return Promise.resolve();
+    return Promise.all(promises);
   }
 
   // True if the DOC record has a file landed.  Prefer the model-backed
