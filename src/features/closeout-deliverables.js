@@ -713,12 +713,11 @@
           return;
         }
         if (body && body.success === true) {
-          var v = window.Knack && Knack.views && Knack.views[VIEW_ID];
-          if (v && v.model && typeof v.model.fetch === 'function') v.model.fetch();
+          fetchBothViewsForDoc();
           var ticks = 0;
           (function fastCheck() {
             if (!pendingUploads[docId]) return;
-            if (docHasFileInDOM(docId)) {
+            if (docHasFileUploaded(docId)) {
               delete pendingUploads[docId];
               return;
             }
@@ -744,14 +743,12 @@
     var startedAt = Date.now();
     function tick() {
       if (!pendingUploads[docId]) return;
-      var v = window.Knack && Knack.views && Knack.views[VIEW_ID];
-      if (!v || !v.model || typeof v.model.fetch !== 'function') {
-        delete pendingUploads[docId];
-        return;
-      }
-      v.model.fetch();
+      // Fire fetches against both views every tick (view_3940 for the
+      // closeout-side connection display, view_3941 for the underlying
+      // DOC record — that's where the file actually lives).
+      fetchBothViewsForDoc();
       setTimeout(function () {
-        if (docHasFileInDOM(docId)) {
+        if (docHasFileUploaded(docId)) {
           delete pendingUploads[docId];
           return;
         }
@@ -764,6 +761,33 @@
       }, 1000);
     }
     setTimeout(tick, POLL_INTERVAL_MS);
+  }
+
+  // Fetch BOTH views: view_3940 (closeout-side connection display) and
+  // view_3941 (DOC inline-edit grid). view_3941 is the source of truth
+  // for the DOC's file field; view_3940 only mirrors it via connection
+  // display, which doesn't always refresh promptly on its own.
+  function fetchBothViewsForDoc() {
+    var ids = [VIEW_ID, DOC_SAVE_VIEW];
+    for (var i = 0; i < ids.length; i++) {
+      var v = window.Knack && Knack.views && Knack.views[ids[i]];
+      if (!v || !v.model || typeof v.model.fetch !== 'function') continue;
+      try {
+        var u = (typeof v.model.url === 'function') ? v.model.url.call(v.model) : v.model.url;
+        if (!u) continue;
+      } catch (e) { continue; }
+      try { v.model.fetch(); } catch (e) { /* swallow */ }
+    }
+  }
+
+  // True if the DOC record has a file landed.  Prefer the model-backed
+  // index (rebuilt from view_3941 on every poll fetch) over DOM scraping
+  // — view_3940 sometimes lags in re-rendering connection cells, and
+  // view_3941's model is the source of truth anyway.
+  function docHasFileUploaded(docId) {
+    rebuildFileMetaIndex();
+    if (docFileMeta[docId] && docFileMeta[docId].url) return true;
+    return docHasFileInDOM(docId);
   }
 
   function docHasFileInDOM(docId) {
