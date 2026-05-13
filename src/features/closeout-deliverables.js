@@ -51,6 +51,42 @@
 
   var QA_STATUS_OPTIONS = ['Pending', 'Pass', 'Fail'];
 
+  // ── DOC file-meta index ───────────────────────────────────────────
+  // view_3940 displays QA fields as connection columns but Knack only
+  // gives us the route URL there (`#kn-asset/...`).  view_3941 is the
+  // hidden DOC inline-edit grid — its model contains field_68_raw with
+  // the actual S3 URL + thumbnail URL we need to embed cleanly.
+  //
+  // Index keyed by DOC record id:
+  //   { url, thumbUrl, filename, size, type }
+  var docFileMeta = {};
+
+  function rebuildFileMetaIndex() {
+    var v = window.Knack && Knack.views && Knack.views[DOC_SAVE_VIEW];
+    if (!v || !v.model || !v.model.data || !v.model.data.models) return false;
+    var models = v.model.data.models;
+    var changed = false;
+    for (var i = 0; i < models.length; i++) {
+      var m = models[i];
+      if (!m || !m.id) continue;
+      var raw = m.attributes && m.attributes[F.file + '_raw'];
+      if (!raw || !raw.url) continue;
+      var prev = docFileMeta[m.id];
+      var next = {
+        url:      raw.url,
+        thumbUrl: raw.thumb_url || '',
+        filename: raw.filename || '',
+        size:     raw.size || 0,
+        type:     raw.type || ''
+      };
+      if (!prev || prev.url !== next.url || prev.thumbUrl !== next.thumbUrl) {
+        docFileMeta[m.id] = next;
+        changed = true;
+      }
+    }
+    return changed;
+  }
+
   var ADD_DOC_SLUG  = 'add-file-to-closeout';
   var EDIT_DOC_SLUG = 'edit-doc-file';
 
@@ -159,6 +195,16 @@
       '.scw-cd-doc.is-complete .scw-cd-doc__icon { color: #15803d; }',
       '.scw-cd-doc__icon svg { width: 32px; height: 32px; }',
       '.scw-cd-doc__icon-label { font-size: 11px; font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }',
+
+      // Real PDF/image thumbnail when Knack provides a thumb_url.
+      '.scw-cd-doc__preview {',
+      '  max-width: 100%; max-height: 100%;',
+      '  width: auto; height: auto;',
+      '  object-fit: contain;',
+      '  background: #fff;',
+      '  border-radius: 4px;',
+      '  box-shadow: 0 1px 2px rgba(0,0,0,0.08);',
+      '}',
 
       /* Type label */
       '.scw-cd-doc__type {',
@@ -314,6 +360,19 @@
       rec.qaHistory = span.innerHTML || '';
     });
 
+    // Enrich from view_3941's model — gives us the raw S3 URL and any
+    // thumbnail. Falls back gracefully if view_3941 hasn't rendered yet
+    // (we'll get it on the next render event).
+    rebuildFileMetaIndex();
+    Object.keys(docs).forEach(function (id) {
+      var meta = docFileMeta[id];
+      if (!meta) return;
+      docs[id].rawUrl   = meta.url;
+      docs[id].thumbUrl = meta.thumbUrl;
+      if (!docs[id].fileName && meta.filename) docs[id].fileName = meta.filename;
+      docs[id].fileSize = meta.size;
+    });
+
     // Sort: missing-required first, then alphabetical by type
     var out = [];
     for (var k in docs) if (docs.hasOwnProperty(k)) out.push(docs[k]);
@@ -413,59 +472,47 @@
       card.classList.add('is-pending');
     }
 
-    // Thumbnail / icon area
+    // Thumbnail / icon area.  If Knack gave us a real thumbnail URL,
+    // render the document preview — the card carries its own state via
+    // colour and there's no need for the separate chip + icon-label
+    // pair we used to have. Otherwise fall back to the icon + a label
+    // that reflects QA state (Pending QA / QA Pass / QA Fail / Required).
     var thumb = document.createElement('div');
     thumb.className = 'scw-cd-doc__thumb';
-    var iconBox = document.createElement('div');
-    iconBox.className = 'scw-cd-doc__icon';
-    var iconLabel;
-    if (hasFile) {
-      // Icon label encodes QA state so the eye gets all three cues
-      // (colour, chip, label) consistently.
-      if (isPass)      iconLabel = 'View PDF';
-      else if (isFail) iconLabel = 'QA Fail';
-      else             iconLabel = 'Review QA';
-      iconBox.innerHTML = pdfIconSvg() +
-        '<span class="scw-cd-doc__icon-label">' + iconLabel + '</span>';
-    } else if (doc.required) {
-      iconBox.innerHTML = uploadIconSvg() +
-        '<span class="scw-cd-doc__icon-label">Required</span>';
+    if (hasFile && doc.thumbUrl) {
+      var preview = document.createElement('img');
+      preview.className = 'scw-cd-doc__preview';
+      preview.src = doc.thumbUrl;
+      preview.alt = doc.fileName || doc.type || 'Document';
+      preview.loading = 'lazy';
+      thumb.appendChild(preview);
     } else {
-      iconBox.innerHTML = uploadIconSvg() +
-        '<span class="scw-cd-doc__icon-label">Upload</span>';
+      var iconBox = document.createElement('div');
+      iconBox.className = 'scw-cd-doc__icon';
+      var iconLabel;
+      if (hasFile) {
+        if (isPass)      iconLabel = 'QA Pass';
+        else if (isFail) iconLabel = 'QA Fail';
+        else             iconLabel = 'Pending QA';
+        iconBox.innerHTML = pdfIconSvg() +
+          '<span class="scw-cd-doc__icon-label">' + iconLabel + '</span>';
+      } else if (doc.required) {
+        iconBox.innerHTML = uploadIconSvg() +
+          '<span class="scw-cd-doc__icon-label">Required</span>';
+      } else {
+        iconBox.innerHTML = uploadIconSvg() +
+          '<span class="scw-cd-doc__icon-label">Optional</span>';
+      }
+      thumb.appendChild(iconBox);
     }
-    thumb.appendChild(iconBox);
     card.appendChild(thumb);
 
-    // Type label
+    // Type label — only label below the preview now (chip removed).
     var type = document.createElement('div');
     type.className = 'scw-cd-doc__type';
     type.textContent = doc.type || 'Document';
     type.title = doc.type || '';
     card.appendChild(type);
-
-    // State chip — single chip drives all three colours.
-    var chip = document.createElement('div');
-    chip.className = 'scw-cd-doc__chip';
-    if (!hasFile) {
-      if (doc.required) {
-        chip.classList.add('is-missing-required');
-        chip.textContent = 'Missing';
-      } else {
-        chip.classList.add('is-missing-optional');
-        chip.textContent = 'Optional';
-      }
-    } else if (isPass) {
-      chip.classList.add('is-pass');
-      chip.textContent = '✓ QA Pass';
-    } else if (isFail) {
-      chip.classList.add('is-fail');
-      chip.textContent = '✗ QA Fail';
-    } else {
-      chip.classList.add('is-pending');
-      chip.textContent = 'QA Pending';
-    }
-    card.appendChild(chip);
 
     // Click behaviour:
     //   No file              → file picker (or Knack edit form if webhook off)
@@ -1139,39 +1186,52 @@
   // "Open in tab" in the header.
   function renderViewerInto(viewerEl, doc) {
     viewerEl.innerHTML = '';
-    if (!doc.fileUrl) {
+    // Prefer the raw S3 URL from view_3941's model — that gives the
+    // browser a real application/pdf response so Chrome's PDF viewer
+    // renders directly inside the iframe (no Knack app chrome).  Fall
+    // back to the route URL (Knack's `#kn-asset/...`) only if we never
+    // got the raw URL from the model.
+    var src = doc.rawUrl || doc.fileUrl;
+    if (!src) {
       var empty = document.createElement('div');
       empty.className = POPOVER_ID + '__viewer-empty';
       empty.textContent = 'No file uploaded yet.';
       viewerEl.appendChild(empty);
       return;
     }
-    var ext = ((doc.fileName || doc.fileUrl).toLowerCase().match(/\.([a-z0-9]+)(?:\?|$)/) || [])[1] || '';
+    var ext = ((doc.fileName || src).toLowerCase().match(/\.([a-z0-9]+)(?:\?|$)/) || [])[1] || '';
     var isImage = /^(png|jpe?g|gif|bmp|webp|heic|heif|tiff?|svg)$/.test(ext);
 
     if (isImage) {
       var img = document.createElement('img');
-      img.src = doc.fileUrl;
+      img.src = src;
       img.alt = doc.fileName || 'Document';
       viewerEl.appendChild(img);
       return;
     }
 
-    // Default: PDF (or other inline-capable doc) → iframe.
+    // PDF (or anything browser-renders inline). Append Chrome PDF-viewer
+    // hash params to hide the toolbar + thumbnail panel — they only
+    // take effect when the response is a real PDF, which is what the
+    // raw URL gives us. Knack's route URL ignores them.
+    var iframeSrc = src;
+    if (doc.rawUrl) {
+      iframeSrc = src + (src.indexOf('#') === -1 ? '#' : '&') +
+                  'toolbar=0&navpanes=0&scrollbar=0&view=FitH';
+    }
     var iframe = document.createElement('iframe');
-    iframe.src = doc.fileUrl;
+    iframe.src = iframeSrc;
     iframe.setAttribute('title', doc.fileName || 'Document preview');
     viewerEl.appendChild(iframe);
 
     // Fallback link in case the iframe blocks rendering (some servers
     // send Content-Disposition: attachment which makes browsers download
-    // instead of render). The fallback is layered behind the iframe
-    // visually but visible when the iframe is empty/blank.
+    // instead of render).
     var fallback = document.createElement('div');
     fallback.className = POPOVER_ID + '__viewer-fallback';
     fallback.innerHTML =
       'If the preview is blank, the browser blocked inline rendering. ' +
-      '<br><a href="' + doc.fileUrl + '" target="_blank" rel="noopener">' +
+      '<br><a href="' + src + '" target="_blank" rel="noopener">' +
       'Open file in new tab</a>';
     fallback.style.position = 'absolute';
     fallback.style.bottom = '12px';
@@ -1406,6 +1466,18 @@
       if (!viewEl) return;
       renderInto(viewEl);
     }, 'scwCloseoutDeliverables');
+
+    // view_3941 (DOC inline-edit grid) carries the raw file URL and
+    // thumb_url that view_3940 hides behind a route URL.  When it
+    // renders (which may be before OR after view_3940), refresh our
+    // index and rebuild the strip so the cards pick up the new metadata
+    // for thumbnails + clean modal previews.
+    SCW.onViewRender(DOC_SAVE_VIEW, function () {
+      var changed = rebuildFileMetaIndex();
+      if (!changed) return;
+      var viewEl = document.getElementById(VIEW_ID);
+      if (viewEl) renderInto(viewEl);
+    }, 'scwCloseoutDeliverables_metaIndex');
   }
 
   if (document.readyState === 'loading') {
