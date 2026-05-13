@@ -115,9 +115,13 @@
          replace it with the strip card.  Easy to bring back: comment out
          this block (or selectively re-show parts) when the grid view
          becomes useful again. */
-      '#' + VIEW_ID + ' > .view-header,',
-      '#' + VIEW_ID + ' > .kn-records-nav,',
-      '#' + VIEW_ID + ' > .kn-table-wrapper { display: none !important; }',
+      // No '>' direct-child selector — Knack wraps the grid in a
+      // <section.hideShow_view_3940 ktlHideShowSection ...> so a
+      // direct-child combinator misses .kn-records-nav and
+      // .kn-table-wrapper.  Descendant selector covers both layouts.
+      '#' + VIEW_ID + ' .view-header,',
+      '#' + VIEW_ID + ' .kn-records-nav,',
+      '#' + VIEW_ID + ' .kn-table-wrapper { display: none !important; }',
 
       /* Container card */
       '.scw-cd-card {',
