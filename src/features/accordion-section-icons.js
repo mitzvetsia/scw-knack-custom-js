@@ -34,13 +34,28 @@
   // Match patterns are case-insensitive substrings against the visible
   // accordion title (`<span class="scw-acc-title">`).  First match wins,
   // so order from most-specific to least-specific.
+  // Order matters — more specific patterns must come before generic ones.
+  // e.g. "Site Maps and Other Files" needs the site-maps rule to win
+  // before the generic "other files" rule grabs it.
   var SECTIONS = [
     { match: /closeout/i,                     icon: 'checkCircle' },
     { match: /\bacceptance\b/i,               icon: 'clipboardCheck' },
-    { match: /what.?s? we.?re installing|deploy worksheet|install/i, icon: 'wrench' },
+    { match: /alternative sows?/i,            icon: 'clipboardCheck' },
+    { match: /what.?s? we.?re installing|deploy worksheet|\binstall\b/i, icon: 'wrench' },
+    { match: /(scope of work|sow) line items?/i, icon: 'wrench' },
     { match: /(manage )?(mdfs?\s*\/?\s*idfs?|mdf|idf)/i,             icon: 'server' },
+    { match: /site maps/i,                    icon: 'paperclip' },
     { match: /(additional )?photos?/i,        icon: 'image' },
+    { match: /licen[cs]e|recurring/i,         icon: 'repeat' },
+    { match: /proposals?/i,                   icon: 'fileText' },
     { match: /(other )?files?|attachments?/i, icon: 'paperclip' }
+  ];
+
+  // Accordions to fully hide based on their title. Same stepper-safety
+  // applies — we won't hide stepper-controlled accordions even if a
+  // title happens to match. Patterns are case-insensitive substrings.
+  var HIDE_TITLES = [
+    /equipment summary/i
   ];
 
   // ── SVG factories — Lucide-style, 16x16, currentColor stroke ──────
@@ -82,6 +97,22 @@
     ),
     paperclip: svg(
       '<path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/>'
+    ),
+    // Lucide "repeat" — recurring/subscription connotation for the
+    // License / Recurring Services section.
+    repeat: svg(
+      '<polyline points="17 1 21 5 17 9"/>' +
+      '<path d="M3 11V9a4 4 0 0 1 4-4h14"/>' +
+      '<polyline points="7 23 3 19 7 15"/>' +
+      '<path d="M21 13v2a4 4 0 0 1-4 4H3"/>'
+    ),
+    // Lucide "file-text" — proposal / quote document connotation.
+    fileText: svg(
+      '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>' +
+      '<polyline points="14 2 14 8 20 8"/>' +
+      '<line x1="16" y1="13" x2="8" y2="13"/>' +
+      '<line x1="16" y1="17" x2="8" y2="17"/>' +
+      '<polyline points="10 9 9 9 8 9"/>'
     )
   };
 
@@ -105,6 +136,15 @@
     return null;
   }
 
+  function shouldHide(titleText) {
+    var t = (titleText || '').trim();
+    if (!t) return false;
+    for (var i = 0; i < HIDE_TITLES.length; i++) {
+      if (HIDE_TITLES[i].test(t)) return true;
+    }
+    return false;
+  }
+
   // ── Apply ──────────────────────────────────────────────────────────
   function applyAll() {
     var accordions = document.querySelectorAll('.scw-ktl-accordion');
@@ -113,8 +153,17 @@
       if (isStepperStep(acc)) continue;
       var titleEl = acc.querySelector('.scw-acc-title');
       var iconEl  = acc.querySelector('.scw-acc-icon');
-      if (!titleEl || !iconEl) continue;
-      var iconSvg = findIcon(titleEl.textContent);
+      if (!titleEl) continue;
+      var titleText = titleEl.textContent;
+
+      // Hide-by-title wins — no point stamping an icon on a hidden node.
+      if (shouldHide(titleText)) {
+        acc.style.display = 'none';
+        continue;
+      }
+
+      if (!iconEl) continue;
+      var iconSvg = findIcon(titleText);
       if (!iconSvg) continue;
 
       // Replace the folder svg with the semantic one. Track via data-attr
@@ -141,7 +190,12 @@
       // Slightly smaller title to match the tightened padding.
       '.scw-ktl-accordion.' + MARK + ' .scw-ktl-accordion__header .scw-acc-title {',
       '  font-size: 13px;',
-      '}'
+      '}',
+      // BID_revision line items grid is internal data plumbing — its
+      // contents are already surfaced via the bid-review card UI, so
+      // the raw Knack table just adds noise on the SOW details scene.
+      // Not a KTL accordion, so title-matching wouldn\'t reach it.
+      '#view_3837 { display: none !important; }'
     ].join('\n');
     var s = document.createElement('style');
     s.id = STYLE_ID;
