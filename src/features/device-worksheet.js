@@ -4927,6 +4927,21 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         td.appendChild(chit);
         td.classList.add(P + '-sum-chip-host');
         td.setAttribute('data-scw-cabling-src', '1');
+        // Force-add Knack's inline-edit classes on toggleChit cells so
+        // KTL's bulk-edit recognizes them as bulk-source candidates
+        // (it gates the `bulkEditSelectSrc` outline + cursor on cells
+        // carrying these classes). Builder's per-field inline-edit
+        // toggle on view_3505 omits these classes for field_2371
+        // (Plenum) while setting them for field_2370 / field_2372 —
+        // so without this nudge Plenum's TD wouldn't show the
+        // bulk-edit source affordance even though it's visually a
+        // peer of the other two chits. feeTrigger=true means we
+        // already intend the cell to be editable via our own toggle,
+        // so adding the class doesn't introduce new write semantics.
+        if (desc.feeTrigger) {
+          td.classList.add('cell-edit');
+          td.classList.add('ktlInlineEditableCellsStyle');
+        }
         var chitWrap = document.createElement('span');
         chitWrap.className = P + '-sum-group ' + P + '-sum-group--cabling';
         chitWrap.setAttribute('data-scw-fields', desc.key);
