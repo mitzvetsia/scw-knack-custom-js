@@ -273,6 +273,15 @@
       '.scw-mdf-summary-table td.scw-mdf-num {' +
       '  font-variant-numeric: tabular-nums;' +
       '}' +
+      // Right-align numeric columns (Qty + Total Sub Bid) in BOTH header
+      // and data rows so the digits line up under their labels rather
+      // than floating centered. Tabular-nums above keeps glyph widths
+      // uniform so the right edge is genuinely flush.
+      '.scw-mdf-summary-table th.scw-mdf-num-h,' +
+      '.scw-mdf-summary-table td.scw-mdf-num {' +
+      '  text-align: right !important;' +
+      '  padding-right: 14px !important;' +
+      '}' +
       '.scw-mdf-summary-table td.scw-mdf-empty {' +
       '  color: var(--scw-border-default);' +
       '}' +
@@ -755,8 +764,8 @@
         '<thead><tr>' +
           '<th class="scw-mdf-product-h">Product</th>' +
           '<th colspan="5"></th>' +
-          '<th>Qty</th>' +
-          (hideSubbid ? '' : '<th>Total Sub Bid</th>') +
+          '<th class="scw-mdf-num-h">Qty</th>' +
+          (hideSubbid ? '' : '<th class="scw-mdf-num-h">Total Sub Bid</th>') +
         '</tr></thead>' +
         '<tbody>' + rows + totalRow + '</tbody>' +
       '</table>';
