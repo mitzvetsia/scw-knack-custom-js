@@ -284,12 +284,13 @@
       '.scw-mdf-card .scw-mdf-summary-table td.scw-mdf-num {' +
       '  font-variant-numeric: tabular-nums;' +
       '}' +
-      // Right-align numeric columns (Qty + Total Sub Bid) in BOTH header
-      // and data rows so the digits line up under their labels rather
-      // than floating centered. Tabular-nums above keeps glyph widths
-      // uniform so the right edge is genuinely flush.
-      '.scw-mdf-card .scw-mdf-summary-table th.scw-mdf-num-h,' +
-      '.scw-mdf-card .scw-mdf-summary-table td.scw-mdf-num {' +
+      // Right-align ONLY the Qty + Total Sub Bid columns (marked with
+      // scw-mdf-num--right by the row builder).  The cabling / exterior
+      // / interior / plenum chip-count cells in the cam-or-reader band
+      // stay center-aligned so their digits sit under the centered
+      // column labels in the bucket-head row.
+      '.scw-mdf-card .scw-mdf-summary-table th.scw-mdf-subbid-h,' +
+      '.scw-mdf-card .scw-mdf-summary-table td.scw-mdf-num--right {' +
       '  text-align: right !important;' +
       '  padding-right: 14px !important;' +
       '}' +
@@ -475,6 +476,10 @@
   function num(n) {
     return '<td class="scw-mdf-num">' + n + '</td>';
   }
+  // Like num() but right-aligned — used for Qty + Total Sub Bid only.
+  function numRight(n) {
+    return '<td class="scw-mdf-num scw-mdf-num--right">' + n + '</td>';
+  }
 
   // ── Aggregation ─────────────────────────────────────────────
   // Returns:
@@ -621,11 +626,11 @@
       (showCR ? num(p.exterior)     : blankCell()) +
       (showCR ? num(p.interior)     : blankCell()) +
       (showCR ? num(p.plenum)       : blankCell()) +
-      num(p.count) +
+      numRight(p.count) +
       (opts.hideSubbid
         ? ''
         : (totalBid != null
-            ? '<td class="scw-mdf-num">' + fmtMoney(totalBid) + '</td>'
+            ? '<td class="scw-mdf-num scw-mdf-num--right">' + fmtMoney(totalBid) + '</td>'
             : blankCell())) +
     '</tr>';
   }
@@ -740,11 +745,11 @@
       blankCell() +
       blankCell() +
       blankCell() +
-      num(t.count) +
+      numRight(t.count) +
       (hideSubbid
         ? ''
         : (grandTotal != null
-            ? '<td class="scw-mdf-num">' + fmtMoney(grandTotal) + '</td>'
+            ? '<td class="scw-mdf-num scw-mdf-num--right">' + fmtMoney(grandTotal) + '</td>'
             : blankCell())) +
     '</tr>';
 
@@ -848,8 +853,25 @@
       // Derive a stable panelKey from the L1 group's label so collapse
       // state survives re-renders. Strip surplus whitespace + the
       // trailing colons Knack appends ("HEADEND: :" → "HEADEND").
-      var l1Label = (_l1.textContent || '').replace(/\s+/g, ' ').trim()
-                                              .replace(/[:\s]+$/, '');
+      //
+      // textContent on the whole row picks up the record-count badge
+      // ("...NEMA ENCLOSURE5"), so clone the group-inner first, remove
+      // the badges + collapse icon + checkbox, and only then read text.
+      var l1Label = '';
+      var l1Inner = _l1.querySelector('.scw-group-inner');
+      if (l1Inner) {
+        var clone = l1Inner.cloneNode(true);
+        var badges  = clone.querySelector('.scw-group-badges');
+        var icon    = clone.querySelector('.scw-collapse-icon');
+        var grpCb   = clone.querySelector('.scw-sa-grp-check');
+        if (badges) badges.parentNode.removeChild(badges);
+        if (icon)   icon.parentNode.removeChild(icon);
+        if (grpCb)  grpCb.parentNode.removeChild(grpCb);
+        l1Label = (clone.textContent || '').replace(/\s+/g, ' ').trim();
+      } else {
+        l1Label = (_l1.textContent || '').replace(/\s+/g, ' ').trim();
+      }
+      l1Label = l1Label.replace(/[:\s]+$/, '');
       var carded = wrapInCard(html, {
         viewId:   viewId,
         panelKey: 'l1:' + (l1Label || 'unknown'),
@@ -991,16 +1013,38 @@
   // Fallback: MutationObserver on tbody for filter-class changes that
   // didn't go through the event path (DevTools, future callers, etc.).
   // Re-bound on every view render since Knack may have replaced tbody.
+  //
+  // IMPORTANT: this observer was previously firing on ANY class change
+  // anywhere inside tbody, which made it cascade into a render loop:
+  //   1. transform() inserts our <tr.scw-mdf-summary-row> (with cards)
+  //   2. card chevron click toggles scw-mdf-card--collapsed
+  //   3. group-collapse toggles scw-collapsed on a row
+  //   4. KTL adds/removes a hover/selection class
+  //   ...any of which fired the observer → schedule → transform →
+  //   panel rebuilt → flash, user state lost
+  //
+  // Now we only react when the FILTER_HIDDEN class specifically appears
+  // or disappears — the actual signal the observer is here to catch.
   function bindFilterObserver(viewId) {
     var view = document.getElementById(viewId);
     if (!view) return;
     var tbody = view.querySelector('table.kn-table tbody');
     if (!tbody || tbody.__scwMdfFilterObs) return;
-    var mo = new MutationObserver(function () { schedule(viewId); });
+    var mo = new MutationObserver(function (mutations) {
+      for (var i = 0; i < mutations.length; i++) {
+        var m = mutations[i];
+        var prev = m.oldValue || '';
+        var next = (m.target && m.target.getAttribute && m.target.getAttribute('class')) || '';
+        var hadHide = prev.indexOf(FILTER_HIDDEN_CLASS) !== -1;
+        var hasHide = next.indexOf(FILTER_HIDDEN_CLASS) !== -1;
+        if (hadHide !== hasHide) { schedule(viewId); return; }
+      }
+    });
     mo.observe(tbody, {
-      subtree:    true,
-      attributes: true,
-      attributeFilter: ['class']
+      subtree:           true,
+      attributes:        true,
+      attributeFilter:   ['class'],
+      attributeOldValue: true
     });
     tbody.__scwMdfFilterObs = mo;
   }
