@@ -1,21 +1,24 @@
 #!/usr/bin/env bash
 set -e
 
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "$SCRIPT_DIR"
+
 MSG="$*"
 if [[ -z "$MSG" ]]; then
   echo "❌ Commit message required (ex: ./save.sh \"Fix totals L3 hide logic\")"
   exit 1
 fi
 
-# Stage everything…
+# Rebuild dist/knack-bundle.js so the new SHA serves the new code on
+# jsDelivr.  save.sh used to be source-only, but the iteration loop is
+# "save → bump SHA in Knack → test" — and that only works if dist is
+# fresh at the new SHA. Build is fast (~1s) so we always do it.
+echo "📦 Building bundle..."
+bash "$SCRIPT_DIR/build.sh"
+
+# Stage everything (now including the rebuilt dist).
 git add -A
-
-# …but do NOT include the built artifact in these “work” commits
-git restore --staged dist/knack-bundle.js 2>/dev/null || true
-
-# If dist was modified locally, keep it out of the commit
-# (optional) also revert it so it doesn't keep showing up
-# git restore dist/knack-bundle.js 2>/dev/null || true
 
 git commit -m "$MSG"
 git push
