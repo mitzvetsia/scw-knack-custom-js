@@ -225,7 +225,7 @@
       '  border-top: 1px solid var(--scw-border-subtle);' +
       '  border-bottom: 1px solid var(--scw-border-subtle);' +
       '}' +
-      '.scw-mdf-summary-table {' +
+      '.scw-mdf-card .scw-mdf-summary-table {' +
       '  width: 100%;' +
       '  table-layout: fixed;' +
       '  border-collapse: collapse;' +
@@ -239,8 +239,8 @@
       // !important on the alignment rules — Knack's .kn-table td
       // selector has the same specificity (0,2,0) as ours and may load
       // after, so center alignment was bleeding to whatever Knack set.
-      '.scw-mdf-summary-table th,' +
-      '.scw-mdf-summary-table td {' +
+      '.scw-mdf-card .scw-mdf-summary-table th,' +
+      '.scw-mdf-card .scw-mdf-summary-table td {' +
       '  padding: 5px 10px !important;' +
       '  text-align: center !important;' +
       '  border-bottom: 1px solid var(--scw-border-subtle);' +
@@ -249,7 +249,7 @@
       // Default th — transparent, no border. Only the labeled subbid
       // cell has any visible styling now (rule below). Empty colspan
       // cells contribute zero visual weight.
-      '.scw-mdf-summary-table th {' +
+      '.scw-mdf-card .scw-mdf-summary-table th {' +
       '  background: transparent;' +
       '  border-bottom: 0;' +
       '  padding: 0 !important;' +
@@ -257,7 +257,7 @@
       // The single labeled thead cell — Total Sub Bid above the
       // rightmost column, matching the bucket-head visual treatment
       // so the panel reads as one tightly-related set of section labels.
-      '.scw-mdf-summary-table th.scw-mdf-subbid-h {' +
+      '.scw-mdf-card .scw-mdf-summary-table th.scw-mdf-subbid-h {' +
       '  font: 600 9.5px/1.15 system-ui, -apple-system, "Segoe UI", sans-serif !important;' +
       '  color: var(--scw-text-caption) !important;' +
       '  text-transform: uppercase;' +
@@ -266,40 +266,40 @@
       '  text-align: right !important;' +
       '  padding: 10px 14px 4px !important;' +
       '}' +
-      '.scw-mdf-summary-table th.scw-mdf-product-h,' +
-      '.scw-mdf-summary-table td.scw-mdf-product {' +
+      '.scw-mdf-card .scw-mdf-summary-table th.scw-mdf-product-h,' +
+      '.scw-mdf-card .scw-mdf-summary-table td.scw-mdf-product {' +
       '  text-align: left !important;' +
       '}' +
-      '.scw-mdf-summary-table td.scw-mdf-product {' +
+      '.scw-mdf-card .scw-mdf-summary-table td.scw-mdf-product {' +
       '  color: var(--scw-text-default); font-weight: 500;' +
       '  padding-left: 22px !important;' +
       '}' +
-      '.scw-mdf-summary-table td.scw-mdf-product .scw-mdf-label-list {' +
+      '.scw-mdf-card .scw-mdf-summary-table td.scw-mdf-product .scw-mdf-label-list {' +
       '  display: block;' +
       '  margin-top: 4px;' +
       '  font: 400 11px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;' +
       '  color: var(--scw-text-muted);' +
       '  word-break: break-word;' +
       '}' +
-      '.scw-mdf-summary-table td.scw-mdf-num {' +
+      '.scw-mdf-card .scw-mdf-summary-table td.scw-mdf-num {' +
       '  font-variant-numeric: tabular-nums;' +
       '}' +
       // Right-align numeric columns (Qty + Total Sub Bid) in BOTH header
       // and data rows so the digits line up under their labels rather
       // than floating centered. Tabular-nums above keeps glyph widths
       // uniform so the right edge is genuinely flush.
-      '.scw-mdf-summary-table th.scw-mdf-num-h,' +
-      '.scw-mdf-summary-table td.scw-mdf-num {' +
+      '.scw-mdf-card .scw-mdf-summary-table th.scw-mdf-num-h,' +
+      '.scw-mdf-card .scw-mdf-summary-table td.scw-mdf-num {' +
       '  text-align: right !important;' +
       '  padding-right: 14px !important;' +
       '}' +
-      '.scw-mdf-summary-table td.scw-mdf-empty {' +
+      '.scw-mdf-card .scw-mdf-summary-table td.scw-mdf-empty {' +
       '  color: var(--scw-border-default);' +
       '}' +
       // Bucket section heading — no fill, just a small uppercase muted
       // label that acts as a section header. Section separation is a
       // thin top-border for every bucket head except the first.
-      '.scw-mdf-summary-table tr.scw-mdf-bucket-head td {' +
+      '.scw-mdf-card .scw-mdf-summary-table tr.scw-mdf-bucket-head td {' +
       '  background: transparent !important;' +
       '  color: var(--scw-text-caption) !important;' +
       '  font: 600 10px/1 system-ui, -apple-system, "Segoe UI", sans-serif !important;' +
@@ -312,7 +312,7 @@
       // Camera-or-Reader band carries inline column labels for the
       // cabling/exterior/interior/plenum block. Same muted treatment as
       // the rest of the section header so it doesn\'t shout.
-      '.scw-mdf-summary-table tr.scw-mdf-bucket-head--cr td.scw-mdf-bh-col {' +
+      '.scw-mdf-card .scw-mdf-summary-table tr.scw-mdf-bucket-head--cr td.scw-mdf-bh-col {' +
       '  font: 600 9.5px/1.15 system-ui, -apple-system, "Segoe UI", sans-serif !important;' +
       '  text-align: center !important;' +
       '  text-transform: uppercase;' +
@@ -324,23 +324,23 @@
       '}' +
       // Thin hairline at the top of each bucket section (skip first).
       // This is the only chrome separating sections — no band needed.
-      '.scw-mdf-summary-table tbody tr.scw-mdf-bucket-head:not(:first-child) td {' +
+      '.scw-mdf-card .scw-mdf-summary-table tbody tr.scw-mdf-bucket-head:not(:first-child) td {' +
       '  border-top: 1px solid var(--scw-border-subtle);' +
       '}' +
       // Bucket subtotal — no fill, top hairline + slightly bolder text.
-      '.scw-mdf-summary-table tr.scw-mdf-subtotal td {' +
+      '.scw-mdf-card .scw-mdf-summary-table tr.scw-mdf-subtotal td {' +
       '  background: transparent !important;' +
       '  color: var(--scw-text-body);' +
       '  font-weight: 600;' +
       '  border-top: 1px solid var(--scw-border-subtle);' +
       '  border-bottom: 0;' +
       '}' +
-      '.scw-mdf-summary-table tr.scw-mdf-subtotal td.scw-mdf-product {' +
+      '.scw-mdf-card .scw-mdf-summary-table tr.scw-mdf-subtotal td.scw-mdf-product {' +
       '  color: var(--scw-text-muted); text-align: left; padding-left: 22px !important;' +
       '}' +
       // Grand Total — no fill, double-strength top border + bold text
       // as the table\'s closing emphasis.
-      '.scw-mdf-summary-table tr.scw-mdf-total td {' +
+      '.scw-mdf-card .scw-mdf-summary-table tr.scw-mdf-total td {' +
       '  background: transparent !important;' +
       '  color: var(--scw-text-emphasis);' +
       '  font-weight: 700; font-size: 12.5px;' +
@@ -348,7 +348,7 @@
       '  border-bottom: none;' +
       '  padding-top: 8px !important;' +
       '}' +
-      '.scw-mdf-summary-table tr.scw-mdf-total td.scw-mdf-product {' +
+      '.scw-mdf-card .scw-mdf-summary-table tr.scw-mdf-total td.scw-mdf-product {' +
       '  color: var(--scw-text-emphasis); text-align: left;' +
       '  text-transform: uppercase; letter-spacing: 0.05em;' +
       '  padding-left: 14px !important;' +
@@ -356,7 +356,7 @@
       // Per-row dividers — tone down so they read as alignment lines
       // not a striped pattern.  Skip on the last visible row of a group
       // (subtotal/total already carry their own top border).
-      '.scw-mdf-summary-table tbody td {' +
+      '.scw-mdf-card .scw-mdf-summary-table tbody td {' +
       '  border-bottom-color: transparent !important;' +
       '}' +
       // Grand-summary outer wrapper — just margins; the card chrome
