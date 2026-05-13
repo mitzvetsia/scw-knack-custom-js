@@ -512,62 +512,6 @@
     }
   }
 
-  // ── _raw-shape retry ────────────────────────────────────────
-  // When both {field_X: [id]} and {field_X: id} get silently
-  // stripped, try writing through the `_raw` form: an array of
-  // {id, identifier} reference objects. Some Knack versions
-  // accept inbound writes against the _raw key for connection
-  // fields and ignore the bare key.
-  function attemptRaw(recordId, newId, onDone) {
-    if (!window.SCW || typeof window.SCW.knackAjax !== 'function' ||
-        typeof window.SCW.knackRecordUrl !== 'function') {
-      onDone(new Error('ajax helpers unavailable'));
-      return;
-    }
-    var url = window.SCW.knackRecordUrl(CFG.TARGET_VIEW, recordId);
-    // Look up the identifier so we can ship a complete reference
-    // object (Knack accepts {id} alone but logging is clearer).
-    var identifier = '';
-    try {
-      var records = extractRecords(findSourceModel());
-      for (var i = 0; i < records.length; i++) {
-        if (records[i] && records[i].id === newId) {
-          identifier = stripHtml(records[i][CFG.SOURCE_LABEL]) ||
-                       stripHtml(records[i].identifier) || '';
-          break;
-        }
-      }
-    } catch (e) { /* best-effort */ }
-    var body = {};
-    body[CFG.TARGET_FIELD + '_raw'] = [{ id: newId, identifier: identifier }];
-    console.log(LOG_PREFIX, 'PUT (_raw shape)', recordId, body, '→', url);
-    window.SCW.knackAjax({
-      type: 'PUT',
-      url: url,
-      data: JSON.stringify(body),
-      dataType: 'json',
-      success: function (resp) {
-        var R = (resp && resp.record) || resp || {};
-        var savedRaw = R[CFG.TARGET_FIELD + '_raw'];
-        console.log(LOG_PREFIX, '_raw PUT ok', recordId,
-          'response field_2375_raw:', savedRaw,
-          'full resp:', resp);
-        if (typeof window.SCW.syncKnackModel === 'function') {
-          try {
-            window.SCW.syncKnackModel(CFG.TARGET_VIEW, recordId, resp,
-              CFG.TARGET_FIELD, [newId]);
-          } catch (e) { /* best-effort */ }
-        }
-        onDone(null, resp);
-      },
-      error: function (xhr) {
-        console.error(LOG_PREFIX, '_raw PUT failed',
-          xhr && xhr.status, xhr && xhr.responseText);
-        onDone(xhr || new Error('_raw save failed'));
-      }
-    });
-  }
-
   // ── Save: PUT field_2375 with the chosen MDF/IDF id ─────────────
   // Tries array form first ({field_2375:[id]}), falls back to bare
   // string ({field_2375:id}) on 4xx — covers single-connection field
@@ -620,27 +564,24 @@
           }
           // If the view-scoped PUT silently stripped the field
           // (response field_2375_raw is empty even though we sent
-          // a non-empty value), retry with progressively different
-          // body shapes — Knack's view-scoped endpoint for
-          // single-connection fields is picky about whether the
-          // value is an array of ids or a bare string, and the
-          // wrong shape gets stripped silently rather than 4xx'd.
-          if (stickFailed && newId) {
-            if (!isRetry) {
-              console.warn(LOG_PREFIX,
-                'array form stripped — retrying with bare string id');
-              attempt(newId, 'string');
-              return;
-            }
-            if (isRetry === 'string') {
-              console.warn(LOG_PREFIX,
-                'bare string stripped — retrying with field_2375_raw shape');
-              attemptRaw(recordId, newId, function (err2, resp2) {
-                if (err2) { onDone(err2); return; }
-                onDone(null, resp2);
-              });
-              return;
-            }
+          // a non-empty value), try going through Knack's internal
+          // Backbone model.updateRecord() instead. On some Knack
+          // versions that path handles inline-edit field permissions
+          // differently than raw $.ajax. Object-scoped retry was
+          // tried previously but 403s for non-admin sessions, so
+          // skip it.
+          if (stickFailed && !isRetry) {
+            console.warn(LOG_PREFIX,
+              'view-scoped PUT stripped field_2375 ' +
+              '(saved empty despite non-empty request). Retrying ' +
+              'through Knack.views.' + CFG.TARGET_VIEW +
+              '.model.updateRecord() to use Knack\'s internal ' +
+              'save path.');
+            modelUpdateRetry(recordId, newId, function (err2, resp2) {
+              if (err2) { onDone(err2); return; }
+              onDone(null, resp2);
+            });
+            return;
           }
           if (typeof window.SCW.syncKnackModel === 'function') {
             try {
@@ -686,7 +627,7 @@
           if (!isRetry && newId && is4xx && Array.isArray(value)) {
             console.warn(LOG_PREFIX,
               'array form rejected — retrying with bare string id');
-            attempt(newId, 'string');
+            attempt(newId, true);
             return;
           }
           onDone(xhr || new Error('save failed'));
