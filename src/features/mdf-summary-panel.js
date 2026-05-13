@@ -74,6 +74,40 @@
       exterior: 'field_2372',
       plenum:   'field_2371',
       subbid:   'field_2401'
+    },
+    // SOW Line Items — sales portal (view_3586). Same schema as the
+    // 3610 family for product/qty/label/bucket/cabling/exterior, but
+    // the aggregation column reads field_2269 (line item total) since
+    // view_3586 doesn't expose field_2151 (sub bid total). Plenum
+    // (field_1983) may not appear on every row — aggregation treats
+    // missing cells as 0 which is correct here.
+    'view_3586': {
+      product:  'field_1949',
+      qty:      'field_1964',
+      label:    'field_1950',
+      bucket:   'field_2219',
+      sort:     'field_2218',
+      cabling:  'field_2461',
+      exterior: 'field_1984',
+      plenum:   'field_1983',
+      subbid:   'field_2269'
+    },
+    // Deploy / Install Line Items — view_3915. Install records have one
+    // device per row with no quantity field, so qtyMode:'count' makes
+    // each row contribute 1 to the Qty aggregation. No sub-bid field on
+    // this object — the subbid column lands at 0 (the "Total Sub Bid"
+    // header is misleading on this view but acceptable for v1).
+    'view_3915': {
+      product:  'field_2790',
+      qty:      'field_2819',   // unused when qtyMode='count'; harmless placeholder
+      qtyMode:  'count',
+      label:    'field_2819',
+      bucket:   'field_2822',
+      sort:     'field_2218',
+      cabling:  'field_2807',
+      exterior: 'field_2805',
+      plenum:   'field_2806',
+      subbid:   ''              // no sub bid on install object — aggregation = 0
     }
   };
 
@@ -104,6 +138,8 @@
     return Object.prototype.hasOwnProperty.call(FIELD_MAPS, viewId) ||
            Object.prototype.hasOwnProperty.call(FIELD_ALIASES, viewId) ||
            viewId === 'view_3610' || viewId === 'view_3921';
+    // Note: view_3586 and view_3915 already have explicit FIELD_MAPS
+    // entries, so they're matched by the first hasOwnProperty check.
   }
 
   // Bucket id for cameras OR readers — only rows in this bucket
@@ -353,8 +389,12 @@
       }
 
       // Qty column sums the per-row quantity, not record count. Rows
-      // with a missing/zero qty contribute 0.
-      var qty = readNum(readVal(a, fields.qty));
+      // with a missing/zero qty contribute 0. Views whose underlying
+      // object has no quantity field (e.g. install records on view_3915,
+      // one device per row) set qtyMode='count' to contribute 1/row.
+      var qty = (fields.qtyMode === 'count')
+        ? 1
+        : readNum(readVal(a, fields.qty));
       p.count       += qty;
       totals.count  += qty;
 
