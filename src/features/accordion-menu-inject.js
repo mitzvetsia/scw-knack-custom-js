@@ -410,7 +410,23 @@
         var accordion = accordions[i];
         var body = accordion.querySelector('.scw-ktl-accordion__body');
         if (!body) { skipped.noHeader++; continue; }
-        if (accordion.hasAttribute(INJECTED)) { skipped.alreadyInjected++; continue; }
+        // Check the ACTUAL button container, not just the attribute.
+        // Knack re-renders the accordion's inner view body on
+        // knack-view-render, which tears out the .scw-acc-actions
+        // container we injected. The data-scw-menu-injected attribute
+        // sits on the accordion WRAPPER (which Knack doesn't rebuild),
+        // so a stale attribute survives the body teardown. Relying
+        // on it alone left the buttons gone after every view-render
+        // refresh, requiring a full page reload to bring them back.
+        if (body.querySelector('.scw-acc-actions .scw-acc-action-btn')) {
+          skipped.alreadyInjected++;
+          continue;
+        }
+        // Buttons aren't currently in the body — clear the stale
+        // attribute so the rest of the logic re-injects.
+        if (accordion.hasAttribute(INJECTED)) {
+          accordion.removeAttribute(INJECTED);
+        }
 
         // Find the inner view — the table/list/form that KTL wrapped
         var innerView = body.querySelector('[id^="view_"]') ||
