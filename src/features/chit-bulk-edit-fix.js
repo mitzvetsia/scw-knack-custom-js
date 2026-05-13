@@ -58,9 +58,20 @@
       if (!parsed.hasOwnProperty(key)) continue;
       if (!CHIT_FIELDS[key]) continue;
       var v = parsed[key];
+      // Boolean form — KTL bulk-edit's most common shape.
       if (typeof v === 'boolean') {
         parsed[key] = v ? 'Yes' : 'No';
         changed = true;
+        continue;
+      }
+      // String form — KTL on some Knack versions serializes Yes/No
+      // booleans as the literal strings "true"/"false" before PUT.
+      // Knack's API silently no-ops those for chit fields the same
+      // way it no-ops actual booleans, so coerce them too.
+      if (typeof v === 'string') {
+        var lc = v.trim().toLowerCase();
+        if (lc === 'true')  { parsed[key] = 'Yes'; changed = true; continue; }
+        if (lc === 'false') { parsed[key] = 'No';  changed = true; continue; }
       }
     }
     if (!changed) return { body: body, hadChit: true };
@@ -94,7 +105,7 @@
   function isWriteMethod(method) {
     if (!method) return false;
     var m = String(method).toUpperCase();
-    return m === 'PUT' || m === 'POST';
+    return m === 'PUT' || m === 'POST' || m === 'PATCH';
   }
 
   // ── 1. jQuery prefilter (covers $.ajax / $.put / $.post) ────

@@ -22,6 +22,12 @@
     TARGET_FIELD:   'field_2375',
     SOURCE_VIEW:    'view_3617',
     SOURCE_LABEL:   'field_1642',  // identifier on the MDF/IDF object
+    // Fallback label parts when the auto-built identifier is empty —
+    // happens when the user hasn't filled in Name/## on the MDF/IDF
+    // record yet, so field_1642 renders as just "HEADEND: :" or similar.
+    SOURCE_TYPE:    'field_1641',  // HEADEND | IDF
+    SOURCE_NUM:     'field_2458',  // ##
+    SOURCE_NAME:    'field_1943',  // Name
     DEBUG:          true
   };
 
@@ -144,6 +150,36 @@
     return [];
   }
 
+  function stripHtml(s) {
+    return String(s == null ? '' : s).replace(/<[^>]*>/g, '').trim();
+  }
+
+  // A label is "weak" when it has no alphanumerics — e.g. "HEADEND: :"
+  // collapses to "HEADEND ::" with only colons/spaces aside from the
+  // type word. We still treat anything with letters/digits as good.
+  function isWeakLabel(s) {
+    return !/[A-Za-z0-9]/.test(String(s || '').replace(/HEADEND|IDF|MDF/gi, ''));
+  }
+
+  function buildLabel(attrs) {
+    // Try the auto-built identifier first.
+    var identifier = stripHtml(attrs[CFG.SOURCE_LABEL]);
+    if (identifier && !isWeakLabel(identifier)) return identifier;
+    // Compose from parts.
+    var type = stripHtml(attrs[CFG.SOURCE_TYPE]);
+    var num  = stripHtml(attrs[CFG.SOURCE_NUM]);
+    var name = stripHtml(attrs[CFG.SOURCE_NAME]);
+    var parts = [];
+    if (type) parts.push(type);
+    if (num)  parts.push('#' + num);
+    if (name) parts.push(name);
+    if (parts.length) return parts.join(' ');
+    // Last resort: the original (even if weak) or identifier
+    if (identifier) return identifier;
+    if (attrs.identifier) return stripHtml(attrs.identifier);
+    return '';
+  }
+
   function getSourceRecords() {
     var model = findSourceModel();
     var records = extractRecords(model);
@@ -151,13 +187,7 @@
     for (var i = 0; i < records.length; i++) {
       var attrs = records[i] || {};
       if (!attrs.id) continue;
-      var label = '';
-      var raw = attrs[CFG.SOURCE_LABEL];
-      if (typeof raw === 'string' && raw.trim()) {
-        label = raw.replace(/<[^>]*>/g, '').trim();
-      } else if (attrs.identifier) {
-        label = String(attrs.identifier).trim();
-      }
+      var label = buildLabel(attrs);
       out.push({ id: attrs.id, label: label || attrs.id });
     }
     // Natural-order sort so "IDF 2" < "IDF 10"
