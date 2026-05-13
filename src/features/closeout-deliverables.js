@@ -245,6 +245,11 @@
     eachSpan(F.file, function (rec, span) {
       var a = span.querySelector('a[href]');
       if (a) {
+        // Keep a reference to the source anchor so clicks on the card
+        // can dispatch a synthetic click to it. Knack's native file
+        // handler intercepts clicks on these <a>s and opens an in-page
+        // preview overlay — much nicer than window.open's new tab.
+        rec.fileAnchor = a;
         rec.fileUrl  = a.getAttribute('href') || '';
         rec.fileName = (a.getAttribute('data-file-name') || a.textContent || '').trim();
       }
@@ -386,8 +391,16 @@
     );
     card.addEventListener('click', function () {
       if (card.classList.contains('is-pending')) return;
-      if (hasFile && doc.fileUrl.indexOf('http') === 0) {
-        window.open(doc.fileUrl, '_blank');
+      if (hasFile) {
+        // Prefer dispatching a click on the source <a> so Knack's native
+        // file-preview handler picks it up (in-page overlay, not a new
+        // tab). Fall back to window.open only if the anchor is missing
+        // or its click handler doesn't intercept.
+        if (doc.fileAnchor && document.contains(doc.fileAnchor)) {
+          doc.fileAnchor.click();
+        } else if (doc.fileUrl && doc.fileUrl.indexOf('http') === 0) {
+          window.open(doc.fileUrl, '_blank');
+        }
         return;
       }
       if (uploadEnabled) {
