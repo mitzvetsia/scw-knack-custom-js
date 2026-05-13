@@ -83,7 +83,20 @@
         if (modelView.source) modelView.source.limit = LIMIT_NUM;
 
         if (typeof view.model.fetch === 'function') {
-          view.model.fetch();
+          // Probe the URL before fetching — some Knack view models lack
+          // a usable URL (form views, partially-initialised models on
+          // the current page render tick), and Backbone.sync throws
+          // synchronously which bubbles up as an Uncaught Error that
+          // can put Knack into a render loop. Skip silently if no URL.
+          try {
+            var url = (typeof view.model.url === 'function')
+              ? view.model.url.call(view.model)
+              : view.model.url;
+            if (!url) return;
+          } catch (e) {
+            return;
+          }
+          try { view.model.fetch(); } catch (e) { /* swallow */ }
         }
       });
   });
