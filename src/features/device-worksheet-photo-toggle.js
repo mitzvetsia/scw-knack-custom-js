@@ -107,20 +107,38 @@
       return false;
     }
 
-    // Already mounted — refresh the label (state may have changed
-    // externally) and bail.
+    var bulkToggle = nav.querySelector('.scw-ws-bulk-toggle');
+
+    // Migration: if a previously-mounted button is sitting in a
+    // standalone host but the expand-all bulk-toggle has since
+    // appeared, move the button INTO the bulk-toggle cluster. Keeps
+    // the [Expand all] [Summary only] [Show] grouping consistent
+    // even when expand-all mounts AFTER photo-toggle's first scan.
+    if (existingBtn && bulkToggle && existingBtn.parentNode !== bulkToggle) {
+      bulkToggle.appendChild(existingBtn);
+      existingBtn.classList.add(HOST_CLS);
+      // Drop the now-empty standalone host wrapper.
+      var oldHost = nav.querySelector(
+        '.' + HOST_CLS + ':not(.' + BTN_CLS + ')'
+      );
+      if (oldHost && !oldHost.children.length) {
+        oldHost.parentNode.removeChild(oldHost);
+      }
+      updateBtnLabel(existingBtn, viewEl);
+      return true;
+    }
+
+    // Already mounted in the right place — refresh the label and bail.
     if (existingBtn) {
       updateBtnLabel(existingBtn, viewEl);
       return true;
     }
 
-    // Prefer to live INSIDE the expand-all bulk-toggle cluster, so
-    // [Expand/Collapse] [Summary only] [Show/Hide] read as one
-    // logical mode-toggle group. Fall back to a standalone host
-    // next to the toolbar if the bulk-toggle isn't present yet
-    // (race during scene init — the observer will retry).
+    // First-time mount. Prefer placement inside the bulk-toggle so
+    // all three mode toggles read as one cluster. Fall back to a
+    // standalone host if bulk-toggle isn't present yet — the migration
+    // branch above will move it on a later tick.
     var btn = buildBtn(viewEl);
-    var bulkToggle = nav.querySelector('.scw-ws-bulk-toggle');
     if (bulkToggle) {
       btn.classList.add(HOST_CLS);
       bulkToggle.appendChild(btn);

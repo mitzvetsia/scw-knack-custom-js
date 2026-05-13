@@ -155,8 +155,14 @@
 
   function updateToggleLabel(btn, viewEl) {
     var expanded = allExpanded(viewEl);
-    btn.textContent = expanded ? 'Collapse' : 'Expand';
+    btn.textContent = expanded ? 'Collapse all' : 'Expand all';
     btn.setAttribute('aria-pressed', expanded ? 'true' : 'false');
+  }
+
+  // True when any L1 header on this view is currently tagged
+  // SUMMARY_STATE='1' — i.e. summary mode is the active state.
+  function inSummaryMode(viewEl) {
+    return !!viewEl.querySelector(L1_SEL + '[' + SUMMARY_STATE + '="1"]');
   }
 
   function buildBtn(label, onClick) {
@@ -223,9 +229,8 @@
       host.className = BTN_HOST_CLS;
       host.style.cssText = 'display:inline-flex;gap:0;margin-right:10px;';
 
-      // Single Expand/Collapse toggle — label reflects what the next
-      // click will do based on the current expansion state. Saves a
-      // toolbar slot for the photo Show/Hide button next to Summary.
+      // Single Expand-all / Collapse-all toggle — label reflects what
+      // the next click will do based on the current expansion state.
       var toggleBtn = buildBtn('', function (self) {
         applyMode(viewEl, allExpanded(viewEl) ? 'collapse' : 'expand');
         updateToggleLabel(self, viewEl);
@@ -233,10 +238,12 @@
       updateToggleLabel(toggleBtn, viewEl);
       host.appendChild(toggleBtn);
 
+      // Summary Only also toggles. While summary mode is active, the
+      // same button collapses everything — that gets the user back
+      // to a clean state without needing to hunt for the Collapse
+      // button.
       host.appendChild(buildBtn('Summary only', function () {
-        applyMode(viewEl, 'summary');
-        // After applying summary mode L1s are open, so the toggle's
-        // next action becomes Collapse. Keep the label in sync.
+        applyMode(viewEl, inSummaryMode(viewEl) ? 'collapse' : 'summary');
         updateToggleLabel(toggleBtn, viewEl);
       }));
 
