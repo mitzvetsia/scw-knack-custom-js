@@ -572,14 +572,16 @@
         })
       });
     }).then(function (resp) {
-      // Webhook contract — same as photo upload:
-      //   { success: true }              → Knack upload finished, stop polling
-      //   { success: false, error: "..."} → show error, stop polling
-      //   anything else → fall back to polling.
+      // Webhook contract — same as photo upload.
       if (resp && resp.status && resp.status >= 400) {
         throw new Error('Webhook returned ' + resp.status);
       }
-      return resp.json().catch(function () { return null; }).then(function (body) {
+      return resp.text().then(function (txt) {
+        var body = null;
+        try { body = txt ? JSON.parse(txt) : null; } catch (e) { body = null; }
+        console.log('[SCW] doc upload webhook response:', resp.status, txt);
+        return body;
+      }).then(function (body) {
         if (body && body.success === false) {
           delete pendingUploads[docId];
           setCardError(card, body.error || 'Upload failed');
@@ -588,13 +590,20 @@
         if (body && body.success === true) {
           var v = window.Knack && Knack.views && Knack.views[VIEW_ID];
           if (v && v.model && typeof v.model.fetch === 'function') v.model.fetch();
-          setTimeout(function () {
+          var ticks = 0;
+          (function fastCheck() {
+            if (!pendingUploads[docId]) return;
             if (docHasFileInDOM(docId)) {
               delete pendingUploads[docId];
+              return;
+            }
+            ticks++;
+            if (ticks < 12) {
+              setTimeout(fastCheck, 500);
             } else {
               pollForDocArrival(docId);
             }
-          }, 1500);
+          })();
           return;
         }
         pollForDocArrival(docId);

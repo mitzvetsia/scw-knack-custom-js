@@ -976,25 +976,40 @@
       if (resp && resp.status && resp.status >= 400) {
         throw new Error('Webhook returned ' + resp.status);
       }
-      return resp.json().catch(function () { return null; }).then(function (body) {
+      // Permissive body parse — accept JSON even if Make's response
+      // header isn't application/json (Make's "Webhook response" module
+      // sometimes defaults to text/plain).
+      return resp.text().then(function (txt) {
+        var body = null;
+        try { body = txt ? JSON.parse(txt) : null; } catch (e) { body = null; }
+        console.log('[SCW] photo upload webhook response:', resp.status, txt);
+        return body;
+      }).then(function (body) {
         if (body && body.success === false) {
           delete pendingUploads[photoRecordId];
           ui.setError(body.error || 'Upload failed');
           return;
         }
         if (body && body.success === true) {
-          // Make says the Knack record is updated. One fetch to refresh.
+          // Make says the Knack record is updated. One fetch + fast DOM
+          // poll (500ms × up to 6s) to catch the re-render quickly. Then
+          // fall back to the slower long-poll loop as a safety net.
           var v = window.Knack && Knack.views && Knack.views[viewId];
           if (v && v.model && typeof v.model.fetch === 'function') v.model.fetch();
-          // Grace period for the re-render; stop polling if the image
-          // landed, else fall through to short-poll as a safety net.
-          setTimeout(function () {
+          var ticks = 0;
+          (function fastCheck() {
+            if (!pendingUploads[photoRecordId]) return;
             if (photoHasImageInDOM(viewId, photoRecordId)) {
               delete pendingUploads[photoRecordId];
+              return;
+            }
+            ticks++;
+            if (ticks < 12) {
+              setTimeout(fastCheck, 500);
             } else {
               pollForPhotoArrival(photoRecordId, viewId);
             }
-          }, 1500);
+          })();
           return;
         }
         // No structured response → original polling behaviour.
