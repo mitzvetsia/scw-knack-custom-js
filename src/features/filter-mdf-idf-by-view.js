@@ -388,7 +388,10 @@
     });
   }
 
-  // ── Save: PUT field_2375 = [newId] (or [] to clear) ─────────────
+  // ── Save: PUT field_2375 with the chosen MDF/IDF id ─────────────
+  // Tries array form first ({field_2375:[id]}), falls back to bare
+  // string ({field_2375:id}) on 4xx — covers single-connection field
+  // configs that reject the array form. Clears with an empty array.
   function saveSelection(recordId, newId, onDone) {
     if (!window.SCW || typeof window.SCW.knackAjax !== 'function' ||
         typeof window.SCW.knackRecordUrl !== 'function') {
@@ -396,29 +399,48 @@
       onDone(new Error('ajax helpers unavailable'));
       return;
     }
-    var body = {};
-    body[CFG.TARGET_FIELD] = newId ? [newId] : [];
-    log('PUT', recordId, body);
-    window.SCW.knackAjax({
-      type: 'PUT',
-      url: window.SCW.knackRecordUrl(CFG.TARGET_VIEW, recordId),
-      data: JSON.stringify(body),
-      dataType: 'json',
-      success: function (resp) {
-        if (typeof window.SCW.syncKnackModel === 'function') {
-          try {
-            window.SCW.syncKnackModel(CFG.TARGET_VIEW, recordId, resp,
-              CFG.TARGET_FIELD, newId ? [newId] : []);
-          } catch (e) { /* best-effort */ }
+    var url = window.SCW.knackRecordUrl(CFG.TARGET_VIEW, recordId);
+    var firstShape = newId ? [newId] : [];
+
+    function attempt(value, isRetry) {
+      var body = {};
+      body[CFG.TARGET_FIELD] = value;
+      console.log(LOG_PREFIX, isRetry ? 'PUT (string retry)' : 'PUT',
+        recordId, body, '→', url);
+      window.SCW.knackAjax({
+        type: 'PUT',
+        url: url,
+        data: JSON.stringify(body),
+        dataType: 'json',
+        success: function (resp) {
+          console.log(LOG_PREFIX, 'PUT ok', recordId, resp);
+          if (typeof window.SCW.syncKnackModel === 'function') {
+            try {
+              window.SCW.syncKnackModel(CFG.TARGET_VIEW, recordId, resp,
+                CFG.TARGET_FIELD, newId ? [newId] : []);
+            } catch (e) { /* best-effort */ }
+          }
+          onDone(null, resp);
+        },
+        error: function (xhr) {
+          var status = xhr && xhr.status;
+          console.error(LOG_PREFIX, 'PUT failed',
+            status, xhr && xhr.responseText);
+          // 4xx + we sent an array + newId is non-empty → try bare string.
+          // (Empty-clear and 5xx errors get no retry.)
+          var is4xx = status >= 400 && status < 500;
+          if (!isRetry && newId && is4xx && Array.isArray(value)) {
+            console.warn(LOG_PREFIX,
+              'array form rejected — retrying with bare string id');
+            attempt(newId, true);
+            return;
+          }
+          onDone(xhr || new Error('save failed'));
         }
-        onDone(null, resp);
-      },
-      error: function (xhr) {
-        console.error(LOG_PREFIX, 'PUT failed',
-          xhr && xhr.status, xhr && xhr.responseText);
-        onDone(xhr || new Error('save failed'));
-      }
-    });
+      });
+    }
+
+    attempt(firstShape, false);
   }
 
   function refreshTargetView() {
