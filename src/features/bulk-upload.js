@@ -963,11 +963,16 @@
   function injectInlineStyles() {
     if (document.getElementById('scw-bulk-inline-btn-css')) return;
     var css = [
+      // Match the visual layout of scw-acc-action-btn so the icon
+      // sits to the left of the label with the same spacing as
+      // sibling action buttons in the accordion-actions toolbar.
       '.scw-bulk-inline-btn {',
       '  display: inline-flex; align-items: center; gap: 6px;',
-      '  margin-right: 8px;',
       '}',
-      '.scw-bulk-inline-btn svg { flex-shrink: 0; }'
+      '.scw-bulk-inline-btn svg { flex-shrink: 0; vertical-align: middle; }',
+      '.scw-bulk-inline-btn > span:first-child {',
+      '  display: inline-flex; align-items: center;',
+      '}'
     ].join('\n');
     var s = document.createElement('style');
     s.id = 'scw-bulk-inline-btn-css';
@@ -975,12 +980,16 @@
     document.head.appendChild(s);
   }
 
-  // Find a clickable element in `scope` whose visible text matches `text`.
-  // Searches kn-link / kn-button / button.kn-button and ignores anything
-  // inside our own injected button.
+  // Find a clickable element in `scope` whose visible text matches
+  // `text`. Looks at Knack's native button classes AND SCW's custom
+  // accordion-action button class, since hoisted action buttons use
+  // the latter. Ignores anything inside our own injected button.
   function findButtonByText(scope, text) {
     if (!scope || !text) return null;
-    var nodes = scope.querySelectorAll('a.kn-link, a.kn-button, button.kn-button');
+    var nodes = scope.querySelectorAll(
+      'a.kn-link, a.kn-button, button.kn-button, ' +
+      'button.scw-acc-action-btn, .scw-acc-action-btn'
+    );
     for (var i = 0; i < nodes.length; i++) {
       if (nodes[i].closest('.scw-bulk-inline-btn')) continue;
       if ((nodes[i].textContent || '').trim() === text) return nodes[i];
@@ -997,20 +1006,30 @@
 
     // Already injected? Bail.
     if (targetView.querySelector('button[data-scw-bulk-inline-bound="1"]')) return;
+    // Also bail if the button was injected into a sibling toolbar that
+    // moved when the view re-rendered (idempotency across re-renders)
+    var scene = targetView.closest('.kn-scene') || targetView.parentElement || targetView;
+    if (scene.querySelector('button[data-scw-bulk-inline-bound="1"]')) return;
 
     injectInlineStyles();
 
-    // Where to insert — prefer the kn-records-nav toolbar area
-    var toolbar = targetView.querySelector('.kn-records-nav');
-    // Fall back to view header or just inside the view itself
-    if (!toolbar) toolbar = targetView.querySelector('.view-header') || targetView;
+    // Try to slot before the configured reference button. Search the
+    // surrounding scene so it works whether the reference button lives
+    // in this view's toolbar, a sibling hoisted toolbar, or a separate
+    // menu view alongside this one.
+    var beforeBtn = viewCfg.injectBeforeText
+      ? findButtonByText(scene, viewCfg.injectBeforeText)
+      : null;
 
-    // Build the button
+    // Build the button. Match the structural pattern of scw-acc-action-btn
+    // (icon wrapped in a <span>, label after) so the new button is
+    // visually consistent with the reference button when it sits in
+    // the same toolbar.
     var btn = document.createElement('button');
     btn.type = 'button';
-    btn.className = 'kn-button is-small scw-bulk-inline-btn';
+    btn.className = 'scw-acc-action-btn scw-bulk-inline-btn';
     btn.setAttribute('data-scw-bulk-inline-bound', '1');
-    btn.innerHTML = CAMERA_SVG + '<span>Bulk Add Photos</span>';
+    btn.innerHTML = '<span>' + CAMERA_SVG + '</span>Bulk Add Photos';
     btn.addEventListener('click', function (e) {
       e.preventDefault();
       e.stopPropagation();
@@ -1019,19 +1038,14 @@
       openModal(viewCfg, recordId);
     });
 
-    // Try to slot before the configured reference button. Search the
-    // surrounding scene so it works whether the reference button lives
-    // in this view's toolbar, a sibling hoisted toolbar, or a separate
-    // menu view alongside this one.
-    var scene = targetView.closest('.kn-scene') || targetView.parentElement || targetView;
-    var beforeBtn = viewCfg.injectBeforeText
-      ? findButtonByText(scene, viewCfg.injectBeforeText)
-      : null;
-
     if (beforeBtn && beforeBtn.parentNode) {
       beforeBtn.parentNode.insertBefore(btn, beforeBtn);
     } else {
-      // Reference button not found — drop into the toolbar
+      // Reference button not found — drop into the kn-records-nav
+      // toolbar of the target view, or the view itself as last resort.
+      var toolbar = targetView.querySelector('.kn-records-nav')
+                 || targetView.querySelector('.view-header')
+                 || targetView;
       toolbar.insertBefore(btn, toolbar.firstChild);
     }
   }
