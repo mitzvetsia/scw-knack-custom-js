@@ -950,14 +950,16 @@
   }
 
   // ── Inline button injection ───────────────────────────────────────────
-  // Camera icon — Feather 'camera' SVG, inlined so we don't depend on
-  // an external icon font. currentColor so it inherits text color.
-  var CAMERA_SVG =
+  // Photo icon — Feather 'image' SVG (picture frame with sun + mountain),
+  // not the camera icon. currentColor so it inherits the button's text
+  // color from scw-acc-action-btn / the active --scw-accent.
+  var PHOTO_SVG =
     '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" ' +
     'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
     'stroke-linejoin="round" aria-hidden="true" focusable="false">' +
-      '<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>' +
-      '<circle cx="12" cy="13" r="4"/>' +
+      '<rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect>' +
+      '<circle cx="8.5" cy="8.5" r="1.5"></circle>' +
+      '<polyline points="21 15 16 10 5 21"></polyline>' +
     '</svg>';
 
   function injectInlineStyles() {
@@ -1029,7 +1031,7 @@
     btn.type = 'button';
     btn.className = 'scw-acc-action-btn scw-bulk-inline-btn';
     btn.setAttribute('data-scw-bulk-inline-bound', '1');
-    btn.innerHTML = '<span>' + CAMERA_SVG + '</span>Bulk Add Photos';
+    btn.innerHTML = '<span>' + PHOTO_SVG + '</span>Bulk Add Photos';
     btn.addEventListener('click', function (e) {
       e.preventDefault();
       e.stopPropagation();

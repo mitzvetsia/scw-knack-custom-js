@@ -286,23 +286,26 @@
       bulk.classList.toggle('scw-tb-bulk-empty', !anyEnabled && btns.length > 0);
     }
 
-    // Desired left-to-right order:
-    //   1. Mode segmented control     (.scw-ws-bulk-toggle)
-    //   2. Sort preset dropdown        (.scw-ws-sort)
+    // Desired left-to-right order (matches the Build SOWs page, which
+    // the user pointed to as the canonical layout):
+    //   1. Sort preset dropdown        (.scw-ws-sort)
+    //   2. Mode segmented control      (.scw-ws-bulk-toggle  =  Collapse|Summary)
     //   3. SOW filter pills            (.scw-conn-filter-strip)
     //   4. spring (push remainder right)
-    //   5. Knack pagination/summary    (.kn-records-nav-summary, .kn-pagination)
-    //   6. Knack filter controls       (.kn-filters-nav)
+    //   5. Knack filter controls       (.kn-filters-nav)
+    //   6. Knack pagination/summary    (.kn-records-nav-summary, .kn-pagination)
     //   7. Bulk-ops cluster            ([id^="bulkOpsControlsDiv-"])
-    //   8. Primary CTA                 (.scw-acc-actions)
+    //   8. Primary CTA cluster         (.scw-acc-actions  =  Add to Scope,
+    //                                                         Bulk Add Photos,
+    //                                                         Add Survey/Bid Item)
     var orderSelectors = [
-      '.scw-ws-bulk-toggle',
       '.scw-ws-sort',
+      '.scw-ws-bulk-toggle',
       '.scw-conn-filter-strip',
       '.scw-tb-spring',
+      '.kn-filters-nav',
       '.kn-records-nav-summary',
       '.kn-pagination',
-      '.kn-filters-nav',
       '#bulkOpsControlsDiv-' + viewId,
       '.scw-acc-actions'
     ];
