@@ -123,6 +123,80 @@
 }
 
 /* view_3492 / view_3490 form styling handled by inline-form-recompose.js */
+
+/* ══════════════════════════════════════════════════════════════
+   SCENE 1085 — Build SOWs page (Project Dashboard)
+   ══════════════════════════════════════════════════════════════ */
+
+/* Treat these four accordions as one supporting-files group so they
+   visually subordinate to the Scope of Work Line Items grid below.
+   Selectors target by data-view-key on the header so we don't touch
+   other accordions that happen to live on the scene.
+
+   Affected: view_3577 (Manage MDF/IDFs), view_3917 (Additional Photos),
+   view_3949 (Site Maps & Other Files), view_3369 (Licenses).         */
+#kn-scene_1085 .scw-ktl-accordion:has(> .scw-ktl-accordion__header[data-view-key="view_3577"]),
+#kn-scene_1085 .scw-ktl-accordion:has(> .scw-ktl-accordion__header[data-view-key="view_3917"]),
+#kn-scene_1085 .scw-ktl-accordion:has(> .scw-ktl-accordion__header[data-view-key="view_3949"]),
+#kn-scene_1085 .scw-ktl-accordion:has(> .scw-ktl-accordion__header[data-view-key="view_3369"]) {
+  /* Tighten the wrapper margin so adjacent siblings sit flush as a group */
+  margin-top: 2px !important;
+  margin-bottom: 2px !important;
+}
+
+/* Compact header — about 2/3 the default height (44px → ~30px).
+   Smaller padding + reduced icon/title sizes keep proportions sane. */
+#kn-scene_1085 .scw-ktl-accordion:has(> .scw-ktl-accordion__header[data-view-key="view_3577"]) > .scw-ktl-accordion__header,
+#kn-scene_1085 .scw-ktl-accordion:has(> .scw-ktl-accordion__header[data-view-key="view_3917"]) > .scw-ktl-accordion__header,
+#kn-scene_1085 .scw-ktl-accordion:has(> .scw-ktl-accordion__header[data-view-key="view_3949"]) > .scw-ktl-accordion__header,
+#kn-scene_1085 .scw-ktl-accordion:has(> .scw-ktl-accordion__header[data-view-key="view_3369"]) > .scw-ktl-accordion__header {
+  min-height: 30px;
+  padding: 6px 12px 6px 18px;
+}
+#kn-scene_1085 .scw-ktl-accordion:has(> .scw-ktl-accordion__header[data-view-key="view_3577"]) .scw-acc-title,
+#kn-scene_1085 .scw-ktl-accordion:has(> .scw-ktl-accordion__header[data-view-key="view_3917"]) .scw-acc-title,
+#kn-scene_1085 .scw-ktl-accordion:has(> .scw-ktl-accordion__header[data-view-key="view_3949"]) .scw-acc-title,
+#kn-scene_1085 .scw-ktl-accordion:has(> .scw-ktl-accordion__header[data-view-key="view_3369"]) .scw-acc-title {
+  font-size: 13px;
+}
+#kn-scene_1085 .scw-ktl-accordion:has(> .scw-ktl-accordion__header[data-view-key="view_3577"]) .scw-acc-icon svg,
+#kn-scene_1085 .scw-ktl-accordion:has(> .scw-ktl-accordion__header[data-view-key="view_3917"]) .scw-acc-icon svg,
+#kn-scene_1085 .scw-ktl-accordion:has(> .scw-ktl-accordion__header[data-view-key="view_3949"]) .scw-acc-icon svg,
+#kn-scene_1085 .scw-ktl-accordion:has(> .scw-ktl-accordion__header[data-view-key="view_3369"]) .scw-acc-icon svg {
+  width: 13px;
+  height: 13px;
+}
+#kn-scene_1085 .scw-ktl-accordion:has(> .scw-ktl-accordion__header[data-view-key="view_3577"]) .scw-acc-count,
+#kn-scene_1085 .scw-ktl-accordion:has(> .scw-ktl-accordion__header[data-view-key="view_3917"]) .scw-acc-count,
+#kn-scene_1085 .scw-ktl-accordion:has(> .scw-ktl-accordion__header[data-view-key="view_3949"]) .scw-acc-count,
+#kn-scene_1085 .scw-ktl-accordion:has(> .scw-ktl-accordion__header[data-view-key="view_3369"]) .scw-acc-count {
+  padding: 1px 7px;
+  font-size: 11px;
+  min-width: 0 !important;
+}
+
+/* Make the group read as one block: shared muted accent + collapsed look.
+   Accent is a lighter, desaturated slate so these compact items recede
+   relative to the prominent SOW Line Items accordion below.            */
+#kn-scene_1085 .scw-ktl-accordion:has(> .scw-ktl-accordion__header[data-view-key="view_3577"]),
+#kn-scene_1085 .scw-ktl-accordion:has(> .scw-ktl-accordion__header[data-view-key="view_3917"]),
+#kn-scene_1085 .scw-ktl-accordion:has(> .scw-ktl-accordion__header[data-view-key="view_3949"]),
+#kn-scene_1085 .scw-ktl-accordion:has(> .scw-ktl-accordion__header[data-view-key="view_3369"]) {
+  --scw-accent: #6b7a8c !important;
+  --scw-accent-rgb: 107, 122, 140 !important;
+}
+
+/* Scope of Work Line Items (view_3610) — darken accent ~20% so it
+   reads as the primary content on the page. Default blue
+   rgb(41,95,145) → rgb(33,76,116) (each channel × 0.8). Bumps the
+   expanded-state header background alpha a touch as well.            */
+#kn-scene_1085 .scw-ktl-accordion:has(> .scw-ktl-accordion__header[data-view-key="view_3610"]) {
+  --scw-accent: #214c74 !important;
+  --scw-accent-rgb: 33, 76, 116 !important;
+}
+#kn-scene_1085 .scw-ktl-accordion:has(> .scw-ktl-accordion__header[data-view-key="view_3610"]).is-expanded > .scw-ktl-accordion__header {
+  background: rgba(33, 76, 116, 0.18) !important;
+}
 `;
 
     var style = document.createElement('style');
