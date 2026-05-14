@@ -1054,7 +1054,7 @@
     btn.type = 'button';
     btn.className = 'scw-acc-action-btn scw-bulk-inline-btn';
     btn.setAttribute('data-scw-bulk-inline-bound', '1');
-    btn.innerHTML = '<span>' + PHOTO_SVG + '</span>Bulk Add Photos';
+    btn.innerHTML = '<span>' + PHOTO_SVG + '</span>Add Photos';
     btn.addEventListener('click', function (e) {
       e.preventDefault();
       e.stopPropagation();
@@ -1087,13 +1087,57 @@
       });
     }, 'scwBulkUpload.' + viewCfg.menuViewId);
 
-    // Inline button on a different view's toolbar, if configured
+    // Inline button on a different view's toolbar, if configured.
+    // Two triggers needed because accordion-menu-inject.js rebuilds
+    // .scw-acc-actions from scratch whenever the parent KTL accordion
+    // body re-renders — that rebuild does NOT necessarily fire a
+    // knack-view-render on viewCfg.injectIntoView, so an onViewRender
+    // hook alone misses it and the button silently disappears.
+    //
+    //   1. onViewRender — fires on first paint and explicit view
+    //      reloads (e.g. inline edits triggering refresh).
+    //   2. MutationObserver on the surrounding scene — fires whenever
+    //      .scw-acc-actions is recreated by accordion-menu-inject, even
+    //      when no knack-view-render happens on the target view.
     if (viewCfg.injectIntoView) {
       SCW.onViewRender(viewCfg.injectIntoView, function () {
         injectInlineButton(viewCfg);
       }, 'scwBulkUploadInject.' + viewCfg.injectIntoView);
+
+      attachInlineSurvivalObserver(viewCfg);
     }
   });
+
+  // Watch the scene around the injectIntoView for .scw-acc-actions
+  // rebuilds. Whenever the container's child list changes (e.g. our
+  // sibling Add Survey/Bid Item button reappears after a rebuild) and
+  // our Bulk Add Photos button is no longer inside it, re-inject.
+  // Debounced — accordion-menu-inject can fire several mutations in
+  // rapid succession during a rebuild.
+  function attachInlineSurvivalObserver(viewCfg) {
+    if (viewCfg.__scwInlineSurvObs) return;
+
+    var debounce = null;
+    var obs = new MutationObserver(function () {
+      if (debounce) clearTimeout(debounce);
+      debounce = setTimeout(function () {
+        var targetView = document.getElementById(viewCfg.injectIntoView);
+        if (!targetView) return;
+        var scene = targetView.closest('.kn-scene') || document;
+        // Reference button (Add Survey/Bid Item) is present but our
+        // Bulk-Add-Photos button is missing from .scw-acc-actions? Re-inject.
+        var ref = findButtonByText(scene, viewCfg.injectBeforeText);
+        var live = scene.querySelector(
+          '.scw-acc-actions button[data-scw-bulk-inline-bound="1"]'
+        );
+        if (ref && !live) injectInlineButton(viewCfg);
+      }, 80);
+    });
+    // Observe document.body — accordion-menu-inject can re-parent
+    // .scw-acc-actions outside the scene element briefly during rebuilds.
+    obs.observe(document.body, { childList: true, subtree: true });
+    viewCfg.__scwInlineSurvObs = obs;
+  }
 
   // Console debug helpers
   //   SCW.DEBUG = true                          → enable verbose refresh logging
