@@ -89,7 +89,7 @@
         linkText:             'Bulk Add Photos',
         linkField:            'surveyID',
         hashPattern:          /site-survey-request-details\/([a-f0-9]{24})/,
-        refreshRecordInViews: [],
+        refreshRecordInViews: ['view_3505'],
         refreshViews:         [],
         reloadOnClose:        false
       }
