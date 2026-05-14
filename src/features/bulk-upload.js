@@ -114,6 +114,19 @@
         // be next to other grid actions, not buried in a side menu.
         injectIntoView:       'view_3505',
         injectBeforeText:     'Add Survey/Bid Item'   // existing button to position before
+      },
+      {
+        // Survey-form page (#all-quotes/survey-form/<recordId>/…) uses
+        // a Vue-rendered Knack menu view (.knMenuLink class) rather
+        // than the legacy a.kn-link. The selector in the interception
+        // loop below covers both.
+        menuViewId:           'view_2653',
+        linkText:             'Bulk Add Photos',
+        linkField:            'deprecatedQuoteID',
+        hashPattern:          /survey-form\/([a-f0-9]{24})/,
+        refreshRecordInViews: [],
+        refreshViews:         [],
+        reloadOnClose:        false
       }
     ]
   };
@@ -1050,7 +1063,12 @@
     SCW.onViewRender(viewCfg.menuViewId, function () {
       var view = document.getElementById(viewCfg.menuViewId);
       if (!view) return;
-      var links = view.querySelectorAll('a.kn-link, a.kn-button');
+      // a.knMenuLink covers Knack's newer Vue-rendered menu views
+      // (e.g. view_2653) — legacy a.kn-link / a.kn-button covers the
+      // older menu templates still used elsewhere.
+      var links = view.querySelectorAll(
+        'a.kn-link, a.kn-button, a.knMenuLink'
+      );
       Array.prototype.forEach.call(links, function (a) {
         if ((a.textContent || '').trim() !== viewCfg.linkText) return;
         if (a.getAttribute('data-scw-bulk-bound') === '1') return;
