@@ -57,7 +57,7 @@
     // Fields on the proposal record.
     TOKEN_FIELD:       'field_2904',     // Proposal Access Token
     HTML_FIELD:        'field_2680',     // Published HTML snapshot
-    EXPIRATION_FIELD:  null,             // optional: ISO date / Knack date field
+    EXPIRATION_FIELD:  'field_2659',     // Proposal expiration date (enabled)
     ACTIVE_FIELD:      null,             // optional: Yes/No
     SUPERSEDED_FIELD:  null,             // optional: Yes/No
 
@@ -72,14 +72,14 @@
 
     SCENES: [
       {
-        // The public Knack scene the customer lands on. Update this
-        // to whatever the Knack scene id of the public access page is.
-        sceneId:  'scene_proposal_access',
+        // The public Knack scene the customer lands on.
+        sceneId:  'scene_1321',
 
-        // Hidden Knack list view that lists proposals with field_2904
-        // exposed. View-level permissions (public read, single-field
-        // expose) are the real security boundary — see header.
-        lookupViewId: 'view_proposal_access_lookup'
+        // Hidden Knack list view on the proposal object that exposes
+        // field_2904 + field_2680 (+ field_2659 expiration). View-level
+        // permissions (public read, narrowly-exposed fields) are the
+        // real security boundary — see header.
+        lookupViewId: 'view_3952'
       }
       // Add more scenes here if you stand up additional public surfaces.
     ],

@@ -83,16 +83,16 @@
   'use strict';
 
   // ---- CONFIG (edit these) ----------------------------------------------
-  var SCENE_ID         = 'scene_proposal_access';   // ← REPLACE with real scene id
-  var LOOKUP_VIEW_ID   = 'view_proposal_access_lookup'; // ← REPLACE with real view id
+  var SCENE_ID         = 'scene_1321';              // Public proposal-access scene
+  var LOOKUP_VIEW_ID   = 'view_3952';               // Hidden list view (proposal object)
   var TOKEN_FIELD      = 'field_2904';              // Proposal Access Token
   var HTML_FIELD       = 'field_2680';              // Snapshot HTML to render
   var HASH_ROUTE       = 'proposal-access';         // matches the sales-side URL builder
 
   // Optional gates — set to a field key to enable; leave null to skip.
-  var ACTIVE_FIELD     = null;   // e.g. 'field_XXXX' (Yes/No flag)
-  var SUPERSEDED_FIELD = null;   // e.g. 'field_XXXX' (Yes/No flag)
-  var EXPIRATION_FIELD = null;   // e.g. 'field_XXXX' (Date)
+  var ACTIVE_FIELD     = null;             // e.g. 'field_XXXX' (Yes/No flag)
+  var SUPERSEDED_FIELD = null;             // e.g. 'field_XXXX' (Yes/No flag)
+  var EXPIRATION_FIELD = 'field_2659';     // Proposal expiration date (enabled)
 
   // Placeholder for future email/OTP verification step. Setting this
   // to true today FAILS CLOSED — nothing will render until the OTP
