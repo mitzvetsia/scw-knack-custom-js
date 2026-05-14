@@ -124,6 +124,16 @@
           conduitFeet:      { key: 'field_2368', type: 'directEdit' }
         },
         summaryLayout: ['laborDescription', 'existingCabling', 'exteriorChit', 'plenumChit', 'labor', 'bid'],
+        // Sort presets — exposed in the worksheet toolbar's "Sort ▾"
+        // dropdown. First preset = "Default", rule:null means "use
+        // viewCfg.rowSort or device-worksheet's hardcoded default".
+        sortPresets: [
+          { id: 'default',  label: 'Default' },
+          { id: 'label',    label: 'Label',   field: 'field_2365', type: 'text'   },
+          { id: 'labor',    label: 'Labor',   field: 'field_2400', type: 'number' },
+          { id: 'bid',      label: 'By bid',  rule: [{ field: 'field_2415', order: 'asc', type: 'text' },
+                                                     { field: 'field_2365', order: 'asc', type: 'text' }] }
+        ],
         detailLayout: {
           left:  ['mounting', 'scwNotes'],
           right: ['connections', 'mountingHeight', 'dropLength', 'conduitFeet', 'surveyNotes']
@@ -175,6 +185,142 @@
         ]
       },
       {
+        // ── INSTALL line items (Implementation page, scene_1311) ──
+        // Mirrors view_3505's bucketing: Camera/Reader rows get the full
+        // install card; Mounting Hardware + Assumptions get simpler rows.
+        // Field map mirrors the SOW/Survey worksheet concepts so the UI
+        // is recognizable to anyone who's used the survey/SOW pages.
+        viewId: 'view_3915',
+        layout: { productGroupWidth: '300px', detailGrid: '455px 1fr', labelInProductGroup: true, productEditable: false },
+        // ── Main config: used for Camera or Reader rows ──
+        fields: {
+          // ── Summary row ──
+          label:            { key: 'field_2819', type: 'readOnly',   summary: true },
+          product:          { key: 'field_2790', type: 'readOnly',   summary: true, productStyle: true },
+          // TODO: confirm field_2825's actual Knack dropdown option list — guesses below.
+          installStatus:    { key: 'field_2825', type: 'singleChip', segmented: true, options: ['Not Started', 'In Progress', 'Blocked', 'Done'], summary: true, label: 'Status', group: 'right', groupCls: 'sum-group--install-status' },
+          // Header QA chits — one small icon per required photo, green
+          // check = captured, amber warning = missing. Photo data is
+          // scraped from the same field_2445/2446/2447 connection cells
+          // that inline-photo-row reads, so they must remain as columns
+          // on view_3915 in the Builder.
+          requiredPhotos:   { type: 'requiredPhotos', summary: true, label: 'QA', group: 'right', groupCls: 'sum-group--req-photos' },
+          existingCabling:  { key: 'field_2807', type: 'readOnly', label: 'Existing cabling', showWhenFieldIsYes: 'field_2807' },
+          exteriorChit:     { key: 'field_2805', type: 'readOnly', label: 'Exterior',         showWhenFieldIsYes: 'field_2805' },
+          plenumChit:       { key: 'field_2806', type: 'readOnly', label: 'Plenum',           showWhenFieldIsYes: 'field_2806' },
+
+          // ── Detail panel ──
+          // Camera/Reader rows are CHILDREN in the connection cascade —
+          // they only show the back-connection to their parent network
+          // device.  The forward "Connected Devices" editor lives in
+          // bucketOverride (network devices are non-Camera/Reader).
+          // Same shape view_3505 uses: main=field_2381 readOnly,
+          // bucketOverride=field_2380 nativeEdit.
+          connectedTo:      { key: 'field_2821', type: 'readOnly',   label: 'Connected To', skipEmpty: true },
+          // Accessories — mounting brackets and other connected
+          // hardware records.  Same shape as view_3505 line 117
+          // (mountingHardware: field_1958 connectedRecords) — the
+          // connectedRecords widget renders each connected accessory
+          // as a clickable chip that opens the accessory's edit page.
+          accessories:      { key: 'field_2852', type: 'connectedRecords', skipEmpty: true },
+          laborDescription: { key: 'field_2809', type: 'readOnly' },
+          scwNotes:         { key: 'field_2808', type: 'directEdit', notes: true, rows: 4 },
+          dropLength:       { key: 'field_2804', type: 'readOnly' },
+          conduitFeet:      { key: 'field_2803', type: 'readOnly' }
+        },
+        summaryLayout: ['requiredPhotos'],
+        // Detail-panel groupings: left = the action / editable bits;
+        // right = read-only / info.  Existing-cabling, exterior, and
+        // plenum sit in Info as flag-chip rows (showWhenFieldIsYes
+        // hides them when off, install-config-subpanel restyles them).
+        //
+        // MDF/IDF is NOT in the detail panel — Knack's native grouping
+        // emits a kn-table-group header above each row that already
+        // shows the MDF/IDF, so repeating it as a row-level field
+        // would be redundant noise.
+        detailLayout: {
+          left:  ['connectedTo', 'scwNotes'],
+          right: ['accessories', 'existingCabling', 'exteriorChit', 'plenumChit', 'dropLength', 'conduitFeet', 'laborDescription']
+        },
+        // Row sort within each group section.  Two-rule shape mirrors
+        // view_3596 line 685, view_3610 line 662 etc.:
+        //   1. field_2218  – proposal bucket's CONFIG_sort order
+        //   2. field_2819  – source-line label (E-001 …) so a camera
+        //                    and its accessories stay adjacent within
+        //                    the same bucket-sort tier
+        // Requires field_2218 to be exposed as a column on view_3915
+        // in Knack Builder so the worksheet can read each row's td.
+        rowSort: [
+          { field: 'field_2218', order: 'asc', type: 'number' },
+          { field: 'field_2819', order: 'asc', type: 'text'   }
+        ],
+        // Knack Builder's default table sort on view_3915 is field_2816
+        // (SYS_auto increment) asc.  Without this flag, device-worksheet
+        // detects th.sorted-asc on field_2816 and uses THAT as the sole
+        // sort rule — silently overriding our rowSort.  forceRowSort:
+        // true keeps our config-side rowSort authoritative.
+        forceRowSort: true,
+        sortPresets: [
+          { id: 'default',  label: 'Default' },
+          { id: 'label',    label: 'Label',   field: 'field_2819', type: 'text' },
+          { id: 'product',  label: 'Product', field: 'field_2790', type: 'text' }
+        ],
+        syntheticGroupsPosition: 'bottom',
+        bucketField: 'field_2822',
+        // ── Override: used for all NON-camera/reader rows
+        //    (Assumptions, Mounting Hardware) ──
+        bucketOverride: {
+          keepBuckets: ['6481e5ba38f283002898113c'],   // Camera or Reader
+          fields: {
+            product:          { key: 'field_2790', type: 'readOnly', summary: true, productStyle: true },
+            installStatus:    { key: 'field_2825', type: 'singleChip', segmented: true, options: ['Not Started', 'In Progress', 'Blocked', 'Done'], summary: true, label: 'Status', group: 'right', groupCls: 'sum-group--install-status' },
+            requiredPhotos:   { type: 'requiredPhotos', summary: true, label: 'QA', group: 'right', groupCls: 'sum-group--req-photos' },
+            laborDescription: { key: 'field_2809', type: 'readOnly', summary: true, label: 'Description', group: 'fill', multiline: true },
+            // Editable forward connection (TRIGGER_FIELD for the cascade).
+            // Gated on field_2795 so it appears on network-device products
+            // (Yes) and stays hidden on mounting hardware / assumption
+            // rows (No).  Same shape as view_3505 line 146.
+            connectedDevices: { key: 'field_2820', type: 'nativeEdit', label: 'Connected Devices', showWhenFieldIsYes: 'field_2795' },
+            // Accessories on non-Camera/Reader rows — same widget as
+            // the main config.  On a network device (Imperial 32 etc.)
+            // this lists the hard drive / rack / UPS / WattBox.  On a
+            // mounting-hardware row field_2852 points back at the
+            // parent camera, which is the per-piece "what does this
+            // bracket belong to?" identifier.  skipEmpty hides the
+            // row entirely when blank (e.g. on assumption rows).
+            accessories:      { key: 'field_2852', type: 'connectedRecords', skipEmpty: true },
+            scwNotes:         { key: 'field_2808', type: 'directEdit', notes: true, rows: 4 }
+          },
+          summaryLayout: ['requiredPhotos'],
+          // Same Edit/Info split as the main config; MDF/IDF is omitted
+          // because the Knack-native group header above the row already
+          // shows it.
+          detailLayout: {
+            left:  ['connectedDevices', 'scwNotes'],
+            right: ['accessories']
+          }
+        },
+        bucketRules: {
+          '697b7a023a31502ec68b3303': {                       // Assumptions
+            label: 'ASSUMPTION',
+            descLabel: 'Assumption',
+            hideProduct: true,
+            // Drop number doesn't apply to project-wide assumption
+            // rows.  Accessories (field_2852) skip-empty on their own.
+            hideFields: ['field_2798'],
+            rowClass: 'scw-row--assumptions',
+          },
+          '594a94536877675816984cb9': {                       // Mounting Hardware
+            label: 'HARDWARE',
+            descLabel: 'Mounting Hardware',
+            rowClass: 'scw-row--mounting-hw',
+          },
+        },
+        syntheticBucketGroups: [
+          { cls: 'scw-row--assumptions', label: 'Project Wide Assumptions' },
+        ]
+      },
+      {
         viewIds: ['view_3559', 'view_3577', 'view_3617', 'view_3803'],
         layout: { labelWidth: '400px' },
         fields: {
@@ -183,12 +329,13 @@
           mdfIdf:           { key: 'field_1641', type: 'singleChip', options: ['HEADEND', 'IDF'], segmented: true, headerTrigger: true },
           mdfNumber:        { key: 'field_2458', type: 'directEdit', headerTrigger: true, hideWhenFieldEquals: { field: 'field_1641', value: 'HEADEND' } },
           name:             { key: 'field_1943', type: 'directEdit', headerTrigger: true },
+          status:           { key: 'field_2845', type: 'nativeEdit' },
           surveyNotes:      { key: 'field_2457', type: 'directEdit', summary: true, label: 'Survey Notes', group: 'fill', multiline: true },
           notes:            { key: 'field_1643', type: 'directEdit' }
         },
         summaryLayout: ['surveyNotes'],
         detailLayout: {
-          left:  ['mdfIdf', 'mdfNumber', 'name'],
+          left:  ['mdfIdf', 'mdfNumber', 'name', 'status'],
           right: ['notes']
         }
       },
@@ -317,9 +464,23 @@
         },
         summaryLayout: ['laborDescription', 'quantity', 'subBid', 'plusHrs', 'plusMat', 'installFee', 'sow'],
         detailLayout: {
+          // Restored from commit eaf720f — was accidentally dropped in
+          // 7794df2 ('Worksheet sort presets: dropdown replaces thead')
+          // while adding sortPresets, which silently broke chevron
+          // expansion for non-camera rows on view_3610. selectedSubBid
+          // (field_2630) and subBidLock (field_2634) intentionally
+          // omitted at user request.
           left:  ['connectedDevice', 'mountingHardware'],
-          right: ['scwNotes', 'selectedSubBid', 'surveyNotes', 'subBidLock']
+          right: ['scwNotes', 'surveyNotes']
         },
+        sortPresets: [
+          { id: 'default',  label: 'Default' },
+          { id: 'label',    label: 'Label',   field: 'field_1950', type: 'text'   },
+          { id: 'sub-bid',  label: 'Sub bid', field: 'field_2150', type: 'number' },
+          { id: 'qty',      label: 'Qty',     field: 'field_1964', type: 'number' },
+          { id: 'sow',      label: 'By SOW',  rule: [{ field: 'field_2154', order: 'asc', type: 'text' },
+                                                     { field: 'field_1950', order: 'asc', type: 'text' }] }
+        ],
         // recordLockField disabled — field_2634 lock not used on view_3610
         conditionalHide: [
           {
@@ -398,8 +559,10 @@
             'subBid', 'plusHrs', 'plusMat', 'installFee', 'sow'
           ],
           detailLayout: {
+            // selectedSubBid (field_2630) and subBidLock (field_2634)
+            // intentionally omitted at user request.
             left:  ['dropPrefix', 'dropNumber', 'mountingHardware'],
-            right: ['connectedDevice', 'dropLength', 'conduit', 'scwNotes', 'selectedSubBid', 'subBidLock']
+            right: ['connectedDevice', 'dropLength', 'conduit', 'scwNotes']
           }
         }
       },
@@ -445,6 +608,13 @@
           { field: 'field_2218', order: 'asc', type: 'number' },
           { field: 'field_2240', order: 'asc', type: 'text'   },
           { field: 'field_1951', order: 'asc', type: 'number' }
+        ],
+        sortPresets: [
+          { id: 'default',  label: 'Default' },
+          { id: 'label',    label: 'Label',   field: 'field_1950', type: 'text'   },
+          { id: 'total',    label: 'Total',   field: 'field_2269', type: 'number' },
+          { id: 'qty',      label: 'Qty',     field: 'field_1964', type: 'number' },
+          { id: 'product',  label: 'Product', field: 'field_1949', type: 'text'   }
         ],
         detailLayout: {
           left:  ['retailPrice', 'quantity', 'customDiscPct', 'appliedDiscount', 'total'],
@@ -552,6 +722,13 @@
           { field: 'field_2218', order: 'asc', type: 'number' },
           { field: 'field_2240', order: 'asc', type: 'text'   },
           { field: 'field_1951', order: 'asc', type: 'number' }
+        ],
+        sortPresets: [
+          { id: 'default',  label: 'Default' },
+          { id: 'label',    label: 'Label',   field: 'field_1950', type: 'text'   },
+          { id: 'total',    label: 'Total',   field: 'field_2269', type: 'number' },
+          { id: 'qty',      label: 'Qty',     field: 'field_1964', type: 'number' },
+          { id: 'product',  label: 'Product', field: 'field_1949', type: 'text'   }
         ],
         detailLayout: {
           left:  ['dropPrefix', 'dropNumber', 'retailPrice', 'discountDlr', 'appliedDiscount', 'total', 'dropLength'],
@@ -1433,6 +1610,169 @@ td.${P}-sum-move {
    etc.); hide the rest so the chits below stack flush. */
 .${P}-sum-group--chit-stack .${P}-sum-group--cabling:not(:first-child) > .${P}-sum-label {
   display: none;
+}
+
+/* ── Required-photo header chits (QA-glance) ────────────────────── */
+/* Stacked layout — one chit per row so labels read top-down and
+   the column has a predictable width across all rows (so the
+   left edge lines up between cam/reader rows and other rows).
+   Fixed width (not min-width) is critical: with min-width, long
+   photo-type names like "BACK OF INSTALLED NVR/SWITCH" inflate the
+   column on that row, which under .sum-right { margin-left: auto }
+   shifts the whole right cluster left and breaks across-row
+   vertical alignment of the chits' left edge. */
+/* Scope under .sum-right to win over the generic
+   sum-right > sum-group fit-content rule above — without that extra
+   specificity, the fixed 220px column never applies and long photo
+   labels still inflate the column on those rows. */
+.${P}-sum-right .${P}-sum-group--req-photos {
+  width: 300px;
+  padding-right: 15px;
+  box-sizing: border-box;
+  flex-shrink: 0;
+}
+
+/* ── Install status segmented picker ──────────────────────────────
+   Width pinned so labels render in full (no "In Progres" / "Not
+   Starte" truncation) and the column lines up across rows.  Selected
+   chip is color-coded by state so the row's status reads at a glance
+   without having to parse which of four segments is highlighted. */
+.${P}-sum-right .${P}-sum-group--install-status {
+  width: 360px;
+  flex-shrink: 0;
+}
+.${P}-sum-group--install-status .${P}-radio-chips {
+  width: 100%;
+}
+.${P}-sum-group--install-status .${P}-radio-chip {
+  flex: 1 1 0;
+  min-width: 0;
+  padding: 4px 6px;
+  font-size: 11px;
+}
+/* Selected-state colors — override the generic green is-selected
+   style.  Higher specificity (group--install-status .is-selected) so
+   these win against the global .radio-chip.is-selected rule. */
+.${P}-sum-group--install-status .${P}-radio-chip.is-selected[data-option="Not Started"] {
+  background: #e5e7eb;
+  color: #374151;
+  border-color: #9ca3af;
+  box-shadow: none;
+}
+.${P}-sum-group--install-status .${P}-radio-chip.is-selected[data-option="In Progress"] {
+  background: #fef3c7;
+  color: #92400e;
+  border-color: #fbbf24;
+  box-shadow: none;
+}
+.${P}-sum-group--install-status .${P}-radio-chip.is-selected[data-option="Blocked"] {
+  background: #fee2e2;
+  color: #991b1b;
+  border-color: #fca5a5;
+  box-shadow: none;
+}
+.${P}-sum-group--install-status .${P}-radio-chip.is-selected[data-option="Done"] {
+  background: #dcfce7;
+  color: #15803d;
+  border-color: #86efac;
+  box-shadow: none;
+}
+/* Segmented border-merge fix: when In Progress / Blocked / Done is
+   selected, the adjacent unselected chip's left border still inherits
+   green from the global .is-selected + .is-unselected rule.  Reset
+   that to the gray default so the seam color matches the new palette. */
+.${P}-sum-group--install-status .${P}-radio-chip.is-selected + .${P}-radio-chip.is-unselected {
+  border-left-color: #d1d5db;
+}
+.${P}-req-photos {
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 3px;
+  width: 100%;
+  min-width: 0;
+}
+.${P}-req-photo-chit {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+  width: 100%;
+  padding: 0 10px 0 8px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.02em;
+  line-height: 1;
+  white-space: nowrap;
+  overflow: hidden;
+  box-sizing: border-box;
+  flex-shrink: 0;
+  cursor: pointer;
+}
+.${P}-req-photo-chit > span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.${P}-req-photo-chit svg {
+  flex-shrink: 0;
+}
+.${P}-req-photo-chit-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
+.${P}-req-photo-chit-state {
+  flex-shrink: 0;
+  margin-left: auto;
+  padding-left: 8px;
+  font-weight: 600;
+  font-size: 9px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  opacity: 0.75;
+}
+.${P}-req-photo-chit-state::before {
+  content: '·';
+  display: inline-block;
+  margin-right: 6px;
+  opacity: 0.6;
+}
+/* photo missing (not yet uploaded) — red */
+.${P}-req-photo-chit.is-missing {
+  background: #fee2e2;
+  color: #991b1b;
+  border-color: #fca5a5;
+}
+/* uploaded but QA not yet done — neutral indigo-tinted */
+.${P}-req-photo-chit.is-qa-pending {
+  background: #eef2ff;
+  color: #4338ca;
+  border-color: #a5b4fc;
+}
+/* internal pass, client signoff still pending — green fill, amber outline */
+.${P}-req-photo-chit.is-half-pass {
+  background: #dcfce7;
+  color: #15803d;
+  border-color: #fbbf24;
+  border-width: 2px;
+  padding: 0 9px 0 7px;       /* compensate for thicker border */
+  height: 22px;
+}
+/* fully signed off — solid green */
+.${P}-req-photo-chit.is-done {
+  background: #dcfce7;
+  color: #15803d;
+  border-color: #86efac;
+}
+/* QA failed — red */
+.${P}-req-photo-chit.is-fail {
+  background: #fee2e2;
+  color: #991b1b;
+  border-color: #fca5a5;
 }
 
 /* ── Summary chip host td — visible for KTL bulk-edit but visually transparent ── */
@@ -2526,6 +2866,100 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       if (cls) return cls;
     }
     return '';
+  }
+
+  /**
+   * Walk parallel connection cells on a source <tr> (each keyed by the
+   * connected photo record id) and return the list of REQUIRED photos
+   * with their type / completion / QA state.
+   *
+   * opts: {
+   *   typeKey, reqKey, doneKey,                         // photo metadata
+   *   qaStatusKey, qaClientKey, qaNotesKey, qaHistoryKey // optional QA fields
+   * }
+   *
+   * Used by the requiredPhotos summary field type to render the header-
+   * level QA chits and by qa-popover to seed the picker.
+   */
+  function readRequiredPhotos(tr, opts) {
+    opts = opts || {};
+    var photos = {};
+    function ensure(id) {
+      if (!photos[id]) {
+        photos[id] = {
+          id: id, type: '', required: false, completed: false,
+          qaStatus: '', qaClient: '', qaNotes: '', qaHistory: ''
+        };
+      }
+      return photos[id];
+    }
+    function walk(cellSel, apply) {
+      if (!cellSel) return;
+      var cell = tr.querySelector('td.' + cellSel);
+      if (!cell) return;
+      var outers = cell.querySelectorAll('span[id][data-kn="connection-value"]');
+      for (var i = 0; i < outers.length; i++) {
+        var id = (outers[i].id || '').trim();
+        if (!id) continue;
+        apply(ensure(id), outers[i]);
+      }
+    }
+    walk(opts.typeKey, function (rec, span) {
+      var inner = span.querySelector('span[data-kn="connection-value"]');
+      rec.type = inner ? inner.textContent.trim() : span.textContent.trim();
+    });
+    walk(opts.reqKey, function (rec, span) {
+      var v = (span.textContent || '').trim().toLowerCase();
+      rec.required = (v === 'yes' || v === 'true');
+    });
+    walk(opts.doneKey, function (rec, span) {
+      var v = (span.textContent || '').trim().toLowerCase();
+      rec.completed = (v === 'yes' || v === 'true');
+    });
+    walk(opts.qaStatusKey, function (rec, span) {
+      rec.qaStatus = (span.textContent || '').trim();
+    });
+    walk(opts.qaClientKey, function (rec, span) {
+      rec.qaClient = (span.textContent || '').trim();
+    });
+    walk(opts.qaNotesKey, function (rec, span) {
+      rec.qaNotes = (span.textContent || '').trim();
+    });
+    walk(opts.qaHistoryKey, function (rec, span) {
+      // Paragraph text — preserve linebreaks via innerHTML
+      rec.qaHistory = (span.innerHTML || '').trim();
+    });
+    var out = [];
+    for (var k in photos) {
+      if (photos.hasOwnProperty(k) && photos[k].required) out.push(photos[k]);
+    }
+    out.sort(function (a, b) { return (a.type || '').localeCompare(b.type || ''); });
+    return out;
+  }
+
+  /**
+   * Compute the QA-aware visual state of a required-photo chit.
+   * Returns one of: 'missing' | 'qa-pending' | 'half-pass' | 'done' | 'fail'.
+   *
+   * hasQAColumns: pass false when the QA fields aren't exposed as
+   * columns on the view (graceful degrade — treat any uploaded photo
+   * as 'done' so existing views aren't visually regressed before the
+   * columns are added).
+   */
+  function computePhotoChitState(ph, hasQAColumns) {
+    if (!ph.completed) return 'missing';
+    if (!hasQAColumns) return 'done';
+    var s = (ph.qaStatus || '').toLowerCase();
+    if (s === 'fail') return 'fail';
+    if (s === 'pass') {
+      var c = (ph.qaClient || '').toLowerCase();
+      // No client gate OR client gate already cleared → fully signed off
+      if (c === '' || c === 'n/a' || c === 'approved' || c === 'bypassed') return 'done';
+      // Internal pass but client signoff still pending → partial
+      return 'half-pass';
+    }
+    // Empty / "pending" / anything else → uploaded but QA not yet done
+    return 'qa-pending';
   }
 
   /**
@@ -4505,6 +4939,21 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         td.appendChild(chit);
         td.classList.add(P + '-sum-chip-host');
         td.setAttribute('data-scw-cabling-src', '1');
+        // Force-add Knack's inline-edit classes on toggleChit cells so
+        // KTL's bulk-edit recognizes them as bulk-source candidates
+        // (it gates the `bulkEditSelectSrc` outline + cursor on cells
+        // carrying these classes). Builder's per-field inline-edit
+        // toggle on view_3505 omits these classes for field_2371
+        // (Plenum) while setting them for field_2370 / field_2372 —
+        // so without this nudge Plenum's TD wouldn't show the
+        // bulk-edit source affordance even though it's visually a
+        // peer of the other two chits. feeTrigger=true means we
+        // already intend the cell to be editable via our own toggle,
+        // so adding the class doesn't introduce new write semantics.
+        if (desc.feeTrigger) {
+          td.classList.add('cell-edit');
+          td.classList.add('ktlInlineEditableCellsStyle');
+        }
         var chitWrap = document.createElement('span');
         chitWrap.className = P + '-sum-group ' + P + '-sum-group--cabling';
         chitWrap.setAttribute('data-scw-fields', desc.key);
@@ -4515,6 +4964,126 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         chitWrap.appendChild(td);
         target.appendChild(chitWrap);
         break;
+
+      case 'requiredPhotos':
+        // Header-level QA indicator: one chit per required photo on the
+        // row, color-coded by the photo's QA state (missing / qa-pending
+        // / half-pass / done / fail). Hover title = photo type + state.
+        // Each chit carries data-photo-id so the qa-popover module can
+        // identify which PIC record a click corresponds to.
+        var qaStatusKey  = desc.qaStatusField  || 'field_2859';
+        var qaClientKey  = desc.qaClientField  || 'field_2860';
+        var qaNotesKey   = desc.qaNotesField   || 'field_2861';
+        var qaHistoryKey = desc.qaHistoryField || 'field_2865';
+        var photoList = readRequiredPhotos(tr, {
+          typeKey:      desc.typeField      || 'field_2445',
+          reqKey:       desc.requiredField  || 'field_2446',
+          doneKey:      desc.completedField || 'field_2447',
+          qaStatusKey:  qaStatusKey,
+          qaClientKey:  qaClientKey,
+          qaNotesKey:   qaNotesKey,
+          qaHistoryKey: qaHistoryKey
+        });
+        var hasQAColumns = !!tr.querySelector('td.' + qaStatusKey);
+        if (!photoList.length) {
+          // Reserve a spacer so stacked-summary alignment doesn't shift
+          // between rows that have required photos and ones that don't.
+          if (desc.alwaysReserveSpace !== false) {
+            var phEmpty = document.createElement('span');
+            phEmpty.className = P + '-sum-group ' + (desc.groupCls ? P + '-' + desc.groupCls : '');
+            phEmpty.style.visibility = 'hidden';
+            var phEmptyLbl = document.createElement('span');
+            phEmptyLbl.className = P + '-sum-label';
+            phEmptyLbl.innerHTML = '&nbsp;';
+            phEmpty.appendChild(phEmptyLbl);
+            target.appendChild(phEmpty);
+          }
+          break;
+        }
+        var phGroup = document.createElement('span');
+        phGroup.className = P + '-sum-group' + (desc.groupCls ? ' ' + P + '-' + desc.groupCls : '');
+        var phLabel = document.createElement('span');
+        phLabel.className = P + '-sum-label';
+        phLabel.textContent = desc.label || 'Photos';
+        phGroup.appendChild(phLabel);
+        var phRow = document.createElement('span');
+        phRow.className = P + '-req-photos';
+        var doneCount = 0;
+        for (var pp = 0; pp < photoList.length; pp++) {
+          var ph = photoList[pp];
+          var chitState = computePhotoChitState(ph, hasQAColumns);
+          if (chitState === 'done') doneCount++;
+          var phChit = document.createElement('span');
+          phChit.className = P + '-req-photo-chit is-' + chitState;
+          phChit.setAttribute('data-photo-id', ph.id);
+          phChit.setAttribute('data-photo-state', chitState);
+          phChit.title = (ph.type || 'Photo') + ' — ' + chitStateTooltip(chitState);
+          phChit.innerHTML = chitStateIcon(chitState);
+          var phName = document.createElement('span');
+          phName.className = P + '-req-photo-chit-name';
+          phName.textContent = ph.type || 'Photo';
+          phChit.appendChild(phName);
+          var phState = document.createElement('span');
+          phState.className = P + '-req-photo-chit-state';
+          phState.textContent = chitStateLabel(chitState);
+          phChit.appendChild(phState);
+          phRow.appendChild(phChit);
+        }
+        if (doneCount === photoList.length) {
+          phGroup.classList.add(P + '-req-photos-all-done');
+        }
+        phGroup.appendChild(phRow);
+        target.appendChild(phGroup);
+        break;
+    }
+  }
+
+  // ── Photo chit visual helpers ───────────────────────────────────
+
+  function chitStateTooltip(state) {
+    switch (state) {
+      case 'missing':    return 'photo not uploaded';
+      case 'qa-pending': return 'photo uploaded, QA not yet done';
+      case 'half-pass':  return 'internal pass, awaiting client signoff';
+      case 'done':       return 'signed off';
+      case 'fail':       return 'QA failed';
+      default:           return state;
+    }
+  }
+
+  /** Short suffix label rendered inside the chit so the state reads
+      explicitly without relying on color alone. */
+  function chitStateLabel(state) {
+    switch (state) {
+      case 'missing':    return 'Missing';
+      case 'qa-pending': return 'Needs QA';
+      case 'half-pass':  return 'Client pending';
+      case 'done':       return 'Signed off';
+      case 'fail':       return 'Failed';
+      default:           return '';
+    }
+  }
+
+  function chitStateIcon(state) {
+    var checkSvg =
+      '<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+    var warnSvg =
+      '<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>';
+    var xSvg =
+      '<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+    // Clock-face icon — clearly says "waiting / not yet done"
+    var clockSvg =
+      '<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>';
+    // Half-filled circle — clearly intermediate state
+    var halfSvg =
+      '<svg viewBox="0 0 24 24" width="11" height="11" stroke="currentColor" stroke-width="2.4"><circle cx="12" cy="12" r="9" fill="none"/><path d="M12 3 A9 9 0 0 1 12 21 Z" fill="currentColor"/></svg>';
+    switch (state) {
+      case 'done':       return checkSvg;
+      case 'half-pass':  return halfSvg;
+      case 'missing':    return warnSvg;
+      case 'fail':       return xSvg;
+      case 'qa-pending': return clockSvg;
+      default:           return clockSvg;
     }
   }
 
@@ -4874,6 +5443,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     mdfIdf:           'MDF/IDF',
     mdfNumber:        '##',
     name:             'Name',
+    status:           'Status',
     dropPrefix:       'Drop Prefix',
     dropNumber:       'Label #',
     laborDescription: 'Labor\nDesc',
@@ -5524,7 +6094,13 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
           if (orVal === 'no' || orVal === 'false') allowShow = true;
         }
         if (!allowShow) {
-          var targetGroup = card.querySelector('[data-scw-fields="' + swDesc.key + '"]');
+          // Summary groups use [data-scw-fields="<key>"] (plural);
+          // detail-panel rows use [data-scw-field="<key>"] (singular).
+          // Hide whichever is present.
+          var targetGroup = card.querySelector(
+            '[data-scw-fields="' + swDesc.key + '"], ' +
+            '[data-scw-field="'  + swDesc.key + '"]'
+          );
           if (targetGroup) targetGroup.style.display = 'none';
         }
       }
@@ -5809,7 +6385,11 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     // and use the clicked column as the sole rule, otherwise every click
     // would be visually reset by the hard-coded default here.
     var rowSortRules;
-    var _sortedTh = thead && thead.querySelector('th.sorted-asc, th.sorted-desc');
+    // viewCfg.forceRowSort = true → ignore Knack's th.sorted-asc and use
+    // the rowSort defined on viewCfg.  Use this when Knack Builder's
+    // default sort doesn't match the worksheet's intended ordering and
+    // changing the Builder default isn't feasible.
+    var _sortedTh = (!viewCfg.forceRowSort) && thead && thead.querySelector('th.sorted-asc, th.sorted-desc');
     if (_sortedTh) {
       var _sFk = null;
       var _sClasses = _sortedTh.className.split(/\s+/);
@@ -5833,7 +6413,19 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       }
       rowSortRules = _sFk ? [{ field: _sFk, order: _sOrder, type: _sType }] : [];
     } else {
-      rowSortRules = viewCfg.rowSort || [
+      // Consult the worksheet-sort feature for a user-selected preset.
+      // If the user has not made a selection (or the first/default preset
+      // is active), getActiveSortRules returns null and we fall back to
+      // the view's own rowSort, then to the hardcoded default.
+      var _wsSortRules = null;
+      try {
+        if (window.SCW && window.SCW.worksheetSort &&
+            typeof window.SCW.worksheetSort.getActiveSortRules === 'function') {
+          _wsSortRules = window.SCW.worksheetSort.getActiveSortRules(viewCfg);
+        }
+      } catch (e) { /* ignore */ }
+
+      rowSortRules = _wsSortRules || viewCfg.rowSort || [
         { field: 'field_2218', order: 'asc',  type: 'number' },
         { field: 'field_2240', order: 'asc',  type: 'text'   },
         { field: 'field_1951', order: 'asc',  type: 'number' }
@@ -6542,6 +7134,9 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   window.SCW = window.SCW || {};
   window.SCW.syncKnackModel = syncKnackModel;
   window.SCW.deviceWorksheet = {
+    /** Per-view configs — read by device-worksheet-sort.js to discover
+     *  which views opt into the sort-preset dropdown. */
+    _configs: WORKSHEET_CONFIG.views,
     /** Capture expanded panel state for all worksheet views. */
     captureState: captureAllExpandedStates,
     /** Force re-transform a view (idempotent). */

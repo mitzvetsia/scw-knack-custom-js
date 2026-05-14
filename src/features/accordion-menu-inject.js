@@ -410,7 +410,24 @@
         var accordion = accordions[i];
         var body = accordion.querySelector('.scw-ktl-accordion__body');
         if (!body) { skipped.noHeader++; continue; }
-        if (accordion.hasAttribute(INJECTED)) { skipped.alreadyInjected++; continue; }
+        // Check the ACTUAL button container, not just the attribute,
+        // and scan the WHOLE accordion (not just the body). device-
+        // worksheet-toolbar.js re-parents .scw-acc-actions out of the
+        // body and into the inner view's .kn-records-nav for layout —
+        // that nav is still nested inside the accordion, so an
+        // accordion-rooted search finds the buttons wherever the
+        // toolbar parked them. A body-only scan would miss them and
+        // race-re-inject every render, producing the "hide and seek"
+        // behavior on views with toolbar hoisting.
+        if (accordion.querySelector('.scw-acc-actions .scw-acc-action-btn')) {
+          skipped.alreadyInjected++;
+          continue;
+        }
+        // Buttons aren't currently anywhere in this accordion — clear
+        // the stale attribute so the rest of the logic re-injects.
+        if (accordion.hasAttribute(INJECTED)) {
+          accordion.removeAttribute(INJECTED);
+        }
 
         // Find the inner view — the table/list/form that KTL wrapped
         var innerView = body.querySelector('[id^="view_"]') ||

@@ -1,8 +1,63 @@
 // src/config.js
 window.SCW = window.SCW || {};
+// Knack's loader (main.js) logs a warning if window.SCW.init is missing.
+// We don't actually use it — each feature initializes itself via IIFE —
+// so expose a no-op stub purely to silence the console noise.
+if (typeof window.SCW.init !== 'function') {
+  window.SCW.init = function () { /* no-op */ };
+}
 window.SCW.CONFIG = window.SCW.CONFIG || {
   VERSION: "dev",
   MAKE_PHOTO_MOVE_WEBHOOK: "https://hook.us1.make.com/7oetygbj2g2hu5fspgtt5kcydjojid81",
+  // Fires when a user clicks an empty *required* photo card and picks a
+  // file. The browser reads the file as base64 and POSTs to this hook.
+  // Make's scenario should:
+  //   1. Decode payload.dataBase64 into a binary file
+  //   2. Upload it to Knack via REST API on the photo record
+  //      (PUT /v1/objects/<photoObject>/records/<photoRecordId> with
+  //       field_771 as a base64-encoded file upload)
+  //   3. Return { success: true } when done (the browser doesn't wait —
+  //      it polls the view until field_771 is populated, then re-renders)
+  //   Request body (application/json):
+  //   {
+  //     photoRecordId: <24-char hex of the photo record being filled>,
+  //     lineItemId:    <24-char hex of the line item the photo belongs to>,
+  //     viewId:        <Knack view id where the upload was triggered>,
+  //     filename:      <original file name from the browser>,
+  //     mimeType:      <e.g. "image/jpeg">,
+  //     sizeBytes:     <pre-base64 byte count, sanity check>,
+  //     dataBase64:    <pure base64 string, no "data:..." prefix>,
+  //     triggeredBy:   { id, name, email }
+  //   }
+  //   Response body — fire the "Webhook response" module AT THE END of
+  //   the Make scenario (after the Knack upload module), so the browser
+  //   waits for completion rather than polling:
+  //     { "success": true }                           → stops polling,
+  //                                                     one fetch to refresh
+  //     { "success": false, "error": "human msg" }    → shows the error
+  //                                                     verbatim on the card
+  //   If Make 408s out (40s timeout) or no JSON body is returned, the
+  //   client falls back to polling so a slow background upload still
+  //   surfaces eventually.
+  MAKE_PHOTO_UPLOAD_WEBHOOK: "https://hook.us1.make.com/6n07ovcxexg4ygckwh8scydh22n71s3o",
+  // Closeout-deliverables doc upload (view_3940 .scw-cd-doc cards).
+  // Fires when the user drags a file onto, or clicks, a missing doc
+  // square.  Browser reads the file as base64 and posts:
+  //   {
+  //     kind:         'document',
+  //     docRecordId:  <DOC record id, 24-char hex>,
+  //     closeoutId:   <parent closeout record id>,
+  //     viewId:       'view_3940',
+  //     filename, mimeType, sizeBytes, dataBase64,
+  //     triggeredBy:  { id, name, email }
+  //   }
+  // Make decodes base64 and uploads to Knack on field_68 of the DOC
+  // record.  Response shape mirrors photo upload.  Same TODO note —
+  // empty URL falls back to Knack's edit-form click navigation.
+  MAKE_DOC_UPLOAD_WEBHOOK: "https://hook.us1.make.com/6n07ovcxexg4ygckwh8scydh22n71s3o",
+  // Note: QA updates on doc cards go direct via the view-based PUT
+  // endpoint (Knack's view_3941 — DOC_files inline-editable grid).
+  // No webhook needed — see closeout-deliverables.js / saveQA().
   MAKE_DELETE_RECORD_WEBHOOK: "https://hook.us1.make.com/uyxdq04zudssvoatvnwywxcjxxil15q7",
   // Fires on "Clone SOW / Create Alternative SOW" button click. Expects:
   //   Request body:  {

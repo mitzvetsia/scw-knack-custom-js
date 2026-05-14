@@ -66,6 +66,15 @@
     'project management & small project mobilization costs ' +
     'or increases project overall margin.';
 
+  // Fields used by the margin-low action buttons (mirrors bid-review's
+  // recovery actions). subBidTotal + surveyCosts feed the formula that
+  // computes a target margin landing at 12% effective after survey
+  // costs are absorbed; projectMargin is the field we PUT back.
+  var SUB_BID_TOTAL_FIELD   = 'field_2162';  // SOW sub-bid total (project-wide)
+  var SURVEY_COSTS_FIELD    = 'field_2750';  // INPUT_survey costs (editable)
+  var PROJECT_MARGIN_FIELD  = 'field_2158';  // SOW project margin % (input)
+  var EFFECTIVE_MARGIN_TARGET = 0.12;        // recovery target: 12% post-survey
+
   // ── Pending-step flags ──────────────────────────────────
   // ops-stepper.js (on the Ops proposal tab) writes
   //   scw-ops-stepper-pending:<sowId> = {"stepId":"...","timestamp":...}
@@ -631,10 +640,16 @@
 
     // Margin warning — fires whenever field_2749 < 10%. Sits between
     // the pill and the proposal block so reviewers see it next to the
-    // next-step affordance for that SOW.
+    // next-step affordance for that SOW. Now includes the same two
+    // recovery action buttons as the bid-review margin warning:
+    //   1. Add Project Management & Mobilization line item
+    //   2. Increase project margin to <target>% (shown only when
+    //      subBidTotal is readable from the row)
     var marginPct = readMarginPct(tr);
     if (isFinite(marginPct) && marginPct < MARGIN_THRESHOLD) {
-      hostTd.appendChild(buildMarginWarning());
+      var warning = buildMarginWarning(buildMarginRecoveryButtons(tr));
+      bindMarginRecoveryClicks(warning, tr);
+      hostTd.appendChild(warning);
     }
 
     // Per-row published-proposal info (view_3885 → matched via field_2666).
@@ -895,6 +910,172 @@
     var marginPct = readMarginPct(tr);
     if (!isFinite(marginPct) || marginPct >= MARGIN_THRESHOLD) return null;
     return buildMarginWarning(opts.marginButton);
+  }
+
+  // ── Margin-recovery buttons (for view_3325) ──────────────
+  // Mirrors bid-review/render.js's marginButtons block. Used by
+  // renderCell so the same Add-PM and Set-Margin affordances appear
+  // on the ops review SOW list, not just on the bid comparison grid.
+  function buildMarginRecoveryButtons(tr) {
+    if (!tr || !tr.id) return null;
+    var sowId   = tr.id;
+    var sowName = readText(tr, 'field_2155') || sowId;  // SOW Name field
+
+    var buttons = [{
+      label: 'Add Project Management & Mobilization line item',
+      dataAttrs: {
+        'data-action':   'add_pm_mobilization',
+        'data-sow-id':   sowId,
+        'data-sow-name': sowName
+      }
+    }];
+
+    // Compute the new margin target — same math as bid-review.
+    // Knack stores field_2158 as decimal margin (gross). We want the
+    // EFFECTIVE margin after survey costs to land at 12%:
+    //   margin = (0.12 × subBidTotal + surveyCosts) / (subBidTotal + surveyCosts)
+    // If subBidTotal isn't readable (column not on view, missing
+    // data), skip the second button — there's nothing meaningful to
+    // suggest.
+    var subBidTotal = parseFloat(
+      String(readText(tr, SUB_BID_TOTAL_FIELD) || '').replace(/[$,]/g, '')
+    ) || 0;
+    var surveyCosts = parseFloat(
+      String(readText(tr, SURVEY_COSTS_FIELD) || '').replace(/[$,]/g, '')
+    ) || 0;
+    if (subBidTotal > 0) {
+      var newMargin = (EFFECTIVE_MARGIN_TARGET * subBidTotal + surveyCosts) /
+                      (subBidTotal + surveyCosts);
+      var newMarginPct = Math.ceil(newMargin * 1000) / 10;
+      buttons.push({
+        label: 'Increase project margin to ' + newMarginPct.toFixed(1) + '%',
+        dataAttrs: {
+          'data-action':       'set_project_margin',
+          'data-sow-id':       sowId,
+          'data-margin-value': String(newMargin),
+          'data-margin-pct':   newMarginPct.toFixed(1),
+          'data-margin-field': PROJECT_MARGIN_FIELD
+        }
+      });
+    }
+    return buttons;
+  }
+
+  // Attach click handlers to the recovery buttons inside a margin-
+  // warning box. We bind directly to the rendered DOM nodes (rather
+  // than via document-level delegation) so the binding lives and dies
+  // with the warning element — no risk of accumulating duplicate
+  // handlers across re-renders, no scoping ambiguity if the same
+  // action keys are wired elsewhere (e.g. bid-review's mount).
+  function bindMarginRecoveryClicks(warningEl, tr) {
+    if (!warningEl) return;
+    var btns = warningEl.querySelectorAll('.scw-ops-margin-warning__btn[data-action]');
+    for (var i = 0; i < btns.length; i++) {
+      (function (btn) {
+        var action = btn.getAttribute('data-action');
+        btn.addEventListener('click', function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          if (action === 'add_pm_mobilization') handleAddPmAction(btn, tr);
+          else if (action === 'set_project_margin') handleSetMarginAction(btn, tr);
+        });
+      })(btns[i]);
+    }
+  }
+
+  // Fire the same PM/Mobilization webhook bid-review uses. Goes
+  // through SCW.bidReview.submitAction so the routing + payload
+  // shape stay in one place — that helper is defined globally by
+  // bid-review/actions.js so it's available on every page.
+  function handleAddPmAction(btn, tr) {
+    var sowId   = btn.getAttribute('data-sow-id');
+    var sowName = btn.getAttribute('data-sow-name') || sowId;
+    if (!sowId) return;
+    if (!window.confirm(
+      'Add a Project Management & Mobilization line item to ' + sowName + '?'
+    )) return;
+
+    var surveyCostsRaw = String(readText(tr, SURVEY_COSTS_FIELD) || '').trim();
+    var surveyCostsNum = null;
+    var stripped = surveyCostsRaw.replace(/[^0-9.\-]/g, '');
+    if (stripped !== '') {
+      var n = parseFloat(stripped);
+      if (isFinite(n)) surveyCostsNum = n;
+    }
+
+    if (!window.SCW || !SCW.bidReview ||
+        typeof SCW.bidReview.submitAction !== 'function') {
+      console.warn('[scw-ops-margin] SCW.bidReview.submitAction unavailable');
+      return;
+    }
+    btn.disabled = true;
+    SCW.bidReview.submitAction({
+      actionType:       'add_pm_mobilization',
+      sowId:            sowId,
+      surveyCosts:      surveyCostsNum,
+      surveyCostsRaw:   surveyCostsRaw,
+      surveyCostsField: SURVEY_COSTS_FIELD
+    }).always(function () {
+      btn.disabled = false;
+      // Refetch view_3325 so the margin recalculates from the new
+      // line item. Bid-review's own refresh path doesn't run here.
+      try {
+        var v = Knack && Knack.views && Knack.views[VIEW_ID];
+        if (v && v.model && typeof v.model.fetch === 'function') v.model.fetch();
+      } catch (e) { /* ignore */ }
+    });
+  }
+
+  // Direct PUT to view_3325's record endpoint setting field_2158.
+  // Bid-review's flow uses a form view (view_3923) to update margin,
+  // but that form isn't on this scene — so we write the field directly.
+  // If view_3325 doesn't have field_2158 in its inline-edit allow-list,
+  // Knack will silently strip it; we log a warning if the response
+  // comes back without the new value so the user knows to add it.
+  function handleSetMarginAction(btn, tr) {
+    var sowId       = btn.getAttribute('data-sow-id');
+    var marginValue = parseFloat(btn.getAttribute('data-margin-value'));
+    var marginPct   = btn.getAttribute('data-margin-pct') || '';
+    if (!sowId || !isFinite(marginValue)) return;
+    if (!window.confirm(
+      'Bump project margin to ' + marginPct + '% on this SOW?'
+    )) return;
+
+    if (!window.SCW || typeof SCW.knackAjax !== 'function' ||
+        typeof SCW.knackRecordUrl !== 'function') {
+      console.warn('[scw-ops-margin] SCW.knackAjax unavailable');
+      return;
+    }
+    btn.disabled = true;
+    var body = {};
+    body[PROJECT_MARGIN_FIELD] = marginValue;
+    SCW.knackAjax({
+      url:  SCW.knackRecordUrl(VIEW_ID, sowId),
+      type: 'PUT',
+      data: JSON.stringify(body),
+      dataType: 'json',
+      success: function (resp) {
+        var R = (resp && resp.record) || resp || {};
+        var saved = R[PROJECT_MARGIN_FIELD];
+        if (saved == null || saved === '' ||
+            (typeof saved === 'number' && Math.abs(saved - marginValue) > 0.001)) {
+          console.warn('[scw-ops-margin] set_project_margin: response',
+            'came back without the expected value. field_2158 may not be',
+            'inline-editable on view_3325 — check the view\'s Inline Edit',
+            'config.', resp);
+        }
+        // Refetch view_3325 to recompute the margin warning state.
+        try {
+          var v = Knack && Knack.views && Knack.views[VIEW_ID];
+          if (v && v.model && typeof v.model.fetch === 'function') v.model.fetch();
+        } catch (e) { /* ignore */ }
+      },
+      error: function (xhr) {
+        console.error('[scw-ops-margin] set_project_margin PUT failed',
+          xhr && xhr.status, xhr && xhr.responseText);
+      },
+      complete: function () { btn.disabled = false; }
+    });
   }
 
   /** Build the published-proposal block (or "No published quotes"

@@ -22,7 +22,13 @@
     TARGET_FIELD:   'field_2375',
     SOURCE_VIEW:    'view_3617',
     SOURCE_LABEL:   'field_1642',  // identifier on the MDF/IDF object
-    DEBUG:          false
+    // Fallback label parts when the auto-built identifier is empty —
+    // happens when the user hasn't filled in Name/## on the MDF/IDF
+    // record yet, so field_1642 renders as just "HEADEND: :" or similar.
+    SOURCE_TYPE:    'field_1641',  // HEADEND | IDF
+    SOURCE_NUM:     'field_2458',  // ##
+    SOURCE_NAME:    'field_1943',  // Name
+    DEBUG:          true
   };
 
   function log() {
@@ -101,22 +107,87 @@
   }
 
   // ── Read records from the source view's model ──────────────────
+  // Try several paths — Knack.views[viewId].model is the obvious one,
+  // but the view's Backbone View can be torn down/rebuilt while the
+  // model lives on under Knack.models[viewId]. We also scan Knack.models
+  // for any model whose view.key matches, since some views (filtered,
+  // wrapped) register the model under a derived key.
+  function findSourceModel() {
+    if (typeof Knack === 'undefined') return null;
+    if (Knack.views && Knack.views[CFG.SOURCE_VIEW] &&
+        Knack.views[CFG.SOURCE_VIEW].model) {
+      return Knack.views[CFG.SOURCE_VIEW].model;
+    }
+    if (Knack.models && Knack.models[CFG.SOURCE_VIEW]) {
+      return Knack.models[CFG.SOURCE_VIEW];
+    }
+    if (Knack.models) {
+      var keys = Object.keys(Knack.models);
+      for (var i = 0; i < keys.length; i++) {
+        var m = Knack.models[keys[i]];
+        if (m && m.view && m.view.key === CFG.SOURCE_VIEW) return m;
+      }
+    }
+    return null;
+  }
+
+  function extractRecords(model) {
+    if (!model) return [];
+    if (model.data) {
+      if (Array.isArray(model.data)) return model.data;
+      if (model.data.models && Array.isArray(model.data.models)) {
+        return model.data.models.map(function (m) {
+          return (m && m.attributes) || m;
+        });
+      }
+      if (typeof model.data.toJSON === 'function') return model.data.toJSON();
+    }
+    if (model.models && Array.isArray(model.models)) {
+      return model.models.map(function (m) {
+        return (m && m.attributes) || m;
+      });
+    }
+    return [];
+  }
+
+  function stripHtml(s) {
+    return String(s == null ? '' : s).replace(/<[^>]*>/g, '').trim();
+  }
+
+  // A label is "weak" when it has no alphanumerics — e.g. "HEADEND: :"
+  // collapses to "HEADEND ::" with only colons/spaces aside from the
+  // type word. We still treat anything with letters/digits as good.
+  function isWeakLabel(s) {
+    return !/[A-Za-z0-9]/.test(String(s || '').replace(/HEADEND|IDF|MDF/gi, ''));
+  }
+
+  function buildLabel(attrs) {
+    // Try the auto-built identifier first.
+    var identifier = stripHtml(attrs[CFG.SOURCE_LABEL]);
+    if (identifier && !isWeakLabel(identifier)) return identifier;
+    // Compose from parts.
+    var type = stripHtml(attrs[CFG.SOURCE_TYPE]);
+    var num  = stripHtml(attrs[CFG.SOURCE_NUM]);
+    var name = stripHtml(attrs[CFG.SOURCE_NAME]);
+    var parts = [];
+    if (type) parts.push(type);
+    if (num)  parts.push('#' + num);
+    if (name) parts.push(name);
+    if (parts.length) return parts.join(' ');
+    // Last resort: the original (even if weak) or identifier
+    if (identifier) return identifier;
+    if (attrs.identifier) return stripHtml(attrs.identifier);
+    return '';
+  }
+
   function getSourceRecords() {
-    if (typeof Knack === 'undefined' || !Knack.views) return [];
-    var view = Knack.views[CFG.SOURCE_VIEW];
-    if (!view || !view.model) return [];
-    var records = (view.model.data && view.model.data.models) || view.model.models || [];
+    var model = findSourceModel();
+    var records = extractRecords(model);
     var out = [];
     for (var i = 0; i < records.length; i++) {
-      var attrs = records[i].attributes || records[i];
-      if (!attrs || !attrs.id) continue;
-      var label = '';
-      var raw = attrs[CFG.SOURCE_LABEL];
-      if (typeof raw === 'string' && raw.trim()) {
-        label = raw.replace(/<[^>]*>/g, '').trim();
-      } else if (attrs.identifier) {
-        label = String(attrs.identifier).trim();
-      }
+      var attrs = records[i] || {};
+      if (!attrs.id) continue;
+      var label = buildLabel(attrs);
       out.push({ id: attrs.id, label: label || attrs.id });
     }
     // Natural-order sort so "IDF 2" < "IDF 10"
@@ -129,13 +200,15 @@
 
   // ── Read the line item's currently-selected MDF/IDF id ─────────
   function getCurrentSelection(recordId) {
-    if (typeof Knack === 'undefined' || !Knack.views) return null;
-    var view = Knack.views[CFG.TARGET_VIEW];
-    if (!view || !view.model) return null;
-    var records = (view.model.data && view.model.data.models) || view.model.models || [];
+    if (typeof Knack === 'undefined') return null;
+    var model = (Knack.views && Knack.views[CFG.TARGET_VIEW] &&
+                 Knack.views[CFG.TARGET_VIEW].model) ||
+                (Knack.models && Knack.models[CFG.TARGET_VIEW]) ||
+                null;
+    var records = extractRecords(model);
     for (var i = 0; i < records.length; i++) {
-      var attrs = records[i].attributes || records[i];
-      if (!attrs || attrs.id !== recordId) continue;
+      var attrs = records[i] || {};
+      if (attrs.id !== recordId) continue;
       var raw = attrs[CFG.TARGET_FIELD + '_raw'];
       if (Array.isArray(raw) && raw[0] && raw[0].id) return raw[0].id;
       if (raw && raw.id) return raw.id;
@@ -180,8 +253,19 @@
     if (!records.length) {
       var empty = document.createElement('div');
       empty.className = CLASS_PFX + '-empty';
-      empty.textContent = 'No MDF/IDF records on this survey yet.';
+      var sourceModel = findSourceModel();
+      if (!sourceModel) {
+        empty.innerHTML =
+          'Could not read MDF/IDF choices.<br>' +
+          '<small style="color:#9ca3af">' +
+          'Source view ' + CFG.SOURCE_VIEW + ' is not on this scene. ' +
+          'Reload the page and try again — if this persists, share the ' +
+          'console output.</small>';
+      } else {
+        empty.textContent = 'No MDF/IDF records on this survey yet.';
+      }
       body.appendChild(empty);
+      log('source model:', sourceModel, 'records:', records);
     } else {
       // "Unassigned" option first — clears the connection
       var clearRow = document.createElement('div');
@@ -280,7 +364,20 @@
       saveSelection(recordId, newId, function (err) {
         if (err) {
           setSaving(false);
-          showError('Failed to save. Please try again.');
+          var msg = 'Failed to save.';
+          if (err && err.status) msg += ' HTTP ' + err.status + '.';
+          if (err && err.responseText) {
+            var body;
+            try { body = JSON.parse(err.responseText); }
+            catch (parseErr) { body = null; }
+            if (body && body.errors && body.errors[0] && body.errors[0].message) {
+              msg += ' ' + body.errors[0].message;
+            } else if (typeof err.responseText === 'string' &&
+                       err.responseText.length < 200) {
+              msg += ' ' + err.responseText;
+            }
+          }
+          showError(msg + ' (See console for details.)');
           return;
         }
         close();
@@ -291,23 +388,57 @@
     });
   }
 
-  // ── Save: PUT field_2375 = [newId] (or [] to clear) ─────────────
-  function saveSelection(recordId, newId, onDone) {
-    if (!window.SCW || typeof window.SCW.knackAjax !== 'function' ||
-        typeof window.SCW.knackRecordUrl !== 'function') {
-      console.error(LOG_PREFIX, 'SCW.knackAjax/knackRecordUrl unavailable');
-      onDone(new Error('ajax helpers unavailable'));
+  // ── Object-scoped fallback ───────────────────────────────────
+  // When the view-scoped endpoint silently strips field_2375 from
+  // the request, retry against the object-scoped endpoint. Object-
+  // scoped writes skip view-level inline-edit allow-lists and
+  // view-level submit rules. Object key is discovered dynamically
+  // from Knack.objects via the view's source.
+  function findObjectKeyForView(viewId) {
+    try {
+      var v = window.Knack && Knack.views && Knack.views[viewId];
+      var src = v && v.model && v.model.view && v.model.view.source;
+      if (src && src.object) return src.object;
+    } catch (e) { /* fall through */ }
+    try {
+      var sceneViews = window.Knack && Knack.scenes &&
+        Knack.router && Knack.router.scene_view &&
+        Knack.router.scene_view.model &&
+        Knack.router.scene_view.model.views;
+      if (sceneViews && typeof sceneViews.get === 'function') {
+        var viewObj = sceneViews.get(viewId);
+        var src2 = viewObj && viewObj.attributes && viewObj.attributes.source;
+        if (src2 && src2.object) return src2.object;
+      }
+    } catch (e) { /* fall through */ }
+    return null;
+  }
+
+  function objectScopedRetry(recordId, newId, onDone) {
+    var objectKey = findObjectKeyForView(CFG.TARGET_VIEW);
+    if (!objectKey) {
+      console.warn(LOG_PREFIX,
+        'object-scoped retry: could not discover object key for ' +
+        CFG.TARGET_VIEW + ' — falling back to view-scoped result');
+      onDone(new Error('object key unavailable'));
       return;
     }
+    var apiUrl = (window.Knack && Knack.api_url) || 'https://us-api.knack.com';
+    var url = apiUrl + '/v1/objects/' + objectKey + '/records/' + recordId;
     var body = {};
     body[CFG.TARGET_FIELD] = newId ? [newId] : [];
-    log('PUT', recordId, body);
+    console.log(LOG_PREFIX, 'object-scoped PUT', recordId, body, '→', url);
     window.SCW.knackAjax({
       type: 'PUT',
-      url: window.SCW.knackRecordUrl(CFG.TARGET_VIEW, recordId),
+      url: url,
       data: JSON.stringify(body),
       dataType: 'json',
       success: function (resp) {
+        var R = (resp && resp.record) || resp || {};
+        console.log(LOG_PREFIX, 'object-scoped PUT ok', recordId,
+          'response field_2375:', R[CFG.TARGET_FIELD],
+          'response field_2375_raw:', R[CFG.TARGET_FIELD + '_raw'],
+          'full resp:', resp);
         if (typeof window.SCW.syncKnackModel === 'function') {
           try {
             window.SCW.syncKnackModel(CFG.TARGET_VIEW, recordId, resp,
@@ -317,11 +448,194 @@
         onDone(null, resp);
       },
       error: function (xhr) {
-        console.error(LOG_PREFIX, 'PUT failed',
+        console.error(LOG_PREFIX, 'object-scoped PUT failed',
           xhr && xhr.status, xhr && xhr.responseText);
-        onDone(xhr || new Error('save failed'));
+        onDone(xhr || new Error('object-scoped save failed'));
       }
     });
+  }
+
+  // ── model.updateRecord retry ─────────────────────────────────
+  // Some Knack views handle inline-edit field permissions only
+  // through their Backbone view's updateRecord() helper, which
+  // wraps the same view-scoped endpoint but with different
+  // session/CSRF context than raw $.ajax. Worth one shot when
+  // direct PUT got silently stripped.
+  function modelUpdateRetry(recordId, newId, onDone) {
+    try {
+      var view = window.Knack && Knack.views && Knack.views[CFG.TARGET_VIEW];
+      if (!view || !view.model || typeof view.model.updateRecord !== 'function') {
+        console.warn(LOG_PREFIX,
+          'model.updateRecord retry: view or updateRecord unavailable');
+        onDone(new Error('updateRecord unavailable'));
+        return;
+      }
+      var body = {};
+      body[CFG.TARGET_FIELD] = newId ? [newId] : [];
+      console.log(LOG_PREFIX, 'model.updateRecord', recordId, body);
+      // Backbone callback signature varies by Knack version. Try
+      // promise first, fall back to options.success/error.
+      var maybePromise = view.model.updateRecord(recordId, body, {
+        success: function (resp) {
+          var R = (resp && resp.record) || resp || {};
+          console.log(LOG_PREFIX, 'model.updateRecord ok', recordId,
+            'response field_2375_raw:', R[CFG.TARGET_FIELD + '_raw'],
+            'full resp:', resp);
+          onDone(null, resp);
+        },
+        error: function (xhr) {
+          console.error(LOG_PREFIX, 'model.updateRecord failed',
+            xhr && xhr.status, xhr && xhr.responseText);
+          onDone(xhr || new Error('updateRecord save failed'));
+        }
+      });
+      if (maybePromise && typeof maybePromise.then === 'function') {
+        maybePromise.then(
+          function (resp) {
+            var R = (resp && resp.record) || resp || {};
+            console.log(LOG_PREFIX, 'model.updateRecord ok (promise)',
+              recordId,
+              'response field_2375_raw:', R[CFG.TARGET_FIELD + '_raw'],
+              'full resp:', resp);
+            onDone(null, resp);
+          },
+          function (err) {
+            console.error(LOG_PREFIX,
+              'model.updateRecord failed (promise)', err);
+            onDone(err || new Error('updateRecord save failed'));
+          }
+        );
+      }
+    } catch (e) {
+      console.error(LOG_PREFIX, 'model.updateRecord threw', e);
+      onDone(e);
+    }
+  }
+
+  // ── Save: PUT field_2375 with the chosen MDF/IDF id ─────────────
+  // Tries array form first ({field_2375:[id]}), falls back to bare
+  // string ({field_2375:id}) on 4xx — covers single-connection field
+  // configs that reject the array form. Clears with an empty array.
+  function saveSelection(recordId, newId, onDone) {
+    if (!window.SCW || typeof window.SCW.knackAjax !== 'function' ||
+        typeof window.SCW.knackRecordUrl !== 'function') {
+      console.error(LOG_PREFIX, 'SCW.knackAjax/knackRecordUrl unavailable');
+      onDone(new Error('ajax helpers unavailable'));
+      return;
+    }
+    var url = window.SCW.knackRecordUrl(CFG.TARGET_VIEW, recordId);
+    var firstShape = newId ? [newId] : [];
+
+    function attempt(value, isRetry) {
+      var body = {};
+      body[CFG.TARGET_FIELD] = value;
+      console.log(LOG_PREFIX, isRetry ? 'PUT (string retry)' : 'PUT',
+        recordId, body, '→', url);
+      window.SCW.knackAjax({
+        type: 'PUT',
+        url: url,
+        data: JSON.stringify(body),
+        dataType: 'json',
+        success: function (resp) {
+          // Dig out the record's field_2375 value from the response so
+          // we can see whether Knack actually persisted the change or
+          // whether a record rule stripped it back out. Knack wraps
+          // single records under `record` and sometimes also surfaces
+          // them at top level.
+          var R = (resp && resp.record) || resp || {};
+          var savedRaw = R[CFG.TARGET_FIELD + '_raw'];
+          var savedVal = R[CFG.TARGET_FIELD];
+          console.log(LOG_PREFIX, 'PUT ok', recordId,
+            'requested:', newId || '(clear)',
+            'response field_2375:', savedVal,
+            'response field_2375_raw:', savedRaw,
+            'full resp:', resp);
+          // Heuristic: if we tried to set a value but the response
+          // came back with empty/no value, a Knack rule probably
+          // reverted it. Surface a warning so it doesn't read as
+          // "save worked" when it actually didn't stick.
+          var stickFailed = false;
+          if (newId) {
+            var raw = savedRaw;
+            var hasRaw = Array.isArray(raw) ? raw.length > 0
+                       : (raw && typeof raw === 'object') ? !!raw.id
+                       : !!raw;
+            if (!hasRaw && !savedVal) stickFailed = true;
+          }
+          // If the view-scoped PUT silently stripped the field
+          // (response field_2375_raw is empty even though we sent
+          // a non-empty value), try going through Knack's internal
+          // Backbone model.updateRecord() instead. On some Knack
+          // versions that path handles inline-edit field permissions
+          // differently than raw $.ajax. Object-scoped retry was
+          // tried previously but 403s for non-admin sessions, so
+          // skip it.
+          if (stickFailed && !isRetry) {
+            console.warn(LOG_PREFIX,
+              'view-scoped PUT stripped field_2375 ' +
+              '(saved empty despite non-empty request). Retrying ' +
+              'through Knack.views.' + CFG.TARGET_VIEW +
+              '.model.updateRecord() to use Knack\'s internal ' +
+              'save path.');
+            modelUpdateRetry(recordId, newId, function (err2, resp2) {
+              if (err2) { onDone(err2); return; }
+              onDone(null, resp2);
+            });
+            return;
+          }
+          if (typeof window.SCW.syncKnackModel === 'function') {
+            try {
+              window.SCW.syncKnackModel(CFG.TARGET_VIEW, recordId, resp,
+                CFG.TARGET_FIELD, newId ? [newId] : []);
+            } catch (e) { /* best-effort */ }
+          }
+          // Read-back verification: GET the record fresh and log
+          // the full response shape so we can see exactly what
+          // Knack stored. Use the object-scoped GET because the
+          // view-scoped GET sometimes returns a different envelope
+          // and may strip non-inline-edit-listed fields.
+          (function verify() {
+            try {
+              window.SCW.knackAjax({
+                type: 'GET',
+                url: url,
+                dataType: 'json',
+                success: function (vresp) {
+                  var VR = (vresp && vresp.record) || vresp || {};
+                  console.log(LOG_PREFIX, 'verify GET (view-scoped)',
+                    recordId,
+                    'field_2375:', VR[CFG.TARGET_FIELD],
+                    'field_2375_raw:', VR[CFG.TARGET_FIELD + '_raw'],
+                    'full resp:', vresp);
+                },
+                error: function (xhr) {
+                  console.warn(LOG_PREFIX, 'verify GET failed',
+                    xhr && xhr.status);
+                }
+              });
+            } catch (e) { /* best-effort */ }
+          })();
+          onDone(null, resp);
+        },
+        error: function (xhr) {
+          var status = xhr && xhr.status;
+          console.error(LOG_PREFIX, 'PUT failed',
+            status, xhr && xhr.responseText);
+          // 4xx + we sent an array + newId is non-empty → try bare string.
+          // (Empty-clear and 5xx errors get no retry.)
+          var is4xx = status >= 400 && status < 500;
+          if (!isRetry && newId && is4xx && Array.isArray(value)) {
+            console.warn(LOG_PREFIX,
+              'array form rejected — retrying with bare string id');
+            attempt(newId, true);
+            return;
+          }
+          onDone(xhr || new Error('save failed'));
+        }
+      });
+    }
+
+    attempt(firstShape, false);
   }
 
   function refreshTargetView() {

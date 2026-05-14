@@ -1,0 +1,945 @@
+/*** QA POPOVER ***
+ *
+ * Click handler + inline editor for the required-photo chits in the
+ * device-worksheet header.  Lets a PM walk down rows and sign off on
+ * each photo's QA status without ever leaving the worksheet.
+ *
+ * Triggered by: click on .scw-ws-req-photo-chit[data-photo-id]
+ *
+ * The chit is rendered by device-worksheet.js (renderSummaryField case
+ * 'requiredPhotos'); this module is decoupled — it reads the source
+ * <tr> still attached above each .scw-ws-row to pull the photo's
+ * current QA fields, then writes back to the PIC record via the Knack
+ * object-based REST endpoint.
+ *
+ * Data contract (all fields on the PIC object):
+ *   field_2859 — QA_status         (Multiple Choice: Pending/Pass/Fail)
+ *   field_2860 — QA_client_signoff (Multiple Choice: N/A/Pending/Approved/Bypassed)
+ *   field_2861 — QA_notes          (Paragraph Text)
+ *   field_2862 — QA_completed_by   (Connection → user)
+ *   field_2863 — QA_completed_date (Date/Time)
+ *   field_2865 — QA_history        (Paragraph Text — append-only audit trail)
+ *
+ * Sign-off math:
+ *   complete = QA_status='Pass' AND (QA_client_signoff in {N/A, Approved, Bypassed})
+ *   When complete flips to true:   set _completed_by + _completed_date, log to _history.
+ *   When complete flips to false:  clear _completed_by + _completed_date, log to _history.
+ */
+(function () {
+  'use strict';
+
+  var POPOVER_ID = 'scw-qa-popover';
+
+  // The hidden DOC_photos grid on the deploy scene.  Saves go
+  // through Knack's view-based PUT endpoint (which is CORS-safe and
+  // honors the user's session token) — the object-based endpoint
+  // requires a server-side API key, which we don't have client-side.
+  // This view must include every field qa-popover writes to.
+  var PIC_SAVE_VIEW = 'view_3937';
+
+  // PIC field keys
+  var F = {
+    img:           'field_771',
+    photoType:     'field_2445',
+    required:      'field_2446',
+    completed:     'field_2447',
+    status:        'field_2859',
+    client:        'field_2860',
+    notes:         'field_2861',
+    completedBy:   'field_2862',
+    completedDate: 'field_2863',
+    history:       'field_2865'
+  };
+
+  // Multiple-choice option labels (must match the Knack option values exactly).
+  var STATUS_OPTIONS = ['Pending', 'Pass', 'Fail'];
+  var CLIENT_OPTIONS = ['Pending', 'Approved', 'Bypassed'];
+
+  // Currently open popover state.
+  var _popover = null;          // DOM element
+  var _photoId = null;          // PIC record id currently being edited
+  var _initialState = null;     // snapshot at open time, used to detect changes
+  var _hasUnsavedChanges = false;
+  var _isSaving = false;
+
+  // ── CSS ──────────────────────────────────────────────────────────
+
+  function injectCSS() {
+    if (document.getElementById('scw-qa-popover-css')) return;
+    var css = [
+      '.scw-qa-popover {',
+      '  position: absolute; z-index: 10000;',
+      '  background: #fff; border: 1px solid #d1d5db; border-radius: 10px;',
+      '  box-shadow: 0 12px 32px rgba(0,0,0,0.18);',
+      '  width: 420px; max-width: calc(100vw - 24px);',
+      '  font: 13px/1.4 system-ui, -apple-system, Segoe UI, sans-serif;',
+      '  color: #1f2937;',
+      '  padding: 14px 16px;',
+      '}',
+      '.scw-qa-popover__head {',
+      '  display: flex; flex-direction: column; align-items: stretch;',
+      '  gap: 8px; margin-bottom: 12px;',
+      '}',
+      '.scw-qa-popover__thumb {',
+      '  width: 100%; height: 220px; border-radius: 6px;',
+      '  background: #f3f4f6 center/contain no-repeat;',
+      '  border: 1px solid #e5e7eb;',
+      '  cursor: zoom-in;',
+      '}',
+      '.scw-qa-popover__thumb--empty {',
+      '  display: flex; align-items: center; justify-content: center;',
+      '  color: #9ca3af; font-size: 11px; text-align: center;',
+      '  cursor: default;',
+      '}',
+      '.scw-qa-popover__type { font-weight: 700; font-size: 13px; line-height: 1.2; }',
+      '.scw-qa-popover__sub  { font-size: 11px; color: #6b7280; margin-top: 2px; }',
+      '.scw-qa-popover__section { margin-bottom: 12px; }',
+      '.scw-qa-popover__label { font-size: 11px; font-weight: 700; text-transform: uppercase; color: #6b7280; letter-spacing: 0.04em; margin-bottom: 4px; }',
+      '.scw-qa-popover__chips { display: flex; gap: 4px; }',
+      '.scw-qa-popover__chip {',
+      '  flex: 1 1 0; min-width: 0; padding: 5px 8px; border-radius: 6px;',
+      '  border: 1px solid #d1d5db; background: #fff; cursor: pointer;',
+      '  font-size: 11px; font-weight: 600; text-align: center;',
+      '  white-space: nowrap; user-select: none; transition: all 0.12s;',
+      '}',
+      '.scw-qa-popover__chip:hover { background: #f9fafb; }',
+      '.scw-qa-popover__chip.is-selected[data-value="Pass"],',
+      '.scw-qa-popover__chip.is-selected[data-value="Approved"],',
+      '.scw-qa-popover__chip.is-selected[data-value="Bypassed"] { background: #dcfce7; color: #15803d; border-color: #86efac; }',
+      '.scw-qa-popover__chip.is-selected[data-value="Fail"]     { background: #fee2e2; color: #991b1b; border-color: #fca5a5; }',
+      '.scw-qa-popover__chip.is-selected[data-value="Pending"]  { background: #eef2ff; color: #4338ca; border-color: #a5b4fc; }',
+      '.scw-qa-popover__notes {',
+      '  width: 100%; min-height: 60px; box-sizing: border-box;',
+      '  padding: 6px 8px; border: 1px solid #d1d5db; border-radius: 6px;',
+      '  font: inherit; resize: vertical; outline: none;',
+      '}',
+      '.scw-qa-popover__notes:focus { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.15); }',
+      '.scw-qa-popover__notes-hint { font-size: 11px; color: #b45309; margin-top: 4px; }',
+      '.scw-qa-popover__actions { display: flex; gap: 8px; margin-top: 14px; }',
+      '.scw-qa-popover__btn {',
+      '  flex: 1; padding: 8px 14px; border-radius: 6px;',
+      '  font-size: 12px; font-weight: 700; cursor: pointer; border: 1px solid transparent;',
+      '  transition: all 0.12s; text-transform: uppercase; letter-spacing: 0.04em;',
+      '}',
+      '.scw-qa-popover__btn--primary {',
+      '  background: #059669; color: #fff; border-color: #047857;',
+      '}',
+      '.scw-qa-popover__btn--primary:hover { background: #047857; }',
+      '.scw-qa-popover__btn--primary:disabled { background: #e5e7eb; color: #9ca3af; border-color: #e5e7eb; cursor: not-allowed; }',
+      '.scw-qa-popover__btn--revert {',
+      '  background: #fff; color: #b91c1c; border-color: #fca5a5;',
+      '}',
+      '.scw-qa-popover__btn--revert:hover { background: #fef2f2; }',
+      '.scw-qa-popover__btn--cancel {',
+      '  background: #fff; color: #374151; border-color: #d1d5db;',
+      '}',
+      '.scw-qa-popover__btn--cancel:hover { background: #f9fafb; }',
+      '.scw-qa-popover__signoff {',
+      '  font-size: 11px; color: #6b7280; margin-top: 8px;',
+      '  padding-top: 8px; border-top: 1px solid #f3f4f6;',
+      '}',
+      '.scw-qa-popover__error {',
+      '  background: #fef2f2; border: 1px solid #fecaca; color: #991b1b;',
+      '  padding: 6px 10px; border-radius: 6px; font-size: 11px; margin-top: 8px;',
+      '}',
+      '.scw-qa-popover.is-saving { opacity: 0.7; pointer-events: none; }'
+    ].join('\n');
+
+    var style = document.createElement('style');
+    style.id = 'scw-qa-popover-css';
+    style.textContent = css;
+    document.head.appendChild(style);
+  }
+
+  // ── Value normalization ─────────────────────────────────────────
+
+  /**
+   * Knack often renders Multiple Choice option values in UPPERCASE
+   * (theme-dependent), but the stored value uses the option's actual
+   * casing (e.g. "Pending"). Map back to the canonical option label
+   * so chip-selection comparisons match.
+   */
+  function normalizeOption(raw, options) {
+    if (!raw) return '';
+    var lower = String(raw).trim().toLowerCase();
+    for (var i = 0; i < options.length; i++) {
+      if (options[i].toLowerCase() === lower) return options[i];
+    }
+    return raw;
+  }
+
+  // ── Reading photo data from the worksheet DOM ───────────────────
+
+  /**
+   * Find the source <tr> that contains the photo metadata cells for
+   * a given chit.  device-worksheet.js places the source row directly
+   * above each .scw-ws-row in the DOM (display:none, attribute
+   * PROCESSED_ATTR='1').  Walk back to find it.
+   */
+  function findSourceTr(chitEl) {
+    var wsTr = chitEl.closest('tr.scw-ws-row');
+    if (!wsTr) return null;
+    var prev = wsTr.previousElementSibling;
+    // Skip back over inline-photo rows or any other injected siblings.
+    while (prev && (prev.classList.contains('scw-inline-photo-row') ||
+                    prev.classList.contains('scw-ws-row'))) {
+      prev = prev.previousElementSibling;
+    }
+    if (prev && prev.tagName === 'TR') return prev;
+    return null;
+  }
+
+  /** Read a single photo's data from a source tr by photo record id. */
+  function readPhoto(tr, photoId) {
+    function readSpanText(fieldKey) {
+      var cell = tr.querySelector('td.' + fieldKey);
+      if (!cell) return '';
+      var span = cell.querySelector(
+        'span[id="' + photoId + '"][data-kn="connection-value"]'
+      );
+      return span ? (span.textContent || '').trim() : '';
+    }
+    function readSpanHtml(fieldKey) {
+      var cell = tr.querySelector('td.' + fieldKey);
+      if (!cell) return '';
+      var span = cell.querySelector(
+        'span[id="' + photoId + '"][data-kn="connection-value"]'
+      );
+      return span ? (span.innerHTML || '').trim() : '';
+    }
+    // Photo type: connection field — text lives in the INNER connection-value span.
+    function readType() {
+      var cell = tr.querySelector('td.' + F.photoType);
+      if (!cell) return '';
+      var outer = cell.querySelector(
+        'span[id="' + photoId + '"][data-kn="connection-value"]'
+      );
+      if (!outer) return '';
+      var inner = outer.querySelector('span[data-kn="connection-value"]');
+      return ((inner ? inner.textContent : outer.textContent) || '').trim();
+    }
+    // Image URL: lives in the field_771 outer span as <img>.
+    function readImgUrl() {
+      var cells = tr.querySelectorAll('td.' + F.img + ', td[data-field-key="' + F.img + '"]');
+      for (var i = 0; i < cells.length; i++) {
+        var span = cells[i].querySelector('span[id="' + photoId + '"]');
+        if (!span) continue;
+        var img = span.querySelector('img[data-kn-img-gallery]') || span.querySelector('img');
+        if (img) {
+          var url = img.getAttribute('data-kn-img-gallery') || img.getAttribute('src') || '';
+          return url;
+        }
+      }
+      return '';
+    }
+
+    // Connection fields render as inner connection-value span with the
+    // identifier text; just textContent the outer for compatibility.
+    function readConnText(fieldKey) {
+      var cell = tr.querySelector('td.' + fieldKey);
+      if (!cell) return '';
+      var span = cell.querySelector(
+        'span[id="' + photoId + '"][data-kn="connection-value"]'
+      );
+      if (!span) return '';
+      var inner = span.querySelector('span[data-kn="connection-value"]');
+      return ((inner ? inner.textContent : span.textContent) || '').trim();
+    }
+    var rawStatus = readSpanText(F.status);
+    var rawClient = readSpanText(F.client);
+    return {
+      id:         photoId,
+      type:       readType(),
+      status:     normalizeOption(rawStatus, STATUS_OPTIONS) || 'Pending',
+      client:     normalizeOption(rawClient, ['N/A'].concat(CLIENT_OPTIONS)) || 'N/A',
+      notes:      readSpanText(F.notes)   || '',
+      history:    readSpanHtml(F.history) || '',
+      imgUrl:     readImgUrl(),
+      completedBy:   readConnText(F.completedBy),
+      completedDate: readSpanText(F.completedDate),
+      // The completed flag — used to decide whether QA is even possible.
+      completed:  /^(yes|true)$/i.test(readSpanText(F.completed) || '')
+    };
+  }
+
+  // ── Sign-off math ───────────────────────────────────────────────
+
+  function isFullyComplete(status, client) {
+    if (status !== 'Pass') return false;
+    if (!client || client === 'N/A') return true;
+    return (client === 'Approved' || client === 'Bypassed');
+  }
+
+  function isClientGateActive(client) {
+    return client && client !== 'N/A' && client !== '';
+  }
+
+  // ── History formatting ──────────────────────────────────────────
+
+  function nowStamp() {
+    var d = new Date();
+    var p = function (n) { return n < 10 ? '0' + n : '' + n; };
+    return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) +
+      ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+  }
+
+  /**
+   * Knack date fields expect MM/DD/YYYY on PUT (US-style by default
+   * for this account — matches the rendered "05/12/2026" cell value).
+   */
+  function todayForKnack() {
+    var d = new Date();
+    var p = function (n) { return n < 10 ? '0' + n : '' + n; };
+    return p(d.getMonth() + 1) + '/' + p(d.getDate()) + '/' + d.getFullYear();
+  }
+
+  function currentUserName() {
+    try {
+      var u = Knack.getUserAttributes && Knack.getUserAttributes();
+      if (u && u.name) return u.name;
+      if (u && u.values && u.values.name) return u.values.name;
+    } catch (e) {}
+    return 'Unknown user';
+  }
+
+  function currentUserId() {
+    try {
+      var u = Knack.getUserAttributes && Knack.getUserAttributes();
+      if (u && u.id) return u.id;
+    } catch (e) {}
+    return '';
+  }
+
+  /** Prepend a one-line audit entry to the history text. */
+  function prependHistory(existing, event, detail) {
+    var line = nowStamp() + ' — ' + currentUserName() + ' — ' + event;
+    if (detail) line += ': ' + detail;
+    // existing is innerHTML (paragraph text preserves <br> linebreaks);
+    // append as plain text + <br> so it stacks above previous entries.
+    var safe = (line || '').replace(/[<>]/g, function (c) {
+      return c === '<' ? '&lt;' : '&gt;';
+    });
+    if (!existing) return safe;
+    return safe + '<br>' + existing;
+  }
+
+  // ── Save ────────────────────────────────────────────────────────
+
+  function saveFields(fields, onDone) {
+    if (typeof SCW === 'undefined' ||
+        typeof SCW.knackAjax !== 'function' ||
+        typeof SCW.knackRecordUrl !== 'function') {
+      onDone && onDone(new Error('SCW.knackAjax/knackRecordUrl unavailable'));
+      return;
+    }
+    SCW.knackAjax({
+      url: SCW.knackRecordUrl(PIC_SAVE_VIEW, _photoId),
+      type: 'PUT',
+      data: JSON.stringify(fields),
+      success: function () { onDone && onDone(null); },
+      error: function (xhr) {
+        onDone && onDone(new Error('PUT ' + xhr.status));
+      }
+    });
+  }
+
+  // ── Popover rendering ───────────────────────────────────────────
+
+  function buildPopover(photo) {
+    var clientGateActive = isClientGateActive(photo.client);
+    var alreadySignedOff = isFullyComplete(photo.status, photo.client);
+
+    var pop = document.createElement('div');
+    pop.className = 'scw-qa-popover';
+    pop.id = POPOVER_ID;
+    pop.setAttribute('data-photo-id', photo.id);
+
+    // Head: thumbnail + photo type label
+    var head = document.createElement('div');
+    head.className = 'scw-qa-popover__head';
+    var thumb = document.createElement('div');
+    thumb.className = 'scw-qa-popover__thumb';
+    if (photo.imgUrl) {
+      // Use original (not thumb_14) so it's a real image; thumb_14 path is also fine.
+      thumb.style.backgroundImage = "url('" + photo.imgUrl.replace(/'/g, "\\'") + "')";
+      thumb.addEventListener('click', function () {
+        window.open(photo.imgUrl, '_blank');
+      });
+    } else {
+      thumb.classList.add('scw-qa-popover__thumb--empty');
+      thumb.textContent = 'no photo';
+    }
+    head.appendChild(thumb);
+    var meta = document.createElement('div');
+    var typeEl = document.createElement('div');
+    typeEl.className = 'scw-qa-popover__type';
+    typeEl.textContent = photo.type || 'Photo';
+    var subEl = document.createElement('div');
+    subEl.className = 'scw-qa-popover__sub';
+    subEl.textContent = alreadySignedOff ? 'Signed off' : 'QA review';
+    meta.appendChild(typeEl);
+    meta.appendChild(subEl);
+    head.appendChild(meta);
+    pop.appendChild(head);
+
+    // Status chips
+    pop.appendChild(buildChipRow(
+      'Status', STATUS_OPTIONS, photo.status, 'status', pop, photo
+    ));
+
+    // Client signoff chips (only when applicable)
+    if (clientGateActive) {
+      pop.appendChild(buildChipRow(
+        'Client signoff', CLIENT_OPTIONS, photo.client, 'client', pop, photo
+      ));
+    }
+
+    // Notes
+    var notesSec = document.createElement('div');
+    notesSec.className = 'scw-qa-popover__section';
+    var notesLbl = document.createElement('div');
+    notesLbl.className = 'scw-qa-popover__label';
+    notesLbl.textContent = 'Notes';
+    notesSec.appendChild(notesLbl);
+    var notes = document.createElement('textarea');
+    notes.className = 'scw-qa-popover__notes';
+    notes.value = photo.notes || '';
+    notes.setAttribute('data-field', 'notes');
+    notes.addEventListener('input', function () {
+      photo.notes = notes.value;
+      _hasUnsavedChanges = true;
+      updateActions(pop, photo);
+    });
+    notesSec.appendChild(notes);
+    var hint = document.createElement('div');
+    hint.className = 'scw-qa-popover__notes-hint';
+    hint.style.display = 'none';
+    notesSec.appendChild(hint);
+    pop.appendChild(notesSec);
+
+    // Action buttons (placeholder — filled by updateActions)
+    var actions = document.createElement('div');
+    actions.className = 'scw-qa-popover__actions';
+    pop.appendChild(actions);
+
+    // Signoff metadata footer if already signed off
+    if (alreadySignedOff) {
+      var foot = document.createElement('div');
+      foot.className = 'scw-qa-popover__signoff';
+      var who  = (photo.completedBy   || '').trim();
+      var when = (photo.completedDate || '').trim();
+      var meta = '';
+      if (who && when) meta = 'Signed off by ' + who + ' on ' + when + '.';
+      else if (who)    meta = 'Signed off by ' + who + '.';
+      else if (when)   meta = 'Signed off on ' + when + '.';
+      else             meta = 'Signed off.';
+      foot.textContent = meta + ' Click Revert to re-open for review.';
+      pop.appendChild(foot);
+    }
+
+    updateActions(pop, photo);
+    return pop;
+  }
+
+  function buildChipRow(label, options, currentValue, fieldName, pop, photo) {
+    var sec = document.createElement('div');
+    sec.className = 'scw-qa-popover__section';
+    var lbl = document.createElement('div');
+    lbl.className = 'scw-qa-popover__label';
+    lbl.textContent = label;
+    sec.appendChild(lbl);
+    var row = document.createElement('div');
+    row.className = 'scw-qa-popover__chips';
+    options.forEach(function (opt) {
+      var chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'scw-qa-popover__chip';
+      chip.setAttribute('data-value', opt);
+      chip.textContent = opt;
+      if (opt === currentValue) chip.classList.add('is-selected');
+      chip.addEventListener('click', function (e) {
+        e.preventDefault();
+        // Deselect siblings, select this
+        var siblings = row.querySelectorAll('.scw-qa-popover__chip');
+        for (var i = 0; i < siblings.length; i++) {
+          siblings[i].classList.remove('is-selected');
+        }
+        chip.classList.add('is-selected');
+        photo[fieldName] = opt;
+        _hasUnsavedChanges = true;
+        updateActions(pop, photo);
+      });
+      row.appendChild(chip);
+    });
+    sec.appendChild(row);
+    return sec;
+  }
+
+  function updateActions(pop, photo) {
+    var actions = pop.querySelector('.scw-qa-popover__actions');
+    if (!actions) return;
+    actions.innerHTML = '';
+
+    var hint = pop.querySelector('.scw-qa-popover__notes-hint');
+    var notes = (photo.notes || '').trim();
+
+    var alreadySignedOff = isFullyComplete(_initialState.status, _initialState.client);
+    var wouldBeComplete  = isFullyComplete(photo.status, photo.client);
+
+    // Validation: require notes when Fail or Bypassed selected.
+    var requiresNotes = (photo.status === 'Fail') || (photo.client === 'Bypassed');
+    var notesMissing  = requiresNotes && !notes;
+    if (hint) {
+      if (notesMissing) {
+        hint.textContent = (photo.status === 'Fail')
+          ? 'Notes required when marking Fail.'
+          : 'Bypass reason required.';
+        hint.style.display = '';
+      } else {
+        hint.style.display = 'none';
+      }
+    }
+
+    // Primary action depends on state.
+    if (alreadySignedOff) {
+      var revert = document.createElement('button');
+      revert.type = 'button';
+      revert.className = 'scw-qa-popover__btn scw-qa-popover__btn--revert';
+      revert.textContent = 'Revert sign-off';
+      revert.addEventListener('click', function () { onRevert(photo); });
+      actions.appendChild(revert);
+
+      var close = document.createElement('button');
+      close.type = 'button';
+      close.className = 'scw-qa-popover__btn scw-qa-popover__btn--cancel';
+      close.textContent = 'Close';
+      close.addEventListener('click', function () { closePopover(true); });
+      actions.appendChild(close);
+    } else {
+      var cancel = document.createElement('button');
+      cancel.type = 'button';
+      cancel.className = 'scw-qa-popover__btn scw-qa-popover__btn--cancel';
+      cancel.textContent = 'Cancel';
+      cancel.addEventListener('click', function () { closePopover(false); });
+      actions.appendChild(cancel);
+
+      var signoff = document.createElement('button');
+      signoff.type = 'button';
+      signoff.className = 'scw-qa-popover__btn scw-qa-popover__btn--primary';
+      signoff.textContent = 'Sign Off';
+      signoff.disabled = !wouldBeComplete || notesMissing;
+      signoff.addEventListener('click', function () { onSignOff(photo); });
+      actions.appendChild(signoff);
+    }
+  }
+
+  // ── Sign-off / revert / autosave ────────────────────────────────
+
+  function onSignOff(photo) {
+    if (_isSaving) return;
+    var fields = {};
+    fields[F.status] = photo.status;
+    if (isClientGateActive(_initialState.client)) {
+      fields[F.client] = photo.client;
+    }
+    fields[F.notes] = photo.notes || '';
+    fields[F.completedBy]   = currentUserId();
+    fields[F.completedDate] = todayForKnack();
+    var detail = 'status=' + photo.status +
+      (isClientGateActive(_initialState.client) ? ', client=' + photo.client : '');
+    fields[F.history] = prependHistory(photo.history, 'SIGNED OFF', detail);
+
+    sendSave(fields, photo, 'Signed off.');
+  }
+
+  function onRevert(photo) {
+    if (_isSaving) return;
+    // Reset QA state back to Pending so the chit visibly leaves the
+    // "signed off" appearance.  Audit fields cleared.  Notes preserved
+    // so the prior context is retained.  History prepends the revert
+    // event with the state that was reverted FROM.
+    var prevStatus = _initialState.status;
+    var prevClient = _initialState.client;
+    var clientActive = isClientGateActive(prevClient);
+
+    photo.status = 'Pending';
+    if (clientActive) photo.client = 'Pending';
+
+    var fields = {};
+    fields[F.status] = 'Pending';
+    if (clientActive) fields[F.client] = 'Pending';
+    fields[F.notes] = photo.notes || '';
+    fields[F.completedBy]   = '';
+    fields[F.completedDate] = '';
+    fields[F.history] = prependHistory(
+      photo.history,
+      'SIGN-OFF REVERTED',
+      'was status=' + prevStatus +
+        (clientActive ? ', client=' + prevClient : '')
+    );
+    sendSave(fields, photo, 'Sign-off reverted.');
+  }
+
+  function autoSaveIfDirty(onDone) {
+    if (!_hasUnsavedChanges || _isSaving) {
+      onDone && onDone();
+      return;
+    }
+    // Pull current values back out of the popover DOM
+    var pop = _popover;
+    if (!pop) { onDone && onDone(); return; }
+    var status = readSelectedChip(pop, 'status') || _initialState.status;
+    var client = readSelectedChip(pop, 'client') || _initialState.client;
+    var notesEl = pop.querySelector('.scw-qa-popover__notes');
+    var notes  = notesEl ? notesEl.value : _initialState.notes;
+
+    // Don't autosave Fail/Bypass without notes — that violates the rule
+    // (validation in updateActions already kept Sign Off disabled,
+    // but autosave on click-outside could otherwise persist invalid state).
+    var requiresNotes = (status === 'Fail') || (client === 'Bypassed');
+    if (requiresNotes && !(notes || '').trim()) {
+      // Discard the offending change and just close.
+      onDone && onDone();
+      return;
+    }
+
+    var fields = {};
+    if (status !== _initialState.status) fields[F.status] = status;
+    if (isClientGateActive(_initialState.client) && client !== _initialState.client) {
+      fields[F.client] = client;
+    }
+    if (notes !== _initialState.notes) fields[F.notes] = notes;
+
+    if (!Object.keys(fields).length) {
+      onDone && onDone();
+      return;
+    }
+
+    _isSaving = true;
+    var chit = _popover && _popover._triggerChit;
+    saveFields(fields, function (err) {
+      _isSaving = false;
+      if (err) {
+        console.warn('[scw-qa] autosave failed:', err);
+        onDone && onDone();
+        return;
+      }
+      // Build a minimal photo snapshot so the chit reflects the
+      // autosaved values (note: completion isn't toggled here — that
+      // only happens via the explicit Sign Off button).
+      if (chit) {
+        var snapshot = {
+          id:        _photoId,
+          type:      (chit.querySelector('span:last-child') || {}).textContent || '',
+          completed: true,
+          status:    status,
+          client:    client
+        };
+        refreshChitAndCells(chit, snapshot, fields);
+      }
+      onDone && onDone();
+    });
+  }
+
+  function readSelectedChip(pop, fieldName) {
+    var rows = pop.querySelectorAll('.scw-qa-popover__chips');
+    // Map data-field on the row's parent section.  Easier: walk by chip's data-value.
+    // We stored data-field on the textarea but not on the chip rows. Reconstruct
+    // by looking at the first chip in each row's options.
+    // Simpler: search by known option order.
+    for (var i = 0; i < rows.length; i++) {
+      var firstChip = rows[i].querySelector('.scw-qa-popover__chip');
+      if (!firstChip) continue;
+      var firstVal = firstChip.getAttribute('data-value');
+      var isStatusRow = (firstVal === 'Pending') && (rows[i].querySelectorAll('.scw-qa-popover__chip').length === 3) &&
+        rows[i].querySelector('.scw-qa-popover__chip[data-value="Pass"]');
+      var isClientRow = rows[i].querySelector('.scw-qa-popover__chip[data-value="Approved"]');
+      if ((fieldName === 'status' && isStatusRow) ||
+          (fieldName === 'client' && isClientRow)) {
+        var sel = rows[i].querySelector('.scw-qa-popover__chip.is-selected');
+        return sel ? sel.getAttribute('data-value') : null;
+      }
+    }
+    return null;
+  }
+
+  function sendSave(fields, photo, _successMsg) {
+    if (_isSaving) return;
+    _isSaving = true;
+    if (_popover) _popover.classList.add('is-saving');
+    var chit = _popover && _popover._triggerChit;
+    saveFields(fields, function (err) {
+      _isSaving = false;
+      if (err) {
+        if (_popover) _popover.classList.remove('is-saving');
+        showError(err.message || 'Save failed');
+        return;
+      }
+      // Optimistic in-page refresh: update the chit visual + the
+      // hidden source-tr cells so subsequent reads (and the next
+      // view-render pass) see the new values without waiting on a
+      // model.fetch() roundtrip.
+      if (chit) refreshChitAndCells(chit, photo, fields);
+      closePopover(true);
+    });
+  }
+
+  // ── Optimistic DOM refresh after save ───────────────────────────
+
+  /**
+   * Recompute the chit state from the saved photo object, swap the
+   * is-* class + icon + tooltip on the chit, and write the new field
+   * values back into the source <tr>'s hidden cells so future reads
+   * (and the next view-render pass) stay consistent.
+   */
+  function refreshChitAndCells(chit, photo, fields) {
+    if (!chit) return;
+    // 1) New chit visual state
+    var newState = computeChitState(photo);
+    var statesToStrip = ['is-missing', 'is-qa-pending', 'is-half-pass', 'is-done', 'is-fail'];
+    for (var i = 0; i < statesToStrip.length; i++) {
+      chit.classList.remove(statesToStrip[i]);
+    }
+    chit.classList.add('is-' + newState);
+    chit.setAttribute('data-photo-state', newState);
+    var photoType = (photo.type || 'Photo');
+    chit.title = photoType + ' — ' + chitStateTooltip(newState);
+    chit.innerHTML = chitStateIcon(newState);
+    var nameSpan = document.createElement('span');
+    nameSpan.className = 'scw-ws-req-photo-chit-name';
+    nameSpan.textContent = photoType;
+    chit.appendChild(nameSpan);
+    var stateSpan = document.createElement('span');
+    stateSpan.className = 'scw-ws-req-photo-chit-state';
+    stateSpan.textContent = chitStateLabel(newState);
+    chit.appendChild(stateSpan);
+
+    // 2) Mirror the saved field values into the source <tr>'s cells
+    // so the next read (e.g. when the view re-renders) starts from a
+    // consistent state.
+    var sourceTr = findSourceTr(chit);
+    if (sourceTr) {
+      var keys = Object.keys(fields);
+      for (var k = 0; k < keys.length; k++) {
+        writeSourceCell(sourceTr, photo.id, keys[k], fields[keys[k]]);
+      }
+    }
+  }
+
+  /**
+   * Update the inner <span id="photoId" data-kn="connection-value">
+   * inside td.fieldKey on the source tr.  For text values we set
+   * textContent; for fields not yet shown for this photo (cell shows
+   * &nbsp;) we create the inner span first.
+   */
+  function writeSourceCell(tr, photoId, fieldKey, value) {
+    var cell = tr.querySelector('td.' + fieldKey);
+    if (!cell) return;
+    var span = cell.querySelector(
+      'span[id="' + photoId + '"][data-kn="connection-value"]'
+    );
+    if (!span) {
+      // Cell was empty (showing &nbsp;) — inject a fresh span so future
+      // reads find the value.
+      var wrapper = cell.querySelector('span[class^="col-"]') || cell;
+      span = document.createElement('span');
+      span.id = photoId;
+      span.setAttribute('data-kn', 'connection-value');
+      wrapper.appendChild(span);
+    }
+    span.textContent = value == null ? '' : String(value);
+  }
+
+  /**
+   * Chit state computation — mirrors device-worksheet's
+   * computePhotoChitState(ph, true).  Inlined here to avoid coupling.
+   */
+  function computeChitState(photo) {
+    if (!photo.completed) return 'missing';
+    var s = (photo.status || '').toLowerCase();
+    if (s === 'fail') return 'fail';
+    if (s === 'pass') {
+      var c = (photo.client || '').toLowerCase();
+      if (c === '' || c === 'n/a' || c === 'approved' || c === 'bypassed') return 'done';
+      return 'half-pass';
+    }
+    return 'qa-pending';
+  }
+
+  function chitStateTooltip(state) {
+    switch (state) {
+      case 'missing':    return 'photo not uploaded';
+      case 'qa-pending': return 'photo uploaded, QA not yet done';
+      case 'half-pass':  return 'internal pass, awaiting client signoff';
+      case 'done':       return 'signed off';
+      case 'fail':       return 'QA failed';
+      default:           return state;
+    }
+  }
+
+  function chitStateLabel(state) {
+    switch (state) {
+      case 'missing':    return 'Missing';
+      case 'qa-pending': return 'Needs QA';
+      case 'half-pass':  return 'Client pending';
+      case 'done':       return 'Signed off';
+      case 'fail':       return 'Failed';
+      default:           return '';
+    }
+  }
+
+  function chitStateIcon(state) {
+    var checkSvg =
+      '<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+    var warnSvg =
+      '<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>';
+    var xSvg =
+      '<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>';
+    var clockSvg =
+      '<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>';
+    var halfSvg =
+      '<svg viewBox="0 0 24 24" width="11" height="11" stroke="currentColor" stroke-width="2.4"><circle cx="12" cy="12" r="9" fill="none"/><path d="M12 3 A9 9 0 0 1 12 21 Z" fill="currentColor"/></svg>';
+    switch (state) {
+      case 'done':       return checkSvg;
+      case 'half-pass':  return halfSvg;
+      case 'missing':    return warnSvg;
+      case 'fail':       return xSvg;
+      case 'qa-pending': return clockSvg;
+      default:           return clockSvg;
+    }
+  }
+
+  function showError(msg) {
+    if (!_popover) return;
+    var existing = _popover.querySelector('.scw-qa-popover__error');
+    if (existing) existing.remove();
+    var err = document.createElement('div');
+    err.className = 'scw-qa-popover__error';
+    err.textContent = msg;
+    _popover.appendChild(err);
+  }
+
+  function findCurrentViewId() {
+    if (!_popover) return null;
+    // Walk up from the chit that triggered this popover (we stored
+    // the chit ref on the popover element).
+    var chit = _popover._triggerChit;
+    if (!chit) return null;
+    var view = chit.closest('[id^="view_"]');
+    return view ? view.id : null;
+  }
+
+  // ── Open / close lifecycle ──────────────────────────────────────
+
+  function openForChit(chitEl) {
+    closePopover(false);
+
+    var photoId = chitEl.getAttribute('data-photo-id');
+    if (!photoId) return;
+    var sourceTr = findSourceTr(chitEl);
+    if (!sourceTr) {
+      console.warn('[scw-qa] Could not find source tr for chit', chitEl);
+      return;
+    }
+    var photo = readPhoto(sourceTr, photoId);
+    if (!photo.completed) {
+      // Photo not yet uploaded — the chit's amber state already
+      // signals that; QA isn't applicable yet. Let the existing
+      // add-photo flow handle it (inline-photo-row owns that).
+      return;
+    }
+
+    _photoId = photoId;
+    _initialState = {
+      status: photo.status,
+      client: photo.client,
+      notes:  photo.notes,
+      history: photo.history
+    };
+    _hasUnsavedChanges = false;
+    _isSaving = false;
+
+    injectCSS();
+    var pop = buildPopover(photo);
+    pop._triggerChit = chitEl;
+    document.body.appendChild(pop);
+    _popover = pop;
+
+    positionPopover(pop, chitEl);
+  }
+
+  function positionPopover(pop, anchor) {
+    var rect = anchor.getBoundingClientRect();
+    var popW = pop.offsetWidth;
+    var popH = pop.offsetHeight;
+    var vw = window.innerWidth;
+    var vh = window.innerHeight;
+    var GAP = 6;
+
+    // Prefer below the anchor; flip above if overflow.
+    var top = rect.bottom + GAP + window.pageYOffset;
+    if (rect.bottom + GAP + popH > vh && rect.top - GAP - popH > 0) {
+      top = rect.top - GAP - popH + window.pageYOffset;
+    }
+    // Align right edge with anchor's right when space is tight,
+    // otherwise align left edge.
+    var left = rect.left + window.pageXOffset;
+    if (left + popW > vw - 8) {
+      left = Math.max(8, vw - popW - 8) + window.pageXOffset;
+    }
+    pop.style.top  = top  + 'px';
+    pop.style.left = left + 'px';
+  }
+
+  function closePopover(skipAutosave) {
+    if (!_popover) return;
+    var finish = function () {
+      if (_popover) {
+        _popover.remove();
+        _popover = null;
+      }
+      _photoId = null;
+      _initialState = null;
+      _hasUnsavedChanges = false;
+    };
+    if (skipAutosave) {
+      finish();
+    } else {
+      autoSaveIfDirty(finish);
+    }
+  }
+
+  // ── Event delegation ────────────────────────────────────────────
+
+  $(document).off('click.scwQA').on('click.scwQA', '.scw-ws-req-photo-chit[data-photo-id]', function (e) {
+    var state = this.getAttribute('data-photo-state');
+    // "missing" chits use the existing inline-photo-row add flow,
+    // which is wired by inline-photo-row.js on a different element.
+    // Don't intercept those here.
+    if (state === 'missing') return;
+    e.stopPropagation();
+    openForChit(this);
+  });
+
+  // Click outside closes (and autosaves)
+  document.addEventListener('mousedown', function (e) {
+    if (!_popover) return;
+    if (_popover.contains(e.target)) return;
+    if (e.target.closest('.scw-ws-req-photo-chit')) return;
+    closePopover(false);
+  }, true);
+
+  // Escape closes without autosave
+  document.addEventListener('keydown', function (e) {
+    if (e.key === 'Escape' && _popover) {
+      closePopover(true);
+    }
+  });
+
+  // Expose for diagnostics
+  window.SCW = window.SCW || {};
+  SCW.qaPopover = {
+    open:  openForChit,
+    close: function () { closePopover(true); }
+  };
+})();

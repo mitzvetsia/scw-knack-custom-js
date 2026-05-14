@@ -64,8 +64,21 @@
   // the user\'s changes — we just need to keep it alive across the rebuild.
   var _preservedCards = {};
 
+  // Set when refreshSilently() is called while another run is in
+  // flight. After the in-flight run finishes, we fire one more pass
+  // so the latest server state — the whole reason the caller asked
+  // for a refresh — actually lands in the UI. Without this, the
+  // common race during Copy-to-SOW (polling refresh in flight when
+  // the webhook success handler also calls refreshSilently()) drops
+  // the success-driven refresh entirely and the grid stays showing
+  // pre-Make state.
+  var _silentRefreshQueued = false;
+
   function refreshSilently() {
-    if (_silentRefreshRunning) return $.Deferred().resolve().promise();
+    if (_silentRefreshRunning) {
+      _silentRefreshQueued = true;
+      return $.Deferred().resolve().promise();
+    }
     _silentRefreshRunning = true;
 
     // Pluck every injected wsTr off the DOM and into the preserve cache
@@ -94,6 +107,14 @@
       if (CFG.debug) console.warn('[BidReview] Silent refresh failed:', err);
     }).always(function () {
       _silentRefreshRunning = false;
+      // Drain a queued follow-up. Done after clearing the running
+      // flag so the queued call actually proceeds. Only one queued
+      // pass is kept (re-queuing during the follow-up resets the
+      // flag again, so callers piling on still converge).
+      if (_silentRefreshQueued) {
+        _silentRefreshQueued = false;
+        refreshSilently();
+      }
     });
   }
 

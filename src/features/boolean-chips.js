@@ -33,15 +33,16 @@
           { label: 'Plenum',           fieldKey: 'field_2371' }
         ]
       },
-      {
-        viewId: 'view_3505',
-        hostFieldKey: 'field_2372',
-        hideFieldKeys: ['field_2371'],
-        fields: [
-          { label: 'Exterior',         fieldKey: 'field_2372' },
-          { label: 'Plenum',           fieldKey: 'field_2371' }
-        ]
-      }
+      // view_3505 intentionally NOT listed here. device-worksheet's
+      // own toggleChit pipeline already renders Existing Cabling /
+      // Exterior / Plenum as identical cabling-chit dots in the
+      // worksheet card's summary row. Stacking bool-chips in a
+      // separate "host" TD made Plenum render as a rounder 10px
+      // bool-chip in Exterior's TD while Existing/Exterior showed
+      // as 6px dots, plus it CSS-hid field_2371's column entirely
+      // — that hid the bulk-edit source-select affordance for
+      // Plenum, which is what the user noticed. Leave that view
+      // alone and let toggleChit handle the three uniformly.
     ]
   };
 

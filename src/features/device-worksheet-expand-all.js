@@ -102,6 +102,19 @@
         else if (mode === 'collapse') show = false;
         else show = !!(r.classList && r.classList.contains(SUMMARY_CLASS));
         r.style.display = show ? '' : 'none';
+
+        // In summary mode the per-L1 mdf-summary-panel strip is the
+        // only useful content under each group header — force it open
+        // so the user sees actual summary tables instead of a row of
+        // collapsed "Summary ▾" bars. We don't touch strip state in
+        // expand/collapse mode (user's choice survives).
+        if (mode === 'summary' &&
+            r.classList && r.classList.contains(SUMMARY_CLASS)) {
+          var strips = r.querySelectorAll('.scw-mdf-strip');
+          for (var s = 0; s < strips.length; s++) {
+            strips[s].classList.add('scw-mdf-strip--open');
+          }
+        }
       }
     }
 
@@ -125,6 +138,33 @@
     saveState(sceneId, viewId, state);
   }
 
+  // Returns true when every L1 group on the view is currently open
+  // (no .scw-collapsed). The combined Expand/Collapse button uses
+  // this to decide whether the next click should expand or collapse.
+  // Summary mode counts as "open" (L1s are expanded), which is
+  // intentional — clicking the toggle from summary state should
+  // collapse everything in one move.
+  function allExpanded(viewEl) {
+    var headers = viewEl.querySelectorAll(L1_SEL);
+    if (!headers.length) return false;
+    for (var i = 0; i < headers.length; i++) {
+      if (headers[i].classList.contains('scw-collapsed')) return false;
+    }
+    return true;
+  }
+
+  function updateToggleLabel(btn, viewEl) {
+    var expanded = allExpanded(viewEl);
+    btn.textContent = expanded ? 'Collapse all' : 'Expand all';
+    btn.setAttribute('aria-pressed', expanded ? 'true' : 'false');
+  }
+
+  // True when any L1 header on this view is currently tagged
+  // SUMMARY_STATE='1' — i.e. summary mode is the active state.
+  function inSummaryMode(viewEl) {
+    return !!viewEl.querySelector(L1_SEL + '[' + SUMMARY_STATE + '="1"]');
+  }
+
   function buildBtn(label, onClick) {
     var b = document.createElement('button');
     b.type = 'button';
@@ -134,7 +174,7 @@
     b.addEventListener('click', function (e) {
       e.preventDefault();
       e.stopPropagation();
-      onClick();
+      onClick(b);
     });
     return b;
   }
@@ -189,17 +229,31 @@
       host.className = BTN_HOST_CLS;
       host.style.cssText = 'display:inline-flex;gap:0;margin-right:10px;';
 
-      host.appendChild(buildBtn('Expand all', function () {
-        applyMode(viewEl, 'expand');
-      }));
+      // Single Expand-all / Collapse-all toggle — label reflects what
+      // the next click will do based on the current expansion state.
+      var toggleBtn = buildBtn('', function (self) {
+        applyMode(viewEl, allExpanded(viewEl) ? 'collapse' : 'expand');
+        updateToggleLabel(self, viewEl);
+      });
+      updateToggleLabel(toggleBtn, viewEl);
+      host.appendChild(toggleBtn);
+
+      // Summary Only also toggles. While summary mode is active, the
+      // same button collapses everything — that gets the user back
+      // to a clean state without needing to hunt for the Collapse
+      // button.
       host.appendChild(buildBtn('Summary only', function () {
-        applyMode(viewEl, 'summary');
-      }));
-      host.appendChild(buildBtn('Collapse all', function () {
-        applyMode(viewEl, 'collapse');
+        applyMode(viewEl, inSummaryMode(viewEl) ? 'collapse' : 'summary');
+        updateToggleLabel(toggleBtn, viewEl);
       }));
 
       nav.insertBefore(host, nav.firstChild);
+    } else {
+      // Already mounted — refresh the toggle label since state may
+      // have changed since the last render (group-collapse persists
+      // L1 open/closed across navigations).
+      var tBtn = existing.querySelector('button');
+      if (tBtn) updateToggleLabel(tBtn, viewEl);
     }
 
     bindSummaryClickInterceptor(viewEl);

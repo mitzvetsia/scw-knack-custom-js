@@ -15,6 +15,7 @@ cat \
   src/config.js \
   src/util.js \
   src/features/_design-tokens.js \
+  src/features/_render-totals-guard.js \
   src/features/preserve-scroll-on-refresh.js \
   src/features/modal-refresh-redirect.js \
   src/features/modal-scroll-restore.js \
@@ -30,6 +31,7 @@ cat \
   src/features/ktl-accordion/ktl-accordion.js \
   src/features/accordion-menu-inject.js \
   src/features/workflow-stepper.js \
+  src/features/accordion-section-icons.js \
   src/features/ratking/modal-backdrop-click-disable.js \
   src/features/ratking/default-field-values.js \
   src/features/ratking/post-inline-edit-behavior.js \
@@ -90,7 +92,13 @@ cat \
   src/features/connected-records.js \
   src/features/device-worksheet.js \
   src/features/device-worksheet-expand-all.js \
+  src/features/device-worksheet-photo-toggle.js \
   src/features/device-worksheet-toolbar.js \
+  src/features/device-worksheet-sort.js \
+  src/features/install-config-subpanel.js \
+  src/features/qa-popover.js \
+  src/features/config-qa-popover.js \
+  src/features/closeout-deliverables.js \
   src/features/chit-bulk-edit-fix.js \
   src/features/sales-change-request/config.js \
   src/features/sales-change-request/state.js \

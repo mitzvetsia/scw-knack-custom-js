@@ -31,13 +31,19 @@
   }
 
   function refreshView(viewId) {
+    var v = Knack.views[viewId];
+    if (!v || !v.model || typeof v.model.fetch !== 'function') return;
+    // Some Knack views (menu, header, rich-text) have models but no data
+    // source. Backbone throws "A url property or function must be
+    // specified" when fetch() is called on them — noisy and harmless.
+    // Probe the URL up front; if it's missing or throws, skip silently.
     try {
-      if (Knack.views[viewId] && Knack.views[viewId].model && typeof Knack.views[viewId].model.fetch === 'function') {
-        Knack.views[viewId].model.fetch();
-      }
+      var url = (typeof v.model.url === 'function') ? v.model.url.call(v.model) : v.model.url;
+      if (!url) return;
     } catch (e) {
-      console.warn('[scw-refresh-on-edit] Could not refresh ' + viewId, e);
+      return;
     }
+    try { v.model.fetch(); } catch (e) { /* swallow */ }
   }
 
   function toSet(arr) {

@@ -38,6 +38,133 @@
   var NS          = '.scwMdfSummary';
   var ROW_CLASS   = 'scw-mdf-summary-row';
   var GRAND_CLASS = 'scw-mdf-grand-summary';
+  var CARD_CLASS  = 'scw-mdf-card';
+
+  // ── Per-panel collapsed-state persistence ────────────────────
+  // Keyed by (scene, view, panelKey).  panelKey is "grand" for the
+  // grand summary, the L1 group's label text for per-group panels.
+  function getMdfSceneId() {
+    var bodyId = document.body && document.body.id;
+    if (bodyId) {
+      var m = bodyId.match(/scene_\d+/);
+      if (m) return m[0];
+    }
+    return 'unknown_scene';
+  }
+  function panelStorageKey(viewId, panelKey) {
+    return 'scw:mdf-panel:' + getMdfSceneId() + ':' + viewId + ':' + panelKey;
+  }
+  function isPanelCollapsed(viewId, panelKey) {
+    try { return localStorage.getItem(panelStorageKey(viewId, panelKey)) === 'collapsed'; }
+    catch (e) { return false; }
+  }
+  function savePanelCollapsed(viewId, panelKey, collapsed) {
+    try {
+      if (collapsed) localStorage.setItem(panelStorageKey(viewId, panelKey), 'collapsed');
+      else           localStorage.removeItem(panelStorageKey(viewId, panelKey));
+    } catch (e) { /* ignore */ }
+  }
+
+  function wrapInCard(html, opts) {
+    var collapsed = isPanelCollapsed(opts.viewId, opts.panelKey);
+    return '<div class="' + CARD_CLASS + ' scw-mdf-panel' +
+      (collapsed ? ' ' + CARD_CLASS + '--collapsed' : '') + '" ' +
+      'data-view-id="' + escapeHtml(opts.viewId) + '" ' +
+      'data-panel-key="' + escapeHtml(opts.panelKey) + '">' +
+      '<button type="button" class="' + CARD_CLASS + '__head">' +
+        '<span class="' + CARD_CLASS + '__title">' + escapeHtml(opts.title) + '</span>' +
+        '<svg class="' + CARD_CLASS + '__chevron" viewBox="0 0 24 24" ' +
+          'fill="none" stroke="currentColor" stroke-width="2.5" ' +
+          'stroke-linecap="round" stroke-linejoin="round">' +
+          '<polyline points="6 9 12 15 18 9"></polyline></svg>' +
+      '</button>' +
+      '<div class="' + CARD_CLASS + '__body">' + html + '</div>' +
+    '</div>';
+  }
+
+  // Per-L1 panel wrapper — a narrow toggle bar that sits as an
+  // extension of the L1 accordion header.  Collapsed: bar shows
+  // "Summary ▾" and acts as the click target. Expanded: bar shrinks
+  // to a thin "▴" strip and the panel body shows below.  No card
+  // chrome — visually anchored to the parent group, not floating.
+  var STRIP_CLASS = 'scw-mdf-strip';
+  // Two-bar layout: an "Summary ▾" bar at the top (visible when
+  // collapsed) and a "Collapse ▴" bar at the bottom (visible when
+  // open).  Either bar click toggles the strip.  Putting the collapse
+  // affordance at the BOTTOM keeps the user's eye at the end of the
+  // table content when they're done reading it.
+  function wrapInStrip(html, opts) {
+    var collapsed = isPanelCollapsed(opts.viewId, opts.panelKey);
+    return '<div class="' + STRIP_CLASS + ' scw-mdf-panel' +
+      (collapsed ? '' : ' ' + STRIP_CLASS + '--open') + '" ' +
+      'data-view-id="' + escapeHtml(opts.viewId) + '" ' +
+      'data-panel-key="' + escapeHtml(opts.panelKey) + '">' +
+
+      '<button type="button" class="' + STRIP_CLASS + '__bar ' +
+        STRIP_CLASS + '__bar--open">' +
+        '<span class="' + STRIP_CLASS + '__bar-label">Summary</span>' +
+        '<svg class="' + STRIP_CLASS + '__bar-caret" viewBox="0 0 24 24" ' +
+          'fill="none" stroke="currentColor" stroke-width="2.5" ' +
+          'stroke-linecap="round" stroke-linejoin="round">' +
+          '<polyline points="6 9 12 15 18 9"></polyline></svg>' +
+      '</button>' +
+
+      '<div class="' + STRIP_CLASS + '__panel">' + html + '</div>' +
+
+      '<button type="button" class="' + STRIP_CLASS + '__bar ' +
+        STRIP_CLASS + '__bar--close">' +
+        '<span class="' + STRIP_CLASS + '__bar-label">Collapse</span>' +
+        '<svg class="' + STRIP_CLASS + '__bar-caret" viewBox="0 0 24 24" ' +
+          'fill="none" stroke="currentColor" stroke-width="2.5" ' +
+          'stroke-linecap="round" stroke-linejoin="round" ' +
+          'style="transform: rotate(180deg);">' +
+          '<polyline points="6 9 12 15 18 9"></polyline></svg>' +
+      '</button>' +
+
+    '</div>';
+  }
+
+  // Document-level click handler — one binding, handles every card.
+  // Idempotent via the data-attribute flag so reloads don't stack
+  // duplicate listeners.
+  if (!document.documentElement.hasAttribute('data-scw-mdf-card-bound')) {
+    document.documentElement.setAttribute('data-scw-mdf-card-bound', '1');
+    document.addEventListener('click', function (e) {
+      var t = e.target;
+
+      // Card chrome (grand summary): click head to toggle.
+      var head = t && t.closest && t.closest('.' + CARD_CLASS + '__head');
+      if (head) {
+        var card = head.closest('.' + CARD_CLASS);
+        if (!card) return;
+        var nowCollapsed = !card.classList.contains(CARD_CLASS + '--collapsed');
+        card.classList.toggle(CARD_CLASS + '--collapsed', nowCollapsed);
+        savePanelCollapsed(
+          card.getAttribute('data-view-id') || '',
+          card.getAttribute('data-panel-key') || '',
+          nowCollapsed
+        );
+        return;
+      }
+
+      // Strip toggle (per-L1 panel): bar click flips open/closed.
+      var bar = t && t.closest && t.closest('.' + STRIP_CLASS + '__bar');
+      if (bar) {
+        var strip = bar.closest('.' + STRIP_CLASS);
+        if (!strip) return;
+        var nowOpen = !strip.classList.contains(STRIP_CLASS + '--open');
+        strip.classList.toggle(STRIP_CLASS + '--open', nowOpen);
+        // Storage uses 'collapsed' as the truthy state to match the
+        // existing card-based panels' key shape.
+        savePanelCollapsed(
+          strip.getAttribute('data-view-id') || '',
+          strip.getAttribute('data-panel-key') || '',
+          !nowOpen
+        );
+        return;
+      }
+    });
+  }
 
   // ── Per-view field maps ─────────────────────────────────
   // The default targets SOW Line Items (view_3610 family). Other
@@ -74,6 +201,43 @@
       exterior: 'field_2372',
       plenum:   'field_2371',
       subbid:   'field_2401'
+    },
+    // SOW Line Items — sales portal (view_3586). Same schema as the
+    // 3610 family for product/qty/label/bucket/cabling/exterior, but
+    // the aggregation column reads field_2269 (line item total) since
+    // view_3586 doesn't expose field_2151 (sub bid total). Plenum
+    // (field_1983) may not appear on every row — aggregation treats
+    // missing cells as 0 which is correct here.
+    'view_3586': {
+      product:  'field_1949',
+      qty:      'field_1964',
+      label:    'field_1950',
+      bucket:   'field_2219',
+      sort:     'field_2218',
+      cabling:  'field_2461',
+      exterior: 'field_1984',
+      plenum:   'field_1983',
+      subbid:   'field_2269',
+      // view_3586 aggregates line-item totals (field_2269) rather than
+      // a sub-bid figure, so the column reads "Total" not "Total Sub Bid".
+      subbidLabel: 'Total'
+    },
+    // Deploy / Install Line Items — view_3915. Install records have one
+    // device per row with no quantity field, so qtyMode:'count' makes
+    // each row contribute 1 to the Qty aggregation. No sub-bid field on
+    // this object — the subbid column lands at 0 (the "Total Sub Bid"
+    // header is misleading on this view but acceptable for v1).
+    'view_3915': {
+      product:  'field_2790',
+      qty:      'field_2819',   // unused when qtyMode='count'; harmless placeholder
+      qtyMode:  'count',
+      label:    'field_2819',
+      bucket:   'field_2822',
+      sort:     'field_2218',
+      cabling:  'field_2807',
+      exterior: 'field_2805',
+      plenum:   'field_2806',
+      subbid:   ''              // no sub bid on install object — aggregation = 0
     }
   };
 
@@ -104,6 +268,8 @@
     return Object.prototype.hasOwnProperty.call(FIELD_MAPS, viewId) ||
            Object.prototype.hasOwnProperty.call(FIELD_ALIASES, viewId) ||
            viewId === 'view_3610' || viewId === 'view_3921';
+    // Note: view_3586 and view_3915 already have explicit FIELD_MAPS
+    // entries, so they're matched by the first hasOwnProperty check.
   }
 
   // Bucket id for cameras OR readers — only rows in this bucket
@@ -120,13 +286,16 @@
     var s = document.createElement('style');
     s.id = STYLE_ID;
     s.textContent =
+      // L1 panel container — fully reset so the parent <td>\'s styling
+      // (Knack\'s .kn-table td borders/padding/zebra-stripe) can\'t
+      // distinguish the L1 panel from the grand panel.  All chrome
+      // comes from the inner .scw-mdf-grand-summary wrap + .scw-mdf-card.
       'tr.' + ROW_CLASS + ' > td {' +
-      '  background: var(--scw-surface-subtle);' +
-      '  padding: 10px 14px;' +
-      '  border-top: 1px solid var(--scw-border-subtle);' +
-      '  border-bottom: 1px solid var(--scw-border-subtle);' +
+      '  background: transparent !important;' +
+      '  padding: 0 !important;' +
+      '  border: 0 !important;' +
       '}' +
-      '.scw-mdf-summary-table {' +
+      '.scw-mdf-panel .scw-mdf-summary-table {' +
       '  width: 100%;' +
       '  table-layout: fixed;' +
       '  border-collapse: collapse;' +
@@ -140,112 +309,270 @@
       // !important on the alignment rules — Knack's .kn-table td
       // selector has the same specificity (0,2,0) as ours and may load
       // after, so center alignment was bleeding to whatever Knack set.
-      '.scw-mdf-summary-table th,' +
-      '.scw-mdf-summary-table td {' +
+      '.scw-mdf-panel .scw-mdf-summary-table th,' +
+      '.scw-mdf-panel .scw-mdf-summary-table td {' +
       '  padding: 5px 10px !important;' +
       '  text-align: center !important;' +
       '  border-bottom: 1px solid var(--scw-border-subtle);' +
       '  vertical-align: middle !important;' +
       '}' +
-      '.scw-mdf-summary-table th {' +
-      '  font-size: 10px; font-weight: 700;' +
-      '  color: var(--scw-text-caption);' +
-      '  text-transform: uppercase; letter-spacing: 0.05em;' +
-      '  background: var(--scw-border-subtle);' +
-      '  border-bottom: 2px solid var(--scw-border-strong);' +
-      '  white-space: nowrap;' +
+      // Default th — transparent, no border. Only the labeled subbid
+      // cell has any visible styling now (rule below). Empty colspan
+      // cells contribute zero visual weight.
+      '.scw-mdf-panel .scw-mdf-summary-table th {' +
+      '  background: transparent;' +
+      '  border-bottom: 0;' +
+      '  padding: 0 !important;' +
       '}' +
-      '.scw-mdf-summary-table th.scw-mdf-product-h,' +
-      '.scw-mdf-summary-table td.scw-mdf-product {' +
+      // The single labeled thead cell — Total Sub Bid above the
+      // rightmost column, matching the bucket-head visual treatment
+      // so the panel reads as one tightly-related set of section labels.
+      '.scw-mdf-panel .scw-mdf-summary-table th.scw-mdf-subbid-h {' +
+      '  font: 600 9.5px/1.15 system-ui, -apple-system, "Segoe UI", sans-serif !important;' +
+      '  color: var(--scw-text-caption) !important;' +
+      '  text-transform: uppercase;' +
+      '  letter-spacing: 0.04em;' +
+      '  white-space: nowrap;' +
+      '  text-align: right !important;' +
+      '  padding: 10px 14px 4px !important;' +
+      '}' +
+      '.scw-mdf-panel .scw-mdf-summary-table th.scw-mdf-product-h,' +
+      '.scw-mdf-panel .scw-mdf-summary-table td.scw-mdf-product {' +
       '  text-align: left !important;' +
       '}' +
-      '.scw-mdf-summary-table td.scw-mdf-product {' +
+      '.scw-mdf-panel .scw-mdf-summary-table td.scw-mdf-product {' +
       '  color: var(--scw-text-default); font-weight: 500;' +
       '  padding-left: 22px !important;' +
       '}' +
-      '.scw-mdf-summary-table td.scw-mdf-product .scw-mdf-label-list {' +
+      '.scw-mdf-panel .scw-mdf-summary-table td.scw-mdf-product .scw-mdf-label-list {' +
       '  display: block;' +
       '  margin-top: 4px;' +
       '  font: 400 11px/1.4 system-ui, -apple-system, "Segoe UI", sans-serif;' +
       '  color: var(--scw-text-muted);' +
       '  word-break: break-word;' +
       '}' +
-      '.scw-mdf-summary-table td.scw-mdf-num {' +
+      '.scw-mdf-panel .scw-mdf-summary-table td.scw-mdf-num {' +
       '  font-variant-numeric: tabular-nums;' +
       '}' +
-      '.scw-mdf-summary-table td.scw-mdf-empty {' +
+      // Right-align ONLY the Qty + Total Sub Bid columns (marked with
+      // scw-mdf-num--right by the row builder).  The cabling / exterior
+      // / interior / plenum chip-count cells in the cam-or-reader band
+      // stay center-aligned so their digits sit under the centered
+      // column labels in the bucket-head row.
+      '.scw-mdf-panel .scw-mdf-summary-table th.scw-mdf-subbid-h,' +
+      '.scw-mdf-panel .scw-mdf-summary-table td.scw-mdf-num--right {' +
+      '  text-align: right !important;' +
+      '  padding-right: 14px !important;' +
+      '}' +
+      '.scw-mdf-panel .scw-mdf-summary-table td.scw-mdf-empty {' +
       '  color: var(--scw-border-default);' +
       '}' +
-      // Bucket section heading — light slate band with dark text.
-      // Neutral chrome, no per-view accent stripe.
-      '.scw-mdf-summary-table tr.scw-mdf-bucket-head td {' +
-      '  background: var(--scw-surface-muted) !important;' +
-      '  color: var(--scw-text-body) !important;' +
-      '  font: 700 10.5px/1 system-ui, -apple-system, "Segoe UI", sans-serif !important;' +
+      // Bucket section heading — no fill, just a small uppercase muted
+      // label that acts as a section header. Section separation is a
+      // thin top-border for every bucket head except the first.
+      '.scw-mdf-panel .scw-mdf-summary-table tr.scw-mdf-bucket-head td {' +
+      '  background: transparent !important;' +
+      '  color: var(--scw-text-caption) !important;' +
+      '  font: 600 10px/1 system-ui, -apple-system, "Segoe UI", sans-serif !important;' +
       '  text-transform: uppercase;' +
       '  letter-spacing: 0.08em;' +
-      '  padding: 7px 14px !important;' +
+      '  padding: 14px 14px 4px !important;' +
       '  text-align: left !important;' +
-      '  border-bottom: 1px solid var(--scw-border-subtle);' +
+      '  border-bottom: 0 !important;' +
       '}' +
       // Camera-or-Reader band carries inline column labels for the
-      // cabling/exterior/interior/plenum block. Smaller centered headers
-      // — same band background as the bucket-head, muted text.
-      '.scw-mdf-summary-table tr.scw-mdf-bucket-head--cr td.scw-mdf-bh-col {' +
-      '  font: 700 9.5px/1.15 system-ui, -apple-system, "Segoe UI", sans-serif !important;' +
+      // cabling/exterior/interior/plenum block. Same muted treatment as
+      // the rest of the section header so it doesn\'t shout.
+      '.scw-mdf-panel .scw-mdf-summary-table tr.scw-mdf-bucket-head--cr td.scw-mdf-bh-col {' +
+      '  font: 600 9.5px/1.15 system-ui, -apple-system, "Segoe UI", sans-serif !important;' +
       '  text-align: center !important;' +
       '  text-transform: uppercase;' +
       '  letter-spacing: 0.04em;' +
-      '  padding: 7px 4px !important;' +
+      '  padding: 14px 4px 4px !important;' +
       '  white-space: normal;' +
       '  color: var(--scw-text-caption) !important;' +
       '  border-left: 0 !important;' +
       '}' +
-      // Visual gap between bucket sections — a sliver of the panel
-      // background shows through above every bucket-head except the
-      // first. Reduced from 6px to 4px since the band itself is lighter.
-      '.scw-mdf-summary-table tbody tr.scw-mdf-bucket-head:not(:first-child) td {' +
-      '  border-top: 4px solid var(--scw-surface-base);' +
+      // Thin hairline at the top of each bucket section (skip first).
+      // This is the only chrome separating sections — no band needed.
+      '.scw-mdf-panel .scw-mdf-summary-table tbody tr.scw-mdf-bucket-head:not(:first-child) td {' +
+      '  border-top: 1px solid var(--scw-border-subtle);' +
       '}' +
-      // Bucket subtotal — slate-100 band with emphasis text.
-      '.scw-mdf-summary-table tr.scw-mdf-subtotal td {' +
-      '  background: var(--scw-border-subtle); color: var(--scw-text-emphasis);' +
-      '  font-weight: 700;' +
-      '  border-top: 1px solid var(--scw-border-default);' +
-      '  border-bottom: 1px solid var(--scw-border-default);' +
+      // Bucket subtotal — no fill, top hairline + slightly bolder text.
+      '.scw-mdf-panel .scw-mdf-summary-table tr.scw-mdf-subtotal td {' +
+      '  background: transparent !important;' +
+      '  color: var(--scw-text-body);' +
+      '  font-weight: 600;' +
+      '  border-top: 1px solid var(--scw-border-subtle);' +
+      '  border-bottom: 0;' +
       '}' +
-      '.scw-mdf-summary-table tr.scw-mdf-subtotal td.scw-mdf-product {' +
-      '  color: var(--scw-text-emphasis); text-align: left; padding-left: 22px !important;' +
+      '.scw-mdf-panel .scw-mdf-summary-table tr.scw-mdf-subtotal td.scw-mdf-product {' +
+      '  color: var(--scw-text-muted); text-align: left; padding-left: 22px !important;' +
       '}' +
-      // Grand Total — quiet bottom anchor. Slate-100 background, dark
-      // emphasis text, thick neutral slate top-border.
-      '.scw-mdf-summary-table tr.scw-mdf-total td {' +
-      '  background: var(--scw-border-subtle); color: var(--scw-text-emphasis);' +
-      '  font-weight: 800; font-size: 12.5px;' +
-      '  border-top: 2px solid var(--scw-border-strong);' +
+      // Grand Total — no fill, double-strength top border + bold text
+      // as the table\'s closing emphasis.
+      '.scw-mdf-panel .scw-mdf-summary-table tr.scw-mdf-total td {' +
+      '  background: transparent !important;' +
+      '  color: var(--scw-text-emphasis);' +
+      '  font-weight: 700; font-size: 12.5px;' +
+      '  border-top: 2px solid var(--scw-border-default);' +
       '  border-bottom: none;' +
+      '  padding-top: 8px !important;' +
       '}' +
-      '.scw-mdf-summary-table tr.scw-mdf-total td.scw-mdf-product {' +
+      '.scw-mdf-panel .scw-mdf-summary-table tr.scw-mdf-total td.scw-mdf-product {' +
       '  color: var(--scw-text-emphasis); text-align: left;' +
       '  text-transform: uppercase; letter-spacing: 0.05em;' +
       '  padding-left: 14px !important;' +
       '}' +
-      // Grand-summary wrapper — transparent now. Lives directly on the
-      // page background (or whatever surface its parent provides) so it
-      // doesn\'t stack a "card within a card" against the toolbar above
-      // and the L1 group headers below.
+      // Per-row dividers — tone down so they read as alignment lines
+      // not a striped pattern.  Skip on the last visible row of a group
+      // (subtotal/total already carry their own top border).
+      '.scw-mdf-panel .scw-mdf-summary-table tbody td {' +
+      '  border-bottom-color: transparent !important;' +
+      '}' +
+      // Grand-summary outer wrapper — just margins; the card chrome
+      // inside does the actual styling.
       '.' + GRAND_CLASS + ' {' +
       '  margin: 4px 0 14px;' +
       '  padding: 0;' +
       '  background: transparent;' +
       '  border: 0;' +
       '}' +
-      '.' + GRAND_CLASS + ' .scw-mdf-grand-title {' +
-      '  font: 700 10.5px/1 system-ui, -apple-system, "Segoe UI", sans-serif;' +
-      '  color: var(--scw-text-muted);' +
+      // ── Card chrome (shared between grand + per-L1 panels) ──
+      '.' + CARD_CLASS + ' {' +
+      '  background: var(--scw-surface-base, #fff);' +
+      '  border: 1px solid var(--scw-border-default, #d1d5db);' +
+      '  border-left: 4px solid var(--scw-accent, #0f4c75);' +
+      '  border-radius: 8px;' +
+      '  box-shadow: 0 1px 3px rgba(15, 23, 42, 0.06);' +
+      '  overflow: hidden;' +
+      '  margin: 0;' +
+      '}' +
+      '.' + ROW_CLASS + ' .' + CARD_CLASS + ' {' +
+      // L1 panel sits inside a table row; tighten outer margins so it
+      // hugs the row container rather than floating.
+      '  margin: 4px 0;' +
+      '}' +
+      '.' + CARD_CLASS + '__head {' +
+      '  display: flex; align-items: center; gap: 8px;' +
+      '  width: 100%;' +
+      '  padding: 10px 14px;' +
+      '  background: var(--scw-surface-subtle, #f8fafc);' +
+      '  border: 0; border-bottom: 1px solid var(--scw-border-subtle, #e2e8f0);' +
+      '  cursor: pointer; text-align: left;' +
+      '  font: 700 11px/1 system-ui, -apple-system, "Segoe UI", sans-serif;' +
       '  text-transform: uppercase;' +
       '  letter-spacing: 0.08em;' +
-      '  margin: 0 0 6px 2px;' +
+      '  color: var(--scw-text-default, #1f2937);' +
+      '  transition: background 120ms ease;' +
+      '}' +
+      '.' + CARD_CLASS + '__head:hover {' +
+      '  background: var(--scw-surface-muted, #f1f5f9);' +
+      '}' +
+      '.' + CARD_CLASS + '__title { flex: 1 1 auto; }' +
+      '.' + CARD_CLASS + '__chevron {' +
+      '  width: 14px; height: 14px; flex: 0 0 auto;' +
+      '  color: var(--scw-text-muted, #64748b);' +
+      '  transition: transform 150ms ease;' +
+      '}' +
+      '.' + CARD_CLASS + '--collapsed .' + CARD_CLASS + '__chevron {' +
+      '  transform: rotate(-90deg);' +
+      '}' +
+      '.' + CARD_CLASS + '--collapsed .' + CARD_CLASS + '__head {' +
+      '  border-bottom-color: transparent;' +
+      '}' +
+      '.' + CARD_CLASS + '__body {' +
+      '  padding: 10px 14px 14px;' +
+      '}' +
+      '.' + CARD_CLASS + '--collapsed .' + CARD_CLASS + '__body {' +
+      '  display: none;' +
+      '}' +
+      // Inner table needs no extra border now that the card has it.
+      '.' + CARD_CLASS + ' .scw-mdf-summary-table {' +
+      '  border: 0; border-radius: 0;' +
+      '}' +
+
+      // ── Strip toggle (per-L1 panels) ──────────────────────────
+      // Narrow bar that sits below the L1 accordion header as a
+      // toggle.  Collapsed: bar shows "Summary ▾", panel hidden.
+      // Open: bar collapses to a thin "▴" strip, panel visible
+      // below.  No card chrome — visually anchored to the parent
+      // group, not a floating standalone card.
+      '.' + STRIP_CLASS + ' {' +
+      '  margin: 0;' +
+      '  border-left: 4px solid var(--scw-accent, #0f4c75);' +
+      '  background: var(--scw-surface-base, #fff);' +
+      '  overflow: hidden;' +
+      '}' +
+      '.' + STRIP_CLASS + '__bar {' +
+      '  display: flex; align-items: center; gap: 6px;' +
+      '  width: 100%;' +
+      '  padding: 4px 14px;' +
+      '  background: var(--scw-surface-subtle, #f8fafc);' +
+      '  border: 0;' +
+      '  border-bottom: 1px solid var(--scw-border-subtle, #e2e8f0);' +
+      '  cursor: pointer; text-align: left;' +
+      '  font: 600 10px/1 system-ui, -apple-system, "Segoe UI", sans-serif;' +
+      '  color: var(--scw-text-caption, #64748b);' +
+      '  text-transform: uppercase;' +
+      '  letter-spacing: 0.08em;' +
+      '  transition: background 120ms ease, padding 150ms ease;' +
+      '}' +
+      '.' + STRIP_CLASS + '__bar:hover {' +
+      '  background: var(--scw-surface-muted, #f1f5f9);' +
+      '  color: var(--scw-text-default, #1f2937);' +
+      '}' +
+      '.' + STRIP_CLASS + '__bar-caret {' +
+      '  width: 12px; height: 12px; flex: 0 0 auto;' +
+      '  margin-left: auto;' +
+      '  color: var(--scw-text-muted, #64748b);' +
+      '}' +
+      // Hide the "Collapse" bar by default; hide the "Summary" bar
+      // when open. Either bar still uses the same baseline styling
+      // (above), so visually they read identical — just the label
+      // and caret direction differ.
+      '.' + STRIP_CLASS + '__bar--close {' +
+      '  display: none;' +
+      '  border-bottom: 0;' +
+      '  border-top: 1px solid var(--scw-border-subtle, #e2e8f0);' +
+      '}' +
+      '.' + STRIP_CLASS + '--open .' + STRIP_CLASS + '__bar--open {' +
+      '  display: none;' +
+      '}' +
+      '.' + STRIP_CLASS + '--open .' + STRIP_CLASS + '__bar--close {' +
+      '  display: flex;' +
+      '}' +
+      // Panel body — hidden by default, shown when --open.
+      '.' + STRIP_CLASS + '__panel {' +
+      '  display: none;' +
+      '  padding: 0;' +
+      '}' +
+      '.' + STRIP_CLASS + '--open .' + STRIP_CLASS + '__panel {' +
+      '  display: block;' +
+      '}' +
+      // Inner table sits flush — no card chrome around it now.
+      '.' + STRIP_CLASS + ' .scw-mdf-summary-table {' +
+      '  border: 0; border-radius: 0;' +
+      '  background: transparent;' +
+      '}' +
+      // Strip mode: kill all internal hairlines on the inner table.
+      // In a card the section/subtotal/total rules read as structure;
+      // inside a strip-mode L1 panel they pile up as gray banding and
+      // make the panel look noisy. Strip mode keeps just the bold-text
+      // emphasis on subtotal/total rows for structure.
+      '.' + STRIP_CLASS + ' .scw-mdf-summary-table tbody tr.scw-mdf-bucket-head:not(:first-child) td,' +
+      '.' + STRIP_CLASS + ' .scw-mdf-summary-table tr.scw-mdf-subtotal td,' +
+      '.' + STRIP_CLASS + ' .scw-mdf-summary-table tr.scw-mdf-total td {' +
+      '  border-top: 0 !important;' +
+      '  border-bottom: 0 !important;' +
+      '}' +
+      // Strip bar — drop the bottom hairline; the bar background
+      // already separates it from the panel body visually.
+      '.' + STRIP_CLASS + ' .' + STRIP_CLASS + '__bar {' +
+      '  border-bottom: 0 !important;' +
+      '}' +
+      '.' + STRIP_CLASS + ' .' + STRIP_CLASS + '__bar--close {' +
+      '  border-top: 0 !important;' +
       '}';
     document.head.appendChild(s);
   }
@@ -302,6 +629,10 @@
   function num(n) {
     return '<td class="scw-mdf-num">' + n + '</td>';
   }
+  // Like num() but right-aligned — used for Qty + Total Sub Bid only.
+  function numRight(n) {
+    return '<td class="scw-mdf-num scw-mdf-num--right">' + n + '</td>';
+  }
 
   // ── Aggregation ─────────────────────────────────────────────
   // Returns:
@@ -353,8 +684,12 @@
       }
 
       // Qty column sums the per-row quantity, not record count. Rows
-      // with a missing/zero qty contribute 0.
-      var qty = readNum(readVal(a, fields.qty));
+      // with a missing/zero qty contribute 0. Views whose underlying
+      // object has no quantity field (e.g. install records on view_3915,
+      // one device per row) set qtyMode='count' to contribute 1/row.
+      var qty = (fields.qtyMode === 'count')
+        ? 1
+        : readNum(readVal(a, fields.qty));
       p.count       += qty;
       totals.count  += qty;
 
@@ -444,10 +779,12 @@
       (showCR ? num(p.exterior)     : blankCell()) +
       (showCR ? num(p.interior)     : blankCell()) +
       (showCR ? num(p.plenum)       : blankCell()) +
-      num(p.count) +
-      (totalBid != null
-        ? '<td class="scw-mdf-num">' + fmtMoney(totalBid) + '</td>'
-        : blankCell()) +
+      numRight(p.count) +
+      (opts.hideSubbid
+        ? ''
+        : (totalBid != null
+            ? '<td class="scw-mdf-num scw-mdf-num--right">' + fmtMoney(totalBid) + '</td>'
+            : blankCell())) +
     '</tr>';
   }
 
@@ -474,8 +811,14 @@
     return st;
   }
 
-  function buildPanelHtml(data) {
+  function buildPanelHtml(data, fields) {
     if (!data || !data.products.length) return '';
+    // Views without a sub-bid field on their underlying object (e.g.
+    // view_3915 install records) suppress the Total Sub Bid column
+    // entirely — it'd just render as "$0.00" everywhere, which is
+    // misleading.
+    var hideSubbid = !!(fields && !fields.subbid);
+    var subbidColspan = hideSubbid ? 7 : 8;  // colspan on bucket-head full-width row
 
     // Walk products in their already-sorted order (by minBucketSort,
     // then firstSeenIdx). Whenever the bucket changes, emit a subtotal
@@ -524,21 +867,21 @@
             '<td class="scw-mdf-bh-col">Interior</td>' +
             '<td class="scw-mdf-bh-col">Plenum</td>' +
             '<td></td>' +
-            '<td></td>' +
+            (hideSubbid ? '' : '<td></td>') +
           '</tr>';
       } else if (hasMultipleBuckets) {
         rows += '<tr class="scw-mdf-bucket-head">' +
-          '<td colspan="8">' + escapeHtml(grp.label) + '</td>' +
+          '<td colspan="' + subbidColspan + '">' + escapeHtml(grp.label) + '</td>' +
         '</tr>';
       }
 
       for (var k = 0; k < grp.items.length; k++) {
-        rows += productRowHtml(grp.items[k]);
+        rows += productRowHtml(grp.items[k], { hideSubbid: hideSubbid });
       }
 
       if (hasMultipleBuckets) {
         var st = bucketSubtotal(grp.items, 'Subtotal');
-        rows += productRowHtml(st, { isSubtotal: true, bucketIsCR: isCR });
+        rows += productRowHtml(st, { isSubtotal: true, bucketIsCR: isCR, hideSubbid: hideSubbid });
       }
     }
 
@@ -555,10 +898,12 @@
       blankCell() +
       blankCell() +
       blankCell() +
-      num(t.count) +
-      (grandTotal != null
-        ? '<td class="scw-mdf-num">' + fmtMoney(grandTotal) + '</td>'
-        : blankCell()) +
+      numRight(t.count) +
+      (hideSubbid
+        ? ''
+        : (grandTotal != null
+            ? '<td class="scw-mdf-num scw-mdf-num--right">' + fmtMoney(grandTotal) + '</td>'
+            : blankCell())) +
     '</tr>';
 
     // Fixed colgroup so every L1 summary table renders with the same
@@ -573,7 +918,8 @@
     // the cabling/exterior/etc block sits in the middle and is empty
     // for non-cam/reader rows.
     return '' +
-      '<table class="scw-mdf-summary-table">' +
+      '<table class="scw-mdf-summary-table' +
+        (hideSubbid ? ' scw-mdf-summary-table--no-subbid' : '') + '">' +
         '<colgroup>' +
           '<col style="width:42%">' +     // Product
           '<col style="width:10%">' +     // Existing Cabling
@@ -582,13 +928,19 @@
           '<col style="width:8%">' +      // Interior
           '<col style="width:6%">' +      // Plenum
           '<col style="width:6%">' +      // Qty
-          '<col style="width:10%">' +     // Avg Sub Bid
+          (hideSubbid ? '' : '<col style="width:10%">') +  // Total Sub Bid
         '</colgroup>' +
+        // Thead is now just a small "Total Sub Bid" label above the
+        // rightmost column — same muted typography as the bucket-head
+        // section labels. Product and Qty don't need explicit headers:
+        // the columns are obvious from context, and dropping them
+        // removes a heavy banded row at the top of every panel. When
+        // there's no subbid (hideSubbid), the thead is empty entirely.
         '<thead><tr>' +
-          '<th class="scw-mdf-product-h">Product</th>' +
-          '<th colspan="5"></th>' +
-          '<th>Qty</th>' +
-          '<th>Total Sub Bid</th>' +
+          '<th colspan="7"></th>' +
+          (hideSubbid ? '' : '<th class="scw-mdf-subbid-h">' +
+            escapeHtml((fields && fields.subbidLabel) || 'Total Sub Bid') +
+            '</th>') +
         '</tr></thead>' +
         '<tbody>' + rows + totalRow + '</tbody>' +
       '</table>';
@@ -651,8 +1003,39 @@
       // MDF/IDF, so the summary doesn't make sense for them.
       if (_l1.classList.contains('scw-synthetic-group')) return;
       var data = aggregate(_list, fields);
-      var html = buildPanelHtml(data);
+      var html = buildPanelHtml(data, fields);
       if (!html) return;
+      // Derive a stable panelKey from the L1 group's label so collapse
+      // state survives re-renders. Strip surplus whitespace + the
+      // trailing colons Knack appends ("HEADEND: :" → "HEADEND").
+      //
+      // textContent on the whole row picks up the record-count badge
+      // ("...NEMA ENCLOSURE5"), so clone the group-inner first, remove
+      // the badges + collapse icon + checkbox, and only then read text.
+      var l1Label = '';
+      var l1Inner = _l1.querySelector('.scw-group-inner');
+      if (l1Inner) {
+        var clone = l1Inner.cloneNode(true);
+        var badges  = clone.querySelector('.scw-group-badges');
+        var icon    = clone.querySelector('.scw-collapse-icon');
+        var grpCb   = clone.querySelector('.scw-sa-grp-check');
+        if (badges) badges.parentNode.removeChild(badges);
+        if (icon)   icon.parentNode.removeChild(icon);
+        if (grpCb)  grpCb.parentNode.removeChild(grpCb);
+        l1Label = (clone.textContent || '').replace(/\s+/g, ' ').trim();
+      } else {
+        l1Label = (_l1.textContent || '').replace(/\s+/g, ' ').trim();
+      }
+      l1Label = l1Label.replace(/[:\s]+$/, '');
+      // Per-L1 panel: narrow toggle bar that extends the L1 group
+      // header.  Drops the card chrome (no border / shadow / "Summary —
+      // X" header bar), shows just a "Summary ▾" strip when collapsed,
+      // and the table body when open. The grand summary keeps its card
+      // chrome (renderGrand still uses wrapInCard).
+      var stripped = wrapInStrip(html, {
+        viewId:   viewId,
+        panelKey: 'l1:' + (l1Label || 'unknown')
+      });
       var summaryRow = document.createElement('tr');
       summaryRow.className = ROW_CLASS;
       // Mirror the L1 header's current collapse state. group-collapse
@@ -664,7 +1047,7 @@
       }
       var td = document.createElement('td');
       td.colSpan = colCount;
-      td.innerHTML = html;
+      td.innerHTML = stripped;
       summaryRow.appendChild(td);
       // Insert immediately after the L1 header so the row lives in
       // the group's row block (group-collapse toggles the whole block).
@@ -709,13 +1092,17 @@
     if (prev) prev.remove();
     if (!list.length) return;
 
-    var html = buildPanelHtml(aggregate(list, fields));
+    var viewId = view.id || '';
+    var html = buildPanelHtml(aggregate(list, fields), fields);
     if (!html) return;
 
     var wrap = document.createElement('div');
     wrap.className = GRAND_CLASS;
-    wrap.innerHTML =
-      '<div class="scw-mdf-grand-title">Summary — All Groups</div>' + html;
+    wrap.innerHTML = wrapInCard(html, {
+      viewId:   viewId,
+      panelKey: 'grand',
+      title:    'Summary — All Groups'
+    });
 
     // Mount just above the kn-table so the grand summary sits outside
     // Knack's grouping/pagination machinery (and isn't toggled by
@@ -785,16 +1172,38 @@
   // Fallback: MutationObserver on tbody for filter-class changes that
   // didn't go through the event path (DevTools, future callers, etc.).
   // Re-bound on every view render since Knack may have replaced tbody.
+  //
+  // IMPORTANT: this observer was previously firing on ANY class change
+  // anywhere inside tbody, which made it cascade into a render loop:
+  //   1. transform() inserts our <tr.scw-mdf-summary-row> (with cards)
+  //   2. card chevron click toggles scw-mdf-card--collapsed
+  //   3. group-collapse toggles scw-collapsed on a row
+  //   4. KTL adds/removes a hover/selection class
+  //   ...any of which fired the observer → schedule → transform →
+  //   panel rebuilt → flash, user state lost
+  //
+  // Now we only react when the FILTER_HIDDEN class specifically appears
+  // or disappears — the actual signal the observer is here to catch.
   function bindFilterObserver(viewId) {
     var view = document.getElementById(viewId);
     if (!view) return;
     var tbody = view.querySelector('table.kn-table tbody');
     if (!tbody || tbody.__scwMdfFilterObs) return;
-    var mo = new MutationObserver(function () { schedule(viewId); });
+    var mo = new MutationObserver(function (mutations) {
+      for (var i = 0; i < mutations.length; i++) {
+        var m = mutations[i];
+        var prev = m.oldValue || '';
+        var next = (m.target && m.target.getAttribute && m.target.getAttribute('class')) || '';
+        var hadHide = prev.indexOf(FILTER_HIDDEN_CLASS) !== -1;
+        var hasHide = next.indexOf(FILTER_HIDDEN_CLASS) !== -1;
+        if (hadHide !== hasHide) { schedule(viewId); return; }
+      }
+    });
     mo.observe(tbody, {
-      subtree:    true,
-      attributes: true,
-      attributeFilter: ['class']
+      subtree:           true,
+      attributes:        true,
+      attributeFilter:   ['class'],
+      attributeOldValue: true
     });
     tbody.__scwMdfFilterObs = mo;
   }

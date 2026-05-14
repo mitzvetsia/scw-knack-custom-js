@@ -57,8 +57,8 @@
       // Transparent — the toolbar already lives inside the parent KTL
       // accordion card. Adding another bordered/filled rectangle here
       // stacks a third "card within a card" against the summary panel
-      // and the data grid below. Border-bottom is the only chrome we
-      // keep, so the toolbar still reads as a distinct strip.
+      // and the data grid below. The toolbar is signaled by its own
+      // controls (pills, segmented buttons) — no chrome needed.
       '.kn-records-nav[' + BAR_ATTR + '] {',
       '  display: flex !important;',
       '  flex-wrap: wrap;',
@@ -68,7 +68,6 @@
       '  margin: 0 0 10px;',
       '  background: transparent;',
       '  border: 0;',
-      '  border-bottom: 1px solid var(--scw-border-subtle);',
       '  border-radius: 0;',
       '  font: 12px/1.3 system-ui, -apple-system, sans-serif;',
       '}',
@@ -289,14 +288,16 @@
 
     // Desired left-to-right order:
     //   1. Mode segmented control     (.scw-ws-bulk-toggle)
-    //   2. SOW filter pills            (.scw-conn-filter-strip)
-    //   3. spring (push remainder right)
-    //   4. Knack pagination/summary    (.kn-records-nav-summary, .kn-pagination)
-    //   5. Knack filter controls       (.kn-filters-nav)
-    //   6. Bulk-ops cluster            ([id^="bulkOpsControlsDiv-"])
-    //   7. Primary CTA                 (.scw-acc-actions)
+    //   2. Sort preset dropdown        (.scw-ws-sort)
+    //   3. SOW filter pills            (.scw-conn-filter-strip)
+    //   4. spring (push remainder right)
+    //   5. Knack pagination/summary    (.kn-records-nav-summary, .kn-pagination)
+    //   6. Knack filter controls       (.kn-filters-nav)
+    //   7. Bulk-ops cluster            ([id^="bulkOpsControlsDiv-"])
+    //   8. Primary CTA                 (.scw-acc-actions)
     var orderSelectors = [
       '.scw-ws-bulk-toggle',
+      '.scw-ws-sort',
       '.scw-conn-filter-strip',
       '.scw-tb-spring',
       '.kn-records-nav-summary',

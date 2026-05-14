@@ -1,7 +1,17 @@
 /*************  SET RECORD CONTROL to 1000 and HIDE view_3313 and view_3341 **************************/
 
 (function () {
-  const VIEW_IDS = ['view_3301', 'view_3341', 'view_3550', 'view_3586', 'view_3610', 'view_3896', 'view_3926'];
+  // Device-worksheet views are listed here too — Knack's default 25/page
+  // hides records that the worksheet renderer never gets to transform,
+  // which silently breaks group-collapse and sort. Forcing 1000/page
+  // makes the worksheet operate on the complete dataset.
+  const VIEW_IDS = [
+    // Misc views forced full-page
+    'view_3301', 'view_3341', 'view_3550', 'view_3586', 'view_3610', 'view_3896', 'view_3926',
+    // All WORKSHEET_CONFIG views from device-worksheet.js
+    'view_3313', 'view_3450', 'view_3505', 'view_3512', 'view_3575',
+    'view_3596', 'view_3602', 'view_3608', 'view_3800', 'view_3915'
+  ];
   const LIMIT_VALUE = '1000';
   const LIMIT_NUM = 1000;
   const EVENT_NS = '.scwLimit1000';
@@ -13,12 +23,15 @@
   // so there's exactly one place to update when another module starts
   // forcing full pages.
   const FORCED_FULL_PAGE_VIEWS = [
-    // change-record-limit.js
-    'view_3301', 'view_3341', 'view_3550', 'view_3586', 'view_3610', 'view_3896',
+    // change-record-limit.js — misc views
+    'view_3301', 'view_3341', 'view_3550', 'view_3586', 'view_3610', 'view_3896', 'view_3926',
+    // change-record-limit.js — device-worksheet views
+    'view_3313', 'view_3450', 'view_3505', 'view_3512', 'view_3575',
+    'view_3596', 'view_3602', 'view_3608', 'view_3800', 'view_3915',
     // import-unique-items-btn.js
     'view_3913',
     // bid-review (CFG.viewKey, sowItemsViewKey, bidPackagesViewKey, docFilesViewKey)
-    'view_3680', 'view_3921', 'view_3573', 'view_3926'
+    'view_3680', 'view_3921', 'view_3573'
   ];
 
   (function injectHidePaginationCss() {
@@ -70,7 +83,20 @@
         if (modelView.source) modelView.source.limit = LIMIT_NUM;
 
         if (typeof view.model.fetch === 'function') {
-          view.model.fetch();
+          // Probe the URL before fetching — some Knack view models lack
+          // a usable URL (form views, partially-initialised models on
+          // the current page render tick), and Backbone.sync throws
+          // synchronously which bubbles up as an Uncaught Error that
+          // can put Knack into a render loop. Skip silently if no URL.
+          try {
+            var url = (typeof view.model.url === 'function')
+              ? view.model.url.call(view.model)
+              : view.model.url;
+            if (!url) return;
+          } catch (e) {
+            return;
+          }
+          try { view.model.fetch(); } catch (e) { /* swallow */ }
         }
       });
   });
