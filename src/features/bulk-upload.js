@@ -1002,16 +1002,29 @@
   // Inject a "Bulk Add Photos" button into another view's toolbar
   // (configurable per VIEWS entry). Re-runnable / idempotent — uses a
   // data-attribute marker to avoid duplicating itself on re-renders.
-  function injectInlineButton(viewCfg) {
+  //
+  // Important: the reference button (e.g. "Add Survey/Bid Item") is
+  // built by accordion-menu-inject.js, which usually runs AFTER this
+  // function fires on knack-view-render. So we retry on a short delay
+  // until the reference button exists, and we only mark ourselves
+  // "bound" once we've actually inserted before it. Falling back to
+  // kn-records-nav.firstChild — as the previous version did — left the
+  // Bulk Add Photos button stranded outside .scw-acc-actions, so the
+  // toolbar consolidator parked .scw-acc-actions (containing
+  // "Add Survey/Bid Item") last and our button ended up at the very
+  // end instead.
+  function injectInlineButton(viewCfg, _retryCount) {
     var targetView = document.getElementById(viewCfg.injectIntoView);
     if (!targetView) return;
 
-    // Already injected? Bail.
-    if (targetView.querySelector('button[data-scw-bulk-inline-bound="1"]')) return;
-    // Also bail if the button was injected into a sibling toolbar that
-    // moved when the view re-rendered (idempotency across re-renders)
     var scene = targetView.closest('.kn-scene') || targetView.parentElement || targetView;
-    if (scene.querySelector('button[data-scw-bulk-inline-bound="1"]')) return;
+
+    // Already adjacent to the reference button? Bail.
+    var existing = scene.querySelector('button[data-scw-bulk-inline-bound="1"]');
+    if (existing && existing.parentNode &&
+        existing.parentNode.classList.contains('scw-acc-actions')) {
+      return;
+    }
 
     injectInlineStyles();
 
@@ -1023,10 +1036,20 @@
       ? findButtonByText(scene, viewCfg.injectBeforeText)
       : null;
 
-    // Build the button. Match the structural pattern of scw-acc-action-btn
-    // (icon wrapped in a <span>, label after) so the new button is
-    // visually consistent with the reference button when it sits in
-    // the same toolbar.
+    // Reference button not built yet (accordion-menu-inject hasn't run).
+    // Retry on a short delay rather than dropping into a fallback slot.
+    if (!beforeBtn || !beforeBtn.parentNode) {
+      var n = _retryCount || 0;
+      if (n < 12) {
+        setTimeout(function () { injectInlineButton(viewCfg, n + 1); }, 200);
+      }
+      return;
+    }
+
+    // If we landed in a stranded location on an earlier pass, lift it
+    // out before re-inserting next to the reference button.
+    if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
+
     var btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'scw-acc-action-btn scw-bulk-inline-btn';
@@ -1040,16 +1063,7 @@
       openModal(viewCfg, recordId);
     });
 
-    if (beforeBtn && beforeBtn.parentNode) {
-      beforeBtn.parentNode.insertBefore(btn, beforeBtn);
-    } else {
-      // Reference button not found — drop into the kn-records-nav
-      // toolbar of the target view, or the view itself as last resort.
-      var toolbar = targetView.querySelector('.kn-records-nav')
-                 || targetView.querySelector('.view-header')
-                 || targetView;
-      toolbar.insertBefore(btn, toolbar.firstChild);
-    }
+    beforeBtn.parentNode.insertBefore(btn, beforeBtn);
   }
 
   // ── INIT: intercept configured menu links + inject inline buttons ─────
