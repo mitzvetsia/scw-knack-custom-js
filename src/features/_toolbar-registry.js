@@ -92,9 +92,6 @@
   // `.kn-records-nav[data-scw-toolbar]` for all scoped rules.
   var BAR_ATTR = 'data-scw-toolbar';
 
-  // Marker on viewEl set when its per-view observer is attached.
-  var OBS_KEY = '__scwToolbarObs';
-
   var entries = [];
 
   function register(entry) {
@@ -129,7 +126,16 @@
     }
   }
 
-  function mountAll(viewEl) {
+  // Look up the live view element by id. Knack's model.fetch() can
+  // replace a view's container outright (e.g. sort changes), which
+  // would orphan any captured viewEl reference. Always resolve fresh
+  // from the DOM before doing any work.
+  function liveView(viewId) {
+    return document.getElementById(viewId);
+  }
+
+  function mountAll(viewId) {
+    var viewEl = liveView(viewId);
     if (!viewEl) return;
     var nav = viewEl.querySelector('.kn-records-nav');
     if (!nav) return;
@@ -151,33 +157,49 @@
     }
   }
 
-  function attach(viewEl) {
-    if (!viewEl || viewEl[OBS_KEY]) return;
+  // Observers are keyed off the accordion container (or the view's
+  // current parent), which Knack preserves even when it replaces the
+  // inner view element. Keyed by viewId in a module-level map so we
+  // don't lose the binding when viewEl gets swapped.
+  var observers = {};   // viewId -> { obs, scope }
+
+  function attach(viewId) {
+    var viewEl = liveView(viewId);
+    if (!viewEl) return;
     if (!viewMatchesAnyEntry(viewEl)) return;
 
-    mountAll(viewEl);
+    mountAll(viewId);
 
-    // Observe the surrounding accordion (or the view itself) so we
-    // catch rebuilds that happen outside the view's own subtree —
-    // most notably accordion-menu-inject.js recreating .scw-acc-actions
-    // in the accordion body without firing a knack-view-render.
-    var scope = viewEl.closest('.scw-ktl-accordion') || viewEl;
+    var scope = viewEl.closest('.scw-ktl-accordion') ||
+                viewEl.parentElement || viewEl;
+
+    // Already observing this exact scope? Done.
+    if (observers[viewId] && observers[viewId].scope === scope) return;
+
+    // Scope changed (e.g. accordion was rebuilt around the view) —
+    // tear down the old observer first.
+    if (observers[viewId] && observers[viewId].obs) {
+      observers[viewId].obs.disconnect();
+    }
+
     var debounce = null;
     var obs = new MutationObserver(function () {
       if (debounce) clearTimeout(debounce);
-      debounce = setTimeout(function () { mountAll(viewEl); }, 80);
+      // Resolve viewEl freshly each tick — see liveView() docstring.
+      debounce = setTimeout(function () { mountAll(viewId); }, 80);
     });
     obs.observe(scope, { childList: true, subtree: true });
-    viewEl[OBS_KEY] = obs;
+    observers[viewId] = { obs: obs, scope: scope };
   }
 
   function runAll() {
     var views = document.querySelectorAll('.kn-view[id^="view_"]');
     for (var i = 0; i < views.length; i++) {
-      attach(views[i]);
-      // For already-attached views: a newly-registered entry needs to
-      // run even when no mutation triggered the observer.
-      if (views[i][OBS_KEY]) mountAll(views[i]);
+      var viewId = views[i].id;
+      attach(viewId);
+      // Re-run mount even when the observer is already attached —
+      // covers newly-registered entries and explicit re-render events.
+      if (observers[viewId]) mountAll(viewId);
     }
   }
 
