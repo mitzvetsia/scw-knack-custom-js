@@ -71,6 +71,26 @@
       '  border-radius: 0;',
       '  font: 12px/1.3 system-ui, -apple-system, sans-serif;',
       '}',
+
+      // ── Visual order via flex `order` ──
+      // DOM-level reorder loses races against features that re-mount
+      // their controls at nav.firstChild (sort dropdown, expand-all
+      // toggle). Using flex `order` enforces the visual order purely
+      // declaratively — whatever the DOM order is, the user sees this
+      // layout left-to-right. Anything not listed sits at order:0 and
+      // appears before order:1+ children, so keep this list complete.
+      '.kn-records-nav[' + BAR_ATTR + '] .scw-ws-sort           { order: 1; }',
+      '.kn-records-nav[' + BAR_ATTR + '] .scw-ws-bulk-toggle    { order: 2; }',
+      '.kn-records-nav[' + BAR_ATTR + '] .scw-conn-filter-strip { order: 3; }',
+      '.kn-records-nav[' + BAR_ATTR + '] .scw-tb-spring         { order: 4; }',
+      '.kn-records-nav[' + BAR_ATTR + '] .kn-filters-nav        { order: 5; }',
+      '.kn-records-nav[' + BAR_ATTR + '] .kn-entries-summary    { order: 6; }',
+      '.kn-records-nav[' + BAR_ATTR + '] .kn-pagination         { order: 7; }',
+      '.kn-records-nav[' + BAR_ATTR + '] [id^="bulkOpsControlsDiv-"] { order: 8; }',
+      '.kn-records-nav[' + BAR_ATTR + '] .scw-acc-actions       { order: 9; }',
+      // Anything that slips into the nav without being on this list
+      // (e.g. ktlAddonsDiv) should fall outside the visible cluster.
+      '.kn-records-nav[' + BAR_ATTR + '] .ktlAddonsDiv          { order: 10; }',
       // Stray <br>s and standalone whitespace nodes Knack/KTL inject
       // between strips — collapse them so flex gap controls spacing.
       '.kn-records-nav[' + BAR_ATTR + '] > br {',
@@ -137,6 +157,7 @@
       // ── Knack native filter / pagination block ──
       '.kn-records-nav[' + BAR_ATTR + '] .kn-pagination,',
       '.kn-records-nav[' + BAR_ATTR + '] .kn-records-nav-summary,',
+      '.kn-records-nav[' + BAR_ATTR + '] .kn-entries-summary,',
       '.kn-records-nav[' + BAR_ATTR + '] .kn-filters-nav {',
       '  margin: 0 !important;',
       '  padding: 0 !important;',
@@ -144,12 +165,20 @@
       '  align-items: center;',
       '  gap: 8px;',
       '}',
-      '.kn-records-nav[' + BAR_ATTR + '] .kn-records-nav-summary {',
+      '.kn-records-nav[' + BAR_ATTR + '] .kn-records-nav-summary,',
+      '.kn-records-nav[' + BAR_ATTR + '] .kn-entries-summary {',
       '  color: var(--scw-text-muted);',
       '  font-size: 11px;',
       '  font-weight: 600;',
       '  letter-spacing: 0.02em;',
       '  text-transform: uppercase;',
+      '}',
+      // .kn-entries-summary uses two inline <span class="light"> children
+      // ("Showing" and "of") that Knack styles via a separate stylesheet.
+      // Strip the inline opacity so the count reads as one cohesive label.
+      '.kn-records-nav[' + BAR_ATTR + '] .kn-entries-summary .light {',
+      '  color: inherit !important;',
+      '  opacity: 1 !important;',
       '}',
 
       // ── Bulk-ops cluster ──
@@ -272,6 +301,16 @@
     if (accActions && accActions.parentNode !== nav) {
       accActions.classList.add('scw-tb-hoisted');
       nav.appendChild(accActions);
+    }
+
+    // Pull the Knack-native record-count summary ("Showing 1-88 of 88")
+    // into the toolbar. It lives in a sibling .level block below
+    // .kn-records-nav and would otherwise wrap to a new line beneath
+    // the action buttons. Flex `order` puts it between filters and
+    // action buttons once it's in the nav.
+    var entriesSummary = viewEl.querySelector('.kn-entries-summary');
+    if (entriesSummary && entriesSummary.parentNode !== nav) {
+      nav.appendChild(entriesSummary);
     }
 
     // Hide the bulk cluster when no rows are selected. KTL toggles
