@@ -18,7 +18,7 @@
     {
       menuViewId:    'view_3482',
       linkText:      'Bulk Add Photos',
-      jotformId:     '260564849468170',
+      jotformId:     '261335679445062',
       fieldName:     'sowID',
       hashPattern:   /scope-of-work-details\/([a-f0-9]{24})/
     },
