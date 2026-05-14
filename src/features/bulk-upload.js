@@ -54,34 +54,44 @@
     // matching FORM_CONFIGS entries in jotform-embed-sow-photos.js are
     // disabled so both modals don't open on the same click.
     //
-    // refreshViews: array of view ids to re-fetch when the modal closes
-    //   after a successful batch. Use this to refresh the photo gallery
-    //   / list view that displays the just-uploaded photos so the user
-    //   sees them without manually reloading.
+    // Three refresh strategies, applied on modal close after a
+    // successful batch. They can be combined.
     //
-    // reloadOnClose: if true, do a full window.location.reload() on close
-    //   after a successful batch. Overrides refreshViews. Heavier but
-    //   guaranteed to pick up everything.
+    // refreshRecordInViews: array of view ids in which to refresh just
+    //   THIS upload's recordId (the SOW / Survey / etc. linked by
+    //   linkField). Re-fetches the single record and updates its
+    //   Backbone model so just that one row's data refreshes — leaves
+    //   the rest of the grid untouched. Cheapest, most precise. Use
+    //   this when you only need to repaint a single row.
+    //
+    // refreshViews: array of view ids to re-fetch in full. Use for
+    //   gallery / list views where you want every record's data to
+    //   refresh (e.g. a photo strip that gained new records).
+    //
+    // reloadOnClose: if true, full window.location.reload() instead of
+    //   either of the above. Heaviest but bulletproof. Off by default.
     //
     // Make's per-file webhook response can also include
-    // { success: true, refresh: ["view_XXX", "view_YYY"] } and those
-    // view ids will be unioned with refreshViews and refreshed on close.
+    //   { success: true, refresh: ["view_XXX", ...] }
+    // and those view ids will be unioned with refreshViews on close.
     VIEWS: [
       {
-        menuViewId:   'view_3482',
-        linkText:     'Bulk Add Photos',
-        linkField:    'sowID',
-        hashPattern:  /scope-of-work-details\/([a-f0-9]{24})/,
-        refreshViews: [],
-        reloadOnClose: false
+        menuViewId:           'view_3482',
+        linkText:             'Bulk Add Photos',
+        linkField:            'sowID',
+        hashPattern:          /scope-of-work-details\/([a-f0-9]{24})/,
+        refreshRecordInViews: [],
+        refreshViews:         [],
+        reloadOnClose:        false
       },
       {
-        menuViewId:   'view_3532',
-        linkText:     'Bulk Add Photos',
-        linkField:    'surveyID',
-        hashPattern:  /site-survey-request-details\/([a-f0-9]{24})/,
-        refreshViews: [],
-        reloadOnClose: false
+        menuViewId:           'view_3532',
+        linkText:             'Bulk Add Photos',
+        linkField:            'surveyID',
+        hashPattern:          /site-survey-request-details\/([a-f0-9]{24})/,
+        refreshRecordInViews: [],
+        refreshViews:         [],
+        reloadOnClose:        false
       }
     ]
   };
@@ -363,14 +373,20 @@
     var el = document.getElementById(MODAL_ID + '-backdrop');
     if (el) el.remove();
     // Refresh hooks: if anything uploaded successfully this session,
-    // either reload the page or re-fetch the configured views so the
-    // user sees their new photos without a manual refresh.
+    // refresh either the single matching row in configured grids,
+    // the whole view, and/or reload the page — depending on what
+    // the view's CONFIG specifies.
     if (_state && _state.successCount > 0) {
       var viewCfg = _state.viewCfg || {};
+      var recordId = _state.recordId;
       if (viewCfg.reloadOnClose) {
-        // Defer the reload so the modal is fully torn down first
         setTimeout(function () { window.location.reload(); }, 50);
       } else {
+        // 1. Single-record refresh (precise — touches just one row)
+        (viewCfg.refreshRecordInViews || []).forEach(function (viewId) {
+          refreshSingleRecord(viewId, recordId);
+        });
+        // 2. Full-view refresh (heavier — re-fetches every record)
         var ids = {};
         (viewCfg.refreshViews || []).forEach(function (v) { ids[v] = true; });
         Object.keys(_state.refreshViewIds || {}).forEach(function (v) { ids[v] = true; });
@@ -380,11 +396,49 @@
             if (view && view.model && typeof view.model.fetch === 'function') {
               view.model.fetch();
             }
-          } catch (e) { /* swallow — best effort refresh */ }
+          } catch (e) { /* swallow */ }
         });
       }
     }
     _state = null;
+  }
+
+  // Fetch a single record from Knack's view-based REST endpoint and
+  // update the matching Backbone model in the view's collection. Knack
+  // table views listen to model 'change' events and re-render the
+  // affected row inline — no full-view re-fetch, no surrounding rows
+  // disturbed. Best-effort: if anything fails we swallow it and fall
+  // through, since the data inconsistency on screen is recoverable
+  // by the user reloading manually.
+  function refreshSingleRecord(viewId, recordId) {
+    if (!viewId || !recordId || !window.Knack || !Knack.views) return;
+    var view = Knack.views[viewId];
+    if (!view || !view.model || !view.model.data) return;
+    var url = Knack.api_url +
+      '/v1/pages/' + Knack.router.current_scene_key +
+      '/views/' + viewId +
+      '/records/' + recordId;
+    var headers = {
+      'X-Knack-Application-Id': Knack.application_id,
+      'x-knack-rest-api-key':   'knack',
+      'Authorization':          Knack.getUserToken()
+    };
+    fetch(url, { method: 'GET', headers: headers })
+      .then(function (resp) { return resp.ok ? resp.json() : null; })
+      .then(function (data) {
+        if (!data) return;
+        var coll = view.model.data;
+        var record = coll && typeof coll.get === 'function'
+          ? coll.get(recordId)
+          : (coll && coll.findWhere ? coll.findWhere({ id: recordId }) : null);
+        if (record && typeof record.set === 'function') {
+          // Setting attributes fires Backbone 'change' events that the
+          // Knack view listens to and uses to re-render the matching
+          // <tr> in place.
+          record.set(data);
+        }
+      })
+      .catch(function () { /* best-effort, no surfacing */ });
   }
 
   function confirmClose() {
