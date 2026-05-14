@@ -53,7 +53,7 @@
     // The hash-route prefix this feature handles. Must match scene_1321's
     // slug in Knack Builder AND the route the sales-side generator
     // builds into its URLs.
-    HASH_ROUTE: 'published-public-proposal',
+    HASH_ROUTE: 'project-proposal',
 
     // Fields on the proposal record.
     TOKEN_FIELD:       'field_2904',     // Proposal Access Token

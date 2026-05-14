@@ -45,7 +45,7 @@
     // The hash route on the public scene — must match the scene slug
     // on the public access page in Knack Builder, AND must match the
     // HASH_ROUTE in the public-side snippet. Keep all three in sync.
-    PUBLIC_HASH_ROUTE: 'published-public-proposal',
+    PUBLIC_HASH_ROUTE: 'project-proposal',
 
     // Fields on the proposal/published-proposal object. Only TOKEN_FIELD
     // is required today; the others are scaffolding for upcoming work

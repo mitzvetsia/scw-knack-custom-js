@@ -87,7 +87,7 @@
   var LOOKUP_VIEW_ID   = 'view_3952';               // Hidden list view (proposal object)
   var TOKEN_FIELD      = 'field_2904';              // Proposal Access Token
   var HTML_FIELD       = 'field_2680';              // Snapshot HTML to render
-  var HASH_ROUTE       = 'published-public-proposal'; // matches scene_1321 slug AND the sales-side URL builder
+  var HASH_ROUTE       = 'project-proposal';        // matches scene_1321 slug AND the sales-side URL builder
 
   // Optional gates — set to a field key to enable; leave null to skip.
   var ACTIVE_FIELD     = null;             // e.g. 'field_XXXX' (Yes/No flag)
