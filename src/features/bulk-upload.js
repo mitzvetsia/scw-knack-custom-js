@@ -986,14 +986,35 @@
   // `text`. Looks at Knack's native button classes AND SCW's custom
   // accordion-action button class, since hoisted action buttons use
   // the latter. Ignores anything inside our own injected button.
+  //
+  // Prefers buttons inside .scw-acc-actions over source menu links —
+  // accordion-menu-inject.js hides the source menu via a CSS class but
+  // leaves its <a class="kn-link"> in the DOM. Without this preference
+  // the scope-wide scan finds the hidden link first (document order)
+  // and we end up inserting our button inside the hidden source view.
   function findButtonByText(scope, text) {
     if (!scope || !text) return null;
+
+    // Preferred: visible button in .scw-acc-actions
+    var preferred = scope.querySelectorAll(
+      '.scw-acc-actions .scw-acc-action-btn'
+    );
+    for (var p = 0; p < preferred.length; p++) {
+      if (preferred[p].closest('.scw-bulk-inline-btn')) continue;
+      if ((preferred[p].textContent || '').trim() === text) return preferred[p];
+    }
+
+    // Fallback: any clickable in scope (e.g. the inline menu before
+    // accordion-menu-inject has built the action button).
     var nodes = scope.querySelectorAll(
       'a.kn-link, a.kn-button, button.kn-button, ' +
       'button.scw-acc-action-btn, .scw-acc-action-btn'
     );
     for (var i = 0; i < nodes.length; i++) {
       if (nodes[i].closest('.scw-bulk-inline-btn')) continue;
+      // Skip anything inside a hidden source menu view — accordion-menu-inject
+      // hides absorbed menu views with .scw-acc-menu-src-hidden.
+      if (nodes[i].closest('.scw-acc-menu-src-hidden')) continue;
       if ((nodes[i].textContent || '').trim() === text) return nodes[i];
     }
     return null;
