@@ -93,7 +93,13 @@
         hashPattern:          /scope-of-work-details\/([a-f0-9]{24})/,
         refreshRecordInViews: [],
         refreshViews:         [],
-        reloadOnClose:        false
+        reloadOnClose:        false,
+        // Inline button on the SOW worksheet's toolbar (view_3586),
+        // slotted before the "Add to Scope of Work" CTA. The submitted
+        // payload uses linkField:'sowID' so the receiving Make scenario
+        // knows the record context is the SOW, not the survey.
+        injectIntoView:       'view_3586',
+        injectBeforeText:     'Add to Scope of Work'
       },
       {
         menuViewId:           'view_3532',

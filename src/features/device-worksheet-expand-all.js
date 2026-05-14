@@ -208,15 +208,27 @@
   }
 
   // ── Toolbar registration ────────────────────────────────
+  // viewMatch is by registered worksheet config, not by live row
+  // presence. Previously it required tr.scw-ws-row + L1 headers —
+  // which made the toggle disappear after a model.fetch() because
+  // device-worksheet's transformView rebuilds those asynchronously,
+  // and the registry's observer often fired during the gap. Matching
+  // by viewId means we mount as soon as the view exists; applyMode()
+  // already no-ops when no headers are present, so an early mount is
+  // harmless.
+  function isRegisteredWorksheet(viewEl) {
+    var configs = window.SCW && SCW.deviceWorksheet && SCW.deviceWorksheet._configs;
+    if (!configs) return false;
+    for (var i = 0; i < configs.length; i++) {
+      if (configs[i] && configs[i].viewId === viewEl.id) return true;
+    }
+    return false;
+  }
+
   SCW.toolbar.register({
     id:    'mode-toggle',
     slot:  SCW.toolbar.SLOTS.mode,
-    viewMatch: function (viewEl) {
-      // Need both worksheet rows and L1 group headers — without L1
-      // there's nothing to expand/collapse.
-      return !!(viewEl.querySelector('tr.scw-ws-row') &&
-                viewEl.querySelector(L1_SEL));
-    },
+    viewMatch: isRegisteredWorksheet,
     mount: function (viewEl, nav) {
       var existing = nav.querySelector('.' + BTN_HOST_CLS);
       if (existing) {

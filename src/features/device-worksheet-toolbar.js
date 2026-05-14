@@ -311,5 +311,36 @@
       }
     }
   });
+
+  // 4) Knack-native "Add filters" button (.kn-filters-nav)
+  // Some Knack view templates render this inside a <div class="level"
+  // class="level-left"> sibling of the nav rather than inside the nav
+  // itself — flex `order` can't reach it then, so the visible toolbar
+  // order falls back to DOM source order. Hoist into the nav so order
+  // engages.
+  SCW.toolbar.register({
+    id:        'tb-hoist-filters-nav',
+    viewMatch: WS_MATCH,
+    mount: function (viewEl, nav) {
+      var fn = viewEl.querySelector('.kn-filters-nav');
+      if (fn && fn.parentNode !== nav) {
+        nav.appendChild(fn);
+      }
+    }
+  });
+
+  // 5) Knack-native pagination select (.kn-pagination)
+  // Same shape as the filters-nav hoist: rendered in a sibling level
+  // block on some templates, needs to be inside the nav for ordering.
+  SCW.toolbar.register({
+    id:        'tb-hoist-pagination',
+    viewMatch: WS_MATCH,
+    mount: function (viewEl, nav) {
+      var pag = viewEl.querySelector('.kn-pagination');
+      if (pag && pag.parentNode !== nav) {
+        nav.appendChild(pag);
+      }
+    }
+  });
 })();
 /*** END FEATURE: device-worksheet unified toolbar ****************************/

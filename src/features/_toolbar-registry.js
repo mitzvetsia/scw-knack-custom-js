@@ -207,9 +207,13 @@
     for (var i = 0; i < views.length; i++) {
       var viewId = views[i].id;
       attach(viewId);
-      // Re-run mount even when the observer is already attached —
-      // covers newly-registered entries and explicit re-render events.
-      if (observers[viewId]) mountAll(viewId);
+      // Always run mountAll, not just when the observer attached. The
+      // observer attach can short-circuit on viewMatchesAnyEntry — a
+      // view that only acquires its toolbar-eligible state later (e.g.
+      // after transformView inserts tr.scw-ws-row) would otherwise
+      // never see a mount call until the next mutation tick. mountAll's
+      // own per-entry viewMatch keeps wasted work tiny.
+      mountAll(viewId);
     }
   }
 
