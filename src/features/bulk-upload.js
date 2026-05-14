@@ -1020,57 +1020,8 @@
     return null;
   }
 
-  // Inject a "Bulk Add Photos" button into another view's toolbar
-  // (configurable per VIEWS entry). Re-runnable / idempotent — uses a
-  // data-attribute marker to avoid duplicating itself on re-renders.
-  //
-  // Important: the reference button (e.g. "Add Survey/Bid Item") is
-  // built by accordion-menu-inject.js, which usually runs AFTER this
-  // function fires on knack-view-render. So we retry on a short delay
-  // until the reference button exists, and we only mark ourselves
-  // "bound" once we've actually inserted before it. Falling back to
-  // kn-records-nav.firstChild — as the previous version did — left the
-  // Bulk Add Photos button stranded outside .scw-acc-actions, so the
-  // toolbar consolidator parked .scw-acc-actions (containing
-  // "Add Survey/Bid Item") last and our button ended up at the very
-  // end instead.
-  function injectInlineButton(viewCfg, _retryCount) {
-    var targetView = document.getElementById(viewCfg.injectIntoView);
-    if (!targetView) return;
-
-    var scene = targetView.closest('.kn-scene') || targetView.parentElement || targetView;
-
-    // Already adjacent to the reference button? Bail.
-    var existing = scene.querySelector('button[data-scw-bulk-inline-bound="1"]');
-    if (existing && existing.parentNode &&
-        existing.parentNode.classList.contains('scw-acc-actions')) {
-      return;
-    }
-
-    injectInlineStyles();
-
-    // Try to slot before the configured reference button. Search the
-    // surrounding scene so it works whether the reference button lives
-    // in this view's toolbar, a sibling hoisted toolbar, or a separate
-    // menu view alongside this one.
-    var beforeBtn = viewCfg.injectBeforeText
-      ? findButtonByText(scene, viewCfg.injectBeforeText)
-      : null;
-
-    // Reference button not built yet (accordion-menu-inject hasn't run).
-    // Retry on a short delay rather than dropping into a fallback slot.
-    if (!beforeBtn || !beforeBtn.parentNode) {
-      var n = _retryCount || 0;
-      if (n < 12) {
-        setTimeout(function () { injectInlineButton(viewCfg, n + 1); }, 200);
-      }
-      return;
-    }
-
-    // If we landed in a stranded location on an earlier pass, lift it
-    // out before re-inserting next to the reference button.
-    if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
-
+  // Build the Add Photos button. Pure DOM construction — no insertion.
+  function buildAddPhotosBtn(viewCfg) {
     var btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'scw-acc-action-btn scw-bulk-inline-btn';
@@ -1083,12 +1034,13 @@
       if (!recordId) { alert('Could not determine record id from URL.'); return; }
       openModal(viewCfg, recordId);
     });
-
-    beforeBtn.parentNode.insertBefore(btn, beforeBtn);
+    return btn;
   }
 
-  // ── INIT: intercept configured menu links + inject inline buttons ─────
+  // ── INIT: intercept configured menu links + register Add Photos ─────
   CONFIG.VIEWS.forEach(function (viewCfg) {
+    // 1) Intercept the legacy menu link (replaces the JotForm flow when
+    //    the user clicks the link in the source menu view).
     SCW.onViewRender(viewCfg.menuViewId, function () {
       var view = document.getElementById(viewCfg.menuViewId);
       if (!view) return;
@@ -1108,57 +1060,47 @@
       });
     }, 'scwBulkUpload.' + viewCfg.menuViewId);
 
-    // Inline button on a different view's toolbar, if configured.
-    // Two triggers needed because accordion-menu-inject.js rebuilds
-    // .scw-acc-actions from scratch whenever the parent KTL accordion
-    // body re-renders — that rebuild does NOT necessarily fire a
-    // knack-view-render on viewCfg.injectIntoView, so an onViewRender
-    // hook alone misses it and the button silently disappears.
-    //
-    //   1. onViewRender — fires on first paint and explicit view
-    //      reloads (e.g. inline edits triggering refresh).
-    //   2. MutationObserver on the surrounding scene — fires whenever
-    //      .scw-acc-actions is recreated by accordion-menu-inject, even
-    //      when no knack-view-render happens on the target view.
-    if (viewCfg.injectIntoView) {
-      SCW.onViewRender(viewCfg.injectIntoView, function () {
-        injectInlineButton(viewCfg);
-      }, 'scwBulkUploadInject.' + viewCfg.injectIntoView);
+    // 2) Inline "Add Photos" button injected next to a reference button
+    //    in another view's toolbar (e.g. before "Add Survey/Bid Item"
+    //    in view_3505). Registered with SCW.toolbar so it gets mounted
+    //    on initial paint AND re-injected whenever accordion-menu-inject
+    //    rebuilds .scw-acc-actions — no separate MutationObserver
+    //    plumbing required.
+    if (!viewCfg.injectIntoView) return;
 
-      attachInlineSurvivalObserver(viewCfg);
-    }
-  });
+    injectInlineStyles();
+    SCW.toolbar.register({
+      id:    'add-photos-' + viewCfg.injectIntoView,
+      slot:  SCW.toolbar.SLOTS.actions,
+      viewMatch: function (viewEl) { return viewEl.id === viewCfg.injectIntoView; },
+      mount: function (viewEl, nav) {
+        // Reference button (Add Survey/Bid Item) lives inside the
+        // hoisted .scw-acc-actions in our nav. Restrict the lookup to
+        // that container so we never match the source menu's hidden
+        // <a class="kn-link"> with the same text.
+        var accActions = nav.querySelector('.scw-acc-actions');
+        if (!accActions) return;     // tb-hoist hasn't moved it yet; retry next tick
 
-  // Watch the scene around the injectIntoView for .scw-acc-actions
-  // rebuilds. Whenever the container's child list changes (e.g. our
-  // sibling Add Survey/Bid Item button reappears after a rebuild) and
-  // our Bulk Add Photos button is no longer inside it, re-inject.
-  // Debounced — accordion-menu-inject can fire several mutations in
-  // rapid succession during a rebuild.
-  function attachInlineSurvivalObserver(viewCfg) {
-    if (viewCfg.__scwInlineSurvObs) return;
+        // Already inside the right container? Nothing to do.
+        if (accActions.querySelector('button[data-scw-bulk-inline-bound="1"]')) {
+          return;
+        }
 
-    var debounce = null;
-    var obs = new MutationObserver(function () {
-      if (debounce) clearTimeout(debounce);
-      debounce = setTimeout(function () {
-        var targetView = document.getElementById(viewCfg.injectIntoView);
-        if (!targetView) return;
-        var scene = targetView.closest('.kn-scene') || document;
-        // Reference button (Add Survey/Bid Item) is present but our
-        // Bulk-Add-Photos button is missing from .scw-acc-actions? Re-inject.
-        var ref = findButtonByText(scene, viewCfg.injectBeforeText);
-        var live = scene.querySelector(
-          '.scw-acc-actions button[data-scw-bulk-inline-bound="1"]'
-        );
-        if (ref && !live) injectInlineButton(viewCfg);
-      }, 80);
+        var ref = findButtonByText(accActions, viewCfg.injectBeforeText);
+        if (!ref) return;            // accordion-menu-inject hasn't built it yet
+
+        // Clean up any stranded button left over in another part of the
+        // scene from a previous render before we insert the fresh one.
+        var scene = viewEl.closest('.kn-scene') || viewEl;
+        var stale = scene.querySelectorAll('button[data-scw-bulk-inline-bound="1"]');
+        for (var i = 0; i < stale.length; i++) {
+          if (stale[i].parentNode) stale[i].parentNode.removeChild(stale[i]);
+        }
+
+        ref.parentNode.insertBefore(buildAddPhotosBtn(viewCfg), ref);
+      }
     });
-    // Observe document.body — accordion-menu-inject can re-parent
-    // .scw-acc-actions outside the scene element briefly during rebuilds.
-    obs.observe(document.body, { childList: true, subtree: true });
-    viewCfg.__scwInlineSurvObs = obs;
-  }
+  });
 
   // Console debug helpers
   //   SCW.DEBUG = true                          → enable verbose refresh logging

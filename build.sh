@@ -16,6 +16,7 @@ cat \
   src/util.js \
   src/features/_design-tokens.js \
   src/features/_render-totals-guard.js \
+  src/features/_toolbar-registry.js \
   src/features/preserve-scroll-on-refresh.js \
   src/features/modal-refresh-redirect.js \
   src/features/modal-scroll-restore.js \
