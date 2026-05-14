@@ -53,18 +53,35 @@
     // Each entry hooks the new uploader onto a menu link by text. The
     // matching FORM_CONFIGS entries in jotform-embed-sow-photos.js are
     // disabled so both modals don't open on the same click.
+    //
+    // refreshViews: array of view ids to re-fetch when the modal closes
+    //   after a successful batch. Use this to refresh the photo gallery
+    //   / list view that displays the just-uploaded photos so the user
+    //   sees them without manually reloading.
+    //
+    // reloadOnClose: if true, do a full window.location.reload() on close
+    //   after a successful batch. Overrides refreshViews. Heavier but
+    //   guaranteed to pick up everything.
+    //
+    // Make's per-file webhook response can also include
+    // { success: true, refresh: ["view_XXX", "view_YYY"] } and those
+    // view ids will be unioned with refreshViews and refreshed on close.
     VIEWS: [
       {
-        menuViewId:  'view_3482',
-        linkText:    'Bulk Add Photos',
-        linkField:   'sowID',
-        hashPattern: /scope-of-work-details\/([a-f0-9]{24})/
+        menuViewId:   'view_3482',
+        linkText:     'Bulk Add Photos',
+        linkField:    'sowID',
+        hashPattern:  /scope-of-work-details\/([a-f0-9]{24})/,
+        refreshViews: [],
+        reloadOnClose: false
       },
       {
-        menuViewId:  'view_3532',
-        linkText:    'Bulk Add Photos',
-        linkField:   'surveyID',
-        hashPattern: /site-survey-request-details\/([a-f0-9]{24})/
+        menuViewId:   'view_3532',
+        linkText:     'Bulk Add Photos',
+        linkField:    'surveyID',
+        hashPattern:  /site-survey-request-details\/([a-f0-9]{24})/,
+        refreshViews: [],
+        reloadOnClose: false
       }
     ]
   };
@@ -304,11 +321,13 @@
     tryPersist();
 
     _state = {
-      viewCfg:   viewCfg,
-      recordId:  recordId,
-      batchId:   uuid(),
-      rows:      [],
-      uploading: false
+      viewCfg:        viewCfg,
+      recordId:       recordId,
+      batchId:        uuid(),
+      rows:           [],
+      uploading:      false,
+      successCount:   0,
+      refreshViewIds: {}    // used as a Set: { viewId: true }
     };
 
     var backdrop = document.createElement('div');
@@ -343,6 +362,28 @@
   function closeModal() {
     var el = document.getElementById(MODAL_ID + '-backdrop');
     if (el) el.remove();
+    // Refresh hooks: if anything uploaded successfully this session,
+    // either reload the page or re-fetch the configured views so the
+    // user sees their new photos without a manual refresh.
+    if (_state && _state.successCount > 0) {
+      var viewCfg = _state.viewCfg || {};
+      if (viewCfg.reloadOnClose) {
+        // Defer the reload so the modal is fully torn down first
+        setTimeout(function () { window.location.reload(); }, 50);
+      } else {
+        var ids = {};
+        (viewCfg.refreshViews || []).forEach(function (v) { ids[v] = true; });
+        Object.keys(_state.refreshViewIds || {}).forEach(function (v) { ids[v] = true; });
+        Object.keys(ids).forEach(function (viewId) {
+          try {
+            var view = window.Knack && Knack.views && Knack.views[viewId];
+            if (view && view.model && typeof view.model.fetch === 'function') {
+              view.model.fetch();
+            }
+          } catch (e) { /* swallow — best effort refresh */ }
+        });
+      }
+    }
     _state = null;
   }
 
@@ -759,11 +800,21 @@
         err2.retryAfter = parseRetryAfter(r.headers);
         throw err2;
       }
+      // Capture any view-refresh hints the scenario returned so we can
+      // refresh them when the modal closes.
+      if (_state && r.body && Array.isArray(r.body.refresh)) {
+        r.body.refresh.forEach(function (v) {
+          if (typeof v === 'string' && /^view_\d+/.test(v)) {
+            _state.refreshViewIds[v] = true;
+          }
+        });
+      }
       // Success — drop the blob from IDB, keep a transient in-memory marker.
       return dbDelete(row.id).then(function () {
         row.status = 'done';
         row.blob = null;
         row.error = null;
+        if (_state) _state.successCount++;
         renderRows();
       });
     }).catch(function (err) {
