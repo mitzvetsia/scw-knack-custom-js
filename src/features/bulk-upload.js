@@ -71,9 +71,20 @@
     // reloadOnClose: if true, full window.location.reload() instead of
     //   either of the above. Heaviest but bulletproof. Off by default.
     //
-    // Make's per-file webhook response can also include
+    // Make's per-file webhook response can also include:
     //   { success: true, refresh: ["view_XXX", ...] }
-    // and those view ids will be unioned with refreshViews on close.
+    //     → those view ids unioned with refreshViews on close (full
+    //       re-fetch of each named view).
+    //   { success: true, refreshRecords: ["abc123...", "def456..."] }
+    //     → those record ids will each be refreshed across every view
+    //       in refreshRecordInViews. Use this when photos get connected
+    //       to records OTHER than the upload's recordId — e.g. survey
+    //       line items rather than the survey itself.
+    //
+    // The upload's own recordId is ALWAYS refreshed in refreshRecordInViews
+    // too (in case the photo is connected to the parent record). So your
+    // Make scenario only needs to include refreshRecords for the
+    // additional / different records that got touched.
     VIEWS: [
       {
         menuViewId:           'view_3482',
@@ -331,13 +342,14 @@
     tryPersist();
 
     _state = {
-      viewCfg:        viewCfg,
-      recordId:       recordId,
-      batchId:        uuid(),
-      rows:           [],
-      uploading:      false,
-      successCount:   0,
-      refreshViewIds: {}    // used as a Set: { viewId: true }
+      viewCfg:          viewCfg,
+      recordId:         recordId,
+      batchId:          uuid(),
+      rows:             [],
+      uploading:        false,
+      successCount:     0,
+      refreshViewIds:   {},   // Set of view ids — harvested from response.refresh
+      refreshRecordIds: {}    // Set of record ids — harvested from response.refreshRecords
     };
 
     var backdrop = document.createElement('div');
@@ -382,9 +394,18 @@
       if (viewCfg.reloadOnClose) {
         setTimeout(function () { window.location.reload(); }, 50);
       } else {
-        // 1. Single-record refresh (precise — touches just one row)
+        // 1. Single-record refresh (precise — touches just one row).
+        //    Union the upload's recordId with any harvested from the
+        //    webhook responses (e.g. line item ids touched by Make).
+        var recordIdsToRefresh = { };
+        if (recordId) recordIdsToRefresh[recordId] = true;
+        Object.keys(_state.refreshRecordIds || {}).forEach(function (id) {
+          recordIdsToRefresh[id] = true;
+        });
         (viewCfg.refreshRecordInViews || []).forEach(function (viewId) {
-          refreshSingleRecord(viewId, recordId);
+          Object.keys(recordIdsToRefresh).forEach(function (rid) {
+            refreshSingleRecord(viewId, rid);
+          });
         });
         // 2. Full-view refresh (heavier — re-fetches every record)
         var ids = {};
@@ -860,6 +881,17 @@
         r.body.refresh.forEach(function (v) {
           if (typeof v === 'string' && /^view_\d+/.test(v)) {
             _state.refreshViewIds[v] = true;
+          }
+        });
+      }
+      // Capture any per-record refresh hints — record ids that should
+      // be re-fetched in the configured refreshRecordInViews. Use this
+      // when photos got connected to records other than the upload's
+      // own recordId (e.g. survey line items rather than the survey).
+      if (_state && r.body && Array.isArray(r.body.refreshRecords)) {
+        r.body.refreshRecords.forEach(function (id) {
+          if (typeof id === 'string' && /^[a-f0-9]{24}$/i.test(id)) {
+            _state.refreshRecordIds[id] = true;
           }
         });
       }
