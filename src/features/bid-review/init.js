@@ -2113,6 +2113,26 @@
         if (_state && ns.rerender) ns.rerender();
       }, CFG.eventNs + 'NextStep');
     }
+    // ── Scene cleanup ───────────────────────────────────────────
+    // The matrix mount (#bid-review-matrix) is inserted as a sibling of
+    // view_44 (the global nav menu) — see render.js getOrCreateMount.
+    // Because view_44 is outside any scene container, Knack's scene
+    // swap doesn't remove our matrix div. Without explicit cleanup the
+    // matrix stays in the DOM and renders on top of every subsequent
+    // page until the user reloads. Watch every scene render and tear
+    // it down whenever the active scene isn't this feature's scene.
+    $(document)
+      .off('knack-scene-render.any' + CFG.eventNs + 'Cleanup')
+      .on('knack-scene-render.any' + CFG.eventNs + 'Cleanup', function (event, scene) {
+        if (!scene || scene.key === CFG.sceneKey) return;
+        var matrix = document.querySelector(CFG.mountSelector);
+        if (matrix && matrix.parentNode) matrix.parentNode.removeChild(matrix);
+        document.body.classList.remove('scw-bid-review-active');
+        // Reset readiness flags so the next visit to scene_1155 does
+        // a fresh load instead of believing it's still primed.
+        _viewsReady = {};
+        if (_fallbackTimer) { clearTimeout(_fallbackTimer); _fallbackTimer = null; }
+      });
   }
 
   init();
