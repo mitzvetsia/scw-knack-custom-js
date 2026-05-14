@@ -36,22 +36,22 @@
   var CONFIG = {
     MAX_FILES:      50,
     MAX_FILE_BYTES: 5 * 1024 * 1024,    // 5 MB raw — Make webhook body limit
-    // Each entry hooks the new uploader onto a menu link by text. Leave
-    // empty to keep the existing JotForm flow; uncomment + remove the
-    // matching entry from jotform-embed-sow-photos.js to switch.
+    // Each entry hooks the new uploader onto a menu link by text. The
+    // matching FORM_CONFIGS entries in jotform-embed-sow-photos.js are
+    // disabled so both modals don't open on the same click.
     VIEWS: [
-      // {
-      //   menuViewId:  'view_3482',
-      //   linkText:    'Bulk Add Photos',
-      //   linkField:   'sowID',
-      //   hashPattern: /scope-of-work-details\/([a-f0-9]{24})/
-      // },
-      // {
-      //   menuViewId:  'view_3532',
-      //   linkText:    'Bulk Add Photos',
-      //   linkField:   'surveyID',
-      //   hashPattern: /site-survey-request-details\/([a-f0-9]{24})/
-      // }
+      {
+        menuViewId:  'view_3482',
+        linkText:    'Bulk Add Photos',
+        linkField:   'sowID',
+        hashPattern: /scope-of-work-details\/([a-f0-9]{24})/
+      },
+      {
+        menuViewId:  'view_3532',
+        linkText:    'Bulk Add Photos',
+        linkField:   'surveyID',
+        hashPattern: /site-survey-request-details\/([a-f0-9]{24})/
+      }
     ]
   };
 
