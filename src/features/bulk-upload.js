@@ -102,7 +102,12 @@
         hashPattern:          /site-survey-request-details\/([a-f0-9]{24})/,
         refreshRecordInViews: ['view_3505'],
         refreshViews:         [],
-        reloadOnClose:        false
+        reloadOnClose:        false,
+        // Also inject a standalone button at the top of another view's
+        // toolbar. Useful when you want the bulk-upload entry point to
+        // be next to other grid actions, not buried in a side menu.
+        injectIntoView:       'view_3505',
+        injectBeforeText:     'Add Survey/Bid Item'   // existing button to position before
       }
     ]
   };
@@ -979,7 +984,94 @@
     });
   }
 
-  // ── INIT: intercept configured menu links ─────────────────────────────
+  // ── Inline button injection ───────────────────────────────────────────
+  // Camera icon — Feather 'camera' SVG, inlined so we don't depend on
+  // an external icon font. currentColor so it inherits text color.
+  var CAMERA_SVG =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" ' +
+    'fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+    'stroke-linejoin="round" aria-hidden="true" focusable="false">' +
+      '<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>' +
+      '<circle cx="12" cy="13" r="4"/>' +
+    '</svg>';
+
+  function injectInlineStyles() {
+    if (document.getElementById('scw-bulk-inline-btn-css')) return;
+    var css = [
+      '.scw-bulk-inline-btn {',
+      '  display: inline-flex; align-items: center; gap: 6px;',
+      '  margin-right: 8px;',
+      '}',
+      '.scw-bulk-inline-btn svg { flex-shrink: 0; }'
+    ].join('\n');
+    var s = document.createElement('style');
+    s.id = 'scw-bulk-inline-btn-css';
+    s.textContent = css;
+    document.head.appendChild(s);
+  }
+
+  // Find a clickable element in `scope` whose visible text matches `text`.
+  // Searches kn-link / kn-button / button.kn-button and ignores anything
+  // inside our own injected button.
+  function findButtonByText(scope, text) {
+    if (!scope || !text) return null;
+    var nodes = scope.querySelectorAll('a.kn-link, a.kn-button, button.kn-button');
+    for (var i = 0; i < nodes.length; i++) {
+      if (nodes[i].closest('.scw-bulk-inline-btn')) continue;
+      if ((nodes[i].textContent || '').trim() === text) return nodes[i];
+    }
+    return null;
+  }
+
+  // Inject a "Bulk Add Photos" button into another view's toolbar
+  // (configurable per VIEWS entry). Re-runnable / idempotent — uses a
+  // data-attribute marker to avoid duplicating itself on re-renders.
+  function injectInlineButton(viewCfg) {
+    var targetView = document.getElementById(viewCfg.injectIntoView);
+    if (!targetView) return;
+
+    // Already injected? Bail.
+    if (targetView.querySelector('button[data-scw-bulk-inline-bound="1"]')) return;
+
+    injectInlineStyles();
+
+    // Where to insert — prefer the kn-records-nav toolbar area
+    var toolbar = targetView.querySelector('.kn-records-nav');
+    // Fall back to view header or just inside the view itself
+    if (!toolbar) toolbar = targetView.querySelector('.view-header') || targetView;
+
+    // Build the button
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'kn-button is-small scw-bulk-inline-btn';
+    btn.setAttribute('data-scw-bulk-inline-bound', '1');
+    btn.innerHTML = CAMERA_SVG + '<span>Bulk Add Photos</span>';
+    btn.addEventListener('click', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      var recordId = getRecordId(viewCfg.hashPattern);
+      if (!recordId) { alert('Could not determine record id from URL.'); return; }
+      openModal(viewCfg, recordId);
+    });
+
+    // Try to slot before the configured reference button. Search the
+    // surrounding scene so it works whether the reference button lives
+    // in this view's toolbar, a sibling hoisted toolbar, or a separate
+    // menu view alongside this one.
+    var scene = targetView.closest('.kn-scene') || targetView.parentElement || targetView;
+    var beforeBtn = viewCfg.injectBeforeText
+      ? findButtonByText(scene, viewCfg.injectBeforeText)
+      : null;
+
+    if (beforeBtn && beforeBtn.parentNode) {
+      beforeBtn.parentNode.insertBefore(btn, beforeBtn);
+    } else {
+      // Reference button not found — drop into the toolbar
+      toolbar.insertBefore(btn, toolbar.firstChild);
+    }
+  }
+
+  // ── INIT: intercept configured menu links + inject inline buttons ─────
   CONFIG.VIEWS.forEach(function (viewCfg) {
     SCW.onViewRender(viewCfg.menuViewId, function () {
       var view = document.getElementById(viewCfg.menuViewId);
@@ -999,6 +1091,13 @@
         });
       });
     }, 'scwBulkUpload.' + viewCfg.menuViewId);
+
+    // Inline button on a different view's toolbar, if configured
+    if (viewCfg.injectIntoView) {
+      SCW.onViewRender(viewCfg.injectIntoView, function () {
+        injectInlineButton(viewCfg);
+      }, 'scwBulkUploadInject.' + viewCfg.injectIntoView);
+    }
   });
 
   // Console debug helpers
