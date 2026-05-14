@@ -44,6 +44,8 @@ cat \
   src/features/survey-review-grid.js \
   src/features/proposal-pdf-export.js \
   src/features/published-proposal-render.js \
+  src/features/secure-proposal-link.js \
+  src/features/proposal-access-public.js \
   src/features/bid-items-grid.js \
   src/features/bid-review/config.js \
   src/features/bid-review/styles.js \
