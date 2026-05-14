@@ -201,5 +201,30 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   // headless renderer in Make WILL get 403s on those images. Either
   // strip images, swap to a public mirror, or proxy through a module
   // that re-uploads them server-side before rendering.
-  MAKE_GENERATE_SOW_PDF_WEBHOOK: "https://hook.us1.make.com/tyrrisxjgai5hufsl722lcdsewiw9ryz"
+  MAKE_GENERATE_SOW_PDF_WEBHOOK: "https://hook.us1.make.com/tyrrisxjgai5hufsl722lcdsewiw9ryz",
+  // Bulk file uploader (src/features/bulk-upload.js) — one POST per file.
+  // Replaces the JotForm "Bulk Add Photos" flow for views configured in
+  // bulk-upload.js → CONFIG.VIEWS. Payload shape per file:
+  //   {
+  //     recordId:    <24-hex of the linked SOW / survey / etc.>,
+  //     linkField:   <e.g. 'sowID' / 'surveyID' — configured per view>,
+  //     filename:    <original filename>,
+  //     mimeType:    <e.g. 'image/jpeg', 'application/pdf'>,
+  //     extension:   <e.g. 'jpg', 'pdf'>,
+  //     sizeBytes:   <pre-base64 size>,
+  //     dataBase64:  <base64 string, no data:... prefix>,
+  //     uploadId:    <UUID — stable across retries for Make idempotency>,
+  //     batchId:     <UUID — shared by all files in a batch>,
+  //     triggeredBy: { id, name, email }
+  //   }
+  //
+  // Expected Make response:
+  //   { success: true }                   → file marked done, blob deleted from IDB
+  //   { success: false, error: "..." }    → file marked failed, retry available
+  //   HTTP 4xx/5xx OR no JSON body        → treated as failure
+  //
+  // Hard caps enforced client-side:
+  //   - 50 files per batch
+  //   - 5 MB raw per file (Make webhook body limit)
+  MAKE_BULK_UPLOAD_WEBHOOK: "https://hook.us1.make.com/vspokcrqp41hqqoi9ywxh5sc6qo26xnb"
 };

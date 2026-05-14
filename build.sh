@@ -85,6 +85,7 @@ cat \
   src/features/style-detail-labels.js \
   src/features/gtm-inject.js \
   src/features/jotform-embed-sow-photos.js \
+  src/features/bulk-upload.js \
   src/features/edit-button-group-header.js \
   src/features/inline-photo-row.js \
   src/features/mdf-summary-panel.js \
