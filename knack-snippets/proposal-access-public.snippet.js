@@ -382,27 +382,106 @@
     return html;
   }
 
-  // Poll for SCW.pdfExport.getCss to be available. The CDN bundle
-  // populates it; we wait up to ~5s, then give up and render unstyled
-  // rather than block forever.
+  // Poll for SCW.pdfExport.getCss to be available — but only briefly.
+  // If the CDN bundle isn't loaded on this scene, fall back immediately
+  // to the inlined PROPOSAL_CSS below so the proposal still renders
+  // styled. The bundle's getCss output and PROPOSAL_CSS are kept in
+  // sync — if you ever change one, mirror the change in the other.
   function waitForPdfCss(done) {
-    var deadline = Date.now() + 5000;
+    var deadline = Date.now() + 1000;
     (function tick() {
       try {
         if (window.SCW && window.SCW.pdfExport &&
             typeof window.SCW.pdfExport.getCss === 'function') {
-          done(window.SCW.pdfExport.getCss() || '');
+          var bundleCss = window.SCW.pdfExport.getCss() || '';
+          done(bundleCss || PROPOSAL_CSS);
           return;
         }
       } catch (e) { /* fall through */ }
       if (Date.now() >= deadline) {
-        console.warn('[proposal-access] SCW.pdfExport.getCss not available — rendering unstyled');
-        done('');
+        done(PROPOSAL_CSS);
         return;
       }
-      setTimeout(tick, 100);
+      setTimeout(tick, 50);
     })();
   }
+
+  // Inlined proposal CSS — mirrors src/features/proposal-pdf-export.js
+  // getPdfCss(). Keeps the snippet fully self-contained so it works on
+  // public scenes regardless of whether the CDN bundle is loaded.
+  var PROPOSAL_CSS = [
+    '@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap");',
+    '*, *::before, *::after { box-sizing: border-box; }',
+    'body { font-family: "Inter", "Helvetica Neue", Helvetica, Arial, sans-serif; color: #333; font-size: 11px; line-height: 1.4; margin: 0; padding: 14px; }',
+    '.view-title { font-size: 20px; font-weight: 800; color: #07467c; margin: 24px 0 8px 0; padding-bottom: 4px; border-bottom: 3px solid #07467c; }',
+    '.view-title:first-child { margin-top: 0; }',
+    '.detail-table { width: 100%; border-collapse: collapse; margin-bottom: 16px; }',
+    '.detail-table tr { border-bottom: 1px solid #f0f0f0; }',
+    '.detail-label { font-weight: 600; color: #07467c; padding: 5px 12px 5px 0; white-space: nowrap; vertical-align: top; width: 180px; font-size: 11px; }',
+    '.detail-value { padding: 5px 0; color: #333; font-size: 11px; }',
+    '.detail-label-none { margin-bottom: 4px; color: #07467c; }',
+    '.detail-label-none h1 { font-size: 22px; font-weight: 700; margin: 0 0 2px 0; color: #07467c; }',
+    '.detail-label-none h2 { font-size: 16px; font-weight: 400; margin: 0 0 2px 0; color: #07467c; }',
+    '.detail-label-none span { color: #07467c; }',
+    '.richtext-content { margin-bottom: 16px; line-height: 1.5; color: #333; font-size: 11px; }',
+    '.richtext-content p { margin: 0 0 6px 0; }',
+    '.richtext-content img { max-width: 100%; height: auto; }',
+    '.richtext-content hr { border: none; border-top: 1px solid #ccc; margin: 12px 0; }',
+    '.l1-section { margin-bottom: 12px; }',
+    '.l1-header { font-size: 18px; font-weight: 200; color: #07467c; padding: 20px 0 6px 0; border-bottom: 3px solid #07467c; margin-bottom: 4px; }',
+    '.l2-header { font-size: 13px; font-weight: 400; color: #07467c; background: aliceblue; padding: 5px 10px; margin-top: 12px; margin-bottom: 0; }',
+    '.product-table { width: 100%; border-collapse: collapse; margin-bottom: 0; }',
+    '.product-table thead th { font-size: 9px; font-weight: 600; color: #999; text-transform: uppercase; letter-spacing: 0.5px; padding: 4px 8px; border-bottom: 1px solid #ddd; }',
+    '.product-table th.col-desc { text-align: left; }',
+    '.product-table .col-qty { text-align: center; width: 50px; }',
+    '.product-table .col-cost { text-align: right; width: 100px; }',
+    '.l3-row td { padding: 6px 8px; border-bottom: 1px solid #f0f0f0; font-weight: 400; color: #07467c; }',
+    '.l3-row td:first-child { font-size: 12px; }',
+    '.l3-row td.col-qty, .l3-row td.col-cost { font-weight: 600; }',
+    '.l3-row td.mounting { padding-left: 40px; font-size: 11px; }',
+    '.connected-devices { display: inline; margin-left: 4px; color: orange; font-weight: 700; font-size: 10px; }',
+    '.l4-row td { padding: 3px 8px 3px 40px; color: #555; font-size: 10px; font-weight: 300; border-bottom: 1px solid #f8f8f8; }',
+    '.l4-row td p { margin: 0; }',
+    '.l4-row td.col-qty, .l4-row td.col-cost { padding-left: 8px; font-weight: 600; color: #07467c; }',
+    '.l2-footer td { font-weight: 800 !important; color: #07467c; background: aliceblue; padding: 6px 8px; text-align: center; border-bottom: none; }',
+    '.l2-footer td:first-child { text-align: right; }',
+    '.l2-footer td:last-child { text-align: right; }',
+    '.l1-footer { margin-top: 14px; padding-top: 8px; border-top: 3px solid #07467c; }',
+    '.l1-footer-title { text-align: right; font-weight: 700; color: #07467c; font-size: 13px; margin-bottom: 4px; }',
+    '.l1-footer-line { display: flex; justify-content: flex-end; gap: 20px; padding: 2px 0; }',
+    '.l1-footer-label { font-weight: 600; opacity: 0.85; min-width: 80px; text-align: right; }',
+    '.l1-footer-value { font-weight: 700; min-width: 120px; text-align: right; }',
+    '.l1-line--sub .l1-footer-label, .l1-line--sub .l1-footer-value { color: #07467c; }',
+    '.l1-line--disc .l1-footer-label, .l1-line--disc .l1-footer-value { color: orange; }',
+    '.l1-line--final .l1-footer-label, .l1-line--final .l1-footer-value { color: #07467c; font-weight: 900; }',
+    '.l1-line--final .l1-footer-value { font-size: 15px; }',
+    '.l1-line--sub, .l1-line--disc { padding-top: 0; padding-bottom: 0; }',
+    '.l1-line--sub + .l1-footer-line, .l1-line--disc + .l1-footer-line { padding-top: 0; }',
+    '.project-totals { margin-top: 30px; page-break-inside: avoid; }',
+    '.pt-title { font-size: 22px; font-weight: 600; color: #07467c; padding-bottom: 8px; border-bottom: 3px solid #07467c; margin-bottom: 6px; }',
+    '.pt-line { display: flex; justify-content: flex-end; gap: 24px; padding: 3px 0; }',
+    '.pt-label { font-weight: 600; min-width: 160px; text-align: right; }',
+    '.pt-value { font-weight: 700; min-width: 130px; text-align: right; }',
+    '.pt-line--sub .pt-label, .pt-line--sub .pt-value { color: #07467c; }',
+    '.pt-line--disc .pt-label, .pt-line--disc .pt-value { color: orange; }',
+    '.pt-line--final .pt-label, .pt-line--final .pt-value { color: #07467c; font-weight: 900; }',
+    '.pt-line--final:last-child .pt-label { font-size: 17px; }',
+    '.pt-line--final:last-child .pt-value { font-size: 19px; }',
+    '.pt-line--equipment-total, .pt-line--installation-total { padding-bottom: 14px; }',
+    '.pt-line--equipment-subtotal, .pt-line--line-item-discounts { padding-top: 0; padding-bottom: 0; }',
+    '.pt-line--equipment-subtotal + .pt-line, .pt-line--line-item-discounts + .pt-line { padding-top: 0; }',
+    '.pt-line--proposal-discount { padding-bottom: 0; }',
+    '.pt-line--proposal-discount + .pt-line { padding-top: 0; }',
+    '.recurring-section { margin-top: 40px; }',
+    '.recurring-header { font-size: 20px; font-weight: 800; color: #07467c; margin-bottom: 8px; padding-bottom: 4px; border-bottom: 3px solid #07467c; }',
+    '.report-table-wrap { margin-top: 30px; }',
+    '.report-table-wrap table { width: 100%; border-collapse: collapse; }',
+    '.report-table-wrap thead th { font-size: 10px; font-weight: 600; color: #07467c; text-transform: uppercase; letter-spacing: 0.5px; padding: 6px 8px; border-bottom: 2px solid #07467c; text-align: left; }',
+    '.report-table-wrap tbody td { padding: 5px 8px; font-size: 11px; color: #333; border-bottom: 1px solid #f0f0f0; }',
+    '.report-table-wrap .kn-table_summary td { font-weight: 700; color: #07467c; border-top: 2px solid #07467c; padding-top: 8px; }',
+    '.append-image-title { font-size: 18px; font-weight: 800; color: #07467c; margin: 24px 0 12px 0; padding-bottom: 6px; border-bottom: 3px solid #07467c; text-align: left; }',
+    '.append-image { display: block; width: 100%; max-width: 100%; max-height: 9.5in; height: auto; margin: 12px auto; object-fit: contain; }'
+  ].join('\n');
 
   function buildFullHtml(fragment, css) {
     // On-screen readability overrides — same set the internal renderer
