@@ -44,7 +44,7 @@
       // accordion card. Adding another bordered/filled rectangle here
       // would stack a "card within a card" against the summary panel
       // and the data grid below.
-      '.kn-records-nav[' + BAR_ATTR + '] {',
+      '.kn-view[' + BAR_ATTR + '] .kn-records-nav {',
       '  display: flex !important;',
       '  flex-wrap: wrap;',
       '  align-items: center;',
@@ -58,30 +58,30 @@
       '}',
       // Strip stray <br>s and whitespace-only text nodes Knack/KTL
       // inject between strips — flex gap controls spacing now.
-      '.kn-records-nav[' + BAR_ATTR + '] > br { display: none; }',
+      '.kn-view[' + BAR_ATTR + '] .kn-records-nav > br { display: none; }',
 
       // ── Visual order via flex `order` ──
       // DOM-level reorder loses races against features that re-mount
       // their controls at nav.firstChild. CSS `order` enforces the
       // visual layout purely declaratively, so DOM insertion order
-      // doesn't matter. Anything not listed sits at order:0 and
-      // renders before order:1+ children.
-      '.kn-records-nav[' + BAR_ATTR + '] .scw-ws-sort               { order: ' + SLOTS.sort           + '; }',
-      '.kn-records-nav[' + BAR_ATTR + '] .scw-ws-bulk-toggle        { order: ' + SLOTS.mode           + '; }',
-      '.kn-records-nav[' + BAR_ATTR + '] .scw-conn-filter-strip     { order: ' + SLOTS.filter         + '; }',
-      '.kn-records-nav[' + BAR_ATTR + '] .scw-tb-spring             { order: ' + SLOTS.spring         + '; }',
-      '.kn-records-nav[' + BAR_ATTR + '] .kn-filters-nav            { order: ' + SLOTS.knFilters      + '; }',
-      '.kn-records-nav[' + BAR_ATTR + '] .kn-entries-summary        { order: ' + SLOTS.entriesSummary + '; }',
-      '.kn-records-nav[' + BAR_ATTR + '] .kn-pagination             { order: ' + SLOTS.pagination     + '; }',
-      '.kn-records-nav[' + BAR_ATTR + '] [id^="bulkOpsControlsDiv-"] { order: ' + SLOTS.bulkOps        + '; }',
-      '.kn-records-nav[' + BAR_ATTR + '] .scw-acc-actions           { order: ' + SLOTS.actions        + '; }',
-      '.kn-records-nav[' + BAR_ATTR + '] .ktlAddonsDiv              { order: ' + SLOTS.addonsDiv      + '; }',
+      // doesn't matter. !important keeps Bulma/Knack inline styles
+      // from sneaking float or order:0 overrides through.
+      '.kn-view[' + BAR_ATTR + '] .kn-records-nav .scw-ws-sort               { order: ' + SLOTS.sort           + ' !important; }',
+      '.kn-view[' + BAR_ATTR + '] .kn-records-nav .scw-ws-bulk-toggle        { order: ' + SLOTS.mode           + ' !important; }',
+      '.kn-view[' + BAR_ATTR + '] .kn-records-nav .scw-conn-filter-strip     { order: ' + SLOTS.filter         + ' !important; }',
+      '.kn-view[' + BAR_ATTR + '] .kn-records-nav .scw-tb-spring             { order: ' + SLOTS.spring         + ' !important; }',
+      '.kn-view[' + BAR_ATTR + '] .kn-records-nav .kn-filters-nav            { order: ' + SLOTS.knFilters      + ' !important; }',
+      '.kn-view[' + BAR_ATTR + '] .kn-records-nav .kn-entries-summary        { order: ' + SLOTS.entriesSummary + ' !important; }',
+      '.kn-view[' + BAR_ATTR + '] .kn-records-nav .kn-pagination             { order: ' + SLOTS.pagination     + ' !important; }',
+      '.kn-view[' + BAR_ATTR + '] .kn-records-nav [id^="bulkOpsControlsDiv-"] { order: ' + SLOTS.bulkOps        + ' !important; }',
+      '.kn-view[' + BAR_ATTR + '] .kn-records-nav .scw-acc-actions           { order: ' + SLOTS.actions        + ' !important; }',
+      '.kn-view[' + BAR_ATTR + '] .kn-records-nav .ktlAddonsDiv              { order: ' + SLOTS.addonsDiv      + ' !important; }',
 
       // Spring takes remaining width — push trailing items right.
       '.scw-tb-spring { flex: 1 1 auto; min-width: 0; }',
 
       // ── Mode segmented control (Collapse/Summary) ──
-      '.kn-records-nav[' + BAR_ATTR + '] .scw-ws-bulk-toggle {',
+      '.kn-view[' + BAR_ATTR + '] .kn-records-nav .scw-ws-bulk-toggle {',
       '  display: inline-flex !important;',
       '  gap: 0 !important;',
       '  margin: 0 !important;',
@@ -90,7 +90,7 @@
       '  overflow: hidden;',
       '  background: var(--scw-surface-base);',
       '}',
-      '.kn-records-nav[' + BAR_ATTR + '] .scw-ws-bulk-toggle button.kn-button {',
+      '.kn-view[' + BAR_ATTR + '] .kn-records-nav .scw-ws-bulk-toggle button.kn-button {',
       '  margin: 0 !important;',
       '  border: 0 !important;',
       '  border-right: 1px solid var(--scw-border-subtle) !important;',
@@ -107,10 +107,10 @@
       '  height: auto !important;',
       '  transition: background 100ms ease, color 100ms ease;',
       '}',
-      '.kn-records-nav[' + BAR_ATTR + '] .scw-ws-bulk-toggle button.kn-button:last-child {',
+      '.kn-view[' + BAR_ATTR + '] .kn-records-nav .scw-ws-bulk-toggle button.kn-button:last-child {',
       '  border-right: 0 !important;',
       '}',
-      '.kn-records-nav[' + BAR_ATTR + '] .scw-ws-bulk-toggle button.kn-button:hover {',
+      '.kn-view[' + BAR_ATTR + '] .kn-records-nav .scw-ws-bulk-toggle button.kn-button:hover {',
       '  background: var(--scw-surface-muted) !important;',
       '  color: var(--scw-text-default) !important;',
       '}',
@@ -118,7 +118,7 @@
       // ── SOW filter pills (inline, no card) ──
       // sow-filter-pills.js paints its own surface-subtle card; suppress
       // that within the toolbar since the shell already provides surface.
-      '.kn-records-nav[' + BAR_ATTR + '] .scw-conn-filter-strip {',
+      '.kn-view[' + BAR_ATTR + '] .kn-records-nav .scw-conn-filter-strip {',
       '  margin: 0 !important;',
       '  padding: 0 !important;',
       '  background: transparent !important;',
@@ -127,10 +127,10 @@
       '}',
 
       // ── Knack native filter / pagination / count ──
-      '.kn-records-nav[' + BAR_ATTR + '] .kn-pagination,',
-      '.kn-records-nav[' + BAR_ATTR + '] .kn-records-nav-summary,',
-      '.kn-records-nav[' + BAR_ATTR + '] .kn-entries-summary,',
-      '.kn-records-nav[' + BAR_ATTR + '] .kn-filters-nav {',
+      '.kn-view[' + BAR_ATTR + '] .kn-records-nav .kn-pagination,',
+      '.kn-view[' + BAR_ATTR + '] .kn-records-nav .kn-records-nav-summary,',
+      '.kn-view[' + BAR_ATTR + '] .kn-records-nav .kn-entries-summary,',
+      '.kn-view[' + BAR_ATTR + '] .kn-records-nav .kn-filters-nav {',
       '  margin: 0 !important;',
       '  padding: 0 !important;',
       '  display: inline-flex !important;',
@@ -141,8 +141,8 @@
       // toolbar's segmented-control visual language — same border,
       // surface, hover, and typography as .scw-ws-sort__button so it
       // doesn't read as a stray Knack-blue gradient pill.
-      '.kn-records-nav[' + BAR_ATTR + '] .kn-filters-nav .kn-add-filter,',
-      '.kn-records-nav[' + BAR_ATTR + '] .kn-filters-nav .kn-button {',
+      '.kn-view[' + BAR_ATTR + '] .kn-records-nav .kn-filters-nav .kn-add-filter,',
+      '.kn-view[' + BAR_ATTR + '] .kn-records-nav .kn-filters-nav .kn-button {',
       '  margin: 0 !important;',
       '  padding: 5px 11px !important;',
       '  background: var(--scw-surface-base) !important;',
@@ -158,21 +158,21 @@
       '  min-height: 0 !important;',
       '  transition: background 100ms ease, border-color 100ms ease;',
       '}',
-      '.kn-records-nav[' + BAR_ATTR + '] .kn-filters-nav .kn-add-filter:hover,',
-      '.kn-records-nav[' + BAR_ATTR + '] .kn-filters-nav .kn-button:hover {',
+      '.kn-view[' + BAR_ATTR + '] .kn-records-nav .kn-filters-nav .kn-add-filter:hover,',
+      '.kn-view[' + BAR_ATTR + '] .kn-records-nav .kn-filters-nav .kn-button:hover {',
       '  background: var(--scw-surface-muted) !important;',
       '  border-color: var(--scw-border-strong) !important;',
       '  color: var(--scw-text-default) !important;',
       '}',
-      '.kn-records-nav[' + BAR_ATTR + '] .kn-filters-nav .icon {',
+      '.kn-view[' + BAR_ATTR + '] .kn-records-nav .kn-filters-nav .icon {',
       '  display: inline-flex;',
       '  align-items: center;',
       '  font-size: 11px;',
       '  margin-right: 4px;',
       '  color: var(--scw-text-caption);',
       '}',
-      '.kn-records-nav[' + BAR_ATTR + '] .kn-records-nav-summary,',
-      '.kn-records-nav[' + BAR_ATTR + '] .kn-entries-summary {',
+      '.kn-view[' + BAR_ATTR + '] .kn-records-nav .kn-records-nav-summary,',
+      '.kn-view[' + BAR_ATTR + '] .kn-records-nav .kn-entries-summary {',
       '  color: var(--scw-text-muted);',
       '  font-size: 11px;',
       '  font-weight: 600;',
@@ -182,7 +182,7 @@
       // .kn-entries-summary contains two inline <span class="light">
       // children ("Showing" / "of") Knack styles via a separate stylesheet.
       // Strip the inline opacity so the count reads as one cohesive label.
-      '.kn-records-nav[' + BAR_ATTR + '] .kn-entries-summary .light {',
+      '.kn-view[' + BAR_ATTR + '] .kn-records-nav .kn-entries-summary .light {',
       '  color: inherit !important;',
       '  opacity: 1 !important;',
       '}',
@@ -190,7 +190,7 @@
       // ── Bulk-ops cluster ──
       // Generic id-prefix selector — covers every view's KTL bulk-ops
       // div without explicit enumeration.
-      '.kn-records-nav[' + BAR_ATTR + '] [id^="bulkOpsControlsDiv-"] {',
+      '.kn-view[' + BAR_ATTR + '] .kn-records-nav [id^="bulkOpsControlsDiv-"] {',
       '  margin: 0 !important;',
       '  padding: 0 !important;',
       '  display: inline-flex !important;',
@@ -201,7 +201,7 @@
       // Hide the bulk-ops cluster outright when nothing is selected — the
       // KTL buttons are all :disabled in that state, so the row reads as
       // dead space.
-      '.kn-records-nav[' + BAR_ATTR + '] [id^="bulkOpsControlsDiv-"].scw-tb-bulk-empty {',
+      '.kn-view[' + BAR_ATTR + '] .kn-records-nav [id^="bulkOpsControlsDiv-"].scw-tb-bulk-empty {',
       '  display: none !important;',
       '}',
 
@@ -209,14 +209,14 @@
       // .scw-acc-actions normally lives in the parent KTL accordion
       // body; this coordinator hoists it into the toolbar so the
       // primary action sits in its conventional top-right slot.
-      '.kn-records-nav[' + BAR_ATTR + '] .scw-acc-actions {',
+      '.kn-view[' + BAR_ATTR + '] .kn-records-nav .scw-acc-actions {',
       '  display: inline-flex !important;',
       '  align-items: center;',
       '  gap: 6px;',
       '  margin: 0 !important;',
       '  padding: 0 !important;',
       '}',
-      '.kn-records-nav[' + BAR_ATTR + '] .scw-acc-action-btn {',
+      '.kn-view[' + BAR_ATTR + '] .kn-records-nav .scw-acc-action-btn {',
       '  display: inline-flex !important;',
       '  align-items: center;',
       '  gap: 6px;',
@@ -234,12 +234,12 @@
       '  box-shadow: none !important;',
       '  transition: background 100ms ease, border-color 100ms ease;',
       '}',
-      '.kn-records-nav[' + BAR_ATTR + '] .scw-acc-action-btn:hover {',
+      '.kn-view[' + BAR_ATTR + '] .kn-records-nav .scw-acc-action-btn:hover {',
       '  background: var(--scw-accent-strong) !important;',
       '  border-color: var(--scw-accent-deep) !important;',
       '  color: var(--scw-surface-base) !important;',
       '}',
-      '.kn-records-nav[' + BAR_ATTR + '] .scw-acc-action-btn svg {',
+      '.kn-view[' + BAR_ATTR + '] .kn-records-nav .scw-acc-action-btn svg {',
       '  width: 12px; height: 12px;',
       '  stroke: currentColor;',
       '}',

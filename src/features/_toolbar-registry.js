@@ -88,8 +88,12 @@
     addonsDiv:     10
   };
 
-  // Set on .kn-records-nav once we manage it — the toolbar CSS uses
-  // `.kn-records-nav[data-scw-toolbar]` for all scoped rules.
+  // Set on the OUTER .kn-view element (NOT the inner nav). Knack
+  // preserves the view element across re-renders (Backbone replaces
+  // innerHTML, not the wrapper) so an attribute set here survives a
+  // model.fetch() reload — whereas an attribute set on the nav is
+  // wiped together with the rest of the inner DOM. All toolbar CSS
+  // uses `.kn-view[data-scw-toolbar] .kn-records-nav …` as the scope.
   var BAR_ATTR = 'data-scw-toolbar';
 
   var entries = [];
@@ -137,9 +141,10 @@
   function mountAll(viewId) {
     var viewEl = liveView(viewId);
     if (!viewEl) return;
+    // Mark the viewEl, not the nav — nav gets wiped on model.fetch().
+    if (!viewEl.hasAttribute(BAR_ATTR)) viewEl.setAttribute(BAR_ATTR, '1');
     var nav = viewEl.querySelector('.kn-records-nav');
     if (!nav) return;
-    if (!nav.hasAttribute(BAR_ATTR)) nav.setAttribute(BAR_ATTR, '1');
     ensureSpring(nav);
 
     for (var i = 0; i < entries.length; i++) {
@@ -167,6 +172,11 @@
     var viewEl = liveView(viewId);
     if (!viewEl) return;
     if (!viewMatchesAnyEntry(viewEl)) return;
+
+    // Tag viewEl up front so the toolbar CSS engages even before the
+    // first observer tick — Knack preserves viewEl across re-renders,
+    // so this attribute survives model.fetch() / view rebuilds.
+    if (!viewEl.hasAttribute(BAR_ATTR)) viewEl.setAttribute(BAR_ATTR, '1');
 
     mountAll(viewId);
 
