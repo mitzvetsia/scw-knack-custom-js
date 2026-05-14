@@ -50,9 +50,10 @@
   // self-contained — you can run this on more than one public scene
   // (e.g. legacy vs. v2 layouts) without code changes.
   var CONFIG = {
-    // The hash-route prefix this feature handles. Must match the
-    // route the sales-side generator builds into its URLs.
-    HASH_ROUTE: 'proposal-access',
+    // The hash-route prefix this feature handles. Must match scene_1321's
+    // slug in Knack Builder AND the route the sales-side generator
+    // builds into its URLs.
+    HASH_ROUTE: 'published-public-proposal',
 
     // Fields on the proposal record.
     TOKEN_FIELD:       'field_2904',     // Proposal Access Token

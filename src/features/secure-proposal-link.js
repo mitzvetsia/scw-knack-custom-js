@@ -42,9 +42,10 @@
   // Add a new SCENES entry for each Sales-side proposal page that
   // should offer the secure-link generator.
   var CONFIG = {
-    // The hash route on the public scene — must match the route the
-    // public access feature reads from. Keep both in sync.
-    PUBLIC_HASH_ROUTE: 'proposal-access',
+    // The hash route on the public scene — must match the scene slug
+    // on the public access page in Knack Builder, AND must match the
+    // HASH_ROUTE in the public-side snippet. Keep all three in sync.
+    PUBLIC_HASH_ROUTE: 'published-public-proposal',
 
     // Fields on the proposal/published-proposal object. Only TOKEN_FIELD
     // is required today; the others are scaffolding for upcoming work
