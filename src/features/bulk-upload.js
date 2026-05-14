@@ -93,12 +93,15 @@
         refreshRecordInViews: [],
         refreshViews:         [],
         reloadOnClose:        false,
-        // Inline button on the SOW worksheet's toolbar (view_3586),
-        // slotted before the "Add to Scope of Work" CTA. The submitted
-        // payload uses linkField:'sowID' so the receiving Make scenario
-        // knows the record context is the SOW, not the survey.
-        injectIntoView:       'view_3586',
-        injectBeforeText:     'Add to Scope of Work'
+        // Inline buttons on SOW-context worksheet toolbars. Each entry
+        // slots an Add Photos button before the named existing CTA on
+        // that view. The submitted payload always uses linkField:'sowID'
+        // so the receiving Make scenario knows the record context is
+        // the SOW, regardless of which toolbar triggered it.
+        injectTargets: [
+          { viewId: 'view_3586', beforeText: 'Add to Scope of Work' },
+          { viewId: 'view_3610', beforeText: 'Add to Scope'         }
+        ]
       },
       {
         menuViewId:           'view_3532',
@@ -108,11 +111,9 @@
         refreshRecordInViews: ['view_3505'],
         refreshViews:         [],
         reloadOnClose:        false,
-        // Also inject a standalone button at the top of another view's
-        // toolbar. Useful when you want the bulk-upload entry point to
-        // be next to other grid actions, not buried in a side menu.
-        injectIntoView:       'view_3505',
-        injectBeforeText:     'Add Survey/Bid Item'   // existing button to position before
+        injectTargets: [
+          { viewId: 'view_3505', beforeText: 'Add Survey/Bid Item' }
+        ]
       },
       {
         // Survey-form page (#all-quotes/survey-form/<recordId>/…) uses
@@ -1073,44 +1074,50 @@
     }, 'scwBulkUpload.' + viewCfg.menuViewId);
 
     // 2) Inline "Add Photos" button injected next to a reference button
-    //    in another view's toolbar (e.g. before "Add Survey/Bid Item"
-    //    in view_3505). Registered with SCW.toolbar so it gets mounted
-    //    on initial paint AND re-injected whenever accordion-menu-inject
-    //    rebuilds .scw-acc-actions — no separate MutationObserver
-    //    plumbing required.
-    if (!viewCfg.injectIntoView) return;
+    //    in one or more other views' toolbars (e.g. before "Add Survey/
+    //    Bid Item" in view_3505). One toolbar registration per target.
+    //    Registered with SCW.toolbar so it gets mounted on initial paint
+    //    AND re-injected whenever accordion-menu-inject rebuilds
+    //    .scw-acc-actions — no separate MutationObserver plumbing.
+    var targets = viewCfg.injectTargets;
+    if (!targets || !targets.length) return;
 
     injectInlineStyles();
-    SCW.toolbar.register({
-      id:    'add-photos-' + viewCfg.injectIntoView,
-      slot:  SCW.toolbar.SLOTS.actions,
-      viewMatch: function (viewEl) { return viewEl.id === viewCfg.injectIntoView; },
-      mount: function (viewEl, nav) {
-        // Reference button (Add Survey/Bid Item) lives inside the
-        // hoisted .scw-acc-actions in our nav. Restrict the lookup to
-        // that container so we never match the source menu's hidden
-        // <a class="kn-link"> with the same text.
-        var accActions = nav.querySelector('.scw-acc-actions');
-        if (!accActions) return;     // tb-hoist hasn't moved it yet; retry next tick
+    targets.forEach(function (target) {
+      SCW.toolbar.register({
+        id:    'add-photos-' + target.viewId,
+        slot:  SCW.toolbar.SLOTS.actions,
+        viewMatch: function (viewEl) { return viewEl.id === target.viewId; },
+        mount: function (viewEl, nav) {
+          // Reference button lives inside the hoisted .scw-acc-actions
+          // in this view's nav. Restrict the lookup to that container
+          // so we never match the source menu's hidden <a class="kn-link">
+          // with the same text.
+          var accActions = nav.querySelector('.scw-acc-actions');
+          if (!accActions) return;   // tb-hoist hasn't moved it yet; retry next tick
 
-        // Already inside the right container? Nothing to do.
-        if (accActions.querySelector('button[data-scw-bulk-inline-bound="1"]')) {
-          return;
+          // Already inside the right container? Nothing to do.
+          if (accActions.querySelector('button[data-scw-bulk-inline-bound="1"]')) {
+            return;
+          }
+
+          var ref = findButtonByText(accActions, target.beforeText);
+          if (!ref) return;          // accordion-menu-inject hasn't built it yet
+
+          // Clean up any stranded button left over in THIS view's scope
+          // from a previous render (e.g. one parked in nav.firstChild
+          // before .scw-acc-actions was hoisted). Scoped to viewEl so
+          // we don't clobber a sibling view's button.
+          var stale = viewEl.querySelectorAll('button[data-scw-bulk-inline-bound="1"]');
+          for (var i = 0; i < stale.length; i++) {
+            if (stale[i].parentNode && !accActions.contains(stale[i])) {
+              stale[i].parentNode.removeChild(stale[i]);
+            }
+          }
+
+          ref.parentNode.insertBefore(buildAddPhotosBtn(viewCfg), ref);
         }
-
-        var ref = findButtonByText(accActions, viewCfg.injectBeforeText);
-        if (!ref) return;            // accordion-menu-inject hasn't built it yet
-
-        // Clean up any stranded button left over in another part of the
-        // scene from a previous render before we insert the fresh one.
-        var scene = viewEl.closest('.kn-scene') || viewEl;
-        var stale = scene.querySelectorAll('button[data-scw-bulk-inline-bound="1"]');
-        for (var i = 0; i < stale.length; i++) {
-          if (stale[i].parentNode) stale[i].parentNode.removeChild(stale[i]);
-        }
-
-        ref.parentNode.insertBefore(buildAddPhotosBtn(viewCfg), ref);
-      }
+      });
     });
   });
 
