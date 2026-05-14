@@ -389,52 +389,17 @@
   function closeModal() {
     var el = document.getElementById(MODAL_ID + '-backdrop');
     if (el) el.remove();
-    // Refresh hooks: if anything uploaded successfully this session,
-    // refresh either the single matching row in configured grids,
-    // the whole view, and/or reload the page — depending on what
-    // the view's CONFIG specifies.
+    // Auto-refresh on close intentionally disabled — was visibly
+    // refreshing rows one-at-a-time after the modal closed, which the
+    // user found disruptive. Manual refresh paths still exist:
+    //   - reloadOnClose: true   on a CONFIG.VIEWS entry to do a full
+    //                           window.location.reload() instead
+    //   - SCW.bulkUpload.refreshSingleRecord(viewId, recordId) from
+    //                           the console to trigger refresh ad-hoc
     if (_state && _state.successCount > 0) {
       var viewCfg = _state.viewCfg || {};
-      var recordId = _state.recordId;
-      if (window.SCW && SCW.DEBUG) {
-        console.log('[bulk-upload] closeModal — refreshing', {
-          successCount:          _state.successCount,
-          reloadOnClose:         !!viewCfg.reloadOnClose,
-          refreshRecordInViews:  viewCfg.refreshRecordInViews || [],
-          refreshViews:          viewCfg.refreshViews || [],
-          uploadRecordId:        recordId,
-          dynamicRecordIds:      Object.keys(_state.refreshRecordIds || {}),
-          dynamicViewIds:        Object.keys(_state.refreshViewIds   || {})
-        });
-      }
       if (viewCfg.reloadOnClose) {
         setTimeout(function () { window.location.reload(); }, 50);
-      } else {
-        // 1. Single-record refresh (precise — touches just one row).
-        //    Union the upload's recordId with any harvested from the
-        //    webhook responses (e.g. line item ids touched by Make).
-        var recordIdsToRefresh = { };
-        if (recordId) recordIdsToRefresh[recordId] = true;
-        Object.keys(_state.refreshRecordIds || {}).forEach(function (id) {
-          recordIdsToRefresh[id] = true;
-        });
-        (viewCfg.refreshRecordInViews || []).forEach(function (viewId) {
-          Object.keys(recordIdsToRefresh).forEach(function (rid) {
-            refreshSingleRecord(viewId, rid);
-          });
-        });
-        // 2. Full-view refresh (heavier — re-fetches every record)
-        var ids = {};
-        (viewCfg.refreshViews || []).forEach(function (v) { ids[v] = true; });
-        Object.keys(_state.refreshViewIds || {}).forEach(function (v) { ids[v] = true; });
-        Object.keys(ids).forEach(function (viewId) {
-          try {
-            var view = window.Knack && Knack.views && Knack.views[viewId];
-            if (view && view.model && typeof view.model.fetch === 'function') {
-              view.model.fetch();
-            }
-          } catch (e) { /* swallow */ }
-        });
       }
     }
     _state = null;
