@@ -391,6 +391,17 @@
     if (_state && _state.successCount > 0) {
       var viewCfg = _state.viewCfg || {};
       var recordId = _state.recordId;
+      if (window.SCW && SCW.DEBUG) {
+        console.log('[bulk-upload] closeModal — refreshing', {
+          successCount:          _state.successCount,
+          reloadOnClose:         !!viewCfg.reloadOnClose,
+          refreshRecordInViews:  viewCfg.refreshRecordInViews || [],
+          refreshViews:          viewCfg.refreshViews || [],
+          uploadRecordId:        recordId,
+          dynamicRecordIds:      Object.keys(_state.refreshRecordIds || {}),
+          dynamicViewIds:        Object.keys(_state.refreshViewIds   || {})
+        });
+      }
       if (viewCfg.reloadOnClose) {
         setTimeout(function () { window.location.reload(); }, 50);
       } else {
@@ -424,42 +435,79 @@
     _state = null;
   }
 
-  // Fetch a single record from Knack's view-based REST endpoint and
-  // update the matching Backbone model in the view's collection. Knack
-  // table views listen to model 'change' events and re-render the
-  // affected row inline — no full-view re-fetch, no surrounding rows
-  // disturbed. Best-effort: if anything fails we swallow it and fall
-  // through, since the data inconsistency on screen is recoverable
-  // by the user reloading manually.
+  // Refresh a single record's row in a configured grid view.
+  //
+  // Multi-step strategy because Knack's table-view rendering doesn't
+  // always react to Backbone change events the same way across view
+  // types — and because the record may not yet be in the current
+  // pagination page of the collection.
+  //
+  //   1. If the record exists in view.model.data → record.fetch()
+  //      (Backbone re-fetches, fires change events, view should
+  //      re-render the row in place).
+  //   2. If the record isn't in the local collection (because it's on
+  //      a different page) OR if step 1 silently fails → fall back to
+  //      view.model.fetch() (full re-fetch of the visible page).
+  //   3. Either way, if the view exposes a render() method we call it
+  //      defensively after a short delay so the DOM definitely picks
+  //      up the change — Knack table views with custom transforms
+  //      (the SCW worksheet card pattern especially) don't always
+  //      re-render on model change alone.
+  //
+  // All steps are best-effort and silent on failure — the user can
+  // reload manually if needed.
   function refreshSingleRecord(viewId, recordId) {
-    if (!viewId || !recordId || !window.Knack || !Knack.views) return;
+    if (!viewId || !recordId || !window.Knack || !Knack.views) {
+      if (window.SCW && SCW.DEBUG) console.warn('[bulk-upload] refreshSingleRecord: missing prereqs', { viewId: viewId, recordId: recordId, hasKnack: !!window.Knack });
+      return;
+    }
     var view = Knack.views[viewId];
-    if (!view || !view.model || !view.model.data) return;
-    var url = Knack.api_url +
-      '/v1/pages/' + Knack.router.current_scene_key +
-      '/views/' + viewId +
-      '/records/' + recordId;
-    var headers = {
-      'X-Knack-Application-Id': Knack.application_id,
-      'x-knack-rest-api-key':   'knack',
-      'Authorization':          Knack.getUserToken()
-    };
-    fetch(url, { method: 'GET', headers: headers })
-      .then(function (resp) { return resp.ok ? resp.json() : null; })
-      .then(function (data) {
-        if (!data) return;
-        var coll = view.model.data;
-        var record = coll && typeof coll.get === 'function'
-          ? coll.get(recordId)
-          : (coll && coll.findWhere ? coll.findWhere({ id: recordId }) : null);
-        if (record && typeof record.set === 'function') {
-          // Setting attributes fires Backbone 'change' events that the
-          // Knack view listens to and uses to re-render the matching
-          // <tr> in place.
-          record.set(data);
+    if (!view) {
+      if (window.SCW && SCW.DEBUG) console.warn('[bulk-upload] refreshSingleRecord: Knack.views[' + viewId + '] not found');
+      return;
+    }
+    if (!view.model || !view.model.data) {
+      if (window.SCW && SCW.DEBUG) console.warn('[bulk-upload] refreshSingleRecord: view has no model.data', viewId);
+      // Last resort: try a generic re-render
+      try { if (typeof view.render === 'function') view.render(); } catch (e) {}
+      return;
+    }
+
+    var coll = view.model.data;
+    var record = (coll && typeof coll.get === 'function') ? coll.get(recordId) : null;
+    if (!record && coll && typeof coll.findWhere === 'function') {
+      record = coll.findWhere({ id: recordId });
+    }
+
+    function defensiveRender(reason) {
+      if (window.SCW && SCW.DEBUG) console.log('[bulk-upload] defensiveRender (' + reason + ') on', viewId);
+      setTimeout(function () {
+        try {
+          if (typeof view.render === 'function') view.render();
+        } catch (e) {}
+      }, 200);
+    }
+
+    if (record && typeof record.fetch === 'function') {
+      record.fetch({
+        success: function () {
+          if (window.SCW && SCW.DEBUG) console.log('[bulk-upload] record.fetch() OK for', recordId, 'in', viewId);
+          defensiveRender('after record.fetch success');
+        },
+        error: function (m, resp) {
+          if (window.SCW && SCW.DEBUG) console.warn('[bulk-upload] record.fetch() failed; falling back to view.model.fetch()', resp && resp.status, resp && resp.responseText);
+          if (typeof view.model.fetch === 'function') view.model.fetch();
         }
-      })
-      .catch(function () { /* best-effort, no surfacing */ });
+      });
+      return;
+    }
+
+    if (window.SCW && SCW.DEBUG) console.warn('[bulk-upload] record', recordId, 'not in view', viewId, '— falling back to full view.model.fetch()');
+    if (typeof view.model.fetch === 'function') {
+      view.model.fetch();
+    } else {
+      defensiveRender('no fetch available');
+    }
   }
 
   function confirmClose() {
@@ -954,10 +1002,15 @@
   });
 
   // Console debug helpers
+  //   SCW.DEBUG = true                          → enable verbose refresh logging
+  //   SCW.bulkUpload.refreshSingleRecord(v,r)   → manually trigger a row refresh
+  //   SCW.bulkUpload.dbGetAll()                 → inspect persisted queue
+  //   SCW.bulkUpload.dbClear()                  → wipe persisted queue
   window.SCW.bulkUpload = {
-    open:     openModal,
-    config:   CONFIG,
-    dbGetAll: dbGetAll,
-    dbClear:  dbClear
+    open:                openModal,
+    config:              CONFIG,
+    dbGetAll:            dbGetAll,
+    dbClear:             dbClear,
+    refreshSingleRecord: refreshSingleRecord
   };
 })();
