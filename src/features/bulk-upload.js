@@ -34,13 +34,12 @@
 
   // ── CONFIG ────────────────────────────────────────────────────────────
   var CONFIG = {
-    MAX_FILES:      50,
     MAX_FILE_BYTES: 5 * 1024 * 1024,    // 5 MB raw — Make webhook body limit
 
     // Throttle between consecutive successful uploads (ms). Make limits
     // operations per minute at the org level — each upload triggers a
-    // scenario that does multiple Knack API calls, so 50 files back-to-
-    // back can blow through small plan quotas. 1500ms = ~40 files/min.
+    // scenario that does multiple Knack API calls, so back-to-back
+    // uploads can blow through small plan quotas. 1500ms = ~40 files/min.
     UPLOAD_DELAY_MS: 1500,
 
     // Per-file retry on rate-limit / server-error responses. Each retry
@@ -388,8 +387,8 @@
           '<div class="scw-bu-banner-slot"></div>' +
           '<div class="scw-bu-drop" tabindex="0">' +
             '<div><strong>Drop files here</strong> or click to choose</div>' +
-            '<span class="scw-bu-drop-hint">Up to ' + CONFIG.MAX_FILES +
-              ' files · any type · max ' + fmtBytes(CONFIG.MAX_FILE_BYTES) + ' per file</span>' +
+            '<span class="scw-bu-drop-hint">Any type · max ' +
+              fmtBytes(CONFIG.MAX_FILE_BYTES) + ' per file</span>' +
             '<input type="file" multiple style="display:none">' +
           '</div>' +
           '<div class="scw-bu-list"></div>' +
@@ -613,17 +612,6 @@
 
   function addFiles(files) {
     if (!_state || !files.length) return;
-    var existingCount = _state.rows.filter(function (r) { return r.status !== 'done'; }).length;
-    var slotsLeft = CONFIG.MAX_FILES - existingCount;
-    if (slotsLeft <= 0) {
-      alert('Queue is full (' + CONFIG.MAX_FILES + '-file maximum).');
-      return;
-    }
-    if (files.length > slotsLeft) {
-      alert('Adding only the first ' + slotsLeft + ' files — ' +
-            CONFIG.MAX_FILES + '-file maximum.');
-      files = files.slice(0, slotsLeft);
-    }
     var puts = files.map(function (f) {
       var tooBig = f.size > CONFIG.MAX_FILE_BYTES;
       var row = {
