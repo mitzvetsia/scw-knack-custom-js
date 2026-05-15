@@ -45,22 +45,27 @@
     document.head.appendChild(s);
   }
 
-  var TRIANGLE_SVG =
+  // Broken-chain (feather `unlink`): two link halves + small scatter
+  // strokes denoting the break. Reads "this connection is severed" at
+  // a glance, which is what the warning actually means.
+  var UNLINK_PATHS =
+    '<path d="M18.84 12.25l1.72-1.71a5 5 0 0 0-7.07-7.07l-1.71 1.71"/>' +
+    '<path d="M5.16 11.75l-1.72 1.71a5 5 0 1 0 7.07 7.07l1.71-1.71"/>' +
+    '<line x1="8" y1="2" x2="8" y2="5"/>' +
+    '<line x1="2" y1="8" x2="5" y2="8"/>' +
+    '<line x1="16" y1="19" x2="16" y2="22"/>' +
+    '<line x1="19" y1="16" x2="22" y2="16"/>';
+
+  var INLINE_ICON_SVG =
     '<svg viewBox="0 0 24 24" width="14" height="14" stroke-width="2" ' +
     'stroke-linecap="round" stroke-linejoin="round">' +
-    '<path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>' +
-    '<line x1="12" y1="9" x2="12" y2="13"/>' +
-    '<line x1="12" y1="17" x2="12.01" y2="17"/>' +
-    '</svg>';
+    UNLINK_PATHS + '</svg>';
 
-  var TRIANGLE_HDR_SVG =
+  var HEADER_ICON_SVG =
     '<svg viewBox="0 0 24 24" width="18" height="18" fill="none" ' +
     'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
     'stroke-linejoin="round">' +
-    '<path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>' +
-    '<line x1="12" y1="9" x2="12" y2="13"/>' +
-    '<line x1="12" y1="17" x2="12.01" y2="17"/>' +
-    '</svg>';
+    UNLINK_PATHS + '</svg>';
 
   function isCameraReader(attrs) {
     if (!attrs) return false;
@@ -131,7 +136,7 @@
       if (connFieldWrap) {
         var warnMsg = document.createElement('div');
         warnMsg.className = WARN_CLS;
-        warnMsg.innerHTML = TRIANGLE_SVG +
+        warnMsg.innerHTML = INLINE_ICON_SVG +
           '<span>No Connected To device — this camera/reader is not wired to a switch.</span>';
         connFieldWrap.after(warnMsg);
       }
@@ -143,7 +148,7 @@
         var icon = document.createElement('span');
         icon.className = 'scw-cr-hdr-warning ' + ICON_CLS;
         icon.style.cssText = 'color:#b45309;display:inline-flex;align-items:center;';
-        icon.innerHTML = TRIANGLE_HDR_SVG;
+        icon.innerHTML = HEADER_ICON_SVG;
         icon.title = 'No Connected To device set on this camera/reader.';
         warnSlot.appendChild(icon);
       }
