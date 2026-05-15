@@ -28,7 +28,7 @@
 (function () {
   'use strict';
 
-  var TARGET_VIEWS = ['view_3610'];
+  var TARGET_VIEWS = ['view_3610', 'view_3505'];
 
   var STYLE_ID = 'scw-ws-photo-toggle-css';
   var HOST_CLS = 'scw-ws-photo-toggle';
