@@ -2446,12 +2446,17 @@ td.${P}-sum-product--editable.${P}-td-locked:hover {
    appearing orphaned above a photos block that visually attaches
    to the next record. Scoped to view_3586 — other photoAlwaysVisible
    views can opt in by adding their id here.
-   !important on both because the generic .scw-ws-row > td rule
-   above zeroes all borders with !important, and !important always
-   wins over plain rules regardless of specificity. */
+   Defensive: also clears border-bottom on the row itself AND any
+   sibling inline-photo-row that wasn\'t absorbed into the card
+   (rare on photoAlwaysVisible views but possible mid-render). */
+#view_3586 tr.${WORKSHEET_ROW},
+#view_3586 tr.${WORKSHEET_ROW} > td,
+#view_3586 tr.scw-inline-photo-row,
+#view_3586 tr.scw-inline-photo-row > td {
+  border-bottom: 0 !important;
+}
 #view_3586 tr.${WORKSHEET_ROW}:has(.${P}-photo-wrap:not(.${P}-photo-hidden)) > td {
   border-top: 1px solid #e2e8f0 !important;
-  border-bottom: 0 !important;
 }
 
 /* view_3586 right-group widths — compact to leave room for SCW Notes fill */
