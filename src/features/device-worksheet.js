@@ -1068,7 +1068,7 @@ tr.scw-inline-photo-row.${P}-photo-absorbed {
 tr.scw-inline-photo-row > td {
   padding: 20px 16px 50px 16px !important;
   border: none !important;
-  border-bottom: 2px solid #e2e8f0 !important;
+  border-top: 2px solid #e2e8f0 !important;
 }
 
 /* ── Photo content moved inside card ── */
@@ -1089,9 +1089,9 @@ tr.scw-inline-photo-row > td {
   overflow: hidden;
 }
 
-/* ── Bottom separator between record groups (card + photo row) ── */
+/* ── Top separator between record groups (card + photo row) ── */
 .${WORKSHEET_ROW}.${P}-last > td {
-  border-bottom: 2px solid #e2e8f0 !important;
+  border-top: 2px solid #e2e8f0 !important;
 }
 
 /* ================================================================
@@ -2437,26 +2437,6 @@ td.${P}-sum-product--editable.${P}-td-locked:hover {
   padding: 0 4px !important;
   justify-content: center;
   width: 100%;
-}
-
-/* view_3586: when a card row has its photo strip visible, the
-   separator between records moves from the BOTTOM of the row (below
-   the photos) to the TOP (above the card). The card + its photo
-   strip then read as a single visual unit instead of the card
-   appearing orphaned above a photos block that visually attaches
-   to the next record. Scoped to view_3586 — other photoAlwaysVisible
-   views can opt in by adding their id here.
-   Defensive: also clears border-bottom on the row itself AND any
-   sibling inline-photo-row that wasn\'t absorbed into the card
-   (rare on photoAlwaysVisible views but possible mid-render). */
-#view_3586 tr.${WORKSHEET_ROW},
-#view_3586 tr.${WORKSHEET_ROW} > td,
-#view_3586 tr.scw-inline-photo-row,
-#view_3586 tr.scw-inline-photo-row > td {
-  border-bottom: 0 !important;
-}
-#view_3586 tr.${WORKSHEET_ROW}:has(.${P}-photo-wrap:not(.${P}-photo-hidden)) > td {
-  border-top: 1px solid #e2e8f0 !important;
 }
 
 /* view_3586 right-group widths — compact to leave room for SCW Notes fill */

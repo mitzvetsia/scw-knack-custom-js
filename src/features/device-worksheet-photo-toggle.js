@@ -37,27 +37,13 @@
 
   function injectStyles() {
     if (document.getElementById(STYLE_ID)) return;
-    var rules = [];
-    TARGET_VIEWS.forEach(function (viewId) {
+    var rules = TARGET_VIEWS.map(function (viewId) {
       // Only override the hide for wrappers that actually contain an
       // uploaded image — placeholders / "+ Add" don't need bulk reveal.
-      rules.push(
-        '#' + viewId + '.' + SHOW_CLS + ' ' +
-        '.scw-ws-photo-wrap.scw-ws-photo-hidden' +
-        ':has(.scw-inline-photo-card[data-photo-has-image="true"]) ' +
-        '{ display: block !important; }'
-      );
-      // When photos are revealed in bulk the heavy "last in group"
-      // separator under the card competes with the photo strip below,
-      // making the card look orphaned from its own photos. Drop the
-      // bottom border on every scw-ws-row (and any non-absorbed
-      // inline-photo-row) while the toggle is on — mirrors view_3586's
-      // photoAlwaysVisible treatment.
-      rules.push(
-        '#' + viewId + '.' + SHOW_CLS + ' tr.scw-ws-row > td,' +
-        '#' + viewId + '.' + SHOW_CLS + ' tr.scw-inline-photo-row > td ' +
-        '{ border-bottom: 0 !important; }'
-      );
+      return '#' + viewId + '.' + SHOW_CLS + ' ' +
+             '.scw-ws-photo-wrap.scw-ws-photo-hidden' +
+             ':has(.scw-inline-photo-card[data-photo-has-image="true"]) ' +
+             '{ display: block !important; }';
     });
     var style = document.createElement('style');
     style.id = STYLE_ID;
