@@ -685,7 +685,13 @@
             'html', 'plaintext', 'plaintextJsonEscaped',
             'scopeOfWorkDocumentElements', 'scopeOfWorkDocumentElementsString',
             'json', 'jsonString',
-            'invoiceItems', 'invoiceItemsString'
+            'invoiceItems', 'invoiceItemsString',
+            // Tokenized public link, minted at publish time by
+            // proposal-pdf-export → SCW.secureProposalLink. Every ops
+            // step that publishes (or snapshots) a quote needs Make to
+            // see these so the new SOW_published_proposals record is
+            // born with field_2904 (token) and field_2908 (URL).
+            'proposalAccessToken', 'proposalAccessUrl'
           ];
           for (var pi = 0; pi < PUBLISH_KEYS.length; pi++) {
             var pk = PUBLISH_KEYS[pi];
