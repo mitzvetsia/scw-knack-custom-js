@@ -2439,6 +2439,18 @@ td.${P}-sum-product--editable.${P}-td-locked:hover {
   width: 100%;
 }
 
+/* view_3586: when a card row has its photo strip visible, the
+   separator between records moves from the BOTTOM of the row (below
+   the photos) to the TOP (above the card). The card + its photo
+   strip then read as a single visual unit instead of the card
+   appearing orphaned above a photos block that visually attaches
+   to the next record. Scoped to view_3586 — other photoAlwaysVisible
+   views can opt in by adding their id here. */
+#view_3586 tr.${WORKSHEET_ROW}:has(.${P}-photo-wrap:not(.${P}-photo-hidden)) > td {
+  border-top: 1px solid #e2e8f0;
+  border-bottom: 0 !important;
+}
+
 /* view_3586 right-group widths — compact to leave room for SCW Notes fill */
 .${P}-sum-right .${P}-sum-group--retail {
   width: min-content;
