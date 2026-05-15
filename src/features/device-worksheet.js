@@ -1105,7 +1105,6 @@ tr.scw-inline-photo-row > td {
   gap: 6px;
   padding: 15px 12px 20px;
   background: #fff;
-  border-bottom: 1px solid #e5e7eb;
   min-height: 38px;
   min-width: 0;
   transition: background 0.15s, box-shadow 0.2s;
@@ -1125,10 +1124,9 @@ tr.${WORKSHEET_ROW}:has(.${P}-open) {
   border: 1px solid #d1d5db;
   margin-bottom: 10px;
 }
-/* Remove internal borders when expanded */
+/* Round the summary corners when card is expanded */
 .${P}-card:has(.${P}-open) .${P}-summary {
   background: #fff;
-  border-bottom: none;
   border-radius: 8px 8px 0 0;
 }
 /* Photo wrap gets bottom border-radius when card is expanded */
