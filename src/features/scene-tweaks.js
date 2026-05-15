@@ -471,18 +471,20 @@
 
         var previewLink = document.createElement('a');
         previewLink.href = previewHref;
+        // Fixed 220px width matches the Customer Link CTA inside the
+        // panel above so the action column stacks neatly.
         previewLink.style.cssText = solo
           // Solo (no published proposal yet OR expired) → primary chrome.
           ? 'display:inline-flex;align-items:center;justify-content:center;' +
-            'gap:7px;padding:10px 18px;background:#07467c;' +
-            'color:#fff;border-radius:6px;text-decoration:none;' +
-            'font:700 12px/1.2 system-ui,sans-serif;' +
+            'gap:7px;padding:10px 18px;width:220px;box-sizing:border-box;' +
+            'background:#07467c;color:#fff;border-radius:6px;' +
+            'text-decoration:none;font:700 12px/1.2 system-ui,sans-serif;' +
             'letter-spacing:0.04em;text-transform:uppercase;' +
             'box-shadow:0 1px 2px rgba(0,0,0,.12);'
           // Companion to the customer CTA → outlined secondary button.
           : 'display:inline-flex;align-items:center;justify-content:center;' +
-            'gap:7px;padding:9px 16px;background:#fff;' +
-            'color:#07467c;border:1px solid #cbd5e1;' +
+            'gap:7px;padding:9px 16px;width:220px;box-sizing:border-box;' +
+            'background:#fff;color:#07467c;border:1px solid #cbd5e1;' +
             'border-radius:6px;text-decoration:none;' +
             'font:700 12px/1.2 system-ui,sans-serif;' +
             'letter-spacing:0.04em;text-transform:uppercase;';

@@ -84,13 +84,24 @@
       '  border-top: 1px solid #e5e7eb;' +
       '  font-size: 11px;' +
       '}' +
-      // Regular (proposal page / sales totals panel). Slightly bigger
-      // type, generous spacing between concept blocks (identity,
-      // metadata, PDF, primary CTA) so the eye walks down the card
-      // instead of scanning a wall of mixed elements.
+      // Regular (proposal page / sales totals panel). Flex column so
+      // every interactive element (PDF chip, Customer Link, internal
+      // CTA, expired note) gets its own row instead of sitting on
+      // the same baseline as inline-flex siblings. align-items per
+      // host: right-aligned in the sales totals panel via the wrap\'s
+      // CSS, defaults to center elsewhere.
       '.scw-pq-info--regular {' +
+      '  display: flex;' +
+      '  flex-direction: column;' +
+      '  align-items: center;' +
       '  font-size: 14px;' +
       '  padding: 2px 0;' +
+      '}' +
+      // When the host explicitly right-aligns text (the sales totals
+      // panel), match the flex alignment so the column stacks against
+      // the right edge.
+      '.scw-pq-info--regular[style*="text-align: right"] {' +
+      '  align-items: flex-end;' +
       '}' +
       // Panel (sales totals) — right-aligned with a top border, header
       // label, and consistent inner spacing. The container sets its own
@@ -206,13 +217,15 @@
       '.scw-pq-expired-note strong { color: #78350f; font-weight: 700; }' +
 
       // ── Primary CTA (Customer Link, not expired) ──
-      // The signature "send this to the customer" button. Solid brand
-      // blue, generous padding, full-width inside its container so it
-      // reads as the call to action.
+      // Solid brand blue, fixed width so it stacks neatly with sibling
+      // CTAs (the outlined Preview Proposal button in the same panel
+      // uses the same width — uniform column of actions reads cleaner
+      // than ragged-edge buttons).
       '.scw-pq-customer-cta, .scw-pq-customer-cta:visited {' +
       '  display: inline-flex; align-items: center; justify-content: center;' +
       '  gap: 7px;' +
       '  margin-top: 4px; padding: 10px 18px;' +
+      '  width: 220px; box-sizing: border-box;' +
       '  background: #07467c; color: #fff !important;' +
       '  border-radius: 6px; text-decoration: none;' +
       '  font: 700 12px/1.2 system-ui, sans-serif;' +
@@ -228,12 +241,13 @@
       '.scw-pq-customer-cta svg { flex-shrink: 0; }' +
 
       // ── Secondary CTA (Internal Details, when expired) ──
-      // Outlined version of the primary so it reads as a "still
-      // available action, but not what you reach for first".
+      // Outlined version of the primary, same fixed width. Reads as a
+      // "still available action, but not what you reach for first".
       '.scw-pq-internal-cta, .scw-pq-internal-cta:visited {' +
       '  display: inline-flex; align-items: center; justify-content: center;' +
       '  gap: 7px;' +
       '  margin-top: 4px; padding: 9px 16px;' +
+      '  width: 220px; box-sizing: border-box;' +
       '  background: #fff; color: #07467c !important;' +
       '  border: 1px solid #cbd5e1;' +
       '  border-radius: 6px; text-decoration: none;' +
