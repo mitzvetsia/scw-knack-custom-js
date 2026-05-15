@@ -4,151 +4,119 @@
  *
  * PASTE THIS INTO KNACK'S CUSTOM JS INPUT (Settings → API & Code → JS).
  *
- * This snippet is fully self-contained — it has NO dependency on
- * window.SCW, no dependency on the CDN bundle, and no dependency
- * on any other custom JS. It only needs:
- *   • jQuery (loaded by Knack by default)
- *   • The Knack global (loaded by Knack by default)
+ * Self-contained: depends only on jQuery + Knack (both Knack-default).
+ * Reuses the CDN bundle's SCW.pdfExport.getCss() when available so the
+ * public rendering matches the internal preview exactly. If the bundle
+ * isn't loaded, falls back to an inlined copy of the proposal CSS.
  *
  * WHAT IT DOES
  * ============
  *
- * The customer arrives at a URL of the form:
+ * Customer arrives at:
+ *   https://<your-app>.knack.com/<app-path>#project-proposal/?token=<hex>
  *
- *   https://<your-app>.knack.com/<app-path>#proposal-access/?token=<hex>
- *
- *   (Or whatever HASH_ROUTE you've configured below — the sales-side
- *   "Generate Secure Proposal Link" feature builds URLs in this shape.)
- *
- * On the public proposal-access scene:
- *
- *   1. Read the `token=` parameter off the hash query string.
+ *   1. Read `token=` from the hash query string.
  *   2. Apply a runtime filter on a HIDDEN Knack list view so it only
  *      fetches proposals whose access-token field (field_2904) equals
- *      that token. The hidden view is what does the actual database
- *      lookup — it's configured in the Knack Builder to be publicly
- *      readable but expose ONLY the fields we want
- *      (field_2904 + field_2680).
- *   3. Wait for the hidden view to re-render, then read its records.
+ *      that token. The view is the security boundary — it must be
+ *      publicly readable and expose ONLY field_2904 + field_2680
+ *      (+ optional gate fields).
+ *   3. Wait for the hidden view to re-render, then read records.
  *   4. Require EXACTLY ONE matching record. Zero or many → fallback.
- *      Then run any optional gate checks (active flag, superseded,
- *      expiration date).
- *   5. Inject the snapshot HTML (field_2680) into a mount node
- *      (#scw-proposal-access-root) on the page.
- *   6. On any failure path render a polished generic fallback message
- *      — never leak which check failed.
+ *      Then run gate checks (active flag, superseded, expiration).
+ *   5. Render the snapshot HTML (field_2680) into an <iframe> inserted
+ *      as a sibling of the hidden list view, exactly mirroring how
+ *      src/features/published-proposal-render.js renders the internal
+ *      preview on scene_1279/view_3813.
+ *   6. On any failure path render a generic fallback — never leak
+ *      which check failed.
  *
- * SECURITY MODEL
- * ==============
- *
- * The Knack view itself is the security boundary. Even if a customer
- * tampered with this JS, they could only ever read what the view
- * permits. So:
- *
- *   • The hidden view MUST be configured to expose ONLY the fields
- *     used here (field_2904 for matching, field_2680 for rendering,
- *     plus optionally the active/superseded/expiration fields if you
- *     turn those gates on). Do not expose pricing, customer PII, or
- *     any field that isn't needed for the public render.
- *
- *   • The hidden view MUST be a list view (not a details view) that
- *     allows record-level filtering via the API. The page itself
- *     must NOT require login.
- *
- *   • field_2904 should be a plain text field. Tokens are 64-char
- *     lowercase hex (32 random bytes). Anything that isn't plausibly
- *     hex is rejected client-side before any request goes out.
- *
- * CONFIGURATION
- * =============
- *
- * Fill in the four UPPERCASE values below before pasting into Knack:
- *
- *   SCENE_ID         → public proposal-access scene id
- *   LOOKUP_VIEW_ID   → hidden list view id (proposals object, exposes
- *                      field_2904 + field_2680, public read)
- *   TOKEN_FIELD      → 'field_2904' (Proposal Access Token)
- *   HTML_FIELD       → 'field_2680' (Published HTML snapshot)
- *
- * The HASH_ROUTE must match the route the sales-side link generator
- * builds into its URLs. Default 'proposal-access'.
- *
- * Optional gate fields (leave null to disable):
- *   ACTIVE_FIELD       → Yes/No flag — record must be Yes
- *   SUPERSEDED_FIELD   → Yes/No flag — record must NOT be Yes
- *   EXPIRATION_FIELD   → Date field — must be today or later
+ * Why an iframe? The proposal CSS uses generic selectors (body, table,
+ * .kn-table, .l1-header, …) that would clobber Knack's own UI if
+ * dropped into the parent page. The internal preview uses an iframe
+ * for exactly this reason — mirror it.
  * ============================================================ */
 
 (function () {
   'use strict';
 
   // ---- CONFIG (edit these) ----------------------------------------------
-  var SCENE_ID         = 'scene_1321';              // Public proposal-access scene
-  var LOOKUP_VIEW_ID   = 'view_3952';               // Hidden list view (proposal object)
-  var TOKEN_FIELD      = 'field_2904';              // Proposal Access Token
-  var HTML_FIELD       = 'field_2680';              // Snapshot HTML to render
-  var HASH_ROUTE       = 'project-proposal';        // matches scene_1321 slug AND the sales-side URL builder
+  var SCENE_ID         = 'scene_1321';
+  var LOOKUP_VIEW_ID   = 'view_3952';
+  var TOKEN_FIELD      = 'field_2904';
+  var HTML_FIELD       = 'field_2680';
+  var HASH_ROUTE       = 'project-proposal';
 
   // Optional gates — set to a field key to enable; leave null to skip.
-  var ACTIVE_FIELD     = null;             // e.g. 'field_XXXX' (Yes/No flag)
-  var SUPERSEDED_FIELD = null;             // e.g. 'field_XXXX' (Yes/No flag)
-  var EXPIRATION_FIELD = 'field_2659';     // Proposal expiration date (enabled)
+  var ACTIVE_FIELD     = null;
+  var SUPERSEDED_FIELD = null;
+  var EXPIRATION_FIELD = 'field_2659';
 
-  // Placeholder for future email/OTP verification step. Setting this
-  // to true today FAILS CLOSED — nothing will render until the OTP
-  // UI is wired up. Leave false until that work lands.
+  // Fails closed when true — leave false until OTP UI lands.
   var OTP_REQUIRED     = false;
 
-  // DOM id where the proposal HTML gets injected. If the scene's
-  // Knack template doesn't already contain a node with this id, the
-  // snippet will create one inside the scene container.
-  var MOUNT_ID         = 'scw-proposal-access-root';
-
-  // Customer-facing fallback message. Intentionally vague — don't
-  // reveal which failure path was hit.
+  // Customer-facing fallback. Intentionally vague.
   var FALLBACK_MESSAGE =
     'This proposal link is no longer active or could not be found. ' +
     'Please contact your SCW representative.';
 
   // -----------------------------------------------------------------------
-  // Everything below is implementation. You shouldn't need to edit it.
+  // Implementation. Shouldn't need editing below this line.
   // -----------------------------------------------------------------------
 
-  var STYLE_ID = 'scw-proposal-access-css';
-  var NS       = '.scwProposalAccessSnippet';
-  // Cross-render state. We store the parsed token + "pending" flag on
-  // window so that when the scene-render handler kicks off a fetch
-  // and the lookup-view-render handler fires later, both can see the
-  // same in-flight request.
+  var STYLE_ID  = 'scw-proposal-access-css';
+  var IFRAME_ID = 'scw-proposal-access-frame';
+  var FALLBACK_ID = 'scw-proposal-access-fallback';
+  var NS        = '.scwProposalAccessSnippet';
   var STATE_KEY = '__scwProposalAccessState';
 
-  // ---- Styles -----------------------------------------------------------
-  // Hide the lookup view (it would otherwise show a raw record table
-  // to the customer). Styled fallback + loading states use the same
-  // mount node we render the proposal into.
+  // ---- Page-level styles (NOT the proposal CSS — that goes in the iframe)
+  // Hides the raw list view that Knack would otherwise paint, and styles
+  // the loading/fallback panels.
   function injectStyles() {
     if (document.getElementById(STYLE_ID)) return;
-    var css =
-      '#' + LOOKUP_VIEW_ID + ' { display: none !important; }\n' +
-      '#' + MOUNT_ID + ' {\n' +
-      '  max-width: 980px; margin: 24px auto; padding: 0 16px;\n' +
-      '  font: 14px/1.45 system-ui,-apple-system,Segoe UI,sans-serif;\n' +
-      '  color: #0f172a;\n' +
-      '}\n' +
-      '#' + MOUNT_ID + ' .scw-pa-loading,\n' +
-      '#' + MOUNT_ID + ' .scw-pa-error {\n' +
-      '  margin: 64px auto; padding: 28px 28px;\n' +
-      '  background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 10px;\n' +
-      '  text-align: center; max-width: 560px;\n' +
-      '  box-shadow: 0 2px 12px rgba(0,0,0,.04);\n' +
-      '}\n' +
-      '#' + MOUNT_ID + ' .scw-pa-error .scw-pa-title {\n' +
-      '  font-weight: 700; font-size: 18px; color: #0f172a; margin-bottom: 8px;\n' +
-      '}\n' +
-      '#' + MOUNT_ID + ' .scw-pa-error .scw-pa-body {\n' +
-      '  color: #475569; font-size: 14px; line-height: 1.5;\n' +
-      '}\n' +
-      '#' + MOUNT_ID + ' .scw-pa-loading { color: #475569; }\n';
+    var css = [
+      '#' + LOOKUP_VIEW_ID + ',',
+      '#' + LOOKUP_VIEW_ID + ' .view-header,',
+      '#' + LOOKUP_VIEW_ID + ' .kn-records-nav,',
+      '#' + LOOKUP_VIEW_ID + ' .kn-list-content {',
+      '  display: none !important;',
+      '  visibility: hidden !important;',
+      '  height: 0 !important;',
+      '  overflow: hidden !important;',
+      '}',
+      '#' + IFRAME_ID + ' {',
+      '  display: block;',
+      '  width: 100%;',
+      '  max-width: 980px;',
+      '  margin: 24px auto;',
+      '  border: 0;',
+      '  background: #fff;',
+      '  min-height: 400px;',
+      '}',
+      '#' + FALLBACK_ID + ' {',
+      '  max-width: 560px;',
+      '  margin: 64px auto;',
+      '  padding: 28px;',
+      '  background: #f8fafc;',
+      '  border: 1px solid #e2e8f0;',
+      '  border-radius: 10px;',
+      '  text-align: center;',
+      '  box-shadow: 0 2px 12px rgba(0,0,0,.04);',
+      '  font: 14px/1.5 system-ui,-apple-system,Segoe UI,sans-serif;',
+      '  color: #475569;',
+      '}',
+      '#' + FALLBACK_ID + ' .scw-pa-title {',
+      '  font-weight: 700;',
+      '  font-size: 18px;',
+      '  color: #0f172a;',
+      '  margin-bottom: 8px;',
+      '}',
+      '#' + FALLBACK_ID + ' .scw-pa-loading {',
+      '  font-style: italic;',
+      '  color: #475569;',
+      '}'
+    ].join('\n');
     var style = document.createElement('style');
     style.id = STYLE_ID;
     style.textContent = css;
@@ -156,13 +124,9 @@
   }
 
   // ---- Hash parsing -----------------------------------------------------
-  // The customer URL looks like: #proposal-access/?token=abc123
-  // We walk the query string manually rather than relying on a URL
-  // helper, because hash-routed Knack URLs aren't standard URL syntax.
   function readTokenFromHash() {
     var hash = (window.location.hash || '').replace(/^#/, '');
     if (!hash) return '';
-    // Confirm we're on the right route before reading the token.
     var routeRe = new RegExp('^' + HASH_ROUTE + '(?:/|$)');
     if (!routeRe.test(hash)) return '';
     var qIdx = hash.indexOf('?');
@@ -178,36 +142,44 @@
     return '';
   }
 
-  // Defense-in-depth: reject anything that doesn't look like hex.
-  // Real tokens generated by the sales-side feature are 64-char hex.
-  // The Knack backend filter is the real gate — this just avoids
-  // pointless API calls on obvious garbage tokens.
   function isPlausibleToken(t) {
     return typeof t === 'string' && t.length >= 16 && /^[0-9a-fA-F]+$/.test(t);
   }
 
-  // ---- Mount node + render helpers -------------------------------------
-  function ensureMountNode() {
-    var el = document.getElementById(MOUNT_ID);
+  // ---- Fallback / loading panels ---------------------------------------
+  function ensureFallbackNode() {
+    var el = document.getElementById(FALLBACK_ID);
     if (el) return el;
-    var scene = document.querySelector('.kn-scene') || document.body;
     el = document.createElement('div');
-    el.id = MOUNT_ID;
-    scene.appendChild(el);
+    el.id = FALLBACK_ID;
+    // Insert next to the (hidden) lookup view's container.
+    var view = document.getElementById(LOOKUP_VIEW_ID);
+    if (view && view.parentNode) view.parentNode.insertBefore(el, view.nextSibling);
+    else (document.querySelector('.kn-scene') || document.body).appendChild(el);
     return el;
   }
 
   function renderLoading() {
-    ensureMountNode().innerHTML =
-      '<div class="scw-pa-loading">Loading your proposal…</div>';
+    removeIframe();
+    ensureFallbackNode().innerHTML =
+      '<div class="scw-pa-loading">Loading your proposal&hellip;</div>';
   }
 
   function renderFallback() {
-    ensureMountNode().innerHTML =
-      '<div class="scw-pa-error">' +
-        '<div class="scw-pa-title">Proposal Unavailable</div>' +
-        '<div class="scw-pa-body">' + escapeHtml(FALLBACK_MESSAGE) + '</div>' +
-      '</div>';
+    removeIframe();
+    ensureFallbackNode().innerHTML =
+      '<div class="scw-pa-title">Proposal Unavailable</div>' +
+      '<div>' + escapeHtml(FALLBACK_MESSAGE) + '</div>';
+  }
+
+  function removeFallback() {
+    var el = document.getElementById(FALLBACK_ID);
+    if (el && el.parentNode) el.parentNode.removeChild(el);
+  }
+
+  function removeIframe() {
+    var el = document.getElementById(IFRAME_ID);
+    if (el && el.parentNode) el.parentNode.removeChild(el);
   }
 
   function escapeHtml(s) {
@@ -217,40 +189,19 @@
   }
 
   // ---- Apply runtime filter on the hidden lookup view ------------------
-  //
-  // The lookup view is a Knack list view of the proposal object. We
-  // override its Backbone model's filters at runtime so it only fetches
-  // the one record matching our token, then call .fetch() to re-pull
-  // from the server. After Knack finishes the request it fires
-  // knack-view-render.<viewId>, which is where we read out the result.
-  //
-  // Filter shape Knack expects:
-  //   { match: 'and', rules: [ { field, operator, value } ] }
-  //
-  // Knack's "is" operator does exact equality on plain text fields,
-  // which is what we want for a hex token. We're NOT using "contains"
-  // or any fuzzy operator — exact match only.
   function applyLookupFilter(token) {
     var view = window.Knack && Knack.views && Knack.views[LOOKUP_VIEW_ID];
     if (!view || !view.model) return false;
-
     var filterSpec = {
       match: 'and',
-      rules: [
-        { field: TOKEN_FIELD, operator: 'is', value: token }
-      ]
+      rules: [ { field: TOKEN_FIELD, operator: 'is', value: token } ]
     };
-
     try {
       if (typeof view.model.setFilters === 'function') {
-        // Modern Knack — preferred path.
         view.model.setFilters(filterSpec);
       } else if (view.model.view) {
-        // Older shape: filters live on the view config object.
         view.model.view.filters = filterSpec;
       }
-      // Triggers a server fetch. On success Knack re-renders the view
-      // and fires the knack-view-render event our handler below listens for.
       view.model.fetch();
       return true;
     } catch (e) {
@@ -259,9 +210,6 @@
     }
   }
 
-  // Knack list views store fetched records on view.model.data — either
-  // as a Backbone-style collection (.models[]) or a plain array.
-  // Normalize to a plain array of attribute objects.
   function readRecordsFromView(viewId) {
     try {
       var view = Knack.views[viewId];
@@ -278,11 +226,7 @@
     } catch (e) { return []; }
   }
 
-  // ---- Optional gate checks --------------------------------------------
-  // Each is opt-in: leave the corresponding field key null at the top
-  // of this file to disable. When enabled, a failing gate produces the
-  // generic fallback message — the customer never sees which gate
-  // tripped (active/superseded/expired all look identical).
+  // ---- Gate checks -----------------------------------------------------
   function passesGates(attrs) {
     if (ACTIVE_FIELD) {
       if (!isYes(attrs[ACTIVE_FIELD + '_raw']) && !isYes(attrs[ACTIVE_FIELD])) return false;
@@ -298,8 +242,6 @@
       if (!dateStr) return false;
       var expiry = new Date(dateStr);
       if (isNaN(expiry.getTime())) return false;
-      // Compare on a calendar-day basis so today's expiration is
-      // still valid right up to midnight.
       var today = new Date(); today.setHours(0, 0, 0, 0);
       if (expiry < today) return false;
     }
@@ -312,62 +254,10 @@
     return false;
   }
 
-  // ---- Render the proposal HTML ----------------------------------------
-  //
-  // Knack strips <style>, <head>, <body>, <!DOCTYPE> from rich-text
-  // fields when it stores them, so field_2680 is a bare HTML fragment
-  // with no CSS attached. We re-wrap the fragment in a full HTML
-  // document with the proposal CSS injected, exactly the way the
-  // internal preview does — otherwise the customer sees unstyled text.
-  //
-  // The CSS comes from SCW.pdfExport.getCss() — provided by the CDN
-  // bundle that the rest of the SCW app already loads. This snippet
-  // waits up to ~5s for the bundle to expose that helper. If it never
-  // does (bundle not loaded on this scene), we render unstyled rather
-  // than fail the page entirely.
-  //
-  // We use an iframe (not a <div>) because the proposal CSS targets
-  // unscoped selectors (body, table, td, .product-table, …) which
-  // would clobber Knack's own UI if dropped into the parent page.
-  function renderProposal(attrs) {
-    var html = attrs[HTML_FIELD + '_raw'] || attrs[HTML_FIELD] || '';
-    if (!html) { renderFallback(); return; }
-
-    var fragment = cleanFragment(html);
-
-    waitForPdfCss(function (css) {
-      var fullHtml = buildFullHtml(fragment, css);
-      var mount = ensureMountNode();
-      mount.innerHTML = '';
-
-      var iframe = document.createElement('iframe');
-      iframe.id = 'scw-proposal-access-frame';
-      iframe.setAttribute('frameborder', '0');
-      iframe.setAttribute('scrolling', 'no');
-      iframe.style.cssText = 'width:100%;border:0;background:#fff;min-height:400px;';
-      mount.appendChild(iframe);
-
-      var doc = iframe.contentDocument || iframe.contentWindow.document;
-      doc.open(); doc.write(fullHtml); doc.close();
-
-      function resize() {
-        try {
-          var b = doc.body, d = doc.documentElement;
-          if (b && d) {
-            var h = Math.max(b.scrollHeight, b.offsetHeight, d.scrollHeight, d.offsetHeight);
-            iframe.style.height = (h + 40) + 'px';
-          }
-        } catch (e) {}
-      }
-      setTimeout(resize, 300);
-      setTimeout(resize, 1000);
-      setTimeout(resize, 3000);
-    });
-  }
-
-  // Knack inserts spurious <br> tags between block elements when
-  // storing rich-text fields. Strip them so the output matches the
-  // print/PDF layout exactly.
+  // ---- HTML cleanup ----------------------------------------------------
+  // Same regex set as src/features/published-proposal-render.js. Knack
+  // inserts spurious <br> tags between block elements when storing
+  // rich-text fields; strip them so spacing matches the print/PDF view.
   function cleanFragment(html) {
     html = String(html).replace(/^<span>([\s\S]*)<\/span>$/i, '$1');
     html = html.replace(/<br\s*\/?>\s*(?=<(?:div|table|thead|tbody|tfoot|tr|section|\/div|\/table|\/thead|\/tbody|\/tfoot|\/tr|\/section))/gi, '');
@@ -377,38 +267,167 @@
     html = html.replace(/^(\s*<br\s*\/?>\s*)+/i, '').replace(/(\s*<br\s*\/?>\s*)+$/i, '');
     html = html.replace(/<br\s*\/?>\s*<\/div>/gi, '</div>');
     html = html.replace(/<br\s*\/?>\s*<\/td>/gi, '</td>');
-    // Re-wrap connected-device label runs (Knack strips class attrs).
     html = html.replace(/\(([A-Z]-\d+(?:,\s*[A-Z]-\d+)*)\)/g, '<span class="connected-devices">($1)</span>');
     return html;
   }
 
-  // Poll for SCW.pdfExport.getCss to be available — but only briefly.
-  // If the CDN bundle isn't loaded on this scene, fall back immediately
-  // to the inlined PROPOSAL_CSS below so the proposal still renders
-  // styled. The bundle's getCss output and PROPOSAL_CSS are kept in
-  // sync — if you ever change one, mirror the change in the other.
-  function waitForPdfCss(done) {
-    var deadline = Date.now() + 1000;
-    (function tick() {
-      try {
-        if (window.SCW && window.SCW.pdfExport &&
-            typeof window.SCW.pdfExport.getCss === 'function') {
-          var bundleCss = window.SCW.pdfExport.getCss() || '';
-          done(bundleCss || PROPOSAL_CSS);
-          return;
-        }
-      } catch (e) { /* fall through */ }
-      if (Date.now() >= deadline) {
-        done(PROPOSAL_CSS);
-        return;
+  // ---- Resolve proposal CSS (bundle-first, inline fallback) ------------
+  // The CDN bundle exposes SCW.pdfExport.getCss(); that's our preferred
+  // source so the public render matches the internal preview exactly.
+  // If the bundle isn't loaded on this scene, fall back to PROPOSAL_CSS
+  // inlined below (kept in sync with proposal-pdf-export.js's getPdfCss).
+  function resolveCss() {
+    try {
+      if (window.SCW && window.SCW.pdfExport &&
+          typeof window.SCW.pdfExport.getCss === 'function') {
+        var bundleCss = window.SCW.pdfExport.getCss();
+        if (bundleCss) return bundleCss;
       }
-      setTimeout(tick, 50);
-    })();
+    } catch (e) { /* fall through */ }
+    return PROPOSAL_CSS;
   }
 
-  // Inlined proposal CSS — mirrors src/features/proposal-pdf-export.js
-  // getPdfCss(). Keeps the snippet fully self-contained so it works on
-  // public scenes regardless of whether the CDN bundle is loaded.
+  // ---- Build full HTML doc for the iframe ------------------------------
+  function buildFullHtml(fragment) {
+    var css = resolveCss();
+    // On-screen readability overrides — same set published-proposal-render
+    // uses. Base CSS is print-tuned at ~11px; on screens we want ~14px.
+    var overrides = [
+      'body { font-size: 14px; }',
+      '.detail-label, .detail-value { font-size: 14px; }',
+      '.richtext-content { font-size: 14px; }',
+      '.l3-row td:first-child { font-size: 15px; }',
+      '.l4-row td { font-size: 14px; padding-left: 40px; letter-spacing: 0.3px; line-height: 1.6; }',
+      '.l4-row td.col-qty, .l4-row td.col-cost { font-size: 14px; }',
+      '.connected-devices { font-size: 13px; }',
+      '.product-table thead th { font-size: 11px; }',
+      '.l2-header { font-size: 15px; }'
+    ].join('\n');
+
+    return [
+      '<!DOCTYPE html>',
+      '<html><head><meta charset="utf-8"><title>Proposal</title>',
+      '<style>', css, overrides, '</style>',
+      '</head><body>',
+      fragment,
+      '</body></html>'
+    ].join('\n');
+  }
+
+  // ---- Render the proposal into an iframe ------------------------------
+  // Mirrors src/features/published-proposal-render.js's renderProposal:
+  // iframe placed as a SIBLING of the hidden lookup view, doc.write into
+  // it, triple-resize to content height.
+  function renderProposal(attrs) {
+    var html = attrs[HTML_FIELD + '_raw'] || attrs[HTML_FIELD] || '';
+    if (!html) { renderFallback(); return; }
+
+    var viewEl = document.getElementById(LOOKUP_VIEW_ID);
+    if (!viewEl || !viewEl.parentNode) { renderFallback(); return; }
+
+    removeFallback();
+    removeIframe();
+
+    var fullHtml = buildFullHtml(cleanFragment(html));
+
+    var iframe = document.createElement('iframe');
+    iframe.id = IFRAME_ID;
+    iframe.setAttribute('frameborder', '0');
+    iframe.setAttribute('scrolling', 'no');
+    viewEl.parentNode.insertBefore(iframe, viewEl.nextSibling);
+
+    var doc = iframe.contentDocument || iframe.contentWindow.document;
+    doc.open();
+    doc.write(fullHtml);
+    doc.close();
+
+    function resize() {
+      try {
+        var b = doc.body, d = doc.documentElement;
+        if (b && d) {
+          var h = Math.max(b.scrollHeight, b.offsetHeight, d.scrollHeight, d.offsetHeight);
+          iframe.style.height = (h + 40) + 'px';
+        }
+      } catch (e) { /* ignore */ }
+    }
+    setTimeout(resize, 300);
+    setTimeout(resize, 1000);
+    setTimeout(resize, 3000);
+  }
+
+  // ---- Main flow --------------------------------------------------------
+  function handleSceneRender() {
+    injectStyles();
+
+    var token = readTokenFromHash();
+    if (!isPlausibleToken(token)) { renderFallback(); return; }
+
+    window[STATE_KEY] = { token: token, pending: true };
+    renderLoading();
+    applyLookupFilter(token);
+  }
+
+  function handleLookupRender() {
+    injectStyles();
+    var state = window[STATE_KEY];
+    if (!state || !state.pending) {
+      var token = readTokenFromHash();
+      if (isPlausibleToken(token)) {
+        window[STATE_KEY] = { token: token, pending: true };
+        renderLoading();
+        applyLookupFilter(token);
+      }
+      return;
+    }
+
+    var records = readRecordsFromView(LOOKUP_VIEW_ID);
+    if (!records || records.length !== 1) {
+      renderFallback();
+      state.pending = false;
+      return;
+    }
+
+    var attrs = records[0];
+    if (!passesGates(attrs)) { renderFallback(); state.pending = false; return; }
+    if (OTP_REQUIRED) { renderFallback(); state.pending = false; return; }
+
+    try { renderProposal(attrs); }
+    catch (e) {
+      console.warn('[proposal-access] Render failed', e);
+      renderFallback();
+    }
+    state.pending = false;
+  }
+
+  // ---- Bindings ---------------------------------------------------------
+  injectStyles();
+
+  $(document)
+    .off('knack-scene-render.' + SCENE_ID + NS)
+    .on('knack-scene-render.' + SCENE_ID + NS, function () {
+      handleSceneRender();
+    });
+
+  $(document)
+    .off('knack-view-render.' + LOOKUP_VIEW_ID + NS)
+    .on('knack-view-render.' + LOOKUP_VIEW_ID + NS, function () {
+      handleLookupRender();
+    });
+
+  $(window)
+    .off('hashchange' + NS)
+    .on('hashchange'  + NS, function () {
+      var hash = (window.location.hash || '').replace(/^#/, '');
+      if (new RegExp('^' + HASH_ROUTE + '(?:/|$)').test(hash)) {
+        handleSceneRender();
+      }
+    });
+
+  // -----------------------------------------------------------------------
+  // Inlined proposal CSS — fallback when SCW.pdfExport.getCss() isn't on
+  // the page (CDN bundle not loaded). Mirrors src/features/
+  // proposal-pdf-export.js getPdfCss().
+  // -----------------------------------------------------------------------
   var PROPOSAL_CSS = [
     '@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap");',
     '*, *::before, *::after { box-sizing: border-box; }',
@@ -456,8 +475,7 @@
     '.l1-line--final .l1-footer-label, .l1-line--final .l1-footer-value { color: #07467c; font-weight: 900; }',
     '.l1-line--final .l1-footer-value { font-size: 15px; }',
     '.l1-line--sub, .l1-line--disc { padding-top: 0; padding-bottom: 0; }',
-    '.l1-line--sub + .l1-footer-line, .l1-line--disc + .l1-footer-line { padding-top: 0; }',
-    '.project-totals { margin-top: 30px; page-break-inside: avoid; }',
+    '.project-totals { margin-top: 30px; }',
     '.pt-title { font-size: 22px; font-weight: 600; color: #07467c; padding-bottom: 8px; border-bottom: 3px solid #07467c; margin-bottom: 6px; }',
     '.pt-line { display: flex; justify-content: flex-end; gap: 24px; padding: 3px 0; }',
     '.pt-label { font-weight: 600; min-width: 160px; text-align: right; }',
@@ -467,13 +485,6 @@
     '.pt-line--final .pt-label, .pt-line--final .pt-value { color: #07467c; font-weight: 900; }',
     '.pt-line--final:last-child .pt-label { font-size: 17px; }',
     '.pt-line--final:last-child .pt-value { font-size: 19px; }',
-    '.pt-line--equipment-total, .pt-line--installation-total { padding-bottom: 14px; }',
-    '.pt-line--equipment-subtotal, .pt-line--line-item-discounts { padding-top: 0; padding-bottom: 0; }',
-    '.pt-line--equipment-subtotal + .pt-line, .pt-line--line-item-discounts + .pt-line { padding-top: 0; }',
-    '.pt-line--proposal-discount { padding-bottom: 0; }',
-    '.pt-line--proposal-discount + .pt-line { padding-top: 0; }',
-    '.recurring-section { margin-top: 40px; }',
-    '.recurring-header { font-size: 20px; font-weight: 800; color: #07467c; margin-bottom: 8px; padding-bottom: 4px; border-bottom: 3px solid #07467c; }',
     '.report-table-wrap { margin-top: 30px; }',
     '.report-table-wrap table { width: 100%; border-collapse: collapse; }',
     '.report-table-wrap thead th { font-size: 10px; font-weight: 600; color: #07467c; text-transform: uppercase; letter-spacing: 0.5px; padding: 6px 8px; border-bottom: 2px solid #07467c; text-align: left; }',
@@ -482,131 +493,4 @@
     '.append-image-title { font-size: 18px; font-weight: 800; color: #07467c; margin: 24px 0 12px 0; padding-bottom: 6px; border-bottom: 3px solid #07467c; text-align: left; }',
     '.append-image { display: block; width: 100%; max-width: 100%; max-height: 9.5in; height: auto; margin: 12px auto; object-fit: contain; }'
   ].join('\n');
-
-  function buildFullHtml(fragment, css) {
-    // On-screen readability overrides — same set the internal renderer
-    // uses (the base CSS is print-tuned, ~11px body).
-    var overrides = [
-      'body { font-size: 14px; }',
-      '.detail-label, .detail-value { font-size: 14px; }',
-      '.richtext-content { font-size: 14px; }',
-      '.l3-row td:first-child { font-size: 15px; }',
-      '.l4-row td { font-size: 14px; padding-left: 40px; letter-spacing: 0.3px; line-height: 1.6; }',
-      '.l4-row td.col-qty, .l4-row td.col-cost { font-size: 14px; }',
-      '.connected-devices { font-size: 13px; }',
-      '.product-table thead th { font-size: 11px; }',
-      '.l2-header { font-size: 15px; }'
-    ].join('\n');
-
-    return [
-      '<!DOCTYPE html>',
-      '<html><head><meta charset="utf-8"><title>Proposal</title>',
-      '<style>', css || '', overrides, '</style>',
-      '</head><body>',
-      fragment,
-      '</body></html>'
-    ].join('\n');
-  }
-
-  // ---- Main flow --------------------------------------------------------
-  //
-  // Two render events drive this snippet:
-  //
-  //   knack-scene-render.<SCENE_ID>          — page first loads, or
-  //                                            the customer navigates
-  //                                            in via the hash route.
-  //                                            We read the token,
-  //                                            show "Loading…", and
-  //                                            kick off the filtered
-  //                                            fetch on the lookup view.
-  //
-  //   knack-view-render.<LOOKUP_VIEW_ID>     — fires both on the lookup
-  //                                            view's initial render AND
-  //                                            after our .fetch() finishes.
-  //                                            We read the records out
-  //                                            and either render or fall back.
-  //
-  function handleSceneRender() {
-    injectStyles();
-
-    var token = readTokenFromHash();
-    if (!isPlausibleToken(token)) { renderFallback(); return; }
-
-    window[STATE_KEY] = { token: token, pending: true };
-    renderLoading();
-
-    // Try to apply the filter immediately. If the lookup view hasn't
-    // constructed yet (Knack hasn't built its model), the lookup
-    // view-render handler will run handleLookupRender() once it does.
-    applyLookupFilter(token);
-  }
-
-  function handleLookupRender() {
-    var state = window[STATE_KEY];
-    if (!state || !state.pending) {
-      // No active request — this is the initial unfiltered render. If
-      // we have a token in the URL already, apply the filter now.
-      var token = readTokenFromHash();
-      if (isPlausibleToken(token)) {
-        window[STATE_KEY] = { token: token, pending: true };
-        renderLoading();
-        applyLookupFilter(token);
-      }
-      return;
-    }
-
-    var records = readRecordsFromView(LOOKUP_VIEW_ID);
-
-    // Exactly one match required. Zero (bad token) or many (data bug
-    // — tokens should be unique) → fallback.
-    if (!records || records.length !== 1) {
-      renderFallback();
-      state.pending = false;
-      return;
-    }
-
-    var attrs = records[0];
-
-    // Optional gate checks (active/superseded/expiration).
-    if (!passesGates(attrs)) { renderFallback(); state.pending = false; return; }
-
-    // OTP placeholder — fails closed by design.
-    if (OTP_REQUIRED) { renderFallback(); state.pending = false; return; }
-
-    try {
-      renderProposal(attrs);
-    } catch (e) {
-      console.warn('[proposal-access] Render failed', e);
-      renderFallback();
-    }
-    state.pending = false;
-  }
-
-  // ---- Bindings ---------------------------------------------------------
-  // Knack fires jQuery events for scene/view renders. We always use
-  // .off().on() with a namespace so re-loading this snippet during
-  // development doesn't pile duplicate handlers.
-
-  $(document)
-    .off('knack-scene-render.' + SCENE_ID + NS)
-    .on('knack-scene-render.' + SCENE_ID + NS, function () {
-      handleSceneRender();
-    });
-
-  $(document)
-    .off('knack-view-render.' + LOOKUP_VIEW_ID + NS)
-    .on('knack-view-render.' + LOOKUP_VIEW_ID + NS, function () {
-      handleLookupRender();
-    });
-
-  // hashchange — if the customer pastes a new token URL while already
-  // on the scene, re-run the flow.
-  $(window)
-    .off('hashchange' + NS)
-    .on('hashchange'  + NS, function () {
-      var hash = (window.location.hash || '').replace(/^#/, '');
-      if (new RegExp('^' + HASH_ROUTE + '(?:/|$)').test(hash)) {
-        handleSceneRender();
-      }
-    });
 })();
