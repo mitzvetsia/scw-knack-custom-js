@@ -6870,7 +6870,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
         // Build "Unassigned" group header
         var unassignedTr = document.createElement('tr');
-        unassignedTr.className = 'kn-table-group kn-group-level-1 scw-group-header scw-synthetic-group';
+        unassignedTr.className = 'kn-table-group kn-group-level-1 scw-group-header scw-synthetic-group scw-unassigned-group';
         unassignedTr.style.cssText = '--scw-grp-accent: ' + SYNTH_ACCENT +
           '; --scw-grp-accent-rgb: ' + SYNTH_ACCENT_RGB + ';';
         var unassignedTd = document.createElement('td');
