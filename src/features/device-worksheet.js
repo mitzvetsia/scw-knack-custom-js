@@ -1089,8 +1089,11 @@ tr.scw-inline-photo-row > td {
   overflow: hidden;
 }
 
-/* ── Top separator between record groups (card + photo row) ── */
-.${WORKSHEET_ROW}.${P}-last > td {
+/* ── Top separator above every worksheet row ──
+   Acts as the divider between cards. The base reset above zeros all
+   borders on .scw-ws-row > td; this longhand !important wins by
+   source order so each card gets a 2px line above it. */
+tr.${WORKSHEET_ROW} > td {
   border-top: 2px solid #e2e8f0 !important;
 }
 
