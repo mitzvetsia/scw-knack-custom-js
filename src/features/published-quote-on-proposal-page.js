@@ -23,15 +23,20 @@
     var proposal = SCW.publishedQuoteInfo.read({ sourceView: SOURCE_VIEW });
     SCW.publishedQuoteInfo.renderInto(host, proposal, {
       variant:   'regular',
+      header:    'Published Proposal',
       emptyText: 'No published quotes',
-      // Prefer the in-row "View Published Proposal" link (canonical
-      // Knack-routed details page) when present, but always fall back
-      // to the published-proposals hash route built from recordId so
-      // the name is never a dead string.
-      linkBuilder: function (p) {
-        if (p.viewLink) return p.viewLink;
-        if (p.recordId) return '#published-proposals/sow-published-proposal-details/' + p.recordId;
-        return '';
+      // No linkBuilder — proposal name is plain text. The customer
+      // link is the only navigation users need.
+      //
+      // Customer Link uses the tokenized public URL (field_2908) when
+      // the proposal is live. We deliberately DON'T supply an
+      // expiredFallbackUrl: staff viewing this widget are already on
+      // the published-proposal details page, so a "View Published
+      // Details" button would just link to the page they're on. The
+      // expired-warning blurb still renders.
+      customerLink: {
+        url:   (proposal && proposal.tokenUrl) || '',
+        label: 'Open Customer Link'
       }
     });
   }
