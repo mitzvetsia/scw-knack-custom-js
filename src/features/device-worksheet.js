@@ -114,7 +114,7 @@
 
           // ── Detail panel (matches view_3512 layout) ──
           mounting:         { key: 'field_2463', type: 'readOnly' },
-          connections:      { key: 'field_2381', type: 'readOnly' },
+          connections:      { key: 'field_2381', type: 'nativeEdit' },
           scwNotes:         { key: 'field_2418', type: 'readOnly' },
           surveyNotes:      { key: 'field_2412', type: 'directEdit', notes: true },
           exteriorChit:     { key: 'field_2372', type: 'toggleChit', summary: true, feeTrigger: true, chitLabel: 'Exterior' },
