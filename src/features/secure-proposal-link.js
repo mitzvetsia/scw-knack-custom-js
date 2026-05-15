@@ -443,5 +443,14 @@
       }
     });
   });
+
+  // ── Public API ───────────────────────────────────────────────
+  // Exposed so other features can mint tokens / URLs at publish time
+  // (e.g. proposal-pdf-export injects them into the Make webhook
+  // payload so the new proposal record is born with a working link).
+  window.SCW.secureProposalLink = {
+    generateToken: generateToken,
+    buildPublicUrl: buildPublicUrl
+  };
 })();
 /*** END SECURE PROPOSAL LINK — Sales-side generator **************************/

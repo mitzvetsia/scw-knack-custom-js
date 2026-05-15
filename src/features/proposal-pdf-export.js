@@ -2855,6 +2855,28 @@
     var summary       = extractSummaryFields(payload);
     var jsonSnapshot  = buildJsonSnapshot(cfg.sceneId);
     var plaintextStr  = htmlToPlaintext(htmlStr);
+
+    // Mint a public access token + URL at publish time so the new
+    // proposal record is born sharable. Make maps these into
+    // field_2904 (token) and field_2908 (URL) on the record it
+    // creates. SCW.secureProposalLink is set by
+    // src/features/secure-proposal-link.js — load-order safe because
+    // buildPublishPayload runs at click time, by which point both
+    // files have loaded.
+    var accessToken = '';
+    var accessUrl   = '';
+    try {
+      if (window.SCW && SCW.secureProposalLink &&
+          typeof SCW.secureProposalLink.generateToken === 'function') {
+        accessToken = SCW.secureProposalLink.generateToken();
+        accessUrl   = SCW.secureProposalLink.buildPublicUrl(accessToken);
+      } else {
+        console.warn('[SCW pdfExport] SCW.secureProposalLink not loaded; publish payload will lack proposalAccessToken/Url.');
+      }
+    } catch (e) {
+      console.warn('[SCW pdfExport] Token mint failed:', e && e.message);
+    }
+
     return {
       recordId:              getPageRecordId() || '',
       hash:                  window.location.hash || '',
@@ -2865,6 +2887,13 @@
       installationTotal:     summary.installationTotal,
       grandTotal:            summary.grandTotal,
       expirationDate:        summary.expirationDate,
+      // Tokenized public link, minted client-side at publish time.
+      // Make should write these to field_2904 and field_2908 on the
+      // proposal record so the public snippet finds them on first
+      // load. Token format: 64-char lowercase hex (32 random bytes
+      // via window.crypto.getRandomValues).
+      proposalAccessToken:   accessToken,
+      proposalAccessUrl:     accessUrl,
       html:                  htmlStr,
       plaintext:             plaintextStr,
       // Pre-escaped variant of `plaintext`, safe to drop directly between
