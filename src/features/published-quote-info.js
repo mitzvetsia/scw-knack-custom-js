@@ -63,6 +63,7 @@
   var DEFAULT_EXP    = 'field_2659';   // expiration date
   var DEFAULT_PDF    = 'field_2681';   // PDF file
   var DEFAULT_SOW    = 'field_2666';   // connection → SOW
+  var DEFAULT_TOKEN_URL = 'field_2908'; // cached public tokenized URL
 
   // ── CSS ────────────────────────────────────────────────────────
   function injectStyles() {
@@ -136,6 +137,52 @@
       '}' +
       '.scw-pq-pdf:hover { text-decoration: underline; }' +
 
+      // ── EXPIRED badge ──
+      '.scw-pq-expired-badge {' +
+      '  display: inline-block;' +
+      '  margin-left: 6px;' +
+      '  padding: 2px 8px;' +
+      '  background: #fef2f2;' +
+      '  color: #b91c1c;' +
+      '  border: 1px solid #fecaca;' +
+      '  border-radius: 4px;' +
+      '  font: 700 10px/1 system-ui, sans-serif;' +
+      '  letter-spacing: 0.06em;' +
+      '  text-transform: uppercase;' +
+      '  vertical-align: 2px;' +
+      '}' +
+      '.scw-pq-info--regular .scw-pq-expired-badge { font-size: 11px; padding: 3px 9px; }' +
+
+      // ── Expired-warning blurb ──
+      '.scw-pq-expired-note {' +
+      '  margin-top: 8px;' +
+      '  padding: 8px 10px;' +
+      '  background: #fffbeb;' +
+      '  border: 1px solid #fde68a;' +
+      '  border-radius: 6px;' +
+      '  color: #92400e;' +
+      '  font-size: 12px;' +
+      '  line-height: 1.4;' +
+      '  text-align: left;' +
+      '}' +
+
+      // ── Customer-link primary CTA button ──
+      // Big, obvious, the colour of "this is the link you send" so it
+      // reads as the primary action when a published proposal exists.
+      '.scw-pq-customer-cta, .scw-pq-customer-cta:visited {' +
+      '  display: inline-flex; align-items: center; gap: 6px;' +
+      '  margin-top: 10px; padding: 8px 14px;' +
+      '  background: #07467c; color: #fff !important;' +
+      '  border-radius: 6px; text-decoration: none;' +
+      '  font: 700 12px/1.2 system-ui, sans-serif;' +
+      '  letter-spacing: 0.03em; text-transform: uppercase;' +
+      '  box-shadow: 0 1px 3px rgba(0,0,0,.18);' +
+      '}' +
+      '.scw-pq-customer-cta:hover {' +
+      '  background: #053659; text-decoration: none;' +
+      '}' +
+      '.scw-pq-customer-cta svg { vertical-align: -2px; }' +
+
       // ── Empty state ──
       '.scw-pq-empty {' +
       '  font-style: italic; color: #94a3b8;' +
@@ -197,13 +244,27 @@
       }
     }
 
+    // Tokenized customer URL — minted at publish, stored on the
+    // proposal record. Falls back to the bare token + reconstruction
+    // not attempted here (the snippet builds the URL itself; this
+    // module just surfaces what's stored).
+    var tokenUrl = '';
+    var rawTokenUrl = attrs[fields.tokenUrl + '_raw'];
+    if (typeof rawTokenUrl === 'string' && rawTokenUrl.trim()) {
+      tokenUrl = rawTokenUrl.trim();
+    } else if (typeof attrs[fields.tokenUrl] === 'string') {
+      tokenUrl = String(attrs[fields.tokenUrl]).replace(/<[^>]*>/g, '').trim();
+    }
+
     return {
       recordId: id,
       name:     name,
       expDate:  expDate,
+      expired:  isExpired(expDate),
       pdfUrl:   pdfUrl,
       pdfName:  pdfName || 'Download PDF',
       viewLink: viewLink,
+      tokenUrl: tokenUrl,
       type:     (window.SCW && SCW.proposalTypeChip)
                   ? SCW.proposalTypeChip.getType(attrs) : null
     };
@@ -238,14 +299,25 @@
       else if (flagFromCell(SCW.proposalTypeChip.EQUIP_ONLY_FIELD)) type = 'equipment-only';
     }
 
+    var expDate  = cellText(fields.exp);
+    var tokenUrl = cellText(fields.tokenUrl);
+    // The token-url cell may render as an anchor; prefer the href.
+    var tokenA = cellAnchor(fields.tokenUrl);
+    if (tokenA) {
+      var hrefVal = tokenA.getAttribute('href');
+      if (hrefVal) tokenUrl = hrefVal;
+    }
+
     return {
       recordId: tr.id || '',
       name:     cellText(fields.name),
-      expDate:  cellText(fields.exp),
+      expDate:  expDate,
+      expired:  isExpired(expDate),
       pdfUrl:   pdfA  ? (pdfA.getAttribute('href') || '') : '',
       pdfName:  pdfA  ? ((pdfA.textContent || '').trim() || 'Download PDF')
                       : 'Download PDF',
       viewLink: pageA ? (pageA.getAttribute('href') || '') : '',
+      tokenUrl: tokenUrl,
       type:     type
     };
   }
@@ -253,12 +325,25 @@
   function resolveFields(opts) {
     return {
       sourceView: opts.sourceView,
-      status:     opts.statusField || DEFAULT_STATUS,
-      name:       opts.nameField   || DEFAULT_NAME,
-      exp:        opts.expField    || DEFAULT_EXP,
-      pdf:        opts.pdfField    || DEFAULT_PDF,
-      sow:        opts.sowField    || DEFAULT_SOW
+      status:     opts.statusField   || DEFAULT_STATUS,
+      name:       opts.nameField     || DEFAULT_NAME,
+      exp:        opts.expField      || DEFAULT_EXP,
+      pdf:        opts.pdfField      || DEFAULT_PDF,
+      sow:        opts.sowField      || DEFAULT_SOW,
+      tokenUrl:   opts.tokenUrlField || DEFAULT_TOKEN_URL
     };
+  }
+
+  // ── Expiration check ──────────────────────────────────────────
+  // Returns true when the expDate string (e.g. "06/13/2026") is
+  // strictly before today (calendar-day boundary). Blank / unparseable
+  // dates are treated as not expired.
+  function isExpired(expDateStr) {
+    if (!expDateStr) return false;
+    var d = new Date(expDateStr);
+    if (isNaN(d.getTime())) return false;
+    var today = new Date(); today.setHours(0, 0, 0, 0);
+    return d < today;
   }
 
   // ── Read first published proposal ─────────────────────────────
@@ -385,11 +470,19 @@
       return block;
     }
 
-    // Optional header label (panel variant uses it).
+    // Optional header label (panel variant uses it). Append the
+    // EXPIRED badge inline with the header when the proposal is
+    // expired so the state is the first thing the user reads.
     if (opts.header) {
       var hdr = document.createElement('div');
       hdr.className = 'scw-pq-header';
       hdr.textContent = opts.header;
+      if (proposal.expired) {
+        var badge = document.createElement('span');
+        badge.className = 'scw-pq-expired-badge';
+        badge.textContent = 'Expired';
+        hdr.appendChild(badge);
+      }
       block.appendChild(hdr);
     }
 
@@ -439,6 +532,43 @@
       pdfLink.innerHTML = PDF_SVG;
       pdfLink.appendChild(document.createTextNode(proposal.pdfName));
       block.appendChild(pdfLink);
+    }
+
+    // ── Customer-link CTA + expired warning ────────────────────
+    // Caller controls via opts.customerLink. Shape:
+    //   { url: 'https://…', label: 'Send to Customer', expiredFallbackUrl }
+    // When proposal.expired:
+    //   • the EXPIRED badge already showed in the header
+    //   • the CTA links to expiredFallbackUrl (typically the internal
+    //     preview page) instead of the live tokenized URL
+    //   • an amber blurb explains why
+    var cust = opts.customerLink;
+    if (cust && cust.url) {
+      if (proposal.expired) {
+        if (cust.expiredFallbackUrl) {
+          var note = document.createElement('div');
+          note.className = 'scw-pq-expired-note';
+          note.textContent = 'This proposal is past its expiration date — ' +
+            'open the preview to coordinate an extension with Ops before ' +
+            're-sharing.';
+          block.appendChild(note);
+        }
+      } else {
+        var custBtn = document.createElement('a');
+        custBtn.className = 'scw-pq-customer-cta';
+        custBtn.setAttribute('href', cust.url);
+        custBtn.setAttribute('target', '_blank');
+        custBtn.setAttribute('rel', 'noopener');
+        custBtn.innerHTML =
+          '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" ' +
+          'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+          'stroke-linejoin="round">' +
+          '<path d="M10 14a5 5 0 0 0 7.07 0l3-3a5 5 0 0 0-7.07-7.07L11 6"/>' +
+          '<path d="M14 10a5 5 0 0 0-7.07 0l-3 3a5 5 0 0 0 7.07 7.07L13 18"/>' +
+          '</svg>' +
+          (cust.label || 'Customer Link');
+        block.appendChild(custBtn);
+      }
     }
 
     return block;

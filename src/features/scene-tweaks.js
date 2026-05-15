@@ -437,10 +437,20 @@
         var block = SCW.publishedQuoteInfo.buildBlock(proposal, {
           variant: 'regular',
           header:  'Published Proposal',
-          // Sales totals link uses the in-row "View Published Proposal"
-          // anchor href (the canonical Knack details page). Falls back
-          // to the published-proposals hash route if not present.
-          linkBuilder: function (p) { return p.viewLink || ''; }
+          // Proposal-name link goes to the canonical Knack details
+          // page (sales staff still need that for editing fields /
+          // status). The CUSTOMER-facing link is rendered as the
+          // primary CTA below via opts.customerLink.
+          linkBuilder: function (p) { return p.viewLink || ''; },
+          // Customer-link CTA: prefer the tokenized URL when the
+          // proposal isn't expired; when expired, the buildBlock
+          // function hides the CTA and shows an amber warning blurb
+          // instead (sales is steered to the internal preview).
+          customerLink: {
+            url:                 proposal.tokenUrl || '',
+            label:               'Open Customer Link',
+            expiredFallbackUrl:  previewHref || (proposal.viewLink || '')
+          }
         });
         if (block) {
           // The base .scw-pq-info rule centers text; the panel here is
@@ -450,17 +460,27 @@
         }
       }
 
-      // Preview Draft Proposal — always rendered when the link exists,
-      // regardless of whether a published proposal is present. Drops a
-      // little extra top-margin so it floats on its own when there's no
-      // published-proposal block above it.
+      // Preview Draft Proposal — always visible when the link exists.
+      // Sales' QA escape hatch even when a published proposal exists
+      // (and the only navigation path when the proposal is expired,
+      // since the customer-link CTA hides itself in that state).
       if (previewHref) {
         var previewHdr = document.createElement('a');
         previewHdr.href = previewHref;
-        var topMargin = hasPublished ? '10px' : '0';
-        previewHdr.style.cssText = 'display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:700;color:#2563eb;text-transform:uppercase;letter-spacing:0.04em;margin-top:' + topMargin + ';text-decoration:none;';
+        var topMargin = hasPublished ? '14px' : '0';
+        // Slightly more prominent when this is the ONLY CTA on the
+        // panel (no published proposal yet, OR published-but-expired).
+        var solo = !hasPublished || !!(proposal && proposal.expired);
+        previewHdr.style.cssText =
+          'display:inline-flex;align-items:center;gap:6px;' +
+          'font-size:' + (solo ? '13px' : '12px') + ';' +
+          'font-weight:700;color:#2563eb;text-transform:uppercase;' +
+          'letter-spacing:0.04em;margin-top:' + topMargin + ';' +
+          'text-decoration:none;';
         previewHdr.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
-        previewHdr.appendChild(document.createTextNode('Preview Draft Proposal'));
+        previewHdr.appendChild(document.createTextNode(
+          solo ? 'Preview Proposal' : 'Preview Draft (internal)'
+        ));
         wrap.appendChild(previewHdr);
       }
 

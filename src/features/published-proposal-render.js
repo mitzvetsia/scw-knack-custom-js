@@ -214,6 +214,13 @@
     setTimeout(function () { patchExpirationDate(iframe); }, 250);
     setTimeout(function () { patchExpirationDate(iframe); }, 1200);
 
+    // Expired-proposal banner — when field_2659 < today, drop an amber
+    // notice at the top of the iframe body so staff who land here from
+    // the sales totals panel (because the customer-link CTA pointed
+    // them here instead of the live tokenized URL) immediately see why.
+    setTimeout(function () { injectExpiredBanner(iframe); }, 250);
+    setTimeout(function () { injectExpiredBanner(iframe); }, 1200);
+
     // Inject the CTA bar inside the iframe, just above the first
     // .view-title — typically "Proposed Solution" — so it sits between
     // the project-address detail row and the line-items table.
@@ -261,6 +268,44 @@
     var v = attrs[EXPIRATION_FIELD];
     if (v == null) return '';
     return String(v).replace(/<[^>]*>/g, '').trim();
+  }
+
+  // Returns true if the proposal's live expiration date (field_2659)
+  // is strictly before today (calendar-day boundary).
+  function isProposalExpired() {
+    var raw = readLiveExpirationDate();
+    if (!raw) return false;
+    var d = new Date(raw);
+    if (isNaN(d.getTime())) return false;
+    var today = new Date(); today.setHours(0, 0, 0, 0);
+    return d < today;
+  }
+
+  function injectExpiredBanner(iframe) {
+    if (!iframe || !isProposalExpired()) return;
+    var doc;
+    try { doc = iframe.contentDocument || (iframe.contentWindow && iframe.contentWindow.document); }
+    catch (e) { return; }
+    if (!doc || !doc.body) return;
+    if (doc.body.querySelector('.scw-expired-banner')) return;  // idempotent
+
+    var banner = doc.createElement('div');
+    banner.className = 'scw-expired-banner';
+    banner.style.cssText =
+      'margin: 0 0 18px 0; padding: 14px 18px;' +
+      'background: #fffbeb; border: 1px solid #fde68a;' +
+      'border-radius: 8px; color: #92400e;' +
+      'font: 600 14px/1.45 system-ui, -apple-system, sans-serif;' +
+      'text-align: left;';
+    banner.innerHTML =
+      '<div style="font-size:15px; font-weight:800; margin-bottom:4px;">' +
+        'This proposal is expired' +
+      '</div>' +
+      '<div style="font-weight:500;">' +
+        'Talk to the Ops team to get the expiration date updated before ' +
+        're-sharing the customer link.' +
+      '</div>';
+    doc.body.insertBefore(banner, doc.body.firstChild);
   }
 
   function patchExpirationDate(iframe) {
