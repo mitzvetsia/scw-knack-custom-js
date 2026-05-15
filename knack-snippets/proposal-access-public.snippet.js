@@ -47,9 +47,16 @@
   var HTML_FIELD       = 'field_2680';
   var HASH_ROUTE       = 'project-proposal';
 
-  // Optional gates — set to a field key to enable; leave null to skip.
-  var ACTIVE_FIELD     = null;
-  var SUPERSEDED_FIELD = null;
+  // Proposal lifecycle status — multi-select on the proposal record.
+  // Only proposals whose status set INTERSECTS STATUS_ALLOWED are
+  // viewable on the public page. Anything else (including blank)
+  // produces the generic "not available" fallback.
+  //   field_2658 values: "Published" | "Superseded" | "Archived"
+  // Expose field_2658 on the lookup view (view_3952) for this gate
+  // to work.
+  var STATUS_FIELD     = 'field_2658';
+  var STATUS_ALLOWED   = ['Published'];
+
   var EXPIRATION_FIELD = 'field_2659';
 
   // Fails closed when true — leave false until OTP UI lands.
@@ -270,11 +277,8 @@
 
   // ---- Gate checks -----------------------------------------------------
   function passesGates(attrs) {
-    if (ACTIVE_FIELD) {
-      if (!isYes(attrs[ACTIVE_FIELD + '_raw']) && !isYes(attrs[ACTIVE_FIELD])) return false;
-    }
-    if (SUPERSEDED_FIELD) {
-      if (isYes(attrs[SUPERSEDED_FIELD + '_raw']) || isYes(attrs[SUPERSEDED_FIELD])) return false;
+    if (STATUS_FIELD && STATUS_ALLOWED && STATUS_ALLOWED.length) {
+      if (!statusMatches(attrs, STATUS_FIELD, STATUS_ALLOWED)) return false;
     }
     if (EXPIRATION_FIELD) {
       var raw = attrs[EXPIRATION_FIELD + '_raw'];
@@ -293,6 +297,30 @@
   function isYes(v) {
     if (v === true) return true;
     if (typeof v === 'string') return /^(yes|true)$/i.test(v.trim());
+    return false;
+  }
+
+  // Knack multi-select fields come back as an array on `_raw` and a
+  // comma-separated string on the plain key. Normalize, then look for
+  // any intersection with the allowed-list (case-insensitive). An
+  // empty / missing value is treated as "not allowed" — only an
+  // explicit match passes.
+  function statusMatches(attrs, fieldKey, allowed) {
+    var allowedLower = allowed.map(function (s) { return String(s).trim().toLowerCase(); });
+    var raw = attrs[fieldKey + '_raw'];
+    var values = [];
+    if (Array.isArray(raw)) {
+      values = raw.map(function (v) { return String(v == null ? '' : v); });
+    } else if (raw != null) {
+      values = String(raw).split(',');
+    } else {
+      var plain = attrs[fieldKey];
+      if (plain != null) values = String(plain).split(',');
+    }
+    for (var i = 0; i < values.length; i++) {
+      var v = values[i].trim().toLowerCase();
+      if (v && allowedLower.indexOf(v) !== -1) return true;
+    }
     return false;
   }
 

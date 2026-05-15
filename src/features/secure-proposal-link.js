@@ -56,9 +56,12 @@
                                           //   so reports / email merges can
                                           //   reference the link without
                                           //   re-building it from the token)
+    // Lifecycle status is managed elsewhere (field_2658 multi-select
+    // "Published"/"Superseded"/"Archived" on the proposal record) —
+    // we don't touch it from the link generator. The public-side
+    // snippet enforces "only Published is viewable" via STATUS_FIELD/
+    // STATUS_ALLOWED in proposal-access-public.snippet.js.
     EXPIRATION_FIELD:  null,             // e.g. 'field_XXXX' (date)
-    ACTIVE_FIELD:      null,             // e.g. 'field_XXXX' (Yes/No)
-    SUPERSEDED_FIELD:  null,             // e.g. 'field_XXXX' (Yes/No)
 
     // Token: 32 random bytes → 64-char hex. Plenty of entropy, URL-safe.
     TOKEN_BYTES: 32,
@@ -210,12 +213,10 @@
     var url  = buildPublicUrl(token);
     var data = {};
     data[CONFIG.TOKEN_FIELD] = token;
-    if (CONFIG.LINK_FIELD)   data[CONFIG.LINK_FIELD]       = url;
-    // Scaffolding for future fields — only write if configured.
-    if (CONFIG.ACTIVE_FIELD)     data[CONFIG.ACTIVE_FIELD]     = 'Yes';
-    if (CONFIG.SUPERSEDED_FIELD) data[CONFIG.SUPERSEDED_FIELD] = 'No';
+    if (CONFIG.LINK_FIELD) data[CONFIG.LINK_FIELD] = url;
     // EXPIRATION_FIELD intentionally left untouched — set policy is
-    // separate from rotate policy.
+    // separate from rotate policy. Lifecycle status (field_2658) is
+    // managed by the publish workflow, not by link rotation.
 
     SCW.knackAjax({
       url:  SCW.knackRecordUrl(sceneCfg.saveViewId, recordId),
