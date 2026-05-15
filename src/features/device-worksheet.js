@@ -518,6 +518,7 @@
           { cls: 'scw-row--services',    label: 'Project Wide Services' },
           { cls: 'scw-row--assumptions', label: 'Project Wide Assumptions' },
         ],
+        syntheticGroupsPosition: 'bottom',
         // ── Override: cameras/readers rows mirror view_3313's config.
         //    Only includes fields that exist on view_3610's raw table.
         //    stackedSummary: false matches view_3586's cam/reader layout
@@ -6877,8 +6878,14 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         unassignedTd.textContent = 'Unassigned';
         unassignedTr.appendChild(unassignedTd);
 
-        // Insert at top of tbody (before other synthetic groups)
-        tbody.insertBefore(unassignedTr, tbody.firstChild);
+        // Position matches syntheticGroupsPosition: append to the bottom
+        // of tbody when the view wants synthetic groups at the end,
+        // otherwise prepend so Unassigned leads the synthetic section.
+        if (viewCfg.syntheticGroupsPosition === 'bottom') {
+          tbody.appendChild(unassignedTr);
+        } else {
+          tbody.insertBefore(unassignedTr, tbody.firstChild);
+        }
 
         // Move orphan rows (and their associated orig/photo rows) under the header
         var oInsertRef = unassignedTr;
