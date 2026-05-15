@@ -49,8 +49,12 @@
   // The bucket record ID matches the SOW bid-item schema (same bucket
   // table), but the field key is different from the form-side
   // field_2223 — on the worksheet it lives under field_2366.
+  // view_3505 (SOW line items) uses field_2219 instead, so both keys
+  // are tried when classifying a row.
   var BUCKET_FIELD             = 'field_2366';
+  var BUCKET_FIELD_FALLBACKS   = ['field_2366', 'field_2219'];
   var CAMERAS_READERS_BUCKET   = '6481e5ba38f283002898113c';
+  var OTHER_EQUIPMENT_BUCKET   = '5df12ce036f91b0015404d78';
 
   // Summary fields that the on-screen worksheet renders but the survey
   // PDF must NOT surface — typically pricing/labor data the tech in
@@ -1027,15 +1031,15 @@
   //   flags   — Y/N pairs inline (cabling / location / plenum)
   //   measure — height checkbox cluster + drop / conduit fillable
   var PDF_DETAIL_LAYOUT = {
-    // Reference items shown in the LEFT column above the flag/measure
-    // rows. Labor Description (field_2409) is rendered separately in
-    // the right column so it gets the full width and notes space.
+    // Reference items shown in the LEFT column under the [Label]
+    // [Product] identity line. Only Mount lives here now — Labor
+    // and SCW Notes both render in the right column.
     ref: [
-      { key: 'field_2463', label: 'Mount' },     // Mounting Hardware
-      { key: 'field_2418', label: 'SCW' }        // SCW Notes (on view_3505 / 3610)
+      { key: 'field_2463', label: 'Mount' }
     ],
-    // Rendered as a labelled block in the right column.
-    labor: { key: 'field_2409', label: 'Labor Description' },
+    // Rendered as labelled blocks in the right column, in order.
+    labor:    { key: 'field_2409', label: 'Labor Description' },
+    scwNotes: { key: 'field_2418', label: 'SCW Notes' },
     flags: [
       // view_3800 (survey line items)
       { key: 'field_2370', label: 'Existing', yesLabel: 'Y', noLabel: 'N' },
@@ -1153,15 +1157,25 @@
   // doesn't render the bucket or field_2374, so detailValues is
   // not a reliable source.
 
-  function isCamerasReadersBucket(card) {
+  // Generic bucket-ID match across the survey + SOW worksheet keys.
+  function bucketMatches(card, bucketId, regex) {
     if (!card || !card.raw) return false;
-    // Primary: connection _raw holds [{id, identifier}]
-    var bucketId = bucketIdOf(card.raw, BUCKET_FIELD);
-    if (bucketId && bucketId === CAMERAS_READERS_BUCKET) return true;
-    // Fallback: display string (e.g. "Cameras or Readers")
-    var disp = card.raw[BUCKET_FIELD];
-    if (typeof disp === 'string' && /camera|reader/i.test(disp)) return true;
+    for (var i = 0; i < BUCKET_FIELD_FALLBACKS.length; i++) {
+      var fk = BUCKET_FIELD_FALLBACKS[i];
+      var bid = bucketIdOf(card.raw, fk);
+      if (bid && bid === bucketId) return true;
+      var disp = card.raw[fk];
+      if (regex && typeof disp === 'string' && regex.test(disp)) return true;
+    }
     return false;
+  }
+
+  function isCamerasReadersBucket(card) {
+    return bucketMatches(card, CAMERAS_READERS_BUCKET, /camera|reader/i);
+  }
+
+  function isOtherEquipmentBucket(card) {
+    return bucketMatches(card, OTHER_EQUIPMENT_BUCKET, /other.*equipment/i);
   }
 
   function isDistributionDevice(card) {
@@ -1462,19 +1476,17 @@
     h.push('<section class="' + cls + '">');
 
     // ── Header row ──
-    // Camera/reader cards: header carries the label only (product
-    // moves into column 1). Brief cards (services/assumptions): use
-    // label + product inline since there's no body to put product in.
+    // For brief (service/assumption) cards the header carries the
+    // full identity (label + product + warn + summary fields).
+    // For detail cards the identity moves into col 1; the header
+    // becomes a thin strip for residual chips (warn, qty, Other
+    // Notes summary) only.
     h.push('<header class="ws-header">');
     h.push('<div class="ws-identity">');
-    if (card.label) h.push('<span class="ws-label">' + esc(card.label) + '</span>');
     if (brief) {
+      if (card.label) h.push('<span class="ws-label">' + esc(card.label) + '</span>');
       if (card.label && card.product) h.push('<span class="ws-sep">&middot;</span>');
       if (card.product) h.push('<span class="ws-product">' + esc(card.product) + '</span>');
-    } else if (!card.label && card.product) {
-      // Card has no label cell (e.g. Hard Drive, switch) — fall back
-      // to product in the header so the row still self-identifies.
-      h.push('<span class="ws-product">' + esc(card.product) + '</span>');
     }
     if (card.warnCount > 0) {
       h.push('<span class="ws-warn">&#9888; ' + card.warnCount + '</span>');
@@ -1502,16 +1514,24 @@
 
     // ── Two-column body (camera/reader/NVR cards only) ──
     if (card.showDetail) {
+      // Notes square is reserved for cards where the tech is likely
+      // to capture install observations (cameras/readers/networking).
+      // Other Equipment cards (UPS, racks, hard drives) don't need it
+      // — they're spec'd by part number, not surveyed.
+      var renderNotesSquare = !isOtherEquipmentBucket(card);
+
       h.push('<div class="ws-body-2col">');
-      // Left column: product · mount/SCW ref items · flags · measurements
+      // ── Left column ──
       h.push('<div class="ws-body-col ws-body-col--left">');
-      // Only show the Product line in col 1 when there IS a separate
-      // label in the header. For label-less cards (Hard Drive, switch)
-      // the product already lives in the header, so don't repeat it.
-      if (card.label && card.product) {
-        h.push('<div class="ws-line">');
-        h.push('<span class="ws-line-label">Product</span>');
-        h.push('<span class="ws-line-value">' + esc(card.product) + '</span>');
+      // Identity line: combined Label + Product, no row prefix.
+      if (card.label || card.product) {
+        h.push('<div class="ws-id-line">');
+        if (card.label) {
+          h.push('<span class="ws-id-label">' + esc(card.label) + '</span>');
+        }
+        if (card.product) {
+          h.push('<span class="ws-id-product">' + esc(card.product) + '</span>');
+        }
         h.push('</div>');
       }
       h.push(renderRefSection(card));
@@ -1519,7 +1539,7 @@
       h.push(renderMeasureRow(card));
       h.push('</div>');
 
-      // Right column: labor description + writing space for notes
+      // ── Right column ──
       h.push('<div class="ws-body-col ws-body-col--right">');
       var laborSpec = PDF_DETAIL_LAYOUT.labor || {};
       var laborVal = (laborSpec.key && card.detailValues[laborSpec.key]) || '';
@@ -1529,15 +1549,21 @@
         h.push('<div class="ws-labor-value">' + esc(laborVal) + '</div>');
         h.push('</div>');
       }
-      h.push('<div class="ws-notes-block">');
-      h.push('<div class="ws-notes-block-label">Notes</div>');
-      h.push('<div class="ws-notes-lines">');
-      h.push('<div class="ws-notes-line"></div>');
-      h.push('<div class="ws-notes-line"></div>');
-      h.push('<div class="ws-notes-line"></div>');
-      h.push('<div class="ws-notes-line"></div>');
-      h.push('</div>');
-      h.push('</div>');
+      var scwSpec = PDF_DETAIL_LAYOUT.scwNotes || {};
+      var scwVal  = (scwSpec.key && card.detailValues[scwSpec.key]) || '';
+      if (scwVal) {
+        h.push('<div class="ws-labor ws-labor--scw">');
+        h.push('<div class="ws-labor-label">' + esc(scwSpec.label || 'SCW Notes') + '</div>');
+        h.push('<div class="ws-labor-value">' + esc(scwVal) + '</div>');
+        h.push('</div>');
+      }
+      if (renderNotesSquare) {
+        // Open white square. flex-grow soaks up whatever vertical
+        // space col 1 leaves behind — no fixed lines, no min height.
+        h.push('<div class="ws-notes-open">');
+        h.push('<div class="ws-notes-open-label">Notes</div>');
+        h.push('</div>');
+      }
       h.push('</div>');
       h.push('</div>');
     }
@@ -1793,26 +1819,23 @@
       '  column-gap: 10px; row-gap: 0;',
       '  margin-top: 2px; padding-top: 2px;',
       '  border-top: 1px solid #e5e7eb;',
+      '  align-items: stretch;',
       '}',
-      '.ws-body-col { display: flex; flex-direction: column; gap: 2px; }',
+      '.ws-body-col { display: flex; flex-direction: column; gap: 2px; min-height: 0; }',
       '.ws-body-col--left  { padding-right: 4px; border-right: 1px dotted #e5e7eb; }',
       '.ws-body-col--right { padding-left: 4px; }',
       '',
-      '/* Product / Mount style key:value line at top of col 1 */',
-      '.ws-line {',
-      '  display: flex; gap: 4px; align-items: baseline;',
-      '  font-size: 9px; line-height: 1.25;',
+      '/* Identity line at top of col 1: [Label] [Product] no prefix */',
+      '.ws-id-line {',
+      '  display: flex; flex-wrap: wrap; gap: 6px;',
+      '  align-items: baseline; line-height: 1.2;',
+      '  margin-bottom: 1px;',
       '}',
-      '.ws-line-label {',
-      '  font-weight: 700; color: #6b7280;',
-      '  font-size: 7.5px; letter-spacing: 0.4px;',
-      '  text-transform: uppercase;',
-      '  min-width: 38px; flex: 0 0 38px; text-align: right;',
-      '  padding-top: 1px;',
+      '.ws-id-label {',
+      '  font-weight: 700; color: #07467c; font-size: 11.5px;',
       '}',
-      '.ws-line-value {',
-      '  color: #111827; flex: 1 1 auto;',
-      '  white-space: pre-wrap; word-break: break-word;',
+      '.ws-id-product {',
+      '  font-weight: 500; color: #374151; font-size: 10px;',
       '}',
       '',
       '/* ── Reference items (Mount / SCW) — same shape as ws-line ── */',
@@ -1857,30 +1880,32 @@
       '}',
       '',
       '/* ── Measurement band (Height · Drop · Conduit) ──────────── */',
+      '/* Aggressive shrink: tight gaps, narrower fill spans, smaller */',
+      '/* checkbox glyphs so the whole row sits on one line.          */',
       '.ws-measure {',
-      '  display: flex; flex-wrap: wrap; gap: 2px 8px;',
+      '  display: flex; flex-wrap: wrap; gap: 1px 6px;',
       '  margin-top: 2px; padding-top: 2px;',
       '  border-top: 1px dashed #e5e7eb;',
-      '  font-size: 9px; align-items: baseline;',
+      '  font-size: 8.5px; align-items: baseline;',
       '}',
       '.ws-m-item {',
-      '  display: inline-flex; gap: 2px; align-items: baseline;',
+      '  display: inline-flex; gap: 1px; align-items: baseline;',
       '  white-space: nowrap;',
       '}',
       '.ws-m-label {',
       '  font-weight: 700; color: #07467c;',
-      '  font-size: 8.5px;',
+      '  font-size: 8px; margin-right: 1px;',
       '}',
       '.ws-m-unit {',
-      '  color: #6b7280; font-size: 8px; margin-left: 1px;',
+      '  color: #6b7280; font-size: 7.5px; margin-left: 1px;',
       '}',
       '',
       '/* Fill-in-the-blank: underline span tall enough to write on */',
       '.ws-fill {',
-      '  display: inline-block; min-width: 38px;',
+      '  display: inline-block; min-width: 28px;',
       '  border-bottom: 1px solid #4b5563;',
-      '  min-height: 12px; line-height: 11px;',
-      '  padding: 0 2px; color: #111827;',
+      '  min-height: 11px; line-height: 10px;',
+      '  padding: 0 1px; color: #111827;',
       '}',
       '',
       '.ws-box {',
@@ -1889,11 +1914,13 @@
       '}',
       '.ws-box.is-on { color: #07467c; font-weight: 700; }',
       '',
-      '/* ── Right column: Labor Description + lined Notes area ───── */',
+      '/* ── Right column: Labor Description + SCW Notes + open Notes ─ */',
       '.ws-labor {',
       '  font-size: 9px; line-height: 1.3;',
-      '  margin-bottom: 4px;',
+      '  margin-bottom: 3px;',
+      '  flex: 0 0 auto;',
       '}',
+      '.ws-labor--scw { margin-bottom: 3px; }',
       '.ws-labor-label {',
       '  font-weight: 700; color: #6b7280;',
       '  font-size: 7.5px; letter-spacing: 0.4px;',
@@ -1904,19 +1931,18 @@
       '  color: #111827;',
       '  white-space: pre-wrap; word-break: break-word;',
       '}',
-      '.ws-notes-block {',
-      '  display: flex; flex-direction: column; gap: 1px;',
+      '/* Open notes square: no lines, no min-height — flex-grow soaks */',
+      '/* up whatever vertical space col 1 leaves behind. The label    */',
+      '/* sits in the top-left corner; the rest is blank writing area. */',
+      '.ws-notes-open {',
+      '  flex: 1 1 0; min-height: 0;',
+      '  border: 1px solid #d1d5db; border-radius: 3px;',
+      '  padding: 3px 5px; background: #fff;',
       '}',
-      '.ws-notes-block-label {',
+      '.ws-notes-open-label {',
       '  font-weight: 700; color: #6b7280;',
       '  font-size: 7.5px; letter-spacing: 0.4px;',
       '  text-transform: uppercase;',
-      '  margin-bottom: 1px;',
-      '}',
-      '/* Reused for both per-card and L1-group notes-lines */',
-      '.ws-notes-block .ws-notes-lines {',
-      '  display: flex; flex-direction: column; gap: 9px;',
-      '  margin-top: 1px;',
       '}',
       '',
       '/* ── Brief cards (services / assumptions) — small body text ── */',
