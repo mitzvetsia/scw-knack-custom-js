@@ -1488,9 +1488,8 @@
       if (card.label && card.product) h.push('<span class="ws-sep">&middot;</span>');
       if (card.product) h.push('<span class="ws-product">' + esc(card.product) + '</span>');
     }
-    if (card.warnCount > 0) {
-      h.push('<span class="ws-warn">&#9888; ' + card.warnCount + '</span>');
-    }
+    // Warning / alert chits intentionally suppressed — survey PDF
+    // is a fill-in-the-field doc; on-screen QA chips are noise here.
     h.push('</div>');
 
     if (card.summaryFields.length) {
@@ -1541,13 +1540,13 @@
 
       // ── Right column ──
       h.push('<div class="ws-body-col ws-body-col--right">');
+      // Labor description is the lead content of col 2 — no
+      // "LABOR" row prefix, just the text itself styled to sit
+      // naturally at the top of the column.
       var laborSpec = PDF_DETAIL_LAYOUT.labor || {};
       var laborVal = (laborSpec.key && card.detailValues[laborSpec.key]) || '';
       if (laborVal) {
-        h.push('<div class="ws-labor">');
-        h.push('<div class="ws-labor-label">' + esc(laborSpec.label || 'Labor') + '</div>');
-        h.push('<div class="ws-labor-value">' + esc(laborVal) + '</div>');
-        h.push('</div>');
+        h.push('<div class="ws-labor">' + esc(laborVal) + '</div>');
       }
       var scwSpec = PDF_DETAIL_LAYOUT.scwNotes || {};
       var scwVal  = (scwSpec.key && card.detailValues[scwSpec.key]) || '';
@@ -1835,7 +1834,9 @@
       '  font-weight: 700; color: #07467c; font-size: 11.5px;',
       '}',
       '.ws-id-product {',
-      '  font-weight: 500; color: #374151; font-size: 10px;',
+      // Match the label styling (bold + blue) so the device reads as',
+      // one unified identifier line instead of label-then-graytext.',
+      '  font-weight: 700; color: #07467c; font-size: 10.5px;',
       '}',
       '',
       '/* ── Reference items (Mount / SCW) — same shape as ws-line ── */',
@@ -1914,13 +1915,18 @@
       '}',
       '.ws-box.is-on { color: #07467c; font-weight: 700; }',
       '',
-      '/* ── Right column: Labor Description + SCW Notes + open Notes ─ */',
+      '/* ── Right column: Labor + SCW Notes + open Notes ─────────── */',
+      '/* Labor Description is the lead cell of col 2 — rendered as  */',
+      '/* plain text (no label block, no row prefix). SCW Notes gets  */',
+      '/* a small uppercase tag because it\'s secondary context.       */',
       '.ws-labor {',
       '  font-size: 9px; line-height: 1.3;',
       '  margin-bottom: 3px;',
       '  flex: 0 0 auto;',
+      '  color: #111827;',
+      '  white-space: pre-wrap; word-break: break-word;',
       '}',
-      '.ws-labor--scw { margin-bottom: 3px; }',
+      '.ws-labor--scw { margin-bottom: 3px; color: inherit; }',
       '.ws-labor-label {',
       '  font-weight: 700; color: #6b7280;',
       '  font-size: 7.5px; letter-spacing: 0.4px;',
