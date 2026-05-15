@@ -457,10 +457,10 @@
         }
       }
 
-      // Preview Draft — always available when the SOW id resolves.
-      // Visually subordinate to the Published Proposal card above:
-      // smaller type, gray, separator line, lives in its own row so
-      // it doesn't compete with the primary Customer Link CTA.
+      // Preview Proposal — always available when the SOW id resolves.
+      // Outlined button beneath the Published Proposal card. Reads as
+      // a clear secondary action without competing visually with the
+      // primary Customer Link CTA.
       if (previewHref) {
         var solo = !hasPublished || !!(proposal && proposal.expired);
         var previewRow = document.createElement('div');
@@ -472,28 +472,26 @@
         var previewLink = document.createElement('a');
         previewLink.href = previewHref;
         previewLink.style.cssText = solo
-          // Solo: this IS the primary action — same chrome as the
-          // customer CTA so sales still gets a clear "do this".
+          // Solo (no published proposal yet OR expired) → primary chrome.
           ? 'display:inline-flex;align-items:center;justify-content:center;' +
             'gap:7px;padding:10px 18px;background:#07467c;' +
             'color:#fff;border-radius:6px;text-decoration:none;' +
             'font:700 12px/1.2 system-ui,sans-serif;' +
             'letter-spacing:0.04em;text-transform:uppercase;' +
             'box-shadow:0 1px 2px rgba(0,0,0,.12);'
-          // Companion to the customer CTA — small gray link, no chrome.
-          : 'display:inline-flex;align-items:center;gap:5px;' +
-            'font:600 11px/1.3 system-ui,sans-serif;' +
-            'color:#64748b;text-decoration:none;' +
+          // Companion to the customer CTA → outlined secondary button.
+          : 'display:inline-flex;align-items:center;justify-content:center;' +
+            'gap:7px;padding:9px 16px;background:#fff;' +
+            'color:#07467c;border:1px solid #cbd5e1;' +
+            'border-radius:6px;text-decoration:none;' +
+            'font:700 12px/1.2 system-ui,sans-serif;' +
             'letter-spacing:0.04em;text-transform:uppercase;';
-        previewLink.innerHTML = '<svg viewBox="0 0 24 24" width="' +
-          (solo ? '13' : '12') + '" height="' + (solo ? '13' : '12') +
-          '" fill="none" stroke="currentColor" stroke-width="2" ' +
+        previewLink.innerHTML = '<svg viewBox="0 0 24 24" width="13" ' +
+          'height="13" fill="none" stroke="currentColor" stroke-width="2" ' +
           'stroke-linecap="round" stroke-linejoin="round">' +
           '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>' +
           '<circle cx="12" cy="12" r="3"/></svg>';
-        previewLink.appendChild(document.createTextNode(
-          solo ? 'Preview Proposal' : 'Preview Draft'
-        ));
+        previewLink.appendChild(document.createTextNode('Preview Proposal'));
         previewRow.appendChild(previewLink);
         wrap.appendChild(previewRow);
       }

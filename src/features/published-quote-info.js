@@ -143,16 +143,39 @@
       '  color: #b91c1c; font-weight: 600;' +
       '}' +
 
-      // ── PDF link (secondary action) ──
+      // ── PDF link (styled as a "downloadable file" chip) ──
+      // The leading red "PDF" badge is the universal cue that this is
+      // a PDF download; the filename trails after as plain dark text.
+      // Outlined chip so it reads as a tappable file affordance, not
+      // a generic blue text link.
       '.scw-pq-pdf, .scw-pq-pdf:visited {' +
-      '  display: inline-flex; align-items: center; gap: 4px;' +
-      '  color: #475569;' +
-      '  text-decoration: none; font-size: 12px;' +
-      '  font-weight: 500;' +
+      '  display: inline-flex; align-items: center; gap: 8px;' +
+      '  margin-bottom: 14px;' +
+      '  padding: 6px 10px 6px 6px;' +
+      '  background: #fff;' +
+      '  border: 1px solid #e2e8f0;' +
+      '  border-radius: 6px;' +
+      '  color: #0f172a; text-decoration: none;' +
+      '  font: 500 12px/1.3 system-ui, sans-serif;' +
+      '  max-width: 100%;' +
       '}' +
-      '.scw-pq-pdf svg { color: #94a3b8; flex-shrink: 0; }' +
-      '.scw-pq-pdf:hover { color: #2563eb; }' +
-      '.scw-pq-pdf:hover svg { color: #2563eb; }' +
+      '.scw-pq-pdf:hover {' +
+      '  border-color: #cbd5e1; background: #f8fafc;' +
+      '  text-decoration: none;' +
+      '}' +
+      '.scw-pq-pdf__badge {' +
+      '  display: inline-flex; align-items: center;' +
+      '  padding: 3px 6px;' +
+      '  background: #dc2626; color: #fff;' +
+      '  border-radius: 3px;' +
+      '  font: 800 10px/1 system-ui, sans-serif;' +
+      '  letter-spacing: 0.06em;' +
+      '  flex-shrink: 0;' +
+      '}' +
+      '.scw-pq-pdf__name {' +
+      '  overflow: hidden; text-overflow: ellipsis;' +
+      '  white-space: nowrap;' +
+      '}' +
 
       // ── EXPIRED badge (inline with header chips) ──
       '.scw-pq-expired-badge {' +
@@ -483,15 +506,6 @@
   }
 
   // ── Build the block DOM ───────────────────────────────────────
-  // Inline paperclip glyph for the PDF link. Sized for the chrome the
-  // block renders in — looks correct against text in any variant.
-  var PDF_SVG =
-    '<svg viewBox="0 0 24 24" width="11" height="11" fill="none" ' +
-    'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
-    'stroke-linejoin="round">' +
-    '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>' +
-    '<polyline points="14 2 14 8 20 8"/></svg>';
-
   function buildBlock(proposal, opts) {
     opts = opts || {};
     injectStyles();
@@ -567,12 +581,22 @@
     }
 
     if (proposal.pdfUrl) {
+      // "Downloadable file" chip: red PDF badge + filename. The badge
+      // is the universal cue ("this is a PDF") and the chip border
+      // signals "tap to download" without leaning on a generic blue
+      // text-link.
       var pdfLink = document.createElement('a');
       pdfLink.className = 'scw-pq-pdf';
       pdfLink.setAttribute('href', proposal.pdfUrl);
       // No target=_blank by default — let the browser handle inline PDFs.
-      pdfLink.innerHTML = PDF_SVG;
-      pdfLink.appendChild(document.createTextNode(proposal.pdfName));
+      var badge = document.createElement('span');
+      badge.className = 'scw-pq-pdf__badge';
+      badge.textContent = 'PDF';
+      var fname = document.createElement('span');
+      fname.className = 'scw-pq-pdf__name';
+      fname.textContent = proposal.pdfName;
+      pdfLink.appendChild(badge);
+      pdfLink.appendChild(fname);
       block.appendChild(pdfLink);
     }
 
