@@ -42,7 +42,19 @@
   var SCENES = [
     {
       sceneId: 'scene_1096',
-      trigger: { type: 'button', buttonId: 'scw-proposal-pdf-btn', openPreview: false, buttonText: 'Publish Quote' },
+      trigger: {
+        type: 'button',
+        buttonId: 'scw-proposal-pdf-btn',
+        openPreview: false,
+        buttonText: 'Publish Quote',
+        // mountSelector: a CSS selector relative to the rendered scene
+        // where the button is appended (inline placement). When omitted,
+        // the button falls back to fixed-bottom-right. On scene_1096 the
+        // .kn-notification "Proposal Preview Only — NOT Client Facing"
+        // banner is the natural home — staff see it the moment they
+        // land on the page.
+        mountSelector: '.kn-notification'
+      },
       // view_3861 is the Ops-side SOW details host (hidden via CSS)
       // — its presence in the DOM is a signal for TBD-masking and the
       // Ops stepper, not part of the published proposal. Keep it out
@@ -1715,10 +1727,32 @@
         var sceneEl = document.getElementById('kn-' + cfg.sceneId);
         if (!sceneEl) return;
 
+        // Resolve the mount target. mountSelector (per-scene config)
+        // takes the button INLINE inside the matching element with
+        // normal block flow; the fixed-bottom-right fallback applies
+        // when no selector is configured OR the selector misses.
+        var mountSelector = cfg.trigger.mountSelector;
+        var $mount = mountSelector ? $(sceneEl).find(mountSelector).first() : $();
+        var isInline = $mount.length > 0;
+
         var $btn = $('<button></button>')
           .attr('id', btnId)
           .text(cfg.trigger.buttonText || 'Generate PDF')
-          .css({
+          .css(isInline ? {
+            // Inline placement — flows in document order inside the
+            // mount element. No fixed positioning, no z-index gymnastics.
+            display: 'inline-block',
+            marginTop: '10px',
+            padding: '12px 24px',
+            fontSize: '15px',
+            fontWeight: 700,
+            color: '#fff',
+            background: '#07467c',
+            border: 'none',
+            borderRadius: '6px',
+            cursor: 'pointer',
+            boxShadow: '0 2px 8px rgba(0,0,0,.25)',
+          } : {
             position: 'fixed',
             bottom: '24px',
             right: '24px',
@@ -1793,7 +1827,8 @@
           }
         });
 
-        $(sceneEl).append($btn);
+        if (isInline) $mount.append($btn);
+        else          $(sceneEl).append($btn);
       }, 1500);
     });
 
