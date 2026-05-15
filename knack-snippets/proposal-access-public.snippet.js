@@ -424,12 +424,65 @@
     setTimeout(resize, 1000);
     setTimeout(resize, 3000);
 
+    // Live expiration date — the snapshot HTML in field_2680 bakes in
+    // whatever expiration was on the SOW at publish time. After
+    // publish, EXPIRATION_FIELD (field_2659) can be edited; those
+    // edits must show on the public page without re-publishing the
+    // whole quote. patchExpirationDate finds the snapshot's
+    // "Expiration Date" row and overwrites its value cell.
+    setTimeout(function () { patchExpirationDate(iframe, attrs); }, 250);
+    setTimeout(function () { patchExpirationDate(iframe, attrs); }, 1200);
+
     // CTA bar injection — mirrors src/features/published-proposal-render
     // injectCtaIntoIframe. Re-run after layout settles AND after the
     // CTA source views likely rendered (they're sibling views on the
     // same scene; render-order isn't guaranteed).
     setTimeout(function () { injectCtaIntoIframe(iframe, attrs, resize); }, 350);
     setTimeout(function () { injectCtaIntoIframe(iframe, attrs, resize); }, 1200);
+  }
+
+  // ---- Live expiration date patch (field_2659 → snapshot row) ---------
+  // Mirrors src/features/published-proposal-render.js's
+  // patchExpirationDate. Reads field_2659 off the proposal record's
+  // attrs (always live — the snippet just refetched the record) and
+  // overwrites the matching detail-table row inside the iframe.
+  function readLiveExpirationDate(attrs) {
+    if (!attrs || !EXPIRATION_FIELD) return '';
+    var raw = attrs[EXPIRATION_FIELD + '_raw'];
+    if (raw && typeof raw === 'object') {
+      if (raw.date_formatted) return String(raw.date_formatted).trim();
+      if (raw.date)            return String(raw.date).trim();
+    }
+    var v = attrs[EXPIRATION_FIELD];
+    if (v == null) return '';
+    return String(v).replace(/<[^>]*>/g, '').trim();
+  }
+
+  function patchExpirationDate(iframe, attrs) {
+    if (!iframe) return;
+    var doc;
+    try { doc = iframe.contentDocument || (iframe.contentWindow && iframe.contentWindow.document); }
+    catch (e) { return; }
+    if (!doc || !doc.body) return;
+
+    var live = readLiveExpirationDate(attrs);
+    if (!live) return;
+
+    // Idempotent — skip if a previous run already stamped the row.
+    if (doc.body.querySelector('.detail-value[data-scw-live-exp]')) return;
+
+    var labels = doc.body.querySelectorAll('td.detail-label');
+    for (var i = 0; i < labels.length; i++) {
+      var labelText = (labels[i].textContent || '').trim().toLowerCase();
+      // Match "Expiration Date" / "Expires" — anything starting with "expir".
+      if (!/^expir/.test(labelText)) continue;
+      var valueCell = labels[i].nextElementSibling;
+      if (valueCell && valueCell.classList && valueCell.classList.contains('detail-value')) {
+        valueCell.textContent = live;
+        valueCell.setAttribute('data-scw-live-exp', '1');
+      }
+      break;
+    }
   }
 
   // ---- CTA gathering / injection (mirror internal renderer) ------------
