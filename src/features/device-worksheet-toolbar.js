@@ -77,6 +77,14 @@
       '.kn-view[' + BAR_ATTR + '] .kn-records-nav .scw-acc-actions           { order: ' + SLOTS.actions        + ' !important; }',
       '.kn-view[' + BAR_ATTR + '] .kn-records-nav .ktlAddonsDiv              { order: ' + SLOTS.addonsDiv      + ' !important; }',
 
+      // ── Per-view order overrides ──
+      // view_3586: filters should sit at the very left of the bar
+      // (before sort/mode) and the 'Showing N of N' summary is hidden
+      // — the SOW Build page already shows record counts in the
+      // accordion header pills above.
+      '#view_3586 .kn-records-nav .kn-filters-nav     { order: 0 !important; }',
+      '#view_3586 .kn-records-nav .kn-entries-summary { display: none !important; }',
+
       // Spring takes remaining width — push trailing items right.
       '.scw-tb-spring { flex: 1 1 auto; min-width: 0; }',
 
