@@ -66,18 +66,16 @@
   //   field_2746  FLAG_good faith estimate          → site-survey gate
   //   field_2747  FLAG_final proposal               → accept-proposal gate
   //   field_2748  FLAG_sow only                     → site-survey gate
-  //   field_2728  FLAG_SOWs with Survey Requested   → site-survey gate
-  //                (CR / survey-requested count — if > 0, hide site-
-  //                 survey button. Field must live on the proposal
-  //                 object — typically as a sum / count equation
-  //                 pulling from the connected SOW. If it isn't
-  //                 exposed, the gate treats it as 0 and the button
-  //                 shows whenever field_2746 or field_2748 is Yes.)
+  //   field_2907  FLAG_SOWs with Survey Requested   → site-survey gate
+  //                (Text-formula field on the proposal that pulls from
+  //                 the connected SOW, which in turn pulls field_2728
+  //                 from the project. If > 0, hides the Site Survey
+  //                 button. Treated as 0 if not exposed.)
   //
   // Source view IDs on the public scene:
   //   view_3953  "I'm Ready for a Site Survey"
   //   view_3956  "Accept Proposal"
-  var CR_COUNT_FIELD = 'field_2728';
+  var CR_COUNT_FIELD = 'field_2907';
   var CTA_CONFIGS = [
     {
       viewId: 'view_3953',   // I'm Ready for a Site Survey
