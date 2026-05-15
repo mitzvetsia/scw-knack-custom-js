@@ -2,15 +2,18 @@
 (function () {
   'use strict';
 
-  // Single unified publish webhook. The Make scenario behind it
-  // handles the entire publish flow: stamping the new proposal
-  // record (HTML snapshot, JSON snapshot, totals, expiration,
-  // token + tokenized URL), generating PDFs, sending notifications,
-  // anything else. Previously this code POSTed to TWO webhooks (a
-  // light "notify" one and a richer "save" one) — every saveHtml
-  // click fired both and the receiver scenarios duplicated work.
-  // Both retired in favor of this URL with the full payload.
+  // Default publish webhook (proposal publish flow). The Make scenario
+  // behind it stamps the new proposal record (HTML snapshot, JSON
+  // snapshot, totals, expiration, token + tokenized URL), generates
+  // PDFs, sends notifications. Per-scene SCENES entries can override
+  // via `webhookUrl` when they're a different business flow with its
+  // own Make scenario (e.g. subcontractor-bid submits on scene_1149).
   var WEBHOOK_URL = 'https://hook.us1.make.com/mezrtqmf6gh7yxlkx5fkit6fqrma213l';
+
+  // Subcontractor-bid form-submit scenario. Used by scene_1149 only —
+  // different business flow than a proposal publish, separate Make
+  // scenario, different downstream Knack writes.
+  var SUBCONTRACTOR_BID_WEBHOOK = 'https://hook.us1.make.com/ozk2uk1e58upnpsj0fx1bmdg387ekvf5';
 
   // Mint a public-access token + URL via the shared sales-side helper.
   // Used by every publish path (buildPublishPayload AND the inline
@@ -130,6 +133,11 @@
     },
     {
       sceneId: 'scene_1149',
+      // Subcontractor-bid submits go to a separate Make scenario —
+      // different inputs (bidId / surveyRequestId / clientSite),
+      // different downstream Knack writes. Do NOT route this through
+      // the proposal publish scenario.
+      webhookUrl: SUBCONTRACTOR_BID_WEBHOOK,
       trigger: { type: 'formSubmit', formViewId: 'view_3679', recordIdInput: 'id' },
       skipViews: { view_3679: true, view_3770: true, view_3552: true },
       hideEmptyGrids: [],
@@ -1674,10 +1682,16 @@
     setTimeout(function () { win.print(); }, 600);
   }
 
-  function sendToWebhook(data) {
+  // Per-scene webhook resolution. Defaults to the proposal publish
+  // scenario (WEBHOOK_URL) unless the cfg has its own override.
+  function resolveWebhookUrl(cfg) {
+    return (cfg && cfg.webhookUrl) || WEBHOOK_URL;
+  }
+
+  function sendToWebhook(data, cfg) {
     var jsonStr = JSON.stringify(data);
     $.ajax({
-      url: WEBHOOK_URL,
+      url: resolveWebhookUrl(cfg),
       type: 'POST',
       contentType: 'application/json',
       data: jsonStr,
@@ -1698,7 +1712,7 @@
     if (extra) {
       for (var k in extra) { if (extra.hasOwnProperty(k)) unified[k] = extra[k]; }
     }
-    sendToWebhook(unified);
+    sendToWebhook(unified, cfg);
 
     if (cfg.trigger.openPreview) {
       openPdfPreview(unified.html);
@@ -1861,7 +1875,7 @@
               '| sowId:', unified.sowId, '| records:', (unified.json || []).length);
             showPublishToast('Submitting…', false, true);
             $.ajax({
-              url: WEBHOOK_URL,
+              url: resolveWebhookUrl(cfg),
               type: 'POST',
               contentType: 'application/json',
               data: JSON.stringify(unified),
@@ -1888,7 +1902,7 @@
             // Preview-only path (saveHtml=false): fire-and-forget POST
             // with the same payload shape so Make scenarios can branch
             // on cfg.payloadType / lack of `recordId` if they want.
-            sendToWebhook(unified);
+            sendToWebhook(unified, cfg);
           }
         });
 
