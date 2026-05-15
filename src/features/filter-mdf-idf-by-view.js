@@ -382,11 +382,14 @@
         }
         // Camera now lives in a new MDF/IDF — if its current Connected
         // To switch is in a DIFFERENT MDF/IDF, the linkage no longer
-        // makes physical sense. Clear it so the camera doesn't render
-        // under the old switch's group on subsequent renders.
-        clearStaleConnection(recordId, newId);
-        close();
-        refreshTargetView();
+        // makes physical sense. Clear field_2381 BEFORE refreshing so
+        // the view rebuilds against fresh data; otherwise the refresh
+        // fetches while the clear PUT is still in flight and the row
+        // renders with the stale Connected To.
+        clearStaleConnection(recordId, newId, function () {
+          close();
+          refreshTargetView();
+        });
       });
       setSaving(true);
       showError('');
@@ -551,15 +554,29 @@
     return '';
   }
 
-  function clearStaleConnection(recordId, newMdfId) {
-    if (!recordId) return;
+  // Callback-style so the modal-close path can wait for the PUT to
+  // complete before triggering a view refresh. Without the wait, the
+  // refresh fetches data while the clear PUT is still in flight and
+  // the row renders with its STALE Connected To value.
+  //
+  // onDone(needsRefresh): true → clear PUT landed, caller should
+  // refresh; false → no clear needed (no mismatch / no model record /
+  // helpers unavailable), caller can refresh immediately for normal
+  // post-MDF-change rendering.
+  function clearStaleConnection(recordId, newMdfId, onDone) {
+    function done(needsRefresh) {
+      if (typeof onDone === 'function') {
+        try { onDone(!!needsRefresh); } catch (e) { /* swallow */ }
+      }
+    }
+    if (!recordId) { done(false); return; }
     var attrs = getRecordAttrs(recordId);
     if (!attrs) {
       log('clearStaleConnection: record not in model — skipping', recordId);
-      return;
+      done(false); return;
     }
     var connRaw = attrs[CONNECTED_TO_FIELD + '_raw'];
-    if (!Array.isArray(connRaw) || !connRaw.length) return;
+    if (!Array.isArray(connRaw) || !connRaw.length) { done(false); return; }
 
     // If ANY connected device's MDF/IDF differs from the camera's new
     // MDF/IDF, clear the whole field_2381 array. (In practice the camera
@@ -580,10 +597,12 @@
         break;
       }
     }
-    if (!mismatch) return;
+    if (!mismatch) { done(false); return; }
 
     if (!window.SCW || typeof window.SCW.knackAjax !== 'function' ||
-        typeof window.SCW.knackRecordUrl !== 'function') return;
+        typeof window.SCW.knackRecordUrl !== 'function') {
+      done(false); return;
+    }
     var url = window.SCW.knackRecordUrl(CFG.TARGET_VIEW, recordId);
     var body = {};
     body[CONNECTED_TO_FIELD] = [];
@@ -601,10 +620,15 @@
               CONNECTED_TO_FIELD, []);
           } catch (e) { /* best-effort */ }
         }
+        done(true);
       },
       error: function (xhr) {
         console.warn(LOG_PREFIX, 'clearStaleConnection PUT failed',
           xhr && xhr.status, xhr && xhr.responseText);
+        // Still refresh — the user moved the MDF successfully even
+        // if the cleanup failed. Leaving them on a half-saved state
+        // would be more confusing than just rendering stale.
+        done(true);
       }
     });
   }
