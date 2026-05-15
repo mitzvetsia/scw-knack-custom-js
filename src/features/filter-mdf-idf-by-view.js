@@ -530,7 +530,8 @@
   // next render. Reciprocal Knack connections take care of dropping
   // the back-reference on the switch side; the mirror-connection-sync
   // cascade picks up that change on the next render.
-  var CONNECTED_TO_FIELD = 'field_2381';
+  var CONNECTED_TO_FIELD       = 'field_2381'; // camera -> switch (back-ref)
+  var CONNECTED_DEVICES_FIELD  = 'field_2380'; // switch -> camera (forward)
 
   function getRecordAttrs(recordId) {
     if (typeof Knack === 'undefined') return null;
@@ -578,10 +579,13 @@
     var connRaw = attrs[CONNECTED_TO_FIELD + '_raw'];
     if (!Array.isArray(connRaw) || !connRaw.length) { done(false); return; }
 
-    // If ANY connected device's MDF/IDF differs from the camera's new
-    // MDF/IDF, clear the whole field_2381 array. (In practice the camera
-    // only has one Connected To, but the field is multi-connection.)
-    var mismatch = false;
+    // Collect every connected device that's in a DIFFERENT MDF/IDF.
+    // These are the ones whose linkage to this camera is now stale and
+    // need to be scrubbed off the camera's "Connected To" AND off each
+    // switch's reciprocal "Connected Devices" (Knack does not reliably
+    // auto-reciprocate multi-connection fields — see mirror-connection-
+    // sync.js for the same pattern).
+    var staleSwitchIds = [];
     for (var i = 0; i < connRaw.length; i++) {
       var connId = connRaw[i] && connRaw[i].id;
       if (!connId) continue;
@@ -589,20 +593,21 @@
       if (!connAttrs) continue;        // not in this view's pagination
       var connMdfId = mdfIdOf(connAttrs);
       if (connMdfId && connMdfId !== newMdfId) {
-        log('clearStaleConnection: connected device',
+        log('clearStaleConnection: switch',
             connId, 'is in MDF/IDF', connMdfId,
             '— camera moved to', newMdfId,
-            '— clearing', CONNECTED_TO_FIELD);
-        mismatch = true;
-        break;
+            '— will scrub from both sides');
+        staleSwitchIds.push(connId);
       }
     }
-    if (!mismatch) { done(false); return; }
+    if (!staleSwitchIds.length) { done(false); return; }
 
     if (!window.SCW || typeof window.SCW.knackAjax !== 'function' ||
         typeof window.SCW.knackRecordUrl !== 'function') {
       done(false); return;
     }
+
+    // Step 1: clear camera's CONNECTED_TO_FIELD.
     var url = window.SCW.knackRecordUrl(CFG.TARGET_VIEW, recordId);
     var body = {};
     body[CONNECTED_TO_FIELD] = [];
@@ -620,7 +625,13 @@
               CONNECTED_TO_FIELD, []);
           } catch (e) { /* best-effort */ }
         }
-        done(true);
+        // Step 2: scrub camera off each upstream switch's
+        // CONNECTED_DEVICES_FIELD.  Wait for all PUTs to land before
+        // signalling done so the subsequent refresh fetches truly
+        // fresh data on both sides.
+        scrubReverseConnections(recordId, staleSwitchIds, function () {
+          done(true);
+        });
       },
       error: function (xhr) {
         console.warn(LOG_PREFIX, 'clearStaleConnection PUT failed',
@@ -630,6 +641,66 @@
         // would be more confusing than just rendering stale.
         done(true);
       }
+    });
+  }
+
+  // For each upstream switch, read its CONNECTED_DEVICES_FIELD from
+  // the local model, filter out the camera, and PUT the trimmed list
+  // back. Mirrors mirror-connection-sync.js's explicit two-sided write
+  // — Knack does not reliably reciprocate multi-connection PUTs.
+  function scrubReverseConnections(cameraId, switchIds, onAllDone) {
+    var pending = switchIds.length;
+    if (!pending) { onAllDone(); return; }
+    function tick() {
+      pending--;
+      if (pending <= 0) onAllDone();
+    }
+    switchIds.forEach(function (switchId) {
+      var switchAttrs = getRecordAttrs(switchId);
+      if (!switchAttrs) {
+        log('scrubReverseConnections: switch', switchId,
+            'not in model — skipping (will be picked up on next render)');
+        tick(); return;
+      }
+      var currentRaw = switchAttrs[CONNECTED_DEVICES_FIELD + '_raw'];
+      if (!Array.isArray(currentRaw)) { tick(); return; }
+      var keptIds = [];
+      for (var k = 0; k < currentRaw.length; k++) {
+        var rid = currentRaw[k] && currentRaw[k].id;
+        if (rid && rid !== cameraId) keptIds.push(rid);
+      }
+      // No change — camera wasn't in the list (Knack already reciprocated,
+      // or the list was stale in the local model). Nothing to PUT.
+      if (keptIds.length === currentRaw.length) {
+        log('scrubReverseConnections: switch', switchId,
+            'did not list camera', cameraId, '— nothing to do');
+        tick(); return;
+      }
+      var switchUrl = window.SCW.knackRecordUrl(CFG.TARGET_VIEW, switchId);
+      var switchBody = {};
+      switchBody[CONNECTED_DEVICES_FIELD] = keptIds;
+      window.SCW.knackAjax({
+        type: 'PUT',
+        url: switchUrl,
+        data: JSON.stringify(switchBody),
+        dataType: 'json',
+        success: function (resp) {
+          log('scrubReverseConnections: removed', cameraId,
+              'from switch', switchId, 'new list:', keptIds);
+          if (typeof window.SCW.syncKnackModel === 'function') {
+            try {
+              window.SCW.syncKnackModel(CFG.TARGET_VIEW, switchId, resp,
+                CONNECTED_DEVICES_FIELD, keptIds);
+            } catch (e) { /* best-effort */ }
+          }
+          tick();
+        },
+        error: function (xhr) {
+          console.warn(LOG_PREFIX, 'scrubReverseConnections PUT failed',
+            switchId, xhr && xhr.status, xhr && xhr.responseText);
+          tick();
+        }
+      });
     });
   }
 
