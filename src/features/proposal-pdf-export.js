@@ -53,7 +53,13 @@
         // .kn-notification "Proposal Preview Only — NOT Client Facing"
         // banner is the natural home — staff see it the moment they
         // land on the page.
-        mountSelector: '.kn-notification'
+        mountSelector: '.kn-notification',
+        // hideIfFieldFilled: only show the button when this field is
+        // blank on any record loaded into the scene. Once the SOW has
+        // been published, field_1199 carries the published-proposal
+        // back-reference — re-publishing from the preview at that point
+        // would create a duplicate, so the button gates itself.
+        hideIfFieldFilled: 'field_1199'
       },
       // view_3861 is the Ops-side SOW details host (hidden via CSS)
       // — its presence in the DOM is a signal for TBD-masking and the
@@ -1715,6 +1721,48 @@
   // TRIGGER: Button injection
   // ══════════════════════════════════════════════════════════════
 
+  // Returns true when the configured `hideIfFieldFilled` field is
+  // blank across every Knack view loaded on the scene (or no gate is
+  // configured). Checks Knack's loaded models first, then falls back
+  // to a DOM scan of any `.kn-detail.field_XXXX` cell so the gate
+  // works even before view-render plumbing has set view.model.
+  function buttonGateOpen(cfg) {
+    var field = cfg.trigger && cfg.trigger.hideIfFieldFilled;
+    if (!field) return true;
+
+    function isFilled(val) {
+      if (val == null) return false;
+      if (typeof val === 'string') return val.trim() !== '';
+      if (Array.isArray(val))      return val.length > 0;
+      if (typeof val === 'object') return Object.keys(val).length > 0;
+      return !!val;   // truthy primitive
+    }
+
+    if (window.Knack && Knack.views) {
+      for (var viewId in Knack.views) {
+        var v = Knack.views[viewId];
+        var attrs = v && v.model && (
+          v.model.attributes ||
+          (v.model.data && v.model.data.attributes)
+        );
+        if (!attrs) continue;
+        var raw = attrs[field + '_raw'];
+        var val = (raw != null) ? raw : attrs[field];
+        if (isFilled(val)) return false;
+      }
+    }
+
+    var sceneEl = document.getElementById('kn-' + cfg.sceneId);
+    if (sceneEl) {
+      var cells = sceneEl.querySelectorAll('.kn-detail.' + field + ' .kn-detail-body');
+      for (var i = 0; i < cells.length; i++) {
+        var text = (cells[i].textContent || '').replace(/ /g, ' ').trim();
+        if (text !== '') return false;
+      }
+    }
+    return true;
+  }
+
   function setupButtonTrigger(cfg) {
     var btnId = cfg.trigger.buttonId;
 
@@ -1722,7 +1770,20 @@
       setTimeout(function () {
         hideEmptyGridViews(cfg.hideEmptyGrids);
 
-        if (document.getElementById(btnId)) return;
+        var existing = document.getElementById(btnId);
+
+        // Gate check first — if the configured field is now filled,
+        // tear down any previously-mounted button and bail. Lets the
+        // button disappear after a successful publish without a
+        // page reload (next view-render after the field updates).
+        if (!buttonGateOpen(cfg)) {
+          if (existing && existing.parentNode) {
+            existing.parentNode.removeChild(existing);
+          }
+          return;
+        }
+
+        if (existing) return;
 
         var sceneEl = document.getElementById('kn-' + cfg.sceneId);
         if (!sceneEl) return;
@@ -1739,10 +1800,14 @@
           .attr('id', btnId)
           .text(cfg.trigger.buttonText || 'Generate PDF')
           .css(isInline ? {
-            // Inline placement — flows in document order inside the
-            // mount element. No fixed positioning, no z-index gymnastics.
-            display: 'inline-block',
-            marginTop: '10px',
+            // Inline placement — full-width banner-style button inside
+            // the mount element. No fixed positioning, no z-index
+            // gymnastics. Box-sizing keeps padding from overflowing
+            // when the mount has its own padding.
+            display: 'block',
+            width: '100%',
+            boxSizing: 'border-box',
+            marginTop: '12px',
             padding: '12px 24px',
             fontSize: '15px',
             fontWeight: 700,
