@@ -63,11 +63,14 @@
   // field_2627 = Product connection on view_3505 — hidden by bucket
   //              rules on service/assumption rows but the DOM cell
   //              persists, so explicitly skip in the summary scrape.
+  // field_2187 = legacy bucket connection that surfaces on some
+  //              worksheet views and is meaningless to the tech.
   var EXCLUDED_SUMMARY_FIELDS = {
     field_2400: 1,
     field_2401: 1,
     field_2415: 1,
-    field_2627: 1
+    field_2627: 1,
+    field_2187: 1
   };
 
   // Distribution-device flag on a survey line item. Cards/records
@@ -1041,7 +1044,13 @@
       // view_3505 (SOW line items — same flags, different keys)
       { key: 'field_2461', label: 'Existing', yesLabel: 'Y', noLabel: 'N' },
       { key: 'field_1984', label: 'Exterior', yesLabel: 'Y', noLabel: 'N' },
-      { key: 'field_1983', label: 'Plenum',   yesLabel: 'Y', noLabel: 'N' }
+      { key: 'field_1983', label: 'Plenum',   yesLabel: 'Y', noLabel: 'N' },
+      // DTO line items (added when bucket == Camera or Readers per
+      // bucket-field-visibility config). renderFlagsRow only emits
+      // rows whose key is actually populated in detailValues, so on
+      // non-camera rows these stay invisible automatically.
+      { key: 'field_2739', label: 'Exterior', yesLabel: 'Y', noLabel: 'N' },
+      { key: 'field_2740', label: 'Plenum',   yesLabel: 'Y', noLabel: 'N' }
     ],
     measure: [
       { key: 'field_2455', label: 'Height',  kind: 'choices',
