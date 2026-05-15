@@ -2,8 +2,41 @@
 (function () {
   'use strict';
 
-  var WEBHOOK_URL = 'https://hook.us1.make.com/ozk2uk1e58upnpsj0fx1bmdg387ekvf5';
-  var SAVE_HTML_WEBHOOK = 'https://hook.us1.make.com/fvop4hwz5gn2lujroky2vsuy4ddsamyx';
+  // Default publish webhook (proposal publish flow). The Make scenario
+  // behind it stamps the new proposal record (HTML snapshot, JSON
+  // snapshot, totals, expiration, token + tokenized URL), generates
+  // PDFs, sends notifications. Per-scene SCENES entries can override
+  // via `webhookUrl` when they're a different business flow with its
+  // own Make scenario (e.g. subcontractor-bid submits on scene_1149).
+  var WEBHOOK_URL = 'https://hook.us1.make.com/mezrtqmf6gh7yxlkx5fkit6fqrma213l';
+
+  // Subcontractor-bid form-submit scenario. Used by scene_1149 only —
+  // different business flow than a proposal publish, separate Make
+  // scenario, different downstream Knack writes.
+  var SUBCONTRACTOR_BID_WEBHOOK = 'https://hook.us1.make.com/ozk2uk1e58upnpsj0fx1bmdg387ekvf5';
+
+  // Mint a public-access token + URL via the shared sales-side helper.
+  // Used by every publish path (buildPublishPayload AND the inline
+  // savePayload below) so the proposal record is born with field_2904
+  // and field_2908 populated. SCW.secureProposalLink is set by
+  // src/features/secure-proposal-link.js — load-order safe because
+  // every caller here runs at click time, by which point both files
+  // are present. Returns blanks + a console.warn on missing helpers
+  // (graceful degrade — staff can still mint manually via the
+  // Secure Proposal Link panel).
+  function mintProposalAccess() {
+    try {
+      if (window.SCW && SCW.secureProposalLink &&
+          typeof SCW.secureProposalLink.generateToken === 'function') {
+        var t = SCW.secureProposalLink.generateToken();
+        return { token: t, url: SCW.secureProposalLink.buildPublicUrl(t) };
+      }
+      console.warn('[SCW pdfExport] SCW.secureProposalLink not loaded; publish payload will lack proposalAccessToken/Url.');
+    } catch (e) {
+      console.warn('[SCW pdfExport] Token mint failed:', e && e.message);
+    }
+    return { token: '', url: '' };
+  }
 
   // ══════════════════════════════════════════════════════════════
   // SCENE CONFIGS — add new scenes here
@@ -12,7 +45,25 @@
   var SCENES = [
     {
       sceneId: 'scene_1096',
-      trigger: { type: 'button', buttonId: 'scw-proposal-pdf-btn', openPreview: false, buttonText: 'Publish Quote' },
+      trigger: {
+        type: 'button',
+        buttonId: 'scw-proposal-pdf-btn',
+        openPreview: false,
+        buttonText: 'Publish Quote',
+        // mountSelector: a CSS selector relative to the rendered scene
+        // where the button is appended (inline placement). When omitted,
+        // the button falls back to fixed-bottom-right. On scene_1096 the
+        // .kn-notification "Proposal Preview Only — NOT Client Facing"
+        // banner is the natural home — staff see it the moment they
+        // land on the page.
+        mountSelector: '.kn-notification',
+        // hideIfFieldFilled: only show the button when this field is
+        // blank on any record loaded into the scene. Once the SOW has
+        // been published, field_1199 carries the published-proposal
+        // back-reference — re-publishing from the preview at that point
+        // would create a duplicate, so the button gates itself.
+        hideIfFieldFilled: 'field_1199'
+      },
       // view_3861 is the Ops-side SOW details host (hidden via CSS)
       // — its presence in the DOM is a signal for TBD-masking and the
       // Ops stepper, not part of the published proposal. Keep it out
@@ -82,6 +133,11 @@
     },
     {
       sceneId: 'scene_1149',
+      // Subcontractor-bid submits go to a separate Make scenario —
+      // different inputs (bidId / surveyRequestId / clientSite),
+      // different downstream Knack writes. Do NOT route this through
+      // the proposal publish scenario.
+      webhookUrl: SUBCONTRACTOR_BID_WEBHOOK,
       trigger: { type: 'formSubmit', formViewId: 'view_3679', recordIdInput: 'id' },
       skipViews: { view_3679: true, view_3770: true, view_3552: true },
       hideEmptyGrids: [],
@@ -1626,10 +1682,16 @@
     setTimeout(function () { win.print(); }, 600);
   }
 
-  function sendToWebhook(data) {
+  // Per-scene webhook resolution. Defaults to the proposal publish
+  // scenario (WEBHOOK_URL) unless the cfg has its own override.
+  function resolveWebhookUrl(cfg) {
+    return (cfg && cfg.webhookUrl) || WEBHOOK_URL;
+  }
+
+  function sendToWebhook(data, cfg) {
     var jsonStr = JSON.stringify(data);
     $.ajax({
-      url: WEBHOOK_URL,
+      url: resolveWebhookUrl(cfg),
       type: 'POST',
       contentType: 'application/json',
       data: jsonStr,
@@ -1638,20 +1700,22 @@
   }
 
   function runExport(cfg, extra) {
-    var payload = scrapeAllViews(cfg);
-    if (!payload.views.length) {
+    // Same unified payload shape as the click trigger uses — Make sees
+    // one schema regardless of whether the publish came from a button
+    // or a form submit. `extra` (form-field overrides) is merged in
+    // after the base build so callers can stamp additional keys.
+    var unified = buildPublishPayload(cfg.sceneId);
+    if (!unified) {
       SCW.debug('[SCW PDF Export]', cfg.sceneId, '→ no views scraped');
       return;
     }
     if (extra) {
-      for (var k in extra) { if (extra.hasOwnProperty(k)) payload[k] = extra[k]; }
+      for (var k in extra) { if (extra.hasOwnProperty(k)) unified[k] = extra[k]; }
     }
-    var htmlStr = buildPdfHtml(payload);
-    payload.html = htmlStr;
-    sendToWebhook(payload);
+    sendToWebhook(unified, cfg);
 
     if (cfg.trigger.openPreview) {
-      openPdfPreview(htmlStr);
+      openPdfPreview(unified.html);
     }
   }
 
@@ -1671,6 +1735,48 @@
   // TRIGGER: Button injection
   // ══════════════════════════════════════════════════════════════
 
+  // Returns true when the configured `hideIfFieldFilled` field is
+  // blank across every Knack view loaded on the scene (or no gate is
+  // configured). Checks Knack's loaded models first, then falls back
+  // to a DOM scan of any `.kn-detail.field_XXXX` cell so the gate
+  // works even before view-render plumbing has set view.model.
+  function buttonGateOpen(cfg) {
+    var field = cfg.trigger && cfg.trigger.hideIfFieldFilled;
+    if (!field) return true;
+
+    function isFilled(val) {
+      if (val == null) return false;
+      if (typeof val === 'string') return val.trim() !== '';
+      if (Array.isArray(val))      return val.length > 0;
+      if (typeof val === 'object') return Object.keys(val).length > 0;
+      return !!val;   // truthy primitive
+    }
+
+    if (window.Knack && Knack.views) {
+      for (var viewId in Knack.views) {
+        var v = Knack.views[viewId];
+        var attrs = v && v.model && (
+          v.model.attributes ||
+          (v.model.data && v.model.data.attributes)
+        );
+        if (!attrs) continue;
+        var raw = attrs[field + '_raw'];
+        var val = (raw != null) ? raw : attrs[field];
+        if (isFilled(val)) return false;
+      }
+    }
+
+    var sceneEl = document.getElementById('kn-' + cfg.sceneId);
+    if (sceneEl) {
+      var cells = sceneEl.querySelectorAll('.kn-detail.' + field + ' .kn-detail-body');
+      for (var i = 0; i < cells.length; i++) {
+        var text = (cells[i].textContent || '').replace(/ /g, ' ').trim();
+        if (text !== '') return false;
+      }
+    }
+    return true;
+  }
+
   function setupButtonTrigger(cfg) {
     var btnId = cfg.trigger.buttonId;
 
@@ -1678,15 +1784,54 @@
       setTimeout(function () {
         hideEmptyGridViews(cfg.hideEmptyGrids);
 
-        if (document.getElementById(btnId)) return;
+        var existing = document.getElementById(btnId);
+
+        // Gate check first — if the configured field is now filled,
+        // tear down any previously-mounted button and bail. Lets the
+        // button disappear after a successful publish without a
+        // page reload (next view-render after the field updates).
+        if (!buttonGateOpen(cfg)) {
+          if (existing && existing.parentNode) {
+            existing.parentNode.removeChild(existing);
+          }
+          return;
+        }
+
+        if (existing) return;
 
         var sceneEl = document.getElementById('kn-' + cfg.sceneId);
         if (!sceneEl) return;
 
+        // Resolve the mount target. mountSelector (per-scene config)
+        // takes the button INLINE inside the matching element with
+        // normal block flow; the fixed-bottom-right fallback applies
+        // when no selector is configured OR the selector misses.
+        var mountSelector = cfg.trigger.mountSelector;
+        var $mount = mountSelector ? $(sceneEl).find(mountSelector).first() : $();
+        var isInline = $mount.length > 0;
+
         var $btn = $('<button></button>')
           .attr('id', btnId)
           .text(cfg.trigger.buttonText || 'Generate PDF')
-          .css({
+          .css(isInline ? {
+            // Inline placement — full-width banner-style button inside
+            // the mount element. No fixed positioning, no z-index
+            // gymnastics. Box-sizing keeps padding from overflowing
+            // when the mount has its own padding.
+            display: 'block',
+            width: '100%',
+            boxSizing: 'border-box',
+            marginTop: '12px',
+            padding: '12px 24px',
+            fontSize: '15px',
+            fontWeight: 700,
+            color: '#fff',
+            background: '#07467c',
+            border: 'none',
+            borderRadius: '6px',
+            cursor: 'pointer',
+            boxShadow: '0 2px 8px rgba(0,0,0,.25)',
+          } : {
             position: 'fixed',
             bottom: '24px',
             right: '24px',
@@ -1706,53 +1851,34 @@
         $btn.on('mouseleave', function () { $(this).css('opacity', 1); });
 
         $btn.on('click', function () {
-          var payload = scrapeAllViews(cfg);
-          if (!payload.views.length) {
+          // Build the full, unified publish payload. Same shape as the
+          // public buildPublishPayload helper — Make sees identical
+          // inputs whether the publish came from this click trigger,
+          // the form-submit trigger (runExport), or an external caller
+          // invoking SCW.pdfExport.buildPublishPayload directly.
+          var unified = buildPublishPayload(cfg.sceneId);
+          if (!unified) {
             alert('No data found on this page.');
             return;
           }
-          var htmlStr = buildPdfHtml(payload);
           if (cfg.trigger.openPreview) {
-            openPdfPreview(htmlStr);
+            openPdfPreview(unified.html);
           }
-          payload.html = htmlStr;
-          sendToWebhook(payload);
 
+          // saveHtml gates the UX flow (button-disable / toast /
+          // redirect-on-success), not whether the webhook fires. The
+          // single Make scenario behind WEBHOOK_URL decides what to do
+          // with the payload based on cfg.payloadType / its own rules.
           if (cfg.saveHtml) {
-            // Disable button to prevent double-submit
             $btn.prop('disabled', true).css({ opacity: 0.5, cursor: 'not-allowed' });
-
-            var pageRecordId = getPageRecordId();
-            var summary = extractSummaryFields(payload);
-            var jsonSnapshot = buildJsonSnapshot(cfg.sceneId);
-
-            var savePayload = {
-              recordId: pageRecordId || '',
-              hash: window.location.hash || '',
-              sceneId: cfg.sceneId,
-              type: cfg.payloadType,
-              sowId: summary.sowId,
-              equipmentTotal: summary.equipmentTotal,
-              installationTotal: summary.installationTotal,
-              grandTotal: summary.grandTotal,
-              expirationDate: summary.expirationDate,
-              html: htmlStr,
-              plaintext: htmlToPlaintext(htmlStr),
-              plaintextJsonEscaped: jsonStringEscape(htmlToPlaintext(htmlStr)),
-              scopeOfWorkDocumentElements: buildSowDocumentElements(htmlStr),
-              scopeOfWorkDocumentElementsString: (function () { try { return JSON.stringify(buildSowDocumentElements(htmlStr)); } catch (e) { return '[]'; } })(),
-              json: jsonSnapshot,
-              jsonString: (function () { try { return JSON.stringify(stripNonRawFields(jsonSnapshot)); } catch (e) { return ''; } })(),
-              invoiceItems: buildInvoiceItems(jsonSnapshot, summary.sowId, payload.projectTotals),
-              invoiceItemsString: (function () { try { return JSON.stringify(buildInvoiceItems(jsonSnapshot, summary.sowId, payload.projectTotals) || {}); } catch (e) { return '{}'; } })()
-            };
-            SCW.debug('[SCW PDF Export] Sending to save webhook:', savePayload.recordId, summary, '| records:', jsonSnapshot.length);
+            SCW.debug('[SCW PDF Export] Sending publish payload:', unified.recordId,
+              '| sowId:', unified.sowId, '| records:', (unified.json || []).length);
             showPublishToast('Submitting…', false, true);
             $.ajax({
-              url: SAVE_HTML_WEBHOOK,
+              url: resolveWebhookUrl(cfg),
               type: 'POST',
               contentType: 'application/json',
-              data: JSON.stringify(savePayload),
+              data: JSON.stringify(unified),
               crossDomain: true,
               timeout: 90000,
               success: function () {
@@ -1772,10 +1898,16 @@
                 $btn.prop('disabled', false).css({ opacity: 1, cursor: 'pointer' });
               }
             });
+          } else {
+            // Preview-only path (saveHtml=false): fire-and-forget POST
+            // with the same payload shape so Make scenarios can branch
+            // on cfg.payloadType / lack of `recordId` if they want.
+            sendToWebhook(unified, cfg);
           }
         });
 
-        $(sceneEl).append($btn);
+        if (isInline) $mount.append($btn);
+        else          $(sceneEl).append($btn);
       }, 1500);
     });
 
@@ -2094,9 +2226,9 @@
   // sentinel like `.scw-subtotal--level-1` and `window.SCW.pdfExport.run`
   // before calling.
 
-  // Build the exact "save payload" shape the Publish Quote button sends
-  // to SAVE_HTML_WEBHOOK. Every code path that publishes a quote should
-  // call this so Make receives identical inputs regardless of origin.
+  // Build the exact unified payload the Publish Quote button sends to
+  // WEBHOOK_URL. Every code path that publishes a quote should call
+  // this so Make receives identical inputs regardless of origin.
   //
   // sceneId is optional — when omitted we auto-detect by:
   //   1. Knack.scene.attributes.key (Knack's JS model)
@@ -2855,6 +2987,14 @@
     var summary       = extractSummaryFields(payload);
     var jsonSnapshot  = buildJsonSnapshot(cfg.sceneId);
     var plaintextStr  = htmlToPlaintext(htmlStr);
+
+    // Mint a public access token + URL at publish time so the new
+    // proposal record is born sharable. mintProposalAccess returns
+    // { token, url } from SCW.secureProposalLink helpers.
+    var access = mintProposalAccess();
+    var accessToken = access.token;
+    var accessUrl   = access.url;
+
     return {
       recordId:              getPageRecordId() || '',
       hash:                  window.location.hash || '',
@@ -2865,6 +3005,13 @@
       installationTotal:     summary.installationTotal,
       grandTotal:            summary.grandTotal,
       expirationDate:        summary.expirationDate,
+      // Tokenized public link, minted client-side at publish time.
+      // Make should write these to field_2904 and field_2908 on the
+      // proposal record so the public snippet finds them on first
+      // load. Token format: 64-char lowercase hex (32 random bytes
+      // via window.crypto.getRandomValues).
+      proposalAccessToken:   accessToken,
+      proposalAccessUrl:     accessUrl,
       html:                  htmlStr,
       plaintext:             plaintextStr,
       // Pre-escaped variant of `plaintext`, safe to drop directly between

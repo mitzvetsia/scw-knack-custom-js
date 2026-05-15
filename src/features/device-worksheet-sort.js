@@ -18,19 +18,18 @@
  *     device-worksheet.js calls when picking rowSortRules.
  *   - Changing the selection re-fetches the view (Knack.views.X.model.fetch),
  *     which fires knack-view-render → transformView re-runs with the new
- *     rules. Fetching costs one round trip per click; acceptable given how
- *     rarely sort changes.
+ *     rules.
  *
- * Coexists with device-worksheet-toolbar.js by mounting its DOM inside
- * .kn-records-nav before consolidate() runs. The toolbar's orderSelectors
- * list places the dropdown right after the Expand/Summary/Collapse cluster.
+ * Mounting is delegated to SCW.toolbar — this file owns the markup, click
+ * handlers, and state. The toolbar registry decides when to call mount()
+ * and re-runs it on accordion-subtree mutations. mount() is idempotent:
+ * if the dropdown is already in the nav, only refresh its visible state.
  ******************************************************************************/
 (function () {
   'use strict';
 
   var STYLE_ID = 'scw-ws-sort-css';
   var DD_CLS   = 'scw-ws-sort';
-  var EVENT_NS = '.scwWsSort';
 
   // ── Styles ──────────────────────────────────────────────────────────
   function injectStyles() {
@@ -97,7 +96,9 @@
       '  display: block;',
       '}',
       '.' + DD_CLS + '__item {',
-      '  display: block; width: 100%;',
+      '  display: flex; align-items: center; justify-content: space-between;',
+      '  gap: 12px;',
+      '  width: 100%;',
       '  padding: 7px 12px;',
       '  background: transparent;',
       '  border: 0;',
@@ -114,11 +115,6 @@
       '  color: var(--scw-surface-base);',
       '  font-weight: 600;',
       '}',
-      // Menu item layout: label fills, direction glyph right-aligned.
-      '.' + DD_CLS + '__item {',
-      '  display: flex; align-items: center; justify-content: space-between;',
-      '  gap: 12px;',
-      '}',
       '.' + DD_CLS + '__item-label { flex: 1 1 auto; }',
       '.' + DD_CLS + '__item-dir {',
       '  flex: 0 0 auto;',
@@ -127,10 +123,6 @@
       '}',
       '.' + DD_CLS + '__item-dir.is-active {',
       '  opacity: 1;',
-      '}',
-      '.' + DD_CLS + '__item.is-active .' + DD_CLS + '__item-dir {',
-      '  opacity: 1;',
-      '  color: var(--scw-surface-base);',
       '}'
     ].join('\n');
     document.head.appendChild(s);
@@ -223,34 +215,23 @@
     var preset = findPreset(viewCfg, sel.presetId);
     if (!preset) return null;
 
-    // Bidirectional preset (field+type) → single-rule with stored or default direction.
     if (isBidirectional(preset)) {
       var dir = sel.direction || defaultDirection(preset);
       return [{ field: preset.field, order: dir, type: preset.type || 'text' }];
     }
 
-    // Compound preset with an explicit multi-field rule.
     if (preset.rule) return preset.rule;
 
-    // Default preset (no field, no rule) → fall back to viewCfg.rowSort.
     return null;
   }
 
-  // ── Dropdown render ─────────────────────────────────────────────────
-  function renderDropdown(viewCfg) {
-    var view = document.getElementById(viewCfg.viewId);
-    if (!view) return;
-    var nav = view.querySelector('.kn-records-nav');
-    if (!nav) return;
+  function dirGlyph(direction) {
+    return direction === 'desc' ? '↓' : '↑';
+  }
 
+  // Build dropdown markup from scratch. Pure function — no DOM lookups.
+  function buildDropdown(viewCfg) {
     var presets = viewCfg.sortPresets;
-    if (!presets || !presets.length) return;
-
-    // Tear down any prior dropdown — Knack rebuilds the view from scratch
-    // on many events; we want fresh markup, not stale.
-    var prior = nav.querySelector('.' + DD_CLS + '[data-view-id="' + viewCfg.viewId + '"]');
-    if (prior) prior.parentNode.removeChild(prior);
-
     var sel = parseSelected(loadSelected(viewCfg.viewId));
     var active = findPreset(viewCfg, sel.presetId);
     var activeDir = '';
@@ -307,15 +288,49 @@
       menu.appendChild(item);
     });
     dd.appendChild(menu);
-
-    nav.insertBefore(dd, nav.firstChild);
+    return dd;
   }
 
-  function dirGlyph(direction) {
-    return direction === 'desc' ? '↓' : '↑';
+  // Refresh an existing dropdown's visible state (active class, current
+  // label, direction glyph) without rebuilding the markup. Cheap to
+  // call on every mount tick; nothing happens unless storage changed.
+  function refreshDropdownState(dd, viewCfg) {
+    var sel = parseSelected(loadSelected(viewCfg.viewId));
+    var active = findPreset(viewCfg, sel.presetId);
+    var activeDir = '';
+    if (active && isBidirectional(active)) {
+      activeDir = sel.direction || defaultDirection(active);
+    }
+
+    var currentLabel =
+      ((active && active.label) || 'Default') +
+      (activeDir ? ' ' + dirGlyph(activeDir) : '');
+    var currentSpan = dd.querySelector('.' + DD_CLS + '__current');
+    if (currentSpan && currentSpan.textContent !== currentLabel) {
+      currentSpan.textContent = currentLabel;
+    }
+
+    var items = dd.querySelectorAll('.' + DD_CLS + '__item');
+    for (var i = 0; i < items.length; i++) {
+      var item = items[i];
+      var isActive = active && item.getAttribute('data-preset-id') === active.id;
+      item.classList.toggle('is-active', !!isActive);
+
+      var dirSpan = item.querySelector('.' + DD_CLS + '__item-dir');
+      if (dirSpan) {
+        var preset = findPreset(viewCfg, item.getAttribute('data-preset-id'));
+        if (isActive) {
+          dirSpan.classList.add('is-active');
+          dirSpan.textContent = dirGlyph(activeDir);
+        } else {
+          dirSpan.classList.remove('is-active');
+          dirSpan.textContent = dirGlyph(defaultDirection(preset));
+        }
+      }
+    }
   }
 
-  // ── Click handling (delegated) ──────────────────────────────────────
+  // ── Click handling (delegated, document-wide) ──────────────────────
   document.addEventListener('click', function (e) {
     var target = e.target;
 
@@ -327,9 +342,6 @@
       var viewId = dd.getAttribute('data-view-id');
       var presetId = item.getAttribute('data-preset-id') || '';
 
-      // Look up the preset on the live config so we can decide whether
-      // this click is a direction-toggle (active bidirectional preset) or
-      // a fresh selection.
       var viewCfg = findViewCfg(viewId);
       var preset = findPreset(viewCfg, presetId);
       var prev = parseSelected(loadSelected(viewId));
@@ -355,9 +367,8 @@
         }
       } catch (err) { /* ignore */ }
 
-      // Re-render the dropdown locally so the UI reflects the change
-      // immediately (active class, direction glyph, button label).
-      if (viewCfg) renderDropdown(viewCfg);
+      // Refresh the dropdown's local visible state immediately.
+      if (viewCfg) refreshDropdownState(dd, viewCfg);
       return;
     }
 
@@ -385,51 +396,52 @@
   // ── Bindings ────────────────────────────────────────────────────────
   injectStyles();
 
-  function refresh(viewCfg) {
-    renderDropdown(viewCfg);
-  }
+  // Each view with viewCfg.sortPresets becomes a toolbar entry. We
+  // register one entry per view (vs. one entry that handles all views)
+  // so the viewMatch can be a simple id check.
+  function registerForView(viewCfg) {
+    if (!viewCfg || !viewCfg.viewId || !viewCfg.sortPresets ||
+        !viewCfg.sortPresets.length) return;
 
-  function bind() {
-    // Walk the device-worksheet config to discover which views opt in.
-    // window.SCW.deviceWorksheet exists once device-worksheet.js has run;
-    // its config is owned by that file. We don't want to duplicate the
-    // list here, so wait for the API and discover targets from the
-    // configured set of views.
-    var ws = window.SCW && window.SCW.deviceWorksheet;
-    var configs = ws && ws._configs;  // exposed below by device-worksheet.js
-    if (!configs) return;
-
-    configs.forEach(function (viewCfg) {
-      if (!viewCfg || !viewCfg.viewId || !viewCfg.sortPresets) return;
-
-      if (window.SCW && typeof SCW.onViewRender === 'function') {
-        SCW.onViewRender(viewCfg.viewId, function () {
-          // 220ms — device-worksheet's transformView fires at 150ms; we
-          // run after it so the .kn-records-nav has finished settling.
-          setTimeout(function () { refresh(viewCfg); }, 220);
-        }, 'scwWsSort_' + viewCfg.viewId);
-      }
-
-      if (document.getElementById(viewCfg.viewId)) {
-        setTimeout(function () { refresh(viewCfg); }, 220);
+    SCW.toolbar.register({
+      id:    'sort-' + viewCfg.viewId,
+      slot:  SCW.toolbar.SLOTS.sort,
+      viewMatch: function (viewEl) { return viewEl.id === viewCfg.viewId; },
+      mount: function (viewEl, nav) {
+        var dd = nav.querySelector(
+          '.' + DD_CLS + '[data-view-id="' + viewCfg.viewId + '"]'
+        );
+        if (dd) {
+          refreshDropdownState(dd, viewCfg);
+          return;
+        }
+        // Visual order is controlled by the toolbar's CSS `order` rule.
+        nav.appendChild(buildDropdown(viewCfg));
       }
     });
   }
 
-  // device-worksheet.js exposes its configs on window.SCW.deviceWorksheet
-  // at file scope; by build order our IIFE runs after it, so the configs
-  // are already present. Still, defensively retry if missing.
-  function bindWithRetry(attempts) {
+  function registerAll() {
     var ws = window.SCW && window.SCW.deviceWorksheet;
-    if (ws && ws._configs) { bind(); return; }
+    var configs = ws && ws._configs;
+    if (!configs) return;
+    configs.forEach(registerForView);
+  }
+
+  // device-worksheet.js exposes its configs on window.SCW.deviceWorksheet
+  // at file scope; by build order our IIFE runs after it, so configs are
+  // present. Still, defensively retry if missing.
+  function registerWithRetry(attempts) {
+    var ws = window.SCW && window.SCW.deviceWorksheet;
+    if (ws && ws._configs) { registerAll(); return; }
     if (attempts <= 0) return;
-    setTimeout(function () { bindWithRetry(attempts - 1); }, 100);
+    setTimeout(function () { registerWithRetry(attempts - 1); }, 100);
   }
 
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', function () { bindWithRetry(20); });
+    document.addEventListener('DOMContentLoaded', function () { registerWithRetry(20); });
   } else {
-    bindWithRetry(20);
+    registerWithRetry(20);
   }
 
   // ── Public API ──────────────────────────────────────────────────────

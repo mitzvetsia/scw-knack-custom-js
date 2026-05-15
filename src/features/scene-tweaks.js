@@ -123,6 +123,80 @@
 }
 
 /* view_3492 / view_3490 form styling handled by inline-form-recompose.js */
+
+/* ══════════════════════════════════════════════════════════════
+   SCENE 1085 — Build SOWs page (Project Dashboard)
+   ══════════════════════════════════════════════════════════════ */
+
+/* Treat these four accordions as one supporting-files group so they
+   visually subordinate to the Scope of Work Line Items grid below.
+   Selectors target by data-view-key on the header so we don't touch
+   other accordions that happen to live on the scene.
+
+   Affected: view_3577 (Manage MDF/IDFs), view_3917 (Additional Photos),
+   view_3949 (Site Maps & Other Files), view_3369 (Licenses).         */
+#kn-scene_1085 .scw-ktl-accordion:has(> .scw-ktl-accordion__header[data-view-key="view_3577"]),
+#kn-scene_1085 .scw-ktl-accordion:has(> .scw-ktl-accordion__header[data-view-key="view_3917"]),
+#kn-scene_1085 .scw-ktl-accordion:has(> .scw-ktl-accordion__header[data-view-key="view_3949"]),
+#kn-scene_1085 .scw-ktl-accordion:has(> .scw-ktl-accordion__header[data-view-key="view_3369"]) {
+  /* Tighten the wrapper margin so adjacent siblings sit flush as a group */
+  margin-top: 2px !important;
+  margin-bottom: 2px !important;
+}
+
+/* Compact header — about 2/3 the default height (44px → ~30px).
+   Smaller padding + reduced icon/title sizes keep proportions sane. */
+#kn-scene_1085 .scw-ktl-accordion:has(> .scw-ktl-accordion__header[data-view-key="view_3577"]) > .scw-ktl-accordion__header,
+#kn-scene_1085 .scw-ktl-accordion:has(> .scw-ktl-accordion__header[data-view-key="view_3917"]) > .scw-ktl-accordion__header,
+#kn-scene_1085 .scw-ktl-accordion:has(> .scw-ktl-accordion__header[data-view-key="view_3949"]) > .scw-ktl-accordion__header,
+#kn-scene_1085 .scw-ktl-accordion:has(> .scw-ktl-accordion__header[data-view-key="view_3369"]) > .scw-ktl-accordion__header {
+  min-height: 30px;
+  padding: 6px 12px 6px 18px;
+}
+#kn-scene_1085 .scw-ktl-accordion:has(> .scw-ktl-accordion__header[data-view-key="view_3577"]) .scw-acc-title,
+#kn-scene_1085 .scw-ktl-accordion:has(> .scw-ktl-accordion__header[data-view-key="view_3917"]) .scw-acc-title,
+#kn-scene_1085 .scw-ktl-accordion:has(> .scw-ktl-accordion__header[data-view-key="view_3949"]) .scw-acc-title,
+#kn-scene_1085 .scw-ktl-accordion:has(> .scw-ktl-accordion__header[data-view-key="view_3369"]) .scw-acc-title {
+  font-size: 13px;
+}
+#kn-scene_1085 .scw-ktl-accordion:has(> .scw-ktl-accordion__header[data-view-key="view_3577"]) .scw-acc-icon svg,
+#kn-scene_1085 .scw-ktl-accordion:has(> .scw-ktl-accordion__header[data-view-key="view_3917"]) .scw-acc-icon svg,
+#kn-scene_1085 .scw-ktl-accordion:has(> .scw-ktl-accordion__header[data-view-key="view_3949"]) .scw-acc-icon svg,
+#kn-scene_1085 .scw-ktl-accordion:has(> .scw-ktl-accordion__header[data-view-key="view_3369"]) .scw-acc-icon svg {
+  width: 13px;
+  height: 13px;
+}
+#kn-scene_1085 .scw-ktl-accordion:has(> .scw-ktl-accordion__header[data-view-key="view_3577"]) .scw-acc-count,
+#kn-scene_1085 .scw-ktl-accordion:has(> .scw-ktl-accordion__header[data-view-key="view_3917"]) .scw-acc-count,
+#kn-scene_1085 .scw-ktl-accordion:has(> .scw-ktl-accordion__header[data-view-key="view_3949"]) .scw-acc-count,
+#kn-scene_1085 .scw-ktl-accordion:has(> .scw-ktl-accordion__header[data-view-key="view_3369"]) .scw-acc-count {
+  padding: 1px 7px;
+  font-size: 11px;
+  min-width: 0 !important;
+}
+
+/* Make the group read as one block: shared muted accent + collapsed look.
+   Accent is a lighter, desaturated slate so these compact items recede
+   relative to the prominent SOW Line Items accordion below.            */
+#kn-scene_1085 .scw-ktl-accordion:has(> .scw-ktl-accordion__header[data-view-key="view_3577"]),
+#kn-scene_1085 .scw-ktl-accordion:has(> .scw-ktl-accordion__header[data-view-key="view_3917"]),
+#kn-scene_1085 .scw-ktl-accordion:has(> .scw-ktl-accordion__header[data-view-key="view_3949"]),
+#kn-scene_1085 .scw-ktl-accordion:has(> .scw-ktl-accordion__header[data-view-key="view_3369"]) {
+  --scw-accent: #6b7a8c !important;
+  --scw-accent-rgb: 107, 122, 140 !important;
+}
+
+/* Scope of Work Line Items (view_3610) — darken accent ~20% so it
+   reads as the primary content on the page. Default blue
+   rgb(41,95,145) → rgb(33,76,116) (each channel × 0.8). Bumps the
+   expanded-state header background alpha a touch as well.            */
+#kn-scene_1085 .scw-ktl-accordion:has(> .scw-ktl-accordion__header[data-view-key="view_3610"]) {
+  --scw-accent: #214c74 !important;
+  --scw-accent-rgb: 33, 76, 116 !important;
+}
+#kn-scene_1085 .scw-ktl-accordion:has(> .scw-ktl-accordion__header[data-view-key="view_3610"]).is-expanded > .scw-ktl-accordion__header {
+  background: rgba(33, 76, 116, 0.18) !important;
+}
 `;
 
     var style = document.createElement('style');
@@ -363,10 +437,17 @@
         var block = SCW.publishedQuoteInfo.buildBlock(proposal, {
           variant: 'regular',
           header:  'Published Proposal',
-          // Sales totals link uses the in-row "View Published Proposal"
-          // anchor href (the canonical Knack details page). Falls back
-          // to the published-proposals hash route if not present.
-          linkBuilder: function (p) { return p.viewLink || ''; }
+          // No linkBuilder — when the proposal is live, the
+          // identifier is plain text and the only navigation users
+          // need is the Customer Link CTA below. When expired,
+          // buildBlock renders a secondary outlined CTA to the
+          // internal details page via customerLink.expiredFallbackUrl.
+          customerLink: {
+            url:                  proposal.tokenUrl || '',
+            label:                'Open Customer Link',
+            expiredFallbackUrl:   proposal.viewLink || '',
+            expiredFallbackLabel: 'View Published Details'
+          }
         });
         if (block) {
           // The base .scw-pq-info rule centers text; the panel here is
@@ -376,18 +457,45 @@
         }
       }
 
-      // Preview Draft Proposal — always rendered when the link exists,
-      // regardless of whether a published proposal is present. Drops a
-      // little extra top-margin so it floats on its own when there's no
-      // published-proposal block above it.
+      // Preview Proposal — always available when the SOW id resolves.
+      // Outlined button beneath the Published Proposal card. Reads as
+      // a clear secondary action without competing visually with the
+      // primary Customer Link CTA.
       if (previewHref) {
-        var previewHdr = document.createElement('a');
-        previewHdr.href = previewHref;
-        var topMargin = hasPublished ? '10px' : '0';
-        previewHdr.style.cssText = 'display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:700;color:#2563eb;text-transform:uppercase;letter-spacing:0.04em;margin-top:' + topMargin + ';text-decoration:none;';
-        previewHdr.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
-        previewHdr.appendChild(document.createTextNode('Preview Draft Proposal'));
-        wrap.appendChild(previewHdr);
+        var solo = !hasPublished || !!(proposal && proposal.expired);
+        var previewRow = document.createElement('div');
+        previewRow.style.cssText = hasPublished
+          ? 'margin-top:14px; padding-top:12px;' +
+            'border-top:1px solid #e5e7eb;'
+          : 'margin-top:0;';
+
+        var previewLink = document.createElement('a');
+        previewLink.href = previewHref;
+        // Fixed 220px width matches the Customer Link CTA inside the
+        // panel above so the action column stacks neatly.
+        previewLink.style.cssText = solo
+          // Solo (no published proposal yet OR expired) → primary chrome.
+          ? 'display:inline-flex;align-items:center;justify-content:center;' +
+            'gap:7px;padding:10px 18px;width:220px;box-sizing:border-box;' +
+            'background:#07467c;color:#fff;border-radius:6px;' +
+            'text-decoration:none;font:700 12px/1.2 system-ui,sans-serif;' +
+            'letter-spacing:0.04em;text-transform:uppercase;' +
+            'box-shadow:0 1px 2px rgba(0,0,0,.12);'
+          // Companion to the customer CTA → outlined secondary button.
+          : 'display:inline-flex;align-items:center;justify-content:center;' +
+            'gap:7px;padding:9px 16px;width:220px;box-sizing:border-box;' +
+            'background:#fff;color:#07467c;border:1px solid #cbd5e1;' +
+            'border-radius:6px;text-decoration:none;' +
+            'font:700 12px/1.2 system-ui,sans-serif;' +
+            'letter-spacing:0.04em;text-transform:uppercase;';
+        previewLink.innerHTML = '<svg viewBox="0 0 24 24" width="13" ' +
+          'height="13" fill="none" stroke="currentColor" stroke-width="2" ' +
+          'stroke-linecap="round" stroke-linejoin="round">' +
+          '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>' +
+          '<circle cx="12" cy="12" r="3"/></svg>';
+        previewLink.appendChild(document.createTextNode('Preview Proposal'));
+        previewRow.appendChild(previewLink);
+        wrap.appendChild(previewRow);
       }
 
       container.appendChild(wrap);

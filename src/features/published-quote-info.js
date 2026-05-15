@@ -63,6 +63,7 @@
   var DEFAULT_EXP    = 'field_2659';   // expiration date
   var DEFAULT_PDF    = 'field_2681';   // PDF file
   var DEFAULT_SOW    = 'field_2666';   // connection → SOW
+  var DEFAULT_TOKEN_URL = 'field_2908'; // cached public tokenized URL
 
   // ── CSS ────────────────────────────────────────────────────────
   function injectStyles() {
@@ -83,13 +84,25 @@
       '  border-top: 1px solid #e5e7eb;' +
       '  font-size: 11px;' +
       '}' +
-      // Regular (proposal page, inline) — ~30% larger than compact.
+      // Regular (proposal page / sales totals panel). Flex column so
+      // every interactive element (PDF chip, Customer Link, internal
+      // CTA, expired note) gets its own row instead of sitting on
+      // the same baseline as inline-flex siblings. align-items per
+      // host: right-aligned in the sales totals panel via the wrap\'s
+      // CSS, defaults to center elsewhere.
       '.scw-pq-info--regular {' +
+      '  display: flex;' +
+      '  flex-direction: column;' +
+      '  align-items: center;' +
       '  font-size: 14px;' +
+      '  padding: 2px 0;' +
       '}' +
-      '.scw-pq-info--regular .scw-pq-name { font-size: 14px; }' +
-      '.scw-pq-info--regular .scw-pq-exp,' +
-      '.scw-pq-info--regular .scw-pq-pdf  { font-size: 13.5px; }' +
+      // When the host explicitly right-aligns text (the sales totals
+      // panel), match the flex alignment so the column stacks against
+      // the right edge.
+      '.scw-pq-info--regular[style*="text-align: right"] {' +
+      '  align-items: flex-end;' +
+      '}' +
       // Panel (sales totals) — right-aligned with a top border, header
       // label, and consistent inner spacing. The container sets its own
       // outer margin so the panel docks against whatever sits above it.
@@ -100,17 +113,30 @@
       '  text-align: right;' +
       '}' +
 
-      // ── Header (panel only) ──
+      // ── Header ──
+      // Compact label up top. Type chip + EXPIRED badge sit inline to
+      // the right (in a right-aligned panel they read as a chip cluster
+      // following the label).
       '.scw-pq-header {' +
-      '  font-size: 12px; font-weight: 700;' +
-      '  color: #163C6E; text-transform: uppercase;' +
-      '  letter-spacing: 0.04em; margin-bottom: 6px;' +
+      '  display: flex; align-items: center;' +
+      '  justify-content: flex-end; gap: 8px;' +
+      '  font-size: 11px; font-weight: 700;' +
+      '  color: #475569; text-transform: uppercase;' +
+      '  letter-spacing: 0.06em;' +
+      '  margin-bottom: 10px;' +
+      '}' +
+      // Type chip already has its own styling; nudge size down inside
+      // the header so it doesn't dwarf the label.
+      '.scw-pq-header .scw-proposal-type-chip {' +
+      '  font-size: 10px !important;' +
+      '  padding: 2px 8px !important;' +
       '}' +
 
-      // ── Name + link ──
+      // ── Identity row ──
       '.scw-pq-name {' +
-      '  font-weight: 500; margin-bottom: 2px;' +
-      '  color: #1e293b;' +
+      '  font-size: 16px; font-weight: 600;' +
+      '  color: #0f172a;' +
+      '  margin: 0 0 2px 0;' +
       '}' +
       '.scw-pq-name a, .scw-pq-name a:visited {' +
       '  color: #2563eb; text-decoration: none;' +
@@ -119,22 +145,119 @@
 
       // ── Expiration date ──
       '.scw-pq-exp {' +
-      '  font-size: 10.5px;' +
+      '  font-size: 12px;' +
       '  color: #64748b;' +
-      '  margin-bottom: 2px;' +
+      '  margin-bottom: 14px;' +
+      '}' +
+      // Red tinted when expired so the eye catches it from the date alone.
+      '.scw-pq-exp--past {' +
+      '  color: #b91c1c; font-weight: 600;' +
       '}' +
 
-      // ── PDF link ──
+      // ── PDF link (styled as a "downloadable file" chip) ──
+      // The leading red "PDF" badge is the universal cue that this is
+      // a PDF download; the filename trails after as plain dark text.
+      // Outlined chip so it reads as a tappable file affordance, not
+      // a generic blue text link.
       '.scw-pq-pdf, .scw-pq-pdf:visited {' +
+      '  display: inline-flex; align-items: center; gap: 8px;' +
+      '  margin-bottom: 14px;' +
+      '  padding: 6px 10px 6px 6px;' +
+      '  background: #fff;' +
+      '  border: 1px solid #e2e8f0;' +
+      '  border-radius: 6px;' +
+      '  color: #0f172a; text-decoration: none;' +
+      '  font: 500 12px/1.3 system-ui, sans-serif;' +
+      '  max-width: 100%;' +
+      '}' +
+      '.scw-pq-pdf:hover {' +
+      '  border-color: #cbd5e1; background: #f8fafc;' +
+      '  text-decoration: none;' +
+      '}' +
+      '.scw-pq-pdf__badge {' +
       '  display: inline-flex; align-items: center;' +
-      '  margin-top: 3px; color: #2563eb;' +
-      '  text-decoration: none; font-size: 10.5px;' +
-      '  font-weight: 500;' +
+      '  padding: 3px 6px;' +
+      '  background: #dc2626; color: #fff;' +
+      '  border-radius: 3px;' +
+      '  font: 800 10px/1 system-ui, sans-serif;' +
+      '  letter-spacing: 0.06em;' +
+      '  flex-shrink: 0;' +
       '}' +
-      '.scw-pq-pdf svg {' +
-      '  vertical-align: -1px; margin-right: 3px;' +
+      '.scw-pq-pdf__name {' +
+      '  overflow: hidden; text-overflow: ellipsis;' +
+      '  white-space: nowrap;' +
       '}' +
-      '.scw-pq-pdf:hover { text-decoration: underline; }' +
+
+      // ── EXPIRED badge (inline with header chips) ──
+      '.scw-pq-expired-badge {' +
+      '  display: inline-block;' +
+      '  padding: 2px 8px;' +
+      '  background: #fef2f2;' +
+      '  color: #b91c1c;' +
+      '  border: 1px solid #fecaca;' +
+      '  border-radius: 4px;' +
+      '  font: 700 10px/1 system-ui, sans-serif;' +
+      '  letter-spacing: 0.06em;' +
+      '  text-transform: uppercase;' +
+      '}' +
+
+      // ── Expired-warning blurb ──
+      // Amber callout that replaces the customer CTA when the proposal
+      // is past its expiration date.
+      '.scw-pq-expired-note {' +
+      '  margin: 14px 0 10px 0;' +
+      '  padding: 10px 12px;' +
+      '  background: #fffbeb;' +
+      '  border: 1px solid #fde68a;' +
+      '  border-radius: 6px;' +
+      '  color: #92400e;' +
+      '  font: 500 12px/1.45 system-ui, sans-serif;' +
+      '  text-align: left;' +
+      '}' +
+      '.scw-pq-expired-note strong { color: #78350f; font-weight: 700; }' +
+
+      // ── Primary CTA (Customer Link, not expired) ──
+      // Solid brand blue, fixed width so it stacks neatly with sibling
+      // CTAs (the outlined Preview Proposal button in the same panel
+      // uses the same width — uniform column of actions reads cleaner
+      // than ragged-edge buttons).
+      '.scw-pq-customer-cta, .scw-pq-customer-cta:visited {' +
+      '  display: inline-flex; align-items: center; justify-content: center;' +
+      '  gap: 7px;' +
+      '  margin-top: 4px; padding: 10px 18px;' +
+      '  width: 220px; box-sizing: border-box;' +
+      '  background: #07467c; color: #fff !important;' +
+      '  border-radius: 6px; text-decoration: none;' +
+      '  font: 700 12px/1.2 system-ui, sans-serif;' +
+      '  letter-spacing: 0.04em; text-transform: uppercase;' +
+      '  box-shadow: 0 1px 2px rgba(0,0,0,.12);' +
+      '  transition: background 120ms ease, box-shadow 120ms ease;' +
+      '}' +
+      '.scw-pq-customer-cta:hover {' +
+      '  background: #053659;' +
+      '  box-shadow: 0 2px 6px rgba(0,0,0,.22);' +
+      '  text-decoration: none;' +
+      '}' +
+      '.scw-pq-customer-cta svg { flex-shrink: 0; }' +
+
+      // ── Secondary CTA (Internal Details, when expired) ──
+      // Outlined version of the primary, same fixed width. Reads as a
+      // "still available action, but not what you reach for first".
+      '.scw-pq-internal-cta, .scw-pq-internal-cta:visited {' +
+      '  display: inline-flex; align-items: center; justify-content: center;' +
+      '  gap: 7px;' +
+      '  margin-top: 4px; padding: 9px 16px;' +
+      '  width: 220px; box-sizing: border-box;' +
+      '  background: #fff; color: #07467c !important;' +
+      '  border: 1px solid #cbd5e1;' +
+      '  border-radius: 6px; text-decoration: none;' +
+      '  font: 700 12px/1.2 system-ui, sans-serif;' +
+      '  letter-spacing: 0.04em; text-transform: uppercase;' +
+      '}' +
+      '.scw-pq-internal-cta:hover {' +
+      '  background: #f1f5f9; border-color: #94a3b8;' +
+      '  text-decoration: none;' +
+      '}' +
 
       // ── Empty state ──
       '.scw-pq-empty {' +
@@ -197,13 +320,27 @@
       }
     }
 
+    // Tokenized customer URL — minted at publish, stored on the
+    // proposal record. Falls back to the bare token + reconstruction
+    // not attempted here (the snippet builds the URL itself; this
+    // module just surfaces what's stored).
+    var tokenUrl = '';
+    var rawTokenUrl = attrs[fields.tokenUrl + '_raw'];
+    if (typeof rawTokenUrl === 'string' && rawTokenUrl.trim()) {
+      tokenUrl = rawTokenUrl.trim();
+    } else if (typeof attrs[fields.tokenUrl] === 'string') {
+      tokenUrl = String(attrs[fields.tokenUrl]).replace(/<[^>]*>/g, '').trim();
+    }
+
     return {
       recordId: id,
       name:     name,
       expDate:  expDate,
+      expired:  isExpired(expDate),
       pdfUrl:   pdfUrl,
       pdfName:  pdfName || 'Download PDF',
       viewLink: viewLink,
+      tokenUrl: tokenUrl,
       type:     (window.SCW && SCW.proposalTypeChip)
                   ? SCW.proposalTypeChip.getType(attrs) : null
     };
@@ -238,14 +375,25 @@
       else if (flagFromCell(SCW.proposalTypeChip.EQUIP_ONLY_FIELD)) type = 'equipment-only';
     }
 
+    var expDate  = cellText(fields.exp);
+    var tokenUrl = cellText(fields.tokenUrl);
+    // The token-url cell may render as an anchor; prefer the href.
+    var tokenA = cellAnchor(fields.tokenUrl);
+    if (tokenA) {
+      var hrefVal = tokenA.getAttribute('href');
+      if (hrefVal) tokenUrl = hrefVal;
+    }
+
     return {
       recordId: tr.id || '',
       name:     cellText(fields.name),
-      expDate:  cellText(fields.exp),
+      expDate:  expDate,
+      expired:  isExpired(expDate),
       pdfUrl:   pdfA  ? (pdfA.getAttribute('href') || '') : '',
       pdfName:  pdfA  ? ((pdfA.textContent || '').trim() || 'Download PDF')
                       : 'Download PDF',
       viewLink: pageA ? (pageA.getAttribute('href') || '') : '',
+      tokenUrl: tokenUrl,
       type:     type
     };
   }
@@ -253,12 +401,25 @@
   function resolveFields(opts) {
     return {
       sourceView: opts.sourceView,
-      status:     opts.statusField || DEFAULT_STATUS,
-      name:       opts.nameField   || DEFAULT_NAME,
-      exp:        opts.expField    || DEFAULT_EXP,
-      pdf:        opts.pdfField    || DEFAULT_PDF,
-      sow:        opts.sowField    || DEFAULT_SOW
+      status:     opts.statusField   || DEFAULT_STATUS,
+      name:       opts.nameField     || DEFAULT_NAME,
+      exp:        opts.expField      || DEFAULT_EXP,
+      pdf:        opts.pdfField      || DEFAULT_PDF,
+      sow:        opts.sowField      || DEFAULT_SOW,
+      tokenUrl:   opts.tokenUrlField || DEFAULT_TOKEN_URL
     };
+  }
+
+  // ── Expiration check ──────────────────────────────────────────
+  // Returns true when the expDate string (e.g. "06/13/2026") is
+  // strictly before today (calendar-day boundary). Blank / unparseable
+  // dates are treated as not expired.
+  function isExpired(expDateStr) {
+    if (!expDateStr) return false;
+    var d = new Date(expDateStr);
+    if (isNaN(d.getTime())) return false;
+    var today = new Date(); today.setHours(0, 0, 0, 0);
+    return d < today;
   }
 
   // ── Read first published proposal ─────────────────────────────
@@ -359,15 +520,6 @@
   }
 
   // ── Build the block DOM ───────────────────────────────────────
-  // Inline paperclip glyph for the PDF link. Sized for the chrome the
-  // block renders in — looks correct against text in any variant.
-  var PDF_SVG =
-    '<svg viewBox="0 0 24 24" width="11" height="11" fill="none" ' +
-    'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
-    'stroke-linejoin="round">' +
-    '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>' +
-    '<polyline points="14 2 14 8 20 8"/></svg>';
-
   function buildBlock(proposal, opts) {
     opts = opts || {};
     injectStyles();
@@ -385,29 +537,40 @@
       return block;
     }
 
-    // Optional header label (panel variant uses it).
+    // Header row — "PUBLISHED PROPOSAL" label + chip cluster (type
+    // chip and the EXPIRED badge when applicable). Reads as a single
+    // identifying line at the top of the card.
     if (opts.header) {
       var hdr = document.createElement('div');
       hdr.className = 'scw-pq-header';
-      hdr.textContent = opts.header;
+      hdr.appendChild(document.createTextNode(opts.header));
+      if (proposal.type && window.SCW && SCW.proposalTypeChip) {
+        var chip = SCW.proposalTypeChip.buildChip(proposal.type);
+        if (chip) hdr.appendChild(chip);
+      }
+      if (proposal.expired) {
+        var badge = document.createElement('span');
+        badge.className = 'scw-pq-expired-badge';
+        badge.textContent = 'Expired';
+        hdr.appendChild(badge);
+      }
       block.appendChild(hdr);
+    } else if (proposal.type && window.SCW && SCW.proposalTypeChip) {
+      // Variants without a header still get a type chip up top.
+      var soloChip = SCW.proposalTypeChip.buildChip(proposal.type);
+      if (soloChip) block.appendChild(soloChip);
     }
 
-    // Type chip (GFE / Final / Equipment Only) — top of the block.
-    if (proposal.type && window.SCW && SCW.proposalTypeChip) {
-      var chip = SCW.proposalTypeChip.buildChip(proposal.type);
-      if (chip) block.appendChild(chip);
-    }
-
-    // Name + link.
+    // Proposal name — plain text by default. The action lives in the
+    // CTA below; surfacing the identifier as a link to the internal
+    // details page was redundant clutter. Callers that need it can
+    // still pass opts.linkBuilder.
     if (proposal.name) {
       var nameRow = document.createElement('div');
       nameRow.className = 'scw-pq-name';
       var href = '';
       if (typeof opts.linkBuilder === 'function') {
         href = opts.linkBuilder(proposal) || '';
-      } else if (proposal.recordId) {
-        href = '#published-proposals/sow-published-proposal-details/' + proposal.recordId;
       }
       if (href) {
         var a = document.createElement('a');
@@ -426,19 +589,81 @@
 
     if (proposal.expDate) {
       var expRow = document.createElement('div');
-      expRow.className = 'scw-pq-exp';
-      expRow.textContent = 'Expires: ' + proposal.expDate;
+      expRow.className = 'scw-pq-exp' + (proposal.expired ? ' scw-pq-exp--past' : '');
+      expRow.textContent = (proposal.expired ? 'Expired: ' : 'Expires: ') + proposal.expDate;
       block.appendChild(expRow);
     }
 
     if (proposal.pdfUrl) {
+      // "Downloadable file" chip: red PDF badge + filename. The badge
+      // is the universal cue ("this is a PDF") and the chip border
+      // signals "tap to download" without leaning on a generic blue
+      // text-link.
       var pdfLink = document.createElement('a');
       pdfLink.className = 'scw-pq-pdf';
       pdfLink.setAttribute('href', proposal.pdfUrl);
       // No target=_blank by default — let the browser handle inline PDFs.
-      pdfLink.innerHTML = PDF_SVG;
-      pdfLink.appendChild(document.createTextNode(proposal.pdfName));
+      var badge = document.createElement('span');
+      badge.className = 'scw-pq-pdf__badge';
+      badge.textContent = 'PDF';
+      var fname = document.createElement('span');
+      fname.className = 'scw-pq-pdf__name';
+      fname.textContent = proposal.pdfName;
+      pdfLink.appendChild(badge);
+      pdfLink.appendChild(fname);
       block.appendChild(pdfLink);
+    }
+
+    // ── Primary CTA ─────────────────────────────────────────────
+    // Caller passes opts.customerLink = {
+    //   url:                tokenized URL (used when not expired)
+    //   label:              CTA text (default "Customer Link")
+    //   expiredFallbackUrl: internal details URL (used when expired)
+    //   expiredFallbackLabel: CTA text when expired (default "View Details")
+    // }
+    //
+    // When not expired: render a primary "Customer Link" button to
+    // the tokenized URL. That's the only navigation the user needs.
+    //
+    // When expired: render an amber warning blurb followed by an
+    // outlined "View Details" secondary button to the internal page.
+    // The bright primary action is suppressed because re-sharing a
+    // stale link isn't the right next step.
+    var cust = opts.customerLink;
+    if (cust) {
+      if (proposal.expired) {
+        var note = document.createElement('div');
+        note.className = 'scw-pq-expired-note';
+        note.innerHTML =
+          '<strong>This proposal is expired.</strong> Coordinate an ' +
+          'extension with Ops before re-sharing the customer link.';
+        block.appendChild(note);
+
+        if (cust.expiredFallbackUrl) {
+          var intBtn = document.createElement('a');
+          intBtn.className = 'scw-pq-internal-cta';
+          intBtn.setAttribute('href', cust.expiredFallbackUrl);
+          intBtn.setAttribute('target', '_blank');
+          intBtn.setAttribute('rel', 'noopener');
+          intBtn.textContent = cust.expiredFallbackLabel || 'View Details';
+          block.appendChild(intBtn);
+        }
+      } else if (cust.url) {
+        var custBtn = document.createElement('a');
+        custBtn.className = 'scw-pq-customer-cta';
+        custBtn.setAttribute('href', cust.url);
+        custBtn.setAttribute('target', '_blank');
+        custBtn.setAttribute('rel', 'noopener');
+        custBtn.innerHTML =
+          '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" ' +
+          'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+          'stroke-linejoin="round">' +
+          '<path d="M10 14a5 5 0 0 0 7.07 0l3-3a5 5 0 0 0-7.07-7.07L11 6"/>' +
+          '<path d="M14 10a5 5 0 0 0-7.07 0l-3 3a5 5 0 0 0 7.07 7.07L13 18"/>' +
+          '</svg>' +
+          (cust.label || 'Customer Link');
+        block.appendChild(custBtn);
+      }
     }
 
     return block;

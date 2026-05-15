@@ -14,22 +14,12 @@
   var MODAL_ID  = 'scw-jotform-modal';
   var STYLE_ID  = 'scw-jotform-modal-css';
 
-  var FORM_CONFIGS = [
-    {
-      menuViewId:    'view_3482',
-      linkText:      'Bulk Add Photos',
-      jotformId:     '260564849468170',
-      fieldName:     'sowID',
-      hashPattern:   /scope-of-work-details\/([a-f0-9]{24})/
-    },
-    {
-      menuViewId:    'view_3532',
-      linkText:      'Bulk Add Photos',
-      jotformId:     '260564849468170',
-      fieldName:     'surveyID',
-      hashPattern:   /site-survey-request-details\/([a-f0-9]{24})/
-    }
-  ];
+  // Both Bulk Add Photos links (view_3482 / view_3532) are now handled
+  // by src/features/bulk-upload.js — see its CONFIG.VIEWS. Leaving the
+  // entries here would cause both modals to open on the same click.
+  // Re-add an entry here if you ever need to roll back to the JotForm
+  // flow for a specific view.
+  var FORM_CONFIGS = [];
 
   // ── Helpers ──────────────────────────────────────────────────────────────
 

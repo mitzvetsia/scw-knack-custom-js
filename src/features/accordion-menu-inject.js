@@ -448,7 +448,16 @@
           var menuViewId = menuIds[mi];
           var menuView = document.getElementById(menuViewId);
           if (!menuView) { skipped.noMenuEl++; continue; }
-          if (menuView.classList.contains(HIDDEN_CLASS)) { skipped.menuHidden++; continue; }
+          // Reaching this point means the accordion has lost its
+          // injected buttons (line 422 short-circuits otherwise). If
+          // the menu source was previously absorbed and hidden, we
+          // still need to re-read its links to rebuild the buttons —
+          // the HIDDEN_CLASS only controls visibility, the link data
+          // is still in the DOM/model. Un-hide for the read; we
+          // re-hide via the menuElements loop at the end of injection.
+          if (menuView.classList.contains(HIDDEN_CLASS)) {
+            menuView.classList.remove(HIDDEN_CLASS);
+          }
 
           // Try DOM links first
           var domLinks = menuView.querySelectorAll('a');

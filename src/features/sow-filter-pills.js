@@ -22,14 +22,17 @@
  * Selection persists per (scene, view) in localStorage; a stale
  * selection (e.g. the connected record was deleted) gracefully falls
  * back to "Show All" instead of leaving every row hidden.
+ *
+ * Mounting is delegated to SCW.toolbar — this file owns the markup,
+ * state, and filter logic. The toolbar registry calls mount() on
+ * accordion-subtree mutations; mount only builds when the strip is
+ * missing, otherwise it refreshes the active state. Full data rebuilds
+ * are triggered explicitly on knack-cell-update.
  */
 (function () {
   'use strict';
 
   // ── Targets ─────────────────────────────────────────────
-  // To enable the strip on another grid view, add a target here.
-  // `label` is the singular noun shown in the strip header ("SOW:" /
-  // "Bid:"); `pluralPath` is only used for log messages.
   var TARGETS = [
     { viewId: 'view_3610', fieldKey: 'field_2154', label: 'SOW' },
     { viewId: 'view_3505', fieldKey: 'field_2415', label: 'Bid' }
@@ -46,7 +49,6 @@
     var s = document.createElement('style');
     s.id = STYLE_ID;
     s.textContent = [
-      // Strip container
       '.' + STRIP_CLS + ' {',
       '  display: flex; flex-wrap: wrap; align-items: center;',
       '  gap: 6px; margin: 0 0 12px;',
@@ -60,7 +62,6 @@
       '  font-weight: 600; color: var(--scw-text-caption); margin-right: 4px;',
       '  letter-spacing: 0.02em; text-transform: uppercase; font-size: 11px;',
       '}',
-      // Pill base
       '.' + STRIP_CLS + '__pill {',
       '  display: inline-flex; align-items: center; gap: 4px;',
       '  padding: 4px 10px;',
@@ -74,22 +75,15 @@
       '.' + STRIP_CLS + '__pill:hover {',
       '  background: var(--scw-surface-muted); border-color: var(--scw-border-strong);',
       '}',
-      // Active pill — brand accent slate-blue, matches the "Add to
-      // Scope" CTA so the active state reads as "this filter is on" in
-      // the same language as the page\'s primary action. Cyan/teal read
-      // as a notification badge in this context and competed with the
-      // rest of the brand chrome.
       '.' + STRIP_CLS + '__pill.is-active {',
       '  background: var(--scw-accent); border-color: var(--scw-accent-strong); color: var(--scw-surface-base);',
       '}',
       '.' + STRIP_CLS + '__pill.is-active:hover {',
       '  background: var(--scw-accent-strong);',
       '}',
-      // "All" pill — slightly different so it reads as a reset
       '.' + STRIP_CLS + '__pill--all:not(.is-active) {',
       '  background: transparent;',
       '}',
-      // Per-pill record count
       '.' + STRIP_CLS + '__count {',
       '  display: inline-flex; align-items: center; justify-content: center;',
       '  min-width: 18px; padding: 0 5px;',
@@ -99,9 +93,6 @@
       '.' + STRIP_CLS + '__pill.is-active .' + STRIP_CLS + '__count {',
       '  background: rgba(255, 255, 255, 0.25); color: var(--scw-surface-base);',
       '}',
-      // Filter-hidden rows — !important so we can't be defeated by
-      // jQuery .show() that group-collapse runs when expanding an
-      // accordion group.
       'tr.' + HIDE_CLS + ' {',
       '  display: none !important;',
       '}'
@@ -141,9 +132,6 @@
   }
 
   // ── Connection collection from Knack model ──────────────
-  // Returns { items, recordConns, totalRecords } where:
-  //   items[]      = { id, label, count } sorted by label (natural sort)
-  //   recordConns  = { recordId: { connId: true } } — fast lookup
   function collectConnections(target) {
     var byId = {};
     var recordConns = {};
@@ -190,19 +178,9 @@
   }
 
   // ── DOM row indexing ────────────────────────────────────
-  // Walk the tbody and group every <tr> by the record id it belongs
-  // to. Card rows have id="<24-hex>"; everything else (photo rows,
-  // worksheet data rows) is paired with its nearest card row inside
-  // the same group. This avoids depending on view-specific edit-link
-  // URL patterns, which differ between view_3610 and view_3505.
   function indexRows(target) {
     var view = document.getElementById(target.viewId);
     if (!view) return null;
-    // Scope to the data grid's tbody specifically — mdf-summary-panel
-    // injects its own <table class="scw-mdf-summary-table"> above
-    // table.kn-table, so an unscoped `table tbody` selector matches
-    // the summary panel first and the filter would target the wrong
-    // rows (and find no scw-ws-row card rows).
     var tbody = view.querySelector('table.kn-table tbody');
     if (!tbody) return null;
 
@@ -210,18 +188,17 @@
     var children = tbody.children;
     var n = children.length;
 
-    // First pass: locate group headers and card rows by index.
-    var groupAt = new Array(n);  // for each row index, which group bucket it belongs to
-    var groups = [];             // [{ tr, recordIds: {} }]
-    var cardIndices = [];        // [{ idx, recordId }]
-    var cur = -1;                // current group bucket (-1 = before first group)
+    var groupAt = new Array(n);
+    var groups = [];
+    var cardIndices = [];
+    var cur = -1;
 
     for (var i = 0; i < n; i++) {
       var tr = children[i];
       if (tr.classList.contains('kn-table-group')) {
         groups.push({ tr: tr, recordIds: {} });
         cur = groups.length - 1;
-        groupAt[i] = -1;  // group header itself isn't a member of any bucket
+        groupAt[i] = -1;
         continue;
       }
       groupAt[i] = cur;
@@ -230,7 +207,6 @@
       }
     }
 
-    // Second pass: assign every non-group, non-divider row to a record.
     var rowsByRecord = {};
     for (var r = 0; r < n; r++) {
       var row = children[r];
@@ -241,7 +217,6 @@
       if (row.classList.contains('scw-ws-row') && row.id && ID_RE.test(row.id)) {
         recordId = row.id;
       } else {
-        // Find nearest card row inside the same group bucket.
         var bucket = groupAt[r];
         var minDist = Infinity;
         for (var c = 0; c < cardIndices.length; c++) {
@@ -284,7 +259,6 @@
       }
     }
 
-    // Hide group headers whose records are all filtered out.
     for (var g = 0; g < idx.groupHeaders.length; g++) {
       var grp = idx.groupHeaders[g];
       var anyVisible = false;
@@ -300,10 +274,6 @@
       grp.tr.classList.toggle(HIDE_CLS, !anyVisible);
     }
 
-    // Notify downstream features (mdf-summary-panel, etc.) that the
-    // filter changed. MutationObservers on tbody are flaky after Knack
-    // rebuilds the view DOM, so we dispatch an explicit event that
-    // listeners can hook without depending on observer survival.
     try {
       document.dispatchEvent(new CustomEvent('scw-conn-filter-changed', {
         detail: { viewId: target.viewId, selectedId: selectedId || null }
@@ -312,19 +282,8 @@
   }
 
   // ── Pill strip render ───────────────────────────────────
-  function renderStrip(target, data, selectedId) {
-    var view = document.getElementById(target.viewId);
-    if (!view) return;
-    var nav = view.querySelector('.kn-records-nav');
-    if (!nav) return;
-
-    // Tear down any prior strip — Knack rebuilds the view from
-    // scratch on lots of events; we want fresh markup, not stale.
-    var prior = nav.querySelector('.' + STRIP_CLS);
-    if (prior) prior.parentNode.removeChild(prior);
-
-    if (!data || !data.items.length) return;
-
+  // Builds fresh markup from data. Pure-ish: only DOM creation.
+  function buildStrip(target, data, selectedId) {
     var strip = document.createElement('div');
     strip.className = STRIP_CLS;
     strip.setAttribute('data-view-id', target.viewId);
@@ -370,11 +329,55 @@
         active: selectedId === item.id
       });
     });
-
-    nav.insertBefore(strip, nav.firstChild);
+    return strip;
   }
 
-  // ── Lookup target by view container ─────────────────────
+  // Idempotent strip mount used by the toolbar registry. Builds if
+  // missing; otherwise refreshes only the .is-active class so the
+  // strip survives Knack re-renders without flickering or losing the
+  // user's interaction state.
+  function ensureStrip(target, nav) {
+    var data = collectConnections(target);
+    if (!data || !data.items.length) return;
+
+    var selected = loadSelected(target);
+    if (selected && !data.items.some(function (it) { return it.id === selected; })) {
+      selected = '';
+      saveSelected(target, '');
+    }
+
+    var existing = nav.querySelector(
+      '.' + STRIP_CLS + '[data-view-id="' + target.viewId + '"]'
+    );
+    if (existing) {
+      // Just sync active class — markup is still valid.
+      var pills = existing.querySelectorAll('.' + STRIP_CLS + '__pill');
+      for (var i = 0; i < pills.length; i++) {
+        var connId = pills[i].getAttribute('data-conn-id') || '';
+        pills[i].classList.toggle('is-active', connId === selected);
+      }
+      return;
+    }
+
+    nav.appendChild(buildStrip(target, data, selected));
+    applyFilter(target, selected, data);
+  }
+
+  // Full rebuild — used when underlying data may have changed (cell
+  // edits, fresh fetch). Removes any prior strip from anywhere the view
+  // contains it, then lets the registry's next mount call recreate it.
+  function rebuildStrip(target) {
+    var view = document.getElementById(target.viewId);
+    if (!view) return;
+    var prior = view.querySelectorAll(
+      '.' + STRIP_CLS + '[data-view-id="' + target.viewId + '"]'
+    );
+    for (var i = 0; i < prior.length; i++) prior[i].parentNode.removeChild(prior[i]);
+
+    var nav = view.querySelector('.kn-records-nav');
+    if (nav) ensureStrip(target, nav);
+  }
+
   function findTargetForElement(el) {
     for (var i = 0; i < TARGETS.length; i++) {
       if (el.closest('#' + TARGETS[i].viewId)) return TARGETS[i];
@@ -392,8 +395,6 @@
     var connId = pill.getAttribute('data-conn-id') || '';
     saveSelected(target, connId);
 
-    // Update active class without a full re-render — cheaper and
-    // keeps focus on the clicked pill.
     var view = document.getElementById(target.viewId);
     var siblings = view ? view.querySelectorAll('.' + STRIP_CLS + '__pill') : [];
     for (var i = 0; i < siblings.length; i++) {
@@ -407,41 +408,29 @@
     applyFilter(target, connId, data);
   });
 
-  // ── Refresh entry point per target ──────────────────────
-  function refresh(target) {
-    var data = collectConnections(target);
-    if (!data) return;
-    var selected = loadSelected(target);
-    if (selected && !data.items.some(function (it) { return it.id === selected; })) {
-      selected = '';
-      saveSelected(target, '');
-    }
-    renderStrip(target, data, selected);
-    applyFilter(target, selected, data);
-  }
-
   // ── Bindings ────────────────────────────────────────────
   injectStyles();
 
   TARGETS.forEach(function (target) {
-    if (window.SCW && typeof SCW.onViewRender === 'function') {
-      // 200ms after view-render — gives device-worksheet's
-      // transformView (also at ~150ms) a beat to finish swapping rows
-      // in. Matches the cadence of other view-3610/view-3505 features.
-      SCW.onViewRender(target.viewId, function () {
-        setTimeout(function () { refresh(target); }, 200);
-      }, 'scwConnFilter_' + target.viewId);
-    }
+    SCW.toolbar.register({
+      id:    'filter-pills-' + target.viewId,
+      slot:  SCW.toolbar.SLOTS.filter,
+      viewMatch: function (viewEl) { return viewEl.id === target.viewId; },
+      mount: function (viewEl, nav) {
+        ensureStrip(target, nav);
+      }
+    });
 
+    // Cell-update fires when a row's data changes — connections might
+    // have been added/removed; force a full rebuild so counts stay
+    // accurate. Debounce to absorb bursts (bulk edits).
+    var cellTimer = null;
     $(document)
       .off('knack-cell-update.' + target.viewId + EVENT_NS)
       .on('knack-cell-update.' + target.viewId + EVENT_NS, function () {
-        setTimeout(function () { refresh(target); }, 200);
+        if (cellTimer) clearTimeout(cellTimer);
+        cellTimer = setTimeout(function () { rebuildStrip(target); }, 200);
       });
-
-    if (document.getElementById(target.viewId)) {
-      setTimeout(function () { refresh(target); }, 200);
-    }
   });
 })();
 /*************  Connection-filter pills  *************/

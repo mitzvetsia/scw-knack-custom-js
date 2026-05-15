@@ -16,6 +16,7 @@ cat \
   src/util.js \
   src/features/_design-tokens.js \
   src/features/_render-totals-guard.js \
+  src/features/_toolbar-registry.js \
   src/features/preserve-scroll-on-refresh.js \
   src/features/modal-refresh-redirect.js \
   src/features/modal-scroll-restore.js \
@@ -44,6 +45,7 @@ cat \
   src/features/survey-review-grid.js \
   src/features/proposal-pdf-export.js \
   src/features/published-proposal-render.js \
+  src/features/secure-proposal-link.js \
   src/features/bid-items-grid.js \
   src/features/bid-review/config.js \
   src/features/bid-review/styles.js \
@@ -84,6 +86,7 @@ cat \
   src/features/style-detail-labels.js \
   src/features/gtm-inject.js \
   src/features/jotform-embed-sow-photos.js \
+  src/features/bulk-upload.js \
   src/features/edit-button-group-header.js \
   src/features/inline-photo-row.js \
   src/features/mdf-summary-panel.js \

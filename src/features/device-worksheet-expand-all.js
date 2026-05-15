@@ -1,7 +1,7 @@
 /*** DEVICE WORKSHEET — EXPAND/COLLAPSE/SUMMARY-ONLY ***/
 /**
- * Adds three buttons above any worksheet view that has L1 (MDF/IDF) group
- * accordions:
+ * Adds two buttons (Expand/Collapse toggle + Summary only) above any
+ * worksheet view that has L1 (MDF/IDF) group accordions. Modes:
  *   • Expand all   → open every L1 group (rows under each L1 visible)
  *   • Summary only → open every L1 group, hide all rows under each L1
  *                    except its scw-mdf-summary-row
@@ -13,19 +13,22 @@
  * reads on its next enhance pass. That way exclusive-accordion views
  * (view_3586/3610/3921) honour the bulk action instead of snapping back
  * to one-open-only on the next render.
+ *
+ * Mounting is delegated to SCW.toolbar — this file only owns the markup,
+ * the click handlers, and the mode-apply logic. The toolbar registry
+ * decides when to call mount() and re-runs it on every accordion-subtree
+ * mutation so the buttons survive Knack's inner-DOM rebuilds.
  */
 (function () {
   'use strict';
 
   var BTN_HOST_CLS    = 'scw-ws-bulk-toggle';
   var CLICK_BOUND_KEY = '__scwBulkClickBound';
-  var OBS_KEY         = '__scwBulkToggleObs';
   var SUMMARY_STATE   = 'data-scw-summary-state';
   // Native Knack classes only — DO NOT include scw-group-header here,
   // that's added by group-collapse.js's enhance pass which can run
-  // after device-worksheet finishes. If we required it, mount() would
-  // bail on every retry until group-collapse caught up, and on slow
-  // scenes the buttons would never appear.
+  // after device-worksheet finishes. If we required it, mount would
+  // bail on every retry until group-collapse caught up.
   var L1_SEL          = 'tr.kn-table-group.kn-group-level-1';
   var SUMMARY_CLASS   = 'scw-mdf-summary-row';
 
@@ -204,27 +207,40 @@
     }, true);
   }
 
-  // Idempotent mount: callable on every observer tick. Returns true
-  // when the buttons are present in the current DOM (whether we just
-  // built them or they were already there), false when prerequisites
-  // aren't ready yet so the observer keeps watching.
-  //
-  // Knack re-renders frequently wipe the inner view DOM (kn-records-nav
-  // included) without replacing the outer #view_xxxx element. We must
-  // re-attach the buttons on every such wipe — hence no "already done"
-  // attribute guard. The cost is one querySelector per mutation tick.
-  function mount(viewEl) {
-    if (!viewEl) return false;
-    if (!viewEl.querySelector('tr.scw-ws-row')) return false;
-    if (!viewEl.querySelector(L1_SEL)) return false;
+  // ── Toolbar registration ────────────────────────────────
+  // viewMatch is by registered worksheet config, not by live row
+  // presence. Previously it required tr.scw-ws-row + L1 headers —
+  // which made the toggle disappear after a model.fetch() because
+  // device-worksheet's transformView rebuilds those asynchronously,
+  // and the registry's observer often fired during the gap. Matching
+  // by viewId means we mount as soon as the view exists; applyMode()
+  // already no-ops when no headers are present, so an early mount is
+  // harmless.
+  function isRegisteredWorksheet(viewEl) {
+    var configs = window.SCW && SCW.deviceWorksheet && SCW.deviceWorksheet._configs;
+    if (!configs) return false;
+    for (var i = 0; i < configs.length; i++) {
+      if (configs[i] && configs[i].viewId === viewEl.id) return true;
+    }
+    return false;
+  }
 
-    var nav = viewEl.querySelector('.kn-records-nav');
-    if (!nav) return false;
+  SCW.toolbar.register({
+    id:    'mode-toggle',
+    slot:  SCW.toolbar.SLOTS.mode,
+    viewMatch: isRegisteredWorksheet,
+    mount: function (viewEl, nav) {
+      var existing = nav.querySelector('.' + BTN_HOST_CLS);
+      if (existing) {
+        // Already mounted — refresh the toggle label since state may
+        // have changed since the last render (group-collapse persists
+        // L1 open/closed across navigations).
+        var tBtn = existing.querySelector('button');
+        if (tBtn) updateToggleLabel(tBtn, viewEl);
+        bindSummaryClickInterceptor(viewEl);
+        return;
+      }
 
-    // Already present in the live DOM — nothing to do. (We bind the
-    // click interceptor below regardless, but it self-dedupes.)
-    var existing = nav.querySelector('.' + BTN_HOST_CLS);
-    if (!existing) {
       var host = document.createElement('div');
       host.className = BTN_HOST_CLS;
       host.style.cssText = 'display:inline-flex;gap:0;margin-right:10px;';
@@ -247,54 +263,23 @@
         updateToggleLabel(toggleBtn, viewEl);
       }));
 
-      nav.insertBefore(host, nav.firstChild);
-    } else {
-      // Already mounted — refresh the toggle label since state may
-      // have changed since the last render (group-collapse persists
-      // L1 open/closed across navigations).
-      var tBtn = existing.querySelector('button');
-      if (tBtn) updateToggleLabel(tBtn, viewEl);
+      // Visual order is controlled by the toolbar's CSS `order` rule —
+      // no need to insertBefore(host, nav.firstChild).
+      nav.appendChild(host);
+
+      bindSummaryClickInterceptor(viewEl);
     }
+  });
 
-    bindSummaryClickInterceptor(viewEl);
-    return true;
-  }
-
-  // Per-view observer: watches the view's subtree and re-runs mount on
-  // every mutation. Stays attached for the life of the view so the
-  // buttons survive Knack's inner-DOM rebuilds (filter changes, edit
-  // saves, sort changes, anything that re-paints the kn-records-nav).
-  function attachObserver(viewEl) {
-    if (viewEl[OBS_KEY]) return;
-    mount(viewEl);
-
-    var debounce = null;
-    var obs = new MutationObserver(function () {
-      if (debounce) clearTimeout(debounce);
-      debounce = setTimeout(function () { mount(viewEl); }, 50);
-    });
-    obs.observe(viewEl, { childList: true, subtree: true });
-    viewEl[OBS_KEY] = obs;
-  }
-
-  function runScan() {
-    var views = document.querySelectorAll('.kn-view[id^="view_"]');
-    for (var i = 0; i < views.length; i++) {
-      attachObserver(views[i]);
-    }
-  }
-
-  $(document).on('knack-view-render.any', runScan);
-  $(document).on('knack-scene-render.any', runScan);
-  document.addEventListener('scw-worksheet-ready', runScan);
-
-  // First-load entry point: the script can load after the initial
-  // scene render has already fired. Run an immediate scan so we don't
-  // wait for the next render event.
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', runScan);
-  } else {
-    runScan();
-  }
+  // ── Public API ──────────────────────────────────────────
+  // Exposed so other features (e.g. device-worksheet-photo-toggle)
+  // can drive the same expand/collapse state instead of duplicating
+  // applyMode's row-walking + localStorage writes.
+  window.SCW = window.SCW || {};
+  window.SCW.worksheetExpand = {
+    applyMode:    applyMode,    // (viewEl, 'expand' | 'collapse' | 'summary')
+    allExpanded:  allExpanded,  // (viewEl) → bool
+    inSummaryMode: inSummaryMode
+  };
 })();
 /*** END DEVICE WORKSHEET — EXPAND/COLLAPSE/SUMMARY-ONLY ***/
