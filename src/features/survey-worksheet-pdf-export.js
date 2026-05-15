@@ -60,10 +60,14 @@
   // field_2401 = Ext (qty × labor, readOnly on view_3505)
   // field_2415 = BID reference (e.g. "BD-1") — internal sales linkage
   //              that has no bearing on the field tech's work.
+  // field_2627 = Product connection on view_3505 — hidden by bucket
+  //              rules on service/assumption rows but the DOM cell
+  //              persists, so explicitly skip in the summary scrape.
   var EXCLUDED_SUMMARY_FIELDS = {
     field_2400: 1,
     field_2401: 1,
-    field_2415: 1
+    field_2415: 1,
+    field_2627: 1
   };
 
   // Distribution-device flag on a survey line item. Cards/records
@@ -474,6 +478,12 @@
     // before the device cards start.
     out = insertL1NotesBlocks(out);
 
+    // PDF ordering: Project Wide Assumptions block always lands at the
+    // very end of the worksheet section, regardless of where the live
+    // worksheet has it. Move the assumption L1 header + every row up
+    // to the next L1 header (or end of list) to the tail.
+    out = pushGroupToEnd(out, 'Project Wide Assumptions');
+
     return {
       viewId: viewId,
       title: title,
@@ -483,6 +493,33 @@
       coverImageSections: coverImageSections,
       trailingImageSections: trailingImageSections
     };
+  }
+
+  // Slice out one L1 group's run (its group header + every following
+  // non-L1 row up to the next L1 header) and append it to the end of
+  // the row list. Used to keep Project Wide Assumptions at the very
+  // bottom of the PDF regardless of where the live worksheet sorts it.
+  function pushGroupToEnd(rows, groupLabel) {
+    var startIdx = -1;
+    for (var i = 0; i < rows.length; i++) {
+      if (rows[i].type === 'group' && rows[i].level === 1 &&
+          rows[i].label === groupLabel) {
+        startIdx = i;
+        break;
+      }
+    }
+    if (startIdx === -1) return rows;
+    var endIdx = rows.length;
+    for (var j = startIdx + 1; j < rows.length; j++) {
+      if (rows[j].type === 'group' && rows[j].level === 1) {
+        endIdx = j;
+        break;
+      }
+    }
+    var slice = rows.slice(startIdx, endIdx);
+    var head  = rows.slice(0, startIdx);
+    var tail  = rows.slice(endIdx);
+    return head.concat(tail).concat(slice);
   }
 
   // Walks the row list and inserts one notes block at the END of each
@@ -852,6 +889,12 @@
       }
     }
 
+    // Hoisted so the summary scrape below can promote chit-host
+    // values directly into the detail map (used by the flags band).
+    // The detail panel walk later will add to these.
+    var detailValues = {};
+    var detailHasAnyField = false;
+
     // Summary fields (right bar + "fill" fields like Survey Notes)
     // Each .scw-ws-sum-group has a .scw-ws-sum-label + the field td.
     var summaryFields = [];
@@ -872,7 +915,32 @@
         if (fieldKey && EXCLUDED_SUMMARY_FIELDS[fieldKey]) continue;
         var val = cellValue(fieldTd);
         if (!val) continue;
+        // On view_3505 the cabling/exterior/plenum chits live in the
+        // summary bar, not the detail panel. Their group has an empty
+        // .scw-ws-sum-label (just &nbsp;), so left alone they render
+        // as bare "No / Yes / No" tokens in the card header. Promote
+        // chit-host values into the detailValues map instead so the
+        // flags band renders them properly with labels + checkboxes,
+        // and suppress from the header summary.
+        if (fieldTd.classList.contains('scw-ws-sum-chip-host')) {
+          if (fieldKey) detailValues[fieldKey] = val;
+          detailHasAnyField = true;
+          continue;
+        }
         var lbl = lblEl ? textOf(lblEl) : '';
+        // Quantity is rendered on every card today even when it equals
+        // 1, which is just visual noise. Hide qty <= 1, render >1 as
+        // the small chip on the right of the header.
+        var lblLower = lbl.toLowerCase();
+        if (lblLower === 'qty' || lblLower === 'quantity') {
+          var n = parseFloat(String(val).replace(/[^0-9.\-]/g, ''));
+          if (!isFinite(n) || n <= 1) continue;
+        }
+        // Assumption rows render with an "ASSUMPTION" label on the
+        // body text. Strip that label so the body reads cleanly —
+        // the L1 group header already says "Project Wide Assumptions"
+        // so the per-row prefix is redundant.
+        if (lblLower === 'assumption') lbl = '';
         summaryFields.push({ label: lbl, value: val });
       }
     }
@@ -881,9 +949,8 @@
     // Collect every .scw-ws-field present in the detail panel, keyed
     // by its field_XXXX identifier. The PDF renderer uses a static
     // left/right layout (below) and looks up values from this map.
-    var detailValues = {};
-    var detailHasAnyField = false;
-
+    // detailValues / detailHasAnyField are hoisted above the summary
+    // loop so chit-host promotion can populate them.
     var detail = card.querySelector('.scw-ws-detail');
     if (detail) {
       var fields = detail.querySelectorAll('.scw-ws-field[data-scw-field]');
@@ -957,15 +1024,24 @@
   //   flags   — Y/N pairs inline (cabling / location / plenum)
   //   measure — height checkbox cluster + drop / conduit fillable
   var PDF_DETAIL_LAYOUT = {
+    // Reference items shown in the LEFT column above the flag/measure
+    // rows. Labor Description (field_2409) is rendered separately in
+    // the right column so it gets the full width and notes space.
     ref: [
-      { key: 'field_2409', label: 'Labor' },     // Labor Description
       { key: 'field_2463', label: 'Mount' },     // Mounting Hardware
-      { key: 'field_2418', label: 'SCW' }        // SCW Notes
+      { key: 'field_2418', label: 'SCW' }        // SCW Notes (on view_3505 / 3610)
     ],
+    // Rendered as a labelled block in the right column.
+    labor: { key: 'field_2409', label: 'Labor Description' },
     flags: [
-      { key: 'field_2370', label: 'Cabling',  yesLabel: 'Existing', noLabel: 'New' },
-      { key: 'field_2372', label: 'Location', yesLabel: 'Ext',      noLabel: 'Int' },
-      { key: 'field_2371', label: 'Plenum',   yesLabel: 'Y',        noLabel: 'N' }
+      // view_3800 (survey line items)
+      { key: 'field_2370', label: 'Existing', yesLabel: 'Y', noLabel: 'N' },
+      { key: 'field_2372', label: 'Exterior', yesLabel: 'Y', noLabel: 'N' },
+      { key: 'field_2371', label: 'Plenum',   yesLabel: 'Y', noLabel: 'N' },
+      // view_3505 (SOW line items — same flags, different keys)
+      { key: 'field_2461', label: 'Existing', yesLabel: 'Y', noLabel: 'N' },
+      { key: 'field_1984', label: 'Exterior', yesLabel: 'Y', noLabel: 'N' },
+      { key: 'field_1983', label: 'Plenum',   yesLabel: 'Y', noLabel: 'N' }
     ],
     measure: [
       { key: 'field_2455', label: 'Height',  kind: 'choices',
@@ -1368,14 +1444,29 @@
 
   function renderCard(card) {
     var h = [];
-    h.push('<section class="ws-card' + (card.showDetail ? '' : ' ws-card--header-only') + '">');
+    // Two-column body lights up when the card has detail data
+    // (cameras/readers, NVRs, switches). Service/assumption rows
+    // collapse to a single brief header line + body text.
+    var brief = !card.showDetail;
+    var cls = 'ws-card' +
+      (card.showDetail ? '' : ' ws-card--header-only ws-card--brief');
+    h.push('<section class="' + cls + '">');
 
     // ── Header row ──
+    // Camera/reader cards: header carries the label only (product
+    // moves into column 1). Brief cards (services/assumptions): use
+    // label + product inline since there's no body to put product in.
     h.push('<header class="ws-header">');
     h.push('<div class="ws-identity">');
     if (card.label) h.push('<span class="ws-label">' + esc(card.label) + '</span>');
-    if (card.label && card.product) h.push('<span class="ws-sep">&middot;</span>');
-    if (card.product) h.push('<span class="ws-product">' + esc(card.product) + '</span>');
+    if (brief) {
+      if (card.label && card.product) h.push('<span class="ws-sep">&middot;</span>');
+      if (card.product) h.push('<span class="ws-product">' + esc(card.product) + '</span>');
+    } else if (!card.label && card.product) {
+      // Card has no label cell (e.g. Hard Drive, switch) — fall back
+      // to product in the header so the row still self-identifies.
+      h.push('<span class="ws-product">' + esc(card.product) + '</span>');
+    }
     if (card.warnCount > 0) {
       h.push('<span class="ws-warn">&#9888; ' + card.warnCount + '</span>');
     }
@@ -1400,20 +1491,49 @@
     }
     h.push('</header>');
 
-    // ── Compact bands: reference info / flags / measurements ──
-    // Each band collapses to nothing when its fields aren't present
-    // on this card (e.g. service/assumption rows have no flags or
-    // measurements). The blank-Notes line that used to sit at the
-    // bottom of every card is intentionally gone: techs scribble in
-    // the right margin and the Other Notes header field already
-    // captures structured notes. ~25px saved per card.
+    // ── Two-column body (camera/reader/NVR cards only) ──
     if (card.showDetail) {
+      h.push('<div class="ws-body-2col">');
+      // Left column: product · mount/SCW ref items · flags · measurements
+      h.push('<div class="ws-body-col ws-body-col--left">');
+      // Only show the Product line in col 1 when there IS a separate
+      // label in the header. For label-less cards (Hard Drive, switch)
+      // the product already lives in the header, so don't repeat it.
+      if (card.label && card.product) {
+        h.push('<div class="ws-line">');
+        h.push('<span class="ws-line-label">Product</span>');
+        h.push('<span class="ws-line-value">' + esc(card.product) + '</span>');
+        h.push('</div>');
+      }
       h.push(renderRefSection(card));
       h.push(renderFlagsRow(card));
       h.push(renderMeasureRow(card));
+      h.push('</div>');
+
+      // Right column: labor description + writing space for notes
+      h.push('<div class="ws-body-col ws-body-col--right">');
+      var laborSpec = PDF_DETAIL_LAYOUT.labor || {};
+      var laborVal = (laborSpec.key && card.detailValues[laborSpec.key]) || '';
+      if (laborVal) {
+        h.push('<div class="ws-labor">');
+        h.push('<div class="ws-labor-label">' + esc(laborSpec.label || 'Labor') + '</div>');
+        h.push('<div class="ws-labor-value">' + esc(laborVal) + '</div>');
+        h.push('</div>');
+      }
+      h.push('<div class="ws-notes-block">');
+      h.push('<div class="ws-notes-block-label">Notes</div>');
+      h.push('<div class="ws-notes-lines">');
+      h.push('<div class="ws-notes-line"></div>');
+      h.push('<div class="ws-notes-line"></div>');
+      h.push('<div class="ws-notes-line"></div>');
+      h.push('<div class="ws-notes-line"></div>');
+      h.push('</div>');
+      h.push('</div>');
+      h.push('</div>');
+      h.push('</div>');
     }
 
-    // ── Photo strip ──
+    // ── Photo strip (full width below the 2-col body) ──
     if (card.showPhotos) {
       h.push('<div class="ws-photos">');
       for (var p = 0; p < card.photos.length; p++) {
@@ -1658,15 +1778,41 @@
       '  white-space: pre-wrap;',
       '}',
       '',
-      '/* ── Reference band (Labor / Mount / SCW) ────────────────── */',
+      '/* ── Two-column body for camera/reader/NVR cards ─────────── */',
+      '.ws-body-2col {',
+      '  display: grid; grid-template-columns: 1.05fr 1fr;',
+      '  column-gap: 10px; row-gap: 0;',
+      '  margin-top: 2px; padding-top: 2px;',
+      '  border-top: 1px solid #e5e7eb;',
+      '}',
+      '.ws-body-col { display: flex; flex-direction: column; gap: 2px; }',
+      '.ws-body-col--left  { padding-right: 4px; border-right: 1px dotted #e5e7eb; }',
+      '.ws-body-col--right { padding-left: 4px; }',
+      '',
+      '/* Product / Mount style key:value line at top of col 1 */',
+      '.ws-line {',
+      '  display: flex; gap: 4px; align-items: baseline;',
+      '  font-size: 9px; line-height: 1.25;',
+      '}',
+      '.ws-line-label {',
+      '  font-weight: 700; color: #6b7280;',
+      '  font-size: 7.5px; letter-spacing: 0.4px;',
+      '  text-transform: uppercase;',
+      '  min-width: 38px; flex: 0 0 38px; text-align: right;',
+      '  padding-top: 1px;',
+      '}',
+      '.ws-line-value {',
+      '  color: #111827; flex: 1 1 auto;',
+      '  white-space: pre-wrap; word-break: break-word;',
+      '}',
+      '',
+      '/* ── Reference items (Mount / SCW) — same shape as ws-line ── */',
       '.ws-ref {',
       '  display: flex; flex-direction: column; gap: 1px;',
-      '  margin-top: 2px; padding-top: 2px;',
-      '  border-top: 1px dashed #e5e7eb;',
       '  font-size: 9px; line-height: 1.25;',
       '}',
       '.ws-ref-item {',
-      '  display: flex; gap: 6px; align-items: baseline;',
+      '  display: flex; gap: 4px; align-items: baseline;',
       '  break-inside: avoid;',
       '}',
       '.ws-ref-label {',
@@ -1681,57 +1827,98 @@
       '  white-space: pre-wrap; word-break: break-word;',
       '}',
       '',
-      '/* ── Flag band (Cabling Y/N · Location Y/N · Plenum Y/N) ──── */',
+      '/* ── Flag band (Existing / Exterior / Plenum) ────────────── */',
       '.ws-flags {',
-      '  display: flex; flex-wrap: wrap; gap: 4px 16px;',
-      '  margin-top: 3px; padding-top: 2px;',
+      '  display: flex; flex-wrap: wrap; gap: 2px 8px;',
+      '  margin-top: 2px; padding-top: 2px;',
       '  border-top: 1px dashed #e5e7eb;',
-      '  font-size: 9.5px; align-items: baseline;',
+      '  font-size: 9px; align-items: baseline;',
       '}',
       '.ws-flag {',
-      '  display: inline-flex; gap: 4px; align-items: baseline;',
+      '  display: inline-flex; gap: 2px; align-items: baseline;',
       '  white-space: nowrap;',
       '}',
       '.ws-flag-label {',
       '  font-weight: 700; color: #07467c;',
-      '  font-size: 9px; min-width: 48px;',
+      '  font-size: 8.5px;',
+      '  margin-right: 1px;',
       '}',
       '.ws-flag-opt {',
-      '  color: #374151; margin-right: 4px;',
+      '  color: #374151; margin-right: 4px; font-size: 8.5px;',
       '}',
       '',
       '/* ── Measurement band (Height · Drop · Conduit) ──────────── */',
       '.ws-measure {',
-      '  display: flex; flex-wrap: wrap; gap: 4px 20px;',
-      '  margin-top: 3px; padding-top: 2px;',
+      '  display: flex; flex-wrap: wrap; gap: 2px 8px;',
+      '  margin-top: 2px; padding-top: 2px;',
       '  border-top: 1px dashed #e5e7eb;',
-      '  font-size: 9.5px; align-items: baseline;',
+      '  font-size: 9px; align-items: baseline;',
       '}',
       '.ws-m-item {',
-      '  display: inline-flex; gap: 4px; align-items: baseline;',
+      '  display: inline-flex; gap: 2px; align-items: baseline;',
       '  white-space: nowrap;',
       '}',
       '.ws-m-label {',
       '  font-weight: 700; color: #07467c;',
-      '  font-size: 9px; min-width: 44px;',
+      '  font-size: 8.5px;',
       '}',
       '.ws-m-unit {',
-      '  color: #6b7280; font-size: 8.5px; margin-left: 2px;',
+      '  color: #6b7280; font-size: 8px; margin-left: 1px;',
       '}',
       '',
       '/* Fill-in-the-blank: underline span tall enough to write on */',
       '.ws-fill {',
-      '  display: inline-block; min-width: 72px;',
+      '  display: inline-block; min-width: 38px;',
       '  border-bottom: 1px solid #4b5563;',
-      '  min-height: 13px; line-height: 12px;',
-      '  padding: 0 3px; color: #111827;',
+      '  min-height: 12px; line-height: 11px;',
+      '  padding: 0 2px; color: #111827;',
       '}',
       '',
       '.ws-box {',
-      '  display: inline-block; font-size: 12px; line-height: 1;',
-      '  margin-right: 2px; color: #111827;',
+      '  display: inline-block; font-size: 11px; line-height: 1;',
+      '  margin-right: 1px; color: #111827;',
       '}',
       '.ws-box.is-on { color: #07467c; font-weight: 700; }',
+      '',
+      '/* ── Right column: Labor Description + lined Notes area ───── */',
+      '.ws-labor {',
+      '  font-size: 9px; line-height: 1.3;',
+      '  margin-bottom: 4px;',
+      '}',
+      '.ws-labor-label {',
+      '  font-weight: 700; color: #6b7280;',
+      '  font-size: 7.5px; letter-spacing: 0.4px;',
+      '  text-transform: uppercase;',
+      '  margin-bottom: 1px;',
+      '}',
+      '.ws-labor-value {',
+      '  color: #111827;',
+      '  white-space: pre-wrap; word-break: break-word;',
+      '}',
+      '.ws-notes-block {',
+      '  display: flex; flex-direction: column; gap: 1px;',
+      '}',
+      '.ws-notes-block-label {',
+      '  font-weight: 700; color: #6b7280;',
+      '  font-size: 7.5px; letter-spacing: 0.4px;',
+      '  text-transform: uppercase;',
+      '  margin-bottom: 1px;',
+      '}',
+      '/* Reused for both per-card and L1-group notes-lines */',
+      '.ws-notes-block .ws-notes-lines {',
+      '  display: flex; flex-direction: column; gap: 9px;',
+      '  margin-top: 1px;',
+      '}',
+      '',
+      '/* ── Brief cards (services / assumptions) — small body text ── */',
+      '/* Project Wide rows are short text, so shrink the body to claw */',
+      '/* back vertical space on the assumption / services pages.    */',
+      '.ws-card--brief .ws-sum-value {',
+      '  font-size: 8.5px; line-height: 1.3;',
+      '}',
+      '.ws-card--brief .ws-sum-label { font-size: 7.5px; }',
+      '.ws-card--brief .ws-label { font-size: 10.5px; }',
+      '.ws-card--brief .ws-product { font-size: 9.5px; }',
       '',
       '/* Field Notes — blank lined writing area */',
       '.ws-notes {',
