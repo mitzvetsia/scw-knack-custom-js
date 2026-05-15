@@ -869,6 +869,69 @@
     openModal(recordId);
   }, true);
 
+  // ── Render-pass diff: catch ANY field_2381 clear ──────────────
+  // The clearStaleConnection path above scrubs upstream switches when
+  // WE initiate the change via the MDF picker. But the user can also
+  // clear field_2381 through:
+  //   - Knack native inline edit on the cell (nativeEdit type)
+  //   - KTL bulk paste with an empty source
+  //   - The connection-picker's reciprocal path
+  //   - An edit in another tab/window
+  // For any of those, the switch's field_2380 would still list this
+  // camera until something explicitly scrubs it. Diff snapshot vs.
+  // fresh-render data each time the view renders and trigger the
+  // scrub on every transition from "had connections" to "empty".
+  var _connSnapshot = {};
+
+  function readConnectedToIds(attrs) {
+    var raw = attrs && attrs[CONNECTED_TO_FIELD + '_raw'];
+    if (!Array.isArray(raw)) return [];
+    var out = [];
+    for (var i = 0; i < raw.length; i++) {
+      if (raw[i] && raw[i].id) out.push(raw[i].id);
+    }
+    return out;
+  }
+
+  function diffAndScrubClearedConnections() {
+    if (typeof Knack === 'undefined') return;
+    var view = Knack.views && Knack.views[CFG.TARGET_VIEW];
+    if (!view || !view.model || !view.model.data) return;
+    var records = view.model.data.models || [];
+    if (!records.length) return;
+
+    var next = {};
+    for (var i = 0; i < records.length; i++) {
+      var rec = records[i];
+      var attrs = rec.attributes || rec;
+      var id = rec.id || attrs.id;
+      if (!id) continue;
+      var ids = readConnectedToIds(attrs);
+      next[id] = ids;
+
+      // Did this record previously have connections that are now gone?
+      var prev = _connSnapshot[id];
+      if (!prev || !prev.length) continue;        // no prior connections
+      if (ids.length) continue;                    // still has connections
+
+      log('field_2381 cleared on', id,
+          '— scrubbing prior switches', prev);
+      scrubReverseConnections(id, prev, function () {
+        log('cleared-connection scrub done for', id);
+      });
+    }
+    _connSnapshot = next;
+  }
+
+  if (window.SCW && SCW.onViewRender) {
+    SCW.onViewRender(CFG.TARGET_VIEW, function () {
+      // Delay so the model has fully repopulated after fetch — without
+      // this we'd diff against half-loaded data on the first render
+      // after a refresh and falsely declare records "cleared".
+      setTimeout(diffAndScrubClearedConnections, 600);
+    }, '.scwMdfIdfPickerClearedWatch');
+  }
+
   log('Module loaded');
 })();
 /*** END CUSTOM MDF/IDF PICKER ***/
