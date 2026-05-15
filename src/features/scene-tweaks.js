@@ -437,19 +437,16 @@
         var block = SCW.publishedQuoteInfo.buildBlock(proposal, {
           variant: 'regular',
           header:  'Published Proposal',
-          // Proposal-name link goes to the canonical Knack details
-          // page (sales staff still need that for editing fields /
-          // status). The CUSTOMER-facing link is rendered as the
-          // primary CTA below via opts.customerLink.
-          linkBuilder: function (p) { return p.viewLink || ''; },
-          // Customer-link CTA: prefer the tokenized URL when the
-          // proposal isn't expired; when expired, the buildBlock
-          // function hides the CTA and shows an amber warning blurb
-          // instead (sales is steered to the internal preview).
+          // No linkBuilder — when the proposal is live, the
+          // identifier is plain text and the only navigation users
+          // need is the Customer Link CTA below. When expired,
+          // buildBlock renders a secondary outlined CTA to the
+          // internal details page via customerLink.expiredFallbackUrl.
           customerLink: {
-            url:                 proposal.tokenUrl || '',
-            label:               'Open Customer Link',
-            expiredFallbackUrl:  previewHref || (proposal.viewLink || '')
+            url:                  proposal.tokenUrl || '',
+            label:                'Open Customer Link',
+            expiredFallbackUrl:   proposal.viewLink || '',
+            expiredFallbackLabel: 'View Published Details'
           }
         });
         if (block) {
@@ -460,28 +457,45 @@
         }
       }
 
-      // Preview Draft Proposal — always visible when the link exists.
-      // Sales' QA escape hatch even when a published proposal exists
-      // (and the only navigation path when the proposal is expired,
-      // since the customer-link CTA hides itself in that state).
+      // Preview Draft — always available when the SOW id resolves.
+      // Visually subordinate to the Published Proposal card above:
+      // smaller type, gray, separator line, lives in its own row so
+      // it doesn't compete with the primary Customer Link CTA.
       if (previewHref) {
-        var previewHdr = document.createElement('a');
-        previewHdr.href = previewHref;
-        var topMargin = hasPublished ? '14px' : '0';
-        // Slightly more prominent when this is the ONLY CTA on the
-        // panel (no published proposal yet, OR published-but-expired).
         var solo = !hasPublished || !!(proposal && proposal.expired);
-        previewHdr.style.cssText =
-          'display:inline-flex;align-items:center;gap:6px;' +
-          'font-size:' + (solo ? '13px' : '12px') + ';' +
-          'font-weight:700;color:#2563eb;text-transform:uppercase;' +
-          'letter-spacing:0.04em;margin-top:' + topMargin + ';' +
-          'text-decoration:none;';
-        previewHdr.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>';
-        previewHdr.appendChild(document.createTextNode(
-          solo ? 'Preview Proposal' : 'Preview Draft (internal)'
+        var previewRow = document.createElement('div');
+        previewRow.style.cssText = hasPublished
+          ? 'margin-top:14px; padding-top:12px;' +
+            'border-top:1px solid #e5e7eb;'
+          : 'margin-top:0;';
+
+        var previewLink = document.createElement('a');
+        previewLink.href = previewHref;
+        previewLink.style.cssText = solo
+          // Solo: this IS the primary action — same chrome as the
+          // customer CTA so sales still gets a clear "do this".
+          ? 'display:inline-flex;align-items:center;justify-content:center;' +
+            'gap:7px;padding:10px 18px;background:#07467c;' +
+            'color:#fff;border-radius:6px;text-decoration:none;' +
+            'font:700 12px/1.2 system-ui,sans-serif;' +
+            'letter-spacing:0.04em;text-transform:uppercase;' +
+            'box-shadow:0 1px 2px rgba(0,0,0,.12);'
+          // Companion to the customer CTA — small gray link, no chrome.
+          : 'display:inline-flex;align-items:center;gap:5px;' +
+            'font:600 11px/1.3 system-ui,sans-serif;' +
+            'color:#64748b;text-decoration:none;' +
+            'letter-spacing:0.04em;text-transform:uppercase;';
+        previewLink.innerHTML = '<svg viewBox="0 0 24 24" width="' +
+          (solo ? '13' : '12') + '" height="' + (solo ? '13' : '12') +
+          '" fill="none" stroke="currentColor" stroke-width="2" ' +
+          'stroke-linecap="round" stroke-linejoin="round">' +
+          '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/>' +
+          '<circle cx="12" cy="12" r="3"/></svg>';
+        previewLink.appendChild(document.createTextNode(
+          solo ? 'Preview Proposal' : 'Preview Draft'
         ));
-        wrap.appendChild(previewHdr);
+        previewRow.appendChild(previewLink);
+        wrap.appendChild(previewRow);
       }
 
       container.appendChild(wrap);
