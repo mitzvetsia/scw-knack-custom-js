@@ -270,5 +270,16 @@
       bindSummaryClickInterceptor(viewEl);
     }
   });
+
+  // ── Public API ──────────────────────────────────────────
+  // Exposed so other features (e.g. device-worksheet-photo-toggle)
+  // can drive the same expand/collapse state instead of duplicating
+  // applyMode's row-walking + localStorage writes.
+  window.SCW = window.SCW || {};
+  window.SCW.worksheetExpand = {
+    applyMode:    applyMode,    // (viewEl, 'expand' | 'collapse' | 'summary')
+    allExpanded:  allExpanded,  // (viewEl) → bool
+    inSummaryMode: inSummaryMode
+  };
 })();
 /*** END DEVICE WORKSHEET — EXPAND/COLLAPSE/SUMMARY-ONLY ***/

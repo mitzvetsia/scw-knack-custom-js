@@ -60,12 +60,14 @@
     return document.getElementById(viewId);
   }
 
+  // Static button text — the affordance is the toggle, not the label.
+  // aria-pressed reflects current state for screen readers.
+  var BTN_LABEL = 'Show/hide photos';
+
   function updateBtnLabel(btn, viewId) {
     var viewEl = liveView(viewId);
     var on = !!(viewEl && viewEl.classList.contains(SHOW_CLS));
-    // Single-word labels match Expand/Collapse/Summary widths in the
-    // same cluster.
-    btn.textContent = on ? 'Hide' : 'Show';
+    btn.textContent = BTN_LABEL;
     btn.title = on ? 'Hide all photo strips' : 'Show all photo strips';
     btn.setAttribute('aria-pressed', on ? 'true' : 'false');
   }
@@ -80,7 +82,27 @@
       e.stopPropagation();
       var el = liveView(viewId);
       if (!el) return;
+      var turningOn = !el.classList.contains(SHOW_CLS);
       el.classList.toggle(SHOW_CLS);
+
+      // Expand all L1 (MDF/IDF) groups when revealing photos —
+      // otherwise the reveal happens inside collapsed accordions and
+      // the user sees no visible change. Hides leave the groups in
+      // whatever state the user had them; the manual collapses are
+      // theirs to make.
+      if (turningOn && window.SCW && SCW.worksheetExpand &&
+          typeof SCW.worksheetExpand.applyMode === 'function') {
+        SCW.worksheetExpand.applyMode(el, 'expand');
+        // The expand-all toggle's "Expand all"/"Collapse all" label
+        // needs to flip to "Collapse all" since groups are now open.
+        var nav = el.querySelector('.kn-records-nav');
+        var toggleBtn = nav && nav.querySelector('.scw-ws-bulk-toggle button');
+        if (toggleBtn) {
+          toggleBtn.textContent = 'Collapse all';
+          toggleBtn.setAttribute('aria-pressed', 'true');
+        }
+      }
+
       updateBtnLabel(btn, viewId);
     });
     updateBtnLabel(btn, viewId);
