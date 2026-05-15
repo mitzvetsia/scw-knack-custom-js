@@ -52,6 +52,14 @@
   var BUCKET_FIELD             = 'field_2366';
   var CAMERAS_READERS_BUCKET   = '6481e5ba38f283002898113c';
 
+  // Summary fields that the on-screen worksheet renders but the survey
+  // PDF must NOT surface — typically pricing/labor data the tech in
+  // the field shouldn't see. Keyed by Knack field id; the scraper
+  // skips any .scw-ws-sum-group whose payload td matches.
+  // field_2400 = Labor price (directEdit number on view_3505)
+  // field_2401 = Ext (qty × labor, readOnly on view_3505)
+  var EXCLUDED_SUMMARY_FIELDS = { field_2400: 1, field_2401: 1 };
+
   // Distribution-device flag on a survey line item. Cards/records
   // with this field truthy become columns in the connection-map pivot.
   var DISTRIBUTION_DEVICE_FIELD = 'field_2374';
@@ -184,6 +192,96 @@
     } catch (e) {
       if (!_dsWarned) {
         console.warn('[SCW survey-pdf] photo downsample failed (likely cross-origin canvas taint); falling back to original URLs', e);
+        _dsWarned = true;
+      }
+      return fallback;
+    }
+  }
+
+  // Auto-crop whitespace borders around an image before downsampling.
+  // Walks rows/columns from each edge, treats pixels with all three
+  // RGB channels >= threshold as "white", and stops at the first row
+  // / column containing real content. A small content-relative pad is
+  // kept on each side so the cropped image doesn't visually clip to
+  // the bounding box.
+  //
+  // Used for site maps (typical screenshots have huge white margins)
+  // — for device photos the trip through getImageData isn't worth it
+  // and downsampleImage stays the default path.
+  //
+  // Returns a JPEG data URL, or the fallback URL if the canvas is
+  // tainted by cross-origin pixels.
+  function autoCropAndDownsample(imgEl, maxDim, quality, threshold) {
+    if (!imgEl) return '';
+    var fallback = imgEl.getAttribute('src') || '';
+    threshold = threshold == null ? 245 : threshold;
+    try {
+      if (!imgEl.complete || !imgEl.naturalWidth) return fallback;
+      var w = imgEl.naturalWidth;
+      var h = imgEl.naturalHeight;
+      var work = document.createElement('canvas');
+      work.width = w; work.height = h;
+      var wctx = work.getContext('2d');
+      wctx.drawImage(imgEl, 0, 0);
+
+      var imgData;
+      try {
+        imgData = wctx.getImageData(0, 0, w, h);
+      } catch (taintErr) {
+        // Tainted canvas — fall back to plain downsample (which will
+        // also return the URL fallback if it can't touch pixels).
+        return downsampleImage(imgEl, maxDim, quality);
+      }
+      var data = imgData.data;
+
+      function isWhitePixel(x, y) {
+        var i = (y * w + x) * 4;
+        return data[i] >= threshold &&
+               data[i + 1] >= threshold &&
+               data[i + 2] >= threshold;
+      }
+      function rowIsWhite(y) {
+        for (var x = 0; x < w; x++) if (!isWhitePixel(x, y)) return false;
+        return true;
+      }
+      function colIsWhite(x, top, bottom) {
+        for (var y = top; y <= bottom; y++) if (!isWhitePixel(x, y)) return false;
+        return true;
+      }
+
+      var top = 0, bottom = h - 1, left = 0, right = w - 1;
+      while (top < bottom && rowIsWhite(top))    top++;
+      while (bottom > top && rowIsWhite(bottom)) bottom--;
+      while (left < right && colIsWhite(left, top, bottom))   left++;
+      while (right > left && colIsWhite(right, top, bottom))  right--;
+
+      // Degenerate: image was entirely white. Fall back to a plain
+      // downsample so we don't render an empty cover page.
+      if (top >= bottom || left >= right) {
+        return downsampleImage(imgEl, maxDim, quality);
+      }
+
+      // Tiny relative pad so cropped content doesn't kiss the edges.
+      var sw = right - left + 1;
+      var sh = bottom - top + 1;
+      var pad = Math.max(4, Math.round(Math.min(sw, sh) * 0.01));
+      top    = Math.max(0,     top    - pad);
+      bottom = Math.min(h - 1, bottom + pad);
+      left   = Math.max(0,     left   - pad);
+      right  = Math.min(w - 1, right  + pad);
+      sw = right - left + 1;
+      sh = bottom - top + 1;
+
+      var scale = Math.min(1, maxDim / Math.max(sw, sh));
+      var dw = Math.max(1, Math.round(sw * scale));
+      var dh = Math.max(1, Math.round(sh * scale));
+      var out = document.createElement('canvas');
+      out.width = dw; out.height = dh;
+      out.getContext('2d').drawImage(work, left, top, sw, sh, 0, 0, dw, dh);
+      return out.toDataURL('image/jpeg', quality);
+    } catch (e) {
+      if (!_dsWarned) {
+        console.warn('[SCW survey-pdf] cover image auto-crop failed', e);
         _dsWarned = true;
       }
       return fallback;
@@ -453,8 +551,16 @@
   }
 
   // Preload a URL into an <img>, downsample on load, call cb with the
-  // data URL (or the original URL if loading/canvas fails).
-  function preloadAndDownsample(url, maxDim, quality, cb) {
+  // data URL (or the original URL if loading/canvas fails). When
+  // autoCrop is true the image is walked edge-in to strip whitespace
+  // borders (used for site maps where the source screenshot has huge
+  // white margins).
+  function preloadAndDownsample(url, maxDim, quality, autoCrop, cb) {
+    // Back-compat: old (url, maxDim, quality, cb) signature.
+    if (typeof autoCrop === 'function' && cb == null) {
+      cb = autoCrop;
+      autoCrop = false;
+    }
     if (!url) { cb(''); return; }
     var img = new Image();
     var done = false;
@@ -465,7 +571,9 @@
     }
     img.onload = function () {
       try {
-        var ds = downsampleImage(img, maxDim, quality);
+        var ds = autoCrop
+          ? autoCropAndDownsample(img, maxDim, quality)
+          : downsampleImage(img, maxDim, quality);
         finish(ds || url);
       } catch (e) {
         finish(url);
@@ -478,7 +586,7 @@
     img.src = url;
   }
 
-  function refreshImageCacheForView(viewId, sectionLabel, maxDim, quality) {
+  function refreshImageCacheForView(viewId, sectionLabel, maxDim, quality, autoCrop) {
     try {
       var view = window.Knack && Knack.views && Knack.views[viewId];
       if (!view) { imageCache[viewId] = []; return; }
@@ -502,7 +610,7 @@
           };
           nextCache.push(entry);
           (function (e, u) {
-            preloadAndDownsample(u, maxDim, quality, function (dataUrl) {
+            preloadAndDownsample(u, maxDim, quality, !!autoCrop, function (dataUrl) {
               if (dataUrl) e.src = dataUrl;
               e.loaded = true;
             });
@@ -546,11 +654,14 @@
     for (var i = 0; i < all.length; i++) {
       (function (cfg) {
         $(document).on('knack-view-render.' + cfg.viewId + '.scwSurveyPdf', function () {
-          // Covers use a larger max-dim than trailing photos.
+          // Covers use a larger max-dim than trailing photos, and
+          // auto-crop whitespace so site map screenshots fill the
+          // page instead of getting margins on top of the page margins.
           var isCover = COVER_IMAGE_VIEWS.indexOf(cfg) !== -1;
-          var maxDim  = isCover ? 1400 : 600;
-          var quality = isCover ? 0.8  : 0.65;
-          refreshImageCacheForView(cfg.viewId, cfg.label, maxDim, quality);
+          var maxDim   = isCover ? 1800 : 600;
+          var quality  = isCover ? 0.82 : 0.65;
+          var autoCrop = isCover;
+          refreshImageCacheForView(cfg.viewId, cfg.label, maxDim, quality, autoCrop);
         });
       })(all[i]);
     }
@@ -724,6 +835,9 @@
           'td.scw-ws-sum-field, td.scw-ws-sum-field-ro, td.scw-ws-sum-direct-edit, td.scw-ws-sum-chip-host'
         );
         if (!fieldTd) continue;
+        // Skip blacklisted fields (e.g. labor pricing) regardless of value.
+        var fieldKey = fieldTd.getAttribute('data-field-key') || '';
+        if (fieldKey && EXCLUDED_SUMMARY_FIELDS[fieldKey]) continue;
         var val = cellValue(fieldTd);
         if (!val) continue;
         var lbl = lblEl ? textOf(lblEl) : '';
@@ -903,7 +1017,7 @@
     }
     h.push('</div>');
     h.push('<div class="ws-notes-lines ws-notes-lines--l1">');
-    for (var i = 0; i < 5; i++) {
+    for (var i = 0; i < 2; i++) {
       h.push('<div class="ws-notes-line"></div>');
     }
     h.push('</div>');
@@ -1214,8 +1328,6 @@
       h.push('<div class="ws-notes-label">Notes</div>');
       h.push('<div class="ws-notes-lines">');
       h.push('<div class="ws-notes-line"></div>');
-      h.push('<div class="ws-notes-line"></div>');
-      h.push('<div class="ws-notes-line"></div>');
       h.push('</div>');
       h.push('</div>');
     }
@@ -1257,13 +1369,35 @@
 
     return [
       '@page {',
-      '  size: letter;',
-      '  margin: 0.2in 0.225in 0.35in 0.225in;',
+      '  size: letter portrait;',
+      '  margin: 0.18in 0.2in 0.3in 0.2in;',
       '  @bottom-center {',
       '    content: "' + footerPrefix + '" counter(page) " of " counter(pages);',
       '    font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;',
-      '    font-size: 8pt; color: #6b7280;',
-      '    margin-top: 0.05in;',
+      '    font-size: 7.5pt; color: #6b7280;',
+      '    margin-top: 0.04in;',
+      '  }',
+      '}',
+      '/* Site-map pages and the connection-pivot page go landscape — */',
+      '/* maps are usually wider than tall, and the pivot has many cols. */',
+      '@page landscape-map {',
+      '  size: letter landscape;',
+      '  margin: 0.18in 0.2in 0.3in 0.2in;',
+      '  @bottom-center {',
+      '    content: "' + footerPrefix + '" counter(page) " of " counter(pages);',
+      '    font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;',
+      '    font-size: 7.5pt; color: #6b7280;',
+      '    margin-top: 0.04in;',
+      '  }',
+      '}',
+      '@page landscape-pivot {',
+      '  size: letter landscape;',
+      '  margin: 0.18in 0.2in 0.3in 0.2in;',
+      '  @bottom-center {',
+      '    content: "' + footerPrefix + '" counter(page) " of " counter(pages);',
+      '    font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;',
+      '    font-size: 7.5pt; color: #6b7280;',
+      '    margin-top: 0.04in;',
       '  }',
       '}',
       '@media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }',
@@ -1271,49 +1405,49 @@
       '*, *::before, *::after { box-sizing: border-box; }',
       'body {',
       '  font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;',
-      '  color: #1f2937; font-size: 11px; line-height: 1.4;',
-      '  margin: 0; padding: 8px;',
+      '  color: #1f2937; font-size: 9.5px; line-height: 1.25;',
+      '  margin: 0; padding: 4px;',
       '}',
       '.doc-title {',
-      '  font-size: 20px; font-weight: 800; color: #07467c;',
-      '  margin: 0 0 12px 0; padding-bottom: 6px;',
-      '  border-bottom: 3px solid #07467c;',
+      '  font-size: 16px; font-weight: 800; color: #07467c;',
+      '  margin: 0 0 6px 0; padding-bottom: 3px;',
+      '  border-bottom: 2px solid #07467c;',
       '}',
       '',
       '/* Page 1 info cover (detail views: view_3796/3795/3798) */',
       '.info-cover {',
       '  page-break-after: always; break-after: page;',
-      '  padding: 0.2in 0.15in; min-height: 10.3in;',
+      '  padding: 0.1in 0.1in; min-height: 10.3in;',
       '}',
       '.info-cover-title {',
-      '  font-size: 22px; font-weight: 800; color: #07467c;',
-      '  margin: 0 0 14px 0; padding-bottom: 6px;',
-      '  border-bottom: 3px solid #07467c; text-align: center;',
+      '  font-size: 17px; font-weight: 800; color: #07467c;',
+      '  margin: 0 0 8px 0; padding-bottom: 3px;',
+      '  border-bottom: 2px solid #07467c; text-align: center;',
       '}',
       '.info-cover-section {',
-      '  margin-bottom: 16px; padding: 10px 12px;',
-      '  border: 1px solid #d0d7de; border-radius: 6px;',
+      '  margin-bottom: 8px; padding: 6px 10px;',
+      '  border: 1px solid #d0d7de; border-radius: 4px;',
       '  background: #f8fafc; page-break-inside: avoid;',
       '}',
       '.info-cover-section-title {',
-      '  font-size: 13px; font-weight: 700; color: #07467c;',
-      '  margin: 0 0 8px 0; padding-bottom: 4px;',
+      '  font-size: 11px; font-weight: 700; color: #07467c;',
+      '  margin: 0 0 4px 0; padding-bottom: 2px;',
       '  border-bottom: 1px dashed #c9d4de;',
       '  text-transform: uppercase; letter-spacing: 0.4px;',
       '}',
       '.info-cover-fields {',
       '  margin: 0; padding: 0;',
       '  display: grid; grid-template-columns: 1fr 1fr;',
-      '  column-gap: 20px; row-gap: 4px;',
+      '  column-gap: 16px; row-gap: 2px;',
       '}',
       '.info-cover-field {',
-      '  display: flex; gap: 6px; align-items: baseline;',
-      '  font-size: 11px; padding: 2px 0;',
+      '  display: flex; gap: 5px; align-items: baseline;',
+      '  font-size: 9.5px; padding: 1px 0;',
       '  break-inside: avoid;',
       '}',
       '.info-cover-field dt {',
       '  font-weight: 600; color: #07467c;',
-      '  min-width: 110px; flex: 0 0 110px;',
+      '  min-width: 92px; flex: 0 0 92px;',
       '  margin: 0;',
       '}',
       '.info-cover-field dd {',
@@ -1322,14 +1456,17 @@
       '}',
       '.info-cover-field--wide {',
       '  grid-column: 1 / -1;',
-      '  flex-direction: column; align-items: stretch; gap: 2px;',
+      '  flex-direction: column; align-items: stretch; gap: 1px;',
       '}',
       '.info-cover-field--wide dt {',
       '  min-width: 0; flex: 0 0 auto;',
       '}',
       '',
-      '/* Cover pages rendered before the survey items */',
+      '/* Cover pages rendered before the survey items (site maps, etc.) */',
+      '/* Forced landscape so a typical wide floor-plan screenshot fills */',
+      '/* the page after auto-crop strips the whitespace borders. */',
       '.cover-page {',
+      '  page: landscape-map;',
       '  page-break-after: always; break-after: page;',
       '  text-align: center;',
       '  box-sizing: border-box;',
@@ -1337,9 +1474,9 @@
       '}',
       '.cover-page:last-of-type { page-break-after: always; }',
       '.cover-section-label {',
-      '  font-size: 14px; font-weight: 800; color: #07467c;',
-      '  text-transform: uppercase; letter-spacing: 0.6px;',
-      '  margin: 0 0 6px 0; padding: 4px 0 6px 0;',
+      '  font-size: 12px; font-weight: 800; color: #07467c;',
+      '  text-transform: uppercase; letter-spacing: 0.5px;',
+      '  margin: 0 0 3px 0; padding: 2px 0 3px 0;',
       '  border-bottom: 2px solid #07467c; width: 100%;',
       '}',
       '.cover-img-wrap { display: none; }',
@@ -1347,8 +1484,11 @@
       '  display: block;',
       '  width: 100% !important;',
       '  height: auto !important;',
-      '  max-width: 8.05in !important;',
-      '  max-height: 9.7in !important;',
+      // Letter landscape = 11" x 8.5".  With 0.18/0.2in margins minus
+      // ~0.25in for the section label, the usable area is roughly
+      // 10.6in x 8.0in. Bias height-bound for floor plans.
+      '  max-width: 10.55in !important;',
+      '  max-height: 7.95in !important;',
       '  object-fit: contain;',
       '  margin: 0 auto;',
       '  -webkit-print-color-adjust: exact;',
@@ -1357,80 +1497,80 @@
       '',
       '/* Trailing photo grid (e.g. Additional Photos) */',
       '.trailing-photos {',
-      '  margin-top: 16px; padding-top: 10px;',
-      '  border-top: 2px solid #07467c;',
+      '  margin-top: 8px; padding-top: 5px;',
+      '  border-top: 1.5px solid #07467c;',
       '  page-break-before: auto;',
       '}',
       '.trailing-photos-title {',
-      '  font-size: 14px; font-weight: 800; color: #07467c;',
-      '  margin: 0 0 8px 0;',
+      '  font-size: 12px; font-weight: 800; color: #07467c;',
+      '  margin: 0 0 4px 0;',
       '  text-transform: uppercase; letter-spacing: 0.5px;',
       '}',
       '.trailing-photos-grid {',
       '  display: grid;',
-      '  grid-template-columns: repeat(4, 1fr);',
-      '  gap: 6px;',
+      '  grid-template-columns: repeat(5, 1fr);',
+      '  gap: 4px;',
       '}',
       '.trailing-photo {',
       '  margin: 0;',
-      '  border: 1px solid #d0d7de; border-radius: 4px;',
-      '  padding: 2px; background: #f8fafc;',
+      '  border: 1px solid #d0d7de; border-radius: 3px;',
+      '  padding: 1px; background: #f8fafc;',
       '  page-break-inside: avoid;',
       '}',
       '.trailing-photo img {',
-      '  width: 100%; height: 120px; object-fit: cover;',
+      '  width: 100%; height: 90px; object-fit: cover;',
       '  display: block; border-radius: 2px;',
       '}',
       '.group-header {',
-      '  font-size: 13px; font-weight: 600; color: #07467c;',
-      '  background: #eef5fb; padding: 6px 10px;',
-      '  margin: 14px 0 6px 0; border-left: 3px solid #5b9bd5;',
+      '  font-size: 11px; font-weight: 600; color: #07467c;',
+      '  background: #eef5fb; padding: 3px 8px;',
+      '  margin: 5px 0 2px 0; border-left: 3px solid #5b9bd5;',
       '  page-break-after: avoid;',
       '}',
       '.group-header.group-level-1 {',
-      '  font-size: 14px; font-weight: 700;',
+      '  font-size: 12px; font-weight: 700;',
       '  background: #dbeafe; border-left-color: #07467c;',
       '}',
       '',
       '.ws-card {',
-      '  border: 1px solid #d0d7de; border-radius: 6px;',
-      '  margin: 6px 0; padding: 8px 10px;',
+      '  border: 1px solid #d0d7de; border-radius: 4px;',
+      '  margin: 2px 0; padding: 3px 6px;',
       '  page-break-inside: avoid; background: #fff;',
       '}',
-      '.ws-card--header-only { padding: 6px 10px; }',
+      '.ws-card--header-only { padding: 2px 6px; }',
       '',
       '.ws-header {',
       '  display: flex; flex-wrap: wrap; justify-content: space-between;',
-      '  align-items: baseline; gap: 12px;',
+      '  align-items: baseline; gap: 8px;',
       '}',
       '.ws-identity {',
-      '  display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px;',
+      '  display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px;',
       '  min-width: 0; flex: 1 1 auto;',
       '}',
       '.ws-label {',
-      '  font-size: 13px; font-weight: 700; color: #07467c;',
+      '  font-size: 11.5px; font-weight: 700; color: #07467c;',
       '}',
       '.ws-sep { color: #94a3b8; }',
       '.ws-product {',
-      '  font-size: 12px; font-weight: 500; color: #374151;',
+      '  font-size: 10.5px; font-weight: 500; color: #374151;',
       '}',
       '.ws-warn {',
-      '  font-size: 10px; font-weight: 700; color: #b45309;',
+      '  font-size: 9px; font-weight: 700; color: #b45309;',
       '  background: #fef3c7; border-radius: 999px;',
-      '  padding: 1px 7px; margin-left: 4px;',
+      '  padding: 0 6px; margin-left: 3px;',
       '}',
       '',
       '.ws-summary-fields {',
-      '  display: flex; flex-wrap: wrap; gap: 4px 14px;',
+      '  display: flex; flex-wrap: wrap; gap: 2px 12px;',
       '  flex: 0 1 auto; max-width: 60%;',
       '}',
       '.ws-sum-field {',
-      '  display: inline-flex; gap: 4px; align-items: baseline;',
-      '  font-size: 10.5px;',
+      '  display: inline-flex; gap: 3px; align-items: baseline;',
+      '  font-size: 9.5px;',
       '}',
       '.ws-sum-label {',
       '  font-weight: 600; color: #6b7280; text-transform: uppercase;',
-      '  font-size: 9px; letter-spacing: 0.3px;',
+      '  font-size: 8px; letter-spacing: 0.3px;',
       '}',
       '.ws-sum-value {',
       '  color: #111827; font-weight: 500;',
@@ -1438,17 +1578,17 @@
       '}',
       '',
       '.ws-context {',
-      '  margin-top: 6px; padding-top: 5px;',
+      '  margin-top: 3px; padding-top: 2px;',
       '  border-top: 1px dashed #e5e7eb;',
-      '  display: flex; flex-direction: column; gap: 2px;',
+      '  display: flex; flex-direction: column; gap: 1px;',
       '}',
       '.ws-context-row {',
-      '  display: flex; gap: 8px; align-items: baseline;',
-      '  font-size: 10.5px;',
+      '  display: flex; gap: 6px; align-items: baseline;',
+      '  font-size: 9.5px;',
       '}',
       '.ws-context-label {',
       '  font-weight: 600; color: #07467c;',
-      '  min-width: 110px; flex: 0 0 110px;',
+      '  min-width: 88px; flex: 0 0 88px;',
       '}',
       '.ws-context-value {',
       '  color: #111827; flex: 1 1 auto;',
@@ -1457,18 +1597,18 @@
       '',
       '.ws-detail {',
       '  display: grid; grid-template-columns: 1fr 1fr;',
-      '  column-gap: 24px; row-gap: 4px;',
-      '  margin-top: 8px; padding-top: 6px;',
+      '  column-gap: 18px; row-gap: 1px;',
+      '  margin-top: 3px; padding-top: 2px;',
       '  border-top: 1px dashed #e5e7eb;',
       '}',
-      '.ws-detail-col { display: flex; flex-direction: column; gap: 4px; }',
+      '.ws-detail-col { display: flex; flex-direction: column; gap: 1px; }',
       '.ws-detail-field {',
-      '  display: flex; gap: 8px; align-items: baseline;',
-      '  font-size: 10.5px; padding: 2px 0;',
+      '  display: flex; gap: 6px; align-items: baseline;',
+      '  font-size: 9.5px; padding: 0;',
       '}',
       '.ws-detail-label {',
       '  font-weight: 600; color: #07467c;',
-      '  min-width: 110px; flex: 0 0 110px;',
+      '  min-width: 88px; flex: 0 0 88px;',
       '  white-space: normal;',
       '}',
       '.ws-detail-value {',
@@ -1476,61 +1616,61 @@
       '  white-space: pre-wrap; word-break: break-word;',
       '}',
       '',
-      '/* Fill-in-the-blank value: underline, taller for writing */',
+      '/* Fill-in-the-blank value: underline, tall enough to write on */',
       '.ws-detail-field--fill .ws-detail-value.ws-fill {',
       '  border-bottom: 1px solid #4b5563;',
-      '  min-height: 16px; padding-bottom: 1px;',
+      '  min-height: 13px; padding-bottom: 1px;',
       '}',
       '',
       '/* Multi-option checkbox row (e.g. Mounting Height) */',
       '.ws-choices {',
-      '  display: inline-flex; flex-wrap: wrap; gap: 12px;',
-      '  align-items: baseline; font-size: 11px;',
+      '  display: inline-flex; flex-wrap: wrap; gap: 9px;',
+      '  align-items: baseline; font-size: 9.5px;',
       '}',
       '.ws-choice { white-space: nowrap; }',
       '',
       '/* Yes / No checkbox pair */',
       '.ws-yesno {',
-      '  display: inline-flex; gap: 14px; align-items: baseline;',
-      '  font-size: 11px;',
+      '  display: inline-flex; gap: 10px; align-items: baseline;',
+      '  font-size: 9.5px;',
       '}',
       '.ws-box {',
-      '  display: inline-block; font-size: 14px; line-height: 1;',
-      '  margin-right: 3px; color: #111827;',
+      '  display: inline-block; font-size: 12px; line-height: 1;',
+      '  margin-right: 2px; color: #111827;',
       '}',
       '.ws-box.is-on { color: #07467c; font-weight: 700; }',
       '',
       '/* Field Notes — blank lined writing area */',
       '.ws-notes {',
-      '  margin-top: 10px; padding-top: 6px;',
+      '  margin-top: 4px; padding-top: 3px;',
       '  border-top: 1px dashed #e5e7eb;',
       '}',
       '.ws-notes-label {',
-      '  font-size: 9px; font-weight: 700; color: #6b7280;',
+      '  font-size: 8px; font-weight: 700; color: #6b7280;',
       '  text-transform: uppercase; letter-spacing: 0.5px;',
-      '  margin-bottom: 4px;',
+      '  margin-bottom: 2px;',
       '}',
-      '.ws-notes-lines { display: flex; flex-direction: column; gap: 12px; }',
+      '.ws-notes-lines { display: flex; flex-direction: column; gap: 7px; }',
       '.ws-notes-line {',
-      '  height: 14px; border-bottom: 1px solid #9ca3af;',
+      '  height: 11px; border-bottom: 1px solid #9ca3af;',
       '}',
       '',
       '.ws-photos {',
-      '  display: flex; flex-wrap: wrap; gap: 6px;',
-      '  margin-top: 8px; padding-top: 6px;',
+      '  display: flex; flex-wrap: wrap; gap: 4px;',
+      '  margin-top: 4px; padding-top: 3px;',
       '  border-top: 1px dashed #e5e7eb;',
       '}',
       '.ws-photo {',
-      '  margin: 0; width: 110px;',
-      '  border: 1px solid #d0d7de; border-radius: 4px;',
-      '  padding: 2px; text-align: center; background: #f8fafc;',
+      '  margin: 0; width: 78px;',
+      '  border: 1px solid #d0d7de; border-radius: 3px;',
+      '  padding: 1px; text-align: center; background: #f8fafc;',
       '}',
       '.ws-photo img {',
-      '  width: 100%; height: 80px; object-fit: cover; display: block;',
+      '  width: 100%; height: 56px; object-fit: cover; display: block;',
       '  border-radius: 2px;',
       '}',
       '.ws-photo figcaption {',
-      '  font-size: 8px; color: #6b7280; margin-top: 2px;',
+      '  font-size: 7.5px; color: #6b7280; margin-top: 1px;',
       '  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;',
       '}',
       '',
@@ -1540,64 +1680,66 @@
       '  background: #fbfdff;',
       '}',
       '.ws-notes-heading {',
-      '  font-size: 10px; font-weight: 800; color: #07467c;',
+      '  font-size: 9px; font-weight: 800; color: #07467c;',
       '  text-transform: uppercase; letter-spacing: 0.5px;',
-      '  margin-bottom: 6px;',
+      '  margin-bottom: 3px;',
       '}',
       '.ws-notes-scope {',
       '  color: #6b7280; font-weight: 600;',
       '  letter-spacing: 0.3px;',
       '}',
-      '.ws-notes-lines--l1 { gap: 14px; }',
+      '.ws-notes-lines--l1 { gap: 9px; }',
       '',
-      '/* Connection Map pivot table */',
+      '/* Connection Map pivot table — landscape page so we get more  */',
+      '/* horizontal room for column headers and avoid vertical text. */',
       '.pivot {',
+      '  page: landscape-pivot;',
       '  margin-top: 0; padding-top: 0;',
       '  page-break-before: always; page-break-after: always;',
       '  break-before: page; break-after: page;',
       '}',
       '.pivot-title {',
-      '  font-size: 14px; font-weight: 800; color: #07467c;',
-      '  margin: 0 0 6px 0;',
+      '  font-size: 13px; font-weight: 800; color: #07467c;',
+      '  margin: 0 0 4px 0;',
       '  text-transform: uppercase; letter-spacing: 0.5px;',
       '}',
       '.pivot-table {',
       '  border-collapse: collapse; table-layout: auto;',
-      '  width: 100%; font-size: 9.5px;',
+      '  width: 100%; font-size: 9px;',
       '}',
       '.pivot-table th, .pivot-table td {',
-      '  border: 1px solid #94a3b8; padding: 2px 4px;',
+      '  border: 1px solid #94a3b8; padding: 1px 3px;',
       '  vertical-align: middle;',
       '}',
       '.pivot-corner {',
-      '  background: #eef5fb; vertical-align: bottom; padding: 4px 6px;',
+      '  background: #eef5fb; vertical-align: bottom; padding: 3px 5px;',
       '  font-weight: 700; color: #07467c; text-align: left;',
       '  white-space: nowrap; width: 1%;',
       '}',
       '.pivot-col {',
       '  background: #eef5fb; text-align: center;',
-      '  height: 140px; vertical-align: bottom; padding: 4px 2px;',
+      '  height: 110px; vertical-align: bottom; padding: 3px 2px;',
       '  width: auto;',
       '}',
       '.pivot-col-text {',
       '  writing-mode: vertical-rl; transform: rotate(180deg);',
       '  display: inline-block;',
-      '  height: 132px;',
-      '  font-weight: 700; color: #07467c; font-size: 9px;',
-      '  line-height: 1.15;',
+      '  height: 104px;',
+      '  font-weight: 700; color: #07467c; font-size: 8.5px;',
+      '  line-height: 1.1;',
       '  white-space: normal; word-break: break-word; overflow-wrap: break-word;',
       '}',
       '.pivot-col--blank { background: #f8fafc; }',
       '.pivot-row {',
       '  background: #f8fafc; text-align: left;',
       '  white-space: nowrap; width: 1%;',
-      '  padding: 3px 6px;',
+      '  padding: 2px 5px;',
       '}',
       '.pivot-row--label   { font-weight: 700; color: #07467c; }',
       '.pivot-row--product { font-weight: 400; color: #374151; }',
       '.pivot-cell {',
-      '  text-align: center; font-size: 13px; color: #111827;',
-      '  height: 22px;',
+      '  text-align: center; font-size: 12px; color: #111827;',
+      '  height: 18px;',
       '}',
       '.pivot-blank-row .pivot-row { background: #fff; }'
     ].join('\n');
