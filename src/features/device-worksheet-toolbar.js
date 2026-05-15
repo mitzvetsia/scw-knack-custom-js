@@ -243,6 +243,11 @@
       '  width: 12px; height: 12px;',
       '  stroke: currentColor;',
       '}',
+      // Per-view: suppress the record count on view_3610. The page
+      // already shows the SOW-line-item count in the accordion header
+      // pill, so the "Showing 1-N of N" duplicate is noise.
+      '#view_3610 .kn-entries-summary { display: none !important; }',
+
       // Hide the now-empty accordion actions row when its children have
       // been hoisted to the toolbar — leaves no visual residue above the
       // table.
