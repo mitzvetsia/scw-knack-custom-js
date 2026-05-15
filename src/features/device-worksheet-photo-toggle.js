@@ -60,14 +60,10 @@
     return document.getElementById(viewId);
   }
 
-  // Static button text — the affordance is the toggle, not the label.
-  // aria-pressed reflects current state for screen readers.
-  var BTN_LABEL = 'Show/hide photos';
-
   function updateBtnLabel(btn, viewId) {
     var viewEl = liveView(viewId);
     var on = !!(viewEl && viewEl.classList.contains(SHOW_CLS));
-    btn.textContent = BTN_LABEL;
+    btn.textContent = on ? 'Hide photos' : 'Show photos';
     btn.title = on ? 'Hide all photo strips' : 'Show all photo strips';
     btn.setAttribute('aria-pressed', on ? 'true' : 'false');
   }
