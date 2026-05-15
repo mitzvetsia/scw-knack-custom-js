@@ -324,6 +324,14 @@
       '  display:flex; gap:8px; align-items:center; flex-wrap:wrap;',
       '}',
       M + ' .scw-bu-banner .scw-bu-banner-msg { flex:1; min-width:160px; }',
+      M + ' .scw-bu-info {',
+      '  margin-top:10px; padding:10px 14px; border-radius:8px;',
+      '  background:#eff6ff; border:1px solid #bfdbfe; color:#1e3a5f;',
+      '  font-size:12.5px; line-height:1.5;',
+      '}',
+      M + ' .scw-bu-info p { margin:0 0 6px 0; }',
+      M + ' .scw-bu-info p:last-child { margin-bottom:0; }',
+      M + ' .scw-bu-info strong { color:#0c4a6e; }',
       M + ' .scw-bu-list { margin-top:10px; }',
       M + ' .scw-bu-row {',
       '  display:flex; align-items:center; gap:10px;',
@@ -391,6 +399,11 @@
             '<span class="scw-bu-drop-hint">Any type · max ' +
               fmtBytes(CONFIG.MAX_FILE_BYTES) + ' per file</span>' +
             '<input type="file" multiple style="display:none">' +
+          '</div>' +
+          '<div class="scw-bu-info">' +
+            '<p><strong>Optional Auto-Match:</strong> Name the file to match a camera or reader label (ex: E-001 or RA-E-02) and the photo will automatically connect to that device during upload.</p>' +
+            '<p>Matches are flexible (E1, e-1, etc. will still match E-001). If no match is found, the photo will still upload and attach to the SOW.</p>' +
+            '<p>Only use one device label per file name.</p>' +
           '</div>' +
           '<div class="scw-bu-list"></div>' +
         '</div>' +
