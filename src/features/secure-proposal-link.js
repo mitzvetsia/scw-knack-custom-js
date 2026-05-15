@@ -367,11 +367,25 @@
       var el = document.querySelector(sceneCfg.mountTarget);
       if (el) return el;
     }
-    // Default: after the detail view container. Wrap in a container
-    // so we can blow it away cleanly on re-render.
+    // Default: at the very top of the scene container, above every
+    // view-group — so the link panel is the first thing on the page.
+    // Knack scene elements have id `kn-<sceneId>`.
+    var scene = document.getElementById('kn-' + sceneCfg.sceneId);
+    var host = document.getElementById('scw-secure-link-host-' + sceneCfg.sceneId);
+    if (scene) {
+      if (!host) {
+        host = document.createElement('div');
+        host.id = 'scw-secure-link-host-' + sceneCfg.sceneId;
+      }
+      if (host.parentNode !== scene || scene.firstElementChild !== host) {
+        scene.insertBefore(host, scene.firstChild);
+      }
+      return host;
+    }
+    // Fallback: scene container not found (very early render) — drop
+    // the panel as a sibling of the detail view so it still appears.
     var detail = document.getElementById(sceneCfg.detailViewId);
     if (!detail || !detail.parentNode) return null;
-    var host = document.getElementById('scw-secure-link-host-' + sceneCfg.sceneId);
     if (!host) {
       host = document.createElement('div');
       host.id = 'scw-secure-link-host-' + sceneCfg.sceneId;
