@@ -2,8 +2,15 @@
 (function () {
   'use strict';
 
-  var WEBHOOK_URL = 'https://hook.us1.make.com/ozk2uk1e58upnpsj0fx1bmdg387ekvf5';
-  var SAVE_HTML_WEBHOOK = 'https://hook.us1.make.com/fvop4hwz5gn2lujroky2vsuy4ddsamyx';
+  // Single unified publish webhook. The Make scenario behind it
+  // handles the entire publish flow: stamping the new proposal
+  // record (HTML snapshot, JSON snapshot, totals, expiration,
+  // token + tokenized URL), generating PDFs, sending notifications,
+  // anything else. Previously this code POSTed to TWO webhooks (a
+  // light "notify" one and a richer "save" one) — every saveHtml
+  // click fired both and the receiver scenarios duplicated work.
+  // Both retired in favor of this URL with the full payload.
+  var WEBHOOK_URL = 'https://hook.us1.make.com/mezrtqmf6gh7yxlkx5fkit6fqrma213l';
 
   // Mint a public-access token + URL via the shared sales-side helper.
   // Used by every publish path (buildPublishPayload AND the inline
@@ -1661,20 +1668,22 @@
   }
 
   function runExport(cfg, extra) {
-    var payload = scrapeAllViews(cfg);
-    if (!payload.views.length) {
+    // Same unified payload shape as the click trigger uses — Make sees
+    // one schema regardless of whether the publish came from a button
+    // or a form submit. `extra` (form-field overrides) is merged in
+    // after the base build so callers can stamp additional keys.
+    var unified = buildPublishPayload(cfg.sceneId);
+    if (!unified) {
       SCW.debug('[SCW PDF Export]', cfg.sceneId, '→ no views scraped');
       return;
     }
     if (extra) {
-      for (var k in extra) { if (extra.hasOwnProperty(k)) payload[k] = extra[k]; }
+      for (var k in extra) { if (extra.hasOwnProperty(k)) unified[k] = extra[k]; }
     }
-    var htmlStr = buildPdfHtml(payload);
-    payload.html = htmlStr;
-    sendToWebhook(payload);
+    sendToWebhook(unified);
 
     if (cfg.trigger.openPreview) {
-      openPdfPreview(htmlStr);
+      openPdfPreview(unified.html);
     }
   }
 
@@ -1729,72 +1738,34 @@
         $btn.on('mouseleave', function () { $(this).css('opacity', 1); });
 
         $btn.on('click', function () {
-          var payload = scrapeAllViews(cfg);
-          if (!payload.views.length) {
+          // Build the full, unified publish payload. Same shape as the
+          // public buildPublishPayload helper — Make sees identical
+          // inputs whether the publish came from this click trigger,
+          // the form-submit trigger (runExport), or an external caller
+          // invoking SCW.pdfExport.buildPublishPayload directly.
+          var unified = buildPublishPayload(cfg.sceneId);
+          if (!unified) {
             alert('No data found on this page.');
             return;
           }
-          var htmlStr = buildPdfHtml(payload);
           if (cfg.trigger.openPreview) {
-            openPdfPreview(htmlStr);
+            openPdfPreview(unified.html);
           }
-          payload.html = htmlStr;
-          sendToWebhook(payload);
 
+          // saveHtml gates the UX flow (button-disable / toast /
+          // redirect-on-success), not whether the webhook fires. The
+          // single Make scenario behind WEBHOOK_URL decides what to do
+          // with the payload based on cfg.payloadType / its own rules.
           if (cfg.saveHtml) {
-            // Disable button to prevent double-submit
             $btn.prop('disabled', true).css({ opacity: 0.5, cursor: 'not-allowed' });
-
-            var pageRecordId = getPageRecordId();
-            var summary = extractSummaryFields(payload);
-            var jsonSnapshot = buildJsonSnapshot(cfg.sceneId);
-
-            // Reuse the same token already minted into `payload` by
-            // buildPublishPayload — both webhooks need to see the
-            // SAME token so the resulting proposal record has
-            // matching field_2904/field_2908 regardless of which
-            // webhook actually writes them.
-            var saveAccessToken = (payload && payload.proposalAccessToken) || '';
-            var saveAccessUrl   = (payload && payload.proposalAccessUrl)   || '';
-            if (!saveAccessToken) {
-              var fresh = mintProposalAccess();
-              saveAccessToken = fresh.token;
-              saveAccessUrl   = fresh.url;
-            }
-
-            var savePayload = {
-              recordId: pageRecordId || '',
-              hash: window.location.hash || '',
-              sceneId: cfg.sceneId,
-              type: cfg.payloadType,
-              sowId: summary.sowId,
-              equipmentTotal: summary.equipmentTotal,
-              installationTotal: summary.installationTotal,
-              grandTotal: summary.grandTotal,
-              expirationDate: summary.expirationDate,
-              // Tokenized public link — same shape as buildPublishPayload.
-              // Make should map these to field_2904 / field_2908 on the
-              // proposal record. See secure-proposal-link.js for token
-              // contract.
-              proposalAccessToken: saveAccessToken,
-              proposalAccessUrl:   saveAccessUrl,
-              html: htmlStr,
-              plaintext: htmlToPlaintext(htmlStr),
-              plaintextJsonEscaped: jsonStringEscape(htmlToPlaintext(htmlStr)),
-              scopeOfWorkDocumentElements: buildSowDocumentElements(htmlStr),
-              scopeOfWorkDocumentElementsString: (function () { try { return JSON.stringify(buildSowDocumentElements(htmlStr)); } catch (e) { return '[]'; } })(),
-              json: jsonSnapshot,
-              jsonString: (function () { try { return JSON.stringify(stripNonRawFields(jsonSnapshot)); } catch (e) { return ''; } })(),
-              invoiceItems: buildInvoiceItems(jsonSnapshot, summary.sowId, payload.projectTotals),
-              invoiceItemsString: (function () { try { return JSON.stringify(buildInvoiceItems(jsonSnapshot, summary.sowId, payload.projectTotals) || {}); } catch (e) { return '{}'; } })()
-            };
-            SCW.debug('[SCW PDF Export] Sending to save webhook:', savePayload.recordId, summary, '| records:', jsonSnapshot.length);
+            SCW.debug('[SCW PDF Export] Sending publish payload:', unified.recordId,
+              '| sowId:', unified.sowId, '| records:', (unified.json || []).length);
             showPublishToast('Submitting…', false, true);
             $.ajax({
-              url: SAVE_HTML_WEBHOOK,
+              url: WEBHOOK_URL,
               type: 'POST',
               contentType: 'application/json',
-              data: JSON.stringify(savePayload),
+              data: JSON.stringify(unified),
               crossDomain: true,
               timeout: 90000,
               success: function () {
@@ -1814,6 +1785,11 @@
                 $btn.prop('disabled', false).css({ opacity: 1, cursor: 'pointer' });
               }
             });
+          } else {
+            // Preview-only path (saveHtml=false): fire-and-forget POST
+            // with the same payload shape so Make scenarios can branch
+            // on cfg.payloadType / lack of `recordId` if they want.
+            sendToWebhook(unified);
           }
         });
 
@@ -2136,9 +2112,9 @@
   // sentinel like `.scw-subtotal--level-1` and `window.SCW.pdfExport.run`
   // before calling.
 
-  // Build the exact "save payload" shape the Publish Quote button sends
-  // to SAVE_HTML_WEBHOOK. Every code path that publishes a quote should
-  // call this so Make receives identical inputs regardless of origin.
+  // Build the exact unified payload the Publish Quote button sends to
+  // WEBHOOK_URL. Every code path that publishes a quote should call
+  // this so Make receives identical inputs regardless of origin.
   //
   // sceneId is optional — when omitted we auto-detect by:
   //   1. Knack.scene.attributes.key (Knack's JS model)
