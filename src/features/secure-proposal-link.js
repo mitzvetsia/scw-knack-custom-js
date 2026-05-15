@@ -367,29 +367,22 @@
       var el = document.querySelector(sceneCfg.mountTarget);
       if (el) return el;
     }
-    // Default: at the very top of the scene container, above every
-    // view-group — so the link panel is the first thing on the page.
-    // Knack scene elements have id `kn-<sceneId>`.
-    var scene = document.getElementById('kn-' + sceneCfg.sceneId);
-    var host = document.getElementById('scw-secure-link-host-' + sceneCfg.sceneId);
-    if (scene) {
-      if (!host) {
-        host = document.createElement('div');
-        host.id = 'scw-secure-link-host-' + sceneCfg.sceneId;
-      }
-      if (host.parentNode !== scene || scene.firstElementChild !== host) {
-        scene.insertBefore(host, scene.firstChild);
-      }
-      return host;
-    }
-    // Fallback: scene container not found (very early render) — drop
-    // the panel as a sibling of the detail view so it still appears.
+    // Default: as a previousSibling of the detail view, inside the
+    // same view-column. published-proposal-render.js inserts the
+    // proposal iframe as the detail view's nextSibling, so this
+    // places the panel directly above the proposal preview at the
+    // same horizontal width — top of the page visually, no narrow
+    // sidebar artifact from being parked in a flex container that
+    // wasn't sized for us.
     var detail = document.getElementById(sceneCfg.detailViewId);
     if (!detail || !detail.parentNode) return null;
+    var host = document.getElementById('scw-secure-link-host-' + sceneCfg.sceneId);
     if (!host) {
       host = document.createElement('div');
       host.id = 'scw-secure-link-host-' + sceneCfg.sceneId;
-      detail.parentNode.insertBefore(host, detail.nextSibling);
+    }
+    if (host !== detail.previousSibling) {
+      detail.parentNode.insertBefore(host, detail);
     }
     return host;
   }
