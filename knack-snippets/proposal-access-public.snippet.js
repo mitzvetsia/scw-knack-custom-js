@@ -55,6 +55,46 @@
   // Fails closed when true — leave false until OTP UI lands.
   var OTP_REQUIRED     = false;
 
+  // ── CTA buttons surfaced inside the iframe ─────────────────────────
+  // Each entry's `gate(attrs)` is evaluated against the proposal
+  // record's attributes; matching entries have their source view's
+  // anchor(s) mirrored as styled buttons in the iframe's CTA bar.
+  // The source views are hidden on the parent page so the same link
+  // doesn't render twice.
+  //
+  // Required fields exposed on the public lookup view (view_3952):
+  //   field_2746  FLAG_good faith estimate          → site-survey gate
+  //   field_2747  FLAG_final proposal               → accept-proposal gate
+  //   field_2748  FLAG_sow only                     → site-survey gate
+  //   field_2728  FLAG_SOWs with Survey Requested   → site-survey gate
+  //                (CR / survey-requested count — if > 0, hide site-
+  //                 survey button. Field must live on the proposal
+  //                 object — typically as a sum / count equation
+  //                 pulling from the connected SOW. If it isn't
+  //                 exposed, the gate treats it as 0 and the button
+  //                 shows whenever field_2746 or field_2748 is Yes.)
+  //
+  // Source view IDs on the public scene:
+  //   view_3953  "I'm Ready for a Site Survey"
+  //   view_3956  "Accept Proposal"
+  var CR_COUNT_FIELD = 'field_2728';
+  var CTA_CONFIGS = [
+    {
+      viewId: 'view_3953',   // I'm Ready for a Site Survey
+      gate: function (attrs) {
+        if (readCrCount(attrs) > 0) return false;
+        return isYes(attrs.field_2746) || isYes(attrs.field_2746_raw)
+            || isYes(attrs.field_2748) || isYes(attrs.field_2748_raw);
+      }
+    },
+    {
+      viewId: 'view_3956',   // Accept Proposal
+      gate: function (attrs) {
+        return isYes(attrs.field_2747) || isYes(attrs.field_2747_raw);
+      }
+    }
+  ];
+
   // Customer-facing fallback. Intentionally vague.
   var FALLBACK_MESSAGE =
     'This proposal link is no longer active or could not be found. ' +
@@ -71,10 +111,14 @@
   var STATE_KEY = '__scwProposalAccessState';
 
   // ---- Page-level styles (NOT the proposal CSS — that goes in the iframe)
-  // Hides the raw list view that Knack would otherwise paint, and styles
-  // the loading/fallback panels.
+  // Hides the raw list view that Knack would otherwise paint, hides the
+  // CTA source views (their anchors are re-injected inside the iframe),
+  // and styles the loading/fallback panels.
   function injectStyles() {
     if (document.getElementById(STYLE_ID)) return;
+    var ctaHide = CTA_CONFIGS.map(function (c) {
+      return '#' + c.viewId + ' { display: none !important; }';
+    }).join('\n');
     var css = [
       '#' + LOOKUP_VIEW_ID + ',',
       '#' + LOOKUP_VIEW_ID + ' .view-header,',
@@ -85,11 +129,11 @@
       '  height: 0 !important;',
       '  overflow: hidden !important;',
       '}',
+      ctaHide,
       '#' + IFRAME_ID + ' {',
       '  display: block;',
       '  width: 100%;',
-      '  max-width: 980px;',
-      '  margin: 24px auto;',
+      '  margin: 0;',
       '  border: 0;',
       '  background: #fff;',
       '  min-height: 400px;',
@@ -353,6 +397,91 @@
     setTimeout(resize, 300);
     setTimeout(resize, 1000);
     setTimeout(resize, 3000);
+
+    // CTA bar injection — mirrors src/features/published-proposal-render
+    // injectCtaIntoIframe. Re-run after layout settles AND after the
+    // CTA source views likely rendered (they're sibling views on the
+    // same scene; render-order isn't guaranteed).
+    setTimeout(function () { injectCtaIntoIframe(iframe, attrs, resize); }, 350);
+    setTimeout(function () { injectCtaIntoIframe(iframe, attrs, resize); }, 1200);
+  }
+
+  // ---- CTA gathering / injection (mirror internal renderer) ------------
+  function readCrCount(attrs) {
+    if (!attrs) return 0;
+    var raw = attrs[CR_COUNT_FIELD + '_raw'];
+    var val = (raw != null) ? raw : attrs[CR_COUNT_FIELD];
+    var n = Number(String(val == null ? '' : val).replace(/[^0-9.\-]/g, ''));
+    return isNaN(n) ? 0 : n;
+  }
+
+  function readLinksFromView(viewId) {
+    var v = document.getElementById(viewId);
+    if (!v) return [];
+    var anchors = v.querySelectorAll('a.kn-link, a.kn-button, a.knMenuLink');
+    var out = [];
+    for (var i = 0; i < anchors.length; i++) {
+      var a = anchors[i];
+      var label = (a.textContent || '').replace(/\s+/g, ' ').trim();
+      var href  = a.getAttribute && a.getAttribute('href');
+      if (label) out.push({ label: label, href: href || '' });
+    }
+    return out;
+  }
+
+  function gatherCtaLinks(attrs) {
+    var all = [];
+    for (var i = 0; i < CTA_CONFIGS.length; i++) {
+      var cfg = CTA_CONFIGS[i];
+      var ok;
+      try { ok = cfg.gate(attrs); } catch (e) { ok = false; }
+      if (!ok) continue;
+      var links = readLinksFromView(cfg.viewId);
+      for (var j = 0; j < links.length; j++) all.push(links[j]);
+    }
+    return all;
+  }
+
+  function injectCtaIntoIframe(iframe, attrs, onAfter) {
+    if (!iframe) return;
+    var doc;
+    try { doc = iframe.contentDocument || (iframe.contentWindow && iframe.contentWindow.document); }
+    catch (e) { return; }
+    if (!doc || !doc.body) return;
+    if (doc.body.querySelector('.scw-cta-bar')) return;   // already injected
+
+    var links = gatherCtaLinks(attrs);
+    if (!links.length) return;
+
+    var firstTitle = doc.body.querySelector('.view-title');
+    if (!firstTitle) return;
+
+    var bar = doc.createElement('div');
+    bar.className = 'scw-cta-bar';
+    bar.style.cssText =
+      'margin: 16px 0 24px 0; padding: 14px 18px;' +
+      'background: #fff5e6; border: none; border-radius: 8px;' +
+      'display: flex; gap: 10px; flex-direction: column; align-items: stretch;';
+
+    for (var i = 0; i < links.length; i++) {
+      var btn = doc.createElement('a');
+      btn.textContent = links[i].label;
+      if (links[i].href) btn.setAttribute('href', links[i].href);
+      // target=_top so the link navigates the parent window — _self
+      // would scope the navigation to the iframe and break Knack
+      // hash routing.
+      btn.setAttribute('target', '_top');
+      btn.style.cssText =
+        'display: block; width: 100%; box-sizing: border-box;' +
+        'padding: 10px 22px; font-size: 15px; font-weight: 400;' +
+        'background: orange; color: #fff; text-decoration: none;' +
+        'border-radius: 6px; box-shadow: 0 1px 3px rgba(0,0,0,.18);' +
+        'text-align: center;';
+      bar.appendChild(btn);
+    }
+
+    firstTitle.parentNode.insertBefore(bar, firstTitle);
+    if (typeof onAfter === 'function') onAfter();
   }
 
   // ---- Main flow --------------------------------------------------------
