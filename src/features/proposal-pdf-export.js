@@ -5,6 +5,29 @@
   var WEBHOOK_URL = 'https://hook.us1.make.com/ozk2uk1e58upnpsj0fx1bmdg387ekvf5';
   var SAVE_HTML_WEBHOOK = 'https://hook.us1.make.com/fvop4hwz5gn2lujroky2vsuy4ddsamyx';
 
+  // Mint a public-access token + URL via the shared sales-side helper.
+  // Used by every publish path (buildPublishPayload AND the inline
+  // savePayload below) so the proposal record is born with field_2904
+  // and field_2908 populated. SCW.secureProposalLink is set by
+  // src/features/secure-proposal-link.js — load-order safe because
+  // every caller here runs at click time, by which point both files
+  // are present. Returns blanks + a console.warn on missing helpers
+  // (graceful degrade — staff can still mint manually via the
+  // Secure Proposal Link panel).
+  function mintProposalAccess() {
+    try {
+      if (window.SCW && SCW.secureProposalLink &&
+          typeof SCW.secureProposalLink.generateToken === 'function') {
+        var t = SCW.secureProposalLink.generateToken();
+        return { token: t, url: SCW.secureProposalLink.buildPublicUrl(t) };
+      }
+      console.warn('[SCW pdfExport] SCW.secureProposalLink not loaded; publish payload will lack proposalAccessToken/Url.');
+    } catch (e) {
+      console.warn('[SCW pdfExport] Token mint failed:', e && e.message);
+    }
+    return { token: '', url: '' };
+  }
+
   // ══════════════════════════════════════════════════════════════
   // SCENE CONFIGS — add new scenes here
   // ══════════════════════════════════════════════════════════════
@@ -1726,6 +1749,19 @@
             var summary = extractSummaryFields(payload);
             var jsonSnapshot = buildJsonSnapshot(cfg.sceneId);
 
+            // Reuse the same token already minted into `payload` by
+            // buildPublishPayload — both webhooks need to see the
+            // SAME token so the resulting proposal record has
+            // matching field_2904/field_2908 regardless of which
+            // webhook actually writes them.
+            var saveAccessToken = (payload && payload.proposalAccessToken) || '';
+            var saveAccessUrl   = (payload && payload.proposalAccessUrl)   || '';
+            if (!saveAccessToken) {
+              var fresh = mintProposalAccess();
+              saveAccessToken = fresh.token;
+              saveAccessUrl   = fresh.url;
+            }
+
             var savePayload = {
               recordId: pageRecordId || '',
               hash: window.location.hash || '',
@@ -1736,6 +1772,12 @@
               installationTotal: summary.installationTotal,
               grandTotal: summary.grandTotal,
               expirationDate: summary.expirationDate,
+              // Tokenized public link — same shape as buildPublishPayload.
+              // Make should map these to field_2904 / field_2908 on the
+              // proposal record. See secure-proposal-link.js for token
+              // contract.
+              proposalAccessToken: saveAccessToken,
+              proposalAccessUrl:   saveAccessUrl,
               html: htmlStr,
               plaintext: htmlToPlaintext(htmlStr),
               plaintextJsonEscaped: jsonStringEscape(htmlToPlaintext(htmlStr)),
@@ -2857,25 +2899,11 @@
     var plaintextStr  = htmlToPlaintext(htmlStr);
 
     // Mint a public access token + URL at publish time so the new
-    // proposal record is born sharable. Make maps these into
-    // field_2904 (token) and field_2908 (URL) on the record it
-    // creates. SCW.secureProposalLink is set by
-    // src/features/secure-proposal-link.js — load-order safe because
-    // buildPublishPayload runs at click time, by which point both
-    // files have loaded.
-    var accessToken = '';
-    var accessUrl   = '';
-    try {
-      if (window.SCW && SCW.secureProposalLink &&
-          typeof SCW.secureProposalLink.generateToken === 'function') {
-        accessToken = SCW.secureProposalLink.generateToken();
-        accessUrl   = SCW.secureProposalLink.buildPublicUrl(accessToken);
-      } else {
-        console.warn('[SCW pdfExport] SCW.secureProposalLink not loaded; publish payload will lack proposalAccessToken/Url.');
-      }
-    } catch (e) {
-      console.warn('[SCW pdfExport] Token mint failed:', e && e.message);
-    }
+    // proposal record is born sharable. mintProposalAccess returns
+    // { token, url } from SCW.secureProposalLink helpers.
+    var access = mintProposalAccess();
+    var accessToken = access.token;
+    var accessUrl   = access.url;
 
     return {
       recordId:              getPageRecordId() || '',
