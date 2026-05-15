@@ -385,3 +385,19 @@ This is a **copy-paste-and-modify codebase, not a design space.** Every feature 
 - **What we want**: a clean, named theming surface (e.g. `data-scw-l1-theme="comparison-grid"` on the view, or a token map `L1_THEME_TOKENS`) that bundles all the coupled pieces (bg, hover, accent, chevron, bridge, card top-border, L2 contrast adjustment) so swapping themes per view is a single attribute / single config object change instead of nine coordinated CSS edits. Should preserve existing per-view overrides via the same surface.
 - **Sibling to copy from**: `bid-items-grid.js` design tokens; `proposal-grid.js` for per-view theming entry points. The bid-review comparison grid (`src/features/bid-review/styles.js` lines 468–550) is the visual target some users prefer.
 - **Why high priority**: every time someone wants to tweak L1 visuals on a single view (which is a common request), we either ship something half-painted or punt. The current system is the bottleneck.
+
+### 10. Custom photo-edit modal to replace Knack's default edit page
+- **Status**: deferred — bigger scope than the original "just style it" framing. Currently when a user clicks a thumbnail in `.scw-inline-photo-card`, `inline-photo-row.js:1236` (and the empty-card click handlers at lines 1262/1271) calls `editPhotoHash(id, viewId)` then `navigateToHash(h)`, which routes Knack to its own edit page (`#…/edit-doc-photo3/<id>`, `edit-doc-photo2`, `edit-photo`, etc. — slug varies by view). That page is ugly and tears the user out of the worksheet flow.
+- **Direction**: build a custom popover/modal in the `qa-popover.js` style rather than restyle Knack's page. Less fighting Knack's machinery — Knack re-renders aggressively and validation/save flow is theirs, so "make their form look like a popover" turns into a months-long cat-and-mouse with their CSS.
+- **What the modal needs to surface**:
+  - Image preview (large)
+  - Photo type chips (`field_2445`)
+  - Required toggle (`field_2446`)
+  - Photo-level notes (likely `field_114` — confirm before building)
+  - QA fields the qa-popover already edits (`field_2859` status, `field_2860` client signoff, `field_2861` notes) so PMs don't bounce between surfaces
+  - Footer: `Cancel | Replace Image | Save`
+- **Save path**: view-based PUT, same trick qa-popover uses. qa-popover's `PIC_SAVE_VIEW = view_3937` is the natural reuse target — needs `field_771` (img), `field_2445`, `field_2446`, `field_114`, plus the QA fields all present on that view before the module can write to them. Either extend `view_3937` or stand up a dedicated DOC_photos save view on the deploy scene and tell the module which to use.
+- **Image replacement**: v1 punt — modal handles type/required/notes/QA inline, `Replace Image` button deep-links to the existing Knack edit page (one click out, but only when the user actually needs to swap the binary). v2: pipe the binary through the existing Make bulk-upload webhook (`CONFIG.MAKE_PHOTO_UPLOAD_WEBHOOK`) so the swap stays in-modal, then PUT the returned file id back.
+- **Intercept point**: `inline-photo-row.js:1236` (and the empty-card branches at 1262/1271). Bind the new modal's `open()` before the `navigateToHash(editPhotoHash(...))` call; if the modal can't open (e.g. no save view configured, or fields missing) fall through to the existing navigate so the feature degrades gracefully.
+- **Sibling to copy from**: `qa-popover.js` — same modal scaffold, save-view contract, and field-mapping shape. Inject CSS once, build the form in JS, snapshot initial state to detect changes, save through Knack's view-based PUT endpoint.
+- **Why deferred**: each piece is small but the dependency chain (save view setup → modal scaffold → upload pipeline) deserves a focused pass instead of being squeezed alongside other worksheet work.
