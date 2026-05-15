@@ -439,9 +439,15 @@
   function primeImageCacheFor(cfg, isCover) {
     var api = window.SCW && window.SCW.surveyWorksheetPdf;
     if (!api || typeof api.refreshImageCache !== 'function') return;
-    var maxDim  = isCover ? 1400 : 600;
-    var quality = isCover ? 0.8  : 0.65;
-    api.refreshImageCache(cfg.viewId, cfg.label, maxDim, quality);
+    // Cover images (site maps) get auto-cropped: site map screenshots
+    // typically have huge white margins built in, and without the
+    // crop they render as a small dot in the middle of a landscape
+    // page. Bumping maxDim to 1800 too, matching the module's own
+    // setupImagePreloads default for covers.
+    var maxDim   = isCover ? 1800 : 600;
+    var quality  = isCover ? 0.82 : 0.65;
+    var autoCrop = !!isCover;
+    api.refreshImageCache(cfg.viewId, cfg.label, maxDim, quality, autoCrop);
   }
 
   // ── Bindings ──

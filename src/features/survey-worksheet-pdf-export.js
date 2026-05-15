@@ -58,7 +58,13 @@
   // skips any .scw-ws-sum-group whose payload td matches.
   // field_2400 = Labor price (directEdit number on view_3505)
   // field_2401 = Ext (qty × labor, readOnly on view_3505)
-  var EXCLUDED_SUMMARY_FIELDS = { field_2400: 1, field_2401: 1 };
+  // field_2415 = BID reference (e.g. "BD-1") — internal sales linkage
+  //              that has no bearing on the field tech's work.
+  var EXCLUDED_SUMMARY_FIELDS = {
+    field_2400: 1,
+    field_2401: 1,
+    field_2415: 1
+  };
 
   // Distribution-device flag on a survey line item. Cards/records
   // with this field truthy become columns in the connection-map pivot.
@@ -134,6 +140,25 @@
   function textOf(el) {
     if (!el) return '';
     return norm(el.textContent || '');
+  }
+
+  // Group rows like "Project Wide Assumptions8" have the L1 record
+  // count baked into the cell text via a `.scw-group-badges /
+  // .scw-record-count` span. Clone, strip those spans, then read
+  // textContent so the count doesn't end up concatenated onto the
+  // label.
+  function scrapeGroupLabel(tr) {
+    var td = tr && tr.querySelector('td');
+    if (!td) return '';
+    var clone = td.cloneNode(true);
+    var dropSel = '.scw-group-badges, .scw-record-count, ' +
+                  '.scw-collapse-icon, .scw-sa-grp-check, ' +
+                  '.scw-group-inner > svg';
+    var drops = clone.querySelectorAll(dropSel);
+    for (var i = 0; i < drops.length; i++) {
+      drops[i].parentNode && drops[i].parentNode.removeChild(drops[i]);
+    }
+    return norm(clone.textContent || '');
   }
 
   /** Read the effective value of a detail/summary field cell. Handles
@@ -255,10 +280,12 @@
       while (left < right && colIsWhite(left, top, bottom))   left++;
       while (right > left && colIsWhite(right, top, bottom))  right--;
 
-      // Degenerate: image was entirely white. Fall back to a plain
-      // downsample so we don't render an empty cover page.
+      // Degenerate: image was entirely white. Signal "skip" so the
+      // caller drops this cover entry rather than emitting a blank
+      // landscape page (which is what happens if we fall back to a
+      // plain downsample of all-white pixels).
       if (top >= bottom || left >= right) {
-        return downsampleImage(imgEl, maxDim, quality);
+        return '__SCW_SKIP_IMAGE__';
       }
 
       // Tiny relative pad so cropped content doesn't kiss the edges.
@@ -419,7 +446,7 @@
         var level = tr.classList.contains('kn-group-level-1') ? 1
                   : tr.classList.contains('kn-group-level-2') ? 2
                   : tr.classList.contains('kn-group-level-3') ? 3 : 1;
-        var label = textOf(tr.querySelector('td'));
+        var label = scrapeGroupLabel(tr);
         if (!label) continue;
         if (level === 1) { currentL1 = label; currentL2 = ''; }
         else if (level === 2) { currentL2 = label; }
@@ -458,11 +485,9 @@
     };
   }
 
-  // Walks the row list and inserts two notes blocks per L1 group:
-  //   - 'header' position: directly under the MDF/IDF header (for
-  //     location-level notes the tech captures before the device cards)
-  //   - 'tail'   position: at the end of the L1 group (catch-all for
-  //     anything that didn't fit a structured field)
+  // Walks the row list and inserts one notes block at the END of each
+  // L1 group (the 'tail' block). Used to be a header+tail pair but
+  // the header block was redundant with the tail and just ate space.
   function insertL1NotesBlocks(rows) {
     var out = [];
     var inL1 = false;
@@ -478,7 +503,6 @@
         inL1 = true;
         currentL1 = r.label;
         out.push(r);
-        out.push({ type: 'l1-notes', position: 'header', groupL1: r.label });
         continue;
       }
       out.push(r);
@@ -574,6 +598,7 @@
         var ds = autoCrop
           ? autoCropAndDownsample(img, maxDim, quality)
           : downsampleImage(img, maxDim, quality);
+        if (ds === '__SCW_SKIP_IMAGE__') { finish(null); return; }
         finish(ds || url);
       } catch (e) {
         finish(url);
@@ -611,7 +636,13 @@
           nextCache.push(entry);
           (function (e, u) {
             preloadAndDownsample(u, maxDim, quality, !!autoCrop, function (dataUrl) {
-              if (dataUrl) e.src = dataUrl;
+              if (dataUrl === null) {
+                // All-white / degenerate crop — flag for skip so
+                // getImagesForView filters this entry entirely.
+                e.skip = true;
+              } else if (dataUrl) {
+                e.src = dataUrl;
+              }
               e.loaded = true;
             });
           })(entry, rawUrl);
@@ -632,6 +663,7 @@
     var out = [];
     for (var i = 0; i < entries.length; i++) {
       var c = entries[i];
+      if (c.skip) continue;
       out.push({ src: c.src, label: c.label, alt: c.alt });
     }
     return out;
@@ -919,34 +951,30 @@
   // "yesno" → checkbox pair for Yes / No.
   // ══════════════════════════════════════════════════════════════
 
+  // Three horizontal "bands" inside each card, in render order. Empty
+  // bands collapse so service / assumption cards stay short.
+  //   ref     — read-only reference info shown only when populated
+  //   flags   — Y/N pairs inline (cabling / location / plenum)
+  //   measure — height checkbox cluster + drop / conduit fillable
   var PDF_DETAIL_LAYOUT = {
-    // Full-width context rows rendered above the grid. Each is shown
-    // only when the field actually has a value on this card.
-    context: [
-      { key: 'field_2409', label: 'Labor Description', kind: 'text' },
-      { key: 'field_2418', label: 'SCW Notes',         kind: 'text' }
+    ref: [
+      { key: 'field_2409', label: 'Labor' },     // Labor Description
+      { key: 'field_2463', label: 'Mount' },     // Mounting Hardware
+      { key: 'field_2418', label: 'SCW' }        // SCW Notes
     ],
-    left: [
-      // Mounting Hardware is reference data — only show if populated.
-      { key: 'field_2463', label: 'Mounting Hardware', kind: 'text', onlyIfValue: true },
-      // Mounting Height is always printed BLANK — checkboxes for each of
-      // the multi-select options, regardless of what's currently saved.
-      { key: 'field_2455', label: 'Mounting Height',   kind: 'choices',
-        options: ["Under 16'", "16' - 24'", "Over 24'"] },
-      { key: 'field_2367', label: 'Drop Length',       kind: 'fill' },
+    flags: [
+      { key: 'field_2370', label: 'Cabling',  yesLabel: 'Existing', noLabel: 'New' },
+      { key: 'field_2372', label: 'Location', yesLabel: 'Ext',      noLabel: 'Int' },
+      { key: 'field_2371', label: 'Plenum',   yesLabel: 'Y',        noLabel: 'N' }
+    ],
+    measure: [
+      { key: 'field_2455', label: 'Height',  kind: 'choices',
+        options: ["<16'", "16-24'", ">24'"] },
+      { key: 'field_2367', label: 'Drop',    kind: 'fill', unit: 'ft' },
       // Conduit Ft is always printed blank — the survey is the source
       // of truth for this measurement, not whatever's already on the
       // record.
-      { key: 'field_2368', label: 'Conduit Ft',        kind: 'fill', forceBlank: true }
-    ],
-    right: [
-      // Yes = Existing Cabling, No = New Cabling
-      { key: 'field_2370', label: 'Cabling', kind: 'yesno',
-        yesLabel: 'Existing Cabling', noLabel: 'New Cabling' },
-      // Yes = Exterior, No = Interior
-      { key: 'field_2372', label: 'Location', kind: 'yesno',
-        yesLabel: 'Exterior', noLabel: 'Interior' },
-      { key: 'field_2371', label: 'Plenum',  kind: 'yesno' }
+      { key: 'field_2368', label: 'Conduit', kind: 'fill', unit: 'ft', forceBlank: true }
     ]
   };
 
@@ -1202,23 +1230,93 @@
     return '<div class="' + cls + '">' + esc(row.label) + '</div>';
   }
 
-  function renderContextRows(card, specs) {
-    var h = [];
+  // ── Reference band ──
+  // Compact read-only info — labor description, mounting hardware,
+  // SCW notes from the original proposal. Each item is single-line;
+  // items with no value are omitted. Iterates PDF_DETAIL_LAYOUT.ref
+  // so the field set is configurable without touching the renderer.
+  function renderRefSection(card) {
+    var specs = PDF_DETAIL_LAYOUT.ref || [];
+    var items = [];
     for (var i = 0; i < specs.length; i++) {
-      var spec = specs[i];
-      if (!(spec.key in card.detailValues)) continue;
-      var value = card.detailValues[spec.key] || '';
-      if (!value) continue; // context rows are always onlyIfValue
-      h.push('<div class="ws-context-row">');
-      h.push('<span class="ws-context-label">' + esc(spec.label) + '</span>');
-      h.push('<span class="ws-context-value">' + esc(value) + '</span>');
-      h.push('</div>');
+      var s = specs[i];
+      if (!(s.key in card.detailValues)) continue;
+      var v = card.detailValues[s.key] || '';
+      if (!v) continue;
+      items.push(
+        '<div class="ws-ref-item">' +
+          '<span class="ws-ref-label">' + esc(s.label) + '</span>' +
+          '<span class="ws-ref-value">' + esc(v) + '</span>' +
+        '</div>'
+      );
     }
-    return h.join('');
+    if (!items.length) return '';
+    return '<div class="ws-ref">' + items.join('') + '</div>';
   }
 
+  // ── Yes/No flag band ──
+  // Single horizontal row of Yes/No pairs. Existing saved values are
+  // pre-checked so the tech sees what was already answered and can
+  // override on paper if needed.
+  function renderFlagsRow(card) {
+    var specs = PDF_DETAIL_LAYOUT.flags || [];
+    var items = [];
+    for (var i = 0; i < specs.length; i++) {
+      var s = specs[i];
+      if (!(s.key in card.detailValues)) continue;
+      var v = String(card.detailValues[s.key] || '').toLowerCase();
+      var yesOn = v === 'yes' || v === 'true';
+      var noOn  = v === 'no'  || v === 'false';
+      items.push(
+        '<div class="ws-flag">' +
+          '<span class="ws-flag-label">' + esc(s.label) + '</span>' +
+          '<span class="ws-box' + (yesOn ? ' is-on' : '') + '">' + (yesOn ? '☒' : '☐') + '</span>' +
+          '<span class="ws-flag-opt">' + esc(s.yesLabel || 'Yes') + '</span>' +
+          '<span class="ws-box' + (noOn ? ' is-on' : '') + '">' + (noOn ? '☒' : '☐') + '</span>' +
+          '<span class="ws-flag-opt">' + esc(s.noLabel || 'No') + '</span>' +
+        '</div>'
+      );
+    }
+    if (!items.length) return '';
+    return '<div class="ws-flags">' + items.join('') + '</div>';
+  }
+
+  // ── Measurement band ──
+  // Mounting Height (multi-checkbox), Drop Length (fillable),
+  // Conduit Ft (fillable, always blank — survey is the source of
+  // truth). All inline on one row.
+  function renderMeasureRow(card) {
+    var specs = PDF_DETAIL_LAYOUT.measure || [];
+    var items = [];
+    for (var i = 0; i < specs.length; i++) {
+      var s = specs[i];
+      if (!(s.key in card.detailValues)) continue;
+      var item = ['<div class="ws-m-item">',
+                  '<span class="ws-m-label">' + esc(s.label) + '</span>'];
+      if (s.kind === 'choices') {
+        var opts = s.options || [];
+        for (var oi = 0; oi < opts.length; oi++) {
+          item.push('<span class="ws-box">☐</span>');
+          item.push('<span class="ws-flag-opt">' + esc(opts[oi]) + '</span>');
+        }
+      } else if (s.kind === 'fill') {
+        var fv = s.forceBlank ? '' : (card.detailValues[s.key] || '');
+        item.push('<span class="ws-fill">' + esc(fv) + '</span>');
+        if (s.unit) item.push('<span class="ws-m-unit">' + esc(s.unit) + '</span>');
+      }
+      item.push('</div>');
+      items.push(item.join(''));
+    }
+    if (!items.length) return '';
+    return '<div class="ws-measure">' + items.join('') + '</div>';
+  }
+
+  // Legacy 2-column detail renderer — kept for now in case a
+  // downstream consumer calls into it via the legacy PDF_DETAIL_LAYOUT
+  // shape, but unused by the current renderCard flow.
   function renderDetailColumn(card, specs) {
     var h = [];
+    if (!specs) return '';
     for (var i = 0; i < specs.length; i++) {
       var spec = specs[i];
       // Only render fields that actually exist on this card's detail panel.
@@ -1302,34 +1400,17 @@
     }
     h.push('</header>');
 
-    // ── Full-width context rows (labor desc, scw notes) ──
-    if (card.showDetail && PDF_DETAIL_LAYOUT.context) {
-      var ctxHtml = renderContextRows(card, PDF_DETAIL_LAYOUT.context);
-      if (ctxHtml) {
-        h.push('<div class="ws-context">');
-        h.push(ctxHtml);
-        h.push('</div>');
-      }
-    }
-
-    // ── Detail grid (static left/right layout + fillable blanks) ──
+    // ── Compact bands: reference info / flags / measurements ──
+    // Each band collapses to nothing when its fields aren't present
+    // on this card (e.g. service/assumption rows have no flags or
+    // measurements). The blank-Notes line that used to sit at the
+    // bottom of every card is intentionally gone: techs scribble in
+    // the right margin and the Other Notes header field already
+    // captures structured notes. ~25px saved per card.
     if (card.showDetail) {
-      h.push('<div class="ws-detail">');
-      h.push('<div class="ws-detail-col">');
-      h.push(renderDetailColumn(card, PDF_DETAIL_LAYOUT.left));
-      h.push('</div>');
-      h.push('<div class="ws-detail-col">');
-      h.push(renderDetailColumn(card, PDF_DETAIL_LAYOUT.right));
-      h.push('</div>');
-      h.push('</div>');
-
-      // ── Blank notes area ──
-      h.push('<div class="ws-notes">');
-      h.push('<div class="ws-notes-label">Notes</div>');
-      h.push('<div class="ws-notes-lines">');
-      h.push('<div class="ws-notes-line"></div>');
-      h.push('</div>');
-      h.push('</div>');
+      h.push(renderRefSection(card));
+      h.push(renderFlagsRow(card));
+      h.push(renderMeasureRow(card));
     }
 
     // ── Photo strip ──
@@ -1577,63 +1658,75 @@
       '  white-space: pre-wrap;',
       '}',
       '',
-      '.ws-context {',
-      '  margin-top: 3px; padding-top: 2px;',
-      '  border-top: 1px dashed #e5e7eb;',
+      '/* ── Reference band (Labor / Mount / SCW) ────────────────── */',
+      '.ws-ref {',
       '  display: flex; flex-direction: column; gap: 1px;',
+      '  margin-top: 2px; padding-top: 2px;',
+      '  border-top: 1px dashed #e5e7eb;',
+      '  font-size: 9px; line-height: 1.25;',
       '}',
-      '.ws-context-row {',
+      '.ws-ref-item {',
       '  display: flex; gap: 6px; align-items: baseline;',
-      '  font-size: 9.5px;',
+      '  break-inside: avoid;',
       '}',
-      '.ws-context-label {',
-      '  font-weight: 600; color: #07467c;',
-      '  min-width: 88px; flex: 0 0 88px;',
+      '.ws-ref-label {',
+      '  font-weight: 700; color: #6b7280;',
+      '  font-size: 7.5px; letter-spacing: 0.4px;',
+      '  text-transform: uppercase;',
+      '  min-width: 38px; flex: 0 0 38px; text-align: right;',
+      '  padding-top: 1px;',
       '}',
-      '.ws-context-value {',
+      '.ws-ref-value {',
       '  color: #111827; flex: 1 1 auto;',
       '  white-space: pre-wrap; word-break: break-word;',
       '}',
       '',
-      '.ws-detail {',
-      '  display: grid; grid-template-columns: 1fr 1fr;',
-      '  column-gap: 18px; row-gap: 1px;',
+      '/* ── Flag band (Cabling Y/N · Location Y/N · Plenum Y/N) ──── */',
+      '.ws-flags {',
+      '  display: flex; flex-wrap: wrap; gap: 4px 16px;',
       '  margin-top: 3px; padding-top: 2px;',
       '  border-top: 1px dashed #e5e7eb;',
+      '  font-size: 9.5px; align-items: baseline;',
       '}',
-      '.ws-detail-col { display: flex; flex-direction: column; gap: 1px; }',
-      '.ws-detail-field {',
-      '  display: flex; gap: 6px; align-items: baseline;',
-      '  font-size: 9.5px; padding: 0;',
+      '.ws-flag {',
+      '  display: inline-flex; gap: 4px; align-items: baseline;',
+      '  white-space: nowrap;',
       '}',
-      '.ws-detail-label {',
-      '  font-weight: 600; color: #07467c;',
-      '  min-width: 88px; flex: 0 0 88px;',
-      '  white-space: normal;',
+      '.ws-flag-label {',
+      '  font-weight: 700; color: #07467c;',
+      '  font-size: 9px; min-width: 48px;',
       '}',
-      '.ws-detail-value {',
-      '  color: #111827; flex: 1 1 auto;',
-      '  white-space: pre-wrap; word-break: break-word;',
+      '.ws-flag-opt {',
+      '  color: #374151; margin-right: 4px;',
       '}',
       '',
-      '/* Fill-in-the-blank value: underline, tall enough to write on */',
-      '.ws-detail-field--fill .ws-detail-value.ws-fill {',
+      '/* ── Measurement band (Height · Drop · Conduit) ──────────── */',
+      '.ws-measure {',
+      '  display: flex; flex-wrap: wrap; gap: 4px 20px;',
+      '  margin-top: 3px; padding-top: 2px;',
+      '  border-top: 1px dashed #e5e7eb;',
+      '  font-size: 9.5px; align-items: baseline;',
+      '}',
+      '.ws-m-item {',
+      '  display: inline-flex; gap: 4px; align-items: baseline;',
+      '  white-space: nowrap;',
+      '}',
+      '.ws-m-label {',
+      '  font-weight: 700; color: #07467c;',
+      '  font-size: 9px; min-width: 44px;',
+      '}',
+      '.ws-m-unit {',
+      '  color: #6b7280; font-size: 8.5px; margin-left: 2px;',
+      '}',
+      '',
+      '/* Fill-in-the-blank: underline span tall enough to write on */',
+      '.ws-fill {',
+      '  display: inline-block; min-width: 72px;',
       '  border-bottom: 1px solid #4b5563;',
-      '  min-height: 13px; padding-bottom: 1px;',
+      '  min-height: 13px; line-height: 12px;',
+      '  padding: 0 3px; color: #111827;',
       '}',
       '',
-      '/* Multi-option checkbox row (e.g. Mounting Height) */',
-      '.ws-choices {',
-      '  display: inline-flex; flex-wrap: wrap; gap: 9px;',
-      '  align-items: baseline; font-size: 9.5px;',
-      '}',
-      '.ws-choice { white-space: nowrap; }',
-      '',
-      '/* Yes / No checkbox pair */',
-      '.ws-yesno {',
-      '  display: inline-flex; gap: 10px; align-items: baseline;',
-      '  font-size: 9.5px;',
-      '}',
       '.ws-box {',
       '  display: inline-block; font-size: 12px; line-height: 1;',
       '  margin-right: 2px; color: #111827;',
