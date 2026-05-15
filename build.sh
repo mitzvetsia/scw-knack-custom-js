@@ -130,6 +130,7 @@ cat \
   src/features/sub-portal-survey-request-export.js \
   src/features/sow-pdf-stepper.js \
   src/features/connected-device-bid-check.js \
+  src/features/missing-connection-warn.js \
   src/features/default-sort.js \
   src/features/mirror-connection-sync.js \
   src/features/connection-picker.js \
