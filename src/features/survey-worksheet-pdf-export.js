@@ -153,6 +153,19 @@
     return norm(el.textContent || '');
   }
 
+  // Return the first truthy value from `map` matched by any key in
+  // `keys` (in order). Used so a render spec can list multiple known
+  // field keys (different worksheet views use different schemas) and
+  // pick whichever one this card happens to have populated.
+  function firstKeyValue(map, keys) {
+    if (!map || !keys) return '';
+    for (var i = 0; i < keys.length; i++) {
+      var k = keys[i];
+      if (k && map[k]) return map[k];
+    }
+    return '';
+  }
+
   // Group rows like "Project Wide Assumptions8" have the L1 record
   // count baked into the cell text via a `.scw-group-badges /
   // .scw-record-count` span. Clone, strip those spans, then read
@@ -901,6 +914,13 @@
     // The detail panel walk later will add to these.
     var detailValues = {};
     var detailHasAnyField = false;
+    // Labor / SCW Notes on view_3505 live in the SUMMARY bar (not
+    // the detail panel). Promote them out of summaryFields so the
+    // 3-column body's col-2 / col-3 renderers can pick them up.
+    var laborText = '';
+    var scwText   = '';
+    var LABOR_KEYS = ['field_2409', 'field_2020'];
+    var SCW_KEYS   = ['field_2418', 'field_1953'];
 
     // Summary fields (right bar + "fill" fields like Survey Notes)
     // Each .scw-ws-sum-group has a .scw-ws-sum-label + the field td.
@@ -932,6 +952,19 @@
         if (fieldTd.classList.contains('scw-ws-sum-chip-host')) {
           if (fieldKey) detailValues[fieldKey] = val;
           detailHasAnyField = true;
+          continue;
+        }
+        // Labor Description / SCW Notes live in the summary bar on
+        // view_3505 with an unhelpful label ("Labor Desc"). Promote
+        // them to dedicated card fields so the 3-col body's
+        // labor / scw cells render them instead of letting them
+        // surface as labelled summary chips in the header.
+        if (fieldKey && LABOR_KEYS.indexOf(fieldKey) !== -1) {
+          if (val) laborText = val;
+          continue;
+        }
+        if (fieldKey && SCW_KEYS.indexOf(fieldKey) !== -1) {
+          if (val) scwText = val;
           continue;
         }
         var lbl = lblEl ? textOf(lblEl) : '';
@@ -1011,6 +1044,8 @@
       warnCount: warnCount,
       summaryFields: summaryFields,
       detailValues: detailValues,
+      laborText: laborText,
+      scwText: scwText,
       photos: photos,
       showDetail: showDetail,
       showPhotos: photos.length > 0
@@ -1037,9 +1072,15 @@
     ref: [
       { key: 'field_2463', label: 'Mount' }
     ],
-    // Rendered as labelled blocks in the right column, in order.
-    labor:    { key: 'field_2409', label: 'Labor Description' },
-    scwNotes: { key: 'field_2418', label: 'SCW Notes' },
+    // Rendered as the lead cell of col 2 (plain text, no label prefix).
+    // Multiple keys cover both worksheet schemas:
+    //   field_2409 — view_3800 (survey line items, in detail panel)
+    //   field_2020 — view_3505 (SOW line items, in summary bar)
+    labor: { keys: ['field_2409', 'field_2020'], label: 'Labor Description' },
+    // SCW Notes — secondary col-2 block under labor.
+    //   field_2418 — view_3800 / 3610 / 3596 (in detail panel)
+    //   field_1953 — view_3505 (in detail panel under scwNotes)
+    scwNotes: { keys: ['field_2418', 'field_1953'], label: 'SCW Notes' },
     flags: [
       // view_3800 (survey line items)
       { key: 'field_2370', label: 'Existing', yesLabel: 'Y', noLabel: 'N' },
@@ -1484,8 +1525,13 @@
     h.push('<header class="ws-header">');
     h.push('<div class="ws-identity">');
     if (brief) {
-      if (card.label) h.push('<span class="ws-label">' + esc(card.label) + '</span>');
-      if (card.label && card.product) h.push('<span class="ws-sep">&middot;</span>');
+      // Knack's identifier formula often concatenates "name - product"
+      // and renders a trailing " - " when product is empty (typical
+      // for assumption / service rows). Strip it so the header reads
+      // cleanly.
+      var briefLabel = String(card.label || '').replace(/\s*[-–—]\s*$/, '');
+      if (briefLabel) h.push('<span class="ws-label">' + esc(briefLabel) + '</span>');
+      if (briefLabel && card.product) h.push('<span class="ws-sep">&middot;</span>');
       if (card.product) h.push('<span class="ws-product">' + esc(card.product) + '</span>');
     }
     // Warning / alert chits intentionally suppressed — survey PDF
@@ -1519,10 +1565,14 @@
       // — they're spec'd by part number, not surveyed.
       var renderNotesSquare = !isOtherEquipmentBucket(card);
 
-      h.push('<div class="ws-body-2col">');
-      // ── Left column ──
+      var laborSpec = PDF_DETAIL_LAYOUT.labor || {};
+      var laborVal  = card.laborText || firstKeyValue(card.detailValues, laborSpec.keys || (laborSpec.key ? [laborSpec.key] : []));
+      var scwSpec   = PDF_DETAIL_LAYOUT.scwNotes || {};
+      var scwVal    = card.scwText || firstKeyValue(card.detailValues, scwSpec.keys || (scwSpec.key ? [scwSpec.key] : []));
+
+      h.push('<div class="ws-body-3col">');
+      // ── Col 1 — identity + ref + flags + measure ──
       h.push('<div class="ws-body-col ws-body-col--left">');
-      // Identity line: combined Label + Product, no row prefix.
       if (card.label || card.product) {
         h.push('<div class="ws-id-line">');
         if (card.label) {
@@ -1538,18 +1588,15 @@
       h.push(renderMeasureRow(card));
       h.push('</div>');
 
-      // ── Right column ──
-      h.push('<div class="ws-body-col ws-body-col--right">');
-      // Labor description is the lead content of col 2 — no
-      // "LABOR" row prefix, just the text itself styled to sit
-      // naturally at the top of the column.
-      var laborSpec = PDF_DETAIL_LAYOUT.labor || {};
-      var laborVal = (laborSpec.key && card.detailValues[laborSpec.key]) || '';
+      // ── Col 2 — Labor Description (plain text, no label) ──
+      h.push('<div class="ws-body-col ws-body-col--mid">');
       if (laborVal) {
         h.push('<div class="ws-labor">' + esc(laborVal) + '</div>');
       }
-      var scwSpec = PDF_DETAIL_LAYOUT.scwNotes || {};
-      var scwVal  = (scwSpec.key && card.detailValues[scwSpec.key]) || '';
+      h.push('</div>');
+
+      // ── Col 3 — SCW Notes + open tech-notes square ──
+      h.push('<div class="ws-body-col ws-body-col--right">');
       if (scwVal) {
         h.push('<div class="ws-labor ws-labor--scw">');
         h.push('<div class="ws-labor-label">' + esc(scwSpec.label || 'SCW Notes') + '</div>');
@@ -1557,8 +1604,6 @@
         h.push('</div>');
       }
       if (renderNotesSquare) {
-        // Open white square. flex-grow soaks up whatever vertical
-        // space col 1 leaves behind — no fixed lines, no min height.
         h.push('<div class="ws-notes-open">');
         h.push('<div class="ws-notes-open-label">Notes</div>');
         h.push('</div>');
@@ -1812,16 +1857,20 @@
       '  white-space: pre-wrap;',
       '}',
       '',
-      '/* ── Two-column body for camera/reader/NVR cards ─────────── */',
-      '.ws-body-2col {',
-      '  display: grid; grid-template-columns: 1.05fr 1fr;',
-      '  column-gap: 10px; row-gap: 0;',
+      '/* ── Three-column body for camera/reader/NVR cards ───────── */',
+      '/* col 1 = identity + flags + measurements (40%)            */',
+      '/* col 2 = Labor Description, plain text (40%)              */',
+      '/* col 3 = SCW Notes + open tech-notes square (20%)         */',
+      '.ws-body-3col {',
+      '  display: grid; grid-template-columns: 2fr 2fr 1fr;',
+      '  column-gap: 8px; row-gap: 0;',
       '  margin-top: 2px; padding-top: 2px;',
       '  border-top: 1px solid #e5e7eb;',
       '  align-items: stretch;',
       '}',
       '.ws-body-col { display: flex; flex-direction: column; gap: 2px; min-height: 0; }',
       '.ws-body-col--left  { padding-right: 4px; border-right: 1px dotted #e5e7eb; }',
+      '.ws-body-col--mid   { padding: 0 4px; border-right: 1px dotted #e5e7eb; }',
       '.ws-body-col--right { padding-left: 4px; }',
       '',
       '/* Identity line at top of col 1: [Label] [Product] no prefix */',
@@ -1920,7 +1969,7 @@
       '/* plain text (no label block, no row prefix). SCW Notes gets  */',
       '/* a small uppercase tag because it\'s secondary context.       */',
       '.ws-labor {',
-      '  font-size: 9px; line-height: 1.3;',
+      '  font-size: 10px; line-height: 1.3;',
       '  margin-bottom: 3px;',
       '  flex: 0 0 auto;',
       '  color: #111827;',
