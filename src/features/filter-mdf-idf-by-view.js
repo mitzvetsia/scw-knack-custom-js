@@ -380,6 +380,11 @@
           showError(msg + ' (See console for details.)');
           return;
         }
+        // Camera now lives in a new MDF/IDF — if its current Connected
+        // To switch is in a DIFFERENT MDF/IDF, the linkage no longer
+        // makes physical sense. Clear it so the camera doesn't render
+        // under the old switch's group on subsequent renders.
+        clearStaleConnection(recordId, newId);
         close();
         refreshTargetView();
       });
@@ -510,6 +515,98 @@
       console.error(LOG_PREFIX, 'model.updateRecord threw', e);
       onDone(e);
     }
+  }
+
+  // ── Post-save sanity check ─────────────────────────────────────
+  // When the camera (or any survey line item) gets a new MDF/IDF,
+  // walk its "Connected To" field (field_2381 — the back-connection
+  // to the parent switch/NVR/etc.) and verify each connected device
+  // lives in the SAME MDF/IDF as the camera now does. If any of them
+  // are in a different MDF/IDF the linkage is stale — clear field_2381
+  // so the camera doesn't ghost into the old switch's group on the
+  // next render. Reciprocal Knack connections take care of dropping
+  // the back-reference on the switch side; the mirror-connection-sync
+  // cascade picks up that change on the next render.
+  var CONNECTED_TO_FIELD = 'field_2381';
+
+  function getRecordAttrs(recordId) {
+    if (typeof Knack === 'undefined') return null;
+    var model = (Knack.views && Knack.views[CFG.TARGET_VIEW] &&
+                 Knack.views[CFG.TARGET_VIEW].model) ||
+                (Knack.models && Knack.models[CFG.TARGET_VIEW]) ||
+                null;
+    var records = extractRecords(model);
+    for (var i = 0; i < records.length; i++) {
+      var attrs = records[i] || {};
+      if (attrs.id === recordId) return attrs;
+    }
+    return null;
+  }
+
+  function mdfIdOf(attrs) {
+    if (!attrs) return '';
+    var raw = attrs[CFG.TARGET_FIELD + '_raw'];
+    if (Array.isArray(raw) && raw[0] && raw[0].id) return raw[0].id;
+    if (raw && raw.id) return raw.id;
+    return '';
+  }
+
+  function clearStaleConnection(recordId, newMdfId) {
+    if (!recordId) return;
+    var attrs = getRecordAttrs(recordId);
+    if (!attrs) {
+      log('clearStaleConnection: record not in model — skipping', recordId);
+      return;
+    }
+    var connRaw = attrs[CONNECTED_TO_FIELD + '_raw'];
+    if (!Array.isArray(connRaw) || !connRaw.length) return;
+
+    // If ANY connected device's MDF/IDF differs from the camera's new
+    // MDF/IDF, clear the whole field_2381 array. (In practice the camera
+    // only has one Connected To, but the field is multi-connection.)
+    var mismatch = false;
+    for (var i = 0; i < connRaw.length; i++) {
+      var connId = connRaw[i] && connRaw[i].id;
+      if (!connId) continue;
+      var connAttrs = getRecordAttrs(connId);
+      if (!connAttrs) continue;        // not in this view's pagination
+      var connMdfId = mdfIdOf(connAttrs);
+      if (connMdfId && connMdfId !== newMdfId) {
+        log('clearStaleConnection: connected device',
+            connId, 'is in MDF/IDF', connMdfId,
+            '— camera moved to', newMdfId,
+            '— clearing', CONNECTED_TO_FIELD);
+        mismatch = true;
+        break;
+      }
+    }
+    if (!mismatch) return;
+
+    if (!window.SCW || typeof window.SCW.knackAjax !== 'function' ||
+        typeof window.SCW.knackRecordUrl !== 'function') return;
+    var url = window.SCW.knackRecordUrl(CFG.TARGET_VIEW, recordId);
+    var body = {};
+    body[CONNECTED_TO_FIELD] = [];
+    window.SCW.knackAjax({
+      type: 'PUT',
+      url: url,
+      data: JSON.stringify(body),
+      dataType: 'json',
+      success: function (resp) {
+        log('clearStaleConnection: cleared', CONNECTED_TO_FIELD,
+            'on', recordId, 'resp:', resp);
+        if (typeof window.SCW.syncKnackModel === 'function') {
+          try {
+            window.SCW.syncKnackModel(CFG.TARGET_VIEW, recordId, resp,
+              CONNECTED_TO_FIELD, []);
+          } catch (e) { /* best-effort */ }
+        }
+      },
+      error: function (xhr) {
+        console.warn(LOG_PREFIX, 'clearStaleConnection PUT failed',
+          xhr && xhr.status, xhr && xhr.responseText);
+      }
+    });
   }
 
   // ── Save: PUT field_2375 with the chosen MDF/IDF id ─────────────
