@@ -51,6 +51,11 @@
     // is required today; the others are scaffolding for upcoming work
     // (expiration, active/superseded). Leave as null to disable.
     TOKEN_FIELD:       'field_2904',     // Proposal Access Token
+    LINK_FIELD:        'field_2908',     // Cached full public URL
+                                          //   (kept in sync with TOKEN_FIELD
+                                          //   so reports / email merges can
+                                          //   reference the link without
+                                          //   re-building it from the token)
     EXPIRATION_FIELD:  null,             // e.g. 'field_XXXX' (date)
     ACTIVE_FIELD:      null,             // e.g. 'field_XXXX' (Yes/No)
     SUPERSEDED_FIELD:  null,             // e.g. 'field_XXXX' (Yes/No)
@@ -89,7 +94,17 @@
   // ── Styles ───────────────────────────────────────────────────
   function injectStyles() {
     if (document.getElementById(STYLE_ID)) return;
+    // Hide every configured saveViewId — those are hidden update forms
+    // that exist solely so the PUT has write access to TOKEN_FIELD /
+    // LINK_FIELD. Rendering them would show a stray "Update SOW_published
+    // proposal" form with a token text input on the page.
+    var saveViewHides = CONFIG.SCENES
+      .map(function (s) { return s.saveViewId; })
+      .filter(Boolean)
+      .map(function (id) { return '#' + id + ' { display: none !important; }'; })
+      .join('\n');
     var css = [
+      saveViewHides,
       '#' + PANEL_ID + ' {',
       '  margin: 14px 0; padding: 14px 16px;',
       '  background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;',
@@ -192,8 +207,10 @@
   // PUT { field_2904: token } against the configured save view.
   // SCW.knackAjax wraps $.ajax with Knack auth headers + 401 handling.
   function saveToken(sceneCfg, recordId, token, onDone, onError) {
+    var url  = buildPublicUrl(token);
     var data = {};
     data[CONFIG.TOKEN_FIELD] = token;
+    if (CONFIG.LINK_FIELD)   data[CONFIG.LINK_FIELD]       = url;
     // Scaffolding for future fields — only write if configured.
     if (CONFIG.ACTIVE_FIELD)     data[CONFIG.ACTIVE_FIELD]     = 'Yes';
     if (CONFIG.SUPERSEDED_FIELD) data[CONFIG.SUPERSEDED_FIELD] = 'No';
@@ -211,8 +228,12 @@
           var dv = Knack.views[sceneCfg.detailViewId];
           if (dv && dv.model && typeof dv.model.set === 'function') {
             var patch = {};
-            patch[CONFIG.TOKEN_FIELD]            = token;
-            patch[CONFIG.TOKEN_FIELD + '_raw']   = token;
+            patch[CONFIG.TOKEN_FIELD]          = token;
+            patch[CONFIG.TOKEN_FIELD + '_raw'] = token;
+            if (CONFIG.LINK_FIELD) {
+              patch[CONFIG.LINK_FIELD]          = url;
+              patch[CONFIG.LINK_FIELD + '_raw'] = url;
+            }
             dv.model.set(patch, { silent: true });
           }
         } catch (e) { /* non-fatal */ }
