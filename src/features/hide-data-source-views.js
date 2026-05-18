@@ -22,9 +22,14 @@
   if (!document.getElementById(STYLE_ID)) {
     var selectors = [];
     for (var i = 0; i < HIDDEN_VIEWS.length; i++) {
-      selectors.push('#' + HIDDEN_VIEWS[i]);
-      selectors.push('.view-column:has(> #' + HIDDEN_VIEWS[i] + ')');
-      selectors.push('.view-column:has(> .kn-view#' + HIDDEN_VIEWS[i] + ')');
+      var v = HIDDEN_VIEWS[i];
+      selectors.push('#' + v);
+      selectors.push('.view-column:has(> #' + v + ')');
+      selectors.push('.view-column:has(> .kn-view#' + v + ')');
+      // KTL wraps each view in .scw-ktl-accordion (header + body); the
+      // accordion header carries the view-key. Hiding only #view_XXXX
+      // leaves the accordion shell + "BID_packages 1" header visible.
+      selectors.push('.scw-ktl-accordion:has(.scw-ktl-accordion__header[data-view-key="' + v + '"])');
     }
     var style = document.createElement('style');
     style.id = STYLE_ID;
@@ -47,6 +52,9 @@
       el.style.display = 'none';
       var col = el.closest('.view-column');
       if (col && col.children.length === 1) col.style.display = 'none';
+      // Hide the KTL accordion wrapper (header + body) if present.
+      var acc = el.closest('.scw-ktl-accordion');
+      if (acc) acc.style.display = 'none';
     }, 'scwHideDataSource');
   }
   for (var h = 0; h < HIDDEN_VIEWS.length; h++) hideOnRender(HIDDEN_VIEWS[h]);
