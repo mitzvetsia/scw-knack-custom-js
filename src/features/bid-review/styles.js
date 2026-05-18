@@ -1033,12 +1033,126 @@
       '  padding: 16px; color: #64748b; font-size: 13px; text-align: center;',
       '}',
 
-      /* ── Expand-cell side-by-side photo viewer ────────────────
-         When a user clicks a photo thumb (rather than the row body),
-         the expand cell hosts a photo viewer alongside the worksheet
-         card. We DON\'T turn the <td> itself into a flex container —
-         that would drop its table-cell behavior and the cell would
-         shrink off the row. Instead we wrap content in a flex div. */
+      /* ── Three-column expand panel ────────────────────────────
+         When the user opens a row, the original <tr> is hidden (rule
+         below) and the expand-row holds a 3-column panel:
+           [photo viewer] [worksheet card] [bid details]
+         The td stays a normal table-cell — flex layout is on a child
+         div so the cell still spans the full row width. */
+      '.scw-bid-review__expand-cell { padding: 12px 12px !important; background: #f8fafc; }',
+      '.scw-bid-review__panel {',
+      '  background: #fff;',
+      '  border-radius: 8px;',
+      '  box-shadow: 0 8px 24px -8px rgba(2, 132, 199, 0.35);',
+      '  border: 1px solid #cbd5e1;',
+      '  overflow: hidden;',
+      '}',
+      '.scw-bid-review__panel-header {',
+      '  display: flex; align-items: center; gap: 12px;',
+      '  padding: 10px 14px;',
+      '  background: #295F91;',
+      '  color: #fff;',
+      '}',
+      '.scw-bid-review__panel-title {',
+      '  flex: 1; min-width: 0;',
+      '  font: 600 13px/1.3 system-ui, -apple-system, Segoe UI, sans-serif;',
+      '  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;',
+      '}',
+      '.scw-bid-review__panel-close {',
+      '  flex: 0 0 auto;',
+      '  background: rgba(255,255,255,0.18);',
+      '  color: #fff;',
+      '  border: 1px solid rgba(255,255,255,0.28);',
+      '  border-radius: 6px;',
+      '  width: 28px; height: 28px;',
+      '  font: 600 16px/1 system-ui, sans-serif;',
+      '  cursor: pointer;',
+      '  display: inline-flex; align-items: center; justify-content: center;',
+      '}',
+      '.scw-bid-review__panel-close:hover { background: rgba(255,255,255,0.32); }',
+
+      '.scw-bid-review__panel-cols {',
+      '  display: flex;',
+      '  align-items: stretch;',
+      '  gap: 0;',
+      '  width: 100%;',
+      '}',
+      '.scw-bid-review__panel-col { min-width: 0; }',
+      '.scw-bid-review__panel-col--photo {',
+      '  flex: 0 0 0;',
+      '  width: 0;',
+      '  overflow: hidden;',
+      '  transition: flex-basis 200ms ease, width 200ms ease;',
+      '}',
+      '.scw-bid-review__panel-col--photo-active {',
+      '  flex: 0 0 38%;',
+      '  width: auto;',
+      '  max-width: 520px;',
+      '  border-right: 1px solid #e2e8f0;',
+      '}',
+      '.scw-bid-review__panel-col--worksheet {',
+      '  flex: 1 1 auto;',
+      '  padding: 4px 0;',
+      '}',
+      '.scw-bid-review__panel-col--bid {',
+      '  flex: 0 0 280px;',
+      '  border-left: 1px solid #e2e8f0;',
+      '  background: #f8fafc;',
+      '  padding: 10px;',
+      '  display: flex; flex-direction: column; gap: 10px;',
+      '}',
+
+      /* Hide the original data row while expanded — the panel takes
+         its place. Group headers / detail rows above and below
+         continue to render normally. */
+      '.scw-bid-review__row--expandable[aria-expanded="true"] { display: none; }',
+
+      /* Bid detail cards in the right column (cloned per-package cells
+         + actions cell from the data row). Stack vertically. */
+      '.scw-bid-review__bid-card {',
+      '  background: #fff;',
+      '  border: 1px solid #e2e8f0;',
+      '  border-radius: 6px;',
+      '  padding: 8px 10px;',
+      '}',
+      '.scw-bid-review__bid-card-label {',
+      '  font: 600 10px/1 system-ui, sans-serif;',
+      '  letter-spacing: .04em;',
+      '  text-transform: uppercase;',
+      '  color: #64748b;',
+      '  margin-bottom: 6px;',
+      '}',
+      '.scw-bid-review__bid-card-body { font-size: 12px; color: #1e293b; }',
+      '.scw-bid-review__bid-card-body > * { max-width: 100%; }',
+
+      /* Worksheet card overrides — only when mounted inside the
+         expand panel: single-column section grid, photos field row
+         hidden (the photo viewer column handles that), drop the
+         negative-margin lift + extra box-shadow that were tuned for
+         the old "row + panel below" layout. */
+      '.scw-bid-review__panel-col--worksheet .scw-ws-sections {',
+      '  grid-template-columns: 1fr !important;',
+      '}',
+      '.scw-bid-review__panel-col--worksheet tr:has(td[data-field-key="field_771"]) {',
+      '  display: none !important;',
+      '}',
+      '.scw-bid-review__panel-col--worksheet .scw-ws-card {',
+      '  margin-top: 0 !important;',
+      '  border-radius: 0 !important;',
+      '  box-shadow: none !important;',
+      '  border: none !important;',
+      '}',
+      /* The photo-viewer in the new layout sits inside the photo
+         column, full-height, no detached blue glow. */
+      '.scw-bid-review__panel-col--photo .scw-bid-review__photo-viewer {',
+      '  margin-top: 0;',
+      '  border-radius: 0;',
+      '  box-shadow: none;',
+      '  height: 100%;',
+      '}',
+
+      /* Legacy class kept for backwards compat with any straggling
+         CSS overrides; new layout uses .scw-bid-review__panel-cols. */
       '.scw-bid-review__expand-flex {',
       '  display: flex;',
       '  align-items: stretch;',

@@ -248,6 +248,19 @@
 
   var _expandedSowItems = Object.create(null);
 
+  // Expand layout
+  // -------------
+  // When a row is opened, the original <tr> is hidden (via CSS rule
+  // keyed on aria-expanded="true") and replaced visually by a panel
+  // that takes its place. The panel has three columns:
+  //
+  //   [photo viewer slot] [worksheet card] [bid details]
+  //
+  // The photo-viewer column is present but empty/hidden until
+  // openWithPhoto() populates it. Bid details is built from clones of
+  // the data row's bid-package cells + actions cell, so all the data
+  // and action attrs come over and the delegated click handler keeps
+  // working on the clones.
   function toggleRowExpand(tr) {
     var sowItemId = tr.getAttribute('data-sow-item-id');
     if (!sowItemId) return;
@@ -257,12 +270,12 @@
       && expandTr.getAttribute('data-expand-for') === sowItemId;
 
     if (alreadyHasExpand && expandTr.classList.contains('scw-bid-review__expand-row--open')) {
-      // Commit any in-flight inline edit before collapsing — clicking the
-      // row to close doesn\'t blur the focused textarea/input on its own,
-      // so without this the user\'s typing never reaches the save path.
+      // Commit any in-flight inline edit before collapsing — clicking
+      // close doesn't blur the focused input on its own, so without
+      // this the user's typing never reaches the save path.
       var focused = expandTr.querySelector(':focus');
       if (focused && typeof focused.blur === 'function') focused.blur();
-      // Park the wsTr back in view_3921\'s tbody so the next reopen can
+      // Park the wsTr back in view_3921's tbody so the next reopen can
       // find it. Otherwise it lives inside the closed expand-row, gets
       // wiped on the next silent refresh, and reopening shows
       // "Loading editor…" forever (view_3921 never re-renders to
@@ -293,61 +306,153 @@
     expandTr.classList.add('scw-bid-review__expand-row--open');
     tr.setAttribute('aria-expanded', 'true');
     _expandedSowItems[sowItemId] = true;
-    injectWorksheetCard(sowItemId, expandTr.firstElementChild);
+    buildExpandPanel(tr, expandTr.firstElementChild, sowItemId);
+  }
+
+  // Build the 3-column panel inside the expand cell. Idempotent —
+  // safe to call again after silent refresh.
+  function buildExpandPanel(rowTr, hostTd, sowItemId) {
+    if (!hostTd) return;
+
+    hostTd.innerHTML = '';
+
+    var panel = document.createElement('div');
+    panel.className = 'scw-bid-review__panel';
+
+    panel.appendChild(buildPanelHeader(rowTr));
+
+    var layout = document.createElement('div');
+    layout.className = 'scw-bid-review__panel-cols';
+
+    // Photo viewer column — left. Empty/hidden until openWithPhoto fills it.
+    var photoCol = document.createElement('div');
+    photoCol.className = 'scw-bid-review__panel-col scw-bid-review__panel-col--photo';
+    layout.appendChild(photoCol);
+
+    // Worksheet card column — middle. Hosts the wsTr from view_3921.
+    var wsCol = document.createElement('div');
+    wsCol.className = 'scw-bid-review__panel-col scw-bid-review__panel-col--worksheet';
+    layout.appendChild(wsCol);
+
+    // Bid details column — right. Cloned per-package cells + actions cell.
+    var bidCol = buildBidDetailsColumn(rowTr);
+    layout.appendChild(bidCol);
+
+    panel.appendChild(layout);
+    hostTd.appendChild(panel);
+
+    injectWorksheetCard(sowItemId, wsCol);
+
     // Force the worksheet detail panel open so users see the full editor,
-    // not just the summary header. The delegated click handler in
-    // device-worksheet.js calls toggleDetail() which adds .scw-ws-open
-    // to the detail wrapper.
-    var hostTd = expandTr.firstElementChild;
-    var toggleZone = hostTd && hostTd.querySelector('.scw-ws-toggle-zone');
-    var detail = hostTd && hostTd.querySelector('.scw-ws-detail');
+    // not just the summary header.
+    var toggleZone = wsCol.querySelector('.scw-ws-toggle-zone');
+    var detail = wsCol.querySelector('.scw-ws-detail');
     if (toggleZone && detail && !detail.classList.contains('scw-ws-open')) {
       toggleZone.click();
     }
   }
 
+  function buildPanelHeader(rowTr) {
+    var header = document.createElement('div');
+    header.className = 'scw-bid-review__panel-header';
+
+    var title = document.createElement('div');
+    title.className = 'scw-bid-review__panel-title';
+    // Pull identity text from the row's label cell — already has
+    // line item label + per-row totals rendered for the row.
+    var labelCell = rowTr.children[0];
+    if (labelCell) {
+      title.textContent = (labelCell.textContent || '').replace(/\s+/g, ' ').trim();
+    }
+    header.appendChild(title);
+
+    var close = document.createElement('button');
+    close.type = 'button';
+    close.className = 'scw-bid-review__panel-close';
+    close.setAttribute('title', 'Close');
+    close.textContent = '×';
+    close.addEventListener('click', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      toggleRowExpand(rowTr);
+    });
+    header.appendChild(close);
+
+    return header;
+  }
+
+  // Right-side column. Each bid-package cell + the row-actions cell
+  // are cloned out of the (now-hidden) data row and stacked vertically.
+  // Delegated click handlers on the table mount keep working on the
+  // clones because they're selector-based (clones carry the same
+  // classes + data-* attrs).
+  function buildBidDetailsColumn(rowTr) {
+    var col = document.createElement('div');
+    col.className = 'scw-bid-review__panel-col scw-bid-review__panel-col--bid';
+
+    // Read column labels from thead, mapped by column index.
+    var labels = [];
+    var table = rowTr.closest('table');
+    if (table) {
+      var ths = table.querySelectorAll('thead th');
+      for (var t = 0; t < ths.length; t++) {
+        labels.push((ths[t].textContent || '').replace(/\s+/g, ' ').trim());
+      }
+    }
+
+    // Skip cell index 0 (label — shown in header), 1 (photos — own
+    // column), 2 (SOW detail — shown in worksheet card). Everything
+    // from index 3 onward is bid packages + actions.
+    var cells = rowTr.children;
+    for (var i = 3; i < cells.length; i++) {
+      var card = document.createElement('div');
+      card.className = 'scw-bid-review__bid-card';
+      if (labels[i]) {
+        var lbl = document.createElement('div');
+        lbl.className = 'scw-bid-review__bid-card-label';
+        lbl.textContent = labels[i];
+        card.appendChild(lbl);
+      }
+      var body = document.createElement('div');
+      body.className = 'scw-bid-review__bid-card-body';
+      // Move the cell's children into a div. We can't transplant the
+      // <td> itself (it'd lose its meaning) and we want the original
+      // <td> to remain on the hidden row so subsequent re-renders
+      // (silent refresh, change-request updates) still write to it.
+      // Clone preserves attrs + handlers attached by delegation.
+      var clone = cells[i].cloneNode(true);
+      // Move clone's children into body; throw away the wrapping <td>
+      while (clone.firstChild) body.appendChild(clone.firstChild);
+      card.appendChild(body);
+      col.appendChild(card);
+    }
+    return col;
+  }
+
   // Open the row's expand panel AND mount a side-by-side photo
-  // viewer pane with the clicked photo enlarged. Thumbnail strip lets
-  // the reviewer flip between photos without leaving the editor.
-  //
-  // Layered on top of toggleRowExpand — same wsTr-injection path —
-  // plus a viewer pane inserted before the worksheet mini-table and
-  // a flex modifier class on the host td so they sit side by side.
+  // viewer in the panel's left column. Thumbnail strip lets the
+  // reviewer flip between photos without leaving the editor.
   function openWithPhoto(rowTr, urls, activeIdx) {
     if (!rowTr || !urls || !urls.length) return;
     if (activeIdx == null || activeIdx < 0 || activeIdx >= urls.length) activeIdx = 0;
 
-    // Expand the row if it isn't already.
     if (rowTr.getAttribute('aria-expanded') !== 'true') {
       toggleRowExpand(rowTr);
     }
 
     var expandTr = rowTr.nextElementSibling;
     if (!expandTr || !expandTr.classList.contains('scw-bid-review__expand-row')) return;
-    var hostTd = expandTr.firstElementChild;
-    if (!hostTd) return;
+    var photoCol = expandTr.querySelector('.scw-bid-review__panel-col--photo');
+    if (!photoCol) return;
 
-    // Already showing a viewer? Just swap photos.
-    var existing = hostTd.querySelector('.scw-bid-review__photo-viewer');
+    var existing = photoCol.querySelector('.scw-bid-review__photo-viewer');
     if (existing) {
       updatePhotoViewer(existing, urls, activeIdx);
       return;
     }
 
-    // The worksheet card lives inside .scw-bid-review__expand-table.
-    // Wrap it in a flex container alongside the photo viewer so they
-    // stretch to equal height. Use a wrapper <div> rather than flipping
-    // the <td> to display:flex — the latter drops table-cell behavior
-    // and the cell collapses off the row.
-    var miniTable = hostTd.querySelector('.scw-bid-review__expand-table');
-    if (!miniTable) return;
-
-    var flex = document.createElement('div');
-    flex.className = 'scw-bid-review__expand-flex';
-    var viewer = buildPhotoViewer(urls, activeIdx);
-    flex.appendChild(viewer);
-    hostTd.insertBefore(flex, miniTable);
-    flex.appendChild(miniTable);
+    photoCol.classList.add('scw-bid-review__panel-col--photo-active');
+    photoCol.appendChild(buildPhotoViewer(urls, activeIdx));
   }
 
   function buildPhotoViewer(urls, activeIdx) {
@@ -391,15 +496,9 @@
   }
 
   function closeViewer(viewer) {
-    var flex = viewer.closest('.scw-bid-review__expand-flex');
-    if (!flex) {
-      viewer.parentNode && viewer.parentNode.removeChild(viewer);
-      return;
-    }
-    var hostTd = flex.parentNode;
-    var miniTable = flex.querySelector('.scw-bid-review__expand-table');
-    if (miniTable && hostTd) hostTd.insertBefore(miniTable, flex);
-    flex.parentNode && flex.parentNode.removeChild(flex);
+    var col = viewer.closest('.scw-bid-review__panel-col--photo');
+    if (col) col.classList.remove('scw-bid-review__panel-col--photo-active');
+    viewer.parentNode && viewer.parentNode.removeChild(viewer);
   }
 
   function updatePhotoViewer(viewer, urls, activeIdx) {
