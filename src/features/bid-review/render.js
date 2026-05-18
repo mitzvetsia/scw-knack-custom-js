@@ -152,7 +152,8 @@
 
   function buildHeaderRows(sowGrid) {
     var rows = [];
-    var colCount = 2 + sowGrid.packages.length + 1; // line item + sow + packages + CR
+    // line item + photos + sow + packages + CR
+    var colCount = 3 + sowGrid.packages.length + 1;
 
     // ═══ ROW 1: Column titles ═══
     // Each SOW + Bid column shows a totals summary below its title:
@@ -191,6 +192,7 @@
 
     var r1 = el('tr', 'scw-bid-review__header-row scw-bid-review__header-titles');
     r1.appendChild(el('th', 'scw-bid-review__sow-header', 'Line Item'));
+    r1.appendChild(el('th', 'scw-bid-review__photos-header', 'Photos'));
     // Sales Revisions column injected externally — leave gap
     r1.appendChild(buildTitleCell(
       'scw-bid-review__sow-detail-header', 'SOW', 'Install Total:', sowInstallTotal
@@ -207,6 +209,7 @@
     // ═══ ROW 2: Details (status, name, links) ═══
     var r2 = el('tr', 'scw-bid-review__header-row scw-bid-review__header-details');
     r2.appendChild(el('td', '')); // line item
+    r2.appendChild(el('td', '')); // photos column placeholder
 
     // SOW header detail cell — mirrors what view_3325 surfaces in its
     // "Next Step" column. Split into two rows now: r2 carries the
@@ -269,6 +272,7 @@
     // ═══ ROW 3: Action buttons ═══
     var r3 = el('tr', 'scw-bid-review__header-row scw-bid-review__header-actions');
     r3.appendChild(el('td', '')); // line item
+    r3.appendChild(el('td', '')); // photos column placeholder
 
     // SOW action cell — sits in the same column as the SOW detail cell
     // in r2, holds the margin-low warning button stack + Preview
@@ -683,15 +687,16 @@
   }
 
   // Look at every cell tagged with .scw-bid-review__cr-col and decide
-  // whether any of them carries renderable content. Header r1 always
-  // has the title text (the th has its own children), so check for
-  // body-row action cells with non-empty .scw-bid-review__row-actions
-  // wraps OR a header-action-cell with submit buttons.
+  // whether any of them carries renderable content. The column only
+  // stays when there's a pending CR card (or a header submit/clear
+  // button) — Add-to-bid menus alone are NOT enough to keep the
+  // column visible, because that interaction has moved into the
+  // data cells (see buildDataCell → inline + Add to bid pill).
   function tableHasCrContent(table) {
-    var actionWraps = table.querySelectorAll('.scw-bid-review__cr-col .scw-bid-review__row-actions');
-    for (var i = 0; i < actionWraps.length; i++) {
-      if (actionWraps[i].children.length > 0) return true;
-    }
+    var pendingCards = table.querySelectorAll(
+      '.scw-bid-review__cr-col .scw-bid-cr-card'
+    );
+    if (pendingCards.length) return true;
     var headerCells = table.querySelectorAll('th.scw-bid-review__cr-col, td.scw-bid-review__header-action-cell.scw-bid-review__cr-col');
     for (var j = 0; j < headerCells.length; j++) {
       // The r1 title cell carries text; ignore it. We only count
@@ -709,10 +714,9 @@
 
     var pending = (ns.changeRequests && ns.changeRequests.getPending) ? ns.changeRequests.getPending() : {};
 
-    // Collect eligible packages per action type. Revise + Remove
-    // moved into the cells; this pass only collects Add candidates
-    // (noBid rows) and any pending CR cards to surface here.
-    var addChoices    = [];
+    // Collect pending CR cards to surface in this column. Revise,
+    // Remove, and Add-to-bid now all live in the data cells, so
+    // this column carries pending-CR cards only.
     var pendingCards  = [];
 
     for (var ci = 0; ci < packages.length; ci++) {
@@ -757,43 +761,15 @@
       // Add buttons (for noBid rows).
     }
 
-    // No Bid / Survey No Bid rows — Add button (skip packages that already have a pending add)
-    if (row.noBid || row.surveyNoBid) {
-      for (var bi = 0; bi < packages.length; bi++) {
-        // Check if there's already an addToBid pending for this row+package
-        var alreadyAdding = false;
-        if (pending[packages[bi].id] && pending[packages[bi].id].items) {
-          for (var api = 0; api < pending[packages[bi].id].items.length; api++) {
-            if (pending[packages[bi].id].items[api].rowId === row.id &&
-                pending[packages[bi].id].items[api].addToBid) {
-              alreadyAdding = true; break;
-            }
-          }
-        }
-        if (alreadyAdding) continue;
+    // "+ Add to bid" for noBid rows now lives inline in the data
+    // cell (see buildDataRow → cell_add_to_bid button next to the
+    // NOT ON BID / NOT SURVEYED badge). Surfacing it there lets
+    // the Sub Bid Revisions column collapse entirely when there
+    // are no pending CRs to submit.
 
-        var addAttrs = {
-          'data-action':      'cell_add_to_bid',
-          'data-row-id':      row.id,
-          'data-package-id':  packages[bi].id,
-          'data-sow-id':      sowId,
-        };
-        addChoices.push({ label: packages[bi].name, attrs: addAttrs });
-      }
-    }
-
-    // Render: pending cards first, action menus below
     for (var pc = 0; pc < pendingCards.length; pc++) {
       wrap.appendChild(pendingCards[pc]);
     }
-
-    var menuRow = el('div', 'scw-bid-review__action-menus');
-
-    if (addChoices.length) {
-      menuRow.appendChild(buildOverflowMenu('Add', 'add', addChoices));
-    }
-
-    if (menuRow.childNodes.length) wrap.appendChild(menuRow);
 
     td.appendChild(wrap);
     return td;
@@ -851,33 +827,40 @@
     return m;
   }
 
-  // ── per-row photo strip ─────────────────────────────────────
-  // Surfaces a compact thumbnail strip in the label cell for line
-  // items that have photos attached, so reviewers can skim "did the
-  // surveyor get evidence for this device?" without expanding the
-  // row. Source: view_3921 (sowItemsViewKey) — the same view that
-  // backs the row-expand worksheet, so the photos here match what
-  // the user sees on click-to-open.
+  // ── per-row photos (dedicated column) ───────────────────────
+  // Surfaces line-item photo evidence in a column of its own so
+  // reviewers can skim "did the surveyor get evidence?" without
+  // expanding rows. Source: view_3921 (sowItemsViewKey) — same
+  // backing view as the click-to-expand worksheet, so what shows
+  // here matches what shows on expand.
   //
-  // Cap visible thumbs at 2; surplus shown as a "+N" pill that
-  // doesn't intercept clicks (so the row's click-to-expand still
-  // fires and the user sees the full strip inside the worksheet
-  // card). Individual thumb clicks open the full-size image in a
-  // new tab and stopPropagation so they don't also expand the row.
+  // Cache: view_3921 re-renders frequently (after inline edits, on
+  // silent refresh) and during the rebuild its tbody is briefly
+  // empty. Without a cache, the comparison grid rebuilds at the
+  // same moment, finds zero photos, and the column flashes empty.
+  // We cache by sowItemId so a re-render with no source row falls
+  // back to the last-known set of URLs.
   var ROW_PHOTO_VISIBLE = 2;
-  function buildRowPhotoStrip(rowId) {
+  var _photoCache = Object.create(null);
+
+  function scrapeRowPhotoUrls(rowId) {
     if (!rowId) return null;
     var view = document.getElementById(CFG.sowItemsViewKey);
-    if (!view) return null;
+    if (!view) return _photoCache[rowId] || null;
     var sourceTr = view.querySelector('tbody tr[id="' + rowId + '"]');
-    if (!sourceTr) return null;
+    if (!sourceTr) return _photoCache[rowId] || null;
 
     // field_771 may render as either a class-named td or via
     // data-field-key (Knack varies by table configuration).
     var photoCell = sourceTr.querySelector(
       'td[data-field-key="field_771"], td.field_771'
     );
-    if (!photoCell) return null;
+    if (!photoCell) {
+      // Source row exists but no photo cell — authoritative empty.
+      // Don't wipe the cache; the cell may just be temporarily
+      // missing during a re-render of just the field set.
+      return _photoCache[rowId] || null;
+    }
 
     var imgSpans = photoCell.querySelectorAll('span[id][data-kn="connection-value"]');
     var imgUrls = [];
@@ -887,38 +870,59 @@
       var url = img.getAttribute('data-kn-img-gallery') || img.getAttribute('src') || '';
       if (url) imgUrls.push(url);
     }
-    if (!imgUrls.length) return null;
 
-    var strip = el('div', 'scw-bid-review__row-photos');
-    strip.setAttribute('title', imgUrls.length + ' photo' +
-      (imgUrls.length === 1 ? '' : 's') + ' — click a thumb to enlarge');
+    // Authoritative read — even an empty result. But only overwrite
+    // the cache when we got a non-empty read OR we have no cached
+    // value yet; otherwise hold the last-known good set (covers
+    // the moment when the connection-value spans haven't rendered
+    // their <img> children yet).
+    if (imgUrls.length || !_photoCache[rowId]) {
+      _photoCache[rowId] = imgUrls;
+    }
+    return _photoCache[rowId];
+  }
 
-    var visible = Math.min(ROW_PHOTO_VISIBLE, imgUrls.length);
+  // Builds the contents of the Photos column cell for one row.
+  // Returns a <td> ready to append. Empty when no photos (so the
+  // column still claims its width and the row reads consistently).
+  function buildPhotosCell(rowId) {
+    var td = el('td', 'scw-bid-review__photos-cell');
+    var urls = rowId ? scrapeRowPhotoUrls(rowId) : null;
+    if (!urls || !urls.length) {
+      td.appendChild(el('div', 'scw-bid-review__photos-empty', '—'));
+      return td;
+    }
+
+    var stack = el('div', 'scw-bid-review__photos-stack');
+    stack.setAttribute('title', urls.length + ' photo' +
+      (urls.length === 1 ? '' : 's') + ' — click a thumb to enlarge');
+
+    var visible = Math.min(ROW_PHOTO_VISIBLE, urls.length);
     for (var v = 0; v < visible; v++) {
       var a = document.createElement('a');
-      a.href = imgUrls[v];
+      a.href = urls[v];
       a.target = '_blank';
       a.rel = 'noopener';
-      a.className = 'scw-bid-review__row-photo';
-      // Don't let the thumb click bubble up — the row is also
-      // click-to-expand, and we don't want opening a photo to fire
-      // the row's accordion as a side effect.
+      a.className = 'scw-bid-review__photos-thumb';
+      // Stop the row's click-to-expand from firing when a thumb
+      // is clicked (the user wants the photo, not the editor).
       a.addEventListener('click', function (e) { e.stopPropagation(); });
       var thumb = document.createElement('img');
-      thumb.src = imgUrls[v];
+      thumb.src = urls[v];
       thumb.alt = '';
       thumb.loading = 'lazy';
       a.appendChild(thumb);
-      strip.appendChild(a);
+      stack.appendChild(a);
     }
-    var hidden = imgUrls.length - visible;
+    var hidden = urls.length - visible;
     if (hidden > 0) {
-      var more = el('span', 'scw-bid-review__row-photo-more', '+' + hidden);
-      // Let this click bubble so it expands the row → full strip
-      // shows up inside the worksheet card automatically.
-      strip.appendChild(more);
+      // Let this click bubble — the row's accordion opens the
+      // worksheet card, which carries the full inline-photo-row
+      // strip.
+      stack.appendChild(el('span', 'scw-bid-review__photos-more', '+' + hidden + ' more'));
     }
-    return strip;
+    td.appendChild(stack);
+    return td;
   }
 
   // ── data row ────────────────────────────────────────────────
@@ -983,16 +987,13 @@
         }
         labelTd.appendChild(totals);
       }
-      // Per-row photo evidence strip — sits below totals so the
-      // left column reads as a single "row identity" cluster:
-      // label, money, evidence. Skipped for NEW rows that don't
-      // have a SOW line item yet (no source view_3921 row to scrape).
-      if (row.sowItem) {
-        var photoStrip = buildRowPhotoStrip(row.sowItem);
-        if (photoStrip) labelTd.appendChild(photoStrip);
-      }
     }
     tr.appendChild(labelTd);
+
+    // Photos column — dedicated cell so thumbs can be tall enough
+    // to read alongside the SOW/Bid cells. Empty for NEW rows that
+    // don't have a SOW line item yet.
+    tr.appendChild(buildPhotosCell(row.sowItem || null));
 
     // Cabling fields only shown/compared for Camera or Reader buckets
     var cablingVisible = showCabling(row);
@@ -1050,12 +1051,42 @@
       }
       // Show bid-status badge in the package cell when there's no bid data
       if (!row.cellsByPackage[pid]) {
+        var isMissingBid = false;
         if (row.surveyNoBid) {
           dataTd.textContent = '';
           dataTd.appendChild(el('span', 'scw-bid-review__survey-no-bid-badge', 'NOT ON BID'));
+          isMissingBid = true;
         } else if (row.noBid) {
           dataTd.textContent = '';
           dataTd.appendChild(el('span', 'scw-bid-review__no-bid-badge', 'NOT SURVEYED'));
+          isMissingBid = true;
+        }
+        // Surface "+ Add to bid" inside the data cell when the
+        // bidder hasn't bid this row. Used to live in the Sub Bid
+        // Revisions column; moving it here lets that column hide
+        // entirely when no CRs are pending submission.
+        if (isMissingBid) {
+          var pendingAdds = (ns.changeRequests && ns.changeRequests.getPending) ? ns.changeRequests.getPending() : {};
+          var alreadyPendingAdd = false;
+          if (pendingAdds[pid] && pendingAdds[pid].items) {
+            for (var ppi = 0; ppi < pendingAdds[pid].items.length; ppi++) {
+              if (pendingAdds[pid].items[ppi].rowId === row.id &&
+                  pendingAdds[pid].items[ppi].addToBid) {
+                alreadyPendingAdd = true; break;
+              }
+            }
+          }
+          if (!alreadyPendingAdd) {
+            var addBtn = document.createElement('button');
+            addBtn.type = 'button';
+            addBtn.className = 'scw-bid-review__inline-add-btn';
+            addBtn.textContent = '+ Add to bid';
+            addBtn.setAttribute('data-action',     'cell_add_to_bid');
+            addBtn.setAttribute('data-row-id',     row.id);
+            addBtn.setAttribute('data-package-id', pid);
+            addBtn.setAttribute('data-sow-id',     sowId);
+            dataTd.appendChild(addBtn);
+          }
         }
       }
       tr.appendChild(dataTd);
@@ -1678,7 +1709,8 @@
         var groupTds = table.querySelectorAll(
           'tr.scw-bid-review__group-header > td[colspan],' +
           'tr.scw-bid-review__subgroup-header > td[colspan],' +
-          'tr.scw-bid-review__l1-detail-row > td[colspan]'
+          'tr.scw-bid-review__l1-detail-row > td[colspan],' +
+          'tr.scw-bid-review__l1-survey-notes-row > td[colspan]'
         );
         for (var g = 0; g < groupTds.length; g++) {
           var cs = parseInt(groupTds[g].getAttribute('colspan'), 10);

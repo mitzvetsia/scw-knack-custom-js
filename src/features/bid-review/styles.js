@@ -765,12 +765,15 @@
          actionable thing the surveyor leaves behind reads with
          weight. Amber palette matches the revision-badge family
          (same #fef3c7 / #92400e tokens) so "things you should
-         actually look at" stay visually consistent across the app. */
+         actually look at" stay visually consistent across the app.
+         !important on bg/border to win over Knack's default
+         tbody>tr>td styling (matching specificity, but Knack's
+         stylesheet sometimes loads after ours). */
       '.scw-bid-review__l1-survey-notes-row > td {',
-      '  background: #fffbeb;',
-      '  border-bottom: 1px solid #fde68a;',
-      '  border-left: 4px solid #f59e0b;',
-      '  padding: 0;',
+      '  background: #fffbeb !important;',
+      '  border-bottom: 1px solid #fde68a !important;',
+      '  border-left: 4px solid #f59e0b !important;',
+      '  padding: 0 !important;',
       '}',
       '.scw-bid-review__l1-survey-notes-wrap {',
       '  display: flex;',
@@ -806,60 +809,102 @@
       '  word-break: break-word;',
       '}',
 
-      /* ── Per-row photo evidence strip (label cell) ─────────
-         Small thumbnail stack tucked under the Equip/Install
-         totals. Skim-time only — clicking a thumb opens the full
-         image in a new tab; the "+N" pill stays click-through so
-         expanding the row still surfaces the full set inside the
-         worksheet card. */
-      '.scw-bid-review__row-photos {',
+      /* ── Dedicated Photos column ─────────────────────────────
+         A narrow column between Line Item and SOW Detail. Holds a
+         vertical stack of up to 2 thumbs (~100px square each) so
+         the photo evidence is roughly as tall as the SOW/Bid
+         cells beside it. Surplus shown as "+N" pill. The column
+         is scraped from view_3921 and cached across re-renders to
+         avoid the brief disappearance when view_3921 rebuilds. */
+      '.scw-bid-review__photos-header {',
+      '  width: 108px;',
+      '  min-width: 108px;',
+      '  text-align: center;',
+      '  font-size: 12px;',
+      '}',
+      '.scw-bid-review__photos-cell {',
+      '  width: 108px;',
+      '  min-width: 108px;',
+      '  padding: 6px 4px !important;',
+      '  vertical-align: top;',
+      '}',
+      '.scw-bid-review__photos-stack {',
       '  display: flex;',
+      '  flex-direction: column;',
       '  align-items: center;',
       '  gap: 4px;',
-      '  margin-top: 6px;',
-      '  flex-wrap: wrap;',
       '}',
-      '.scw-bid-review__row-photo {',
+      '.scw-bid-review__photos-thumb {',
       '  display: block;',
-      '  width: 32px;',
-      '  height: 32px;',
-      '  border-radius: 4px;',
+      '  width: 100px;',
+      '  height: 100px;',
+      '  border-radius: 5px;',
       '  border: 1px solid #cbd5e1;',
       '  background: #fff;',
       '  overflow: hidden;',
-      '  flex: 0 0 auto;',
       '  transition: transform 100ms ease, box-shadow 100ms ease;',
-      '}',
-      '.scw-bid-review__row-photo:hover {',
-      '  transform: scale(1.12);',
-      '  box-shadow: 0 2px 6px rgba(0,0,0,.18);',
-      '  z-index: 2;',
       '  position: relative;',
       '}',
-      /* Override Knack default ".kn-content img { max-width: 100% }"
-         so the thumbnail fills its 32px frame instead of being
-         centered with whitespace around it. */
-      '.scw-bid-review__row-photo img,',
-      '.kn-content .scw-bid-review__row-photo img {',
+      '.scw-bid-review__photos-thumb:hover {',
+      '  transform: scale(1.04);',
+      '  box-shadow: 0 3px 10px rgba(0,0,0,.18);',
+      '  z-index: 2;',
+      '}',
+      /* Override Knack default ".kn-content img { max-width: 100% }" */
+      '.scw-bid-review__photos-thumb img,',
+      '.kn-content .scw-bid-review__photos-thumb img {',
       '  display: block;',
       '  width: 100%;',
       '  height: 100%;',
       '  object-fit: cover;',
       '  max-width: none;',
       '}',
-      '.scw-bid-review__row-photo-more {',
+      '.scw-bid-review__photos-more {',
       '  display: inline-flex;',
       '  align-items: center;',
       '  justify-content: center;',
-      '  height: 32px;',
-      '  min-width: 28px;',
-      '  padding: 0 6px;',
-      '  border-radius: 4px;',
-      '  background: #e2e8f0;',
-      '  color: #475569;',
+      '  min-width: 32px;',
+      '  height: 22px;',
+      '  padding: 0 8px;',
+      '  border-radius: 11px;',
+      '  background: #475569;',
+      '  color: #fff;',
       '  font-size: 11px;',
       '  font-weight: 700;',
-      '  letter-spacing: 0.02em;',
+      '  margin-top: 2px;',
+      '}',
+      '.scw-bid-review__photos-empty {',
+      '  font-size: 11px;',
+      '  color: #cbd5e1;',
+      '  text-align: center;',
+      '  padding: 10px 4px;',
+      '}',
+
+      /* ── Inline + Add to bid pill (data cell, noBid rows) ───
+         Surfaced in the data cell next to NOT ON BID / NOT
+         SURVEYED badges so the Sub Bid Revisions column can hide
+         when no CRs are pending submission. */
+      '.scw-bid-review__inline-add-btn {',
+      '  display: inline-block;',
+      '  margin-top: 6px;',
+      '  padding: 4px 10px;',
+      '  border-radius: 4px;',
+      '  border: 1px solid #16a34a;',
+      '  background: #fff;',
+      '  color: #16a34a;',
+      '  font-size: 11px;',
+      '  font-weight: 600;',
+      '  cursor: pointer;',
+      '  line-height: 1.2;',
+      '}',
+      '.scw-bid-review__inline-add-btn:hover {',
+      '  background: #16a34a;',
+      '  color: #fff;',
+      '}',
+      '.scw-bid-review__inline-add-btn:disabled {',
+      '  border-color: #cbd5e1;',
+      '  color: #94a3b8;',
+      '  cursor: not-allowed;',
       '}',
 
       /* ── subgroup headers (proposalBucket within mdfIdf) ──── */
