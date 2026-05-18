@@ -54,14 +54,33 @@
   function panelStorageKey(viewId, panelKey) {
     return 'scw:mdf-panel:' + getMdfSceneId() + ':' + viewId + ':' + panelKey;
   }
+  // Per-L1 panels (panelKey 'l1:<label>') default to COLLAPSED. The grand
+  // summary panel (panelKey 'grand') keeps the original default-open
+  // behaviour. Storage inverts for L1: absence = collapsed, 'open' = user
+  // expanded. For the grand panel: absence = expanded, 'collapsed' = user
+  // collapsed (legacy behaviour).
+  function isL1Panel(panelKey) {
+    return !!(panelKey && panelKey.indexOf('l1:') === 0);
+  }
   function isPanelCollapsed(viewId, panelKey) {
-    try { return localStorage.getItem(panelStorageKey(viewId, panelKey)) === 'collapsed'; }
-    catch (e) { return false; }
+    try {
+      var v = localStorage.getItem(panelStorageKey(viewId, panelKey));
+      if (isL1Panel(panelKey)) return v !== 'open';
+      return v === 'collapsed';
+    } catch (e) {
+      return isL1Panel(panelKey);
+    }
   }
   function savePanelCollapsed(viewId, panelKey, collapsed) {
     try {
-      if (collapsed) localStorage.setItem(panelStorageKey(viewId, panelKey), 'collapsed');
-      else           localStorage.removeItem(panelStorageKey(viewId, panelKey));
+      var key = panelStorageKey(viewId, panelKey);
+      if (isL1Panel(panelKey)) {
+        if (collapsed) localStorage.removeItem(key);
+        else           localStorage.setItem(key, 'open');
+      } else {
+        if (collapsed) localStorage.setItem(key, 'collapsed');
+        else           localStorage.removeItem(key);
+      }
     } catch (e) { /* ignore */ }
   }
 

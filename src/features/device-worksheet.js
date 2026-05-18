@@ -6912,6 +6912,43 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         lastInsertedRow = oInsertRef;
       }
 
+      // ── Sort "Project Wide Assumptions" to the very END of the
+      // table. Iteration order above (Services then Assumptions) plus
+      // the Unassigned append leaves Assumptions sandwiched in the
+      // middle of the synthetic section. Per UX request, Assumptions
+      // should be the final group on the page — after MDF/IDFs,
+      // Services, and Unassigned. Find the Assumptions synthetic
+      // header by its label and re-append its entire row block to
+      // the bottom of tbody, then update lastInsertedRow so the
+      // divider lands below it.
+      if (anySyntheticBuilt) {
+        var assumpHeader = null;
+        var synthHeaders = tbody.querySelectorAll(
+          'tr.scw-synthetic-group:not(.scw-unassigned-group)'
+        );
+        for (var ai = 0; ai < synthHeaders.length; ai++) {
+          var ahTd = synthHeaders[ai].querySelector('td');
+          if (ahTd && ahTd.textContent.trim() === 'Project Wide Assumptions') {
+            assumpHeader = synthHeaders[ai];
+            break;
+          }
+        }
+        if (assumpHeader) {
+          var groupRows = [assumpHeader];
+          var cur = assumpHeader.nextElementSibling;
+          while (cur &&
+                 !cur.classList.contains('kn-table-group') &&
+                 !cur.classList.contains('scw-synth-divider')) {
+            groupRows.push(cur);
+            cur = cur.nextElementSibling;
+          }
+          for (var gr = 0; gr < groupRows.length; gr++) {
+            tbody.appendChild(groupRows[gr]);
+          }
+          lastInsertedRow = groupRows[groupRows.length - 1];
+        }
+      }
+
       // Insert gray divider bars around the synthetic section
       if (anySyntheticBuilt) {
         // Bottom divider: after the last synthetic group's rows
