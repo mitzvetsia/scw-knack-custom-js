@@ -400,6 +400,14 @@
     });
     header.appendChild(close);
 
+    // Clicking anywhere on the blue bar collapses the panel — same
+    // action as the × button, just a larger target.
+    header.style.cursor = 'pointer';
+    header.setAttribute('title', 'Click to close');
+    header.addEventListener('click', function () {
+      toggleRowExpand(rowTr);
+    });
+
     return header;
   }
 
@@ -483,7 +491,7 @@
 
     var stage = document.createElement('div');
     stage.className = 'scw-bid-review__photo-viewer-stage';
-    stage.setAttribute('title', 'Click photo to close viewer');
+    stage.setAttribute('title', 'Click photo to zoom');
 
     var openLink = document.createElement('a');
     openLink.className = 'scw-bid-review__photo-viewer-open';
@@ -491,7 +499,7 @@
     openLink.rel = 'noopener';
     openLink.title = 'Open full size in a new tab';
     openLink.textContent = 'Open ↗';
-    // Don't trigger the close-on-click when the user means "open in new tab".
+    // Don't trigger zoom when the user means "open in new tab".
     openLink.addEventListener('click', function (e) { e.stopPropagation(); });
     stage.appendChild(openLink);
 
@@ -499,13 +507,11 @@
     img.alt = '';
     stage.appendChild(img);
 
-    // Click anywhere on the stage closes the viewer and unwraps the
-    // worksheet card back into the expand cell.
+    // Click the image to enlarge it in a fullscreen lightbox. Doesn't
+    // close anything in the panel — just shows the picture big.
     stage.addEventListener('click', function (e) {
-      // Ignore clicks on the "Open ↗" link (its own handler stops prop,
-      // but defend in depth).
       if (e.target.closest('.scw-bid-review__photo-viewer-open')) return;
-      closeViewer(wrap);
+      openLightbox(img.src);
     });
     wrap.appendChild(stage);
 
@@ -517,10 +523,26 @@
     return wrap;
   }
 
-  function closeViewer(viewer) {
-    var col = viewer.closest('.scw-bid-review__panel-col--photo');
-    if (col) col.classList.remove('scw-bid-review__panel-col--photo-active');
-    viewer.parentNode && viewer.parentNode.removeChild(viewer);
+  // Fullscreen image overlay for "zoom in on the photo". Click
+  // anywhere on the dimmed backdrop or press Escape to dismiss.
+  function openLightbox(url) {
+    if (!url) return;
+    var overlay = document.createElement('div');
+    overlay.className = 'scw-bid-review__lightbox';
+    var img = document.createElement('img');
+    img.src = url;
+    img.alt = '';
+    overlay.appendChild(img);
+
+    function dismiss() {
+      overlay.parentNode && overlay.parentNode.removeChild(overlay);
+      document.removeEventListener('keydown', onKey);
+    }
+    function onKey(e) { if (e.key === 'Escape') dismiss(); }
+
+    overlay.addEventListener('click', dismiss);
+    document.addEventListener('keydown', onKey);
+    document.body.appendChild(overlay);
   }
 
   function updatePhotoViewer(viewer, urls, activeIdx) {

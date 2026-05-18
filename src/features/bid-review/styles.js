@@ -1169,6 +1169,7 @@
          field wrapper class it injects, and any worksheet detail
          field rendered around field_771 (legacy photos field). */
       '.scw-bid-review__panel-col--worksheet tr.scw-inline-photo-row,',
+      '.scw-bid-review__panel-col--worksheet .scw-ws-photo-wrap,',
       '.scw-bid-review__panel-col--worksheet .scw-inline-photo-field,',
       '.scw-bid-review__panel-col--worksheet .scw-inline-photo-row,',
       '.scw-bid-review__panel-col--worksheet .scw-ws-field:has(td[data-field-key="field_771"]),',
@@ -1180,6 +1181,43 @@
       '  border-radius: 0 !important;',
       '  box-shadow: none !important;',
       '  border: none !important;',
+      '}',
+      /* The expand-table holds the wsTr inside the worksheet column.
+         Any inherited drop-shadow from the old "lifted panel" look
+         must be suppressed — the panel itself already provides the
+         frame shadow. */
+      '.scw-bid-review__panel-col--worksheet .scw-bid-review__expand-table,',
+      '.scw-bid-review__panel-col--worksheet .scw-bid-review__expand-table .scw-ws-card,',
+      '.scw-bid-review__panel-col--worksheet .scw-bid-review__expand-table tr,',
+      '.scw-bid-review__panel-col--worksheet .scw-bid-review__expand-table td {',
+      '  box-shadow: none !important;',
+      '}',
+
+      /* Lightbox — clicking the photo in the viewer opens a fullscreen
+         overlay so reviewers can read details. Click anywhere or hit
+         Escape to dismiss. */
+      '.scw-bid-review__lightbox {',
+      '  position: fixed; inset: 0; z-index: 100000;',
+      '  background: rgba(0, 0, 0, 0.92);',
+      '  display: flex; align-items: center; justify-content: center;',
+      '  padding: 32px;',
+      '  cursor: zoom-out;',
+      '  animation: scwLightboxFade 120ms ease;',
+      '}',
+      '@keyframes scwLightboxFade {',
+      '  from { opacity: 0; }',
+      '  to   { opacity: 1; }',
+      '}',
+      '.scw-bid-review__lightbox img,',
+      '.kn-content .scw-bid-review__lightbox img {',
+      '  display: block;',
+      '  max-width: 100%;',
+      '  max-height: 100%;',
+      '  width: auto;',
+      '  height: auto;',
+      '  object-fit: contain;',
+      '  box-shadow: 0 20px 60px rgba(0,0,0,.5);',
+      '  border-radius: 4px;',
       '}',
       /* The photo-viewer in the new layout sits inside the photo
          column, full-height, no detached blue glow. */
