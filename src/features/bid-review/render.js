@@ -157,9 +157,16 @@
 
     // ═══ ROW 1: Column titles ═══
     // Each SOW + Bid column shows a totals summary below its title:
+    //   SOW · Sub Bid Total = Σ row.sowFee   (field_2151 on SOW line item)
     //   SOW · Install Total = Σ row.sowInstallFee
     //   Bid · Sub Bid Total = Σ cell.labor for that package
+    //
+    // If the SOW Sub Bid Total doesn't agree with a bid column's Sub
+    // Bid Total, both numbers get the --warn modifier — that's the
+    // visual cue that the SOW line items are out of sync with what was
+    // actually bid.
     var sowInstallTotal = 0;
+    var sowSubBidTotal = 0;
     var pkgSubBidTotals = {};
     for (var ti = 0; ti < sowGrid.packages.length; ti++) {
       pkgSubBidTotals[sowGrid.packages[ti].id] = 0;
@@ -167,6 +174,7 @@
     for (var ri = 0; ri < sowGrid.rows.length; ri++) {
       var tRow = sowGrid.rows[ri];
       if (tRow.sowInstallFee) sowInstallTotal += Number(tRow.sowInstallFee) || 0;
+      if (tRow.sowFee) sowSubBidTotal += Number(tRow.sowFee) || 0;
       if (tRow.cellsByPackage) {
         for (var pid in pkgSubBidTotals) {
           var tCell = tRow.cellsByPackage[pid];
@@ -177,14 +185,33 @@
       }
     }
 
-    function buildTitleCell(cls, title, totalLabel, totalVal) {
+    // Mismatch detection — penny-level tolerance, and only warn when
+    // there's actually a bid to compare against (skip if bid total is 0
+    // — that's a not-yet-bid column, not a discrepancy).
+    var MISMATCH_EPSILON = 0.01;
+    function bidMismatches(pkgId) {
+      var bidTotal = pkgSubBidTotals[pkgId];
+      if (!bidTotal) return false;
+      return Math.abs(bidTotal - sowSubBidTotal) > MISMATCH_EPSILON;
+    }
+    var anySowMismatch = false;
+    for (var pidChk in pkgSubBidTotals) {
+      if (bidMismatches(pidChk)) { anySowMismatch = true; break; }
+    }
+
+    function buildTitleCell(cls, title, totals) {
       var th = el('th', cls);
       th.appendChild(el('div', 'scw-bid-review__col-title-text', title));
-      if (totalLabel) {
-        var sub = el('div', 'scw-bid-review__col-title-total');
-        sub.appendChild(el('span', 'scw-bid-review__col-title-total-label', totalLabel));
+      for (var i = 0; totals && i < totals.length; i++) {
+        var t = totals[i];
+        if (!t) continue;
+        var subCls = 'scw-bid-review__col-title-total';
+        if (t.warn) subCls += ' scw-bid-review__col-title-total--warn';
+        var sub = el('div', subCls);
+        if (t.warn) sub.title = 'SOW sub bid total doesn’t match this bid';
+        sub.appendChild(el('span', 'scw-bid-review__col-title-total-label', t.label));
         sub.appendChild(document.createTextNode(' '));
-        sub.appendChild(el('span', 'scw-bid-review__col-title-total-value', formatCurrency(totalVal || 0)));
+        sub.appendChild(el('span', 'scw-bid-review__col-title-total-value', formatCurrency(t.value || 0)));
         th.appendChild(sub);
       }
       return th;
@@ -195,12 +222,17 @@
     r1.appendChild(el('th', 'scw-bid-review__photos-header', 'Photos'));
     // Sales Revisions column injected externally — leave gap
     r1.appendChild(buildTitleCell(
-      'scw-bid-review__sow-detail-header', 'SOW', 'Install Total:', sowInstallTotal
+      'scw-bid-review__sow-detail-header', 'SOW', [
+        { label: 'Sub Bid Total:', value: sowSubBidTotal, warn: anySowMismatch },
+        { label: 'Install Total:', value: sowInstallTotal }
+      ]
     ));
     for (var i = 0; i < sowGrid.packages.length; i++) {
+      var pkgId = sowGrid.packages[i].id;
       r1.appendChild(buildTitleCell(
-        'scw-bid-review__pkg-header', 'Bid', 'Sub Bid Total:',
-        pkgSubBidTotals[sowGrid.packages[i].id]
+        'scw-bid-review__pkg-header', 'Bid', [
+          { label: 'Sub Bid Total:', value: pkgSubBidTotals[pkgId], warn: bidMismatches(pkgId) }
+        ]
       ));
     }
     r1.appendChild(el('th', 'scw-bid-review__actions-header scw-bid-review__cr-col', 'Sub Bid Revisions'));
