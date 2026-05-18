@@ -1296,6 +1296,20 @@
       alert('Could not determine the SOW record ID from ' + SOURCE_VIEW + '.');
       return;
     }
+    // Publish steps scrape the full proposal scene to build their
+    // payload — block the click if the scene isn't done rendering yet.
+    // Otherwise SCW.pdfExport.buildPublishPayload returns a half-loaded
+    // payload (missing grids / extraFields) and Make chokes on it.
+    var isPublishStep = step.id === 'publish-sow-tbd' ||
+                        step.id === 'publish-gfe' ||
+                        step.id === 'publish-final' ||
+                        step.id === 'publish-proposal';
+    if (isPublishStep &&
+        window.SCW && SCW.pdfExport && typeof SCW.pdfExport.isPageReady === 'function' &&
+        !SCW.pdfExport.isPageReady('scene_1096')) {
+      alert('Page is still loading — please wait a moment, then try again.');
+      return;
+    }
 
     // Steps that target a subset of surveys (Request Alt Bid) ask
     // the user to pick first, then fall through to the standard
