@@ -11,60 +11,106 @@
  * `Knack.views[viewId].model` or `tr#<recordId>` selectors continue
  * to work because the markup is still rendered, just not painted.
  *
- * Add views here as needed; keep the comment next to each one
- * explaining what consumes it so a future cleanup pass knows where
- * to look before deleting.
+ * Isolated test: only view_3573 right now. Aggressive hide:
+ *   - CSS rule with multiple selector forms
+ *   - inline display:none on view-render + scene-render
+ *   - MutationObserver as last resort
+ *   - console logs so the user can confirm in DevTools that the
+ *     hide code is actually running
  */
 (function () {
   'use strict';
 
   var STYLE_ID = 'scw-hide-data-source-views-css';
+  var HIDDEN_VIEWS = ['view_3573'];
+  var LOG = '[SCW hide-data-source]';
 
-  // viewId → consumer note. Comment is the documentation, not used
-  // by the CSS — but keep it close to the id for grep-discovery.
-  //
-  // Isolated test: only view_3573 right now while we verify the hide
-  // mechanism actually lands. Other entries restored once we confirm
-  // this one disappears in the live app.
-  var HIDDEN_VIEWS = [
-    // 'view_3573' — bid package records (PDF link in the bid column
-    // header).
-    'view_3573',
-  ];
+  console.log(LOG, 'IIFE loaded, targeting:', HIDDEN_VIEWS);
 
+  // ── 1. CSS rule (multiple selector forms) ────────────────────
   if (!document.getElementById(STYLE_ID)) {
     var selectors = [];
     for (var i = 0; i < HIDDEN_VIEWS.length; i++) {
-      // Hide both the view itself AND its outer column wrapper —
-      // the wrapper sometimes claims layout even when the view inside
-      // is display:none, leaving a blank stripe on the page.
-      selectors.push('#' + HIDDEN_VIEWS[i]);
-      selectors.push('.view-column:has(> #' + HIDDEN_VIEWS[i] + ')');
-      selectors.push('.view-column:has(> .kn-view#' + HIDDEN_VIEWS[i] + ')');
+      var v = HIDDEN_VIEWS[i];
+      selectors.push('#' + v);
+      selectors.push('div#' + v);
+      selectors.push('[id="' + v + '"]');
+      selectors.push('.kn-view#' + v);
+      selectors.push('.view-column:has(#' + v + ')');
+      selectors.push('.view-column:has([id="' + v + '"])');
     }
-
     var style = document.createElement('style');
     style.id = STYLE_ID;
     style.textContent = selectors.join(',\n') +
-      ' {\n  display: none !important;\n}\n';
+      ' {\n  display: none !important;\n  visibility: hidden !important;\n}\n';
     document.head.appendChild(style);
+    console.log(LOG, 'CSS rule injected:', selectors.length, 'selectors');
   }
 
-  // Belt-and-suspenders: on each render of a hidden view, also set
-  // inline display:none directly on the view element. Inline beats
-  // any external stylesheet, so even if Knack or another feature
-  // re-shows the view at runtime, this re-hides it. SCW.onViewRender
-  // is idempotent — registering once per view is fine.
-  function hideOnRender(viewId) {
-    SCW.onViewRender(viewId, function () {
-      var el = document.getElementById(viewId);
-      if (el) el.style.display = 'none';
-      // Also try the parent column wrapper — Knack sometimes nests
-      // grids inside a sized container that the CSS rule above misses.
-      var col = el && el.closest('.view-column');
-      if (col && col.children.length === 1) col.style.display = 'none';
-    }, 'scwHideDataSource');
+  // ── 2. Hide function — finds + nukes display ─────────────────
+  function nuke(viewId, reason) {
+    var el = document.getElementById(viewId);
+    if (!el) {
+      console.log(LOG, viewId, 'not in DOM (' + reason + ')');
+      return false;
+    }
+    var was = el.style.display;
+    el.style.setProperty('display', 'none', 'important');
+    el.style.setProperty('visibility', 'hidden', 'important');
+    var col = el.closest('.view-column');
+    if (col) {
+      col.style.setProperty('display', 'none', 'important');
+    }
+    console.log(LOG, viewId, 'hidden (' + reason + '), was display=' + was);
+    return true;
   }
-  for (var h = 0; h < HIDDEN_VIEWS.length; h++) hideOnRender(HIDDEN_VIEWS[h]);
+
+  function nukeAll(reason) {
+    for (var i = 0; i < HIDDEN_VIEWS.length; i++) nuke(HIDDEN_VIEWS[i], reason);
+  }
+
+  // ── 3. Run on every viewRender for each hidden view ──────────
+  for (var h = 0; h < HIDDEN_VIEWS.length; h++) {
+    (function (viewId) {
+      SCW.onViewRender(viewId, function () {
+        nuke(viewId, 'view-render');
+      }, 'scwHideDataSource');
+    })(HIDDEN_VIEWS[h]);
+  }
+
+  // ── 4. Also run on every scene render (catches first paint
+  //      before view-render handlers wire up) ──────────────────
+  $(document).on('knack-scene-render.any.scwHideDataSource', function () {
+    nukeAll('scene-render');
+  });
+
+  // ── 5. Run immediately + after DOMContentLoaded ──────────────
+  nukeAll('script-load');
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', function () {
+      nukeAll('DOMContentLoaded');
+    });
+  }
+
+  // ── 6. MutationObserver — if Knack re-creates the element or
+  //      another feature re-shows it, re-hide on next tick ────
+  var observer = new MutationObserver(function () {
+    nukeAll('mutation');
+  });
+  // Wait for body to exist
+  function startObserving() {
+    if (document.body) {
+      observer.observe(document.body, {
+        childList: true,
+        subtree: true,
+        attributes: true,
+        attributeFilter: ['style', 'class'],
+      });
+      console.log(LOG, 'MutationObserver started on document.body');
+    } else {
+      setTimeout(startObserving, 50);
+    }
+  }
+  startObserving();
 })();
 /*** END FEATURE: Hide data-source views ***/
