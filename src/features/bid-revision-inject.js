@@ -406,6 +406,52 @@
       '  background: #e5e7eb; color: #374151;',
       '}',
       '.' + P + '-btn--cancel:hover { background: #d1d5db; }',
+
+      /* ── In-context revision indicators ── */
+      /* Worksheet rows that have a pending revision get a left-edge
+         amber accent stripe so the affected line stands out at a glance
+         even when the worksheet card is collapsed and you\'re scrolling
+         a big quote. The stripe sits inside .scw-ws-card so it survives
+         Knack re-renders alongside the rest of the card chrome. */
+      '.scw-ws-card[' + INJECTED + '] {',
+      '  position: relative;',
+      '  box-shadow: inset 4px 0 0 #f59e0b;',
+      '}',
+
+      /* Pulse highlight applied briefly after click-to-navigate from
+         the floating revision panel, so the eye lands on the right row. */
+      '@keyframes scw-rev-pulse {',
+      '  0%   { box-shadow: 0 0 0 0 rgba(245,158,11,0.55), inset 4px 0 0 #f59e0b; }',
+      '  60%  { box-shadow: 0 0 0 8px rgba(245,158,11,0),    inset 4px 0 0 #f59e0b; }',
+      '  100% { box-shadow: 0 0 0 0 rgba(245,158,11,0),      inset 4px 0 0 #f59e0b; }',
+      '}',
+      '.' + P + '-pulse {',
+      '  animation: scw-rev-pulse 1.4s ease-out 1;',
+      '}',
+
+      /* Floating-panel cards: make rev cards inside the panel look
+         clickable so users discover the navigation affordance. */
+      '.' + P + '-bar-card {',
+      '  cursor: pointer;',
+      '  border-radius: 6px;',
+      '  transition: transform 0.08s ease, box-shadow 0.12s ease;',
+      '}',
+      '.' + P + '-bar-card:hover {',
+      '  transform: translateY(-1px);',
+      '  box-shadow: 0 2px 8px rgba(0,0,0,0.08);',
+      '}',
+      '.' + P + '-bar-card:active {',
+      '  transform: translateY(0);',
+      '}',
+
+      /* Group-header revision badges are also clickable shortcuts:
+         click → expand the group + scroll to the first flagged row. */
+      '.' + P + '-grp-badge[data-rev-nav="1"] {',
+      '  cursor: pointer;',
+      '}',
+      '.' + P + '-grp-badge[data-rev-nav="1"]:hover {',
+      '  filter: brightness(0.96);',
+      '}',
     ].join('\n');
 
     var style = document.createElement('style');
@@ -792,6 +838,17 @@
     var r = data.requested || {};
     var c = data.current   || {};
 
+    // Detect a Product (productName) from→to change so we can suppress
+    // the redundant "— productName" suffix in the header (otherwise the
+    // em-dash reads as ambiguous old/new). Buildup mirrors the field
+    // diff loop below, just for productName.
+    var hasProductChange = false;
+    if (r.productName != null && c.productName != null
+        && String(r.productName).trim() !== ''
+        && String(c.productName).trim() !== String(r.productName).trim()) {
+      hasProductChange = true;
+    }
+
     var h = [];
     h.push('<div style="font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:#1e293b;max-width:600px;">');
     h.push('<div style="background:' + palette.bg + ';border:1px solid ' + palette.border + ';border-radius:6px;padding:10px 14px;">');
@@ -800,7 +857,7 @@
     h.push('<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">');
     h.push('<span style="display:inline-block;padding:1px 6px;border-radius:3px;background:' + palette.badge + ';color:' + palette.badgeText + ';font-size:10px;font-weight:700;letter-spacing:0.5px;">' + palette.label + '</span>');
     h.push('<span style="font-weight:600;font-size:13px;">' + escHtml(data.displayLabel || data.productName || 'Item') + '</span>');
-    if (data.productName && data.displayLabel && data.productName !== data.displayLabel) {
+    if (!hasProductChange && data.productName && data.displayLabel && data.productName !== data.displayLabel) {
       h.push('<span style="color:#64748b;font-size:12px;">&mdash; ' + escHtml(data.productName) + '</span>');
     }
     h.push('</div>');
@@ -827,20 +884,31 @@
           fromStr = fromStr.replace(/,\s*/g, '<br>');
           toStr = toStr.replace(/,\s*/g, '<br>');
         }
-        fieldRows.push({ label: d.label, fromStr: fromStr, toStr: toStr });
+        fieldRows.push({ key: d.key, label: d.label, fromStr: fromStr, toStr: toStr });
       }
+
+      // Hoist a Product change to the top — biggest swap should read first.
+      fieldRows.sort(function (a, b) {
+        if (a.key === 'productName' && b.key !== 'productName') return -1;
+        if (b.key === 'productName' && a.key !== 'productName') return 1;
+        return 0;
+      });
 
       if (fieldRows.length) {
         h.push('<table style="width:100%;border-collapse:collapse;font-size:12px;">');
         for (var ri = 0; ri < fieldRows.length; ri++) {
           var fr = fieldRows[ri];
+          var isProductRow = (fr.key === 'productName');
+          var rowSize = isProductRow ? '13px' : '12px';
+          var labelWeight = isProductRow ? '700' : '500';
+          var toWeight = isProductRow ? '700' : '600';
           h.push('<tr>');
-          h.push('<td style="padding:3px 8px 3px 0;color:#475569;white-space:nowrap;font-weight:500;">' + escHtml(fr.label) + '</td>');
+          h.push('<td style="padding:3px 8px 3px 0;color:#475569;white-space:nowrap;font-weight:' + labelWeight + ';font-size:' + rowSize + ';">' + escHtml(fr.label) + '</td>');
           if (action === 'revise') {
-            h.push('<td style="padding:3px 8px;color:#94a3b8;text-decoration:line-through;">' + fr.fromStr + '</td>');
-            h.push('<td style="padding:3px 0;color:#94a3b8;">&rarr;</td>');
+            h.push('<td style="padding:3px 8px;color:#94a3b8;text-decoration:line-through;font-size:' + rowSize + ';">' + fr.fromStr + '</td>');
+            h.push('<td style="padding:3px 0;color:#94a3b8;font-size:' + rowSize + ';">&rarr;</td>');
           }
-          h.push('<td style="padding:3px 8px;font-weight:600;color:' + palette.color + ';">' + fr.toStr + '</td>');
+          h.push('<td style="padding:3px 8px;font-weight:' + toWeight + ';color:' + palette.color + ';font-size:' + rowSize + ';">' + fr.toStr + '</td>');
           h.push('</tr>');
         }
         h.push('</table>');
@@ -2132,6 +2200,9 @@
         var tr = document.createElement('tr');
         tr.className = ORPHAN_ROW_CLS;
         tr.setAttribute('data-sort-order', getRevSortOrder(items[oi]));
+        // Tag with the revision record id so navigateToRevision() can
+        // scroll to it from the floating panel.
+        if (items[oi].id) tr.setAttribute('data-rev-id', items[oi].id);
         var td = document.createElement('td');
         td.setAttribute('colspan', colspan);
         td.appendChild(makeOrphanCard(items[oi]));
@@ -2163,7 +2234,9 @@
       header.textContent = 'Add Requests (' + ungrouped.length + ')';
       section.appendChild(header);
       for (var ui = 0; ui < ungrouped.length; ui++) {
-        section.appendChild(makeOrphanCard(ungrouped[ui]));
+        var oCard = makeOrphanCard(ungrouped[ui]);
+        if (ungrouped[ui].id) oCard.setAttribute('data-rev-id', ungrouped[ui].id);
+        section.appendChild(oCard);
       }
       if (viewEl.firstChild) {
         viewEl.insertBefore(section, viewEl.firstChild);
@@ -2312,6 +2385,89 @@
     buildRevisionBar(viewEl, revMap, orphaned);
   }
 
+  // ── NAVIGATION ────────────────────────────────────────────
+  /**
+   * Jump to a revision in context: find the target row (matched survey
+   * item or orphan add), expand any collapsed group ancestors so the
+   * row is visible, expand the worksheet card accordion, scroll the
+   * row into view, and pulse it briefly to draw the eye.
+   *
+   * Big quotes hide revisions inside collapsed groups, so the floating
+   * "Pending revisions" panel exposes the items but the user couldn\'t
+   * see them in context. This is the bridge.
+   *
+   * @param {string} targetId — surveyItemId for matched revisions
+   * @param {string} revId    — revision record id (fallback for orphans)
+   */
+  function navigateToRevision(targetId, revId) {
+    var target = null;
+
+    // Matched revision: find the worksheet row by record id.
+    if (targetId) {
+      target = document.querySelector('tr.scw-ws-row[id="' + targetId + '"]');
+    }
+    // Orphan add or unmatched: find by data-rev-id.
+    if (!target && revId) {
+      target = document.querySelector('tr[data-rev-id="' + revId + '"]') ||
+               document.querySelector('[data-rev-id="' + revId + '"]');
+    }
+    if (!target) {
+      SCW.debug('[BidRevInject] navigateToRevision: target not found',
+                'targetId:', targetId, 'revId:', revId);
+      return;
+    }
+
+    // Expand all collapsed group ancestors by clicking the headers.
+    // group-collapse.js binds click handlers on .kn-table-group rows
+    // that toggle .scw-collapsed and show child rows.
+    var tbody = target.parentNode;
+    if (tbody) {
+      // Walk previous siblings, click any collapsed group header until
+      // we hit a level-1 ancestor or the top of the table.
+      var seenL1 = false;
+      var prev = target.previousElementSibling;
+      while (prev && !seenL1) {
+        if (prev.classList && prev.classList.contains('kn-table-group')) {
+          if (prev.classList.contains('scw-collapsed')) {
+            try { prev.click(); } catch (e) {}
+          }
+          if (prev.classList.contains('kn-group-level-1')) seenL1 = true;
+        }
+        prev = prev.previousElementSibling;
+      }
+    }
+
+    // Open the worksheet card accordion if collapsed.
+    var chevron = target.querySelector('.scw-ws-chevron');
+    var detail  = target.querySelector('.scw-ws-detail');
+    if (chevron && detail && !detail.classList.contains('scw-ws-open')) {
+      try { chevron.click(); } catch (e) {}
+    }
+    // Orphan card has its own accordion — open it too.
+    var orphanCard = target.querySelector('.' + P + '-orphan-card');
+    if (orphanCard && !orphanCard.classList.contains('is-expanded')) {
+      var summary = orphanCard.querySelector('.' + P + '-orphan-summary');
+      if (summary) {
+        try { summary.click(); } catch (e) {}
+      }
+    }
+
+    // Scroll into view + pulse highlight.
+    var pulseEl = target.querySelector('.scw-ws-card') || target;
+    setTimeout(function () {
+      try {
+        pulseEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      } catch (e) {
+        pulseEl.scrollIntoView();
+      }
+      pulseEl.classList.remove(P + '-pulse');
+      // Force reflow so the animation can re-trigger if pulsed twice in a row.
+      void pulseEl.offsetWidth;
+      pulseEl.classList.add(P + '-pulse');
+      setTimeout(function () { pulseEl.classList.remove(P + '-pulse'); }, 1600);
+    }, 60);
+  }
+
   // ── FLOATING REVISION BAR ─────────────────────────────────
   var REV_BAR_ID = 'scw-rev-bar';
   var _revBarOpen = false;
@@ -2410,7 +2566,21 @@
                   :                       ' scw-scr-card--revise';
 
       var card = document.createElement('div');
+      card.className = P + '-bar-card';
       card.style.cssText = 'margin:0;';
+      // Tag so the click handler can navigate to the matching row in
+      // the worksheet. surveyItemId is set for matched revisions;
+      // orphan adds carry their own revision record id.
+      if (rev.surveyItemId) card.setAttribute('data-rev-target-id', rev.surveyItemId);
+      if (rev.id)           card.setAttribute('data-rev-id', rev.id);
+      card.title = 'Click to jump to this row in the worksheet';
+      (function (targetId, revId) {
+        card.addEventListener('click', function (e) {
+          // Don't hijack clicks on links / buttons inside the card
+          if (e.target.closest('a,button,input,textarea,select')) return;
+          navigateToRevision(targetId, revId);
+        });
+      })(rev.surveyItemId, rev.id);
 
       // Prefer the pre-built HTML card from field_2695
       if (rev.changeHtml) {
@@ -2731,6 +2901,8 @@
       var header = groupHeaders[gi];
       var changes = 0;
       var adds = 0;
+      var firstChangeRowId = '';   // surveyItemId of first flagged ws-row
+      var firstAddRevId    = '';   // revision id of first orphan row
 
       // Count matched revisions (REVISE/REMOVE) in this group:
       // walk sibling rows until next group header
@@ -2739,9 +2911,11 @@
         if (row.classList.contains('kn-group-level-1')) break;
         if (row.classList.contains('scw-ws-row') && row.querySelector('[' + INJECTED + ']')) {
           changes++;
+          if (!firstChangeRowId) firstChangeRowId = row.id || '';
         }
         if (row.classList.contains(ORPHAN_ROW_CLS)) {
           adds++;
+          if (!firstAddRevId) firstAddRevId = row.getAttribute('data-rev-id') || '';
         }
         row = row.nextElementSibling;
       }
@@ -2752,16 +2926,31 @@
       var badgesWrap = header.querySelector('.scw-group-badges');
       if (!badgesWrap) continue;
 
+      // Build a clickable badge that navigates to the first matching
+      // row in this group. Stop propagation so clicking the badge
+      // doesn't also toggle the group header itself.
+      function bindBadgeNav(badgeEl, surveyItemId, revRecordId) {
+        badgeEl.setAttribute('data-rev-nav', '1');
+        badgeEl.title = 'Jump to the first item below';
+        badgeEl.addEventListener('click', function (e) {
+          e.stopPropagation();
+          e.preventDefault();
+          navigateToRevision(surveyItemId, revRecordId);
+        });
+      }
+
       if (changes) {
         var changeBadge = document.createElement('span');
         changeBadge.className = GRP_BADGE_CLS + ' ' + GRP_BADGE_CLS + '--changes';
         changeBadge.textContent = changes + ' change' + (changes !== 1 ? 's' : '');
+        bindBadgeNav(changeBadge, firstChangeRowId, '');
         badgesWrap.insertBefore(changeBadge, badgesWrap.firstChild);
       }
       if (adds) {
         var addBadge = document.createElement('span');
         addBadge.className = GRP_BADGE_CLS + ' ' + GRP_BADGE_CLS + '--adds';
         addBadge.textContent = adds + ' add' + (adds !== 1 ? 's' : '');
+        bindBadgeNav(addBadge, '', firstAddRevId);
         badgesWrap.insertBefore(addBadge, badgesWrap.firstChild);
       }
     }

@@ -656,6 +656,22 @@
         if (hasValue(cell[cd2.key])) current[cd2.key] = cell[cd2.key];
       }
 
+      // "Revise bid to match" flow: cell holds SOW values (used to prefill
+      // the form), bidCell holds the actual bid values. When the SOW's
+      // product differs from the bid's product, surface that as an
+      // explicit from→to change so the saved card reads
+      //   Product: SCW 16 Port… → SCW 24 Port…
+      // instead of the confusing header em-dash. productName is
+      // displayOnly in the form so the user can't have edited it; we
+      // populate requested.productName here purely for display.
+      if (params.sourceFromSow
+          && bidCell && bidCell.productName
+          && cell.productName
+          && String(bidCell.productName).trim() !== String(cell.productName).trim()) {
+        current.productName    = bidCell.productName;
+        requested.productName  = cell.productName;
+      }
+
       // Clear old reciprocals/noBid-adds from this source before saving.
       // For source items this clears reciprocal connection changes;
       // for reciprocal items this clears noBid add-to-bid entries they created.
@@ -1299,6 +1315,24 @@
                 : action === 'remove' ? { color: '#dc2626', bg: '#fef2f2', border: '#dc262633', badge: '#fee2e2', badgeText: '#991b1b', label: 'REMOVE' }
                 :                       { color: '#3b82f6', bg: '#eff6ff', border: '#3b82f633', badge: '#dbeafe', badgeText: '#1e40af', label: 'REVISE' };
 
+    // When the field list already shows an explicit Product change
+    // (from→to), suppress the trailing "— productName" suffix in the
+    // header — otherwise the header reads
+    //   REVISE SCW 16 Port… (loc) — SCW 24 Port…
+    // and the em-dash is ambiguous (new product? subtitle?). With the
+    // suffix suppressed, the table row "Product: 16 Port → 24 Port"
+    // carries the change information unambiguously.
+    var productChange = false;
+    if (fieldList && fieldList.length) {
+      for (var pci = 0; pci < fieldList.length; pci++) {
+        if (fieldList[pci].field === 'productName' && fieldList[pci].from != null
+            && String(fieldList[pci].from).trim() !== String(fieldList[pci].to).trim()) {
+          productChange = true;
+          break;
+        }
+      }
+    }
+
     var h = [];
     h.push('<div style="font-family:system-ui,-apple-system,sans-serif;font-size:13px;color:#1e293b;max-width:600px;">');
     h.push('<div style="background:' + palette.bg + ';border:1px solid ' + palette.border + ';border-radius:6px;padding:10px 14px;">');
@@ -1307,7 +1341,7 @@
     h.push('<div style="display:flex;align-items:center;gap:8px;margin-bottom:6px;">');
     h.push('<span style="display:inline-block;padding:1px 6px;border-radius:3px;background:' + palette.badge + ';color:' + palette.badgeText + ';font-size:10px;font-weight:700;letter-spacing:0.5px;">' + palette.label + '</span>');
     h.push('<span style="font-weight:600;font-size:13px;">' + escHtml(item.displayLabel || item.productName || 'Item') + '</span>');
-    if (item.productName && item.displayLabel && item.productName !== item.displayLabel) {
+    if (!productChange && item.productName && item.displayLabel && item.productName !== item.displayLabel) {
       h.push('<span style="color:#64748b;font-size:12px;">&mdash; ' + escHtml(item.productName) + '</span>');
     }
     h.push('</div>');
@@ -1318,10 +1352,17 @@
         h.push('<div style="font-size:12px;color:#64748b;font-style:italic;">&ldquo;' + escHtml(item.changeNotes) + '&rdquo;</div>');
       }
     } else if (fieldList && fieldList.length) {
-      // Revise or Add — field changes table
+      // Revise or Add — field changes table.
+      // Move a Product change to the top so the biggest swap is the
+      // first thing readers see.
+      var sortedFields = fieldList.slice().sort(function (a, b) {
+        if (a.field === 'productName' && b.field !== 'productName') return -1;
+        if (b.field === 'productName' && a.field !== 'productName') return 1;
+        return 0;
+      });
       h.push('<table style="width:100%;border-collapse:collapse;font-size:12px;">');
-      for (var fi = 0; fi < fieldList.length; fi++) {
-        var f = fieldList[fi];
+      for (var fi = 0; fi < sortedFields.length; fi++) {
+        var f = sortedFields[fi];
         var isCurrency = false;
         var isConn = false;
         for (var fd = 0; fd < FIELD_DEFS.length; fd++) {
@@ -1331,6 +1372,7 @@
             break;
           }
         }
+        var isProductRow = (f.field === 'productName');
         var fromStr = f.from != null ? escHtml(isCurrency ? fmtCurrencyHtml(f.from) : String(f.from)) : '&mdash;';
         var toStr   = escHtml(isCurrency ? fmtCurrencyHtml(f.to) : String(f.to));
         // Connection fields: use line breaks instead of commas for device lists
@@ -1339,13 +1381,18 @@
           toStr   = toStr.replace(/,\s*/g, '<br>');
         }
 
+        // Emphasize the product-change row so it pops out of the table.
+        var rowSize = isProductRow ? '13px' : '12px';
+        var labelWeight = isProductRow ? '700' : '500';
+        var toWeight = isProductRow ? '700' : '600';
+
         h.push('<tr>');
-        h.push('<td style="padding:3px 8px 3px 0;color:#475569;white-space:nowrap;font-weight:500;">' + escHtml(f.label) + '</td>');
+        h.push('<td style="padding:3px 8px 3px 0;color:#475569;white-space:nowrap;font-weight:' + labelWeight + ';font-size:' + rowSize + ';">' + escHtml(f.label) + '</td>');
         if (action === 'revise') {
-          h.push('<td style="padding:3px 8px;color:#94a3b8;text-decoration:line-through;">' + fromStr + '</td>');
-          h.push('<td style="padding:3px 0;color:#94a3b8;">&rarr;</td>');
+          h.push('<td style="padding:3px 8px;color:#94a3b8;text-decoration:line-through;font-size:' + rowSize + ';">' + fromStr + '</td>');
+          h.push('<td style="padding:3px 0;color:#94a3b8;font-size:' + rowSize + ';">&rarr;</td>');
         }
-        h.push('<td style="padding:3px 8px;font-weight:600;color:' + palette.color + ';">' + toStr + '</td>');
+        h.push('<td style="padding:3px 8px;font-weight:' + toWeight + ';color:' + palette.color + ';font-size:' + rowSize + ';">' + toStr + '</td>');
         h.push('</tr>');
       }
       h.push('</table>');
@@ -1366,9 +1413,23 @@
     var label  = (action === 'add' ? 'ADD' : action === 'remove' ? 'REMOVE' : 'REVISE');
     var displayName = item.displayLabel || item.productName || 'Item';
 
+    // Mirror buildItemHtml: if an explicit Product change is in the
+    // field list, skip the trailing "(productName)" suffix so the
+    // header isn't misread as "old — new".
+    var ptHasProductChange = false;
+    if (fieldList && fieldList.length) {
+      for (var ppi = 0; ppi < fieldList.length; ppi++) {
+        if (fieldList[ppi].field === 'productName' && fieldList[ppi].from != null
+            && String(fieldList[ppi].from).trim() !== String(fieldList[ppi].to).trim()) {
+          ptHasProductChange = true;
+          break;
+        }
+      }
+    }
+
     var lines = [];
     var header = label + ' — ' + displayName;
-    if (item.productName && item.displayLabel && item.productName !== item.displayLabel) {
+    if (!ptHasProductChange && item.productName && item.displayLabel && item.productName !== item.displayLabel) {
       header += ' (' + item.productName + ')';
     }
     lines.push(header);
