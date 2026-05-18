@@ -358,12 +358,34 @@
 
     var title = document.createElement('div');
     title.className = 'scw-bid-review__panel-title';
-    // Pull identity text from the row's label cell — already has
-    // line item label + per-row totals rendered for the row.
+
+    // [LABEL] [PRODUCT NAME] [Equip $X] [Install $Y]
+    // Read each piece from the (now hidden) data row.
     var labelCell = rowTr.children[0];
-    if (labelCell) {
-      title.textContent = (labelCell.textContent || '').replace(/\s+/g, ' ').trim();
+    var sowCell   = rowTr.children[2];
+
+    function readText(scope, sel) {
+      if (!scope) return '';
+      var el = scope.querySelector(sel);
+      return el ? (el.textContent || '').trim() : '';
     }
+
+    var label   = readText(labelCell, '.scw-bid-review__row-label');
+    var product = readText(sowCell,   '.scw-bid-review__cell-label');
+    var equip   = readText(labelCell, '.scw-bid-review__row-total--equip .scw-bid-review__row-total-value');
+    var install = readText(labelCell, '.scw-bid-review__row-total--install .scw-bid-review__row-total-value');
+
+    function chip(cls, text) {
+      var s = document.createElement('span');
+      s.className = 'scw-bid-review__panel-title-' + cls;
+      s.textContent = text;
+      return s;
+    }
+
+    if (label)   title.appendChild(chip('label',   label));
+    if (product) title.appendChild(chip('product', product));
+    if (equip)   title.appendChild(chip('equip',   'Equip: ' + equip));
+    if (install) title.appendChild(chip('install', 'Install: ' + install));
     header.appendChild(title);
 
     var close = document.createElement('button');
