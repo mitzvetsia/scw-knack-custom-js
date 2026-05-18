@@ -471,6 +471,8 @@
 
         var previewLink = document.createElement('a');
         previewLink.href = previewHref;
+        previewLink.target = '_blank';
+        previewLink.rel = 'noopener';
         // Fixed 220px width matches the Customer Link CTA inside the
         // panel above so the action column stacks neatly.
         previewLink.style.cssText = solo
