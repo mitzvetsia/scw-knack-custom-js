@@ -127,6 +127,23 @@
         refreshRecordInViews: [],
         refreshViews:         [],
         reloadOnClose:        false
+      },
+      {
+        // Sales "Edit Proposal" page hosts an "Upload Photos" Vue
+        // menu link (view_2886) that historically opened a JotForm
+        // in a popup window. Intercept it to route uploads through
+        // the bulk-upload modal instead. The record context is the
+        // proposal id, which is the LAST segment of the hash:
+        //   …/sales-edit-proposal/<24-hex>
+        // Make scenarios receiving this payload should key on
+        // linkField:'proposalID'.
+        menuViewId:           'view_2886',
+        linkText:             'Upload Photos',
+        linkField:            'proposalID',
+        hashPattern:          /sales-edit-proposal\/([a-f0-9]{24})/,
+        refreshRecordInViews: [],
+        refreshViews:         [],
+        reloadOnClose:        false
       }
     ]
   };
