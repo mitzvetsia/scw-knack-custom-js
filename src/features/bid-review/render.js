@@ -851,6 +851,76 @@
     return m;
   }
 
+  // ── per-row photo strip ─────────────────────────────────────
+  // Surfaces a compact thumbnail strip in the label cell for line
+  // items that have photos attached, so reviewers can skim "did the
+  // surveyor get evidence for this device?" without expanding the
+  // row. Source: view_3921 (sowItemsViewKey) — the same view that
+  // backs the row-expand worksheet, so the photos here match what
+  // the user sees on click-to-open.
+  //
+  // Cap visible thumbs at 2; surplus shown as a "+N" pill that
+  // doesn't intercept clicks (so the row's click-to-expand still
+  // fires and the user sees the full strip inside the worksheet
+  // card). Individual thumb clicks open the full-size image in a
+  // new tab and stopPropagation so they don't also expand the row.
+  var ROW_PHOTO_VISIBLE = 2;
+  function buildRowPhotoStrip(rowId) {
+    if (!rowId) return null;
+    var view = document.getElementById(CFG.sowItemsViewKey);
+    if (!view) return null;
+    var sourceTr = view.querySelector('tbody tr[id="' + rowId + '"]');
+    if (!sourceTr) return null;
+
+    // field_771 may render as either a class-named td or via
+    // data-field-key (Knack varies by table configuration).
+    var photoCell = sourceTr.querySelector(
+      'td[data-field-key="field_771"], td.field_771'
+    );
+    if (!photoCell) return null;
+
+    var imgSpans = photoCell.querySelectorAll('span[id][data-kn="connection-value"]');
+    var imgUrls = [];
+    for (var i = 0; i < imgSpans.length; i++) {
+      var img = imgSpans[i].querySelector('img[data-kn-img-gallery], img');
+      if (!img) continue;
+      var url = img.getAttribute('data-kn-img-gallery') || img.getAttribute('src') || '';
+      if (url) imgUrls.push(url);
+    }
+    if (!imgUrls.length) return null;
+
+    var strip = el('div', 'scw-bid-review__row-photos');
+    strip.setAttribute('title', imgUrls.length + ' photo' +
+      (imgUrls.length === 1 ? '' : 's') + ' — click a thumb to enlarge');
+
+    var visible = Math.min(ROW_PHOTO_VISIBLE, imgUrls.length);
+    for (var v = 0; v < visible; v++) {
+      var a = document.createElement('a');
+      a.href = imgUrls[v];
+      a.target = '_blank';
+      a.rel = 'noopener';
+      a.className = 'scw-bid-review__row-photo';
+      // Don't let the thumb click bubble up — the row is also
+      // click-to-expand, and we don't want opening a photo to fire
+      // the row's accordion as a side effect.
+      a.addEventListener('click', function (e) { e.stopPropagation(); });
+      var thumb = document.createElement('img');
+      thumb.src = imgUrls[v];
+      thumb.alt = '';
+      thumb.loading = 'lazy';
+      a.appendChild(thumb);
+      strip.appendChild(a);
+    }
+    var hidden = imgUrls.length - visible;
+    if (hidden > 0) {
+      var more = el('span', 'scw-bid-review__row-photo-more', '+' + hidden);
+      // Let this click bubble so it expands the row → full strip
+      // shows up inside the worksheet card automatically.
+      strip.appendChild(more);
+    }
+    return strip;
+  }
+
   // ── data row ────────────────────────────────────────────────
 
   function buildDataRow(row, packages, sowId) {
@@ -912,6 +982,14 @@
           totals.appendChild(installLine);
         }
         labelTd.appendChild(totals);
+      }
+      // Per-row photo evidence strip — sits below totals so the
+      // left column reads as a single "row identity" cluster:
+      // label, money, evidence. Skipped for NEW rows that don't
+      // have a SOW line item yet (no source view_3921 row to scrape).
+      if (row.sowItem) {
+        var photoStrip = buildRowPhotoStrip(row.sowItem);
+        if (photoStrip) labelTd.appendChild(photoStrip);
       }
     }
     tr.appendChild(labelTd);
@@ -1049,14 +1127,63 @@
     return tr;
   }
 
-  // ── L1 detail row (photos + Survey Notes + SCW Notes) ───────
-  // Source: view_3822 (mdfIdfViewKey). Auto-rendered right after each
-  // L1 group header by buildBodyRows so the details are visible
-  // whenever the group is expanded — no separate toggle. Reads
-  // field_771 (photos), field_2457 (survey notes), field_1643 (SCW
-  // notes) for the MDF/IDF record matching mdfIdfId. Returns null
-  // when the source row isn't on the page or has no surfacable
-  // content (we don't want a blank row).
+  // ── L1 survey-notes callout row ─────────────────────────────
+  // Survey notes (field_2457 on view_3822) are the single most
+  // actionable thing the surveyor leaves for the reviewer; burying
+  // them in the same band as photos and SCW notes makes them easy to
+  // miss. This row promotes them to a dedicated amber callout
+  // mounted immediately under the L1 header so they are the first
+  // thing read inside an expanded MDF/IDF group.
+  // Returns null when the source row is missing or the notes field
+  // is empty (no callout = no clutter).
+  function buildL1SurveyNotesRow(mdfIdfId, colSpan) {
+    var view = document.getElementById(CFG.mdfIdfViewKey);
+    var sourceTr = view ? view.querySelector('tbody tr[id="' + mdfIdfId + '"]') : null;
+    if (!sourceTr) return null;
+
+    var surveyText = readRowFieldText(sourceTr, 'field_2457');
+    if (!surveyText) return null;
+
+    var tr = el('tr', 'scw-bid-review__l1-survey-notes-row');
+    var td = el('td', 'scw-bid-review__l1-survey-notes-cell');
+    td.setAttribute('colspan', colSpan);
+
+    var wrap = el('div', 'scw-bid-review__l1-survey-notes-wrap');
+    // SVG clipboard/notepad icon — picked over an emoji so it
+    // renders consistently across browsers and inherits currentColor
+    // for the amber palette.
+    var icon = document.createElement('span');
+    icon.className = 'scw-bid-review__l1-survey-notes-icon';
+    icon.innerHTML =
+      '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" ' +
+      'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+      'stroke-linejoin="round">' +
+      '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>' +
+      '<polyline points="14 2 14 8 20 8"/>' +
+      '<line x1="9" y1="13" x2="15" y2="13"/>' +
+      '<line x1="9" y1="17" x2="15" y2="17"/>' +
+      '</svg>';
+    wrap.appendChild(icon);
+
+    var body = el('div', 'scw-bid-review__l1-survey-notes-body');
+    body.appendChild(el('div', 'scw-bid-review__l1-survey-notes-label', 'Survey Notes'));
+    body.appendChild(el('div', 'scw-bid-review__l1-survey-notes-text', surveyText));
+    wrap.appendChild(body);
+
+    td.appendChild(wrap);
+    tr.appendChild(td);
+    return tr;
+  }
+
+  // ── L1 detail row (photos + SCW Notes) ──────────────────────
+  // Source: view_3822 (mdfIdfViewKey). Auto-rendered right after the
+  // survey-notes callout for each L1 group header by buildBodyRows so
+  // the details are visible whenever the group is expanded — no
+  // separate toggle. Reads field_771 (photos) and field_1643 (SCW
+  // notes) for the MDF/IDF record matching mdfIdfId. Survey notes
+  // (field_2457) are surfaced separately by buildL1SurveyNotesRow so
+  // they read with more weight. Returns null when the source row
+  // isn't on the page or has no surfacable content.
 
   function buildL1DetailRow(mdfIdfId, colSpan) {
     var view = document.getElementById(CFG.mdfIdfViewKey);
@@ -1109,15 +1236,6 @@
       wrap.appendChild(photoSection);
     }
 
-    // Survey Notes (field_2457)
-    var surveyText = readRowFieldText(sourceTr, 'field_2457');
-    if (surveyText) {
-      var s1 = el('div', 'scw-bid-review__l1-detail-section');
-      s1.appendChild(el('div', 'scw-bid-review__l1-detail-label', 'Survey Notes'));
-      s1.appendChild(el('div', 'scw-bid-review__l1-detail-text', surveyText));
-      wrap.appendChild(s1);
-    }
-
     // SCW Notes (field_1643)
     var scwText = readRowFieldText(sourceTr, 'field_1643');
     if (scwText) {
@@ -1157,15 +1275,20 @@
 
       if (group.label) {
         frag.appendChild(buildGroupHeader(group, colSpan, totalRows));
-        // Auto-mount the headend detail row immediately under the L1
-        // header so it's visible whenever the group is expanded
+        // Auto-mount the headend detail rows immediately under the L1
+        // header so they're visible whenever the group is expanded
         // (default state). The accordion toggle on the header walks
-        // siblings up to the next group header — the detail row is a
-        // sibling, so it collapses with the rest of the group.
-        // buildL1DetailRow returns null when the source row is missing
-        // or has no surfacable content (no photos, no notes), keeping
-        // the table free of empty rows.
+        // siblings up to the next group header — these rows are
+        // siblings, so they collapse with the rest of the group.
+        //
+        // Order matters: survey notes first (the most actionable
+        // piece of information the surveyor leaves behind), then the
+        // general detail wrap (photos + SCW notes). Each helper
+        // returns null when its source is missing or empty, so the
+        // table stays free of blank bands.
         if (group.mdfIdfId) {
+          var surveyNotes = buildL1SurveyNotesRow(group.mdfIdfId, colSpan);
+          if (surveyNotes) frag.appendChild(surveyNotes);
           var detail = buildL1DetailRow(group.mdfIdfId, colSpan);
           if (detail) frag.appendChild(detail);
         }
