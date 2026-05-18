@@ -112,6 +112,9 @@
     if (prevBadge) prevBadge.remove();
 
     var warnCount = 0;
+    // Track flagged ws-rows so we can roll the warning up to each
+    // row's MDF/IDF L1 group header (mirrors connected-device-bid-check).
+    var flaggedRows = [];
 
     for (var ri = 0; ri < records.length; ri++) {
       var rec = records[ri];
@@ -126,6 +129,7 @@
       if (!wsRow) continue;
 
       warnCount++;
+      flaggedRows.push(wsRow);
 
       // Inline message under the Connected Device field (when present).
       var connFieldWrap = wsRow.querySelector('[data-scw-field="' + CONN_TO_FIELD + '"]');
@@ -151,6 +155,64 @@
         icon.innerHTML = HEADER_ICON_SVG;
         icon.title = 'No Connected To device set on this camera/reader.';
         warnSlot.appendChild(icon);
+      }
+    }
+
+    // ── Roll warnings up to the MDF/IDF (L1) group header ─────
+    // Mirrors connected-device-bid-check.js. Walk each flagged row's
+    // previous siblings up to its L1 kn-table-group header, accumulate
+    // a count per group, then drop a single pill into the header's
+    // badge slot. One badge per group regardless of how many cameras
+    // inside it are missing a Connected To.
+    // Wipe stale group-header badges from a previous run.
+    var oldGrpBadges = viewEl.querySelectorAll('.scw-missing-conn-grp-badge');
+    for (var ogb = 0; ogb < oldGrpBadges.length; ogb++) oldGrpBadges[ogb].remove();
+
+    if (flaggedRows.length) {
+      var groupCounts = []; // [{ header, count }] in DOM order
+      function indexOfHeader(h) {
+        for (var k = 0; k < groupCounts.length; k++) {
+          if (groupCounts[k].header === h) return k;
+        }
+        return -1;
+      }
+      for (var fr = 0; fr < flaggedRows.length; fr++) {
+        var prev = flaggedRows[fr].previousElementSibling;
+        var groupHeader = null;
+        while (prev) {
+          if (prev.classList && prev.classList.contains('kn-table-group') &&
+              prev.classList.contains('kn-group-level-1')) {
+            groupHeader = prev; break;
+          }
+          prev = prev.previousElementSibling;
+        }
+        if (!groupHeader) continue;
+        var gi = indexOfHeader(groupHeader);
+        if (gi < 0) groupCounts.push({ header: groupHeader, count: 1 });
+        else groupCounts[gi].count++;
+      }
+
+      for (var gj = 0; gj < groupCounts.length; gj++) {
+        var hdr   = groupCounts[gj].header;
+        var hcnt  = groupCounts[gj].count;
+        var slot = hdr.querySelector('.scw-group-badges') ||
+                   hdr.querySelector('.scw-group-inner') ||
+                   hdr.querySelector('td');
+        if (!slot) continue;
+        if (slot.querySelector('.scw-missing-conn-grp-badge')) continue;
+        var gb = document.createElement('span');
+        gb.className = 'scw-missing-conn-grp-badge';
+        gb.style.cssText =
+          'display:inline-flex;align-items:center;gap:4px;' +
+          'padding:2px 8px;border-radius:10px;' +
+          'background:rgba(245,158,11,0.14);color:#b45309;' +
+          'border:1px solid rgba(245,158,11,0.35);' +
+          'font:600 11px/1.4 system-ui,-apple-system,sans-serif;' +
+          'white-space:nowrap;';
+        gb.title = hcnt + ' camera/reader row(s) missing Connected To inside this MDF/IDF group';
+        gb.innerHTML = INLINE_ICON_SVG +
+                       '<span>' + hcnt + ' missing</span>';
+        slot.appendChild(gb);
       }
     }
 
