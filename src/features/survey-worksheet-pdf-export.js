@@ -49,8 +49,33 @@
   // The bucket record ID matches the SOW bid-item schema (same bucket
   // table), but the field key is different from the form-side
   // field_2223 — on the worksheet it lives under field_2366.
+  // view_3505 (SOW line items) uses field_2219 instead, so both keys
+  // are tried when classifying a row.
   var BUCKET_FIELD             = 'field_2366';
+  var BUCKET_FIELD_FALLBACKS   = ['field_2366', 'field_2219'];
   var CAMERAS_READERS_BUCKET   = '6481e5ba38f283002898113c';
+  var OTHER_EQUIPMENT_BUCKET   = '5df12ce036f91b0015404d78';
+
+  // Summary fields that the on-screen worksheet renders but the survey
+  // PDF must NOT surface — typically pricing/labor data the tech in
+  // the field shouldn't see. Keyed by Knack field id; the scraper
+  // skips any .scw-ws-sum-group whose payload td matches.
+  // field_2400 = Labor price (directEdit number on view_3505)
+  // field_2401 = Ext (qty × labor, readOnly on view_3505)
+  // field_2415 = BID reference (e.g. "BD-1") — internal sales linkage
+  //              that has no bearing on the field tech's work.
+  // field_2627 = Product connection on view_3505 — hidden by bucket
+  //              rules on service/assumption rows but the DOM cell
+  //              persists, so explicitly skip in the summary scrape.
+  // field_2187 = legacy bucket connection that surfaces on some
+  //              worksheet views and is meaningless to the tech.
+  var EXCLUDED_SUMMARY_FIELDS = {
+    field_2400: 1,
+    field_2401: 1,
+    field_2415: 1,
+    field_2627: 1,
+    field_2187: 1
+  };
 
   // Distribution-device flag on a survey line item. Cards/records
   // with this field truthy become columns in the connection-map pivot.
@@ -128,6 +153,38 @@
     return norm(el.textContent || '');
   }
 
+  // Return the first truthy value from `map` matched by any key in
+  // `keys` (in order). Used so a render spec can list multiple known
+  // field keys (different worksheet views use different schemas) and
+  // pick whichever one this card happens to have populated.
+  function firstKeyValue(map, keys) {
+    if (!map || !keys) return '';
+    for (var i = 0; i < keys.length; i++) {
+      var k = keys[i];
+      if (k && map[k]) return map[k];
+    }
+    return '';
+  }
+
+  // Group rows like "Project Wide Assumptions8" have the L1 record
+  // count baked into the cell text via a `.scw-group-badges /
+  // .scw-record-count` span. Clone, strip those spans, then read
+  // textContent so the count doesn't end up concatenated onto the
+  // label.
+  function scrapeGroupLabel(tr) {
+    var td = tr && tr.querySelector('td');
+    if (!td) return '';
+    var clone = td.cloneNode(true);
+    var dropSel = '.scw-group-badges, .scw-record-count, ' +
+                  '.scw-collapse-icon, .scw-sa-grp-check, ' +
+                  '.scw-group-inner > svg';
+    var drops = clone.querySelectorAll(dropSel);
+    for (var i = 0; i < drops.length; i++) {
+      drops[i].parentNode && drops[i].parentNode.removeChild(drops[i]);
+    }
+    return norm(clone.textContent || '');
+  }
+
   /** Read the effective value of a detail/summary field cell. Handles
    *  <input>/<textarea>/<select> inside the td as well as plain text. */
   function cellValue(td) {
@@ -184,6 +241,98 @@
     } catch (e) {
       if (!_dsWarned) {
         console.warn('[SCW survey-pdf] photo downsample failed (likely cross-origin canvas taint); falling back to original URLs', e);
+        _dsWarned = true;
+      }
+      return fallback;
+    }
+  }
+
+  // Auto-crop whitespace borders around an image before downsampling.
+  // Walks rows/columns from each edge, treats pixels with all three
+  // RGB channels >= threshold as "white", and stops at the first row
+  // / column containing real content. A small content-relative pad is
+  // kept on each side so the cropped image doesn't visually clip to
+  // the bounding box.
+  //
+  // Used for site maps (typical screenshots have huge white margins)
+  // — for device photos the trip through getImageData isn't worth it
+  // and downsampleImage stays the default path.
+  //
+  // Returns a JPEG data URL, or the fallback URL if the canvas is
+  // tainted by cross-origin pixels.
+  function autoCropAndDownsample(imgEl, maxDim, quality, threshold) {
+    if (!imgEl) return '';
+    var fallback = imgEl.getAttribute('src') || '';
+    threshold = threshold == null ? 245 : threshold;
+    try {
+      if (!imgEl.complete || !imgEl.naturalWidth) return fallback;
+      var w = imgEl.naturalWidth;
+      var h = imgEl.naturalHeight;
+      var work = document.createElement('canvas');
+      work.width = w; work.height = h;
+      var wctx = work.getContext('2d');
+      wctx.drawImage(imgEl, 0, 0);
+
+      var imgData;
+      try {
+        imgData = wctx.getImageData(0, 0, w, h);
+      } catch (taintErr) {
+        // Tainted canvas — fall back to plain downsample (which will
+        // also return the URL fallback if it can't touch pixels).
+        return downsampleImage(imgEl, maxDim, quality);
+      }
+      var data = imgData.data;
+
+      function isWhitePixel(x, y) {
+        var i = (y * w + x) * 4;
+        return data[i] >= threshold &&
+               data[i + 1] >= threshold &&
+               data[i + 2] >= threshold;
+      }
+      function rowIsWhite(y) {
+        for (var x = 0; x < w; x++) if (!isWhitePixel(x, y)) return false;
+        return true;
+      }
+      function colIsWhite(x, top, bottom) {
+        for (var y = top; y <= bottom; y++) if (!isWhitePixel(x, y)) return false;
+        return true;
+      }
+
+      var top = 0, bottom = h - 1, left = 0, right = w - 1;
+      while (top < bottom && rowIsWhite(top))    top++;
+      while (bottom > top && rowIsWhite(bottom)) bottom--;
+      while (left < right && colIsWhite(left, top, bottom))   left++;
+      while (right > left && colIsWhite(right, top, bottom))  right--;
+
+      // Degenerate: image was entirely white. Signal "skip" so the
+      // caller drops this cover entry rather than emitting a blank
+      // landscape page (which is what happens if we fall back to a
+      // plain downsample of all-white pixels).
+      if (top >= bottom || left >= right) {
+        return '__SCW_SKIP_IMAGE__';
+      }
+
+      // Tiny relative pad so cropped content doesn't kiss the edges.
+      var sw = right - left + 1;
+      var sh = bottom - top + 1;
+      var pad = Math.max(4, Math.round(Math.min(sw, sh) * 0.01));
+      top    = Math.max(0,     top    - pad);
+      bottom = Math.min(h - 1, bottom + pad);
+      left   = Math.max(0,     left   - pad);
+      right  = Math.min(w - 1, right  + pad);
+      sw = right - left + 1;
+      sh = bottom - top + 1;
+
+      var scale = Math.min(1, maxDim / Math.max(sw, sh));
+      var dw = Math.max(1, Math.round(sw * scale));
+      var dh = Math.max(1, Math.round(sh * scale));
+      var out = document.createElement('canvas');
+      out.width = dw; out.height = dh;
+      out.getContext('2d').drawImage(work, left, top, sw, sh, 0, 0, dw, dh);
+      return out.toDataURL('image/jpeg', quality);
+    } catch (e) {
+      if (!_dsWarned) {
+        console.warn('[SCW survey-pdf] cover image auto-crop failed', e);
         _dsWarned = true;
       }
       return fallback;
@@ -321,7 +470,7 @@
         var level = tr.classList.contains('kn-group-level-1') ? 1
                   : tr.classList.contains('kn-group-level-2') ? 2
                   : tr.classList.contains('kn-group-level-3') ? 3 : 1;
-        var label = textOf(tr.querySelector('td'));
+        var label = scrapeGroupLabel(tr);
         if (!label) continue;
         if (level === 1) { currentL1 = label; currentL2 = ''; }
         else if (level === 2) { currentL2 = label; }
@@ -349,6 +498,12 @@
     // before the device cards start.
     out = insertL1NotesBlocks(out);
 
+    // PDF ordering: Project Wide Assumptions block always lands at the
+    // very end of the worksheet section, regardless of where the live
+    // worksheet has it. Move the assumption L1 header + every row up
+    // to the next L1 header (or end of list) to the tail.
+    out = pushGroupToEnd(out, 'Project Wide Assumptions');
+
     return {
       viewId: viewId,
       title: title,
@@ -360,11 +515,36 @@
     };
   }
 
-  // Walks the row list and inserts two notes blocks per L1 group:
-  //   - 'header' position: directly under the MDF/IDF header (for
-  //     location-level notes the tech captures before the device cards)
-  //   - 'tail'   position: at the end of the L1 group (catch-all for
-  //     anything that didn't fit a structured field)
+  // Slice out one L1 group's run (its group header + every following
+  // non-L1 row up to the next L1 header) and append it to the end of
+  // the row list. Used to keep Project Wide Assumptions at the very
+  // bottom of the PDF regardless of where the live worksheet sorts it.
+  function pushGroupToEnd(rows, groupLabel) {
+    var startIdx = -1;
+    for (var i = 0; i < rows.length; i++) {
+      if (rows[i].type === 'group' && rows[i].level === 1 &&
+          rows[i].label === groupLabel) {
+        startIdx = i;
+        break;
+      }
+    }
+    if (startIdx === -1) return rows;
+    var endIdx = rows.length;
+    for (var j = startIdx + 1; j < rows.length; j++) {
+      if (rows[j].type === 'group' && rows[j].level === 1) {
+        endIdx = j;
+        break;
+      }
+    }
+    var slice = rows.slice(startIdx, endIdx);
+    var head  = rows.slice(0, startIdx);
+    var tail  = rows.slice(endIdx);
+    return head.concat(tail).concat(slice);
+  }
+
+  // Walks the row list and inserts one notes block at the END of each
+  // L1 group (the 'tail' block). Used to be a header+tail pair but
+  // the header block was redundant with the tail and just ate space.
   function insertL1NotesBlocks(rows) {
     var out = [];
     var inL1 = false;
@@ -380,7 +560,6 @@
         inL1 = true;
         currentL1 = r.label;
         out.push(r);
-        out.push({ type: 'l1-notes', position: 'header', groupL1: r.label });
         continue;
       }
       out.push(r);
@@ -453,8 +632,16 @@
   }
 
   // Preload a URL into an <img>, downsample on load, call cb with the
-  // data URL (or the original URL if loading/canvas fails).
-  function preloadAndDownsample(url, maxDim, quality, cb) {
+  // data URL (or the original URL if loading/canvas fails). When
+  // autoCrop is true the image is walked edge-in to strip whitespace
+  // borders (used for site maps where the source screenshot has huge
+  // white margins).
+  function preloadAndDownsample(url, maxDim, quality, autoCrop, cb) {
+    // Back-compat: old (url, maxDim, quality, cb) signature.
+    if (typeof autoCrop === 'function' && cb == null) {
+      cb = autoCrop;
+      autoCrop = false;
+    }
     if (!url) { cb(''); return; }
     var img = new Image();
     var done = false;
@@ -465,7 +652,10 @@
     }
     img.onload = function () {
       try {
-        var ds = downsampleImage(img, maxDim, quality);
+        var ds = autoCrop
+          ? autoCropAndDownsample(img, maxDim, quality)
+          : downsampleImage(img, maxDim, quality);
+        if (ds === '__SCW_SKIP_IMAGE__') { finish(null); return; }
         finish(ds || url);
       } catch (e) {
         finish(url);
@@ -478,7 +668,7 @@
     img.src = url;
   }
 
-  function refreshImageCacheForView(viewId, sectionLabel, maxDim, quality) {
+  function refreshImageCacheForView(viewId, sectionLabel, maxDim, quality, autoCrop) {
     try {
       var view = window.Knack && Knack.views && Knack.views[viewId];
       if (!view) { imageCache[viewId] = []; return; }
@@ -502,8 +692,14 @@
           };
           nextCache.push(entry);
           (function (e, u) {
-            preloadAndDownsample(u, maxDim, quality, function (dataUrl) {
-              if (dataUrl) e.src = dataUrl;
+            preloadAndDownsample(u, maxDim, quality, !!autoCrop, function (dataUrl) {
+              if (dataUrl === null) {
+                // All-white / degenerate crop — flag for skip so
+                // getImagesForView filters this entry entirely.
+                e.skip = true;
+              } else if (dataUrl) {
+                e.src = dataUrl;
+              }
               e.loaded = true;
             });
           })(entry, rawUrl);
@@ -524,6 +720,7 @@
     var out = [];
     for (var i = 0; i < entries.length; i++) {
       var c = entries[i];
+      if (c.skip) continue;
       out.push({ src: c.src, label: c.label, alt: c.alt });
     }
     return out;
@@ -546,11 +743,14 @@
     for (var i = 0; i < all.length; i++) {
       (function (cfg) {
         $(document).on('knack-view-render.' + cfg.viewId + '.scwSurveyPdf', function () {
-          // Covers use a larger max-dim than trailing photos.
+          // Covers use a larger max-dim than trailing photos, and
+          // auto-crop whitespace so site map screenshots fill the
+          // page instead of getting margins on top of the page margins.
           var isCover = COVER_IMAGE_VIEWS.indexOf(cfg) !== -1;
-          var maxDim  = isCover ? 1400 : 600;
-          var quality = isCover ? 0.8  : 0.65;
-          refreshImageCacheForView(cfg.viewId, cfg.label, maxDim, quality);
+          var maxDim   = isCover ? 1800 : 600;
+          var quality  = isCover ? 0.82 : 0.65;
+          var autoCrop = isCover;
+          refreshImageCacheForView(cfg.viewId, cfg.label, maxDim, quality, autoCrop);
         });
       })(all[i]);
     }
@@ -709,6 +909,19 @@
       }
     }
 
+    // Hoisted so the summary scrape below can promote chit-host
+    // values directly into the detail map (used by the flags band).
+    // The detail panel walk later will add to these.
+    var detailValues = {};
+    var detailHasAnyField = false;
+    // Labor / SCW Notes on view_3505 live in the SUMMARY bar (not
+    // the detail panel). Promote them out of summaryFields so the
+    // 3-column body's col-2 / col-3 renderers can pick them up.
+    var laborText = '';
+    var scwText   = '';
+    var LABOR_KEYS = ['field_2409', 'field_2020'];
+    var SCW_KEYS   = ['field_2418', 'field_1953'];
+
     // Summary fields (right bar + "fill" fields like Survey Notes)
     // Each .scw-ws-sum-group has a .scw-ws-sum-label + the field td.
     var summaryFields = [];
@@ -724,9 +937,50 @@
           'td.scw-ws-sum-field, td.scw-ws-sum-field-ro, td.scw-ws-sum-direct-edit, td.scw-ws-sum-chip-host'
         );
         if (!fieldTd) continue;
+        // Skip blacklisted fields (e.g. labor pricing) regardless of value.
+        var fieldKey = fieldTd.getAttribute('data-field-key') || '';
+        if (fieldKey && EXCLUDED_SUMMARY_FIELDS[fieldKey]) continue;
         var val = cellValue(fieldTd);
         if (!val) continue;
+        // On view_3505 the cabling/exterior/plenum chits live in the
+        // summary bar, not the detail panel. Their group has an empty
+        // .scw-ws-sum-label (just &nbsp;), so left alone they render
+        // as bare "No / Yes / No" tokens in the card header. Promote
+        // chit-host values into the detailValues map instead so the
+        // flags band renders them properly with labels + checkboxes,
+        // and suppress from the header summary.
+        if (fieldTd.classList.contains('scw-ws-sum-chip-host')) {
+          if (fieldKey) detailValues[fieldKey] = val;
+          detailHasAnyField = true;
+          continue;
+        }
+        // Labor Description / SCW Notes live in the summary bar on
+        // view_3505 with an unhelpful label ("Labor Desc"). Promote
+        // them to dedicated card fields so the 3-col body's
+        // labor / scw cells render them instead of letting them
+        // surface as labelled summary chips in the header.
+        if (fieldKey && LABOR_KEYS.indexOf(fieldKey) !== -1) {
+          if (val) laborText = val;
+          continue;
+        }
+        if (fieldKey && SCW_KEYS.indexOf(fieldKey) !== -1) {
+          if (val) scwText = val;
+          continue;
+        }
         var lbl = lblEl ? textOf(lblEl) : '';
+        // Quantity is rendered on every card today even when it equals
+        // 1, which is just visual noise. Hide qty <= 1, render >1 as
+        // the small chip on the right of the header.
+        var lblLower = lbl.toLowerCase();
+        if (lblLower === 'qty' || lblLower === 'quantity') {
+          var n = parseFloat(String(val).replace(/[^0-9.\-]/g, ''));
+          if (!isFinite(n) || n <= 1) continue;
+        }
+        // Assumption rows render with an "ASSUMPTION" label on the
+        // body text. Strip that label so the body reads cleanly —
+        // the L1 group header already says "Project Wide Assumptions"
+        // so the per-row prefix is redundant.
+        if (lblLower === 'assumption') lbl = '';
         summaryFields.push({ label: lbl, value: val });
       }
     }
@@ -735,9 +989,8 @@
     // Collect every .scw-ws-field present in the detail panel, keyed
     // by its field_XXXX identifier. The PDF renderer uses a static
     // left/right layout (below) and looks up values from this map.
-    var detailValues = {};
-    var detailHasAnyField = false;
-
+    // detailValues / detailHasAnyField are hoisted above the summary
+    // loop so chit-host promotion can populate them.
     var detail = card.querySelector('.scw-ws-detail');
     if (detail) {
       var fields = detail.querySelectorAll('.scw-ws-field[data-scw-field]');
@@ -791,6 +1044,8 @@
       warnCount: warnCount,
       summaryFields: summaryFields,
       detailValues: detailValues,
+      laborText: laborText,
+      scwText: scwText,
       photos: photos,
       showDetail: showDetail,
       showPhotos: photos.length > 0
@@ -805,34 +1060,51 @@
   // "yesno" → checkbox pair for Yes / No.
   // ══════════════════════════════════════════════════════════════
 
+  // Three horizontal "bands" inside each card, in render order. Empty
+  // bands collapse so service / assumption cards stay short.
+  //   ref     — read-only reference info shown only when populated
+  //   flags   — Y/N pairs inline (cabling / location / plenum)
+  //   measure — height checkbox cluster + drop / conduit fillable
   var PDF_DETAIL_LAYOUT = {
-    // Full-width context rows rendered above the grid. Each is shown
-    // only when the field actually has a value on this card.
-    context: [
-      { key: 'field_2409', label: 'Labor Description', kind: 'text' },
-      { key: 'field_2418', label: 'SCW Notes',         kind: 'text' }
+    // Reference items shown in the LEFT column under the [Label]
+    // [Product] identity line. Only Mount lives here now — Labor
+    // and SCW Notes both render in the right column.
+    ref: [
+      { key: 'field_2463', label: 'Mount' }
     ],
-    left: [
-      // Mounting Hardware is reference data — only show if populated.
-      { key: 'field_2463', label: 'Mounting Hardware', kind: 'text', onlyIfValue: true },
-      // Mounting Height is always printed BLANK — checkboxes for each of
-      // the multi-select options, regardless of what's currently saved.
-      { key: 'field_2455', label: 'Mounting Height',   kind: 'choices',
-        options: ["Under 16'", "16' - 24'", "Over 24'"] },
-      { key: 'field_2367', label: 'Drop Length',       kind: 'fill' },
+    // Rendered as the lead cell of col 2 (plain text, no label prefix).
+    // Multiple keys cover both worksheet schemas:
+    //   field_2409 — view_3800 (survey line items, in detail panel)
+    //   field_2020 — view_3505 (SOW line items, in summary bar)
+    labor: { keys: ['field_2409', 'field_2020'], label: 'Labor Description' },
+    // SCW Notes — secondary col-2 block under labor.
+    //   field_2418 — view_3800 / 3610 / 3596 (in detail panel)
+    //   field_1953 — view_3505 (in detail panel under scwNotes)
+    scwNotes: { keys: ['field_2418', 'field_1953'], label: 'SCW Notes' },
+    flags: [
+      // view_3800 (survey line items)
+      { key: 'field_2370', label: 'Existing', yesLabel: 'Y', noLabel: 'N' },
+      { key: 'field_2372', label: 'Exterior', yesLabel: 'Y', noLabel: 'N' },
+      { key: 'field_2371', label: 'Plenum',   yesLabel: 'Y', noLabel: 'N' },
+      // view_3505 (SOW line items — same flags, different keys)
+      { key: 'field_2461', label: 'Existing', yesLabel: 'Y', noLabel: 'N' },
+      { key: 'field_1984', label: 'Exterior', yesLabel: 'Y', noLabel: 'N' },
+      { key: 'field_1983', label: 'Plenum',   yesLabel: 'Y', noLabel: 'N' },
+      // DTO line items (added when bucket == Camera or Readers per
+      // bucket-field-visibility config). renderFlagsRow only emits
+      // rows whose key is actually populated in detailValues, so on
+      // non-camera rows these stay invisible automatically.
+      { key: 'field_2739', label: 'Exterior', yesLabel: 'Y', noLabel: 'N' },
+      { key: 'field_2740', label: 'Plenum',   yesLabel: 'Y', noLabel: 'N' }
+    ],
+    measure: [
+      { key: 'field_2455', label: 'Height',  kind: 'choices',
+        options: ["<16'", "16-24'", ">24'"] },
+      { key: 'field_2367', label: 'Drop',    kind: 'fill', unit: 'ft' },
       // Conduit Ft is always printed blank — the survey is the source
       // of truth for this measurement, not whatever's already on the
       // record.
-      { key: 'field_2368', label: 'Conduit Ft',        kind: 'fill', forceBlank: true }
-    ],
-    right: [
-      // Yes = Existing Cabling, No = New Cabling
-      { key: 'field_2370', label: 'Cabling', kind: 'yesno',
-        yesLabel: 'Existing Cabling', noLabel: 'New Cabling' },
-      // Yes = Exterior, No = Interior
-      { key: 'field_2372', label: 'Location', kind: 'yesno',
-        yesLabel: 'Exterior', noLabel: 'Interior' },
-      { key: 'field_2371', label: 'Plenum',  kind: 'yesno' }
+      { key: 'field_2368', label: 'Conduit', kind: 'fill', unit: 'ft', forceBlank: true }
     ]
   };
 
@@ -903,7 +1175,7 @@
     }
     h.push('</div>');
     h.push('<div class="ws-notes-lines ws-notes-lines--l1">');
-    for (var i = 0; i < 5; i++) {
+    for (var i = 0; i < 2; i++) {
       h.push('<div class="ws-notes-line"></div>');
     }
     h.push('</div>');
@@ -926,15 +1198,25 @@
   // doesn't render the bucket or field_2374, so detailValues is
   // not a reliable source.
 
-  function isCamerasReadersBucket(card) {
+  // Generic bucket-ID match across the survey + SOW worksheet keys.
+  function bucketMatches(card, bucketId, regex) {
     if (!card || !card.raw) return false;
-    // Primary: connection _raw holds [{id, identifier}]
-    var bucketId = bucketIdOf(card.raw, BUCKET_FIELD);
-    if (bucketId && bucketId === CAMERAS_READERS_BUCKET) return true;
-    // Fallback: display string (e.g. "Cameras or Readers")
-    var disp = card.raw[BUCKET_FIELD];
-    if (typeof disp === 'string' && /camera|reader/i.test(disp)) return true;
+    for (var i = 0; i < BUCKET_FIELD_FALLBACKS.length; i++) {
+      var fk = BUCKET_FIELD_FALLBACKS[i];
+      var bid = bucketIdOf(card.raw, fk);
+      if (bid && bid === bucketId) return true;
+      var disp = card.raw[fk];
+      if (regex && typeof disp === 'string' && regex.test(disp)) return true;
+    }
     return false;
+  }
+
+  function isCamerasReadersBucket(card) {
+    return bucketMatches(card, CAMERAS_READERS_BUCKET, /camera|reader/i);
+  }
+
+  function isOtherEquipmentBucket(card) {
+    return bucketMatches(card, OTHER_EQUIPMENT_BUCKET, /other.*equipment/i);
   }
 
   function isDistributionDevice(card) {
@@ -1088,23 +1370,93 @@
     return '<div class="' + cls + '">' + esc(row.label) + '</div>';
   }
 
-  function renderContextRows(card, specs) {
-    var h = [];
+  // ── Reference band ──
+  // Compact read-only info — labor description, mounting hardware,
+  // SCW notes from the original proposal. Each item is single-line;
+  // items with no value are omitted. Iterates PDF_DETAIL_LAYOUT.ref
+  // so the field set is configurable without touching the renderer.
+  function renderRefSection(card) {
+    var specs = PDF_DETAIL_LAYOUT.ref || [];
+    var items = [];
     for (var i = 0; i < specs.length; i++) {
-      var spec = specs[i];
-      if (!(spec.key in card.detailValues)) continue;
-      var value = card.detailValues[spec.key] || '';
-      if (!value) continue; // context rows are always onlyIfValue
-      h.push('<div class="ws-context-row">');
-      h.push('<span class="ws-context-label">' + esc(spec.label) + '</span>');
-      h.push('<span class="ws-context-value">' + esc(value) + '</span>');
-      h.push('</div>');
+      var s = specs[i];
+      if (!(s.key in card.detailValues)) continue;
+      var v = card.detailValues[s.key] || '';
+      if (!v) continue;
+      items.push(
+        '<div class="ws-ref-item">' +
+          '<span class="ws-ref-label">' + esc(s.label) + '</span>' +
+          '<span class="ws-ref-value">' + esc(v) + '</span>' +
+        '</div>'
+      );
     }
-    return h.join('');
+    if (!items.length) return '';
+    return '<div class="ws-ref">' + items.join('') + '</div>';
   }
 
+  // ── Yes/No flag band ──
+  // Single horizontal row of Yes/No pairs. Existing saved values are
+  // pre-checked so the tech sees what was already answered and can
+  // override on paper if needed.
+  function renderFlagsRow(card) {
+    var specs = PDF_DETAIL_LAYOUT.flags || [];
+    var items = [];
+    for (var i = 0; i < specs.length; i++) {
+      var s = specs[i];
+      if (!(s.key in card.detailValues)) continue;
+      var v = String(card.detailValues[s.key] || '').toLowerCase();
+      var yesOn = v === 'yes' || v === 'true';
+      var noOn  = v === 'no'  || v === 'false';
+      items.push(
+        '<div class="ws-flag">' +
+          '<span class="ws-flag-label">' + esc(s.label) + '</span>' +
+          '<span class="ws-box' + (yesOn ? ' is-on' : '') + '">' + (yesOn ? '☒' : '☐') + '</span>' +
+          '<span class="ws-flag-opt">' + esc(s.yesLabel || 'Yes') + '</span>' +
+          '<span class="ws-box' + (noOn ? ' is-on' : '') + '">' + (noOn ? '☒' : '☐') + '</span>' +
+          '<span class="ws-flag-opt">' + esc(s.noLabel || 'No') + '</span>' +
+        '</div>'
+      );
+    }
+    if (!items.length) return '';
+    return '<div class="ws-flags">' + items.join('') + '</div>';
+  }
+
+  // ── Measurement band ──
+  // Mounting Height (multi-checkbox), Drop Length (fillable),
+  // Conduit Ft (fillable, always blank — survey is the source of
+  // truth). All inline on one row.
+  function renderMeasureRow(card) {
+    var specs = PDF_DETAIL_LAYOUT.measure || [];
+    var items = [];
+    for (var i = 0; i < specs.length; i++) {
+      var s = specs[i];
+      if (!(s.key in card.detailValues)) continue;
+      var item = ['<div class="ws-m-item">',
+                  '<span class="ws-m-label">' + esc(s.label) + '</span>'];
+      if (s.kind === 'choices') {
+        var opts = s.options || [];
+        for (var oi = 0; oi < opts.length; oi++) {
+          item.push('<span class="ws-box">☐</span>');
+          item.push('<span class="ws-flag-opt">' + esc(opts[oi]) + '</span>');
+        }
+      } else if (s.kind === 'fill') {
+        var fv = s.forceBlank ? '' : (card.detailValues[s.key] || '');
+        item.push('<span class="ws-fill">' + esc(fv) + '</span>');
+        if (s.unit) item.push('<span class="ws-m-unit">' + esc(s.unit) + '</span>');
+      }
+      item.push('</div>');
+      items.push(item.join(''));
+    }
+    if (!items.length) return '';
+    return '<div class="ws-measure">' + items.join('') + '</div>';
+  }
+
+  // Legacy 2-column detail renderer — kept for now in case a
+  // downstream consumer calls into it via the legacy PDF_DETAIL_LAYOUT
+  // shape, but unused by the current renderCard flow.
   function renderDetailColumn(card, specs) {
     var h = [];
+    if (!specs) return '';
     for (var i = 0; i < specs.length; i++) {
       var spec = specs[i];
       // Only render fields that actually exist on this card's detail panel.
@@ -1156,17 +1508,34 @@
 
   function renderCard(card) {
     var h = [];
-    h.push('<section class="ws-card' + (card.showDetail ? '' : ' ws-card--header-only') + '">');
+    // Two-column body lights up when the card has detail data
+    // (cameras/readers, NVRs, switches). Service/assumption rows
+    // collapse to a single brief header line + body text.
+    var brief = !card.showDetail;
+    var cls = 'ws-card' +
+      (card.showDetail ? '' : ' ws-card--header-only ws-card--brief');
+    h.push('<section class="' + cls + '">');
 
     // ── Header row ──
+    // For brief (service/assumption) cards the header carries the
+    // full identity (label + product + warn + summary fields).
+    // For detail cards the identity moves into col 1; the header
+    // becomes a thin strip for residual chips (warn, qty, Other
+    // Notes summary) only.
     h.push('<header class="ws-header">');
     h.push('<div class="ws-identity">');
-    if (card.label) h.push('<span class="ws-label">' + esc(card.label) + '</span>');
-    if (card.label && card.product) h.push('<span class="ws-sep">&middot;</span>');
-    if (card.product) h.push('<span class="ws-product">' + esc(card.product) + '</span>');
-    if (card.warnCount > 0) {
-      h.push('<span class="ws-warn">&#9888; ' + card.warnCount + '</span>');
+    if (brief) {
+      // Knack's identifier formula often concatenates "name - product"
+      // and renders a trailing " - " when product is empty (typical
+      // for assumption / service rows). Strip it so the header reads
+      // cleanly.
+      var briefLabel = String(card.label || '').replace(/\s*[-–—]\s*$/, '');
+      if (briefLabel) h.push('<span class="ws-label">' + esc(briefLabel) + '</span>');
+      if (briefLabel && card.product) h.push('<span class="ws-sep">&middot;</span>');
+      if (card.product) h.push('<span class="ws-product">' + esc(card.product) + '</span>');
     }
+    // Warning / alert chits intentionally suppressed — survey PDF
+    // is a fill-in-the-field doc; on-screen QA chips are noise here.
     h.push('</div>');
 
     if (card.summaryFields.length) {
@@ -1188,39 +1557,62 @@
     }
     h.push('</header>');
 
-    // ── Full-width context rows (labor desc, scw notes) ──
-    if (card.showDetail && PDF_DETAIL_LAYOUT.context) {
-      var ctxHtml = renderContextRows(card, PDF_DETAIL_LAYOUT.context);
-      if (ctxHtml) {
-        h.push('<div class="ws-context">');
-        h.push(ctxHtml);
+    // ── Two-column body (camera/reader/NVR cards only) ──
+    if (card.showDetail) {
+      // Notes square is reserved for cards where the tech is likely
+      // to capture install observations (cameras/readers/networking).
+      // Other Equipment cards (UPS, racks, hard drives) don't need it
+      // — they're spec'd by part number, not surveyed.
+      var renderNotesSquare = !isOtherEquipmentBucket(card);
+
+      var laborSpec = PDF_DETAIL_LAYOUT.labor || {};
+      var laborVal  = card.laborText || firstKeyValue(card.detailValues, laborSpec.keys || (laborSpec.key ? [laborSpec.key] : []));
+      var scwSpec   = PDF_DETAIL_LAYOUT.scwNotes || {};
+      var scwVal    = card.scwText || firstKeyValue(card.detailValues, scwSpec.keys || (scwSpec.key ? [scwSpec.key] : []));
+
+      h.push('<div class="ws-body-3col">');
+      // ── Col 1 — identity + ref + flags + measure ──
+      h.push('<div class="ws-body-col ws-body-col--left">');
+      if (card.label || card.product) {
+        h.push('<div class="ws-id-line">');
+        if (card.label) {
+          h.push('<span class="ws-id-label">' + esc(card.label) + '</span>');
+        }
+        if (card.product) {
+          h.push('<span class="ws-id-product">' + esc(card.product) + '</span>');
+        }
         h.push('</div>');
       }
+      h.push(renderRefSection(card));
+      h.push(renderFlagsRow(card));
+      h.push(renderMeasureRow(card));
+      h.push('</div>');
+
+      // ── Col 2 — Labor Description (plain text, no label) ──
+      h.push('<div class="ws-body-col ws-body-col--mid">');
+      if (laborVal) {
+        h.push('<div class="ws-labor">' + esc(laborVal) + '</div>');
+      }
+      h.push('</div>');
+
+      // ── Col 3 — SCW Notes + open tech-notes square ──
+      h.push('<div class="ws-body-col ws-body-col--right">');
+      if (scwVal) {
+        h.push('<div class="ws-labor ws-labor--scw">');
+        h.push('<div class="ws-labor-label">' + esc(scwSpec.label || 'SCW Notes') + '</div>');
+        h.push('<div class="ws-labor-value">' + esc(scwVal) + '</div>');
+        h.push('</div>');
+      }
+      if (renderNotesSquare) {
+        h.push('<div class="ws-notes-open">');
+        h.push('<div class="ws-notes-open-label">Notes</div>');
+        h.push('</div>');
+      }
+      h.push('</div>');
+      h.push('</div>');
     }
 
-    // ── Detail grid (static left/right layout + fillable blanks) ──
-    if (card.showDetail) {
-      h.push('<div class="ws-detail">');
-      h.push('<div class="ws-detail-col">');
-      h.push(renderDetailColumn(card, PDF_DETAIL_LAYOUT.left));
-      h.push('</div>');
-      h.push('<div class="ws-detail-col">');
-      h.push(renderDetailColumn(card, PDF_DETAIL_LAYOUT.right));
-      h.push('</div>');
-      h.push('</div>');
-
-      // ── Blank notes area ──
-      h.push('<div class="ws-notes">');
-      h.push('<div class="ws-notes-label">Notes</div>');
-      h.push('<div class="ws-notes-lines">');
-      h.push('<div class="ws-notes-line"></div>');
-      h.push('<div class="ws-notes-line"></div>');
-      h.push('<div class="ws-notes-line"></div>');
-      h.push('</div>');
-      h.push('</div>');
-    }
-
-    // ── Photo strip ──
+    // ── Photo strip (full width below the 2-col body) ──
     if (card.showPhotos) {
       h.push('<div class="ws-photos">');
       for (var p = 0; p < card.photos.length; p++) {
@@ -1257,13 +1649,35 @@
 
     return [
       '@page {',
-      '  size: letter;',
-      '  margin: 0.2in 0.225in 0.35in 0.225in;',
+      '  size: letter portrait;',
+      '  margin: 0.18in 0.2in 0.3in 0.2in;',
       '  @bottom-center {',
       '    content: "' + footerPrefix + '" counter(page) " of " counter(pages);',
       '    font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;',
-      '    font-size: 8pt; color: #6b7280;',
-      '    margin-top: 0.05in;',
+      '    font-size: 7.5pt; color: #6b7280;',
+      '    margin-top: 0.04in;',
+      '  }',
+      '}',
+      '/* Site-map pages and the connection-pivot page go landscape — */',
+      '/* maps are usually wider than tall, and the pivot has many cols. */',
+      '@page landscape-map {',
+      '  size: letter landscape;',
+      '  margin: 0.18in 0.2in 0.3in 0.2in;',
+      '  @bottom-center {',
+      '    content: "' + footerPrefix + '" counter(page) " of " counter(pages);',
+      '    font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;',
+      '    font-size: 7.5pt; color: #6b7280;',
+      '    margin-top: 0.04in;',
+      '  }',
+      '}',
+      '@page landscape-pivot {',
+      '  size: letter landscape;',
+      '  margin: 0.18in 0.2in 0.3in 0.2in;',
+      '  @bottom-center {',
+      '    content: "' + footerPrefix + '" counter(page) " of " counter(pages);',
+      '    font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;',
+      '    font-size: 7.5pt; color: #6b7280;',
+      '    margin-top: 0.04in;',
       '  }',
       '}',
       '@media print { body { -webkit-print-color-adjust: exact; print-color-adjust: exact; } }',
@@ -1271,49 +1685,49 @@
       '*, *::before, *::after { box-sizing: border-box; }',
       'body {',
       '  font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;',
-      '  color: #1f2937; font-size: 11px; line-height: 1.4;',
-      '  margin: 0; padding: 8px;',
+      '  color: #1f2937; font-size: 9.5px; line-height: 1.25;',
+      '  margin: 0; padding: 4px;',
       '}',
       '.doc-title {',
-      '  font-size: 20px; font-weight: 800; color: #07467c;',
-      '  margin: 0 0 12px 0; padding-bottom: 6px;',
-      '  border-bottom: 3px solid #07467c;',
+      '  font-size: 16px; font-weight: 800; color: #07467c;',
+      '  margin: 0 0 6px 0; padding-bottom: 3px;',
+      '  border-bottom: 2px solid #07467c;',
       '}',
       '',
       '/* Page 1 info cover (detail views: view_3796/3795/3798) */',
       '.info-cover {',
       '  page-break-after: always; break-after: page;',
-      '  padding: 0.2in 0.15in; min-height: 10.3in;',
+      '  padding: 0.1in 0.1in; min-height: 10.3in;',
       '}',
       '.info-cover-title {',
-      '  font-size: 22px; font-weight: 800; color: #07467c;',
-      '  margin: 0 0 14px 0; padding-bottom: 6px;',
-      '  border-bottom: 3px solid #07467c; text-align: center;',
+      '  font-size: 17px; font-weight: 800; color: #07467c;',
+      '  margin: 0 0 8px 0; padding-bottom: 3px;',
+      '  border-bottom: 2px solid #07467c; text-align: center;',
       '}',
       '.info-cover-section {',
-      '  margin-bottom: 16px; padding: 10px 12px;',
-      '  border: 1px solid #d0d7de; border-radius: 6px;',
+      '  margin-bottom: 8px; padding: 6px 10px;',
+      '  border: 1px solid #d0d7de; border-radius: 4px;',
       '  background: #f8fafc; page-break-inside: avoid;',
       '}',
       '.info-cover-section-title {',
-      '  font-size: 13px; font-weight: 700; color: #07467c;',
-      '  margin: 0 0 8px 0; padding-bottom: 4px;',
+      '  font-size: 11px; font-weight: 700; color: #07467c;',
+      '  margin: 0 0 4px 0; padding-bottom: 2px;',
       '  border-bottom: 1px dashed #c9d4de;',
       '  text-transform: uppercase; letter-spacing: 0.4px;',
       '}',
       '.info-cover-fields {',
       '  margin: 0; padding: 0;',
       '  display: grid; grid-template-columns: 1fr 1fr;',
-      '  column-gap: 20px; row-gap: 4px;',
+      '  column-gap: 16px; row-gap: 2px;',
       '}',
       '.info-cover-field {',
-      '  display: flex; gap: 6px; align-items: baseline;',
-      '  font-size: 11px; padding: 2px 0;',
+      '  display: flex; gap: 5px; align-items: baseline;',
+      '  font-size: 9.5px; padding: 1px 0;',
       '  break-inside: avoid;',
       '}',
       '.info-cover-field dt {',
       '  font-weight: 600; color: #07467c;',
-      '  min-width: 110px; flex: 0 0 110px;',
+      '  min-width: 92px; flex: 0 0 92px;',
       '  margin: 0;',
       '}',
       '.info-cover-field dd {',
@@ -1322,14 +1736,17 @@
       '}',
       '.info-cover-field--wide {',
       '  grid-column: 1 / -1;',
-      '  flex-direction: column; align-items: stretch; gap: 2px;',
+      '  flex-direction: column; align-items: stretch; gap: 1px;',
       '}',
       '.info-cover-field--wide dt {',
       '  min-width: 0; flex: 0 0 auto;',
       '}',
       '',
-      '/* Cover pages rendered before the survey items */',
+      '/* Cover pages rendered before the survey items (site maps, etc.) */',
+      '/* Forced landscape so a typical wide floor-plan screenshot fills */',
+      '/* the page after auto-crop strips the whitespace borders. */',
       '.cover-page {',
+      '  page: landscape-map;',
       '  page-break-after: always; break-after: page;',
       '  text-align: center;',
       '  box-sizing: border-box;',
@@ -1337,9 +1754,9 @@
       '}',
       '.cover-page:last-of-type { page-break-after: always; }',
       '.cover-section-label {',
-      '  font-size: 14px; font-weight: 800; color: #07467c;',
-      '  text-transform: uppercase; letter-spacing: 0.6px;',
-      '  margin: 0 0 6px 0; padding: 4px 0 6px 0;',
+      '  font-size: 12px; font-weight: 800; color: #07467c;',
+      '  text-transform: uppercase; letter-spacing: 0.5px;',
+      '  margin: 0 0 3px 0; padding: 2px 0 3px 0;',
       '  border-bottom: 2px solid #07467c; width: 100%;',
       '}',
       '.cover-img-wrap { display: none; }',
@@ -1347,8 +1764,11 @@
       '  display: block;',
       '  width: 100% !important;',
       '  height: auto !important;',
-      '  max-width: 8.05in !important;',
-      '  max-height: 9.7in !important;',
+      // Letter landscape = 11" x 8.5".  With 0.18/0.2in margins minus
+      // ~0.25in for the section label, the usable area is roughly
+      // 10.6in x 8.0in. Bias height-bound for floor plans.
+      '  max-width: 10.55in !important;',
+      '  max-height: 7.95in !important;',
       '  object-fit: contain;',
       '  margin: 0 auto;',
       '  -webkit-print-color-adjust: exact;',
@@ -1357,180 +1777,270 @@
       '',
       '/* Trailing photo grid (e.g. Additional Photos) */',
       '.trailing-photos {',
-      '  margin-top: 16px; padding-top: 10px;',
-      '  border-top: 2px solid #07467c;',
+      '  margin-top: 8px; padding-top: 5px;',
+      '  border-top: 1.5px solid #07467c;',
       '  page-break-before: auto;',
       '}',
       '.trailing-photos-title {',
-      '  font-size: 14px; font-weight: 800; color: #07467c;',
-      '  margin: 0 0 8px 0;',
+      '  font-size: 12px; font-weight: 800; color: #07467c;',
+      '  margin: 0 0 4px 0;',
       '  text-transform: uppercase; letter-spacing: 0.5px;',
       '}',
       '.trailing-photos-grid {',
       '  display: grid;',
-      '  grid-template-columns: repeat(4, 1fr);',
-      '  gap: 6px;',
+      '  grid-template-columns: repeat(5, 1fr);',
+      '  gap: 4px;',
       '}',
       '.trailing-photo {',
       '  margin: 0;',
-      '  border: 1px solid #d0d7de; border-radius: 4px;',
-      '  padding: 2px; background: #f8fafc;',
+      '  border: 1px solid #d0d7de; border-radius: 3px;',
+      '  padding: 1px; background: #f8fafc;',
       '  page-break-inside: avoid;',
       '}',
       '.trailing-photo img {',
-      '  width: 100%; height: 120px; object-fit: cover;',
+      '  width: 100%; height: 90px; object-fit: cover;',
       '  display: block; border-radius: 2px;',
       '}',
       '.group-header {',
-      '  font-size: 13px; font-weight: 600; color: #07467c;',
-      '  background: #eef5fb; padding: 6px 10px;',
-      '  margin: 14px 0 6px 0; border-left: 3px solid #5b9bd5;',
+      '  font-size: 11px; font-weight: 600; color: #07467c;',
+      '  background: #eef5fb; padding: 3px 8px;',
+      '  margin: 5px 0 2px 0; border-left: 3px solid #5b9bd5;',
       '  page-break-after: avoid;',
       '}',
       '.group-header.group-level-1 {',
-      '  font-size: 14px; font-weight: 700;',
+      '  font-size: 12px; font-weight: 700;',
       '  background: #dbeafe; border-left-color: #07467c;',
       '}',
       '',
       '.ws-card {',
-      '  border: 1px solid #d0d7de; border-radius: 6px;',
-      '  margin: 6px 0; padding: 8px 10px;',
+      '  border: 1px solid #d0d7de; border-radius: 4px;',
+      '  margin: 2px 0; padding: 3px 6px;',
       '  page-break-inside: avoid; background: #fff;',
       '}',
-      '.ws-card--header-only { padding: 6px 10px; }',
+      '.ws-card--header-only { padding: 2px 6px; }',
       '',
       '.ws-header {',
       '  display: flex; flex-wrap: wrap; justify-content: space-between;',
-      '  align-items: baseline; gap: 12px;',
+      '  align-items: baseline; gap: 8px;',
       '}',
       '.ws-identity {',
-      '  display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px;',
+      '  display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px;',
       '  min-width: 0; flex: 1 1 auto;',
       '}',
       '.ws-label {',
-      '  font-size: 13px; font-weight: 700; color: #07467c;',
+      '  font-size: 11.5px; font-weight: 700; color: #07467c;',
       '}',
       '.ws-sep { color: #94a3b8; }',
       '.ws-product {',
-      '  font-size: 12px; font-weight: 500; color: #374151;',
+      '  font-size: 10.5px; font-weight: 500; color: #374151;',
       '}',
       '.ws-warn {',
-      '  font-size: 10px; font-weight: 700; color: #b45309;',
+      '  font-size: 9px; font-weight: 700; color: #b45309;',
       '  background: #fef3c7; border-radius: 999px;',
-      '  padding: 1px 7px; margin-left: 4px;',
+      '  padding: 0 6px; margin-left: 3px;',
       '}',
       '',
       '.ws-summary-fields {',
-      '  display: flex; flex-wrap: wrap; gap: 4px 14px;',
+      '  display: flex; flex-wrap: wrap; gap: 2px 12px;',
       '  flex: 0 1 auto; max-width: 60%;',
       '}',
       '.ws-sum-field {',
-      '  display: inline-flex; gap: 4px; align-items: baseline;',
-      '  font-size: 10.5px;',
+      '  display: inline-flex; gap: 3px; align-items: baseline;',
+      '  font-size: 9.5px;',
       '}',
       '.ws-sum-label {',
       '  font-weight: 600; color: #6b7280; text-transform: uppercase;',
-      '  font-size: 9px; letter-spacing: 0.3px;',
+      '  font-size: 8px; letter-spacing: 0.3px;',
       '}',
       '.ws-sum-value {',
       '  color: #111827; font-weight: 500;',
       '  white-space: pre-wrap;',
       '}',
       '',
-      '.ws-context {',
-      '  margin-top: 6px; padding-top: 5px;',
-      '  border-top: 1px dashed #e5e7eb;',
-      '  display: flex; flex-direction: column; gap: 2px;',
+      '/* ── Three-column body for camera/reader/NVR cards ───────── */',
+      '/* col 1 = identity + flags + measurements (40%)            */',
+      '/* col 2 = Labor Description, plain text (40%)              */',
+      '/* col 3 = SCW Notes + open tech-notes square (20%)         */',
+      '.ws-body-3col {',
+      '  display: grid; grid-template-columns: 2fr 2fr 1fr;',
+      '  column-gap: 8px; row-gap: 0;',
+      '  margin-top: 2px; padding-top: 2px;',
+      '  border-top: 1px solid #e5e7eb;',
+      '  align-items: stretch;',
       '}',
-      '.ws-context-row {',
-      '  display: flex; gap: 8px; align-items: baseline;',
-      '  font-size: 10.5px;',
+      '.ws-body-col { display: flex; flex-direction: column; gap: 2px; min-height: 0; }',
+      '.ws-body-col--left  { padding-right: 4px; border-right: 1px dotted #e5e7eb; }',
+      '.ws-body-col--mid   { padding: 0 4px; border-right: 1px dotted #e5e7eb; }',
+      '.ws-body-col--right { padding-left: 4px; }',
+      '',
+      '/* Identity line at top of col 1: [Label] [Product] no prefix */',
+      '.ws-id-line {',
+      '  display: flex; flex-wrap: wrap; gap: 6px;',
+      '  align-items: baseline; line-height: 1.2;',
+      '  margin-bottom: 1px;',
       '}',
-      '.ws-context-label {',
-      '  font-weight: 600; color: #07467c;',
-      '  min-width: 110px; flex: 0 0 110px;',
+      '.ws-id-label {',
+      '  font-weight: 700; color: #07467c; font-size: 11.5px;',
       '}',
-      '.ws-context-value {',
+      '.ws-id-product {',
+      // Match the label styling (bold + blue) so the device reads as',
+      // one unified identifier line instead of label-then-graytext.',
+      '  font-weight: 700; color: #07467c; font-size: 10.5px;',
+      '}',
+      '',
+      '/* ── Reference items (Mount / SCW) — same shape as ws-line ── */',
+      '.ws-ref {',
+      '  display: flex; flex-direction: column; gap: 1px;',
+      '  font-size: 9px; line-height: 1.25;',
+      '}',
+      '.ws-ref-item {',
+      '  display: flex; gap: 4px; align-items: baseline;',
+      '  break-inside: avoid;',
+      '}',
+      '.ws-ref-label {',
+      '  font-weight: 700; color: #6b7280;',
+      '  font-size: 7.5px; letter-spacing: 0.4px;',
+      '  text-transform: uppercase;',
+      '  min-width: 38px; flex: 0 0 38px; text-align: right;',
+      '  padding-top: 1px;',
+      '}',
+      '.ws-ref-value {',
       '  color: #111827; flex: 1 1 auto;',
       '  white-space: pre-wrap; word-break: break-word;',
       '}',
       '',
-      '.ws-detail {',
-      '  display: grid; grid-template-columns: 1fr 1fr;',
-      '  column-gap: 24px; row-gap: 4px;',
-      '  margin-top: 8px; padding-top: 6px;',
+      '/* ── Flag band (Existing / Exterior / Plenum) ────────────── */',
+      '.ws-flags {',
+      '  display: flex; flex-wrap: wrap; gap: 2px 8px;',
+      '  margin-top: 2px; padding-top: 2px;',
       '  border-top: 1px dashed #e5e7eb;',
+      '  font-size: 9px; align-items: baseline;',
       '}',
-      '.ws-detail-col { display: flex; flex-direction: column; gap: 4px; }',
-      '.ws-detail-field {',
-      '  display: flex; gap: 8px; align-items: baseline;',
-      '  font-size: 10.5px; padding: 2px 0;',
+      '.ws-flag {',
+      '  display: inline-flex; gap: 2px; align-items: baseline;',
+      '  white-space: nowrap;',
       '}',
-      '.ws-detail-label {',
-      '  font-weight: 600; color: #07467c;',
-      '  min-width: 110px; flex: 0 0 110px;',
-      '  white-space: normal;',
+      '.ws-flag-label {',
+      '  font-weight: 700; color: #07467c;',
+      '  font-size: 8.5px;',
+      '  margin-right: 1px;',
       '}',
-      '.ws-detail-value {',
-      '  color: #111827; flex: 1 1 auto;',
-      '  white-space: pre-wrap; word-break: break-word;',
+      '.ws-flag-opt {',
+      '  color: #374151; margin-right: 4px; font-size: 8.5px;',
       '}',
       '',
-      '/* Fill-in-the-blank value: underline, taller for writing */',
-      '.ws-detail-field--fill .ws-detail-value.ws-fill {',
+      '/* ── Measurement band (Height · Drop · Conduit) ──────────── */',
+      '/* Aggressive shrink: tight gaps, narrower fill spans, smaller */',
+      '/* checkbox glyphs so the whole row sits on one line.          */',
+      '.ws-measure {',
+      '  display: flex; flex-wrap: wrap; gap: 1px 6px;',
+      '  margin-top: 2px; padding-top: 2px;',
+      '  border-top: 1px dashed #e5e7eb;',
+      '  font-size: 8.5px; align-items: baseline;',
+      '}',
+      '.ws-m-item {',
+      '  display: inline-flex; gap: 1px; align-items: baseline;',
+      '  white-space: nowrap;',
+      '}',
+      '.ws-m-label {',
+      '  font-weight: 700; color: #07467c;',
+      '  font-size: 8px; margin-right: 1px;',
+      '}',
+      '.ws-m-unit {',
+      '  color: #6b7280; font-size: 7.5px; margin-left: 1px;',
+      '}',
+      '',
+      '/* Fill-in-the-blank: underline span tall enough to write on */',
+      '.ws-fill {',
+      '  display: inline-block; min-width: 28px;',
       '  border-bottom: 1px solid #4b5563;',
-      '  min-height: 16px; padding-bottom: 1px;',
+      '  min-height: 11px; line-height: 10px;',
+      '  padding: 0 1px; color: #111827;',
       '}',
       '',
-      '/* Multi-option checkbox row (e.g. Mounting Height) */',
-      '.ws-choices {',
-      '  display: inline-flex; flex-wrap: wrap; gap: 12px;',
-      '  align-items: baseline; font-size: 11px;',
-      '}',
-      '.ws-choice { white-space: nowrap; }',
-      '',
-      '/* Yes / No checkbox pair */',
-      '.ws-yesno {',
-      '  display: inline-flex; gap: 14px; align-items: baseline;',
-      '  font-size: 11px;',
-      '}',
       '.ws-box {',
-      '  display: inline-block; font-size: 14px; line-height: 1;',
-      '  margin-right: 3px; color: #111827;',
+      '  display: inline-block; font-size: 11px; line-height: 1;',
+      '  margin-right: 1px; color: #111827;',
       '}',
       '.ws-box.is-on { color: #07467c; font-weight: 700; }',
       '',
+      '/* ── Right column: Labor + SCW Notes + open Notes ─────────── */',
+      '/* Labor Description is the lead cell of col 2 — rendered as  */',
+      '/* plain text (no label block, no row prefix). SCW Notes gets  */',
+      '/* a small uppercase tag because it\'s secondary context.       */',
+      '.ws-labor {',
+      '  font-size: 10px; line-height: 1.3;',
+      '  margin-bottom: 3px;',
+      '  flex: 0 0 auto;',
+      '  color: #111827;',
+      '  white-space: pre-wrap; word-break: break-word;',
+      '}',
+      '.ws-labor--scw { margin-bottom: 3px; color: inherit; }',
+      '.ws-labor-label {',
+      '  font-weight: 700; color: #6b7280;',
+      '  font-size: 7.5px; letter-spacing: 0.4px;',
+      '  text-transform: uppercase;',
+      '  margin-bottom: 1px;',
+      '}',
+      '.ws-labor-value {',
+      '  color: #111827;',
+      '  white-space: pre-wrap; word-break: break-word;',
+      '}',
+      '/* Open notes square: no lines, no min-height — flex-grow soaks */',
+      '/* up whatever vertical space col 1 leaves behind. The label    */',
+      '/* sits in the top-left corner; the rest is blank writing area. */',
+      '.ws-notes-open {',
+      '  flex: 1 1 0; min-height: 0;',
+      '  border: 1px solid #d1d5db; border-radius: 3px;',
+      '  padding: 3px 5px; background: #fff;',
+      '}',
+      '.ws-notes-open-label {',
+      '  font-weight: 700; color: #6b7280;',
+      '  font-size: 7.5px; letter-spacing: 0.4px;',
+      '  text-transform: uppercase;',
+      '}',
+      '',
+      '/* ── Brief cards (services / assumptions) — small body text ── */',
+      '/* Project Wide rows are short text, so shrink the body to claw */',
+      '/* back vertical space on the assumption / services pages.    */',
+      '.ws-card--brief .ws-sum-value {',
+      '  font-size: 8.5px; line-height: 1.3;',
+      '}',
+      '.ws-card--brief .ws-sum-label { font-size: 7.5px; }',
+      '.ws-card--brief .ws-label { font-size: 10.5px; }',
+      '.ws-card--brief .ws-product { font-size: 9.5px; }',
+      '',
       '/* Field Notes — blank lined writing area */',
       '.ws-notes {',
-      '  margin-top: 10px; padding-top: 6px;',
+      '  margin-top: 4px; padding-top: 3px;',
       '  border-top: 1px dashed #e5e7eb;',
       '}',
       '.ws-notes-label {',
-      '  font-size: 9px; font-weight: 700; color: #6b7280;',
+      '  font-size: 8px; font-weight: 700; color: #6b7280;',
       '  text-transform: uppercase; letter-spacing: 0.5px;',
-      '  margin-bottom: 4px;',
+      '  margin-bottom: 2px;',
       '}',
-      '.ws-notes-lines { display: flex; flex-direction: column; gap: 12px; }',
+      '.ws-notes-lines { display: flex; flex-direction: column; gap: 7px; }',
       '.ws-notes-line {',
-      '  height: 14px; border-bottom: 1px solid #9ca3af;',
+      '  height: 11px; border-bottom: 1px solid #9ca3af;',
       '}',
       '',
       '.ws-photos {',
-      '  display: flex; flex-wrap: wrap; gap: 6px;',
-      '  margin-top: 8px; padding-top: 6px;',
+      '  display: flex; flex-wrap: wrap; gap: 4px;',
+      '  margin-top: 4px; padding-top: 3px;',
       '  border-top: 1px dashed #e5e7eb;',
       '}',
       '.ws-photo {',
-      '  margin: 0; width: 110px;',
-      '  border: 1px solid #d0d7de; border-radius: 4px;',
-      '  padding: 2px; text-align: center; background: #f8fafc;',
+      '  margin: 0; width: 78px;',
+      '  border: 1px solid #d0d7de; border-radius: 3px;',
+      '  padding: 1px; text-align: center; background: #f8fafc;',
       '}',
       '.ws-photo img {',
-      '  width: 100%; height: 80px; object-fit: cover; display: block;',
+      '  width: 100%; height: 56px; object-fit: cover; display: block;',
       '  border-radius: 2px;',
       '}',
       '.ws-photo figcaption {',
-      '  font-size: 8px; color: #6b7280; margin-top: 2px;',
+      '  font-size: 7.5px; color: #6b7280; margin-top: 1px;',
       '  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;',
       '}',
       '',
@@ -1540,64 +2050,66 @@
       '  background: #fbfdff;',
       '}',
       '.ws-notes-heading {',
-      '  font-size: 10px; font-weight: 800; color: #07467c;',
+      '  font-size: 9px; font-weight: 800; color: #07467c;',
       '  text-transform: uppercase; letter-spacing: 0.5px;',
-      '  margin-bottom: 6px;',
+      '  margin-bottom: 3px;',
       '}',
       '.ws-notes-scope {',
       '  color: #6b7280; font-weight: 600;',
       '  letter-spacing: 0.3px;',
       '}',
-      '.ws-notes-lines--l1 { gap: 14px; }',
+      '.ws-notes-lines--l1 { gap: 9px; }',
       '',
-      '/* Connection Map pivot table */',
+      '/* Connection Map pivot table — landscape page so we get more  */',
+      '/* horizontal room for column headers and avoid vertical text. */',
       '.pivot {',
+      '  page: landscape-pivot;',
       '  margin-top: 0; padding-top: 0;',
       '  page-break-before: always; page-break-after: always;',
       '  break-before: page; break-after: page;',
       '}',
       '.pivot-title {',
-      '  font-size: 14px; font-weight: 800; color: #07467c;',
-      '  margin: 0 0 6px 0;',
+      '  font-size: 13px; font-weight: 800; color: #07467c;',
+      '  margin: 0 0 4px 0;',
       '  text-transform: uppercase; letter-spacing: 0.5px;',
       '}',
       '.pivot-table {',
       '  border-collapse: collapse; table-layout: auto;',
-      '  width: 100%; font-size: 9.5px;',
+      '  width: 100%; font-size: 9px;',
       '}',
       '.pivot-table th, .pivot-table td {',
-      '  border: 1px solid #94a3b8; padding: 2px 4px;',
+      '  border: 1px solid #94a3b8; padding: 1px 3px;',
       '  vertical-align: middle;',
       '}',
       '.pivot-corner {',
-      '  background: #eef5fb; vertical-align: bottom; padding: 4px 6px;',
+      '  background: #eef5fb; vertical-align: bottom; padding: 3px 5px;',
       '  font-weight: 700; color: #07467c; text-align: left;',
       '  white-space: nowrap; width: 1%;',
       '}',
       '.pivot-col {',
       '  background: #eef5fb; text-align: center;',
-      '  height: 140px; vertical-align: bottom; padding: 4px 2px;',
+      '  height: 110px; vertical-align: bottom; padding: 3px 2px;',
       '  width: auto;',
       '}',
       '.pivot-col-text {',
       '  writing-mode: vertical-rl; transform: rotate(180deg);',
       '  display: inline-block;',
-      '  height: 132px;',
-      '  font-weight: 700; color: #07467c; font-size: 9px;',
-      '  line-height: 1.15;',
+      '  height: 104px;',
+      '  font-weight: 700; color: #07467c; font-size: 8.5px;',
+      '  line-height: 1.1;',
       '  white-space: normal; word-break: break-word; overflow-wrap: break-word;',
       '}',
       '.pivot-col--blank { background: #f8fafc; }',
       '.pivot-row {',
       '  background: #f8fafc; text-align: left;',
       '  white-space: nowrap; width: 1%;',
-      '  padding: 3px 6px;',
+      '  padding: 2px 5px;',
       '}',
       '.pivot-row--label   { font-weight: 700; color: #07467c; }',
       '.pivot-row--product { font-weight: 400; color: #374151; }',
       '.pivot-cell {',
-      '  text-align: center; font-size: 13px; color: #111827;',
-      '  height: 22px;',
+      '  text-align: center; font-size: 12px; color: #111827;',
+      '  height: 18px;',
       '}',
       '.pivot-blank-row .pivot-row { background: #fff; }'
     ].join('\n');

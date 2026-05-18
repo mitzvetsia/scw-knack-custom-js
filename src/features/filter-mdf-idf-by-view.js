@@ -380,8 +380,16 @@
           showError(msg + ' (See console for details.)');
           return;
         }
-        close();
-        refreshTargetView();
+        // Camera now lives in a new MDF/IDF — if its current Connected
+        // To switch is in a DIFFERENT MDF/IDF, the linkage no longer
+        // makes physical sense. Clear field_2381 BEFORE refreshing so
+        // the view rebuilds against fresh data; otherwise the refresh
+        // fetches while the clear PUT is still in flight and the row
+        // renders with the stale Connected To.
+        clearStaleConnection(recordId, newId, function () {
+          close();
+          refreshTargetView();
+        });
       });
       setSaving(true);
       showError('');
@@ -510,6 +518,190 @@
       console.error(LOG_PREFIX, 'model.updateRecord threw', e);
       onDone(e);
     }
+  }
+
+  // ── Post-save sanity check ─────────────────────────────────────
+  // When the camera (or any survey line item) gets a new MDF/IDF,
+  // walk its "Connected To" field (field_2381 — the back-connection
+  // to the parent switch/NVR/etc.) and verify each connected device
+  // lives in the SAME MDF/IDF as the camera now does. If any of them
+  // are in a different MDF/IDF the linkage is stale — clear field_2381
+  // so the camera doesn't ghost into the old switch's group on the
+  // next render. Reciprocal Knack connections take care of dropping
+  // the back-reference on the switch side; the mirror-connection-sync
+  // cascade picks up that change on the next render.
+  var CONNECTED_TO_FIELD       = 'field_2381'; // camera -> switch (back-ref)
+  var CONNECTED_DEVICES_FIELD  = 'field_2380'; // switch -> camera (forward)
+
+  function getRecordAttrs(recordId) {
+    if (typeof Knack === 'undefined') return null;
+    var model = (Knack.views && Knack.views[CFG.TARGET_VIEW] &&
+                 Knack.views[CFG.TARGET_VIEW].model) ||
+                (Knack.models && Knack.models[CFG.TARGET_VIEW]) ||
+                null;
+    var records = extractRecords(model);
+    for (var i = 0; i < records.length; i++) {
+      var attrs = records[i] || {};
+      if (attrs.id === recordId) return attrs;
+    }
+    return null;
+  }
+
+  function mdfIdOf(attrs) {
+    if (!attrs) return '';
+    var raw = attrs[CFG.TARGET_FIELD + '_raw'];
+    if (Array.isArray(raw) && raw[0] && raw[0].id) return raw[0].id;
+    if (raw && raw.id) return raw.id;
+    return '';
+  }
+
+  // Callback-style so the modal-close path can wait for the PUT to
+  // complete before triggering a view refresh. Without the wait, the
+  // refresh fetches data while the clear PUT is still in flight and
+  // the row renders with its STALE Connected To value.
+  //
+  // onDone(needsRefresh): true → clear PUT landed, caller should
+  // refresh; false → no clear needed (no mismatch / no model record /
+  // helpers unavailable), caller can refresh immediately for normal
+  // post-MDF-change rendering.
+  function clearStaleConnection(recordId, newMdfId, onDone) {
+    function done(needsRefresh) {
+      if (typeof onDone === 'function') {
+        try { onDone(!!needsRefresh); } catch (e) { /* swallow */ }
+      }
+    }
+    if (!recordId) { done(false); return; }
+    var attrs = getRecordAttrs(recordId);
+    if (!attrs) {
+      log('clearStaleConnection: record not in model — skipping', recordId);
+      done(false); return;
+    }
+    var connRaw = attrs[CONNECTED_TO_FIELD + '_raw'];
+    if (!Array.isArray(connRaw) || !connRaw.length) { done(false); return; }
+
+    // Collect every connected device that's in a DIFFERENT MDF/IDF.
+    // These are the ones whose linkage to this camera is now stale and
+    // need to be scrubbed off the camera's "Connected To" AND off each
+    // switch's reciprocal "Connected Devices" (Knack does not reliably
+    // auto-reciprocate multi-connection fields — see mirror-connection-
+    // sync.js for the same pattern).
+    var staleSwitchIds = [];
+    for (var i = 0; i < connRaw.length; i++) {
+      var connId = connRaw[i] && connRaw[i].id;
+      if (!connId) continue;
+      var connAttrs = getRecordAttrs(connId);
+      if (!connAttrs) continue;        // not in this view's pagination
+      var connMdfId = mdfIdOf(connAttrs);
+      if (connMdfId && connMdfId !== newMdfId) {
+        log('clearStaleConnection: switch',
+            connId, 'is in MDF/IDF', connMdfId,
+            '— camera moved to', newMdfId,
+            '— will scrub from both sides');
+        staleSwitchIds.push(connId);
+      }
+    }
+    if (!staleSwitchIds.length) { done(false); return; }
+
+    if (!window.SCW || typeof window.SCW.knackAjax !== 'function' ||
+        typeof window.SCW.knackRecordUrl !== 'function') {
+      done(false); return;
+    }
+
+    // Step 1: clear camera's CONNECTED_TO_FIELD.
+    var url = window.SCW.knackRecordUrl(CFG.TARGET_VIEW, recordId);
+    var body = {};
+    body[CONNECTED_TO_FIELD] = [];
+    window.SCW.knackAjax({
+      type: 'PUT',
+      url: url,
+      data: JSON.stringify(body),
+      dataType: 'json',
+      success: function (resp) {
+        log('clearStaleConnection: cleared', CONNECTED_TO_FIELD,
+            'on', recordId, 'resp:', resp);
+        if (typeof window.SCW.syncKnackModel === 'function') {
+          try {
+            window.SCW.syncKnackModel(CFG.TARGET_VIEW, recordId, resp,
+              CONNECTED_TO_FIELD, []);
+          } catch (e) { /* best-effort */ }
+        }
+        // Step 2: scrub camera off each upstream switch's
+        // CONNECTED_DEVICES_FIELD.  Wait for all PUTs to land before
+        // signalling done so the subsequent refresh fetches truly
+        // fresh data on both sides.
+        scrubReverseConnections(recordId, staleSwitchIds, function () {
+          done(true);
+        });
+      },
+      error: function (xhr) {
+        console.warn(LOG_PREFIX, 'clearStaleConnection PUT failed',
+          xhr && xhr.status, xhr && xhr.responseText);
+        // Still refresh — the user moved the MDF successfully even
+        // if the cleanup failed. Leaving them on a half-saved state
+        // would be more confusing than just rendering stale.
+        done(true);
+      }
+    });
+  }
+
+  // For each upstream switch, read its CONNECTED_DEVICES_FIELD from
+  // the local model, filter out the camera, and PUT the trimmed list
+  // back. Mirrors mirror-connection-sync.js's explicit two-sided write
+  // — Knack does not reliably reciprocate multi-connection PUTs.
+  function scrubReverseConnections(cameraId, switchIds, onAllDone) {
+    var pending = switchIds.length;
+    if (!pending) { onAllDone(); return; }
+    function tick() {
+      pending--;
+      if (pending <= 0) onAllDone();
+    }
+    switchIds.forEach(function (switchId) {
+      var switchAttrs = getRecordAttrs(switchId);
+      if (!switchAttrs) {
+        log('scrubReverseConnections: switch', switchId,
+            'not in model — skipping (will be picked up on next render)');
+        tick(); return;
+      }
+      var currentRaw = switchAttrs[CONNECTED_DEVICES_FIELD + '_raw'];
+      if (!Array.isArray(currentRaw)) { tick(); return; }
+      var keptIds = [];
+      for (var k = 0; k < currentRaw.length; k++) {
+        var rid = currentRaw[k] && currentRaw[k].id;
+        if (rid && rid !== cameraId) keptIds.push(rid);
+      }
+      // No change — camera wasn't in the list (Knack already reciprocated,
+      // or the list was stale in the local model). Nothing to PUT.
+      if (keptIds.length === currentRaw.length) {
+        log('scrubReverseConnections: switch', switchId,
+            'did not list camera', cameraId, '— nothing to do');
+        tick(); return;
+      }
+      var switchUrl = window.SCW.knackRecordUrl(CFG.TARGET_VIEW, switchId);
+      var switchBody = {};
+      switchBody[CONNECTED_DEVICES_FIELD] = keptIds;
+      window.SCW.knackAjax({
+        type: 'PUT',
+        url: switchUrl,
+        data: JSON.stringify(switchBody),
+        dataType: 'json',
+        success: function (resp) {
+          log('scrubReverseConnections: removed', cameraId,
+              'from switch', switchId, 'new list:', keptIds);
+          if (typeof window.SCW.syncKnackModel === 'function') {
+            try {
+              window.SCW.syncKnackModel(CFG.TARGET_VIEW, switchId, resp,
+                CONNECTED_DEVICES_FIELD, keptIds);
+            } catch (e) { /* best-effort */ }
+          }
+          tick();
+        },
+        error: function (xhr) {
+          console.warn(LOG_PREFIX, 'scrubReverseConnections PUT failed',
+            switchId, xhr && xhr.status, xhr && xhr.responseText);
+          tick();
+        }
+      });
+    });
   }
 
   // ── Save: PUT field_2375 with the chosen MDF/IDF id ─────────────
@@ -676,6 +868,69 @@
     log('intercept click on', recordId);
     openModal(recordId);
   }, true);
+
+  // ── Render-pass diff: catch ANY field_2381 clear ──────────────
+  // The clearStaleConnection path above scrubs upstream switches when
+  // WE initiate the change via the MDF picker. But the user can also
+  // clear field_2381 through:
+  //   - Knack native inline edit on the cell (nativeEdit type)
+  //   - KTL bulk paste with an empty source
+  //   - The connection-picker's reciprocal path
+  //   - An edit in another tab/window
+  // For any of those, the switch's field_2380 would still list this
+  // camera until something explicitly scrubs it. Diff snapshot vs.
+  // fresh-render data each time the view renders and trigger the
+  // scrub on every transition from "had connections" to "empty".
+  var _connSnapshot = {};
+
+  function readConnectedToIds(attrs) {
+    var raw = attrs && attrs[CONNECTED_TO_FIELD + '_raw'];
+    if (!Array.isArray(raw)) return [];
+    var out = [];
+    for (var i = 0; i < raw.length; i++) {
+      if (raw[i] && raw[i].id) out.push(raw[i].id);
+    }
+    return out;
+  }
+
+  function diffAndScrubClearedConnections() {
+    if (typeof Knack === 'undefined') return;
+    var view = Knack.views && Knack.views[CFG.TARGET_VIEW];
+    if (!view || !view.model || !view.model.data) return;
+    var records = view.model.data.models || [];
+    if (!records.length) return;
+
+    var next = {};
+    for (var i = 0; i < records.length; i++) {
+      var rec = records[i];
+      var attrs = rec.attributes || rec;
+      var id = rec.id || attrs.id;
+      if (!id) continue;
+      var ids = readConnectedToIds(attrs);
+      next[id] = ids;
+
+      // Did this record previously have connections that are now gone?
+      var prev = _connSnapshot[id];
+      if (!prev || !prev.length) continue;        // no prior connections
+      if (ids.length) continue;                    // still has connections
+
+      log('field_2381 cleared on', id,
+          '— scrubbing prior switches', prev);
+      scrubReverseConnections(id, prev, function () {
+        log('cleared-connection scrub done for', id);
+      });
+    }
+    _connSnapshot = next;
+  }
+
+  if (window.SCW && SCW.onViewRender) {
+    SCW.onViewRender(CFG.TARGET_VIEW, function () {
+      // Delay so the model has fully repopulated after fetch — without
+      // this we'd diff against half-loaded data on the first render
+      // after a refresh and falsely declare records "cleared".
+      setTimeout(diffAndScrubClearedConnections, 600);
+    }, '.scwMdfIdfPickerClearedWatch');
+  }
 
   log('Module loaded');
 })();

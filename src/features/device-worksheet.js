@@ -114,7 +114,7 @@
 
           // ── Detail panel (matches view_3512 layout) ──
           mounting:         { key: 'field_2463', type: 'readOnly' },
-          connections:      { key: 'field_2381', type: 'readOnly' },
+          connections:      { key: 'field_2381', type: 'nativeEdit' },
           scwNotes:         { key: 'field_2418', type: 'readOnly' },
           surveyNotes:      { key: 'field_2412', type: 'directEdit', notes: true },
           exteriorChit:     { key: 'field_2372', type: 'toggleChit', summary: true, feeTrigger: true, chitLabel: 'Exterior' },
@@ -518,6 +518,7 @@
           { cls: 'scw-row--services',    label: 'Project Wide Services' },
           { cls: 'scw-row--assumptions', label: 'Project Wide Assumptions' },
         ],
+        syntheticGroupsPosition: 'bottom',
         // ── Override: cameras/readers rows mirror view_3313's config.
         //    Only includes fields that exist on view_3610's raw table.
         //    stackedSummary: false matches view_3586's cam/reader layout
@@ -1068,7 +1069,7 @@ tr.scw-inline-photo-row.${P}-photo-absorbed {
 tr.scw-inline-photo-row > td {
   padding: 20px 16px 50px 16px !important;
   border: none !important;
-  border-bottom: 2px solid #e2e8f0 !important;
+  border-top: 2px solid #e2e8f0 !important;
 }
 
 /* ── Photo content moved inside card ── */
@@ -1089,9 +1090,12 @@ tr.scw-inline-photo-row > td {
   overflow: hidden;
 }
 
-/* ── Bottom separator between record groups (card + photo row) ── */
-.${WORKSHEET_ROW}.${P}-last > td {
-  border-bottom: 2px solid #e2e8f0 !important;
+/* ── Top separator above every worksheet row ──
+   Acts as the divider between cards. The base reset above zeros all
+   borders on .scw-ws-row > td; this longhand !important wins by
+   source order so each card gets a 2px line above it. */
+tr.${WORKSHEET_ROW} > td {
+  border-top: 2px solid #e2e8f0 !important;
 }
 
 /* ================================================================
@@ -1105,7 +1109,6 @@ tr.scw-inline-photo-row > td {
   gap: 6px;
   padding: 15px 12px 20px;
   background: #fff;
-  border-bottom: 1px solid #e5e7eb;
   min-height: 38px;
   min-width: 0;
   transition: background 0.15s, box-shadow 0.2s;
@@ -1125,10 +1128,9 @@ tr.${WORKSHEET_ROW}:has(.${P}-open) {
   border: 1px solid #d1d5db;
   margin-bottom: 10px;
 }
-/* Remove internal borders when expanded */
+/* Round the summary corners when card is expanded */
 .${P}-card:has(.${P}-open) .${P}-summary {
   background: #fff;
-  border-bottom: none;
   border-radius: 8px 8px 0 0;
 }
 /* Photo wrap gets bottom border-radius when card is expanded */
@@ -2437,26 +2439,6 @@ td.${P}-sum-product--editable.${P}-td-locked:hover {
   padding: 0 4px !important;
   justify-content: center;
   width: 100%;
-}
-
-/* view_3586: when a card row has its photo strip visible, the
-   separator between records moves from the BOTTOM of the row (below
-   the photos) to the TOP (above the card). The card + its photo
-   strip then read as a single visual unit instead of the card
-   appearing orphaned above a photos block that visually attaches
-   to the next record. Scoped to view_3586 — other photoAlwaysVisible
-   views can opt in by adding their id here.
-   Defensive: also clears border-bottom on the row itself AND any
-   sibling inline-photo-row that wasn\'t absorbed into the card
-   (rare on photoAlwaysVisible views but possible mid-render). */
-#view_3586 tr.${WORKSHEET_ROW},
-#view_3586 tr.${WORKSHEET_ROW} > td,
-#view_3586 tr.scw-inline-photo-row,
-#view_3586 tr.scw-inline-photo-row > td {
-  border-bottom: 0 !important;
-}
-#view_3586 tr.${WORKSHEET_ROW}:has(.${P}-photo-wrap:not(.${P}-photo-hidden)) > td {
-  border-top: 1px solid #e2e8f0 !important;
 }
 
 /* view_3586 right-group widths — compact to leave room for SCW Notes fill */
@@ -6888,7 +6870,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
         // Build "Unassigned" group header
         var unassignedTr = document.createElement('tr');
-        unassignedTr.className = 'kn-table-group kn-group-level-1 scw-group-header scw-synthetic-group';
+        unassignedTr.className = 'kn-table-group kn-group-level-1 scw-group-header scw-synthetic-group scw-unassigned-group';
         unassignedTr.style.cssText = '--scw-grp-accent: ' + SYNTH_ACCENT +
           '; --scw-grp-accent-rgb: ' + SYNTH_ACCENT_RGB + ';';
         var unassignedTd = document.createElement('td');
@@ -6896,8 +6878,14 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         unassignedTd.textContent = 'Unassigned';
         unassignedTr.appendChild(unassignedTd);
 
-        // Insert at top of tbody (before other synthetic groups)
-        tbody.insertBefore(unassignedTr, tbody.firstChild);
+        // Position matches syntheticGroupsPosition: append to the bottom
+        // of tbody when the view wants synthetic groups at the end,
+        // otherwise prepend so Unassigned leads the synthetic section.
+        if (viewCfg.syntheticGroupsPosition === 'bottom') {
+          tbody.appendChild(unassignedTr);
+        } else {
+          tbody.insertBefore(unassignedTr, tbody.firstChild);
+        }
 
         // Move orphan rows (and their associated orig/photo rows) under the header
         var oInsertRef = unassignedTr;

@@ -325,7 +325,16 @@
       return;
     }
 
-    setButtonBusy(btn, 'Sending…');
+    // Show the overlay and start polling IMMEDIATELY on click. Make's
+    // scenario holds the HTTP request open until the PDF is fully
+    // generated (often 30–90s) and only THEN fires its Webhook
+    // Response module. If we waited for jQuery's success callback to
+    // flip the UI to "Generating…", the overlay would appear right as
+    // generation finishes — exactly backwards from what the user
+    // expects. The polling loop is harmless either way: it stops on
+    // the first cycle that sees field_2356 change, or times out.
+    setButtonBusy(btn, 'Generating…');
+    startPolling();
 
     $.ajax({
       url: WEBHOOK_URL,
@@ -335,21 +344,25 @@
       crossDomain: true,
       timeout: 60000,
       success: function () {
-        setButtonBusy(btn, 'Generating…');
-        startPolling();
+        // Make returned a real (non-opaque) response — that means the
+        // scenario finished and the new PDF is on field_2356. Kick a
+        // model.fetch right now so we see it on the next render
+        // instead of waiting up to POLL_INTERVAL_MS for the next tick.
+        if (typeof Knack !== 'undefined' && Knack.views && Knack.views[DETAIL_VIEW]) {
+          var model = Knack.views[DETAIL_VIEW].model;
+          if (model && typeof model.fetch === 'function') model.fetch();
+        }
       },
       error: function (xhr) {
-        // Make webhooks often return opaque CORS responses — status 0
-        // with a successful delivery. Treat that as success and still
-        // start polling the field.
-        if (xhr && xhr.status === 0) {
-          setButtonBusy(btn, 'Generating…');
-          startPolling();
-          return;
-        }
-        showToast('Webhook failed (HTTP ' + (xhr ? xhr.status : '?') + '). See console.', 'error', 6000);
+        // status 0 = opaque CORS response. Delivery succeeded but the
+        // browser can't read the body — Make is still working. Leave
+        // the overlay + poll in place and let the loop finish.
+        if (xhr && xhr.status === 0) return;
         console.warn('[SCW sub-portal survey export] webhook error', xhr);
-        resetButton(btn);
+        stopPolling({
+          msg: 'Webhook failed (HTTP ' + (xhr ? xhr.status : '?') + '). See console.',
+          variant: 'error'
+        });
       }
     });
   }
@@ -426,9 +439,15 @@
   function primeImageCacheFor(cfg, isCover) {
     var api = window.SCW && window.SCW.surveyWorksheetPdf;
     if (!api || typeof api.refreshImageCache !== 'function') return;
-    var maxDim  = isCover ? 1400 : 600;
-    var quality = isCover ? 0.8  : 0.65;
-    api.refreshImageCache(cfg.viewId, cfg.label, maxDim, quality);
+    // Cover images (site maps) get auto-cropped: site map screenshots
+    // typically have huge white margins built in, and without the
+    // crop they render as a small dot in the middle of a landscape
+    // page. Bumping maxDim to 1800 too, matching the module's own
+    // setupImagePreloads default for covers.
+    var maxDim   = isCover ? 1800 : 600;
+    var quality  = isCover ? 0.82 : 0.65;
+    var autoCrop = !!isCover;
+    api.refreshImageCache(cfg.viewId, cfg.label, maxDim, quality, autoCrop);
   }
 
   // ── Bindings ──

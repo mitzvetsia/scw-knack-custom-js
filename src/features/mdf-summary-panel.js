@@ -1000,8 +1000,12 @@
       if (!_l1 || !_list.length) return;
       // Skip synthetic L1 groups ("Project Wide Services" /
       // "Project Wide Assumptions") — those rows aren't part of an
-      // MDF/IDF, so the summary doesn't make sense for them.
-      if (_l1.classList.contains('scw-synthetic-group')) return;
+      // MDF/IDF, so the per-group summary doesn't make sense.
+      // Exception: the "Unassigned" group also flies the synthetic
+      // flag but contains real device rows that just lack an MDF/IDF
+      // assignment, so it DOES get its own summary panel.
+      if (_l1.classList.contains('scw-synthetic-group') &&
+          !_l1.classList.contains('scw-unassigned-group')) return;
       var data = aggregate(_list, fields);
       var html = buildPanelHtml(data, fields);
       if (!html) return;
@@ -1076,8 +1080,12 @@
         // Skip rows that belong to a synthetic L1 ("Project Wide
         // Services" / "Project Wide Assumptions") — same exclusion the
         // per-L1 flush() applies, so the grand totals match the sum of
-        // the visible per-L1 panels.
-        if (!currentL1 || !currentL1.classList.contains('scw-synthetic-group')) {
+        // the visible per-L1 panels. Exception: "Unassigned" is also
+        // synthetic but represents real device rows that just lack an
+        // MDF/IDF assignment, so they DO count toward the grand totals.
+        var isSyntheticL1 = currentL1 && currentL1.classList.contains('scw-synthetic-group');
+        var isUnassigned  = currentL1 && currentL1.classList.contains('scw-unassigned-group');
+        if (!currentL1 || !isSyntheticL1 || isUnassigned) {
           grandList.push(attrsById[tr.id]);
         }
       }

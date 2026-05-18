@@ -464,6 +464,22 @@
         if (connDevSpan) {
           var connText = norm(connDevSpan.textContent).replace(/^\(/, '').replace(/\)$/, '');
           if (connText) connDevices = connText.split(',').map(function (s) { return norm(s); }).filter(Boolean);
+        } else {
+          // Fallback: newer proposal-grid renders the camera/reader
+          // label list inline inside .scw-concat-cameras as an orange
+          // <b>(E-1, E-2, …)</b>. groupLabelText() strips those <b>s
+          // out of the L3 label, so if we don't pull them out here
+          // they vanish from the PDF entirely. Same parenthesized
+          // pattern the L4 scraper already uses.
+          var l3CamBs = tr.querySelectorAll('.scw-concat-cameras b');
+          for (var l3cb = 0; l3cb < l3CamBs.length; l3cb++) {
+            var l3CamText = norm(l3CamBs[l3cb].textContent);
+            if (/^\(.*\)$/.test(l3CamText)) {
+              var listText = l3CamText.replace(/^\(/, '').replace(/\)$/, '');
+              connDevices = listText.split(',').map(function (s) { return norm(s); }).filter(Boolean);
+              break;
+            }
+          }
         }
 
         var isMounting = tr.classList.contains('scw-level3--mounting-hardware');
