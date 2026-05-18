@@ -306,6 +306,112 @@
     }
   }
 
+  // Open the row's expand panel AND mount a side-by-side photo
+  // viewer pane with the clicked photo enlarged. Thumbnail strip lets
+  // the reviewer flip between photos without leaving the editor.
+  //
+  // Layered on top of toggleRowExpand — same wsTr-injection path —
+  // plus a viewer pane inserted before the worksheet mini-table and
+  // a flex modifier class on the host td so they sit side by side.
+  function openWithPhoto(rowTr, urls, activeIdx) {
+    if (!rowTr || !urls || !urls.length) return;
+    if (activeIdx == null || activeIdx < 0 || activeIdx >= urls.length) activeIdx = 0;
+
+    // Expand the row if it isn't already.
+    if (rowTr.getAttribute('aria-expanded') !== 'true') {
+      toggleRowExpand(rowTr);
+    }
+
+    var expandTr = rowTr.nextElementSibling;
+    if (!expandTr || !expandTr.classList.contains('scw-bid-review__expand-row')) return;
+    var hostTd = expandTr.firstElementChild;
+    if (!hostTd) return;
+
+    hostTd.classList.add('scw-bid-review__expand-cell--with-photo');
+
+    var viewer = hostTd.querySelector('.scw-bid-review__photo-viewer');
+    if (viewer) {
+      updatePhotoViewer(viewer, urls, activeIdx);
+    } else {
+      viewer = buildPhotoViewer(urls, activeIdx, hostTd);
+      hostTd.insertBefore(viewer, hostTd.firstChild);
+    }
+  }
+
+  function buildPhotoViewer(urls, activeIdx, hostTd) {
+    var wrap = document.createElement('div');
+    wrap.className = 'scw-bid-review__photo-viewer';
+
+    var stage = document.createElement('div');
+    stage.className = 'scw-bid-review__photo-viewer-stage';
+
+    var openLink = document.createElement('a');
+    openLink.className = 'scw-bid-review__photo-viewer-open';
+    openLink.target = '_blank';
+    openLink.rel = 'noopener';
+    openLink.title = 'Open full size in a new tab';
+    openLink.textContent = 'Open ↗';
+    stage.appendChild(openLink);
+
+    var img = document.createElement('img');
+    img.alt = '';
+    stage.appendChild(img);
+
+    var close = document.createElement('button');
+    close.type = 'button';
+    close.className = 'scw-bid-review__photo-viewer-close';
+    close.setAttribute('title', 'Close photo viewer');
+    close.textContent = '×';
+    close.addEventListener('click', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      wrap.parentNode && wrap.parentNode.removeChild(wrap);
+      if (hostTd) hostTd.classList.remove('scw-bid-review__expand-cell--with-photo');
+    });
+    stage.appendChild(close);
+    wrap.appendChild(stage);
+
+    var strip = document.createElement('div');
+    strip.className = 'scw-bid-review__photo-viewer-strip';
+    wrap.appendChild(strip);
+
+    updatePhotoViewer(wrap, urls, activeIdx);
+    return wrap;
+  }
+
+  function updatePhotoViewer(viewer, urls, activeIdx) {
+    var stageImg  = viewer.querySelector('.scw-bid-review__photo-viewer-stage img');
+    var openLink  = viewer.querySelector('.scw-bid-review__photo-viewer-open');
+    var strip     = viewer.querySelector('.scw-bid-review__photo-viewer-strip');
+    if (stageImg) stageImg.src = urls[activeIdx];
+    if (openLink) openLink.href = urls[activeIdx];
+
+    if (!strip) return;
+    strip.innerHTML = '';
+    // Strip only matters when there are multiple photos to flip between
+    if (urls.length < 2) { strip.style.display = 'none'; return; }
+    strip.style.display = '';
+    for (var i = 0; i < urls.length; i++) {
+      (function (idx) {
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'scw-bid-review__photo-viewer-thumb' +
+          (idx === activeIdx ? ' scw-bid-review__photo-viewer-thumb--active' : '');
+        btn.addEventListener('click', function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          updatePhotoViewer(viewer, urls, idx);
+        });
+        var img = document.createElement('img');
+        img.src = urls[idx];
+        img.alt = '';
+        img.loading = 'lazy';
+        btn.appendChild(img);
+        strip.appendChild(btn);
+      })(i);
+    }
+  }
+
   function injectWorksheetCard(sowItemId, hostTd) {
     if (!hostTd) return;
     // Already has a card from a previous expand — leave it. The view_3921
@@ -1550,6 +1656,10 @@
   ns.refresh = function refresh() {
     runPipeline();
   };
+
+  // Photo thumb click handler in render.js calls this to open the
+  // editor with a side-by-side photo viewer pane.
+  ns.openWithPhoto = openWithPhoto;
 
   /** Lightweight re-render from existing state (no data refetch). */
   ns.rerender = function rerender() {

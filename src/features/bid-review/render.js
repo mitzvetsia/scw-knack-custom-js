@@ -840,7 +840,12 @@
   // same moment, finds zero photos, and the column flashes empty.
   // We cache by sowItemId so a re-render with no source row falls
   // back to the last-known set of URLs.
-  var ROW_PHOTO_VISIBLE = 2;
+  // Single large thumb per row — clicking it opens the row's expand
+  // panel WITH a side-by-side photo viewer (see init.js openWithPhoto)
+  // so the reviewer can see the full photo and edit the line item at
+  // the same time. Surplus shown as a "+N more" pill that opens the
+  // viewer on the first extra photo.
+  var ROW_PHOTO_VISIBLE = 1;
   var _photoCache = Object.create(null);
 
   function scrapeRowPhotoUrls(rowId) {
@@ -895,31 +900,39 @@
 
     var stack = el('div', 'scw-bid-review__photos-stack');
     stack.setAttribute('title', urls.length + ' photo' +
-      (urls.length === 1 ? '' : 's') + ' — click a thumb to enlarge');
+      (urls.length === 1 ? '' : 's') + ' — click to open the editor with a full-size viewer');
+
+    function openViewer(idx, e) {
+      // Suppress the row's click-to-expand: we'll drive expansion
+      // ourselves so the viewer mounts together with the panel.
+      if (e) { e.preventDefault(); e.stopPropagation(); }
+      var rowTr = td.parentNode;   // the data row this cell belongs to
+      if (!rowTr || !ns.openWithPhoto) return;
+      ns.openWithPhoto(rowTr, urls, idx);
+    }
 
     var visible = Math.min(ROW_PHOTO_VISIBLE, urls.length);
     for (var v = 0; v < visible; v++) {
-      var a = document.createElement('a');
-      a.href = urls[v];
-      a.target = '_blank';
-      a.rel = 'noopener';
-      a.className = 'scw-bid-review__photos-thumb';
-      // Stop the row's click-to-expand from firing when a thumb
-      // is clicked (the user wants the photo, not the editor).
-      a.addEventListener('click', function (e) { e.stopPropagation(); });
-      var thumb = document.createElement('img');
-      thumb.src = urls[v];
-      thumb.alt = '';
-      thumb.loading = 'lazy';
-      a.appendChild(thumb);
-      stack.appendChild(a);
+      (function (idx) {
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'scw-bid-review__photos-thumb';
+        btn.addEventListener('click', function (e) { openViewer(idx, e); });
+        var thumb = document.createElement('img');
+        thumb.src = urls[idx];
+        thumb.alt = '';
+        thumb.loading = 'lazy';
+        btn.appendChild(thumb);
+        stack.appendChild(btn);
+      })(v);
     }
     var hidden = urls.length - visible;
     if (hidden > 0) {
-      // Let this click bubble — the row's accordion opens the
-      // worksheet card, which carries the full inline-photo-row
-      // strip.
-      stack.appendChild(el('span', 'scw-bid-review__photos-more', '+' + hidden + ' more'));
+      (function (idx) {
+        var more = el('span', 'scw-bid-review__photos-more', '+' + hidden + ' more');
+        more.addEventListener('click', function (e) { openViewer(idx, e); });
+        stack.appendChild(more);
+      })(visible);
     }
     td.appendChild(stack);
     return td;
