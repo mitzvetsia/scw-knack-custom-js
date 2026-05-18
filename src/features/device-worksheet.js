@@ -4275,7 +4275,11 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         if (trigger) fetchAndApplyLabel(viewId, recordId);
         if (isFeeTrigger(viewId, fieldKey)) scheduleFeeRefetch(viewId, recordId);
         syncKnackModel(viewId, recordId, resp, fieldKey, value);
-        $(document).trigger('scw-record-saved');
+        // Payload lets downstream listeners (e.g. bid-review) patch a
+        // single row instead of doing a full grid rebuild. Listeners
+        // ignoring the args keep working — jQuery just passes them.
+        $(document).trigger('scw-record-saved',
+          [{ recordId: recordId, viewId: viewId, fieldKey: fieldKey }]);
         if (onSuccess) onSuccess(resp);
       },
       error: function (xhr) {

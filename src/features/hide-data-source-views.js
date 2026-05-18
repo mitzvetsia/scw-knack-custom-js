@@ -64,17 +64,39 @@
     'view_3818',
   ];
 
-  if (document.getElementById(STYLE_ID)) return;
+  if (!document.getElementById(STYLE_ID)) {
+    var selectors = [];
+    for (var i = 0; i < HIDDEN_VIEWS.length; i++) {
+      // Hide both the view itself AND its outer column wrapper —
+      // the wrapper sometimes claims layout even when the view inside
+      // is display:none, leaving a blank stripe on the page.
+      selectors.push('#' + HIDDEN_VIEWS[i]);
+      selectors.push('.view-column:has(> #' + HIDDEN_VIEWS[i] + ')');
+      selectors.push('.view-column:has(> .kn-view#' + HIDDEN_VIEWS[i] + ')');
+    }
 
-  var selectors = [];
-  for (var i = 0; i < HIDDEN_VIEWS.length; i++) {
-    selectors.push('#' + HIDDEN_VIEWS[i]);
+    var style = document.createElement('style');
+    style.id = STYLE_ID;
+    style.textContent = selectors.join(',\n') +
+      ' {\n  display: none !important;\n}\n';
+    document.head.appendChild(style);
   }
 
-  var style = document.createElement('style');
-  style.id = STYLE_ID;
-  style.textContent = selectors.join(',\n') +
-    ' {\n  display: none !important;\n}\n';
-  document.head.appendChild(style);
+  // Belt-and-suspenders: on each render of a hidden view, also set
+  // inline display:none directly on the view element. Inline beats
+  // any external stylesheet, so even if Knack or another feature
+  // re-shows the view at runtime, this re-hides it. SCW.onViewRender
+  // is idempotent — registering once per view is fine.
+  function hideOnRender(viewId) {
+    SCW.onViewRender(viewId, function () {
+      var el = document.getElementById(viewId);
+      if (el) el.style.display = 'none';
+      // Also try the parent column wrapper — Knack sometimes nests
+      // grids inside a sized container that the CSS rule above misses.
+      var col = el && el.closest('.view-column');
+      if (col && col.children.length === 1) col.style.display = 'none';
+    }, 'scwHideDataSource');
+  }
+  for (var h = 0; h < HIDDEN_VIEWS.length; h++) hideOnRender(HIDDEN_VIEWS[h]);
 })();
 /*** END FEATURE: Hide data-source views ***/

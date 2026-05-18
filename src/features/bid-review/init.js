@@ -647,22 +647,213 @@
   //                                    knack-view-render entirely).
   //   - knack-view-render.view_3921  → fires on full view re-render
   //   - knack-cell-update.view_3921  → fires per-cell after Knack inline-edit
-  var _refreshDebounce = null;
-  function scheduleSilentRefresh() {
+  // Single-row patch state.
+  //
+  // _pendingPatchIds collects recordIds known to have changed during
+  // the current debounce window. _needsFullRefresh is set when we
+  // receive an event with no recordId (knack-view-render etc.) —
+  // those are "something changed but I don't know what", so we fall
+  // back to a full pipeline.
+  //
+  // When the debounce fires:
+  //   - If _needsFullRefresh OR any pending id isn't in current state,
+  //     run the full pipeline (refreshSilently).
+  //   - Otherwise, patch each row's <tr> in place.
+  var _refreshDebounce      = null;
+  var _pendingPatchIds      = Object.create(null);
+  var _needsFullRefresh     = false;
+
+  function scheduleSilentRefresh(opts) {
+    var rid = opts && opts.recordId;
+    if (rid) {
+      _pendingPatchIds[rid] = true;
+    } else {
+      _needsFullRefresh = true;
+    }
     if (_refreshDebounce) clearTimeout(_refreshDebounce);
     // 700ms gives every event in a single user action (scw-record-saved
     // + knack-cell-update + knack-view-render — typically all fire
     // within ~150ms of each other after a chip toggle / inline edit)
-    // a chance to coalesce into one refresh. Was 250ms; the longer
-    // window noticeably cuts post-edit repaints without making the
-    // grid feel laggy.
-    _refreshDebounce = setTimeout(function () { refreshSilently(); }, 700);
+    // a chance to coalesce into one refresh.
+    _refreshDebounce = setTimeout(applyPendingRefresh, 700);
   }
-  $(document).on('scw-record-saved' + CFG.eventNs + 'Expand', scheduleSilentRefresh);
+
+  function applyPendingRefresh() {
+    var ids = Object.keys(_pendingPatchIds);
+    _pendingPatchIds = Object.create(null);
+    var fullRefresh = _needsFullRefresh;
+    _needsFullRefresh = false;
+
+    if (fullRefresh || !ids.length || !_state) {
+      refreshSilently();
+      return;
+    }
+    var ok = patchRows(ids);
+    if (!ok) {
+      // patch path bailed (unknown row, missing data, etc.) — fall
+      // back to the full pipeline so the grid still ends up correct.
+      refreshSilently();
+    }
+  }
+
+  // Patch one or more rows in place. Returns false if any row isn't
+  // representable as a single-row update (new record, deletion, MDF/IDF
+  // group change, etc.); caller falls back to a full refresh.
+  //
+  // Strategy:
+  //   1. Refetch all 4 source views from the Knack model in-memory
+  //      (fast, no API). buildState gives us the fresh row data.
+  //   2. For each pending id, locate the row in new state AND the
+  //      old <tr> in the DOM. Bail if anything is missing.
+  //   3. Build a fresh <tr> with ns.buildDataRow and swap it in.
+  //   4. Update SOW header totals (Install / Sub Bid) — they depend
+  //      on the whole grid, so we recompute and re-write just those
+  //      cells without rebuilding the rest of the table.
+  function patchRows(recordIds) {
+    var oldExpanded = Object.assign({}, _expandedSowItems);
+    var raw;
+    try {
+      // ns.loadRawData() is async — but the data already lives in the
+      // Knack model on the page. We still need the promise interface;
+      // just run it synchronously enough to keep the patch fast.
+    } catch (e) { return false; }
+
+    // loadRawData is a $.Deferred; resolve, then patch synchronously.
+    var loadPromise = ns.loadRawData();
+    if (!loadPromise || typeof loadPromise.then !== 'function') return false;
+
+    loadPromise.then(function (rawData) {
+      var newState = ns.buildState(rawData.records, rawData.sowItems || [], rawData.bidPackages || []);
+      var allOk = true;
+
+      for (var i = 0; i < recordIds.length; i++) {
+        var rid = recordIds[i];
+        var oldLoc = locateRowInState(_state, rid);
+        var newLoc = locateRowInState(newState, rid);
+
+        // Row was added or removed — structural change, full refresh.
+        if (!oldLoc || !newLoc) { allOk = false; break; }
+        // MDF/IDF group changed — row moved between groups. Full refresh.
+        if (oldLoc.grid.sowId !== newLoc.grid.sowId
+          || oldLoc.row.mdfIdfLabel !== newLoc.row.mdfIdfLabel) {
+          allOk = false; break;
+        }
+
+        var oldTr = findRowTr(rid);
+        if (!oldTr) { allOk = false; break; }
+
+        var newTr = ns.buildDataRow(newLoc.row, newLoc.grid.packages, newLoc.grid.sowId);
+        // Preserve the aria-expanded state so an open panel stays open
+        // visually while we swap.
+        if (oldTr.getAttribute('aria-expanded') === 'true') {
+          newTr.setAttribute('aria-expanded', 'true');
+        }
+        oldTr.parentNode.replaceChild(newTr, oldTr);
+      }
+
+      if (!allOk) {
+        refreshSilently();
+        return;
+      }
+
+      // Patches landed — commit the new state and refresh header totals.
+      _state = newState;
+      ns._state = _state;
+      updateSowHeaderTotals(newState);
+
+      // Keep expanded panels in sync — buildDataRow built a collapsed
+      // <tr>, so if a row was open we need to reopen the panel beneath
+      // it. _expandedSowItems is unchanged across the patch.
+      Object.keys(oldExpanded).forEach(function (sid) {
+        var tr = document.querySelector(
+          '.scw-bid-review__row--expandable[data-sow-item-id="' + sid + '"]'
+        );
+        if (tr && tr.getAttribute('aria-expanded') !== 'true') {
+          // Trigger expand by clicking through toggleRowExpand
+          toggleRowExpand(tr);
+        }
+      });
+    }).fail(function () {
+      refreshSilently();
+    });
+
+    return true;
+  }
+
+  function locateRowInState(state, recordId) {
+    if (!state || !state.sowGrids) return null;
+    for (var gi = 0; gi < state.sowGrids.length; gi++) {
+      var grid = state.sowGrids[gi];
+      for (var ri = 0; ri < grid.rows.length; ri++) {
+        var r = grid.rows[ri];
+        if (r.id === recordId || r.sowItem === recordId) {
+          return { grid: grid, row: r, gridIdx: gi, rowIdx: ri };
+        }
+      }
+    }
+    return null;
+  }
+
+  function findRowTr(recordId) {
+    return document.querySelector(
+      '.scw-bid-review__row[data-row-id="' + recordId + '"], ' +
+      '.scw-bid-review__row[data-sow-item-id="' + recordId + '"]'
+    );
+  }
+
+  // Recompute and re-write just the SOW header totals (Install Total
+  // / Sub Bid Total) without rebuilding the rest of the table. Reads
+  // the same projections renderMatrix uses.
+  function updateSowHeaderTotals(state) {
+    if (!state || !state.sowGrids) return;
+    state.sowGrids.forEach(function (grid) {
+      var section = document.querySelector(
+        '.scw-bid-review__sow-section[data-sow-id="' + grid.sowId + '"]'
+      );
+      if (!section) return;
+      var rows = grid.rows || [];
+      var installTotal = 0;
+      rows.forEach(function (r) {
+        if (typeof r.sowInstallFee === 'number') installTotal += r.sowInstallFee;
+      });
+      // Update install total in the SOW column header
+      var installEl = section.querySelector(
+        '.scw-bid-review__sow-detail-header .scw-bid-review__col-title-total-value'
+      );
+      if (installEl) installEl.textContent = formatCurrencyHdr(installTotal);
+
+      // Bid total per package — Sub Bid Total = Σ cell.labor (matches
+      // render.js's column header computation).
+      var pkgHeaders = section.querySelectorAll(
+        '.scw-bid-review__pkg-header .scw-bid-review__col-title-total-value'
+      );
+      for (var p = 0; p < grid.packages.length && p < pkgHeaders.length; p++) {
+        var pkg = grid.packages[p];
+        var bidTotal = 0;
+        rows.forEach(function (r) {
+          var cell = r.cellsByPackage && r.cellsByPackage[pkg.id];
+          if (cell && cell.labor) bidTotal += Number(cell.labor) || 0;
+        });
+        pkgHeaders[p].textContent = formatCurrencyHdr(bidTotal);
+      }
+    });
+  }
+
+  function formatCurrencyHdr(n) {
+    if (!isFinite(n)) return '$0.00';
+    return '$' + n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  }
+
+  // Wrap the handlers so jQuery event-arg-2 (the payload) reaches scheduleSilentRefresh.
+  function onSavedEvent(_ev, payload) { scheduleSilentRefresh(payload); }
+
+  $(document).on('scw-record-saved' + CFG.eventNs + 'Expand', onSavedEvent);
   $(document).on('knack-view-render.' + CFG.sowItemsViewKey + CFG.eventNs + 'Expand',
-    scheduleSilentRefresh);
+    function () { scheduleSilentRefresh(); });
   $(document).on('knack-cell-update.' + CFG.sowItemsViewKey + CFG.eventNs + 'Expand',
-    scheduleSilentRefresh);
+    function (_ev, _viewModel, record) {
+      scheduleSilentRefresh(record && record.id ? { recordId: record.id } : null);
+    });
 
   // ── Survey Costs save (per-SOW, on blur) ────────────────────
 
