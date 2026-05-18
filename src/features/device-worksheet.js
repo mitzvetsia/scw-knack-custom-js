@@ -3221,16 +3221,15 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
   var _expandedState = {};  // viewId → [recordId, ...]
 
-  // localStorage helpers for persisting accordion state across page refreshes
+  // Accordion expanded state is now in-memory only — so inline-edit
+  // re-renders don't collapse a card mid-edit, but every fresh page
+  // load starts with all summaries collapsed regardless of what the
+  // user had open last time. localStorage write/read removed
+  // intentionally; the key is still cleaned up on render to evict
+  // any stale state from previous bundle versions.
   function wsStorageKey(viewId) { return 'scw:ws-expanded:' + viewId; }
-  function loadWsState(viewId) {
-    try { return JSON.parse(localStorage.getItem(wsStorageKey(viewId)) || '[]'); }
-    catch (e) { return []; }
-  }
-  function saveWsState(viewId, expanded) {
-    try { localStorage.setItem(wsStorageKey(viewId), JSON.stringify(expanded)); }
-    catch (e) {}
-  }
+  function loadWsState() { return []; }
+  function saveWsState() { /* no-op: state is in-memory only */ }
 
   /** Scan current worksheet rows for open detail panels and save their
    *  record IDs so they can be re-expanded after transformView. */
@@ -6929,11 +6928,10 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     // Re-expand detail panels that were open before the inline-edit
     // re-render.  Must run AFTER all worksheet rows + photo rows are
     // built so toggleDetail can find and show the photo row too.
-    // Clear stale localStorage for views that no longer default open
-    // (prevents previously-expanded-all state from persisting)
-    if (!viewCfg.defaultOpen && !_expandedState[viewCfg.viewId]) {
-      try { localStorage.removeItem(wsStorageKey(viewCfg.viewId)); } catch (e) {}
-    }
+    // Evict any persisted state from older bundle versions — accordion
+    // state is now in-memory only so every fresh page load defaults to
+    // collapsed.
+    try { localStorage.removeItem(wsStorageKey(viewCfg.viewId)); } catch (e) {}
 
     restoreExpandedState(viewCfg.viewId);
 
