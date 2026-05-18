@@ -526,8 +526,8 @@
       '.' + STRIP_CLASS + '__bar {' +
       '  display: flex; align-items: center; gap: 6px;' +
       '  width: 100%;' +
-      '  padding: 4px 14px;' +
-      '  background: var(--scw-surface-subtle, #f8fafc);' +
+      '  padding: 6px 14px;' +
+      '  background: #eef2f7;' +
       '  border: 0;' +
       '  border-bottom: 1px solid var(--scw-border-subtle, #e2e8f0);' +
       '  cursor: pointer; text-align: left;' +
@@ -538,7 +538,7 @@
       '  transition: background 120ms ease, padding 150ms ease;' +
       '}' +
       '.' + STRIP_CLASS + '__bar:hover {' +
-      '  background: var(--scw-surface-muted, #f1f5f9);' +
+      '  background: #e2e8f0;' +
       '  color: var(--scw-text-default, #1f2937);' +
       '}' +
       '.' + STRIP_CLASS + '__bar-caret {' +
