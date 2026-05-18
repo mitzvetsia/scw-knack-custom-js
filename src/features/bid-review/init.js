@@ -650,8 +650,13 @@
   var _refreshDebounce = null;
   function scheduleSilentRefresh() {
     if (_refreshDebounce) clearTimeout(_refreshDebounce);
-    // 250ms gives syncKnackModel time to land before loadRawData reads it.
-    _refreshDebounce = setTimeout(function () { refreshSilently(); }, 250);
+    // 700ms gives every event in a single user action (scw-record-saved
+    // + knack-cell-update + knack-view-render — typically all fire
+    // within ~150ms of each other after a chip toggle / inline edit)
+    // a chance to coalesce into one refresh. Was 250ms; the longer
+    // window noticeably cuts post-edit repaints without making the
+    // grid feel laggy.
+    _refreshDebounce = setTimeout(function () { refreshSilently(); }, 700);
   }
   $(document).on('scw-record-saved' + CFG.eventNs + 'Expand', scheduleSilentRefresh);
   $(document).on('knack-view-render.' + CFG.sowItemsViewKey + CFG.eventNs + 'Expand',
@@ -2375,8 +2380,10 @@
     // Change request view — pending CR counts + links (DOM-scraped)
     if (CFG.changeRequestViewKey) {
       SCW.onViewRender(CFG.changeRequestViewKey, function () {
-        // Re-render the matrix to pick up updated CR data from view_3818
-        if (_state) refreshSilently();
+        // Route through the debounced scheduler so a CR-view render
+        // bursting alongside knack-cell-update + scw-record-saved
+        // collapses into one refresh instead of three.
+        if (_state) scheduleSilentRefresh();
       }, CFG.eventNs + 'Cr');
     }
 
