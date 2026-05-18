@@ -850,39 +850,34 @@
 
   function scrapeRowPhotoUrls(rowId) {
     if (!rowId) return null;
-    var view = document.getElementById(CFG.sowItemsViewKey);
-    if (!view) return _photoCache[rowId] || null;
-    var sourceTr = view.querySelector('tbody tr[id="' + rowId + '"]');
-    if (!sourceTr) return _photoCache[rowId] || null;
+    // Photos live inside the wsTr (.scw-ws-row) that device-worksheet
+    // builds. Each photo is a .scw-inline-photo-card injected by
+    // inline-photo-row.js. The original Knack <tr> in view_3921 has
+    // its field cells moved into the wsTr, so scraping td.field_771
+    // out of the source row returns empty.
+    //
+    // Look up the wsTr globally — it may live in view_3921's tbody
+    // (unexpanded rows) or inside our expand panel (when the row is
+    // open and the card was moved over).
+    var wsTr = document.querySelector('tr.scw-ws-row[id="' + rowId + '"]');
+    if (!wsTr) return _photoCache[rowId] || null;
 
-    // field_771 may render as either a class-named td or via
-    // data-field-key (Knack varies by table configuration).
-    var photoCell = sourceTr.querySelector(
-      'td[data-field-key="field_771"], td.field_771'
+    var cards = wsTr.querySelectorAll(
+      '.scw-inline-photo-card[data-photo-has-image="true"]'
     );
-    if (!photoCell) {
-      // Source row exists but no photo cell — authoritative empty.
-      // Don't wipe the cache; the cell may just be temporarily
-      // missing during a re-render of just the field set.
-      return _photoCache[rowId] || null;
-    }
-
-    var imgSpans = photoCell.querySelectorAll('span[id][data-kn="connection-value"]');
-    var imgUrls = [];
-    for (var i = 0; i < imgSpans.length; i++) {
-      var img = imgSpans[i].querySelector('img[data-kn-img-gallery], img');
+    var urls = [];
+    for (var i = 0; i < cards.length; i++) {
+      var img = cards[i].querySelector('img');
       if (!img) continue;
-      var url = img.getAttribute('data-kn-img-gallery') || img.getAttribute('src') || '';
-      if (url) imgUrls.push(url);
+      var url = img.getAttribute('src') || img.getAttribute('data-kn-img-gallery') || '';
+      if (url) urls.push(url);
     }
 
-    // Authoritative read — even an empty result. But only overwrite
-    // the cache when we got a non-empty read OR we have no cached
-    // value yet; otherwise hold the last-known good set (covers
-    // the moment when the connection-value spans haven't rendered
-    // their <img> children yet).
-    if (imgUrls.length || !_photoCache[rowId]) {
-      _photoCache[rowId] = imgUrls;
+    // Only overwrite the cache when we got a non-empty read OR we
+    // have no cached value yet — covers the moment when wsTr exists
+    // but photo cards haven't been injected yet.
+    if (urls.length || !_photoCache[rowId]) {
+      _photoCache[rowId] = urls;
     }
     return _photoCache[rowId];
   }
