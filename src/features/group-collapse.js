@@ -54,7 +54,10 @@
     // Exclusive accordion: only one L1 (MDF/IDF) group open at a time.
     // Prevents a single large group from pushing every other group off
     // the viewport. Starts all-collapsed so the user picks where to work.
-    view_3586: { exclusive: true },
+    // `startAllCollapsed: true` suppresses the "auto-open first L1 when
+    // none are open" branch of exclusive enforcement, so a fresh load
+    // (no saved state) shows every group collapsed.
+    view_3586: { exclusive: true, startAllCollapsed: true },
     view_3610: { exclusive: true },
     view_3921: { exclusive: true },
   };
@@ -655,6 +658,10 @@
       var $openL1 = $allL1.not('.scw-collapsed');
       var state = loadState(sceneId, vid);
       if ($openL1.length === 0) {
+        // Views flagged startAllCollapsed skip the auto-open-first
+        // behaviour — they intentionally land with every L1 collapsed
+        // until the user picks one.
+        if (vo.startAllCollapsed) return;
         var $first = $allL1.first();
         setCollapsed($first, false);
         state[buildKey($first, 1)] = 0;
