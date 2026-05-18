@@ -44,6 +44,24 @@
     // view to surface attached files in the SOW status bar and bid
     // column headers.
     'view_3926',
+    // ── Bid Review comparison page (scene_1155) ───────────────
+    // The bid-review feature replaces these source grids with its
+    // own composite #bid-review-matrix mount. Keep them rendered
+    // (Backbone models still need to populate) but visually hidden.
+    // 'view_3680' — bid records (the bids being compared).
+    'view_3680',
+    // 'view_3921' — SOW line items (unbid noBid rows + worksheet
+    // wsTrs that get moved into the expand panel).
+    'view_3921',
+    // 'view_3573' — bid package records (PDF link in the bid column
+    // header).
+    'view_3573',
+    // 'view_3822' — MDF/IDF location records (group labels + L1
+    // SCW notes / survey notes callouts).
+    'view_3822',
+    // 'view_3818' — pending Change Request records, scraped for the
+    // CR badges and the "+ Add to bid" pending state.
+    'view_3818',
   ];
 
   if (document.getElementById(STYLE_ID)) return;
