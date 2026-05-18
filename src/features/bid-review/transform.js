@@ -957,7 +957,12 @@
         rows:        rows,
         groups:      groups,
         eligibility: elig,
-        columnCount: pkgs.length + 3,
+        // Full table column count INCLUDING the Sub-Bid-Revisions
+        // column (label + photos + SOW + N packages + CR). render.js
+        // decrements this by 1 when it strips the CR column from the
+        // DOM, so the group / subgroup header colspans end up matching
+        // the actual visible column count in both cases.
+        columnCount: pkgs.length + 4,
       });
     }
 
@@ -972,7 +977,7 @@
         rows:        fallbackRows,
         groups:      groupRows(fallbackRows),
         eligibility: computeEligibility(fallbackRows, fallbackPkgs),
-        columnCount: fallbackPkgs.length + 2,
+        columnCount: fallbackPkgs.length + 3,
       });
     }
 

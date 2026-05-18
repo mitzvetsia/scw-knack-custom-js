@@ -1511,16 +1511,42 @@
       '  color: #64748b;',
       '}',
 
+      /* The divider above the survey-note block is decorative — the
+         note itself uses a highlighter pill below. Hide it so we
+         don\'t double-frame. */
       '.scw-bid-review__cell-notes-divider {',
-      '  border: none;',
-      '  border-top: 1px solid #e2e8f0;',
-      '  margin: 4px 0 2px;',
+      '  display: none;',
       '}',
 
+      /* Survey Note callout — surveyor-left context the reviewer
+         needs to read before acting. Highlighter-yellow pill with
+         navy text + label badge: pops as "make sure you see this"
+         without warning/error semantics. */
       '.scw-bid-review__cell-notes {',
-      '  font-size: 11px;',
-      '  color: #64748b;',
-      '  margin-top: 2px;',
+      '  display: block;',
+      '  margin: 8px 0 4px;',
+      '  padding: 8px 10px 8px 12px;',
+      '  background: #fef08a;',
+      '  border-left: 4px solid #1e3a5f;',
+      '  border-radius: 0 6px 6px 0;',
+      '  font-size: 13px;',
+      '  line-height: 1.4;',
+      '  font-weight: 500;',
+      '  color: #0f172a;',
+      '  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.08);',
+      '}',
+      '.scw-bid-review__cell-notes .scw-bid-review__field-label {',
+      '  display: inline-block;',
+      '  margin-right: 4px;',
+      '  padding: 1px 7px;',
+      '  border-radius: 3px;',
+      '  background: #1e3a5f;',
+      '  color: #fef08a;',
+      '  font-size: 10px;',
+      '  font-weight: 800;',
+      '  letter-spacing: 0.08em;',
+      '  text-transform: uppercase;',
+      '  vertical-align: 1px;',
       '}',
 
       '.scw-bid-review__cell-conn-device {',
