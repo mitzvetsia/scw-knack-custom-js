@@ -32,6 +32,11 @@
     for (var i = 0; i < views.length; i++) {
       if (passed) {
         views[i].classList.add('scw-hidden-below-bom');
+        // If the view is wrapped in a KTL accordion, hide the whole
+        // accordion shell — otherwise the accordion's "Title N" header
+        // remains visible even when the inner view is hidden.
+        var acc = views[i].closest('.scw-ktl-accordion');
+        if (acc) acc.classList.add('scw-hidden-below-bom');
       } else if (views[i].id === BOM_VIEW) {
         passed = true;
       }

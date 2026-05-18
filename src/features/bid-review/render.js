@@ -1852,15 +1852,13 @@
   }
 
   // ── grid toolbar (top of #bid-review-matrix) ────────────────
-
+  // Currently empty — the "+ Create New SOW" button was removed
+  // because it shouldn't be exposed from the bid-comparison surface.
+  // Kept as a stub so renderMatrix's `mount.appendChild(buildToolbar())`
+  // call doesn't have to be conditionally guarded; if new toolbar
+  // controls need to land later, mount them here.
   function buildToolbar() {
-    var bar = el('div', 'scw-bid-review__toolbar');
-    var createBtn = btn('+ Create New SOW', 'create-sow', {
-      'data-action': 'create_new_sow',
-      'title':       'Create a new SOW from matched SOW items + orphan bid records',
-    });
-    bar.appendChild(createBtn);
-    return bar;
+    return el('div', 'scw-bid-review__toolbar');
   }
 
   // ── public: renderMatrix ────────────────────────────────────
