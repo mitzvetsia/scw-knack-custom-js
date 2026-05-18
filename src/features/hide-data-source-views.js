@@ -83,6 +83,9 @@
     // 'view_3923' — Update Installation Project form view used by
     // bid-review's margin edit flow (field_2158 PUT target).
     'view_3923',
+    // 'view_3927' — mounting-hardware accessory view; mirror-connection-
+    // sync.js (ACCESSORIES_VIEW_ID) reads from it.
+    'view_3927',
   ];
 
   if (!document.getElementById(STYLE_ID)) {
