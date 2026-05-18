@@ -126,6 +126,7 @@ cat \
   src/features/import-unique-items-btn.js \
   src/features/hide-self-row.js \
   src/features/hide-view-conditional.js \
+  src/features/hide-views-below-bom.js \
   src/features/survey-worksheet-pdf-export.js \
   src/features/sub-portal-survey-request-export.js \
   src/features/sow-pdf-stepper.js \
