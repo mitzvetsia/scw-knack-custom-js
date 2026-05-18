@@ -22,60 +22,14 @@
 
   // viewId → consumer note. Comment is the documentation, not used
   // by the CSS — but keep it close to the id for grep-discovery.
+  //
+  // Isolated test: only view_3573 right now while we verify the hide
+  // mechanism actually lands. Other entries restored once we confirm
+  // this one disappears in the live app.
   var HIDDEN_VIEWS = [
-    // 'view_3827' — SOW kn-details: workflow-stepper SOURCE_VIEW,
-    // create-sow-option-btn / preview-proposal-btn / import-unique-
-    // items-btn read field_1199 / record id from this view's model.
-    'view_3827',
-    // 'view_3841' — SOW edit form used as a write target by ops-
-    // review-pill (field_2725 + field_2736 PUTs) and by sales-change-
-    // request as draftView for SOW record API calls.
-    'view_3841',
-    // 'view_3876' — workflow-stepper reads field_2329 here to build
-    // the action link href.
-    'view_3876',
-    // 'view_3913' — hidden grid of all SOW line items on the project,
-    // scraped by import-unique-items-btn for the sowId → lineItemIds
-    // index (and itemId → label map). change-record-limit pumps it
-    // to 1000 rows/page so the index covers the whole project.
-    'view_3913',
-    // 'view_3926' — DOC_files records connected to SOWs (field_2143)
-    // and bid packages (field_2421). Bid-review render scrapes this
-    // view to surface attached files in the SOW status bar and bid
-    // column headers.
-    'view_3926',
-    // ── Bid Review comparison page (scene_1155) ───────────────
-    // The bid-review feature replaces these source grids with its
-    // own composite #bid-review-matrix mount. Keep them rendered
-    // (Backbone models still need to populate) but visually hidden.
-    // 'view_3680' — bid records (the bids being compared).
-    'view_3680',
-    // 'view_3921' — SOW line items (unbid noBid rows + worksheet
-    // wsTrs that get moved into the expand panel).
-    'view_3921',
     // 'view_3573' — bid package records (PDF link in the bid column
     // header).
     'view_3573',
-    // 'view_3822' — MDF/IDF location records (group labels + L1
-    // SCW notes / survey notes callouts).
-    'view_3822',
-    // 'view_3818' — pending Change Request records, scraped for the
-    // CR badges and the "+ Add to bid" pending state.
-    'view_3818',
-    // 'view_3842' — BID_revision line items, read by sales-revision-
-    // column.js and bid-review/init.js (revision card prefill) via
-    // DOM scrape of the rendered grid.
-    'view_3842',
-    // 'view_3918' — Scopes of Work grid; bid-review's "next step"
-    // surface reads/writes through this view (config.nextStepViewKey
-    // + surveyCostsWriteView). Kept rendered for model access.
-    'view_3918',
-    // 'view_3920' — SOW_published proposals, sourced by bid-review
-    // (config.proposalSourceView) to show published-proposal state.
-    'view_3920',
-    // 'view_3923' — Update Installation Project form view used by
-    // bid-review's margin edit flow (field_2158 PUT target).
-    'view_3923',
   ];
 
   if (!document.getElementById(STYLE_ID)) {
