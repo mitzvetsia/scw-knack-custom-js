@@ -761,32 +761,35 @@
       '}',
 
       /* ── L1 survey-notes callout row ──────────────────────
-         Promoted out of the general L1 detail wrap so the most
-         actionable thing the surveyor leaves behind reads with
-         weight. Amber palette matches the revision-badge family
-         (same #fef3c7 / #92400e tokens) so "things you should
-         actually look at" stay visually consistent across the app.
-         !important on bg/border to win over Knack's default
-         tbody>tr>td styling (matching specificity, but Knack's
-         stylesheet sometimes loads after ours). */
+         Surveyor's note is the most actionable thing the reviewer
+         needs to absorb before scanning rows in the MDF/IDF group.
+         Styled as a *highlighter sticky-note* — saturated yellow
+         background with navy text. Reads as "make sure you see
+         this" without the warning/error semantics of an amber
+         alert palette. */
       '.scw-bid-review__l1-survey-notes-row > td {',
-      '  background: #fffbeb !important;',
-      '  border-bottom: 1px solid #fde68a !important;',
-      '  border-left: 4px solid #f59e0b !important;',
+      '  background: #fef08a !important;',
+      '  border-bottom: 1px solid #fde047 !important;',
+      '  border-left: 6px solid #1e3a5f !important;',
       '  padding: 0 !important;',
+      '  box-shadow: inset 0 0 0 1px rgba(30, 58, 95, 0.08),',
+      '              0 1px 3px rgba(15, 23, 42, 0.10);',
       '}',
       '.scw-bid-review__l1-survey-notes-wrap {',
       '  display: flex;',
       '  align-items: flex-start;',
-      '  gap: 10px;',
-      '  padding: 12px 16px 12px 14px;',
+      '  gap: 12px;',
+      '  padding: 14px 18px 14px 16px;',
       '}',
       '.scw-bid-review__l1-survey-notes-icon {',
-      '  flex: 0 0 auto;',
+      '  flex: 0 0 28px;',
+      '  width: 28px; height: 28px;',
       '  display: inline-flex;',
       '  align-items: center;',
       '  justify-content: center;',
-      '  color: #b45309;',
+      '  background: #1e3a5f;',
+      '  color: #fef08a;',
+      '  border-radius: 50%;',
       '  margin-top: 1px;',
       '}',
       '.scw-bid-review__l1-survey-notes-body {',
@@ -794,17 +797,18 @@
       '  min-width: 0;',
       '}',
       '.scw-bid-review__l1-survey-notes-label {',
-      '  font-size: 10px;',
-      '  font-weight: 700;',
+      '  font-size: 11px;',
+      '  font-weight: 800;',
       '  text-transform: uppercase;',
-      '  letter-spacing: 0.06em;',
-      '  color: #92400e;',
-      '  margin-bottom: 3px;',
+      '  letter-spacing: 0.10em;',
+      '  color: #1e3a5f;',
+      '  margin-bottom: 4px;',
       '}',
       '.scw-bid-review__l1-survey-notes-text {',
-      '  font-size: 14px;',
+      '  font-size: 15px;',
       '  line-height: 1.5;',
-      '  color: #78350f;',
+      '  font-weight: 500;',
+      '  color: #0f172a;',
       '  white-space: pre-wrap;',
       '  word-break: break-word;',
       '}',
