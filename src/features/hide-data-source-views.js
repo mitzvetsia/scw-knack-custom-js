@@ -6,17 +6,9 @@
  * builder doesn't expose a "render but hide" toggle, so we hide them
  * here via CSS.
  *
- * `display: none` keeps the elements in the DOM and lets Knack
- * populate the Backbone model normally — features that read from
- * `Knack.views[viewId].model` or `tr#<recordId>` selectors continue
- * to work because the markup is still rendered, just not painted.
- *
- * Isolated test: only view_3573 right now. Aggressive hide:
- *   - CSS rule with multiple selector forms
- *   - inline display:none on view-render + scene-render
- *   - MutationObserver as last resort
- *   - console logs so the user can confirm in DevTools that the
- *     hide code is actually running
+ * Isolated test: only view_3573 right now. Diagnostic build —
+ * console-logs whether the IIFE runs, whether the CSS rule lands,
+ * and what the element looks like at each view-render.
  */
 (function () {
   'use strict';
@@ -27,90 +19,36 @@
 
   console.log(LOG, 'IIFE loaded, targeting:', HIDDEN_VIEWS);
 
-  // ── 1. CSS rule (multiple selector forms) ────────────────────
   if (!document.getElementById(STYLE_ID)) {
     var selectors = [];
     for (var i = 0; i < HIDDEN_VIEWS.length; i++) {
-      var v = HIDDEN_VIEWS[i];
-      selectors.push('#' + v);
-      selectors.push('div#' + v);
-      selectors.push('[id="' + v + '"]');
-      selectors.push('.kn-view#' + v);
-      selectors.push('.view-column:has(#' + v + ')');
-      selectors.push('.view-column:has([id="' + v + '"])');
+      selectors.push('#' + HIDDEN_VIEWS[i]);
+      selectors.push('.view-column:has(> #' + HIDDEN_VIEWS[i] + ')');
+      selectors.push('.view-column:has(> .kn-view#' + HIDDEN_VIEWS[i] + ')');
     }
     var style = document.createElement('style');
     style.id = STYLE_ID;
     style.textContent = selectors.join(',\n') +
-      ' {\n  display: none !important;\n  visibility: hidden !important;\n}\n';
+      ' {\n  display: none !important;\n}\n';
     document.head.appendChild(style);
-    console.log(LOG, 'CSS rule injected:', selectors.length, 'selectors');
+    console.log(LOG, 'CSS rule injected. Selectors:', selectors);
   }
 
-  // ── 2. Hide function — finds + nukes display ─────────────────
-  function nuke(viewId, reason) {
-    var el = document.getElementById(viewId);
-    if (!el) {
-      console.log(LOG, viewId, 'not in DOM (' + reason + ')');
-      return false;
-    }
-    var was = el.style.display;
-    el.style.setProperty('display', 'none', 'important');
-    el.style.setProperty('visibility', 'hidden', 'important');
-    var col = el.closest('.view-column');
-    if (col) {
-      col.style.setProperty('display', 'none', 'important');
-    }
-    console.log(LOG, viewId, 'hidden (' + reason + '), was display=' + was);
-    return true;
+  function hideOnRender(viewId) {
+    SCW.onViewRender(viewId, function () {
+      var el = document.getElementById(viewId);
+      if (!el) {
+        console.log(LOG, viewId, 'view-render fired but element NOT in DOM');
+        return;
+      }
+      var computed = window.getComputedStyle(el).display;
+      console.log(LOG, viewId, 'view-render — element found, computed display=' + computed +
+        ', tagName=' + el.tagName + ', class="' + el.className + '"');
+      el.style.display = 'none';
+      var col = el.closest('.view-column');
+      if (col && col.children.length === 1) col.style.display = 'none';
+    }, 'scwHideDataSource');
   }
-
-  function nukeAll(reason) {
-    for (var i = 0; i < HIDDEN_VIEWS.length; i++) nuke(HIDDEN_VIEWS[i], reason);
-  }
-
-  // ── 3. Run on every viewRender for each hidden view ──────────
-  for (var h = 0; h < HIDDEN_VIEWS.length; h++) {
-    (function (viewId) {
-      SCW.onViewRender(viewId, function () {
-        nuke(viewId, 'view-render');
-      }, 'scwHideDataSource');
-    })(HIDDEN_VIEWS[h]);
-  }
-
-  // ── 4. Also run on every scene render (catches first paint
-  //      before view-render handlers wire up) ──────────────────
-  $(document).on('knack-scene-render.any.scwHideDataSource', function () {
-    nukeAll('scene-render');
-  });
-
-  // ── 5. Run immediately + after DOMContentLoaded ──────────────
-  nukeAll('script-load');
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', function () {
-      nukeAll('DOMContentLoaded');
-    });
-  }
-
-  // ── 6. MutationObserver — if Knack re-creates the element or
-  //      another feature re-shows it, re-hide on next tick ────
-  var observer = new MutationObserver(function () {
-    nukeAll('mutation');
-  });
-  // Wait for body to exist
-  function startObserving() {
-    if (document.body) {
-      observer.observe(document.body, {
-        childList: true,
-        subtree: true,
-        attributes: true,
-        attributeFilter: ['style', 'class'],
-      });
-      console.log(LOG, 'MutationObserver started on document.body');
-    } else {
-      setTimeout(startObserving, 50);
-    }
-  }
-  startObserving();
+  for (var h = 0; h < HIDDEN_VIEWS.length; h++) hideOnRender(HIDDEN_VIEWS[h]);
 })();
 /*** END FEATURE: Hide data-source views ***/
