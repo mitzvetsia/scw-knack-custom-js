@@ -62,6 +62,20 @@
     // 'view_3818' — pending Change Request records, scraped for the
     // CR badges and the "+ Add to bid" pending state.
     'view_3818',
+    // 'view_3842' — BID_revision line items, read by sales-revision-
+    // column.js and bid-review/init.js (revision card prefill) via
+    // DOM scrape of the rendered grid.
+    'view_3842',
+    // 'view_3918' — Scopes of Work grid; bid-review's "next step"
+    // surface reads/writes through this view (config.nextStepViewKey
+    // + surveyCostsWriteView). Kept rendered for model access.
+    'view_3918',
+    // 'view_3920' — SOW_published proposals, sourced by bid-review
+    // (config.proposalSourceView) to show published-proposal state.
+    'view_3920',
+    // 'view_3923' — Update Installation Project form view used by
+    // bid-review's margin edit flow (field_2158 PUT target).
+    'view_3923',
   ];
 
   if (!document.getElementById(STYLE_ID)) {
