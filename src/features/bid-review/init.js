@@ -327,23 +327,36 @@
     var hostTd = expandTr.firstElementChild;
     if (!hostTd) return;
 
-    hostTd.classList.add('scw-bid-review__expand-cell--with-photo');
-
-    var viewer = hostTd.querySelector('.scw-bid-review__photo-viewer');
-    if (viewer) {
-      updatePhotoViewer(viewer, urls, activeIdx);
-    } else {
-      viewer = buildPhotoViewer(urls, activeIdx, hostTd);
-      hostTd.insertBefore(viewer, hostTd.firstChild);
+    // Already showing a viewer? Just swap photos.
+    var existing = hostTd.querySelector('.scw-bid-review__photo-viewer');
+    if (existing) {
+      updatePhotoViewer(existing, urls, activeIdx);
+      return;
     }
+
+    // The worksheet card lives inside .scw-bid-review__expand-table.
+    // Wrap it in a flex container alongside the photo viewer so they
+    // stretch to equal height. Use a wrapper <div> rather than flipping
+    // the <td> to display:flex — the latter drops table-cell behavior
+    // and the cell collapses off the row.
+    var miniTable = hostTd.querySelector('.scw-bid-review__expand-table');
+    if (!miniTable) return;
+
+    var flex = document.createElement('div');
+    flex.className = 'scw-bid-review__expand-flex';
+    var viewer = buildPhotoViewer(urls, activeIdx);
+    flex.appendChild(viewer);
+    hostTd.insertBefore(flex, miniTable);
+    flex.appendChild(miniTable);
   }
 
-  function buildPhotoViewer(urls, activeIdx, hostTd) {
+  function buildPhotoViewer(urls, activeIdx) {
     var wrap = document.createElement('div');
     wrap.className = 'scw-bid-review__photo-viewer';
 
     var stage = document.createElement('div');
     stage.className = 'scw-bid-review__photo-viewer-stage';
+    stage.setAttribute('title', 'Click photo to close viewer');
 
     var openLink = document.createElement('a');
     openLink.className = 'scw-bid-review__photo-viewer-open';
@@ -351,24 +364,22 @@
     openLink.rel = 'noopener';
     openLink.title = 'Open full size in a new tab';
     openLink.textContent = 'Open ↗';
+    // Don't trigger the close-on-click when the user means "open in new tab".
+    openLink.addEventListener('click', function (e) { e.stopPropagation(); });
     stage.appendChild(openLink);
 
     var img = document.createElement('img');
     img.alt = '';
     stage.appendChild(img);
 
-    var close = document.createElement('button');
-    close.type = 'button';
-    close.className = 'scw-bid-review__photo-viewer-close';
-    close.setAttribute('title', 'Close photo viewer');
-    close.textContent = '×';
-    close.addEventListener('click', function (e) {
-      e.preventDefault();
-      e.stopPropagation();
-      wrap.parentNode && wrap.parentNode.removeChild(wrap);
-      if (hostTd) hostTd.classList.remove('scw-bid-review__expand-cell--with-photo');
+    // Click anywhere on the stage closes the viewer and unwraps the
+    // worksheet card back into the expand cell.
+    stage.addEventListener('click', function (e) {
+      // Ignore clicks on the "Open ↗" link (its own handler stops prop,
+      // but defend in depth).
+      if (e.target.closest('.scw-bid-review__photo-viewer-open')) return;
+      closeViewer(wrap);
     });
-    stage.appendChild(close);
     wrap.appendChild(stage);
 
     var strip = document.createElement('div');
@@ -377,6 +388,18 @@
 
     updatePhotoViewer(wrap, urls, activeIdx);
     return wrap;
+  }
+
+  function closeViewer(viewer) {
+    var flex = viewer.closest('.scw-bid-review__expand-flex');
+    if (!flex) {
+      viewer.parentNode && viewer.parentNode.removeChild(viewer);
+      return;
+    }
+    var hostTd = flex.parentNode;
+    var miniTable = flex.querySelector('.scw-bid-review__expand-table');
+    if (miniTable && hostTd) hostTd.insertBefore(miniTable, flex);
+    flex.parentNode && flex.parentNode.removeChild(flex);
   }
 
   function updatePhotoViewer(viewer, urls, activeIdx) {

@@ -1036,14 +1036,16 @@
       /* ── Expand-cell side-by-side photo viewer ────────────────
          When a user clicks a photo thumb (rather than the row body),
          the expand cell hosts a photo viewer alongside the worksheet
-         card. The td flips to flex so the two panes sit side by side
-         and stretch to the same height. */
-      '.scw-bid-review__expand-cell--with-photo {',
-      '  display: flex !important;',
+         card. We DON\'T turn the <td> itself into a flex container —
+         that would drop its table-cell behavior and the cell would
+         shrink off the row. Instead we wrap content in a flex div. */
+      '.scw-bid-review__expand-flex {',
+      '  display: flex;',
       '  align-items: stretch;',
       '  gap: 10px;',
+      '  width: 100%;',
       '}',
-      '.scw-bid-review__expand-cell--with-photo > .scw-bid-review__expand-table {',
+      '.scw-bid-review__expand-flex > .scw-bid-review__expand-table {',
       '  flex: 1 1 0;',
       '  min-width: 0;',
       '}',
@@ -1069,7 +1071,23 @@
       '  justify-content: center;',
       '  overflow: hidden;',
       '  position: relative;',
+      '  cursor: zoom-out;',
       '}',
+      '.scw-bid-review__photo-viewer-stage::after {',
+      '  content: "Click to close";',
+      '  position: absolute;',
+      '  bottom: 8px; left: 50%;',
+      '  transform: translateX(-50%);',
+      '  padding: 3px 10px;',
+      '  border-radius: 11px;',
+      '  background: rgba(15, 23, 42, 0.65);',
+      '  color: #fff;',
+      '  font: 600 11px/1 system-ui, sans-serif;',
+      '  opacity: 0;',
+      '  pointer-events: none;',
+      '  transition: opacity 120ms ease;',
+      '}',
+      '.scw-bid-review__photo-viewer-stage:hover::after { opacity: 1; }',
       '.scw-bid-review__photo-viewer-stage img,',
       '.kn-content .scw-bid-review__photo-viewer-stage img {',
       '  display: block;',
