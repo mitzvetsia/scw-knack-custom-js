@@ -814,8 +814,9 @@ ${sel('tr.scw-mounting-product-rep td.field_2218')} {
   padding-left: 80px !important;
 }
 .scw-mounting-product-name {
-  font-weight: 400;
+  font-weight: 500;
   color: #07467c;
+  font-size: 14px;
 }
 
 /* SOW header details — kept rendered so isInstallationMasked() can read
@@ -2492,6 +2493,45 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
       }
       if (hasAccessory) {
         writeCellHtml(l3, qtyKey, '<strong>' + Math.round(nonAccessoryQty) + '</strong>');
+      }
+    }
+
+    // ── Pass 3: fix L2 subtotal Qty for footers whose section contains
+    // relocated accessories. The pipeline-built L2 footer summed every
+    // tr[id] under the L2 (cameras + brackets); recompute as cameras only.
+    const l2Footers = tbody.querySelectorAll('tr.scw-subtotal--level-2');
+    for (let i = 0; i < l2Footers.length; i++) {
+      const footer = l2Footers[i];
+
+      // Walk backwards to the L2 group header that owns this footer
+      let header = footer.previousElementSibling;
+      while (header) {
+        if (header.classList && header.classList.contains('kn-table-group')) {
+          const m = header.className.match(/kn-group-level-(\d+)/);
+          if (m && parseInt(m[1], 10) <= 2) break;
+        }
+        header = header.previousElementSibling;
+      }
+      if (!header) continue;
+
+      // Sum non-accessory tr[id] qty between this L2 header and the footer
+      let nonAccessoryQty = 0;
+      let hasAccessory = false;
+      let cur = header.nextElementSibling;
+      while (cur && cur !== footer) {
+        if (cur.tagName === 'TR' && cur.id && cur.id.indexOf('kn-') !== 0) {
+          if (cur.classList.contains('scw-relocated-accessory')) {
+            hasAccessory = true;
+          } else {
+            nonAccessoryQty += readNum(cur, qtyKey);
+          }
+        }
+        cur = cur.nextElementSibling;
+      }
+
+      if (hasAccessory) {
+        const qtyCell = footer.querySelector('td.' + qtyKey);
+        if (qtyCell) qtyCell.innerHTML = '<strong>' + Math.round(nonAccessoryQty) + '</strong>';
       }
     }
   }
