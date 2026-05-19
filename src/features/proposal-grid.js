@@ -808,6 +808,15 @@ ${sel('tr.scw-mounting-l4 td:first-child')} {
   font-style: italic;
   color: #6b7280;
 }
+/* Bracket rows rolled up per product: hide duplicates, label the rep. */
+${sel('tr.scw-mounting-hidden-dup')} { display: none !important; }
+${sel('tr.scw-mounting-product-rep td.field_2218')} {
+  padding-left: 80px !important;
+}
+.scw-mounting-product-name {
+  font-weight: 400;
+  color: #07467c;
+}
 
 /* SOW header details — kept rendered so isInstallationMasked() can read
    field_2725, but hidden from users so it doesn't take up space on the
@@ -2316,6 +2325,154 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
   }
 
   // ============================================================
+  // FEATURE: Post-process mounting hardware clusters
+  // ============================================================
+  //
+  // After the main subtotal pipeline runs, the L3 camera/device
+  // groups have their qty and cost cells written based on summing
+  // ALL data rows below them — which now includes relocated
+  // bracket rows. That inflates the L3 Qty (cameras + brackets) and
+  // the synthetic "Mounting Hardware" L4 displays $0 cost because
+  // the L4 cell-write logic uses labor (field_2028, which is $0 for
+  // brackets) instead of hardware/line-item-total.
+  //
+  // This pass walks each .scw-mounting-l4 cluster, groups the
+  // accessory rows by product, rolls them up into one
+  // representative row per product, hides the duplicates, fixes
+  // the L4 header cost, and fixes the parent L3 Qty (cameras only).
+  // It runs AFTER the main pipeline has computed totals, so it
+  // doesn't affect the sums (L3 cost still correctly includes the
+  // brackets because those tr[id]s remain in the DOM and were
+  // counted by the pipeline).
+
+  function postProcessMountingClusters(ctx) {
+    const tbody = ctx.$tbody[0];
+    if (!tbody) return;
+
+    const qtyKey = ctx.keys.qty;
+    const costKey = ctx.keys.cost;
+
+    function readNum(row, fieldKey) {
+      const cell = row.querySelector('td.' + fieldKey);
+      if (!cell) return 0;
+      const m = (cell.textContent || '').replace(/[^0-9.\-]/g, '');
+      const n = parseFloat(m);
+      return Number.isFinite(n) ? n : 0;
+    }
+
+    function writeCellHtml(row, fieldKey, html) {
+      const cell = row.querySelector('td.' + fieldKey);
+      if (cell) cell.innerHTML = html;
+    }
+
+    // ── Pass 1: roll up accessory rows by product under each .scw-mounting-l4
+    const l4s = tbody.querySelectorAll('tr.scw-mounting-l4');
+    for (let i = 0; i < l4s.length; i++) {
+      const l4 = l4s[i];
+
+      // Walk forward to collect bracket rows until next L3+ header
+      const accessoryRows = [];
+      let cur = l4.nextElementSibling;
+      while (cur) {
+        if (cur.classList && cur.classList.contains('kn-table-group')) {
+          const m = cur.className.match(/kn-group-level-(\d+)/);
+          if (m && parseInt(m[1], 10) <= 3) break;
+        } else if (cur.tagName === 'TR' && cur.id && cur.id.indexOf('kn-') !== 0) {
+          accessoryRows.push(cur);
+        }
+        cur = cur.nextElementSibling;
+      }
+
+      if (!accessoryRows.length) continue;
+
+      // Group by product display name (field_1958)
+      const byProduct = Object.create(null);
+      const productOrder = [];
+      for (let j = 0; j < accessoryRows.length; j++) {
+        const r = accessoryRows[j];
+        const productCell = r.querySelector('td.field_1958');
+        const productName = productCell
+          ? (productCell.textContent || '').replace(/\s+/g, ' ').trim()
+          : '';
+        if (!byProduct[productName]) {
+          byProduct[productName] = [];
+          productOrder.push(productName);
+        }
+        byProduct[productName].push(r);
+      }
+
+      let totalQty = 0;
+      let totalCost = 0;
+
+      for (let p = 0; p < productOrder.length; p++) {
+        const productName = productOrder[p];
+        const rows = byProduct[productName];
+        let groupQty = 0;
+        let groupCost = 0;
+        for (let k = 0; k < rows.length; k++) {
+          groupQty += readNum(rows[k], qtyKey);
+          groupCost += readNum(rows[k], costKey);
+        }
+        totalQty += groupQty;
+        totalCost += groupCost;
+
+        // First row of this product becomes the visible "rep" line —
+        // inject the product name into its first td and overwrite the
+        // qty + cost cells with the rolled-up values.
+        const rep = rows[0];
+        rep.classList.add('scw-mounting-product-rep');
+
+        const firstTd = rep.querySelector('td.field_2218');
+        if (firstTd) {
+          firstTd.innerHTML =
+            '<span class="scw-mounting-product-name">' +
+            escapeHtml(productName) +
+            '</span>';
+        }
+        writeCellHtml(rep, qtyKey, '<span class="col-12">' + Math.round(groupQty) + '</span>');
+        writeCellHtml(rep, costKey, '<span class="col-14">' + escapeHtml(formatMoney(groupCost)) + '</span>');
+
+        // Hide the remaining rows for this product
+        for (let k = 1; k < rows.length; k++) {
+          rows[k].classList.add('scw-mounting-hidden-dup');
+        }
+      }
+
+      // Fix the "Mounting Hardware" L4 header — pipeline wrote labor
+      // (field_2028 sum = $0 for brackets); replace with cost total.
+      writeCellHtml(l4, qtyKey, '<strong>' + Math.round(totalQty) + '</strong>');
+      writeCellHtml(l4, costKey, '<strong>' + escapeHtml(formatMoney(totalCost)) + '</strong>');
+    }
+
+    // ── Pass 2: fix L3 Qty for groups that now contain accessories.
+    // The L3 cost stays as-is (it correctly includes brackets), but
+    // L3 Qty should reflect parent devices only.
+    const l3s = tbody.querySelectorAll('tr.kn-table-group.kn-group-level-3');
+    for (let i = 0; i < l3s.length; i++) {
+      const l3 = l3s[i];
+      let nonAccessoryQty = 0;
+      let hasAccessory = false;
+      let cur = l3.nextElementSibling;
+      while (cur) {
+        if (cur.classList && cur.classList.contains('kn-table-group')) {
+          const m = cur.className.match(/kn-group-level-(\d+)/);
+          if (m && parseInt(m[1], 10) <= 3) break;
+        } else if (cur.tagName === 'TR' && cur.id && cur.id.indexOf('kn-') !== 0) {
+          if (cur.classList.contains('scw-relocated-accessory')) {
+            hasAccessory = true;
+          } else {
+            nonAccessoryQty += readNum(cur, qtyKey);
+          }
+        }
+        cur = cur.nextElementSibling;
+      }
+      if (hasAccessory) {
+        writeCellHtml(l3, qtyKey, '<strong>' + Math.round(nonAccessoryQty) + '</strong>');
+      }
+    }
+  }
+
+  // ============================================================
   // MAIN PROCESSOR
   // ============================================================
 
@@ -2644,6 +2801,11 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
     if (!hasAnyNonZeroL1Subtotal) {
       $tbody.find('.scw-l1-header-qty, .scw-l1-header-cost').empty();
     }
+
+    // Post-process the relocated mounting hardware: roll up brackets
+    // per product, fix the L4 cost cell (uses labor by default, which
+    // is $0 for brackets), and de-double-count the parent L3 Qty.
+    postProcessMountingClusters(ctx);
 
     // ✅ Project Grand Total rows — appended to end of tbody
     refreshProjectTotals(ctx, caches, $tbody);
