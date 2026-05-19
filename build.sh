@@ -60,6 +60,7 @@ cat \
   src/features/sow-filter-pills.js \
   src/features/select-all-checkboxes.js \
   src/features/bulk-delete-confirm.js \
+  src/features/bulk-add-mounting-box.js \
   src/features/SOW-line-item-DTO-bucket-field-visibility.js \
   src/features/SOW-line-item-DTO-bucket-field-visibility_view_3451.js \
   src/features/highlight-duplicate-cells.js \
