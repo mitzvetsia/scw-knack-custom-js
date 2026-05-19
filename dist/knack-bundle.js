@@ -971,8 +971,11 @@ ${d("tr.scw-mounting-l4 td:first-child")} {
   font-style: italic;
   color: #6b7280;
 }
-/* Bracket rows rolled up per product: hide duplicates, label the rep. */
+/* Bracket rows rolled up per product: hide duplicates, label the rep.
+   The global rule above hides every tr[id] data row by default; override
+   for the rep row so the rolled-up product line is visible. */
 ${d("tr.scw-mounting-hidden-dup")} { display: none !important; }
+${d("tr.scw-mounting-product-rep")} { display: table-row !important; }
 ${d("tr.scw-mounting-product-rep td.field_2218")} {
   padding-left: 80px !important;
 }
