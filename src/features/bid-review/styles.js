@@ -418,6 +418,11 @@
       '  padding-top: 10px;',
       '  border-bottom: none;',
       '}',
+      /* SCW SOW / Subcontractor Bid title text — 50% larger than the
+         12px header-titles baseline so the column groupings read first. */
+      '.scw-bid-review__col-title-text {',
+      '  font-size: 18px !important;',
+      '}',
       '.scw-bid-review__col-title-total {',
       '  font-size: 11px !important;',
       '  font-weight: 500 !important;',
