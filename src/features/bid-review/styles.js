@@ -386,6 +386,16 @@
       '  text-align: center !important;',
       '  font-size: 12px !important;',
       '}',
+
+      /* Divider between the SOW column and the first Bid column —
+         applied to every row in the SOW column (3 header rows + body
+         data cells) so the rule reads as one continuous vertical line. */
+      '.scw-bid-review__sow-detail-header,',
+      '.scw-bid-review__sow-header-cell,',
+      '.scw-bid-review__sow-action-cell,',
+      'td.scw-bid-review__sow-detail {',
+      '  border-right: 1px solid #cbd5e1;',
+      '}',
       '.scw-bid-review__header-details .scw-bid-review__header-detail-cell {',
       '  text-align: center;',
       '  padding-top: 10px;',
