@@ -36,14 +36,20 @@
     'view_3921'
   ];
 
-  // Mounting-box product list. Populated by pasting the output of the
-  // DevTools snippet that scrapes view_3580's field_1958 dropdown —
-  // see the bulk-add-mounting-box feature notes / commit message. As
-  // long as this is empty, the modal falls back to a free-text input
-  // so users aren't blocked while we collect the catalog.
+  // Product catalog comes from window.SCW.mountingBoxProducts — populated
+  // by an out-of-bundle snippet (mirrors how filter-products-by-bucket.js
+  // consumes window.SCW.productBucketMap). The snippet fetches every
+  // Enabled product whose Proposal Bucket = "Mounting Hardware" and
+  // sets the global. See the bulk-add-mounting-box feature notes for
+  // the snippet to drop into Knack Builder's JS settings.
   //
-  // Shape: [{ id: '<24-hex>', name: '<display>' }]
-  var MOUNTING_BOX_PRODUCTS = [];
+  // If the global is missing (snippet hasn't loaded yet, or wasn't
+  // wired up at all), the modal falls back to a free-text input so
+  // users aren't blocked.
+  function getMountingBoxProducts() {
+    var list = (window.SCW && window.SCW.mountingBoxProducts) || null;
+    return Array.isArray(list) ? list : null;
+  }
 
   // Webhook + button ids
   var WEBHOOK_KEY     = 'MAKE_BULK_ADD_MOUNTING_BOX_WEBHOOK';
@@ -226,10 +232,11 @@
     }
     card.appendChild(rowlist);
 
-    // Product picker — hardcoded select if list is populated,
-    // free-text input if not (so the feature ships even before the
-    // mounting-box list is filled in).
-    var hasList = MOUNTING_BOX_PRODUCTS.length > 0;
+    // Product picker — dropdown when window.SCW.mountingBoxProducts is
+    // populated (preferred), free-text input as a fallback so the
+    // feature still works if the catalog snippet hasn't loaded yet.
+    var products  = getMountingBoxProducts();
+    var hasList   = !!(products && products.length);
     var pickerLabel = document.createElement('label');
     pickerLabel.className = MODAL_CLS + '-label';
     pickerLabel.textContent = 'Mounting box product';
@@ -242,8 +249,8 @@
       var blank = document.createElement('option');
       blank.value = ''; blank.textContent = '— Choose a mounting box —';
       picker.appendChild(blank);
-      for (var pi = 0; pi < MOUNTING_BOX_PRODUCTS.length; pi++) {
-        var p = MOUNTING_BOX_PRODUCTS[pi];
+      for (var pi = 0; pi < products.length; pi++) {
+        var p = products[pi];
         var opt = document.createElement('option');
         opt.value = p.id;
         opt.textContent = p.name;
@@ -262,10 +269,33 @@
       var note = document.createElement('div');
       note.className = MODAL_CLS + '-empty-note';
       note.textContent =
-        'Note: product list is empty in MOUNTING_BOX_PRODUCTS. ' +
-        'Make will resolve the typed name to a product record. ' +
-        'Add the product catalog to the constant in bulk-add-mounting-box.js for a dropdown.';
+        'window.SCW.mountingBoxProducts is not loaded — using free-text input. ' +
+        'Wire the catalog-loader snippet into Knack JS settings (or wait a moment ' +
+        'and reopen) to get the dropdown.';
       card.appendChild(note);
+
+      // If the catalog finishes loading while the modal is open,
+      // swap the input for a dropdown without forcing the user to
+      // reopen.
+      document.addEventListener('scw-mounting-box-products-ready', function once () {
+        document.removeEventListener('scw-mounting-box-products-ready', once);
+        var fresh = getMountingBoxProducts();
+        if (!fresh || !fresh.length || !picker.parentNode) return;
+        var sel = document.createElement('select');
+        sel.className = MODAL_CLS + '-select';
+        var blank2 = document.createElement('option');
+        blank2.value = ''; blank2.textContent = '— Choose a mounting box —';
+        sel.appendChild(blank2);
+        for (var pj = 0; pj < fresh.length; pj++) {
+          var pp = fresh[pj];
+          var op = document.createElement('option');
+          op.value = pp.id; op.textContent = pp.name; op.dataset.name = pp.name;
+          sel.appendChild(op);
+        }
+        picker.parentNode.replaceChild(sel, picker);
+        picker = sel;
+        if (note.parentNode) note.parentNode.removeChild(note);
+      });
     }
 
     var actions = document.createElement('div');
@@ -301,7 +331,11 @@
     function doSubmit() {
       var productId = '';
       var productName = '';
-      if (hasList) {
+      // hasList captured at open time can be stale if the catalog
+      // loaded mid-modal and the input was swapped for a <select>.
+      // Read the live picker shape instead.
+      var isSelect = picker.tagName === 'SELECT';
+      if (isSelect) {
         productId = picker.value;
         var sel = picker.options[picker.selectedIndex];
         productName = sel ? (sel.dataset.name || sel.textContent) : '';
