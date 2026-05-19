@@ -1018,9 +1018,20 @@
 
     var css = `
 /* ── Hide raw Knack rows until transformView processes them ── */
-/* Prevents flash of unstyled/duplicate inputs during re-render */
+/* Prevents flash of unstyled/duplicate inputs during re-render.
+   IMPORTANT: this used to ship as a .map() returning single-quoted
+   strings that embedded literal '\${PROCESSED_ATTR}' / '\${WORKSHEET_ROW}'
+   — invalid CSS, so the rule was silently dropped and raw rows flashed
+   on every reload. The selectors are built explicitly here so the
+   substitution actually happens. */
 ${WORKSHEET_CONFIG.views.map(function (v) {
-  return '#' + v.viewId + ' tbody > tr:not([${PROCESSED_ATTR}]):not(.${WORKSHEET_ROW}):not(.kn-table-group):not(.scw-inline-photo-row):not(.kn-table-totals) { visibility: hidden; height: 0; overflow: hidden; }';
+  return '#' + v.viewId + ' tbody > tr' +
+    ':not([' + PROCESSED_ATTR + '])' +
+    ':not(.' + WORKSHEET_ROW + ')' +
+    ':not(.kn-table-group)' +
+    ':not(.scw-inline-photo-row)' +
+    ':not(.kn-table-totals)' +
+    ' { visibility: hidden; height: 0; overflow: hidden; }';
 }).join('\n')}
 
 /* ── Hide the original data row (cells moved out, shell stays) ── */
