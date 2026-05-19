@@ -808,13 +808,15 @@ ${sel('tr.scw-mounting-l4 td:first-child')} {
   font-style: italic;
   color: #6b7280;
 }
-/* Bracket rows rolled up per product: hide duplicates, label the rep.
-   The global rule above hides every tr[id] data row by default; override
-   for the rep row so the rolled-up product line is visible. */
-${sel('tr.scw-mounting-hidden-dup')} { display: none !important; }
-${sel('tr.scw-mounting-product-rep')} { display: table-row !important; }
-${sel('tr.scw-mounting-product-rep td.field_2218')} {
+/* Mounting hardware: one synthetic product line per bracket type under
+   each "Mounting Hardware" L4 sub-header. The actual tr[id] bracket
+   rows stay hidden by the global tr[id] rule above (they're still
+   needed in the DOM for the pipeline's L3 cost sum). */
+${sel('tr.scw-mounting-product-line td:first-child')} {
   padding-left: 80px !important;
+  font-weight: 500;
+  color: #07467c;
+  font-size: 14px;
 }
 .scw-mounting-product-name {
   font-weight: 500;
@@ -2432,6 +2434,13 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
       let totalQty = 0;
       let totalCost = 0;
 
+      // Build one synthetic product-line row per bracket product, inserted
+      // immediately after the "Mounting Hardware" L4 header. The original
+      // tr[id] bracket rows stay in the DOM (hidden by the global tr[id]
+      // rule) so the pipeline's L3 cost sum still sees them.
+      const colCount = (l4.querySelectorAll('td') || []).length || 12;
+      let insertAfter = l4;
+
       for (let p = 0; p < productOrder.length; p++) {
         const productName = productOrder[p];
         const rows = byProduct[productName];
@@ -2444,26 +2453,51 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
         totalQty += groupQty;
         totalCost += groupCost;
 
-        // First row of this product becomes the visible "rep" line —
-        // inject the product name into its first td and overwrite the
-        // qty + cost cells with the rolled-up values.
-        const rep = rows[0];
-        rep.classList.add('scw-mounting-product-rep');
-
-        const firstTd = rep.querySelector('td.field_2218');
-        if (firstTd) {
-          firstTd.innerHTML =
-            '<span class="scw-mounting-product-name">' +
-            escapeHtml(productName) +
-            '</span>';
+        // Reuse an existing synthetic line if a previous run already built
+        // one for this product under this L4 cluster.
+        let line = null;
+        const probe = insertAfter.nextElementSibling;
+        if (
+          probe &&
+          probe.classList &&
+          probe.classList.contains('scw-mounting-product-line') &&
+          probe.getAttribute('data-scw-product') === productName
+        ) {
+          line = probe;
         }
-        writeCellHtml(rep, qtyKey, '<span class="col-12">' + Math.round(groupQty) + '</span>');
-        writeCellHtml(rep, costKey, '<span class="col-14">' + escapeHtml(formatMoney(groupCost)) + '</span>');
 
-        // Hide the remaining rows for this product
-        for (let k = 1; k < rows.length; k++) {
-          rows[k].classList.add('scw-mounting-hidden-dup');
+        if (!line) {
+          line = document.createElement('tr');
+          line.className = 'scw-mounting-product-line';
+          line.setAttribute('data-scw-product', productName);
+
+          // Build a row that matches the L4 column layout: product name in
+          // the first cell, qty in td.qtyKey, cost in td.costKey, all
+          // others blank.
+          const tdNames = ['<td>' + escapeHtml(productName) + '</td>'];
+          const otherCells = l4.querySelectorAll('td');
+          for (let c = 1; c < otherCells.length; c++) {
+            const ref = otherCells[c];
+            const cls = ref.className || '';
+            if (cls.indexOf(qtyKey) !== -1) {
+              tdNames.push('<td class="' + cls + '" style="text-align:center;">' + Math.round(groupQty) + '</td>');
+            } else if (cls.indexOf(costKey) !== -1) {
+              tdNames.push('<td class="' + cls + '" style="text-align:center;">' + escapeHtml(formatMoney(groupCost)) + '</td>');
+            } else {
+              tdNames.push('<td class="' + cls + '"></td>');
+            }
+          }
+          line.innerHTML = tdNames.join('');
+          tbody.insertBefore(line, insertAfter.nextSibling);
+        } else {
+          // Update qty / cost in place
+          const q = line.querySelector('td.' + qtyKey);
+          const c = line.querySelector('td.' + costKey);
+          if (q) q.textContent = String(Math.round(groupQty));
+          if (c) c.textContent = formatMoney(groupCost);
         }
+
+        insertAfter = line;
       }
 
       // Fix the "Mounting Hardware" L4 header — pipeline wrote labor
