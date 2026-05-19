@@ -1248,32 +1248,23 @@
               '<span class="scw-empty-icon">&#128247;</span>' +
               '<span>' + (isMissing ? 'Required' : 'Upload photo') + '</span>';
 
-            // Click behaviour: if the upload webhook is configured AND
-            // this is a missing-required card, open a file picker for
-            // inline upload via Make. Otherwise fall back to Knack's edit
-            // modal (the existing affordance).
-            var uploadEnabled = isMissing &&
-              !!(window.SCW && window.SCW.CONFIG &&
-                 window.SCW.CONFIG.MAKE_PHOTO_UPLOAD_WEBHOOK);
-            if (uploadEnabled) {
-              empty.title = 'Click to upload' + (photo.type ? ': ' + photo.type : '');
-              empty.style.cursor = 'pointer';
-              (function (rid, lid, vid, c) {
-                empty.addEventListener('click', function () {
-                  openFilePickerForUpload(c, rid, lid, vid);
-                });
-              })(photo.id, lineItemId, viewId, card);
-            } else {
-              empty.title = photo.type
-                ? 'Upload: ' + photo.type
-                : 'Click to edit photo';
-              (function (rid, vid) {
-                empty.addEventListener('click', function () {
-                  var h = editPhotoHash(rid, vid);
-                  if (h) navigateToHash(h);
-                });
-              })(photo.id, viewId);
-            }
+            // Click behaviour: navigate to Knack's own edit-doc-photo
+            // page so the user can upload through Knack's native file
+            // input. The previous inline-upload-via-Make path is left
+            // behind in openFilePickerForUpload / dispatchPhotoUpload
+            // for possible future revival, but it was failing in
+            // practice (the webhook path can't reliably re-attach the
+            // binary back to the PIC record from the browser) — better
+            // to send users to a working path than to a broken one.
+            empty.title = photo.type
+              ? 'Upload: ' + photo.type
+              : 'Click to edit photo';
+            (function (rid, vid) {
+              empty.addEventListener('click', function () {
+                var h = editPhotoHash(rid, vid);
+                if (h) navigateToHash(h);
+              });
+            })(photo.id, viewId);
             card.appendChild(empty);
 
             // If an upload+poll cycle is still in flight for this record,
