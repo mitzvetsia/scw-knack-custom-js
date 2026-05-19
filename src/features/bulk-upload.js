@@ -89,7 +89,12 @@
         menuViewId:           'view_3482',
         linkText:             'Bulk Add Photos',
         linkField:            'sowID',
-        hashPattern:          /scope-of-work-details\/([a-f0-9]{24})/,
+        // The SOW id lives at different hash segments depending on the
+        // route the user came from:
+        //   standalone SOW page    → #…/scope-of-work-details/<sow>
+        //   project-dashboard view → #…/project-dashboard/<proj>/build-sow/<sow>/?…
+        // Match either form; capture group [1] is always the SOW id.
+        hashPattern:          /(?:scope-of-work-details|build-sow)\/([a-f0-9]{24})/,
         refreshRecordInViews: [],
         refreshViews:         [],
         reloadOnClose:        false,
