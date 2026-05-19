@@ -2094,22 +2094,61 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
   // the device they accessorize, so the customer sees "Camera +
   // bracket" together rather than two disconnected sections.
   //
-  // Implementation: read field_2464_raw from the view's Knack model
-  // (cleaner than scraping the DOM connection cell), move each
-  // accessory's <tr> to immediately follow its parent's <tr>, then
-  // mark empty L2/L3 group headers so they hide.
+  // Implementation: build a child→parent map by scanning every Knack
+  // view on the page for one that exposes field_2464_raw (the proposal
+  // grid view doesn't include field_2464 as a column, so its own model
+  // doesn't carry the connection — but the sibling SOW_line_items
+  // accordion view does). Then move each accessory's <tr> to
+  // immediately follow its parent's <tr>, and mark empty L2/L3 group
+  // headers so they hide.
   //
   // Runs BEFORE synthesizeMissingL4Headers so the L4 synthesizer
   // creates a header for the relocated row inside its new L3 group.
 
+  function buildParentConnectionMap(ctx, parentField, knownIds) {
+    const map = Object.create(null);
+
+    function harvest(models) {
+      if (!models) return;
+      for (let i = 0; i < models.length; i++) {
+        const attrs = models[i].attributes || models[i];
+        const childId = attrs.id;
+        if (!childId || !knownIds[childId]) continue;
+        const parentRaw = attrs[parentField + '_raw'];
+        if (!parentRaw || !parentRaw.length) continue;
+        const parentId = parentRaw[0] && parentRaw[0].id;
+        if (!parentId || parentId === childId) continue;
+        if (!map[childId]) map[childId] = parentId;
+      }
+    }
+
+    // Try the primary view first
+    const primaryModels =
+      ctx.view && ctx.view.model && ctx.view.model.data && ctx.view.model.data.models;
+    harvest(primaryModels);
+
+    // If the primary view didn't expose field_2464_raw for any row,
+    // fall through to every other view on the page and harvest from
+    // whichever one carries the connection field.
+    if (!Object.keys(map).length && typeof Knack !== 'undefined' && Knack.views) {
+      for (const viewKey in Knack.views) {
+        if (viewKey === ctx.viewId) continue;
+        const v = Knack.views[viewKey];
+        const m = v && v.model && v.model.data && v.model.data.models;
+        if (!m || !m.length) continue;
+        const sample = m[0].attributes || m[0];
+        if (sample[parentField + '_raw'] === undefined) continue;
+        harvest(m);
+        if (Object.keys(map).length) break;
+      }
+    }
+
+    return map;
+  }
+
   function relocateAccessoriesToParents(ctx) {
     const opt = ctx.features.relocateAccessoriesToParents;
     if (!opt?.enabled) return;
-
-    const view = ctx.view;
-    const models =
-      view && view.model && view.model.data && view.model.data.models;
-    if (!models || !models.length) return;
 
     const tbody = ctx.$tbody[0];
     if (!tbody) return;
@@ -2118,28 +2157,30 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
 
     // Build id → <tr> map for fast lookup
     const rowById = Object.create(null);
+    const knownIds = Object.create(null);
     const dataRows = tbody.querySelectorAll('tr[id]');
     for (let i = 0; i < dataRows.length; i++) {
       const r = dataRows[i];
-      if (r.id && r.id.indexOf('kn-') !== 0) rowById[r.id] = r;
+      if (r.id && r.id.indexOf('kn-') !== 0) {
+        rowById[r.id] = r;
+        knownIds[r.id] = true;
+      }
+    }
+
+    const parentMap = buildParentConnectionMap(ctx, parentField, knownIds);
+    if (!Object.keys(parentMap).length) {
+      log(ctx, 'relocateAccessoriesToParents: no field_2464_raw connections found on any view');
+      return;
     }
 
     let movedCount = 0;
 
-    for (let i = 0; i < models.length; i++) {
-      const attrs = models[i].attributes || models[i];
-      const childId = attrs.id;
-      if (!childId) continue;
-
-      const parentRaw = attrs[parentField + '_raw'];
-      if (!parentRaw || !parentRaw.length) continue;
-
-      const parentId = parentRaw[0] && parentRaw[0].id;
-      if (!parentId || parentId === childId) continue;
-
+    for (const childId in parentMap) {
+      const parentId = parentMap[childId];
       const childRow = rowById[childId];
       const parentRow = rowById[parentId];
       if (!childRow || !parentRow) continue;
+      if (childRow === parentRow) continue;
       if (childRow.parentNode !== tbody) continue;
       if (parentRow.parentNode !== tbody) continue;
 
