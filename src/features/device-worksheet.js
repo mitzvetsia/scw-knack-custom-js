@@ -3221,16 +3221,15 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
   var _expandedState = {};  // viewId → [recordId, ...]
 
-  // localStorage helpers for persisting accordion state across page refreshes
+  // Accordion expanded state is now in-memory only — so inline-edit
+  // re-renders don't collapse a card mid-edit, but every fresh page
+  // load starts with all summaries collapsed regardless of what the
+  // user had open last time. localStorage write/read removed
+  // intentionally; the key is still cleaned up on render to evict
+  // any stale state from previous bundle versions.
   function wsStorageKey(viewId) { return 'scw:ws-expanded:' + viewId; }
-  function loadWsState(viewId) {
-    try { return JSON.parse(localStorage.getItem(wsStorageKey(viewId)) || '[]'); }
-    catch (e) { return []; }
-  }
-  function saveWsState(viewId, expanded) {
-    try { localStorage.setItem(wsStorageKey(viewId), JSON.stringify(expanded)); }
-    catch (e) {}
-  }
+  function loadWsState() { return []; }
+  function saveWsState() { /* no-op: state is in-memory only */ }
 
   /** Scan current worksheet rows for open detail panels and save their
    *  record IDs so they can be re-expanded after transformView. */
@@ -4276,7 +4275,11 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         if (trigger) fetchAndApplyLabel(viewId, recordId);
         if (isFeeTrigger(viewId, fieldKey)) scheduleFeeRefetch(viewId, recordId);
         syncKnackModel(viewId, recordId, resp, fieldKey, value);
-        $(document).trigger('scw-record-saved');
+        // Payload lets downstream listeners (e.g. bid-review) patch a
+        // single row instead of doing a full grid rebuild. Listeners
+        // ignoring the args keep working — jQuery just passes them.
+        $(document).trigger('scw-record-saved',
+          [{ recordId: recordId, viewId: viewId, fieldKey: fieldKey }]);
         if (onSuccess) onSuccess(resp);
       },
       error: function (xhr) {
@@ -6120,8 +6123,114 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   // ============================================================
   // TRANSFORM VIEW
   // ============================================================
+  //
+  // transformView() is the worksheet's hot path — Phase 1 reads the
+  // Knack-rendered <tr>s, Phase 2 builds and inserts the worksheet
+  // card rows, Phase 3 restores expanded state + group-collapse +
+  // header labels and notifies dependents.
+  //
+  // Multiple triggers can drive it in rapid succession (the same
+  // user editing several rows in a few hundred ms, plus sibling
+  // model.fetch() ripples from refresh-on-inline-edit.js, plus the
+  // post-edit settle in preserve-scroll-on-refresh.js). Without a
+  // guard, run #2's Phase 1 starts while run #1's Phase 2 is still
+  // mutating the DOM — the result is empty <tr class="scw-ws-row">
+  // shells, stale cells, half-built cards. Documented as Known
+  // Issues #5 and #8 in CLAUDE.md.
+  //
+  // Per-view in-flight guard pattern (cribbed from bid-review/init.js
+  // 'silent refresh'): if a transform is already running for a view,
+  // a second call just sets `queued = true` and bails. The finally
+  // block re-fires once after completion so the queued retry sees
+  // up-to-date DOM. One overlap-free retry per burst, regardless of
+  // how many triggers piled up.
+
+  var _transformState = {}; // viewId → { inFlight: bool, queued: bool }
+
+  function _transformViewState(viewId) {
+    if (!_transformState[viewId]) {
+      _transformState[viewId] = { inFlight: false, queued: false };
+    }
+    return _transformState[viewId];
+  }
+
+  function isTransformInFlight(viewId) {
+    var s = _transformState[viewId];
+    return !!(s && s.inFlight);
+  }
+
+  // ── tbody cloak helpers ─────────────────────────────────────
+  // Between Knack's view-render and our transformView running
+  // (~150ms setTimeout), users see the empty source <tr> shells —
+  // device-worksheet hides their cells via CSS once data-scw-worksheet
+  // is set, so the table flashes through an empty-grid state.
+  //
+  // Cloak the tbody with visibility:hidden at view-render time;
+  // uncloak in transformView's finally. visibility (not display)
+  // keeps layout intact so scroll position and row heights don't
+  // jump when we reveal. If a queued retry is pending, the cloak
+  // is left in place across the gap so the user only sees the
+  // final settled state.
+  function _tbodyOf(viewId) {
+    var sel = '#' + viewId + ' table.kn-table-table > tbody, ' +
+              '#' + viewId + ' table.kn-table > tbody';
+    return document.querySelector(sel);
+  }
+
+  function cloakTbody(viewId) {
+    var tb = _tbodyOf(viewId);
+    if (!tb) return;
+    if (tb.getAttribute('data-scw-cloaked') === '1') return;
+    tb.setAttribute('data-scw-cloaked', '1');
+    tb.style.visibility = 'hidden';
+  }
+
+  function uncloakTbody(viewId) {
+    var tb = _tbodyOf(viewId);
+    if (!tb) return;
+    if (tb.getAttribute('data-scw-cloaked') !== '1') return;
+    tb.removeAttribute('data-scw-cloaked');
+    tb.style.visibility = '';
+  }
 
   function transformView(viewCfg) {
+    if (!viewCfg || viewCfg.disabled) return;
+    var viewId = viewCfg.viewId;
+    var state = _transformViewState(viewId);
+
+    if (state.inFlight) {
+      // A transform is already running for this view. Mark the queue
+      // bit and bail — the finally block in the current run will
+      // re-fire transformView once with up-to-date DOM. Cloak stays
+      // on across the gap (uncloak happens only when there's no
+      // queued retry pending).
+      state.queued = true;
+      return;
+    }
+
+    state.inFlight = true;
+    state.queued = false;
+
+    try {
+      _transformViewImpl(viewCfg);
+    } catch (err) {
+      console.error('[device-worksheet] transformView threw for ' + viewId, err);
+    } finally {
+      state.inFlight = false;
+      if (state.queued) {
+        state.queued = false;
+        // Defer one tick so any pending DOM mutations from the just-
+        // completed pass settle before the queued retry reads them.
+        // Keep cloak on — the queued retry will uncloak.
+        setTimeout(function () { transformView(viewCfg); }, 0);
+      } else {
+        // Final pass for this burst — reveal the table.
+        uncloakTbody(viewId);
+      }
+    }
+  }
+
+  function _transformViewImpl(viewCfg) {
     if (viewCfg.disabled) return;
     var $view = $('#' + viewCfg.viewId);
     if (!$view.length) return;
@@ -6909,6 +7018,43 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         lastInsertedRow = oInsertRef;
       }
 
+      // ── Sort "Project Wide Assumptions" to the very END of the
+      // table. Iteration order above (Services then Assumptions) plus
+      // the Unassigned append leaves Assumptions sandwiched in the
+      // middle of the synthetic section. Per UX request, Assumptions
+      // should be the final group on the page — after MDF/IDFs,
+      // Services, and Unassigned. Find the Assumptions synthetic
+      // header by its label and re-append its entire row block to
+      // the bottom of tbody, then update lastInsertedRow so the
+      // divider lands below it.
+      if (anySyntheticBuilt) {
+        var assumpHeader = null;
+        var synthHeaders = tbody.querySelectorAll(
+          'tr.scw-synthetic-group:not(.scw-unassigned-group)'
+        );
+        for (var ai = 0; ai < synthHeaders.length; ai++) {
+          var ahTd = synthHeaders[ai].querySelector('td');
+          if (ahTd && ahTd.textContent.trim() === 'Project Wide Assumptions') {
+            assumpHeader = synthHeaders[ai];
+            break;
+          }
+        }
+        if (assumpHeader) {
+          var groupRows = [assumpHeader];
+          var cur = assumpHeader.nextElementSibling;
+          while (cur &&
+                 !cur.classList.contains('kn-table-group') &&
+                 !cur.classList.contains('scw-synth-divider')) {
+            groupRows.push(cur);
+            cur = cur.nextElementSibling;
+          }
+          for (var gr = 0; gr < groupRows.length; gr++) {
+            tbody.appendChild(groupRows[gr]);
+          }
+          lastInsertedRow = groupRows[groupRows.length - 1];
+        }
+      }
+
       // Insert gray divider bars around the synthetic section
       if (anySyntheticBuilt) {
         // Bottom divider: after the last synthetic group's rows
@@ -6929,11 +7075,10 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     // Re-expand detail panels that were open before the inline-edit
     // re-render.  Must run AFTER all worksheet rows + photo rows are
     // built so toggleDetail can find and show the photo row too.
-    // Clear stale localStorage for views that no longer default open
-    // (prevents previously-expanded-all state from persisting)
-    if (!viewCfg.defaultOpen && !_expandedState[viewCfg.viewId]) {
-      try { localStorage.removeItem(wsStorageKey(viewCfg.viewId)); } catch (e) {}
-    }
+    // Evict any persisted state from older bundle versions — accordion
+    // state is now in-memory only so every fresh page load defaults to
+    // collapsed.
+    try { localStorage.removeItem(wsStorageKey(viewCfg.viewId)); } catch (e) {}
 
     restoreExpandedState(viewCfg.viewId);
 
@@ -7087,6 +7232,11 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       $(document)
         .off('knack-view-render.' + viewId + EVENT_NS)
         .on('knack-view-render.' + viewId + EVENT_NS, function () {
+          // Cloak the tbody the moment Knack re-renders so the empty
+          // source-row shells aren't visible during the 150ms gap
+          // before transformView runs. transformView's finally will
+          // uncloak once the worksheet cards are built.
+          cloakTbody(viewId);
           setTimeout(function () {
             transformView(viewCfg);
             syncDeleteVisibility();
@@ -7110,7 +7260,14 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
           // Patch the edited record's card in-place from the updated
           // record data Knack passes with the event — no extra API call.
-          if (record && record.id) {
+          //
+          // Skip the in-place patch if a transformView is currently
+          // running for this view: the card may not exist yet (Phase 2
+          // hasn't built it) and the patch would silently fail. The
+          // transform's in-flight guard queues a retry that will rebuild
+          // the card with fresh data anyway, so the edit lands either
+          // way — just on a slightly delayed timeline (~150-300ms).
+          if (record && record.id && !isTransformInFlight(viewId)) {
             patchCardFromResponse(viewId, record.id, record);
           }
         });

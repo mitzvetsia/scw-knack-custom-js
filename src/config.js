@@ -226,5 +226,16 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   // Hard caps enforced client-side:
   //   - 50 files per batch
   //   - 5 MB raw per file (Make webhook body limit)
-  MAKE_BULK_UPLOAD_WEBHOOK: "https://hook.us1.make.com/vspokcrqp41hqqoi9ywxh5sc6qo26xnb"
+  MAKE_BULK_UPLOAD_WEBHOOK: "https://hook.us1.make.com/vspokcrqp41hqqoi9ywxh5sc6qo26xnb",
+
+  // ─────────────────────────────────────────────────────────────
+  // Bulk Add Mounting Box (device-worksheet → Add Mount Box button)
+  // ─────────────────────────────────────────────────────────────
+  // Fires when the user checks N rows on a device worksheet, clicks
+  // "+ Add Mounting Box to Selected", picks a mounting-box product,
+  // and submits. Make creates one SOW line item per selected parent
+  // camera/reader (field_1958 = product, field_2464 = parent record
+  // id, field_1946 = parent's MDF/IDF, field_2154 = sowId).
+  // Payload shape: { sowId, productId, productName, parentRecordIds, parentLabels, sourceViewId, triggeredBy }
+  MAKE_BULK_ADD_MOUNTING_BOX_WEBHOOK: "https://hook.us1.make.com/g43gvnp10lyo4xrcjkrdsv7fvmwmdb2b"
 };

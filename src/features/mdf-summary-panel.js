@@ -54,14 +54,33 @@
   function panelStorageKey(viewId, panelKey) {
     return 'scw:mdf-panel:' + getMdfSceneId() + ':' + viewId + ':' + panelKey;
   }
+  // Per-L1 panels (panelKey 'l1:<label>') default to COLLAPSED. The grand
+  // summary panel (panelKey 'grand') keeps the original default-open
+  // behaviour. Storage inverts for L1: absence = collapsed, 'open' = user
+  // expanded. For the grand panel: absence = expanded, 'collapsed' = user
+  // collapsed (legacy behaviour).
+  function isL1Panel(panelKey) {
+    return !!(panelKey && panelKey.indexOf('l1:') === 0);
+  }
   function isPanelCollapsed(viewId, panelKey) {
-    try { return localStorage.getItem(panelStorageKey(viewId, panelKey)) === 'collapsed'; }
-    catch (e) { return false; }
+    try {
+      var v = localStorage.getItem(panelStorageKey(viewId, panelKey));
+      if (isL1Panel(panelKey)) return v !== 'open';
+      return v === 'collapsed';
+    } catch (e) {
+      return isL1Panel(panelKey);
+    }
   }
   function savePanelCollapsed(viewId, panelKey, collapsed) {
     try {
-      if (collapsed) localStorage.setItem(panelStorageKey(viewId, panelKey), 'collapsed');
-      else           localStorage.removeItem(panelStorageKey(viewId, panelKey));
+      var key = panelStorageKey(viewId, panelKey);
+      if (isL1Panel(panelKey)) {
+        if (collapsed) localStorage.removeItem(key);
+        else           localStorage.setItem(key, 'open');
+      } else {
+        if (collapsed) localStorage.setItem(key, 'collapsed');
+        else           localStorage.removeItem(key);
+      }
     } catch (e) { /* ignore */ }
   }
 
@@ -507,8 +526,8 @@
       '.' + STRIP_CLASS + '__bar {' +
       '  display: flex; align-items: center; gap: 6px;' +
       '  width: 100%;' +
-      '  padding: 4px 14px;' +
-      '  background: var(--scw-surface-subtle, #f8fafc);' +
+      '  padding: 6px 14px;' +
+      '  background: #eef2f7;' +
       '  border: 0;' +
       '  border-bottom: 1px solid var(--scw-border-subtle, #e2e8f0);' +
       '  cursor: pointer; text-align: left;' +
@@ -519,7 +538,7 @@
       '  transition: background 120ms ease, padding 150ms ease;' +
       '}' +
       '.' + STRIP_CLASS + '__bar:hover {' +
-      '  background: var(--scw-surface-muted, #f1f5f9);' +
+      '  background: #e2e8f0;' +
       '  color: var(--scw-text-default, #1f2937);' +
       '}' +
       '.' + STRIP_CLASS + '__bar-caret {' +

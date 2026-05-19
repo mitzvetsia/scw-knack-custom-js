@@ -1793,6 +1793,112 @@
     return true;
   }
 
+  // ══════════════════════════════════════════════════════════════
+  // PAGE-READY GATE
+  // ══════════════════════════════════════════════════════════════
+  // Publish flows run from buttons that the user can mash before
+  // Knack has finished rendering every source view on the page. A
+  // half-loaded scrape yields a half-baked payload. We gate each
+  // publish action behind a per-scene "ready" signal:
+  //
+  //   • On knack-scene-render.<sceneId>, mark NOT ready, start a
+  //     QUIET_MS countdown.
+  //   • On every knack-view-render of a view that lives under
+  //     #kn-<sceneId>, bump lastActivity (restarts the countdown).
+  //   • Ready fires when (now - lastActivity) >= QUIET_MS, OR when
+  //     (now - sceneStart) >= MAX_WAIT_MS (hard fallback so a flaky
+  //     load never permanently jams the button).
+  //
+  // Exposed via SCW.pdfExport.isPageReady / .whenPageReady so the
+  // ops-stepper publish actions (different file, different click
+  // path) can gate on the same signal.
+  var _ready = {};        // sceneId → { ready, startedAt, lastActivity, listeners }
+  var _readyTimers = {};  // sceneId → pending timeout id
+
+  var READY_QUIET_MS  = 800;
+  var READY_MAX_WAIT_MS = 10000;
+
+  function _readyState(sceneId) {
+    if (!_ready[sceneId]) {
+      _ready[sceneId] = {
+        ready: false,
+        startedAt: 0,
+        lastActivity: 0,
+        listeners: []
+      };
+    }
+    return _ready[sceneId];
+  }
+
+  function _fireReady(sceneId) {
+    var st = _readyState(sceneId);
+    if (st.ready) return;
+    st.ready = true;
+    var cbs = st.listeners.slice();
+    st.listeners.length = 0;
+    for (var i = 0; i < cbs.length; i++) {
+      try { cbs[i](); } catch (e) { console.warn('[SCW PDF Export] ready cb threw', e); }
+    }
+  }
+
+  function _scheduleReady(sceneId) {
+    if (_readyTimers[sceneId]) {
+      clearTimeout(_readyTimers[sceneId]);
+      _readyTimers[sceneId] = null;
+    }
+    var st = _readyState(sceneId);
+    if (st.ready) return;
+    var now = Date.now();
+    var sinceActivity = now - st.lastActivity;
+    var sinceStart    = now - (st.startedAt || now);
+    var until = Math.min(READY_QUIET_MS - sinceActivity, READY_MAX_WAIT_MS - sinceStart);
+    if (until <= 0) { _fireReady(sceneId); return; }
+    _readyTimers[sceneId] = setTimeout(function () {
+      _readyTimers[sceneId] = null;
+      var s = _readyState(sceneId);
+      var n = Date.now();
+      if (n - s.lastActivity >= READY_QUIET_MS || n - s.startedAt >= READY_MAX_WAIT_MS) {
+        _fireReady(sceneId);
+      } else {
+        _scheduleReady(sceneId);
+      }
+    }, until + 5);
+  }
+
+  function isPageReady(sceneId) { return _readyState(sceneId).ready; }
+  function whenPageReady(sceneId, cb) {
+    var st = _readyState(sceneId);
+    if (st.ready) { cb(); return; }
+    st.listeners.push(cb);
+  }
+
+  // Bind ready-tracking events once per configured scene.
+  function setupReadyTracker(sceneId) {
+    $(document).on('knack-scene-render.' + sceneId + '.scwPdfReady', function () {
+      var st = _readyState(sceneId);
+      st.ready = false;
+      st.startedAt = Date.now();
+      st.lastActivity = Date.now();
+      _scheduleReady(sceneId);
+    });
+    // Listen on the global view-render event — Knack fires
+    // 'knack-view-render.<viewId>' AND a generic event we can hook
+    // by namespacing. The lighter path is to subscribe per-view, but
+    // we don't know the scene's view set up front — instead, hook
+    // the catch-all and filter by DOM ancestry.
+    $(document).on('knack-view-render.scwPdfReady_' + sceneId, function (event, view) {
+      var sceneEl = document.getElementById('kn-' + sceneId);
+      if (!sceneEl) return;
+      var vid = view && view.key;
+      var viewEl = vid ? document.getElementById(vid) : null;
+      if (!viewEl || !sceneEl.contains(viewEl)) return;
+      var st = _readyState(sceneId);
+      st.lastActivity = Date.now();
+      if (!st.startedAt) st.startedAt = Date.now();
+      _scheduleReady(sceneId);
+    });
+  }
+
   function setupButtonTrigger(cfg) {
     var btnId = cfg.trigger.buttonId;
 
@@ -1826,9 +1932,13 @@
         var $mount = mountSelector ? $(sceneEl).find(mountSelector).first() : $();
         var isInline = $mount.length > 0;
 
+        var labelReady   = cfg.trigger.buttonText || 'Generate PDF';
+        var labelLoading = 'Loading page…';
+        var ready        = isPageReady(cfg.sceneId);
         var $btn = $('<button></button>')
           .attr('id', btnId)
-          .text(cfg.trigger.buttonText || 'Generate PDF')
+          .text(ready ? labelReady : labelLoading)
+          .prop('disabled', !ready)
           .css(isInline ? {
             // Inline placement — full-width banner-style button inside
             // the mount element. No fixed positioning, no z-index
@@ -1863,10 +1973,38 @@
             boxShadow: '0 2px 8px rgba(0,0,0,.25)',
           });
 
-        $btn.on('mouseenter', function () { $(this).css('opacity', 0.9); });
-        $btn.on('mouseleave', function () { $(this).css('opacity', 1); });
+        // If the page isn't ready yet, dim the button and swap the
+        // label to a "loading" message. whenPageReady fires (at most
+        // READY_MAX_WAIT_MS later) and restores the live state.
+        function applyReadyState(isReady) {
+          if (isReady) {
+            $btn.prop('disabled', false)
+                .text(labelReady)
+                .css({ opacity: 1, cursor: 'pointer' });
+          } else {
+            $btn.prop('disabled', true)
+                .text(labelLoading)
+                .css({ opacity: 0.55, cursor: 'wait' });
+          }
+        }
+        applyReadyState(ready);
+        if (!ready) whenPageReady(cfg.sceneId, function () { applyReadyState(true); });
+
+        $btn.on('mouseenter', function () {
+          if (!$(this).prop('disabled')) $(this).css('opacity', 0.9);
+        });
+        $btn.on('mouseleave', function () {
+          if (!$(this).prop('disabled')) $(this).css('opacity', 1);
+        });
 
         $btn.on('click', function () {
+          // Defensive: even though we disable the button, a fast
+          // double-click before the disabled flip can land. Bail if
+          // the page isn't ready.
+          if (!isPageReady(cfg.sceneId)) {
+            showPublishToast('Page is still loading — please wait.', true, false);
+            return;
+          }
           // Build the full, unified publish payload. Same shape as the
           // public buildPublishPayload helper — Make sees identical
           // inputs whether the publish came from this click trigger,
@@ -1944,9 +2082,47 @@
     var formViewId = cfg.trigger.formViewId;
     var ns = '.scwPdfExport' + cfg.sceneId;
 
+    // Gate the form's submit button until the scene is ready. Without
+    // this, mashing Submit before view-render finishes can fire a
+    // half-formed payload (recordId / extraFields may not be wired up
+    // yet, and downstream Make scenarios choke on the missing inputs).
+    function applyFormReadiness() {
+      var $submit = $('#' + formViewId + ' form button[type="submit"], #' +
+                      formViewId + ' form input[type="submit"]');
+      if (!$submit.length) return;
+      var ready = isPageReady(cfg.sceneId);
+      // Stash original label once so we can restore it on ready.
+      $submit.each(function () {
+        var $b = $(this);
+        if ($b.data('scw-orig-label') === undefined) {
+          $b.data('scw-orig-label', $b.is('button') ? $b.text() : $b.val());
+        }
+        if (ready) {
+          var orig = $b.data('scw-orig-label');
+          $b.prop('disabled', false).css({ opacity: '', cursor: '' });
+          if ($b.is('button')) $b.text(orig); else $b.val(orig);
+        } else {
+          $b.prop('disabled', true).css({ opacity: 0.55, cursor: 'wait' });
+          var loadingLabel = 'Loading page…';
+          if ($b.is('button')) $b.text(loadingLabel); else $b.val(loadingLabel);
+        }
+      });
+    }
+
     $(document).on('knack-view-render.' + formViewId, function () {
+      applyFormReadiness();
+      whenPageReady(cfg.sceneId, applyFormReadiness);
+
       var $form = $('#' + formViewId + ' form');
-      $form.off('submit' + ns).on('submit' + ns, function () {
+      $form.off('submit' + ns).on('submit' + ns, function (e) {
+        // Defensive: even with the submit button disabled, a page-
+        // scoped Enter keystroke can still submit. Block here.
+        if (!isPageReady(cfg.sceneId)) {
+          e.preventDefault();
+          e.stopImmediatePropagation();
+          alert('Page is still loading — please wait a moment, then click Submit again.');
+          return false;
+        }
         var extra = {};
 
         // Extract record ID from the form
@@ -3101,6 +3277,13 @@
     },
     getCss: getPdfCss,
     buildPublishPayload: buildPublishPayload,
+    // Page-ready gate. ops-stepper.js (and any other publish path
+    // outside this file) calls isPageReady('scene_1096') before
+    // firing a publish click. whenPageReady(sceneId, cb) is the
+    // callback variant — fires cb immediately if already ready, or
+    // queues it until the scene quiets down.
+    isPageReady: isPageReady,
+    whenPageReady: whenPageReady,
     // Exposed so consumers (or a future Make-replacement helper that
     // also runs client-side, e.g. for previewing) can introspect the
     // token list without poking at internals.
@@ -3113,6 +3296,10 @@
 
   for (var i = 0; i < SCENES.length; i++) {
     var cfg = SCENES[i];
+
+    // Track readiness for every configured scene so isPageReady /
+    // whenPageReady are always wired before any trigger fires.
+    setupReadyTracker(cfg.sceneId);
 
     if (cfg.trigger.type === 'button') {
       setupButtonTrigger(cfg);

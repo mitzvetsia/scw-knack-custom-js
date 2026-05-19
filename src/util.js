@@ -166,8 +166,12 @@ window.SCW = window.SCW || {};
 })(window.SCW);
 
 // ── Authenticated Knack AJAX wrapper ─────────────────────────
-// Detects 401/403 "Invalid token" responses and shows a
-// non-intrusive toast prompting the user to log out and back in.
+// Detects 401 "Invalid token" responses and shows a non-intrusive
+// toast prompting the user to log out and back in. We *don't* treat
+// 403 as session-expired — Knack returns 403 for ordinary permission
+// denials (a role doesn't have read access to a specific view), and
+// those would falsely trigger the reload toast. Real session expiry
+// returns 401.
 (function (namespace) {
   var TOAST_ID = 'scw-session-toast';
   var RETURN_KEY = 'scw-session-return';
@@ -255,7 +259,11 @@ window.SCW = window.SCW || {};
     var merged = $.extend(true, {}, defaults, opts);
 
     merged.error = function (xhr) {
-      if (xhr.status === 401 || xhr.status === 403) {
+      // Only 401 = unauthenticated / expired token. 403 = forbidden
+      // (a permission issue on a specific view) and must NOT trip
+      // the session-expired toast — those are normal for users who
+      // lack access to a particular data source.
+      if (xhr.status === 401) {
         var body = '';
         try { body = xhr.responseText || ''; } catch (e) { /* ignore */ }
         if (/invalid token|reauthenticate/i.test(body)) {
@@ -281,9 +289,9 @@ window.SCW = window.SCW || {};
   // Catches auth failures from ANY AJAX/fetch call (including KTL bulk ops)
   // and shows the session-expired toast.
 
-  // 1) jQuery $.ajax errors
+  // 1) jQuery $.ajax errors — 401 only (see note above)
   $(document).ajaxError(function (event, xhr, settings) {
-    if (xhr.status === 401 || xhr.status === 403) {
+    if (xhr.status === 401) {
       var url = settings.url || '';
       if (url.indexOf('knack.com') !== -1 || url.indexOf('/v1/') !== -1) {
         var body = '';
@@ -300,7 +308,8 @@ window.SCW = window.SCW || {};
   if (typeof _origFetch === 'function') {
     window.fetch = function scwFetchInterceptor(input, init) {
       return _origFetch.apply(this, arguments).then(function (response) {
-        if (response.status === 401 || response.status === 403) {
+        // 401 only — 403 is permission denied, not session expired.
+        if (response.status === 401) {
           var url = typeof input === 'string' ? input : (input && input.url ? input.url : '');
           if (url.indexOf('knack.com') !== -1 || url.indexOf('/v1/') !== -1) {
             response.clone().text().then(function (body) {

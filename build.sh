@@ -60,6 +60,7 @@ cat \
   src/features/sow-filter-pills.js \
   src/features/select-all-checkboxes.js \
   src/features/bulk-delete-confirm.js \
+  src/features/bulk-add-mounting-box.js \
   src/features/SOW-line-item-DTO-bucket-field-visibility.js \
   src/features/SOW-line-item-DTO-bucket-field-visibility_view_3451.js \
   src/features/highlight-duplicate-cells.js \
@@ -126,6 +127,7 @@ cat \
   src/features/import-unique-items-btn.js \
   src/features/hide-self-row.js \
   src/features/hide-view-conditional.js \
+  src/features/hide-views-below-bom.js \
   src/features/survey-worksheet-pdf-export.js \
   src/features/sub-portal-survey-request-export.js \
   src/features/sow-pdf-stepper.js \

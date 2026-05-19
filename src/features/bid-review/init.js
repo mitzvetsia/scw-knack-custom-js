@@ -248,6 +248,19 @@
 
   var _expandedSowItems = Object.create(null);
 
+  // Expand layout
+  // -------------
+  // When a row is opened, the original <tr> is hidden (via CSS rule
+  // keyed on aria-expanded="true") and replaced visually by a panel
+  // that takes its place. The panel has three columns:
+  //
+  //   [photo viewer slot] [worksheet card] [bid details]
+  //
+  // The photo-viewer column is present but empty/hidden until
+  // openWithPhoto() populates it. Bid details is built from clones of
+  // the data row's bid-package cells + actions cell, so all the data
+  // and action attrs come over and the delegated click handler keeps
+  // working on the clones.
   function toggleRowExpand(tr) {
     var sowItemId = tr.getAttribute('data-sow-item-id');
     if (!sowItemId) return;
@@ -257,12 +270,12 @@
       && expandTr.getAttribute('data-expand-for') === sowItemId;
 
     if (alreadyHasExpand && expandTr.classList.contains('scw-bid-review__expand-row--open')) {
-      // Commit any in-flight inline edit before collapsing — clicking the
-      // row to close doesn\'t blur the focused textarea/input on its own,
-      // so without this the user\'s typing never reaches the save path.
+      // Commit any in-flight inline edit before collapsing — clicking
+      // close doesn't blur the focused input on its own, so without
+      // this the user's typing never reaches the save path.
       var focused = expandTr.querySelector(':focus');
       if (focused && typeof focused.blur === 'function') focused.blur();
-      // Park the wsTr back in view_3921\'s tbody so the next reopen can
+      // Park the wsTr back in view_3921's tbody so the next reopen can
       // find it. Otherwise it lives inside the closed expand-row, gets
       // wiped on the next silent refresh, and reopening shows
       // "Loading editor…" forever (view_3921 never re-renders to
@@ -293,16 +306,275 @@
     expandTr.classList.add('scw-bid-review__expand-row--open');
     tr.setAttribute('aria-expanded', 'true');
     _expandedSowItems[sowItemId] = true;
-    injectWorksheetCard(sowItemId, expandTr.firstElementChild);
+    buildExpandPanel(tr, expandTr.firstElementChild, sowItemId);
+  }
+
+  // Build the 3-column panel inside the expand cell. Idempotent —
+  // safe to call again after silent refresh.
+  function buildExpandPanel(rowTr, hostTd, sowItemId) {
+    if (!hostTd) return;
+
+    hostTd.innerHTML = '';
+
+    var panel = document.createElement('div');
+    panel.className = 'scw-bid-review__panel';
+
+    panel.appendChild(buildPanelHeader(rowTr));
+
+    var layout = document.createElement('div');
+    layout.className = 'scw-bid-review__panel-cols';
+
+    // Photo viewer column — left. Empty/hidden until openWithPhoto fills it.
+    var photoCol = document.createElement('div');
+    photoCol.className = 'scw-bid-review__panel-col scw-bid-review__panel-col--photo';
+    layout.appendChild(photoCol);
+
+    // Worksheet card column — middle. Hosts the wsTr from view_3921.
+    var wsCol = document.createElement('div');
+    wsCol.className = 'scw-bid-review__panel-col scw-bid-review__panel-col--worksheet';
+    layout.appendChild(wsCol);
+
+    // Bid details column — right. Cloned per-package cells + actions cell.
+    var bidCol = buildBidDetailsColumn(rowTr);
+    layout.appendChild(bidCol);
+
+    panel.appendChild(layout);
+    hostTd.appendChild(panel);
+
+    injectWorksheetCard(sowItemId, wsCol);
+
     // Force the worksheet detail panel open so users see the full editor,
-    // not just the summary header. The delegated click handler in
-    // device-worksheet.js calls toggleDetail() which adds .scw-ws-open
-    // to the detail wrapper.
-    var hostTd = expandTr.firstElementChild;
-    var toggleZone = hostTd && hostTd.querySelector('.scw-ws-toggle-zone');
-    var detail = hostTd && hostTd.querySelector('.scw-ws-detail');
+    // not just the summary header.
+    var toggleZone = wsCol.querySelector('.scw-ws-toggle-zone');
+    var detail = wsCol.querySelector('.scw-ws-detail');
     if (toggleZone && detail && !detail.classList.contains('scw-ws-open')) {
       toggleZone.click();
+    }
+  }
+
+  function buildPanelHeader(rowTr) {
+    var header = document.createElement('div');
+    header.className = 'scw-bid-review__panel-header';
+
+    var title = document.createElement('div');
+    title.className = 'scw-bid-review__panel-title';
+
+    // [LABEL] [PRODUCT NAME] [Equip $X] [Install $Y]
+    // Read each piece from the (now hidden) data row.
+    var labelCell = rowTr.children[0];
+    var sowCell   = rowTr.children[2];
+
+    function readText(scope, sel) {
+      if (!scope) return '';
+      var el = scope.querySelector(sel);
+      return el ? (el.textContent || '').trim() : '';
+    }
+
+    var label   = readText(labelCell, '.scw-bid-review__row-label');
+    var product = readText(sowCell,   '.scw-bid-review__cell-label');
+    var equip   = readText(labelCell, '.scw-bid-review__row-total--equip .scw-bid-review__row-total-value');
+    var install = readText(labelCell, '.scw-bid-review__row-total--install .scw-bid-review__row-total-value');
+
+    function chip(cls, text) {
+      var s = document.createElement('span');
+      s.className = 'scw-bid-review__panel-title-' + cls;
+      s.textContent = text;
+      return s;
+    }
+
+    if (label)   title.appendChild(chip('label',   label));
+    if (product) title.appendChild(chip('product', product));
+    if (equip)   title.appendChild(chip('equip',   'Equip: ' + equip));
+    if (install) title.appendChild(chip('install', 'Install: ' + install));
+    header.appendChild(title);
+
+    var close = document.createElement('button');
+    close.type = 'button';
+    close.className = 'scw-bid-review__panel-close';
+    close.setAttribute('title', 'Close');
+    close.textContent = '×';
+    close.addEventListener('click', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      toggleRowExpand(rowTr);
+    });
+    header.appendChild(close);
+
+    // Clicking anywhere on the blue bar collapses the panel — same
+    // action as the × button, just a larger target.
+    header.style.cursor = 'pointer';
+    header.setAttribute('title', 'Click to close');
+    header.addEventListener('click', function () {
+      toggleRowExpand(rowTr);
+    });
+
+    return header;
+  }
+
+  // Right-side column. Each bid-package cell + the row-actions cell
+  // are cloned out of the (now-hidden) data row and stacked vertically.
+  // Delegated click handlers on the table mount keep working on the
+  // clones because they're selector-based (clones carry the same
+  // classes + data-* attrs).
+  function buildBidDetailsColumn(rowTr) {
+    var col = document.createElement('div');
+    col.className = 'scw-bid-review__panel-col scw-bid-review__panel-col--bid';
+
+    // Read column labels from thead, mapped by column index.
+    var labels = [];
+    var table = rowTr.closest('table');
+    if (table) {
+      var ths = table.querySelectorAll('thead th');
+      for (var t = 0; t < ths.length; t++) {
+        labels.push((ths[t].textContent || '').replace(/\s+/g, ' ').trim());
+      }
+    }
+
+    // Skip cell index 0 (label — shown in header), 1 (photos — own
+    // column), 2 (SOW detail — shown in worksheet card). Everything
+    // from index 3 onward is bid packages + actions.
+    var cells = rowTr.children;
+    for (var i = 3; i < cells.length; i++) {
+      var card = document.createElement('div');
+      card.className = 'scw-bid-review__bid-card';
+      if (labels[i]) {
+        var lbl = document.createElement('div');
+        lbl.className = 'scw-bid-review__bid-card-label';
+        lbl.textContent = labels[i];
+        card.appendChild(lbl);
+      }
+      var body = document.createElement('div');
+      body.className = 'scw-bid-review__bid-card-body';
+      // Move the cell's children into a div. We can't transplant the
+      // <td> itself (it'd lose its meaning) and we want the original
+      // <td> to remain on the hidden row so subsequent re-renders
+      // (silent refresh, change-request updates) still write to it.
+      // Clone preserves attrs + handlers attached by delegation.
+      var clone = cells[i].cloneNode(true);
+      // Move clone's children into body; throw away the wrapping <td>
+      while (clone.firstChild) body.appendChild(clone.firstChild);
+      card.appendChild(body);
+      col.appendChild(card);
+    }
+    return col;
+  }
+
+  // Open the row's expand panel AND mount a side-by-side photo
+  // viewer in the panel's left column. Thumbnail strip lets the
+  // reviewer flip between photos without leaving the editor.
+  function openWithPhoto(rowTr, urls, activeIdx) {
+    if (!rowTr || !urls || !urls.length) return;
+    if (activeIdx == null || activeIdx < 0 || activeIdx >= urls.length) activeIdx = 0;
+
+    if (rowTr.getAttribute('aria-expanded') !== 'true') {
+      toggleRowExpand(rowTr);
+    }
+
+    var expandTr = rowTr.nextElementSibling;
+    if (!expandTr || !expandTr.classList.contains('scw-bid-review__expand-row')) return;
+    var photoCol = expandTr.querySelector('.scw-bid-review__panel-col--photo');
+    if (!photoCol) return;
+
+    var existing = photoCol.querySelector('.scw-bid-review__photo-viewer');
+    if (existing) {
+      updatePhotoViewer(existing, urls, activeIdx);
+      return;
+    }
+
+    photoCol.classList.add('scw-bid-review__panel-col--photo-active');
+    photoCol.appendChild(buildPhotoViewer(urls, activeIdx));
+  }
+
+  function buildPhotoViewer(urls, activeIdx) {
+    var wrap = document.createElement('div');
+    wrap.className = 'scw-bid-review__photo-viewer';
+
+    var stage = document.createElement('div');
+    stage.className = 'scw-bid-review__photo-viewer-stage';
+    stage.setAttribute('title', 'Click photo to zoom');
+
+    var openLink = document.createElement('a');
+    openLink.className = 'scw-bid-review__photo-viewer-open';
+    openLink.target = '_blank';
+    openLink.rel = 'noopener';
+    openLink.title = 'Open full size in a new tab';
+    openLink.textContent = 'Open ↗';
+    // Don't trigger zoom when the user means "open in new tab".
+    openLink.addEventListener('click', function (e) { e.stopPropagation(); });
+    stage.appendChild(openLink);
+
+    var img = document.createElement('img');
+    img.alt = '';
+    stage.appendChild(img);
+
+    // Click the image to enlarge it in a fullscreen lightbox. Doesn't
+    // close anything in the panel — just shows the picture big.
+    stage.addEventListener('click', function (e) {
+      if (e.target.closest('.scw-bid-review__photo-viewer-open')) return;
+      openLightbox(img.src);
+    });
+    wrap.appendChild(stage);
+
+    var strip = document.createElement('div');
+    strip.className = 'scw-bid-review__photo-viewer-strip';
+    wrap.appendChild(strip);
+
+    updatePhotoViewer(wrap, urls, activeIdx);
+    return wrap;
+  }
+
+  // Fullscreen image overlay for "zoom in on the photo". Click
+  // anywhere on the dimmed backdrop or press Escape to dismiss.
+  function openLightbox(url) {
+    if (!url) return;
+    var overlay = document.createElement('div');
+    overlay.className = 'scw-bid-review__lightbox';
+    var img = document.createElement('img');
+    img.src = url;
+    img.alt = '';
+    overlay.appendChild(img);
+
+    function dismiss() {
+      overlay.parentNode && overlay.parentNode.removeChild(overlay);
+      document.removeEventListener('keydown', onKey);
+    }
+    function onKey(e) { if (e.key === 'Escape') dismiss(); }
+
+    overlay.addEventListener('click', dismiss);
+    document.addEventListener('keydown', onKey);
+    document.body.appendChild(overlay);
+  }
+
+  function updatePhotoViewer(viewer, urls, activeIdx) {
+    var stageImg  = viewer.querySelector('.scw-bid-review__photo-viewer-stage img');
+    var openLink  = viewer.querySelector('.scw-bid-review__photo-viewer-open');
+    var strip     = viewer.querySelector('.scw-bid-review__photo-viewer-strip');
+    if (stageImg) stageImg.src = urls[activeIdx];
+    if (openLink) openLink.href = urls[activeIdx];
+
+    if (!strip) return;
+    strip.innerHTML = '';
+    // Strip only matters when there are multiple photos to flip between
+    if (urls.length < 2) { strip.style.display = 'none'; return; }
+    strip.style.display = '';
+    for (var i = 0; i < urls.length; i++) {
+      (function (idx) {
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'scw-bid-review__photo-viewer-thumb' +
+          (idx === activeIdx ? ' scw-bid-review__photo-viewer-thumb--active' : '');
+        btn.addEventListener('click', function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          updatePhotoViewer(viewer, urls, idx);
+        });
+        var img = document.createElement('img');
+        img.src = urls[idx];
+        img.alt = '';
+        img.loading = 'lazy';
+        btn.appendChild(img);
+        strip.appendChild(btn);
+      })(i);
     }
   }
 
@@ -375,17 +647,213 @@
   //                                    knack-view-render entirely).
   //   - knack-view-render.view_3921  → fires on full view re-render
   //   - knack-cell-update.view_3921  → fires per-cell after Knack inline-edit
-  var _refreshDebounce = null;
-  function scheduleSilentRefresh() {
+  // Single-row patch state.
+  //
+  // _pendingPatchIds collects recordIds known to have changed during
+  // the current debounce window. _needsFullRefresh is set when we
+  // receive an event with no recordId (knack-view-render etc.) —
+  // those are "something changed but I don't know what", so we fall
+  // back to a full pipeline.
+  //
+  // When the debounce fires:
+  //   - If _needsFullRefresh OR any pending id isn't in current state,
+  //     run the full pipeline (refreshSilently).
+  //   - Otherwise, patch each row's <tr> in place.
+  var _refreshDebounce      = null;
+  var _pendingPatchIds      = Object.create(null);
+  var _needsFullRefresh     = false;
+
+  function scheduleSilentRefresh(opts) {
+    var rid = opts && opts.recordId;
+    if (rid) {
+      _pendingPatchIds[rid] = true;
+    } else {
+      _needsFullRefresh = true;
+    }
     if (_refreshDebounce) clearTimeout(_refreshDebounce);
-    // 250ms gives syncKnackModel time to land before loadRawData reads it.
-    _refreshDebounce = setTimeout(function () { refreshSilently(); }, 250);
+    // 700ms gives every event in a single user action (scw-record-saved
+    // + knack-cell-update + knack-view-render — typically all fire
+    // within ~150ms of each other after a chip toggle / inline edit)
+    // a chance to coalesce into one refresh.
+    _refreshDebounce = setTimeout(applyPendingRefresh, 700);
   }
-  $(document).on('scw-record-saved' + CFG.eventNs + 'Expand', scheduleSilentRefresh);
+
+  function applyPendingRefresh() {
+    var ids = Object.keys(_pendingPatchIds);
+    _pendingPatchIds = Object.create(null);
+    var fullRefresh = _needsFullRefresh;
+    _needsFullRefresh = false;
+
+    if (fullRefresh || !ids.length || !_state) {
+      refreshSilently();
+      return;
+    }
+    var ok = patchRows(ids);
+    if (!ok) {
+      // patch path bailed (unknown row, missing data, etc.) — fall
+      // back to the full pipeline so the grid still ends up correct.
+      refreshSilently();
+    }
+  }
+
+  // Patch one or more rows in place. Returns false if any row isn't
+  // representable as a single-row update (new record, deletion, MDF/IDF
+  // group change, etc.); caller falls back to a full refresh.
+  //
+  // Strategy:
+  //   1. Refetch all 4 source views from the Knack model in-memory
+  //      (fast, no API). buildState gives us the fresh row data.
+  //   2. For each pending id, locate the row in new state AND the
+  //      old <tr> in the DOM. Bail if anything is missing.
+  //   3. Build a fresh <tr> with ns.buildDataRow and swap it in.
+  //   4. Update SOW header totals (Install / Sub Bid) — they depend
+  //      on the whole grid, so we recompute and re-write just those
+  //      cells without rebuilding the rest of the table.
+  function patchRows(recordIds) {
+    var oldExpanded = Object.assign({}, _expandedSowItems);
+    var raw;
+    try {
+      // ns.loadRawData() is async — but the data already lives in the
+      // Knack model on the page. We still need the promise interface;
+      // just run it synchronously enough to keep the patch fast.
+    } catch (e) { return false; }
+
+    // loadRawData is a $.Deferred; resolve, then patch synchronously.
+    var loadPromise = ns.loadRawData();
+    if (!loadPromise || typeof loadPromise.then !== 'function') return false;
+
+    loadPromise.then(function (rawData) {
+      var newState = ns.buildState(rawData.records, rawData.sowItems || [], rawData.bidPackages || []);
+      var allOk = true;
+
+      for (var i = 0; i < recordIds.length; i++) {
+        var rid = recordIds[i];
+        var oldLoc = locateRowInState(_state, rid);
+        var newLoc = locateRowInState(newState, rid);
+
+        // Row was added or removed — structural change, full refresh.
+        if (!oldLoc || !newLoc) { allOk = false; break; }
+        // MDF/IDF group changed — row moved between groups. Full refresh.
+        if (oldLoc.grid.sowId !== newLoc.grid.sowId
+          || oldLoc.row.mdfIdfLabel !== newLoc.row.mdfIdfLabel) {
+          allOk = false; break;
+        }
+
+        var oldTr = findRowTr(rid);
+        if (!oldTr) { allOk = false; break; }
+
+        var newTr = ns.buildDataRow(newLoc.row, newLoc.grid.packages, newLoc.grid.sowId);
+        // Preserve the aria-expanded state so an open panel stays open
+        // visually while we swap.
+        if (oldTr.getAttribute('aria-expanded') === 'true') {
+          newTr.setAttribute('aria-expanded', 'true');
+        }
+        oldTr.parentNode.replaceChild(newTr, oldTr);
+      }
+
+      if (!allOk) {
+        refreshSilently();
+        return;
+      }
+
+      // Patches landed — commit the new state and refresh header totals.
+      _state = newState;
+      ns._state = _state;
+      updateSowHeaderTotals(newState);
+
+      // Keep expanded panels in sync — buildDataRow built a collapsed
+      // <tr>, so if a row was open we need to reopen the panel beneath
+      // it. _expandedSowItems is unchanged across the patch.
+      Object.keys(oldExpanded).forEach(function (sid) {
+        var tr = document.querySelector(
+          '.scw-bid-review__row--expandable[data-sow-item-id="' + sid + '"]'
+        );
+        if (tr && tr.getAttribute('aria-expanded') !== 'true') {
+          // Trigger expand by clicking through toggleRowExpand
+          toggleRowExpand(tr);
+        }
+      });
+    }).fail(function () {
+      refreshSilently();
+    });
+
+    return true;
+  }
+
+  function locateRowInState(state, recordId) {
+    if (!state || !state.sowGrids) return null;
+    for (var gi = 0; gi < state.sowGrids.length; gi++) {
+      var grid = state.sowGrids[gi];
+      for (var ri = 0; ri < grid.rows.length; ri++) {
+        var r = grid.rows[ri];
+        if (r.id === recordId || r.sowItem === recordId) {
+          return { grid: grid, row: r, gridIdx: gi, rowIdx: ri };
+        }
+      }
+    }
+    return null;
+  }
+
+  function findRowTr(recordId) {
+    return document.querySelector(
+      '.scw-bid-review__row[data-row-id="' + recordId + '"], ' +
+      '.scw-bid-review__row[data-sow-item-id="' + recordId + '"]'
+    );
+  }
+
+  // Recompute and re-write just the SOW header totals (Install Total
+  // / Sub Bid Total) without rebuilding the rest of the table. Reads
+  // the same projections renderMatrix uses.
+  function updateSowHeaderTotals(state) {
+    if (!state || !state.sowGrids) return;
+    state.sowGrids.forEach(function (grid) {
+      var section = document.querySelector(
+        '.scw-bid-review__sow-section[data-sow-id="' + grid.sowId + '"]'
+      );
+      if (!section) return;
+      var rows = grid.rows || [];
+      var installTotal = 0;
+      rows.forEach(function (r) {
+        if (typeof r.sowInstallFee === 'number') installTotal += r.sowInstallFee;
+      });
+      // Update install total in the SOW column header
+      var installEl = section.querySelector(
+        '.scw-bid-review__sow-detail-header .scw-bid-review__col-title-total-value'
+      );
+      if (installEl) installEl.textContent = formatCurrencyHdr(installTotal);
+
+      // Bid total per package — Sub Bid Total = Σ cell.labor (matches
+      // render.js's column header computation).
+      var pkgHeaders = section.querySelectorAll(
+        '.scw-bid-review__pkg-header .scw-bid-review__col-title-total-value'
+      );
+      for (var p = 0; p < grid.packages.length && p < pkgHeaders.length; p++) {
+        var pkg = grid.packages[p];
+        var bidTotal = 0;
+        rows.forEach(function (r) {
+          var cell = r.cellsByPackage && r.cellsByPackage[pkg.id];
+          if (cell && cell.labor) bidTotal += Number(cell.labor) || 0;
+        });
+        pkgHeaders[p].textContent = formatCurrencyHdr(bidTotal);
+      }
+    });
+  }
+
+  function formatCurrencyHdr(n) {
+    if (!isFinite(n)) return '$0.00';
+    return '$' + n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
+  }
+
+  // Wrap the handlers so jQuery event-arg-2 (the payload) reaches scheduleSilentRefresh.
+  function onSavedEvent(_ev, payload) { scheduleSilentRefresh(payload); }
+
+  $(document).on('scw-record-saved' + CFG.eventNs + 'Expand', onSavedEvent);
   $(document).on('knack-view-render.' + CFG.sowItemsViewKey + CFG.eventNs + 'Expand',
-    scheduleSilentRefresh);
+    function () { scheduleSilentRefresh(); });
   $(document).on('knack-cell-update.' + CFG.sowItemsViewKey + CFG.eventNs + 'Expand',
-    scheduleSilentRefresh);
+    function (_ev, _viewModel, record) {
+      scheduleSilentRefresh(record && record.id ? { recordId: record.id } : null);
+    });
 
   // ── Survey Costs save (per-SOW, on blur) ────────────────────
 
@@ -1551,6 +2019,10 @@
     runPipeline();
   };
 
+  // Photo thumb click handler in render.js calls this to open the
+  // editor with a side-by-side photo viewer pane.
+  ns.openWithPhoto = openWithPhoto;
+
   /** Lightweight re-render from existing state (no data refetch). */
   ns.rerender = function rerender() {
     if (!_state) return;
@@ -2099,8 +2571,10 @@
     // Change request view — pending CR counts + links (DOM-scraped)
     if (CFG.changeRequestViewKey) {
       SCW.onViewRender(CFG.changeRequestViewKey, function () {
-        // Re-render the matrix to pick up updated CR data from view_3818
-        if (_state) refreshSilently();
+        // Route through the debounced scheduler so a CR-view render
+        // bursting alongside knack-cell-update + scw-record-saved
+        // collapses into one refresh instead of three.
+        if (_state) scheduleSilentRefresh();
       }, CFG.eventNs + 'Cr');
     }
 

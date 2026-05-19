@@ -1243,6 +1243,35 @@
     });
   }
 
+  // Map a save-failure (jqXHR or Error) to a user-facing message.
+  // 403 with Knack's "Invalid token" body is misleading — that
+  // response means the user *lacks write permission on this object*,
+  // not that their session expired. Surface that distinction so the
+  // user can actually act on it (ask an admin for the role).
+  function describeSaveError(err) {
+    if (!err) return 'Failed to save. Please try again.';
+    var status = err.status || (err && err.responseJSON && err.responseJSON.status);
+    var body = '';
+    try { body = (err.responseText || '') + ''; } catch (e) {}
+    if (status === 403) {
+      return 'Permission denied. Your role can\'t edit this record — ' +
+             'contact an admin to grant write access.';
+    }
+    if (status === 401) {
+      return 'Session expired. Log out and back in, then retry.';
+    }
+    if (status === 429) {
+      return 'Knack rate limit hit. Wait a moment and retry.';
+    }
+    if (status >= 500 && status < 600) {
+      return 'Knack server error (' + status + '). Retry in a few seconds.';
+    }
+    if (body && /required/i.test(body)) {
+      return 'A required field is missing on this record. Fix it before saving.';
+    }
+    return 'Failed to save. Please try again.';
+  }
+
   function openPickerForRecord(viewId, recordId, td) {
     var cfg = cfgFor(viewId);
     var selectedIds = getCurrentlySelectedIds(viewId, recordId);
@@ -1293,7 +1322,7 @@
         saveSelection(viewId, recordId, ids, selectedIds, function (err) {
           if (err) {
             handle.setSaving(false);
-            handle.showError('Failed to save. Please try again.');
+            handle.showError(describeSaveError(err));
             return;
           }
           handle.close();

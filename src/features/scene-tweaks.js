@@ -471,6 +471,8 @@
 
         var previewLink = document.createElement('a');
         previewLink.href = previewHref;
+        previewLink.target = '_blank';
+        previewLink.rel = 'noopener';
         // Fixed 220px width matches the Customer Link CTA inside the
         // panel above so the action column stacks neatly.
         previewLink.style.cssText = solo
@@ -539,6 +541,23 @@
     SCW.onViewRender('view_3418', debouncedTotals, NS);
     SCW.onViewRender('view_3814', debouncedTotals, NS);
     SCW.onViewRender('view_3827', debouncedTotals, NS);
+
+    // Every link inside the totals view (Preview Proposal, Customer
+    // Link, anything Knack renders) should open in a new tab. Re-run
+    // after each render — the custom totals block rebuilds anchors.
+    SCW.onViewRender('view_3418', function () {
+      var view = document.getElementById('view_3418');
+      if (!view) return;
+      var links = view.querySelectorAll('a[href]');
+      for (var i = 0; i < links.length; i++) {
+        var a = links[i];
+        if (a.getAttribute('target') === '_blank') continue;
+        a.setAttribute('target', '_blank');
+        var rel = (a.getAttribute('rel') || '').split(/\s+/);
+        if (rel.indexOf('noopener') === -1) rel.push('noopener');
+        a.setAttribute('rel', rel.filter(Boolean).join(' '));
+      }
+    }, NS + '.openInNewTab');
     // Trigger after each equipment/hardware grid renders (these contain the actual data cells)
     for (var ev = 0; ev < ALL_VIEWS.length; ev++) {
       SCW.onViewRender(ALL_VIEWS[ev], debouncedTotals, NS);
