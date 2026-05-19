@@ -2388,6 +2388,13 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
       if (cell) cell.innerHTML = html;
     }
 
+    // Clean up any synthetic product-line rows left over from a previous
+    // pipeline run — relocateAccessoriesToParents can shift things around
+    // and leave orphan rows in unexpected positions.
+    tbody.querySelectorAll('tr.scw-mounting-product-line').forEach(function (n) {
+      n.remove();
+    });
+
     // ── Pass 1: roll up accessory rows by product under each .scw-mounting-l4
     const l4s = tbody.querySelectorAll('tr.scw-mounting-l4');
     for (let i = 0; i < l4s.length; i++) {
@@ -2500,10 +2507,11 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
         insertAfter = line;
       }
 
-      // Fix the "Mounting Hardware" L4 header — pipeline wrote labor
-      // (field_2028 sum = $0 for brackets); replace with cost total.
-      writeCellHtml(l4, qtyKey, '<strong>' + Math.round(totalQty) + '</strong>');
-      writeCellHtml(l4, costKey, '<strong>' + escapeHtml(formatMoney(totalCost)) + '</strong>');
+      // The L4 "Mounting Hardware" label-row is now just a section
+      // header above the per-product lines. Blank its qty/cost cells so
+      // we don't duplicate the totals shown on the product lines below.
+      writeCellHtml(l4, qtyKey, '');
+      writeCellHtml(l4, costKey, '');
     }
 
     // ── Pass 2: fix L3 Qty for groups that now contain accessories.
