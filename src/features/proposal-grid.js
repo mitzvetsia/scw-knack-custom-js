@@ -133,6 +133,17 @@
         level: 3,
         cssClass: 'scw-concat-cameras--mounting',
       },
+
+      // Relocate accessories (rows with field_2464 → parent line item)
+      // so they render immediately below their parent device instead of
+      // in their own "Mounting Hardware" L2 section. The subtotal
+      // pipeline counts rows by physical position, so moved brackets
+      // get rolled into their new L3 group's totals automatically.
+      // Empty Mounting Hardware L2/L3 headers are hidden after the move.
+      relocateAccessoriesToParents: {
+        enabled: true,
+        parentConnectionField: 'field_2464',
+      },
     },
 
     l2Context: {
@@ -783,6 +794,15 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
 .scw-l3-connected-devices { display: block; margin-top: 5px; padding-left: 40px; line-height: 1.2; font-size: 12px; }
 .scw-l3-connected-devices b { font-weight: 800 !important; }
 /********************* LEVEL 4 (INSTALL DESCRIPTION) ***********************/
+
+/* Accessory relocation: rows moved out of the Mounting Hardware
+   section to sit under their parent device, and the now-empty
+   group headers they leave behind. */
+${sel('tr.scw-empty-group-header')} { display: none !important; }
+${sel('tr.scw-relocated-accessory td:first-child')} {
+  padding-left: 100px !important;
+  font-style: italic;
+}
 
 /* SOW header details — kept rendered so isInstallationMasked() can read
    field_2725, but hidden from users so it doesn't take up space on the
@@ -2065,6 +2085,127 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
   }
 
   // ============================================================
+  // FEATURE: Relocate accessories under their parent line item
+  // ============================================================
+  //
+  // Accessory line items (records with field_2464 pointing back to a
+  // parent device) are rendered by default under their own "Mounting
+  // Hardware" L2 section. The product team prefers them grouped under
+  // the device they accessorize, so the customer sees "Camera +
+  // bracket" together rather than two disconnected sections.
+  //
+  // Implementation: read field_2464_raw from the view's Knack model
+  // (cleaner than scraping the DOM connection cell), move each
+  // accessory's <tr> to immediately follow its parent's <tr>, then
+  // mark empty L2/L3 group headers so they hide.
+  //
+  // Runs BEFORE synthesizeMissingL4Headers so the L4 synthesizer
+  // creates a header for the relocated row inside its new L3 group.
+
+  function relocateAccessoriesToParents(ctx) {
+    const opt = ctx.features.relocateAccessoriesToParents;
+    if (!opt?.enabled) return;
+
+    const view = ctx.view;
+    const models =
+      view && view.model && view.model.data && view.model.data.models;
+    if (!models || !models.length) return;
+
+    const tbody = ctx.$tbody[0];
+    if (!tbody) return;
+
+    const parentField = opt.parentConnectionField || 'field_2464';
+
+    // Build id → <tr> map for fast lookup
+    const rowById = Object.create(null);
+    const dataRows = tbody.querySelectorAll('tr[id]');
+    for (let i = 0; i < dataRows.length; i++) {
+      const r = dataRows[i];
+      if (r.id && r.id.indexOf('kn-') !== 0) rowById[r.id] = r;
+    }
+
+    let movedCount = 0;
+
+    for (let i = 0; i < models.length; i++) {
+      const attrs = models[i].attributes || models[i];
+      const childId = attrs.id;
+      if (!childId) continue;
+
+      const parentRaw = attrs[parentField + '_raw'];
+      if (!parentRaw || !parentRaw.length) continue;
+
+      const parentId = parentRaw[0] && parentRaw[0].id;
+      if (!parentId || parentId === childId) continue;
+
+      const childRow = rowById[childId];
+      const parentRow = rowById[parentId];
+      if (!childRow || !parentRow) continue;
+      if (childRow.parentNode !== tbody) continue;
+      if (parentRow.parentNode !== tbody) continue;
+
+      childRow.classList.add('scw-relocated-accessory');
+      childRow.setAttribute('data-scw-parent-id', parentId);
+
+      // Insert child after parent, but after any siblings that have
+      // already been relocated under the same parent so multiple
+      // accessories on one device stack in a stable order.
+      let anchor = parentRow;
+      let next = anchor.nextSibling;
+      while (
+        next &&
+        next.nodeType === 1 &&
+        next.classList &&
+        next.classList.contains('scw-relocated-accessory') &&
+        next.getAttribute('data-scw-parent-id') === parentId
+      ) {
+        anchor = next;
+        next = next.nextSibling;
+      }
+
+      if (childRow === anchor.nextSibling) continue;
+      tbody.insertBefore(childRow, anchor.nextSibling);
+      movedCount++;
+    }
+
+    if (movedCount > 0) {
+      markEmptyGroupHeaders(tbody);
+      log(ctx, 'Relocated', movedCount, 'accessory rows under their parent device');
+    }
+  }
+
+  // Walk every L2/L3 group header and, if no data rows live between
+  // it and the next same-or-higher-level header, tag it with a class
+  // so CSS can hide it. Runs after relocateAccessoriesToParents.
+  function markEmptyGroupHeaders(tbody) {
+    const headers = tbody.querySelectorAll(
+      'tr.kn-table-group.kn-group-level-2, tr.kn-table-group.kn-group-level-3'
+    );
+    for (let i = 0; i < headers.length; i++) {
+      const h = headers[i];
+      const lvlMatch = h.className.match(/kn-group-level-(\d+)/);
+      if (!lvlMatch) continue;
+      const level = parseInt(lvlMatch[1], 10);
+
+      let cur = h.nextElementSibling;
+      let hasData = false;
+      while (cur) {
+        if (cur.classList && cur.classList.contains('kn-table-group')) {
+          const m = cur.className.match(/kn-group-level-(\d+)/);
+          const lvl = m ? parseInt(m[1], 10) : 99;
+          if (lvl <= level) break;
+        } else if (cur.tagName === 'TR' && cur.id && cur.id.indexOf('kn-') !== 0) {
+          hasData = true;
+          break;
+        }
+        cur = cur.nextElementSibling;
+      }
+
+      if (hasData) h.classList.remove('scw-empty-group-header');
+      else h.classList.add('scw-empty-group-header');
+    }
+  }
+
+  // ============================================================
   // MAIN PROCESSOR
   // ============================================================
 
@@ -2101,6 +2242,11 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
     reorderLevel1Groups($tbody);
     reorderLevel2GroupsBySortField(ctx, $tbody, runId);
     reorderLevel3GroupsBySortField(ctx, $tbody, runId);
+
+    // Move accessory rows (field_2464 → parent) under their parent
+    // device row, before L4 synthesis so synthesized headers respect
+    // the new row positions.
+    relocateAccessoriesToParents(ctx);
 
     // Synthesize missing L4 headers before the main pipeline processes groups
     synthesizeMissingL4Headers(ctx);
