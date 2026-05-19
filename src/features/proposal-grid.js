@@ -2376,6 +2376,45 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
 
     const qtyKey = ctx.keys.qty;
     const costKey = ctx.keys.cost;
+    const prefixKey = ctx.keys.prefix; // field_2240
+    const numberKey = ctx.keys.number; // field_1951
+
+    // Build id → tr map so we can look up each bracket's parent row to
+    // pull its prefix + drop number for the parent-label list.
+    const rowById = Object.create(null);
+    const allDataRows = tbody.querySelectorAll('tr[id]');
+    for (let i = 0; i < allDataRows.length; i++) {
+      const r = allDataRows[i];
+      if (r.id && r.id.indexOf('kn-') !== 0) rowById[r.id] = r;
+    }
+
+    function readCellText(row, fieldKey) {
+      if (!row || !fieldKey) return '';
+      const cell = row.querySelector('td.' + fieldKey);
+      return cell ? (cell.textContent || '').replace(/\s+/g, ' ').trim() : '';
+    }
+
+    // Given an array of bracket rows, build "I-1, I-2, E-3" from their
+    // parent rows' prefix + number cells. Mirrors buildCameraListHtml.
+    function buildParentLabelList(rows) {
+      const items = [];
+      for (let i = 0; i < rows.length; i++) {
+        const parentId = rows[i].getAttribute('data-scw-parent-id');
+        const parent = parentId ? rowById[parentId] : null;
+        if (!parent) continue;
+        const prefix = readCellText(parent, prefixKey);
+        const numRaw = readCellText(parent, numberKey);
+        if (!prefix || !numRaw) continue;
+        const digits = numRaw.replace(/\D/g, '');
+        const num = parseInt(digits, 10);
+        if (!Number.isFinite(num)) continue;
+        const prefixUpper = prefix.toUpperCase();
+        items.push({ prefix: prefixUpper, num, text: prefixUpper + num });
+      }
+      if (!items.length) return '';
+      items.sort((a, b) => (a.prefix === b.prefix ? a.num - b.num : a.prefix < b.prefix ? -1 : 1));
+      return items.map((it) => it.text).join(', ');
+    }
 
     function readNum(row, fieldKey) {
       const cell = row.querySelector('td.' + fieldKey);
@@ -2475,6 +2514,15 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
           line = probe;
         }
 
+        const parentLabels = buildParentLabelList(rows);
+        const labelHtml =
+          escapeHtml(productName) +
+          (parentLabels
+            ? ' <b class="scw-mounting-parents" style="color:orange;">(' +
+              escapeHtml(parentLabels) +
+              ')</b>'
+            : '');
+
         if (!line) {
           line = document.createElement('tr');
           line.className = 'scw-mounting-product-line';
@@ -2483,7 +2531,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
           // Build a row that matches the L4 column layout: product name in
           // the first cell, qty in td.qtyKey, cost in td.costKey, all
           // others blank.
-          const tdNames = ['<td>' + escapeHtml(productName) + '</td>'];
+          const tdNames = ['<td>' + labelHtml + '</td>'];
           const otherCells = l4.querySelectorAll('td');
           for (let c = 1; c < otherCells.length; c++) {
             const ref = otherCells[c];
@@ -2499,7 +2547,9 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
           line.innerHTML = tdNames.join('');
           tbody.insertBefore(line, insertAfter.nextSibling);
         } else {
-          // Update qty / cost in place
+          // Update label, qty, and cost in place
+          const firstTd = line.querySelector('td');
+          if (firstTd) firstTd.innerHTML = labelHtml;
           const q = line.querySelector('td.' + qtyKey);
           const c = line.querySelector('td.' + costKey);
           if (q) q.textContent = String(Math.round(groupQty));
