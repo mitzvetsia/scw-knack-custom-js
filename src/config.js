@@ -237,7 +237,5 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   // camera/reader (field_1958 = product, field_2464 = parent record
   // id, field_1946 = parent's MDF/IDF, field_2154 = sowId).
   // Payload shape: { sowId, productId, productName, parentRecordIds, parentLabels, sourceViewId, triggeredBy }
-  // PLACEHOLDER — replace with the real Make webhook URL once the
-  // scenario is built.
-  MAKE_BULK_ADD_MOUNTING_BOX_WEBHOOK: "https://hook.us1.make.com/PLACEHOLDER_BULK_ADD_MOUNTING_BOX"
+  MAKE_BULK_ADD_MOUNTING_BOX_WEBHOOK: "https://hook.us1.make.com/g43gvnp10lyo4xrcjkrdsv7fvmwmdb2b"
 };
