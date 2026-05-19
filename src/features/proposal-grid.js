@@ -2222,6 +2222,23 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
       if (childRow.parentNode !== tbody) continue;
       if (parentRow.parentNode !== tbody) continue;
 
+      // Capture the bracket's CURRENT L3 group header text (its own
+      // product name as Knack rendered it — e.g. "Electrical Mounting
+      // Bracket") before we move the row out of that group. The
+      // post-process pass reads this back via data-scw-product-name.
+      const ownL3 = findEnclosingL3(childRow);
+      if (ownL3 && !childRow.getAttribute('data-scw-product-name')) {
+        const ownLabelCell = ownL3.querySelector('td');
+        if (ownLabelCell) {
+          const productName = (ownLabelCell.textContent || '')
+            .replace(/\s+/g, ' ')
+            .trim();
+          if (productName) {
+            childRow.setAttribute('data-scw-product-name', productName);
+          }
+        }
+      }
+
       const l3 = findEnclosingL3(parentRow);
       if (!l3) continue;
       if (!groupedByL3.has(l3)) groupedByL3.set(l3, []);
@@ -2390,10 +2407,17 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
       const productOrder = [];
       for (let j = 0; j < accessoryRows.length; j++) {
         const r = accessoryRows[j];
-        const productCell = r.querySelector('td.field_1958');
-        const productName = productCell
-          ? (productCell.textContent || '').replace(/\s+/g, ' ').trim()
-          : '';
+        // Product name was stashed on the row at relocation time —
+        // read from data-scw-product-name (captured from the bracket's
+        // original L3 group header text). Fall back to td.field_1958
+        // in case the row exists but wasn't stamped.
+        let productName = r.getAttribute('data-scw-product-name') || '';
+        if (!productName) {
+          const productCell = r.querySelector('td.field_1958');
+          productName = productCell
+            ? (productCell.textContent || '').replace(/\s+/g, ' ').trim()
+            : '';
+        }
         if (!byProduct[productName]) {
           byProduct[productName] = [];
           productOrder.push(productName);
