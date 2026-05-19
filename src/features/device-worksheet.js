@@ -6123,8 +6123,74 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   // ============================================================
   // TRANSFORM VIEW
   // ============================================================
+  //
+  // transformView() is the worksheet's hot path — Phase 1 reads the
+  // Knack-rendered <tr>s, Phase 2 builds and inserts the worksheet
+  // card rows, Phase 3 restores expanded state + group-collapse +
+  // header labels and notifies dependents.
+  //
+  // Multiple triggers can drive it in rapid succession (the same
+  // user editing several rows in a few hundred ms, plus sibling
+  // model.fetch() ripples from refresh-on-inline-edit.js, plus the
+  // post-edit settle in preserve-scroll-on-refresh.js). Without a
+  // guard, run #2's Phase 1 starts while run #1's Phase 2 is still
+  // mutating the DOM — the result is empty <tr class="scw-ws-row">
+  // shells, stale cells, half-built cards. Documented as Known
+  // Issues #5 and #8 in CLAUDE.md.
+  //
+  // Per-view in-flight guard pattern (cribbed from bid-review/init.js
+  // 'silent refresh'): if a transform is already running for a view,
+  // a second call just sets `queued = true` and bails. The finally
+  // block re-fires once after completion so the queued retry sees
+  // up-to-date DOM. One overlap-free retry per burst, regardless of
+  // how many triggers piled up.
+
+  var _transformState = {}; // viewId → { inFlight: bool, queued: bool }
+
+  function _transformViewState(viewId) {
+    if (!_transformState[viewId]) {
+      _transformState[viewId] = { inFlight: false, queued: false };
+    }
+    return _transformState[viewId];
+  }
+
+  function isTransformInFlight(viewId) {
+    var s = _transformState[viewId];
+    return !!(s && s.inFlight);
+  }
 
   function transformView(viewCfg) {
+    if (!viewCfg || viewCfg.disabled) return;
+    var viewId = viewCfg.viewId;
+    var state = _transformViewState(viewId);
+
+    if (state.inFlight) {
+      // A transform is already running for this view. Mark the queue
+      // bit and bail — the finally block in the current run will
+      // re-fire transformView once with up-to-date DOM.
+      state.queued = true;
+      return;
+    }
+
+    state.inFlight = true;
+    state.queued = false;
+
+    try {
+      _transformViewImpl(viewCfg);
+    } catch (err) {
+      console.error('[device-worksheet] transformView threw for ' + viewId, err);
+    } finally {
+      state.inFlight = false;
+      if (state.queued) {
+        state.queued = false;
+        // Defer one tick so any pending DOM mutations from the just-
+        // completed pass settle before the queued retry reads them.
+        setTimeout(function () { transformView(viewCfg); }, 0);
+      }
+    }
+  }
+
+  function _transformViewImpl(viewCfg) {
     if (viewCfg.disabled) return;
     var $view = $('#' + viewCfg.viewId);
     if (!$view.length) return;
@@ -7149,7 +7215,14 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
           // Patch the edited record's card in-place from the updated
           // record data Knack passes with the event — no extra API call.
-          if (record && record.id) {
+          //
+          // Skip the in-place patch if a transformView is currently
+          // running for this view: the card may not exist yet (Phase 2
+          // hasn't built it) and the patch would silently fail. The
+          // transform's in-flight guard queues a retry that will rebuild
+          // the card with fresh data anyway, so the edit lands either
+          // way — just on a slightly delayed timeline (~150-300ms).
+          if (record && record.id && !isTransformInFlight(viewId)) {
             patchCardFromResponse(viewId, record.id, record);
           }
         });
