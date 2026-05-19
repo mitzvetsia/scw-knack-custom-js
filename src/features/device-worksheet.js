@@ -6159,6 +6159,40 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     return !!(s && s.inFlight);
   }
 
+  // ── tbody cloak helpers ─────────────────────────────────────
+  // Between Knack's view-render and our transformView running
+  // (~150ms setTimeout), users see the empty source <tr> shells —
+  // device-worksheet hides their cells via CSS once data-scw-worksheet
+  // is set, so the table flashes through an empty-grid state.
+  //
+  // Cloak the tbody with visibility:hidden at view-render time;
+  // uncloak in transformView's finally. visibility (not display)
+  // keeps layout intact so scroll position and row heights don't
+  // jump when we reveal. If a queued retry is pending, the cloak
+  // is left in place across the gap so the user only sees the
+  // final settled state.
+  function _tbodyOf(viewId) {
+    var sel = '#' + viewId + ' table.kn-table-table > tbody, ' +
+              '#' + viewId + ' table.kn-table > tbody';
+    return document.querySelector(sel);
+  }
+
+  function cloakTbody(viewId) {
+    var tb = _tbodyOf(viewId);
+    if (!tb) return;
+    if (tb.getAttribute('data-scw-cloaked') === '1') return;
+    tb.setAttribute('data-scw-cloaked', '1');
+    tb.style.visibility = 'hidden';
+  }
+
+  function uncloakTbody(viewId) {
+    var tb = _tbodyOf(viewId);
+    if (!tb) return;
+    if (tb.getAttribute('data-scw-cloaked') !== '1') return;
+    tb.removeAttribute('data-scw-cloaked');
+    tb.style.visibility = '';
+  }
+
   function transformView(viewCfg) {
     if (!viewCfg || viewCfg.disabled) return;
     var viewId = viewCfg.viewId;
@@ -6167,7 +6201,9 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     if (state.inFlight) {
       // A transform is already running for this view. Mark the queue
       // bit and bail — the finally block in the current run will
-      // re-fire transformView once with up-to-date DOM.
+      // re-fire transformView once with up-to-date DOM. Cloak stays
+      // on across the gap (uncloak happens only when there's no
+      // queued retry pending).
       state.queued = true;
       return;
     }
@@ -6185,7 +6221,11 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         state.queued = false;
         // Defer one tick so any pending DOM mutations from the just-
         // completed pass settle before the queued retry reads them.
+        // Keep cloak on — the queued retry will uncloak.
         setTimeout(function () { transformView(viewCfg); }, 0);
+      } else {
+        // Final pass for this burst — reveal the table.
+        uncloakTbody(viewId);
       }
     }
   }
@@ -7192,6 +7232,11 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       $(document)
         .off('knack-view-render.' + viewId + EVENT_NS)
         .on('knack-view-render.' + viewId + EVENT_NS, function () {
+          // Cloak the tbody the moment Knack re-renders so the empty
+          // source-row shells aren't visible during the 150ms gap
+          // before transformView runs. transformView's finally will
+          // uncloak once the worksheet cards are built.
+          cloakTbody(viewId);
           setTimeout(function () {
             transformView(viewCfg);
             syncDeleteVisibility();
