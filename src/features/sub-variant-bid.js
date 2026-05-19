@@ -36,9 +36,9 @@
     bidGridView:    'view_3507',   // BIDs accordion table
     itemGridView:   'view_3505',   // Survey line items / device worksheets
 
-    // Placeholder URLs — replace with real Make hook URLs before go-live.
+    // Make webhook URLs.
     bidWebhookUrl:  'https://hook.us1.make.com/PLACEHOLDER_CREATE_VARIANT_BID',
-    itemWebhookUrl: 'https://hook.us1.make.com/PLACEHOLDER_CREATE_VARIANT_ITEM',
+    itemWebhookUrl: 'https://hook.us1.make.com/hkm5wyfs9o3yljjejukf4e6n6qbfwqq6',
 
     // Field keys
     // Bid (BID record on view_3507)
