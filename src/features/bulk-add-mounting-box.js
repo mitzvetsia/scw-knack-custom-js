@@ -495,13 +495,34 @@
   // ─────────────────────────────────────────────────────────────
   // BIND
   // ─────────────────────────────────────────────────────────────
+  //
+  // Mount via SCW.toolbar.register() so the button survives KTL's
+  // habit of replacing #bulkOpsControlsDiv-<viewId> outside any
+  // knack-view-render event (filter changes, model refetches,
+  // accordion rebuilds, etc.). The registry's watchdog re-runs every
+  // 2s, so even if the MutationObserver scope gets orphaned the
+  // button is re-injected on the next tick.
 
   ACTIVE_VIEWS.forEach(function (viewId) {
-    if (window.SCW && SCW.onViewRender) {
+    if (window.SCW && SCW.toolbar && SCW.toolbar.register) {
+      SCW.toolbar.register({
+        id:        'add-mounting-box-' + viewId,
+        slot:      SCW.toolbar.SLOTS.bulkOps,
+        viewMatch: function (viewEl) { return viewEl && viewEl.id === viewId; },
+        // mount() is idempotent: ensureButton() bails if the button
+        // is already present in the right container. updateButton-
+        // Visibility runs every tick so the label/count stays in
+        // sync if rows are checked between watchdog passes.
+        mount: function () {
+          ensureButton(viewId);
+          updateButtonVisibility(viewId);
+        }
+      });
+    } else if (window.SCW && SCW.onViewRender) {
+      // Fallback for environments where the toolbar registry hasn't
+      // loaded yet (shouldn't happen in production — _toolbar-registry
+      // ships first in build.sh — but keeps this module standalone-safe).
       SCW.onViewRender(viewId, function () {
-        // Wait for the bulk-ops control bar to exist (KTL mounts it
-        // after view render). 250ms matches bulk-delete-confirm's
-        // settle delay.
         setTimeout(function () {
           ensureButton(viewId);
           updateButtonVisibility(viewId);

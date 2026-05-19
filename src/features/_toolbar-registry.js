@@ -180,7 +180,23 @@
 
     mountAll(viewId);
 
-    var scope = viewEl.closest('.scw-ktl-accordion') ||
+    // Observer scope: prefer .kn-scene over .scw-ktl-accordion.
+    //
+    // .scw-ktl-accordion is built and OWNED by accordion-menu-inject;
+    // that module has its own scene-level observer that DESTROYS and
+    // REBUILDS the wrapper whenever KTL rebuilds the accordion (e.g.
+    // after filter changes, model refetches, or KTL's own internal
+    // re-renders). Binding our observer to a node owned by another
+    // module means our observer gets orphaned the moment that module
+    // swaps the wrapper — at which point button injections silently
+    // stop happening until the next knack-view-render fires, which
+    // may be never on a quiet page.
+    //
+    // .kn-scene is Knack's own container. Knack only swaps it on a
+    // full scene-render (which fires knack-scene-render — already
+    // handled by runWithRetries below), so binding here is durable.
+    var scope = viewEl.closest('.kn-scene') ||
+                viewEl.closest('.scw-ktl-accordion') ||
                 viewEl.parentElement || viewEl;
 
     // Already observing this exact scope? Done.
@@ -236,6 +252,21 @@
   } else {
     runWithRetries();
   }
+
+  // Heartbeat watchdog — belt-and-suspenders against ANY scenario
+  // where the MutationObserver fails to re-mount a missing button:
+  // orphaned scopes, mutations that fire outside the observed subtree,
+  // browser-specific batching quirks, KTL hijacking that bypasses the
+  // observed events, etc.
+  //
+  // mount() functions are required to be cheap and idempotent (per
+  // the contract at the top of this file), so unconditionally calling
+  // runAll() on a steady interval costs roughly:
+  //   visible views × registered entries × 1 querySelector each
+  // which on the heaviest scenes is a few dozen selector lookups per
+  // tick. Effectively free, and it makes button injection genuinely
+  // self-healing instead of relying on a chain of fragile observers.
+  setInterval(runAll, 2000);
 
   SCW.toolbar = {
     SLOTS:    SLOTS,
