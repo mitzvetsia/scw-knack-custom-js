@@ -796,12 +796,17 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
 /********************* LEVEL 4 (INSTALL DESCRIPTION) ***********************/
 
 /* Accessory relocation: rows moved out of the Mounting Hardware
-   section to sit under their parent device, and the now-empty
-   group headers they leave behind. */
+   section to sit under their parent L3 camera/device group, plus a
+   synthetic "Mounting Hardware" L4 sub-header above each cluster.
+   The original Mounting Hardware L2/L3 headers are now empty and
+   hidden via .scw-empty-group-header. */
 ${sel('tr.scw-empty-group-header')} { display: none !important; }
-${sel('tr.scw-relocated-accessory td:first-child')} {
-  padding-left: 100px !important;
+${sel('tr.scw-mounting-l4 td:first-child')} {
+  padding-left: 60px !important;
+  font-size: 14px !important;
+  font-weight: 500 !important;
   font-style: italic;
+  color: #6b7280;
 }
 
 /* SOW header details — kept rendered so isInstallationMasked() can read
@@ -2173,7 +2178,31 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
       return;
     }
 
-    let movedCount = 0;
+    // For each accessory's parent row, find the enclosing L3 group
+    // header. We cluster all accessories at the END of the L3 group
+    // rather than interleaving them between the camera rows — that way
+    // the existing consolidated labor L4 header (e.g. "Mount Camera &
+    // Cabling (I-1, I-2, I-3, I-4, I-5)") stays intact, and the
+    // brackets render as a labelled "Mounting Hardware" sub-section
+    // under the camera group.
+    function findEnclosingL3(row) {
+      let cur = row.previousElementSibling;
+      while (cur) {
+        if (cur.classList && cur.classList.contains('kn-table-group')) {
+          const m = cur.className.match(/kn-group-level-(\d+)/);
+          if (m) {
+            const lvl = parseInt(m[1], 10);
+            if (lvl === 3) return cur;
+            if (lvl < 3) return null;
+          }
+        }
+        cur = cur.previousElementSibling;
+      }
+      return null;
+    }
+
+    // Group: l3HeaderEl → ordered list of {childRow, parentId}
+    const groupedByL3 = new Map();
 
     for (const childId in parentMap) {
       const parentId = parentMap[childId];
@@ -2184,33 +2213,73 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
       if (childRow.parentNode !== tbody) continue;
       if (parentRow.parentNode !== tbody) continue;
 
-      childRow.classList.add('scw-relocated-accessory');
-      childRow.setAttribute('data-scw-parent-id', parentId);
+      const l3 = findEnclosingL3(parentRow);
+      if (!l3) continue;
+      if (!groupedByL3.has(l3)) groupedByL3.set(l3, []);
+      groupedByL3.get(l3).push({ childRow, parentId });
+    }
 
-      // Insert child after parent, but after any siblings that have
-      // already been relocated under the same parent so multiple
-      // accessories on one device stack in a stable order.
-      let anchor = parentRow;
-      let next = anchor.nextSibling;
-      while (
-        next &&
-        next.nodeType === 1 &&
-        next.classList &&
-        next.classList.contains('scw-relocated-accessory') &&
-        next.getAttribute('data-scw-parent-id') === parentId
-      ) {
-        anchor = next;
-        next = next.nextSibling;
+    let movedCount = 0;
+
+    groupedByL3.forEach(function (accessories, l3Header) {
+      // Walk forward to the first node that is the next L1/L2/L3 group
+      // header — that's where the L3 block ends. Insertion point sits
+      // immediately before it.
+      let endOfBlock = l3Header.nextElementSibling;
+      while (endOfBlock) {
+        if (endOfBlock.classList && endOfBlock.classList.contains('kn-table-group')) {
+          const m = endOfBlock.className.match(/kn-group-level-(\d+)/);
+          if (m && parseInt(m[1], 10) <= 3) break;
+        }
+        endOfBlock = endOfBlock.nextElementSibling;
       }
 
-      if (childRow === anchor.nextSibling) continue;
-      tbody.insertBefore(childRow, anchor.nextSibling);
-      movedCount++;
-    }
+      // Look for an existing scw-mounting-l4 header at the tail of this
+      // block so re-runs don't duplicate it.
+      let l4Header = null;
+      const probe = endOfBlock ? endOfBlock.previousElementSibling : tbody.lastElementChild;
+      // Scan backwards a few rows in case the previous run already put
+      // accessories + header here.
+      let scan = probe;
+      let scanDepth = 0;
+      while (scan && scanDepth < 50) {
+        if (scan.classList && scan.classList.contains('scw-mounting-l4')) { l4Header = scan; break; }
+        if (scan.classList && scan.classList.contains('kn-table-group')) {
+          const m = scan.className.match(/kn-group-level-(\d+)/);
+          if (m && parseInt(m[1], 10) <= 3) break;
+        }
+        scan = scan.previousElementSibling;
+        scanDepth++;
+      }
+
+      if (!l4Header) {
+        l4Header = document.createElement('tr');
+        l4Header.className = 'kn-table-group kn-group-level-4 scw-synthetic-l4 scw-mounting-l4';
+        const td = document.createElement('td');
+        td.setAttribute('colspan', '100');
+        td.textContent = 'Mounting Hardware';
+        l4Header.appendChild(td);
+        tbody.insertBefore(l4Header, endOfBlock);
+      }
+
+      // Place each accessory right after the previous insertion point so
+      // they preserve their original order.
+      let insertAfter = l4Header;
+      for (let i = 0; i < accessories.length; i++) {
+        const { childRow, parentId } = accessories[i];
+        childRow.classList.add('scw-relocated-accessory');
+        childRow.setAttribute('data-scw-parent-id', parentId);
+        if (childRow !== insertAfter.nextSibling) {
+          tbody.insertBefore(childRow, insertAfter.nextSibling);
+          movedCount++;
+        }
+        insertAfter = childRow;
+      }
+    });
 
     if (movedCount > 0) {
       markEmptyGroupHeaders(tbody);
-      log(ctx, 'Relocated', movedCount, 'accessory rows under their parent device');
+      log(ctx, 'Relocated', movedCount, 'accessory rows under their parent L3 group');
     }
   }
 
