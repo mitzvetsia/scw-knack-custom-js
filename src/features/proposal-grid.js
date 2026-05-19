@@ -812,11 +812,13 @@ ${sel('tr.scw-mounting-l4 td:first-child')} {
    each "Mounting Hardware" L4 sub-header. The actual tr[id] bracket
    rows stay hidden by the global tr[id] rule above (they're still
    needed in the DOM for the pipeline's L3 cost sum). */
+${sel('tr.scw-mounting-product-line td')} {
+  color: #07467c !important;
+  font-size: 14px !important;
+  font-weight: 500 !important;
+}
 ${sel('tr.scw-mounting-product-line td:first-child')} {
   padding-left: 80px !important;
-  font-weight: 500;
-  color: #07467c;
-  font-size: 14px;
 }
 .scw-mounting-product-name {
   font-weight: 500;
