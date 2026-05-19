@@ -37,7 +37,11 @@
     itemGridView:   'view_3505',   // Survey line items / device worksheets
 
     // Make webhook URLs.
-    bidWebhookUrl:  'https://hook.us1.make.com/PLACEHOLDER_CREATE_VARIANT_BID',
+    // Both buttons currently fire at the same Make hook — Make
+    // differentiates by payload shape (line_item_ids array for the bid
+    // variant, source_line_item_id + target_bid_id for the per-item
+    // variant).
+    bidWebhookUrl:  'https://hook.us1.make.com/hkm5wyfs9o3yljjejukf4e6n6qbfwqq6',
     itemWebhookUrl: 'https://hook.us1.make.com/hkm5wyfs9o3yljjejukf4e6n6qbfwqq6',
 
     // Field keys
