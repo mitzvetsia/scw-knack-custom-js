@@ -129,6 +129,26 @@
     '</div>';
   }
 
+  /**
+   * Editable product cell — renders the product name in the row's
+   * product slot but as a clickable button. Reuses the connection-
+   * picker infrastructure (data-scw-ws-v2-conn=field_1949) so the
+   * init.js click handler opens the same modal. Candidates source
+   * is SCW.productMap (Builder boot snippet); filter logic lives in
+   * init.js next to the existing field_1957/field_2197 branches.
+   */
+  function productCell(rec, viewKey, value) {
+    return '<button type="button" ' +
+      'class="scw-ws-v2-cell scw-ws-v2-cell--product scw-ws-v2-cell--editable-conn" ' +
+      'data-scw-ws-v2-conn="field_1949" ' +
+      'data-scw-ws-v2-record="' + escapeHtml(rec.id) + '" ' +
+      'data-scw-ws-v2-view="' + escapeHtml(viewKey) + '" ' +
+      'data-scw-ws-v2-conn-label="Product" ' +
+      'title="' + escapeHtml(value) + ' — click to change product">' +
+      escapeHtml(value) +
+    '</button>';
+  }
+
   function empty(cls) {
     return '<div class="scw-ws-v2-cell scw-ws-v2-cell--blank ' + (cls || '') + '"></div>';
   }
@@ -180,7 +200,7 @@
 
     return '<div class="scw-ws-v2-row scw-ws-v2-row--cam">' +
       ro(label,   'scw-ws-v2-cell--label',   label) +
-      ro(product, 'scw-ws-v2-cell--product', product) +
+      productCell(rec, viewKey, product) +
       chips +
       '<div class="scw-ws-v2-cell scw-ws-v2-cell--labor-desc">' +
         textInput(rec, viewKey, 'field_2020', laborDesc, 'Labor description') +
@@ -213,7 +233,7 @@
     var sow         = readField(rec, 'field_2154');
 
     return '<div class="scw-ws-v2-row scw-ws-v2-row--default">' +
-      ro(product, 'scw-ws-v2-cell--product', product) +
+      productCell(rec, viewKey, product) +
       '<div class="scw-ws-v2-cell scw-ws-v2-cell--labor-desc">' +
         textInput(rec, viewKey, 'field_2020', laborDesc, 'Labor description') +
       '</div>' +

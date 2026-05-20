@@ -202,6 +202,84 @@
         return s === 'yes' || s === 'true' || s === '1';
       }
 
+      // Product picker (field_1949) — candidates come from the
+      // Builder snippet's SCW.productMap (id → {name, buckets}), NOT
+      // from the SOW line items loaded in `records`. Filter by the
+      // current line item's bucket so we only show products that
+      // belong here. SCW.productMapReady is a Promise that resolves
+      // once all paginated product pages have been fetched — await
+      // it before opening the picker so we never show an empty
+      // candidate list.
+      if (fieldKey === 'field_1949') {
+        var openProductPicker = function () {
+          var pmap = (window.SCW && SCW.productMap) || {};
+          var myBucketId = current ? bucketIdOf(current) : '';
+          var prodCandidates = [];
+          for (var pid in pmap) {
+            if (!Object.prototype.hasOwnProperty.call(pmap, pid)) continue;
+            var p = pmap[pid];
+            if (!p) continue;
+            // Bucket gate: include only products whose buckets list
+            // contains the line item's bucket. Products with no
+            // buckets at all are still included as a catch-all (rare
+            // but happens for newly-added products).
+            if (myBucketId && Array.isArray(p.buckets) && p.buckets.length > 0
+                && p.buckets.indexOf(myBucketId) === -1) {
+              continue;
+            }
+            prodCandidates.push({
+              id: pid,
+              name: p.name || '(unnamed)'
+            });
+          }
+          prodCandidates.sort(function (a, b) {
+            return String(a.name).localeCompare(String(b.name), undefined,
+              { numeric: true, sensitivity: 'base' });
+          });
+
+          // Current selection — field_1949 is a single-select
+          // connection; read the existing connected id (if any).
+          var prodSel = [];
+          if (current) {
+            var rawSel = current['field_1949_raw'];
+            if (Array.isArray(rawSel)) {
+              for (var s = 0; s < rawSel.length; s++) {
+                if (rawSel[s] && rawSel[s].id) prodSel.push(rawSel[s].id);
+              }
+            } else if (rawSel && rawSel.id) {
+              prodSel.push(rawSel.id);
+            }
+          }
+
+          ns.picker.open({
+            sourceViewKey: viewKey,
+            // Write through view_3610 so v1's mirror-connection-sync
+            // + dependent recalcs (line item totals, etc.) fire.
+            putViewKey:    'view_3610',
+            recordId:      recordId,
+            fieldKey:      'field_1949',
+            label:         'Product',
+            selectedIds:   prodSel,
+            candidates:    prodCandidates,
+            itemLabel:     function (rec) { return rec.name || rec.id; },
+            multi:         false,
+            onSaved:       function () {
+              if (ns.data && typeof ns.data.notify === 'function') ns.data.notify(viewKey);
+            }
+          });
+        };
+
+        if (window.SCW && SCW.productMap) {
+          openProductPicker();
+        } else if (window.SCW && SCW.productMapReady
+                   && typeof SCW.productMapReady.then === 'function') {
+          SCW.productMapReady.then(openProductPicker);
+        } else {
+          console.warn('[scw-ws-v2] SCW.productMap missing — Builder snippet not loaded?');
+        }
+        return;
+      }
+
       var candidates = [];
       for (var c = 0; c < records.length; c++) {
         var r = records[c];

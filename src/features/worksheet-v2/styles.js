@@ -186,6 +186,32 @@
     '  text-overflow: ellipsis !important;',
     '}',
 
+    /* Editable connection cells rendered as <button> in the grid row.
+       Reset native button styling so the cell sits flush in the grid
+       like its <div> siblings. Hover state hints at editability via
+       a subtle background tint + dashed underline on the text. */
+    '.scw-ws-v2-cell--editable-conn {',
+    '  appearance: none !important;',
+    '  background: transparent !important;',
+    '  border: none !important;',
+    '  margin: 0 !important;',
+    '  font: inherit !important;',
+    '  color: inherit !important;',
+    '  text-align: left !important;',
+    '  cursor: pointer !important;',
+    '  width: 100% !important;',  /* fill the grid cell */
+    '  min-width: 0 !important;',
+    '}',
+    '.scw-ws-v2-cell--editable-conn:hover {',
+    '  background: var(--scw-surface-muted, #f1f5f9) !important;',
+    '  text-decoration: underline dashed;',
+    '  text-underline-offset: 3px;',
+    '}',
+    '.scw-ws-v2-cell--editable-conn:focus-visible {',
+    '  outline: 2px solid #0d9488;',
+    '  outline-offset: -2px;',
+    '}',
+
     '.scw-ws-v2-cell--num,',
     '.scw-ws-v2-cell--ext {',
     '  text-align: right !important;',
