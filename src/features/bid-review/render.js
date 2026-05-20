@@ -1546,6 +1546,12 @@
     // hide them.
     row.setAttribute('data-doc-type', d.docType || '__none__');
     if (d.docType) row.appendChild(el('span', 'scw-bid-review__docs-type', d.docType));
+
+    // Body wraps filename + notes vertically so the filename is the
+    // visual anchor and metadata (notes) sits as a muted sub-line.
+    // Two-line layout makes lists of docs scannable — the eye lands
+    // on bold filenames at a consistent left edge.
+    var body = el('div', 'scw-bid-review__docs-body');
     var a = document.createElement('a');
     a.href = d.fileUrl;
     a.target = '_blank';
@@ -1553,12 +1559,13 @@
     a.title = d.fileName;
     a.className = 'scw-bid-review__docs-link';
     a.textContent = d.fileName;
-    row.appendChild(a);
+    body.appendChild(a);
     if (d.notes) {
       var nEl = el('span', 'scw-bid-review__docs-notes', d.notes);
       nEl.title = d.notes;
-      row.appendChild(nEl);
+      body.appendChild(nEl);
     }
+    row.appendChild(body);
     return row;
   }
 
