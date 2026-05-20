@@ -397,23 +397,24 @@
   // ── WEBHOOK FIRE ────────────────────────────────────────
 
   function postWebhook(url, body) {
-    return new Promise(function (resolve, reject) {
-      try {
-        $.ajax({
-          url: url,
-          method: 'POST',
-          contentType: 'application/json',
-          data: JSON.stringify(body),
-          // Make accepts CORS-friendly POSTs but sometimes 0-status the
-          // response; treat that as success-ish so the UI doesn't lie.
-          timeout: 30000
-        })
-          .done(function (resp) { resolve(resp); })
-          .fail(function (xhr) {
-            if (xhr && xhr.status === 0) return resolve({ ok: true, status: 0 });
-            reject(xhr);
-          });
-      } catch (e) { reject(e); }
+    // Native fetch — matches connected-records.js / bulk-add-mounting-
+    // box / other working Make webhook callers in this codebase.
+    //
+    // Previously this was $.ajax with contentType:'application/json' +
+    // data: JSON.stringify(body). That HAD been firing as form-
+    // urlencoded under some jQuery configurations (missing
+    // processData:false), which made the Make webhook receiver
+    // interpret the entire JSON string as a single form key with
+    // empty value — payload showed up Make-side as
+    //   [{"<whole JSON>": ""}]
+    // and was unparseable. fetch() doesn't have that footgun.
+    return fetch(url, {
+      method:  'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body:    JSON.stringify(body)
+    }).then(function (resp) {
+      if (!resp.ok) throw new Error('Webhook returned ' + resp.status);
+      return resp.json().catch(function () { return { ok: true }; });
     });
   }
 
