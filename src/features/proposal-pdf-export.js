@@ -1704,14 +1704,22 @@
     return (cfg && cfg.webhookUrl) || WEBHOOK_URL;
   }
 
+  // Now returns the jqXHR so callers can hook .done/.fail and await
+  // Make's "Webhook Response" body. Always-on console.log so users
+  // can see exactly what came back without flipping SCW.DEBUG. Times
+  // out at 180s (matches the proposal-publish path) — Make holds the
+  // HTTP connection open until the scenario's final Webhook Response
+  // module fires, which can take 90+s for big PDFs.
   function sendToWebhook(data, cfg) {
-    var jsonStr = JSON.stringify(data);
-    $.ajax({
-      url: resolveWebhookUrl(cfg),
-      type: 'POST',
+    var url = resolveWebhookUrl(cfg);
+    console.log('[SCW PDF Webhook] POST', { url: url, payloadType: cfg.payloadType });
+    return $.ajax({
+      url:         url,
+      type:        'POST',
       contentType: 'application/json',
-      data: jsonStr,
+      data:        JSON.stringify(data),
       crossDomain: true,
+      timeout:     180000
     });
   }
 
@@ -2244,17 +2252,100 @@
           }
         }
 
-        SCW.debug('[SCW PDF Export]', cfg.sceneId, '→ form submit, scraping...');
-        runExport(cfg, extra);
+        // Already authorized by a prior webhook-success pass — let
+        // Knack run its native submit (record save + redirect).
+        if ($form.data('scw-pdf-authorized')) return;
 
-        // Flag for poll-refresh on the parent page
-        if (cfg.pollViewOnReturn) {
-          try {
-            sessionStorage.setItem('scw-pdf-poll-view', cfg.pollViewOnReturn);
-            if (cfg.pollField) sessionStorage.setItem('scw-pdf-poll-field', cfg.pollField);
-            if (cfg.payloadType) sessionStorage.setItem('scw-pdf-poll-type', cfg.payloadType);
-          } catch (e) {}
+        // Hold the submit, fire the webhook, wait for Make's
+        // "Webhook Response" body, THEN re-trigger the form's
+        // native submit. This was previously fire-and-forget +
+        // sessionStorage-flagged polling; the page navigated away
+        // before Make responded so the $.ajax was cancelled (which
+        // is exactly why no logs appeared after webhook fire).
+        e.preventDefault();
+        e.stopImmediatePropagation();
+
+        console.log('[SCW PDF Webhook] form submit intercepted', { sceneId: cfg.sceneId });
+        var unified = buildPublishPayload(cfg.sceneId);
+        if (!unified) {
+          console.warn('[SCW PDF Webhook] payload build failed — falling through to native submit');
+          $form.data('scw-pdf-authorized', true);
+          $form[0].submit();
+          return;
         }
+        for (var k in extra) {
+          if (Object.prototype.hasOwnProperty.call(extra, k)) unified[k] = extra[k];
+        }
+
+        showPublishToast('Generating ' +
+          (cfg.payloadType === 'subcontractor bid' ? 'bid' : 'PDF') +
+          '…', false, true);
+
+        function authorizeAndSubmit(setPollFallback) {
+          // Defensive: nuke any stale poll flags so the parent page
+          // doesn't start polling unless we explicitly set them again
+          // for the fallback case.
+          try {
+            sessionStorage.removeItem('scw-pdf-poll-view');
+            sessionStorage.removeItem('scw-pdf-poll-field');
+            sessionStorage.removeItem('scw-pdf-poll-type');
+          } catch (e2) {}
+          if (setPollFallback && cfg.pollViewOnReturn) {
+            try {
+              sessionStorage.setItem('scw-pdf-poll-view', cfg.pollViewOnReturn);
+              if (cfg.pollField) sessionStorage.setItem('scw-pdf-poll-field', cfg.pollField);
+              if (cfg.payloadType) sessionStorage.setItem('scw-pdf-poll-type', cfg.payloadType);
+            } catch (e3) {}
+          }
+          $form.data('scw-pdf-authorized', true);
+          $form[0].submit();
+        }
+
+        sendToWebhook(unified, cfg)
+          .done(function (resp, status, xhr) {
+            console.log('[SCW PDF Webhook] success', {
+              status: xhr && xhr.status,
+              contentType: xhr && xhr.getResponseHeader && xhr.getResponseHeader('Content-Type'),
+              responseType: typeof resp,
+              response: resp,
+              rawResponseText: xhr && xhr.responseText
+            });
+            var informative = (resp != null && resp !== '' &&
+              (typeof resp === 'object' || String(resp).length > 0));
+            if (informative) {
+              console.log('[SCW PDF Webhook] informative response → submitting form (PDF already in place)');
+              showPublishToast('PDF ready — opening…', false, false);
+              authorizeAndSubmit(false);
+            } else {
+              console.log('[SCW PDF Webhook] empty response → falling back to poll on parent');
+              authorizeAndSubmit(true);
+            }
+          })
+          .fail(function (xhr, status, errThrown) {
+            console.log('[SCW PDF Webhook] fail', {
+              status: xhr && xhr.status,
+              contentType: xhr && xhr.getResponseHeader && xhr.getResponseHeader('Content-Type'),
+              jqStatus: status,
+              errThrown: errThrown && errThrown.toString && errThrown.toString(),
+              rawResponseText: xhr && xhr.responseText
+            });
+            // 2xx with a body but jQuery couldn't parse it (Content-Type
+            // mismatch) — treat as success.
+            var raw = xhr && xhr.responseText;
+            var httpOk = xhr && xhr.status >= 200 && xhr.status < 300;
+            if (httpOk && raw) {
+              console.log('[SCW PDF Webhook] HTTP OK with body — treating as success');
+              showPublishToast('PDF ready — opening…', false, false);
+              authorizeAndSubmit(false);
+              return;
+            }
+            // Anything else: let the form submit anyway so the user
+            // isn't stuck on the form page. Poll-on-parent acts as
+            // the safety net.
+            console.warn('[SCW PDF Webhook] webhook failed — submitting form with poll-on-parent fallback');
+            showPublishToast('Submission sent — continuing…', false, false);
+            authorizeAndSubmit(true);
+          });
       });
     });
 
