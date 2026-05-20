@@ -396,6 +396,94 @@
 
   // ── WEBHOOK FIRE ────────────────────────────────────────
 
+  // ── POLLING ─────────────────────────────────────────────
+  //
+  // After webhook submit, Make takes ~5-30s to create the record(s)
+  // and write them back to Knack. Rather than blindly waiting a fixed
+  // duration and refreshing once, poll the relevant view's model
+  // every few seconds and watch for the expected change. Stop the
+  // moment we detect it; cap the total wait at MAX_MS to avoid
+  // spinning forever on a webhook that silently failed.
+
+  var POLL_INTERVAL_MS = 3000;
+  var POLL_MAX_MS      = 90000;
+
+  /** Refetch a view's model and resolve on success/error either way. */
+  function refetchView(viewKey) {
+    return new Promise(function (resolve) {
+      try {
+        var v = Knack.views[viewKey];
+        if (!v || !v.model || typeof v.model.fetch !== 'function') {
+          resolve();
+          return;
+        }
+        var p = v.model.fetch();
+        if (p && typeof p.always === 'function') {
+          p.always(function () { resolve(); });
+        } else if (p && typeof p.then === 'function') {
+          p.then(resolve, resolve);
+        } else {
+          // Backbone returned no thenable — best-effort wait.
+          setTimeout(resolve, 600);
+        }
+      } catch (e) { resolve(); }
+    });
+  }
+
+  /** Read the set of record ids currently in a view's model. */
+  function recordIdsIn(viewKey) {
+    try {
+      var v = Knack.views[viewKey];
+      if (!v || !v.model || !v.model.data) return [];
+      var models = v.model.data.models || [];
+      var out = [];
+      for (var i = 0; i < models.length; i++) {
+        if (models[i] && models[i].id) out.push(models[i].id);
+      }
+      return out;
+    } catch (e) { return []; }
+  }
+
+  /**
+   * Poll a view repeatedly until checkFn returns truthy or the
+   * timeout elapses. checkFn is called with { elapsed, attempt }
+   * after each model.fetch returns.
+   *
+   * @param {string}   viewKey  — view to refetch each tick
+   * @param {function} checkFn  — return truthy when the awaited
+   *                              change is detected; we stop polling.
+   * @param {function} onTick   — optional, called with elapsed ms
+   *                              each iteration so the UI can update
+   *                              its progress message.
+   * @returns {Promise} resolves { found:true } on detect or
+   *                   { found:false, timedOut:true } on cap-out.
+   */
+  function pollUntil(viewKey, checkFn, onTick) {
+    var startedAt = Date.now();
+    return new Promise(function (resolve) {
+      function tick() {
+        refetchView(viewKey).then(function () {
+          var elapsed = Date.now() - startedAt;
+          try {
+            if (checkFn({ elapsed: elapsed })) {
+              resolve({ found: true, elapsedMs: elapsed });
+              return;
+            }
+          } catch (e) { /* keep polling on inspect errors */ }
+          if (elapsed >= POLL_MAX_MS) {
+            resolve({ found: false, timedOut: true, elapsedMs: elapsed });
+            return;
+          }
+          if (typeof onTick === 'function') {
+            try { onTick(elapsed); } catch (e) { /* ignore */ }
+          }
+          setTimeout(tick, POLL_INTERVAL_MS);
+        });
+      }
+      tick();
+    });
+  }
+
   function postWebhook(url, body) {
     // Native fetch — matches connected-records.js / bulk-add-mounting-
     // box / other working Make webhook callers in this codebase.
@@ -685,7 +773,13 @@
 
       modal.confirmBtn.disabled = true;
       modal.cancelBtn.disabled = true;
-      setStatus(modal, 'Creating variant bid…');
+      setStatus(modal, 'Submitting…');
+
+      // Snapshot the bid grid's record ids BEFORE the webhook fires
+      // so the poller can detect when Make's new variant bid appears.
+      var beforeBidIds = recordIdsIn(CONFIG.bidGridView);
+      var beforeBidSet = {};
+      for (var bi = 0; bi < beforeBidIds.length; bi++) beforeBidSet[beforeBidIds[bi]] = true;
 
       postWebhook(CONFIG.bidWebhookUrl, {
         type:                   'variant_bid',
@@ -694,12 +788,42 @@
         line_item_count:        ids.length,
         line_item_ids:          ids
       }).then(function () {
-        setStatus(modal, 'Variant bid request sent. Refreshing…');
-        setTimeout(function () {
-          modal.close();
-          try { Knack.views[CONFIG.bidGridView].model.fetch(); } catch (e) {}
-          try { Knack.views[CONFIG.itemGridView].model.fetch(); } catch (e) {}
-        }, 800);
+        setStatus(modal, "We're working on it… (Make is creating the variant.)");
+
+        return pollUntil(
+          CONFIG.bidGridView,
+          function () {
+            // Detection: any new bid id not in the pre-submit snapshot.
+            var nowIds = recordIdsIn(CONFIG.bidGridView);
+            for (var i = 0; i < nowIds.length; i++) {
+              if (!beforeBidSet[nowIds[i]]) return true;
+            }
+            return false;
+          },
+          function (elapsed) {
+            setStatus(modal, "We're working on it… (" +
+              Math.round(elapsed / 1000) + 's)');
+          }
+        );
+      }).then(function (result) {
+        if (result.timedOut) {
+          // Webhook fired, but Make hasn't published the bid back to
+          // Knack in 90s. Refresh what we have and close — user can
+          // manually refresh later if the bid still isn't visible.
+          setStatus(modal, 'Taking longer than expected — refreshing now. ' +
+            'The variant may still be in flight; check again in a moment.', true);
+        } else {
+          setStatus(modal, 'Done. Refreshing…');
+        }
+
+        // Refresh both bid grid + line item grid so the new bid and
+        // its attached items show up across the scene.
+        return Promise.all([
+          refetchView(CONFIG.bidGridView),
+          refetchView(CONFIG.itemGridView)
+        ]);
+      }).then(function () {
+        setTimeout(function () { modal.close(); }, 600);
       }).catch(function () {
         setStatus(modal, 'Submission failed — please retry.', true);
         modal.confirmBtn.disabled = false;
@@ -844,6 +968,12 @@
       modal.cancelBtn.disabled = true;
       setStatus(modal, 'Creating variant line item…');
 
+      // Snapshot line-item ids on the target bid BEFORE the webhook,
+      // so the poller can detect when Make's new line item lands.
+      var beforeItemIds = recordIdsIn(CONFIG.itemGridView);
+      var beforeItemSet = {};
+      for (var ii = 0; ii < beforeItemIds.length; ii++) beforeItemSet[beforeItemIds[ii]] = true;
+
       postWebhook(CONFIG.itemWebhookUrl, {
         type:                'variant_item',
         source_line_item_id: itemId,
@@ -851,11 +981,33 @@
         target_bid_label:    resolveBidLabel(targetBidId),
         fields:              fields
       }).then(function () {
-        setStatus(modal, 'Variant line item request sent. Refreshing…');
-        setTimeout(function () {
-          modal.close();
-          try { Knack.views[CONFIG.itemGridView].model.fetch(); } catch (e) {}
-        }, 800);
+        setStatus(modal, "We're working on it… (Make is creating the variant.)");
+
+        return pollUntil(
+          CONFIG.itemGridView,
+          function () {
+            // Detection: any new line-item id not in the snapshot.
+            var nowIds = recordIdsIn(CONFIG.itemGridView);
+            for (var i = 0; i < nowIds.length; i++) {
+              if (!beforeItemSet[nowIds[i]]) return true;
+            }
+            return false;
+          },
+          function (elapsed) {
+            setStatus(modal, "We're working on it… (" +
+              Math.round(elapsed / 1000) + 's)');
+          }
+        );
+      }).then(function (result) {
+        if (result.timedOut) {
+          setStatus(modal, 'Taking longer than expected — refreshing now. ' +
+            'The variant may still be in flight; check again in a moment.', true);
+        } else {
+          setStatus(modal, 'Done. Refreshing…');
+        }
+        return refetchView(CONFIG.itemGridView);
+      }).then(function () {
+        setTimeout(function () { modal.close(); }, 600);
       }).catch(function () {
         setStatus(modal, 'Submission failed — please retry.', true);
         modal.confirmBtn.disabled = false;
