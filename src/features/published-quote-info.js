@@ -428,15 +428,33 @@
     if (!opts.sourceView) return null;
     var fields = resolveFields(opts);
 
-    // Knack model first — fully-typed, includes _raw values.
+    // Knack model first — fully-typed, includes _raw values. Two
+    // shapes to handle:
+    //   1. List views (kn-records): v.model.data.models[] is an array
+    //      of Backbone models, one per row.
+    //   2. Details views (kn-details): the view's model IS the single
+    //      record — its attributes hold the field values directly.
+    // The proposal page uses a details view as both source and target,
+    // so falling through to the details path matters even when the
+    // list path returns no rows.
     try {
       var v = window.Knack && Knack.views && Knack.views[opts.sourceView];
-      var models = v && v.model && v.model.data && v.model.data.models;
-      if (models && models.length) {
-        for (var i = 0; i < models.length; i++) {
-          var a = models[i].attributes;
-          if (!a || !isPublishedAttrs(a, fields.status)) continue;
-          return fromAttrs(a, fields);
+      if (v && v.model) {
+        var models = v.model.data && v.model.data.models;
+        if (models && models.length) {
+          for (var i = 0; i < models.length; i++) {
+            var a = models[i].attributes;
+            if (!a || !isPublishedAttrs(a, fields.status)) continue;
+            return fromAttrs(a, fields);
+          }
+        }
+        // Details-view shape — single record at v.model.attributes.
+        // Skip the published-status filter here: details views target
+        // one specific record already, and the page wouldn't be open
+        // unless this record is the intended one.
+        var single = v.model.attributes;
+        if (single && (single.id || single[fields.name] != null)) {
+          return fromAttrs(single, fields);
         }
       }
     } catch (e) { /* fall through */ }

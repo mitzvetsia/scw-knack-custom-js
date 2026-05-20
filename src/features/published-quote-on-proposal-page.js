@@ -12,8 +12,13 @@
 (function () {
   'use strict';
 
-  var SOURCE_VIEW = 'view_3886';   // Published proposals (data source)
-  var TARGET_VIEW = 'view_3883';   // Where to inject the block
+  // view_3883 is a kn-details view of the published-proposal record on
+  // this scene — same record we want to surface, so it serves as both
+  // the data SOURCE and the INJECT target. publishedQuoteInfo.read
+  // handles both list-view (model.data.models[]) and details-view
+  // (model.attributes) shapes.
+  var SOURCE_VIEW = 'view_3883';
+  var TARGET_VIEW = 'view_3883';
   var NS          = '.scwPublishedQuote';
 
   function transform() {
