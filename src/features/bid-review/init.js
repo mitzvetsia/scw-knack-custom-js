@@ -179,7 +179,8 @@
         || e.target.closest('.scw-ops-margin-warning__btn[data-action]')
         || e.target.closest('.scw-bid-review__docs-link-btn[data-action]')
         || e.target.closest('.scw-bid-review__docs-unlink-btn[data-action]')
-        || e.target.closest('.scw-bid-review__docs-chip[data-action]');
+        || e.target.closest('.scw-bid-review__docs-chip[data-action]')
+        || e.target.closest('.scw-bid-review__docs-other-toggle[data-action]');
       if (!button) return;
 
       // Close overflow menu after picking an item
@@ -222,6 +223,12 @@
         handleDocUnlinkFromSow(button);
       } else if (action === 'doc_filter') {
         handleDocFilter(button);
+      } else if (action === 'docs_toggle_other') {
+        var section = button.closest('.scw-bid-review__docs-other');
+        if (section) {
+          var c = section.getAttribute('data-collapsed') === '1';
+          section.setAttribute('data-collapsed', c ? '0' : '1');
+        }
       } else if (action === 'set_project_margin') {
         handleSetProjectMargin(button);
       } else if (action.indexOf('package_') === 0) {

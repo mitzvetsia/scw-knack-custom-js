@@ -1647,8 +1647,23 @@
     }
 
     if (available.length) {
-      var availLabel = el('div', 'scw-bid-review__docs-sublabel', 'Available from project');
-      wrap.appendChild(availLabel);
+      // "Other docs on project" — collapsible. Default collapsed because
+      // most users don't need to scan project-wide docs every time they
+      // open a SOW; expanding is a one-click affordance when they do.
+      // The whole sublabel is the click target (chevron + label + count).
+      var availSection = el('div', 'scw-bid-review__docs-other');
+      availSection.setAttribute('data-collapsed', '1');
+
+      var availToggle = document.createElement('button');
+      availToggle.type = 'button';
+      availToggle.className = 'scw-bid-review__docs-sublabel scw-bid-review__docs-other-toggle';
+      availToggle.setAttribute('data-action', 'docs_toggle_other');
+      availToggle.innerHTML = '<svg class="scw-bid-review__docs-chevron" xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>';
+      availToggle.appendChild(document.createTextNode(' Other docs on project'));
+      var countSpan = el('span', 'scw-bid-review__docs-other-count', String(available.length));
+      availToggle.appendChild(countSpan);
+      availSection.appendChild(availToggle);
+
       var availList = el('div', 'scw-bid-review__docs-list scw-bid-review__docs-list--available');
       for (var a = 0; a < available.length; a++) {
         var ad = available[a];
@@ -1672,16 +1687,22 @@
         item.appendChild(linkBtn);
         availList.appendChild(item);
       }
-      wrap.appendChild(availList);
+      availSection.appendChild(availList);
+      wrap.appendChild(availSection);
     }
 
     if (addUrl) {
+      // Right-aligned footer so the Upload pill lands in the same
+      // visual column as Link/Unlink. Solid fill ranks it above the
+      // outlined Link pill (primary > secondary > tertiary chain).
+      var footer = el('div', 'scw-bid-review__docs-footer');
       var addBtn = document.createElement('a');
       addBtn.href = addUrl;
       addBtn.className = 'scw-bid-review__docs-add';
       addBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>';
       addBtn.appendChild(document.createTextNode(' Upload new document'));
-      wrap.appendChild(addBtn);
+      footer.appendChild(addBtn);
+      wrap.appendChild(footer);
     }
 
     return wrap;
