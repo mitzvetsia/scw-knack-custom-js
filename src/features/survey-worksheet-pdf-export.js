@@ -1269,6 +1269,19 @@
     return bucketMatches(card, OTHER_EQUIPMENT_BUCKET, /other.*equipment/i);
   }
 
+  // Services and Assumptions are the two buckets where the labor-
+  // description field IS the actual content (service description /
+  // assumption text), not a sales artifact. These render with an
+  // explicit labor body line REGARDLESS of brief vs. detailed
+  // classification — without this gate they'd inherit the
+  // cam/reader / networking / headend rule of "drop labor".
+  var SERVICES_BUCKET    = '6977caa7f246edf67b52cbcd';
+  var ASSUMPTIONS_BUCKET = '697b7a023a31502ec68b3303';
+  function isServiceOrAssumptionBucket(card) {
+    return bucketMatches(card, SERVICES_BUCKET,    /service/i) ||
+           bucketMatches(card, ASSUMPTIONS_BUCKET, /assumption/i);
+  }
+
   // Networking / Headend / Other Equipment cards have short identity
   // info (no drop label like E-001) and longer labor-description text.
   // The default cam/reader 3-col layout wastes space on the empty
@@ -1621,11 +1634,11 @@
         if (sfLabel && sfLabel.toLowerCase().replace(/\s+/g, ' ').trim() === 'survey notes') {
           sfLabel = 'Other Notes';
         }
-        // Brief cards (services / assumptions) render labor as a
-        // dedicated body block below the header (see ws-brief-labor),
-        // so skip the duplicate when the same value would appear as
-        // an unlabeled or "Service" / "Assumption" summary entry.
-        if (brief && card.laborText && sf.value === card.laborText) continue;
+        // Services / assumptions render labor as a dedicated body
+        // block below the header (see ws-brief-labor), so skip the
+        // duplicate when the same value would appear as an unlabeled
+        // or "Service" / "Assumption" summary entry.
+        if (isServiceOrAssumptionBucket(card) && card.laborText && sf.value === card.laborText) continue;
         h.push('<div class="ws-sum-field">');
         if (sfLabel) h.push('<span class="ws-sum-label">' + esc(sfLabel) + '</span>');
         h.push('<span class="ws-sum-value">' + esc(sf.value) + '</span>');
@@ -1635,16 +1648,17 @@
     }
     h.push('</header>');
 
-    // ── Brief cards (services / assumptions): explicit labor line ──
+    // ── Services / Assumptions: explicit labor body line ──
     // Cam/reader cards drop labor description (sales artifact, no
     // field-use). Services and assumptions are DIFFERENT — for those
     // rows, the labor-description field IS the actual content
-    // (service description / assumption text). The summary scraper
-    // already pulls labor into summaryFields for these buckets, but
-    // rendering it as a dedicated full-width body line keeps it
-    // readable rather than buried as a "label: value" pair next to
-    // qty/fee chits in the header.
-    if (brief && hasMeaningfulText(card.laborText)) {
+    // (service description / assumption text). Render it as a
+    // dedicated full-width body line regardless of brief vs detail
+    // classification — if a service row has a residual chip-host
+    // field, it'll classify as showDetail=true but we still want the
+    // service description rendered prominently.
+    var isSvcOrAssump = isServiceOrAssumptionBucket(card);
+    if (isSvcOrAssump && hasMeaningfulText(card.laborText)) {
       h.push('<div class="ws-brief-labor">' + esc(card.laborText) + '</div>');
     }
 
