@@ -2040,21 +2040,19 @@
       '  display: inline-block; font-size: 11px; line-height: 1;',
       '  margin-right: 1px; color: #111827;',
       '}',
-      /* is-on now means "SCW pre-fill / best guess" — rendered as a',
-         soft GRAY ☒ so the tech reads it as a draft, not a confirmed',
-         answer. Designed to be inked-over with a pen: tech draws over',
-         the gray to confirm, or strikes it out and marks the other',
-         box to override. Avoid #07467c here (the strong blue was',
-         indistinguishable from a "tech confirmed" mark). */',
+      // is-on now means "SCW pre-fill / best guess" — rendered as a
+      // soft GRAY ☒ so the tech reads it as a draft, not a confirmed
+      // answer. Designed to be inked-over: tech draws over the gray
+      // to confirm, or strikes it out and marks the other box to
+      // override. Avoid #07467c (the strong blue was indistinguishable
+      // from a "tech confirmed" mark).
       '.ws-box.is-on {',
       '  color: #9ca3af;',
       '  font-weight: 400;',
       '}',
-      /* Legend at top of the worksheet section. One short line; the
-         gray box matches what techs will see in each card's flags
-         row. Slate-gray text so it doesn't compete with section
-         headers; page-break-after: avoid so it stays glued to the
-         first card. */
+      // Legend at top of the worksheet section. One short line; the
+      // gray box matches what techs see in each card's flags row.
+      // page-break-after: avoid so it stays glued to the first card.
       '.ws-prefill-legend {',
       '  margin: 6px 0 8px;',
       '  padding: 5px 8px;',
