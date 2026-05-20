@@ -1095,7 +1095,15 @@
     if (!proposalIndex || !tr.id) return null;
     var proposal = proposalIndex[tr.id];
     if (proposal) {
-      return SCW.publishedQuoteInfo.buildBlock(proposal, { variant: 'compact' });
+      return SCW.publishedQuoteInfo.buildBlock(proposal, {
+        variant: 'compact',
+        customerLink: {
+          url:                  proposal.tokenUrl || '',
+          label:                'Open Customer Link',
+          expiredFallbackUrl:   proposal.viewLink || '',
+          expiredFallbackLabel: 'View Published Details'
+        }
+      });
     }
     return SCW.publishedQuoteInfo.buildBlock(null, {
       variant: 'compact',
