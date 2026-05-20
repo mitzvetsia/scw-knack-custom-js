@@ -2034,15 +2034,41 @@
               contentType: 'application/json',
               data: JSON.stringify(unified),
               crossDomain: true,
-              timeout: 90000,
-              success: function () {
-                SCW.debug('[SCW PDF Export] Webhook accepted, redirecting to parent');
-                if (cfg.pollViewOnReturn) {
-                  try {
-                    sessionStorage.setItem('scw-pdf-poll-view', cfg.pollViewOnReturn);
-                    if (cfg.pollField) sessionStorage.setItem('scw-pdf-poll-field', cfg.pollField);
-                    if (cfg.payloadType) sessionStorage.setItem('scw-pdf-poll-type', cfg.payloadType);
-                  } catch (e) {}
+              // Bumped from 90s. Make holds the HTTP connection open
+              // until the scenario's final "Webhook Response" module
+              // fires; if PDF gen + Knack upload takes 90+s the client
+              // would time out before Make finishes. 180s matches the
+              // poll timeout fallback ceiling.
+              timeout: 180000,
+              success: function (resp) {
+                // If Make's scenario ends with a "Webhook Response"
+                // module that returns a non-empty body (e.g.
+                // {"status":"ready"}), the response IS the completion
+                // signal — the PDF is uploaded by the time we get
+                // here, so we can skip polling entirely and just
+                // redirect. Empty response = legacy fire-and-forget
+                // Make scenarios that ran the webhook at the start
+                // and didn't wait for upload → fall back to polling
+                // so existing scenarios keep working until they're
+                // migrated. Detect "informative" by treating any
+                // truthy body OR any object response as a signal.
+                var isInformativeResponse = (resp != null && resp !== '' &&
+                  (typeof resp === 'object' || String(resp).length > 0));
+
+                if (isInformativeResponse) {
+                  SCW.debug('[SCW PDF Export] Webhook completed with response:', resp);
+                  showPublishToast('PDF ready — opening…', false, false);
+                  // No poll flags set; the parent page loads with the
+                  // file already in place.
+                } else {
+                  SCW.debug('[SCW PDF Export] Webhook accepted (empty response) — falling back to polling');
+                  if (cfg.pollViewOnReturn) {
+                    try {
+                      sessionStorage.setItem('scw-pdf-poll-view', cfg.pollViewOnReturn);
+                      if (cfg.pollField) sessionStorage.setItem('scw-pdf-poll-field', cfg.pollField);
+                      if (cfg.payloadType) sessionStorage.setItem('scw-pdf-poll-type', cfg.payloadType);
+                    } catch (e) {}
+                  }
                 }
                 redirectToParent();
               },
