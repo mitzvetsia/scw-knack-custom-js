@@ -1361,16 +1361,24 @@
     // PDF renderer to override than a stylesheet rule. Some PDF
     // services wrap injected html inside a constraining container or
     // strip class-level CSS, leaving the image at its intrinsic size.
-    // Forcing width here guarantees the image fills the page width.
-    var imgStyle = 'display:block; width:100%; max-width:100%; ' +
-                   'height:auto; margin:0 auto;';
+    //
+    // Previous version used `width:100%; height:auto` which let a
+    // portrait-aspect map overflow the landscape page — content
+    // spilled onto a second mostly-blank page, and combined with the
+    // section's page-break-after: always, that produced a blank page
+    // between consecutive maps. Constrain BOTH dimensions and use
+    // object-fit so the image always fits one page regardless of
+    // source aspect ratio.
+    var imgStyle = 'display:block; margin:0 auto; ' +
+                   'max-width:100%; max-height:7in; ' +
+                   'width:auto; height:auto; object-fit:contain;';
     for (var i = 0; i < section.images.length; i++) {
       var img = section.images[i];
       h.push('<section class="cover-page">');
       if (label) {
         h.push('<div class="cover-section-label">' + esc(label) + '</div>');
       }
-      h.push('<img class="cover-img" width="780" ' +
+      h.push('<img class="cover-img" ' +
              'style="' + imgStyle + '" ' +
              'src="' + esc(img.src) + '" ' +
              'alt="' + esc(img.alt || label) + '" />');
@@ -1808,6 +1816,7 @@
       '.cover-page {',
       '  page: landscape-map;',
       '  page-break-after: always; break-after: page;',
+      '  page-break-inside: avoid; break-inside: avoid;',
       '  text-align: center;',
       '  box-sizing: border-box;',
       '  width: 100%;',
