@@ -557,29 +557,21 @@
     return head.concat(tail).concat(slice);
   }
 
-  // Walks the row list and inserts one notes block at the END of each
-  // L1 group (the 'tail' block). Used to be a header+tail pair but
-  // the header block was redundant with the tail and just ate space.
+  // Walks the row list and inserts one notes block at the START of
+  // each L1 group (right after the L1 header). Techs use this to jot
+  // MDF/IDF-level observations BEFORE diving into individual device
+  // cards in that group. Previously this block lived at the tail of
+  // each L1 group, but a header-position block reads more naturally
+  // — group context first, then the items inside it.
   function insertL1NotesBlocks(rows) {
     var out = [];
-    var inL1 = false;
-    var currentL1 = '';
-    function flushTail() {
-      if (!inL1) return;
-      out.push({ type: 'l1-notes', position: 'tail', groupL1: currentL1 });
-    }
     for (var i = 0; i < rows.length; i++) {
       var r = rows[i];
-      if (r.type === 'group' && r.level === 1) {
-        flushTail();
-        inL1 = true;
-        currentL1 = r.label;
-        out.push(r);
-        continue;
-      }
       out.push(r);
+      if (r.type === 'group' && r.level === 1) {
+        out.push({ type: 'l1-notes', position: 'header', groupL1: r.label });
+      }
     }
-    flushTail();
     return out;
   }
 
