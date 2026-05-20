@@ -691,12 +691,13 @@
         originating_bid_id:     bidId,
         originating_bid_label:  bidLabel,
         line_item_count:        ids.length,
-        // Both forms supplied so Make can pick whichever shape its
-        // scenario prefers — the CSV string is the path of least
-        // resistance (single primitive, split() friendly), the array
-        // preserves structure for scenarios that iterate.
-        line_item_ids_csv:      ids.join(','),
-        line_item_ids:          ids
+        // Send ONLY the CSV form. The Make webhook receiver was
+        // mangling a raw JSON array — interpreting "[...]" as an
+        // object literal and turning each item into a key with an
+        // empty value. A comma-delimited string is a single
+        // primitive Make handles cleanly; Knack-side iteration is
+        // a simple split().
+        line_item_ids:          ids.join(',')
       }).then(function () {
         setStatus(modal, 'Variant bid request sent. Refreshing…');
         setTimeout(function () {
