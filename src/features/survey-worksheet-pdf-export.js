@@ -476,12 +476,28 @@
     // read fields that aren't in the detail panel (bucket, field_2374).
     var recordMap = buildRecordMap(viewId);
 
+    // Unconditional diagnostic — tells us whether device-worksheet
+    // had finished transforming the view before scrape ran. If
+    // wsRowCount is 0 but groupCount > 0, the export ran before
+    // transformView created the .scw-ws-row card shells (most often
+    // a timing/race issue or device-worksheet not bound on this
+    // scene). The PDF will render only group headers + L1 notes.
+    var _scrapeStats = {
+      viewId: viewId,
+      tbodyChildren: kids.length,
+      groupCount: 0,
+      wsRowCount: 0,
+      knTableRowCount: 0,
+      cardCount: 0
+    };
+
     for (var i = 0; i < kids.length; i++) {
       var tr = kids[i];
       if (tr.style && tr.style.display === 'none') continue;
 
       // ── group header rows ──
       if (tr.classList.contains('kn-table-group')) {
+        _scrapeStats.groupCount++;
         var level = tr.classList.contains('kn-group-level-1') ? 1
                   : tr.classList.contains('kn-group-level-2') ? 2
                   : tr.classList.contains('kn-group-level-3') ? 3 : 1;
@@ -493,10 +509,17 @@
         continue;
       }
 
+      // Track raw Knack data rows separately from transformed card
+      // rows — gives a clear "transform ran" vs "transform didn't"
+      // signal in the log.
+      if (tr.tagName === 'TR' && tr.id) _scrapeStats.knTableRowCount++;
+
       // ── worksheet card rows ──
       if (!tr.classList.contains('scw-ws-row')) continue;
+      _scrapeStats.wsRowCount++;
       var card = tr.querySelector('.scw-ws-card');
       if (!card) continue;
+      _scrapeStats.cardCount++;
 
       var rowObj = scrapeCard(card);
       if (rowObj) {
@@ -506,6 +529,13 @@
         rowObj.raw = rowObj.recordId ? (recordMap[rowObj.recordId] || null) : null;
         out.push(rowObj);
       }
+    }
+
+    console.log('[SCW survey-pdf] scrape', _scrapeStats);
+    if (_scrapeStats.wsRowCount === 0 && _scrapeStats.knTableRowCount > 0) {
+      console.warn('[SCW survey-pdf] scrape found raw Knack rows but NO ' +
+        '.scw-ws-row cards — device-worksheet transform has not run on ' +
+        viewId + ' on this scene. PDF will be missing device records.');
     }
 
     // After each L1 group header (MDF/IDF), insert a blank "Additional

@@ -318,7 +318,29 @@
 
   // ── Send ──
 
+  // Gate: WORKSHEET_VIEW must have been transformed by device-worksheet
+  // before scrape can pull device cards. Without this guard, a user
+  // who clicks Submit before the page is fully ready gets a PDF with
+  // only L1 group headers and notes — the cards aren't in the DOM
+  // yet. Check for the .scw-ws-row card shells device-worksheet
+  // creates after its transform completes.
+  function worksheetReady() {
+    var view = document.getElementById(WORKSHEET_VIEW);
+    if (!view) return false;
+    return !!view.querySelector('tr.scw-ws-row');
+  }
+
   function sendPayload(btn) {
+    if (!worksheetReady()) {
+      console.warn('[SCW sub-portal survey] worksheet not ready — view ' +
+        WORKSHEET_VIEW + ' has no .scw-ws-row card shells. Aborting.');
+      showToast(
+        'Page still loading — please wait for the device worksheet to finish rendering, then try again.',
+        'error', 6000
+      );
+      return;
+    }
+
     var payload = buildPayload();
     if (!payload.recordId) {
       showToast('Could not determine survey request record ID.', 'error', 5000);
