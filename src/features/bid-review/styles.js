@@ -432,7 +432,10 @@
       '}',
       /* Upload pill — SOLID primary blue. Ranks above outlined Link
          pill (secondary) and slate Unlink pill (tertiary). One pill
-         column, three weight tiers — hierarchy from fill, not size. */
+         column, three weight tiers — hierarchy from fill, not size.
+         !important on color is needed to beat Knack's global
+         `.kn-content a` link color which would otherwise re-tint the
+         text to its default link blue (invisible on this background). */
       '.scw-bid-review__docs-add, .scw-bid-review__docs-add:visited {',
       '  display: inline-flex;',
       '  align-items: center;',
@@ -441,7 +444,7 @@
       '  background: #295f91;',
       '  border: 1px solid #295f91;',
       '  border-radius: 999px;',
-      '  color: #fff;',
+      '  color: #fff !important;',
       '  text-decoration: none;',
       '  font: 700 10px/1.2 system-ui, sans-serif;',
       '  letter-spacing: 0.04em;',
@@ -450,7 +453,7 @@
       '.scw-bid-review__docs-add:hover {',
       '  background: #1f4a73;',
       '  border-color: #1f4a73;',
-      '  color: #fff;',
+      '  color: #fff !important;',
       '  text-decoration: none;',
       '}',
 

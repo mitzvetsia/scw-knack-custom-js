@@ -1635,10 +1635,10 @@
         unlinkBtn.setAttribute('data-sow-id', sowId);
         unlinkBtn.setAttribute('data-current-sows', lDoc.sowIds.join(','));
         unlinkBtn.title = 'Disconnect from this SOW (the document file is not deleted)';
-        // Chain-break icon — clearly "disconnect", not "delete".
-        // Two interlocked links with a diagonal split between them.
-        unlinkBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 17H7A5 5 0 0 1 7 7h2"/><path d="M15 7h2a5 5 0 0 1 4.54 7.1"/><line x1="8" y1="12" x2="12" y2="12"/><line x1="2" y1="2" x2="22" y2="22"/></svg>';
-        unlinkBtn.appendChild(document.createTextNode(' Unlink'));
+        // Text-only — the word "Unlink" plus the slate styling
+        // already communicates the action. Icon would be redundant
+        // and competes with the + Link pill on available rows.
+        unlinkBtn.textContent = 'Unlink';
 
         lItem.appendChild(unlinkBtn);
         linkedList.appendChild(lItem);
