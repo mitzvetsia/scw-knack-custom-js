@@ -459,32 +459,32 @@
       '.scw-bid-review__docs--sow .scw-bid-review__docs-other-toggle:hover {',
       '  color: #1e293b;',
       '}',
-      /* Upload pill — OUTLINED accent. Matches the Link/Unlink pill
-         family (same shape, same dimensions) so the row of action
-         affordances reads as a coherent set. Accent color marks it as
-         the primary action without going solid-filled (which competed
-         with the full-width Preview Proposal button below and read as
-         jarring). Hover fills with accent for the affordance click cue.
-         !important on color beats Knack's global .kn-content a rule. */
+      /* Upload pill — OUTLINED teal to match the Preview Proposal CTA
+         below (#0891b2). Same pill shape/dimensions as Link/Unlink so
+         the row of actions reads as a coherent family; teal color
+         visually ties Upload to the page's primary call-to-action.
+         !important on color AND text-decoration is needed to beat
+         Knack's global `.kn-content a` link styling which would
+         otherwise reapply blue text + underline. */
       '.scw-bid-review__docs-add, .scw-bid-review__docs-add:visited {',
       '  display: inline-flex;',
       '  align-items: center;',
       '  gap: 4px;',
       '  padding: 2px 10px;',
       '  background: #fff;',
-      '  border: 1px solid #295f91;',
+      '  border: 1px solid #0891b2;',
       '  border-radius: 999px;',
-      '  color: #295f91 !important;',
-      '  text-decoration: none;',
+      '  color: #0891b2 !important;',
+      '  text-decoration: none !important;',
       '  font: 600 10px/1.2 system-ui, sans-serif;',
       '  letter-spacing: 0.03em;',
       '  text-transform: uppercase;',
       '}',
       '.scw-bid-review__docs-add:hover {',
-      '  background: #295f91;',
-      '  border-color: #295f91;',
+      '  background: #0891b2;',
+      '  border-color: #0e7490;',
       '  color: #fff !important;',
-      '  text-decoration: none;',
+      '  text-decoration: none !important;',
       '}',
 
       '.scw-bid-review__docs-chevron {',
