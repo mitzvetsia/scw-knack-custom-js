@@ -37,11 +37,17 @@
     // alone.
     views: [
       {
-        sourceViewKey: 'view_3610',
-        // Anchor for the v2 preview mount point. Use the source
-        // view's element as the anchor — v2 mounts directly after.
-        // Falls back to `.kn-scene` append if the anchor isn't found
-        // at attach time.
+        // Dedicated source view. Mirrors view_3610's SOW Line Items
+        // data but isn't touched by v1's transformView, so v2 can
+        // load independently of v1's render lifecycle. The user is
+        // responsible for hiding it via hide-data-source-views.js
+        // (or a display:none CSS rule) so it doesn't show as a raw
+        // Knack table to end users.
+        sourceViewKey: 'view_3962',
+        // Anchor for the v2 preview mount point. Mount after the
+        // ORIGINAL v1 view (view_3610) so the user can compare
+        // side-by-side during the parallel build. Once Phase 5
+        // retires v1, swap this to mount where view_3610 used to be.
         mountAfterSelector: '#view_3610',
         // Display label for the WIP banner.
         label: 'SOW Line Items (v2 preview)'
