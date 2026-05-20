@@ -1135,19 +1135,10 @@
     }
 
     // ── Cover image pages (e.g. Site Map(s) from view_3808) ──
-    // Wrap all map sections in ONE container that holds the
-    // `page: landscape-map` declaration. Previous version put the
-    // page-name on each <section class="cover-page">, which some PDF
-    // renderers interpret as "allocate a fresh named page for this
-    // element" and insert a blank page between consecutive maps even
-    // when the page name doesn't change. One wrapper = one
-    // page-name transition for the whole map block.
     if (payload.coverImageSections && payload.coverImageSections.length) {
-      html.push('<div class="cover-pages-wrapper">');
       for (var cs = 0; cs < payload.coverImageSections.length; cs++) {
         html.push(renderImageCoverSection(payload.coverImageSections[cs]));
       }
-      html.push('</div>');
     }
 
     // Note: the doc-title used to print here as an <h1> before the
@@ -1378,8 +1369,12 @@
     // between consecutive maps. Constrain BOTH dimensions and use
     // object-fit so the image always fits one page regardless of
     // source aspect ratio.
+    // Portrait Letter useful area ~8.1in × 10.4in (minus margins +
+    // page footer). Constrain image to 9in tall so the section
+    // (label + image) clears the page floor with margin to spare —
+    // any closer and renderer rounding causes overflow → blank page.
     var imgStyle = 'display:block; margin:0 auto; ' +
-                   'max-width:100%; max-height:7in; ' +
+                   'max-width:100%; max-height:9in; ' +
                    'width:auto; height:auto; object-fit:contain;';
     for (var i = 0; i < section.images.length; i++) {
       var img = section.images[i];
@@ -1822,28 +1817,30 @@
       '/* Cover pages rendered before the survey items (site maps, etc.) */',
       '/* Forced landscape so a typical wide floor-plan screenshot fills */',
       '/* the page after auto-crop strips the whitespace borders. */',
-      // page: landscape-map sits on the WRAPPER, not per cover-page,
-      // so the page-name transition fires once at the start of the
-      // map block instead of per-image (which was causing some
-      // renderers to insert blank pages between consecutive maps).
-      '.cover-pages-wrapper {',
-      '  page: landscape-map;',
-      '}',
+      // Cover pages render on the SAME portrait page as the rest of
+      // the worksheet. Previous attempts to use a separate
+      // @page landscape-map caused renderer-specific blank pages
+      // before each map (most Chrome-based PDF renderers insert a
+      // blank when transitioning between named pages, even when the
+      // name doesn't actually change page-to-page). Staying portrait
+      // throughout eliminates orientation transitions entirely.
+      //
+      // Cap section height at 9.5in (portrait useful area minus
+      // margins + label) so each map gets exactly one page — the
+      // page-break-after lands on a clean boundary and the renderer
+      // has no reason to insert anything extra.
       '.cover-page {',
       '  page-break-after: always; break-after: page;',
       '  text-align: center;',
       '  box-sizing: border-box;',
       '  width: 100%;',
-      // page-break-inside: avoid was REMOVED — when a section was a
-      // hair too tall to fit, the renderer pushed the entire section
-      // forward, leaving the previous page partially blank ("blank
-      // before each map"). max-height on the image (set in
-      // renderImageCoverSection) keeps the section within the page
-      // already; avoid isn't needed and was causing harm.
+      '  max-height: 9.5in;',
+      '  overflow: hidden;',
       '}',
-      // Drop the redundant :last-of-type override — the base rule
-      // already applies page-break-after: always to every cover-page.
-      '.cover-page:last-of-type { page-break-after: auto; }',
+      '.cover-page:last-of-type {',
+      '  page-break-after: auto;',
+      '  break-after: auto;',
+      '}',
       '.cover-section-label {',
       '  font-size: 12px; font-weight: 800; color: #07467c;',
       '  text-transform: uppercase; letter-spacing: 0.5px;',
