@@ -1609,9 +1609,22 @@
       var scwSpec   = PDF_DETAIL_LAYOUT.scwNotes || {};
       var scwVal    = card.scwText || firstKeyValue(card.detailValues, scwSpec.keys || (scwSpec.key ? [scwSpec.key] : []));
 
+      // SCW Notes block — rendered as a sub-section beneath whichever
+      // column holds the Labor Description (col 1 in stacked layouts,
+      // col 2 otherwise). Pulled out of col 3 so the tech reads:
+      //   labor description → scw context → blank tech-notes square
+      // top-to-bottom in one column, instead of bouncing across.
+      function scwBlock() {
+        if (!scwVal) return '';
+        return '<div class="ws-labor ws-labor--scw">' +
+          '<div class="ws-labor-label">' + esc(scwSpec.label || 'SCW Notes') + '</div>' +
+          '<div class="ws-labor-value">' + esc(scwVal) + '</div>' +
+        '</div>';
+      }
+
       var stacked = useStackedProductLabor(card);
       h.push('<div class="ws-body-3col' + (stacked ? ' ws-body-3col--stacked' : '') + '">');
-      // ── Col 1 — identity (+ stacked labor) + ref + flags + measure ──
+      // ── Col 1 — identity (+ stacked labor + SCW notes) + ref + flags + measure ──
       h.push('<div class="ws-body-col ws-body-col--left">');
       if (stacked) {
         // Networking/Headend/Other Equipment: product on top, labor
@@ -1626,6 +1639,8 @@
         if (hasMeaningfulText(laborVal)) {
           h.push('<div class="ws-labor ws-labor--stacked">' + esc(laborVal) + '</div>');
         }
+        // SCW Notes sit right under labor in the stacked layout.
+        h.push(scwBlock());
       } else {
         if (card.label || card.product) {
           h.push('<div class="ws-id-line">');
@@ -1643,23 +1658,19 @@
       h.push(renderMeasureRow(card));
       h.push('</div>');
 
-      // ── Col 2 — Labor Description (only when NOT stacked) ──
+      // ── Col 2 — Labor Description + SCW Notes (only when NOT stacked) ──
       if (!stacked) {
         h.push('<div class="ws-body-col ws-body-col--mid">');
         if (hasMeaningfulText(laborVal)) {
           h.push('<div class="ws-labor">' + esc(laborVal) + '</div>');
         }
+        // SCW Notes sit right under labor in the standard 3-col layout.
+        h.push(scwBlock());
         h.push('</div>');
       }
 
-      // ── Col 3 — SCW Notes + open tech-notes square ──
+      // ── Col 3 — open tech-notes square (SCW Notes moved to labor column) ──
       h.push('<div class="ws-body-col ws-body-col--right">');
-      if (scwVal) {
-        h.push('<div class="ws-labor ws-labor--scw">');
-        h.push('<div class="ws-labor-label">' + esc(scwSpec.label || 'SCW Notes') + '</div>');
-        h.push('<div class="ws-labor-value">' + esc(scwVal) + '</div>');
-        h.push('</div>');
-      }
       if (renderNotesSquare) {
         h.push('<div class="ws-notes-open">');
         h.push('<div class="ws-notes-open-label">Notes</div>');
