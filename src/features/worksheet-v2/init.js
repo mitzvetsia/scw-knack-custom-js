@@ -115,6 +115,77 @@
     });
   }
 
+  // Chevron click — toggle the card's detail panel open/closed.
+  // No persistence per card; expand state lives in the DOM only and
+  // resets on re-render. (If "remember which cards were open across
+  // refreshes" becomes a real ask, persist a Set of ids per view.)
+  if (!document.documentElement.hasAttribute('data-scw-ws-v2-expand-bound')) {
+    document.documentElement.setAttribute('data-scw-ws-v2-expand-bound', '1');
+    document.addEventListener('click', function (e) {
+      var btn = e.target && e.target.closest && e.target.closest('[data-scw-ws-v2-expand]');
+      if (!btn) return;
+      var card = btn.closest('.scw-ws-v2-card');
+      if (!card) return;
+      e.preventDefault();
+      e.stopPropagation();
+      card.classList.toggle('scw-ws-v2-card--open');
+    });
+  }
+
+  // Chip click — flip Yes ↔ No, optimistic UI + 200ms flash, PUT in
+  // background. Mirrors the direct-input edit flow over in edit.js,
+  // but scoped to elements stamped with data-scw-ws-v2-chip.
+  if (!document.documentElement.hasAttribute('data-scw-ws-v2-chip-bound')) {
+    document.documentElement.setAttribute('data-scw-ws-v2-chip-bound', '1');
+    document.addEventListener('click', function (e) {
+      var chipEl = e.target && e.target.closest && e.target.closest('[data-scw-ws-v2-chip]');
+      if (!chipEl) return;
+      e.preventDefault();
+      e.stopPropagation();
+
+      var fieldKey = chipEl.getAttribute('data-scw-ws-v2-chip');
+      var recordId = chipEl.getAttribute('data-scw-ws-v2-record');
+      var viewKey  = chipEl.getAttribute('data-scw-ws-v2-view');
+      var cur      = chipEl.getAttribute('data-scw-ws-v2-bool') || 'No';
+      if (!fieldKey || !recordId || !viewKey) return;
+
+      var next = cur === 'Yes' ? 'No' : 'Yes';
+
+      // Optimistic UI — flip class + attr + title immediately.
+      chipEl.setAttribute('data-scw-ws-v2-bool', next);
+      chipEl.classList.toggle('scw-ws-v2-chip--yes', next === 'Yes');
+      chipEl.classList.toggle('scw-ws-v2-chip--no',  next === 'No');
+      var t = chipEl.getAttribute('title') || '';
+      chipEl.setAttribute('title', t.replace(/:\s*(Yes|No)$/, ': ' + next));
+
+      // 200ms saving flash — same UX as direct-input edits.
+      chipEl.classList.add('scw-ws-v2-chip--saving');
+      setTimeout(function () {
+        chipEl.classList.remove('scw-ws-v2-chip--saving');
+      }, 200);
+
+      // Fire-and-forget PUT. On error: revert + flag the chip red.
+      var body = {}; body[fieldKey] = next;
+      try {
+        SCW.knackAjax({
+          url:  SCW.knackRecordUrl(viewKey, recordId),
+          type: 'PUT',
+          data: JSON.stringify(body),
+          error: function (xhr) {
+            console.warn('[scw-ws-v2] chip save failed', { recordId: recordId, fieldKey: fieldKey, xhr: xhr });
+            chipEl.setAttribute('data-scw-ws-v2-bool', cur);
+            chipEl.classList.toggle('scw-ws-v2-chip--yes', cur === 'Yes');
+            chipEl.classList.toggle('scw-ws-v2-chip--no',  cur === 'No');
+            chipEl.classList.add('scw-ws-v2-chip--error');
+            setTimeout(function () {
+              chipEl.classList.remove('scw-ws-v2-chip--error');
+            }, 1500);
+          }
+        });
+      } catch (e) { /* silent — error path covers it */ }
+    });
+  }
+
   // Mount on every scene render — cheap (idempotent guard) and
   // catches SPA navigations into scenes that host the source view.
   $(document)

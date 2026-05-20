@@ -159,14 +159,31 @@
         });
       });
 
-      // Sort records within each L2: by sortOrder then label
+      // Sort records within each L2 — matches v1's view_3610 default
+      // rowSort: field_2218 (sortOrder, numeric) → field_2240 (drop
+      // prefix, text) → field_1951 (drop number, numeric). The same
+      // three-key sort device-worksheet.js applies after Knack's own
+      // server-side ordering.
       l2List.forEach(function (l2) {
         l2.records.sort(function (a, b) {
+          // Primary — bucket sort order
           var sa = readNumber(a, FIELD_SORT);
           var sb = readNumber(b, FIELD_SORT);
           if (sa != null && sb != null && sa !== sb) return sa - sb;
           if (sa != null && sb == null) return -1;
           if (sa == null && sb != null) return 1;
+          // Secondary — drop prefix (E, I, C, …)
+          var pa = readPlain(a, 'field_2240');
+          var pb = readPlain(b, 'field_2240');
+          var cmpP = pa.localeCompare(pb, undefined, { sensitivity: 'base' });
+          if (cmpP !== 0) return cmpP;
+          // Tertiary — drop number (1, 2, 3, …)
+          var na = readNumber(a, 'field_1951');
+          var nb = readNumber(b, 'field_1951');
+          if (na != null && nb != null && na !== nb) return na - nb;
+          if (na != null && nb == null) return -1;
+          if (na == null && nb != null) return 1;
+          // Final fallback — label, so identically-keyed rows stay stable
           var la = readPlain(a, FIELD_LABEL);
           var lb = readPlain(b, FIELD_LABEL);
           return la.localeCompare(lb, undefined, { numeric: true, sensitivity: 'base' });
