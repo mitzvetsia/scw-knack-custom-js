@@ -796,18 +796,15 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
 /********************* LEVEL 4 (INSTALL DESCRIPTION) ***********************/
 
 /* Accessory relocation: rows moved out of the Mounting Hardware
-   section to sit under their parent L3 camera/device group, plus a
-   synthetic "Mounting Hardware" L4 sub-header above each cluster.
-   The original Mounting Hardware L2/L3 headers are now empty and
-   hidden via .scw-empty-group-header. */
+   section to sit under their parent L3 camera/device group. A
+   synthetic L4 row (tr.scw-mounting-l4) is still inserted as a
+   structural marker — postProcessMountingClusters scans for it to
+   find each cluster boundary — but it renders display:none so the
+   "Mounting Hardware" label doesn't appear above the per-product
+   bracket lines. The original Mounting Hardware L2/L3 headers are
+   empty and hidden via .scw-empty-group-header. */
 ${sel('tr.scw-empty-group-header')} { display: none !important; }
-${sel('tr.scw-mounting-l4 td:first-child')} {
-  padding-left: 60px !important;
-  font-size: 14px !important;
-  font-weight: 500 !important;
-  font-style: italic;
-  color: #6b7280;
-}
+${sel('tr.scw-mounting-l4')} { display: none !important; }
 /* Mounting hardware: one synthetic product line per bracket type under
    each "Mounting Hardware" L4 sub-header. The actual tr[id] bracket
    rows stay hidden by the global tr[id] rule above (they're still
@@ -3191,15 +3188,67 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
           return $tbody.length && !$tbody.find('tr.scw-level-total-row').length;
         }
 
+        // Detects the first-load race where the pipeline ran before the
+        // secondary view holding field_2464_raw had hydrated — relocate-
+        // AccessoriesToParents returned an empty parentMap, so no rows
+        // got moved under the synthetic L4 cluster. totalsAreMissing()
+        // doesn't catch this because totals DO get written; the mounting
+        // structure is the part that's missing. Re-runs are safe — the
+        // pipeline is idempotent.
+        function mountingStructureMissing() {
+          var feat = CONFIG.features && CONFIG.features.relocateAccessoriesToParents;
+          if (!feat || !feat.enabled) return false;
+          var parentField = feat.parentConnectionField || 'field_2464';
+          var root = document.getElementById(viewId);
+          if (!root) return false;
+          var tbody = root.querySelector('.kn-table tbody');
+          if (!tbody) return false;
+
+          var knownIds = Object.create(null);
+          var rows = tbody.querySelectorAll('tr[id]');
+          for (var i = 0; i < rows.length; i++) {
+            if (rows[i].id && rows[i].id.indexOf('kn-') !== 0) {
+              knownIds[rows[i].id] = rows[i];
+            }
+          }
+          if (typeof Knack === 'undefined' || !Knack.views) return false;
+
+          for (var viewKey in Knack.views) {
+            var v = Knack.views[viewKey];
+            var m = v && v.model && v.model.data && v.model.data.models;
+            if (!m || !m.length) continue;
+            for (var j = 0; j < m.length; j++) {
+              var attrs = m[j].attributes || m[j];
+              var childId = attrs && attrs.id;
+              var childRow = childId && knownIds[childId];
+              if (!childRow) continue;
+              var raw = attrs[parentField + '_raw'];
+              if (!raw || !raw.length || !raw[0] || !raw[0].id) continue;
+              if (raw[0].id === childId) continue;
+              if (!childRow.classList.contains('scw-relocated-accessory')) {
+                return true;
+              }
+            }
+          }
+          return false;
+        }
+
+        function pipelineIncomplete() {
+          return totalsAreMissing() || mountingStructureMissing();
+        }
+
         // Run the pipeline synchronously — the DOM is ready when
         // knack-records-render fires, so there is no reason to defer.
         executePipeline();
 
-        // Safety net 1: staggered timer checks at 300ms and 1200ms.
-        // Covers Knack async re-renders that wipe our injected rows.
-        [300, 1200].forEach(function (ms) {
+        // Safety net 1: staggered timer checks. 300ms / 1200ms catch
+        // Knack async re-renders that wipe our injected rows; 3000ms
+        // covers slow-loading secondary views (the one that exposes
+        // field_2464_raw for accessory→parent relocation), which on
+        // first scene load can hydrate after the initial pipeline run.
+        [300, 1200, 3000].forEach(function (ms) {
           var t = setTimeout(function () {
-            if (totalsAreMissing()) executePipeline();
+            if (pipelineIncomplete()) executePipeline();
           }, ms);
           _safetyState[viewId].timers.push(t);
         });
@@ -3214,15 +3263,16 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
             if (obsDebounce) clearTimeout(obsDebounce);
             obsDebounce = setTimeout(function () {
               obsDebounce = 0;
-              if (totalsAreMissing()) executePipeline();
+              if (pipelineIncomplete()) executePipeline();
             }, 80);
           });
           obs.observe(viewRoot, { childList: true, subtree: true });
           _safetyState[viewId].obs = obs;
 
-          // Disconnect observer after 3s — we only need it for the initial
-          // settle period.  Keeps long-lived overhead at zero.
-          var disconnectTimer = setTimeout(function () { obs.disconnect(); }, 3000);
+          // Disconnect observer after 4s — we only need it for the initial
+          // settle period.  Keeps long-lived overhead at zero. Bumped from
+          // 3s so the observer is still live when the 3000ms timer fires.
+          var disconnectTimer = setTimeout(function () { obs.disconnect(); }, 4000);
           _safetyState[viewId].timers.push(disconnectTimer);
         }
       });
