@@ -1219,6 +1219,17 @@
     return bucketMatches(card, OTHER_EQUIPMENT_BUCKET, /other.*equipment/i);
   }
 
+  // Networking / Headend / Other Equipment cards have short identity
+  // info (no drop label like E-001) and longer labor-description text.
+  // The default cam/reader 3-col layout wastes space on the empty
+  // identity column. Stack product-on-top, labor-description-below in
+  // a single combined column instead, and let the SCW-notes column
+  // claim the freed width.
+  function useStackedProductLabor(card) {
+    return isOtherEquipmentBucket(card) ||
+           bucketMatches(card, null, /network|headend/i);
+  }
+
   function isDistributionDevice(card) {
     if (!card || !card.raw) return false;
     return isYesish(card.raw, DISTRIBUTION_DEVICE_FIELD);
@@ -1570,30 +1581,48 @@
       var scwSpec   = PDF_DETAIL_LAYOUT.scwNotes || {};
       var scwVal    = card.scwText || firstKeyValue(card.detailValues, scwSpec.keys || (scwSpec.key ? [scwSpec.key] : []));
 
-      h.push('<div class="ws-body-3col">');
-      // ── Col 1 — identity + ref + flags + measure ──
+      var stacked = useStackedProductLabor(card);
+      h.push('<div class="ws-body-3col' + (stacked ? ' ws-body-3col--stacked' : '') + '">');
+      // ── Col 1 — identity (+ stacked labor) + ref + flags + measure ──
       h.push('<div class="ws-body-col ws-body-col--left">');
-      if (card.label || card.product) {
-        h.push('<div class="ws-id-line">');
+      if (stacked) {
+        // Networking/Headend/Other Equipment: product on top, labor
+        // beneath, both as block elements. Drop ws-id-line's inline
+        // flex layout since these cards rarely have a drop label.
         if (card.label) {
-          h.push('<span class="ws-id-label">' + esc(card.label) + '</span>');
+          h.push('<div class="ws-id-label-block">' + esc(card.label) + '</div>');
         }
         if (card.product) {
-          h.push('<span class="ws-id-product">' + esc(card.product) + '</span>');
+          h.push('<div class="ws-id-product ws-id-product--stacked">' + esc(card.product) + '</div>');
         }
-        h.push('</div>');
+        if (laborVal) {
+          h.push('<div class="ws-labor ws-labor--stacked">' + esc(laborVal) + '</div>');
+        }
+      } else {
+        if (card.label || card.product) {
+          h.push('<div class="ws-id-line">');
+          if (card.label) {
+            h.push('<span class="ws-id-label">' + esc(card.label) + '</span>');
+          }
+          if (card.product) {
+            h.push('<span class="ws-id-product">' + esc(card.product) + '</span>');
+          }
+          h.push('</div>');
+        }
       }
       h.push(renderRefSection(card));
       h.push(renderFlagsRow(card));
       h.push(renderMeasureRow(card));
       h.push('</div>');
 
-      // ── Col 2 — Labor Description (plain text, no label) ──
-      h.push('<div class="ws-body-col ws-body-col--mid">');
-      if (laborVal) {
-        h.push('<div class="ws-labor">' + esc(laborVal) + '</div>');
+      // ── Col 2 — Labor Description (only when NOT stacked) ──
+      if (!stacked) {
+        h.push('<div class="ws-body-col ws-body-col--mid">');
+        if (laborVal) {
+          h.push('<div class="ws-labor">' + esc(laborVal) + '</div>');
+        }
+        h.push('</div>');
       }
-      h.push('</div>');
 
       // ── Col 3 — SCW Notes + open tech-notes square ──
       h.push('<div class="ws-body-col ws-body-col--right">');
@@ -1868,10 +1897,31 @@
       '  border-top: 1px solid #e5e7eb;',
       '  align-items: stretch;',
       '}',
+      /* Networking/Headend/Other Equipment: product + labor stack in
+         col 1, col 2 is omitted from the DOM, col 3 keeps its share. */
+      '.ws-body-3col--stacked {',
+      '  grid-template-columns: 4fr 1fr;',
+      '}',
       '.ws-body-col { display: flex; flex-direction: column; gap: 2px; min-height: 0; }',
       '.ws-body-col--left  { padding-right: 4px; border-right: 1px dotted #e5e7eb; }',
       '.ws-body-col--mid   { padding: 0 4px; border-right: 1px dotted #e5e7eb; }',
       '.ws-body-col--right { padding-left: 4px; }',
+      /* Stacked product/labor: block-level so they sit on their own
+         lines without the inline ws-id-line flex layout. Product keeps
+         its 11.5px bold blue styling; labor uses the standard
+         ws-labor sizing. */
+      '.ws-id-label-block {',
+      '  font-weight: 700; color: #07467c; font-size: 11.5px;',
+      '  line-height: 1.2;',
+      '}',
+      '.ws-id-product--stacked {',
+      '  display: block;',
+      '  line-height: 1.2;',
+      '  margin-bottom: 2px;',
+      '}',
+      '.ws-labor--stacked {',
+      '  margin-top: 0;',
+      '}',
       '',
       '/* Identity line at top of col 1: [Label] [Product] no prefix */',
       '.ws-id-line {',
