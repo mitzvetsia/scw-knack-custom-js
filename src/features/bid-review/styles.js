@@ -229,7 +229,8 @@
          visual rhythm as the metric stack. */
       '.scw-bid-review__docs--sow {',
       '  gap: 0;',
-      '  margin-top: 6px;',
+      '  margin-top: 14px;',  /* breathing room above (proposal info) */
+      '  margin-bottom: 6px;', /* and below (survey costs) */
       '  padding: 0;',
       '  background: transparent;',
       '  border: none;',
@@ -245,7 +246,7 @@
       '  align-items: center;',
       '  justify-content: space-between;',
       '  gap: 8px;',
-      '  padding: 0;',
+      '  padding: 0 0 4px;',  /* gap between DOCUMENTS label and first row */
       '  background: transparent;',
       '  border: none;',
       '}',
@@ -261,7 +262,7 @@
       '  padding: 0;',
       '}',
       '.scw-bid-review__docs--sow .scw-bid-review__docs-item {',
-      '  padding: 4px 0;',
+      '  padding: 7px 0;',  /* breathing room per row, esp. for 2-line items */
       '  border-top: 1px solid #e2e8f0;',
       '}',
       '.scw-bid-review__docs-sublabel {',
@@ -346,7 +347,7 @@
       '  min-width: 0;',
       '  display: flex;',
       '  flex-direction: column;',
-      '  gap: 0;',
+      '  gap: 2px;',  /* gap between filename and notes sub-line */
       '}',
       '.scw-bid-review__docs-link {',
       '  display: block;',
@@ -447,7 +448,7 @@
       '  align-items: center;',
       '  gap: 5px;',
       '  width: 100%;',
-      '  padding: 4px 0;',
+      '  padding: 7px 0;',
       '  background: transparent;',
       '  border: none;',
       '  border-top: 1px solid #e2e8f0;',
@@ -459,29 +460,30 @@
       '.scw-bid-review__docs--sow .scw-bid-review__docs-other-toggle:hover {',
       '  color: #1e293b;',
       '}',
-      /* Upload pill — SOLID primary blue. Ranks above outlined Link
-         pill (secondary) and slate Unlink pill (tertiary). One pill
-         column, three weight tiers — hierarchy from fill, not size.
-         !important on color is needed to beat Knack's global
-         `.kn-content a` link color which would otherwise re-tint the
-         text to its default link blue (invisible on this background). */
+      /* Upload pill — OUTLINED accent. Matches the Link/Unlink pill
+         family (same shape, same dimensions) so the row of action
+         affordances reads as a coherent set. Accent color marks it as
+         the primary action without going solid-filled (which competed
+         with the full-width Preview Proposal button below and read as
+         jarring). Hover fills with accent for the affordance click cue.
+         !important on color beats Knack's global .kn-content a rule. */
       '.scw-bid-review__docs-add, .scw-bid-review__docs-add:visited {',
       '  display: inline-flex;',
       '  align-items: center;',
       '  gap: 4px;',
-      '  padding: 4px 12px;',
-      '  background: #295f91;',
+      '  padding: 2px 10px;',
+      '  background: #fff;',
       '  border: 1px solid #295f91;',
       '  border-radius: 999px;',
-      '  color: #fff !important;',
+      '  color: #295f91 !important;',
       '  text-decoration: none;',
-      '  font: 700 10px/1.2 system-ui, sans-serif;',
-      '  letter-spacing: 0.04em;',
+      '  font: 600 10px/1.2 system-ui, sans-serif;',
+      '  letter-spacing: 0.03em;',
       '  text-transform: uppercase;',
       '}',
       '.scw-bid-review__docs-add:hover {',
-      '  background: #1f4a73;',
-      '  border-color: #1f4a73;',
+      '  background: #295f91;',
+      '  border-color: #295f91;',
       '  color: #fff !important;',
       '  text-decoration: none;',
       '}',
