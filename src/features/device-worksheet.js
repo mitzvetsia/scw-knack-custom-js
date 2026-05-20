@@ -6904,11 +6904,20 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       var lastInsertedRow = null;
       var anySyntheticBuilt = false;
 
+      // Single full-tree scan for all worksheet rows that are eligible
+      // for synthetic-bucket placement. Used by both the per-bucket
+      // candidate filter below AND the orphan-collection pass further
+      // down — caching saves one full tbody walk per bucket plus another
+      // for the orphan pass (4+ scans → 1 on view_3610's 100-row grid).
+      var allNoMove = Array.prototype.slice.call(
+        tbody.querySelectorAll('tr.' + WORKSHEET_ROW + '[data-scw-no-move="1"]')
+      );
+
       buckets.forEach(function (bucket) {
         // Find worksheet rows that belong to this bucket AND have no MDF/IDF.
-        var candidates = tbody.querySelectorAll(
-          'tr.' + WORKSHEET_ROW + '.' + bucket.cls + '[data-scw-no-move="1"]'
-        );
+        var candidates = allNoMove.filter(function (r) {
+          return r.classList.contains(bucket.cls);
+        });
         if (!candidates.length) return;
 
         anySyntheticBuilt = true;
@@ -6973,18 +6982,16 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       for (var bi = 0; bi < buckets.length; bi++) {
         bucketClasses[buckets[bi].cls] = true;
       }
-      var orphanCandidates = tbody.querySelectorAll(
-        'tr.' + WORKSHEET_ROW + '[data-scw-no-move="1"]'
-      );
-      var orphanRows = [];
-      for (var oi = 0; oi < orphanCandidates.length; oi++) {
-        var oRow = orphanCandidates[oi];
-        var isBucketRow = false;
+      // Reuse the cached allNoMove scan from above. Bucket rows have
+      // already been claimed by their group; what's left here is
+      // anything that has data-scw-no-move but doesn't match any
+      // configured bucket class.
+      var orphanRows = allNoMove.filter(function (oRow) {
         for (var bk in bucketClasses) {
-          if (oRow.classList.contains(bk)) { isBucketRow = true; break; }
+          if (oRow.classList.contains(bk)) return false;
         }
-        if (!isBucketRow) orphanRows.push(oRow);
-      }
+        return true;
+      });
       if (orphanRows.length) {
         anySyntheticBuilt = true;
 
