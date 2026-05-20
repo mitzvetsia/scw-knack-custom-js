@@ -1592,8 +1592,21 @@
 
     var wrap = el('div', 'scw-bid-review__docs scw-bid-review__docs--sow');
 
+    // Header row mirrors the SURVEY COSTS / MARGIN row shape: label
+    // on the left, primary action on the right. The Upload pill
+    // anchors the right edge so DOCUMENTS isn't a floating label
+    // with empty whitespace to its right (which is what made it read
+    // as centered relative to the left/right-aligned metric rows).
     var header = el('div', 'scw-bid-review__docs-header');
     header.appendChild(el('span', 'scw-bid-review__docs-label', 'Documents'));
+    if (addUrl) {
+      var addBtn = document.createElement('a');
+      addBtn.href = addUrl;
+      addBtn.className = 'scw-bid-review__docs-add';
+      addBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>';
+      addBtn.appendChild(document.createTextNode(' Upload new'));
+      header.appendChild(addBtn);
+    }
     wrap.appendChild(header);
 
     // Filter chips — collect every doc-type across linked + available,
@@ -1642,72 +1655,47 @@
       wrap.appendChild(linkedList);
     }
 
-    // Combined footer — one row, two affordances:
-    //   left:  collapsible "N other project docs" toggle (only when
-    //          available docs exist)
-    //   right: solid Upload pill
-    // Stacking them as two separate rows (toggle row + footer row)
-    // reads as two adjacent footer bands fighting for attention. One
-    // shared row makes the docs panel read as just: header → linked
-    // → add-more affordance.
-    if (available.length || addUrl) {
+    // "Other docs on project" collapsible — full-width row with a
+     // left-aligned toggle. Sits beneath the linked items as another
+     // row in the same stack. Click expands the list of available
+     // project docs (each with a + Link affordance on the right,
+     // matching the linked row's Unlink-on-right pattern).
+    if (available.length) {
       var availSection = el('div', 'scw-bid-review__docs-other');
-      if (available.length) availSection.setAttribute('data-collapsed', '1');
+      availSection.setAttribute('data-collapsed', '1');
 
-      var availHeader = el('div', 'scw-bid-review__docs-other-header');
+      var availToggle = document.createElement('button');
+      availToggle.type = 'button';
+      availToggle.className = 'scw-bid-review__docs-other-toggle';
+      availToggle.setAttribute('data-action', 'docs_toggle_other');
+      availToggle.innerHTML = '<svg class="scw-bid-review__docs-chevron" xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>';
+      availToggle.appendChild(document.createTextNode(' ' + available.length + ' other project doc' + (available.length === 1 ? '' : 's')));
+      availSection.appendChild(availToggle);
 
-      if (available.length) {
-        var availToggle = document.createElement('button');
-        availToggle.type = 'button';
-        availToggle.className = 'scw-bid-review__docs-other-toggle';
-        availToggle.setAttribute('data-action', 'docs_toggle_other');
-        availToggle.innerHTML = '<svg class="scw-bid-review__docs-chevron" xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>';
-        availToggle.appendChild(document.createTextNode(' ' + available.length + ' other project doc' + (available.length === 1 ? '' : 's')));
-        availHeader.appendChild(availToggle);
-      } else {
-        // No project docs to link — fill the left slot so the Upload
-        // pill stays right-aligned without an awkward jump.
-        availHeader.appendChild(el('span', 'scw-bid-review__docs-other-empty', ''));
+      var availList = el('div', 'scw-bid-review__docs-list scw-bid-review__docs-list--available');
+      for (var a = 0; a < available.length; a++) {
+        var ad = available[a];
+        var item = buildDocsItem(ad);
+        item.classList.add('scw-bid-review__docs-item--available');
+
+        var linkBtn = document.createElement('button');
+        linkBtn.type = 'button';
+        linkBtn.className = 'scw-bid-review__docs-link-btn';
+        linkBtn.setAttribute('data-action', 'doc_link_to_sow');
+        linkBtn.setAttribute('data-doc-id', ad.id);
+        linkBtn.setAttribute('data-sow-id', sowId);
+        // Serialize current sow ids so the click handler can PUT
+        // the full connection array (existing + new) without re-
+        // scraping the DOM.
+        linkBtn.setAttribute('data-current-sows', ad.sowIds.join(','));
+        linkBtn.title = 'Link this document to the SOW';
+        linkBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>';
+        linkBtn.appendChild(document.createTextNode(' Link'));
+
+        item.appendChild(linkBtn);
+        availList.appendChild(item);
       }
-
-      if (addUrl) {
-        var addBtn = document.createElement('a');
-        addBtn.href = addUrl;
-        addBtn.className = 'scw-bid-review__docs-add';
-        addBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>';
-        addBtn.appendChild(document.createTextNode(' Upload new'));
-        availHeader.appendChild(addBtn);
-      }
-
-      availSection.appendChild(availHeader);
-
-      if (available.length) {
-        var availList = el('div', 'scw-bid-review__docs-list scw-bid-review__docs-list--available');
-        for (var a = 0; a < available.length; a++) {
-          var ad = available[a];
-          var item = buildDocsItem(ad);
-          item.classList.add('scw-bid-review__docs-item--available');
-
-          var linkBtn = document.createElement('button');
-          linkBtn.type = 'button';
-          linkBtn.className = 'scw-bid-review__docs-link-btn';
-          linkBtn.setAttribute('data-action', 'doc_link_to_sow');
-          linkBtn.setAttribute('data-doc-id', ad.id);
-          linkBtn.setAttribute('data-sow-id', sowId);
-          // Serialize current sow ids so the click handler can PUT
-          // the full connection array (existing + new) without re-
-          // scraping the DOM.
-          linkBtn.setAttribute('data-current-sows', ad.sowIds.join(','));
-          linkBtn.title = 'Link this document to the SOW';
-          linkBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>';
-          linkBtn.appendChild(document.createTextNode(' Link'));
-
-          item.appendChild(linkBtn);
-          availList.appendChild(item);
-        }
-        availSection.appendChild(availList);
-      }
-
+      availSection.appendChild(availList);
       wrap.appendChild(availSection);
     }
 

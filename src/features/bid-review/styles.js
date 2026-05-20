@@ -236,8 +236,16 @@
       '  border-radius: 0;',
       '  overflow: visible;',
       '}',
+      /* Header row mirrors .sow-metric: label on the left, action on
+         the right. Anchors the DOCUMENTS label so it doesn't read as
+         "centered" relative to the SURVEY COSTS / MARGIN rows below
+         (which always have a value on the right). */
       '.scw-bid-review__docs-header {',
-      '  padding: 0 0 2px;',
+      '  display: flex;',
+      '  align-items: center;',
+      '  justify-content: space-between;',
+      '  gap: 8px;',
+      '  padding: 0;',
       '  background: transparent;',
       '  border: none;',
       '}',
@@ -417,20 +425,25 @@
       '.scw-bid-review__docs-unlink-btn.scw-bid-review__btn--busy {',
       '  opacity: 0.5; cursor: progress;',
       '}',
-      /* Combined footer row — toggle on left, Upload pill on right.
-         Flat: hairline top divider, no background, same horizontal
-         rhythm as the doc-item rows above. */
-      '.scw-bid-review__docs-other-header {',
+      /* "N other project docs" toggle — its own full-width row, same
+         hairline rhythm as the doc-item rows. Left-aligned text;
+         click to expand. */
+      '.scw-bid-review__docs--sow .scw-bid-review__docs-other-toggle {',
       '  display: flex;',
       '  align-items: center;',
-      '  justify-content: space-between;',
-      '  gap: 8px;',
+      '  gap: 5px;',
+      '  width: 100%;',
       '  padding: 4px 0;',
       '  background: transparent;',
+      '  border: none;',
       '  border-top: 1px solid #e2e8f0;',
+      '  color: #64748b;',
+      '  font: 600 11px/1.2 system-ui, sans-serif;',
+      '  text-align: left;',
+      '  cursor: pointer;',
       '}',
-      '.scw-bid-review__docs-other-empty {',
-      '  flex: 1 1 auto;',
+      '.scw-bid-review__docs--sow .scw-bid-review__docs-other-toggle:hover {',
+      '  color: #1e293b;',
       '}',
       /* Upload pill — SOLID primary blue. Ranks above outlined Link
          pill (secondary) and slate Unlink pill (tertiary). One pill
@@ -459,25 +472,6 @@
       '  text-decoration: none;',
       '}',
 
-      /* Toggle button on the LEFT of the combined footer row. Text-
-         only, low-contrast — it's a secondary affordance compared to
-         the solid Upload pill on the right. Chevron rotates on
-         collapse-state change. */
-      '.scw-bid-review__docs-other-toggle {',
-      '  display: inline-flex;',
-      '  align-items: center;',
-      '  gap: 5px;',
-      '  margin: 0;',
-      '  padding: 2px 0;',
-      '  background: transparent;',
-      '  border: none;',
-      '  color: #64748b;',
-      '  font: 600 10.5px/1.2 system-ui, sans-serif;',
-      '  cursor: pointer;',
-      '}',
-      '.scw-bid-review__docs-other-toggle:hover {',
-      '  color: #1e293b;',
-      '}',
       '.scw-bid-review__docs-chevron {',
       '  flex: 0 0 auto;',
       '  transition: transform 120ms ease;',
