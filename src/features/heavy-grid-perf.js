@@ -74,7 +74,26 @@
       '#' + vid + ' .kn-table {',
       '  contain: layout style;',
       '}',
-      '#' + vid + ' tbody tr:not(.kn-table-group):not(.kn-table-totals) {',
+      // content-visibility:auto + a 36px intrinsic-size estimate works
+      // for typical data rows but BREAKS any row whose actual rendered
+      // height is much larger than the estimate — the browser uses the
+      // estimate to decide on-screen vs off-screen, decides the row is
+      // "off", and skips painting the content. Result: a blank row at
+      // estimated height.
+      //
+      // The injected summary panels (.scw-mdf-summary-row), our card
+      // rows (.scw-ws-row), and inline-photo strips (.scw-inline-photo-
+      // row) are all much taller than 36px and were rendering blank
+      // under this rule. Exclude every injected row class along with
+      // Knack's own group / totals rows.
+      '#' + vid + ' tbody tr:not(.kn-table-group)' +
+                          ':not(.kn-table-totals)' +
+                          ':not(.scw-ws-row)' +
+                          ':not(.scw-inline-photo-row)' +
+                          ':not(.scw-mdf-summary-row)' +
+                          ':not(.scw-synth-divider)' +
+                          ':not(.scw-mounting-product-line)' +
+                          ' {',
       '  content-visibility: auto;',
       '  contain-intrinsic-size: auto 36px;',
       '}'
