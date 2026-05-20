@@ -132,6 +132,121 @@
     });
   }
 
+  // Connection-cell click — opens the picker modal scoped to the
+  // record's bucket-appropriate candidate set. Currently wired for
+  // field_1957 (Connected Devices) on default-bucket rows; reusable
+  // for field_1958 / others in Phase 4.B.
+  if (!document.documentElement.hasAttribute('data-scw-ws-v2-conn-bound')) {
+    document.documentElement.setAttribute('data-scw-ws-v2-conn-bound', '1');
+    document.addEventListener('click', function (e) {
+      var btn = e.target && e.target.closest && e.target.closest('[data-scw-ws-v2-conn]');
+      if (!btn) return;
+      e.preventDefault();
+      e.stopPropagation();
+
+      var fieldKey = btn.getAttribute('data-scw-ws-v2-conn');
+      var recordId = btn.getAttribute('data-scw-ws-v2-record');
+      var viewKey  = btn.getAttribute('data-scw-ws-v2-view');
+      var label    = btn.getAttribute('data-scw-ws-v2-conn-label') || fieldKey;
+      if (!fieldKey || !recordId || !viewKey) return;
+      if (!ns.picker || typeof ns.picker.open !== 'function') return;
+
+      // Pull all records loaded from the source view (cheap — already
+      // in memory). Find the one we're editing so we can read its
+      // current selection.
+      var records = (ns.data && ns.data.readRecords(viewKey)) || [];
+      var current = null;
+      for (var i = 0; i < records.length; i++) {
+        if (records[i] && records[i].id === recordId) { current = records[i]; break; }
+      }
+
+      // Current selection on this record (multi-connection field).
+      var sel = [];
+      if (current) {
+        var rawSel = current[fieldKey + '_raw'];
+        if (Array.isArray(rawSel)) {
+          for (var s = 0; s < rawSel.length; s++) {
+            if (rawSel[s] && rawSel[s].id) sel.push(rawSel[s].id);
+          }
+        }
+      }
+
+      // ── Candidate set ──
+      // field_1957: cameras/readers on this SOW whose reciprocal
+      // (field_2197) is empty OR points to THIS record. Mirrors v1's
+      // connection-picker collectCandidates logic.
+      var CAM_READER = ns.card && ns.card.CAM_READER_BUCKET;
+      var selSet = {};
+      for (var k = 0; k < sel.length; k++) selSet[sel[k]] = true;
+
+      function bucketIdOf(rec) {
+        var raw = rec && rec['field_2219_raw'];
+        if (Array.isArray(raw) && raw.length && raw[0]) return raw[0].id || '';
+        return '';
+      }
+      function reciprocalIds(rec) {
+        var raw = rec && rec['field_2197_raw'];
+        if (!Array.isArray(raw)) return [];
+        var out = [];
+        for (var i = 0; i < raw.length; i++) {
+          if (raw[i] && raw[i].id) out.push(raw[i].id);
+        }
+        return out;
+      }
+
+      var candidates = [];
+      for (var c = 0; c < records.length; c++) {
+        var r = records[c];
+        if (!r || !r.id || r.id === recordId) continue;
+        if (fieldKey === 'field_1957') {
+          if (bucketIdOf(r) !== CAM_READER) continue;
+          var recip = reciprocalIds(r);
+          var blank = recip.length === 0;
+          var pointsToMe = recip.indexOf(recordId) !== -1;
+          var alreadySel = selSet[r.id];
+          if (!blank && !pointsToMe && !alreadySel) continue;
+        }
+        candidates.push(r);
+      }
+
+      // Group by MDF/IDF (matches v1 connection-picker)
+      function groupBy(rec) {
+        var raw = rec['field_1946_raw'];
+        if (Array.isArray(raw) && raw.length && raw[0]) {
+          return { id: raw[0].id, label: raw[0].identifier || '' };
+        }
+        return { id: '__unknown', label: 'Unassigned' };
+      }
+
+      function itemLabel(rec) {
+        var lbl  = (rec.field_1950 || '').toString().replace(/<[^>]*>/g, '').trim();
+        var prod = (rec.field_1949 || '').toString().replace(/<[^>]*>/g, '').trim();
+        if (lbl && prod) return lbl + ' · ' + prod;
+        return lbl || prod || rec.id;
+      }
+
+      ns.picker.open({
+        sourceViewKey: viewKey,
+        recordId:      recordId,
+        fieldKey:      fieldKey,
+        label:         label,
+        selectedIds:   sel,
+        candidates:    candidates,
+        groupBy:       groupBy,
+        itemLabel:     itemLabel,
+        multi:         true,
+        onSaved:       function () {
+          // Force a data re-notify so the card re-renders with the
+          // new connection value. Knack's cell-update event will also
+          // fire from the PUT, but firing notify() explicitly here
+          // ensures the v2 panel updates even if the cell-update
+          // listener race conditions on a slow connection.
+          if (ns.data && typeof ns.data.notify === 'function') ns.data.notify(viewKey);
+        }
+      });
+    });
+  }
+
   // Chip click — flip Yes ↔ No, optimistic UI + 200ms flash, PUT in
   // background. Mirrors the direct-input edit flow over in edit.js,
   // but scoped to elements stamped with data-scw-ws-v2-chip.

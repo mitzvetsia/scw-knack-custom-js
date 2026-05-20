@@ -151,6 +151,7 @@ cat \
   src/features/worksheet-v2/data.js \
   src/features/worksheet-v2/groups.js \
   src/features/worksheet-v2/card.js \
+  src/features/worksheet-v2/picker.js \
   src/features/worksheet-v2/edit.js \
   src/features/worksheet-v2/render.js \
   src/features/worksheet-v2/init.js \

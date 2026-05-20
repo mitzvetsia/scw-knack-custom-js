@@ -302,6 +302,27 @@
     '</div>';
   }
 
+  /**
+   * Editable connection field — renders the current value as a button-
+   * styled cell. Click handler in init.js reads the data-* attrs and
+   * opens the picker modal.
+   */
+  function detailConnection(rec, viewKey, fieldKey, label) {
+    var val = readField(rec, fieldKey) || '(none)';
+    return '<div class="scw-ws-v2-detail-field scw-ws-v2-detail-field--conn">' +
+      '<div class="scw-ws-v2-detail-label">' + escapeHtml(label) + '</div>' +
+      '<button type="button" class="scw-ws-v2-conn-btn" ' +
+        'data-scw-ws-v2-conn="' + escapeHtml(fieldKey) + '" ' +
+        'data-scw-ws-v2-record="' + escapeHtml(rec.id) + '" ' +
+        'data-scw-ws-v2-view="' + escapeHtml(viewKey) + '" ' +
+        'data-scw-ws-v2-conn-label="' + escapeHtml(label) + '" ' +
+        'title="Click to edit ' + escapeHtml(label) + '">' +
+        '<span class="scw-ws-v2-conn-btn-val">' + escapeHtml(val) + '</span>' +
+        '<span class="scw-ws-v2-conn-btn-edit">edit</span>' +
+      '</button>' +
+    '</div>';
+  }
+
   function buildDetail_cam(rec, viewKey) {
     return '<div class="scw-ws-v2-detail">' +
       '<div class="scw-ws-v2-detail-grid">' +
@@ -320,10 +341,16 @@
   function buildDetail_default(rec, viewKey) {
     return '<div class="scw-ws-v2-detail">' +
       '<div class="scw-ws-v2-detail-grid">' +
-        detailReadOnly(rec,          'field_1958', 'Mounting Hardware') +
-        detailReadOnly(rec,          'field_1957', 'Connected Devices') +
-        detailField(rec,    viewKey, 'field_1953', 'SCW Notes', 'text') +
-        detailReadOnly(rec,          'field_2412', 'Survey Notes') +
+        // field_1958 (Mounting Hardware) stays read-only for now —
+        // its picker needs a separate products source view; that's
+        // Phase 4.B work.
+        detailReadOnly(rec,                  'field_1958', 'Mounting Hardware') +
+        // field_1957 (Connected Devices) is editable: opens the
+        // connection picker modal scoped to cam/reader candidates on
+        // this SOW with empty/this-row's reciprocal field_2197.
+        detailConnection(rec,       viewKey, 'field_1957', 'Connected Devices') +
+        detailField(rec,            viewKey, 'field_1953', 'SCW Notes', 'text') +
+        detailReadOnly(rec,                  'field_2412', 'Survey Notes') +
       '</div>' +
     '</div>';
   }
