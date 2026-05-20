@@ -7252,18 +7252,6 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   function init() {
     injectStyles();
 
-    // Per-view handle for the transformView setTimeout scheduled by
-    // knack-view-render. Captured so a subsequent knack-cell-update
-    // can CANCEL the pending full transform if it knows the change
-    // is just one row's worth of data (patchCardFromResponse has
-    // already updated the card in place — no full rebuild needed).
-    //
-    // Without this, every inline edit pays the full transformView
-    // cost for the entire view: ~150ms × the 100-row tbody, plus
-    // mask + downstream module debounces. By far the biggest single
-    // perceived-latency win for inline edits.
-    var pendingTransformTimers = Object.create(null);
-
     WORKSHEET_CONFIG.views.forEach(function (viewCfg) {
       var viewId = viewCfg.viewId;
 
@@ -7275,11 +7263,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
           // before transformView runs. transformView's finally will
           // uncloak once the worksheet cards are built.
           cloakTbody(viewId);
-          if (pendingTransformTimers[viewId]) {
-            clearTimeout(pendingTransformTimers[viewId]);
-          }
-          pendingTransformTimers[viewId] = setTimeout(function () {
-            delete pendingTransformTimers[viewId];
+          setTimeout(function () {
             transformView(viewCfg);
             syncDeleteVisibility();
             // KTL's hide/show toggle may not fire on SPA navigation,
@@ -7309,35 +7293,20 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
           // transform's in-flight guard queues a retry that will rebuild
           // the card with fresh data anyway, so the edit lands either
           // way — just on a slightly delayed timeline (~150-300ms).
-          var patched = false;
+          //
+          // NOTE: an earlier optimization (commit 39afb5e) also
+          // CANCELED the queued transformView here under the assumption
+          // that patchCardFromResponse fully covered single-row updates.
+          // That was wrong — it broke rowSort (transformView is what
+          // enforces the worksheet's intended sort order over Knack's
+          // default) and card summaries (patchCardFromResponse covers a
+          // subset of the fields the card displays). Reverted: every
+          // cell-update still runs the full transformView from the
+          // companion knack-view-render handler, and patchCardFromResponse
+          // is purely a pre-render "instant feedback on the edited cell"
+          // pass that the upcoming transformView will then override.
           if (record && record.id && !isTransformInFlight(viewId)) {
             patchCardFromResponse(viewId, record.id, record);
-            patched = true;
-          }
-
-          // SINGLE-ROW FAST PATH: if we successfully patched the affected
-          // card in place AND a full transformView was queued by the
-          // preceding knack-view-render, CANCEL it. The card is already
-          // updated; running transformView would do the same work over
-          // every row in the view for zero additional correctness. This
-          // is the difference between an inline edit feeling instant vs
-          // "interminable" on a 100-row grid.
-          //
-          // Filter / sort / model-refetch renders won't fire knack-cell-
-          // update, so they still get the full transform. We only short-
-          // circuit the case where Knack told us exactly which record
-          // changed and we already applied it.
-          if (patched && pendingTransformTimers[viewId]) {
-            clearTimeout(pendingTransformTimers[viewId]);
-            delete pendingTransformTimers[viewId];
-            uncloakTbody(viewId);
-            // Tell heavy-grid-perf its mask is no longer needed for
-            // this render — emit scw-worksheet-ready so the .scw-grid-
-            // ready class flips on at the normal cadence. No-op if
-            // heavy-grid-perf isn't covering this view.
-            document.dispatchEvent(new CustomEvent('scw-worksheet-ready', {
-              detail: { viewId: viewId }
-            }));
           }
         });
 
