@@ -64,6 +64,35 @@
     }
   }
 
+  /**
+   * Refetch a view's model AND notify subscribers when the fetch
+   * completes. Used by the cascade-idle handler — by the time the
+   * mirror-connection-sync cascade is done, all the reciprocal-side
+   * PUTs have landed, so the freshest view of the world is
+   * server-side. A model.fetch() pulls it back into Knack's local
+   * Backbone model, then notify re-renders v2's cards.
+   */
+  function refetchAndNotify(viewKey) {
+    try {
+      var v = Knack.views[viewKey];
+      if (!v || !v.model || typeof v.model.fetch !== 'function') {
+        notify(viewKey);
+        return;
+      }
+      var p = v.model.fetch();
+      if (p && typeof p.always === 'function') {
+        p.always(function () { notify(viewKey); });
+      } else if (p && typeof p.then === 'function') {
+        p.then(function () { notify(viewKey); }, function () { notify(viewKey); });
+      } else {
+        // Backbone returned no thenable — fall back to a small delay
+        setTimeout(function () { notify(viewKey); }, 400);
+      }
+    } catch (e) {
+      notify(viewKey);
+    }
+  }
+
   /** Wire the Knack event listeners that drive notify(). */
   function attachListeners() {
     if (!ns.CONFIG || !ns.CONFIG.enabled) return;
@@ -83,6 +112,23 @@
         .off('knack-cell-update.' + key + '.scwWsV2')
         .on('knack-cell-update.' + key + '.scwWsV2', function () { notify(key); });
     });
+
+    // mirror-connection-sync emits this when its reciprocal/cascade
+    // PUTs are all settled. By the time it fires, OTHER records have
+    // been updated server-side (reciprocal field_2197, regrouped
+    // accessory MDFs, etc.) — but Knack's local Backbone model for
+    // the source view doesn't auto-refresh in response, so v2's
+    // cards would render stale data. Refetch the model on every
+    // idle event so the cards stay accurate.
+    if (!document.documentElement.hasAttribute('data-scw-ws-v2-cascade-bound')) {
+      document.documentElement.setAttribute('data-scw-ws-v2-cascade-bound', '1');
+      document.addEventListener('scw-cascade-idle', function () {
+        var vs = (ns.CONFIG && ns.CONFIG.views) || [];
+        for (var i = 0; i < vs.length; i++) {
+          refetchAndNotify(vs[i].sourceViewKey);
+        }
+      });
+    }
   }
 
   ns.data = {
