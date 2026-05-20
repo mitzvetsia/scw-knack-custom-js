@@ -484,26 +484,52 @@
     });
   }
 
+  // Make's Webhook Response module can hold the HTTP response open
+  // until the scenario finishes — up to 5 minutes by default. If the
+  // scenario is configured to respond after ALL its work is done,
+  // awaiting this fetch IS the completion signal: no polling needed.
+  var WEBHOOK_TIMEOUT_MS = 5 * 60 * 1000;
+
   function postWebhook(url, body) {
     // Native fetch — matches connected-records.js / bulk-add-mounting-
     // box / other working Make webhook callers in this codebase.
     //
-    // Previously this was $.ajax with contentType:'application/json' +
-    // data: JSON.stringify(body). That HAD been firing as form-
-    // urlencoded under some jQuery configurations (missing
-    // processData:false), which made the Make webhook receiver
-    // interpret the entire JSON string as a single form key with
-    // empty value — payload showed up Make-side as
-    //   [{"<whole JSON>": ""}]
-    // and was unparseable. fetch() doesn't have that footgun.
+    // AbortController gives us a hard ceiling — if Make never responds
+    // (network drop, scenario crash, Make outage) we don't hang the
+    // modal forever. 5min matches Make's max response-hold window.
+    var ctrl = (typeof AbortController !== 'undefined') ? new AbortController() : null;
+    var killTimer = ctrl
+      ? setTimeout(function () { ctrl.abort(); }, WEBHOOK_TIMEOUT_MS)
+      : null;
+
     return fetch(url, {
       method:  'POST',
       headers: { 'Content-Type': 'application/json' },
-      body:    JSON.stringify(body)
+      body:    JSON.stringify(body),
+      signal:  ctrl ? ctrl.signal : undefined
     }).then(function (resp) {
+      if (killTimer) clearTimeout(killTimer);
       if (!resp.ok) throw new Error('Webhook returned ' + resp.status);
       return resp.json().catch(function () { return { ok: true }; });
+    }, function (err) {
+      if (killTimer) clearTimeout(killTimer);
+      throw err;
     });
+  }
+
+  /**
+   * Tick the modal's status line with an elapsed-time counter while
+   * we wait for Make to respond. Returns a stop() function.
+   */
+  function startElapsedTicker(modal, label) {
+    var startedAt = Date.now();
+    function paint() {
+      var elapsed = Math.round((Date.now() - startedAt) / 1000);
+      setStatus(modal, label + ' (' + elapsed + 's)');
+    }
+    paint();
+    var id = setInterval(paint, 1000);
+    return function stop() { clearInterval(id); };
   }
 
   // ── MODAL SCAFFOLD ──────────────────────────────────────
@@ -775,11 +801,12 @@
       modal.cancelBtn.disabled = true;
       setStatus(modal, 'Submitting…');
 
-      // Snapshot the bid grid's record ids BEFORE the webhook fires
-      // so the poller can detect when Make's new variant bid appears.
-      var beforeBidIds = recordIdsIn(CONFIG.bidGridView);
-      var beforeBidSet = {};
-      for (var bi = 0; bi < beforeBidIds.length; bi++) beforeBidSet[beforeBidIds[bi]] = true;
+      // Wait on Make's response — the Make scenario holds the HTTP
+      // response open until ALL its record creation is done, then
+      // returns success. No client-side polling = no mid-cascade
+      // view refreshes; the view only updates ONCE after Make
+      // signals completion.
+      var stopTicker = startElapsedTicker(modal, "We're working on it… Make is processing");
 
       postWebhook(CONFIG.bidWebhookUrl, {
         type:                   'variant_bid',
@@ -787,45 +814,27 @@
         originating_bid_label:  bidLabel,
         line_item_count:        ids.length,
         line_item_ids:          ids
-      }).then(function () {
-        setStatus(modal, "We're working on it… (Make is creating the variant.)");
-
-        return pollUntil(
-          CONFIG.bidGridView,
-          function () {
-            // Detection: any new bid id not in the pre-submit snapshot.
-            var nowIds = recordIdsIn(CONFIG.bidGridView);
-            for (var i = 0; i < nowIds.length; i++) {
-              if (!beforeBidSet[nowIds[i]]) return true;
-            }
-            return false;
-          },
-          function (elapsed) {
-            setStatus(modal, "We're working on it… (" +
-              Math.round(elapsed / 1000) + 's)');
-          }
-        );
-      }).then(function (result) {
-        if (result.timedOut) {
-          // Webhook fired, but Make hasn't published the bid back to
-          // Knack in 90s. Refresh what we have and close — user can
-          // manually refresh later if the bid still isn't visible.
-          setStatus(modal, 'Taking longer than expected — refreshing now. ' +
-            'The variant may still be in flight; check again in a moment.', true);
-        } else {
-          setStatus(modal, 'Done. Refreshing…');
+      }).then(function (resp) {
+        stopTicker();
+        // Optional success check — Make can return {success:false}
+        // alongside an error message to mark known-failures. Anything
+        // not explicitly false is treated as success (matches the
+        // existing pattern in the rest of this codebase).
+        if (resp && resp.success === false) {
+          var msg = (resp && resp.message) || 'Make reported an error.';
+          throw new Error(msg);
         }
-
-        // Refresh both bid grid + line item grid so the new bid and
-        // its attached items show up across the scene.
+        setStatus(modal, 'Done. Refreshing…');
         return Promise.all([
           refetchView(CONFIG.bidGridView),
           refetchView(CONFIG.itemGridView)
         ]);
       }).then(function () {
         setTimeout(function () { modal.close(); }, 600);
-      }).catch(function () {
-        setStatus(modal, 'Submission failed — please retry.', true);
+      }).catch(function (err) {
+        stopTicker();
+        var msg = (err && err.message) || 'Submission failed — please retry.';
+        setStatus(modal, msg, true);
         modal.confirmBtn.disabled = false;
         modal.cancelBtn.disabled = false;
       });
@@ -968,11 +977,9 @@
       modal.cancelBtn.disabled = true;
       setStatus(modal, 'Creating variant line item…');
 
-      // Snapshot line-item ids on the target bid BEFORE the webhook,
-      // so the poller can detect when Make's new line item lands.
-      var beforeItemIds = recordIdsIn(CONFIG.itemGridView);
-      var beforeItemSet = {};
-      for (var ii = 0; ii < beforeItemIds.length; ii++) beforeItemSet[beforeItemIds[ii]] = true;
+      // Wait on Make's response — same await-don't-poll pattern as
+      // the bid variant flow. No mid-cascade refreshes of view_3505.
+      var stopTicker = startElapsedTicker(modal, "We're working on it… Make is processing");
 
       postWebhook(CONFIG.itemWebhookUrl, {
         type:                'variant_item',
@@ -980,36 +987,20 @@
         target_bid_id:       targetBidId,
         target_bid_label:    resolveBidLabel(targetBidId),
         fields:              fields
-      }).then(function () {
-        setStatus(modal, "We're working on it… (Make is creating the variant.)");
-
-        return pollUntil(
-          CONFIG.itemGridView,
-          function () {
-            // Detection: any new line-item id not in the snapshot.
-            var nowIds = recordIdsIn(CONFIG.itemGridView);
-            for (var i = 0; i < nowIds.length; i++) {
-              if (!beforeItemSet[nowIds[i]]) return true;
-            }
-            return false;
-          },
-          function (elapsed) {
-            setStatus(modal, "We're working on it… (" +
-              Math.round(elapsed / 1000) + 's)');
-          }
-        );
-      }).then(function (result) {
-        if (result.timedOut) {
-          setStatus(modal, 'Taking longer than expected — refreshing now. ' +
-            'The variant may still be in flight; check again in a moment.', true);
-        } else {
-          setStatus(modal, 'Done. Refreshing…');
+      }).then(function (resp) {
+        stopTicker();
+        if (resp && resp.success === false) {
+          var msg = (resp && resp.message) || 'Make reported an error.';
+          throw new Error(msg);
         }
+        setStatus(modal, 'Done. Refreshing…');
         return refetchView(CONFIG.itemGridView);
       }).then(function () {
         setTimeout(function () { modal.close(); }, 600);
-      }).catch(function () {
-        setStatus(modal, 'Submission failed — please retry.', true);
+      }).catch(function (err) {
+        stopTicker();
+        var msg = (err && err.message) || 'Submission failed — please retry.';
+        setStatus(modal, msg, true);
         modal.confirmBtn.disabled = false;
         modal.cancelBtn.disabled = false;
       });
