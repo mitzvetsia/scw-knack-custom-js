@@ -157,6 +157,21 @@
   // `keys` (in order). Used so a render spec can list multiple known
   // field keys (different worksheet views use different schemas) and
   // pick whichever one this card happens to have populated.
+  // True when a scraped string carries actual content. Filters out
+  // both the literal HTML entity "&nbsp;" (when the scraper read
+  // innerHTML without decoding) and the rendered U+00A0 character
+  // (when it read textContent), plus all-whitespace strings — any
+  // of which Knack sometimes leaves in optional fields and which we
+  // don't want surfacing as visible labor-description blocks on the
+  // PDF.
+  function hasMeaningfulText(s) {
+    if (s == null) return false;
+    var stripped = String(s)
+      .replace(/&nbsp;/gi, '')
+      .replace(/[ \s]/g, '');
+    return stripped.length > 0;
+  }
+
   function firstKeyValue(map, keys) {
     if (!map || !keys) return '';
     for (var i = 0; i < keys.length; i++) {
@@ -1595,7 +1610,7 @@
         if (card.product) {
           h.push('<div class="ws-id-product ws-id-product--stacked">' + esc(card.product) + '</div>');
         }
-        if (laborVal) {
+        if (hasMeaningfulText(laborVal)) {
           h.push('<div class="ws-labor ws-labor--stacked">' + esc(laborVal) + '</div>');
         }
       } else {
@@ -1618,7 +1633,7 @@
       // ── Col 2 — Labor Description (only when NOT stacked) ──
       if (!stacked) {
         h.push('<div class="ws-body-col ws-body-col--mid">');
-        if (laborVal) {
+        if (hasMeaningfulText(laborVal)) {
           h.push('<div class="ws-labor">' + esc(laborVal) + '</div>');
         }
         h.push('</div>');
@@ -2040,7 +2055,11 @@
       '/* up whatever vertical space col 1 leaves behind. The label    */',
       '/* sits in the top-left corner; the rest is blank writing area. */',
       '.ws-notes-open {',
-      '  flex: 1 1 0; min-height: 0;',
+      '  flex: 1 1 0;',
+      '  /* Reserve at least 2 visible writing lines below the label so',
+      '     techs always have somewhere to jot. ~7.5px label + 2× 14px',
+      '     writing rows + padding ≈ 42px floor. */',
+      '  min-height: 42px;',
       '  border: 1px solid #d1d5db; border-radius: 3px;',
       '  padding: 3px 5px; background: #fff;',
       '}',
