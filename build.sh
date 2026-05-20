@@ -145,6 +145,11 @@ cat \
   src/features/legacy/expand-collapse-legacy-function.js \
   src/features/legacy/add-checkboxes.js \
   src/features/legacy/get-tl-photos.js \
+  src/features/worksheet-v2/config.js \
+  src/features/worksheet-v2/styles.js \
+  src/features/worksheet-v2/data.js \
+  src/features/worksheet-v2/render.js \
+  src/features/worksheet-v2/init.js \
   > "$TMP_BUNDLE"
 
 UNMIN_BYTES=$(wc -c < "$TMP_BUNDLE" | tr -d ' ')
