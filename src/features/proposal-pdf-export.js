@@ -7,7 +7,7 @@
   // snapshot, totals, expiration, token + tokenized URL), generates
   // PDFs, sends notifications. Per-scene SCENES entries can override
   // via `webhookUrl` when they're a different business flow with its
-  // own Make scenario (e.g. subcontractor-bid submits on scene_1149).
+  // own Make scenario (e.g. subcontractor-bid submits on scene_1140).
   var WEBHOOK_URL = 'https://hook.us1.make.com/mezrtqmf6gh7yxlkx5fkit6fqrma213l';
 
   // Subcontractor-bid form-submit scenario. Used by scene_1149 only —
@@ -132,14 +132,14 @@
       proposedSolutionField: 'field_2128',
     },
     {
-      sceneId: 'scene_1149',
+      sceneId: 'scene_1140',
       // Subcontractor-bid submits go to a separate Make scenario —
       // different inputs (bidId / surveyRequestId / clientSite),
       // different downstream Knack writes. Do NOT route this through
       // the proposal publish scenario.
       webhookUrl: SUBCONTRACTOR_BID_WEBHOOK,
-      trigger: { type: 'formSubmit', formViewId: 'view_3679', recordIdInput: 'id' },
-      skipViews: { view_3679: true, view_3770: true, view_3552: true },
+      trigger: { type: 'formSubmit', formViewId: 'view_3825', recordIdInput: 'id' },
+      skipViews: { view_3825: true, view_3770: true, view_3552: true },
       hideEmptyGrids: [],
       gridKeys: { qty: 'field_2399', cost: 'field_2401' },
       payloadType: 'subcontractor bid',
