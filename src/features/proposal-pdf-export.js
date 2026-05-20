@@ -2297,47 +2297,61 @@
     setTimeout(function () { if (toast.parentNode) toast.remove(); }, 350);
   }
 
-  // Read the field's value preferring the Knack MODEL over the DOM.
-  //
-  // The earlier DOM-only implementation broke completion detection in
-  // two ways:
-  //   1. model.fetch() updates the model but Knack/KTL doesn't always
-  //      re-render the view, so the polled <td> stayed stale and the
-  //      field-change check never tripped.
-  //   2. File fields render with the filename in the <a> text. When
-  //      Make replaces with a same-named file, the rendered text is
-  //      identical even though the CDN URL changed.
-  //
-  // Strategy: prefer the model's _raw.url for file fields (changes
-  // every upload even with same filename), fall back to model.attrs[fieldId]
-  // (rendered HTML, stripped), fall back to DOM scrape as last resort.
-  // Handles both list-view (data.models[0].attributes) and details-
-  // view (model.attributes directly) shapes.
+  // Pull the polled field's value out of a record returned by a
+  // direct view-records REST call. Handles every Knack _raw shape:
+  //   - file field:        { url, filename, ... }      \u2192 prefer url
+  //   - connection field:  [ {id, identifier}, ... ]   \u2192 join ids
+  //   - plain field:       primitive value             \u2192 string-coerce
+  // Returns a "change signal" string we compare poll-over-poll.
+  function extractFieldSignal(record, fieldId) {
+    if (!record || !fieldId) return '';
+    var raw = record[fieldId + '_raw'];
+    if (raw && !Array.isArray(raw) && typeof raw === 'object') {
+      if (raw.url)      return 'url:' + raw.url;
+      if (raw.filename) return 'fn:'  + raw.filename;
+      return 'obj:' + JSON.stringify(raw);
+    }
+    if (Array.isArray(raw)) {
+      var ids = [];
+      for (var i = 0; i < raw.length; i++) {
+        if (raw[i] && raw[i].id) ids.push(raw[i].id);
+      }
+      return 'conn:' + (ids.length ? ids.join(',') : 'empty');
+    }
+    var rendered = record[fieldId];
+    if (rendered == null) return '';
+    return 'txt:' + String(rendered).replace(/<[^>]*>/g, '').trim();
+  }
+
+  // Direct view-records GET. Bypasses view.model.fetch() \u2014 Knack
+  // sometimes caches/throttles those calls or doesn't re-render the
+  // view, leaving stale data. Going straight to Knack's REST API
+  // gives us a guaranteed-fresh record snapshot each tick.
+  function fetchPolledRecord(viewId, cb) {
+    if (!window.Knack || !Knack.router || !Knack.router.current_scene_key) {
+      cb(null, 'no-scene');
+      return;
+    }
+    var url = Knack.api_url + '/v1/pages/' + Knack.router.current_scene_key +
+              '/views/' + viewId + '/records';
+    SCW.knackAjax({
+      url:   url,
+      type:  'GET',
+      cache: false,
+      success: function (resp) {
+        var record = resp && resp.records && resp.records[0];
+        cb(record || null, record ? null : 'no-records');
+      },
+      error: function (xhr) {
+        cb(null, 'http-' + (xhr && xhr.status));
+      }
+    });
+  }
+
+  // DOM read used only for overlay placement (the polled td is the
+  // overlay target). Completion detection lives in the REST path.
   function readFieldText(viewId, fieldId) {
     if (!fieldId) return '';
-    try {
-      var view = window.Knack && Knack.views && Knack.views[viewId];
-      if (view && view.model) {
-        var models = view.model.data && view.model.data.models;
-        var attrs = (models && models.length)
-          ? models[0].attributes
-          : view.model.attributes;
-        if (attrs) {
-          var raw = attrs[fieldId + '_raw'];
-          if (raw && typeof raw === 'object') {
-            if (raw.url) return String(raw.url);
-            if (raw.filename) return String(raw.filename);
-          }
-          var rendered = attrs[fieldId];
-          if (rendered != null) {
-            return String(rendered)
-              .replace(/<[^>]*>/g, '')
-              .replace(/[\u00a0\s]+/g, ' ')
-              .trim();
-          }
-        }
-      }
-    } catch (e) { /* fall through to DOM scrape */ }
     var td = document.querySelector('#' + viewId + ' td.' + fieldId);
     if (!td) return '';
     return (td.textContent || '').replace(/[\u00a0\s]+/g, ' ').trim();
@@ -2370,18 +2384,12 @@
     _pollMsg = '';
   }
 
-  // Called every time the polled view re-renders (from model.fetch or anything else)
+  // Re-apply overlay when the view re-renders (Knack drops our class
+  // when it rebuilds the td). NOT used to detect completion — that is
+  // entirely REST-driven now.
   function onPollViewRender() {
     if (!_pollActive) return;
-    var newValue = readFieldText(_pollViewId, _pollFieldId);
-    SCW.debug('[SCW PDF Export] View render — field check: "' + _pollInitial + '" → "' + newValue + '"');
-    if (_pollFieldId && newValue !== _pollInitial) {
-      SCW.debug('[SCW PDF Export] Field changed — stopping poll');
-      stopPolling();
-    } else {
-      // View re-rendered with same data; re-apply overlay to fresh td
-      applyFieldOverlay(_pollViewId, _pollFieldId, _pollMsg);
-    }
+    applyFieldOverlay(_pollViewId, _pollFieldId, _pollMsg);
   }
 
   function startPollRefresh(viewId, fieldId, pollType) {
@@ -2389,59 +2397,55 @@
     _pollActive = true;
     _pollViewId = viewId;
     _pollFieldId = fieldId;
-    _pollInitial = readFieldText(viewId, fieldId);
+    _pollInitial = "";
 
-    var label = pollType === 'proposal' ? 'quote' : (pollType || 'bid');
-    _pollMsg = 'Generating ' + label + ' PDF\u2026';
+    var label = pollType === "proposal" ? "quote" : (pollType || "bid");
+    _pollMsg = "Generating " + label + " PDF…";
 
-    SCW.debug('[SCW PDF Export] Polling ' + viewId + ' (watching ' + (fieldId || 'none') + ', initial: "' + _pollInitial + '")');
+    console.log("[SCW PDF Poll] start", { viewId: viewId, fieldId: fieldId, type: pollType });
     showPollToast(_pollMsg);
     applyFieldOverlay(viewId, fieldId, _pollMsg);
 
-    // Listen for every re-render of this view
-    $(document).off('knack-view-render.' + viewId + POLL_NS)
-               .on('knack-view-render.' + viewId + POLL_NS, onPollViewRender);
+    $(document).off("knack-view-render." + viewId + POLL_NS)
+               .on("knack-view-render." + viewId + POLL_NS, onPollViewRender);
 
-    // Interval triggers model.fetch() AND also directly checks the field
-    // value (model.fetch may not fire knack-view-render on collapsed views).
+    var initialCaptured = false;
     var elapsed = 0;
-    _pollTimer = setInterval(function () {
-      elapsed += POLL_INTERVAL_MS;
-      if (typeof Knack === 'undefined') return;
 
-      // Direct field check — doesn't depend on view re-render event
-      if (_pollFieldId) {
-        var currentVal = readFieldText(_pollViewId, _pollFieldId);
-        if (currentVal !== _pollInitial) {
-          SCW.debug('[SCW PDF Export] Field changed (direct check): "' + _pollInitial + '" → "' + currentVal + '"');
-          stopPolling();
+    function tick() {
+      if (!_pollActive) return;
+      fetchPolledRecord(_pollViewId, function (record, err) {
+        if (!_pollActive) return;
+        if (err || !record) {
+          console.log("[SCW PDF Poll] tick fetch error", { err: err, elapsed: elapsed });
           return;
         }
-      }
-
-      var view = Knack.views && Knack.views[viewId];
-      if (view && view.model && typeof view.model.fetch === 'function') {
-        // Hook the fetch's resolution directly — Knack returns a
-        // jQuery jqXHR which is .done()-able. Don't rely on
-        // knack-view-render firing; KTL/accordion state sometimes
-        // suppresses it even when the model updates.
-        var jqxhr = view.model.fetch();
-        if (jqxhr && typeof jqxhr.done === 'function') {
-          jqxhr.done(function () {
-            if (!_pollActive) return;
-            var postValue = readFieldText(_pollViewId, _pollFieldId);
-            if (_pollFieldId && postValue !== _pollInitial) {
-              SCW.debug('[SCW PDF Export] Field changed (fetch.done): "' +
-                _pollInitial + '" → "' + postValue + '"');
-              stopPolling();
-            }
-          });
+        var signal = extractFieldSignal(record, _pollFieldId);
+        if (!initialCaptured) {
+          _pollInitial = signal;
+          initialCaptured = true;
+          console.log("[SCW PDF Poll] initial captured", { signal: signal });
+          return;
         }
-      }
+        var changed = (signal !== _pollInitial);
+        console.log("[SCW PDF Poll] tick", { elapsed: elapsed, initial: _pollInitial, current: signal, changed: changed });
+        if (changed) {
+          console.log("[SCW PDF Poll] CHANGED — stopping");
+          try { var v = Knack.views && Knack.views[_pollViewId]; if (v && v.model && typeof v.model.fetch === "function") v.model.fetch(); } catch (e) {}
+          stopPolling();
+        }
+      });
+    }
+
+    tick();
+    _pollTimer = setInterval(function () {
+      elapsed += POLL_INTERVAL_MS;
       if (elapsed >= POLL_TIMEOUT_MS) {
-        SCW.debug('[SCW PDF Export] Poll timeout for ' + viewId + ' after ' + (elapsed / 1000) + 's');
+        console.log("[SCW PDF Poll] TIMEOUT", { elapsed: elapsed, initial: _pollInitial, initialCaptured: initialCaptured });
         stopPolling();
+        return;
       }
+      tick();
     }, POLL_INTERVAL_MS);
   }
 
