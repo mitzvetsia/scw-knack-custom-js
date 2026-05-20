@@ -905,20 +905,17 @@
       // Skip if our button is already on this card.
       if ($card.find('button.' + CARD_BTN_CLASS).length) return;
 
-      // Anchor under the Bid summary group. .scw-ws-sum-group--bid is
-      // the wrapper device-worksheet builds for the Bid field (the
-      // group cls comes from view_3505's fields config — groupCls:
-      // 'sum-group--bid'). Appending inside the group stacks the
-      // button vertically beneath the bid value.
+      // Anchor inside the Bid summary group. device-worksheet stamps
+      // every summary group with data-scw-fields=<fieldKey>; field_
+      // 2415 is the Bid connection on view_3505. The group element
+      // is `display: flex; flex-direction: column` so appending the
+      // button lands it BELOW the label + value, vertically stacked.
       //
-      // Fallback chain — if the bid group isn't present yet (rare
-      // race with transformView), try the next-best anchor so the
-      // button still appears somewhere usable rather than nowhere.
-      var anchor = $card[0].querySelector(
-        '.scw-ws-sum-group--bid, ' +
-        '[data-scw-fields~="field_2415"], ' +
-        '.scw-ws-identity'
-      );
+      // No .scw-ws-identity fallback — if the bid group isn't built
+      // yet (transformView is mid-render), bail and wait for the next
+      // 'scw-worksheet-ready' event. Better an absent button than a
+      // wrongly-anchored one next to product.
+      var anchor = $card[0].querySelector('[data-scw-fields="field_2415"]');
       if (!anchor) return;
 
       var $btn = $('<button type="button">')
