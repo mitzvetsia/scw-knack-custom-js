@@ -2187,35 +2187,56 @@
       applyFormReadiness();
       whenPageReady(cfg.sceneId, applyFormReadiness);
 
-      var $form = $('#' + formViewId + ' form');
-      $form.off('submit' + ns).on('submit' + ns, function (e) {
-        // Defensive: even with the submit button disabled, a page-
-        // scoped Enter keystroke can still submit. Block here.
+      var formEl = document.querySelector('#' + formViewId + ' form');
+      if (!formEl) return;
+
+      // CAPTURE-PHASE listener. Knack binds its own submit handler in
+      // bubble phase during view init. If we used jQuery .on('submit')
+      // here (bubble-phase), Knack would fire FIRST when the user
+      // clicks Submit — kicking off its own record-save and starting
+      // the redirect — and by the time our handler ran, calling
+      // preventDefault would be too late: navigation already initiated
+      // and our $.ajax to Make gets killed mid-flight (which is
+      // exactly why no `[SCW PDF Webhook] ...` logs appeared).
+      //
+      // Capture phase guarantees we run BEFORE Knack's bubble handler.
+      // stopImmediatePropagation prevents Knack from ever seeing the
+      // submit. We hold the page, fire the webhook, await Make's
+      // "Webhook Response" body, then programmatically click Submit
+      // again — the second pass sees _scwPdfAuthorized and falls
+      // through so Knack does its native save + redirect.
+      if (formEl._scwPdfCaptureBound) return; // idempotent across re-renders
+      formEl._scwPdfCaptureBound = true;
+
+      formEl.addEventListener('submit', function captureSubmitHandler(e) {
+        if (formEl._scwPdfAuthorized) {
+          console.log('[SCW PDF Webhook] (capture) authorized pass — letting Knack take over');
+          return;
+        }
+
+        console.log('[SCW PDF Webhook] (capture) submit intercepted', {
+          sceneId: cfg.sceneId,
+          formViewId: formViewId
+        });
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        e.stopPropagation();
+
         if (!isPageReady(cfg.sceneId)) {
-          e.preventDefault();
-          e.stopImmediatePropagation();
-          alert('Page is still loading — please wait a moment, then click Submit again.');
-          return false;
+          alert('Page is still loading -- please wait, then click Submit again.');
+          return;
         }
+
         var extra = {};
-
-        // Extract record ID from the form
         if (cfg.trigger.recordIdInput) {
-          var $idInput = $('#' + formViewId + ' input[name="' + cfg.trigger.recordIdInput + '"]');
-          if ($idInput.length) extra.recordId = $idInput.val();
+          var idInput = formEl.querySelector('input[name="' + cfg.trigger.recordIdInput + '"]');
+          if (idInput) extra.recordId = idInput.value;
         }
-        // Fallback: extract record ID from the URL hash
-        if (!extra.recordId) {
-          extra.recordId = getPageRecordId();
-        }
+        if (!extra.recordId) extra.recordId = getPageRecordId();
 
-        // Stamp the user who clicked Submit. Read from Knack.getUserAttributes
-        // — works for any logged-in user. null if Knack isn't ready (form
-        // submits without auth shouldn't happen, but guard anyway).
         var triggeredBy = getTriggeredBy();
         if (triggeredBy) extra.triggeredBy = triggeredBy;
 
-        // Extract additional field values from the scene DOM
         if (cfg.extraFields) {
           var _fNum;
           for (var ef = 0; ef < cfg.extraFields.length; ef++) {
@@ -2225,15 +2246,11 @@
               if (urlVal) extra[spec.name] = urlVal;
               continue;
             }
-            // Echo the resolved recordId under a different key — useful
-            // when the receiving Make scenario expects a domain-specific
-            // name like "bidId" alongside the generic "recordId".
             if (spec.source === 'recordId') {
               if (extra.recordId) extra[spec.name] = extra.recordId;
               continue;
             }
             _fNum = spec.field.replace('field_', '');
-            // If sourceView is specified, scope the search to that view first
             var el = null;
             if (spec.sourceView) {
               el = document.querySelector('#' + spec.sourceView + ' .field_' + _fNum);
@@ -2243,48 +2260,14 @@
             if (!el) el = document.querySelector('#kn-' + cfg.sceneId + ' .field_' + _fNum);
             if (!el) el = document.querySelector('#kn-' + cfg.sceneId + ' td.' + spec.field);
             if (!el) el = document.querySelector('#kn-' + cfg.sceneId + ' [data-field-key="' + spec.field + '"]');
-            // Fallback: search anywhere on the page (field may be in a detail view outside the scene wrapper)
             if (!el) el = document.querySelector('.kn-detail.' + spec.field + ', .kn-label-none.' + spec.field);
-            // Read value only — cascade through Knack detail-view DOM wrappers
             var valEl = el ? (el.querySelector('.kn-detail-body .kn-value') || el.querySelector('.kn-detail-body') || el.querySelector('.kn-value') || el) : null;
-            var val = valEl ? (valEl.textContent || '').replace(/[\u00a0\s]+/g, ' ').trim() : '';
+            var val = valEl ? (valEl.textContent || '').replace(/[ \s]+/g, ' ').trim() : '';
             if (val) extra[spec.name] = val;
           }
         }
 
-        // Already authorized by a prior webhook-success pass — let
-        // Knack run its native submit (record save + redirect).
-        if ($form.data('scw-pdf-authorized')) return;
-
-        // Hold the submit, fire the webhook, wait for Make's
-        // "Webhook Response" body, THEN re-trigger the form's
-        // native submit. This was previously fire-and-forget +
-        // sessionStorage-flagged polling; the page navigated away
-        // before Make responded so the $.ajax was cancelled (which
-        // is exactly why no logs appeared after webhook fire).
-        e.preventDefault();
-        e.stopImmediatePropagation();
-
-        console.log('[SCW PDF Webhook] form submit intercepted', { sceneId: cfg.sceneId });
-        var unified = buildPublishPayload(cfg.sceneId);
-        if (!unified) {
-          console.warn('[SCW PDF Webhook] payload build failed — falling through to native submit');
-          $form.data('scw-pdf-authorized', true);
-          $form[0].submit();
-          return;
-        }
-        for (var k in extra) {
-          if (Object.prototype.hasOwnProperty.call(extra, k)) unified[k] = extra[k];
-        }
-
-        showPublishToast('Generating ' +
-          (cfg.payloadType === 'subcontractor bid' ? 'bid' : 'PDF') +
-          '…', false, true);
-
-        function authorizeAndSubmit(setPollFallback) {
-          // Defensive: nuke any stale poll flags so the parent page
-          // doesn't start polling unless we explicitly set them again
-          // for the fallback case.
+        function authorizeAndResubmit(setPollFallback) {
           try {
             sessionStorage.removeItem('scw-pdf-poll-view');
             sessionStorage.removeItem('scw-pdf-poll-field');
@@ -2297,9 +2280,25 @@
               if (cfg.payloadType) sessionStorage.setItem('scw-pdf-poll-type', cfg.payloadType);
             } catch (e3) {}
           }
-          $form.data('scw-pdf-authorized', true);
-          $form[0].submit();
+          formEl._scwPdfAuthorized = true;
+          var btn = formEl.querySelector('button[type="submit"], input[type="submit"]');
+          if (btn) btn.click();
+          else formEl.submit();
         }
+
+        var unified = buildPublishPayload(cfg.sceneId);
+        if (!unified) {
+          console.warn('[SCW PDF Webhook] payload build failed -- releasing submit');
+          authorizeAndResubmit(true);
+          return;
+        }
+        for (var k in extra) {
+          if (Object.prototype.hasOwnProperty.call(extra, k)) unified[k] = extra[k];
+        }
+
+        showPublishToast('Generating ' +
+          (cfg.payloadType === 'subcontractor bid' ? 'bid' : 'PDF') +
+          '...', false, true);
 
         sendToWebhook(unified, cfg)
           .done(function (resp, status, xhr) {
@@ -2313,12 +2312,12 @@
             var informative = (resp != null && resp !== '' &&
               (typeof resp === 'object' || String(resp).length > 0));
             if (informative) {
-              console.log('[SCW PDF Webhook] informative response → submitting form (PDF already in place)');
-              showPublishToast('PDF ready — opening…', false, false);
-              authorizeAndSubmit(false);
+              console.log('[SCW PDF Webhook] informative -> releasing submit, no polling');
+              showPublishToast('PDF ready -- opening...', false, false);
+              authorizeAndResubmit(false);
             } else {
-              console.log('[SCW PDF Webhook] empty response → falling back to poll on parent');
-              authorizeAndSubmit(true);
+              console.log('[SCW PDF Webhook] empty response -> fallback to polling');
+              authorizeAndResubmit(true);
             }
           })
           .fail(function (xhr, status, errThrown) {
@@ -2329,24 +2328,19 @@
               errThrown: errThrown && errThrown.toString && errThrown.toString(),
               rawResponseText: xhr && xhr.responseText
             });
-            // 2xx with a body but jQuery couldn't parse it (Content-Type
-            // mismatch) — treat as success.
             var raw = xhr && xhr.responseText;
             var httpOk = xhr && xhr.status >= 200 && xhr.status < 300;
             if (httpOk && raw) {
-              console.log('[SCW PDF Webhook] HTTP OK with body — treating as success');
-              showPublishToast('PDF ready — opening…', false, false);
-              authorizeAndSubmit(false);
+              console.log('[SCW PDF Webhook] HTTP OK with body -- treating as success');
+              showPublishToast('PDF ready -- opening...', false, false);
+              authorizeAndResubmit(false);
               return;
             }
-            // Anything else: let the form submit anyway so the user
-            // isn't stuck on the form page. Poll-on-parent acts as
-            // the safety net.
-            console.warn('[SCW PDF Webhook] webhook failed — submitting form with poll-on-parent fallback');
-            showPublishToast('Submission sent — continuing…', false, false);
-            authorizeAndSubmit(true);
+            console.warn('[SCW PDF Webhook] webhook failed -- releasing with poll fallback');
+            showPublishToast('Submission sent -- continuing...', false, false);
+            authorizeAndResubmit(true);
           });
-      });
+      }, true /* capture phase */);
     });
 
     // Hide extraFields marked with hide:true when their source view renders

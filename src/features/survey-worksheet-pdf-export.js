@@ -1135,10 +1135,19 @@
     }
 
     // ── Cover image pages (e.g. Site Map(s) from view_3808) ──
+    // Wrap all map sections in ONE container that holds the
+    // `page: landscape-map` declaration. Previous version put the
+    // page-name on each <section class="cover-page">, which some PDF
+    // renderers interpret as "allocate a fresh named page for this
+    // element" and insert a blank page between consecutive maps even
+    // when the page name doesn't change. One wrapper = one
+    // page-name transition for the whole map block.
     if (payload.coverImageSections && payload.coverImageSections.length) {
+      html.push('<div class="cover-pages-wrapper">');
       for (var cs = 0; cs < payload.coverImageSections.length; cs++) {
         html.push(renderImageCoverSection(payload.coverImageSections[cs]));
       }
+      html.push('</div>');
     }
 
     // Note: the doc-title used to print here as an <h1> before the
@@ -1813,8 +1822,14 @@
       '/* Cover pages rendered before the survey items (site maps, etc.) */',
       '/* Forced landscape so a typical wide floor-plan screenshot fills */',
       '/* the page after auto-crop strips the whitespace borders. */',
-      '.cover-page {',
+      // page: landscape-map sits on the WRAPPER, not per cover-page,
+      // so the page-name transition fires once at the start of the
+      // map block instead of per-image (which was causing some
+      // renderers to insert blank pages between consecutive maps).
+      '.cover-pages-wrapper {',
       '  page: landscape-map;',
+      '}',
+      '.cover-page {',
       '  page-break-after: always; break-after: page;',
       '  text-align: center;',
       '  box-sizing: border-box;',
