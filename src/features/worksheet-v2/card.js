@@ -399,14 +399,59 @@
     }
 
     function chipLabel(a) {
+      // 1. Knack's connection identifier — this is what view_3610
+      //    renders in <span data-kn="connection-value"> on screen.
+      //    Strip any HTML Knack might have wrapped around it.
+      if (a.identifier) {
+        var idText = String(a.identifier).replace(/<[^>]*>/g, '').trim();
+        if (idText) return idText;
+      }
+      // 2. Full record lookup in v2's source view records.
       var full = byId[a.id];
       if (full) {
+        // 2a. Connected product name via _raw[0].identifier — most
+        //     reliable for the line-item → product link.
+        var prodRaw = full['field_1949_raw'];
+        if (Array.isArray(prodRaw) && prodRaw[0] && prodRaw[0].identifier) {
+          var pr = String(prodRaw[0].identifier).replace(/<[^>]*>/g, '').trim();
+          if (pr) return pr;
+        } else if (prodRaw && prodRaw.identifier) {
+          var prs = String(prodRaw.identifier).replace(/<[^>]*>/g, '').trim();
+          if (prs) return prs;
+        }
+        // 2b. Rendered fields (HTML-stripped).
         var prod = (full.field_1949 || '').toString().replace(/<[^>]*>/g, '').trim();
         if (prod) return prod;
-        var lbl = (full.field_1950 || '').toString().replace(/<[^>]*>/g, '').trim();
-        if (lbl) return lbl;
+        var lbl  = (full.field_1950 || '').toString().replace(/<[^>]*>/g, '').trim();
+        if (lbl)  return lbl;
       }
-      return a.identifier || a.id || '';
+      // 3. DOM fallback — view_3610 is on the same page during the
+      //    parallel v1/v2 build. v1's readConnectionLinks handles the
+      //    "Knack renders the field cell twice, pick the first non-
+      //    empty one" quirk on view_3610. Replicate that: find the
+      //    accessory's row by id and read its product name (or any
+      //    visible identifier text) from the rendered DOM.
+      try {
+        var v3610 = document.getElementById('view_3610');
+        if (v3610) {
+          var tr = v3610.querySelector('tr[id="' + a.id + '"]');
+          if (tr) {
+            // Try product first (field_1949), then label (field_1950),
+            // iterating ALL matching tds so duplicate columns don't
+            // trap us on the empty one (same logic as v1 line 337).
+            var fieldKeys = ['field_1949', 'field_1950'];
+            for (var fk = 0; fk < fieldKeys.length; fk++) {
+              var tds = tr.querySelectorAll('td.' + fieldKeys[fk]);
+              for (var td = 0; td < tds.length; td++) {
+                var txt = (tds[td].textContent || '').replace(/\s+/g, ' ').trim();
+                if (txt && txt !== ' ') return txt;
+              }
+            }
+          }
+        }
+      } catch (e) { /* DOM may not be present yet — fall through */ }
+
+      return a.id || '';
     }
 
     var chipsHtml = '';
