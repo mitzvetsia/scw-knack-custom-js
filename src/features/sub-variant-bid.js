@@ -112,15 +112,21 @@
       '.' + BTN_CLASS + ':hover { background: #053659; }',
       '.' + BTN_CLASS + '[disabled] { opacity: 0.5; cursor: not-allowed; }',
 
-      // Per-card button (Feature B — view_3505 card action)
+      // Per-card button — sits inside the Bid summary group, beneath
+      // the bid value. Sized small + subdued so it doesn't compete
+      // with the actual data; hover lifts it.
       '.' + CARD_BTN_CLASS + ' {',
-      '  appearance: none; cursor: pointer;',
+      '  display: inline-block; appearance: none; cursor: pointer;',
       '  background: #fff; color: #07467c;',
-      '  border: 1px solid #07467c; border-radius: 4px;',
-      '  font: 600 11px/1.2 system-ui, sans-serif;',
-      '  padding: 4px 10px; margin-left: 6px; white-space: nowrap;',
+      '  border: 1px solid #cbd5e1; border-radius: 3px;',
+      '  font: 600 9px/1.2 system-ui, sans-serif;',
+      '  letter-spacing: 0.04em; text-transform: uppercase;',
+      '  padding: 2px 6px; margin: 4px 0 0; white-space: nowrap;',
+      '  transition: background 100ms ease, border-color 100ms ease, color 100ms ease;',
       '}',
-      '.' + CARD_BTN_CLASS + ':hover { background: #eaf2fb; }',
+      '.' + CARD_BTN_CLASS + ':hover {',
+      '  background: #eaf2fb; border-color: #07467c; color: #053659;',
+      '}',
 
       // Modal scaffold (shared with both features)
       '.scw-svb-overlay {',
@@ -896,20 +902,32 @@
       if (!recId || !/^[0-9a-f]{24}$/i.test(recId)) return;
       var $card = $tr.find('.scw-ws-card').first();
       if (!$card.length) return;
-      if ($card.find('.' + CARD_BTN_CLASS).length) return;
+      // Skip if our button is already on this card.
+      if ($card.find('button.' + CARD_BTN_CLASS).length) return;
+
+      // Anchor under the Bid summary group. .scw-ws-sum-group--bid is
+      // the wrapper device-worksheet builds for the Bid field (the
+      // group cls comes from view_3505's fields config — groupCls:
+      // 'sum-group--bid'). Appending inside the group stacks the
+      // button vertically beneath the bid value.
+      //
+      // Fallback chain — if the bid group isn't present yet (rare
+      // race with transformView), try the next-best anchor so the
+      // button still appears somewhere usable rather than nowhere.
+      var anchor = $card[0].querySelector(
+        '.scw-ws-sum-group--bid, ' +
+        '[data-scw-fields~="field_2415"], ' +
+        '.scw-ws-identity'
+      );
+      if (!anchor) return;
 
       var $btn = $('<button type="button">')
         .addClass(CARD_BTN_CLASS)
-        .text('Create Variant')
+        .text('+ Variant')
         .attr('data-item-id', recId)
         .attr('title', 'Send a copy of this line item to another bid');
 
-      // Anchor it to the card's identity / warn-slot area so it's
-      // visible without colliding with the chevron.  Fall back to
-      // appending to the card if no anchor is found.
-      var anchor = $card[0].querySelector('.scw-ws-identity, .scw-ws-warn-slot');
-      if (anchor && anchor.parentNode) anchor.parentNode.appendChild($btn[0]);
-      else $card.append($btn);
+      anchor.appendChild($btn[0]);
     });
   }
 
@@ -1020,6 +1038,20 @@
     // our column or per-card buttons.
     SCW.onViewRender(CONFIG.bidGridView,  injectBidColumn,   'scwSubVariantBid');
     SCW.onViewRender(CONFIG.itemGridView, injectItemButtons, 'scwSubVariantBid');
+
+    // device-worksheet rebuilds the worksheet cards inside view_3505
+    // every time it runs transformView (initial render, inline edits,
+    // model refetches, etc.) — that wipes any DOM we injected into
+    // those cards. The 'scw-worksheet-ready' CustomEvent fires when
+    // the rebuild has settled, so re-inject our per-card button here
+    // every time. Without this hook, the button shows up on first
+    // render and randomly disappears later — which is the "doesn't
+    // show up consistently" complaint.
+    document.addEventListener('scw-worksheet-ready', function (e) {
+      var viewId = e && e.detail && e.detail.viewId;
+      if (viewId !== CONFIG.itemGridView) return;
+      injectItemButtons();
+    });
   }
 
   if (window.SCW && SCW.onSceneRender) bind();
