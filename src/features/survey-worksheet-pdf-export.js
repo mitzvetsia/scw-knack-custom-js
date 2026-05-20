@@ -1638,16 +1638,14 @@
       // — they're spec'd by part number, not surveyed.
       var renderNotesSquare = !isOtherEquipmentBucket(card);
 
-      var laborSpec = PDF_DETAIL_LAYOUT.labor || {};
-      var laborVal  = card.laborText || firstKeyValue(card.detailValues, laborSpec.keys || (laborSpec.key ? [laborSpec.key] : []));
+      // Labor description is intentionally NOT rendered — dropped per
+      // user request 2026-05. The tech doesn't need labor copy in the
+      // field; it's a sales artifact. The space that column used to
+      // occupy now goes to the SCW Notes + Tech Notes column on
+      // cam/reader cards (one wide right column instead of two).
       var scwSpec   = PDF_DETAIL_LAYOUT.scwNotes || {};
       var scwVal    = card.scwText || firstKeyValue(card.detailValues, scwSpec.keys || (scwSpec.key ? [scwSpec.key] : []));
 
-      // SCW Notes block — rendered as a sub-section beneath whichever
-      // column holds the Labor Description (col 1 in stacked layouts,
-      // col 2 otherwise). Pulled out of col 3 so the tech reads:
-      //   labor description → scw context → blank tech-notes square
-      // top-to-bottom in one column, instead of bouncing across.
       function scwBlock() {
         if (!scwVal) return '';
         return '<div class="ws-labor ws-labor--scw">' +
@@ -1656,26 +1654,41 @@
         '</div>';
       }
 
+      function techNotesBlock() {
+        if (!renderNotesSquare) return '';
+        return '<div class="ws-notes-open">' +
+          '<div class="ws-notes-open-label">Notes</div>' +
+        '</div>';
+      }
+
       var stacked = useStackedProductLabor(card);
       h.push('<div class="ws-body-3col' + (stacked ? ' ws-body-3col--stacked' : '') + '">');
-      // ── Col 1 — identity (+ stacked labor + SCW notes) + ref + flags + measure ──
-      h.push('<div class="ws-body-col ws-body-col--left">');
+
       if (stacked) {
-        // Networking/Headend/Other Equipment: product on top, labor
-        // beneath, both as block elements. Drop ws-id-line's inline
-        // flex layout since these cards rarely have a drop label.
+        // Networking / Headend / Other Equipment: single column with
+        //   [Product]
+        //   [SCW Notes] (if any)
+        //   [Tech Notes]
+        // + ref / flags / measure beneath.
+        h.push('<div class="ws-body-col ws-body-col--left">');
         if (card.label) {
           h.push('<div class="ws-id-label-block">' + esc(card.label) + '</div>');
         }
         if (card.product) {
           h.push('<div class="ws-id-product ws-id-product--stacked">' + esc(card.product) + '</div>');
         }
-        if (hasMeaningfulText(laborVal)) {
-          h.push('<div class="ws-labor ws-labor--stacked">' + esc(laborVal) + '</div>');
-        }
-        // SCW Notes sit right under labor in the stacked layout.
         h.push(scwBlock());
+        h.push(techNotesBlock());
+        h.push(renderRefSection(card));
+        h.push(renderFlagsRow(card));
+        h.push(renderMeasureRow(card));
+        h.push('</div>');
       } else {
+        // Cam/Reader: two columns —
+        //   Col 1: identity + ref + flags + measure
+        //   Col 2 (wide, absorbs the old labor + tech-notes columns):
+        //         [SCW Notes] (if any) above [Tech Notes square]
+        h.push('<div class="ws-body-col ws-body-col--left">');
         if (card.label || card.product) {
           h.push('<div class="ws-id-line">');
           if (card.label) {
@@ -1686,31 +1699,17 @@
           }
           h.push('</div>');
         }
-      }
-      h.push(renderRefSection(card));
-      h.push(renderFlagsRow(card));
-      h.push(renderMeasureRow(card));
-      h.push('</div>');
+        h.push(renderRefSection(card));
+        h.push(renderFlagsRow(card));
+        h.push(renderMeasureRow(card));
+        h.push('</div>');
 
-      // ── Col 2 — Labor Description + SCW Notes (only when NOT stacked) ──
-      if (!stacked) {
         h.push('<div class="ws-body-col ws-body-col--mid">');
-        if (hasMeaningfulText(laborVal)) {
-          h.push('<div class="ws-labor">' + esc(laborVal) + '</div>');
-        }
-        // SCW Notes sit right under labor in the standard 3-col layout.
         h.push(scwBlock());
+        h.push(techNotesBlock());
         h.push('</div>');
       }
 
-      // ── Col 3 — open tech-notes square (SCW Notes moved to labor column) ──
-      h.push('<div class="ws-body-col ws-body-col--right">');
-      if (renderNotesSquare) {
-        h.push('<div class="ws-notes-open">');
-        h.push('<div class="ws-notes-open-label">Notes</div>');
-        h.push('</div>');
-      }
-      h.push('</div>');
       h.push('</div>');
     }
 
@@ -1978,22 +1977,33 @@
       '/* col 1 = identity + flags + measurements (40%)            */',
       '/* col 2 = Labor Description, plain text (40%)              */',
       '/* col 3 = SCW Notes + open tech-notes square (20%)         */',
+      /* Cam/Reader: two columns —
+         Col 1 (--left): identity + ref/flags/measure.
+         Col 2 (--mid):  SCW Notes (if any) + open Tech Notes square.
+         Col 2 absorbs what used to be the labor-description column +
+         the right-edge tech-notes column. Labor description dropped
+         per user request — sales artifact, no use in the field. */
       '.ws-body-3col {',
-      '  display: grid; grid-template-columns: 2fr 2fr 1fr;',
+      '  display: grid; grid-template-columns: 2fr 3fr;',
       '  column-gap: 8px; row-gap: 0;',
       '  margin-top: 2px; padding-top: 2px;',
       '  border-top: 1px solid #e5e7eb;',
       '  align-items: stretch;',
       '}',
-      /* Networking/Headend/Other Equipment: product + labor stack in
-         col 1, col 2 is omitted from the DOM, col 3 keeps its share. */
+      /* Networking / Headend / Other Equipment: single column with
+         product, SCW notes, tech notes square, ref/flags/measure all
+         stacked together. */
       '.ws-body-3col--stacked {',
-      '  grid-template-columns: 4fr 1fr;',
+      '  grid-template-columns: 1fr;',
       '}',
       '.ws-body-col { display: flex; flex-direction: column; gap: 2px; min-height: 0; }',
       '.ws-body-col--left  { padding-right: 4px; border-right: 1px dotted #e5e7eb; }',
-      '.ws-body-col--mid   { padding: 0 4px; border-right: 1px dotted #e5e7eb; }',
-      '.ws-body-col--right { padding-left: 4px; }',
+      /* --mid is the rightmost column in the new 2-col layout, so it
+         no longer needs a right border separator. */
+      '.ws-body-col--mid   { padding-left: 4px; }',
+      /* --left in the stacked single-column layout has no neighbour
+         to separate from — drop the dotted right border. */
+      '.ws-body-3col--stacked .ws-body-col--left { padding-right: 0; border-right: none; }',
       /* Stacked product/labor: block-level so they sit on their own
          lines without the inline ws-id-line flex layout. Product keeps
          its 11.5px bold blue styling; labor uses the standard
