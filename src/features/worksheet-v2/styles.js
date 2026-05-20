@@ -88,15 +88,13 @@
     '}',
 
     /* ── Row grid ───────────────────────────────────────────── */
-    /* Default row layout (non-cam/reader buckets):
-       label · product · labor-desc · qty · subBid stack · +Hrs stack
-       +Mat stack · fee · sow · chevron */
+    /* DEFAULT bucket (Networking / Other Equipment / Mounting Hardware /
+       any non-special bucket). No label column, no chips. */
     '.scw-ws-v2-row--default {',
     '  display: grid !important;',
     '  grid-template-columns:',
-    '    64px              /* label   */',
-    '    minmax(140px, 1.4fr)  /* product */',
-    '    minmax(140px, 1.6fr)  /* labor desc */',
+    '    minmax(160px, 1.4fr)  /* product */',
+    '    minmax(160px, 1.6fr)  /* labor desc */',
     '    64px              /* qty     */',
     '    78px              /* subBid  */',
     '    64px              /* +Hrs    */',
@@ -109,20 +107,59 @@
     '  padding: 4px 10px !important;',
     '  min-height: 40px !important;',
     '}',
-    /* Cam/reader row — same column count + a chip-stack slot
-       between product and labor-desc */
+    /* CAM/READER bucket — adds label + chip-stack columns. */
     '.scw-ws-v2-row--cam {',
     '  display: grid !important;',
     '  grid-template-columns:',
-    '    64px',
-    '    minmax(140px, 1.4fr)',
-    '    100px              /* chip stack */',
-    '    minmax(120px, 1.4fr)',
+    '    64px                  /* label   */',
+    '    minmax(140px, 1.4fr)  /* product */',
+    '    100px                 /* chips   */',
+    '    minmax(120px, 1.4fr)  /* labor desc */',
     '    64px 78px 64px 64px 72px 52px 28px !important;',
     '  gap: 6px !important;',
     '  align-items: center !important;',
     '  padding: 4px 10px !important;',
     '  min-height: 40px !important;',
+    '}',
+    /* SERVICES bucket — replaces product with a "Service" tag. Keeps
+       qty / money / fee / sow because service rows still carry a
+       dollar value. */
+    '.scw-ws-v2-row--services {',
+    '  display: grid !important;',
+    '  grid-template-columns:',
+    '    80px                  /* "Service" tag */',
+    '    minmax(220px, 1.6fr)  /* description */',
+    '    64px 78px 64px 64px 72px 52px 28px !important;',
+    '  gap: 6px !important;',
+    '  align-items: center !important;',
+    '  padding: 4px 10px !important;',
+    '  min-height: 40px !important;',
+    '}',
+    /* ASSUMPTIONS bucket — almost full-width text. No money. */
+    '.scw-ws-v2-row--assumptions {',
+    '  display: grid !important;',
+    '  grid-template-columns:',
+    '    100px            /* "Assumption" tag */',
+    '    1fr              /* text */',
+    '    28px             /* chevron */ !important;',
+    '  gap: 6px !important;',
+    '  align-items: center !important;',
+    '  padding: 4px 10px !important;',
+    '  min-height: 40px !important;',
+    '}',
+
+    /* Bucket tag cell ("Service" / "Assumption") */
+    '.scw-ws-v2-cell--tag {',
+    '  font: 700 10px/1.2 system-ui, -apple-system, sans-serif !important;',
+    '  letter-spacing: 0.06em !important;',
+    '  text-transform: uppercase !important;',
+    '  color: #6b21a8 !important;',
+    '  background: #faf5ff !important;',
+    '  border: 1px solid #e9d5ff !important;',
+    '  border-radius: 4px !important;',
+    '  padding: 4px 8px !important;',
+    '  text-align: center !important;',
+    '  white-space: nowrap !important;',
     '}',
 
     /* ── Cells ──────────────────────────────────────────────── */
