@@ -419,16 +419,21 @@
       '.scw-bid-review__docs-unlink-btn.scw-bid-review__btn--busy {',
       '  opacity: 0.5; cursor: progress;',
       '}',
-      /* Footer row — right-aligned so the Upload pill lands in the
-         same vertical column as the per-row Link / Unlink pills.
-         Soft divider above sets it apart from the doc lists without
-         making it feel like a separate visual layer. */
-      '.scw-bid-review__docs-footer {',
+      /* Combined footer row — toggle on the left, Upload pill on the
+         right. One row instead of two stacked bands keeps the panel
+         visually quiet and lines Upload up with the per-row
+         Link/Unlink pill column. */
+      '.scw-bid-review__docs-other-header {',
       '  display: flex;',
-      '  justify-content: flex-end;',
+      '  align-items: center;',
+      '  justify-content: space-between;',
+      '  gap: 8px;',
       '  padding: 6px 10px;',
       '  background: #fff;',
       '  border-top: 1px solid #e2e8f0;',
+      '}',
+      '.scw-bid-review__docs-other-empty {',
+      '  flex: 1 1 auto;',
       '}',
       /* Upload pill — SOLID primary blue. Ranks above outlined Link
          pill (secondary) and slate Unlink pill (tertiary). One pill
@@ -457,48 +462,42 @@
       '  text-decoration: none;',
       '}',
 
-      /* "Other docs on project" — collapsible by default. Click the
-         sublabel row (chevron + label + count) to toggle. Hidden list
-         keeps the panel tight when the user only wants to see what's
-         already linked. */
+      /* Toggle button on the LEFT of the combined footer row. Text-
+         only, low-contrast — it's a secondary affordance compared to
+         the solid Upload pill on the right. Chevron rotates on
+         collapse-state change. */
       '.scw-bid-review__docs-other-toggle {',
-      '  display: flex;',
+      '  display: inline-flex;',
       '  align-items: center;',
-      '  gap: 4px;',
-      '  width: 100%;',
+      '  gap: 5px;',
       '  margin: 0;',
-      '  padding: 6px 10px 4px;',
+      '  padding: 2px 0;',
       '  background: transparent;',
       '  border: none;',
-      '  border-top: 1px solid #e2e8f0;',
       '  color: #64748b;',
-      '  font: 700 9.5px/1.2 system-ui, sans-serif;',
-      '  text-transform: uppercase;',
-      '  letter-spacing: 0.06em;',
-      '  text-align: left;',
+      '  font: 600 10.5px/1.2 system-ui, sans-serif;',
       '  cursor: pointer;',
       '}',
       '.scw-bid-review__docs-other-toggle:hover {',
-      '  background: #f1f5f9;',
       '  color: #1e293b;',
       '}',
       '.scw-bid-review__docs-chevron {',
       '  flex: 0 0 auto;',
       '  transition: transform 120ms ease;',
+      '  opacity: 0.7;',
       '}',
       '.scw-bid-review__docs-other[data-collapsed="1"] .scw-bid-review__docs-chevron {',
       '  transform: rotate(-90deg);',
       '}',
-      '.scw-bid-review__docs-other-count {',
-      '  margin-left: auto;',
-      '  padding: 1px 6px;',
-      '  background: #e2e8f0;',
-      '  color: #475569;',
-      '  border-radius: 999px;',
-      '  font: 700 9.5px/1.2 system-ui, sans-serif;',
-      '}',
       '.scw-bid-review__docs-other[data-collapsed="1"] .scw-bid-review__docs-list {',
       '  display: none;',
+      '}',
+      /* When the list expands, it shows below the shared footer row
+         with a soft top divider so it reads as belonging to the
+         toggle that opened it. */
+      '.scw-bid-review__docs-other .scw-bid-review__docs-list--available {',
+      '  border-top: 1px solid #e2e8f0;',
+      '  background: #fafbfc;',
       '}',
 
       /* "Add PM & Mobilization" button (lives inside the margin-low
