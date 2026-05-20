@@ -176,7 +176,8 @@
         || e.target.closest('.scw-bid-cr-card[data-action]')
         || e.target.closest('.scw-bid-review__overflow-item[data-action]')
         || e.target.closest('.scw-bid-review__cell-action[data-action]')
-        || e.target.closest('.scw-ops-margin-warning__btn[data-action]');
+        || e.target.closest('.scw-ops-margin-warning__btn[data-action]')
+        || e.target.closest('.scw-bid-review__docs-link-btn[data-action]');
       if (!button) return;
 
       // Close overflow menu after picking an item
@@ -213,6 +214,8 @@
         handleCreateNewSow(button);
       } else if (action === 'add_pm_mobilization') {
         handleAddPmMobilization(button);
+      } else if (action === 'doc_link_to_sow') {
+        handleDocLinkToSow(button);
       } else if (action === 'set_project_margin') {
         handleSetProjectMargin(button);
       } else if (action.indexOf('package_') === 0) {
@@ -947,6 +950,60 @@
         input.classList.remove('scw-bid-review__sow-metric-input--saving');
         if (CFG.debug) console.warn('[BidReview] Survey Costs save failed:', xhr && xhr.status, xhr && xhr.responseText);
         ns.renderToast('Survey Costs save failed', 'error');
+      }
+    });
+  }
+
+  // ── Link an existing project DOC_file to this SOW ──
+  //
+  // The "+ Link" button on the SOW header's "Available from project"
+  // section PUTs the DOC_files record's field_2143 (SOW connection)
+  // with the existing connection ids + this SOW id. After save, the
+  // doc disappears from "Available" and shows up under "linked" on
+  // the next pipeline pass (init.js's refresh-on-edit listener
+  // rebuilds the matrix after view_3926 re-renders).
+  function handleDocLinkToSow(button) {
+    var docId   = button.getAttribute('data-doc-id');
+    var sowId   = button.getAttribute('data-sow-id');
+    var current = (button.getAttribute('data-current-sows') || '')
+                    .split(',').filter(Boolean);
+    if (!docId || !sowId) return;
+    if (current.indexOf(sowId) !== -1) return; // already linked
+
+    var writeView = CFG.docFilesViewKey;
+    if (!writeView || !SCW.knackRecordUrl) {
+      ns.renderToast('Link skipped — doc files view not configured', 'error');
+      return;
+    }
+
+    setBusy(button, true);
+
+    var nextSows = current.concat([sowId]);
+    var payload  = {};
+    payload['field_2143'] = nextSows;
+
+    SCW.knackAjax({
+      url:  SCW.knackRecordUrl(writeView, docId),
+      type: 'PUT',
+      data: JSON.stringify(payload),
+      success: function () {
+        ns.renderToast('Document linked to SOW', 'success');
+        // Refresh view_3926 so the docs index rebuilds on the next
+        // pipeline pass (event-binding in init re-runs renderMatrix
+        // after a knack-view-render).
+        try {
+          var v = Knack && Knack.views && Knack.views[writeView];
+          if (v && v.model && typeof v.model.fetch === 'function') v.model.fetch();
+        } catch (e) { /* ignore */ }
+      },
+      error: function (xhr) {
+        setBusy(button, false);
+        if (CFG.debug) console.warn('[BidReview] Link doc → SOW failed:', xhr && xhr.status, xhr && xhr.responseText);
+        var msg = 'Link failed';
+        if (xhr && xhr.status === 403) {
+          msg = 'Link failed — view_3926 must allow inline-edit on field_2143';
+        }
+        ns.renderToast(msg, 'error');
       }
     });
   }

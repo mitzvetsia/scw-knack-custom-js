@@ -1457,7 +1457,12 @@
   function buildDocsIndex() {
     if (_docsIndexCache) return _docsIndexCache;
 
-    var idx = { bySow: {}, byBid: {} };
+    // bySow / byBid index by individual record id; `all` is the flat
+    // list so callers can compute "in the project but NOT linked to
+    // this SOW" — view_3926 is filtered to project scope on the bid
+    // review scene, so anything not already on this SOW is a candidate
+    // for linking.
+    var idx = { bySow: {}, byBid: {}, all: [] };
     var view = document.getElementById(CFG.docFilesViewKey);
     if (!view) { _docsIndexCache = idx; return idx; }
 
@@ -1465,12 +1470,22 @@
     for (var i = 0; i < rows.length; i++) {
       var tr = rows[i];
 
-      // Connected record ids: the inner span's class is the id.
-      var sowSpan = tr.querySelector('td.field_2143 span[data-kn="connection-value"]');
-      var bidSpan = tr.querySelector('td.field_2421 span[data-kn="connection-value"]');
-      var sowId = sowSpan ? (sowSpan.className || '').trim() : '';
-      var bidId = bidSpan ? (bidSpan.className || '').trim() : '';
-      if (!sowId && !bidId) continue;
+      // Multi-connection: a doc can attach to several SOWs / bids. The
+      // inner span's class is the connected record id; iterate every
+      // span so the same doc gets indexed under each SOW it belongs to
+      // and we can compute the "not on this SOW" set correctly.
+      var sowSpans = tr.querySelectorAll('td.field_2143 span[data-kn="connection-value"]');
+      var bidSpans = tr.querySelectorAll('td.field_2421 span[data-kn="connection-value"]');
+      var sowIds = [];
+      for (var s = 0; s < sowSpans.length; s++) {
+        var sid = (sowSpans[s].className || '').trim();
+        if (/^[a-f0-9]{24}$/i.test(sid)) sowIds.push(sid);
+      }
+      var bidIds = [];
+      for (var b = 0; b < bidSpans.length; b++) {
+        var bid = (bidSpans[b].className || '').trim();
+        if (/^[a-f0-9]{24}$/i.test(bid)) bidIds.push(bid);
+      }
 
       // File link — field_68 carries an <a class="kn-view-asset"> with
       // the asset URL + filename. If there's no anchor (e.g. the
@@ -1485,15 +1500,18 @@
         notes:    readRowFieldText(tr, 'field_588'),
         fileName: (fileA.textContent || '').trim() || 'Document',
         fileUrl:  fileA.getAttribute('href') || '',
+        sowIds:   sowIds,
+        bidIds:   bidIds
       };
 
-      if (sowId) {
-        if (!idx.bySow[sowId]) idx.bySow[sowId] = [];
-        idx.bySow[sowId].push(doc);
+      idx.all.push(doc);
+      for (var sj = 0; sj < sowIds.length; sj++) {
+        if (!idx.bySow[sowIds[sj]]) idx.bySow[sowIds[sj]] = [];
+        idx.bySow[sowIds[sj]].push(doc);
       }
-      if (bidId) {
-        if (!idx.byBid[bidId]) idx.byBid[bidId] = [];
-        idx.byBid[bidId].push(doc);
+      for (var bj = 0; bj < bidIds.length; bj++) {
+        if (!idx.byBid[bidIds[bj]]) idx.byBid[bidIds[bj]] = [];
+        idx.byBid[bidIds[bj]].push(doc);
       }
     }
 
@@ -1501,43 +1519,110 @@
     return idx;
   }
 
-  function buildDocsBlock(docs, label, addUrl) {
-    var hasDocs = !!(docs && docs.length);
-    if (!hasDocs && !addUrl) return null;
+  function buildDocsBlock(docs, label) {
+    if (!docs || !docs.length) return null;
     var wrap = el('div', 'scw-bid-review__docs');
     if (label) wrap.appendChild(el('div', 'scw-bid-review__docs-label', label));
-    if (hasDocs) {
-      for (var i = 0; i < docs.length; i++) {
-        var d = docs[i];
-        var row = el('div', 'scw-bid-review__docs-item');
-        // Doc type chip — only render when present so plain "uncategorised"
-        // uploads don't get an empty pill.
-        if (d.docType) row.appendChild(el('span', 'scw-bid-review__docs-type', d.docType));
-        var a = document.createElement('a');
-        a.href = d.fileUrl;
-        a.target = '_blank';
-        a.rel = 'noopener';
-        a.title = d.fileName;
-        a.className = 'scw-bid-review__docs-link';
-        a.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>';
-        a.appendChild(document.createTextNode(' ' + d.fileName));
-        row.appendChild(a);
-        if (d.notes) {
-          var nEl = el('span', 'scw-bid-review__docs-notes', d.notes);
-          nEl.title = d.notes;
-          row.appendChild(nEl);
-        }
-        wrap.appendChild(row);
+    for (var i = 0; i < docs.length; i++) {
+      wrap.appendChild(buildDocsItem(docs[i]));
+    }
+    return wrap;
+  }
+
+  function buildDocsItem(d) {
+    var row = el('div', 'scw-bid-review__docs-item');
+    if (d.docType) row.appendChild(el('span', 'scw-bid-review__docs-type', d.docType));
+    var a = document.createElement('a');
+    a.href = d.fileUrl;
+    a.target = '_blank';
+    a.rel = 'noopener';
+    a.title = d.fileName;
+    a.className = 'scw-bid-review__docs-link';
+    a.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>';
+    a.appendChild(document.createTextNode(' ' + d.fileName));
+    row.appendChild(a);
+    if (d.notes) {
+      var nEl = el('span', 'scw-bid-review__docs-notes', d.notes);
+      nEl.title = d.notes;
+      row.appendChild(nEl);
+    }
+    return row;
+  }
+
+  // SOW header docs section — three parts:
+  //   1. Linked: docs already attached to this SOW (field_2143)
+  //   2. Available: other project docs (in view_3926 but not on this
+  //      SOW) with a "+ Link" button that PUTs the SOW id onto the
+  //      doc's field_2143 connection
+  //   3. Footer: "+ Upload new document" anchor to Knack's add-document
+  //      child page rooted under #review-bid so the user stays in the
+  //      comparison flow
+  function buildSowDocsBlock(sowId, addUrl, idx) {
+    if (!sowId) return null;
+    var linked = (idx && idx.bySow && idx.bySow[sowId]) || [];
+    var available = [];
+    if (idx && idx.all && idx.all.length) {
+      for (var i = 0; i < idx.all.length; i++) {
+        var d = idx.all[i];
+        if (d.sowIds.indexOf(sowId) === -1) available.push(d);
       }
     }
+    if (!linked.length && !available.length && !addUrl) return null;
+
+    var wrap = el('div', 'scw-bid-review__docs scw-bid-review__docs--sow');
+
+    var header = el('div', 'scw-bid-review__docs-header');
+    header.appendChild(el('span', 'scw-bid-review__docs-label', 'Documents'));
+    var counts = '';
+    if (linked.length)    counts += linked.length + ' linked';
+    if (available.length) counts += (counts ? ' · ' : '') + available.length + ' available';
+    if (counts) header.appendChild(el('span', 'scw-bid-review__docs-count', counts));
+    wrap.appendChild(header);
+
+    if (linked.length) {
+      var linkedList = el('div', 'scw-bid-review__docs-list');
+      for (var l = 0; l < linked.length; l++) linkedList.appendChild(buildDocsItem(linked[l]));
+      wrap.appendChild(linkedList);
+    }
+
+    if (available.length) {
+      var availLabel = el('div', 'scw-bid-review__docs-sublabel', 'Available from project');
+      wrap.appendChild(availLabel);
+      var availList = el('div', 'scw-bid-review__docs-list scw-bid-review__docs-list--available');
+      for (var a = 0; a < available.length; a++) {
+        var ad = available[a];
+        var item = buildDocsItem(ad);
+        item.classList.add('scw-bid-review__docs-item--available');
+
+        var linkBtn = document.createElement('button');
+        linkBtn.type = 'button';
+        linkBtn.className = 'scw-bid-review__docs-link-btn';
+        linkBtn.setAttribute('data-action', 'doc_link_to_sow');
+        linkBtn.setAttribute('data-doc-id', ad.id);
+        linkBtn.setAttribute('data-sow-id', sowId);
+        // Serialize current sow ids so the click handler can PUT
+        // the full connection array (existing + new) without re-
+        // scraping the DOM.
+        linkBtn.setAttribute('data-current-sows', ad.sowIds.join(','));
+        linkBtn.title = 'Link this document to the SOW';
+        linkBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>';
+        linkBtn.appendChild(document.createTextNode(' Link'));
+
+        item.appendChild(linkBtn);
+        availList.appendChild(item);
+      }
+      wrap.appendChild(availList);
+    }
+
     if (addUrl) {
       var addBtn = document.createElement('a');
       addBtn.href = addUrl;
       addBtn.className = 'scw-bid-review__docs-add';
       addBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>';
-      addBtn.appendChild(document.createTextNode(' Add Document'));
+      addBtn.appendChild(document.createTextNode(' Upload new document'));
       wrap.appendChild(addBtn);
     }
+
     return wrap;
   }
 
@@ -1629,17 +1714,17 @@
 
     details.appendChild(metrics);
 
-    // 2b. Attached documents (DOC_files records connected to this SOW
-    //     via field_2143). Filenames link to the Knack-hosted asset.
-    //     The "+ Add Document" button opens Knack's add-document child
-    //     page rooted under the bid review scene so the user stays in
-    //     the comparison flow after submitting.
+    // 2b. Attached + available project documents (DOC_files / view_3926).
+    //     Linked = field_2143 contains this SOW. Available = doc exists
+    //     in the project view but is not yet linked to this SOW (a
+    //     "+ Link" button connects it via Knack's records API).
+    //     "+ Upload new document" opens Knack's add-document child page
+    //     rooted under the bid review scene so the user stays in flow.
     var docsIdx = buildDocsIndex();
-    var sowDocs = docsIdx.bySow[sowId];
     var addDocUrl = sowId
-      ? '#review-bid/' + sowId + '/add-document/' + sowId + '/'
+      ? '#review-bid/' + sowId + '/add-document-review-bid/' + sowId + '/'
       : '';
-    var sowDocsBlock = buildDocsBlock(sowDocs, 'Documents', addDocUrl);
+    var sowDocsBlock = buildSowDocsBlock(sowId, addDocUrl, docsIdx);
     if (sowDocsBlock) details.appendChild(sowDocsBlock);
 
     // 3. Margin-low warning + recovery actions:
