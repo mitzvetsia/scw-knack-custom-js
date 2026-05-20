@@ -1025,12 +1025,24 @@
    on every reload. The selectors are built explicitly here so the
    substitution actually happens. */
 ${WORKSHEET_CONFIG.views.map(function (v) {
+  // The :not() chain enumerates every row class that's either Knack-
+  // native non-data (group headers / totals) OR injected by our own
+  // features. Anything NOT in this list is presumed to be a raw
+  // unprocessed Knack data row, hidden until transformView marks it
+  // with PROCESSED_ATTR.
+  //
+  // If a new injected-row class is added in a sibling feature, list
+  // it here too — otherwise it'll go invisible during the transform
+  // window and look like the feature is broken.
   return '#' + v.viewId + ' tbody > tr' +
     ':not([' + PROCESSED_ATTR + '])' +
     ':not(.' + WORKSHEET_ROW + ')' +
     ':not(.kn-table-group)' +
-    ':not(.scw-inline-photo-row)' +
     ':not(.kn-table-totals)' +
+    ':not(.scw-inline-photo-row)' +
+    ':not(.scw-mdf-summary-row)' +
+    ':not(.scw-synth-divider)' +
+    ':not(.scw-mounting-product-line)' +
     ' { visibility: hidden; height: 0; overflow: hidden; }';
 }).join('\n')}
 

@@ -2046,7 +2046,7 @@ Hardware`,addSlug:"add-accessory-line-item",itemSlug:"edit-accessory-line-item2"
    \u2014 invalid CSS, so the rule was silently dropped and raw rows flashed
    on every reload. The selectors are built explicitly here so the
    substitution actually happens. */
-${i.views.map(function(z){return"#"+z.viewId+" tbody > tr:not(["+X+"]):not(."+f+"):not(.kn-table-group):not(.scw-inline-photo-row):not(.kn-table-totals) { visibility: hidden; height: 0; overflow: hidden; }"}).join(`
+${i.views.map(function(z){return"#"+z.viewId+" tbody > tr:not(["+X+"]):not(."+f+"):not(.kn-table-group):not(.kn-table-totals):not(.scw-inline-photo-row):not(.scw-mdf-summary-row):not(.scw-synth-divider):not(.scw-mounting-product-line) { visibility: hidden; height: 0; overflow: hidden; }"}).join(`
 `)}
 
 /* \u2500\u2500 Hide the original data row (cells moved out, shell stays) \u2500\u2500 */
