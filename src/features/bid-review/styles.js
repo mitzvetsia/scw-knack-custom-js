@@ -219,44 +219,42 @@
       '  padding-top: 6px;',
       '  border-top: 1px dashed #cbd5e1;',
       '}',
-      /* SOW variant — promote to a small panel so it reads as a
-         self-contained module wedged between Margin and the Preview
-         Proposal CTA. Solid border replaces the dashed top rule. */
+      /* SOW variant — FLAT. Matches the label/value grammar of the
+         Survey Costs / Margin rows above and below it. No panel
+         border, no card background, no rounded corners. The
+         "Documents" label uses the same uppercase 10.5px treatment
+         as the metric labels so the eye reads the SOW header as one
+         continuous block rather than "metric, metric, PANEL,
+         metric". Item rows are separated by hairline dividers, same
+         visual rhythm as the metric stack. */
       '.scw-bid-review__docs--sow {',
       '  gap: 0;',
-      '  margin-top: 10px;',
+      '  margin-top: 6px;',
       '  padding: 0;',
-      '  background: #f8fafc;',
-      '  border: 1px solid #e2e8f0;',
-      '  border-radius: 6px;',
-      '  overflow: hidden;',
+      '  background: transparent;',
+      '  border: none;',
+      '  border-radius: 0;',
+      '  overflow: visible;',
+      '}',
+      '.scw-bid-review__docs-header {',
+      '  padding: 0 0 2px;',
+      '  background: transparent;',
+      '  border: none;',
+      '}',
+      '.scw-bid-review__docs-label {',
+      '  text-transform: uppercase;',
+      '  letter-spacing: 0.04em;',
+      '  font: 600 10.5px/1.2 system-ui, sans-serif;',
+      '  color: #64748b;',
       '}',
       '.scw-bid-review__docs--sow .scw-bid-review__docs-list {',
       '  display: flex; flex-direction: column;',
-      '  gap: 2px;',
-      '  padding: 6px 10px;',
+      '  gap: 0;',
+      '  padding: 0;',
       '}',
-      '.scw-bid-review__docs--sow .scw-bid-review__docs-list + .scw-bid-review__docs-sublabel {',
+      '.scw-bid-review__docs--sow .scw-bid-review__docs-item {',
+      '  padding: 4px 0;',
       '  border-top: 1px solid #e2e8f0;',
-      '}',
-      '.scw-bid-review__docs-header {',
-      '  display: flex; align-items: baseline; justify-content: space-between;',
-      '  gap: 8px;',
-      '  padding: 6px 10px 5px;',
-      '  background: #f1f5f9;',
-      '  border-bottom: 1px solid #e2e8f0;',
-      '}',
-      '.scw-bid-review__docs-count {',
-      '  font: 600 10px/1.2 system-ui, sans-serif;',
-      '  color: #94a3b8;',
-      '  letter-spacing: 0.03em;',
-      '}',
-      '.scw-bid-review__docs-label {',
-      '  font-size: 9.5px;',
-      '  font-weight: 700;',
-      '  text-transform: uppercase;',
-      '  letter-spacing: 0.06em;',
-      '  color: #475569;',
       '}',
       '.scw-bid-review__docs-sublabel {',
       '  padding: 6px 10px 2px;',
@@ -273,9 +271,9 @@
       '  display: flex;',
       '  flex-wrap: wrap;',
       '  gap: 4px;',
-      '  padding: 6px 10px 4px;',
-      '  border-bottom: 1px solid #e2e8f0;',
-      '  background: #fff;',
+      '  padding: 3px 0;',
+      '  background: transparent;',
+      '  border: none;',
       '}',
       '.scw-bid-review__docs-chip {',
       '  display: inline-flex;',
@@ -419,17 +417,16 @@
       '.scw-bid-review__docs-unlink-btn.scw-bid-review__btn--busy {',
       '  opacity: 0.5; cursor: progress;',
       '}',
-      /* Combined footer row — toggle on the left, Upload pill on the
-         right. One row instead of two stacked bands keeps the panel
-         visually quiet and lines Upload up with the per-row
-         Link/Unlink pill column. */
+      /* Combined footer row — toggle on left, Upload pill on right.
+         Flat: hairline top divider, no background, same horizontal
+         rhythm as the doc-item rows above. */
       '.scw-bid-review__docs-other-header {',
       '  display: flex;',
       '  align-items: center;',
       '  justify-content: space-between;',
       '  gap: 8px;',
-      '  padding: 6px 10px;',
-      '  background: #fff;',
+      '  padding: 4px 0;',
+      '  background: transparent;',
       '  border-top: 1px solid #e2e8f0;',
       '}',
       '.scw-bid-review__docs-other-empty {',
@@ -492,12 +489,14 @@
       '.scw-bid-review__docs-other[data-collapsed="1"] .scw-bid-review__docs-list {',
       '  display: none;',
       '}',
-      /* When the list expands, it shows below the shared footer row
-         with a soft top divider so it reads as belonging to the
-         toggle that opened it. */
+      /* Expanded list — indented under the toggle so the parent-child
+         relationship is visual, not just structural. No background
+         tint; matches the rest of the flat SOW header. */
       '.scw-bid-review__docs-other .scw-bid-review__docs-list--available {',
-      '  border-top: 1px solid #e2e8f0;',
-      '  background: #fafbfc;',
+      '  padding-left: 14px;',
+      '}',
+      '.scw-bid-review__docs--sow .scw-bid-review__docs-list--available .scw-bid-review__docs-item {',
+      '  border-top: 1px dashed #e2e8f0;',
       '}',
 
       /* "Add PM & Mobilization" button (lives inside the margin-low
