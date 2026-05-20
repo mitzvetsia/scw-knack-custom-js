@@ -1,22 +1,19 @@
 /*** WORKSHEET V2 — RENDER ****************************************************
  *
- * Phase 0 render: dead-simple table dump of (label, product name,
- * qty, fee) per record. Just enough to prove the data pipeline works
- * — proves that v2 can read records from the source view's model AND
- * re-render on knack-view-render + knack-cell-update without touching
- * v1's DOM.
+ * Phase 1+2 render: build one card per record using card.js's
+ * buildCard, swap into the v2 panel body. Editable inputs are stamped
+ * with the data-* attrs that edit.js's delegated handler consumes.
  *
- * Subsequent phases will replace this with the real worksheet card
- * structure (summary bar + expandable detail), then add inline
- * editing, sort, groups, etc.
+ * Mutating strategy is "blow away the body, rebuild from scratch on
+ * every notify". Simple and correct for the current row counts.
+ * Phase 3+ may switch to keyed updates if rebuild cost becomes
+ * visible at scale, but for ~100 row grids the cost is trivial.
  *
- * Field keys used here are the ones we already lean on heavily in v1:
- *   field_2365 — display label  (E-003, C-12, etc.)
- *   field_2379 — product name (stored)
- *   field_2627 — product (connection — display fallback)
- *   field_2399 — quantity
- *   field_2400 — labor rate
- *   field_2401 — labor extended ($)
+ * If the user is mid-edit on an input when a re-render fires, the
+ * rebuild would lose their typing. Guard: skip the rebuild while
+ * focus is on a .scw-ws-v2-input inside our panel; reschedule when
+ * focus leaves. The skip is harmless because the next notify (from
+ * the user's own commit) will re-render with the same data.
  ****************************************************************************/
 (function () {
   'use strict';
@@ -30,33 +27,28 @@
     });
   }
 
-  /** Return the "best display value" for a field on a record. */
-  function readField(rec, key) {
-    var raw = rec[key + '_raw'];
-    if (Array.isArray(raw) && raw.length) {
-      // Connection field — concat identifiers.
-      return raw.map(function (r) { return r && (r.identifier || r.id) || ''; }).join(', ');
-    }
-    if (raw && typeof raw === 'object' && raw.identifier) return raw.identifier;
-    var v = rec[key];
-    if (v == null) return '';
-    // Strip HTML for safe display.
-    return String(v).replace(/<[^>]*>/g, '').trim();
+  // Track per-view "pending re-render due to focused input" so we can
+  // resume the moment focus leaves. Key: sourceViewKey, value: latest
+  // records snapshot that was skipped.
+  var pending = Object.create(null);
+
+  function hasFocusInPanel(container) {
+    var a = document.activeElement;
+    if (!a || !container) return false;
+    if (!a.hasAttribute || !a.hasAttribute('data-scw-ws-v2-field')) return false;
+    return container.contains(a);
   }
 
   /**
    * Render or re-render the v2 panel for one source view. Idempotent
    * — replaces the body content each call; the container + banner
    * scaffold is built once and reused.
-   *
-   * @param {string} sourceViewKey
-   * @param {Array<Object>} records  — Backbone attributes hashes
    */
   function renderView(sourceViewKey, records) {
     var container = document.getElementById('scw-ws-v2-' + sourceViewKey);
     if (!container) return;
 
-    var body = container.querySelector('.scw-ws-v2-body');
+    var body  = container.querySelector('.scw-ws-v2-body');
     var count = container.querySelector('.scw-ws-v2-count');
     if (!body) return;
 
@@ -64,38 +56,53 @@
       count.textContent = records.length + ' record' + (records.length === 1 ? '' : 's');
     }
 
+    // If the user is actively editing one of our inputs, defer the
+    // rebuild — otherwise their typing would get blown away. The
+    // focusout listener at the bottom of this file resumes the
+    // deferred render the moment focus leaves.
+    if (hasFocusInPanel(container)) {
+      pending[sourceViewKey] = records;
+      return;
+    }
+    delete pending[sourceViewKey];
+
     if (!records.length) {
       body.innerHTML = '<div class="scw-ws-v2-empty">No records loaded from ' +
         escapeHtml(sourceViewKey) + ' yet.</div>';
       return;
     }
 
-    var rows = records.map(function (rec) {
-      var label   = readField(rec, 'field_2365') || readField(rec, 'field_2364') || rec.id.slice(0, 6);
-      var product = readField(rec, 'field_2379') || readField(rec, 'field_2627') || '(unnamed)';
-      var qty     = readField(rec, 'field_2399');
-      var rate    = readField(rec, 'field_2400');
-      var ext     = readField(rec, 'field_2401');
-      return '<tr>' +
-        '<td class="scw-ws-v2-label">' + escapeHtml(label) + '</td>' +
-        '<td>' + escapeHtml(product) + '</td>' +
-        '<td class="scw-ws-v2-num">' + escapeHtml(qty) + '</td>' +
-        '<td class="scw-ws-v2-num">' + escapeHtml(rate) + '</td>' +
-        '<td class="scw-ws-v2-num">' + escapeHtml(ext) + '</td>' +
-        '</tr>';
-    }).join('');
+    if (!ns.card || typeof ns.card.buildCard !== 'function') {
+      body.innerHTML = '<div class="scw-ws-v2-empty">card.js not loaded.</div>';
+      return;
+    }
 
-    body.innerHTML =
-      '<table class="scw-ws-v2-table">' +
-        '<thead><tr>' +
-          '<th>Label</th><th>Product</th>' +
-          '<th class="scw-ws-v2-num">Qty</th>' +
-          '<th class="scw-ws-v2-num">Rate</th>' +
-          '<th class="scw-ws-v2-num">Ext</th>' +
-        '</tr></thead>' +
-        '<tbody>' + rows + '</tbody>' +
-      '</table>';
+    // Build into a DocumentFragment so the tbody / body only takes
+    // one reflow at insert time.
+    var frag = document.createDocumentFragment();
+    for (var i = 0; i < records.length; i++) {
+      frag.appendChild(ns.card.buildCard(records[i], sourceViewKey));
+    }
+
+    body.innerHTML = '';
+    body.appendChild(frag);
   }
+
+  // Resume deferred renders when focus leaves the panel.
+  document.addEventListener('focusout', function () {
+    // Defer one tick so document.activeElement settles to the new
+    // target (which may still be inside the panel for tab-between-
+    // inputs movement).
+    setTimeout(function () {
+      Object.keys(pending).forEach(function (key) {
+        var container = document.getElementById('scw-ws-v2-' + key);
+        if (!container || hasFocusInPanel(container)) return;
+        var records = pending[key];
+        delete pending[key];
+        renderView(key, records);
+      });
+    }, 0);
+  }, true);
 
   ns.render = {
     renderView: renderView

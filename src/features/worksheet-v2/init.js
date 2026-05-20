@@ -86,6 +86,9 @@
   }
 
   wireSubscribers();
+  // Inline edit handler — single delegated listener for every editable
+  // input across every v2 card. Idempotent; safe to call repeatedly.
+  if (ns.edit && typeof ns.edit.wire === 'function') ns.edit.wire();
 
   // Mount on every scene render — cheap (idempotent guard) and
   // catches SPA navigations into scenes that host the source view.

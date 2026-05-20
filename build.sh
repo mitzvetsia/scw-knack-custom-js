@@ -148,6 +148,8 @@ cat \
   src/features/worksheet-v2/config.js \
   src/features/worksheet-v2/styles.js \
   src/features/worksheet-v2/data.js \
+  src/features/worksheet-v2/card.js \
+  src/features/worksheet-v2/edit.js \
   src/features/worksheet-v2/render.js \
   src/features/worksheet-v2/init.js \
   > "$TMP_BUNDLE"
