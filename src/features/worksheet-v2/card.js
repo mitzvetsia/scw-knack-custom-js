@@ -365,107 +365,85 @@
   }
 
   /**
-   * Mounting Hardware (field_1958) — connectedRecords pattern, NOT a
-   * picker modal. Mirrors v1's connected-records.js widget on view_3610:
-   * each currently-connected accessory renders as an inline chip with
-   * an "edit accessory" link; a "+ Add" link at the end opens Knack's
-   * add-accessory-line-item form. All navigation, no inline edit
-   * modal — same UX as v1.
+   * Mounting Hardware (field_1958) — connectedRecords pattern.
+   * Single source of truth: view_3610's rendered DOM. Mirrors v1's
+   * connected-records.js readConnectionLinks exactly:
    *
-   * Label resolution: field_1958_raw gives {id, identifier} per
-   * accessory, but Knack's "identifier" on SOW line items is often
-   * blank or just a record id (depends on how the line-items object's
-   * display field is configured in Builder). Look up the full record
-   * via data.readRecords(viewKey) and use its product name
-   * (field_1949) — which is what the user actually wants to see on
-   * the chip — falling back to label (field_1950), Knack's
-   * identifier, then the record id.
+   *   1. Find the parent row in view_3610 (still on the page during
+   *      the parallel v1/v2 build — see config.js mountAfterSelector).
+   *   2. view_3610 renders <td class="field_1958"> twice on each row
+   *      (inline-edit ghost column + display column). Iterate all
+   *      matching tds and pick the FIRST whose
+   *      <span data-kn="connection-value"> children have non-empty
+   *      text. That's the same "1st-or-2nd, whichever has data"
+   *      pattern as v1's readConnectionLinks (line 337).
+   *   3. Each span: textContent → chip label, span.id → 24-hex
+   *      connected record id (used to build the edit-accessory URL).
+   *
+   * Fallback only when view_3610 isn't on the page (Phase 5 cleanup):
+   * read rec.field_1958_raw[*].identifier.
    */
   function detailMountingHardware(rec, viewKey) {
-    var raw = rec['field_1958_raw'];
-    var accessories = Array.isArray(raw) ? raw : [];
+    var parentId = rec.id;
     var base = buildSowBasePath();
-    var addHref = base ? base + '/add-accessory-line-item/' + rec.id + '/' : '#';
+    var addHref = base ? base + '/add-accessory-line-item/' + parentId + '/' : '#';
 
-    // Build an id→record lookup once so each chip can resolve its
-    // product name without re-scanning the full records list.
-    var byId = Object.create(null);
-    if (viewKey && window.SCW && SCW.worksheetV2 && SCW.worksheetV2.data
-        && typeof SCW.worksheetV2.data.readRecords === 'function') {
-      var all = SCW.worksheetV2.data.readRecords(viewKey) || [];
-      for (var k = 0; k < all.length; k++) {
-        if (all[k] && all[k].id) byId[all[k].id] = all[k];
-      }
-    }
-
-    function chipLabel(a) {
-      // 1. Knack's connection identifier — this is what view_3610
-      //    renders in <span data-kn="connection-value"> on screen.
-      //    Strip any HTML Knack might have wrapped around it.
-      if (a.identifier) {
-        var idText = String(a.identifier).replace(/<[^>]*>/g, '').trim();
-        if (idText) return idText;
-      }
-      // 2. Full record lookup in v2's source view records.
-      var full = byId[a.id];
-      if (full) {
-        // 2a. Connected product name via _raw[0].identifier — most
-        //     reliable for the line-item → product link.
-        var prodRaw = full['field_1949_raw'];
-        if (Array.isArray(prodRaw) && prodRaw[0] && prodRaw[0].identifier) {
-          var pr = String(prodRaw[0].identifier).replace(/<[^>]*>/g, '').trim();
-          if (pr) return pr;
-        } else if (prodRaw && prodRaw.identifier) {
-          var prs = String(prodRaw.identifier).replace(/<[^>]*>/g, '').trim();
-          if (prs) return prs;
-        }
-        // 2b. Rendered fields (HTML-stripped).
-        var prod = (full.field_1949 || '').toString().replace(/<[^>]*>/g, '').trim();
-        if (prod) return prod;
-        var lbl  = (full.field_1950 || '').toString().replace(/<[^>]*>/g, '').trim();
-        if (lbl)  return lbl;
-      }
-      // 3. DOM fallback — view_3610 is on the same page during the
-      //    parallel v1/v2 build. v1's readConnectionLinks handles the
-      //    "Knack renders the field cell twice, pick the first non-
-      //    empty one" quirk on view_3610. Replicate that: find the
-      //    accessory's row by id and read its product name (or any
-      //    visible identifier text) from the rendered DOM.
-      try {
-        var v3610 = document.getElementById('view_3610');
-        if (v3610) {
-          var tr = v3610.querySelector('tr[id="' + a.id + '"]');
-          if (tr) {
-            // Try product first (field_1949), then label (field_1950),
-            // iterating ALL matching tds so duplicate columns don't
-            // trap us on the empty one (same logic as v1 line 337).
-            var fieldKeys = ['field_1949', 'field_1950'];
-            for (var fk = 0; fk < fieldKeys.length; fk++) {
-              var tds = tr.querySelectorAll('td.' + fieldKeys[fk]);
-              for (var td = 0; td < tds.length; td++) {
-                var txt = (tds[td].textContent || '').replace(/\s+/g, ' ').trim();
-                if (txt && txt !== ' ') return txt;
-              }
+    // ── DOM source of truth (matches v1's connected-records.js) ──
+    // view_3610 renders <td class="field_1958"> TWICE on each row
+    // (inline-edit ghost column + display column). v1's
+    // readConnectionLinks iterates the matching tds and returns the
+    // first one whose spans have non-empty text. Replicate that here:
+    // each <span data-kn="connection-value"> in the winning td is one
+    // accessory — span.textContent is the chip label, span.id is the
+    // 24-hex connected record id.
+    var chips = [];
+    try {
+      var v3610 = document.getElementById('view_3610');
+      var tr = v3610 && v3610.querySelector('tr[id="' + parentId + '"]');
+      if (tr) {
+        var tds = tr.querySelectorAll('td.field_1958');
+        for (var t = 0; t < tds.length; t++) {
+          var spans = tds[t].querySelectorAll('span[data-kn="connection-value"]');
+          for (var s = 0; s < spans.length; s++) {
+            var spText = (spans[s].textContent || '').replace(/\s+/g, ' ').trim();
+            var spId = (spans[s].id && /^[a-f0-9]{24}$/.test(spans[s].id))
+              ? spans[s].id : '';
+            if (spText && spText !== ' ') {
+              chips.push({ id: spId, label: spText });
             }
           }
+          if (chips.length) break; // first non-empty td wins
         }
-      } catch (e) { /* DOM may not be present yet — fall through */ }
+      }
+    } catch (e) { /* fall through to raw fallback */ }
 
-      return a.id || '';
+    // Fallback for when view_3610 isn't on the page (Phase 5 retires
+    // v1). Pull identifiers from the model's field_1958_raw.
+    if (chips.length === 0) {
+      var raw = rec['field_1958_raw'];
+      if (Array.isArray(raw)) {
+        for (var ri = 0; ri < raw.length; ri++) {
+          var a = raw[ri];
+          if (!a) continue;
+          var lbl = a.identifier
+            ? String(a.identifier).replace(/<[^>]*>/g, '').trim()
+            : '';
+          chips.push({ id: a.id || '', label: lbl || a.id || '' });
+        }
+      }
     }
 
     var chipsHtml = '';
-    if (accessories.length === 0) {
-      chipsHtml = '<span class="scw-ws-v2-mh-empty">—</span>';
+    if (chips.length === 0) {
+      chipsHtml = '<span class="scw-ws-v2-mh-empty">&mdash;</span>';
     } else {
-      for (var i = 0; i < accessories.length; i++) {
-        var a = accessories[i];
-        if (!a) continue;
-        var editHref = base ? base + '/edit-accessory-line-item2/' + a.id + '/' : '#';
-        var label = chipLabel(a);
+      for (var c = 0; c < chips.length; c++) {
+        var editHref = base && chips[c].id
+          ? base + '/edit-accessory-line-item2/' + chips[c].id + '/'
+          : '#';
         chipsHtml += '<a class="scw-ws-v2-mh-chip" href="' + escapeHtml(editHref) + '"' +
-          ' title="Edit ' + escapeHtml(label) + '">' +
-          escapeHtml(label) +
+          ' title="Edit ' + escapeHtml(chips[c].label) + '">' +
+          escapeHtml(chips[c].label) +
         '</a>';
       }
     }
