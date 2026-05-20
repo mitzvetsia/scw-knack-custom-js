@@ -1370,11 +1370,11 @@
     // object-fit so the image always fits one page regardless of
     // source aspect ratio.
     // Portrait Letter useful area ~8.1in × 10.4in (minus margins +
-    // page footer). Constrain image to 9in tall so the section
-    // (label + image) clears the page floor with margin to spare —
-    // any closer and renderer rounding causes overflow → blank page.
+    // page footer). Subtract ~0.4in for the label + spacing on top.
+    // 8.5in keeps total section height ≈ 9in — comfortably under the
+    // 10in usable page area so the renderer never has to split.
     var imgStyle = 'display:block; margin:0 auto; ' +
-                   'max-width:100%; max-height:9in; ' +
+                   'max-width:100%; max-height:8.5in; ' +
                    'width:auto; height:auto; object-fit:contain;';
     for (var i = 0; i < section.images.length; i++) {
       var img = section.images[i];
@@ -1818,24 +1818,23 @@
       '/* Forced landscape so a typical wide floor-plan screenshot fills */',
       '/* the page after auto-crop strips the whitespace borders. */',
       // Cover pages render on the SAME portrait page as the rest of
-      // the worksheet. Previous attempts to use a separate
-      // @page landscape-map caused renderer-specific blank pages
-      // before each map (most Chrome-based PDF renderers insert a
-      // blank when transitioning between named pages, even when the
-      // name doesn't actually change page-to-page). Staying portrait
-      // throughout eliminates orientation transitions entirely.
+      // the worksheet (no @page landscape-map transition — that's
+      // what Chrome-based PDF renderers insert blank pages around).
       //
-      // Cap section height at 9.5in (portrait useful area minus
-      // margins + label) so each map gets exactly one page — the
-      // page-break-after lands on a clean boundary and the renderer
-      // has no reason to insert anything extra.
+      // Previous attempt added max-height + overflow:hidden to
+      // hard-cap each section to one page. That backfired: the
+      // fixed-height container caused renderers to split the
+      // section's children across pages (label on page N,
+      // image on page N+1). Now we let the section size naturally
+      // and rely on the image's max-height to keep total content
+      // under the page floor. page-break-after starts the next
+      // section on a fresh page.
       '.cover-page {',
       '  page-break-after: always; break-after: page;',
+      '  page-break-inside: avoid; break-inside: avoid;',
       '  text-align: center;',
       '  box-sizing: border-box;',
       '  width: 100%;',
-      '  max-height: 9.5in;',
-      '  overflow: hidden;',
       '}',
       '.cover-page:last-of-type {',
       '  page-break-after: auto;',
