@@ -81,7 +81,6 @@ cat \
   src/features/filter-products-by-bucket.js \
   src/features/filter-mdf-idf-by-view.js \
   src/features/force-negative-display.js \
-  src/features/refresh-on-inline-edit.js \
   src/features/refresh-view-on-form-submit.js \
   src/features/bucket-field-visibility_add-product.js \
   src/features/bucket-field-visibility_add-survey-bid-item.js \
