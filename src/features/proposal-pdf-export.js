@@ -13,7 +13,7 @@
   // Subcontractor-bid form-submit scenario. Used by scene_1149 only —
   // different business flow than a proposal publish, separate Make
   // scenario, different downstream Knack writes.
-  var SUBCONTRACTOR_BID_WEBHOOK = 'https://hook.us1.make.com/ozk2uk1e58upnpsj0fx1bmdg387ekvf5';
+  var SUBCONTRACTOR_BID_WEBHOOK = 'https://hook.us1.make.com/u7x7hxladwuk6sgk4gzcqvwqgm3vpeza';
 
   // Mint a public-access token + URL via the shared sales-side helper.
   // Used by every publish path (buildPublishPayload AND the inline
