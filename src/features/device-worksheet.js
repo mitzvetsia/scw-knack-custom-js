@@ -3594,23 +3594,18 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     }, 4000);
   }
 
-  /** Show success feedback on input. */
+  /** Post-save housekeeping. No re-flash — the input already flashed
+   *  briefly on Enter; re-painting it green when the PUT eventually
+   *  returns just re-introduces the "stuck saving" feel. Silently
+   *  refresh the conditional color in case the new value crossed a
+   *  warning/danger threshold and clear any lingering error UI. */
   function showInputSuccess(input) {
     input.classList.remove('is-error');
-    input.classList.add('is-saving');
-    // Remove any lingering error
+    input.classList.remove('is-saving');
     var wrapper = input.parentNode;
     var errEl = wrapper ? wrapper.querySelector('.' + P + '-direct-error') : null;
     if (errEl) errEl.remove();
-
-    setTimeout(function () {
-      input.classList.remove('is-saving');
-      // Re-evaluate conditional formatting after save completes.
-      // The hidden td has already been updated with the new value;
-      // recalculate whether the field still meets a danger/warning
-      // condition and update the input background accordingly.
-      refreshInputConditionalColor(input);
-    }, 600);
+    refreshInputConditionalColor(input);
   }
 
   // ============================================================
@@ -4335,9 +4330,22 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     var hiddenSpan = wrapper ? wrapper.querySelector('span[style*="display"]') : null;
     if (hiddenSpan) hiddenSpan.textContent = newValue;
 
-    // Visual feedback — start saving
+    // Brief acknowledgment flash — added on Enter, REMOVED after a
+    // fixed 200ms regardless of whether the PUT has returned yet.
+    // Without the timed removal, .is-saving stays painted green for
+    // the full PUT round-trip (200-1000ms+ on Knack's server), making
+    // every edit feel "stuck waiting." The optimistic update of
+    // hiddenTd / hiddenSpan above already shows the new value; the
+    // flash is just feedback that we received the keystroke. On
+    // error, showInputError will repaint the input red.
     input.classList.remove('is-error');
     input.classList.add('is-saving');
+    setTimeout(function () {
+      // Only clear if still saving — error path may have replaced it.
+      if (input.classList.contains('is-saving')) {
+        input.classList.remove('is-saving');
+      }
+    }, 200);
     var errEl = wrapper ? wrapper.querySelector('.' + P + '-direct-error') : null;
     if (errEl) errEl.remove();
 
