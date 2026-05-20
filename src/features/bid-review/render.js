@@ -1501,31 +1501,42 @@
     return idx;
   }
 
-  function buildDocsBlock(docs, label) {
-    if (!docs || !docs.length) return null;
+  function buildDocsBlock(docs, label, addUrl) {
+    var hasDocs = !!(docs && docs.length);
+    if (!hasDocs && !addUrl) return null;
     var wrap = el('div', 'scw-bid-review__docs');
     if (label) wrap.appendChild(el('div', 'scw-bid-review__docs-label', label));
-    for (var i = 0; i < docs.length; i++) {
-      var d = docs[i];
-      var row = el('div', 'scw-bid-review__docs-item');
-      // Doc type chip — only render when present so plain "uncategorised"
-      // uploads don't get an empty pill.
-      if (d.docType) row.appendChild(el('span', 'scw-bid-review__docs-type', d.docType));
-      var a = document.createElement('a');
-      a.href = d.fileUrl;
-      a.target = '_blank';
-      a.rel = 'noopener';
-      a.title = d.fileName;
-      a.className = 'scw-bid-review__docs-link';
-      a.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>';
-      a.appendChild(document.createTextNode(' ' + d.fileName));
-      row.appendChild(a);
-      if (d.notes) {
-        var nEl = el('span', 'scw-bid-review__docs-notes', d.notes);
-        nEl.title = d.notes;
-        row.appendChild(nEl);
+    if (hasDocs) {
+      for (var i = 0; i < docs.length; i++) {
+        var d = docs[i];
+        var row = el('div', 'scw-bid-review__docs-item');
+        // Doc type chip — only render when present so plain "uncategorised"
+        // uploads don't get an empty pill.
+        if (d.docType) row.appendChild(el('span', 'scw-bid-review__docs-type', d.docType));
+        var a = document.createElement('a');
+        a.href = d.fileUrl;
+        a.target = '_blank';
+        a.rel = 'noopener';
+        a.title = d.fileName;
+        a.className = 'scw-bid-review__docs-link';
+        a.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>';
+        a.appendChild(document.createTextNode(' ' + d.fileName));
+        row.appendChild(a);
+        if (d.notes) {
+          var nEl = el('span', 'scw-bid-review__docs-notes', d.notes);
+          nEl.title = d.notes;
+          row.appendChild(nEl);
+        }
+        wrap.appendChild(row);
       }
-      wrap.appendChild(row);
+    }
+    if (addUrl) {
+      var addBtn = document.createElement('a');
+      addBtn.href = addUrl;
+      addBtn.className = 'scw-bid-review__docs-add';
+      addBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>';
+      addBtn.appendChild(document.createTextNode(' Add Document'));
+      wrap.appendChild(addBtn);
     }
     return wrap;
   }
@@ -1620,9 +1631,15 @@
 
     // 2b. Attached documents (DOC_files records connected to this SOW
     //     via field_2143). Filenames link to the Knack-hosted asset.
+    //     The "+ Add Document" button opens Knack's add-document child
+    //     page rooted under the bid review scene so the user stays in
+    //     the comparison flow after submitting.
     var docsIdx = buildDocsIndex();
     var sowDocs = docsIdx.bySow[sowId];
-    var sowDocsBlock = buildDocsBlock(sowDocs, 'Documents');
+    var addDocUrl = sowId
+      ? '#review-bid/' + sowId + '/add-document/' + sowId + '/'
+      : '';
+    var sowDocsBlock = buildDocsBlock(sowDocs, 'Documents', addDocUrl);
     if (sowDocsBlock) details.appendChild(sowDocsBlock);
 
     // 3. Margin-low warning + recovery actions:

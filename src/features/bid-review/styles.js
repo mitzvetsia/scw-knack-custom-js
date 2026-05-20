@@ -270,6 +270,30 @@
       '  overflow: hidden;',
       '  text-overflow: ellipsis;',
       '}',
+      /* "Add Document" link — small outlined button beneath the docs
+         list. Reads as a tappable affordance without competing with the
+         file links above. Aligns left under the label. */
+      '.scw-bid-review__docs-add, .scw-bid-review__docs-add:visited {',
+      '  align-self: flex-start;',
+      '  display: inline-flex;',
+      '  align-items: center;',
+      '  gap: 4px;',
+      '  margin-top: 4px;',
+      '  padding: 3px 8px;',
+      '  background: #fff;',
+      '  border: 1px dashed #94a3b8;',
+      '  border-radius: 4px;',
+      '  color: #295f91;',
+      '  text-decoration: none;',
+      '  font: 600 10.5px/1.2 system-ui, sans-serif;',
+      '  letter-spacing: 0.02em;',
+      '}',
+      '.scw-bid-review__docs-add:hover {',
+      '  background: #f1f5f9;',
+      '  border-color: #64748b;',
+      '  border-style: solid;',
+      '  text-decoration: none;',
+      '}',
 
       /* "Add PM & Mobilization" button (lives inside the margin-low
          warning) — stretched to full width of the warning box. The

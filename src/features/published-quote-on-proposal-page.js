@@ -29,14 +29,14 @@
       // link is the only navigation users need.
       //
       // Customer Link uses the tokenized public URL (field_2908) when
-      // the proposal is live. We deliberately DON'T supply an
-      // expiredFallbackUrl: staff viewing this widget are already on
-      // the published-proposal details page, so a "View Published
-      // Details" button would just link to the page they're on. The
-      // expired-warning blurb still renders.
+      // the proposal is live. When expired, fall back to the internal
+      // details page so there's always an actionable button — matching
+      // the totals panel on view_3418.
       customerLink: {
-        url:   (proposal && proposal.tokenUrl) || '',
-        label: 'Open Customer Link'
+        url:                  (proposal && proposal.tokenUrl)  || '',
+        label:                'Open Customer Link',
+        expiredFallbackUrl:   (proposal && proposal.viewLink)  || '',
+        expiredFallbackLabel: 'View Published Details'
       }
     });
   }
