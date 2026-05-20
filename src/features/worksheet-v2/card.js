@@ -371,12 +371,43 @@
    * an "edit accessory" link; a "+ Add" link at the end opens Knack's
    * add-accessory-line-item form. All navigation, no inline edit
    * modal — same UX as v1.
+   *
+   * Label resolution: field_1958_raw gives {id, identifier} per
+   * accessory, but Knack's "identifier" on SOW line items is often
+   * blank or just a record id (depends on how the line-items object's
+   * display field is configured in Builder). Look up the full record
+   * via data.readRecords(viewKey) and use its product name
+   * (field_1949) — which is what the user actually wants to see on
+   * the chip — falling back to label (field_1950), Knack's
+   * identifier, then the record id.
    */
-  function detailMountingHardware(rec) {
+  function detailMountingHardware(rec, viewKey) {
     var raw = rec['field_1958_raw'];
     var accessories = Array.isArray(raw) ? raw : [];
     var base = buildSowBasePath();
     var addHref = base ? base + '/add-accessory-line-item/' + rec.id + '/' : '#';
+
+    // Build an id→record lookup once so each chip can resolve its
+    // product name without re-scanning the full records list.
+    var byId = Object.create(null);
+    if (viewKey && window.SCW && SCW.worksheetV2 && SCW.worksheetV2.data
+        && typeof SCW.worksheetV2.data.readRecords === 'function') {
+      var all = SCW.worksheetV2.data.readRecords(viewKey) || [];
+      for (var k = 0; k < all.length; k++) {
+        if (all[k] && all[k].id) byId[all[k].id] = all[k];
+      }
+    }
+
+    function chipLabel(a) {
+      var full = byId[a.id];
+      if (full) {
+        var prod = (full.field_1949 || '').toString().replace(/<[^>]*>/g, '').trim();
+        if (prod) return prod;
+        var lbl = (full.field_1950 || '').toString().replace(/<[^>]*>/g, '').trim();
+        if (lbl) return lbl;
+      }
+      return a.identifier || a.id || '';
+    }
 
     var chipsHtml = '';
     if (accessories.length === 0) {
@@ -386,7 +417,7 @@
         var a = accessories[i];
         if (!a) continue;
         var editHref = base ? base + '/edit-accessory-line-item2/' + a.id + '/' : '#';
-        var label = a.identifier || a.id || '';
+        var label = chipLabel(a);
         chipsHtml += '<a class="scw-ws-v2-mh-chip" href="' + escapeHtml(editHref) + '"' +
           ' title="Edit ' + escapeHtml(label) + '">' +
           escapeHtml(label) +
@@ -411,7 +442,7 @@
         // Mounting Hardware (field_1958) renders as a connected-records
         // widget with chip-style edit links + an "+ Add" navigation —
         // matches v1's UX on view_3610 (no inline modal, just navigation).
-        detailMountingHardware(rec) +
+        detailMountingHardware(rec, viewKey) +
         // Connected Device (field_2197) — single-select picker on
         // cam/reader rows. Candidates filtered to Map-Connections-Yes
         // rows; see init.js click handler.
@@ -428,7 +459,7 @@
     return '<div class="scw-ws-v2-detail">' +
       '<div class="scw-ws-v2-detail-grid">' +
         // Mounting Hardware — same connected-records widget as cam/reader.
-        detailMountingHardware(rec) +
+        detailMountingHardware(rec, viewKey) +
         // Connected Devices (field_1957) — multi-select picker for NVR
         // rows attaching cam/readers (existing wiring in init.js).
         detailConnection(rec,       viewKey, 'field_1957', 'Connected Devices') +
