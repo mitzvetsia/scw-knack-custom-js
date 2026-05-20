@@ -1153,6 +1153,19 @@
     // first worksheet row, but it's now redundant with the page-1
     // info cover's <h1>. The info cover is the title page.
 
+    // Pre-fill legend — explains to the tech that the gray check
+    // marks in each card's flags row aren't confirmed answers, just
+    // SCW's best guess from existing record data. One-line at the
+    // top of the worksheet section so it sits in the tech's eye on
+    // first turn-of-page; not repeated per-card.
+    html.push(
+      '<div class="ws-prefill-legend">' +
+        '<span class="ws-box ws-box--prefill">☒</span> ' +
+        '<strong>Gray marks reflect file data — our best guess.</strong> ' +
+        'If correct, ink over to confirm. If wrong, strike it out and mark the other box.' +
+      '</div>'
+    );
+
     for (var i = 0; i < payload.rows.length; i++) {
       var row = payload.rows[i];
       if (row.type === 'group') {
@@ -2027,7 +2040,37 @@
       '  display: inline-block; font-size: 11px; line-height: 1;',
       '  margin-right: 1px; color: #111827;',
       '}',
-      '.ws-box.is-on { color: #07467c; font-weight: 700; }',
+      /* is-on now means "SCW pre-fill / best guess" — rendered as a',
+         soft GRAY ☒ so the tech reads it as a draft, not a confirmed',
+         answer. Designed to be inked-over with a pen: tech draws over',
+         the gray to confirm, or strikes it out and marks the other',
+         box to override. Avoid #07467c here (the strong blue was',
+         indistinguishable from a "tech confirmed" mark). */',
+      '.ws-box.is-on {',
+      '  color: #9ca3af;',
+      '  font-weight: 400;',
+      '}',
+      /* Legend at top of the worksheet section. One short line; the
+         gray box matches what techs will see in each card's flags
+         row. Slate-gray text so it doesn't compete with section
+         headers; page-break-after: avoid so it stays glued to the
+         first card. */
+      '.ws-prefill-legend {',
+      '  margin: 6px 0 8px;',
+      '  padding: 5px 8px;',
+      '  background: #f9fafb;',
+      '  border: 1px solid #e5e7eb;',
+      '  border-radius: 3px;',
+      '  font-size: 9px; line-height: 1.35;',
+      '  color: #374151;',
+      '  page-break-after: avoid; break-after: avoid;',
+      '}',
+      '.ws-prefill-legend strong { color: #111827; font-weight: 700; }',
+      '.ws-box--prefill {',
+      '  color: #9ca3af;',
+      '  font-size: 11px;',
+      '  margin-right: 2px;',
+      '}',
       '',
       '/* ── Right column: Labor + SCW Notes + open Notes ─────────── */',
       '/* Labor Description is the lead cell of col 2 — rendered as  */',
