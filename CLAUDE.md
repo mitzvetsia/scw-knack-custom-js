@@ -243,6 +243,86 @@ The `preserve-scroll-on-refresh.js` module acts as a post-edit coordinator:
 - Orchestrates restoration order: group-collapse → KTL accordions → scroll
 - Features expose APIs on `window.SCW` for the coordinator to call
 
+### Out-of-bundle Knack Builder snippets
+
+A handful of features depend on globals populated by inline JS code
+pasted into Knack Builder's app-level "JavaScript" settings — NOT
+shipped in `dist/knack-bundle.js`. They run before the bundle and
+expose data via `window.SCW.<thing>` for in-bundle features to read.
+
+If a feature relies on `window.SCW.<foo>` but no in-bundle setter
+exists, it's almost certainly a Builder snippet. Lose the snippet,
+you lose the global, you lose the feature — but a `grep` won't tell
+you any of that.
+
+#### `window.SCW.productBucketMap` (used by filter-products-by-bucket.js, bulk-add-mounting-box.js, and v2 product picker)
+
+Map of product id → array of proposal-bucket connection ids:
+
+```js
+{ '<productId>': ['<bucketId1>', '<bucketId2>'], ... }
+```
+
+Populated by this Builder snippet (one-time fetch on app boot):
+
+```js
+(function () {
+  var APP_ID  = Knack.application_id;
+  var API_KEY = 'f8371b90-524d-11e7-abaf-870b3d262aa2';
+  var PRODUCT_OBJECT = 'object_8';
+  var BUCKET_FIELD   = 'field_133';   // proposal bucket on the Products object
+  var STATUS_FIELD   = 'field_956';   // Status (filter to "Enabled")
+
+  var filters = encodeURIComponent(JSON.stringify([
+    { field: STATUS_FIELD, operator: 'is', value: 'Enabled' }
+  ]));
+
+  window.SCW = window.SCW || {};
+  var map = {};
+
+  function fetchPage(page) {
+    $.ajax({
+      url: 'https://api.knack.com/v1/objects/' + PRODUCT_OBJECT +
+           '/records?rows_per_page=1000&filters=' + filters + '&page=' + page,
+      type: 'GET',
+      headers: {
+        'X-Knack-Application-Id': APP_ID,
+        'X-Knack-REST-API-Key': API_KEY
+      },
+      success: function (res) {
+        var records = res.records || [];
+        for (var i = 0; i < records.length; i++) {
+          var rec = records[i];
+          var raw = rec[BUCKET_FIELD + '_raw'];
+          var buckets = [];
+          if (Array.isArray(raw)) {
+            for (var j = 0; j < raw.length; j++) {
+              if (raw[j] && raw[j].id) buckets.push(raw[j].id);
+            }
+          } else if (raw && raw.id) {
+            buckets.push(raw.id);
+          }
+          if (buckets.length) map[rec.id] = buckets;
+        }
+        if (res.total_pages && page < res.total_pages) fetchPage(page + 1);
+        else window.SCW.productBucketMap = map;
+      }
+    });
+  }
+  fetchPage(1);
+})();
+```
+
+Notes:
+- Pulls EVERY Enabled product across paginated 1000-row batches. On
+  catalogs with thousands of products this can be slow on cold load.
+- Exposes ONLY the id → bucket map. No product names. Features that
+  need names (e.g. a v2 product picker) must source those separately
+  — typically from a hidden Knack view that exposes name + id, with
+  the bucket map used purely to FILTER candidates.
+- The API key in the snippet is the live one. Treat the snippet
+  contents as a secret; don't paste it into public PRs/issues.
+
 ## Coding Standards
 
 - **ES5-compatible** syntax for the most part (`var`, `function`, no arrow functions in older modules), though newer modules use `const`/`let` and template literals
