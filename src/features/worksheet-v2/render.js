@@ -79,9 +79,6 @@
 
     block.appendChild(buildL1Header(l1, sourceViewKey));
 
-    // Body — populated even when collapsed so opening is a CSS toggle
-    // (no rebuild on every accordion click). Cheap for typical row
-    // counts; revisit if a single L1 ever exceeds a few hundred rows.
     var body = document.createElement('div');
     body.className = 'scw-ws-v2-l1-body';
 
@@ -90,7 +87,24 @@
         var l2 = l1.l2[i];
         body.appendChild(buildL2Header(l2));
         for (var j = 0; j < l2.records.length; j++) {
-          body.appendChild(ns.card.buildCard(l2.records[j], sourceViewKey));
+          // Per-card try/catch — one malformed record shouldn't take
+          // down the entire panel. Failed cards render an inline
+          // placeholder + log to console so the issue is debuggable
+          // without killing the rest of the data.
+          try {
+            body.appendChild(ns.card.buildCard(l2.records[j], sourceViewKey));
+          } catch (cardErr) {
+            console.warn('[scw-ws-v2] buildCard threw for record', {
+              recordId: l2.records[j] && l2.records[j].id,
+              viewKey:  sourceViewKey,
+              error:    cardErr
+            });
+            var stub = document.createElement('div');
+            stub.className = 'scw-ws-v2-card scw-ws-v2-card--error';
+            stub.textContent = 'Render error for record ' +
+              ((l2.records[j] && l2.records[j].id) || '?');
+            body.appendChild(stub);
+          }
         }
       }
     }
