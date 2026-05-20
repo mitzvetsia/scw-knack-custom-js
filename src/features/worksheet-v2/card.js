@@ -323,17 +323,83 @@
     '</div>';
   }
 
+  /**
+   * Build a base hash path for accessory edit/add URLs in the current
+   * scene context. Mirrors getBuildSowBasePath() in inline-photo-row.js
+   * + connected-records.js. Returns '#...path' or '' if no recognised
+   * path is in the current URL.
+   */
+  function buildSowBasePath() {
+    var hash = window.location.hash || '';
+    var patterns = [
+      /(team-calendar\/project-dashboard\/[a-f0-9]{24}\/build-(?:sow|quote)\/[a-f0-9]{24})/,
+      /(team-calendar\/project-dashboard\/[a-f0-9]{24}\/review-bids\/[a-f0-9]{24})/,
+      /(team-calendar\/project-dashboard\/[a-f0-9]{24}\/deploy\/[a-f0-9]{24})/,
+      /(sales-portal\/company-details\/[a-f0-9]{24}\/scope-of-work-details\/[a-f0-9]{24})/
+    ];
+    for (var i = 0; i < patterns.length; i++) {
+      var m = hash.match(patterns[i]);
+      if (m) return '#' + m[1];
+    }
+    return '';
+  }
+
+  /**
+   * Mounting Hardware (field_1958) — connectedRecords pattern, NOT a
+   * picker modal. Mirrors v1's connected-records.js widget on view_3610:
+   * each currently-connected accessory renders as an inline chip with
+   * an "edit accessory" link; a "+ Add" link at the end opens Knack's
+   * add-accessory-line-item form. All navigation, no inline edit
+   * modal — same UX as v1.
+   */
+  function detailMountingHardware(rec) {
+    var raw = rec['field_1958_raw'];
+    var accessories = Array.isArray(raw) ? raw : [];
+    var base = buildSowBasePath();
+    var addHref = base ? base + '/add-accessory-line-item/' + rec.id + '/' : '#';
+
+    var chipsHtml = '';
+    if (accessories.length === 0) {
+      chipsHtml = '<span class="scw-ws-v2-mh-empty">—</span>';
+    } else {
+      for (var i = 0; i < accessories.length; i++) {
+        var a = accessories[i];
+        if (!a) continue;
+        var editHref = base ? base + '/edit-accessory-line-item2/' + a.id + '/' : '#';
+        var label = a.identifier || a.id || '';
+        chipsHtml += '<a class="scw-ws-v2-mh-chip" href="' + escapeHtml(editHref) + '"' +
+          ' title="Edit ' + escapeHtml(label) + '">' +
+          escapeHtml(label) +
+        '</a>';
+      }
+    }
+
+    return '<div class="scw-ws-v2-detail-field scw-ws-v2-detail-field--mh">' +
+      '<div class="scw-ws-v2-detail-label">Mounting Hardware</div>' +
+      '<div class="scw-ws-v2-mh-list">' + chipsHtml +
+        '<a class="scw-ws-v2-mh-add" href="' + escapeHtml(addHref) + '"' +
+          ' title="Add mounting hardware">+ Add</a>' +
+      '</div>' +
+    '</div>';
+  }
+
   function buildDetail_cam(rec, viewKey) {
     return '<div class="scw-ws-v2-detail">' +
       '<div class="scw-ws-v2-detail-grid">' +
-        detailReadOnly(rec,          'field_2240', 'Drop Prefix') +
-        detailField(rec,    viewKey, 'field_1951', 'Drop Number',    'number') +
-        detailReadOnly(rec,          'field_1958', 'Mounting Hardware') +
-        detailReadOnly(rec,          'field_2197', 'Connected Device') +
-        detailField(rec,    viewKey, 'field_1965', 'Drop Length',    'number') +
-        detailField(rec,    viewKey, 'field_2035', 'Conduit',        'number') +
-        detailField(rec,    viewKey, 'field_1953', 'SCW Notes',      'text') +
-        detailReadOnly(rec,          'field_2412', 'Survey Notes') +
+        detailReadOnly(rec,                  'field_2240', 'Drop Prefix') +
+        detailField(rec,            viewKey, 'field_1951', 'Drop Number', 'number') +
+        // Mounting Hardware (field_1958) renders as a connected-records
+        // widget with chip-style edit links + an "+ Add" navigation —
+        // matches v1's UX on view_3610 (no inline modal, just navigation).
+        detailMountingHardware(rec) +
+        // Connected Device (field_2197) — single-select picker on
+        // cam/reader rows. Candidates filtered to Map-Connections-Yes
+        // rows; see init.js click handler.
+        detailConnection(rec,       viewKey, 'field_2197', 'Connected Device') +
+        detailField(rec,            viewKey, 'field_1965', 'Drop Length', 'number') +
+        detailField(rec,            viewKey, 'field_2035', 'Conduit',     'number') +
+        detailField(rec,            viewKey, 'field_1953', 'SCW Notes',   'text') +
+        detailReadOnly(rec,                  'field_2412', 'Survey Notes') +
       '</div>' +
     '</div>';
   }
@@ -341,13 +407,10 @@
   function buildDetail_default(rec, viewKey) {
     return '<div class="scw-ws-v2-detail">' +
       '<div class="scw-ws-v2-detail-grid">' +
-        // field_1958 (Mounting Hardware) stays read-only for now —
-        // its picker needs a separate products source view; that's
-        // Phase 4.B work.
-        detailReadOnly(rec,                  'field_1958', 'Mounting Hardware') +
-        // field_1957 (Connected Devices) is editable: opens the
-        // connection picker modal scoped to cam/reader candidates on
-        // this SOW with empty/this-row's reciprocal field_2197.
+        // Mounting Hardware — same connected-records widget as cam/reader.
+        detailMountingHardware(rec) +
+        // Connected Devices (field_1957) — multi-select picker for NVR
+        // rows attaching cam/readers (existing wiring in init.js).
         detailConnection(rec,       viewKey, 'field_1957', 'Connected Devices') +
         detailField(rec,            viewKey, 'field_1953', 'SCW Notes', 'text') +
         detailReadOnly(rec,                  'field_2412', 'Survey Notes') +

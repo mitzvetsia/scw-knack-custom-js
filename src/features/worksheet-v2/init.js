@@ -194,17 +194,34 @@
         return out;
       }
 
+      /** True when a candidate row's field_2374 (Map Connections) is Yes. */
+      function isMapConnectionsRow(rec) {
+        var raw = rec && rec['field_2374_raw'];
+        if (raw === true || raw === 'Yes' || raw === 'yes' || raw === 1) return true;
+        var s = (rec && rec['field_2374'] || '').toString().trim().toLowerCase();
+        return s === 'yes' || s === 'true' || s === '1';
+      }
+
       var candidates = [];
       for (var c = 0; c < records.length; c++) {
         var r = records[c];
         if (!r || !r.id || r.id === recordId) continue;
         if (fieldKey === 'field_1957') {
+          // Connected Devices (NVR side): pick from cam/reader rows
+          // whose reciprocal field_2197 is empty or already points
+          // at this NVR.
           if (bucketIdOf(r) !== CAM_READER) continue;
           var recip = reciprocalIds(r);
           var blank = recip.length === 0;
           var pointsToMe = recip.indexOf(recordId) !== -1;
           var alreadySel = selSet[r.id];
           if (!blank && !pointsToMe && !alreadySel) continue;
+        } else if (fieldKey === 'field_2197') {
+          // Connected Device (cam/reader side): pick the NVR/headend
+          // this device connects to. Candidates = rows with the
+          // Map-Connections flag (field_2374 = Yes) — same filter
+          // Knack's column already serves on view_3610.
+          if (!isMapConnectionsRow(r)) continue;
         }
         candidates.push(r);
       }
@@ -225,14 +242,17 @@
         return lbl || prod || rec.id;
       }
 
-      // For field_1957 the mirror-connection-sync cascade is bound
-      // to view_3610 (and v2's source view_3962 doesn't have a
-      // mirror-sync instance). PUTting against view_3962 wouldn't
-      // fire the knack-cell-update.view_3610 event the cascade
-      // listens for. Route the PUT through view_3610 so the cascade
-      // actually runs — v2 still reads from view_3962, but the
-      // write hits the view the cascade is bound to.
-      var putViewKey = (fieldKey === 'field_1957') ? 'view_3610' : viewKey;
+      // mirror-connection-sync is bound to view_3610. For ANY
+      // connection field whose cascade should fire (field_1957 +
+      // field_2197), PUT through view_3610 so the cascade runs.
+      // v2 still reads candidates from view_3962.
+      var putViewKey = (fieldKey === 'field_1957' || fieldKey === 'field_2197')
+        ? 'view_3610'
+        : viewKey;
+
+      // field_1957 is multi-connection (one NVR → many cams).
+      // field_2197 is single-connection (one cam → one NVR).
+      var isMulti = (fieldKey !== 'field_2197');
 
       ns.picker.open({
         sourceViewKey: viewKey,
@@ -244,7 +264,7 @@
         candidates:    candidates,
         groupBy:       groupBy,
         itemLabel:     itemLabel,
-        multi:         true,
+        multi:         isMulti,
         onSaved:       function () {
           // notify() reads from the source view's Backbone model.
           // When the cascade kicks off in response to the PUT, the
