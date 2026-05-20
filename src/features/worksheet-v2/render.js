@@ -1,19 +1,18 @@
 /*** WORKSHEET V2 — RENDER ****************************************************
  *
- * Phase 1+2 render: build one card per record using card.js's
- * buildCard, swap into the v2 panel body. Editable inputs are stamped
- * with the data-* attrs that edit.js's delegated handler consumes.
+ * Phase 3.B render: group tree (L1 MDF/IDF accordion → L2 proposal
+ * bucket sub-headers → record cards). Replaces Phase 3.A's flat
+ * card list.
  *
- * Mutating strategy is "blow away the body, rebuild from scratch on
- * every notify". Simple and correct for the current row counts.
- * Phase 3+ may switch to keyed updates if rebuild cost becomes
- * visible at scale, but for ~100 row grids the cost is trivial.
+ * Composition: render.js owns the OUTER structure (group container,
+ * L1 header bar, L2 sub-header, card list slot). card.js owns the
+ * per-record card. groups.js handles the data transform. state.js
+ * handles open/closed persistence.
  *
- * If the user is mid-edit on an input when a re-render fires, the
- * rebuild would lose their typing. Guard: skip the rebuild while
- * focus is on a .scw-ws-v2-input inside our panel; reschedule when
- * focus leaves. The skip is harmless because the next notify (from
- * the user's own commit) will re-render with the same data.
+ * Mid-edit guard preserved from prior phases — if the user is
+ * focused on a v2 input when a re-notify fires, defer the rebuild
+ * until focus leaves. The whole tree gets rebuilt on every notify
+ * for simplicity; keyed updates can come later if perf demands it.
  ****************************************************************************/
 (function () {
   'use strict';
@@ -27,9 +26,8 @@
     });
   }
 
-  // Track per-view "pending re-render due to focused input" so we can
-  // resume the moment focus leaves. Key: sourceViewKey, value: latest
-  // records snapshot that was skipped.
+  // Defer renders while the user is mid-edit so typing isn't blown
+  // away by a sibling-triggered re-notify.
   var pending = Object.create(null);
 
   function hasFocusInPanel(container) {
@@ -39,11 +37,68 @@
     return container.contains(a);
   }
 
-  /**
-   * Render or re-render the v2 panel for one source view. Idempotent
-   * — replaces the body content each call; the container + banner
-   * scaffold is built once and reused.
-   */
+  // ── Chevron used in L1 headers ──
+  var L1_CHEVRON_SVG =
+    '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" ' +
+    'stroke="currentColor" stroke-width="2.5" stroke-linecap="round" ' +
+    'stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>';
+
+  function buildL1Header(l1, sourceViewKey) {
+    var head = document.createElement('button');
+    head.type = 'button';
+    head.className = 'scw-ws-v2-l1-head' +
+      (l1.isOpen ? ' scw-ws-v2-l1-head--open' : '') +
+      (l1.isSynthetic ? ' scw-ws-v2-l1-head--synthetic' : '');
+    head.setAttribute('data-scw-ws-v2-l1-toggle', l1.id);
+    head.setAttribute('data-scw-ws-v2-view', sourceViewKey);
+    head.setAttribute('aria-expanded', l1.isOpen ? 'true' : 'false');
+
+    head.innerHTML =
+      '<span class="scw-ws-v2-l1-chevron">' + L1_CHEVRON_SVG + '</span>' +
+      '<span class="scw-ws-v2-l1-label">' + escapeHtml(l1.label) + '</span>' +
+      '<span class="scw-ws-v2-l1-count">' + l1.recordCount + '</span>';
+
+    return head;
+  }
+
+  function buildL2Header(l2) {
+    var sub = document.createElement('div');
+    sub.className = 'scw-ws-v2-l2-head';
+    sub.innerHTML =
+      '<span class="scw-ws-v2-l2-label">' + escapeHtml(l2.label) + '</span>' +
+      '<span class="scw-ws-v2-l2-count">' + l2.records.length + '</span>';
+    return sub;
+  }
+
+  function buildL1Block(l1, sourceViewKey) {
+    var block = document.createElement('section');
+    block.className = 'scw-ws-v2-l1' +
+      (l1.isOpen ? ' scw-ws-v2-l1--open' : '') +
+      (l1.isSynthetic ? ' scw-ws-v2-l1--synthetic' : '');
+    block.setAttribute('data-scw-ws-v2-l1', l1.id);
+
+    block.appendChild(buildL1Header(l1, sourceViewKey));
+
+    // Body — populated even when collapsed so opening is a CSS toggle
+    // (no rebuild on every accordion click). Cheap for typical row
+    // counts; revisit if a single L1 ever exceeds a few hundred rows.
+    var body = document.createElement('div');
+    body.className = 'scw-ws-v2-l1-body';
+
+    if (ns.card && typeof ns.card.buildCard === 'function') {
+      for (var i = 0; i < l1.l2.length; i++) {
+        var l2 = l1.l2[i];
+        body.appendChild(buildL2Header(l2));
+        for (var j = 0; j < l2.records.length; j++) {
+          body.appendChild(ns.card.buildCard(l2.records[j], sourceViewKey));
+        }
+      }
+    }
+
+    block.appendChild(body);
+    return block;
+  }
+
   function renderView(sourceViewKey, records) {
     var container = document.getElementById('scw-ws-v2-' + sourceViewKey);
     if (!container) return;
@@ -56,10 +111,6 @@
       count.textContent = records.length + ' record' + (records.length === 1 ? '' : 's');
     }
 
-    // If the user is actively editing one of our inputs, defer the
-    // rebuild — otherwise their typing would get blown away. The
-    // focusout listener at the bottom of this file resumes the
-    // deferred render the moment focus leaves.
     if (hasFocusInPanel(container)) {
       pending[sourceViewKey] = records;
       return;
@@ -72,16 +123,21 @@
       return;
     }
 
-    if (!ns.card || typeof ns.card.buildCard !== 'function') {
-      body.innerHTML = '<div class="scw-ws-v2-empty">card.js not loaded.</div>';
+    if (!ns.groups || typeof ns.groups.buildGroupTree !== 'function') {
+      body.innerHTML = '<div class="scw-ws-v2-empty">groups.js not loaded.</div>';
       return;
     }
 
-    // Build into a DocumentFragment so the tbody / body only takes
-    // one reflow at insert time.
+    var tree = ns.groups.buildGroupTree(records);
+    if (ns.state && typeof ns.state.applyOpenState === 'function') {
+      ns.state.applyOpenState(sourceViewKey, tree);
+    } else {
+      tree.forEach(function (l1) { l1.isOpen = true; });
+    }
+
     var frag = document.createDocumentFragment();
-    for (var i = 0; i < records.length; i++) {
-      frag.appendChild(ns.card.buildCard(records[i], sourceViewKey));
+    for (var i = 0; i < tree.length; i++) {
+      frag.appendChild(buildL1Block(tree[i], sourceViewKey));
     }
 
     body.innerHTML = '';
@@ -90,9 +146,6 @@
 
   // Resume deferred renders when focus leaves the panel.
   document.addEventListener('focusout', function () {
-    // Defer one tick so document.activeElement settles to the new
-    // target (which may still be inside the panel for tab-between-
-    // inputs movement).
     setTimeout(function () {
       Object.keys(pending).forEach(function (key) {
         var container = document.getElementById('scw-ws-v2-' + key);

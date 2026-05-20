@@ -147,7 +147,9 @@ cat \
   src/features/legacy/get-tl-photos.js \
   src/features/worksheet-v2/config.js \
   src/features/worksheet-v2/styles.js \
+  src/features/worksheet-v2/state.js \
   src/features/worksheet-v2/data.js \
+  src/features/worksheet-v2/groups.js \
   src/features/worksheet-v2/card.js \
   src/features/worksheet-v2/edit.js \
   src/features/worksheet-v2/render.js \

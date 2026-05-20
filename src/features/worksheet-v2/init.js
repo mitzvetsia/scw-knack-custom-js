@@ -90,6 +90,31 @@
   // input across every v2 card. Idempotent; safe to call repeatedly.
   if (ns.edit && typeof ns.edit.wire === 'function') ns.edit.wire();
 
+  // L1 accordion toggle — single document-level delegated handler.
+  // Catches clicks on any [data-scw-ws-v2-l1-toggle] (the L1 header
+  // button), persists the new state, then re-renders just that view.
+  // Exclusive accordion is enforced by state.toggleL1 — opening L1-B
+  // implicitly closes L1-A in the persisted state, so the next render
+  // shows the right thing.
+  if (!document.documentElement.hasAttribute('data-scw-ws-v2-l1-bound')) {
+    document.documentElement.setAttribute('data-scw-ws-v2-l1-bound', '1');
+    document.addEventListener('click', function (e) {
+      var btn = e.target && e.target.closest && e.target.closest('[data-scw-ws-v2-l1-toggle]');
+      if (!btn) return;
+      var l1Id      = btn.getAttribute('data-scw-ws-v2-l1-toggle');
+      var sourceKey = btn.getAttribute('data-scw-ws-v2-view');
+      if (!l1Id || !sourceKey) return;
+
+      if (!ns.state || typeof ns.state.toggleL1 !== 'function') return;
+      ns.state.toggleL1(sourceKey, l1Id);
+
+      // Re-render the affected view from its current data snapshot.
+      if (ns.data && ns.render) {
+        ns.render.renderView(sourceKey, ns.data.readRecords(sourceKey));
+      }
+    });
+  }
+
   // Mount on every scene render — cheap (idempotent guard) and
   // catches SPA navigations into scenes that host the source view.
   $(document)
