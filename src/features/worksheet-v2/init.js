@@ -225,8 +225,18 @@
         return lbl || prod || rec.id;
       }
 
+      // For field_1957 the mirror-connection-sync cascade is bound
+      // to view_3610 (and v2's source view_3962 doesn't have a
+      // mirror-sync instance). PUTting against view_3962 wouldn't
+      // fire the knack-cell-update.view_3610 event the cascade
+      // listens for. Route the PUT through view_3610 so the cascade
+      // actually runs — v2 still reads from view_3962, but the
+      // write hits the view the cascade is bound to.
+      var putViewKey = (fieldKey === 'field_1957') ? 'view_3610' : viewKey;
+
       ns.picker.open({
         sourceViewKey: viewKey,
+        putViewKey:    putViewKey,
         recordId:      recordId,
         fieldKey:      fieldKey,
         label:         label,
@@ -236,11 +246,11 @@
         itemLabel:     itemLabel,
         multi:         true,
         onSaved:       function () {
-          // Force a data re-notify so the card re-renders with the
-          // new connection value. Knack's cell-update event will also
-          // fire from the PUT, but firing notify() explicitly here
-          // ensures the v2 panel updates even if the cell-update
-          // listener race conditions on a slow connection.
+          // notify() reads from the source view's Backbone model.
+          // When the cascade kicks off in response to the PUT, the
+          // scw-cascade-idle subscriber in data.js will refetch +
+          // re-notify once everything settles. This early notify is
+          // belt-and-suspenders for the no-cascade-fired case.
           if (ns.data && typeof ns.data.notify === 'function') ns.data.notify(viewKey);
         }
       });

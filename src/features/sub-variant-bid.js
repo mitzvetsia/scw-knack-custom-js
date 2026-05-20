@@ -37,12 +37,15 @@
     itemGridView:   'view_3505',   // Survey line items / device worksheets
 
     // Make webhook URLs.
-    // Both buttons currently fire at the same Make hook — Make
-    // differentiates by payload shape (line_item_ids array for the bid
-    // variant, source_line_item_id + target_bid_id for the per-item
-    // variant).
+    // Bid-level variant (per-bid button on view_3507): full payload
+    // with the array of originating line item ids — Make duplicates
+    // the bid + clones every selected item.
     bidWebhookUrl:  'https://hook.us1.make.com/hkm5wyfs9o3yljjejukf4e6n6qbfwqq6',
-    itemWebhookUrl: 'https://hook.us1.make.com/hkm5wyfs9o3yljjejukf4e6n6qbfwqq6',
+    // Per-line-item variant (per-card button on view_3505): minimal
+    // payload — Make pulls the source record server-side and creates
+    // a variant attached to the target bid. We don't need to ship
+    // the field values since Make has direct Knack access.
+    itemWebhookUrl: 'https://hook.us1.make.com/gschofitcabgv81gq0qaed7dxsn2f425',
 
     // Field keys
     // Bid (BID record on view_3507)
@@ -967,11 +970,6 @@
         setStatus(modal, 'Pick a target bid.', true);
         return;
       }
-      var fields = buildItemPayload(itemId);
-      if (!fields) {
-        setStatus(modal, 'Could not load line item data.', true);
-        return;
-      }
 
       modal.confirmBtn.disabled = true;
       modal.cancelBtn.disabled = true;
@@ -981,12 +979,12 @@
       // the bid variant flow. No mid-cascade refreshes of view_3505.
       var stopTicker = startElapsedTicker(modal, "We're working on it… Make is processing");
 
+      // Minimal payload — Make's scenario reads the source record
+      // server-side via the Knack API and creates a variant on the
+      // target bid. No need to ship the full field map.
       postWebhook(CONFIG.itemWebhookUrl, {
-        type:                'variant_item',
         source_line_item_id: itemId,
-        target_bid_id:       targetBidId,
-        target_bid_label:    resolveBidLabel(targetBidId),
-        fields:              fields
+        target_bid_id:       targetBidId
       }).then(function (resp) {
         stopTicker();
         if (resp && resp.success === false) {

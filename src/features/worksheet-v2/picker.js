@@ -268,7 +268,13 @@
 
       try {
         SCW.knackAjax({
-          url:  SCW.knackRecordUrl(opts.sourceViewKey, opts.recordId),
+          // PUT URL is normally the source view, but for fields whose
+          // mirror-connection-sync cascade is bound to a DIFFERENT
+          // view (e.g. field_1957 — its cascade lives on view_3610,
+          // not v2's source view_3962), the caller can override
+          // putViewKey so the resulting knack-cell-update fires on
+          // the view that triggers the cascade.
+          url:  SCW.knackRecordUrl(opts.putViewKey || opts.sourceViewKey, opts.recordId),
           type: 'PUT',
           data: JSON.stringify(body),
           success: function (resp) {
