@@ -1816,12 +1816,19 @@
       '.cover-page {',
       '  page: landscape-map;',
       '  page-break-after: always; break-after: page;',
-      '  page-break-inside: avoid; break-inside: avoid;',
       '  text-align: center;',
       '  box-sizing: border-box;',
       '  width: 100%;',
+      // page-break-inside: avoid was REMOVED — when a section was a
+      // hair too tall to fit, the renderer pushed the entire section
+      // forward, leaving the previous page partially blank ("blank
+      // before each map"). max-height on the image (set in
+      // renderImageCoverSection) keeps the section within the page
+      // already; avoid isn't needed and was causing harm.
       '}',
-      '.cover-page:last-of-type { page-break-after: always; }',
+      // Drop the redundant :last-of-type override — the base rule
+      // already applies page-break-after: always to every cover-page.
+      '.cover-page:last-of-type { page-break-after: auto; }',
       '.cover-section-label {',
       '  font-size: 12px; font-weight: 800; color: #07467c;',
       '  text-transform: uppercase; letter-spacing: 0.5px;',

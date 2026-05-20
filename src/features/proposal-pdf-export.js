@@ -2040,28 +2040,41 @@
               // would time out before Make finishes. 180s matches the
               // poll timeout fallback ceiling.
               timeout: 180000,
-              success: function (resp) {
-                // If Make's scenario ends with a "Webhook Response"
-                // module that returns a non-empty body (e.g.
-                // {"status":"ready"}), the response IS the completion
-                // signal — the PDF is uploaded by the time we get
-                // here, so we can skip polling entirely and just
-                // redirect. Empty response = legacy fire-and-forget
-                // Make scenarios that ran the webhook at the start
-                // and didn't wait for upload → fall back to polling
-                // so existing scenarios keep working until they're
-                // migrated. Detect "informative" by treating any
-                // truthy body OR any object response as a signal.
+              success: function (resp, status, xhr) {
+                // Unconditional log so we can see exactly what came
+                // back without flipping SCW.DEBUG. Includes the parsed
+                // response, the raw text (in case jQuery parsed it
+                // unexpectedly), and the HTTP status.
+                console.log('[SCW PDF Webhook] success', {
+                  status: xhr && xhr.status,
+                  contentType: xhr && xhr.getResponseHeader && xhr.getResponseHeader('Content-Type'),
+                  responseType: typeof resp,
+                  response: resp,
+                  rawResponseText: xhr && xhr.responseText
+                });
+
+                // Informative response = non-empty body OR an object
+                // (even an empty {}). If Make returned {"status":"ready"}
+                // we'll land here as either a parsed object or the
+                // raw string — handle both.
                 var isInformativeResponse = (resp != null && resp !== '' &&
                   (typeof resp === 'object' || String(resp).length > 0));
 
+                // Defensively clear any leftover poll flags from a
+                // prior attempt — they'd auto-start polling on the
+                // parent page even if THIS submission's response is
+                // informative.
+                try {
+                  sessionStorage.removeItem('scw-pdf-poll-view');
+                  sessionStorage.removeItem('scw-pdf-poll-field');
+                  sessionStorage.removeItem('scw-pdf-poll-type');
+                } catch (e) {}
+
                 if (isInformativeResponse) {
-                  SCW.debug('[SCW PDF Export] Webhook completed with response:', resp);
+                  console.log('[SCW PDF Webhook] informative response → skipping polling');
                   showPublishToast('PDF ready — opening…', false, false);
-                  // No poll flags set; the parent page loads with the
-                  // file already in place.
                 } else {
-                  SCW.debug('[SCW PDF Export] Webhook accepted (empty response) — falling back to polling');
+                  console.log('[SCW PDF Webhook] empty response → falling back to polling');
                   if (cfg.pollViewOnReturn) {
                     try {
                       sessionStorage.setItem('scw-pdf-poll-view', cfg.pollViewOnReturn);
@@ -2072,7 +2085,34 @@
                 }
                 redirectToParent();
               },
-              error: function (xhr, status) {
+              error: function (xhr, status, errThrown) {
+                // Make's "Webhook Response" module returns a 2xx status
+                // and a JSON body. If jQuery's auto-parse fails (wrong
+                // Content-Type from Make), jQuery treats it as an
+                // error EVEN THOUGH the request succeeded. Recover by
+                // checking if we got a usable response anyway and
+                // treating it the same as the success branch.
+                console.log('[SCW PDF Webhook] error', {
+                  status: xhr && xhr.status,
+                  contentType: xhr && xhr.getResponseHeader && xhr.getResponseHeader('Content-Type'),
+                  jqStatus: status,
+                  errThrown: errThrown && errThrown.toString && errThrown.toString(),
+                  rawResponseText: xhr && xhr.responseText
+                });
+
+                var raw = xhr && xhr.responseText;
+                var httpOk = xhr && xhr.status >= 200 && xhr.status < 300;
+                if (httpOk && raw) {
+                  console.log('[SCW PDF Webhook] HTTP OK with body — treating as success');
+                  try {
+                    sessionStorage.removeItem('scw-pdf-poll-view');
+                    sessionStorage.removeItem('scw-pdf-poll-field');
+                    sessionStorage.removeItem('scw-pdf-poll-type');
+                  } catch (e) {}
+                  showPublishToast('PDF ready — opening…', false, false);
+                  redirectToParent();
+                  return;
+                }
                 console.error('[SCW PDF Export] Webhook failed:', status);
                 showPublishToast('Webhook failed — please try again.', true, false);
                 $btn.prop('disabled', false).css({ opacity: 1, cursor: 'pointer' });
