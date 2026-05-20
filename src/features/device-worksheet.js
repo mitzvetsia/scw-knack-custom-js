@@ -1018,9 +1018,32 @@
 
     var css = `
 /* ── Hide raw Knack rows until transformView processes them ── */
-/* Prevents flash of unstyled/duplicate inputs during re-render */
+/* Prevents flash of unstyled/duplicate inputs during re-render.
+   IMPORTANT: this used to ship as a .map() returning single-quoted
+   strings that embedded literal '\${PROCESSED_ATTR}' / '\${WORKSHEET_ROW}'
+   — invalid CSS, so the rule was silently dropped and raw rows flashed
+   on every reload. The selectors are built explicitly here so the
+   substitution actually happens. */
 ${WORKSHEET_CONFIG.views.map(function (v) {
-  return '#' + v.viewId + ' tbody > tr:not([${PROCESSED_ATTR}]):not(.${WORKSHEET_ROW}):not(.kn-table-group):not(.scw-inline-photo-row):not(.kn-table-totals) { visibility: hidden; height: 0; overflow: hidden; }';
+  // The :not() chain enumerates every row class that's either Knack-
+  // native non-data (group headers / totals) OR injected by our own
+  // features. Anything NOT in this list is presumed to be a raw
+  // unprocessed Knack data row, hidden until transformView marks it
+  // with PROCESSED_ATTR.
+  //
+  // If a new injected-row class is added in a sibling feature, list
+  // it here too — otherwise it'll go invisible during the transform
+  // window and look like the feature is broken.
+  return '#' + v.viewId + ' tbody > tr' +
+    ':not([' + PROCESSED_ATTR + '])' +
+    ':not(.' + WORKSHEET_ROW + ')' +
+    ':not(.kn-table-group)' +
+    ':not(.kn-table-totals)' +
+    ':not(.scw-inline-photo-row)' +
+    ':not(.scw-mdf-summary-row)' +
+    ':not(.scw-synth-divider)' +
+    ':not(.scw-mounting-product-line)' +
+    ' { visibility: hidden; height: 0; overflow: hidden; }';
 }).join('\n')}
 
 /* ── Hide the original data row (cells moved out, shell stays) ── */
@@ -3583,23 +3606,18 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     }, 4000);
   }
 
-  /** Show success feedback on input. */
+  /** Post-save housekeeping. No re-flash — the input already flashed
+   *  briefly on Enter; re-painting it green when the PUT eventually
+   *  returns just re-introduces the "stuck saving" feel. Silently
+   *  refresh the conditional color in case the new value crossed a
+   *  warning/danger threshold and clear any lingering error UI. */
   function showInputSuccess(input) {
     input.classList.remove('is-error');
-    input.classList.add('is-saving');
-    // Remove any lingering error
+    input.classList.remove('is-saving');
     var wrapper = input.parentNode;
     var errEl = wrapper ? wrapper.querySelector('.' + P + '-direct-error') : null;
     if (errEl) errEl.remove();
-
-    setTimeout(function () {
-      input.classList.remove('is-saving');
-      // Re-evaluate conditional formatting after save completes.
-      // The hidden td has already been updated with the new value;
-      // recalculate whether the field still meets a danger/warning
-      // condition and update the input background accordingly.
-      refreshInputConditionalColor(input);
-    }, 600);
+    refreshInputConditionalColor(input);
   }
 
   // ============================================================
@@ -4324,9 +4342,22 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     var hiddenSpan = wrapper ? wrapper.querySelector('span[style*="display"]') : null;
     if (hiddenSpan) hiddenSpan.textContent = newValue;
 
-    // Visual feedback — start saving
+    // Brief acknowledgment flash — added on Enter, REMOVED after a
+    // fixed 200ms regardless of whether the PUT has returned yet.
+    // Without the timed removal, .is-saving stays painted green for
+    // the full PUT round-trip (200-1000ms+ on Knack's server), making
+    // every edit feel "stuck waiting." The optimistic update of
+    // hiddenTd / hiddenSpan above already shows the new value; the
+    // flash is just feedback that we received the keystroke. On
+    // error, showInputError will repaint the input red.
     input.classList.remove('is-error');
     input.classList.add('is-saving');
+    setTimeout(function () {
+      // Only clear if still saving — error path may have replaced it.
+      if (input.classList.contains('is-saving')) {
+        input.classList.remove('is-saving');
+      }
+    }, 200);
     var errEl = wrapper ? wrapper.querySelector('.' + P + '-direct-error') : null;
     if (errEl) errEl.remove();
 
@@ -6893,11 +6924,20 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       var lastInsertedRow = null;
       var anySyntheticBuilt = false;
 
+      // Single full-tree scan for all worksheet rows that are eligible
+      // for synthetic-bucket placement. Used by both the per-bucket
+      // candidate filter below AND the orphan-collection pass further
+      // down — caching saves one full tbody walk per bucket plus another
+      // for the orphan pass (4+ scans → 1 on view_3610's 100-row grid).
+      var allNoMove = Array.prototype.slice.call(
+        tbody.querySelectorAll('tr.' + WORKSHEET_ROW + '[data-scw-no-move="1"]')
+      );
+
       buckets.forEach(function (bucket) {
         // Find worksheet rows that belong to this bucket AND have no MDF/IDF.
-        var candidates = tbody.querySelectorAll(
-          'tr.' + WORKSHEET_ROW + '.' + bucket.cls + '[data-scw-no-move="1"]'
-        );
+        var candidates = allNoMove.filter(function (r) {
+          return r.classList.contains(bucket.cls);
+        });
         if (!candidates.length) return;
 
         anySyntheticBuilt = true;
@@ -6962,18 +7002,16 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       for (var bi = 0; bi < buckets.length; bi++) {
         bucketClasses[buckets[bi].cls] = true;
       }
-      var orphanCandidates = tbody.querySelectorAll(
-        'tr.' + WORKSHEET_ROW + '[data-scw-no-move="1"]'
-      );
-      var orphanRows = [];
-      for (var oi = 0; oi < orphanCandidates.length; oi++) {
-        var oRow = orphanCandidates[oi];
-        var isBucketRow = false;
+      // Reuse the cached allNoMove scan from above. Bucket rows have
+      // already been claimed by their group; what's left here is
+      // anything that has data-scw-no-move but doesn't match any
+      // configured bucket class.
+      var orphanRows = allNoMove.filter(function (oRow) {
         for (var bk in bucketClasses) {
-          if (oRow.classList.contains(bk)) { isBucketRow = true; break; }
+          if (oRow.classList.contains(bk)) return false;
         }
-        if (!isBucketRow) orphanRows.push(oRow);
-      }
+        return true;
+      });
       if (orphanRows.length) {
         anySyntheticBuilt = true;
 
@@ -7267,6 +7305,18 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
           // transform's in-flight guard queues a retry that will rebuild
           // the card with fresh data anyway, so the edit lands either
           // way — just on a slightly delayed timeline (~150-300ms).
+          //
+          // NOTE: an earlier optimization (commit 39afb5e) also
+          // CANCELED the queued transformView here under the assumption
+          // that patchCardFromResponse fully covered single-row updates.
+          // That was wrong — it broke rowSort (transformView is what
+          // enforces the worksheet's intended sort order over Knack's
+          // default) and card summaries (patchCardFromResponse covers a
+          // subset of the fields the card displays). Reverted: every
+          // cell-update still runs the full transformView from the
+          // companion knack-view-render handler, and patchCardFromResponse
+          // is purely a pre-render "instant feedback on the edited cell"
+          // pass that the upcoming transformView will then override.
           if (record && record.id && !isTransformInFlight(viewId)) {
             patchCardFromResponse(viewId, record.id, record);
           }

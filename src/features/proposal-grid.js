@@ -133,6 +133,17 @@
         level: 3,
         cssClass: 'scw-concat-cameras--mounting',
       },
+
+      // Relocate accessories (rows with field_2464 → parent line item)
+      // so they render immediately below their parent device instead of
+      // in their own "Mounting Hardware" L2 section. The subtotal
+      // pipeline counts rows by physical position, so moved brackets
+      // get rolled into their new L3 group's totals automatically.
+      // Empty Mounting Hardware L2/L3 headers are hidden after the move.
+      relocateAccessoriesToParents: {
+        enabled: true,
+        parentConnectionField: 'field_2464',
+      },
     },
 
     l2Context: {
@@ -784,6 +795,34 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
 .scw-l3-connected-devices b { font-weight: 800 !important; }
 /********************* LEVEL 4 (INSTALL DESCRIPTION) ***********************/
 
+/* Accessory relocation: rows moved out of the Mounting Hardware
+   section to sit under their parent L3 camera/device group. A
+   synthetic L4 row (tr.scw-mounting-l4) is still inserted as a
+   structural marker — postProcessMountingClusters scans for it to
+   find each cluster boundary — but it renders display:none so the
+   "Mounting Hardware" label doesn't appear above the per-product
+   bracket lines. The original Mounting Hardware L2/L3 headers are
+   empty and hidden via .scw-empty-group-header. */
+${sel('tr.scw-empty-group-header')} { display: none !important; }
+${sel('tr.scw-mounting-l4')} { display: none !important; }
+/* Mounting hardware: one synthetic product line per bracket type under
+   each "Mounting Hardware" L4 sub-header. The actual tr[id] bracket
+   rows stay hidden by the global tr[id] rule above (they're still
+   needed in the DOM for the pipeline's L3 cost sum). */
+${sel('tr.scw-mounting-product-line td')} {
+  color: #07467c !important;
+  font-size: 14px !important;
+  font-weight: 500 !important;
+}
+${sel('tr.scw-mounting-product-line td:first-child')} {
+  padding-left: 80px !important;
+}
+.scw-mounting-product-name {
+  font-weight: 500;
+  color: #07467c;
+  font-size: 14px;
+}
+
 /* SOW header details — kept rendered so isInstallationMasked() can read
    field_2725, but hidden from users so it doesn't take up space on the
    proposal page. */
@@ -1411,6 +1450,17 @@ ${sceneSelectors} .kn-table-group.kn-group-level-4 td:first-child {padding-left:
     if (!opt?.enabled || level !== opt.onlyLevel || contextKey !== opt.onlyContextKey) return;
     if ($groupRow.data('scwConcatRunId') === runId) return;
     $groupRow.data('scwConcatRunId', runId);
+
+    // Our synthetic L4 "Mounting Hardware" header (inserted by
+    // postProcessMountingClusters under a parent camera's L3) inherits
+    // the 'drop' context from its enclosing L2, which would otherwise
+    // hit this branch and append orange parent labels like "(E-27)"
+    // to the "Mounting Hardware" group label. Those labels belong on
+    // the individual mounting-box product-line rows below this header
+    // (handled in postProcessMountingClusters at the per-product
+    // build step), NOT on the group header itself — that header is
+    // just a section divider.
+    if ($groupRow.hasClass('scw-mounting-l4') || $groupRow.hasClass('scw-synthetic-l4')) return;
 
     const cameraListHtml = buildCameraListHtml(ctx, caches, $rowsToSum);
     if (!cameraListHtml) return;
@@ -2065,6 +2115,572 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
   }
 
   // ============================================================
+  // FEATURE: Relocate accessories under their parent line item
+  // ============================================================
+  //
+  // Accessory line items (records with field_2464 pointing back to a
+  // parent device) are rendered by default under their own "Mounting
+  // Hardware" L2 section. The product team prefers them grouped under
+  // the device they accessorize, so the customer sees "Camera +
+  // bracket" together rather than two disconnected sections.
+  //
+  // Implementation: build a child→parent map by scanning every Knack
+  // view on the page for one that exposes field_2464_raw (the proposal
+  // grid view doesn't include field_2464 as a column, so its own model
+  // doesn't carry the connection — but the sibling SOW_line_items
+  // accordion view does). Then move each accessory's <tr> to
+  // immediately follow its parent's <tr>, and mark empty L2/L3 group
+  // headers so they hide.
+  //
+  // Runs BEFORE synthesizeMissingL4Headers so the L4 synthesizer
+  // creates a header for the relocated row inside its new L3 group.
+
+  function buildParentConnectionMap(ctx, parentField, knownIds) {
+    const map = Object.create(null);
+
+    function harvest(models) {
+      if (!models) return;
+      for (let i = 0; i < models.length; i++) {
+        const attrs = models[i].attributes || models[i];
+        const childId = attrs.id;
+        if (!childId || !knownIds[childId]) continue;
+        const parentRaw = attrs[parentField + '_raw'];
+        if (!parentRaw || !parentRaw.length) continue;
+        const parentId = parentRaw[0] && parentRaw[0].id;
+        if (!parentId || parentId === childId) continue;
+        if (!map[childId]) map[childId] = parentId;
+      }
+    }
+
+    // Try the primary view first
+    const primaryModels =
+      ctx.view && ctx.view.model && ctx.view.model.data && ctx.view.model.data.models;
+    harvest(primaryModels);
+
+    // If the primary view didn't expose field_2464_raw for any row,
+    // fall through to every other view on the page and harvest from
+    // whichever one carries the connection field.
+    if (!Object.keys(map).length && typeof Knack !== 'undefined' && Knack.views) {
+      for (const viewKey in Knack.views) {
+        if (viewKey === ctx.viewId) continue;
+        const v = Knack.views[viewKey];
+        const m = v && v.model && v.model.data && v.model.data.models;
+        if (!m || !m.length) continue;
+        const sample = m[0].attributes || m[0];
+        if (sample[parentField + '_raw'] === undefined) continue;
+        harvest(m);
+        if (Object.keys(map).length) break;
+      }
+    }
+
+    return map;
+  }
+
+  function relocateAccessoriesToParents(ctx) {
+    const opt = ctx.features.relocateAccessoriesToParents;
+    if (!opt?.enabled) return;
+
+    const tbody = ctx.$tbody[0];
+    if (!tbody) return;
+
+    // ── Pre-pass: dedupe orphan scw-mounting-l4 headers ───────────
+    // Each pipeline run inserts an L4 "Mounting Hardware" header for
+    // every parent that has at least one accessory. The reuse-scan
+    // below walks backwards from endOfBlock for up to 50 rows looking
+    // for an existing L4 to reuse — but if a parent has more than 50
+    // sibling rows OR the previous L4 ended up at an unexpected DOM
+    // position (e.g. KTL re-rendered the tbody between pipeline
+    // runs), the scan misses the existing L4 and creates a new one,
+    // leaving us with TWO "Mounting Hardware" sub-sections inside
+    // the same parent block.
+    //
+    // Walk each L3 group's range up front and remove all but the
+    // FIRST scw-mounting-l4 header in each block. Safe because the
+    // pipeline rebuilds the L4 contents from scratch anyway via
+    // postProcessMountingClusters.
+    const l3Headers = tbody.querySelectorAll('tr.kn-table-group.kn-group-level-3');
+    for (let i = 0; i < l3Headers.length; i++) {
+      const l3 = l3Headers[i];
+      let cur = l3.nextElementSibling;
+      let firstL4Seen = false;
+      while (cur) {
+        if (cur.classList && cur.classList.contains('kn-table-group')) {
+          const m = cur.className.match(/kn-group-level-(\d+)/);
+          const lvl = m ? parseInt(m[1], 10) : 99;
+          if (lvl <= 3) break;        // next L1/L2/L3 — done with this block
+          if (cur.classList.contains('scw-mounting-l4')) {
+            if (firstL4Seen) {
+              const dup = cur;
+              cur = cur.nextElementSibling;
+              dup.remove();
+              continue;
+            }
+            firstL4Seen = true;
+          }
+        }
+        cur = cur.nextElementSibling;
+      }
+    }
+
+    const parentField = opt.parentConnectionField || 'field_2464';
+
+    // Build id → <tr> map for fast lookup
+    const rowById = Object.create(null);
+    const knownIds = Object.create(null);
+    const dataRows = tbody.querySelectorAll('tr[id]');
+    for (let i = 0; i < dataRows.length; i++) {
+      const r = dataRows[i];
+      if (r.id && r.id.indexOf('kn-') !== 0) {
+        rowById[r.id] = r;
+        knownIds[r.id] = true;
+      }
+    }
+
+    const parentMap = buildParentConnectionMap(ctx, parentField, knownIds);
+    if (!Object.keys(parentMap).length) {
+      log(ctx, 'relocateAccessoriesToParents: no field_2464_raw connections found on any view');
+      return;
+    }
+
+    // For each accessory's parent row, find the enclosing L3 group
+    // header. We cluster all accessories at the END of the L3 group
+    // rather than interleaving them between the camera rows — that way
+    // the existing consolidated labor L4 header (e.g. "Mount Camera &
+    // Cabling (I-1, I-2, I-3, I-4, I-5)") stays intact, and the
+    // brackets render as a labelled "Mounting Hardware" sub-section
+    // under the camera group.
+    function findEnclosingL3(row) {
+      let cur = row.previousElementSibling;
+      while (cur) {
+        if (cur.classList && cur.classList.contains('kn-table-group')) {
+          const m = cur.className.match(/kn-group-level-(\d+)/);
+          if (m) {
+            const lvl = parseInt(m[1], 10);
+            if (lvl === 3) return cur;
+            if (lvl < 3) return null;
+          }
+        }
+        cur = cur.previousElementSibling;
+      }
+      return null;
+    }
+
+    // Group: l3HeaderEl → ordered list of {childRow, parentId}
+    const groupedByL3 = new Map();
+
+    for (const childId in parentMap) {
+      const parentId = parentMap[childId];
+      const childRow = rowById[childId];
+      const parentRow = rowById[parentId];
+      if (!childRow || !parentRow) continue;
+      if (childRow === parentRow) continue;
+      if (childRow.parentNode !== tbody) continue;
+      if (parentRow.parentNode !== tbody) continue;
+
+      // Capture the bracket's CURRENT L3 group header text (its own
+      // product name as Knack rendered it — e.g. "Electrical Mounting
+      // Bracket") before we move the row out of that group. The
+      // post-process pass reads this back via data-scw-product-name.
+      const ownL3 = findEnclosingL3(childRow);
+      if (ownL3 && !childRow.getAttribute('data-scw-product-name')) {
+        const ownLabelCell = ownL3.querySelector('td');
+        if (ownLabelCell) {
+          const productName = (ownLabelCell.textContent || '')
+            .replace(/\s+/g, ' ')
+            .trim();
+          if (productName) {
+            childRow.setAttribute('data-scw-product-name', productName);
+          }
+        }
+      }
+
+      const l3 = findEnclosingL3(parentRow);
+      if (!l3) continue;
+      if (!groupedByL3.has(l3)) groupedByL3.set(l3, []);
+      groupedByL3.get(l3).push({ childRow, parentId });
+    }
+
+    let movedCount = 0;
+
+    groupedByL3.forEach(function (accessories, l3Header) {
+      // Walk forward to the first node that is the next L1/L2/L3 group
+      // header — that's where the L3 block ends. Insertion point sits
+      // immediately before it.
+      let endOfBlock = l3Header.nextElementSibling;
+      while (endOfBlock) {
+        if (endOfBlock.classList && endOfBlock.classList.contains('kn-table-group')) {
+          const m = endOfBlock.className.match(/kn-group-level-(\d+)/);
+          if (m && parseInt(m[1], 10) <= 3) break;
+        }
+        endOfBlock = endOfBlock.nextElementSibling;
+      }
+
+      // Look for an existing scw-mounting-l4 header at the tail of this
+      // block so re-runs don't duplicate it.
+      let l4Header = null;
+      const probe = endOfBlock ? endOfBlock.previousElementSibling : tbody.lastElementChild;
+      // Scan backwards a few rows in case the previous run already put
+      // accessories + header here.
+      let scan = probe;
+      let scanDepth = 0;
+      while (scan && scanDepth < 50) {
+        if (scan.classList && scan.classList.contains('scw-mounting-l4')) { l4Header = scan; break; }
+        if (scan.classList && scan.classList.contains('kn-table-group')) {
+          const m = scan.className.match(/kn-group-level-(\d+)/);
+          if (m && parseInt(m[1], 10) <= 3) break;
+        }
+        scan = scan.previousElementSibling;
+        scanDepth++;
+      }
+
+      if (!l4Header) {
+        l4Header = document.createElement('tr');
+        l4Header.className = 'kn-table-group kn-group-level-4 scw-synthetic-l4 scw-mounting-l4';
+        const td = document.createElement('td');
+        td.setAttribute('colspan', '100');
+        td.textContent = 'Mounting Hardware';
+        l4Header.appendChild(td);
+        tbody.insertBefore(l4Header, endOfBlock);
+      }
+
+      // Place each accessory right after the previous insertion point so
+      // they preserve their original order.
+      let insertAfter = l4Header;
+      for (let i = 0; i < accessories.length; i++) {
+        const { childRow, parentId } = accessories[i];
+        childRow.classList.add('scw-relocated-accessory');
+        childRow.setAttribute('data-scw-parent-id', parentId);
+        if (childRow !== insertAfter.nextSibling) {
+          tbody.insertBefore(childRow, insertAfter.nextSibling);
+          movedCount++;
+        }
+        insertAfter = childRow;
+      }
+    });
+
+    if (movedCount > 0) {
+      markEmptyGroupHeaders(tbody);
+      log(ctx, 'Relocated', movedCount, 'accessory rows under their parent L3 group');
+    }
+  }
+
+  // Walk every L2/L3 group header and, if no data rows live between
+  // it and the next same-or-higher-level header, tag it with a class
+  // so CSS can hide it. Runs after relocateAccessoriesToParents.
+  function markEmptyGroupHeaders(tbody) {
+    const headers = tbody.querySelectorAll(
+      'tr.kn-table-group.kn-group-level-2, tr.kn-table-group.kn-group-level-3'
+    );
+    for (let i = 0; i < headers.length; i++) {
+      const h = headers[i];
+      const lvlMatch = h.className.match(/kn-group-level-(\d+)/);
+      if (!lvlMatch) continue;
+      const level = parseInt(lvlMatch[1], 10);
+
+      let cur = h.nextElementSibling;
+      let hasData = false;
+      while (cur) {
+        if (cur.classList && cur.classList.contains('kn-table-group')) {
+          const m = cur.className.match(/kn-group-level-(\d+)/);
+          const lvl = m ? parseInt(m[1], 10) : 99;
+          if (lvl <= level) break;
+        } else if (cur.tagName === 'TR' && cur.id && cur.id.indexOf('kn-') !== 0) {
+          hasData = true;
+          break;
+        }
+        cur = cur.nextElementSibling;
+      }
+
+      if (hasData) h.classList.remove('scw-empty-group-header');
+      else h.classList.add('scw-empty-group-header');
+    }
+  }
+
+  // ============================================================
+  // FEATURE: Post-process mounting hardware clusters
+  // ============================================================
+  //
+  // After the main subtotal pipeline runs, the L3 camera/device
+  // groups have their qty and cost cells written based on summing
+  // ALL data rows below them — which now includes relocated
+  // bracket rows. That inflates the L3 Qty (cameras + brackets) and
+  // the synthetic "Mounting Hardware" L4 displays $0 cost because
+  // the L4 cell-write logic uses labor (field_2028, which is $0 for
+  // brackets) instead of hardware/line-item-total.
+  //
+  // This pass walks each .scw-mounting-l4 cluster, groups the
+  // accessory rows by product, rolls them up into one
+  // representative row per product, hides the duplicates, fixes
+  // the L4 header cost, and fixes the parent L3 Qty (cameras only).
+  // It runs AFTER the main pipeline has computed totals, so it
+  // doesn't affect the sums (L3 cost still correctly includes the
+  // brackets because those tr[id]s remain in the DOM and were
+  // counted by the pipeline).
+
+  function postProcessMountingClusters(ctx) {
+    const tbody = ctx.$tbody[0];
+    if (!tbody) return;
+
+    const qtyKey = ctx.keys.qty;
+    const costKey = ctx.keys.cost;
+    const prefixKey = ctx.keys.prefix; // field_2240
+    const numberKey = ctx.keys.number; // field_1951
+
+    // Build id → tr map so we can look up each bracket's parent row to
+    // pull its prefix + drop number for the parent-label list.
+    const rowById = Object.create(null);
+    const allDataRows = tbody.querySelectorAll('tr[id]');
+    for (let i = 0; i < allDataRows.length; i++) {
+      const r = allDataRows[i];
+      if (r.id && r.id.indexOf('kn-') !== 0) rowById[r.id] = r;
+    }
+
+    function readCellText(row, fieldKey) {
+      if (!row || !fieldKey) return '';
+      const cell = row.querySelector('td.' + fieldKey);
+      return cell ? (cell.textContent || '').replace(/\s+/g, ' ').trim() : '';
+    }
+
+    // Given an array of bracket rows, build "I-1, I-2, E-3" from their
+    // parent rows' prefix + number cells. Mirrors buildCameraListHtml.
+    function buildParentLabelList(rows) {
+      const items = [];
+      for (let i = 0; i < rows.length; i++) {
+        const parentId = rows[i].getAttribute('data-scw-parent-id');
+        const parent = parentId ? rowById[parentId] : null;
+        if (!parent) continue;
+        const prefix = readCellText(parent, prefixKey);
+        const numRaw = readCellText(parent, numberKey);
+        if (!prefix || !numRaw) continue;
+        const digits = numRaw.replace(/\D/g, '');
+        const num = parseInt(digits, 10);
+        if (!Number.isFinite(num)) continue;
+        const prefixUpper = prefix.toUpperCase();
+        items.push({ prefix: prefixUpper, num, text: prefixUpper + num });
+      }
+      if (!items.length) return '';
+      items.sort((a, b) => (a.prefix === b.prefix ? a.num - b.num : a.prefix < b.prefix ? -1 : 1));
+      return items.map((it) => it.text).join(', ');
+    }
+
+    function readNum(row, fieldKey) {
+      const cell = row.querySelector('td.' + fieldKey);
+      if (!cell) return 0;
+      const m = (cell.textContent || '').replace(/[^0-9.\-]/g, '');
+      const n = parseFloat(m);
+      return Number.isFinite(n) ? n : 0;
+    }
+
+    function writeCellHtml(row, fieldKey, html) {
+      const cell = row.querySelector('td.' + fieldKey);
+      if (cell) cell.innerHTML = html;
+    }
+
+    // Clean up any synthetic product-line rows left over from a previous
+    // pipeline run — relocateAccessoriesToParents can shift things around
+    // and leave orphan rows in unexpected positions.
+    tbody.querySelectorAll('tr.scw-mounting-product-line').forEach(function (n) {
+      n.remove();
+    });
+
+    // ── Pass 1: roll up accessory rows by product under each .scw-mounting-l4
+    const l4s = tbody.querySelectorAll('tr.scw-mounting-l4');
+    for (let i = 0; i < l4s.length; i++) {
+      const l4 = l4s[i];
+
+      // Walk forward to collect bracket rows until next L3+ header
+      const accessoryRows = [];
+      let cur = l4.nextElementSibling;
+      while (cur) {
+        if (cur.classList && cur.classList.contains('kn-table-group')) {
+          const m = cur.className.match(/kn-group-level-(\d+)/);
+          if (m && parseInt(m[1], 10) <= 3) break;
+        } else if (cur.tagName === 'TR' && cur.id && cur.id.indexOf('kn-') !== 0) {
+          accessoryRows.push(cur);
+        }
+        cur = cur.nextElementSibling;
+      }
+
+      if (!accessoryRows.length) continue;
+
+      // Group by product display name (field_1958)
+      const byProduct = Object.create(null);
+      const productOrder = [];
+      for (let j = 0; j < accessoryRows.length; j++) {
+        const r = accessoryRows[j];
+        // Product name was stashed on the row at relocation time —
+        // read from data-scw-product-name (captured from the bracket's
+        // original L3 group header text). Fall back to td.field_1958
+        // in case the row exists but wasn't stamped.
+        let productName = r.getAttribute('data-scw-product-name') || '';
+        if (!productName) {
+          const productCell = r.querySelector('td.field_1958');
+          productName = productCell
+            ? (productCell.textContent || '').replace(/\s+/g, ' ').trim()
+            : '';
+        }
+        if (!byProduct[productName]) {
+          byProduct[productName] = [];
+          productOrder.push(productName);
+        }
+        byProduct[productName].push(r);
+      }
+
+      let totalQty = 0;
+      let totalCost = 0;
+
+      // Build one synthetic product-line row per bracket product, inserted
+      // immediately after the "Mounting Hardware" L4 header. The original
+      // tr[id] bracket rows stay in the DOM (hidden by the global tr[id]
+      // rule) so the pipeline's L3 cost sum still sees them.
+      const colCount = (l4.querySelectorAll('td') || []).length || 12;
+      let insertAfter = l4;
+
+      for (let p = 0; p < productOrder.length; p++) {
+        const productName = productOrder[p];
+        const rows = byProduct[productName];
+        let groupQty = 0;
+        let groupCost = 0;
+        for (let k = 0; k < rows.length; k++) {
+          groupQty += readNum(rows[k], qtyKey);
+          groupCost += readNum(rows[k], costKey);
+        }
+        totalQty += groupQty;
+        totalCost += groupCost;
+
+        // Reuse an existing synthetic line if a previous run already built
+        // one for this product under this L4 cluster.
+        let line = null;
+        const probe = insertAfter.nextElementSibling;
+        if (
+          probe &&
+          probe.classList &&
+          probe.classList.contains('scw-mounting-product-line') &&
+          probe.getAttribute('data-scw-product') === productName
+        ) {
+          line = probe;
+        }
+
+        const parentLabels = buildParentLabelList(rows);
+        const labelHtml =
+          escapeHtml(productName) +
+          (parentLabels
+            ? ' <b class="scw-mounting-parents" style="color:orange;">(' +
+              escapeHtml(parentLabels) +
+              ')</b>'
+            : '');
+
+        if (!line) {
+          line = document.createElement('tr');
+          line.className = 'scw-mounting-product-line';
+          line.setAttribute('data-scw-product', productName);
+
+          // Build a row that matches the L4 column layout: product name in
+          // the first cell, qty in td.qtyKey, cost in td.costKey, all
+          // others blank.
+          const tdNames = ['<td>' + labelHtml + '</td>'];
+          const otherCells = l4.querySelectorAll('td');
+          for (let c = 1; c < otherCells.length; c++) {
+            const ref = otherCells[c];
+            const cls = ref.className || '';
+            if (cls.indexOf(qtyKey) !== -1) {
+              tdNames.push('<td class="' + cls + '" style="text-align:center;">' + Math.round(groupQty) + '</td>');
+            } else if (cls.indexOf(costKey) !== -1) {
+              tdNames.push('<td class="' + cls + '" style="text-align:center;">' + escapeHtml(formatMoney(groupCost)) + '</td>');
+            } else {
+              tdNames.push('<td class="' + cls + '"></td>');
+            }
+          }
+          line.innerHTML = tdNames.join('');
+          tbody.insertBefore(line, insertAfter.nextSibling);
+        } else {
+          // Update label, qty, and cost in place
+          const firstTd = line.querySelector('td');
+          if (firstTd) firstTd.innerHTML = labelHtml;
+          const q = line.querySelector('td.' + qtyKey);
+          const c = line.querySelector('td.' + costKey);
+          if (q) q.textContent = String(Math.round(groupQty));
+          if (c) c.textContent = formatMoney(groupCost);
+        }
+
+        insertAfter = line;
+      }
+
+      // The L4 "Mounting Hardware" label-row is now just a section
+      // header above the per-product lines. Blank its qty/cost cells so
+      // we don't duplicate the totals shown on the product lines below.
+      writeCellHtml(l4, qtyKey, '');
+      writeCellHtml(l4, costKey, '');
+    }
+
+    // ── Pass 2: fix L3 Qty for groups that now contain accessories.
+    // The L3 cost stays as-is (it correctly includes brackets), but
+    // L3 Qty should reflect parent devices only.
+    const l3s = tbody.querySelectorAll('tr.kn-table-group.kn-group-level-3');
+    for (let i = 0; i < l3s.length; i++) {
+      const l3 = l3s[i];
+      let nonAccessoryQty = 0;
+      let hasAccessory = false;
+      let cur = l3.nextElementSibling;
+      while (cur) {
+        if (cur.classList && cur.classList.contains('kn-table-group')) {
+          const m = cur.className.match(/kn-group-level-(\d+)/);
+          if (m && parseInt(m[1], 10) <= 3) break;
+        } else if (cur.tagName === 'TR' && cur.id && cur.id.indexOf('kn-') !== 0) {
+          if (cur.classList.contains('scw-relocated-accessory')) {
+            hasAccessory = true;
+          } else {
+            nonAccessoryQty += readNum(cur, qtyKey);
+          }
+        }
+        cur = cur.nextElementSibling;
+      }
+      if (hasAccessory) {
+        writeCellHtml(l3, qtyKey, '<strong>' + Math.round(nonAccessoryQty) + '</strong>');
+      }
+    }
+
+    // ── Pass 3: fix L2 subtotal Qty for footers whose section contains
+    // relocated accessories. The pipeline-built L2 footer summed every
+    // tr[id] under the L2 (cameras + brackets); recompute as cameras only.
+    const l2Footers = tbody.querySelectorAll('tr.scw-subtotal--level-2');
+    for (let i = 0; i < l2Footers.length; i++) {
+      const footer = l2Footers[i];
+
+      // Walk backwards to the L2 group header that owns this footer
+      let header = footer.previousElementSibling;
+      while (header) {
+        if (header.classList && header.classList.contains('kn-table-group')) {
+          const m = header.className.match(/kn-group-level-(\d+)/);
+          if (m && parseInt(m[1], 10) <= 2) break;
+        }
+        header = header.previousElementSibling;
+      }
+      if (!header) continue;
+
+      // Sum non-accessory tr[id] qty between this L2 header and the footer
+      let nonAccessoryQty = 0;
+      let hasAccessory = false;
+      let cur = header.nextElementSibling;
+      while (cur && cur !== footer) {
+        if (cur.tagName === 'TR' && cur.id && cur.id.indexOf('kn-') !== 0) {
+          if (cur.classList.contains('scw-relocated-accessory')) {
+            hasAccessory = true;
+          } else {
+            nonAccessoryQty += readNum(cur, qtyKey);
+          }
+        }
+        cur = cur.nextElementSibling;
+      }
+
+      if (hasAccessory) {
+        const qtyCell = footer.querySelector('td.' + qtyKey);
+        if (qtyCell) qtyCell.innerHTML = '<strong>' + Math.round(nonAccessoryQty) + '</strong>';
+      }
+    }
+  }
+
+  // ============================================================
   // MAIN PROCESSOR
   // ============================================================
 
@@ -2101,6 +2717,11 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
     reorderLevel1Groups($tbody);
     reorderLevel2GroupsBySortField(ctx, $tbody, runId);
     reorderLevel3GroupsBySortField(ctx, $tbody, runId);
+
+    // Move accessory rows (field_2464 → parent) under their parent
+    // device row, before L4 synthesis so synthesized headers respect
+    // the new row positions.
+    relocateAccessoriesToParents(ctx);
 
     // Synthesize missing L4 headers before the main pipeline processes groups
     synthesizeMissingL4Headers(ctx);
@@ -2389,6 +3010,11 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
       $tbody.find('.scw-l1-header-qty, .scw-l1-header-cost').empty();
     }
 
+    // Post-process the relocated mounting hardware: roll up brackets
+    // per product, fix the L4 cost cell (uses labor by default, which
+    // is $0 for brackets), and de-double-count the parent L3 Qty.
+    postProcessMountingClusters(ctx);
+
     // ✅ Project Grand Total rows — appended to end of tbody
     refreshProjectTotals(ctx, caches, $tbody);
 
@@ -2562,15 +3188,67 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
           return $tbody.length && !$tbody.find('tr.scw-level-total-row').length;
         }
 
+        // Detects the first-load race where the pipeline ran before the
+        // secondary view holding field_2464_raw had hydrated — relocate-
+        // AccessoriesToParents returned an empty parentMap, so no rows
+        // got moved under the synthetic L4 cluster. totalsAreMissing()
+        // doesn't catch this because totals DO get written; the mounting
+        // structure is the part that's missing. Re-runs are safe — the
+        // pipeline is idempotent.
+        function mountingStructureMissing() {
+          var feat = CONFIG.features && CONFIG.features.relocateAccessoriesToParents;
+          if (!feat || !feat.enabled) return false;
+          var parentField = feat.parentConnectionField || 'field_2464';
+          var root = document.getElementById(viewId);
+          if (!root) return false;
+          var tbody = root.querySelector('.kn-table tbody');
+          if (!tbody) return false;
+
+          var knownIds = Object.create(null);
+          var rows = tbody.querySelectorAll('tr[id]');
+          for (var i = 0; i < rows.length; i++) {
+            if (rows[i].id && rows[i].id.indexOf('kn-') !== 0) {
+              knownIds[rows[i].id] = rows[i];
+            }
+          }
+          if (typeof Knack === 'undefined' || !Knack.views) return false;
+
+          for (var viewKey in Knack.views) {
+            var v = Knack.views[viewKey];
+            var m = v && v.model && v.model.data && v.model.data.models;
+            if (!m || !m.length) continue;
+            for (var j = 0; j < m.length; j++) {
+              var attrs = m[j].attributes || m[j];
+              var childId = attrs && attrs.id;
+              var childRow = childId && knownIds[childId];
+              if (!childRow) continue;
+              var raw = attrs[parentField + '_raw'];
+              if (!raw || !raw.length || !raw[0] || !raw[0].id) continue;
+              if (raw[0].id === childId) continue;
+              if (!childRow.classList.contains('scw-relocated-accessory')) {
+                return true;
+              }
+            }
+          }
+          return false;
+        }
+
+        function pipelineIncomplete() {
+          return totalsAreMissing() || mountingStructureMissing();
+        }
+
         // Run the pipeline synchronously — the DOM is ready when
         // knack-records-render fires, so there is no reason to defer.
         executePipeline();
 
-        // Safety net 1: staggered timer checks at 300ms and 1200ms.
-        // Covers Knack async re-renders that wipe our injected rows.
-        [300, 1200].forEach(function (ms) {
+        // Safety net 1: staggered timer checks. 300ms / 1200ms catch
+        // Knack async re-renders that wipe our injected rows; 3000ms
+        // covers slow-loading secondary views (the one that exposes
+        // field_2464_raw for accessory→parent relocation), which on
+        // first scene load can hydrate after the initial pipeline run.
+        [300, 1200, 3000].forEach(function (ms) {
           var t = setTimeout(function () {
-            if (totalsAreMissing()) executePipeline();
+            if (pipelineIncomplete()) executePipeline();
           }, ms);
           _safetyState[viewId].timers.push(t);
         });
@@ -2585,15 +3263,16 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
             if (obsDebounce) clearTimeout(obsDebounce);
             obsDebounce = setTimeout(function () {
               obsDebounce = 0;
-              if (totalsAreMissing()) executePipeline();
+              if (pipelineIncomplete()) executePipeline();
             }, 80);
           });
           obs.observe(viewRoot, { childList: true, subtree: true });
           _safetyState[viewId].obs = obs;
 
-          // Disconnect observer after 3s — we only need it for the initial
-          // settle period.  Keeps long-lived overhead at zero.
-          var disconnectTimer = setTimeout(function () { obs.disconnect(); }, 3000);
+          // Disconnect observer after 4s — we only need it for the initial
+          // settle period.  Keeps long-lived overhead at zero. Bumped from
+          // 3s so the observer is still live when the 3000ms timer fires.
+          var disconnectTimer = setTimeout(function () { obs.disconnect(); }, 4000);
           _safetyState[viewId].timers.push(disconnectTimer);
         }
       });

@@ -323,14 +323,78 @@
     }
   }
 
+  // Subscribers waiting for the next idle moment via SCW.mirrorConn.whenIdle().
+  // Resolved + cleared when _cascadeInFlight hits 0.
+  var _idleSubscribers = [];
+
   function cascadeEnd() {
     _cascadeInFlight--;
     if (_cascadeInFlight <= 0) {
       _cascadeInFlight = 0;
       hideCascadeToast();
       unbindCascadeUnloadGuard();
+
+      // Broadcast — any module that wants to refetch dependent data
+      // (worksheet-v2's hidden source view, downstream summaries, etc.)
+      // can listen for this event instead of polling.
+      try {
+        document.dispatchEvent(new CustomEvent('scw-cascade-idle'));
+      } catch (e) { /* ancient browser fallback isn't a concern */ }
+
+      // Resolve any pending whenIdle() promises and clear the queue.
+      var subs = _idleSubscribers;
+      _idleSubscribers = [];
+      for (var i = 0; i < subs.length; i++) {
+        try { subs[i](); } catch (e) { /* ignore */ }
+      }
     }
   }
+
+  /**
+   * Public: returns a Promise that resolves when no cascade is in
+   * flight. If one is currently running, resolves when it ends. If
+   * no cascade is running AND no grace period was requested, resolves
+   * on the next event-loop tick.
+   *
+   * Useful pattern after a connection edit fires a PUT — the cascade
+   * may not have started yet, so wait a short grace window (default
+   * 600ms) for it to kick off, then await its completion.
+   */
+  function whenIdle(opts) {
+    opts = opts || {};
+    var graceMs = (opts.graceMs != null) ? opts.graceMs : 600;
+    var maxMs   = (opts.maxMs != null)   ? opts.maxMs   : 30000;
+
+    return new Promise(function (resolve) {
+      var resolved = false;
+      function done() {
+        if (resolved) return;
+        resolved = true;
+        resolve();
+      }
+      var hardCap = setTimeout(done, maxMs);
+
+      // After the grace period, if no cascade is running, resolve.
+      // If one IS running, queue ourselves on the idle subscribers.
+      setTimeout(function () {
+        if (_cascadeInFlight === 0) {
+          clearTimeout(hardCap);
+          done();
+        } else {
+          _idleSubscribers.push(function () {
+            clearTimeout(hardCap);
+            done();
+          });
+        }
+      }, graceMs);
+    });
+  }
+
+  // Expose the public surface.
+  window.SCW = window.SCW || {};
+  window.SCW.mirrorConn = window.SCW.mirrorConn || {};
+  window.SCW.mirrorConn.whenIdle = whenIdle;
+  window.SCW.mirrorConn.isCascadeInFlight = function () { return _cascadeInFlight > 0; };
 
   // ======================================================================
   // FACTORY — one instance per view that needs the silent-regroup pattern.

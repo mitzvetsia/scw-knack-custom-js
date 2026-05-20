@@ -6,27 +6,28 @@
  *
  *   - Knack is still inserting <tr>s into the DOM
  *   - proposal-grid.js is restructuring groups, injecting headers,
- *     and running label rewrites
+ *     and running the totals pipeline
  *   - dynamic-cell-colors / group-collapse are kicking in
  *
  * The user sees a half-rendered grid during all of that — partial groups,
- * unstyled rows, missing camera labels — which reads as a broken view.
+ * unstyled rows, missing totals — which reads as "broken" and triggers
+ * the paint-then-repaint flash when proposal-grid's safety-net timers
+ * re-run the totals pipeline.
  *
  * Cover view_3341 with a full overlay (spinner + "Loading line items…")
- * from the moment the scene renders until ~250ms after knack-view-render
- * fires for view_3341. The delay gives proposal-grid + the other
- * view-render-bound modules time to finish their synchronous work before
- * we expose the grid.
+ * from scene render until the proposal-grid pipeline has injected the
+ * totals rows. We watch for tr.scw-level-total-row appearing in the
+ * tbody — that's the canonical "pipeline finished" marker — instead
+ * of relying on a fixed delay that races the pipeline on big SOWs.
  *
  * Defenses against "spinner stuck forever":
  *   1. SAFETY_TIMEOUT_MS — every show() schedules a guaranteed hide at
- *      this cap regardless of whether view-render ever fires. Catches
- *      hot-reload / late-bind / cross-tab-reload races where the
- *      view-render event fired before our listener attached.
- *   2. show() bails immediately if the view's tbody already contains
- *      rendered rows — same race, faster path.
- *   3. Hide also bound to knack-records-load (some Knack render flows
- *      fire this earlier than knack-view-render).
+ *      this cap regardless of whether the totals marker appears.
+ *      Catches edge cases (proposal-grid disabled, pipeline crash,
+ *      empty SOW with no rows = no totals).
+ *   2. show() bails immediately if the totals marker already exists.
+ *   3. POLL_MS keeps the totals check responsive without observer
+ *      overhead. Once the marker exists, drop the overlay.
  ******************************************************************************/
 (function () {
   'use strict';
@@ -35,10 +36,11 @@
   var OVERLAY_ID        = 'scw-view-3341-loading';
   var STYLE_ID          = 'scw-view-3341-loading-css';
   var EVENT_NS          = '.scwView3341Loading';
-  var HIDE_DELAY        = 250;          // ms after view-render before drop overlay
-  var SAFETY_TIMEOUT_MS = 15 * 1000;    // hard cap — overlay disappears no matter what
+  var POLL_MS           = 80;            // poll cadence for the totals marker
+  var SAFETY_TIMEOUT_MS = 20 * 1000;     // hard cap
 
   var _safetyTimer = 0;
+  var _pollTimer   = 0;
 
   function injectStyles() {
     if (document.getElementById(STYLE_ID)) return;
@@ -48,7 +50,7 @@
       '#' + OVERLAY_ID + ' {',
       '  position: absolute; inset: 0;',
       '  z-index: 50;',
-      '  background: rgba(255,255,255,0.92);',
+      '  background: rgba(255,255,255,0.96);',
       '  display: flex; flex-direction: column;',
       '  align-items: center; justify-content: center;',
       '  gap: 14px;',
@@ -72,16 +74,21 @@
     document.head.appendChild(s);
   }
 
-  // True when the view's tbody already has rendered data rows. If
-  // we're called after Knack finished rendering (race), we shouldn't
-  // re-show the overlay over an already-good grid.
-  function hasRenderedRows(view) {
+  /** True once proposal-grid's totals pipeline has injected at least
+   *  one tr.scw-level-total-row. That's the deterministic "we're done"
+   *  signal — Knack rows alone can be present while the pipeline is
+   *  still building totals + repainting, so we don't trust those. */
+  function totalsReady(view) {
     if (!view) return false;
-    var tbody = view.querySelector('table tbody');
-    if (!tbody) return false;
-    // Real data rows have an id (24-hex). Group headers, "no data"
-    // placeholders, etc. either lack id or have a non-hex value.
-    var rows = tbody.querySelectorAll('tr[id]');
+    return !!view.querySelector('table tbody tr.scw-level-total-row');
+  }
+
+  /** Fallback "rows are present" check for cases where proposal-grid
+   *  is disabled on this scene or the SOW is empty. If totals never
+   *  arrive, at least don't sit on a working grid. */
+  function hasDataRows(view) {
+    if (!view) return false;
+    var rows = view.querySelectorAll('table tbody tr[id]');
     for (var i = 0; i < rows.length; i++) {
       if (/^[a-f0-9]{24}$/i.test(rows[i].id)) return true;
     }
@@ -92,10 +99,7 @@
     injectStyles();
     var view = document.getElementById(TARGET_VIEW);
     if (!view) return;
-    // Already rendered → don't show overlay over a working grid.
-    // Catches the case where this script loads after view-render
-    // already fired (hot reload, slow first paint, cross-tab reload).
-    if (hasRenderedRows(view)) return;
+    if (totalsReady(view)) return; // already done — no overlay needed
 
     if (getComputedStyle(view).position === 'static') {
       view.style.position = 'relative';
@@ -109,58 +113,59 @@
       '<div class="scw-v3341-msg">Loading line items…</div>';
     view.appendChild(overlay);
 
-    // Safety cap — hide unconditionally after SAFETY_TIMEOUT_MS even
-    // if view-render / records-load never fire. Prevents the "spinner
-    // stuck forever" state when the listener binds after the event.
+    // Safety cap.
     if (_safetyTimer) clearTimeout(_safetyTimer);
     _safetyTimer = setTimeout(function () {
       _safetyTimer = 0;
       console.warn('[scw-view-3341-loading] overlay hit ' +
         (SAFETY_TIMEOUT_MS / 1000) + 's safety cap — forcing hide. ' +
-        'Either view_3341 took too long to render or the view-render ' +
-        'event fired before our listener attached.');
+        'Either view_3341 took too long to render OR proposal-grid never ' +
+        'injected the totals row.');
       hide();
     }, SAFETY_TIMEOUT_MS);
+
+    // Poll for the totals marker. Once it lands, the pipeline is done
+    // (including the safety-net re-runs and the mutation observer's
+    // settle period) and we can drop the overlay in one go.
+    if (_pollTimer) clearTimeout(_pollTimer);
+    function poll() {
+      _pollTimer = 0;
+      var v = document.getElementById(TARGET_VIEW);
+      if (!v) return; // scene navigated away
+      if (totalsReady(v)) { hide(); return; }
+      _pollTimer = setTimeout(poll, POLL_MS);
+    }
+    _pollTimer = setTimeout(poll, POLL_MS);
   }
 
   function hide() {
-    if (_safetyTimer) {
-      clearTimeout(_safetyTimer);
-      _safetyTimer = 0;
-    }
+    if (_safetyTimer) { clearTimeout(_safetyTimer); _safetyTimer = 0; }
+    if (_pollTimer)   { clearTimeout(_pollTimer);   _pollTimer   = 0; }
     var overlay = document.getElementById(OVERLAY_ID);
     if (overlay && overlay.parentNode) overlay.parentNode.removeChild(overlay);
   }
 
   // Show on every scene render — if view_3341 is on this scene the
-  // shell is in the DOM by the time scene-render fires, even though
-  // the rows haven't loaded yet. show() is a no-op when view_3341
-  // isn't on the scene OR when its rows are already rendered.
+  // shell is in the DOM by the time scene-render fires. show() bails
+  // if the view isn't here OR if totals are already injected.
   $(document)
     .off('knack-scene-render.any' + EVENT_NS)
     .on('knack-scene-render.any' + EVENT_NS, function () { show(); });
 
-  // Hide ~250ms after the view finishes rendering so proposal-grid's
-  // bound handler (also on knack-view-render.view_3341) has time to
-  // complete its synchronous restructure before we expose the grid.
+  // Re-show whenever view_3341 re-renders (filter change, inline-edit
+  // refetch, etc.) — proposal-grid's pipeline reruns on every records-
+  // render, and during that re-render the totals are briefly absent.
+  // The overlay covers that gap so the user doesn't see the paint-
+  // then-repaint flash.
   $(document)
     .off('knack-view-render.' + TARGET_VIEW + EVENT_NS)
-    .on('knack-view-render.' + TARGET_VIEW + EVENT_NS, function () {
-      setTimeout(hide, HIDE_DELAY);
-    });
+    .on('knack-view-render.' + TARGET_VIEW + EVENT_NS, function () { show(); });
 
-  // Some Knack render flows fire knack-records-load earlier than
-  // knack-view-render (data arrived, rows about to inject). Belt-and-
-  // suspenders hide here too, with the same delay so proposal-grid's
-  // synchronous post-render work still gets a chance to run.
   $(document)
-    .off('knack-records-load.' + TARGET_VIEW + EVENT_NS)
-    .on('knack-records-load.' + TARGET_VIEW + EVENT_NS, function () {
-      setTimeout(hide, HIDE_DELAY);
-    });
+    .off('knack-records-render.' + TARGET_VIEW + EVENT_NS)
+    .on('knack-records-render.' + TARGET_VIEW + EVENT_NS, function () { show(); });
 
   // First-paint attempt for the case where the scene is already
-  // rendered when this IIFE runs (e.g. hot reload during development).
-  // hasRenderedRows() guards against showing over a finished grid.
+  // rendered when this IIFE runs (hot reload / late bundle load).
   setTimeout(show, 0);
 })();

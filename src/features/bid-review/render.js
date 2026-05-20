@@ -222,7 +222,7 @@
     r1.appendChild(el('th', 'scw-bid-review__photos-header', 'Photos'));
     // Sales Revisions column injected externally — leave gap
     r1.appendChild(buildTitleCell(
-      'scw-bid-review__sow-detail-header', 'SOW', [
+      'scw-bid-review__sow-detail-header', 'SCW SOW', [
         { label: 'Sub Bid Total:', value: sowSubBidTotal, warn: anySowMismatch },
         { label: 'Install Total:', value: sowInstallTotal }
       ]
@@ -230,7 +230,7 @@
     for (var i = 0; i < sowGrid.packages.length; i++) {
       var pkgId = sowGrid.packages[i].id;
       r1.appendChild(buildTitleCell(
-        'scw-bid-review__pkg-header', 'Bid', [
+        'scw-bid-review__pkg-header', 'Subcontractor Bid', [
           { label: 'Sub Bid Total:', value: pkgSubBidTotals[pkgId], warn: bidMismatches(pkgId) }
         ]
       ));

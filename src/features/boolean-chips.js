@@ -344,16 +344,22 @@
       $srcTd.text(newValue === 'yes' ? 'Yes' : 'No');
     }
 
-    // Save — remove is-saving (pointer-events: none) only after the
-    // save completes, not on a blind 400ms timer.
+    // Brief acknowledgment flash — drop after 200ms regardless of the
+    // PUT status. The previous "wait for the save to complete" path
+    // left the chip dimmed + pointer-events:none for the full 500-
+    // 1000ms Knack PUT round-trip, which is the bulk of the "feels
+    // interminable" complaint on inline edits. The hidden source td
+    // has already been patched above so the new value is locally
+    // authoritative; if the PUT genuinely fails the existing error
+    // handler logs to console (no inline error UI for chips today,
+    // worth revisiting if false-positives become a problem).
+    setTimeout(function () { newChip.classList.remove('is-saving'); }, 200);
+
     var tr = td.closest('tr');
     var recordId = tr ? getRecordId(tr) : null;
     if (recordId) {
-      saveFieldValue(viewCfg.viewId, recordId, fieldCfg.fieldKey, newValue, function () {
-        newChip.classList.remove('is-saving');
-      });
+      saveFieldValue(viewCfg.viewId, recordId, fieldCfg.fieldKey, newValue);
     } else {
-      newChip.classList.remove('is-saving');
       console.warn('[scw-bool-chips] Could not determine record ID for save');
     }
   }

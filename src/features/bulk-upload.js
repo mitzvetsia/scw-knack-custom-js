@@ -89,18 +89,42 @@
         menuViewId:           'view_3482',
         linkText:             'Bulk Add Photos',
         linkField:            'sowID',
-        hashPattern:          /scope-of-work-details\/([a-f0-9]{24})/,
+        // The id we ship lives at different hash segments depending on
+        // the route the user came from:
+        //   standalone SOW page          → #…/scope-of-work-details/<sow>
+        //   project-dashboard build-sow  → #…/project-dashboard/<proj>/build-sow/<sow>/?…
+        // The default below covers both for the menuViewId click; the
+        // view_3610 inject target overrides it (see contexts there)
+        // because on the project-dashboard route the upload should be
+        // associated with the PROJECT, not the SOW.
+        hashPattern:          /(?:scope-of-work-details|build-sow)\/([a-f0-9]{24})/,
         refreshRecordInViews: [],
         refreshViews:         [],
         reloadOnClose:        false,
         // Inline buttons on SOW-context worksheet toolbars. Each entry
         // slots an Add Photos button before the named existing CTA on
-        // that view. The submitted payload always uses linkField:'sowID'
-        // so the receiving Make scenario knows the record context is
-        // the SOW, regardless of which toolbar triggered it.
+        // that view. Targets can override the parent linkField/hashPattern
+        // via `contexts: [{ hashPattern, linkField }, …]` — the click
+        // handler walks contexts in order and uses the first that matches
+        // the current URL.
         injectTargets: [
           { viewId: 'view_3586', beforeText: 'Add to Scope of Work' },
-          { viewId: 'view_3610', beforeText: 'Add to Scope'         }
+          {
+            viewId: 'view_3610',
+            beforeText: 'Add to Scope',
+            // view_3610 is mounted on BOTH the standalone SOW page and
+            // the project-dashboard build-sow route. On the project
+            // route the upload context is the PROJECT (its id is the
+            // segment after `project-dashboard/`); on the SOW page the
+            // context is the SOW. Order matters — project-dashboard
+            // match is checked first because the build-sow form ALSO
+            // contains a 24-hex segment that would otherwise match
+            // the sowID pattern.
+            contexts: [
+              { linkField: 'projectID', hashPattern: /project-dashboard\/([a-f0-9]{24})/ },
+              { linkField: 'sowID',     hashPattern: /(?:scope-of-work-details|build-sow)\/([a-f0-9]{24})/ }
+            ]
+          }
         ]
       },
       {
@@ -1059,7 +1083,27 @@
   }
 
   // Build the Add Photos button. Pure DOM construction — no insertion.
-  function buildAddPhotosBtn(viewCfg) {
+  // `target` is the optional injectTargets entry that asked for this
+  // button. If `target.contexts` is set, the click handler picks the
+  // first context whose hashPattern matches the URL — that lets a
+  // single button source different { recordId, linkField } pairs
+  // depending on the page route (e.g. view_3610 on the standalone
+  // SOW page vs. inside project-dashboard/build-sow).
+  function resolveContext(viewCfg, target) {
+    var contexts = (target && target.contexts) || null;
+    if (contexts) {
+      for (var i = 0; i < contexts.length; i++) {
+        var ctx = contexts[i];
+        var id  = getRecordId(ctx.hashPattern);
+        if (id) return { recordId: id, linkField: ctx.linkField || viewCfg.linkField };
+      }
+    }
+    var fallback = getRecordId(viewCfg.hashPattern);
+    if (fallback) return { recordId: fallback, linkField: viewCfg.linkField };
+    return null;
+  }
+
+  function buildAddPhotosBtn(viewCfg, target) {
     var btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'scw-acc-action-btn scw-bulk-inline-btn';
@@ -1068,9 +1112,13 @@
     btn.addEventListener('click', function (e) {
       e.preventDefault();
       e.stopPropagation();
-      var recordId = getRecordId(viewCfg.hashPattern);
-      if (!recordId) { alert('Could not determine record id from URL.'); return; }
-      openModal(viewCfg, recordId);
+      var ctx = resolveContext(viewCfg, target);
+      if (!ctx) { alert('Could not determine record id from URL.'); return; }
+      // Shallow-clone viewCfg so the modal/queue picks up the
+      // context-appropriate linkField without mutating the shared
+      // config object.
+      var cfgForUpload = $.extend({}, viewCfg, { linkField: ctx.linkField });
+      openModal(cfgForUpload, ctx.recordId);
     });
     return btn;
   }
@@ -1145,7 +1193,7 @@
             }
           }
 
-          ref.parentNode.insertBefore(buildAddPhotosBtn(viewCfg), ref);
+          ref.parentNode.insertBefore(buildAddPhotosBtn(viewCfg, target), ref);
         }
       });
     });

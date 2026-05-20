@@ -1191,12 +1191,11 @@
         '<span class="scw-add-icon">+</span>' +
         '<span>Add</span>';
       addBtn.title = 'Add a new photo record';
-      (function (lid, vid) {
-        addBtn.addEventListener('click', function () {
-          var h = addPhotoHash(lid, vid);
-          if (h) navigateToHash(h);
-        });
-      })(lineItemId, viewId);
+      // Click handled by the single delegated listener registered at
+      // module init — see init block below. Attributes carry the
+      // payload so we don't need a per-row closure.
+      addBtn.setAttribute('data-scw-photo-action', 'add');
+      addBtn.setAttribute('data-scw-line-id', lineItemId);
 
       if (photos.length === 0) {
         addBtn.classList.add('scw-photo-add-solo');
@@ -1232,12 +1231,10 @@
               ? (photo.type || 'Photo') + ' for ' + labelText
               : 'Site survey photo';
             imgEl.title = 'Drag to an empty required slot, or click to edit';
-            (function (rid, vid) {
-              imgEl.addEventListener('click', function () {
-                var h = editPhotoHash(rid, vid);
-                if (h) navigateToHash(h);
-              });
-            })(photo.id, viewId);
+            // Click → edit handled by the delegated listener at module
+            // init. The card already carries data-photo-id; we just tag
+            // it as an edit target so the handler picks it up.
+            card.setAttribute('data-scw-photo-action', 'edit');
             card.appendChild(imgEl);
           } else {
             // Photo record exists but no image uploaded — potential drop target
@@ -1248,32 +1245,17 @@
               '<span class="scw-empty-icon">&#128247;</span>' +
               '<span>' + (isMissing ? 'Required' : 'Upload photo') + '</span>';
 
-            // Click behaviour: if the upload webhook is configured AND
-            // this is a missing-required card, open a file picker for
-            // inline upload via Make. Otherwise fall back to Knack's edit
-            // modal (the existing affordance).
-            var uploadEnabled = isMissing &&
-              !!(window.SCW && window.SCW.CONFIG &&
-                 window.SCW.CONFIG.MAKE_PHOTO_UPLOAD_WEBHOOK);
-            if (uploadEnabled) {
-              empty.title = 'Click to upload' + (photo.type ? ': ' + photo.type : '');
-              empty.style.cursor = 'pointer';
-              (function (rid, lid, vid, c) {
-                empty.addEventListener('click', function () {
-                  openFilePickerForUpload(c, rid, lid, vid);
-                });
-              })(photo.id, lineItemId, viewId, card);
-            } else {
-              empty.title = photo.type
-                ? 'Upload: ' + photo.type
-                : 'Click to edit photo';
-              (function (rid, vid) {
-                empty.addEventListener('click', function () {
-                  var h = editPhotoHash(rid, vid);
-                  if (h) navigateToHash(h);
-                });
-              })(photo.id, viewId);
-            }
+            // Click → edit-doc-photo page, handled by the delegated
+            // listener at module init. The card already carries
+            // data-photo-id; tag the card as an edit target so the
+            // handler picks it up regardless of where on the card the
+            // user clicked. (The previous inline-upload-via-Make path
+            // is left behind in openFilePickerForUpload /
+            // dispatchPhotoUpload for possible future revival.)
+            empty.title = photo.type
+              ? 'Upload: ' + photo.type
+              : 'Click to edit photo';
+            card.setAttribute('data-scw-photo-action', 'edit');
             card.appendChild(empty);
 
             // If an upload+poll cycle is still in flight for this record,
@@ -1355,6 +1337,40 @@
 
   // ── Init ────────────────────────────────────────────────────────
   injectCss();
+
+  // Single delegated click listener for every photo-card "Add" / "Edit"
+  // action across every TARGET view. Replaces the per-card / per-image
+  // / per-empty addEventListener calls that processView used to attach
+  // — on a view with 100 rows × 5 photos each, that was ~600 listener
+  // attaches per render. Now: 1 listener for the lifetime of the page.
+  //
+  // Routing is by data-scw-photo-action on the closest ancestor:
+  //   - addBtn   → action="add",  data-scw-line-id on the same element
+  //   - card     → action="edit", data-photo-id    on the same element
+  // viewId is read from the enclosing .kn-view ancestor, gated by
+  // TARGET_VIEWS so we never claim a click on someone else's grid.
+  var TARGET_VIEW_SET = {};
+  for (var tv = 0; tv < TARGET_VIEWS.length; tv++) TARGET_VIEW_SET[TARGET_VIEWS[tv]] = true;
+
+  document.addEventListener('click', function (e) {
+    var target = e.target && e.target.closest && e.target.closest('[data-scw-photo-action]');
+    if (!target) return;
+    var viewEl = target.closest('.kn-view');
+    if (!viewEl || !TARGET_VIEW_SET[viewEl.id]) return;
+
+    var action = target.getAttribute('data-scw-photo-action');
+    if (action === 'add') {
+      var lineId = target.getAttribute('data-scw-line-id');
+      if (!lineId) return;
+      var addH = addPhotoHash(lineId, viewEl.id);
+      if (addH) navigateToHash(addH);
+    } else if (action === 'edit') {
+      var photoId = target.getAttribute('data-photo-id');
+      if (!photoId) return;
+      var editH = editPhotoHash(photoId, viewEl.id);
+      if (editH) navigateToHash(editH);
+    }
+  });
 
   for (var v = 0; v < TARGET_VIEWS.length; v++) {
     (function (vid) {

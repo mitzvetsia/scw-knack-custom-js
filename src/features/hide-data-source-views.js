@@ -86,6 +86,11 @@
     // 'view_3927' — mounting-hardware accessory view; mirror-connection-
     // sync.js (ACCESSORIES_VIEW_ID) reads from it.
     'view_3927',
+    // 'view_3962' — dedicated SOW Line Items source for the v2
+    // worksheet rewrite (worksheet-v2/). Hidden so end users only
+    // see the v1 grid (view_3610) + the v2 preview panel during
+    // the parallel build.
+    'view_3962',
   ];
 
   if (!document.getElementById(STYLE_ID)) {

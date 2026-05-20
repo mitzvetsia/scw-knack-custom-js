@@ -42,6 +42,7 @@ cat \
   src/features/ratking/scene-776-stub.js \
   src/features/proposal-grid.js \
   src/features/view-3341-loading-overlay.js \
+  src/features/view-3610-loading-overlay.js \
   src/features/survey-review-grid.js \
   src/features/proposal-pdf-export.js \
   src/features/published-proposal-render.js \
@@ -80,7 +81,6 @@ cat \
   src/features/filter-products-by-bucket.js \
   src/features/filter-mdf-idf-by-view.js \
   src/features/force-negative-display.js \
-  src/features/refresh-on-inline-edit.js \
   src/features/refresh-view-on-form-submit.js \
   src/features/bucket-field-visibility_add-product.js \
   src/features/bucket-field-visibility_add-survey-bid-item.js \
@@ -115,6 +115,7 @@ cat \
   src/features/sales-change-request/revision-inject.js \
   src/features/sales-change-request/init.js \
   src/features/bid-revision-inject.js \
+  src/features/sub-variant-bid.js \
   src/features/revision-accept-reject.js \
   src/features/proposal-type-chip.js \
   src/features/published-quote-info.js \
@@ -144,6 +145,16 @@ cat \
   src/features/legacy/expand-collapse-legacy-function.js \
   src/features/legacy/add-checkboxes.js \
   src/features/legacy/get-tl-photos.js \
+  src/features/worksheet-v2/config.js \
+  src/features/worksheet-v2/styles.js \
+  src/features/worksheet-v2/state.js \
+  src/features/worksheet-v2/data.js \
+  src/features/worksheet-v2/groups.js \
+  src/features/worksheet-v2/card.js \
+  src/features/worksheet-v2/picker.js \
+  src/features/worksheet-v2/edit.js \
+  src/features/worksheet-v2/render.js \
+  src/features/worksheet-v2/init.js \
   > "$TMP_BUNDLE"
 
 UNMIN_BYTES=$(wc -c < "$TMP_BUNDLE" | tr -d ' ')
