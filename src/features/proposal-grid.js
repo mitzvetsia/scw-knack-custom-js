@@ -2186,6 +2186,45 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
     const tbody = ctx.$tbody[0];
     if (!tbody) return;
 
+    // ── Pre-pass: dedupe orphan scw-mounting-l4 headers ───────────
+    // Each pipeline run inserts an L4 "Mounting Hardware" header for
+    // every parent that has at least one accessory. The reuse-scan
+    // below walks backwards from endOfBlock for up to 50 rows looking
+    // for an existing L4 to reuse — but if a parent has more than 50
+    // sibling rows OR the previous L4 ended up at an unexpected DOM
+    // position (e.g. KTL re-rendered the tbody between pipeline
+    // runs), the scan misses the existing L4 and creates a new one,
+    // leaving us with TWO "Mounting Hardware" sub-sections inside
+    // the same parent block.
+    //
+    // Walk each L3 group's range up front and remove all but the
+    // FIRST scw-mounting-l4 header in each block. Safe because the
+    // pipeline rebuilds the L4 contents from scratch anyway via
+    // postProcessMountingClusters.
+    const l3Headers = tbody.querySelectorAll('tr.kn-table-group.kn-group-level-3');
+    for (let i = 0; i < l3Headers.length; i++) {
+      const l3 = l3Headers[i];
+      let cur = l3.nextElementSibling;
+      let firstL4Seen = false;
+      while (cur) {
+        if (cur.classList && cur.classList.contains('kn-table-group')) {
+          const m = cur.className.match(/kn-group-level-(\d+)/);
+          const lvl = m ? parseInt(m[1], 10) : 99;
+          if (lvl <= 3) break;        // next L1/L2/L3 — done with this block
+          if (cur.classList.contains('scw-mounting-l4')) {
+            if (firstL4Seen) {
+              const dup = cur;
+              cur = cur.nextElementSibling;
+              dup.remove();
+              continue;
+            }
+            firstL4Seen = true;
+          }
+        }
+        cur = cur.nextElementSibling;
+      }
+    }
+
     const parentField = opt.parentConnectionField || 'field_2464';
 
     // Build id → <tr> map for fast lookup
