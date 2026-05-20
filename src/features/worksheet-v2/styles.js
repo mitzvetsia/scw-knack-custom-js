@@ -1,14 +1,15 @@
 /*** WORKSHEET V2 — STYLES ****************************************************
  *
- * All v2 CSS is scoped under `.scw-ws-v2` AND uses !important on the
- * structural rules. Knack injects scene-level styles that aggressively
- * target generic tags (div, input, textarea, label) — without
- * !important on the layout primitives, v2 cards collapsed to zero
- * height because Knack's display/padding/width rules won.
+ * Phase 3.A — compact horizontal-row layout. Each card is a single
+ * grid row with fixed/flex columns:
  *
- * Visual is intentionally distinct from v1 (purple dashed border,
- * "V2 PREVIEW" pill) so we can tell which UI we're looking at at a
- * glance during the parallel build.
+ *   [label fixed] [product flex] [qty fixed] [rate fixed] [ext fixed]
+ *     [notes flex] [chevron fixed]
+ *
+ * All v2 CSS scoped under `.scw-ws-v2` AND uses !important on the
+ * structural rules — Knack's scene-level styles target generic tags
+ * (div, input, textarea, button) aggressively and would otherwise
+ * collapse the layout.
  ****************************************************************************/
 (function () {
   'use strict';
@@ -56,10 +57,10 @@
 
     /* ── Body / card list ───────────────────────────────────── */
     '.scw-ws-v2-body {',
-    '  padding: 10px 12px !important;',
-    '  max-height: 560px !important;',
+    '  padding: 0 !important;',
+    '  max-height: 680px !important;',
     '  overflow: auto !important;',
-    '  display: flex !important; flex-direction: column !important; gap: 6px !important;',
+    '  display: block !important;',
     '}',
     '.scw-ws-v2-empty {',
     '  padding: 20px !important;',
@@ -68,93 +69,120 @@
     '  font-style: italic !important;',
     '}',
 
-    /* ── Card ───────────────────────────────────────────────── */
+    /* ── Card (row container) ───────────────────────────────── */
     '.scw-ws-v2-card {',
     '  display: block !important;',
-    '  border: 1px solid var(--scw-border-subtle, #e2e8f0) !important;',
-    '  border-radius: 6px !important;',
-    '  background: #fff !important;',
-    '  overflow: hidden !important;',
-    '  min-height: 60px !important;', /* safety net: visible even if internal sizing fails */
-    '  flex-shrink: 0 !important;',  /* don't collapse under flex parent */
-    '}',
-    '.scw-ws-v2-card-header {',
-    '  display: flex !important; align-items: baseline !important; gap: 10px !important;',
-    '  padding: 6px 12px !important;',
-    '  background: var(--scw-surface-subtle, #f8fafc) !important;',
     '  border-bottom: 1px solid var(--scw-border-subtle, #e2e8f0) !important;',
-    '  font-size: 13px !important;',
-    '  min-height: 24px !important;',
+    '  background: #fff !important;',
+    '  transition: background-color 100ms ease !important;',
     '}',
-    '.scw-ws-v2-card-label {',
-    '  display: inline-block !important;',
-    '  font-weight: 700 !important;',
-    '  color: #07467c !important;',
-    '  min-width: 60px !important;',
-    '  font-variant-numeric: tabular-nums !important;',
+    '.scw-ws-v2-card:hover {',
+    '  background: var(--scw-surface-subtle, #f8fafc) !important;',
     '}',
-    '.scw-ws-v2-card-product {',
-    '  display: inline-block !important;',
-    '  flex: 1 1 auto !important;',
-    '  color: var(--scw-text-default, #1f2937) !important;',
-    '  overflow: hidden !important; text-overflow: ellipsis !important; white-space: nowrap !important;',
+    /* Alternating zebra to help scan long lists */
+    '.scw-ws-v2-card:nth-child(even) {',
+    '  background: #fafbfc !important;',
+    '}',
+    '.scw-ws-v2-card:nth-child(even):hover {',
+    '  background: var(--scw-surface-muted, #f1f5f9) !important;',
     '}',
 
-    /* ── Field row ──────────────────────────────────────────── */
-    '.scw-ws-v2-card-fields {',
+    /* ── Row grid ───────────────────────────────────────────── */
+    /* Columns sized for a typical SOW line item:
+       label (60px) · product (flex) · qty (70px) · rate (80px) ·
+       ext (90px) · notes (flex 1.4) · chevron (28px) */
+    '.scw-ws-v2-row {',
     '  display: grid !important;',
-    '  grid-template-columns: 90px 100px 100px 1fr !important;',
+    '  grid-template-columns: 64px minmax(120px, 1fr) 72px 84px 90px minmax(160px, 1.4fr) 32px !important;',
     '  gap: 8px !important;',
-    '  padding: 8px 12px !important;',
-    '  align-items: start !important;',
-    '  min-height: 36px !important;',
+    '  align-items: center !important;',
+    '  padding: 4px 12px !important;',
+    '  min-height: 40px !important;',
     '}',
-    '@media (max-width: 760px) {',
-    '  .scw-ws-v2-card-fields {',
-    '    grid-template-columns: 1fr 1fr !important;',
+
+    /* Mobile / narrow viewports — wrap notes to next line */
+    '@media (max-width: 860px) {',
+    '  .scw-ws-v2-row {',
+    '    grid-template-columns: 64px 1fr 70px 80px 80px 32px !important;',
+    '    grid-template-areas:',
+    '      "label product qty rate ext chevron"',
+    '      "notes notes notes notes notes notes" !important;',
     '  }',
-    '  .scw-ws-v2-field--notes { grid-column: 1 / -1 !important; }',
+    '  .scw-ws-v2-cell--label   { grid-area: label !important; }',
+    '  .scw-ws-v2-cell--product { grid-area: product !important; }',
+    '  .scw-ws-v2-cell--notes   { grid-area: notes !important; padding-top: 4px !important; }',
     '}',
-    '.scw-ws-v2-field {',
-    '  display: flex !important; flex-direction: column !important; gap: 2px !important;',
-    '  margin: 0 !important;',
-    '  padding: 0 !important;',
-    '}',
-    '.scw-ws-v2-field-label {',
+
+    /* ── Cells ──────────────────────────────────────────────── */
+    '.scw-ws-v2-cell {',
     '  display: block !important;',
-    '  font-size: 10px !important; font-weight: 700 !important;',
-    '  letter-spacing: 0.05em !important;',
-    '  text-transform: uppercase !important;',
-    '  color: var(--scw-text-caption, #64748b) !important;',
-    '  margin: 0 !important;',
+    '  min-width: 0 !important;', /* allows ellipsis on flex children */
+    '  font-size: 13px !important;',
+    '  line-height: 1.3 !important;',
+    '}',
+
+    '.scw-ws-v2-cell--label {',
+    '  font-weight: 700 !important;',
+    '  color: #07467c !important;',
+    '  font-variant-numeric: tabular-nums !important;',
+    '  white-space: nowrap !important;',
+    '  overflow: hidden !important;',
+    '  text-overflow: ellipsis !important;',
+    '}',
+
+    '.scw-ws-v2-cell--product {',
+    '  color: var(--scw-text-default, #1f2937) !important;',
+    '  white-space: nowrap !important;',
+    '  overflow: hidden !important;',
+    '  text-overflow: ellipsis !important;',
+    '}',
+
+    '.scw-ws-v2-cell--num,',
+    '.scw-ws-v2-cell--ext {',
+    '  text-align: right !important;',
+    '  font-variant-numeric: tabular-nums !important;',
+    '}',
+
+    '.scw-ws-v2-cell--ext {',
+    '  font-weight: 600 !important;',
+    '  color: #07467c !important;',
+    '  padding: 5px 8px !important;', /* match input vertical rhythm */
     '}',
 
     /* ── Inputs ─────────────────────────────────────────────── */
     '.scw-ws-v2-input {',
     '  display: block !important;',
-    '  width: 100% !important; box-sizing: border-box !important;',
-    '  padding: 5px 8px !important;',
-    '  border: 1px solid var(--scw-border-default, #cbd5e1) !important;',
-    '  border-radius: 4px !important;',
-    '  background: #fff !important;',
+    '  width: 100% !important;',
+    '  box-sizing: border-box !important;',
+    '  padding: 4px 6px !important;',
+    '  border: 1px solid transparent !important;', /* hide chrome until hover/focus — looks like v1's inline cells */
+    '  border-radius: 3px !important;',
+    '  background: transparent !important;',
     '  font: inherit !important;',
     '  color: var(--scw-text-default, #1f2937) !important;',
-    '  min-height: 28px !important;',
-    '  transition: border-color 120ms ease, background-color 120ms ease, box-shadow 120ms ease !important;',
+    '  min-height: 26px !important;',
+    '  transition: border-color 100ms ease, background-color 100ms ease, box-shadow 100ms ease !important;',
+    '}',
+    '.scw-ws-v2-card:hover .scw-ws-v2-input {',
+    '  border-color: var(--scw-border-subtle, #e2e8f0) !important;',
+    '  background: #fff !important;',
     '}',
     '.scw-ws-v2-input:focus {',
     '  outline: none !important;',
     '  border-color: #93c5fd !important;',
+    '  background: #fff !important;',
     '  box-shadow: 0 0 0 2px rgba(147, 197, 253, 0.25) !important;',
     '}',
+
     '.scw-ws-v2-input--num {',
     '  text-align: right !important;',
     '  font-variant-numeric: tabular-nums !important;',
     '}',
+
     '.scw-ws-v2-input--notes {',
-    '  resize: vertical !important;',
-    '  min-height: 28px !important;',
-    '  max-height: 200px !important;',
+    '  white-space: nowrap !important;',
+    '  overflow: hidden !important;',
+    '  text-overflow: ellipsis !important;',
     '}',
 
     /* ── Save state flashes ─────────────────────────────────── */
@@ -168,15 +196,28 @@
     '  box-shadow: 0 0 0 2px rgba(252, 165, 165, 0.25) !important;',
     '}',
 
-    /* ── Read-only display ──────────────────────────────────── */
-    '.scw-ws-v2-display {',
-    '  display: block !important;',
-    '  padding: 5px 8px !important;',
-    '  border: 1px solid transparent !important;',
-    '  font-variant-numeric: tabular-nums !important;',
-    '  text-align: right !important;',
-    '  color: var(--scw-text-default, #1f2937) !important;',
-    '  min-height: 28px !important;',
+    /* ── Chevron ────────────────────────────────────────────── */
+    '.scw-ws-v2-chevron {',
+    '  display: inline-flex !important;',
+    '  align-items: center !important;',
+    '  justify-content: center !important;',
+    '  width: 24px !important;',
+    '  height: 24px !important;',
+    '  padding: 0 !important;',
+    '  margin: 0 !important;',
+    '  border: 0 !important;',
+    '  background: transparent !important;',
+    '  color: var(--scw-text-caption, #64748b) !important;',
+    '  cursor: pointer !important;',
+    '  border-radius: 4px !important;',
+    '  transition: transform 150ms ease, background-color 100ms ease !important;',
+    '}',
+    '.scw-ws-v2-chevron:hover {',
+    '  background: var(--scw-surface-muted, #f1f5f9) !important;',
+    '  color: #07467c !important;',
+    '}',
+    '.scw-ws-v2-card--open .scw-ws-v2-chevron {',
+    '  transform: rotate(90deg) !important;',
     '}'
   ].join('\n');
 
