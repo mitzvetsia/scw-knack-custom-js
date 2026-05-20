@@ -2221,7 +2221,10 @@
   // ══════════════════════════════════════════════════════════════
 
   var POLL_INTERVAL_MS = 4000;
-  var POLL_TIMEOUT_MS  = 60000;
+  // Make PDF generation can take 90+s for big proposals (page count
+  // scales with line items). 60s was tight; 180s lets the slowest
+  // happy path finish before we give up and clear the overlay.
+  var POLL_TIMEOUT_MS  = 180000;
   var POLL_TOAST_ID    = 'scw-pdf-poll-toast';
   var POLL_CSS_ID      = 'scw-pdf-poll-css';
   var POLL_NS          = '.scwPdfPoll';
@@ -2294,8 +2297,47 @@
     setTimeout(function () { if (toast.parentNode) toast.remove(); }, 350);
   }
 
+  // Read the field's value preferring the Knack MODEL over the DOM.
+  //
+  // The earlier DOM-only implementation broke completion detection in
+  // two ways:
+  //   1. model.fetch() updates the model but Knack/KTL doesn't always
+  //      re-render the view, so the polled <td> stayed stale and the
+  //      field-change check never tripped.
+  //   2. File fields render with the filename in the <a> text. When
+  //      Make replaces with a same-named file, the rendered text is
+  //      identical even though the CDN URL changed.
+  //
+  // Strategy: prefer the model's _raw.url for file fields (changes
+  // every upload even with same filename), fall back to model.attrs[fieldId]
+  // (rendered HTML, stripped), fall back to DOM scrape as last resort.
+  // Handles both list-view (data.models[0].attributes) and details-
+  // view (model.attributes directly) shapes.
   function readFieldText(viewId, fieldId) {
     if (!fieldId) return '';
+    try {
+      var view = window.Knack && Knack.views && Knack.views[viewId];
+      if (view && view.model) {
+        var models = view.model.data && view.model.data.models;
+        var attrs = (models && models.length)
+          ? models[0].attributes
+          : view.model.attributes;
+        if (attrs) {
+          var raw = attrs[fieldId + '_raw'];
+          if (raw && typeof raw === 'object') {
+            if (raw.url) return String(raw.url);
+            if (raw.filename) return String(raw.filename);
+          }
+          var rendered = attrs[fieldId];
+          if (rendered != null) {
+            return String(rendered)
+              .replace(/<[^>]*>/g, '')
+              .replace(/[\u00a0\s]+/g, ' ')
+              .trim();
+          }
+        }
+      }
+    } catch (e) { /* fall through to DOM scrape */ }
     var td = document.querySelector('#' + viewId + ' td.' + fieldId);
     if (!td) return '';
     return (td.textContent || '').replace(/[\u00a0\s]+/g, ' ').trim();
@@ -2379,7 +2421,22 @@
 
       var view = Knack.views && Knack.views[viewId];
       if (view && view.model && typeof view.model.fetch === 'function') {
-        view.model.fetch();
+        // Hook the fetch's resolution directly — Knack returns a
+        // jQuery jqXHR which is .done()-able. Don't rely on
+        // knack-view-render firing; KTL/accordion state sometimes
+        // suppresses it even when the model updates.
+        var jqxhr = view.model.fetch();
+        if (jqxhr && typeof jqxhr.done === 'function') {
+          jqxhr.done(function () {
+            if (!_pollActive) return;
+            var postValue = readFieldText(_pollViewId, _pollFieldId);
+            if (_pollFieldId && postValue !== _pollInitial) {
+              SCW.debug('[SCW PDF Export] Field changed (fetch.done): "' +
+                _pollInitial + '" → "' + postValue + '"');
+              stopPolling();
+            }
+          });
+        }
       }
       if (elapsed >= POLL_TIMEOUT_MS) {
         SCW.debug('[SCW PDF Export] Poll timeout for ' + viewId + ' after ' + (elapsed / 1000) + 's');
