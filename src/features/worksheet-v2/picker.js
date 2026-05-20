@@ -266,18 +266,55 @@
       cancelBtn.disabled  = true;
       setStatus('Saving…');
 
+      var putKey = opts.putViewKey || opts.sourceViewKey;
+
       try {
         SCW.knackAjax({
           // PUT URL is normally the source view, but for fields whose
           // mirror-connection-sync cascade is bound to a DIFFERENT
           // view (e.g. field_1957 — its cascade lives on view_3610,
           // not v2's source view_3962), the caller can override
-          // putViewKey so the resulting knack-cell-update fires on
-          // the view that triggers the cascade.
-          url:  SCW.knackRecordUrl(opts.putViewKey || opts.sourceViewKey, opts.recordId),
+          // putViewKey so the cascade runs on the view that's bound.
+          url:  SCW.knackRecordUrl(putKey, opts.recordId),
           type: 'PUT',
           data: JSON.stringify(body),
           success: function (resp) {
+            // ── Wire up the cascade ─────────────────────────────────
+            // SCW.knackAjax's PUT updates Knack's data server-side but
+            // does NOT fire knack-cell-update on its own — that event
+            // is Knack's inline-edit-internal signal. mirror-connection-
+            // sync listens for knack-cell-update.<putViewKey>, so unless
+            // we do two extra things ourselves the cascade never runs:
+            //
+            //   1. Patch the local Backbone model for putViewKey with
+            //      the new attrs so a subsequent read in the cascade
+            //      reflects the user's selection (not the pre-PUT state).
+            //
+            //   2. Dispatch knack-cell-update.<putViewKey> with the
+            //      same (view, record) args Knack would normally pass,
+            //      so mirror-connection-sync's handler treats it like
+            //      a real inline edit.
+            try {
+              if (typeof SCW.syncKnackModel === 'function') {
+                SCW.syncKnackModel(putKey, opts.recordId, resp,
+                  opts.fieldKey, body[opts.fieldKey]);
+              }
+              var view = Knack.views[putKey];
+              if (view && view.model && view.model.data) {
+                var rec = (typeof view.model.data.get === 'function')
+                  ? view.model.data.get(opts.recordId)
+                  : null;
+                if (rec) {
+                  $(document).trigger(
+                    'knack-cell-update.' + putKey,
+                    [view, rec.attributes || rec]
+                  );
+                }
+              }
+            } catch (eSync) {
+              console.warn('[scw-ws-v2-picker] cascade trigger failed', eSync);
+            }
+
             close(overlay, onKey);
             if (typeof opts.onSaved === 'function') opts.onSaved(ids, resp);
           },
