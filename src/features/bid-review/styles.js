@@ -262,8 +262,7 @@
       '  padding: 0;',
       '}',
       '.scw-bid-review__docs--sow .scw-bid-review__docs-item {',
-      '  padding: 7px 0;',  /* breathing room per row, esp. for 2-line items */
-      '  border-top: 1px solid #e2e8f0;',
+      '  padding: 6px 0;',  /* whitespace separates rows; no border-top */
       '}',
       '.scw-bid-review__docs-sublabel {',
       '  padding: 6px 10px 2px;',
@@ -448,10 +447,10 @@
       '  align-items: center;',
       '  gap: 5px;',
       '  width: 100%;',
-      '  padding: 7px 0;',
+      '  padding: 6px 0;',
+      '  margin-top: 2px;',  /* small extra gap to separate from linked rows */
       '  background: transparent;',
       '  border: none;',
-      '  border-top: 1px solid #e2e8f0;',
       '  color: #64748b;',
       '  font: 600 11px/1.2 system-ui, sans-serif;',
       '  text-align: left;',
@@ -501,12 +500,9 @@
       '}',
       /* Expanded list — indented under the toggle so the parent-child
          relationship is visual, not just structural. No background
-         tint; matches the rest of the flat SOW header. */
+         tint, no border separators; whitespace + indent are enough. */
       '.scw-bid-review__docs-other .scw-bid-review__docs-list--available {',
       '  padding-left: 14px;',
-      '}',
-      '.scw-bid-review__docs--sow .scw-bid-review__docs-list--available .scw-bid-review__docs-item {',
-      '  border-top: 1px dashed #e2e8f0;',
       '}',
 
       /* "Add PM & Mobilization" button (lives inside the margin-low
