@@ -177,7 +177,9 @@
         || e.target.closest('.scw-bid-review__overflow-item[data-action]')
         || e.target.closest('.scw-bid-review__cell-action[data-action]')
         || e.target.closest('.scw-ops-margin-warning__btn[data-action]')
-        || e.target.closest('.scw-bid-review__docs-link-btn[data-action]');
+        || e.target.closest('.scw-bid-review__docs-link-btn[data-action]')
+        || e.target.closest('.scw-bid-review__docs-unlink-btn[data-action]')
+        || e.target.closest('.scw-bid-review__docs-chip[data-action]');
       if (!button) return;
 
       // Close overflow menu after picking an item
@@ -216,6 +218,10 @@
         handleAddPmMobilization(button);
       } else if (action === 'doc_link_to_sow') {
         handleDocLinkToSow(button);
+      } else if (action === 'doc_unlink_from_sow') {
+        handleDocUnlinkFromSow(button);
+      } else if (action === 'doc_filter') {
+        handleDocFilter(button);
       } else if (action === 'set_project_margin') {
         handleSetProjectMargin(button);
       } else if (action.indexOf('package_') === 0) {
@@ -1006,6 +1012,83 @@
         ns.renderToast(msg, 'error');
       }
     });
+  }
+
+  // ── Disconnect (NOT delete) a DOC_file from this SOW ──
+  //
+  // Removes this SOW id from the doc's field_2143 connection. The
+  // DOC_files record itself stays — only the connection to this SOW
+  // is severed. After save, the doc moves from "Linked" to
+  // "Available from project" on the next pipeline pass.
+  function handleDocUnlinkFromSow(button) {
+    var docId   = button.getAttribute('data-doc-id');
+    var sowId   = button.getAttribute('data-sow-id');
+    var current = (button.getAttribute('data-current-sows') || '')
+                    .split(',').filter(Boolean);
+    if (!docId || !sowId) return;
+
+    var nextSows = [];
+    for (var i = 0; i < current.length; i++) {
+      if (current[i] !== sowId) nextSows.push(current[i]);
+    }
+    if (nextSows.length === current.length) return; // wasn't linked
+
+    var writeView = CFG.docFilesViewKey;
+    if (!writeView || !SCW.knackRecordUrl) {
+      ns.renderToast('Unlink skipped — doc files view not configured', 'error');
+      return;
+    }
+
+    setBusy(button, true);
+
+    var payload = {};
+    payload['field_2143'] = nextSows;
+
+    SCW.knackAjax({
+      url:  SCW.knackRecordUrl(writeView, docId),
+      type: 'PUT',
+      data: JSON.stringify(payload),
+      success: function () {
+        ns.renderToast('Document disconnected from SOW', 'success');
+        try {
+          var v = Knack && Knack.views && Knack.views[writeView];
+          if (v && v.model && typeof v.model.fetch === 'function') v.model.fetch();
+        } catch (e) { /* ignore */ }
+      },
+      error: function (xhr) {
+        setBusy(button, false);
+        if (CFG.debug) console.warn('[BidReview] Unlink doc from SOW failed:', xhr && xhr.status, xhr && xhr.responseText);
+        var msg = 'Unlink failed';
+        if (xhr && xhr.status === 403) {
+          msg = 'Unlink failed — view_3926 must allow inline-edit on field_2143';
+        }
+        ns.renderToast(msg, 'error');
+      }
+    });
+  }
+
+  // ── Doc-type filter chip click ──
+  //
+  // Sets data-filter on the panel and toggles the active chip class.
+  // The actual show/hide of items is JS-driven (CSS attribute
+  // selectors can't dynamically match arbitrary values).
+  function handleDocFilter(button) {
+    var panel = button.closest('.scw-bid-review__docs');
+    if (!panel) return;
+    var value = button.getAttribute('data-filter') || '__all__';
+
+    var chips = panel.querySelectorAll('.scw-bid-review__docs-chip');
+    for (var i = 0; i < chips.length; i++) {
+      chips[i].classList.toggle('is-active', chips[i] === button);
+    }
+    panel.setAttribute('data-filter', value);
+
+    var items = panel.querySelectorAll('.scw-bid-review__docs-item');
+    for (var j = 0; j < items.length; j++) {
+      var t = items[j].getAttribute('data-doc-type') || '__none__';
+      var show = value === '__all__' || t === value;
+      items[j].style.display = show ? '' : 'none';
+    }
   }
 
   // ── Bump project margin (margin-low warning button) ──

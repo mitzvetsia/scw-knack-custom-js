@@ -1529,8 +1529,22 @@
     return wrap;
   }
 
+  function makeFilterChip(value, label, active) {
+    var c = document.createElement('button');
+    c.type = 'button';
+    c.className = 'scw-bid-review__docs-chip' + (active ? ' is-active' : '');
+    c.setAttribute('data-action', 'doc_filter');
+    c.setAttribute('data-filter', value);
+    c.textContent = label;
+    return c;
+  }
+
   function buildDocsItem(d) {
     var row = el('div', 'scw-bid-review__docs-item');
+    // data-doc-type drives the filter-chip show/hide. Untyped docs
+    // get a sentinel so "All" still matches but specific-type filters
+    // hide them.
+    row.setAttribute('data-doc-type', d.docType || '__none__');
     if (d.docType) row.appendChild(el('span', 'scw-bid-review__docs-type', d.docType));
     var a = document.createElement('a');
     a.href = d.fileUrl;
@@ -1538,8 +1552,7 @@
     a.rel = 'noopener';
     a.title = d.fileName;
     a.className = 'scw-bid-review__docs-link';
-    a.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>';
-    a.appendChild(document.createTextNode(' ' + d.fileName));
+    a.textContent = d.fileName;
     row.appendChild(a);
     if (d.notes) {
       var nEl = el('span', 'scw-bid-review__docs-notes', d.notes);
@@ -1549,14 +1562,19 @@
     return row;
   }
 
-  // SOW header docs section — three parts:
-  //   1. Linked: docs already attached to this SOW (field_2143)
-  //   2. Available: other project docs (in view_3926 but not on this
+  // SOW header docs section — five parts:
+  //   1. Header bar with label + linked/available counts
+  //   2. Doc-type filter chips (when 2+ distinct types are present
+  //      across linked + available — single-type panels skip them)
+  //   3. Linked: docs attached to this SOW (field_2143) — each row
+  //      gets an "Unlink" pill that PUTs the SOW out of field_2143
+  //      WITHOUT deleting the DOC_files record itself
+  //   4. Available: other project docs (in view_3926 but not on this
   //      SOW) with a "+ Link" button that PUTs the SOW id onto the
   //      doc's field_2143 connection
-  //   3. Footer: "+ Upload new document" anchor to Knack's add-document
-  //      child page rooted under #review-bid so the user stays in the
-  //      comparison flow
+  //   5. Footer: "+ Upload new document" anchor to Knack's add-
+  //      document child page rooted under #review-bid so the user
+  //      stays in the comparison flow
   function buildSowDocsBlock(sowId, addUrl, idx) {
     if (!sowId) return null;
     var linked = (idx && idx.bySow && idx.bySow[sowId]) || [];
@@ -1567,6 +1585,9 @@
         if (d.sowIds.indexOf(sowId) === -1) available.push(d);
       }
     }
+    // Empty-state: render the panel WITH the Upload button so the
+    // affordance is always reachable from the same spot — even
+    // before any project docs exist.
     if (!linked.length && !available.length && !addUrl) return null;
 
     var wrap = el('div', 'scw-bid-review__docs scw-bid-review__docs--sow');
@@ -1579,9 +1600,49 @@
     if (counts) header.appendChild(el('span', 'scw-bid-review__docs-count', counts));
     wrap.appendChild(header);
 
+    // Filter chips — collect every doc-type across linked + available,
+    // render an "All" chip plus one per type. Hidden when fewer than
+    // two distinct types exist (no useful filter to apply).
+    var typeSet = {};
+    for (var ti = 0; ti < linked.length; ti++) {
+      if (linked[ti].docType) typeSet[linked[ti].docType] = true;
+    }
+    for (var tj = 0; tj < available.length; tj++) {
+      if (available[tj].docType) typeSet[available[tj].docType] = true;
+    }
+    var types = Object.keys(typeSet).sort();
+    if (types.length >= 2) {
+      var chipRow = el('div', 'scw-bid-review__docs-filter');
+      chipRow.appendChild(makeFilterChip('__all__', 'All', true));
+      for (var tk = 0; tk < types.length; tk++) {
+        chipRow.appendChild(makeFilterChip(types[tk], types[tk], false));
+      }
+      wrap.appendChild(chipRow);
+      wrap.setAttribute('data-filter', '__all__');
+    }
+
     if (linked.length) {
       var linkedList = el('div', 'scw-bid-review__docs-list');
-      for (var l = 0; l < linked.length; l++) linkedList.appendChild(buildDocsItem(linked[l]));
+      for (var l = 0; l < linked.length; l++) {
+        var lDoc = linked[l];
+        var lItem = buildDocsItem(lDoc);
+
+        var unlinkBtn = document.createElement('button');
+        unlinkBtn.type = 'button';
+        unlinkBtn.className = 'scw-bid-review__docs-unlink-btn';
+        unlinkBtn.setAttribute('data-action', 'doc_unlink_from_sow');
+        unlinkBtn.setAttribute('data-doc-id', lDoc.id);
+        unlinkBtn.setAttribute('data-sow-id', sowId);
+        unlinkBtn.setAttribute('data-current-sows', lDoc.sowIds.join(','));
+        unlinkBtn.title = 'Disconnect from this SOW (the document file is not deleted)';
+        // Chain-break icon — clearly "disconnect", not "delete".
+        // Two interlocked links with a diagonal split between them.
+        unlinkBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 17H7A5 5 0 0 1 7 7h2"/><path d="M15 7h2a5 5 0 0 1 4.54 7.1"/><line x1="8" y1="12" x2="12" y2="12"/><line x1="2" y1="2" x2="22" y2="22"/></svg>';
+        unlinkBtn.appendChild(document.createTextNode(' Unlink'));
+
+        lItem.appendChild(unlinkBtn);
+        linkedList.appendChild(lItem);
+      }
       wrap.appendChild(linkedList);
     }
 
@@ -1690,7 +1751,20 @@
       }
     }
 
-    // 2. Survey Costs (editable input) + Margin (read-only display).
+    // 2. Documents — render BEFORE financials so the user's natural
+    //    reading order is "what is this SOW about?" before "what does
+    //    it cost?". Linked = field_2143 contains this SOW. Available
+    //    = project doc not yet linked (+ Link to connect). Upload new
+    //    document opens Knack's add-document child page under
+    //    #review-bid so the user stays in the comparison flow.
+    var docsIdx = buildDocsIndex();
+    var addDocUrl = sowId
+      ? '#review-bid/' + sowId + '/add-document-review-bid/' + sowId + '/'
+      : '';
+    var sowDocsBlock = buildSowDocsBlock(sowId, addDocUrl, docsIdx);
+    if (sowDocsBlock) details.appendChild(sowDocsBlock);
+
+    // 3. Survey Costs (editable input) + Margin (read-only display).
     var metrics = el('div', 'scw-bid-review__sow-metrics');
 
     var surveyWrap = el('label', 'scw-bid-review__sow-metric');
@@ -1713,19 +1787,6 @@
     metrics.appendChild(marginWrap);
 
     details.appendChild(metrics);
-
-    // 2b. Attached + available project documents (DOC_files / view_3926).
-    //     Linked = field_2143 contains this SOW. Available = doc exists
-    //     in the project view but is not yet linked to this SOW (a
-    //     "+ Link" button connects it via Knack's records API).
-    //     "+ Upload new document" opens Knack's add-document child page
-    //     rooted under the bid review scene so the user stays in flow.
-    var docsIdx = buildDocsIndex();
-    var addDocUrl = sowId
-      ? '#review-bid/' + sowId + '/add-document-review-bid/' + sowId + '/'
-      : '';
-    var sowDocsBlock = buildSowDocsBlock(sowId, addDocUrl, docsIdx);
-    if (sowDocsBlock) details.appendChild(sowDocsBlock);
 
     // 3. Margin-low warning + recovery actions:
     //    a) Add PM & Mobilization (extra cost line item)
