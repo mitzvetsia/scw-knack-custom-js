@@ -527,6 +527,13 @@
         rowObj.groupL2 = currentL2;
         rowObj.recordId = recordIdFromTr(tr);
         rowObj.raw = rowObj.recordId ? (recordMap[rowObj.recordId] || null) : null;
+        // Capture the TR's classes so the renderer can detect bucket
+        // type from DOM signals (scw-row--services, scw-row--assumptions)
+        // when the Knack model's _raw bucket data isn't reliable —
+        // device-worksheet stamps these row classes based on the
+        // resolved bucket override, which is the source of truth on
+        // the live worksheet.
+        rowObj.rowClasses = tr.className || '';
         out.push(rowObj);
       }
     }
@@ -1278,6 +1285,13 @@
   var SERVICES_BUCKET    = '6977caa7f246edf67b52cbcd';
   var ASSUMPTIONS_BUCKET = '697b7a023a31502ec68b3303';
   function isServiceOrAssumptionBucket(card) {
+    // First: the device-worksheet TR class. Most reliable signal —
+    // applied based on the live bucket override, doesn't depend on
+    // the Knack model being primed.
+    if (card && card.rowClasses &&
+        /\bscw-row--(services|assumptions)\b/.test(card.rowClasses)) {
+      return true;
+    }
     return bucketMatches(card, SERVICES_BUCKET,    /service/i) ||
            bucketMatches(card, ASSUMPTIONS_BUCKET, /assumption/i);
   }
