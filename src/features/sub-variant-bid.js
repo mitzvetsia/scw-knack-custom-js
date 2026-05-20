@@ -687,9 +687,16 @@
       setStatus(modal, 'Creating variant bid…');
 
       postWebhook(CONFIG.bidWebhookUrl, {
-        originating_bid_id:    bidId,
-        originating_bid_label: bidLabel,
-        line_item_ids:         ids
+        type:                   'variant_bid',
+        originating_bid_id:     bidId,
+        originating_bid_label:  bidLabel,
+        line_item_count:        ids.length,
+        // Both forms supplied so Make can pick whichever shape its
+        // scenario prefers — the CSV string is the path of least
+        // resistance (single primitive, split() friendly), the array
+        // preserves structure for scenarios that iterate.
+        line_item_ids_csv:      ids.join(','),
+        line_item_ids:          ids
       }).then(function () {
         setStatus(modal, 'Variant bid request sent. Refreshing…');
         setTimeout(function () {
@@ -842,6 +849,7 @@
       setStatus(modal, 'Creating variant line item…');
 
       postWebhook(CONFIG.itemWebhookUrl, {
+        type:                'variant_item',
         source_line_item_id: itemId,
         target_bid_id:       targetBidId,
         target_bid_label:    resolveBidLabel(targetBidId),
