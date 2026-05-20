@@ -1621,6 +1621,11 @@
         if (sfLabel && sfLabel.toLowerCase().replace(/\s+/g, ' ').trim() === 'survey notes') {
           sfLabel = 'Other Notes';
         }
+        // Brief cards (services / assumptions) render labor as a
+        // dedicated body block below the header (see ws-brief-labor),
+        // so skip the duplicate when the same value would appear as
+        // an unlabeled or "Service" / "Assumption" summary entry.
+        if (brief && card.laborText && sf.value === card.laborText) continue;
         h.push('<div class="ws-sum-field">');
         if (sfLabel) h.push('<span class="ws-sum-label">' + esc(sfLabel) + '</span>');
         h.push('<span class="ws-sum-value">' + esc(sf.value) + '</span>');
@@ -1629,6 +1634,19 @@
       h.push('</div>');
     }
     h.push('</header>');
+
+    // ── Brief cards (services / assumptions): explicit labor line ──
+    // Cam/reader cards drop labor description (sales artifact, no
+    // field-use). Services and assumptions are DIFFERENT — for those
+    // rows, the labor-description field IS the actual content
+    // (service description / assumption text). The summary scraper
+    // already pulls labor into summaryFields for these buckets, but
+    // rendering it as a dedicated full-width body line keeps it
+    // readable rather than buried as a "label: value" pair next to
+    // qty/fee chits in the header.
+    if (brief && hasMeaningfulText(card.laborText)) {
+      h.push('<div class="ws-brief-labor">' + esc(card.laborText) + '</div>');
+    }
 
     // ── Two-column body (camera/reader/NVR cards only) ──
     if (card.showDetail) {
@@ -1656,9 +1674,7 @@
 
       function techNotesBlock() {
         if (!renderNotesSquare) return '';
-        return '<div class="ws-notes-open">' +
-          '<div class="ws-notes-open-label">Notes</div>' +
-        '</div>';
+        return '<div class="ws-notes-open"></div>';
       }
 
       var stacked = useStackedProductLabor(card);
@@ -2167,12 +2183,14 @@
       '/* sits in the top-left corner; the rest is blank writing area. */',
       '.ws-notes-open {',
       '  flex: 1 1 0;',
-      '  /* Reserve at least 2 visible writing lines below the label so',
-      '     techs always have somewhere to jot. ~7.5px label + 2× 14px',
-      '     writing rows + padding ≈ 42px floor. */',
+      '  /* Reserve at least 2 visible writing lines so techs always',
+      '     have somewhere to jot. Label removed and box stripped per',
+      '     user request — the writing area is implied whitespace now. */',
       '  min-height: 42px;',
-      '  border: 1px solid #d1d5db; border-radius: 3px;',
-      '  padding: 3px 5px; background: #fff;',
+      '  padding: 3px 5px;',
+      '  background: transparent;',
+      '  border: none;',
+      '  border-radius: 0;',
       '}',
       '.ws-notes-open-label {',
       '  font-weight: 700; color: #6b7280;',
@@ -2189,6 +2207,14 @@
       '.ws-card--brief .ws-sum-label { font-size: 7.5px; }',
       '.ws-card--brief .ws-label { font-size: 10.5px; }',
       '.ws-card--brief .ws-product { font-size: 9.5px; }',
+      /* Brief-card labor block — service description / assumption text */
+      '.ws-brief-labor {',
+      '  margin-top: 3px; padding-top: 3px;',
+      '  border-top: 1px dotted #e5e7eb;',
+      '  font-size: 9.5px; line-height: 1.35;',
+      '  color: #1f2937;',
+      '  white-space: pre-wrap;',
+      '}',
       '',
       '/* Field Notes — blank lined writing area */',
       '.ws-notes {',
