@@ -1454,6 +1454,17 @@ ${sel('tr.scw-mounting-product-line td:first-child')} {
     if ($groupRow.data('scwConcatRunId') === runId) return;
     $groupRow.data('scwConcatRunId', runId);
 
+    // Our synthetic L4 "Mounting Hardware" header (inserted by
+    // postProcessMountingClusters under a parent camera's L3) inherits
+    // the 'drop' context from its enclosing L2, which would otherwise
+    // hit this branch and append orange parent labels like "(E-27)"
+    // to the "Mounting Hardware" group label. Those labels belong on
+    // the individual mounting-box product-line rows below this header
+    // (handled in postProcessMountingClusters at the per-product
+    // build step), NOT on the group header itself — that header is
+    // just a section divider.
+    if ($groupRow.hasClass('scw-mounting-l4') || $groupRow.hasClass('scw-synthetic-l4')) return;
+
     const cameraListHtml = buildCameraListHtml(ctx, caches, $rowsToSum);
     if (!cameraListHtml) return;
 
