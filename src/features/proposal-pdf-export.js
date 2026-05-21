@@ -493,6 +493,36 @@
         continue;
       }
 
+      if (tr.classList.contains('scw-mounting-product-line')) {
+        // proposal-grid emits these synthetic rows AFTER the
+        // "Mounting Hardware" .scw-mounting-l4 header to summarize
+        // accessory rollups per bracket product. They have no id and
+        // no kn-table-group class, so without this branch they fall
+        // through every other case and the snapshot ends up with an
+        // empty "Mounting Hardware" L4 — visibly out of sync with
+        // the live grid which shows e.g. "Electrical Box Mount …
+        // (I-7, I-8, RA-E-1, …)  Qty 7  Cost $280.00".
+        if (!currentL3) continue;
+        var mptLabelTd = tr.querySelector('td:first-child');
+        if (!mptLabelTd) continue;
+        var mptClone = mptLabelTd.cloneNode(true);
+        var mptParents = mptClone.querySelector('.scw-mounting-parents');
+        var mptParentList = '';
+        if (mptParents) {
+          mptParentList = norm(mptParents.textContent).replace(/^\(/, '').replace(/\)$/, '').trim();
+          mptParents.remove();
+        }
+        var mptName = norm(mptClone.textContent);
+        if (!mptName) continue;
+        var mptQty = parseMoney(norm((tr.querySelector('td.' + keys.qty) || {}).textContent || ''));
+        var mptCost = norm((tr.querySelector('td.' + keys.cost) || {}).textContent || '');
+        currentL3.lineItems.push({
+          level: 4, label: mptName, description: '',
+          qty: mptQty, cost: mptCost, cameraList: mptParentList,
+        });
+        continue;
+      }
+
       if (tr.classList.contains('kn-group-level-4')) {
         if (!isVisibleRow(tr)) continue;
 
