@@ -1094,6 +1094,27 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     return { total, labels: contributors.map((c) => c.text) };
   }
 
+  // Knack renders L2 group headers as a single <td colspan="N"> where
+  // N is its default group-row-width — usually short of the actual
+  // table column count, which leaves the Rate / Qty / Cost columns
+  // uncovered. The ice-blue (and any other) row background then
+  // appears to "stop after Rate". Bump the colspan to match the
+  // thead's total <th> count so the row paints edge-to-edge.
+  //
+  // Multi-TD rows (e.g. L1 with explicit Rate/Qty/Cost cells) already
+  // span all columns by virtue of having one TD per column — skip
+  // those to avoid clobbering the per-cell layout.
+  function extendGroupRowToFullWidth($tbody, $groupRow) {
+    const $cells = $groupRow.children('td');
+    if ($cells.length !== 1) return;
+    const $table = $tbody.closest('table');
+    const total = $table.find('thead th').length;
+    if (!total) return;
+    const current = parseInt($cells.attr('colspan') || '1', 10);
+    if (current >= total) return;
+    $cells.attr('colspan', total);
+  }
+
   // Format an array of labels as "A", "A and B", or "A, B, and C".
   // Used by the conduit note suffix.
   function formatLabelList(labels) {
@@ -1569,6 +1590,12 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       const level = parseInt(match[1], 10);
 
       if (level === 2) {
+        // Extend the L2 row's single TD to span every column so the
+        // ice-blue header background paints across the FULL row width
+        // instead of stopping at the Knack-default colspan (which
+        // omits the trailing Rate / Qty / Cost columns).
+        extendGroupRowToFullWidth($tbody, $groupRow);
+
         const info = getLevel2InfoFromGroupRow($groupRow);
         sectionContext.level2 = info;
         sectionContext.key = contextKeyFromLevel2Info(ctx, info);
