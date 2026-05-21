@@ -80,6 +80,95 @@
       '}',
       '.scw-bid-review__overflow-trigger--reject:hover { filter: brightness(.88); }',
       '.scw-bid-review__overflow-trigger--reject:disabled { opacity: .5; cursor: not-allowed; }',
+
+      // ── Sales Revision detail popover ──────────────────────────
+      '.scw-sr-popover__backdrop {',
+      '  position: fixed; inset: 0; z-index: 100000;',
+      '  background: rgba(15,23,42,0.45);',
+      '  display: flex; align-items: center; justify-content: center;',
+      '  padding: 24px;',
+      '}',
+      '.scw-sr-popover {',
+      '  background: #fff; border-radius: 10px;',
+      '  width: 520px; max-width: 100%;',
+      '  max-height: calc(100vh - 48px); overflow: hidden;',
+      '  display: flex; flex-direction: column;',
+      '  box-shadow: 0 24px 64px rgba(2,6,23,0.35);',
+      '  font: 13px/1.45 system-ui, -apple-system, Segoe UI, sans-serif;',
+      '  color: #0f172a;',
+      '}',
+      '.scw-sr-popover__head {',
+      '  display: flex; align-items: center; gap: 10px;',
+      '  padding: 12px 16px;',
+      '  background: #295F91; color: #fff;',
+      '}',
+      '.scw-sr-popover__head--add    { background: #15803d; }',
+      '.scw-sr-popover__head--remove { background: #b91c1c; }',
+      '.scw-sr-popover__head-title {',
+      '  flex: 1; min-width: 0;',
+      '  font-weight: 700; font-size: 14px;',
+      '}',
+      '.scw-sr-popover__head-sub {',
+      '  font-weight: 500; font-size: 12px;',
+      '  opacity: 0.85; margin-top: 2px;',
+      '}',
+      '.scw-sr-popover__close {',
+      '  flex: 0 0 auto;',
+      '  background: rgba(255,255,255,0.18);',
+      '  color: #fff;',
+      '  border: 1px solid rgba(255,255,255,0.28);',
+      '  border-radius: 6px;',
+      '  width: 28px; height: 28px;',
+      '  font: 700 16px/1 system-ui, sans-serif;',
+      '  cursor: pointer;',
+      '  display: inline-flex; align-items: center; justify-content: center;',
+      '}',
+      '.scw-sr-popover__close:hover { background: rgba(255,255,255,0.32); }',
+      '.scw-sr-popover__body {',
+      '  padding: 14px 16px; overflow-y: auto; flex: 1 1 auto;',
+      '}',
+      '.scw-sr-popover__section { margin-bottom: 14px; }',
+      '.scw-sr-popover__section:last-child { margin-bottom: 0; }',
+      '.scw-sr-popover__label {',
+      '  font-size: 10.5px; font-weight: 700;',
+      '  text-transform: uppercase; letter-spacing: 0.05em;',
+      '  color: #64748b; margin-bottom: 6px;',
+      '}',
+      '.scw-sr-popover__field {',
+      '  display: grid; grid-template-columns: 110px 1fr;',
+      '  gap: 6px 10px; padding: 5px 0;',
+      '  border-bottom: 1px solid #f1f5f9;',
+      '  font-size: 12.5px;',
+      '}',
+      '.scw-sr-popover__field:last-child { border-bottom: none; }',
+      '.scw-sr-popover__field-key { color: #475569; font-weight: 600; }',
+      '.scw-sr-popover__field-val { color: #0f172a; word-break: break-word; }',
+      '.scw-sr-popover__diff {',
+      '  display: inline-flex; align-items: center; gap: 6px;',
+      '  flex-wrap: wrap;',
+      '}',
+      '.scw-sr-popover__diff-from {',
+      '  color: #991b1b; background: #fef2f2;',
+      '  padding: 1px 6px; border-radius: 3px;',
+      '  text-decoration: line-through;',
+      '}',
+      '.scw-sr-popover__diff-to {',
+      '  color: #15803d; background: #f0fdf4;',
+      '  padding: 1px 6px; border-radius: 3px;',
+      '  font-weight: 600;',
+      '}',
+      '.scw-sr-popover__diff-arrow { color: #94a3b8; }',
+      '.scw-sr-popover__notes {',
+      '  background: #fffbeb; border: 1px solid #fde68a;',
+      '  border-radius: 6px; padding: 8px 10px;',
+      '  font-style: italic; color: #78350f;',
+      '}',
+      '.scw-sr-popover__foot {',
+      '  display: flex; align-items: center; gap: 8px;',
+      '  padding: 12px 16px;',
+      '  background: #f8fafc; border-top: 1px solid #e2e8f0;',
+      '}',
+      '.scw-sr-popover__foot .scw-sr-popover__spacer { flex: 1; }',
     ].join('\n');
 
     var s = document.createElement('style');
@@ -317,6 +406,19 @@
             notes.textContent = '\u201c' + json.changeNotes + '\u201d';
             card.appendChild(notes);
           }
+
+          // Card body click opens the detail popover. Stop bubbling so
+          // the bid-review row-expand doesn't also fire underneath.
+          card.style.cursor = 'pointer';
+          card.title = 'Click for full revision detail';
+          (function (capturedRev) {
+            card.addEventListener('click', function (ev) {
+              if (ev.target.closest('button, a, input, select, textarea')) return;
+              ev.preventDefault();
+              ev.stopPropagation();
+              openRevisionPopover(capturedRev, card);
+            });
+          })(rev);
 
           item.appendChild(card);
 
@@ -855,6 +957,183 @@
         });
       }
     }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  POPOVER — full revision detail
+  // ═══════════════════════════════════════════════════════════
+
+  // Map field key → readable label. The JSON payload carries f.label,
+  // but it's not always populated, so this is a fallback.
+  var FIELD_LABELS = {
+    field_1949: 'Product',
+    field_1964: 'Quantity',
+    field_2020: 'Labor Description',
+    field_1953: 'SCW Notes',
+    field_2461: 'Existing Cabling',
+    field_1984: 'Exterior',
+    field_1983: 'Plenum',
+    field_1965: 'Drop Length',
+    field_1951: 'Drop Number',
+    field_2150: 'Sub Bid',
+    field_1957: 'Connected Devices',
+    field_2197: 'Connected To',
+    field_1946: 'MDF/IDF',
+    field_2035: 'Conduit',
+    field_2261: 'Custom Discount %',
+    field_2262: 'Custom Discount $',
+    field_2240: 'Drop Prefix',
+    field_2219: 'Proposal Bucket',
+  };
+
+  var _openPopover = null;
+  var _activeClose = null;
+
+  function popoverKeyHandler(e) {
+    if (e.key === 'Escape' && _activeClose) _activeClose();
+  }
+
+  function el(tag, cls, text) {
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text != null) n.textContent = text;
+    return n;
+  }
+
+  function buildDiffValue(f, action) {
+    var fromVal = f.from != null && f.from !== '' ? String(f.from) : '—';
+    var toVal   = f.to   != null && f.to   !== '' ? String(f.to)   : '—';
+    if (action === 'revise' || action === 'add') {
+      var wrap = el('div', 'scw-sr-popover__diff');
+      wrap.appendChild(el('span', 'scw-sr-popover__diff-from', fromVal));
+      wrap.appendChild(el('span', 'scw-sr-popover__diff-arrow', '→'));
+      wrap.appendChild(el('span', 'scw-sr-popover__diff-to', toVal));
+      return wrap;
+    }
+    return el('span', 'scw-sr-popover__field-val', toVal);
+  }
+
+  function openRevisionPopover(rev, anchorCard) {
+    if (_activeClose) _activeClose();
+
+    var json   = rev.json || {};
+    var action = json.action || 'revise';
+
+    // Slot for the moved action buttons — set when we move them in,
+    // checked by doClose to restore them before tearing down the popover.
+    var actionMarker = null;
+    var movedActions = null;
+
+    function doClose() {
+      if (movedActions && actionMarker && actionMarker.parentNode) {
+        actionMarker.parentNode.insertBefore(movedActions, actionMarker);
+        actionMarker.parentNode.removeChild(actionMarker);
+      }
+      if (backdrop && backdrop.parentNode) backdrop.parentNode.removeChild(backdrop);
+      _openPopover = null;
+      _activeClose = null;
+      document.removeEventListener('keydown', popoverKeyHandler);
+    }
+
+    var backdrop = el('div', 'scw-sr-popover__backdrop');
+    backdrop.addEventListener('click', function (e) {
+      if (e.target === backdrop) doClose();
+    });
+
+    var pop = el('div', 'scw-sr-popover');
+    backdrop.appendChild(pop);
+
+    // Header
+    var headMod = action === 'add'    ? ' scw-sr-popover__head--add'
+                : action === 'remove' ? ' scw-sr-popover__head--remove'
+                :                       '';
+    var head = el('div', 'scw-sr-popover__head' + headMod);
+    var headTitleWrap = el('div', 'scw-sr-popover__head-title');
+    var headLabel = action === 'add'    ? 'Sales: Add line item'
+                  : action === 'remove' ? 'Sales: Remove line item'
+                  :                       'Sales: Revise line item';
+    headTitleWrap.appendChild(document.createTextNode(headLabel));
+    var product = json.productName || '';
+    var jr = json.requested || {};
+    if (jr.field_1949) product = jr.field_1949;
+    var subText = json.displayLabel
+      ? (json.displayLabel + (product && product !== json.displayLabel ? '  ·  ' + product : ''))
+      : product;
+    if (subText) headTitleWrap.appendChild(el('div', 'scw-sr-popover__head-sub', subText));
+    head.appendChild(headTitleWrap);
+
+    var closeBtn = el('button', 'scw-sr-popover__close', '×');
+    closeBtn.type = 'button';
+    closeBtn.title = 'Close';
+    closeBtn.addEventListener('click', doClose);
+    head.appendChild(closeBtn);
+    pop.appendChild(head);
+
+    // Body
+    var body = el('div', 'scw-sr-popover__body');
+
+    if (json.fields && json.fields.length) {
+      var section = el('div', 'scw-sr-popover__section');
+      section.appendChild(el('div', 'scw-sr-popover__label',
+        action === 'add' ? 'New record values' : 'Field changes'));
+      for (var i = 0; i < json.fields.length; i++) {
+        var f = json.fields[i];
+        var fval = f.to != null ? String(f.to) : '';
+        // Skip non-informative cells (matches the card filter)
+        if (!fval || fval === ' ') continue;
+        if (f.field === 'field_1964' && (parseFloat(fval) <= 1 || isNaN(parseFloat(fval)))) continue;
+        var row = el('div', 'scw-sr-popover__field');
+        row.appendChild(el('div', 'scw-sr-popover__field-key',
+          f.label || FIELD_LABELS[f.field] || f.field));
+        row.appendChild(buildDiffValue(f, action));
+        section.appendChild(row);
+      }
+      body.appendChild(section);
+    } else if (action === 'remove') {
+      var rmSection = el('div', 'scw-sr-popover__section');
+      rmSection.appendChild(el('div', 'scw-sr-popover__label', 'Action'));
+      rmSection.appendChild(el('div', 'scw-sr-popover__field-val', 'Requesting removal of this line item.'));
+      body.appendChild(rmSection);
+    }
+
+    if (json.changeNotes) {
+      var notesSection = el('div', 'scw-sr-popover__section');
+      notesSection.appendChild(el('div', 'scw-sr-popover__label', 'Change notes'));
+      notesSection.appendChild(el('div', 'scw-sr-popover__notes', json.changeNotes));
+      body.appendChild(notesSection);
+    }
+
+    if (rev.status) {
+      var statusSection = el('div', 'scw-sr-popover__section');
+      statusSection.appendChild(el('div', 'scw-sr-popover__label', 'Status'));
+      statusSection.appendChild(el('div', 'scw-sr-popover__field-val', rev.status));
+      body.appendChild(statusSection);
+    }
+
+    pop.appendChild(body);
+
+    // Footer — re-use the existing action buttons from the card. We
+    // clone the live action buttons so their already-attached handlers
+    // keep working when invoked from the popover.
+    var foot = el('div', 'scw-sr-popover__foot');
+    foot.appendChild(el('div', 'scw-sr-popover__spacer'));
+    if (anchorCard) {
+      var liveActions = anchorCard.parentNode && anchorCard.parentNode.querySelector('.scw-bid-review__action-menus');
+      if (liveActions) {
+        // Move (don't clone) into the popover footer so existing listeners
+        // remain wired. doClose will move it back into the card.
+        movedActions = liveActions;
+        actionMarker = document.createComment('scw-sr-actions-slot');
+        liveActions.parentNode.insertBefore(actionMarker, liveActions);
+        foot.appendChild(liveActions);
+      }
+    }
+    pop.appendChild(foot);
+
+    document.body.appendChild(backdrop);
+    _openPopover = backdrop;
+    _activeClose = doClose;
+    document.addEventListener('keydown', popoverKeyHandler);
   }
 
   // ═══════════════════════════════════════════════════════════

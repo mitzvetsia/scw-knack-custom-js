@@ -157,6 +157,22 @@
     });
 
     mount.addEventListener('click', function (e) {
+      // Panel close — × button or any click on the header bar. Look up
+      // the live row through the DOM (the expand-row's previous sibling)
+      // rather than a captured closure, so close still works after a
+      // silent refresh has replaced the original rowTr.
+      if (e.target.closest('.scw-bid-review__panel-close')
+          || e.target.closest('.scw-bid-review__panel-header')) {
+        var openExpand = e.target.closest('.scw-bid-review__expand-row');
+        var liveRow = openExpand && openExpand.previousElementSibling;
+        if (liveRow && liveRow.classList.contains('scw-bid-review__row')) {
+          e.preventDefault();
+          e.stopPropagation();
+          toggleRowExpand(liveRow);
+        }
+        return;
+      }
+
       // Expandable row toggle (must run before button-action match so the
       // row click only fires when nothing more specific intercepted it).
       var rowTrigger = e.target.closest('.scw-bid-review__row--expandable');
@@ -323,6 +339,14 @@
     tr.setAttribute('aria-expanded', 'true');
     _expandedSowItems[sowItemId] = true;
     buildExpandPanel(tr, expandTr.firstElementChild, sowItemId);
+
+    // If the row has photos, mount the side-by-side viewer too so the
+    // reviewer doesn't have to click the thumb separately.
+    if (ns.scrapeRowPhotoUrls) {
+      var rowId = tr.getAttribute('data-row-id');
+      var urls = rowId ? ns.scrapeRowPhotoUrls(rowId) : null;
+      if (urls && urls.length) openWithPhoto(tr, urls, 0);
+    }
   }
 
   // Build the 3-column panel inside the expand cell. Idempotent —
@@ -409,20 +433,13 @@
     close.className = 'scw-bid-review__panel-close';
     close.setAttribute('title', 'Close');
     close.textContent = '×';
-    close.addEventListener('click', function (e) {
-      e.preventDefault();
-      e.stopPropagation();
-      toggleRowExpand(rowTr);
-    });
     header.appendChild(close);
 
-    // Clicking anywhere on the blue bar collapses the panel — same
-    // action as the × button, just a larger target.
+    // Clicks on the header bar / × are wired via the delegated mount
+    // handler in attachClickHandler so they survive silent refreshes
+    // that detach the original rowTr reference.
     header.style.cursor = 'pointer';
     header.setAttribute('title', 'Click to close');
-    header.addEventListener('click', function () {
-      toggleRowExpand(rowTr);
-    });
 
     return header;
   }

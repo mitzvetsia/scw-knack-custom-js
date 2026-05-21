@@ -2052,6 +2052,7 @@
   // optimization). Returns a fresh <tr> for one row; the caller swaps
   // it into the DOM to avoid a full grid rebuild.
   ns.buildDataRow = buildDataRow;
+  ns.scrapeRowPhotoUrls = scrapeRowPhotoUrls;
 
   ns.renderMatrix = function renderMatrix(state) {
     var mount = getOrCreateMount();
