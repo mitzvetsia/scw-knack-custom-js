@@ -2221,13 +2221,19 @@
       formEl._scwPdfCaptureBound = true;
       console.log('[SCW PDF Webhook] capture-phase submit listener bound to', formEl);
 
-      formEl.addEventListener('submit', function captureSubmitHandler(e) {
+      // Knack handles the submit button by attaching a CLICK handler
+      // that calls preventDefault, so the form's submit event NEVER
+      // fires. That's why catching just 'submit' produced no logs.
+      // Bind on click (capture phase) on the submit button too —
+      // covers Knack's path. Keep the submit-event listener as
+      // belt-and-suspenders for Enter-key submission.
+      function captureHandler(e, source) {
         if (formEl._scwPdfAuthorized) {
-          console.log('[SCW PDF Webhook] (capture) authorized pass — letting Knack take over');
+          console.log('[SCW PDF Webhook] (' + source + ') authorized pass — letting Knack take over');
           return;
         }
 
-        console.log('[SCW PDF Webhook] (capture) submit intercepted', {
+        console.log('[SCW PDF Webhook] (' + source + ') intercepted', {
           sceneId: cfg.sceneId,
           formViewId: formViewId
         });
@@ -2353,6 +2359,26 @@
             showPublishToast('Submission sent -- continuing...', false, false);
             authorizeAndResubmit(true);
           });
+      }
+
+      // Click on the submit button — the path Knack intercepts.
+      var submitBtn = formEl.querySelector('button[type="submit"], input[type="submit"]');
+      if (submitBtn) {
+        submitBtn.addEventListener('click', function (e) {
+          captureHandler(e, 'capture click');
+        }, true);
+        console.log('[SCW PDF Webhook] capture-phase click listener bound to submit button');
+      } else {
+        console.warn('[SCW PDF Webhook] no submit button found in form');
+      }
+
+      // Form submit event — covers Enter-key submission and any other
+      // path that fires the submit event natively. Knack's button-
+      // click intercept usually preventDefaults the submit, but if a
+      // user hits Enter inside a text input, the submit event WILL
+      // fire and Knack might not catch it.
+      formEl.addEventListener('submit', function (e) {
+        captureHandler(e, 'capture submit');
       }, true /* capture phase */);
     });
 
