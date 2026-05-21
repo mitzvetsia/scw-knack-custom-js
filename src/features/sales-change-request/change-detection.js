@@ -194,7 +194,12 @@
       return;
     }
 
-    var isAdd = S.isAddMode() && parseFloat(base._addCount) !== 0;
+    // A row is an "add" CR ONLY when it has NO associated survey items
+    // (count === 0) — i.e., it was created during the revision phase.
+    // Rows that came in from the site survey (count > 0) are revisions.
+    // See detectAddRecords() for the matching baseline-pass rule.
+    var addCount = parseFloat(base._addCount);
+    var isAdd = S.isAddMode() && !isNaN(addCount) && addCount === 0;
 
     if (existing) {
       // Update existing CR — merge new changes, keep original "current"
