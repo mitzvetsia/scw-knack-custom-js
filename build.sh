@@ -14,6 +14,7 @@ trap 'rm -f "$TMP_BUNDLE"' EXIT
 cat \
   src/config.js \
   src/util.js \
+  src/features/network-probe.js \
   src/features/_design-tokens.js \
   src/features/_render-totals-guard.js \
   src/features/_toolbar-registry.js \
