@@ -484,9 +484,8 @@
 
           // CR button — Revise only if on bid; Add/Remove always shown
           if (action !== 'revise' || isOnBid) {
-            var crLabel = action === 'add'    ? 'Add \u2192'
-                        : action === 'remove' ? 'Remove \u2192'
-                        :                       'Revise \u2192';
+            var crLabel = action === 'remove' ? 'Remove \u2192'
+                        :                       'Add to bid revision \u2192';
             var crMod   = action === 'add'    ? 'create'
                         : action === 'remove' ? 'remove'
                         :                       'revise';
@@ -521,7 +520,7 @@
                 }
               });
             }
-            actions.appendChild(buildSROverflow('Add \u2192', 'create', addChoices));
+            actions.appendChild(buildSROverflow('Add to bid revision \u2192', 'create', addChoices));
           }
 
           item.appendChild(actions);
@@ -584,26 +583,54 @@
     return container;
   }
 
-  /** Read all bid packages from the grid's header row. */
+  /** Read all bid packages from the grid's header rows.
+   * The header has a 3-row layout: titles / details / actions.
+   * Package name lives in `.scw-bid-review__col-title-text` (title row);
+   * the optional `BD-####` lives in `.scw-bid-review__col-subtitle`
+   * (details row, same column); the package id lives on the
+   * data-package-id buttons in the actions row (same column).
+   * Pair them by column index. */
   function getGridPackages() {
     var pkgs = [];
     var $mount = $(CFG.mountSelector);
-    $mount.find('.scw-bid-review__pkg-header').each(function () {
-      // Read package name from subtitle (BD-#) or old pkg-name element
-      var $subtitle = $(this).find('.scw-bid-review__col-subtitle');
-      var $nameOld = $(this).find('.scw-bid-review__pkg-name');
-      var name = '';
-      if ($subtitle.length) {
-        name = $subtitle.contents().filter(function () { return this.nodeType === 3; }).first().text().trim();
+    $mount.find('table').each(function () {
+      var $thead = $(this).find('thead');
+      if (!$thead.length) return;
+      var titles  = $thead.find('.scw-bid-review__header-titles').children().toArray();
+      var details = $thead.find('.scw-bid-review__header-details').children().toArray();
+      var actions = $thead.find('.scw-bid-review__header-actions').children().toArray();
+
+      for (var i = 0; i < titles.length; i++) {
+        var th = titles[i];
+        if (!th.classList || !th.classList.contains('scw-bid-review__pkg-header')) continue;
+
+        var nameEl = th.querySelector('.scw-bid-review__col-title-text')
+                  || th.querySelector('.scw-bid-review__pkg-name');
+        var name = nameEl ? (nameEl.textContent || '').trim() : '';
+
+        // Append BD-#### from the details row if available
+        var detailCell = details[i];
+        if (detailCell) {
+          var subtitle = detailCell.querySelector('.scw-bid-review__col-subtitle');
+          if (subtitle) {
+            var firstNode = subtitle.childNodes[0];
+            var bd = firstNode && firstNode.nodeType === 3 ? firstNode.nodeValue.trim() : '';
+            if (bd) name = bd + (name ? ' — ' + name : '');
+          }
+        }
+
+        // Package id from the actions row buttons
+        var id = '';
+        var actionCell = actions[i];
+        if (actionCell) {
+          var btn = actionCell.querySelector('button[data-package-id]');
+          if (btn) id = btn.getAttribute('data-package-id') || '';
+        }
+
+        if (name && id) pkgs.push({ id: id, name: name });
       }
-      if (!name && $nameOld.length) {
-        name = $nameOld.contents().first().text().trim();
-      }
-      // Get package ID from any action button in the header
-      var $actionBtn = $(this).find('button[data-package-id]');
-      var id = $actionBtn.length ? $actionBtn.attr('data-package-id') : '';
-      if (name && id) pkgs.push({ id: id, name: name });
     });
+
     // Fallback: read from data rows in the CR column
     if (!pkgs.length) {
       var seen = {};
@@ -702,29 +729,109 @@
     var revJson = {};
     try { revJson = JSON.parse(btn.getAttribute('data-rev-json') || '{}'); } catch (ex) {}
 
-    var label = revJson.displayLabel || revJson.productName || 'this item';
-    if (!window.confirm('Reject revision for ' + label + '?')) return;
+    openRejectNotePrompt(revJson, function (rejectNotes) {
+      performReject(btn, revId, revReqId, revJson, rejectNotes);
+    });
+  }
 
+  /** Open a small modal asking sales for a rejection note before submitting. */
+  function openRejectNotePrompt(revJson, onSubmit) {
+    var label = revJson.displayLabel || revJson.productName || 'this item';
+
+    var backdrop = document.createElement('div');
+    backdrop.style.cssText = 'position:fixed;inset:0;z-index:100002;background:rgba(15,23,42,0.45);'
+      + 'display:flex;align-items:center;justify-content:center;padding:24px;';
+
+    var modal = document.createElement('div');
+    modal.style.cssText = 'background:#fff;border-radius:10px;width:440px;max-width:100%;'
+      + 'font:13px/1.45 system-ui,-apple-system,Segoe UI,sans-serif;color:#0f172a;'
+      + 'box-shadow:0 24px 64px rgba(2,6,23,0.35);overflow:hidden;display:flex;flex-direction:column;';
+
+    var head = document.createElement('div');
+    head.style.cssText = 'padding:12px 16px;background:#b91c1c;color:#fff;font-weight:700;font-size:14px;';
+    head.textContent = 'Reject revision: ' + label;
+    modal.appendChild(head);
+
+    var body = document.createElement('div');
+    body.style.cssText = 'padding:14px 16px;';
+    var lbl = document.createElement('div');
+    lbl.style.cssText = 'font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#64748b;margin-bottom:6px;';
+    lbl.textContent = 'Reason for rejection (visible to sales)';
+    body.appendChild(lbl);
+    var ta = document.createElement('textarea');
+    ta.rows = 4;
+    ta.placeholder = 'e.g. Out of budget \u2014 see SR-####';
+    ta.style.cssText = 'width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #d1d5db;'
+      + 'border-radius:6px;font:inherit;resize:vertical;outline:none;';
+    body.appendChild(ta);
+    modal.appendChild(body);
+
+    var foot = document.createElement('div');
+    foot.style.cssText = 'display:flex;gap:8px;padding:12px 16px;background:#f8fafc;border-top:1px solid #e2e8f0;';
+    var spacer = document.createElement('div');
+    spacer.style.flex = '1';
+    foot.appendChild(spacer);
+
+    function close() { if (backdrop.parentNode) backdrop.parentNode.removeChild(backdrop); }
+    backdrop.addEventListener('click', function (ev) { if (ev.target === backdrop) close(); });
+    function keyHandler(ev) {
+      if (ev.key === 'Escape') { close(); document.removeEventListener('keydown', keyHandler); }
+    }
+    document.addEventListener('keydown', keyHandler);
+
+    var cancelBtn = document.createElement('button');
+    cancelBtn.type = 'button';
+    cancelBtn.textContent = 'Cancel';
+    cancelBtn.style.cssText = 'padding:8px 14px;border-radius:6px;border:1px solid #d1d5db;'
+      + 'background:#fff;color:#374151;font:600 12px system-ui,sans-serif;cursor:pointer;';
+    cancelBtn.addEventListener('click', function () { close(); document.removeEventListener('keydown', keyHandler); });
+    foot.appendChild(cancelBtn);
+
+    var submitBtn = document.createElement('button');
+    submitBtn.type = 'button';
+    submitBtn.textContent = 'Reject';
+    submitBtn.style.cssText = 'padding:8px 14px;border-radius:6px;border:1px solid #991b1b;'
+      + 'background:#dc2626;color:#fff;font:700 12px system-ui,sans-serif;cursor:pointer;';
+    submitBtn.addEventListener('click', function () {
+      var note = (ta.value || '').trim();
+      document.removeEventListener('keydown', keyHandler);
+      close();
+      onSubmit(note);
+    });
+    foot.appendChild(submitBtn);
+
+    modal.appendChild(foot);
+    backdrop.appendChild(modal);
+    document.body.appendChild(backdrop);
+    setTimeout(function () { ta.focus(); }, 50);
+  }
+
+  /** Do the actual reject work \u2014 PUT to Knack + fire webhook \u2014 with the
+   *  sales note attached to the JSON and the webhook payload. */
+  function performReject(btn, revId, revReqId, revJson, rejectNotes) {
     btn.disabled = true;
     btn.textContent = 'Rejecting\u2026';
 
-    // Build updated JSON with rejection stamp
     var updatedJson = JSON.parse(JSON.stringify(revJson));
     updatedJson.status = 'Rejected';
     updatedJson.rejectedAt = new Date().toISOString();
+    if (rejectNotes) updatedJson.rejectNotes = rejectNotes;
     try {
       var u = Knack.getUserAttributes();
       if (u) updatedJson.rejectedBy = { id: u.id || '', name: u.name || '', email: u.email || '' };
     } catch (ex) {}
 
-    // Build rejection HTML stamp to prepend to existing card
+    var noteHtml = rejectNotes
+      ? '<div style="margin-top:4px;font-weight:500;font-style:italic;">\u201c'
+        + esc(rejectNotes).replace(/\n/g, '<br>') + '\u201d</div>'
+      : '';
     var stampHtml = '<div style="font-family:system-ui,-apple-system,sans-serif;font-size:12px;'
       + 'background:#fef2f2;border:1px solid #fecaca;border-radius:4px;padding:6px 10px;margin-bottom:6px;'
       + 'color:#991b1b;font-weight:600;">'
-      + '\u274c Rejected &mdash; ' + new Date().toLocaleString()
+      + '\u274c Rejected \u2014 ' + new Date().toLocaleString()
+      + noteHtml
       + '</div>';
 
-    // Find the existing HTML from the card in the DOM
     var cardEl = btn.closest('.' + P + '-item');
     var existingHtml = '';
     if (cardEl) {
@@ -733,7 +840,6 @@
     }
     var newHtml = stampHtml + existingHtml;
 
-    // 1. Update Knack record: field_2645 (status), field_2695 (HTML), field_2696 (JSON)
     var knackData = {};
     knackData[CFG.statusField] = 'Rejected';
     knackData[CFG.htmlField] = newHtml;
@@ -755,10 +861,10 @@
       },
     });
 
-    // 2. Send webhook with full item data (fire-and-forget)
     var item = JSON.parse(JSON.stringify(updatedJson));
     item.lineItemId = revId;
     if (!item.action) item.action = 'revise';
+    if (rejectNotes) item.rejectNotes = rejectNotes;
 
     var payload = {
       action: 'reject',
