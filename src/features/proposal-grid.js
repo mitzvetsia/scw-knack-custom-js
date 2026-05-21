@@ -3242,11 +3242,12 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
         executePipeline();
 
         // Safety net 1: staggered timer checks. 300ms / 1200ms catch
-        // Knack async re-renders that wipe our injected rows; 3000ms
-        // covers slow-loading secondary views (the one that exposes
-        // field_2464_raw for accessory→parent relocation), which on
-        // first scene load can hydrate after the initial pipeline run.
-        [300, 1200, 3000].forEach(function (ms) {
+        // Knack async re-renders that wipe our injected rows; 3000ms /
+        // 6000ms / 12000ms cover slow-loading secondary views (the one
+        // that exposes field_2464_raw for accessory→parent relocation),
+        // which on first scene load can hydrate well after the initial
+        // pipeline run.
+        [300, 1200, 3000, 6000, 12000].forEach(function (ms) {
           var t = setTimeout(function () {
             if (pipelineIncomplete()) executePipeline();
           }, ms);
@@ -3275,6 +3276,31 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
           var disconnectTimer = setTimeout(function () { obs.disconnect(); }, 4000);
           _safetyState[viewId].timers.push(disconnectTimer);
         }
+
+        // Safety net 3: listen for ANY sibling view render. The view
+        // that exposes field_2464_raw lives elsewhere on the page (the
+        // proposal-grid view itself doesn't include that column in its
+        // model). On first scene load it can hydrate after our 12s
+        // timer tail expires — and when it finally lands, we want to
+        // re-run the pipeline so accessories actually relocate under
+        // their parents. Debounced + auto-disengages after 30s and
+        // after mounting structure looks settled.
+        var siblingNs = '.scwProposalGridSibling_' + viewId;
+        var siblingDebounce = 0;
+        $(document).off('knack-view-render' + siblingNs);
+        $(document).on('knack-view-render' + siblingNs, function (_e, view) {
+          if (pipelineRunning) return;
+          if (view && view.key === viewId) return;     // our own view; already handled
+          if (siblingDebounce) clearTimeout(siblingDebounce);
+          siblingDebounce = setTimeout(function () {
+            siblingDebounce = 0;
+            if (pipelineIncomplete()) executePipeline();
+          }, 120);
+        });
+        var siblingKill = setTimeout(function () {
+          $(document).off('knack-view-render' + siblingNs);
+        }, 30000);
+        _safetyState[viewId].timers.push(siblingKill);
       });
   }
 
