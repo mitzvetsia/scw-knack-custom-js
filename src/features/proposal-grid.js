@@ -1460,7 +1460,13 @@ ${sel('tr.scw-mounting-product-line td:first-child')} {
     // (handled in postProcessMountingClusters at the per-product
     // build step), NOT on the group header itself — that header is
     // just a section divider.
-    if ($groupRow.hasClass('scw-mounting-l4') || $groupRow.hasClass('scw-synthetic-l4')) return;
+    // Skip mounting-hardware synthetic L4 section headers — the orange
+    // parent labels for accessories belong on the per-product rows below
+    // (added in postProcessMountingClusters), not on the section divider.
+    // Regular synthetic L4s (labor-collapsed camera labor) ARE eligible:
+    // those wrap real camera data rows and should get the (E-1, E-2)
+    // parent-list label like their non-synthetic siblings.
+    if ($groupRow.hasClass('scw-mounting-l4')) return;
 
     const cameraListHtml = buildCameraListHtml(ctx, caches, $rowsToSum);
     if (!cameraListHtml) return;
