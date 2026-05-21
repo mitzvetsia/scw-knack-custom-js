@@ -2155,6 +2155,11 @@
   function setupFormSubmitTrigger(cfg) {
     var formViewId = cfg.trigger.formViewId;
     var ns = '.scwPdfExport' + cfg.sceneId;
+    console.log('[SCW PDF Webhook] setupFormSubmitTrigger (init)', {
+      sceneId: cfg.sceneId,
+      formViewId: formViewId,
+      payloadType: cfg.payloadType
+    });
 
     // Gate the form's submit button until the scene is ready. Without
     // this, mashing Submit before view-render finishes can fire a
@@ -2184,11 +2189,18 @@
     }
 
     $(document).on('knack-view-render.' + formViewId, function () {
+      console.log('[SCW PDF Webhook] view-render fired for ' + formViewId);
       applyFormReadiness();
       whenPageReady(cfg.sceneId, applyFormReadiness);
 
       var formEl = document.querySelector('#' + formViewId + ' form');
-      if (!formEl) return;
+      if (!formEl) {
+        console.warn('[SCW PDF Webhook] no <form> inside #' + formViewId);
+        return;
+      }
+      if (formEl._scwPdfCaptureBound) {
+        console.log('[SCW PDF Webhook] capture listener already bound, skipping');
+      }
 
       // CAPTURE-PHASE listener. Knack binds its own submit handler in
       // bubble phase during view init. If we used jQuery .on('submit')
@@ -2207,6 +2219,7 @@
       // through so Knack does its native save + redirect.
       if (formEl._scwPdfCaptureBound) return; // idempotent across re-renders
       formEl._scwPdfCaptureBound = true;
+      console.log('[SCW PDF Webhook] capture-phase submit listener bound to', formEl);
 
       formEl.addEventListener('submit', function captureSubmitHandler(e) {
         if (formEl._scwPdfAuthorized) {
