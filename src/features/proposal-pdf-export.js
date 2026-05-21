@@ -240,7 +240,16 @@
   }
 
   function isVisibleRow(tr) {
-    return tr.style.display !== 'none' && !tr.classList.contains('scw-hide-level3-header') && !tr.classList.contains('scw-hide-level4-header');
+    // proposal-grid hides relocated-empty Mounting Hardware L2/L3 headers
+    // via .scw-empty-group-header { display: none } — class-based, not
+    // inline. Without honoring it here, the original "Mounting Hardware"
+    // L2 still gets emitted as a separate top-level section even though
+    // every accessory has been moved under its parent camera.
+    if (tr.classList.contains('scw-empty-group-header')) return false;
+    if (tr.classList.contains('scw-hide-level3-header')) return false;
+    if (tr.classList.contains('scw-hide-level4-header')) return false;
+    if (tr.style.display === 'none') return false;
+    return true;
   }
 
   // ── View type detection ──
@@ -426,6 +435,17 @@
       }
 
       if (tr.classList.contains('kn-group-level-2')) {
+        // Skip empty/hidden L2 (e.g. original "Mounting Hardware" L2
+        // after accessories have been relocated under their parent
+        // cameras). Without this, the snapshot emits a separate
+        // mounting-hardware section in addition to the per-camera
+        // nested accessories — visibly diverging from the live grid.
+        if (!isVisibleRow(tr)) {
+          currentL2 = null;
+          currentL3 = null;
+          continue;
+        }
+
         var l2Label = groupLabelText(tr);
         var isPromoted = tr.classList.contains('scw-promoted-l2-as-l1');
 
