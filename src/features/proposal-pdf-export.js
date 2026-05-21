@@ -526,6 +526,14 @@
       if (tr.classList.contains('kn-group-level-4')) {
         if (!isVisibleRow(tr)) continue;
 
+        // The .scw-mounting-l4 "Mounting Hardware" L4 is just a section
+        // divider above the .scw-mounting-product-line summary rows
+        // we already capture below. Emitting it as its own L4 line
+        // item produces a redundant "Mounting Hardware  Qty: 0" row
+        // in the PDF that sits right above the actual bracket rows.
+        // The product-line rows under it carry the qty + cost we want.
+        if (tr.classList.contains('scw-mounting-l4')) continue;
+
         // proposal-grid tags assumption-bucket L4 rows with
         // scw-hide-qty-cost (the parent L3 was already hidden via
         // scw-hide-level3-header so the L4 carries the flag instead).
