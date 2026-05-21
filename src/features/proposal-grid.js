@@ -3230,7 +3230,17 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
               if (!childRow) continue;
               var raw = attrs[parentField + '_raw'];
               if (!raw || !raw.length || !raw[0] || !raw[0].id) continue;
-              if (raw[0].id === childId) continue;
+              var parentId = raw[0].id;
+              if (parentId === childId) continue;
+              // Only flag as "missing" if the parent row is actually in
+              // this tbody — otherwise relocation will never succeed
+              // (orphan accessories whose parent lives in a different
+              // view), and saying "incomplete" here would make the
+              // sibling-render listener re-fire executePipeline on
+              // every Knack view-render until the 30s deadline, which
+              // shows up as a UI freeze on busy scenes like the
+              // proposal-preview page.
+              if (!knownIds[parentId]) continue;
               if (!childRow.classList.contains('scw-relocated-accessory')) {
                 return true;
               }
