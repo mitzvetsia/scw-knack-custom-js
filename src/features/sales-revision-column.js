@@ -27,13 +27,13 @@
     mountSelector:   '#bid-review-matrix',
     eventNs:         '.scwSalesRevCol',
     cssId:           'scw-sales-rev-col-css',
-    // Sub-side revision rejection webhook — Reject button in the
-    // "Sales Revisions" column on the bid comparison grid. Funnels
-    // into the same Make scenario as every other Accept/Reject
-    // surface in the sub portal (per-card modal, bulk action bar,
-    // revision requests grid). Previous 0cobxwo9… URL was a dead
-    // scenario silently failing via xhr.status === 0.
-    rejectWebhook:   'https://hook.us1.make.com/t6hczsjuia9l21d1u9ghfohmifw0r43f',
+    // ── Ops → Sales response webhook ──────────────────────────
+    // Fires whenever Ops triages a Sales-submitted revision on the
+    // bid comparison grid: Accept, Reject, or Add to Sub Bid. Make
+    // branches on payload.actionType ("accept" | "reject" |
+    // "forward_to_sub") to notify Sales accordingly. Placeholder URL
+    // until the Make scenario is wired up.
+    responseWebhook: 'https://hook.us1.make.com/PLACEHOLDER_SALES_RESPONSE_WEBHOOK',
   };
 
   var P = 'scw-sr-col';
@@ -86,6 +86,15 @@
       '}',
       '.scw-bid-review__overflow-trigger--reject:hover { filter: brightness(.88); }',
       '.scw-bid-review__overflow-trigger--reject:disabled { opacity: .5; cursor: not-allowed; }',
+
+      '.scw-bid-review__overflow-trigger--accept {',
+      '  background: #16a34a !important; color: #fff !important;',
+      '  border: none; border-radius: 4px; padding: 4px 10px;',
+      '  font: 600 11px/1 system-ui, sans-serif; cursor: pointer;',
+      '  white-space: nowrap;',
+      '}',
+      '.scw-bid-review__overflow-trigger--accept:hover { filter: brightness(.88); }',
+      '.scw-bid-review__overflow-trigger--accept:disabled { opacity: .5; cursor: not-allowed; }',
 
       // ── Sales Revision detail popover ──────────────────────────
       '.scw-sr-popover__backdrop {',
@@ -442,51 +451,31 @@
                      && !gridRow.find('.scw-bid-review__no-bid-badge, .scw-bid-review__survey-no-bid-badge').length;
 
           // Reject button — only for add/remove actions (not revise)
-          if (action !== 'revise') {
-            var rejectBtn = document.createElement('button');
-            rejectBtn.className = 'scw-bid-review__overflow-trigger scw-bid-review__overflow-trigger--reject';
-            rejectBtn.textContent = 'Reject';
-            rejectBtn.setAttribute('data-rev-id', rev.id);
-            rejectBtn.setAttribute('data-rev-request-id', rev.parentRequestId || '');
-            rejectBtn.setAttribute('data-rev-json', revJsonStr);
-            rejectBtn.addEventListener('click', handleRejectClick);
-            actions.appendChild(rejectBtn);
-          }
+          // Ops response actions — always shown on every card,
+          // regardless of action type (revise / add / remove). Order
+          // is destructive first, primary last per CLAUDE.md.
+          var rejectBtn = document.createElement('button');
+          rejectBtn.className = 'scw-bid-review__overflow-trigger scw-bid-review__overflow-trigger--reject';
+          rejectBtn.textContent = 'Reject';
+          rejectBtn.setAttribute('data-rev-id', rev.id);
+          rejectBtn.setAttribute('data-rev-request-id', rev.parentRequestId || '');
+          rejectBtn.setAttribute('data-rev-json', revJsonStr);
+          rejectBtn.addEventListener('click', handleRejectClick);
+          actions.appendChild(rejectBtn);
 
-          // Revise items: show Clear button (on-bid and not-on-bid)
-          if (action === 'revise') {
-            var ackBtn = document.createElement('button');
-            ackBtn.className = 'scw-bid-review__overflow-trigger scw-bid-review__overflow-trigger--adopt';
-            ackBtn.textContent = 'Clear';
-            ackBtn.setAttribute('data-rev-id', rev.id);
-            ackBtn.addEventListener('click', function () {
-              var aid = this.getAttribute('data-rev-id');
-              this.disabled = true;
-              this.textContent = 'Updating\u2026';
-              var self = this;
-              var statusData = {};
-              statusData[CFG.statusField] = 'Accepted';
-              SCW.knackAjax({
-                url: SCW.knackRecordUrl(CFG.revisionView, aid),
-                type: 'PUT',
-                data: JSON.stringify(statusData),
-                success: function () {
-                  self.textContent = 'Cleared \u2713';
-                  self.style.opacity = '0.6';
-                  setTimeout(function () {
-                    if (Knack.views[CFG.revisionView] && Knack.views[CFG.revisionView].model) {
-                      Knack.views[CFG.revisionView].model.fetch();
-                    }
-                  }, 1500);
-                },
-                error: function () {
-                  self.textContent = 'Failed';
-                  self.disabled = false;
-                },
-              });
-            });
-            actions.appendChild(ackBtn);
-          }
+          var acceptBtn = document.createElement('button');
+          acceptBtn.className = 'scw-bid-review__overflow-trigger scw-bid-review__overflow-trigger--accept';
+          acceptBtn.textContent = 'Accept';
+          acceptBtn.setAttribute('data-rev-id', rev.id);
+          acceptBtn.setAttribute('data-rev-request-id', rev.parentRequestId || '');
+          acceptBtn.setAttribute('data-rev-json', revJsonStr);
+          acceptBtn.addEventListener('click', handleAcceptClick);
+          actions.appendChild(acceptBtn);
+
+          // (Old "Clear" button on revise rows was replaced by the
+          // unified Accept button above; per-action gating was
+          // dropped so Ops always sees Reject + Accept + Add to Sub
+          // Bid regardless of the revision's action type.)
 
           // CR button — Revise only if on bid; Add/Remove always shown
           if (action !== 'revise' || isOnBid) {
@@ -735,14 +724,103 @@
     var revJson = {};
     try { revJson = JSON.parse(btn.getAttribute('data-rev-json') || '{}'); } catch (ex) {}
 
-    openRejectNotePrompt(revJson, function (rejectNotes) {
-      performReject(btn, revId, revReqId, revJson, rejectNotes);
+    openNotePrompt({
+      kind:         'reject',
+      revJson:      revJson,
+      requireNote:  true,
+    }, function (notes) {
+      performReject(btn, revId, revReqId, revJson, notes);
     });
   }
 
-  /** Open a small modal asking sales for a rejection note before submitting. */
-  function openRejectNotePrompt(revJson, onSubmit) {
-    var label = revJson.displayLabel || revJson.productName || 'this item';
+  function handleAcceptClick(e) {
+    e.stopPropagation();
+    var btn = this;
+    var revId = btn.getAttribute('data-rev-id');
+    var revReqId = btn.getAttribute('data-rev-request-id');
+    var revJson = {};
+    try { revJson = JSON.parse(btn.getAttribute('data-rev-json') || '{}'); } catch (ex) {}
+
+    openNotePrompt({
+      kind:         'accept',
+      revJson:      revJson,
+      requireNote:  false,
+    }, function (notes) {
+      performAccept(btn, revId, revReqId, revJson, notes);
+    });
+  }
+
+  // Fire the unified Ops-response webhook. Make branches on actionType
+  // ("accept" | "reject" | "forward_to_sub") to decide which Sales
+  // notification template to send.
+  function fireResponseWebhook(actionType, revId, revReqId, revJson, notes) {
+    var item = JSON.parse(JSON.stringify(revJson || {}));
+    item.lineItemId = revId;
+    if (!item.action) item.action = 'revise';
+    if (notes) item.responseNotes = notes;
+
+    var payload = {
+      actionType: actionType,
+      timestamp:  new Date().toISOString(),
+      totalItems: 1,
+      revisionRequests: [{
+        revisionRequestId: revReqId || '',
+        items: [item],
+      }],
+    };
+    try {
+      var u = Knack.getUserAttributes();
+      if (u) payload.user = { id: u.id || '', name: u.name || '', email: u.email || '' };
+    } catch (ex) {}
+
+    $.ajax({
+      url: CFG.responseWebhook,
+      type: 'POST',
+      contentType: 'application/json',
+      data: JSON.stringify(payload),
+      timeout: 30000,
+    });
+  }
+
+  // Themed by kind ("reject" | "accept" | "forward"). Reject requires
+  // a note; accept + forward make it optional. onSubmit(notes) fires
+  // only on submit (cancel/escape silently dismiss).
+  var NOTE_PROMPT_THEMES = {
+    reject: {
+      title:       'Reject revision',
+      label:       'Reason for rejection (visible to sales)',
+      placeholder: 'e.g. Out of budget \u2014 see SR-####',
+      headerBg:    '#b91c1c',
+      submitBg:    '#dc2626',
+      submitBorder:'#991b1b',
+      submitLabel: 'Reject',
+      busyLabel:   'Rejecting\u2026',
+    },
+    accept: {
+      title:       'Accept revision',
+      label:       'Note for sales (optional)',
+      placeholder: 'e.g. Looks good \u2014 will apply on next SOW build',
+      headerBg:    '#15803d',
+      submitBg:    '#16a34a',
+      submitBorder:'#166534',
+      submitLabel: 'Accept',
+      busyLabel:   'Accepting\u2026',
+    },
+    forward: {
+      title:       'Add to sub bid',
+      label:       'Note for sales (optional)',
+      placeholder: 'e.g. Forwarding to sub for re-pricing',
+      headerBg:    '#1d4ed8',
+      submitBg:    '#2563eb',
+      submitBorder:'#1e40af',
+      submitLabel: 'Add to Sub Bid',
+      busyLabel:   'Forwarding\u2026',
+    },
+  };
+
+  function openNotePrompt(opts, onSubmit) {
+    var theme = NOTE_PROMPT_THEMES[opts.kind] || NOTE_PROMPT_THEMES.reject;
+    var label = (opts.revJson && (opts.revJson.displayLabel || opts.revJson.productName)) || 'this item';
 
     var backdrop = document.createElement('div');
     backdrop.style.cssText = 'position:fixed;inset:0;z-index:100002;background:rgba(15,23,42,0.45);'
@@ -754,22 +832,28 @@
       + 'box-shadow:0 24px 64px rgba(2,6,23,0.35);overflow:hidden;display:flex;flex-direction:column;';
 
     var head = document.createElement('div');
-    head.style.cssText = 'padding:12px 16px;background:#b91c1c;color:#fff;font-weight:700;font-size:14px;';
-    head.textContent = 'Reject revision: ' + label;
+    head.style.cssText = 'padding:12px 16px;background:' + theme.headerBg + ';color:#fff;font-weight:700;font-size:14px;';
+    head.textContent = theme.title + ': ' + label;
     modal.appendChild(head);
 
     var body = document.createElement('div');
     body.style.cssText = 'padding:14px 16px;';
     var lbl = document.createElement('div');
     lbl.style.cssText = 'font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#64748b;margin-bottom:6px;';
-    lbl.textContent = 'Reason for rejection (visible to sales)';
+    lbl.textContent = theme.label;
     body.appendChild(lbl);
     var ta = document.createElement('textarea');
     ta.rows = 4;
-    ta.placeholder = 'e.g. Out of budget \u2014 see SR-####';
+    ta.placeholder = theme.placeholder;
     ta.style.cssText = 'width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #d1d5db;'
       + 'border-radius:6px;font:inherit;resize:vertical;outline:none;';
     body.appendChild(ta);
+
+    // Inline validation hint for reject (note is required there).
+    var hint = document.createElement('div');
+    hint.style.cssText = 'margin-top:6px;font-size:11px;color:#b91c1c;display:none;';
+    hint.textContent = 'A note is required.';
+    body.appendChild(hint);
     modal.appendChild(body);
 
     var foot = document.createElement('div');
@@ -795,11 +879,16 @@
 
     var submitBtn = document.createElement('button');
     submitBtn.type = 'button';
-    submitBtn.textContent = 'Reject';
-    submitBtn.style.cssText = 'padding:8px 14px;border-radius:6px;border:1px solid #991b1b;'
-      + 'background:#dc2626;color:#fff;font:700 12px system-ui,sans-serif;cursor:pointer;';
+    submitBtn.textContent = theme.submitLabel;
+    submitBtn.style.cssText = 'padding:8px 14px;border-radius:6px;border:1px solid ' + theme.submitBorder + ';'
+      + 'background:' + theme.submitBg + ';color:#fff;font:700 12px system-ui,sans-serif;cursor:pointer;';
     submitBtn.addEventListener('click', function () {
       var note = (ta.value || '').trim();
+      if (opts.requireNote && !note) {
+        hint.style.display = 'block';
+        ta.focus();
+        return;
+      }
       document.removeEventListener('keydown', keyHandler);
       close();
       onSubmit(note);
@@ -867,28 +956,74 @@
       },
     });
 
-    var item = JSON.parse(JSON.stringify(updatedJson));
-    item.lineItemId = revId;
-    if (!item.action) item.action = 'revise';
-    if (rejectNotes) item.rejectNotes = rejectNotes;
+    fireResponseWebhook('reject', revId, revReqId, updatedJson, rejectNotes);
+  }
 
-    var payload = {
-      action: 'reject',
-      timestamp: new Date().toISOString(),
-      totalItems: 1,
-      revisionRequests: [{
-        revisionRequestId: revReqId || '',
-        items: [item],
-      }],
-    };
+  // ── Accept: mirror of performReject with green stamp + status=Accepted ──
+  function performAccept(btn, revId, revReqId, revJson, acceptNotes) {
+    btn.disabled = true;
+    btn.textContent = 'Accepting…';
 
-    $.ajax({
-      url: CFG.rejectWebhook,
-      type: 'POST',
-      contentType: 'application/json',
-      data: JSON.stringify(payload),
-      timeout: 30000,
+    var updatedJson = JSON.parse(JSON.stringify(revJson));
+    updatedJson.status = 'Accepted';
+    updatedJson.acceptedAt = new Date().toISOString();
+    if (acceptNotes) updatedJson.acceptNotes = acceptNotes;
+    try {
+      var u = Knack.getUserAttributes();
+      if (u) updatedJson.acceptedBy = { id: u.id || '', name: u.name || '', email: u.email || '' };
+    } catch (ex) {}
+
+    var noteHtml = acceptNotes
+      ? '<div style="margin-top:4px;font-weight:500;font-style:italic;">“'
+        + esc(acceptNotes).replace(/\n/g, '<br>') + '”</div>'
+      : '';
+    var stampHtml = '<div style="font-family:system-ui,-apple-system,sans-serif;font-size:12px;'
+      + 'background:#f0fdf4;border:1px solid #bbf7d0;border-radius:4px;padding:6px 10px;margin-bottom:6px;'
+      + 'color:#166534;font-weight:600;">'
+      + '✓ Accepted — ' + new Date().toLocaleString()
+      + noteHtml
+      + '</div>';
+
+    var cardEl = btn.closest('.' + P + '-item');
+    var existingHtml = '';
+    if (cardEl) {
+      var cardDiv = cardEl.querySelector('.' + P + '-card');
+      if (cardDiv) existingHtml = cardDiv.innerHTML;
+    }
+    var newHtml = stampHtml + existingHtml;
+
+    var knackData = {};
+    knackData[CFG.statusField] = 'Accepted';
+    knackData[CFG.htmlField] = newHtml;
+    knackData[CFG.jsonField] = JSON.stringify(updatedJson);
+
+    SCW.knackAjax({
+      url: SCW.knackRecordUrl(CFG.revisionView, revId),
+      type: 'PUT',
+      data: JSON.stringify(knackData),
+      success: function () {
+        SCW.debug('[SalesRevCol] Updated record', revId, 'to Accepted');
+        afterAccept(btn);
+      },
+      error: function () {
+        console.warn('[SalesRevCol] Failed to update record', revId);
+        btn.textContent = 'Failed';
+        btn.disabled = false;
+        setTimeout(function () { btn.textContent = 'Accept'; }, 3000);
+      },
     });
+
+    fireResponseWebhook('accept', revId, revReqId, updatedJson, acceptNotes);
+  }
+
+  function afterAccept(btn) {
+    btn.textContent = 'Accepted ✓';
+    btn.style.opacity = '0.6';
+    setTimeout(function () {
+      if (Knack.views[CFG.revisionView] && Knack.views[CFG.revisionView].model) {
+        Knack.views[CFG.revisionView].model.fetch();
+      }
+    }, 1500);
   }
 
   function afterReject(btn) {
@@ -1058,16 +1193,28 @@
       var revId = this.getAttribute('data-rev-id');
       var revReqId = this.getAttribute('data-rev-request-id');
 
-      if (window.SCW && SCW.bidReview && SCW.bidReview.createBidCRFromRevision) {
-        SCW.bidReview.createBidCRFromRevision({
-          sowItemId:            sowItemId,
-          action:               revJson.action || 'revise',
-          changeNotes:          revJson.changeNotes || '',
-          revJson:              revJson,
-          revisionRecordId:     revId || '',
-          revisionRequestId:    revReqId || '',
-        });
-      }
+      // "Add to Sub Bid" — prompt for an optional note, fire the
+      // Sales-notification webhook ("we're forwarding this to the
+      // sub"), then chain into the existing bid-review pipeline that
+      // actually creates the sub-side change request.
+      openNotePrompt({
+        kind:        'forward',
+        revJson:     revJson,
+        requireNote: false,
+      }, function (notes) {
+        fireResponseWebhook('forward_to_sub', revId, revReqId, revJson, notes);
+
+        if (window.SCW && SCW.bidReview && SCW.bidReview.createBidCRFromRevision) {
+          SCW.bidReview.createBidCRFromRevision({
+            sowItemId:            sowItemId,
+            action:               revJson.action || 'revise',
+            changeNotes:          notes || revJson.changeNotes || '',
+            revJson:              revJson,
+            revisionRecordId:     revId || '',
+            revisionRequestId:    revReqId || '',
+          });
+        }
+      });
     }
   }
 
