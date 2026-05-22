@@ -273,59 +273,28 @@
   }
 
   function detectAddRecords() {
-    if (!S.isAddMode()) return;
-
-    var baseline = S.baseline();
-    var pending  = S.pending();
-    var keys     = Object.keys(baseline);
-    var added    = 0;
-
-    for (var i = 0; i < keys.length; i++) {
-      var id   = keys[i];
-      var base = baseline[id];
-      if (!base) continue;
-      if (pending[id]) continue;
-      // Skip records the user has explicitly cleared or already submitted —
-      // otherwise the next render re-creates them and a 'Clear all' looks
-      // like it did nothing.
-      if (ns.isDismissed && ns.isDismissed(id)) continue;
-
-      // addCountField (field_2586) = "associated survey line items" count.
-      // A row is an "add" change request ONLY when it has NO associated
-      // survey items (count === 0) — i.e., it was created during the
-      // revision phase. Rows with count > 0 came in from the site survey
-      // and must not be auto-flagged as adds.
-      var count = parseFloat(base._addCount);
-      if (isNaN(count) || count > 0) continue;
-
-      // Snapshot all tracked field values into requested — the whole record is new
-      var req = {};
-      var reqIds = {};
-      for (var tf = 0; tf < TF.length; tf++) {
-        var fk = TF[tf].key;
-        if (base[fk] != null) req[fk] = base[fk];
-        if (base[fk + '_ids']) reqIds[fk] = base[fk + '_ids'];
-      }
-      pending[id] = {
-        rowId:        id,
-        displayLabel: base._label || '',
-        productName:  base._product || '',
-        bucketId:     base._bucketId || '',
-        bucketName:   base._bucketName || '',
-        laborHours:   base._laborHours || 0,
-        action:       'add',
-        current:      {},
-        requested:    req,
-        changeNotes:  '',
-      };
-      for (var ik in reqIds) pending[id].requested[ik + '_ids'] = reqIds[ik];
-      added++;
-    }
-
-    if (added) {
-      ns.persist();
-      if (CFG.debug) SCW.debug('[SalesCR] Auto-detected', added, 'add records');
-    }
+    // INTENTIONALLY DISABLED — previously auto-promoted any baseline
+    // record with field_2586 = 0 ("no associated survey items") to a
+    // pending "add" CR. The assumption was that such rows could only
+    // come from the Sales worksheet during revision mode, but that's
+    // not true: rows added from the Build SOW page (or anywhere else)
+    // with no survey association look identical, so the auto-detect
+    // pulled in records the Sales user never touched — producing
+    // false-positive ADD cards on the bid comparison grid.
+    //
+    // Pending ADDs are now created only through user-driven paths:
+    //   * Explicit modal — modals.js handler for the "Add Line Item"
+    //     button (action = 'add')
+    //   * Inline edit on view_3586 — onCellUpdate via the ajaxComplete
+    //     intercept, gated on view_3586 in the URL AND
+    //     addModeField = "Yes"
+    //
+    // If we need an auto-detect heuristic again, it should be based
+    // on a frozen "pre-revision baseline" snapshot taken at the
+    // moment revision mode first activates — comparing current
+    // record IDs against that set — not on a fragile field_2586 = 0
+    // shortcut. See notes in change-detection.js history.
+    return;
   }
 
   // ── Public API ──
