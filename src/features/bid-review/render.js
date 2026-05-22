@@ -295,6 +295,13 @@
       if (pkg.crPendingCount > 0 && pkg.crLinkUrl) {
         var crLink = document.createElement('a');
         crLink.href = pkg.crLinkUrl;
+        // Open in a new tab so the bid comparisons page stays intact.
+        // The Knack link is a child-page hash route — clicking it in
+        // the same tab navigates the whole scene to bid-revision-details
+        // and forces the user to close the modal + hit Back to return
+        // to the comparison grid. New tab keeps state.
+        crLink.target = '_blank';
+        crLink.rel = 'noopener';
         crLink.className = 'scw-bid-review__cr-link';
         crLink.textContent = pkg.crPendingCount + ' pending CR' + (pkg.crPendingCount !== 1 ? 's' : '');
         td.appendChild(crLink);
