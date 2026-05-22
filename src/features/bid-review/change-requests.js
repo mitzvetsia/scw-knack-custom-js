@@ -1879,10 +1879,15 @@
     return lines.join('\n').replace(/\n{3,}/g, '\n\n').trim();
   }
 
-  function submitChangeRequest(pkgId) {
+  function submitChangeRequest(pkgId, opts) {
     var pkg = _pending[pkgId];
     if (!pkg || !pkg.items.length) return;
-    if (!window.confirm('Submit change request for ' + pkg.pkgName + '?\n\n' +
+    // Silent mode skips the confirm dialog — used by automated paths
+    // (e.g. sales-revision-column's Forward action, which has already
+    // collected an explicit user confirmation through its own note
+    // prompt and a click on a specific package choice).
+    var silent = !!(opts && opts.silent);
+    if (!silent && !window.confirm('Submit change request for ' + pkg.pkgName + '?\n\n' +
       pkg.items.length + ' item(s) will be sent.')) return;
 
     var payload = buildSubmitPayload(pkgId);
