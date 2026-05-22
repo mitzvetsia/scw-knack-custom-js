@@ -12,7 +12,13 @@
   var VIEW_ID       = 'view_3820';
   var WORKSHEET_ID  = 'view_3505';
   var REVISIONS_ID  = 'view_3823';
-  var WEBHOOK       = 'https://hook.us1.make.com/0cobxwo9q6ycek787agapekg7gtahmt5';
+  // Sub-side revision response webhook (Accept All / Reject All from
+  // the revision requests grid). Matches the per-card modal flow's
+  // revisionResponseWebhook so every Accept/Reject surface in the sub
+  // portal funnels into the same Make scenario. The previous
+  // 0cobxwo9… URL pointed at a deleted scenario and was silently
+  // no-op'ing because xhr.status === 0 is treated as success below.
+  var WEBHOOK       = 'https://hook.us1.make.com/t6hczsjuia9l21d1u9ghfohmifw0r43f';
   var CSS_ID        = 'scw-rev-accept-reject-css';
   var EVENT_NS      = '.scwRevAcceptReject';
   var POLL_MS       = 5000;

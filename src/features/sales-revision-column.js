@@ -27,7 +27,13 @@
     mountSelector:   '#bid-review-matrix',
     eventNs:         '.scwSalesRevCol',
     cssId:           'scw-sales-rev-col-css',
-    rejectWebhook:   'https://hook.us1.make.com/0cobxwo9q6ycek787agapekg7gtahmt5',
+    // Sub-side revision rejection webhook — Reject button in the
+    // "Sales Revisions" column on the bid comparison grid. Funnels
+    // into the same Make scenario as every other Accept/Reject
+    // surface in the sub portal (per-card modal, bulk action bar,
+    // revision requests grid). Previous 0cobxwo9… URL was a dead
+    // scenario silently failing via xhr.status === 0.
+    rejectWebhook:   'https://hook.us1.make.com/t6hczsjuia9l21d1u9ghfohmifw0r43f',
   };
 
   var P = 'scw-sr-col';

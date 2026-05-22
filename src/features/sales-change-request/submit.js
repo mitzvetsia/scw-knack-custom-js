@@ -2,6 +2,12 @@
 /**
  * Webhook submission for final submissions, and draft save to Knack field.
  *
+ * Direction: Sales → SCW Ops team. This is NOT the channel that sends
+ * change requests to the subcontractor. When Sales submits here, the
+ * Make scenario at CFG.submitWebhook (jlbup3qu…) notifies Ops so the
+ * Ops team can review the requested changes against the active SOW
+ * before anything downstream happens.
+ *
  * Save Draft: writes pending JSON to field_2707 immediately (no webhook).
  * Submit: posts to webhook, then clears pending + draft field.
  *
