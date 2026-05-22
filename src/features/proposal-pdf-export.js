@@ -2390,7 +2390,12 @@
               (typeof resp === 'object' || String(resp).length > 0));
             if (informative) {
               console.log('[SCW PDF Webhook] informative -> releasing submit, no polling');
-              showPublishToast('PDF ready -- opening...', false, false);
+              // Make confirmed PDF creation — the file is already on the
+              // Knack record by the time Make's webhook response fires.
+              // Drop the publish toast entirely (no "PDF ready" message
+              // is useful here — the user is about to land on the parent
+              // page where the PDF link is already rendered).
+              dismissPublishToast();
               authorizeAndResubmit(false);
             } else {
               console.log('[SCW PDF Webhook] empty response -> fallback to polling');
@@ -2409,7 +2414,7 @@
             var httpOk = xhr && xhr.status >= 200 && xhr.status < 300;
             if (httpOk && raw) {
               console.log('[SCW PDF Webhook] HTTP OK with body -- treating as success');
-              showPublishToast('PDF ready -- opening...', false, false);
+              dismissPublishToast();
               authorizeAndResubmit(false);
               return;
             }
@@ -2699,6 +2704,13 @@
 
   // Check for poll flag whenever any scene renders
   $(document).on('knack-scene-render.any.scwPdfPoll', function () {
+    // Belt-and-suspenders: clear any publish toast that survived the
+    // form-submit → parent-page hash navigation. The toast lives on
+    // document.body so Knack's SPA scene swap doesn't remove it; if
+    // any code path forgot to dismiss before submitting, kill it on
+    // arrival so the user doesn't see a stale "PDF ready" sitting
+    // on top of their parent page.
+    dismissPublishToast();
     var viewId, fieldId, pollType;
     try {
       viewId = sessionStorage.getItem('scw-pdf-poll-view');
