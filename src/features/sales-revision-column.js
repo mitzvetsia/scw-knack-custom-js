@@ -635,7 +635,10 @@
           }
         }
 
-        // Package id from the actions row buttons
+        // Package id from the actions row buttons. Some layouts have
+        // a Convert/Adopt-style header button there, others (single
+        // sub-bid grids) leave the action header cell empty. Try
+        // there first.
         var id = '';
         var actionCell = actions[i];
         if (actionCell) {
@@ -643,11 +646,29 @@
           if (btn) id = btn.getAttribute('data-package-id') || '';
         }
 
+        // Fallback: peek into the first data row at the same column
+        // index. Per-row Revise / Remove cell-action buttons carry
+        // data-package-id; this is the source of truth even when the
+        // header action cell is bare.
+        if (!id) {
+          var $thisTable = $(this);
+          var $firstDataRow = $thisTable.find('tbody tr.scw-bid-review__row').first();
+          if ($firstDataRow.length) {
+            var cellAtIndex = $firstDataRow.children()[i];
+            if (cellAtIndex) {
+              var rowBtn = cellAtIndex.querySelector('button[data-package-id]');
+              if (rowBtn) id = rowBtn.getAttribute('data-package-id') || '';
+            }
+          }
+        }
+
         if (name && id) pkgs.push({ id: id, name: name });
       }
     });
 
-    // Fallback: read from data rows in the CR column
+    // Last-resort fallback: scrape any rendered overflow-item[data-package-id]
+    // already on the page from a prior render. Chicken-and-egg with the
+    // current render pass, but covers post-mutation refreshes.
     if (!pkgs.length) {
       var seen = {};
       $mount.find('.scw-bid-review__overflow-item[data-package-id]').each(function () {
