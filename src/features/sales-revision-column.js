@@ -514,6 +514,12 @@
                   'data-rev-id': rev.id,
                   'data-rev-request-id': rev.parentRequestId || '',
                   'data-sow-item-id': rev.sowItemId,
+                  // Carry the selected package so the Forward handler
+                  // can put it on the same response payload Accept /
+                  // Reject use. Without this Make can't tell which
+                  // sub-bid the user picked from the dropdown.
+                  'data-pkg-id': packages[cp].id,
+                  'data-pkg-name': packages[cp].name,
                   'data-rev-json': revJsonStr,
                 }
               });
@@ -532,6 +538,8 @@
                   'data-rev-id': rev.id,
                   'data-rev-request-id': rev.parentRequestId || '',
                   'data-sow-item-id': rev.sowItemId,
+                  'data-pkg-id': packages[addp].id,
+                  'data-pkg-name': packages[addp].name,
                   'data-rev-json': JSON.stringify($.extend({}, rev.json || {}, { action: 'add' })),
                 }
               });
@@ -1234,28 +1242,33 @@
       try { revJson = JSON.parse(this.getAttribute('data-rev-json') || '{}'); } catch (ex) {}
       var revId = this.getAttribute('data-rev-id');
       var revReqId = this.getAttribute('data-rev-request-id');
+      var pkgId = this.getAttribute('data-pkg-id') || '';
+      var pkgName = this.getAttribute('data-pkg-name') || '';
 
-      // "Add to Sub Bid" — prompt for an optional note, fire the
-      // Sales-notification webhook ("we're forwarding this to the
-      // sub"), then chain into the existing bid-review pipeline that
-      // actually creates the sub-side change request.
+      // "Forward for bid revision" — fires the unified Ops response
+      // webhook ONLY, identical payload shape to Accept / Reject so
+      // downstream Make automation has one consistent structure to
+      // branch on (actionType: 'forward_to_sub' vs 'accept' vs
+      // 'reject'). The selected package is attached to the same item
+      // so Make knows which sub-bid to act on.
+      //
+      // The old chain into SCW.bidReview.createBidCRFromRevision()
+      // — which opened the bid-side change-request modal and fired a
+      // separate bid-review change-request webhook with its own
+      // payload shape — was removed because it produced a divergent
+      // shape that broke the automation. Make is now expected to do
+      // all the downstream work (create the bid CR record, notify
+      // sales) from the unified payload.
       openNotePrompt({
         kind:        'forward',
         revJson:     revJson,
         requireNote: false,
       }, function (notes) {
-        fireResponseWebhook('forward_to_sub', revId, revReqId, revJson, notes);
-
-        if (window.SCW && SCW.bidReview && SCW.bidReview.createBidCRFromRevision) {
-          SCW.bidReview.createBidCRFromRevision({
-            sowItemId:            sowItemId,
-            action:               revJson.action || 'revise',
-            changeNotes:          notes || revJson.changeNotes || '',
-            revJson:              revJson,
-            revisionRecordId:     revId || '',
-            revisionRequestId:    revReqId || '',
-          });
-        }
+        var revJsonWithPkg = $.extend({}, revJson, {
+          pkgId: pkgId,
+          pkgName: pkgName,
+        });
+        fireResponseWebhook('forward_to_sub', revId, revReqId, revJsonWithPkg, notes);
       });
     }
   }
