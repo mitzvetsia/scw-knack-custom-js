@@ -33,7 +33,7 @@
     // branches on payload.actionType ("accept" | "reject" |
     // "forward_to_sub") to notify Sales accordingly. Placeholder URL
     // until the Make scenario is wired up.
-    responseWebhook: 'https://hook.us1.make.com/PLACEHOLDER_SALES_RESPONSE_WEBHOOK',
+    responseWebhook: 'https://hook.us1.make.com/56ew1cvhln6g216aldgdian4me8n9xq3',
   };
 
   var P = 'scw-sr-col';
