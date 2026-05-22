@@ -1245,26 +1245,26 @@
       var pkgId = this.getAttribute('data-pkg-id') || '';
       var pkgName = this.getAttribute('data-pkg-name') || '';
 
-      // "Forward for bid revision" fires TWO webhooks:
+      // "Forward for bid revision" does two things:
       //
-      //   1. The unified Ops response webhook (responseWebhook). Same
-      //      payload shape as Accept and Reject, differing only by
-      //      actionType: 'forward_to_sub'. Carries the selected
-      //      sub-bid (pkgId / pkgName) on the item so Make knows
-      //      which package the Ops user picked.
+      //   1. Fires the unified Ops response webhook (responseWebhook)
+      //      — same payload shape as Accept and Reject, differing
+      //      only by actionType: 'forward_to_sub'. Carries the
+      //      selected sub-bid (pkgId / pkgName) on the item so Make
+      //      knows which package was chosen. This notifies Sales.
       //
-      //   2. The bid-review change-request webhook (changeRequestWebhook
-      //      — rpbu6rd1...). Queues a pending bid CR for the chosen
-      //      package via batchConvertRevisions (no modal — silent
-      //      conversion), then immediately submits it with the silent
-      //      flag so the confirm() dialog is skipped. Net effect: one
-      //      Forward click produces one fully-formed bid CR submission
-      //      with no UI interruption beyond the optional note prompt.
+      //   2. Queues a pending bid CR for the chosen package via
+      //      batchConvertRevisions — the same headless helper Convert
+      //      All uses. The item shows up in the package's pending
+      //      list alongside any other queued changes; the webhook
+      //      to rpbu6rd1... only fires when Ops clicks "Submit
+      //      Change Request" on the package header (manual batch
+      //      submit, with confirm). This matches the legacy modal
+      //      flow's behaviour — the modal also only queued, it didn't
+      //      submit on Save.
       //
-      // The first hop notifies Sales; the second is the pre-existing
-      // ops pipeline that creates the pending change record headed to
-      // the sub. Same payload shapes as before for each hop — just
-      // the gating modal is gone.
+      // No auto-submit — the bid CR sits in pending until Ops chooses
+      // to ship it (potentially batched with other revisions).
       openNotePrompt({
         kind:        'forward',
         revJson:     revJson,
@@ -1276,14 +1276,9 @@
         });
         fireResponseWebhook('forward_to_sub', revId, revReqId, revJsonWithPkg, notes);
 
-        // Headless queue + submit of the bid-side change request.
-        // batchConvertRevisions builds the pending item using the
-        // same logic Convert All uses; submitForPackage with
-        // silent:true fires CFG.changeRequestWebhook without the
-        // confirm dialog.
+        // Queue the bid-side pending CR (no modal, no webhook fire).
         var bidR = window.SCW && SCW.bidReview;
-        if (bidR && bidR.batchConvertRevisions
-            && bidR.changeRequests && bidR.changeRequests.submitForPackage) {
+        if (bidR && bidR.batchConvertRevisions) {
           var revItems = [{
             sowItemId:         sowItemId,
             action:            revJson.action || 'revise',
@@ -1292,10 +1287,7 @@
             revisionRecordId:  revId || '',
             revisionRequestId: revReqId || '',
           }];
-          var count = bidR.batchConvertRevisions(revItems, pkgId);
-          if (count) {
-            bidR.changeRequests.submitForPackage(pkgId, { silent: true });
-          }
+          bidR.batchConvertRevisions(revItems, pkgId);
         }
       });
     }
