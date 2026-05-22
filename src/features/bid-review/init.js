@@ -181,6 +181,7 @@
         && !e.target.closest('.scw-bid-review__overflow')
         && !e.target.closest('.scw-bid-review__overflow-item')
         && !e.target.closest('.scw-bid-review__cell-action')
+        && !e.target.closest('.scw-bid-review__inline-add-btn')
         && !e.target.closest('a')
         && !e.target.closest('input')) {
         toggleRowExpand(rowTrigger);
