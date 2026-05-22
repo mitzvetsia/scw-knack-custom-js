@@ -2069,30 +2069,101 @@
     var payload = {};
     payload[fieldKey] = remainingIds; // empty array clears the connection
 
+    // The grid groups rows by field_2154 on TWO sources: SOW item
+    // records (view_3921) AND bid records (view_3680). Both reference
+    // the same SOW via the same field key. To make the comparison grid
+    // actually drop the row from this SOW's section, we have to clear
+    // the connection on both — clearing just the SOW item leaves the
+    // bid record still pointing at this SOW, so the row keeps showing
+    // up under this SOW even though the disconnect succeeded.
+    function readBidRecordSowIds() {
+      var bidView = Knack && Knack.views && Knack.views[CFG.viewKey];
+      var bidModel = bidView && bidView.model && bidView.model.data
+                     && bidView.model.data.models;
+      if (!bidModel) return null;
+      for (var mi = 0; mi < bidModel.length; mi++) {
+        if (bidModel[mi].id === rowId) {
+          var bAttrs = bidModel[mi].attributes || {};
+          var bRaw = bAttrs[fieldKey + '_raw'];
+          var ids = [];
+          if (Array.isArray(bRaw)) {
+            for (var bi = 0; bi < bRaw.length; bi++) {
+              if (bRaw[bi] && bRaw[bi].id && bRaw[bi].id !== sowId) ids.push(bRaw[bi].id);
+            }
+          }
+          return ids;
+        }
+      }
+      return null;
+    }
+
+    function fetchBoth(done) {
+      var pending = 0;
+      function tick() { pending--; if (pending <= 0) done(); }
+
+      var sowItemsView = Knack && Knack.views && Knack.views[CFG.sowItemsViewKey];
+      if (sowItemsView && sowItemsView.model && typeof sowItemsView.model.fetch === 'function') {
+        pending++;
+        sowItemsView.model.fetch().always(tick);
+      }
+      var bidView = Knack && Knack.views && Knack.views[CFG.viewKey];
+      if (bidView && bidView.model && typeof bidView.model.fetch === 'function') {
+        pending++;
+        bidView.model.fetch().always(tick);
+      }
+      if (pending === 0) done();
+    }
+
     SCW.knackAjax({
       url:  SCW.knackRecordUrl(CFG.sowItemsViewKey, sowItemId),
       type: 'PUT',
       data: JSON.stringify(payload),
       success: function (resp) {
-        setBusy(button, false);
         if (typeof SCW.syncKnackModel === 'function') {
           SCW.syncKnackModel(CFG.sowItemsViewKey, sowItemId, resp, fieldKey, remainingIds);
         }
-        ns.renderToast('Line item disconnected from ' + sowName, 'success');
-        // Force view_3921 to refetch so the model picks up the new
-        // field_2154 value before the bid-review pipeline reads it.
-        // ns.refresh() alone uses the cached model — without a fetch
-        // first, the grid rebuilds from stale data and the row stays
-        // on this SOW even though the PUT succeeded. Same pattern
-        // used after Add PM & Mobilization (init.js:617).
-        var sowItemsView = Knack && Knack.views && Knack.views[CFG.sowItemsViewKey];
-        if (sowItemsView && sowItemsView.model && typeof sowItemsView.model.fetch === 'function') {
-          sowItemsView.model.fetch().always(function () {
-            if (ns.refresh) ns.refresh();
-          });
-        } else if (ns.refresh) {
-          ns.refresh();
+
+        // Second PUT: clear this SOW from the bid record's field_2154
+        // as well, so the comparison grid stops grouping the bid under
+        // this SOW. If the bid record doesn't exist on the page (it
+        // shouldn't on scene_1155 unless the page is wired weirdly)
+        // we skip the second PUT and just refresh.
+        var bidIds = readBidRecordSowIds();
+
+        function finish() {
+          setBusy(button, false);
+          ns.renderToast('Line item disconnected from ' + sowName, 'success');
+          fetchBoth(function () { if (ns.refresh) ns.refresh(); });
         }
+
+        if (bidIds === null) {
+          // No bid record on the page — single-PUT path is sufficient.
+          finish();
+          return;
+        }
+
+        var bidPayload = {};
+        bidPayload[fieldKey] = bidIds;
+
+        SCW.knackAjax({
+          url:  SCW.knackRecordUrl(CFG.viewKey, rowId),
+          type: 'PUT',
+          data: JSON.stringify(bidPayload),
+          success: function (bResp) {
+            if (typeof SCW.syncKnackModel === 'function') {
+              SCW.syncKnackModel(CFG.viewKey, rowId, bResp, fieldKey, bidIds);
+            }
+            finish();
+          },
+          error: function (bxhr) {
+            if (CFG.debug) console.warn('[BidReview] Disconnect bid-record PUT failed:', bxhr && bxhr.status, bxhr && bxhr.responseText);
+            // SOW item already updated; surface the partial success
+            // and still refresh so the user sees the latest state.
+            ns.renderToast('SOW item disconnected, but the bid record still references this SOW. Try again to clear it fully.', 'info');
+            setBusy(button, false);
+            fetchBoth(function () { if (ns.refresh) ns.refresh(); });
+          }
+        });
       },
       error: function (xhr) {
         setBusy(button, false);
