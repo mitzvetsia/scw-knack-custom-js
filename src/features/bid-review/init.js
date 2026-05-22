@@ -371,7 +371,15 @@
     // If the row has photos, mount the side-by-side viewer too so the
     // reviewer doesn't have to click the thumb separately.
     if (ns.scrapeRowPhotoUrls) {
-      var rowId = tr.getAttribute('data-row-id');
+      // scrapeRowPhotoUrls keys on the wsTr's id attribute, which is
+      // the SOW item id (the original Knack record id from view_3921)
+      // — NOT the bid record id we put in data-row-id. Use
+      // data-sow-item-id for the lookup, matching how
+      // buildPhotosCell(row.sowItem) feeds the same function at
+      // cell-build time. Falls back to data-row-id for any synthetic
+      // rows that happen to share the same id space (no-bid /
+      // surveyed-no-bid rows where row.id === row.sowItem).
+      var rowId = tr.getAttribute('data-sow-item-id') || tr.getAttribute('data-row-id');
       var urls = rowId ? ns.scrapeRowPhotoUrls(rowId) : null;
       if (urls && urls.length) openWithPhoto(tr, urls, 0);
     }
