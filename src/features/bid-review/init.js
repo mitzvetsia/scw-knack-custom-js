@@ -2018,11 +2018,53 @@
     var sowName  = (grid && grid.sowName)        || 'this SOW';
     var itemName = (row && (row.displayLabel || row.productName)) || 'this line item';
 
+    // ── Find accessories (mounting brackets, etc.) whose parent
+    // line item (field_2464) points at this SOW item AND that are
+    // connected to this SOW via field_2154. They have to be
+    // disconnected too — otherwise they end up as orphan rows in
+    // the Mounting Hardware section after the parent is removed.
+    var accessoryField = 'field_2464';
+    function findAccessoryRecords() {
+      var v = Knack && Knack.views && Knack.views[CFG.sowItemsViewKey];
+      var ms = v && v.model && v.model.data && v.model.data.models;
+      var out = [];
+      if (!ms) return out;
+      for (var i = 0; i < ms.length; i++) {
+        var m = ms[i];
+        var a = m.attributes || {};
+        var parentRaw = a[accessoryField + '_raw'];
+        if (!Array.isArray(parentRaw) || !parentRaw.length) continue;
+        var parentId = parentRaw[0] && parentRaw[0].id;
+        if (parentId !== sowItemId) continue;
+        var sowRaw = a[CFG.fieldKeys.sow + '_raw'];
+        var connected = false;
+        var remaining = [];
+        if (Array.isArray(sowRaw)) {
+          for (var j = 0; j < sowRaw.length; j++) {
+            var s = sowRaw[j];
+            if (!s || !s.id) continue;
+            if (s.id === sowId) connected = true;
+            else remaining.push(s.id);
+          }
+        }
+        if (!connected) continue;
+        out.push({ id: m.id, remainingSowIds: remaining });
+      }
+      return out;
+    }
+    var accessoryRecords = findAccessoryRecords();
+    var accessoryCount   = accessoryRecords.length;
+    var accessoryNote    = accessoryCount
+      ? '\n\nThis will also disconnect ' + accessoryCount +
+        ' linked accessory ' + (accessoryCount === 1 ? 'row' : 'rows') +
+        ' (e.g. mounting brackets) from ' + sowName + '.'
+      : '';
+
     if (!window.confirm(
       'Disconnect ' + itemName + ' from ' + sowName + '?\n\n' +
       'The line item itself will NOT be deleted. It will stay on any other ' +
       'SOWs it is connected to. Only the link between this line item and ' +
-      sowName + ' is being removed.'
+      sowName + ' is being removed.' + accessoryNote
     )) return;
 
     var view = Knack && Knack.views && Knack.views[CFG.sowItemsViewKey];
@@ -2123,47 +2165,91 @@
           SCW.syncKnackModel(CFG.sowItemsViewKey, sowItemId, resp, fieldKey, remainingIds);
         }
 
-        // Second PUT: clear this SOW from the bid record's field_2154
-        // as well, so the comparison grid stops grouping the bid under
-        // this SOW. If the bid record doesn't exist on the page (it
-        // shouldn't on scene_1155 unless the page is wired weirdly)
-        // we skip the second PUT and just refresh.
+        // Second stage: clear this SOW from the bid record's
+        // field_2154 (so the comparison grid stops grouping the bid
+        // under this SOW) AND from any accessory SOW items whose
+        // field_2464 parent is the row we just disconnected (so
+        // mounting brackets etc. don't strand in the Mounting
+        // Hardware section). Fire in parallel; finish when all done.
         var bidIds = readBidRecordSowIds();
+        var pending = 0;
+        var accessoryFailures = 0;
+        var bidFailed = false;
 
-        function finish() {
+        function maybeFinish() {
+          if (pending > 0) return;
           setBusy(button, false);
-          ns.renderToast('Line item disconnected from ' + sowName, 'success');
+          var msg = 'Line item disconnected from ' + sowName;
+          if (accessoryCount) {
+            var cleared = accessoryCount - accessoryFailures;
+            if (cleared > 0) {
+              msg += ' (' + cleared + ' accessory ' +
+                     (cleared === 1 ? 'row' : 'rows') + ' also cleared)';
+            }
+            if (accessoryFailures) {
+              msg += ' — ' + accessoryFailures + ' accessory ' +
+                     (accessoryFailures === 1 ? 'row' : 'rows') +
+                     ' failed to update';
+            }
+          }
+          if (bidFailed) {
+            ns.renderToast('SOW item disconnected, but the bid record still references this SOW. Try again to clear it fully.', 'info');
+          } else {
+            ns.renderToast(msg, accessoryFailures ? 'info' : 'success');
+          }
           fetchBoth(function () { if (ns.refresh) ns.refresh(); });
         }
 
-        if (bidIds === null) {
-          // No bid record on the page — single-PUT path is sufficient.
-          finish();
-          return;
+        // Bid record PUT
+        if (bidIds !== null) {
+          pending++;
+          var bidPayload = {};
+          bidPayload[fieldKey] = bidIds;
+          SCW.knackAjax({
+            url:  SCW.knackRecordUrl(CFG.viewKey, rowId),
+            type: 'PUT',
+            data: JSON.stringify(bidPayload),
+            success: function (bResp) {
+              if (typeof SCW.syncKnackModel === 'function') {
+                SCW.syncKnackModel(CFG.viewKey, rowId, bResp, fieldKey, bidIds);
+              }
+              pending--; maybeFinish();
+            },
+            error: function (bxhr) {
+              if (CFG.debug) console.warn('[BidReview] Disconnect bid-record PUT failed:', bxhr && bxhr.status, bxhr && bxhr.responseText);
+              bidFailed = true;
+              pending--; maybeFinish();
+            }
+          });
         }
 
-        var bidPayload = {};
-        bidPayload[fieldKey] = bidIds;
+        // Accessory PUTs (one per child SOW item, parallel)
+        for (var ai = 0; ai < accessoryRecords.length; ai++) {
+          (function (rec) {
+            pending++;
+            var accPayload = {};
+            accPayload[fieldKey] = rec.remainingSowIds;
+            SCW.knackAjax({
+              url:  SCW.knackRecordUrl(CFG.sowItemsViewKey, rec.id),
+              type: 'PUT',
+              data: JSON.stringify(accPayload),
+              success: function (aResp) {
+                if (typeof SCW.syncKnackModel === 'function') {
+                  SCW.syncKnackModel(CFG.sowItemsViewKey, rec.id, aResp, fieldKey, rec.remainingSowIds);
+                }
+                pending--; maybeFinish();
+              },
+              error: function (axhr) {
+                if (CFG.debug) console.warn('[BidReview] Accessory disconnect PUT failed for', rec.id, ':', axhr && axhr.status, axhr && axhr.responseText);
+                accessoryFailures++;
+                pending--; maybeFinish();
+              }
+            });
+          })(accessoryRecords[ai]);
+        }
 
-        SCW.knackAjax({
-          url:  SCW.knackRecordUrl(CFG.viewKey, rowId),
-          type: 'PUT',
-          data: JSON.stringify(bidPayload),
-          success: function (bResp) {
-            if (typeof SCW.syncKnackModel === 'function') {
-              SCW.syncKnackModel(CFG.viewKey, rowId, bResp, fieldKey, bidIds);
-            }
-            finish();
-          },
-          error: function (bxhr) {
-            if (CFG.debug) console.warn('[BidReview] Disconnect bid-record PUT failed:', bxhr && bxhr.status, bxhr && bxhr.responseText);
-            // SOW item already updated; surface the partial success
-            // and still refresh so the user sees the latest state.
-            ns.renderToast('SOW item disconnected, but the bid record still references this SOW. Try again to clear it fully.', 'info');
-            setBusy(button, false);
-            fetchBoth(function () { if (ns.refresh) ns.refresh(); });
-          }
-        });
+        // Nothing to do in the second stage — finish immediately.
+        if (pending === 0) maybeFinish();
       },
       error: function (xhr) {
         setBusy(button, false);
