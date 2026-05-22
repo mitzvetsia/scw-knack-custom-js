@@ -266,9 +266,16 @@
       // Per-item JSON snapshot (stringified BEFORE html/plainText are added)
       entry.json = JSON.stringify(entry);
 
-      // Per-item HTML card + plain-text version (ClickUp-safe)
-      entry.html      = buildItemHtml(it, fieldList);
-      entry.plainText = buildItemPlainText(it, fieldList);
+      // Per-item HTML card + plain-text version (ClickUp-safe).
+      // Skip for 'add' actions — the HTML card has no meaningful
+      // "from → to" content (a new record has no current values), so
+      // generating one produces blank-feeling cards on the Ops side.
+      // The JSON snapshot still carries everything Make and the bid
+      // comparison column need to render the add.
+      if (it.action !== 'add') {
+        entry.html      = buildItemHtml(it, fieldList);
+        entry.plainText = buildItemPlainText(it, fieldList);
+      }
 
       items.push(entry);
     }

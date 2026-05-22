@@ -401,11 +401,29 @@
               if (f.field === 'field_1964' && (parseFloat(fval) <= 1 || isNaN(parseFloat(fval)))) continue;
               var row = document.createElement('div');
               row.className = 'scw-bid-cr-card__row';
-              if (action === 'revise' || action === 'add') {
-                row.textContent = f.label + ': ' + (f.from != null ? f.from : '\u2014') + ' \u2192 ' + f.to;
-              } else {
-                row.textContent = f.label + ': ' + f.to;
+              // Use the styled span classes (.scw-bid-cr-card__label /
+              // __from / __arrow / __to from bid-review/styles.js) so
+              // "from \u2192 to" reads cleanly: muted strikethrough old
+              // value, gray arrow, bold colored new value. For ADD
+              // there's no "from" \u2014 just label + new value, no arrow.
+              var labelSpan = document.createElement('span');
+              labelSpan.className = 'scw-bid-cr-card__label';
+              labelSpan.textContent = f.label + ':';
+              row.appendChild(labelSpan);
+              if (action === 'revise' && f.from != null && String(f.from) !== '') {
+                var fromSpan = document.createElement('span');
+                fromSpan.className = 'scw-bid-cr-card__from';
+                fromSpan.textContent = String(f.from);
+                row.appendChild(fromSpan);
+                var arrow = document.createElement('span');
+                arrow.className = 'scw-bid-cr-card__arrow';
+                arrow.textContent = '\u2192';
+                row.appendChild(arrow);
               }
+              var toSpan = document.createElement('span');
+              toSpan.className = 'scw-bid-cr-card__to';
+              toSpan.textContent = String(f.to);
+              row.appendChild(toSpan);
               card.appendChild(row);
             }
           } else if (action === 'remove') {
