@@ -497,8 +497,11 @@
 
           // CR button — Revise only if on bid; Add/Remove always shown
           if (action !== 'revise' || isOnBid) {
-            var crLabel = action === 'remove' ? 'Remove \u2192'
-                        :                       'Add to bid revision \u2192';
+            // Unified "Forward for bid revision" label across revise /
+            // add / remove. The destination Make scenario still
+            // branches on the crMod / action attached to the choice,
+            // so the verb in the button doesn't need to vary.
+            var crLabel = 'Forward for bid revision \u2192';
             var crMod   = action === 'add'    ? 'create'
                         : action === 'remove' ? 'remove'
                         :                       'revise';
@@ -533,7 +536,7 @@
                 }
               });
             }
-            actions.appendChild(buildSROverflow('Add to bid revision \u2192', 'create', addChoices));
+            actions.appendChild(buildSROverflow('Forward for bid revision \u2192', 'create', addChoices));
           }
 
           item.appendChild(actions);
