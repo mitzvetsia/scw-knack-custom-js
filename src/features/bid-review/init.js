@@ -26,6 +26,23 @@
   // ── load → transform → render pipeline ──────────────────────
 
   function runPipeline() {
+    // Hard scene gate — the matrix mount lives outside any scene
+    // container (inserted as a sibling of view_44, the nav menu) so
+    // Knack's scene swap doesn't clean it up. If a view-render event
+    // for one of our watched views fires while the user is on a
+    // sibling scene (e.g. Build SOWs on scene_1140 happens to share a
+    // view key, or a stale render event drains late), bail before
+    // creating the mount. The cleanup handler still runs on real
+    // scene transitions to tear down any matrix that did sneak in.
+    var sceneKey = (window.Knack && Knack.router && Knack.router.current_scene_key) || '';
+    if (sceneKey && sceneKey !== CFG.sceneKey) {
+      if (CFG.debug) {
+        SCW.debug('[BidReview] runPipeline skipped — current scene', sceneKey,
+          'is not', CFG.sceneKey);
+      }
+      return;
+    }
+
     ns.showLoading();
 
     ns.loadRawData().then(function (raw) {
@@ -41,6 +58,7 @@
       }
 
       var mount = ns.renderMatrix(_state);
+      if (!mount) return;   // wrong scene — renderMatrix refused
       attachClickHandler(mount);
 
       // Rehydrate change request drafts from Knack field
@@ -75,6 +93,13 @@
   var _silentRefreshQueued = false;
 
   function refreshSilently() {
+    // Same scene gate as runPipeline — late silent-refresh callbacks
+    // arriving after the user has navigated away should be a no-op.
+    var sceneKey = (window.Knack && Knack.router && Knack.router.current_scene_key) || '';
+    if (sceneKey && sceneKey !== CFG.sceneKey) {
+      return $.Deferred().resolve().promise();
+    }
+
     if (_silentRefreshRunning) {
       _silentRefreshQueued = true;
       return $.Deferred().resolve().promise();
@@ -101,6 +126,7 @@
       ns._state = _state;
       _mdfIdfRecords = raw.mdfIdfRecords || [];
       var mount = ns.renderMatrix(_state);
+      if (!mount) return;   // wrong scene — renderMatrix refused
       attachClickHandler(mount);
       reopenExpandedRows();
     }).fail(function (err) {

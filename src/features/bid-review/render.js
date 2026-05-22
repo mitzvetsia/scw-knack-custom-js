@@ -123,6 +123,18 @@
   // ── mount point ─────────────────────────────────────────────
 
   function getOrCreateMount() {
+    // Final defense — refuse to create the mount on any scene other
+    // than the bid comparisons page. runPipeline / refreshSilently
+    // already gate at entry, but anything that calls renderMatrix
+    // directly (or a stray hook somewhere down the line) lands here.
+    var sceneKey = (window.Knack && Knack.router && Knack.router.current_scene_key) || '';
+    if (sceneKey && sceneKey !== CFG.sceneKey) {
+      // Tear down any stray mount that survived a scene swap.
+      var stray = document.querySelector(CFG.mountSelector);
+      if (stray && stray.parentNode) stray.parentNode.removeChild(stray);
+      document.body.classList.remove('scw-bid-review-active');
+      return null;
+    }
     // Flag the body so view_3921's accordion hides via CSS while the
     // bid review grid is on screen.
     document.body.classList.add('scw-bid-review-active');
@@ -1874,11 +1886,15 @@
     var section = el('div', 'scw-bid-review__sow-section');
     section.setAttribute('data-sow-id', sowGrid.sowId);
 
-    // SOW accordion header (clickable) — open by default
+    // SOW accordion header (clickable) — collapsed by default. With
+    // many SOWs the page is unwieldy fully expanded on load; the user
+    // can open the ones they care about. restoreAccordionState below
+    // re-opens sections that were open on the previous render.
+    section.classList.add('scw-bid-review__sow-section--collapsed');
     var header = el('div', 'scw-bid-review__sow-title');
     header.setAttribute('role', 'button');
     header.setAttribute('tabindex', '0');
-    header.setAttribute('aria-expanded', 'true');
+    header.setAttribute('aria-expanded', 'false');
 
     var chevron = el('span', 'scw-bid-review__sow-chevron');
     chevron.innerHTML = CHEVRON_SVG;
@@ -2002,15 +2018,17 @@
   function restoreAccordionState(mount, snap) {
     if (!mount || !snap) return;
 
-    // Restore SOW sections (default is now open, so restore collapsed ones)
+    // Restore SOW sections. buildSowSection now defaults to collapsed
+    // (page loads with everything closed). If the snapshot says a
+    // section was previously OPEN, re-open it. Sections not in the
+    // snapshot (newly added SOWs) stay collapsed.
     var sections = mount.querySelectorAll('.scw-bid-review__sow-section');
     for (var i = 0; i < sections.length; i++) {
       var sowId = sections[i].getAttribute('data-sow-id');
-      if (sowId && snap.sow[sowId] === false) {
-        // Was collapsed — collapse it
-        sections[i].classList.add('scw-bid-review__sow-section--collapsed');
+      if (sowId && snap.sow[sowId] === true) {
+        sections[i].classList.remove('scw-bid-review__sow-section--collapsed');
         var hdr = sections[i].querySelector('.scw-bid-review__sow-title');
-        if (hdr) hdr.setAttribute('aria-expanded', 'false');
+        if (hdr) hdr.setAttribute('aria-expanded', 'true');
       }
     }
 
@@ -2056,6 +2074,7 @@
 
   ns.renderMatrix = function renderMatrix(state) {
     var mount = getOrCreateMount();
+    if (!mount) return null;   // wrong scene — scene gate refused
 
     // Preserve accordion state across re-renders
     var snap = snapshotAccordionState(mount);
@@ -2091,6 +2110,7 @@
 
   ns.showLoading = function showLoading() {
     var mount = getOrCreateMount();
+    if (!mount) return;   // wrong scene
     mount.innerHTML = '';
     mount.className = 'scw-bid-review';
     mount.appendChild(el('div', 'scw-bid-review__loading', 'Loading comparison data'));
