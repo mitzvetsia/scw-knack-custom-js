@@ -193,6 +193,7 @@
         || e.target.closest('.scw-bid-cr-card[data-action]')
         || e.target.closest('.scw-bid-review__overflow-item[data-action]')
         || e.target.closest('.scw-bid-review__cell-action[data-action]')
+        || e.target.closest('.scw-bid-review__inline-add-btn[data-action]')
         || e.target.closest('.scw-ops-margin-warning__btn[data-action]')
         || e.target.closest('.scw-bid-review__docs-link-btn[data-action]')
         || e.target.closest('.scw-bid-review__docs-unlink-btn[data-action]')
