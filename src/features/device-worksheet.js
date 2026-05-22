@@ -1034,7 +1034,13 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   // If a new injected-row class is added in a sibling feature, list
   // it here too — otherwise it'll go invisible during the transform
   // window and look like the feature is broken.
-  return '#' + v.viewId + ' tbody > tr' +
+  // Constrain to the OUTER Knack table's tbody. Without this, the
+  // descendant combinator matches any nested tbody — including the
+  // MDF summary table (.scw-mdf-summary-table > tbody > tr) inside
+  // the per-L1 summary strip. None of those rows carry any of the
+  // excluded classes, so they were getting visibility:hidden/height:0
+  // and the entire MDF summary panel rendered blank.
+  return '#' + v.viewId + ' table.kn-table > tbody > tr' +
     ':not([' + PROCESSED_ATTR + '])' +
     ':not(.' + WORKSHEET_ROW + ')' +
     ':not(.kn-table-group)' +
