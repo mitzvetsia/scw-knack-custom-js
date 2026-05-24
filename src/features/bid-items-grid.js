@@ -1055,20 +1055,73 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   }
 
   // Sum conduit feet (ctx.keys.conduit) across the rows under an L3 drop
-  // header. Used to append an "approximately XX' of conduit included"
-  // note after the concatenated camera list. Returns 0 when the field
-  // isn't configured for the view or no row has a non-zero value.
+  // header AND collect the per-row camera labels for the rows that
+  // actually contribute conduit. Used to append an "approximately
+  // XX' of conduit included for CAM-1 and CAM-2" note after the
+  // concatenated camera list. Returns {total: 0, labels: []} when the
+  // field isn't configured for the view or no row has a non-zero value.
   function sumConduitFeet(ctx, caches, $rows) {
-    if (!ctx.keys?.conduit) return 0;
+    if (!ctx.keys?.conduit) return { total: 0, labels: [] };
     let total = 0;
+    const contributors = [];
     const rows = $rows.get();
     for (let i = 0; i < rows.length; i++) {
-      const raw = getRowCellText(caches, rows[i], ctx.keys.conduit);
+      const row = rows[i];
+      const raw = getRowCellText(caches, row, ctx.keys.conduit);
       if (!raw) continue;
       const n = parseFloat(String(raw).replace(/[^0-9.\-]/g, ''));
-      if (Number.isFinite(n)) total += n;
+      if (!Number.isFinite(n) || n <= 0) continue;
+      total += n;
+      // Build the per-row camera label using the same shape as
+      // buildCameraListHtml so the conduit-note list matches the
+      // camera-list formatting exactly.
+      const prefix = getRowCellText(caches, row, ctx.keys.prefix);
+      const numRaw = getRowCellText(caches, row, ctx.keys.number);
+      if (prefix && numRaw) {
+        const digits = numRaw.replace(/\D/g, '');
+        const num = parseInt(digits, 10);
+        if (Number.isFinite(num)) {
+          contributors.push({
+            prefix: prefix.toUpperCase(),
+            num,
+            text: prefix.toUpperCase() + digits
+          });
+        }
+      }
     }
-    return total;
+    contributors.sort((a, b) =>
+      (a.prefix === b.prefix ? a.num - b.num : a.prefix < b.prefix ? -1 : 1));
+    return { total, labels: contributors.map((c) => c.text) };
+  }
+
+  // Knack renders L2 group headers as a single <td colspan="N"> where
+  // N is its default group-row-width — usually short of the actual
+  // table column count, which leaves the Rate / Qty / Cost columns
+  // uncovered. The ice-blue (and any other) row background then
+  // appears to "stop after Rate". Bump the colspan to match the
+  // thead's total <th> count so the row paints edge-to-edge.
+  //
+  // Multi-TD rows (e.g. L1 with explicit Rate/Qty/Cost cells) already
+  // span all columns by virtue of having one TD per column — skip
+  // those to avoid clobbering the per-cell layout.
+  function extendGroupRowToFullWidth($tbody, $groupRow) {
+    const $cells = $groupRow.children('td');
+    if ($cells.length !== 1) return;
+    const $table = $tbody.closest('table');
+    const total = $table.find('thead th').length;
+    if (!total) return;
+    const current = parseInt($cells.attr('colspan') || '1', 10);
+    if (current >= total) return;
+    $cells.attr('colspan', total);
+  }
+
+  // Format an array of labels as "A", "A and B", or "A, B, and C".
+  // Used by the conduit note suffix.
+  function formatLabelList(labels) {
+    if (!labels || !labels.length) return '';
+    if (labels.length === 1) return labels[0];
+    if (labels.length === 2) return labels[0] + ' and ' + labels[1];
+    return labels.slice(0, -1).join(', ') + ', and ' + labels[labels.length - 1];
   }
 
   // ============================================================
@@ -1146,9 +1199,12 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     // inside .scw-concat-cameras so the strip-on-re-run logic above
     // cleans it up alongside the camera list. Tagged .scw-concat-conduit
     // so the strip can find and remove it specifically.
-    const conduitTotal = sumConduitFeet(ctx, caches, $rowsToSum);
+    const { total: conduitTotal, labels: conduitLabels } = sumConduitFeet(ctx, caches, $rowsToSum);
+    const conduitForSuffix = conduitLabels.length
+      ? ` for ${escapeHtml(formatLabelList(conduitLabels))}`
+      : '';
     const conduitNote = conduitTotal > 0
-      ? `<br /><i class="scw-concat-conduit" style="color:#6b7280;">approximately ${Math.round(conduitTotal)}' of conduit included</i>`
+      ? `<br /><i class="scw-concat-conduit" style="color:#6b7280;">approximately ${Math.round(conduitTotal)}' of conduit included${conduitForSuffix}</i>`
       : '';
 
     const composed =
@@ -1534,6 +1590,12 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       const level = parseInt(match[1], 10);
 
       if (level === 2) {
+        // Extend the L2 row's single TD to span every column so the
+        // ice-blue header background paints across the FULL row width
+        // instead of stopping at the Knack-default colspan (which
+        // omits the trailing Rate / Qty / Cost columns).
+        extendGroupRowToFullWidth($tbody, $groupRow);
+
         const info = getLevel2InfoFromGroupRow($groupRow);
         sectionContext.level2 = info;
         sectionContext.key = contextKeyFromLevel2Info(ctx, info);

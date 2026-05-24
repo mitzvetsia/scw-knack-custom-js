@@ -2643,7 +2643,15 @@
     container.appendChild(bar);
   }
 
-  var REV_ACTION_WEBHOOK = 'https://hook.us1.make.com/0cobxwo9q6ycek787agapekg7gtahmt5';
+  // Sub-side revision response webhook (Accept / Reject of revision
+  // requests Sales sent to the subcontractor). Same Make scenario the
+  // per-card modal flow uses via window.SCW.bidReview.CONFIG
+  // .revisionResponseWebhook — kept identical here so the bulk
+  // "Accept All / Reject All" action bar doesn't fan-out to a stale
+  // URL. The previously hardcoded 0cobxwo9… pointed at a deleted
+  // scenario and was silently failing because every code path here
+  // treats CORS-blocked / status 0 as success.
+  var REV_ACTION_WEBHOOK = 'https://hook.us1.make.com/t6hczsjuia9l21d1u9ghfohmifw0r43f';
 
   // Survey record field keys (on view_3505 / view_3680 records)
   var SURVEY_FK = {

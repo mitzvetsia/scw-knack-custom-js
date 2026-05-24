@@ -157,6 +157,21 @@
   // `keys` (in order). Used so a render spec can list multiple known
   // field keys (different worksheet views use different schemas) and
   // pick whichever one this card happens to have populated.
+  // True when a scraped string carries actual content. Filters out
+  // both the literal HTML entity "&nbsp;" (when the scraper read
+  // innerHTML without decoding) and the rendered U+00A0 character
+  // (when it read textContent), plus all-whitespace strings — any
+  // of which Knack sometimes leaves in optional fields and which we
+  // don't want surfacing as visible labor-description blocks on the
+  // PDF.
+  function hasMeaningfulText(s) {
+    if (s == null) return false;
+    var stripped = String(s)
+      .replace(/&nbsp;/gi, '')
+      .replace(/[ \s]/g, '');
+    return stripped.length > 0;
+  }
+
   function firstKeyValue(map, keys) {
     if (!map || !keys) return '';
     for (var i = 0; i < keys.length; i++) {
@@ -461,12 +476,28 @@
     // read fields that aren't in the detail panel (bucket, field_2374).
     var recordMap = buildRecordMap(viewId);
 
+    // Unconditional diagnostic — tells us whether device-worksheet
+    // had finished transforming the view before scrape ran. If
+    // wsRowCount is 0 but groupCount > 0, the export ran before
+    // transformView created the .scw-ws-row card shells (most often
+    // a timing/race issue or device-worksheet not bound on this
+    // scene). The PDF will render only group headers + L1 notes.
+    var _scrapeStats = {
+      viewId: viewId,
+      tbodyChildren: kids.length,
+      groupCount: 0,
+      wsRowCount: 0,
+      knTableRowCount: 0,
+      cardCount: 0
+    };
+
     for (var i = 0; i < kids.length; i++) {
       var tr = kids[i];
       if (tr.style && tr.style.display === 'none') continue;
 
       // ── group header rows ──
       if (tr.classList.contains('kn-table-group')) {
+        _scrapeStats.groupCount++;
         var level = tr.classList.contains('kn-group-level-1') ? 1
                   : tr.classList.contains('kn-group-level-2') ? 2
                   : tr.classList.contains('kn-group-level-3') ? 3 : 1;
@@ -478,10 +509,17 @@
         continue;
       }
 
+      // Track raw Knack data rows separately from transformed card
+      // rows — gives a clear "transform ran" vs "transform didn't"
+      // signal in the log.
+      if (tr.tagName === 'TR' && tr.id) _scrapeStats.knTableRowCount++;
+
       // ── worksheet card rows ──
       if (!tr.classList.contains('scw-ws-row')) continue;
+      _scrapeStats.wsRowCount++;
       var card = tr.querySelector('.scw-ws-card');
       if (!card) continue;
+      _scrapeStats.cardCount++;
 
       var rowObj = scrapeCard(card);
       if (rowObj) {
@@ -489,8 +527,22 @@
         rowObj.groupL2 = currentL2;
         rowObj.recordId = recordIdFromTr(tr);
         rowObj.raw = rowObj.recordId ? (recordMap[rowObj.recordId] || null) : null;
+        // Capture the TR's classes so the renderer can detect bucket
+        // type from DOM signals (scw-row--services, scw-row--assumptions)
+        // when the Knack model's _raw bucket data isn't reliable —
+        // device-worksheet stamps these row classes based on the
+        // resolved bucket override, which is the source of truth on
+        // the live worksheet.
+        rowObj.rowClasses = tr.className || '';
         out.push(rowObj);
       }
+    }
+
+    console.log('[SCW survey-pdf] scrape', _scrapeStats);
+    if (_scrapeStats.wsRowCount === 0 && _scrapeStats.knTableRowCount > 0) {
+      console.warn('[SCW survey-pdf] scrape found raw Knack rows but NO ' +
+        '.scw-ws-row cards — device-worksheet transform has not run on ' +
+        viewId + ' on this scene. PDF will be missing device records.');
     }
 
     // After each L1 group header (MDF/IDF), insert a blank "Additional
@@ -542,29 +594,21 @@
     return head.concat(tail).concat(slice);
   }
 
-  // Walks the row list and inserts one notes block at the END of each
-  // L1 group (the 'tail' block). Used to be a header+tail pair but
-  // the header block was redundant with the tail and just ate space.
+  // Walks the row list and inserts one notes block at the START of
+  // each L1 group (right after the L1 header). Techs use this to jot
+  // MDF/IDF-level observations BEFORE diving into individual device
+  // cards in that group. Previously this block lived at the tail of
+  // each L1 group, but a header-position block reads more naturally
+  // — group context first, then the items inside it.
   function insertL1NotesBlocks(rows) {
     var out = [];
-    var inL1 = false;
-    var currentL1 = '';
-    function flushTail() {
-      if (!inL1) return;
-      out.push({ type: 'l1-notes', position: 'tail', groupL1: currentL1 });
-    }
     for (var i = 0; i < rows.length; i++) {
       var r = rows[i];
-      if (r.type === 'group' && r.level === 1) {
-        flushTail();
-        inL1 = true;
-        currentL1 = r.label;
-        out.push(r);
-        continue;
-      }
       out.push(r);
+      if (r.type === 'group' && r.level === 1) {
+        out.push({ type: 'l1-notes', position: 'header', groupL1: r.label });
+      }
     }
-    flushTail();
     return out;
   }
 
@@ -1138,6 +1182,19 @@
     // first worksheet row, but it's now redundant with the page-1
     // info cover's <h1>. The info cover is the title page.
 
+    // Pre-fill legend — explains to the tech that the gray check
+    // marks in each card's flags row aren't confirmed answers, just
+    // SCW's best guess from existing record data. One-line at the
+    // top of the worksheet section so it sits in the tech's eye on
+    // first turn-of-page; not repeated per-card.
+    html.push(
+      '<div class="ws-prefill-legend">' +
+        '<span class="ws-box ws-box--prefill">☒</span> ' +
+        '<strong>Gray marks reflect file data — our best guess.</strong> ' +
+        'If correct, ink over to confirm. If wrong, strike it out and mark the other box.' +
+      '</div>'
+    );
+
     for (var i = 0; i < payload.rows.length; i++) {
       var row = payload.rows[i];
       if (row.type === 'group') {
@@ -1217,6 +1274,37 @@
 
   function isOtherEquipmentBucket(card) {
     return bucketMatches(card, OTHER_EQUIPMENT_BUCKET, /other.*equipment/i);
+  }
+
+  // Services and Assumptions are the two buckets where the labor-
+  // description field IS the actual content (service description /
+  // assumption text), not a sales artifact. These render with an
+  // explicit labor body line REGARDLESS of brief vs. detailed
+  // classification — without this gate they'd inherit the
+  // cam/reader / networking / headend rule of "drop labor".
+  var SERVICES_BUCKET    = '6977caa7f246edf67b52cbcd';
+  var ASSUMPTIONS_BUCKET = '697b7a023a31502ec68b3303';
+  function isServiceOrAssumptionBucket(card) {
+    // First: the device-worksheet TR class. Most reliable signal —
+    // applied based on the live bucket override, doesn't depend on
+    // the Knack model being primed.
+    if (card && card.rowClasses &&
+        /\bscw-row--(services|assumptions)\b/.test(card.rowClasses)) {
+      return true;
+    }
+    return bucketMatches(card, SERVICES_BUCKET,    /service/i) ||
+           bucketMatches(card, ASSUMPTIONS_BUCKET, /assumption/i);
+  }
+
+  // Networking / Headend / Other Equipment cards have short identity
+  // info (no drop label like E-001) and longer labor-description text.
+  // The default cam/reader 3-col layout wastes space on the empty
+  // identity column. Stack product-on-top, labor-description-below in
+  // a single combined column instead, and let the SCW-notes column
+  // claim the freed width.
+  function useStackedProductLabor(card) {
+    return isOtherEquipmentBucket(card) ||
+           bucketMatches(card, null, /network|headend/i);
   }
 
   function isDistributionDevice(card) {
@@ -1330,16 +1418,28 @@
     // PDF renderer to override than a stylesheet rule. Some PDF
     // services wrap injected html inside a constraining container or
     // strip class-level CSS, leaving the image at its intrinsic size.
-    // Forcing width here guarantees the image fills the page width.
-    var imgStyle = 'display:block; width:100%; max-width:100%; ' +
-                   'height:auto; margin:0 auto;';
+    //
+    // Previous version used `width:100%; height:auto` which let a
+    // portrait-aspect map overflow the landscape page — content
+    // spilled onto a second mostly-blank page, and combined with the
+    // section's page-break-after: always, that produced a blank page
+    // between consecutive maps. Constrain BOTH dimensions and use
+    // object-fit so the image always fits one page regardless of
+    // source aspect ratio.
+    // Portrait Letter useful area ~8.1in × 10.4in (minus margins +
+    // page footer). Subtract ~0.4in for the label + spacing on top.
+    // 8.5in keeps total section height ≈ 9in — comfortably under the
+    // 10in usable page area so the renderer never has to split.
+    var imgStyle = 'display:block; margin:0 auto; ' +
+                   'max-width:100%; max-height:8.5in; ' +
+                   'width:auto; height:auto; object-fit:contain;';
     for (var i = 0; i < section.images.length; i++) {
       var img = section.images[i];
       h.push('<section class="cover-page">');
       if (label) {
         h.push('<div class="cover-section-label">' + esc(label) + '</div>');
       }
-      h.push('<img class="cover-img" width="780" ' +
+      h.push('<img class="cover-img" ' +
              'style="' + imgStyle + '" ' +
              'src="' + esc(img.src) + '" ' +
              'alt="' + esc(img.alt || label) + '" />');
@@ -1548,6 +1648,11 @@
         if (sfLabel && sfLabel.toLowerCase().replace(/\s+/g, ' ').trim() === 'survey notes') {
           sfLabel = 'Other Notes';
         }
+        // Services / assumptions render labor as a dedicated body
+        // block below the header (see ws-brief-labor), so skip the
+        // duplicate when the same value would appear as an unlabeled
+        // or "Service" / "Assumption" summary entry.
+        if (isServiceOrAssumptionBucket(card) && card.laborText && sf.value === card.laborText) continue;
         h.push('<div class="ws-sum-field">');
         if (sfLabel) h.push('<span class="ws-sum-label">' + esc(sfLabel) + '</span>');
         h.push('<span class="ws-sum-value">' + esc(sf.value) + '</span>');
@@ -1557,6 +1662,20 @@
     }
     h.push('</header>');
 
+    // ── Services / Assumptions: explicit labor body line ──
+    // Cam/reader cards drop labor description (sales artifact, no
+    // field-use). Services and assumptions are DIFFERENT — for those
+    // rows, the labor-description field IS the actual content
+    // (service description / assumption text). Render it as a
+    // dedicated full-width body line regardless of brief vs detail
+    // classification — if a service row has a residual chip-host
+    // field, it'll classify as showDetail=true but we still want the
+    // service description rendered prominently.
+    var isSvcOrAssump = isServiceOrAssumptionBucket(card);
+    if (isSvcOrAssump && hasMeaningfulText(card.laborText)) {
+      h.push('<div class="ws-brief-labor">' + esc(card.laborText) + '</div>');
+    }
+
     // ── Two-column body (camera/reader/NVR cards only) ──
     if (card.showDetail) {
       // Notes square is reserved for cards where the tech is likely
@@ -1565,50 +1684,76 @@
       // — they're spec'd by part number, not surveyed.
       var renderNotesSquare = !isOtherEquipmentBucket(card);
 
-      var laborSpec = PDF_DETAIL_LAYOUT.labor || {};
-      var laborVal  = card.laborText || firstKeyValue(card.detailValues, laborSpec.keys || (laborSpec.key ? [laborSpec.key] : []));
+      // Labor description is intentionally NOT rendered — dropped per
+      // user request 2026-05. The tech doesn't need labor copy in the
+      // field; it's a sales artifact. The space that column used to
+      // occupy now goes to the SCW Notes + Tech Notes column on
+      // cam/reader cards (one wide right column instead of two).
       var scwSpec   = PDF_DETAIL_LAYOUT.scwNotes || {};
       var scwVal    = card.scwText || firstKeyValue(card.detailValues, scwSpec.keys || (scwSpec.key ? [scwSpec.key] : []));
 
-      h.push('<div class="ws-body-3col">');
-      // ── Col 1 — identity + ref + flags + measure ──
-      h.push('<div class="ws-body-col ws-body-col--left">');
-      if (card.label || card.product) {
-        h.push('<div class="ws-id-line">');
+      function scwBlock() {
+        if (!scwVal) return '';
+        return '<div class="ws-labor ws-labor--scw">' +
+          '<div class="ws-labor-label">' + esc(scwSpec.label || 'SCW Notes') + '</div>' +
+          '<div class="ws-labor-value">' + esc(scwVal) + '</div>' +
+        '</div>';
+      }
+
+      function techNotesBlock() {
+        if (!renderNotesSquare) return '';
+        return '<div class="ws-notes-open"></div>';
+      }
+
+      var stacked = useStackedProductLabor(card);
+      h.push('<div class="ws-body-3col' + (stacked ? ' ws-body-3col--stacked' : '') + '">');
+
+      if (stacked) {
+        // Networking / Headend / Other Equipment: single column with
+        //   [Product]
+        //   [SCW Notes] (if any)
+        //   [Tech Notes]
+        // + ref / flags / measure beneath.
+        h.push('<div class="ws-body-col ws-body-col--left">');
         if (card.label) {
-          h.push('<span class="ws-id-label">' + esc(card.label) + '</span>');
+          h.push('<div class="ws-id-label-block">' + esc(card.label) + '</div>');
         }
         if (card.product) {
-          h.push('<span class="ws-id-product">' + esc(card.product) + '</span>');
+          h.push('<div class="ws-id-product ws-id-product--stacked">' + esc(card.product) + '</div>');
         }
+        h.push(scwBlock());
+        h.push(techNotesBlock());
+        h.push(renderRefSection(card));
+        h.push(renderFlagsRow(card));
+        h.push(renderMeasureRow(card));
         h.push('</div>');
-      }
-      h.push(renderRefSection(card));
-      h.push(renderFlagsRow(card));
-      h.push(renderMeasureRow(card));
-      h.push('</div>');
+      } else {
+        // Cam/Reader: two columns —
+        //   Col 1: identity + ref + flags + measure
+        //   Col 2 (wide, absorbs the old labor + tech-notes columns):
+        //         [SCW Notes] (if any) above [Tech Notes square]
+        h.push('<div class="ws-body-col ws-body-col--left">');
+        if (card.label || card.product) {
+          h.push('<div class="ws-id-line">');
+          if (card.label) {
+            h.push('<span class="ws-id-label">' + esc(card.label) + '</span>');
+          }
+          if (card.product) {
+            h.push('<span class="ws-id-product">' + esc(card.product) + '</span>');
+          }
+          h.push('</div>');
+        }
+        h.push(renderRefSection(card));
+        h.push(renderFlagsRow(card));
+        h.push(renderMeasureRow(card));
+        h.push('</div>');
 
-      // ── Col 2 — Labor Description (plain text, no label) ──
-      h.push('<div class="ws-body-col ws-body-col--mid">');
-      if (laborVal) {
-        h.push('<div class="ws-labor">' + esc(laborVal) + '</div>');
+        h.push('<div class="ws-body-col ws-body-col--mid">');
+        h.push(scwBlock());
+        h.push(techNotesBlock());
+        h.push('</div>');
       }
-      h.push('</div>');
 
-      // ── Col 3 — SCW Notes + open tech-notes square ──
-      h.push('<div class="ws-body-col ws-body-col--right">');
-      if (scwVal) {
-        h.push('<div class="ws-labor ws-labor--scw">');
-        h.push('<div class="ws-labor-label">' + esc(scwSpec.label || 'SCW Notes') + '</div>');
-        h.push('<div class="ws-labor-value">' + esc(scwVal) + '</div>');
-        h.push('</div>');
-      }
-      if (renderNotesSquare) {
-        h.push('<div class="ws-notes-open">');
-        h.push('<div class="ws-notes-open-label">Notes</div>');
-        h.push('</div>');
-      }
-      h.push('</div>');
       h.push('</div>');
     }
 
@@ -1745,14 +1890,29 @@
       '/* Cover pages rendered before the survey items (site maps, etc.) */',
       '/* Forced landscape so a typical wide floor-plan screenshot fills */',
       '/* the page after auto-crop strips the whitespace borders. */',
+      // Cover pages render on the SAME portrait page as the rest of
+      // the worksheet (no @page landscape-map transition — that's
+      // what Chrome-based PDF renderers insert blank pages around).
+      //
+      // Previous attempt added max-height + overflow:hidden to
+      // hard-cap each section to one page. That backfired: the
+      // fixed-height container caused renderers to split the
+      // section's children across pages (label on page N,
+      // image on page N+1). Now we let the section size naturally
+      // and rely on the image's max-height to keep total content
+      // under the page floor. page-break-after starts the next
+      // section on a fresh page.
       '.cover-page {',
-      '  page: landscape-map;',
       '  page-break-after: always; break-after: page;',
+      '  page-break-inside: avoid; break-inside: avoid;',
       '  text-align: center;',
       '  box-sizing: border-box;',
       '  width: 100%;',
       '}',
-      '.cover-page:last-of-type { page-break-after: always; }',
+      '.cover-page:last-of-type {',
+      '  page-break-after: auto;',
+      '  break-after: auto;',
+      '}',
       '.cover-section-label {',
       '  font-size: 12px; font-weight: 800; color: #07467c;',
       '  text-transform: uppercase; letter-spacing: 0.5px;',
@@ -1861,17 +2021,49 @@
       '/* col 1 = identity + flags + measurements (40%)            */',
       '/* col 2 = Labor Description, plain text (40%)              */',
       '/* col 3 = SCW Notes + open tech-notes square (20%)         */',
+      /* Cam/Reader: two columns —
+         Col 1 (--left): identity + ref/flags/measure.
+         Col 2 (--mid):  SCW Notes (if any) + open Tech Notes square.
+         Col 2 absorbs what used to be the labor-description column +
+         the right-edge tech-notes column. Labor description dropped
+         per user request — sales artifact, no use in the field. */
       '.ws-body-3col {',
-      '  display: grid; grid-template-columns: 2fr 2fr 1fr;',
+      '  display: grid; grid-template-columns: 2fr 3fr;',
       '  column-gap: 8px; row-gap: 0;',
       '  margin-top: 2px; padding-top: 2px;',
       '  border-top: 1px solid #e5e7eb;',
       '  align-items: stretch;',
       '}',
+      /* Networking / Headend / Other Equipment: single column with
+         product, SCW notes, tech notes square, ref/flags/measure all
+         stacked together. */
+      '.ws-body-3col--stacked {',
+      '  grid-template-columns: 1fr;',
+      '}',
       '.ws-body-col { display: flex; flex-direction: column; gap: 2px; min-height: 0; }',
       '.ws-body-col--left  { padding-right: 4px; border-right: 1px dotted #e5e7eb; }',
-      '.ws-body-col--mid   { padding: 0 4px; border-right: 1px dotted #e5e7eb; }',
-      '.ws-body-col--right { padding-left: 4px; }',
+      /* --mid is the rightmost column in the new 2-col layout, so it
+         no longer needs a right border separator. */
+      '.ws-body-col--mid   { padding-left: 4px; }',
+      /* --left in the stacked single-column layout has no neighbour
+         to separate from — drop the dotted right border. */
+      '.ws-body-3col--stacked .ws-body-col--left { padding-right: 0; border-right: none; }',
+      /* Stacked product/labor: block-level so they sit on their own
+         lines without the inline ws-id-line flex layout. Product keeps
+         its 11.5px bold blue styling; labor uses the standard
+         ws-labor sizing. */
+      '.ws-id-label-block {',
+      '  font-weight: 700; color: #07467c; font-size: 11.5px;',
+      '  line-height: 1.2;',
+      '}',
+      '.ws-id-product--stacked {',
+      '  display: block;',
+      '  line-height: 1.2;',
+      '  margin-bottom: 2px;',
+      '}',
+      '.ws-labor--stacked {',
+      '  margin-top: 0;',
+      '}',
       '',
       '/* Identity line at top of col 1: [Label] [Product] no prefix */',
       '.ws-id-line {',
@@ -1962,7 +2154,35 @@
       '  display: inline-block; font-size: 11px; line-height: 1;',
       '  margin-right: 1px; color: #111827;',
       '}',
-      '.ws-box.is-on { color: #07467c; font-weight: 700; }',
+      // is-on now means "SCW pre-fill / best guess" — rendered as a
+      // soft GRAY ☒ so the tech reads it as a draft, not a confirmed
+      // answer. Designed to be inked-over: tech draws over the gray
+      // to confirm, or strikes it out and marks the other box to
+      // override. Avoid #07467c (the strong blue was indistinguishable
+      // from a "tech confirmed" mark).
+      '.ws-box.is-on {',
+      '  color: #9ca3af;',
+      '  font-weight: 400;',
+      '}',
+      // Legend at top of the worksheet section. One short line; the
+      // gray box matches what techs see in each card's flags row.
+      // page-break-after: avoid so it stays glued to the first card.
+      '.ws-prefill-legend {',
+      '  margin: 6px 0 8px;',
+      '  padding: 5px 8px;',
+      '  background: #f9fafb;',
+      '  border: 1px solid #e5e7eb;',
+      '  border-radius: 3px;',
+      '  font-size: 9px; line-height: 1.35;',
+      '  color: #374151;',
+      '  page-break-after: avoid; break-after: avoid;',
+      '}',
+      '.ws-prefill-legend strong { color: #111827; font-weight: 700; }',
+      '.ws-box--prefill {',
+      '  color: #9ca3af;',
+      '  font-size: 11px;',
+      '  margin-right: 2px;',
+      '}',
       '',
       '/* ── Right column: Labor + SCW Notes + open Notes ─────────── */',
       '/* Labor Description is the lead cell of col 2 — rendered as  */',
@@ -1990,9 +2210,15 @@
       '/* up whatever vertical space col 1 leaves behind. The label    */',
       '/* sits in the top-left corner; the rest is blank writing area. */',
       '.ws-notes-open {',
-      '  flex: 1 1 0; min-height: 0;',
-      '  border: 1px solid #d1d5db; border-radius: 3px;',
-      '  padding: 3px 5px; background: #fff;',
+      '  flex: 1 1 0;',
+      '  /* Reserve at least 2 visible writing lines so techs always',
+      '     have somewhere to jot. Label removed and box stripped per',
+      '     user request — the writing area is implied whitespace now. */',
+      '  min-height: 42px;',
+      '  padding: 3px 5px;',
+      '  background: transparent;',
+      '  border: none;',
+      '  border-radius: 0;',
       '}',
       '.ws-notes-open-label {',
       '  font-weight: 700; color: #6b7280;',
@@ -2009,6 +2235,14 @@
       '.ws-card--brief .ws-sum-label { font-size: 7.5px; }',
       '.ws-card--brief .ws-label { font-size: 10.5px; }',
       '.ws-card--brief .ws-product { font-size: 9.5px; }',
+      /* Brief-card labor block — service description / assumption text */
+      '.ws-brief-labor {',
+      '  margin-top: 3px; padding-top: 3px;',
+      '  border-top: 1px dotted #e5e7eb;',
+      '  font-size: 9.5px; line-height: 1.35;',
+      '  color: #1f2937;',
+      '  white-space: pre-wrap;',
+      '}',
       '',
       '/* Field Notes — blank lined writing area */',
       '.ws-notes {',

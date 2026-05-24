@@ -33,6 +33,9 @@
     laborHoursField:  'field_1981',  // product-specific default labor hours
 
     // ── Make webhooks ──────────────────────────────────────
+    // Direction: Sales → SCW Ops team (NOT to the subcontractor).
+    // Notifies Ops that Sales has filed a change request against
+    // the active SOW so Ops can review before anything downstream.
     submitWebhook:    'https://hook.us1.make.com/jlbup3quzdjcsfzyyr38vxjo51et050a',
     draftWebhook:     'https://hook.us1.make.com/PLACEHOLDER_SALES_CR_DRAFT',
 

@@ -123,6 +123,18 @@
   // ── mount point ─────────────────────────────────────────────
 
   function getOrCreateMount() {
+    // Final defense — refuse to create the mount on any scene other
+    // than the bid comparisons page. runPipeline / refreshSilently
+    // already gate at entry, but anything that calls renderMatrix
+    // directly (or a stray hook somewhere down the line) lands here.
+    var sceneKey = (window.Knack && Knack.router && Knack.router.current_scene_key) || '';
+    if (sceneKey && sceneKey !== CFG.sceneKey) {
+      // Tear down any stray mount that survived a scene swap.
+      var stray = document.querySelector(CFG.mountSelector);
+      if (stray && stray.parentNode) stray.parentNode.removeChild(stray);
+      document.body.classList.remove('scw-bid-review-active');
+      return null;
+    }
     // Flag the body so view_3921's accordion hides via CSS while the
     // bid review grid is on screen.
     document.body.classList.add('scw-bid-review-active');
@@ -283,6 +295,13 @@
       if (pkg.crPendingCount > 0 && pkg.crLinkUrl) {
         var crLink = document.createElement('a');
         crLink.href = pkg.crLinkUrl;
+        // Open in a new tab so the bid comparisons page stays intact.
+        // The Knack link is a child-page hash route — clicking it in
+        // the same tab navigates the whole scene to bid-revision-details
+        // and forces the user to close the modal + hit Back to return
+        // to the comparison grid. New tab keeps state.
+        crLink.target = '_blank';
+        crLink.rel = 'noopener';
         crLink.className = 'scw-bid-review__cr-link';
         crLink.textContent = pkg.crPendingCount + ' pending CR' + (pkg.crPendingCount !== 1 ? 's' : '');
         td.appendChild(crLink);
@@ -1457,7 +1476,12 @@
   function buildDocsIndex() {
     if (_docsIndexCache) return _docsIndexCache;
 
-    var idx = { bySow: {}, byBid: {} };
+    // bySow / byBid index by individual record id; `all` is the flat
+    // list so callers can compute "in the project but NOT linked to
+    // this SOW" — view_3926 is filtered to project scope on the bid
+    // review scene, so anything not already on this SOW is a candidate
+    // for linking.
+    var idx = { bySow: {}, byBid: {}, all: [] };
     var view = document.getElementById(CFG.docFilesViewKey);
     if (!view) { _docsIndexCache = idx; return idx; }
 
@@ -1465,12 +1489,22 @@
     for (var i = 0; i < rows.length; i++) {
       var tr = rows[i];
 
-      // Connected record ids: the inner span's class is the id.
-      var sowSpan = tr.querySelector('td.field_2143 span[data-kn="connection-value"]');
-      var bidSpan = tr.querySelector('td.field_2421 span[data-kn="connection-value"]');
-      var sowId = sowSpan ? (sowSpan.className || '').trim() : '';
-      var bidId = bidSpan ? (bidSpan.className || '').trim() : '';
-      if (!sowId && !bidId) continue;
+      // Multi-connection: a doc can attach to several SOWs / bids. The
+      // inner span's class is the connected record id; iterate every
+      // span so the same doc gets indexed under each SOW it belongs to
+      // and we can compute the "not on this SOW" set correctly.
+      var sowSpans = tr.querySelectorAll('td.field_2143 span[data-kn="connection-value"]');
+      var bidSpans = tr.querySelectorAll('td.field_2421 span[data-kn="connection-value"]');
+      var sowIds = [];
+      for (var s = 0; s < sowSpans.length; s++) {
+        var sid = (sowSpans[s].className || '').trim();
+        if (/^[a-f0-9]{24}$/i.test(sid)) sowIds.push(sid);
+      }
+      var bidIds = [];
+      for (var b = 0; b < bidSpans.length; b++) {
+        var bid = (bidSpans[b].className || '').trim();
+        if (/^[a-f0-9]{24}$/i.test(bid)) bidIds.push(bid);
+      }
 
       // File link — field_68 carries an <a class="kn-view-asset"> with
       // the asset URL + filename. If there's no anchor (e.g. the
@@ -1485,15 +1519,18 @@
         notes:    readRowFieldText(tr, 'field_588'),
         fileName: (fileA.textContent || '').trim() || 'Document',
         fileUrl:  fileA.getAttribute('href') || '',
+        sowIds:   sowIds,
+        bidIds:   bidIds
       };
 
-      if (sowId) {
-        if (!idx.bySow[sowId]) idx.bySow[sowId] = [];
-        idx.bySow[sowId].push(doc);
+      idx.all.push(doc);
+      for (var sj = 0; sj < sowIds.length; sj++) {
+        if (!idx.bySow[sowIds[sj]]) idx.bySow[sowIds[sj]] = [];
+        idx.bySow[sowIds[sj]].push(doc);
       }
-      if (bidId) {
-        if (!idx.byBid[bidId]) idx.byBid[bidId] = [];
-        idx.byBid[bidId].push(doc);
+      for (var bj = 0; bj < bidIds.length; bj++) {
+        if (!idx.byBid[bidIds[bj]]) idx.byBid[bidIds[bj]] = [];
+        idx.byBid[bidIds[bj]].push(doc);
       }
     }
 
@@ -1506,27 +1543,188 @@
     var wrap = el('div', 'scw-bid-review__docs');
     if (label) wrap.appendChild(el('div', 'scw-bid-review__docs-label', label));
     for (var i = 0; i < docs.length; i++) {
-      var d = docs[i];
-      var row = el('div', 'scw-bid-review__docs-item');
-      // Doc type chip — only render when present so plain "uncategorised"
-      // uploads don't get an empty pill.
-      if (d.docType) row.appendChild(el('span', 'scw-bid-review__docs-type', d.docType));
-      var a = document.createElement('a');
-      a.href = d.fileUrl;
-      a.target = '_blank';
-      a.rel = 'noopener';
-      a.title = d.fileName;
-      a.className = 'scw-bid-review__docs-link';
-      a.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>';
-      a.appendChild(document.createTextNode(' ' + d.fileName));
-      row.appendChild(a);
-      if (d.notes) {
-        var nEl = el('span', 'scw-bid-review__docs-notes', d.notes);
-        nEl.title = d.notes;
-        row.appendChild(nEl);
-      }
-      wrap.appendChild(row);
+      wrap.appendChild(buildDocsItem(docs[i]));
     }
+    return wrap;
+  }
+
+  function makeFilterChip(value, label, active) {
+    var c = document.createElement('button');
+    c.type = 'button';
+    c.className = 'scw-bid-review__docs-chip' + (active ? ' is-active' : '');
+    c.setAttribute('data-action', 'doc_filter');
+    c.setAttribute('data-filter', value);
+    c.textContent = label;
+    return c;
+  }
+
+  function buildDocsItem(d) {
+    var row = el('div', 'scw-bid-review__docs-item');
+    // data-doc-type drives the filter-chip show/hide. Untyped docs
+    // get a sentinel so "All" still matches but specific-type filters
+    // hide them.
+    row.setAttribute('data-doc-type', d.docType || '__none__');
+    if (d.docType) row.appendChild(el('span', 'scw-bid-review__docs-type', d.docType));
+
+    // Body wraps filename + notes vertically so the filename is the
+    // visual anchor and metadata (notes) sits as a muted sub-line.
+    // Two-line layout makes lists of docs scannable — the eye lands
+    // on bold filenames at a consistent left edge.
+    var body = el('div', 'scw-bid-review__docs-body');
+    var a = document.createElement('a');
+    a.href = d.fileUrl;
+    a.target = '_blank';
+    a.rel = 'noopener';
+    a.title = d.fileName;
+    a.className = 'scw-bid-review__docs-link';
+    a.textContent = d.fileName;
+    body.appendChild(a);
+    if (d.notes) {
+      var nEl = el('span', 'scw-bid-review__docs-notes', d.notes);
+      nEl.title = d.notes;
+      body.appendChild(nEl);
+    }
+    row.appendChild(body);
+    return row;
+  }
+
+  // SOW header docs section — five parts:
+  //   1. Header bar with label + linked/available counts
+  //   2. Doc-type filter chips (when 2+ distinct types are present
+  //      across linked + available — single-type panels skip them)
+  //   3. Linked: docs attached to this SOW (field_2143) — each row
+  //      gets an "Unlink" pill that PUTs the SOW out of field_2143
+  //      WITHOUT deleting the DOC_files record itself
+  //   4. Available: other project docs (in view_3926 but not on this
+  //      SOW) with a "+ Link" button that PUTs the SOW id onto the
+  //      doc's field_2143 connection
+  //   5. Footer: "+ Upload new document" anchor to Knack's add-
+  //      document child page rooted under #review-bid so the user
+  //      stays in the comparison flow
+  function buildSowDocsBlock(sowId, addUrl, idx) {
+    if (!sowId) return null;
+    var linked = (idx && idx.bySow && idx.bySow[sowId]) || [];
+    var available = [];
+    if (idx && idx.all && idx.all.length) {
+      for (var i = 0; i < idx.all.length; i++) {
+        var d = idx.all[i];
+        if (d.sowIds.indexOf(sowId) === -1) available.push(d);
+      }
+    }
+    // Empty-state: render the panel WITH the Upload button so the
+    // affordance is always reachable from the same spot — even
+    // before any project docs exist.
+    if (!linked.length && !available.length && !addUrl) return null;
+
+    var wrap = el('div', 'scw-bid-review__docs scw-bid-review__docs--sow');
+
+    // Header row mirrors the SURVEY COSTS / MARGIN row shape: label
+    // on the left, primary action on the right. The Upload pill
+    // anchors the right edge so DOCUMENTS isn't a floating label
+    // with empty whitespace to its right (which is what made it read
+    // as centered relative to the left/right-aligned metric rows).
+    var header = el('div', 'scw-bid-review__docs-header');
+    header.appendChild(el('span', 'scw-bid-review__docs-label', 'Documents'));
+    if (addUrl) {
+      var addBtn = document.createElement('a');
+      addBtn.href = addUrl;
+      addBtn.className = 'scw-bid-review__docs-add';
+      addBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>';
+      addBtn.appendChild(document.createTextNode(' Upload new'));
+      header.appendChild(addBtn);
+    }
+    wrap.appendChild(header);
+
+    // Filter chips — collect every doc-type across linked + available,
+    // render an "All" chip plus one per type. Hidden when fewer than
+    // two distinct types exist (no useful filter to apply).
+    var typeSet = {};
+    for (var ti = 0; ti < linked.length; ti++) {
+      if (linked[ti].docType) typeSet[linked[ti].docType] = true;
+    }
+    for (var tj = 0; tj < available.length; tj++) {
+      if (available[tj].docType) typeSet[available[tj].docType] = true;
+    }
+    var types = Object.keys(typeSet).sort();
+    if (types.length >= 2) {
+      var chipRow = el('div', 'scw-bid-review__docs-filter');
+      chipRow.appendChild(makeFilterChip('__all__', 'All', true));
+      for (var tk = 0; tk < types.length; tk++) {
+        chipRow.appendChild(makeFilterChip(types[tk], types[tk], false));
+      }
+      wrap.appendChild(chipRow);
+      wrap.setAttribute('data-filter', '__all__');
+    }
+
+    if (linked.length) {
+      var linkedList = el('div', 'scw-bid-review__docs-list');
+      for (var l = 0; l < linked.length; l++) {
+        var lDoc = linked[l];
+        var lItem = buildDocsItem(lDoc);
+
+        var unlinkBtn = document.createElement('button');
+        unlinkBtn.type = 'button';
+        unlinkBtn.className = 'scw-bid-review__docs-unlink-btn';
+        unlinkBtn.setAttribute('data-action', 'doc_unlink_from_sow');
+        unlinkBtn.setAttribute('data-doc-id', lDoc.id);
+        unlinkBtn.setAttribute('data-sow-id', sowId);
+        unlinkBtn.setAttribute('data-current-sows', lDoc.sowIds.join(','));
+        unlinkBtn.title = 'Disconnect from this SOW (the document file is not deleted)';
+        // Text-only — the word "Unlink" plus the slate styling
+        // already communicates the action. Icon would be redundant
+        // and competes with the + Link pill on available rows.
+        unlinkBtn.textContent = 'Unlink';
+
+        lItem.appendChild(unlinkBtn);
+        linkedList.appendChild(lItem);
+      }
+      wrap.appendChild(linkedList);
+    }
+
+    // "Other docs on project" collapsible — full-width row with a
+     // left-aligned toggle. Sits beneath the linked items as another
+     // row in the same stack. Click expands the list of available
+     // project docs (each with a + Link affordance on the right,
+     // matching the linked row's Unlink-on-right pattern).
+    if (available.length) {
+      var availSection = el('div', 'scw-bid-review__docs-other');
+      availSection.setAttribute('data-collapsed', '1');
+
+      var availToggle = document.createElement('button');
+      availToggle.type = 'button';
+      availToggle.className = 'scw-bid-review__docs-other-toggle';
+      availToggle.setAttribute('data-action', 'docs_toggle_other');
+      availToggle.innerHTML = '<svg class="scw-bid-review__docs-chevron" xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>';
+      availToggle.appendChild(document.createTextNode(' ' + available.length + ' other project doc' + (available.length === 1 ? '' : 's')));
+      availSection.appendChild(availToggle);
+
+      var availList = el('div', 'scw-bid-review__docs-list scw-bid-review__docs-list--available');
+      for (var a = 0; a < available.length; a++) {
+        var ad = available[a];
+        var item = buildDocsItem(ad);
+        item.classList.add('scw-bid-review__docs-item--available');
+
+        var linkBtn = document.createElement('button');
+        linkBtn.type = 'button';
+        linkBtn.className = 'scw-bid-review__docs-link-btn';
+        linkBtn.setAttribute('data-action', 'doc_link_to_sow');
+        linkBtn.setAttribute('data-doc-id', ad.id);
+        linkBtn.setAttribute('data-sow-id', sowId);
+        // Serialize current sow ids so the click handler can PUT
+        // the full connection array (existing + new) without re-
+        // scraping the DOM.
+        linkBtn.setAttribute('data-current-sows', ad.sowIds.join(','));
+        linkBtn.title = 'Link this document to the SOW';
+        linkBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>';
+        linkBtn.appendChild(document.createTextNode(' Link'));
+
+        item.appendChild(linkBtn);
+        availList.appendChild(item);
+      }
+      availSection.appendChild(availList);
+      wrap.appendChild(availSection);
+    }
+
     return wrap;
   }
 
@@ -1594,7 +1792,20 @@
       }
     }
 
-    // 2. Survey Costs (editable input) + Margin (read-only display).
+    // 2. Documents — render BEFORE financials so the user's natural
+    //    reading order is "what is this SOW about?" before "what does
+    //    it cost?". Linked = field_2143 contains this SOW. Available
+    //    = project doc not yet linked (+ Link to connect). Upload new
+    //    document opens Knack's add-document child page under
+    //    #review-bid so the user stays in the comparison flow.
+    var docsIdx = buildDocsIndex();
+    var addDocUrl = sowId
+      ? '#review-bid/' + sowId + '/add-document-review-bid/' + sowId + '/'
+      : '';
+    var sowDocsBlock = buildSowDocsBlock(sowId, addDocUrl, docsIdx);
+    if (sowDocsBlock) details.appendChild(sowDocsBlock);
+
+    // 3. Survey Costs (editable input) + Margin (read-only display).
     var metrics = el('div', 'scw-bid-review__sow-metrics');
 
     var surveyWrap = el('label', 'scw-bid-review__sow-metric');
@@ -1617,13 +1828,6 @@
     metrics.appendChild(marginWrap);
 
     details.appendChild(metrics);
-
-    // 2b. Attached documents (DOC_files records connected to this SOW
-    //     via field_2143). Filenames link to the Knack-hosted asset.
-    var docsIdx = buildDocsIndex();
-    var sowDocs = docsIdx.bySow[sowId];
-    var sowDocsBlock = buildDocsBlock(sowDocs, 'Documents');
-    if (sowDocsBlock) details.appendChild(sowDocsBlock);
 
     // 3. Margin-low warning + recovery actions:
     //    a) Add PM & Mobilization (extra cost line item)
@@ -1689,11 +1893,15 @@
     var section = el('div', 'scw-bid-review__sow-section');
     section.setAttribute('data-sow-id', sowGrid.sowId);
 
-    // SOW accordion header (clickable) — open by default
+    // SOW accordion header (clickable) — collapsed by default. With
+    // many SOWs the page is unwieldy fully expanded on load; the user
+    // can open the ones they care about. restoreAccordionState below
+    // re-opens sections that were open on the previous render.
+    section.classList.add('scw-bid-review__sow-section--collapsed');
     var header = el('div', 'scw-bid-review__sow-title');
     header.setAttribute('role', 'button');
     header.setAttribute('tabindex', '0');
-    header.setAttribute('aria-expanded', 'true');
+    header.setAttribute('aria-expanded', 'false');
 
     var chevron = el('span', 'scw-bid-review__sow-chevron');
     chevron.innerHTML = CHEVRON_SVG;
@@ -1817,15 +2025,17 @@
   function restoreAccordionState(mount, snap) {
     if (!mount || !snap) return;
 
-    // Restore SOW sections (default is now open, so restore collapsed ones)
+    // Restore SOW sections. buildSowSection now defaults to collapsed
+    // (page loads with everything closed). If the snapshot says a
+    // section was previously OPEN, re-open it. Sections not in the
+    // snapshot (newly added SOWs) stay collapsed.
     var sections = mount.querySelectorAll('.scw-bid-review__sow-section');
     for (var i = 0; i < sections.length; i++) {
       var sowId = sections[i].getAttribute('data-sow-id');
-      if (sowId && snap.sow[sowId] === false) {
-        // Was collapsed — collapse it
-        sections[i].classList.add('scw-bid-review__sow-section--collapsed');
+      if (sowId && snap.sow[sowId] === true) {
+        sections[i].classList.remove('scw-bid-review__sow-section--collapsed');
         var hdr = sections[i].querySelector('.scw-bid-review__sow-title');
-        if (hdr) hdr.setAttribute('aria-expanded', 'false');
+        if (hdr) hdr.setAttribute('aria-expanded', 'true');
       }
     }
 
@@ -1867,9 +2077,11 @@
   // optimization). Returns a fresh <tr> for one row; the caller swaps
   // it into the DOM to avoid a full grid rebuild.
   ns.buildDataRow = buildDataRow;
+  ns.scrapeRowPhotoUrls = scrapeRowPhotoUrls;
 
   ns.renderMatrix = function renderMatrix(state) {
     var mount = getOrCreateMount();
+    if (!mount) return null;   // wrong scene — scene gate refused
 
     // Preserve accordion state across re-renders
     var snap = snapshotAccordionState(mount);
@@ -1905,6 +2117,7 @@
 
   ns.showLoading = function showLoading() {
     var mount = getOrCreateMount();
+    if (!mount) return;   // wrong scene
     mount.innerHTML = '';
     mount.className = 'scw-bid-review';
     mount.appendChild(el('div', 'scw-bid-review__loading', 'Loading comparison data'));

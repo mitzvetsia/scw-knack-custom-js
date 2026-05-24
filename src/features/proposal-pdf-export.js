@@ -240,7 +240,16 @@
   }
 
   function isVisibleRow(tr) {
-    return tr.style.display !== 'none' && !tr.classList.contains('scw-hide-level3-header') && !tr.classList.contains('scw-hide-level4-header');
+    // proposal-grid hides relocated-empty Mounting Hardware L2/L3 headers
+    // via .scw-empty-group-header { display: none } — class-based, not
+    // inline. Without honoring it here, the original "Mounting Hardware"
+    // L2 still gets emitted as a separate top-level section even though
+    // every accessory has been moved under its parent camera.
+    if (tr.classList.contains('scw-empty-group-header')) return false;
+    if (tr.classList.contains('scw-hide-level3-header')) return false;
+    if (tr.classList.contains('scw-hide-level4-header')) return false;
+    if (tr.style.display === 'none') return false;
+    return true;
   }
 
   // ── View type detection ──
@@ -426,6 +435,17 @@
       }
 
       if (tr.classList.contains('kn-group-level-2')) {
+        // Skip empty/hidden L2 (e.g. original "Mounting Hardware" L2
+        // after accessories have been relocated under their parent
+        // cameras). Without this, the snapshot emits a separate
+        // mounting-hardware section in addition to the per-camera
+        // nested accessories — visibly diverging from the live grid.
+        if (!isVisibleRow(tr)) {
+          currentL2 = null;
+          currentL3 = null;
+          continue;
+        }
+
         var l2Label = groupLabelText(tr);
         var isPromoted = tr.classList.contains('scw-promoted-l2-as-l1');
 
@@ -493,8 +513,46 @@
         continue;
       }
 
+      if (tr.classList.contains('scw-mounting-product-line')) {
+        // proposal-grid emits these synthetic rows AFTER the
+        // "Mounting Hardware" .scw-mounting-l4 header to summarize
+        // accessory rollups per bracket product. They have no id and
+        // no kn-table-group class, so without this branch they fall
+        // through every other case and the snapshot ends up with an
+        // empty "Mounting Hardware" L4 — visibly out of sync with
+        // the live grid which shows e.g. "Electrical Box Mount …
+        // (I-7, I-8, RA-E-1, …)  Qty 7  Cost $280.00".
+        if (!currentL3) continue;
+        var mptLabelTd = tr.querySelector('td:first-child');
+        if (!mptLabelTd) continue;
+        var mptClone = mptLabelTd.cloneNode(true);
+        var mptParents = mptClone.querySelector('.scw-mounting-parents');
+        var mptParentList = '';
+        if (mptParents) {
+          mptParentList = norm(mptParents.textContent).replace(/^\(/, '').replace(/\)$/, '').trim();
+          mptParents.remove();
+        }
+        var mptName = norm(mptClone.textContent);
+        if (!mptName) continue;
+        var mptQty = parseMoney(norm((tr.querySelector('td.' + keys.qty) || {}).textContent || ''));
+        var mptCost = norm((tr.querySelector('td.' + keys.cost) || {}).textContent || '');
+        currentL3.lineItems.push({
+          level: 4, label: mptName, description: '',
+          qty: mptQty, cost: mptCost, cameraList: mptParentList,
+        });
+        continue;
+      }
+
       if (tr.classList.contains('kn-group-level-4')) {
         if (!isVisibleRow(tr)) continue;
+
+        // The .scw-mounting-l4 "Mounting Hardware" L4 is just a section
+        // divider above the .scw-mounting-product-line summary rows
+        // we already capture below. Emitting it as its own L4 line
+        // item produces a redundant "Mounting Hardware  Qty: 0" row
+        // in the PDF that sits right above the actual bracket rows.
+        // The product-line rows under it carry the qty + cost we want.
+        if (tr.classList.contains('scw-mounting-l4')) continue;
 
         // proposal-grid tags assumption-bucket L4 rows with
         // scw-hide-qty-cost (the parent L3 was already hidden via
@@ -1704,14 +1762,22 @@
     return (cfg && cfg.webhookUrl) || WEBHOOK_URL;
   }
 
+  // Now returns the jqXHR so callers can hook .done/.fail and await
+  // Make's "Webhook Response" body. Always-on console.log so users
+  // can see exactly what came back without flipping SCW.DEBUG. Times
+  // out at 180s (matches the proposal-publish path) — Make holds the
+  // HTTP connection open until the scenario's final Webhook Response
+  // module fires, which can take 90+s for big PDFs.
   function sendToWebhook(data, cfg) {
-    var jsonStr = JSON.stringify(data);
-    $.ajax({
-      url: resolveWebhookUrl(cfg),
-      type: 'POST',
+    var url = resolveWebhookUrl(cfg);
+    console.log('[SCW PDF Webhook] POST', { url: url, payloadType: cfg.payloadType });
+    return $.ajax({
+      url:         url,
+      type:        'POST',
       contentType: 'application/json',
-      data: jsonStr,
+      data:        JSON.stringify(data),
       crossDomain: true,
+      timeout:     180000
     });
   }
 
@@ -2034,19 +2100,85 @@
               contentType: 'application/json',
               data: JSON.stringify(unified),
               crossDomain: true,
-              timeout: 90000,
-              success: function () {
-                SCW.debug('[SCW PDF Export] Webhook accepted, redirecting to parent');
-                if (cfg.pollViewOnReturn) {
-                  try {
-                    sessionStorage.setItem('scw-pdf-poll-view', cfg.pollViewOnReturn);
-                    if (cfg.pollField) sessionStorage.setItem('scw-pdf-poll-field', cfg.pollField);
-                    if (cfg.payloadType) sessionStorage.setItem('scw-pdf-poll-type', cfg.payloadType);
-                  } catch (e) {}
+              // Bumped from 90s. Make holds the HTTP connection open
+              // until the scenario's final "Webhook Response" module
+              // fires; if PDF gen + Knack upload takes 90+s the client
+              // would time out before Make finishes. 180s matches the
+              // poll timeout fallback ceiling.
+              timeout: 180000,
+              success: function (resp, status, xhr) {
+                // Unconditional log so we can see exactly what came
+                // back without flipping SCW.DEBUG. Includes the parsed
+                // response, the raw text (in case jQuery parsed it
+                // unexpectedly), and the HTTP status.
+                console.log('[SCW PDF Webhook] success', {
+                  status: xhr && xhr.status,
+                  contentType: xhr && xhr.getResponseHeader && xhr.getResponseHeader('Content-Type'),
+                  responseType: typeof resp,
+                  response: resp,
+                  rawResponseText: xhr && xhr.responseText
+                });
+
+                // Informative response = non-empty body OR an object
+                // (even an empty {}). If Make returned {"status":"ready"}
+                // we'll land here as either a parsed object or the
+                // raw string — handle both.
+                var isInformativeResponse = (resp != null && resp !== '' &&
+                  (typeof resp === 'object' || String(resp).length > 0));
+
+                // Defensively clear any leftover poll flags from a
+                // prior attempt — they'd auto-start polling on the
+                // parent page even if THIS submission's response is
+                // informative.
+                try {
+                  sessionStorage.removeItem('scw-pdf-poll-view');
+                  sessionStorage.removeItem('scw-pdf-poll-field');
+                  sessionStorage.removeItem('scw-pdf-poll-type');
+                } catch (e) {}
+
+                if (isInformativeResponse) {
+                  console.log('[SCW PDF Webhook] informative response → skipping polling');
+                  showPublishToast('PDF ready — opening…', false, false);
+                } else {
+                  console.log('[SCW PDF Webhook] empty response → falling back to polling');
+                  if (cfg.pollViewOnReturn) {
+                    try {
+                      sessionStorage.setItem('scw-pdf-poll-view', cfg.pollViewOnReturn);
+                      if (cfg.pollField) sessionStorage.setItem('scw-pdf-poll-field', cfg.pollField);
+                      if (cfg.payloadType) sessionStorage.setItem('scw-pdf-poll-type', cfg.payloadType);
+                    } catch (e) {}
+                  }
                 }
                 redirectToParent();
               },
-              error: function (xhr, status) {
+              error: function (xhr, status, errThrown) {
+                // Make's "Webhook Response" module returns a 2xx status
+                // and a JSON body. If jQuery's auto-parse fails (wrong
+                // Content-Type from Make), jQuery treats it as an
+                // error EVEN THOUGH the request succeeded. Recover by
+                // checking if we got a usable response anyway and
+                // treating it the same as the success branch.
+                console.log('[SCW PDF Webhook] error', {
+                  status: xhr && xhr.status,
+                  contentType: xhr && xhr.getResponseHeader && xhr.getResponseHeader('Content-Type'),
+                  jqStatus: status,
+                  errThrown: errThrown && errThrown.toString && errThrown.toString(),
+                  rawResponseText: xhr && xhr.responseText
+                });
+
+                var raw = xhr && xhr.responseText;
+                var httpOk = xhr && xhr.status >= 200 && xhr.status < 300;
+                if (httpOk && raw) {
+                  console.log('[SCW PDF Webhook] HTTP OK with body — treating as success');
+                  try {
+                    sessionStorage.removeItem('scw-pdf-poll-view');
+                    sessionStorage.removeItem('scw-pdf-poll-field');
+                    sessionStorage.removeItem('scw-pdf-poll-type');
+                  } catch (e) {}
+                  showPublishToast('PDF ready — opening…', false, false);
+                  redirectToParent();
+                  return;
+                }
                 console.error('[SCW PDF Export] Webhook failed:', status);
                 showPublishToast('Webhook failed — please try again.', true, false);
                 $btn.prop('disabled', false).css({ opacity: 1, cursor: 'pointer' });
@@ -2081,6 +2213,11 @@
   function setupFormSubmitTrigger(cfg) {
     var formViewId = cfg.trigger.formViewId;
     var ns = '.scwPdfExport' + cfg.sceneId;
+    console.log('[SCW PDF Webhook] setupFormSubmitTrigger (init)', {
+      sceneId: cfg.sceneId,
+      formViewId: formViewId,
+      payloadType: cfg.payloadType
+    });
 
     // Gate the form's submit button until the scene is ready. Without
     // this, mashing Submit before view-render finishes can fire a
@@ -2110,38 +2247,73 @@
     }
 
     $(document).on('knack-view-render.' + formViewId, function () {
+      console.log('[SCW PDF Webhook] view-render fired for ' + formViewId);
       applyFormReadiness();
       whenPageReady(cfg.sceneId, applyFormReadiness);
 
-      var $form = $('#' + formViewId + ' form');
-      $form.off('submit' + ns).on('submit' + ns, function (e) {
-        // Defensive: even with the submit button disabled, a page-
-        // scoped Enter keystroke can still submit. Block here.
+      var formEl = document.querySelector('#' + formViewId + ' form');
+      if (!formEl) {
+        console.warn('[SCW PDF Webhook] no <form> inside #' + formViewId);
+        return;
+      }
+      if (formEl._scwPdfCaptureBound) {
+        console.log('[SCW PDF Webhook] capture listener already bound, skipping');
+      }
+
+      // CAPTURE-PHASE listener. Knack binds its own submit handler in
+      // bubble phase during view init. If we used jQuery .on('submit')
+      // here (bubble-phase), Knack would fire FIRST when the user
+      // clicks Submit — kicking off its own record-save and starting
+      // the redirect — and by the time our handler ran, calling
+      // preventDefault would be too late: navigation already initiated
+      // and our $.ajax to Make gets killed mid-flight (which is
+      // exactly why no `[SCW PDF Webhook] ...` logs appeared).
+      //
+      // Capture phase guarantees we run BEFORE Knack's bubble handler.
+      // stopImmediatePropagation prevents Knack from ever seeing the
+      // submit. We hold the page, fire the webhook, await Make's
+      // "Webhook Response" body, then programmatically click Submit
+      // again — the second pass sees _scwPdfAuthorized and falls
+      // through so Knack does its native save + redirect.
+      if (formEl._scwPdfCaptureBound) return; // idempotent across re-renders
+      formEl._scwPdfCaptureBound = true;
+      console.log('[SCW PDF Webhook] capture-phase submit listener bound to', formEl);
+
+      // Knack handles the submit button by attaching a CLICK handler
+      // that calls preventDefault, so the form's submit event NEVER
+      // fires. That's why catching just 'submit' produced no logs.
+      // Bind on click (capture phase) on the submit button too —
+      // covers Knack's path. Keep the submit-event listener as
+      // belt-and-suspenders for Enter-key submission.
+      function captureHandler(e, source) {
+        if (formEl._scwPdfAuthorized) {
+          console.log('[SCW PDF Webhook] (' + source + ') authorized pass — letting Knack take over');
+          return;
+        }
+
+        console.log('[SCW PDF Webhook] (' + source + ') intercepted', {
+          sceneId: cfg.sceneId,
+          formViewId: formViewId
+        });
+        e.preventDefault();
+        e.stopImmediatePropagation();
+        e.stopPropagation();
+
         if (!isPageReady(cfg.sceneId)) {
-          e.preventDefault();
-          e.stopImmediatePropagation();
-          alert('Page is still loading — please wait a moment, then click Submit again.');
-          return false;
+          alert('Page is still loading -- please wait, then click Submit again.');
+          return;
         }
+
         var extra = {};
-
-        // Extract record ID from the form
         if (cfg.trigger.recordIdInput) {
-          var $idInput = $('#' + formViewId + ' input[name="' + cfg.trigger.recordIdInput + '"]');
-          if ($idInput.length) extra.recordId = $idInput.val();
+          var idInput = formEl.querySelector('input[name="' + cfg.trigger.recordIdInput + '"]');
+          if (idInput) extra.recordId = idInput.value;
         }
-        // Fallback: extract record ID from the URL hash
-        if (!extra.recordId) {
-          extra.recordId = getPageRecordId();
-        }
+        if (!extra.recordId) extra.recordId = getPageRecordId();
 
-        // Stamp the user who clicked Submit. Read from Knack.getUserAttributes
-        // — works for any logged-in user. null if Knack isn't ready (form
-        // submits without auth shouldn't happen, but guard anyway).
         var triggeredBy = getTriggeredBy();
         if (triggeredBy) extra.triggeredBy = triggeredBy;
 
-        // Extract additional field values from the scene DOM
         if (cfg.extraFields) {
           var _fNum;
           for (var ef = 0; ef < cfg.extraFields.length; ef++) {
@@ -2151,15 +2323,11 @@
               if (urlVal) extra[spec.name] = urlVal;
               continue;
             }
-            // Echo the resolved recordId under a different key — useful
-            // when the receiving Make scenario expects a domain-specific
-            // name like "bidId" alongside the generic "recordId".
             if (spec.source === 'recordId') {
               if (extra.recordId) extra[spec.name] = extra.recordId;
               continue;
             }
             _fNum = spec.field.replace('field_', '');
-            // If sourceView is specified, scope the search to that view first
             var el = null;
             if (spec.sourceView) {
               el = document.querySelector('#' + spec.sourceView + ' .field_' + _fNum);
@@ -2169,27 +2337,112 @@
             if (!el) el = document.querySelector('#kn-' + cfg.sceneId + ' .field_' + _fNum);
             if (!el) el = document.querySelector('#kn-' + cfg.sceneId + ' td.' + spec.field);
             if (!el) el = document.querySelector('#kn-' + cfg.sceneId + ' [data-field-key="' + spec.field + '"]');
-            // Fallback: search anywhere on the page (field may be in a detail view outside the scene wrapper)
             if (!el) el = document.querySelector('.kn-detail.' + spec.field + ', .kn-label-none.' + spec.field);
-            // Read value only — cascade through Knack detail-view DOM wrappers
             var valEl = el ? (el.querySelector('.kn-detail-body .kn-value') || el.querySelector('.kn-detail-body') || el.querySelector('.kn-value') || el) : null;
-            var val = valEl ? (valEl.textContent || '').replace(/[\u00a0\s]+/g, ' ').trim() : '';
+            var val = valEl ? (valEl.textContent || '').replace(/[ \s]+/g, ' ').trim() : '';
             if (val) extra[spec.name] = val;
           }
         }
 
-        SCW.debug('[SCW PDF Export]', cfg.sceneId, '→ form submit, scraping...');
-        runExport(cfg, extra);
-
-        // Flag for poll-refresh on the parent page
-        if (cfg.pollViewOnReturn) {
+        function authorizeAndResubmit(setPollFallback) {
           try {
-            sessionStorage.setItem('scw-pdf-poll-view', cfg.pollViewOnReturn);
-            if (cfg.pollField) sessionStorage.setItem('scw-pdf-poll-field', cfg.pollField);
-            if (cfg.payloadType) sessionStorage.setItem('scw-pdf-poll-type', cfg.payloadType);
-          } catch (e) {}
+            sessionStorage.removeItem('scw-pdf-poll-view');
+            sessionStorage.removeItem('scw-pdf-poll-field');
+            sessionStorage.removeItem('scw-pdf-poll-type');
+          } catch (e2) {}
+          if (setPollFallback && cfg.pollViewOnReturn) {
+            try {
+              sessionStorage.setItem('scw-pdf-poll-view', cfg.pollViewOnReturn);
+              if (cfg.pollField) sessionStorage.setItem('scw-pdf-poll-field', cfg.pollField);
+              if (cfg.payloadType) sessionStorage.setItem('scw-pdf-poll-type', cfg.payloadType);
+            } catch (e3) {}
+          }
+          formEl._scwPdfAuthorized = true;
+          var btn = formEl.querySelector('button[type="submit"], input[type="submit"]');
+          if (btn) btn.click();
+          else formEl.submit();
         }
-      });
+
+        var unified = buildPublishPayload(cfg.sceneId);
+        if (!unified) {
+          console.warn('[SCW PDF Webhook] payload build failed -- releasing submit');
+          authorizeAndResubmit(true);
+          return;
+        }
+        for (var k in extra) {
+          if (Object.prototype.hasOwnProperty.call(extra, k)) unified[k] = extra[k];
+        }
+
+        showPublishToast('Generating ' +
+          (cfg.payloadType === 'subcontractor bid' ? 'bid' : 'PDF') +
+          '...', false, true);
+
+        sendToWebhook(unified, cfg)
+          .done(function (resp, status, xhr) {
+            console.log('[SCW PDF Webhook] success', {
+              status: xhr && xhr.status,
+              contentType: xhr && xhr.getResponseHeader && xhr.getResponseHeader('Content-Type'),
+              responseType: typeof resp,
+              response: resp,
+              rawResponseText: xhr && xhr.responseText
+            });
+            var informative = (resp != null && resp !== '' &&
+              (typeof resp === 'object' || String(resp).length > 0));
+            if (informative) {
+              console.log('[SCW PDF Webhook] informative -> releasing submit, no polling');
+              // Make confirmed PDF creation — the file is already on the
+              // Knack record by the time Make's webhook response fires.
+              // Drop the publish toast entirely (no "PDF ready" message
+              // is useful here — the user is about to land on the parent
+              // page where the PDF link is already rendered).
+              dismissPublishToast();
+              authorizeAndResubmit(false);
+            } else {
+              console.log('[SCW PDF Webhook] empty response -> fallback to polling');
+              authorizeAndResubmit(true);
+            }
+          })
+          .fail(function (xhr, status, errThrown) {
+            console.log('[SCW PDF Webhook] fail', {
+              status: xhr && xhr.status,
+              contentType: xhr && xhr.getResponseHeader && xhr.getResponseHeader('Content-Type'),
+              jqStatus: status,
+              errThrown: errThrown && errThrown.toString && errThrown.toString(),
+              rawResponseText: xhr && xhr.responseText
+            });
+            var raw = xhr && xhr.responseText;
+            var httpOk = xhr && xhr.status >= 200 && xhr.status < 300;
+            if (httpOk && raw) {
+              console.log('[SCW PDF Webhook] HTTP OK with body -- treating as success');
+              dismissPublishToast();
+              authorizeAndResubmit(false);
+              return;
+            }
+            console.warn('[SCW PDF Webhook] webhook failed -- releasing with poll fallback');
+            showPublishToast('Submission sent -- continuing...', false, false);
+            authorizeAndResubmit(true);
+          });
+      }
+
+      // Click on the submit button — the path Knack intercepts.
+      var submitBtn = formEl.querySelector('button[type="submit"], input[type="submit"]');
+      if (submitBtn) {
+        submitBtn.addEventListener('click', function (e) {
+          captureHandler(e, 'capture click');
+        }, true);
+        console.log('[SCW PDF Webhook] capture-phase click listener bound to submit button');
+      } else {
+        console.warn('[SCW PDF Webhook] no submit button found in form');
+      }
+
+      // Form submit event — covers Enter-key submission and any other
+      // path that fires the submit event natively. Knack's button-
+      // click intercept usually preventDefaults the submit, but if a
+      // user hits Enter inside a text input, the submit event WILL
+      // fire and Knack might not catch it.
+      formEl.addEventListener('submit', function (e) {
+        captureHandler(e, 'capture submit');
+      }, true /* capture phase */);
     });
 
     // Hide extraFields marked with hide:true when their source view renders
@@ -2221,7 +2474,10 @@
   // ══════════════════════════════════════════════════════════════
 
   var POLL_INTERVAL_MS = 4000;
-  var POLL_TIMEOUT_MS  = 60000;
+  // Make PDF generation can take 90+s for big proposals (page count
+  // scales with line items). 60s was tight; 180s lets the slowest
+  // happy path finish before we give up and clear the overlay.
+  var POLL_TIMEOUT_MS  = 180000;
   var POLL_TOAST_ID    = 'scw-pdf-poll-toast';
   var POLL_CSS_ID      = 'scw-pdf-poll-css';
   var POLL_NS          = '.scwPdfPoll';
@@ -2294,6 +2550,59 @@
     setTimeout(function () { if (toast.parentNode) toast.remove(); }, 350);
   }
 
+  // Pull the polled field's value out of a record returned by a
+  // direct view-records REST call. Handles every Knack _raw shape:
+  //   - file field:        { url, filename, ... }      \u2192 prefer url
+  //   - connection field:  [ {id, identifier}, ... ]   \u2192 join ids
+  //   - plain field:       primitive value             \u2192 string-coerce
+  // Returns a "change signal" string we compare poll-over-poll.
+  function extractFieldSignal(record, fieldId) {
+    if (!record || !fieldId) return '';
+    var raw = record[fieldId + '_raw'];
+    if (raw && !Array.isArray(raw) && typeof raw === 'object') {
+      if (raw.url)      return 'url:' + raw.url;
+      if (raw.filename) return 'fn:'  + raw.filename;
+      return 'obj:' + JSON.stringify(raw);
+    }
+    if (Array.isArray(raw)) {
+      var ids = [];
+      for (var i = 0; i < raw.length; i++) {
+        if (raw[i] && raw[i].id) ids.push(raw[i].id);
+      }
+      return 'conn:' + (ids.length ? ids.join(',') : 'empty');
+    }
+    var rendered = record[fieldId];
+    if (rendered == null) return '';
+    return 'txt:' + String(rendered).replace(/<[^>]*>/g, '').trim();
+  }
+
+  // Direct view-records GET. Bypasses view.model.fetch() \u2014 Knack
+  // sometimes caches/throttles those calls or doesn't re-render the
+  // view, leaving stale data. Going straight to Knack's REST API
+  // gives us a guaranteed-fresh record snapshot each tick.
+  function fetchPolledRecord(viewId, cb) {
+    if (!window.Knack || !Knack.router || !Knack.router.current_scene_key) {
+      cb(null, 'no-scene');
+      return;
+    }
+    var url = Knack.api_url + '/v1/pages/' + Knack.router.current_scene_key +
+              '/views/' + viewId + '/records';
+    SCW.knackAjax({
+      url:   url,
+      type:  'GET',
+      cache: false,
+      success: function (resp) {
+        var record = resp && resp.records && resp.records[0];
+        cb(record || null, record ? null : 'no-records');
+      },
+      error: function (xhr) {
+        cb(null, 'http-' + (xhr && xhr.status));
+      }
+    });
+  }
+
+  // DOM read used only for overlay placement (the polled td is the
+  // overlay target). Completion detection lives in the REST path.
   function readFieldText(viewId, fieldId) {
     if (!fieldId) return '';
     var td = document.querySelector('#' + viewId + ' td.' + fieldId);
@@ -2328,18 +2637,12 @@
     _pollMsg = '';
   }
 
-  // Called every time the polled view re-renders (from model.fetch or anything else)
+  // Re-apply overlay when the view re-renders (Knack drops our class
+  // when it rebuilds the td). NOT used to detect completion — that is
+  // entirely REST-driven now.
   function onPollViewRender() {
     if (!_pollActive) return;
-    var newValue = readFieldText(_pollViewId, _pollFieldId);
-    SCW.debug('[SCW PDF Export] View render — field check: "' + _pollInitial + '" → "' + newValue + '"');
-    if (_pollFieldId && newValue !== _pollInitial) {
-      SCW.debug('[SCW PDF Export] Field changed — stopping poll');
-      stopPolling();
-    } else {
-      // View re-rendered with same data; re-apply overlay to fresh td
-      applyFieldOverlay(_pollViewId, _pollFieldId, _pollMsg);
-    }
+    applyFieldOverlay(_pollViewId, _pollFieldId, _pollMsg);
   }
 
   function startPollRefresh(viewId, fieldId, pollType) {
@@ -2347,49 +2650,67 @@
     _pollActive = true;
     _pollViewId = viewId;
     _pollFieldId = fieldId;
-    _pollInitial = readFieldText(viewId, fieldId);
+    _pollInitial = "";
 
-    var label = pollType === 'proposal' ? 'quote' : (pollType || 'bid');
-    _pollMsg = 'Generating ' + label + ' PDF\u2026';
+    var label = pollType === "proposal" ? "quote" : (pollType || "bid");
+    _pollMsg = "Generating " + label + " PDF…";
 
-    SCW.debug('[SCW PDF Export] Polling ' + viewId + ' (watching ' + (fieldId || 'none') + ', initial: "' + _pollInitial + '")');
+    console.log("[SCW PDF Poll] start", { viewId: viewId, fieldId: fieldId, type: pollType });
     showPollToast(_pollMsg);
     applyFieldOverlay(viewId, fieldId, _pollMsg);
 
-    // Listen for every re-render of this view
-    $(document).off('knack-view-render.' + viewId + POLL_NS)
-               .on('knack-view-render.' + viewId + POLL_NS, onPollViewRender);
+    $(document).off("knack-view-render." + viewId + POLL_NS)
+               .on("knack-view-render." + viewId + POLL_NS, onPollViewRender);
 
-    // Interval triggers model.fetch() AND also directly checks the field
-    // value (model.fetch may not fire knack-view-render on collapsed views).
+    var initialCaptured = false;
     var elapsed = 0;
-    _pollTimer = setInterval(function () {
-      elapsed += POLL_INTERVAL_MS;
-      if (typeof Knack === 'undefined') return;
 
-      // Direct field check — doesn't depend on view re-render event
-      if (_pollFieldId) {
-        var currentVal = readFieldText(_pollViewId, _pollFieldId);
-        if (currentVal !== _pollInitial) {
-          SCW.debug('[SCW PDF Export] Field changed (direct check): "' + _pollInitial + '" → "' + currentVal + '"');
-          stopPolling();
+    function tick() {
+      if (!_pollActive) return;
+      fetchPolledRecord(_pollViewId, function (record, err) {
+        if (!_pollActive) return;
+        if (err || !record) {
+          console.log("[SCW PDF Poll] tick fetch error", { err: err, elapsed: elapsed });
           return;
         }
-      }
+        var signal = extractFieldSignal(record, _pollFieldId);
+        if (!initialCaptured) {
+          _pollInitial = signal;
+          initialCaptured = true;
+          console.log("[SCW PDF Poll] initial captured", { signal: signal });
+          return;
+        }
+        var changed = (signal !== _pollInitial);
+        console.log("[SCW PDF Poll] tick", { elapsed: elapsed, initial: _pollInitial, current: signal, changed: changed });
+        if (changed) {
+          console.log("[SCW PDF Poll] CHANGED — stopping");
+          try { var v = Knack.views && Knack.views[_pollViewId]; if (v && v.model && typeof v.model.fetch === "function") v.model.fetch(); } catch (e) {}
+          stopPolling();
+        }
+      });
+    }
 
-      var view = Knack.views && Knack.views[viewId];
-      if (view && view.model && typeof view.model.fetch === 'function') {
-        view.model.fetch();
-      }
+    tick();
+    _pollTimer = setInterval(function () {
+      elapsed += POLL_INTERVAL_MS;
       if (elapsed >= POLL_TIMEOUT_MS) {
-        SCW.debug('[SCW PDF Export] Poll timeout for ' + viewId + ' after ' + (elapsed / 1000) + 's');
+        console.log("[SCW PDF Poll] TIMEOUT", { elapsed: elapsed, initial: _pollInitial, initialCaptured: initialCaptured });
         stopPolling();
+        return;
       }
+      tick();
     }, POLL_INTERVAL_MS);
   }
 
   // Check for poll flag whenever any scene renders
   $(document).on('knack-scene-render.any.scwPdfPoll', function () {
+    // Belt-and-suspenders: clear any publish toast that survived the
+    // form-submit → parent-page hash navigation. The toast lives on
+    // document.body so Knack's SPA scene swap doesn't remove it; if
+    // any code path forgot to dismiss before submitting, kill it on
+    // arrival so the user doesn't see a stale "PDF ready" sitting
+    // on top of their parent page.
+    dismissPublishToast();
     var viewId, fieldId, pollType;
     try {
       viewId = sessionStorage.getItem('scw-pdf-poll-view');

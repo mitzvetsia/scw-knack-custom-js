@@ -1460,7 +1460,13 @@ ${sel('tr.scw-mounting-product-line td:first-child')} {
     // (handled in postProcessMountingClusters at the per-product
     // build step), NOT on the group header itself — that header is
     // just a section divider.
-    if ($groupRow.hasClass('scw-mounting-l4') || $groupRow.hasClass('scw-synthetic-l4')) return;
+    // Skip mounting-hardware synthetic L4 section headers — the orange
+    // parent labels for accessories belong on the per-product rows below
+    // (added in postProcessMountingClusters), not on the section divider.
+    // Regular synthetic L4s (labor-collapsed camera labor) ARE eligible:
+    // those wrap real camera data rows and should get the (E-1, E-2)
+    // parent-list label like their non-synthetic siblings.
+    if ($groupRow.hasClass('scw-mounting-l4')) return;
 
     const cameraListHtml = buildCameraListHtml(ctx, caches, $rowsToSum);
     if (!cameraListHtml) return;
@@ -3224,7 +3230,17 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
               if (!childRow) continue;
               var raw = attrs[parentField + '_raw'];
               if (!raw || !raw.length || !raw[0] || !raw[0].id) continue;
-              if (raw[0].id === childId) continue;
+              var parentId = raw[0].id;
+              if (parentId === childId) continue;
+              // Only flag as "missing" if the parent row is actually in
+              // this tbody — otherwise relocation will never succeed
+              // (orphan accessories whose parent lives in a different
+              // view), and saying "incomplete" here would make the
+              // sibling-render listener re-fire executePipeline on
+              // every Knack view-render until the 30s deadline, which
+              // shows up as a UI freeze on busy scenes like the
+              // proposal-preview page.
+              if (!knownIds[parentId]) continue;
               if (!childRow.classList.contains('scw-relocated-accessory')) {
                 return true;
               }
@@ -3242,11 +3258,12 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
         executePipeline();
 
         // Safety net 1: staggered timer checks. 300ms / 1200ms catch
-        // Knack async re-renders that wipe our injected rows; 3000ms
-        // covers slow-loading secondary views (the one that exposes
-        // field_2464_raw for accessory→parent relocation), which on
-        // first scene load can hydrate after the initial pipeline run.
-        [300, 1200, 3000].forEach(function (ms) {
+        // Knack async re-renders that wipe our injected rows; 3000ms /
+        // 6000ms / 12000ms cover slow-loading secondary views (the one
+        // that exposes field_2464_raw for accessory→parent relocation),
+        // which on first scene load can hydrate well after the initial
+        // pipeline run.
+        [300, 1200, 3000, 6000, 12000].forEach(function (ms) {
           var t = setTimeout(function () {
             if (pipelineIncomplete()) executePipeline();
           }, ms);
@@ -3275,6 +3292,31 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
           var disconnectTimer = setTimeout(function () { obs.disconnect(); }, 4000);
           _safetyState[viewId].timers.push(disconnectTimer);
         }
+
+        // Safety net 3: listen for ANY sibling view render. The view
+        // that exposes field_2464_raw lives elsewhere on the page (the
+        // proposal-grid view itself doesn't include that column in its
+        // model). On first scene load it can hydrate after our 12s
+        // timer tail expires — and when it finally lands, we want to
+        // re-run the pipeline so accessories actually relocate under
+        // their parents. Debounced + auto-disengages after 30s and
+        // after mounting structure looks settled.
+        var siblingNs = '.scwProposalGridSibling_' + viewId;
+        var siblingDebounce = 0;
+        $(document).off('knack-view-render' + siblingNs);
+        $(document).on('knack-view-render' + siblingNs, function (_e, view) {
+          if (pipelineRunning) return;
+          if (view && view.key === viewId) return;     // our own view; already handled
+          if (siblingDebounce) clearTimeout(siblingDebounce);
+          siblingDebounce = setTimeout(function () {
+            siblingDebounce = 0;
+            if (pipelineIncomplete()) executePipeline();
+          }, 120);
+        });
+        var siblingKill = setTimeout(function () {
+          $(document).off('knack-view-render' + siblingNs);
+        }, 30000);
+        _safetyState[viewId].timers.push(siblingKill);
       });
   }
 

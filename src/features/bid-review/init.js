@@ -26,6 +26,23 @@
   // ── load → transform → render pipeline ──────────────────────
 
   function runPipeline() {
+    // Hard scene gate — the matrix mount lives outside any scene
+    // container (inserted as a sibling of view_44, the nav menu) so
+    // Knack's scene swap doesn't clean it up. If a view-render event
+    // for one of our watched views fires while the user is on a
+    // sibling scene (e.g. Build SOWs on scene_1140 happens to share a
+    // view key, or a stale render event drains late), bail before
+    // creating the mount. The cleanup handler still runs on real
+    // scene transitions to tear down any matrix that did sneak in.
+    var sceneKey = (window.Knack && Knack.router && Knack.router.current_scene_key) || '';
+    if (sceneKey && sceneKey !== CFG.sceneKey) {
+      if (CFG.debug) {
+        SCW.debug('[BidReview] runPipeline skipped — current scene', sceneKey,
+          'is not', CFG.sceneKey);
+      }
+      return;
+    }
+
     ns.showLoading();
 
     ns.loadRawData().then(function (raw) {
@@ -41,6 +58,7 @@
       }
 
       var mount = ns.renderMatrix(_state);
+      if (!mount) return;   // wrong scene — renderMatrix refused
       attachClickHandler(mount);
 
       // Rehydrate change request drafts from Knack field
@@ -75,6 +93,13 @@
   var _silentRefreshQueued = false;
 
   function refreshSilently() {
+    // Same scene gate as runPipeline — late silent-refresh callbacks
+    // arriving after the user has navigated away should be a no-op.
+    var sceneKey = (window.Knack && Knack.router && Knack.router.current_scene_key) || '';
+    if (sceneKey && sceneKey !== CFG.sceneKey) {
+      return $.Deferred().resolve().promise();
+    }
+
     if (_silentRefreshRunning) {
       _silentRefreshQueued = true;
       return $.Deferred().resolve().promise();
@@ -101,6 +126,7 @@
       ns._state = _state;
       _mdfIdfRecords = raw.mdfIdfRecords || [];
       var mount = ns.renderMatrix(_state);
+      if (!mount) return;   // wrong scene — renderMatrix refused
       attachClickHandler(mount);
       reopenExpandedRows();
     }).fail(function (err) {
@@ -157,6 +183,22 @@
     });
 
     mount.addEventListener('click', function (e) {
+      // Panel close — × button or any click on the header bar. Look up
+      // the live row through the DOM (the expand-row's previous sibling)
+      // rather than a captured closure, so close still works after a
+      // silent refresh has replaced the original rowTr.
+      if (e.target.closest('.scw-bid-review__panel-close')
+          || e.target.closest('.scw-bid-review__panel-header')) {
+        var openExpand = e.target.closest('.scw-bid-review__expand-row');
+        var liveRow = openExpand && openExpand.previousElementSibling;
+        if (liveRow && liveRow.classList.contains('scw-bid-review__row')) {
+          e.preventDefault();
+          e.stopPropagation();
+          toggleRowExpand(liveRow);
+        }
+        return;
+      }
+
       // Expandable row toggle (must run before button-action match so the
       // row click only fires when nothing more specific intercepted it).
       var rowTrigger = e.target.closest('.scw-bid-review__row--expandable');
@@ -165,6 +207,7 @@
         && !e.target.closest('.scw-bid-review__overflow')
         && !e.target.closest('.scw-bid-review__overflow-item')
         && !e.target.closest('.scw-bid-review__cell-action')
+        && !e.target.closest('.scw-bid-review__inline-add-btn')
         && !e.target.closest('a')
         && !e.target.closest('input')) {
         toggleRowExpand(rowTrigger);
@@ -176,7 +219,12 @@
         || e.target.closest('.scw-bid-cr-card[data-action]')
         || e.target.closest('.scw-bid-review__overflow-item[data-action]')
         || e.target.closest('.scw-bid-review__cell-action[data-action]')
-        || e.target.closest('.scw-ops-margin-warning__btn[data-action]');
+        || e.target.closest('.scw-bid-review__inline-add-btn[data-action]')
+        || e.target.closest('.scw-ops-margin-warning__btn[data-action]')
+        || e.target.closest('.scw-bid-review__docs-link-btn[data-action]')
+        || e.target.closest('.scw-bid-review__docs-unlink-btn[data-action]')
+        || e.target.closest('.scw-bid-review__docs-chip[data-action]')
+        || e.target.closest('.scw-bid-review__docs-other-toggle[data-action]');
       if (!button) return;
 
       // Close overflow menu after picking an item
@@ -213,6 +261,18 @@
         handleCreateNewSow(button);
       } else if (action === 'add_pm_mobilization') {
         handleAddPmMobilization(button);
+      } else if (action === 'doc_link_to_sow') {
+        handleDocLinkToSow(button);
+      } else if (action === 'doc_unlink_from_sow') {
+        handleDocUnlinkFromSow(button);
+      } else if (action === 'doc_filter') {
+        handleDocFilter(button);
+      } else if (action === 'docs_toggle_other') {
+        var section = button.closest('.scw-bid-review__docs-other');
+        if (section) {
+          var c = section.getAttribute('data-collapsed') === '1';
+          section.setAttribute('data-collapsed', c ? '0' : '1');
+        }
       } else if (action === 'set_project_margin') {
         handleSetProjectMargin(button);
       } else if (action.indexOf('package_') === 0) {
@@ -307,6 +367,22 @@
     tr.setAttribute('aria-expanded', 'true');
     _expandedSowItems[sowItemId] = true;
     buildExpandPanel(tr, expandTr.firstElementChild, sowItemId);
+
+    // If the row has photos, mount the side-by-side viewer too so the
+    // reviewer doesn't have to click the thumb separately.
+    if (ns.scrapeRowPhotoUrls) {
+      // scrapeRowPhotoUrls keys on the wsTr's id attribute, which is
+      // the SOW item id (the original Knack record id from view_3921)
+      // — NOT the bid record id we put in data-row-id. Use
+      // data-sow-item-id for the lookup, matching how
+      // buildPhotosCell(row.sowItem) feeds the same function at
+      // cell-build time. Falls back to data-row-id for any synthetic
+      // rows that happen to share the same id space (no-bid /
+      // surveyed-no-bid rows where row.id === row.sowItem).
+      var rowId = tr.getAttribute('data-sow-item-id') || tr.getAttribute('data-row-id');
+      var urls = rowId ? ns.scrapeRowPhotoUrls(rowId) : null;
+      if (urls && urls.length) openWithPhoto(tr, urls, 0);
+    }
   }
 
   // Build the 3-column panel inside the expand cell. Idempotent —
@@ -393,20 +469,13 @@
     close.className = 'scw-bid-review__panel-close';
     close.setAttribute('title', 'Close');
     close.textContent = '×';
-    close.addEventListener('click', function (e) {
-      e.preventDefault();
-      e.stopPropagation();
-      toggleRowExpand(rowTr);
-    });
     header.appendChild(close);
 
-    // Clicking anywhere on the blue bar collapses the panel — same
-    // action as the × button, just a larger target.
+    // Clicks on the header bar / × are wired via the delegated mount
+    // handler in attachClickHandler so they survive silent refreshes
+    // that detach the original rowTr reference.
     header.style.cursor = 'pointer';
     header.setAttribute('title', 'Click to close');
-    header.addEventListener('click', function () {
-      toggleRowExpand(rowTr);
-    });
 
     return header;
   }
@@ -949,6 +1018,137 @@
         ns.renderToast('Survey Costs save failed', 'error');
       }
     });
+  }
+
+  // ── Link an existing project DOC_file to this SOW ──
+  //
+  // The "+ Link" button on the SOW header's "Available from project"
+  // section PUTs the DOC_files record's field_2143 (SOW connection)
+  // with the existing connection ids + this SOW id. After save, the
+  // doc disappears from "Available" and shows up under "linked" on
+  // the next pipeline pass (init.js's refresh-on-edit listener
+  // rebuilds the matrix after view_3926 re-renders).
+  function handleDocLinkToSow(button) {
+    var docId   = button.getAttribute('data-doc-id');
+    var sowId   = button.getAttribute('data-sow-id');
+    var current = (button.getAttribute('data-current-sows') || '')
+                    .split(',').filter(Boolean);
+    if (!docId || !sowId) return;
+    if (current.indexOf(sowId) !== -1) return; // already linked
+
+    var writeView = CFG.docFilesViewKey;
+    if (!writeView || !SCW.knackRecordUrl) {
+      ns.renderToast('Link skipped — doc files view not configured', 'error');
+      return;
+    }
+
+    setBusy(button, true);
+
+    var nextSows = current.concat([sowId]);
+    var payload  = {};
+    payload['field_2143'] = nextSows;
+
+    SCW.knackAjax({
+      url:  SCW.knackRecordUrl(writeView, docId),
+      type: 'PUT',
+      data: JSON.stringify(payload),
+      success: function () {
+        ns.renderToast('Document linked to SOW', 'success');
+        // Refresh view_3926 so the docs index rebuilds on the next
+        // pipeline pass (event-binding in init re-runs renderMatrix
+        // after a knack-view-render).
+        try {
+          var v = Knack && Knack.views && Knack.views[writeView];
+          if (v && v.model && typeof v.model.fetch === 'function') v.model.fetch();
+        } catch (e) { /* ignore */ }
+      },
+      error: function (xhr) {
+        setBusy(button, false);
+        if (CFG.debug) console.warn('[BidReview] Link doc → SOW failed:', xhr && xhr.status, xhr && xhr.responseText);
+        var msg = 'Link failed';
+        if (xhr && xhr.status === 403) {
+          msg = 'Link failed — view_3926 must allow inline-edit on field_2143';
+        }
+        ns.renderToast(msg, 'error');
+      }
+    });
+  }
+
+  // ── Disconnect (NOT delete) a DOC_file from this SOW ──
+  //
+  // Removes this SOW id from the doc's field_2143 connection. The
+  // DOC_files record itself stays — only the connection to this SOW
+  // is severed. After save, the doc moves from "Linked" to
+  // "Available from project" on the next pipeline pass.
+  function handleDocUnlinkFromSow(button) {
+    var docId   = button.getAttribute('data-doc-id');
+    var sowId   = button.getAttribute('data-sow-id');
+    var current = (button.getAttribute('data-current-sows') || '')
+                    .split(',').filter(Boolean);
+    if (!docId || !sowId) return;
+
+    var nextSows = [];
+    for (var i = 0; i < current.length; i++) {
+      if (current[i] !== sowId) nextSows.push(current[i]);
+    }
+    if (nextSows.length === current.length) return; // wasn't linked
+
+    var writeView = CFG.docFilesViewKey;
+    if (!writeView || !SCW.knackRecordUrl) {
+      ns.renderToast('Unlink skipped — doc files view not configured', 'error');
+      return;
+    }
+
+    setBusy(button, true);
+
+    var payload = {};
+    payload['field_2143'] = nextSows;
+
+    SCW.knackAjax({
+      url:  SCW.knackRecordUrl(writeView, docId),
+      type: 'PUT',
+      data: JSON.stringify(payload),
+      success: function () {
+        ns.renderToast('Document disconnected from SOW', 'success');
+        try {
+          var v = Knack && Knack.views && Knack.views[writeView];
+          if (v && v.model && typeof v.model.fetch === 'function') v.model.fetch();
+        } catch (e) { /* ignore */ }
+      },
+      error: function (xhr) {
+        setBusy(button, false);
+        if (CFG.debug) console.warn('[BidReview] Unlink doc from SOW failed:', xhr && xhr.status, xhr && xhr.responseText);
+        var msg = 'Unlink failed';
+        if (xhr && xhr.status === 403) {
+          msg = 'Unlink failed — view_3926 must allow inline-edit on field_2143';
+        }
+        ns.renderToast(msg, 'error');
+      }
+    });
+  }
+
+  // ── Doc-type filter chip click ──
+  //
+  // Sets data-filter on the panel and toggles the active chip class.
+  // The actual show/hide of items is JS-driven (CSS attribute
+  // selectors can't dynamically match arbitrary values).
+  function handleDocFilter(button) {
+    var panel = button.closest('.scw-bid-review__docs');
+    if (!panel) return;
+    var value = button.getAttribute('data-filter') || '__all__';
+
+    var chips = panel.querySelectorAll('.scw-bid-review__docs-chip');
+    for (var i = 0; i < chips.length; i++) {
+      chips[i].classList.toggle('is-active', chips[i] === button);
+    }
+    panel.setAttribute('data-filter', value);
+
+    var items = panel.querySelectorAll('.scw-bid-review__docs-item');
+    for (var j = 0; j < items.length; j++) {
+      var t = items[j].getAttribute('data-doc-type') || '__none__';
+      var show = value === '__all__' || t === value;
+      items[j].style.display = show ? '' : 'none';
+    }
   }
 
   // ── Bump project margin (margin-low warning button) ──
@@ -1818,11 +2018,53 @@
     var sowName  = (grid && grid.sowName)        || 'this SOW';
     var itemName = (row && (row.displayLabel || row.productName)) || 'this line item';
 
+    // ── Find accessories (mounting brackets, etc.) whose parent
+    // line item (field_2464) points at this SOW item AND that are
+    // connected to this SOW via field_2154. They have to be
+    // disconnected too — otherwise they end up as orphan rows in
+    // the Mounting Hardware section after the parent is removed.
+    var accessoryField = 'field_2464';
+    function findAccessoryRecords() {
+      var v = Knack && Knack.views && Knack.views[CFG.sowItemsViewKey];
+      var ms = v && v.model && v.model.data && v.model.data.models;
+      var out = [];
+      if (!ms) return out;
+      for (var i = 0; i < ms.length; i++) {
+        var m = ms[i];
+        var a = m.attributes || {};
+        var parentRaw = a[accessoryField + '_raw'];
+        if (!Array.isArray(parentRaw) || !parentRaw.length) continue;
+        var parentId = parentRaw[0] && parentRaw[0].id;
+        if (parentId !== sowItemId) continue;
+        var sowRaw = a[CFG.fieldKeys.sow + '_raw'];
+        var connected = false;
+        var remaining = [];
+        if (Array.isArray(sowRaw)) {
+          for (var j = 0; j < sowRaw.length; j++) {
+            var s = sowRaw[j];
+            if (!s || !s.id) continue;
+            if (s.id === sowId) connected = true;
+            else remaining.push(s.id);
+          }
+        }
+        if (!connected) continue;
+        out.push({ id: m.id, remainingSowIds: remaining });
+      }
+      return out;
+    }
+    var accessoryRecords = findAccessoryRecords();
+    var accessoryCount   = accessoryRecords.length;
+    var accessoryNote    = accessoryCount
+      ? '\n\nThis will also disconnect ' + accessoryCount +
+        ' linked accessory ' + (accessoryCount === 1 ? 'row' : 'rows') +
+        ' (e.g. mounting brackets) from ' + sowName + '.'
+      : '';
+
     if (!window.confirm(
       'Disconnect ' + itemName + ' from ' + sowName + '?\n\n' +
       'The line item itself will NOT be deleted. It will stay on any other ' +
       'SOWs it is connected to. Only the link between this line item and ' +
-      sowName + ' is being removed.'
+      sowName + ' is being removed.' + accessoryNote
     )) return;
 
     var view = Knack && Knack.views && Knack.views[CFG.sowItemsViewKey];
@@ -1869,30 +2111,145 @@
     var payload = {};
     payload[fieldKey] = remainingIds; // empty array clears the connection
 
+    // The grid groups rows by field_2154 on TWO sources: SOW item
+    // records (view_3921) AND bid records (view_3680). Both reference
+    // the same SOW via the same field key. To make the comparison grid
+    // actually drop the row from this SOW's section, we have to clear
+    // the connection on both — clearing just the SOW item leaves the
+    // bid record still pointing at this SOW, so the row keeps showing
+    // up under this SOW even though the disconnect succeeded.
+    function readBidRecordSowIds() {
+      var bidView = Knack && Knack.views && Knack.views[CFG.viewKey];
+      var bidModel = bidView && bidView.model && bidView.model.data
+                     && bidView.model.data.models;
+      if (!bidModel) return null;
+      for (var mi = 0; mi < bidModel.length; mi++) {
+        if (bidModel[mi].id === rowId) {
+          var bAttrs = bidModel[mi].attributes || {};
+          var bRaw = bAttrs[fieldKey + '_raw'];
+          var ids = [];
+          if (Array.isArray(bRaw)) {
+            for (var bi = 0; bi < bRaw.length; bi++) {
+              if (bRaw[bi] && bRaw[bi].id && bRaw[bi].id !== sowId) ids.push(bRaw[bi].id);
+            }
+          }
+          return ids;
+        }
+      }
+      return null;
+    }
+
+    function fetchBoth(done) {
+      var pending = 0;
+      function tick() { pending--; if (pending <= 0) done(); }
+
+      var sowItemsView = Knack && Knack.views && Knack.views[CFG.sowItemsViewKey];
+      if (sowItemsView && sowItemsView.model && typeof sowItemsView.model.fetch === 'function') {
+        pending++;
+        sowItemsView.model.fetch().always(tick);
+      }
+      var bidView = Knack && Knack.views && Knack.views[CFG.viewKey];
+      if (bidView && bidView.model && typeof bidView.model.fetch === 'function') {
+        pending++;
+        bidView.model.fetch().always(tick);
+      }
+      if (pending === 0) done();
+    }
+
     SCW.knackAjax({
       url:  SCW.knackRecordUrl(CFG.sowItemsViewKey, sowItemId),
       type: 'PUT',
       data: JSON.stringify(payload),
       success: function (resp) {
-        setBusy(button, false);
         if (typeof SCW.syncKnackModel === 'function') {
           SCW.syncKnackModel(CFG.sowItemsViewKey, sowItemId, resp, fieldKey, remainingIds);
         }
-        ns.renderToast('Line item disconnected from ' + sowName, 'success');
-        // Force view_3921 to refetch so the model picks up the new
-        // field_2154 value before the bid-review pipeline reads it.
-        // ns.refresh() alone uses the cached model — without a fetch
-        // first, the grid rebuilds from stale data and the row stays
-        // on this SOW even though the PUT succeeded. Same pattern
-        // used after Add PM & Mobilization (init.js:617).
-        var sowItemsView = Knack && Knack.views && Knack.views[CFG.sowItemsViewKey];
-        if (sowItemsView && sowItemsView.model && typeof sowItemsView.model.fetch === 'function') {
-          sowItemsView.model.fetch().always(function () {
-            if (ns.refresh) ns.refresh();
-          });
-        } else if (ns.refresh) {
-          ns.refresh();
+
+        // Second stage: clear this SOW from the bid record's
+        // field_2154 (so the comparison grid stops grouping the bid
+        // under this SOW) AND from any accessory SOW items whose
+        // field_2464 parent is the row we just disconnected (so
+        // mounting brackets etc. don't strand in the Mounting
+        // Hardware section). Fire in parallel; finish when all done.
+        var bidIds = readBidRecordSowIds();
+        var pending = 0;
+        var accessoryFailures = 0;
+        var bidFailed = false;
+
+        function maybeFinish() {
+          if (pending > 0) return;
+          setBusy(button, false);
+          var msg = 'Line item disconnected from ' + sowName;
+          if (accessoryCount) {
+            var cleared = accessoryCount - accessoryFailures;
+            if (cleared > 0) {
+              msg += ' (' + cleared + ' accessory ' +
+                     (cleared === 1 ? 'row' : 'rows') + ' also cleared)';
+            }
+            if (accessoryFailures) {
+              msg += ' — ' + accessoryFailures + ' accessory ' +
+                     (accessoryFailures === 1 ? 'row' : 'rows') +
+                     ' failed to update';
+            }
+          }
+          if (bidFailed) {
+            ns.renderToast('SOW item disconnected, but the bid record still references this SOW. Try again to clear it fully.', 'info');
+          } else {
+            ns.renderToast(msg, accessoryFailures ? 'info' : 'success');
+          }
+          fetchBoth(function () { if (ns.refresh) ns.refresh(); });
         }
+
+        // Bid record PUT
+        if (bidIds !== null) {
+          pending++;
+          var bidPayload = {};
+          bidPayload[fieldKey] = bidIds;
+          SCW.knackAjax({
+            url:  SCW.knackRecordUrl(CFG.viewKey, rowId),
+            type: 'PUT',
+            data: JSON.stringify(bidPayload),
+            success: function (bResp) {
+              if (typeof SCW.syncKnackModel === 'function') {
+                SCW.syncKnackModel(CFG.viewKey, rowId, bResp, fieldKey, bidIds);
+              }
+              pending--; maybeFinish();
+            },
+            error: function (bxhr) {
+              if (CFG.debug) console.warn('[BidReview] Disconnect bid-record PUT failed:', bxhr && bxhr.status, bxhr && bxhr.responseText);
+              bidFailed = true;
+              pending--; maybeFinish();
+            }
+          });
+        }
+
+        // Accessory PUTs (one per child SOW item, parallel)
+        for (var ai = 0; ai < accessoryRecords.length; ai++) {
+          (function (rec) {
+            pending++;
+            var accPayload = {};
+            accPayload[fieldKey] = rec.remainingSowIds;
+            SCW.knackAjax({
+              url:  SCW.knackRecordUrl(CFG.sowItemsViewKey, rec.id),
+              type: 'PUT',
+              data: JSON.stringify(accPayload),
+              success: function (aResp) {
+                if (typeof SCW.syncKnackModel === 'function') {
+                  SCW.syncKnackModel(CFG.sowItemsViewKey, rec.id, aResp, fieldKey, rec.remainingSowIds);
+                }
+                pending--; maybeFinish();
+              },
+              error: function (axhr) {
+                if (CFG.debug) console.warn('[BidReview] Accessory disconnect PUT failed for', rec.id, ':', axhr && axhr.status, axhr && axhr.responseText);
+                accessoryFailures++;
+                pending--; maybeFinish();
+              }
+            });
+          })(accessoryRecords[ai]);
+        }
+
+        // Nothing to do in the second stage — finish immediately.
+        if (pending === 0) maybeFinish();
       },
       error: function (xhr) {
         setBusy(button, false);

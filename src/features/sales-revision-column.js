@@ -27,7 +27,13 @@
     mountSelector:   '#bid-review-matrix',
     eventNs:         '.scwSalesRevCol',
     cssId:           'scw-sales-rev-col-css',
-    rejectWebhook:   'https://hook.us1.make.com/0cobxwo9q6ycek787agapekg7gtahmt5',
+    // ── Ops → Sales response webhook ──────────────────────────
+    // Fires whenever Ops triages a Sales-submitted revision on the
+    // bid comparison grid: Accept, Reject, or Add to Sub Bid. Make
+    // branches on payload.actionType ("accept" | "reject" |
+    // "forward_to_sub") to notify Sales accordingly. Placeholder URL
+    // until the Make scenario is wired up.
+    responseWebhook: 'https://hook.us1.make.com/56ew1cvhln6g216aldgdian4me8n9xq3',
   };
 
   var P = 'scw-sr-col';
@@ -80,6 +86,104 @@
       '}',
       '.scw-bid-review__overflow-trigger--reject:hover { filter: brightness(.88); }',
       '.scw-bid-review__overflow-trigger--reject:disabled { opacity: .5; cursor: not-allowed; }',
+
+      '.scw-bid-review__overflow-trigger--accept {',
+      '  background: #16a34a !important; color: #fff !important;',
+      '  border: none; border-radius: 4px; padding: 4px 10px;',
+      '  font: 600 11px/1 system-ui, sans-serif; cursor: pointer;',
+      '  white-space: nowrap;',
+      '}',
+      '.scw-bid-review__overflow-trigger--accept:hover { filter: brightness(.88); }',
+      '.scw-bid-review__overflow-trigger--accept:disabled { opacity: .5; cursor: not-allowed; }',
+
+      // ── Sales Revision detail popover ──────────────────────────
+      '.scw-sr-popover__backdrop {',
+      '  position: fixed; inset: 0; z-index: 100000;',
+      '  background: rgba(15,23,42,0.45);',
+      '  display: flex; align-items: center; justify-content: center;',
+      '  padding: 24px;',
+      '}',
+      '.scw-sr-popover {',
+      '  background: #fff; border-radius: 10px;',
+      '  width: 520px; max-width: 100%;',
+      '  max-height: calc(100vh - 48px); overflow: hidden;',
+      '  display: flex; flex-direction: column;',
+      '  box-shadow: 0 24px 64px rgba(2,6,23,0.35);',
+      '  font: 13px/1.45 system-ui, -apple-system, Segoe UI, sans-serif;',
+      '  color: #0f172a;',
+      '}',
+      '.scw-sr-popover__head {',
+      '  display: flex; align-items: center; gap: 10px;',
+      '  padding: 12px 16px;',
+      '  background: #295F91; color: #fff;',
+      '}',
+      '.scw-sr-popover__head--add    { background: #15803d; }',
+      '.scw-sr-popover__head--remove { background: #b91c1c; }',
+      '.scw-sr-popover__head-title {',
+      '  flex: 1; min-width: 0;',
+      '  font-weight: 700; font-size: 14px;',
+      '}',
+      '.scw-sr-popover__head-sub {',
+      '  font-weight: 500; font-size: 12px;',
+      '  opacity: 0.85; margin-top: 2px;',
+      '}',
+      '.scw-sr-popover__close {',
+      '  flex: 0 0 auto;',
+      '  background: rgba(255,255,255,0.18);',
+      '  color: #fff;',
+      '  border: 1px solid rgba(255,255,255,0.28);',
+      '  border-radius: 6px;',
+      '  width: 28px; height: 28px;',
+      '  font: 700 16px/1 system-ui, sans-serif;',
+      '  cursor: pointer;',
+      '  display: inline-flex; align-items: center; justify-content: center;',
+      '}',
+      '.scw-sr-popover__close:hover { background: rgba(255,255,255,0.32); }',
+      '.scw-sr-popover__body {',
+      '  padding: 14px 16px; overflow-y: auto; flex: 1 1 auto;',
+      '}',
+      '.scw-sr-popover__section { margin-bottom: 14px; }',
+      '.scw-sr-popover__section:last-child { margin-bottom: 0; }',
+      '.scw-sr-popover__label {',
+      '  font-size: 10.5px; font-weight: 700;',
+      '  text-transform: uppercase; letter-spacing: 0.05em;',
+      '  color: #64748b; margin-bottom: 6px;',
+      '}',
+      '.scw-sr-popover__field {',
+      '  display: grid; grid-template-columns: 110px 1fr;',
+      '  gap: 6px 10px; padding: 5px 0;',
+      '  border-bottom: 1px solid #f1f5f9;',
+      '  font-size: 12.5px;',
+      '}',
+      '.scw-sr-popover__field:last-child { border-bottom: none; }',
+      '.scw-sr-popover__field-key { color: #475569; font-weight: 600; }',
+      '.scw-sr-popover__field-val { color: #0f172a; word-break: break-word; }',
+      '.scw-sr-popover__diff {',
+      '  display: inline-flex; align-items: center; gap: 6px;',
+      '  flex-wrap: wrap;',
+      '}',
+      '.scw-sr-popover__diff-from {',
+      '  color: #991b1b; background: #fef2f2;',
+      '  padding: 1px 6px; border-radius: 3px;',
+      '  text-decoration: line-through;',
+      '}',
+      '.scw-sr-popover__diff-to {',
+      '  color: #15803d; background: #f0fdf4;',
+      '  padding: 1px 6px; border-radius: 3px;',
+      '  font-weight: 600;',
+      '}',
+      '.scw-sr-popover__diff-arrow { color: #94a3b8; }',
+      '.scw-sr-popover__notes {',
+      '  background: #fffbeb; border: 1px solid #fde68a;',
+      '  border-radius: 6px; padding: 8px 10px;',
+      '  font-style: italic; color: #78350f;',
+      '}',
+      '.scw-sr-popover__foot {',
+      '  display: flex; align-items: center; gap: 8px;',
+      '  padding: 12px 16px;',
+      '  background: #f8fafc; border-top: 1px solid #e2e8f0;',
+      '}',
+      '.scw-sr-popover__foot .scw-sr-popover__spacer { flex: 1; }',
     ].join('\n');
 
     var s = document.createElement('style');
@@ -297,11 +401,29 @@
               if (f.field === 'field_1964' && (parseFloat(fval) <= 1 || isNaN(parseFloat(fval)))) continue;
               var row = document.createElement('div');
               row.className = 'scw-bid-cr-card__row';
-              if (action === 'revise' || action === 'add') {
-                row.textContent = f.label + ': ' + (f.from != null ? f.from : '\u2014') + ' \u2192 ' + f.to;
-              } else {
-                row.textContent = f.label + ': ' + f.to;
+              // Use the styled span classes (.scw-bid-cr-card__label /
+              // __from / __arrow / __to from bid-review/styles.js) so
+              // "from \u2192 to" reads cleanly: muted strikethrough old
+              // value, gray arrow, bold colored new value. For ADD
+              // there's no "from" \u2014 just label + new value, no arrow.
+              var labelSpan = document.createElement('span');
+              labelSpan.className = 'scw-bid-cr-card__label';
+              labelSpan.textContent = f.label + ':';
+              row.appendChild(labelSpan);
+              if (action === 'revise' && f.from != null && String(f.from) !== '') {
+                var fromSpan = document.createElement('span');
+                fromSpan.className = 'scw-bid-cr-card__from';
+                fromSpan.textContent = String(f.from);
+                row.appendChild(fromSpan);
+                var arrow = document.createElement('span');
+                arrow.className = 'scw-bid-cr-card__arrow';
+                arrow.textContent = '\u2192';
+                row.appendChild(arrow);
               }
+              var toSpan = document.createElement('span');
+              toSpan.className = 'scw-bid-cr-card__to';
+              toSpan.textContent = String(f.to);
+              row.appendChild(toSpan);
               card.appendChild(row);
             }
           } else if (action === 'remove') {
@@ -317,6 +439,19 @@
             notes.textContent = '\u201c' + json.changeNotes + '\u201d';
             card.appendChild(notes);
           }
+
+          // Card body click opens the detail popover. Stop bubbling so
+          // the bid-review row-expand doesn't also fire underneath.
+          card.style.cursor = 'pointer';
+          card.title = 'Click for full revision detail';
+          (function (capturedRev) {
+            card.addEventListener('click', function (ev) {
+              if (ev.target.closest('button, a, input, select, textarea')) return;
+              ev.preventDefault();
+              ev.stopPropagation();
+              openRevisionPopover(capturedRev, card);
+            });
+          })(rev);
 
           item.appendChild(card);
 
@@ -334,57 +469,39 @@
                      && !gridRow.find('.scw-bid-review__no-bid-badge, .scw-bid-review__survey-no-bid-badge').length;
 
           // Reject button — only for add/remove actions (not revise)
-          if (action !== 'revise') {
-            var rejectBtn = document.createElement('button');
-            rejectBtn.className = 'scw-bid-review__overflow-trigger scw-bid-review__overflow-trigger--reject';
-            rejectBtn.textContent = 'Reject';
-            rejectBtn.setAttribute('data-rev-id', rev.id);
-            rejectBtn.setAttribute('data-rev-request-id', rev.parentRequestId || '');
-            rejectBtn.setAttribute('data-rev-json', revJsonStr);
-            rejectBtn.addEventListener('click', handleRejectClick);
-            actions.appendChild(rejectBtn);
-          }
+          // Ops response actions — always shown on every card,
+          // regardless of action type (revise / add / remove). Order
+          // is destructive first, primary last per CLAUDE.md.
+          var rejectBtn = document.createElement('button');
+          rejectBtn.className = 'scw-bid-review__overflow-trigger scw-bid-review__overflow-trigger--reject';
+          rejectBtn.textContent = 'Reject';
+          rejectBtn.setAttribute('data-rev-id', rev.id);
+          rejectBtn.setAttribute('data-rev-request-id', rev.parentRequestId || '');
+          rejectBtn.setAttribute('data-rev-json', revJsonStr);
+          rejectBtn.addEventListener('click', handleRejectClick);
+          actions.appendChild(rejectBtn);
 
-          // Revise items: show Clear button (on-bid and not-on-bid)
-          if (action === 'revise') {
-            var ackBtn = document.createElement('button');
-            ackBtn.className = 'scw-bid-review__overflow-trigger scw-bid-review__overflow-trigger--adopt';
-            ackBtn.textContent = 'Clear';
-            ackBtn.setAttribute('data-rev-id', rev.id);
-            ackBtn.addEventListener('click', function () {
-              var aid = this.getAttribute('data-rev-id');
-              this.disabled = true;
-              this.textContent = 'Updating\u2026';
-              var self = this;
-              var statusData = {};
-              statusData[CFG.statusField] = 'Accepted';
-              SCW.knackAjax({
-                url: SCW.knackRecordUrl(CFG.revisionView, aid),
-                type: 'PUT',
-                data: JSON.stringify(statusData),
-                success: function () {
-                  self.textContent = 'Cleared \u2713';
-                  self.style.opacity = '0.6';
-                  setTimeout(function () {
-                    if (Knack.views[CFG.revisionView] && Knack.views[CFG.revisionView].model) {
-                      Knack.views[CFG.revisionView].model.fetch();
-                    }
-                  }, 1500);
-                },
-                error: function () {
-                  self.textContent = 'Failed';
-                  self.disabled = false;
-                },
-              });
-            });
-            actions.appendChild(ackBtn);
-          }
+          var acceptBtn = document.createElement('button');
+          acceptBtn.className = 'scw-bid-review__overflow-trigger scw-bid-review__overflow-trigger--accept';
+          acceptBtn.textContent = 'Accept';
+          acceptBtn.setAttribute('data-rev-id', rev.id);
+          acceptBtn.setAttribute('data-rev-request-id', rev.parentRequestId || '');
+          acceptBtn.setAttribute('data-rev-json', revJsonStr);
+          acceptBtn.addEventListener('click', handleAcceptClick);
+          actions.appendChild(acceptBtn);
+
+          // (Old "Clear" button on revise rows was replaced by the
+          // unified Accept button above; per-action gating was
+          // dropped so Ops always sees Reject + Accept + Add to Sub
+          // Bid regardless of the revision's action type.)
 
           // CR button — Revise only if on bid; Add/Remove always shown
           if (action !== 'revise' || isOnBid) {
-            var crLabel = action === 'add'    ? 'Add \u2192'
-                        : action === 'remove' ? 'Remove \u2192'
-                        :                       'Revise \u2192';
+            // Unified "Forward for bid revision" label across revise /
+            // add / remove. The destination Make scenario still
+            // branches on the crMod / action attached to the choice,
+            // so the verb in the button doesn't need to vary.
+            var crLabel = 'Forward for bid revision \u2192';
             var crMod   = action === 'add'    ? 'create'
                         : action === 'remove' ? 'remove'
                         :                       'revise';
@@ -397,6 +514,12 @@
                   'data-rev-id': rev.id,
                   'data-rev-request-id': rev.parentRequestId || '',
                   'data-sow-item-id': rev.sowItemId,
+                  // Carry the selected package so the Forward handler
+                  // can put it on the same response payload Accept /
+                  // Reject use. Without this Make can't tell which
+                  // sub-bid the user picked from the dropdown.
+                  'data-pkg-id': packages[cp].id,
+                  'data-pkg-name': packages[cp].name,
                   'data-rev-json': revJsonStr,
                 }
               });
@@ -415,11 +538,13 @@
                   'data-rev-id': rev.id,
                   'data-rev-request-id': rev.parentRequestId || '',
                   'data-sow-item-id': rev.sowItemId,
+                  'data-pkg-id': packages[addp].id,
+                  'data-pkg-name': packages[addp].name,
                   'data-rev-json': JSON.stringify($.extend({}, rev.json || {}, { action: 'add' })),
                 }
               });
             }
-            actions.appendChild(buildSROverflow('Add \u2192', 'create', addChoices));
+            actions.appendChild(buildSROverflow('Forward for bid revision \u2192', 'create', addChoices));
           }
 
           item.appendChild(actions);
@@ -482,27 +607,76 @@
     return container;
   }
 
-  /** Read all bid packages from the grid's header row. */
+  /** Read all bid packages from the grid's header rows.
+   * The header has a 3-row layout: titles / details / actions.
+   * Package name lives in `.scw-bid-review__col-title-text` (title row);
+   * the optional `BD-####` lives in `.scw-bid-review__col-subtitle`
+   * (details row, same column); the package id lives on the
+   * data-package-id buttons in the actions row (same column).
+   * Pair them by column index. */
   function getGridPackages() {
     var pkgs = [];
     var $mount = $(CFG.mountSelector);
-    $mount.find('.scw-bid-review__pkg-header').each(function () {
-      // Read package name from subtitle (BD-#) or old pkg-name element
-      var $subtitle = $(this).find('.scw-bid-review__col-subtitle');
-      var $nameOld = $(this).find('.scw-bid-review__pkg-name');
-      var name = '';
-      if ($subtitle.length) {
-        name = $subtitle.contents().filter(function () { return this.nodeType === 3; }).first().text().trim();
+    $mount.find('table').each(function () {
+      var $thead = $(this).find('thead');
+      if (!$thead.length) return;
+      var titles  = $thead.find('.scw-bid-review__header-titles').children().toArray();
+      var details = $thead.find('.scw-bid-review__header-details').children().toArray();
+      var actions = $thead.find('.scw-bid-review__header-actions').children().toArray();
+
+      for (var i = 0; i < titles.length; i++) {
+        var th = titles[i];
+        if (!th.classList || !th.classList.contains('scw-bid-review__pkg-header')) continue;
+
+        var nameEl = th.querySelector('.scw-bid-review__col-title-text')
+                  || th.querySelector('.scw-bid-review__pkg-name');
+        var name = nameEl ? (nameEl.textContent || '').trim() : '';
+
+        // Append BD-#### from the details row if available
+        var detailCell = details[i];
+        if (detailCell) {
+          var subtitle = detailCell.querySelector('.scw-bid-review__col-subtitle');
+          if (subtitle) {
+            var firstNode = subtitle.childNodes[0];
+            var bd = firstNode && firstNode.nodeType === 3 ? firstNode.nodeValue.trim() : '';
+            if (bd) name = bd + (name ? ' — ' + name : '');
+          }
+        }
+
+        // Package id from the actions row buttons. Some layouts have
+        // a Convert/Adopt-style header button there, others (single
+        // sub-bid grids) leave the action header cell empty. Try
+        // there first.
+        var id = '';
+        var actionCell = actions[i];
+        if (actionCell) {
+          var btn = actionCell.querySelector('button[data-package-id]');
+          if (btn) id = btn.getAttribute('data-package-id') || '';
+        }
+
+        // Fallback: peek into the first data row at the same column
+        // index. Per-row Revise / Remove cell-action buttons carry
+        // data-package-id; this is the source of truth even when the
+        // header action cell is bare.
+        if (!id) {
+          var $thisTable = $(this);
+          var $firstDataRow = $thisTable.find('tbody tr.scw-bid-review__row').first();
+          if ($firstDataRow.length) {
+            var cellAtIndex = $firstDataRow.children()[i];
+            if (cellAtIndex) {
+              var rowBtn = cellAtIndex.querySelector('button[data-package-id]');
+              if (rowBtn) id = rowBtn.getAttribute('data-package-id') || '';
+            }
+          }
+        }
+
+        if (name && id) pkgs.push({ id: id, name: name });
       }
-      if (!name && $nameOld.length) {
-        name = $nameOld.contents().first().text().trim();
-      }
-      // Get package ID from any action button in the header
-      var $actionBtn = $(this).find('button[data-package-id]');
-      var id = $actionBtn.length ? $actionBtn.attr('data-package-id') : '';
-      if (name && id) pkgs.push({ id: id, name: name });
     });
-    // Fallback: read from data rows in the CR column
+
+    // Last-resort fallback: scrape any rendered overflow-item[data-package-id]
+    // already on the page from a prior render. Chicken-and-egg with the
+    // current render pass, but covers post-mutation refreshes.
     if (!pkgs.length) {
       var seen = {};
       $mount.find('.scw-bid-review__overflow-item[data-package-id]').each(function () {
@@ -600,29 +774,209 @@
     var revJson = {};
     try { revJson = JSON.parse(btn.getAttribute('data-rev-json') || '{}'); } catch (ex) {}
 
-    var label = revJson.displayLabel || revJson.productName || 'this item';
-    if (!window.confirm('Reject revision for ' + label + '?')) return;
+    openNotePrompt({
+      kind:         'reject',
+      revJson:      revJson,
+      requireNote:  true,
+    }, function (notes) {
+      performReject(btn, revId, revReqId, revJson, notes);
+    });
+  }
 
+  function handleAcceptClick(e) {
+    e.stopPropagation();
+    var btn = this;
+    var revId = btn.getAttribute('data-rev-id');
+    var revReqId = btn.getAttribute('data-rev-request-id');
+    var revJson = {};
+    try { revJson = JSON.parse(btn.getAttribute('data-rev-json') || '{}'); } catch (ex) {}
+
+    openNotePrompt({
+      kind:         'accept',
+      revJson:      revJson,
+      requireNote:  false,
+    }, function (notes) {
+      performAccept(btn, revId, revReqId, revJson, notes);
+    });
+  }
+
+  // Fire the unified Ops-response webhook. Make branches on actionType
+  // ("accept" | "reject" | "forward_to_sub") to decide which Sales
+  // notification template to send.
+  function fireResponseWebhook(actionType, revId, revReqId, revJson, notes) {
+    var item = JSON.parse(JSON.stringify(revJson || {}));
+    item.lineItemId = revId;
+    if (!item.action) item.action = 'revise';
+    if (notes) item.responseNotes = notes;
+
+    var payload = {
+      actionType: actionType,
+      timestamp:  new Date().toISOString(),
+      totalItems: 1,
+      revisionRequests: [{
+        revisionRequestId: revReqId || '',
+        items: [item],
+      }],
+    };
+    try {
+      var u = Knack.getUserAttributes();
+      if (u) payload.user = { id: u.id || '', name: u.name || '', email: u.email || '' };
+    } catch (ex) {}
+
+    $.ajax({
+      url: CFG.responseWebhook,
+      type: 'POST',
+      contentType: 'application/json',
+      data: JSON.stringify(payload),
+      timeout: 30000,
+    });
+  }
+
+  // Themed by kind ("reject" | "accept" | "forward"). Reject requires
+  // a note; accept + forward make it optional. onSubmit(notes) fires
+  // only on submit (cancel/escape silently dismiss).
+  var NOTE_PROMPT_THEMES = {
+    reject: {
+      title:       'Reject revision',
+      label:       'Reason for rejection (visible to sales)',
+      placeholder: 'e.g. Out of budget \u2014 see SR-####',
+      headerBg:    '#b91c1c',
+      submitBg:    '#dc2626',
+      submitBorder:'#991b1b',
+      submitLabel: 'Reject',
+      busyLabel:   'Rejecting\u2026',
+    },
+    accept: {
+      title:       'Accept revision',
+      label:       'Note for sales (optional)',
+      placeholder: 'e.g. Looks good \u2014 will apply on next SOW build',
+      headerBg:    '#15803d',
+      submitBg:    '#16a34a',
+      submitBorder:'#166534',
+      submitLabel: 'Accept',
+      busyLabel:   'Accepting\u2026',
+    },
+    forward: {
+      title:       'Add to sub bid',
+      label:       'Note for sales (optional)',
+      placeholder: 'e.g. Forwarding to sub for re-pricing',
+      headerBg:    '#1d4ed8',
+      submitBg:    '#2563eb',
+      submitBorder:'#1e40af',
+      submitLabel: 'Add to Sub Bid',
+      busyLabel:   'Forwarding\u2026',
+    },
+  };
+
+  function openNotePrompt(opts, onSubmit) {
+    var theme = NOTE_PROMPT_THEMES[opts.kind] || NOTE_PROMPT_THEMES.reject;
+    var label = (opts.revJson && (opts.revJson.displayLabel || opts.revJson.productName)) || 'this item';
+
+    var backdrop = document.createElement('div');
+    backdrop.style.cssText = 'position:fixed;inset:0;z-index:100002;background:rgba(15,23,42,0.45);'
+      + 'display:flex;align-items:center;justify-content:center;padding:24px;';
+
+    var modal = document.createElement('div');
+    modal.style.cssText = 'background:#fff;border-radius:10px;width:440px;max-width:100%;'
+      + 'font:13px/1.45 system-ui,-apple-system,Segoe UI,sans-serif;color:#0f172a;'
+      + 'box-shadow:0 24px 64px rgba(2,6,23,0.35);overflow:hidden;display:flex;flex-direction:column;';
+
+    var head = document.createElement('div');
+    head.style.cssText = 'padding:12px 16px;background:' + theme.headerBg + ';color:#fff;font-weight:700;font-size:14px;';
+    head.textContent = theme.title + ': ' + label;
+    modal.appendChild(head);
+
+    var body = document.createElement('div');
+    body.style.cssText = 'padding:14px 16px;';
+    var lbl = document.createElement('div');
+    lbl.style.cssText = 'font-size:10.5px;font-weight:700;text-transform:uppercase;letter-spacing:.05em;color:#64748b;margin-bottom:6px;';
+    lbl.textContent = theme.label;
+    body.appendChild(lbl);
+    var ta = document.createElement('textarea');
+    ta.rows = 4;
+    ta.placeholder = theme.placeholder;
+    ta.style.cssText = 'width:100%;box-sizing:border-box;padding:8px 10px;border:1px solid #d1d5db;'
+      + 'border-radius:6px;font:inherit;resize:vertical;outline:none;';
+    body.appendChild(ta);
+
+    // Inline validation hint for reject (note is required there).
+    var hint = document.createElement('div');
+    hint.style.cssText = 'margin-top:6px;font-size:11px;color:#b91c1c;display:none;';
+    hint.textContent = 'A note is required.';
+    body.appendChild(hint);
+    modal.appendChild(body);
+
+    var foot = document.createElement('div');
+    foot.style.cssText = 'display:flex;gap:8px;padding:12px 16px;background:#f8fafc;border-top:1px solid #e2e8f0;';
+    var spacer = document.createElement('div');
+    spacer.style.flex = '1';
+    foot.appendChild(spacer);
+
+    function close() { if (backdrop.parentNode) backdrop.parentNode.removeChild(backdrop); }
+    backdrop.addEventListener('click', function (ev) { if (ev.target === backdrop) close(); });
+    function keyHandler(ev) {
+      if (ev.key === 'Escape') { close(); document.removeEventListener('keydown', keyHandler); }
+    }
+    document.addEventListener('keydown', keyHandler);
+
+    var cancelBtn = document.createElement('button');
+    cancelBtn.type = 'button';
+    cancelBtn.textContent = 'Cancel';
+    cancelBtn.style.cssText = 'padding:8px 14px;border-radius:6px;border:1px solid #d1d5db;'
+      + 'background:#fff;color:#374151;font:600 12px system-ui,sans-serif;cursor:pointer;';
+    cancelBtn.addEventListener('click', function () { close(); document.removeEventListener('keydown', keyHandler); });
+    foot.appendChild(cancelBtn);
+
+    var submitBtn = document.createElement('button');
+    submitBtn.type = 'button';
+    submitBtn.textContent = theme.submitLabel;
+    submitBtn.style.cssText = 'padding:8px 14px;border-radius:6px;border:1px solid ' + theme.submitBorder + ';'
+      + 'background:' + theme.submitBg + ';color:#fff;font:700 12px system-ui,sans-serif;cursor:pointer;';
+    submitBtn.addEventListener('click', function () {
+      var note = (ta.value || '').trim();
+      if (opts.requireNote && !note) {
+        hint.style.display = 'block';
+        ta.focus();
+        return;
+      }
+      document.removeEventListener('keydown', keyHandler);
+      close();
+      onSubmit(note);
+    });
+    foot.appendChild(submitBtn);
+
+    modal.appendChild(foot);
+    backdrop.appendChild(modal);
+    document.body.appendChild(backdrop);
+    setTimeout(function () { ta.focus(); }, 50);
+  }
+
+  /** Do the actual reject work \u2014 PUT to Knack + fire webhook \u2014 with the
+   *  sales note attached to the JSON and the webhook payload. */
+  function performReject(btn, revId, revReqId, revJson, rejectNotes) {
     btn.disabled = true;
     btn.textContent = 'Rejecting\u2026';
 
-    // Build updated JSON with rejection stamp
     var updatedJson = JSON.parse(JSON.stringify(revJson));
     updatedJson.status = 'Rejected';
     updatedJson.rejectedAt = new Date().toISOString();
+    if (rejectNotes) updatedJson.rejectNotes = rejectNotes;
     try {
       var u = Knack.getUserAttributes();
       if (u) updatedJson.rejectedBy = { id: u.id || '', name: u.name || '', email: u.email || '' };
     } catch (ex) {}
 
-    // Build rejection HTML stamp to prepend to existing card
+    var noteHtml = rejectNotes
+      ? '<div style="margin-top:4px;font-weight:500;font-style:italic;">\u201c'
+        + esc(rejectNotes).replace(/\n/g, '<br>') + '\u201d</div>'
+      : '';
     var stampHtml = '<div style="font-family:system-ui,-apple-system,sans-serif;font-size:12px;'
       + 'background:#fef2f2;border:1px solid #fecaca;border-radius:4px;padding:6px 10px;margin-bottom:6px;'
       + 'color:#991b1b;font-weight:600;">'
-      + '\u274c Rejected &mdash; ' + new Date().toLocaleString()
+      + '\u274c Rejected \u2014 ' + new Date().toLocaleString()
+      + noteHtml
       + '</div>';
 
-    // Find the existing HTML from the card in the DOM
     var cardEl = btn.closest('.' + P + '-item');
     var existingHtml = '';
     if (cardEl) {
@@ -631,7 +985,6 @@
     }
     var newHtml = stampHtml + existingHtml;
 
-    // 1. Update Knack record: field_2645 (status), field_2695 (HTML), field_2696 (JSON)
     var knackData = {};
     knackData[CFG.statusField] = 'Rejected';
     knackData[CFG.htmlField] = newHtml;
@@ -653,28 +1006,74 @@
       },
     });
 
-    // 2. Send webhook with full item data (fire-and-forget)
-    var item = JSON.parse(JSON.stringify(updatedJson));
-    item.lineItemId = revId;
-    if (!item.action) item.action = 'revise';
+    fireResponseWebhook('reject', revId, revReqId, updatedJson, rejectNotes);
+  }
 
-    var payload = {
-      action: 'reject',
-      timestamp: new Date().toISOString(),
-      totalItems: 1,
-      revisionRequests: [{
-        revisionRequestId: revReqId || '',
-        items: [item],
-      }],
-    };
+  // ── Accept: mirror of performReject with green stamp + status=Accepted ──
+  function performAccept(btn, revId, revReqId, revJson, acceptNotes) {
+    btn.disabled = true;
+    btn.textContent = 'Accepting…';
 
-    $.ajax({
-      url: CFG.rejectWebhook,
-      type: 'POST',
-      contentType: 'application/json',
-      data: JSON.stringify(payload),
-      timeout: 30000,
+    var updatedJson = JSON.parse(JSON.stringify(revJson));
+    updatedJson.status = 'Accepted';
+    updatedJson.acceptedAt = new Date().toISOString();
+    if (acceptNotes) updatedJson.acceptNotes = acceptNotes;
+    try {
+      var u = Knack.getUserAttributes();
+      if (u) updatedJson.acceptedBy = { id: u.id || '', name: u.name || '', email: u.email || '' };
+    } catch (ex) {}
+
+    var noteHtml = acceptNotes
+      ? '<div style="margin-top:4px;font-weight:500;font-style:italic;">“'
+        + esc(acceptNotes).replace(/\n/g, '<br>') + '”</div>'
+      : '';
+    var stampHtml = '<div style="font-family:system-ui,-apple-system,sans-serif;font-size:12px;'
+      + 'background:#f0fdf4;border:1px solid #bbf7d0;border-radius:4px;padding:6px 10px;margin-bottom:6px;'
+      + 'color:#166534;font-weight:600;">'
+      + '✓ Accepted — ' + new Date().toLocaleString()
+      + noteHtml
+      + '</div>';
+
+    var cardEl = btn.closest('.' + P + '-item');
+    var existingHtml = '';
+    if (cardEl) {
+      var cardDiv = cardEl.querySelector('.' + P + '-card');
+      if (cardDiv) existingHtml = cardDiv.innerHTML;
+    }
+    var newHtml = stampHtml + existingHtml;
+
+    var knackData = {};
+    knackData[CFG.statusField] = 'Accepted';
+    knackData[CFG.htmlField] = newHtml;
+    knackData[CFG.jsonField] = JSON.stringify(updatedJson);
+
+    SCW.knackAjax({
+      url: SCW.knackRecordUrl(CFG.revisionView, revId),
+      type: 'PUT',
+      data: JSON.stringify(knackData),
+      success: function () {
+        SCW.debug('[SalesRevCol] Updated record', revId, 'to Accepted');
+        afterAccept(btn);
+      },
+      error: function () {
+        console.warn('[SalesRevCol] Failed to update record', revId);
+        btn.textContent = 'Failed';
+        btn.disabled = false;
+        setTimeout(function () { btn.textContent = 'Accept'; }, 3000);
+      },
     });
+
+    fireResponseWebhook('accept', revId, revReqId, updatedJson, acceptNotes);
+  }
+
+  function afterAccept(btn) {
+    btn.textContent = 'Accepted ✓';
+    btn.style.opacity = '0.6';
+    setTimeout(function () {
+      if (Knack.views[CFG.revisionView] && Knack.views[CFG.revisionView].model) {
+        Knack.views[CFG.revisionView].model.fetch();
+      }
+    }, 1500);
   }
 
   function afterReject(btn) {
@@ -843,18 +1242,232 @@
       try { revJson = JSON.parse(this.getAttribute('data-rev-json') || '{}'); } catch (ex) {}
       var revId = this.getAttribute('data-rev-id');
       var revReqId = this.getAttribute('data-rev-request-id');
+      var pkgId = this.getAttribute('data-pkg-id') || '';
+      var pkgName = this.getAttribute('data-pkg-name') || '';
 
-      if (window.SCW && SCW.bidReview && SCW.bidReview.createBidCRFromRevision) {
-        SCW.bidReview.createBidCRFromRevision({
-          sowItemId:            sowItemId,
-          action:               revJson.action || 'revise',
-          changeNotes:          revJson.changeNotes || '',
-          revJson:              revJson,
-          revisionRecordId:     revId || '',
-          revisionRequestId:    revReqId || '',
+      // "Forward for bid revision" does two things:
+      //
+      //   1. Fires the unified Ops response webhook (responseWebhook)
+      //      — same payload shape as Accept and Reject, differing
+      //      only by actionType: 'forward_to_sub'. Carries the
+      //      selected sub-bid (pkgId / pkgName) on the item so Make
+      //      knows which package was chosen. This notifies Sales.
+      //
+      //   2. Queues a pending bid CR for the chosen package via
+      //      batchConvertRevisions — the same headless helper Convert
+      //      All uses. The item shows up in the package's pending
+      //      list alongside any other queued changes; the webhook
+      //      to rpbu6rd1... only fires when Ops clicks "Submit
+      //      Change Request" on the package header (manual batch
+      //      submit, with confirm). This matches the legacy modal
+      //      flow's behaviour — the modal also only queued, it didn't
+      //      submit on Save.
+      //
+      // No auto-submit — the bid CR sits in pending until Ops chooses
+      // to ship it (potentially batched with other revisions).
+      openNotePrompt({
+        kind:        'forward',
+        revJson:     revJson,
+        requireNote: false,
+      }, function (notes) {
+        var revJsonWithPkg = $.extend({}, revJson, {
+          pkgId: pkgId,
+          pkgName: pkgName,
         });
+        fireResponseWebhook('forward_to_sub', revId, revReqId, revJsonWithPkg, notes);
+
+        // Queue the bid-side pending CR (no modal, no webhook fire).
+        var bidR = window.SCW && SCW.bidReview;
+        if (bidR && bidR.batchConvertRevisions) {
+          var revItems = [{
+            sowItemId:         sowItemId,
+            action:            revJson.action || 'revise',
+            changeNotes:       notes || revJson.changeNotes || '',
+            revJson:           revJson,
+            revisionRecordId:  revId || '',
+            revisionRequestId: revReqId || '',
+          }];
+          bidR.batchConvertRevisions(revItems, pkgId);
+        }
+      });
+    }
+  }
+
+  // ═══════════════════════════════════════════════════════════
+  //  POPOVER — full revision detail
+  // ═══════════════════════════════════════════════════════════
+
+  // Map field key → readable label. The JSON payload carries f.label,
+  // but it's not always populated, so this is a fallback.
+  var FIELD_LABELS = {
+    field_1949: 'Product',
+    field_1964: 'Quantity',
+    field_2020: 'Labor Description',
+    field_1953: 'SCW Notes',
+    field_2461: 'Existing Cabling',
+    field_1984: 'Exterior',
+    field_1983: 'Plenum',
+    field_1965: 'Drop Length',
+    field_1951: 'Drop Number',
+    field_2150: 'Sub Bid',
+    field_1957: 'Connected Devices',
+    field_2197: 'Connected To',
+    field_1946: 'MDF/IDF',
+    field_2035: 'Conduit',
+    field_2261: 'Custom Discount %',
+    field_2262: 'Custom Discount $',
+    field_2240: 'Drop Prefix',
+    field_2219: 'Proposal Bucket',
+  };
+
+  var _openPopover = null;
+  var _activeClose = null;
+
+  function popoverKeyHandler(e) {
+    if (e.key === 'Escape' && _activeClose) _activeClose();
+  }
+
+  function el(tag, cls, text) {
+    var n = document.createElement(tag);
+    if (cls) n.className = cls;
+    if (text != null) n.textContent = text;
+    return n;
+  }
+
+  function buildDiffValue(f, action) {
+    var fromVal = f.from != null && f.from !== '' ? String(f.from) : '—';
+    var toVal   = f.to   != null && f.to   !== '' ? String(f.to)   : '—';
+    if (action === 'revise' || action === 'add') {
+      var wrap = el('div', 'scw-sr-popover__diff');
+      wrap.appendChild(el('span', 'scw-sr-popover__diff-from', fromVal));
+      wrap.appendChild(el('span', 'scw-sr-popover__diff-arrow', '→'));
+      wrap.appendChild(el('span', 'scw-sr-popover__diff-to', toVal));
+      return wrap;
+    }
+    return el('span', 'scw-sr-popover__field-val', toVal);
+  }
+
+  function openRevisionPopover(rev, anchorCard) {
+    if (_activeClose) _activeClose();
+
+    var json   = rev.json || {};
+    var action = json.action || 'revise';
+
+    // Slot for the moved action buttons — set when we move them in,
+    // checked by doClose to restore them before tearing down the popover.
+    var actionMarker = null;
+    var movedActions = null;
+
+    function doClose() {
+      if (movedActions && actionMarker && actionMarker.parentNode) {
+        actionMarker.parentNode.insertBefore(movedActions, actionMarker);
+        actionMarker.parentNode.removeChild(actionMarker);
+      }
+      if (backdrop && backdrop.parentNode) backdrop.parentNode.removeChild(backdrop);
+      _openPopover = null;
+      _activeClose = null;
+      document.removeEventListener('keydown', popoverKeyHandler);
+    }
+
+    var backdrop = el('div', 'scw-sr-popover__backdrop');
+    backdrop.addEventListener('click', function (e) {
+      if (e.target === backdrop) doClose();
+    });
+
+    var pop = el('div', 'scw-sr-popover');
+    backdrop.appendChild(pop);
+
+    // Header
+    var headMod = action === 'add'    ? ' scw-sr-popover__head--add'
+                : action === 'remove' ? ' scw-sr-popover__head--remove'
+                :                       '';
+    var head = el('div', 'scw-sr-popover__head' + headMod);
+    var headTitleWrap = el('div', 'scw-sr-popover__head-title');
+    var headLabel = action === 'add'    ? 'Sales: Add line item'
+                  : action === 'remove' ? 'Sales: Remove line item'
+                  :                       'Sales: Revise line item';
+    headTitleWrap.appendChild(document.createTextNode(headLabel));
+    var product = json.productName || '';
+    var jr = json.requested || {};
+    if (jr.field_1949) product = jr.field_1949;
+    var subText = json.displayLabel
+      ? (json.displayLabel + (product && product !== json.displayLabel ? '  ·  ' + product : ''))
+      : product;
+    if (subText) headTitleWrap.appendChild(el('div', 'scw-sr-popover__head-sub', subText));
+    head.appendChild(headTitleWrap);
+
+    var closeBtn = el('button', 'scw-sr-popover__close', '×');
+    closeBtn.type = 'button';
+    closeBtn.title = 'Close';
+    closeBtn.addEventListener('click', doClose);
+    head.appendChild(closeBtn);
+    pop.appendChild(head);
+
+    // Body
+    var body = el('div', 'scw-sr-popover__body');
+
+    if (json.fields && json.fields.length) {
+      var section = el('div', 'scw-sr-popover__section');
+      section.appendChild(el('div', 'scw-sr-popover__label',
+        action === 'add' ? 'New record values' : 'Field changes'));
+      for (var i = 0; i < json.fields.length; i++) {
+        var f = json.fields[i];
+        var fval = f.to != null ? String(f.to) : '';
+        // Skip non-informative cells (matches the card filter)
+        if (!fval || fval === ' ') continue;
+        if (f.field === 'field_1964' && (parseFloat(fval) <= 1 || isNaN(parseFloat(fval)))) continue;
+        var row = el('div', 'scw-sr-popover__field');
+        row.appendChild(el('div', 'scw-sr-popover__field-key',
+          f.label || FIELD_LABELS[f.field] || f.field));
+        row.appendChild(buildDiffValue(f, action));
+        section.appendChild(row);
+      }
+      body.appendChild(section);
+    } else if (action === 'remove') {
+      var rmSection = el('div', 'scw-sr-popover__section');
+      rmSection.appendChild(el('div', 'scw-sr-popover__label', 'Action'));
+      rmSection.appendChild(el('div', 'scw-sr-popover__field-val', 'Requesting removal of this line item.'));
+      body.appendChild(rmSection);
+    }
+
+    if (json.changeNotes) {
+      var notesSection = el('div', 'scw-sr-popover__section');
+      notesSection.appendChild(el('div', 'scw-sr-popover__label', 'Change notes'));
+      notesSection.appendChild(el('div', 'scw-sr-popover__notes', json.changeNotes));
+      body.appendChild(notesSection);
+    }
+
+    if (rev.status) {
+      var statusSection = el('div', 'scw-sr-popover__section');
+      statusSection.appendChild(el('div', 'scw-sr-popover__label', 'Status'));
+      statusSection.appendChild(el('div', 'scw-sr-popover__field-val', rev.status));
+      body.appendChild(statusSection);
+    }
+
+    pop.appendChild(body);
+
+    // Footer — re-use the existing action buttons from the card. We
+    // clone the live action buttons so their already-attached handlers
+    // keep working when invoked from the popover.
+    var foot = el('div', 'scw-sr-popover__foot');
+    foot.appendChild(el('div', 'scw-sr-popover__spacer'));
+    if (anchorCard) {
+      var liveActions = anchorCard.parentNode && anchorCard.parentNode.querySelector('.scw-bid-review__action-menus');
+      if (liveActions) {
+        // Move (don't clone) into the popover footer so existing listeners
+        // remain wired. doClose will move it back into the card.
+        movedActions = liveActions;
+        actionMarker = document.createComment('scw-sr-actions-slot');
+        liveActions.parentNode.insertBefore(actionMarker, liveActions);
+        foot.appendChild(liveActions);
       }
     }
+    pop.appendChild(foot);
+
+    document.body.appendChild(backdrop);
+    _openPopover = backdrop;
+    _activeClose = doClose;
+    document.addEventListener('keydown', popoverKeyHandler);
   }
 
   // ═══════════════════════════════════════════════════════════

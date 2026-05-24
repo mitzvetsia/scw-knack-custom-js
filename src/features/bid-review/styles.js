@@ -205,10 +205,12 @@
       '.scw-bid-review__sow-status .scw-ops-pill .scw-ops-info {',
       '  background: rgba(255,255,255,.2); color: #fff;',
       '}',
-      /* DOC_files attached to this SOW or bid package (view_3926).
-         Compact list with a small label, doc-type chip, file-icon
-         link, and optional notes. Same shape in both the SOW status
-         bar and bid column headers so the visual language matches. */
+      /* DOC_files (view_3926) — bid package version stays compact
+         (no header bar) since it sits inside narrow bid column cells.
+         The SOW header uses the .scw-bid-review__docs--sow variant,
+         which adds a label/count header bar, an "Available from
+         project" subsection, a + Link affordance per available doc,
+         and a primary Upload action footer. */
       '.scw-bid-review__docs {',
       '  display: flex;',
       '  flex-direction: column;',
@@ -217,58 +219,290 @@
       '  padding-top: 6px;',
       '  border-top: 1px dashed #cbd5e1;',
       '}',
-      '.scw-bid-review__docs-label {',
-      '  font-size: 9.5px;',
-      '  font-weight: 700;',
-      '  text-transform: uppercase;',
-      '  letter-spacing: 0.06em;',
-      '  color: #64748b;',
+      /* SOW variant — FLAT. Matches the label/value grammar of the
+         Survey Costs / Margin rows above and below it. No panel
+         border, no card background, no rounded corners. The
+         "Documents" label uses the same uppercase 10.5px treatment
+         as the metric labels so the eye reads the SOW header as one
+         continuous block rather than "metric, metric, PANEL,
+         metric". Item rows are separated by hairline dividers, same
+         visual rhythm as the metric stack. */
+      '.scw-bid-review__docs--sow {',
+      '  gap: 0;',
+      '  margin-top: 14px;',  /* breathing room above (proposal info) */
+      '  margin-bottom: 6px;', /* and below (survey costs) */
+      '  padding: 0;',
+      '  background: transparent;',
+      '  border: none;',
+      '  border-radius: 0;',
+      '  overflow: visible;',
       '}',
-      '.scw-bid-review__docs-item {',
+      /* Header row mirrors .sow-metric: label on the left, action on
+         the right. Anchors the DOCUMENTS label so it doesn't read as
+         "centered" relative to the SURVEY COSTS / MARGIN rows below
+         (which always have a value on the right). */
+      '.scw-bid-review__docs-header {',
       '  display: flex;',
       '  align-items: center;',
-      '  gap: 6px;',
-      '  font-size: 11px;',
+      '  justify-content: space-between;',
+      '  gap: 8px;',
+      '  padding: 0 0 4px;',  /* gap between DOCUMENTS label and first row */
+      '  background: transparent;',
+      '  border: none;',
+      '}',
+      '.scw-bid-review__docs-label {',
+      '  text-transform: uppercase;',
+      '  letter-spacing: 0.04em;',
+      '  font: 600 10.5px/1.2 system-ui, sans-serif;',
+      '  color: #64748b;',
+      '}',
+      '.scw-bid-review__docs--sow .scw-bid-review__docs-list {',
+      '  display: flex; flex-direction: column;',
+      '  gap: 0;',
+      '  padding: 0;',
+      '}',
+      '.scw-bid-review__docs--sow .scw-bid-review__docs-item {',
+      '  padding: 6px 0;',  /* whitespace separates rows; no border-top */
+      '}',
+      '.scw-bid-review__docs-sublabel {',
+      '  padding: 6px 10px 2px;',
+      '  font: 700 9.5px/1.2 system-ui, sans-serif;',
+      '  text-transform: uppercase;',
+      '  letter-spacing: 0.06em;',
+      '  color: #94a3b8;',
+      '}',
+      /* Filter chip row — sits between the header bar and the linked
+         list, one chip per distinct doc type plus an "All" reset.
+         Compact pill style; active chip flips to solid slate so the
+         current filter is obvious at a glance. */
+      '.scw-bid-review__docs-filter {',
+      '  display: flex;',
+      '  flex-wrap: wrap;',
+      '  gap: 4px;',
+      '  padding: 3px 0;',
+      '  background: transparent;',
+      '  border: none;',
+      '}',
+      '.scw-bid-review__docs-chip {',
+      '  display: inline-flex;',
+      '  align-items: center;',
+      '  padding: 2px 8px;',
+      '  background: #fff;',
+      '  border: 1px solid #cbd5e1;',
+      '  border-radius: 999px;',
+      '  color: #475569;',
+      '  font: 600 10px/1.2 system-ui, sans-serif;',
+      '  letter-spacing: 0.03em;',
+      '  cursor: pointer;',
+      '}',
+      '.scw-bid-review__docs-chip:hover {',
+      '  border-color: #94a3b8;',
       '  color: #1e293b;',
+      '}',
+      '.scw-bid-review__docs-chip.is-active {',
+      '  background: #475569;',
+      '  border-color: #475569;',
+      '  color: #fff;',
+      '}',
+      /* Two-line item layout:
+           [type-anchor]  filename (bold, dark)              [action]
+                          notes (muted, smaller)
+         Type chip on the left is a narrow, quiet column anchor — NOT
+         a competing pill. Body wraps filename + notes vertically so
+         filename gets full width before truncation and reads as the
+         scan target. */
+      '.scw-bid-review__docs-item {',
+      '  display: flex;',
+      '  align-items: flex-start;',
+      '  gap: 8px;',
+      '  padding: 4px 0;',
+      '  color: #1e293b;',
+      '}',
+      /* Available (un-linked) docs read as muted so the eye lands on
+         the linked set first; hover restores full contrast. */
+      '.scw-bid-review__docs-item--available {',
+      '  opacity: 0.72;',
+      '  transition: opacity 120ms ease;',
+      '}',
+      '.scw-bid-review__docs-item--available:hover {',
+      '  opacity: 1;',
       '}',
       '.scw-bid-review__docs-type {',
       '  display: inline-block;',
       '  flex: 0 0 auto;',
-      '  padding: 1px 6px;',
-      '  font-size: 10px;',
-      '  font-weight: 600;',
+      '  margin-top: 1px;',  /* nudge to align with filename baseline */
+      '  padding: 1px 5px;',
+      '  background: transparent;',
+      '  border: 1px solid #e2e8f0;',
       '  border-radius: 3px;',
-      '  background: #e2e8f0;',
-      '  color: #334155;',
+      '  color: #64748b;',
+      '  font-size: 9.5px;',
+      '  font-weight: 600;',
+      '  text-transform: uppercase;',
+      '  letter-spacing: 0.03em;',
       '}',
-      '.scw-bid-review__docs-link {',
-      '  display: inline-flex;',
-      '  align-items: center;',
-      '  gap: 3px;',
+      '.scw-bid-review__docs-body {',
       '  flex: 1 1 auto;',
       '  min-width: 0;',
-      '  color: #295f91;',
+      '  display: flex;',
+      '  flex-direction: column;',
+      '  gap: 2px;',  /* gap between filename and notes sub-line */
+      '}',
+      '.scw-bid-review__docs-link {',
+      '  display: block;',
+      '  color: #1e293b;',  /* bold dark, not link-blue — this is the scan target */
+      '  font: 600 12px/1.3 system-ui, sans-serif;',
       '  text-decoration: none;',
       '  white-space: nowrap;',
       '  overflow: hidden;',
       '  text-overflow: ellipsis;',
       '}',
       '.scw-bid-review__docs-link:hover {',
+      '  color: #295f91;',
       '  text-decoration: underline;',
       '}',
-      '.scw-bid-review__docs-link svg {',
-      '  flex: 0 0 auto;',
-      '  opacity: 0.7;',
-      '}',
       '.scw-bid-review__docs-notes {',
-      '  flex: 0 0 auto;',
+      '  display: block;',
       '  font-size: 10px;',
+      '  line-height: 1.3;',
       '  color: #94a3b8;',
-      '  font-style: italic;',
-      '  max-width: 120px;',
       '  white-space: nowrap;',
       '  overflow: hidden;',
       '  text-overflow: ellipsis;',
+      '}',
+      /* "+ Link" pill — sits at the end of each available doc row.
+         Compact outlined button that becomes solid on hover so the
+         affordance is unambiguous. */
+      '.scw-bid-review__docs-link-btn {',
+      '  display: inline-flex;',
+      '  align-items: center;',
+      '  align-self: flex-start;',  /* align with filename top line */
+      '  margin-top: 1px;',
+      '  gap: 3px;',
+      '  flex: 0 0 auto;',
+      '  margin-left: auto;',
+      '  padding: 2px 8px;',
+      '  background: #fff;',
+      '  border: 1px solid #cbd5e1;',
+      '  border-radius: 999px;',
+      '  color: #295f91;',
+      '  font: 600 10px/1.2 system-ui, sans-serif;',
+      '  letter-spacing: 0.03em;',
+      '  text-transform: uppercase;',
+      '  cursor: pointer;',
+      '}',
+      '.scw-bid-review__docs-link-btn:hover {',
+      '  background: #295f91;',
+      '  border-color: #295f91;',
+      '  color: #fff;',
+      '}',
+      '.scw-bid-review__docs-link-btn:disabled,',
+      '.scw-bid-review__docs-link-btn.scw-bid-review__btn--busy {',
+      '  opacity: 0.5; cursor: progress;',
+      '}',
+      /* "Unlink" pill on linked docs — slate, NOT red. Chain-break
+         icon + word "Unlink" makes the intent unambiguous: this
+         disconnects the SOW from the doc, it does NOT delete the
+         underlying DOC_files record. Hover deepens to a darker slate
+         so it reads as "modifies state" without crossing into the
+         destructive-action visual vocabulary. */
+      '.scw-bid-review__docs-unlink-btn {',
+      '  display: inline-flex;',
+      '  align-items: center;',
+      '  align-self: flex-start;',  /* align with filename top line */
+      '  margin-top: 1px;',
+      '  gap: 3px;',
+      '  flex: 0 0 auto;',
+      '  margin-left: auto;',
+      '  padding: 2px 8px;',
+      '  background: #fff;',
+      '  border: 1px solid #cbd5e1;',
+      '  border-radius: 999px;',
+      '  color: #64748b;',
+      '  font: 600 10px/1.2 system-ui, sans-serif;',
+      '  letter-spacing: 0.03em;',
+      '  text-transform: uppercase;',
+      '  cursor: pointer;',
+      '  opacity: 0.55;',
+      '  transition: opacity 120ms ease, background 120ms ease, color 120ms ease;',
+      '}',
+      '.scw-bid-review__docs-item:hover .scw-bid-review__docs-unlink-btn {',
+      '  opacity: 1;',
+      '}',
+      '.scw-bid-review__docs-unlink-btn:hover {',
+      '  background: #475569;',
+      '  border-color: #475569;',
+      '  color: #fff;',
+      '  opacity: 1;',
+      '}',
+      '.scw-bid-review__docs-unlink-btn:disabled,',
+      '.scw-bid-review__docs-unlink-btn.scw-bid-review__btn--busy {',
+      '  opacity: 0.5; cursor: progress;',
+      '}',
+      /* "N other project docs" toggle — its own full-width row, same
+         hairline rhythm as the doc-item rows. Left-aligned text;
+         click to expand. */
+      '.scw-bid-review__docs--sow .scw-bid-review__docs-other-toggle {',
+      '  display: flex;',
+      '  align-items: center;',
+      '  gap: 5px;',
+      '  width: 100%;',
+      '  padding: 6px 0;',
+      '  margin-top: 2px;',  /* small extra gap to separate from linked rows */
+      '  background: transparent;',
+      '  border: none;',
+      '  color: #64748b;',
+      '  font: 600 11px/1.2 system-ui, sans-serif;',
+      '  text-align: left;',
+      '  cursor: pointer;',
+      '}',
+      '.scw-bid-review__docs--sow .scw-bid-review__docs-other-toggle:hover {',
+      '  color: #1e293b;',
+      '}',
+      /* Upload pill — OUTLINED teal to match the Preview Proposal CTA
+         below (#0891b2). Same pill shape/dimensions as Link/Unlink so
+         the row of actions reads as a coherent family; teal color
+         visually ties Upload to the page's primary call-to-action.
+         !important on color AND text-decoration is needed to beat
+         Knack's global `.kn-content a` link styling which would
+         otherwise reapply blue text + underline. */
+      '.scw-bid-review__docs-add, .scw-bid-review__docs-add:visited {',
+      '  display: inline-flex;',
+      '  align-items: center;',
+      '  gap: 4px;',
+      '  padding: 2px 10px;',
+      '  background: #fff;',
+      '  border: 1px solid #0891b2;',
+      '  border-radius: 999px;',
+      '  color: #0891b2 !important;',
+      '  text-decoration: none !important;',
+      '  font: 600 10px/1.2 system-ui, sans-serif;',
+      '  letter-spacing: 0.03em;',
+      '  text-transform: uppercase;',
+      '}',
+      '.scw-bid-review__docs-add:hover {',
+      '  background: #0891b2;',
+      '  border-color: #0e7490;',
+      '  color: #fff !important;',
+      '  text-decoration: none !important;',
+      '}',
+
+      '.scw-bid-review__docs-chevron {',
+      '  flex: 0 0 auto;',
+      '  transition: transform 120ms ease;',
+      '  opacity: 0.7;',
+      '}',
+      '.scw-bid-review__docs-other[data-collapsed="1"] .scw-bid-review__docs-chevron {',
+      '  transform: rotate(-90deg);',
+      '}',
+      '.scw-bid-review__docs-other[data-collapsed="1"] .scw-bid-review__docs-list {',
+      '  display: none;',
+      '}',
+      /* Expanded list — indented under the toggle so the parent-child
+         relationship is visual, not just structural. No background
+         tint, no border separators; whitespace + indent are enough. */
+      '.scw-bid-review__docs-other .scw-bid-review__docs-list--available {',
+      '  padding-left: 14px;',
       '}',
 
       /* "Add PM & Mobilization" button (lives inside the margin-low

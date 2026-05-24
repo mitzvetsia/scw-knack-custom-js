@@ -318,7 +318,29 @@
 
   // ── Send ──
 
+  // Gate: WORKSHEET_VIEW must have been transformed by device-worksheet
+  // before scrape can pull device cards. Without this guard, a user
+  // who clicks Submit before the page is fully ready gets a PDF with
+  // only L1 group headers and notes — the cards aren't in the DOM
+  // yet. Check for the .scw-ws-row card shells device-worksheet
+  // creates after its transform completes.
+  function worksheetReady() {
+    var view = document.getElementById(WORKSHEET_VIEW);
+    if (!view) return false;
+    return !!view.querySelector('tr.scw-ws-row');
+  }
+
   function sendPayload(btn) {
+    if (!worksheetReady()) {
+      console.warn('[SCW sub-portal survey] worksheet not ready — view ' +
+        WORKSHEET_VIEW + ' has no .scw-ws-row card shells. Aborting.');
+      showToast(
+        'Page still loading — please wait for the device worksheet to finish rendering, then try again.',
+        'error', 6000
+      );
+      return;
+    }
+
     var payload = buildPayload();
     if (!payload.recordId) {
       showToast('Could not determine survey request record ID.', 'error', 5000);
@@ -336,29 +358,88 @@
     setButtonBusy(btn, 'Generating…');
     startPolling();
 
+    console.log('[SCW sub-portal survey] POST', { url: WEBHOOK_URL, recordId: payload.recordId });
+
     $.ajax({
       url: WEBHOOK_URL,
       type: 'POST',
       contentType: 'application/json',
       data: JSON.stringify(payload),
       crossDomain: true,
-      timeout: 60000,
-      success: function () {
-        // Make returned a real (non-opaque) response — that means the
-        // scenario finished and the new PDF is on field_2356. Kick a
-        // model.fetch right now so we see it on the next render
-        // instead of waiting up to POLL_INTERVAL_MS for the next tick.
+      // Make's Webhook Response module holds the connection open until
+      // the scenario finishes. PDF gen + Knack upload can run 90+s on
+      // big surveys; 180s matches the polling timeout ceiling.
+      timeout: 180000,
+      success: function (resp, status, xhr) {
+        // Unconditional log so user can see exactly what came back
+        // without flipping SCW.DEBUG.
+        console.log('[SCW sub-portal survey] success', {
+          status: xhr && xhr.status,
+          contentType: xhr && xhr.getResponseHeader && xhr.getResponseHeader('Content-Type'),
+          responseType: typeof resp,
+          response: resp,
+          rawResponseText: xhr && xhr.responseText
+        });
+
+        // Trust an informative response. Make's scenario has a
+        // Webhook Response module that returns {"status":"ready"} (or
+        // similar) AFTER the PDF is generated and uploaded to
+        // field_2356. When we see that response, the file is ready —
+        // stop polling immediately instead of waiting for the next
+        // poll tick to notice the field change.
+        var informative = (resp != null && resp !== '' &&
+          (typeof resp === 'object' || String(resp).length > 0));
+        if (informative) {
+          console.log('[SCW sub-portal survey] informative response → stopping poll');
+          // Kick a model.fetch so the on-page <a> updates to the new file.
+          if (typeof Knack !== 'undefined' && Knack.views && Knack.views[DETAIL_VIEW]) {
+            var v = Knack.views[DETAIL_VIEW].model;
+            if (v && typeof v.fetch === 'function') v.fetch();
+          }
+          stopPolling({ msg: 'Survey Field PDF updated.', variant: 'success' });
+          return;
+        }
+
+        // Empty body — Make didn't end with a Webhook Response module,
+        // or returned an empty 200. Fall through to the existing poll
+        // loop to wait for field_2356 to change.
+        console.log('[SCW sub-portal survey] empty response → polling continues');
         if (typeof Knack !== 'undefined' && Knack.views && Knack.views[DETAIL_VIEW]) {
           var model = Knack.views[DETAIL_VIEW].model;
           if (model && typeof model.fetch === 'function') model.fetch();
         }
       },
-      error: function (xhr) {
-        // status 0 = opaque CORS response. Delivery succeeded but the
-        // browser can't read the body — Make is still working. Leave
-        // the overlay + poll in place and let the loop finish.
-        if (xhr && xhr.status === 0) return;
-        console.warn('[SCW sub-portal survey export] webhook error', xhr);
+      error: function (xhr, status, errThrown) {
+        console.log('[SCW sub-portal survey] error', {
+          status: xhr && xhr.status,
+          contentType: xhr && xhr.getResponseHeader && xhr.getResponseHeader('Content-Type'),
+          jqStatus: status,
+          errThrown: errThrown && errThrown.toString && errThrown.toString(),
+          rawResponseText: xhr && xhr.responseText
+        });
+
+        // status 0 = opaque CORS response. Browser blocks reading
+        // body but delivery succeeded. Leave the poll loop running.
+        if (xhr && xhr.status === 0) {
+          console.log('[SCW sub-portal survey] status 0 (opaque/CORS) → polling continues');
+          return;
+        }
+
+        // HTTP 2xx with a body that jQuery couldn't parse (Content-Type
+        // mismatch) lands in error too — treat as success.
+        var raw = xhr && xhr.responseText;
+        var httpOk = xhr && xhr.status >= 200 && xhr.status < 300;
+        if (httpOk && raw) {
+          console.log('[SCW sub-portal survey] HTTP OK with body → treating as success');
+          if (typeof Knack !== 'undefined' && Knack.views && Knack.views[DETAIL_VIEW]) {
+            var vm = Knack.views[DETAIL_VIEW].model;
+            if (vm && typeof vm.fetch === 'function') vm.fetch();
+          }
+          stopPolling({ msg: 'Survey Field PDF updated.', variant: 'success' });
+          return;
+        }
+
+        console.warn('[SCW sub-portal survey] webhook error', xhr);
         stopPolling({
           msg: 'Webhook failed (HTTP ' + (xhr ? xhr.status : '?') + '). See console.',
           variant: 'error'
@@ -399,7 +480,10 @@
     btn.appendChild(label);
     wrap.appendChild(btn);
 
-    btn.addEventListener('click', function () { sendPayload(btn); });
+    btn.addEventListener('click', function () {
+      console.log('[SCW sub-portal survey] button clicked');
+      sendPayload(btn);
+    });
 
     if (detail.parentNode) {
       detail.parentNode.insertBefore(wrap, detail.nextSibling);

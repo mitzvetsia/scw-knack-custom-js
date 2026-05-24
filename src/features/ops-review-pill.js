@@ -482,12 +482,18 @@
   function renderProposalBlock(hostTd, proposal /*, tr */) {
     if (!proposal || !window.SCW || !SCW.publishedQuoteInfo) return;
     var block = SCW.publishedQuoteInfo.buildBlock(proposal, {
-      variant: 'compact'
+      variant: 'compact',
       // Default linkBuilder targets
       //   #published-proposals/sow-published-proposal-details/<recordId>
       // — the canonical "view the published quote" destination. The pill
       // itself navigates to the SOW proposal page; this link is for the
       // proposal record specifically.
+      customerLink: {
+        url:                  proposal.tokenUrl || '',
+        label:                'Open Customer Link',
+        expiredFallbackUrl:   proposal.viewLink || '',
+        expiredFallbackLabel: 'View Published Details'
+      }
     });
     if (block) hostTd.appendChild(block);
   }
@@ -1089,7 +1095,15 @@
     if (!proposalIndex || !tr.id) return null;
     var proposal = proposalIndex[tr.id];
     if (proposal) {
-      return SCW.publishedQuoteInfo.buildBlock(proposal, { variant: 'compact' });
+      return SCW.publishedQuoteInfo.buildBlock(proposal, {
+        variant: 'compact',
+        customerLink: {
+          url:                  proposal.tokenUrl || '',
+          label:                'Open Customer Link',
+          expiredFallbackUrl:   proposal.viewLink || '',
+          expiredFallbackLabel: 'View Published Details'
+        }
+      });
     }
     return SCW.publishedQuoteInfo.buildBlock(null, {
       variant: 'compact',

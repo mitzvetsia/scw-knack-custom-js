@@ -129,6 +129,26 @@
     '</div>';
   }
 
+  /**
+   * Editable product cell — renders the product name in the row's
+   * product slot but as a clickable button. Reuses the connection-
+   * picker infrastructure (data-scw-ws-v2-conn=field_1949) so the
+   * init.js click handler opens the same modal. Candidates source
+   * is SCW.productMap (Builder boot snippet); filter logic lives in
+   * init.js next to the existing field_1957/field_2197 branches.
+   */
+  function productCell(rec, viewKey, value) {
+    return '<button type="button" ' +
+      'class="scw-ws-v2-cell scw-ws-v2-cell--product scw-ws-v2-cell--editable-conn" ' +
+      'data-scw-ws-v2-conn="field_1949" ' +
+      'data-scw-ws-v2-record="' + escapeHtml(rec.id) + '" ' +
+      'data-scw-ws-v2-view="' + escapeHtml(viewKey) + '" ' +
+      'data-scw-ws-v2-conn-label="Product" ' +
+      'title="' + escapeHtml(value) + ' — click to change product">' +
+      escapeHtml(value) +
+    '</button>';
+  }
+
   function empty(cls) {
     return '<div class="scw-ws-v2-cell scw-ws-v2-cell--blank ' + (cls || '') + '"></div>';
   }
@@ -180,7 +200,7 @@
 
     return '<div class="scw-ws-v2-row scw-ws-v2-row--cam">' +
       ro(label,   'scw-ws-v2-cell--label',   label) +
-      ro(product, 'scw-ws-v2-cell--product', product) +
+      productCell(rec, viewKey, product) +
       chips +
       '<div class="scw-ws-v2-cell scw-ws-v2-cell--labor-desc">' +
         textInput(rec, viewKey, 'field_2020', laborDesc, 'Labor description') +
@@ -213,7 +233,7 @@
     var sow         = readField(rec, 'field_2154');
 
     return '<div class="scw-ws-v2-row scw-ws-v2-row--default">' +
-      ro(product, 'scw-ws-v2-cell--product', product) +
+      productCell(rec, viewKey, product) +
       '<div class="scw-ws-v2-cell scw-ws-v2-cell--labor-desc">' +
         textInput(rec, viewKey, 'field_2020', laborDesc, 'Labor description') +
       '</div>' +
@@ -345,31 +365,85 @@
   }
 
   /**
-   * Mounting Hardware (field_1958) — connectedRecords pattern, NOT a
-   * picker modal. Mirrors v1's connected-records.js widget on view_3610:
-   * each currently-connected accessory renders as an inline chip with
-   * an "edit accessory" link; a "+ Add" link at the end opens Knack's
-   * add-accessory-line-item form. All navigation, no inline edit
-   * modal — same UX as v1.
+   * Mounting Hardware (field_1958) — connectedRecords pattern.
+   * Single source of truth: view_3610's rendered DOM. Mirrors v1's
+   * connected-records.js readConnectionLinks exactly:
+   *
+   *   1. Find the parent row in view_3610 (still on the page during
+   *      the parallel v1/v2 build — see config.js mountAfterSelector).
+   *   2. view_3610 renders <td class="field_1958"> twice on each row
+   *      (inline-edit ghost column + display column). Iterate all
+   *      matching tds and pick the FIRST whose
+   *      <span data-kn="connection-value"> children have non-empty
+   *      text. That's the same "1st-or-2nd, whichever has data"
+   *      pattern as v1's readConnectionLinks (line 337).
+   *   3. Each span: textContent → chip label, span.id → 24-hex
+   *      connected record id (used to build the edit-accessory URL).
+   *
+   * Fallback only when view_3610 isn't on the page (Phase 5 cleanup):
+   * read rec.field_1958_raw[*].identifier.
    */
-  function detailMountingHardware(rec) {
-    var raw = rec['field_1958_raw'];
-    var accessories = Array.isArray(raw) ? raw : [];
+  function detailMountingHardware(rec, viewKey) {
+    var parentId = rec.id;
     var base = buildSowBasePath();
-    var addHref = base ? base + '/add-accessory-line-item/' + rec.id + '/' : '#';
+    var addHref = base ? base + '/add-accessory-line-item/' + parentId + '/' : '#';
+
+    // ── DOM source of truth (matches v1's connected-records.js) ──
+    // view_3610 renders <td class="field_1958"> TWICE on each row
+    // (inline-edit ghost column + display column). v1's
+    // readConnectionLinks iterates the matching tds and returns the
+    // first one whose spans have non-empty text. Replicate that here:
+    // each <span data-kn="connection-value"> in the winning td is one
+    // accessory — span.textContent is the chip label, span.id is the
+    // 24-hex connected record id.
+    var chips = [];
+    try {
+      var v3610 = document.getElementById('view_3610');
+      var tr = v3610 && v3610.querySelector('tr[id="' + parentId + '"]');
+      if (tr) {
+        var tds = tr.querySelectorAll('td.field_1958');
+        for (var t = 0; t < tds.length; t++) {
+          var spans = tds[t].querySelectorAll('span[data-kn="connection-value"]');
+          for (var s = 0; s < spans.length; s++) {
+            var spText = (spans[s].textContent || '').replace(/\s+/g, ' ').trim();
+            var spId = (spans[s].id && /^[a-f0-9]{24}$/.test(spans[s].id))
+              ? spans[s].id : '';
+            if (spText && spText !== ' ') {
+              chips.push({ id: spId, label: spText });
+            }
+          }
+          if (chips.length) break; // first non-empty td wins
+        }
+      }
+    } catch (e) { /* fall through to raw fallback */ }
+
+    // Fallback for when view_3610 isn't on the page (Phase 5 retires
+    // v1). Pull identifiers from the model's field_1958_raw.
+    if (chips.length === 0) {
+      var raw = rec['field_1958_raw'];
+      if (Array.isArray(raw)) {
+        for (var ri = 0; ri < raw.length; ri++) {
+          var a = raw[ri];
+          if (!a) continue;
+          var lbl = a.identifier
+            ? String(a.identifier).replace(/<[^>]*>/g, '').trim()
+            : '';
+          chips.push({ id: a.id || '', label: lbl || a.id || '' });
+        }
+      }
+    }
 
     var chipsHtml = '';
-    if (accessories.length === 0) {
-      chipsHtml = '<span class="scw-ws-v2-mh-empty">—</span>';
+    if (chips.length === 0) {
+      chipsHtml = '<span class="scw-ws-v2-mh-empty">&mdash;</span>';
     } else {
-      for (var i = 0; i < accessories.length; i++) {
-        var a = accessories[i];
-        if (!a) continue;
-        var editHref = base ? base + '/edit-accessory-line-item2/' + a.id + '/' : '#';
-        var label = a.identifier || a.id || '';
+      for (var c = 0; c < chips.length; c++) {
+        var editHref = base && chips[c].id
+          ? base + '/edit-accessory-line-item2/' + chips[c].id + '/'
+          : '#';
         chipsHtml += '<a class="scw-ws-v2-mh-chip" href="' + escapeHtml(editHref) + '"' +
-          ' title="Edit ' + escapeHtml(label) + '">' +
-          escapeHtml(label) +
+          ' title="Edit ' + escapeHtml(chips[c].label) + '">' +
+          escapeHtml(chips[c].label) +
         '</a>';
       }
     }
@@ -391,7 +465,7 @@
         // Mounting Hardware (field_1958) renders as a connected-records
         // widget with chip-style edit links + an "+ Add" navigation —
         // matches v1's UX on view_3610 (no inline modal, just navigation).
-        detailMountingHardware(rec) +
+        detailMountingHardware(rec, viewKey) +
         // Connected Device (field_2197) — single-select picker on
         // cam/reader rows. Candidates filtered to Map-Connections-Yes
         // rows; see init.js click handler.
@@ -408,7 +482,7 @@
     return '<div class="scw-ws-v2-detail">' +
       '<div class="scw-ws-v2-detail-grid">' +
         // Mounting Hardware — same connected-records widget as cam/reader.
-        detailMountingHardware(rec) +
+        detailMountingHardware(rec, viewKey) +
         // Connected Devices (field_1957) — multi-select picker for NVR
         // rows attaching cam/readers (existing wiring in init.js).
         detailConnection(rec,       viewKey, 'field_1957', 'Connected Devices') +
