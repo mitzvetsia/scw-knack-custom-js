@@ -397,24 +397,34 @@
   var WARNING_SVG = '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>';
 
   function ensureBadges($tr, viewId) {
-    if (!RECORD_COUNT_VIEWS.length) return;
-    if (!RECORD_COUNT_VIEWS.includes(viewId)) return;
     const $cell = $tr.children('td,th').first();
 
     const $block = rowsUntilNextRelevantGroup($tr);
     // For worksheet views, count only scw-ws-row to avoid double-counting
     const $wsRows = $block.filter('tr.scw-ws-row');
-    const count = $wsRows.length
-      ? $wsRows.length
-      : $block.not('.kn-table-group, .kn-table-totals, .scw-inline-photo-row, .scw-synth-divider').length;
 
-    // Count accessory mismatch warnings within this group's rows
+    // Record count is opt-in per view (RECORD_COUNT_VIEWS). The warning
+    // rollup, by contrast, runs on EVERY worksheet view (any group with
+    // scw-ws-row children) so MDF/IDF group headers summarise issues
+    // everywhere worksheet cards render — not just the count-enabled
+    // views. Non-worksheet grids not opted into counts bail early.
+    var showCount = RECORD_COUNT_VIEWS.indexOf(viewId) !== -1;
+    if (!showCount && !$wsRows.length) return;
+
+    const count = !showCount ? 0 : ($wsRows.length
+      ? $wsRows.length
+      : $block.not('.kn-table-group, .kn-table-totals, .scw-inline-photo-row, .scw-synth-divider').length);
+
+    // Count rows showing ANY per-record warning indicator within this
+    // group: the shared warn-slot chit (.scw-cr-hdr-warning — accessory
+    // mismatch, missing connection, cross-bid, etc.) OR the field_2454
+    // warning-count chit (.scw-ws-warn-chit--active). One increment per
+    // flagged row regardless of how many chits it carries.
     var warnCount = 0;
-    if ($wsRows.length) {
-      $wsRows.each(function () {
-        if (this.querySelector('.scw-cr-hdr-warning')) warnCount++;
-      });
-    }
+    $wsRows.each(function () {
+      if (this.querySelector('.scw-cr-hdr-warning') ||
+          this.querySelector('.scw-ws-warn-chit--active')) warnCount++;
+    });
 
     // Skip DOM update if badges already show the correct values
     const $wrapper = $cell.find('.scw-group-badges');
@@ -429,7 +439,7 @@
     if (count > 0 || warnCount > 0) {
       var html = '<span class="scw-group-badges">';
       if (warnCount > 0) {
-        html += '<span class="scw-warning-count" data-count="' + warnCount + '" title="' + warnCount + ' accessory mismatch warning' + (warnCount > 1 ? 's' : '') + '">' + WARNING_SVG + warnCount + '</span>';
+        html += '<span class="scw-warning-count" data-count="' + warnCount + '" title="' + warnCount + ' line item' + (warnCount > 1 ? 's' : '') + ' with a warning in this group">' + WARNING_SVG + warnCount + '</span>';
       }
       if (count > 0) {
         html += '<span class="scw-record-count">' + count + '</span>';

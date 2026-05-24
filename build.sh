@@ -134,6 +134,7 @@ cat \
   src/features/sow-pdf-stepper.js \
   src/features/connected-device-bid-check.js \
   src/features/missing-connection-warn.js \
+  src/features/worksheet-warning-summary.js \
   src/features/default-sort.js \
   src/features/mirror-connection-sync.js \
   src/features/connection-picker.js \

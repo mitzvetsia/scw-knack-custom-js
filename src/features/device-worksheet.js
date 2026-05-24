@@ -5217,6 +5217,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       var warnChit = document.createElement('span');
       warnChit.className = P + '-warn-chit';
       if (warnVal > 0) {
+        warnChit.classList.add(P + '-warn-chit--active');
         warnChit.innerHTML = '<svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M1 5.25A2.25 2.25 0 013.25 3h13.5A2.25 2.25 0 0119 5.25v9.5A2.25 2.25 0 0116.75 17H3.25A2.25 2.25 0 011 14.75v-9.5zm1.5 9.5c0 .414.336.75.75.75h13.5a.75.75 0 00.75-.75v-2.507l-3.22-3.22a.75.75 0 00-1.06 0l-3.22 3.22-1.72-1.72a.75.75 0 00-1.06 0L2.5 12.993v1.757zM12.75 7a1.25 1.25 0 100 2.5 1.25 1.25 0 000-2.5z" clip-rule="evenodd"/></svg>'
             + Math.round(warnVal);
       } else {
