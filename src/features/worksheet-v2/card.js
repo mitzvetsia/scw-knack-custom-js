@@ -72,6 +72,43 @@
     return 'No';
   }
 
+  /**
+   * Discontinued-product flag. field_2912 is a yes/no on the line item
+   * (sourced from the connected product) — Yes = product still active,
+   * No/false = product discontinued. We only flag when the value is
+   * EXPLICITLY false/No; a missing/empty value is treated as unknown
+   * (not flagged) so unpopulated rows don't show false positives.
+   *
+   * Requires field_2912 to be a column on the source view (view_3962)
+   * so it lands in the Backbone model attributes.
+   */
+  function isDiscontinued(rec) {
+    var raw = rec['field_2912_raw'];
+    if (raw === false || raw === 'No' || raw === 'no' || raw === 0) return true;
+    if (raw === true || raw === 'Yes' || raw === 'yes' || raw === 1) return false;
+    if (raw === undefined || raw === null || raw === '') {
+      // Fall back to the plain attribute when no _raw companion exists.
+      var v = rec['field_2912'];
+      if (v == null || v === '') return false;
+      var s = String(v).replace(/<[^>]*>/g, '').trim().toLowerCase();
+      return s === 'no' || s === 'false';
+    }
+    return false;
+  }
+
+  var DISCONTINUED_SVG =
+    '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" ' +
+    'stroke="currentColor" stroke-width="2.2" stroke-linecap="round" ' +
+    'stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle>' +
+    '<line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line></svg>';
+
+  function discontinuedBadge() {
+    return '<span class="scw-ws-v2-discontinued" ' +
+      'title="Product discontinued — no longer available. Replace before submitting.">' +
+      DISCONTINUED_SVG +
+    '</span>';
+  }
+
   function bucketIdOf(rec) {
     var raw = rec['field_2219_raw'];
     if (Array.isArray(raw) && raw.length && raw[0]) return raw[0].id || '';
@@ -138,14 +175,21 @@
    * init.js next to the existing field_1957/field_2197 branches.
    */
   function productCell(rec, viewKey, value) {
+    var discontinued = isDiscontinued(rec);
+    var cls = 'scw-ws-v2-cell scw-ws-v2-cell--product scw-ws-v2-cell--editable-conn' +
+      (discontinued ? ' scw-ws-v2-cell--discontinued' : '');
+    var title = discontinued
+      ? value + ' — DISCONTINUED product. Click to replace.'
+      : value + ' — click to change product';
     return '<button type="button" ' +
-      'class="scw-ws-v2-cell scw-ws-v2-cell--product scw-ws-v2-cell--editable-conn" ' +
+      'class="' + cls + '" ' +
       'data-scw-ws-v2-conn="field_1949" ' +
       'data-scw-ws-v2-record="' + escapeHtml(rec.id) + '" ' +
       'data-scw-ws-v2-view="' + escapeHtml(viewKey) + '" ' +
       'data-scw-ws-v2-conn-label="Product" ' +
-      'title="' + escapeHtml(value) + ' — click to change product">' +
-      escapeHtml(value) +
+      'title="' + escapeHtml(title) + '">' +
+      (discontinued ? discontinuedBadge() : '') +
+      '<span class="scw-ws-v2-product-name">' + escapeHtml(value) + '</span>' +
     '</button>';
   }
 

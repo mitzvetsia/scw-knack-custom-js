@@ -185,6 +185,35 @@
     '  overflow: hidden !important;',
     '  text-overflow: ellipsis !important;',
     '}',
+    '.scw-ws-v2-cell--product .scw-ws-v2-product-name {',
+    '  overflow: hidden !important;',
+    '  text-overflow: ellipsis !important;',
+    '  white-space: nowrap !important;',
+    '  min-width: 0 !important;',
+    '}',
+
+    /* Discontinued-product flag — amber (warning palette; red is reserved
+       for errors/destructive per project convention). The badge sits to
+       the left of the product name; the name itself is tinted amber so the
+       whole cell reads as "needs attention". */
+    '.scw-ws-v2-cell--discontinued {',
+    '  display: inline-flex !important;',
+    '  align-items: center !important;',
+    '  gap: 5px !important;',
+    '  color: #b45309 !important;',
+    '  font-weight: 600 !important;',
+    '}',
+    '.scw-ws-v2-discontinued {',
+    '  display: inline-flex !important;',
+    '  align-items: center !important;',
+    '  color: #b45309 !important;',
+    '  flex-shrink: 0 !important;',
+    '  line-height: 1 !important;',
+    '}',
+    '.scw-ws-v2-discontinued svg {',
+    '  width: 13px !important;',
+    '  height: 13px !important;',
+    '}',
 
     /* Editable connection cells rendered as <button> in the grid row.
        Reset native button styling so the cell sits flush in the grid
