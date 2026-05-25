@@ -12,12 +12,13 @@
 (function () {
   'use strict';
 
-  // view_3883 is a kn-details view of the published-proposal record on
-  // this scene — same record we want to surface, so it serves as both
-  // the data SOURCE and the INJECT target. publishedQuoteInfo.read
-  // handles both list-view (model.data.models[]) and details-view
-  // (model.attributes) shapes.
-  var SOURCE_VIEW = 'view_3883';
+  // Data SOURCE is view_3886 (the "SOW_published proposals" table on this
+  // scene — already filtered to published, holds the proposal name / PDF /
+  // expiration). The INJECT target is view_3883, an otherwise-empty
+  // kn-details view that just provides a mount point. (view_3883 was
+  // previously used as the source too, but it renders with no record on
+  // this scene, so the widget always read null → "No published quotes".)
+  var SOURCE_VIEW = 'view_3886';
   var TARGET_VIEW = 'view_3883';
   var NS          = '.scwPublishedQuote';
 

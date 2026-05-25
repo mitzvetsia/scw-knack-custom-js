@@ -647,6 +647,21 @@ tr.scw-level-total-row.scw-project-totals.scw-project-totals--proposal-discount
   padding-top: 0 !important;
 }
 
+/* Client-facing discount reason (field_2291) beneath the Proposal Discount
+   amount. Muted + italic so it reads as a note, not another total line. */
+.scw-l1-disc-note {
+  margin-top: 3px;
+  font-size: 12px;
+  font-style: italic;
+  font-weight: 400;
+  line-height: 1.3;
+  color: #64748b;
+  text-align: right;
+  white-space: normal;
+  max-width: 340px;
+  margin-left: auto;
+}
+
 /* Tight spacing inside the Equipment Subtotal → Line Item Discounts →
    Equipment Total cluster, mirroring Proposal Discount → Grand Total. */
 tr.scw-level-total-row.scw-project-totals.scw-project-totals--equipment-subtotal td,
@@ -815,6 +830,19 @@ ${sel('tr.scw-mounting-product-line td')} {
   font-weight: 500 !important;
 }
 ${sel('tr.scw-mounting-product-line td:first-child')} {
+  padding-left: 80px !important;
+}
+/* Install-labor sub-line beneath a mounting-hardware equipment line (e.g. a
+   rack enclosure's "Install and assemble…" row). Matches the lighter,
+   slightly-smaller install-description styling (.scw-l4-2019: weight 300,
+   color #07467c) and nests one indent deeper than the equipment line. */
+${sel('tr.scw-mounting-labor-line td')} {
+  color: #07467c !important;
+  font-size: 13px !important;
+  font-weight: 300 !important;
+  line-height: 1.2 !important;
+}
+${sel('tr.scw-mounting-labor-line td:first-child')} {
   padding-left: 80px !important;
 }
 .scw-mounting-product-name {
@@ -1740,6 +1768,13 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
     return Number.isFinite(num) ? num : 0;
   }
 
+  function readDomFieldText(fieldKey, viewId) {
+    const scope = viewId ? `#${viewId} ` : '';
+    const $el = $(scope + `.kn-detail.field_${fieldKey} .kn-detail-body`);
+    if (!$el.length) return '';
+    return ($el.first().text() || '').replace(/\s+/g, ' ').trim();
+  }
+
   function buildProjectTotalRows(ctx, caches, $tbody) {
     if (!ctx.showProjectTotals) return [];
 
@@ -1753,6 +1788,9 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
     const equipmentSubtotal = sumField(caches, $allDataRows, hardwareKey);
     const lineItemDiscounts = Math.abs(sumField(caches, $allDataRows, 'field_2303'));
     const proposalDiscount = Math.abs(readDomFieldValue('2302', 'view_3342'));
+    // Client-facing discount reason (field_2291) — shown beneath the
+    // Proposal Discount amount only when a discount is actually applied.
+    const proposalDiscountNote = readDomFieldText('2291', 'view_3342');
     // Proposal Discount is rendered AFTER Installation Total and applied
     // only at the Grand Total. It is NOT subtracted from Equipment Total
     // — equipment-side math stays equipmentSubtotal − lineItemDiscounts.
@@ -1789,7 +1827,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
       return $tr;
     }
 
-    function makeLineRow({ label, value, rowType, isLast, extraClass }) {
+    function makeLineRow({ label, value, rowType, isLast, extraClass, note }) {
       const labelSpan = Math.max(safeCostIdx, 1);
       const cls = `scw-l1-line-row scw-l1-line--${rowType}`
         + (isLast ? ' scw-project-totals-last-row' : '')
@@ -1805,6 +1843,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
       $tr.append(`
         <td class="${ctx.keys.cost} scw-l1-valuecell">
           <div class="scw-l1-value">${escapeHtml(value)}</div>
+          ${note ? `<div class="scw-l1-disc-note">${escapeHtml(note)}</div>` : ''}
         </td>
       `);
 
@@ -1866,6 +1905,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
         rowType: 'disc',
         isLast: false,
         extraClass: 'scw-project-totals--proposal-discount',
+        note: proposalDiscountNote,
       }));
     }
 
@@ -2397,8 +2437,30 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
         cur = cur.nextElementSibling;
       }
 
-      if (hasData) h.classList.remove('scw-empty-group-header');
-      else h.classList.add('scw-empty-group-header');
+      if (hasData) {
+        h.classList.remove('scw-empty-group-header');
+      } else {
+        h.classList.add('scw-empty-group-header');
+        // Hide any orphaned child group rows too. When a product's only
+        // line item is relocated as an accessory under another product,
+        // Knack leaves the product's L4 labor-description row behind. With
+        // the L3 header hidden but the L4 visible, that labor text floats
+        // "disembodied" under nothing, with no qty/cost. Hide the whole
+        // remnant.
+        if (level === 3) {
+          let child = h.nextElementSibling;
+          while (child) {
+            if (child.classList && child.classList.contains('kn-table-group')) {
+              const cm = child.className.match(/kn-group-level-(\d+)/);
+              if (cm && parseInt(cm[1], 10) <= 3) break;
+              child.classList.add('scw-empty-group-header');
+            } else if (child.tagName === 'TR' && child.id && child.id.indexOf('kn-') !== 0) {
+              break;
+            }
+            child = child.nextElementSibling;
+          }
+        }
+      }
     }
   }
 
@@ -2429,6 +2491,9 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
 
     const qtyKey = ctx.keys.qty;
     const costKey = ctx.keys.cost;
+    const hardwareKey = ctx.keys.hardware; // field_2201 — equipment-only extended price
+    const laborKey = ctx.keys.labor;       // field_2028 — install price extended
+    const descFieldKey = 'field_2019';     // DISPLAY_labor description
     const prefixKey = ctx.keys.prefix; // field_2240
     const numberKey = ctx.keys.number; // field_1951
 
@@ -2485,7 +2550,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
     // Clean up any synthetic product-line rows left over from a previous
     // pipeline run — relocateAccessoriesToParents can shift things around
     // and leave orphan rows in unexpected positions.
-    tbody.querySelectorAll('tr.scw-mounting-product-line').forEach(function (n) {
+    tbody.querySelectorAll('tr.scw-mounting-product-line, tr.scw-mounting-labor-line').forEach(function (n) {
       n.remove();
     });
 
@@ -2547,9 +2612,37 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
         const rows = byProduct[productName];
         let groupQty = 0;
         let groupCost = 0;
+        let groupLabor = 0;
+        let laborDesc = '';
+        // Mask-independent "this accessory carries install labor" flag.
+        // On masked grids zeroLaborCells() runs BEFORE this pass and sets
+        // every td.laborKey to "$0.00" (so groupLabor is 0), but it stamps
+        // data-scw-had-labor="1" on rows that originally had labor. Gate the
+        // synthetic labor line on hadLabor, not groupLabor, so the line shows
+        // on masked grids too — applyTBDLabels() masks its cost to TBD after.
+        let hadLabor = false;
         for (let k = 0; k < rows.length; k++) {
           groupQty += readNum(rows[k], qtyKey);
-          groupCost += readNum(rows[k], costKey);
+          // Sum the EQUIPMENT extended price (field_2201), not the line-item
+          // total (field_2203). Most mounting hardware has no install labor
+          // so the two are equal, but an accessory that carries its own
+          // install (e.g. a Server Rack Enclosure: $515 equipment + $506
+          // install = $1,021 total) must show the equipment price here — the
+          // install labor is represented separately on its own line below.
+          groupCost += readNum(rows[k], hardwareKey);
+          const rowLabor = readNum(rows[k], laborKey);
+          groupLabor += rowLabor;
+          const rowHadLabor =
+            rowLabor > 0 || rows[k].getAttribute('data-scw-had-labor') === '1';
+          if (rowHadLabor) {
+            hadLabor = true;
+            // The install-description field (field_2019) is NOT zeroed by
+            // zeroLaborCells, so it's readable on masked grids too.
+            if (!laborDesc) {
+              const dcell = rows[k].querySelector('td.' + descFieldKey);
+              if (dcell) laborDesc = (dcell.textContent || '').replace(/\s+/g, ' ').trim();
+            }
+          }
         }
         totalQty += groupQty;
         totalCost += groupCost;
@@ -2610,6 +2703,32 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
         }
 
         insertAfter = line;
+
+        // If this accessory carries its own install labor (e.g. a rack
+        // enclosure: equipment on the line above, install labor here), emit
+        // a labor sub-line right beneath the equipment line — mirroring how
+        // a normal product shows equipment then an indented labor line. The
+        // original relocated row stays in the DOM (hidden) so subtotals are
+        // unaffected; this row is display-only.
+        if (hadLabor && laborDesc) {
+          const laborRow = document.createElement('tr');
+          laborRow.className = 'scw-mounting-labor-line';
+          laborRow.setAttribute('data-scw-product', productName);
+          const ltds = ['<td>' + escapeHtml(laborDesc) + '</td>'];
+          const lcells = l4.querySelectorAll('td');
+          for (let lc = 1; lc < lcells.length; lc++) {
+            const lref = lcells[lc];
+            const lcls = lref.className || '';
+            if (lcls.indexOf(costKey) !== -1) {
+              ltds.push('<td class="' + lcls + '" style="text-align:center;">' + escapeHtml(formatMoney(groupLabor)) + '</td>');
+            } else {
+              ltds.push('<td class="' + lcls + '"></td>');
+            }
+          }
+          laborRow.innerHTML = ltds.join('');
+          tbody.insertBefore(laborRow, insertAfter.nextSibling);
+          insertAfter = laborRow;
+        }
       }
 
       // The L4 "Mounting Hardware" label-row is now just a section
@@ -3126,6 +3245,15 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
     $view.find('tr.kn-table-group.kn-group-level-4').each(function () {
       var $costCell = $(this).find('td.' + costKey);
       if ($costCell.length) $costCell.html('<strong>' + TBD + '</strong>');
+    });
+
+    // Synthetic mounting-hardware install-labor lines (e.g. a rack
+    // enclosure's "Install and assemble…" line). postProcessMountingClusters
+    // builds these with a $0.00 cost on masked grids (labor cells were
+    // zeroed pre-pipeline); mask that cost to TBD like every other labor cell.
+    $view.find('tr.scw-mounting-labor-line').each(function () {
+      var $costCell = $(this).find('td.' + costKey);
+      if ($costCell.length) $costCell.html(TBD);
     });
 
     // Installation Total → TBD

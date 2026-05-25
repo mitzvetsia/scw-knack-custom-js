@@ -45,6 +45,7 @@ cat \
   src/features/view-3610-loading-overlay.js \
   src/features/survey-review-grid.js \
   src/features/proposal-pdf-export.js \
+  src/features/proposal-preview-images.js \
   src/features/published-proposal-render.js \
   src/features/secure-proposal-link.js \
   src/features/bid-items-grid.js \
@@ -121,6 +122,7 @@ cat \
   src/features/published-quote-info.js \
   src/features/ops-review-pill.js \
   src/features/ops-stepper.js \
+  src/features/sales-stepper.js \
   src/features/published-quote-on-proposal-page.js \
   src/features/preview-proposal-btn.js \
   src/features/create-sow-option-btn.js \
@@ -134,6 +136,7 @@ cat \
   src/features/sow-pdf-stepper.js \
   src/features/connected-device-bid-check.js \
   src/features/missing-connection-warn.js \
+  src/features/worksheet-warning-summary.js \
   src/features/default-sort.js \
   src/features/mirror-connection-sync.js \
   src/features/connection-picker.js \

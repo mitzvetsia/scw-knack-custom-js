@@ -180,13 +180,27 @@
 
     if (!deletedRecordIds.length) return result;
 
-    // Collect all accessory IDs across all deleted records
+    // Collect all accessory IDs across all deleted records. Dedupe, and
+    // drop any accessory that's also in deletedRecordIds — one box can be
+    // connected to several selected parents (so it surfaces multiple
+    // times), and a selected row can itself be another's accessory.
+    // Sending duplicates / already-deleted IDs makes Make re-delete a gone
+    // record, which Knack answers with a 403 — the noise we're chasing.
+    var deletedSet = {};
+    for (var d = 0; d < deletedRecordIds.length; d++) deletedSet[deletedRecordIds[d]] = true;
+
+    var seenAccessory = {};
     var allAccessoryIds = [];
     for (var i = 0; i < deletedRecordIds.length; i++) {
       var accessories = getConnectedIdsFromDOM(deletedRecordIds[i]);
       if (accessories.length) {
         SCW.debug('[SCW][delete-intercept] Record ' + deletedRecordIds[i] + ' has accessories:', accessories);
-        allAccessoryIds = allAccessoryIds.concat(accessories);
+      }
+      for (var a = 0; a < accessories.length; a++) {
+        var aid = accessories[a];
+        if (!aid || seenAccessory[aid] || deletedSet[aid]) continue;
+        seenAccessory[aid] = true;
+        allAccessoryIds.push(aid);
       }
     }
 

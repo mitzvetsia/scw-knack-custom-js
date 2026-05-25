@@ -114,10 +114,19 @@
   // table content when they're done reading it.
   function wrapInStrip(html, opts) {
     var collapsed = isPanelCollapsed(opts.viewId, opts.panelKey);
+    // Lazy panels: when collapsed we skip aggregate()/buildPanelHtml() at
+    // load and instead stash the row ids; the strip's first expand builds
+    // the table on demand (see buildLazyStripPanel). lazyIds is only passed
+    // for collapsed panels, so the body starts empty.
+    var lazy = !!(opts.lazyIds && opts.lazyIds.length);
+    var panelInner = lazy ? '' : html;
+    var lazyAttrs = lazy
+      ? ' data-mdf-lazy="1" data-mdf-ids="' + escapeHtml(opts.lazyIds.join(',')) + '"'
+      : '';
     return '<div class="' + STRIP_CLASS + ' scw-mdf-panel' +
       (collapsed ? '' : ' ' + STRIP_CLASS + '--open') + '" ' +
       'data-view-id="' + escapeHtml(opts.viewId) + '" ' +
-      'data-panel-key="' + escapeHtml(opts.panelKey) + '">' +
+      'data-panel-key="' + escapeHtml(opts.panelKey) + '"' + lazyAttrs + '>' +
 
       '<button type="button" class="' + STRIP_CLASS + '__bar ' +
         STRIP_CLASS + '__bar--open">' +
@@ -128,7 +137,7 @@
           '<polyline points="6 9 12 15 18 9"></polyline></svg>' +
       '</button>' +
 
-      '<div class="' + STRIP_CLASS + '__panel">' + html + '</div>' +
+      '<div class="' + STRIP_CLASS + '__panel">' + panelInner + '</div>' +
 
       '<button type="button" class="' + STRIP_CLASS + '__bar ' +
         STRIP_CLASS + '__bar--close">' +
@@ -172,6 +181,10 @@
         var strip = bar.closest('.' + STRIP_CLASS);
         if (!strip) return;
         var nowOpen = !strip.classList.contains(STRIP_CLASS + '--open');
+        // First expand of a lazy panel: build its table body now.
+        if (nowOpen && strip.getAttribute('data-mdf-lazy') === '1') {
+          buildLazyStripPanel(strip);
+        }
         strip.classList.toggle(STRIP_CLASS + '--open', nowOpen);
         // Storage uses 'collapsed' as the truthy state to match the
         // existing card-based panels' key shape.
@@ -183,6 +196,32 @@
         return;
       }
     });
+  }
+
+  // Build a deferred per-L1 summary table on first expand. The strip
+  // carries the group's row ids (data-mdf-ids); we look those records up
+  // in the live model, aggregate, and inject — the same result as an eager
+  // build, just paid only when the user actually opens the panel.
+  function buildLazyStripPanel(strip) {
+    if (!strip || strip.getAttribute('data-mdf-lazy') !== '1') return;
+    strip.removeAttribute('data-mdf-lazy');
+    var viewId = strip.getAttribute('data-view-id') || '';
+    var idsAttr = strip.getAttribute('data-mdf-ids') || '';
+    strip.removeAttribute('data-mdf-ids');
+    var panel = strip.querySelector('.' + STRIP_CLASS + '__panel');
+    if (!panel) return;
+    var ids = idsAttr ? idsAttr.split(',') : [];
+    if (!ids.length) return;
+    var done = (window.SCW && SCW.perf)
+      ? SCW.perf('mdf-summary lazy-build ' + viewId) : null;
+    var attrsById = buildAttrsLookup(viewId);
+    var fields = fieldsFor(viewId);
+    var list = [];
+    for (var i = 0; i < ids.length; i++) {
+      if (attrsById[ids[i]]) list.push(attrsById[ids[i]]);
+    }
+    if (list.length) panel.innerHTML = buildPanelHtml(aggregate(list, fields), fields);
+    if (done) done('rows=' + list.length);
   }
 
   // ── Per-view field maps ─────────────────────────────────
@@ -994,6 +1033,8 @@
     var tbody = view.querySelector('table.kn-table tbody');
     if (!tbody) return;
 
+    var _pfMdf = (window.SCW && SCW.perf) ? SCW.perf('mdf-summary.transform ' + viewId) : null;
+
     // Drop previous summaries — recompute is idempotent.
     var prev = tbody.querySelectorAll('tr.' + ROW_CLASS);
     for (var p = 0; p < prev.length; p++) prev[p].remove();
@@ -1025,12 +1066,11 @@
       // assignment, so it DOES get its own summary panel.
       if (_l1.classList.contains('scw-synthetic-group') &&
           !_l1.classList.contains('scw-unassigned-group')) return;
-      var data = aggregate(_list, fields);
-      var html = buildPanelHtml(data, fields);
-      if (!html) return;
-      // Derive a stable panelKey from the L1 group's label so collapse
-      // state survives re-renders. Strip surplus whitespace + the
-      // trailing colons Knack appends ("HEADEND: :" → "HEADEND").
+      // Derive a stable panelKey from the L1 group's label FIRST (before any
+      // aggregate work) so we can decide whether to build now or lazily.
+      // Collapse state survives re-renders via this key. Strip surplus
+      // whitespace + the trailing colons Knack appends ("HEADEND: :" →
+      // "HEADEND").
       //
       // textContent on the whole row picks up the record-count badge
       // ("...NEMA ENCLOSURE5"), so clone the group-inner first, remove
@@ -1050,15 +1090,27 @@
         l1Label = (_l1.textContent || '').replace(/\s+/g, ' ').trim();
       }
       l1Label = l1Label.replace(/[:\s]+$/, '');
-      // Per-L1 panel: narrow toggle bar that extends the L1 group
-      // header.  Drops the card chrome (no border / shadow / "Summary —
-      // X" header bar), shows just a "Summary ▾" strip when collapsed,
-      // and the table body when open. The grand summary keeps its card
-      // chrome (renderGrand still uses wrapInCard).
-      var stripped = wrapInStrip(html, {
-        viewId:   viewId,
-        panelKey: 'l1:' + (l1Label || 'unknown')
-      });
+      var panelKey = 'l1:' + (l1Label || 'unknown');
+
+      // Per-L1 panel: narrow toggle bar that extends the L1 group header.
+      // Per-L1 panels default COLLAPSED, so on load we skip the expensive
+      // aggregate()/buildPanelHtml() and stash just the row ids — the panel
+      // builds its table on first expand (buildLazyStripPanel). Only an
+      // already-expanded panel (user opened it last session) builds eagerly.
+      var stripped;
+      if (isPanelCollapsed(viewId, panelKey)) {
+        var ids = [];
+        for (var li = 0; li < _list.length; li++) {
+          if (_list[li] && _list[li].id) ids.push(_list[li].id);
+        }
+        if (!ids.length) return;
+        stripped = wrapInStrip('', { viewId: viewId, panelKey: panelKey, lazyIds: ids });
+      } else {
+        var data = aggregate(_list, fields);
+        var html = buildPanelHtml(data, fields);
+        if (!html) return;
+        stripped = wrapInStrip(html, { viewId: viewId, panelKey: panelKey });
+      }
       var summaryRow = document.createElement('tr');
       summaryRow.className = ROW_CLASS;
       // Mirror the L1 header's current collapse state. group-collapse
@@ -1112,6 +1164,7 @@
     flush(currentL1, currentList);
 
     renderGrand(view, grandList, fields);
+    if (_pfMdf) _pfMdf('rows=' + rows.length);
   }
 
   function renderGrand(view, list, fields) {

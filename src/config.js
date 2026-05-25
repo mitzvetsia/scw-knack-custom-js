@@ -98,7 +98,17 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   //   Request body:  { sourceRecordId, notes, sowFields, sowLineItemIds,
   //                    licenseIds, triggeredBy }
   //   Response body: { success: true } or { success: false, error: "..." }
-  MAKE_OPS_MARK_READY_WEBHOOK:           "https://hook.us1.make.com/0olufw2i0pf8iu653zf6ag8hwai1eoix",
+  //
+  // Mark Ready repointed (was …0olufw2i…) to the SAME shared publish
+  // scenario as the three publish variants + the sales publish-proposal
+  // step below. mark-ready is already in buildPayload's full-publish merge
+  // list (ops-stepper.js), so its body carries the identical publish shape
+  // (html / json / totals / proposalAccessToken+Url / publishAsTbd) plus the
+  // common sowFields / sowLineItemIds / licenseIds. The scenario branches on
+  // payload.stepId === 'mark-ready'. submission / clickupStatus are absent
+  // (mark-ready surfaces no such radio) — same as a publish step where the
+  // user picks "just publish", so the shape stays compatible.
+  MAKE_OPS_MARK_READY_WEBHOOK:           "https://hook.us1.make.com/mezrtqmf6gh7yxlkx5fkit6fqrma213l",
   MAKE_OPS_REQUEST_ALT_BID_WEBHOOK:      "https://hook.us1.make.com/r08nmy4ellspsjo9f2s0kdkhxucvf78u",
   // Update Subcontractor Bid Request: same payload shape as Request Alt
   // Bid (incl. selectedSurveyIds[]) AND the same Make webhook URL.
@@ -120,11 +130,14 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   MAKE_OPS_PUBLISH_SOW_TBD_WEBHOOK:      "https://hook.us1.make.com/mezrtqmf6gh7yxlkx5fkit6fqrma213l",
   MAKE_OPS_PUBLISH_GFE_WEBHOOK:          "https://hook.us1.make.com/mezrtqmf6gh7yxlkx5fkit6fqrma213l",
   MAKE_OPS_PUBLISH_FINAL_WEBHOOK:        "https://hook.us1.make.com/mezrtqmf6gh7yxlkx5fkit6fqrma213l",
-  // Legacy single-publish webhook — kept so any external integrations
-  // linking to this URL keep working until they're migrated to one of
-  // the three variants above. Not referenced by ops-stepper after the
-  // three-button split.
-  MAKE_OPS_PUBLISH_PROPOSAL_WEBHOOK:     "https://hook.us1.make.com/c9ha12glmbnxponzny6ka7s7orr1226b",
+  // Sales stepper "Publish Proposal" (sales-stepper.js, stepId
+  // 'publish-proposal'). Points at the SAME shared publish scenario as
+  // the three ops publish variants above — Make branches on
+  // payload.stepId, and the payload shape matches those steps. Repointed
+  // here from the legacy single-publish hook (…c9ha12…) so every publish
+  // path lands in one scenario; that legacy URL is no longer referenced
+  // in code (external integrations hitting it directly are unaffected).
+  MAKE_OPS_PUBLISH_PROPOSAL_WEBHOOK:     "https://hook.us1.make.com/mezrtqmf6gh7yxlkx5fkit6fqrma213l",
   // Fires after a successful submit on the SOW Header update form when
   // field_2753 (target Project to clone into) is non-empty. Make handles
   // the deep clone (SOW + MDFs + photos) into the target Project. Payload:

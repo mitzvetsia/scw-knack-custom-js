@@ -133,6 +133,11 @@
       // (see buildPayload) so Make has everything it needs to also
       // produce the TBD-numbered draft published quote.
       webhookKey: 'MAKE_OPS_MARK_READY_WEBHOOK',
+      // Now hits the shared publish scenario. That scenario routes the
+      // post-publish notification off payload.submission; mark-ready has no
+      // submission radio, so force 'sales' here — marking ready IS the
+      // hand-off to Sales, so it always notifies them.
+      forceSubmission: 'sales',
       modal: {
         title:       'Mark Ready for Survey',
         intro:       'Note to the sales team — what should they know?',
@@ -682,7 +687,9 @@
             'recordId', 'hash', 'sceneId', 'type',
             'sowId', 'equipmentTotal', 'installationTotal',
             'grandTotal', 'expirationDate',
-            'html', 'plaintext', 'plaintextJsonEscaped',
+            // html = snapshot-safe (raw Site Map URLs, for field_2680);
+            // htmlPdf = small weserv-resized variant for the PDF render.
+            'html', 'htmlPdf', 'plaintext', 'plaintextJsonEscaped',
             'scopeOfWorkDocumentElements', 'scopeOfWorkDocumentElementsString',
             'json', 'jsonString',
             'invoiceItems', 'invoiceItemsString',
@@ -704,6 +711,11 @@
           if (step.id === 'publish-gfe' && typeof payload.html === 'string') {
             payload.publishAsGfe = true;
             payload.html = injectGfeCallout(payload.html);
+            // Mirror the callout into the PDF variant so the rendered PDF
+            // carries the GFE banner too.
+            if (typeof payload.htmlPdf === 'string') {
+              payload.htmlPdf = injectGfeCallout(payload.htmlPdf);
+            }
           }
         } else {
           console.warn('[scw-ops-stepper] buildPublishPayload returned null — ' +
@@ -1352,7 +1364,10 @@
       // Selected submission option ('sales' / 'second-set' / null).
       // Make's scenario branches on this — it's orthogonal to step.id
       // (which webhook to fire) and to mode (publish-and-notify, etc.).
-      if (ctx.submission)    payload.submission    = ctx.submission;
+      // A step with no submission radio can still force a default
+      // (step.forceSubmission) — e.g. mark-ready always submits to Sales.
+      if (ctx.submission)             payload.submission = ctx.submission;
+      else if (step.forceSubmission)  payload.submission = step.forceSubmission;
       // ClickUp status update ('gfe-submitted' / 'final-bid-submitted' /
       // null). Independent of submission — the user can pick any combo.
       if (ctx.clickupStatus) payload.clickupStatus = ctx.clickupStatus;

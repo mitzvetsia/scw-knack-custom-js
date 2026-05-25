@@ -235,8 +235,11 @@
     $(document)
       .off('knack-view-render.' + viewId + EVENT_NS)
       .on('knack-view-render.' + viewId + EVENT_NS, function () {
+        var done = (window.SCW && SCW.perf)
+          ? SCW.perf('dynamic-cell-colors ' + viewId) : null;
         applyColorsForView(viewCfg);
         installObserver(viewCfg);
+        if (done) done();
       });
   });
 })();

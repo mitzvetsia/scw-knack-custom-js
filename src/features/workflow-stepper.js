@@ -24,6 +24,10 @@
       completed: { field: 'field_1199', hasValue: true },
       lockWhenCompleted: true,
       disabled: { field: 'field_2724', notValue: 'Yes', message: 'Complete the Project Playbook first' },
+      // When the Make automation finishes (field_1199 populated), refresh
+      // these views so their DOM reflects the new install-project state
+      // (e.g. view_3491's Clickup task / project link) without a manual reload.
+      refreshViewsOnComplete: ['view_3491'],
       // After the user clicks → submits the form → returns here, Make
       // takes a few seconds to populate field_1199 with the install
       // project link. Lock the action and poll view_3827 until that
@@ -341,8 +345,23 @@
     document.head.appendChild(style);
   }
 
-  // ── Read field value from source view DOM ────────────────
+  // ── Read field value from the source view ────────────────
+  // Prefer the Knack model attributes: onFormSubmit calls model.fetch(),
+  // which refreshes the model with record-rule updates (e.g. field_2724
+  // flipping to Yes), but a bare fetch does NOT re-render the detail view's
+  // DOM — so reading the DOM alone returns the stale pre-submit value and
+  // the stepper never advances. Fall back to the DOM when the model isn't
+  // available or doesn't carry the field.
   function readField(fieldKey) {
+    try {
+      var v = Knack && Knack.views && Knack.views[SOURCE_VIEW];
+      var attrs = v && v.model && v.model.attributes;
+      if (attrs && Object.prototype.hasOwnProperty.call(attrs, fieldKey)) {
+        var raw = attrs[fieldKey];
+        if (raw == null) return '';
+        return String(raw).replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+      }
+    } catch (e) { /* fall back to DOM */ }
     var view = document.getElementById(SOURCE_VIEW);
     if (!view) return '';
     var cell = view.querySelector('.kn-detail.' + fieldKey + ' .kn-detail-body');
@@ -915,6 +934,19 @@
   }
 
   // ── Apply states to an action step ───────────────────────
+  // Hide the original Knack menu view (and any injected action button) that
+  // a step replaces, so the raw "Start Install Project" link never leaks
+  // through. Must run in every applyActionState path — including the
+  // processing/polling early-return — because the menu view re-renders
+  // visible on each poll fetch.
+  function hideStepMenu(step) {
+    if (!step.menuView) return;
+    var origMenu = document.getElementById(step.menuView);
+    if (origMenu) origMenu.style.display = 'none';
+    var injected = document.querySelector('.scw-acc-actions[data-scw-menu-src="' + step.menuView + '"]');
+    if (injected) injected.classList.add('scw-step-menu-hidden');
+  }
+
   function applyActionState(step) {
     var el = document.getElementById('scw-step-' + step.id);
 
@@ -979,6 +1011,7 @@
       // Drop the href so even an accessibility-tab-Enter doesn't fire.
       el.removeAttribute('href');
       renderHeaderMessage(el, step, step.id, false, false);
+      hideStepMenu(step);
       return;
     }
 
@@ -1006,12 +1039,7 @@
     renderHeaderMessage(el, step, step.id, isCompleted, baseDisabled);
 
     // Hide original menu view
-    if (step.menuView) {
-      var origMenu = document.getElementById(step.menuView);
-      if (origMenu) origMenu.style.display = 'none';
-      var injected = document.querySelector('.scw-acc-actions[data-scw-menu-src="' + step.menuView + '"]');
-      if (injected) injected.classList.add('scw-step-menu-hidden');
-    }
+    hideStepMenu(step);
   }
 
   // ── Main apply ───────────────────────────────────────────
@@ -1080,6 +1108,7 @@
               if (step.completed && conditionMet(step.completed)) {
                 clearPollFlag(step.id);
                 stopStepPoll(step.id);
+                refreshStepViews(step);
               }
               applySteps();
             }
@@ -1093,6 +1122,26 @@
       clearInterval(_activePolls[stepId]);
       delete _activePolls[stepId];
     }
+  }
+
+  // Re-fetch + re-render the views a step declares in refreshViewsOnComplete
+  // so their DOM reflects post-automation data (a bare model.fetch updates
+  // the model but doesn't repaint a details view).
+  function refreshStepViews(step) {
+    var views = step.refreshViewsOnComplete;
+    if (!views || !views.length) return;
+    views.forEach(function (vk) {
+      try {
+        var v = Knack && Knack.views && Knack.views[vk];
+        if (v && v.model && typeof v.model.fetch === 'function') {
+          v.model.fetch({
+            success: function () {
+              try { if (typeof v.render === 'function') v.render(); } catch (e) {}
+            }
+          });
+        }
+      } catch (e) { /* ignore */ }
+    });
   }
 
 
@@ -1174,13 +1223,32 @@
     setTimeout(bindPlaybookRules, 600);
   }
 
+  // Idempotent collapse of a step accordion. Unlike a header click (which
+  // toggles), this always forces the collapsed state, so it's safe to call
+  // repeatedly. Mirrors ktl-accordion's own collapse DOM ops.
+  function collapseStepAccordion(viewKey) {
+    var wrap = findAccordion(viewKey);
+    if (!wrap) return;
+    var hdr = wrap.querySelector('.scw-ktl-accordion__header');
+    wrap.classList.remove('is-expanded');
+    if (hdr) hdr.setAttribute('aria-expanded', 'false');
+    var body = wrap.querySelector('.scw-ktl-accordion__body');
+    if (body) body.style.display = 'none';
+    var section = document.querySelector('.hideShow_' + viewKey + '.ktlHideShowSection');
+    if (section) section.style.display = 'none';
+    var arrow = document.getElementById('hideShow_' + viewKey + '_arrow');
+    if (arrow) { arrow.classList.remove('ktlDown'); arrow.classList.add('ktlUp'); }
+  }
+
   // Collapse accordion and refresh steps after form submit
   function onFormSubmit(viewKey) {
-    var wrap = findAccordion(viewKey);
-    if (wrap && wrap.classList.contains('is-expanded')) {
-      var hdr = wrap.querySelector('.scw-ktl-accordion__header');
-      if (hdr) hdr.click();
-    }
+    // KTL persistent forms re-render after submit (showing the "Form
+    // successfully submitted" confirmation), which re-expands the section.
+    // Collapse now and re-assert a few times to outlast that re-render.
+    collapseStepAccordion(viewKey);
+    [300, 700, 1400].forEach(function (ms) {
+      setTimeout(function () { collapseStepAccordion(viewKey); }, ms);
+    });
     // Refresh source view to get updated field values, then re-apply steps
     if (typeof Knack !== 'undefined' && Knack.views[SOURCE_VIEW] && Knack.views[SOURCE_VIEW].model) {
       Knack.views[SOURCE_VIEW].model.fetch({
@@ -1230,12 +1298,29 @@
     setTimeout(init, 800);
   });
 
-  // Listen for form submissions on step accordion views
-  $(document).on('knack-form-submit.view_2924' + NS, function () {
-    onFormSubmit('view_2924');
-  });
-  $(document).on('knack-form-submit.view_3853' + NS, function () {
-    onFormSubmit('view_3853');
+  // Listen for form submissions on step accordion views. Knack fires
+  // different events depending on the form: a brand-new record emits
+  // knack-record-create, an edit emits knack-record-update, and
+  // knack-form-submit fires for some (but not all) forms — notably KTL
+  // persistent edit forms like the Playbook (view_2924) often emit only
+  // knack-record-update. Bind all three and de-dupe so onFormSubmit (which
+  // collapses the accordion + re-runs applySteps) always fires exactly once.
+  var STEP_FORM_VIEWS = ['view_2924', 'view_3853'];
+  var _lastStepFormHandled = {};
+
+  function handleStepFormSubmit(viewKey) {
+    var now = Date.now();
+    if (_lastStepFormHandled[viewKey] && (now - _lastStepFormHandled[viewKey]) < 1200) return;
+    _lastStepFormHandled[viewKey] = now;
+    onFormSubmit(viewKey);
+  }
+
+  STEP_FORM_VIEWS.forEach(function (vk) {
+    ['knack-form-submit', 'knack-record-update', 'knack-record-create'].forEach(function (evt) {
+      $(document)
+        .off(evt + '.' + vk + NS)
+        .on(evt + '.' + vk + NS, function () { handleStepFormSubmit(vk); });
+    });
   });
 
   // ── Cross-tab refresh after Ops stepper completion ───────

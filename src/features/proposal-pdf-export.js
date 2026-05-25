@@ -69,6 +69,9 @@
       // Ops stepper, not part of the published proposal. Keep it out
       // of the PDF scrape.
       // view_3345 is the Ops stepper host (rich-text role-gated).
+      // view_3969 is the Sales stepper host (rich-text role-gated) —
+      //   same deal as the Ops stepper; its action buttons must not
+      //   render into the published proposal.
       // view_3883 is the published-quote info host we inject into.
       // view_3886 is the published-proposals data source we read to
       //   populate view_3883 — itself not part of the quote.
@@ -77,6 +80,7 @@
         view_3342: true,
         view_3861: true,
         view_3345: true,
+        view_3969: true,
         view_3883: true,
         view_3886: true,
         // CTA button surfaced on the published-proposal page
@@ -109,9 +113,23 @@
       // section label on top. Files come from any field_<N>_raw on the
       // record carrying { filename, url } / { public_url } — same
       // shape Knack uses for every file-upload field.
+      // view_3929 (Additional Photos) is a Knack *Image* field (field_771)
+      // with server-generated thumbnail renditions. Knack thumbnail URLs are
+      // just the original asset URL with the `/original/` path segment swapped
+      // for `/thumb_NN/`, e.g.
+      //   .../<assetId>/original/photo.jpg  ->  .../<assetId>/thumb_15/photo.jpg
+      // `thumbVariant: 'thumb_14'` (the 300x300 rendition) is emitted directly
+      // — it's already small, so we skip the canvas-downscale round-trip.
+      // view_3928 (Site Maps) has no server thumbnails, so it stays on the
+      // canvas-downscale path; its Image-field (field_754) assets are loaded
+      // for downscaling from the rendered DOM <img> src (CORS-clean S3 host)
+      // because their _raw.url taints the canvas (see collectDomImageSrcs).
       appendImageViews: [
-        { viewId: 'view_3928', label: 'Site Maps' },
-        { viewId: 'view_3929', label: 'Additional Photos' }
+        // ⚠️ proxyResize routes DOM-rendered map assets (File-field
+        // floorplans that can't be canvas-downscaled) through a third-party
+        // resize CDN — see SECURITY note in CLAUDE.md and toProxyResizeUrl.
+        { viewId: 'view_3928', label: 'Site Maps', fullPage: true, proxyResize: { w: 2000, q: 80 } },
+        { viewId: 'view_3929', label: 'Additional Photos', thumbVariant: 'thumb_14' }
       ],
       // JSON snapshot for this scene is intentionally slim:
       //   { sowRecordId, view_3896: [...full records...] }
@@ -539,6 +557,30 @@
         currentL3.lineItems.push({
           level: 4, label: mptName, description: '',
           qty: mptQty, cost: mptCost, cameraList: mptParentList,
+          // These rollup lines are relocated EQUIPMENT accessories (hard
+          // drives, rack enclosures, box mounts) — their cost is an
+          // equipment price, not install labor, so it must NOT be masked to
+          // "TBD" when the bid is unreleased (see applyTbdToPublishPayload).
+          isEquipment: true,
+        });
+        continue;
+      }
+
+      if (tr.classList.contains('scw-mounting-labor-line')) {
+        // The install-labor sub-line proposal-grid emits beneath an
+        // equipment accessory that carries its own labor (e.g. a rack
+        // enclosure). Unlike the equipment rollup line above, this IS
+        // install labor — leave it maskable so it renders "TBD" when the
+        // bid is unreleased.
+        if (!currentL3) continue;
+        var mltLabelTd = tr.querySelector('td:first-child');
+        if (!mltLabelTd) continue;
+        var mltName = norm(mltLabelTd.textContent);
+        if (!mltName) continue;
+        var mltCost = norm((tr.querySelector('td.' + keys.cost) || {}).textContent || '');
+        currentL3.lineItems.push({
+          level: 4, label: mltName, description: '',
+          qty: '', cost: mltCost, cameraList: '',
         });
         continue;
       }
@@ -756,6 +798,9 @@
                 var prod = bucket.products[p];
                 if (!prod || !Array.isArray(prod.lineItems)) continue;
                 for (var li = 0; li < prod.lineItems.length; li++) {
+                  // Equipment accessory rollup lines carry a real equipment
+                  // price, not install labor — leave them alone.
+                  if (prod.lineItems[li].isEquipment) continue;
                   prod.lineItems[li].cost = TBD;
                 }
               }
@@ -824,23 +869,278 @@
     return files;
   }
 
-  function scrapeImagesFromView(viewId, label) {
+  // ── Append-image downscaling ───────────────────────────────
+  // Site Maps / Additional Photos live in Knack *file* fields, which get
+  // no server-side thumbnails — appending the full-size original bloats
+  // the PDF to many MB. Instead we downscale each image in the browser
+  // (canvas → JPEG, longest edge ≤ IMG_MAX_EDGE) and inline the result as
+  // a data URI in the scraped HTML. Knack's asset host allows cross-
+  // origin canvas reads (verified), so toDataURL() doesn't taint.
+  //
+  // buildPublishPayload is synchronous and called from three publish
+  // paths, so we can't await the decode there. Instead we PRE-WARM a
+  // url→dataURI cache on scene/view render (prewarmAppendImages); by the
+  // time the user clicks Publish the cache is almost always ready.
+  // scrapeImagesFromView reads the cache and falls back to the original
+  // URL on a miss, so a cold cache degrades to the prior behaviour rather
+  // than breaking.
+  var IMG_MAX_EDGE = 3000;        // longest edge cap (preserves aspect ratio)
+  var IMG_JPEG_QUALITY = 0.7;
+  var _imgDownscaleCache = Object.create(null);    // url → dataURI ('' = failed)
+  var _imgDownscaleInflight = Object.create(null); // url → Promise
+
+  function downscaleImageToDataURL(url) {
+    if (!url) return Promise.resolve('');
+    if (_imgDownscaleCache[url] !== undefined) return Promise.resolve(_imgDownscaleCache[url]);
+    if (_imgDownscaleInflight[url]) return _imgDownscaleInflight[url];
+
+    var p = new Promise(function (resolve) {
+      var img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = function () {
+        try {
+          var w = img.naturalWidth || img.width;
+          var h = img.naturalHeight || img.height;
+          if (!w || !h) { _imgDownscaleCache[url] = ''; resolve(''); return; }
+          var scale = Math.min(1, IMG_MAX_EDGE / Math.max(w, h));
+          var cw = Math.max(1, Math.round(w * scale));
+          var ch = Math.max(1, Math.round(h * scale));
+          var canvas = document.createElement('canvas');
+          canvas.width = cw; canvas.height = ch;
+          canvas.getContext('2d').drawImage(img, 0, 0, cw, ch);
+          var dataUri = canvas.toDataURL('image/jpeg', IMG_JPEG_QUALITY);
+          _imgDownscaleCache[url] = dataUri;
+          resolve(dataUri);
+        } catch (e) {
+          _imgDownscaleCache[url] = '';   // CORS taint / canvas error → URL fallback
+          resolve('');
+        }
+      };
+      img.onerror = function () { _imgDownscaleCache[url] = ''; resolve(''); };
+      img.src = url;
+    });
+    _imgDownscaleInflight[url] = p;
+    return p;
+  }
+
+  // Kick off downscaling for every append-image URL on the scene so the
+  // cache is warm before the user publishes. Cheap + idempotent; safe to
+  // call repeatedly (downscaleImageToDataURL dedupes by URL).
+  function prewarmAppendImages(cfg) {
+    if (!cfg || !cfg.appendImageViews || !cfg.appendImageViews.length) return;
+    try {
+      var sections = scrapeAppendImageSections(cfg);
+      for (var s = 0; s < sections.length; s++) {
+        var imgs = sections[s].images || [];
+        for (var i = 0; i < imgs.length; i++) {
+          // Skip URLs that are emitted directly (server thumbnails, resize
+          // proxy) — they're already small and never read from the cache.
+          var pu = imgs[i] && imgs[i].url;
+          if (pu && pu.indexOf('/thumb_') === -1 && pu.indexOf('images.weserv.nl') === -1) {
+            downscaleImageToDataURL(pu);
+          }
+        }
+      }
+    } catch (e) { /* non-fatal */ }
+  }
+
+  // Knack thumbnail URLs are the original asset URL with the `/original/`
+  // path segment replaced by `/thumb_NN/`. Returns the original unchanged if
+  // it doesn't contain `/original/` (e.g. File-field uploads, which have no
+  // server thumbnail).
+  function toThumbUrl(url, variant) {
+    if (!url || !variant) return url;
+    return url.indexOf('/original/') !== -1
+      ? url.replace('/original/', '/' + variant + '/')
+      : url;
+  }
+
+  function basenameOf(url) {
+    return decodeURIComponent((url || '').split('?')[0].split('/').pop() || '');
+  }
+
+  // ⚠️ THIRD-PARTY IMAGE PROXY — see SECURITY note in CLAUDE.md.
+  // Site Map floorplans live in Knack *File* fields, which: (a) cannot have
+  // server-side thumbnails, and (b) are served from an asset host that does
+  // NOT send CORS headers — so they taint a <canvas> and can't be downscaled
+  // in the browser (verified: the embedded bytes were identical across
+  // builds). The only way to shrink them while keeping the "just send the
+  // HTML" pipeline is to point the <img> at a server-side resize proxy that
+  // Make fetches instead of the full-res original.
+  //
+  // images.weserv.nl is a free public image CDN. The asset URL is passed to
+  // it scheme-less and url-encoded. `&we` = no enlargement (don't upscale a
+  // smaller map). This means the floorplan image transits / may be cached by
+  // a third party. The Knack asset URLs are already public-but-unguessable,
+  // but these are camera-placement diagrams — treat as a known, accepted
+  // tradeoff, not something to extend silently to other images.
+  function toProxyResizeUrl(url, opts) {
+    if (!url) return url;
+    var w = (opts && opts.w) || 2000;
+    var q = (opts && opts.q) || 80;
+    var bare = url.replace(/^https?:\/\//, '');
+    // End the proxy URL with a real ".jpg" extension via weserv's `filename`
+    // param. The published HTML snapshot (field_2680) round-trips through a
+    // Knack rich-text field, whose sanitizer BLANKS <img src> URLs that don't
+    // end in a recognized image extension — the bare proxy URL ended in
+    // "&we", so the Site Map src came out empty in the stored snapshot and
+    // the customer-facing page showed a broken-image icon. (The PDF was
+    // unaffected because Make builds it from the live payload.html, not the
+    // stored snapshot.) `filename` only sets the download name — it does NOT
+    // change the rendered/resized output — so the PDF resize behaviour is
+    // identical; we're purely making the URL survive the sanitizer.
+    var base = basenameOf(url).replace(/\.[^.]+$/, '') || 'sitemap';
+    var dlName = encodeURIComponent(base) + '.jpg';
+    return 'https://images.weserv.nl/?url=' + encodeURIComponent(bare) +
+           '&w=' + w + '&output=jpg&q=' + q + '&we&filename=' + dlName;
+  }
+
+  // Inverse of toProxyResizeUrl — recover the original asset URL from a
+  // weserv proxy URL by reading back its `url=` param. Returns the input
+  // unchanged when it isn't a weserv URL. Used by the in-app preview to
+  // show raw full-size images without the third-party CDN round-trip.
+  function unwrapResizeProxyUrl(url) {
+    if (!url || url.indexOf('images.weserv.nl') === -1) return url;
+    var m = /[?&]url=([^&]+)/.exec(url);
+    if (!m) return url;
+    var bare = decodeURIComponent(m[1]);
+    return /^https?:\/\//.test(bare) ? bare : 'https://' + bare;
+  }
+
+  // Build the SNAPSHOT variant of the published HTML — the copy Make stores
+  // in Knack's field_2680 rich-text field (rendered on the customer-facing
+  // published page). That field's sanitizer strips <img src> values that are
+  // data: URIs or carry a query string, which blanked the Site Map images
+  // there: Site Maps render from an api.knack.com URL that collectDomImageSrcs
+  // doesn't recognize, so they take the canvas-downscale path and get embedded
+  // as base64 data URIs — exactly what the sanitizer drops (the clean https://
+  // logo URL survives). Swap each appended image's src to its original clean
+  // asset URL (img.url — always an https:// Knack/CDN link, no data:, no
+  // query), which survives storage AND renders natively. The PDF keeps the
+  // inline/resized variant via payload.htmlPdf.
+  function buildSnapshotHtml(payload, fallbackHtml) {
+    var secs = payload && payload.appendImageSections;
+    if (!secs || !secs.length) return fallbackHtml;
+    var saved = [];
+    for (var i = 0; i < secs.length; i++) {
+      var imgs = secs[i].images || [];
+      for (var j = 0; j < imgs.length; j++) {
+        saved.push([imgs[j], imgs[j].src]);
+        if (imgs[j].url) imgs[j].src = imgs[j].url;
+      }
+    }
+    var html = buildPdfHtml(payload);
+    for (var k = 0; k < saved.length; k++) saved[k][0].src = saved[k][1];
+    return html;
+  }
+
+  // Collect rendered <img> srcs from a view's table. Knack *Image*/File
+  // assets (e.g. field_754 Site Maps) render the asset from an S3 host that
+  // does NOT allow cross-origin canvas reads, so the browser can display
+  // them but cannot downscale them (toDataURL taints → full-res original is
+  // embedded). We use this map both to identify those DOM-rendered assets
+  // and to route them through the server-side resize proxy. Keyed by
+  // filename so it can be matched against the record-derived files.
+  function collectDomImageSrcs(viewId) {
+    var map = {};
+    var viewEl = document.getElementById(viewId);
+    if (!viewEl) return map;
+    var imgs = viewEl.querySelectorAll('table img');
+    for (var i = 0; i < imgs.length; i++) {
+      var src = imgs[i].getAttribute('src') || imgs[i].src || '';
+      if (!src || src.indexOf('data:') === 0) continue;
+      if (src.indexOf('knackhq.com') === -1 && src.indexOf('amazonaws.com') === -1) continue;
+      var fn = basenameOf(src);
+      if (fn) map[fn.toLowerCase()] = src;
+    }
+    return map;
+  }
+
+  function scrapeImagesFromView(entry) {
+    var viewId = entry.viewId;
+    var label = entry.label;
     var out = [];
     if (typeof Knack === 'undefined' || !Knack.views) return out;
     var view = Knack.views[viewId];
     if (!view) return out;
     var records = extractAppendImageViewRecords(view);
+
+    // Gather image files from the records (File fields carry CORS-clean
+    // urls in _raw). For the canvas path, prefer the DOM-rendered <img> src
+    // when one matches by filename — Image-field _raw urls taint the canvas
+    // (see collectDomImageSrcs). The thumbVariant path doesn't canvas-read,
+    // so it always uses the record url + URL transform.
+    var domSrcs = entry.thumbVariant ? {} : collectDomImageSrcs(viewId);
+    var files = [];
+    var byName = {};
     for (var r = 0; r < records.length; r++) {
-      var files = extractFilesFromRecord(records[r]);
-      for (var f = 0; f < files.length; f++) {
-        var file = files[f];
+      var recFiles = extractFilesFromRecord(records[r]);
+      for (var f = 0; f < recFiles.length; f++) {
+        var file = recFiles[f];
         if (!isImageFile(file)) continue;
-        var url = file.url || file.public_url || '';
-        if (!url) continue;
+        var u = file.url || file.public_url || '';
+        if (!u) continue;
+        var fname = file.filename || basenameOf(u);
+        // DOM-rendered assets (Image/File maps on the no-CORS S3 host) can't
+        // be canvas-downscaled; mark them so they go through the resize proxy.
+        var domSrc = domSrcs[String(fname).toLowerCase()];
+        files.push({ filename: fname, url: domSrc || u, fromDom: !!domSrc });
+        if (fname) byName[String(fname).toLowerCase()] = true;
+      }
+    }
+    // Add any DOM images that have no matching record file (map rows whose
+    // _raw lacks a usable filename/url, so extractFilesFromRecord didn't
+    // surface them).
+    if (!entry.thumbVariant) {
+      for (var key in domSrcs) {
+        if (!domSrcs.hasOwnProperty(key) || byName[key]) continue;
+        files.push({ filename: basenameOf(domSrcs[key]), url: domSrcs[key], fromDom: true });
+      }
+    }
+
+    // Dedupe repeated uploads of the same file (same filename, different
+    // asset ids); without this each duplicate becomes its own full-page
+    // image in the PDF — bloating the file and showing the same picture
+    // twice. Key on filename, falling back to the URL when there's no name.
+    var seen = {};
+    for (var k = 0; k < files.length; k++) {
+      var fl = files[k];
+      var url = fl.url;
+      if (!url) continue;
+      var dkey = fl.filename
+        ? 'fn:' + String(fl.filename).toLowerCase().trim()
+        : 'url:' + url;
+      if (seen[dkey]) continue;
+      seen[dkey] = true;
+
+      if (entry.thumbVariant) {
+        // Native server thumbnail — already small, emit the URL directly
+        // (no canvas-downscale round-trip).
+        var thumbUrl = toThumbUrl(url, entry.thumbVariant);
         out.push({
-          src: url,
-          filename: file.filename || '',
-          alt: file.filename || label || ''
+          src: thumbUrl,
+          url: thumbUrl,
+          filename: fl.filename || '',
+          alt: fl.filename || label || ''
+        });
+      } else if (entry.proxyResize && fl.fromDom) {
+        // DOM-rendered map asset that can't be canvas-downscaled (no CORS) —
+        // route through the server-side resize proxy so Make fetches a small
+        // copy. ⚠️ third-party CDN; see toProxyResizeUrl / CLAUDE.md.
+        var proxyUrl = toProxyResizeUrl(url, entry.proxyResize);
+        out.push({
+          src: proxyUrl,
+          url: proxyUrl,
+          filename: fl.filename || '',
+          alt: fl.filename || label || ''
+        });
+      } else {
+        var cachedDataUri = _imgDownscaleCache[url];
+        out.push({
+          src: cachedDataUri ? cachedDataUri : url,
+          url: url,
+          filename: fl.filename || '',
+          alt: fl.filename || label || ''
         });
       }
     }
@@ -852,9 +1152,9 @@
     if (!cfg.appendImageViews || !cfg.appendImageViews.length) return sections;
     for (var i = 0; i < cfg.appendImageViews.length; i++) {
       var entry = cfg.appendImageViews[i];
-      var images = scrapeImagesFromView(entry.viewId, entry.label);
+      var images = scrapeImagesFromView(entry);
       if (!images.length) continue;
-      sections.push({ viewId: entry.viewId, label: entry.label, images: images });
+      sections.push({ viewId: entry.viewId, label: entry.label, images: images, fullPage: !!entry.fullPage });
     }
     return sections;
   }
@@ -1298,17 +1598,35 @@
   function renderAppendImageSection(section, html) {
     if (!section || !section.images || !section.images.length) return;
     var label = section.label || '';
-    for (var i = 0; i < section.images.length; i++) {
-      var img = section.images[i];
-      html.push('<section class="append-image-page">');
-      if (label) {
-        html.push('<h2 class="append-image-title">' + esc(label) + '</h2>');
+    if (section.fullPage) {
+      // One image per page, full width (Site Maps — floorplans need room).
+      for (var i = 0; i < section.images.length; i++) {
+        var img = section.images[i];
+        html.push('<section class="append-image-page">');
+        if (label) {
+          html.push('<h2 class="append-image-title">' + esc(label) + '</h2>');
+        }
+        html.push('<img class="append-image" width="780" ' +
+                  'src="' + esc(img.src) + '" ' +
+                  'alt="' + esc(img.alt || label) + '" />');
+        html.push('</section>');
       }
-      html.push('<img class="append-image" width="780" ' +
-                'src="' + esc(img.src) + '" ' +
-                'alt="' + esc(img.alt || label) + '" />');
-      html.push('</section>');
+      return;
     }
+    // Compact grid (Additional Photos — multiple per page, not full size).
+    html.push('<section class="append-image-grid-section">');
+    if (label) {
+      html.push('<h2 class="append-image-title">' + esc(label) + '</h2>');
+    }
+    html.push('<div class="append-image-grid">');
+    for (var j = 0; j < section.images.length; j++) {
+      var pimg = section.images[j];
+      html.push('<img class="append-image-thumb" ' +
+                'src="' + esc(pimg.src) + '" ' +
+                'alt="' + esc(pimg.alt || label) + '" />');
+    }
+    html.push('</div>');
+    html.push('</section>');
   }
 
   function hasSectionContent(section) {
@@ -1510,6 +1828,25 @@
       '  height: auto;',
       '  margin: 0 auto;',
       '  object-fit: contain;',
+      '}',
+      '.append-image-grid-section {',
+      '  page-break-before: always;',
+      '  break-before: page;',
+      '  padding-top: 8px;',
+      '}',
+      '.append-image-grid {',
+      '  display: flex;',
+      '  flex-wrap: wrap;',
+      '  gap: 10px;',
+      '}',
+      '.append-image-thumb {',
+      '  width: 250px;',
+      '  height: 250px;',
+      '  object-fit: contain;',
+      '  border: 1px solid #ddd;',
+      '  background: #fafafa;',
+      '  break-inside: avoid;',
+      '  page-break-inside: avoid;',
       '}',
     ].join('\n');
   }
@@ -1967,6 +2304,21 @@
 
   function setupButtonTrigger(cfg) {
     var btnId = cfg.trigger.buttonId;
+
+    // Pre-warm the append-image downscale cache so the published PDF
+    // embeds small JPEGs instead of multi-MB file-field originals. These
+    // grids populate asynchronously, so warm on scene render AND whenever
+    // an append-image view (re)renders.
+    if (cfg.appendImageViews && cfg.appendImageViews.length) {
+      $(document).on('knack-scene-render.' + cfg.sceneId + '.scwImgPrewarm', function () {
+        setTimeout(function () { prewarmAppendImages(cfg); }, 300);
+      });
+      cfg.appendImageViews.forEach(function (entry) {
+        $(document).on('knack-view-render.' + entry.viewId + '.scwImgPrewarm', function () {
+          setTimeout(function () { prewarmAppendImages(cfg); }, 50);
+        });
+      });
+    }
 
     $(document).on('knack-scene-render.' + cfg.sceneId, function () {
       setTimeout(function () {
@@ -3525,7 +3877,17 @@
       // via window.crypto.getRandomValues).
       proposalAccessToken:   accessToken,
       proposalAccessUrl:     accessUrl,
-      html:                  htmlStr,
+      // `html` is the SNAPSHOT-safe variant: appended-image srcs use the
+      // original clean Knack asset URL (no data: URI, no query string) so
+      // they survive Knack's field_2680 rich-text sanitizer and render on
+      // the customer-facing published page. This is what Make should store
+      // in field_2680. `htmlPdf` keeps the inline/resized variant (base64
+      // data URI for Site Maps, weserv for other DOM assets) for the PDF
+      // render — Make's PDF step should read htmlPdf. Until the Make
+      // scenario is pointed at htmlPdf, the PDF uses the raw (larger)
+      // images — never broken, just bigger. See CLAUDE.md.
+      html:                  buildSnapshotHtml(payload, htmlStr),
+      htmlPdf:               htmlStr,
       plaintext:             plaintextStr,
       // Pre-escaped variant of `plaintext`, safe to drop directly between
       // double quotes in a JSON string template (e.g. an esignatures.com
@@ -3598,6 +3960,61 @@
     },
     getCss: getPdfCss,
     buildPublishPayload: buildPublishPayload,
+    // Render just the appended image sections (Site Maps / Additional
+    // Photos) for a scene as an HTML string — the exact same markup the
+    // published PDF/HTML appends at the end. proposal-preview-images.js
+    // injects this at the bottom of the in-app preview so staff see the
+    // images that WILL publish. Returns '' when the scene has no
+    // appendImageViews or none of them have images yet.
+    //
+    // opts.rawSiteMaps: unwrap the images.weserv.nl resize proxy back to
+    // the original asset URL. The in-app preview is internal and doesn't
+    // need the small/resized variant — showing the raw full-size image
+    // avoids routing internal viewing through the third-party CDN.
+    appendImagesHtml: function (sceneId, opts) {
+      var cfg = null;
+      for (var si = 0; si < SCENES.length; si++) {
+        if (SCENES[si].sceneId === sceneId) { cfg = SCENES[si]; break; }
+      }
+      if (!cfg) return '';
+      var sections = scrapeAppendImageSections(cfg);
+      if (!sections.length) return '';
+      if (opts && opts.rawSiteMaps) {
+        for (var s = 0; s < sections.length; s++) {
+          var imgs = sections[s].images || [];
+          for (var ii = 0; ii < imgs.length; ii++) {
+            // Prefer the original clean asset URL; fall back to unwrapping a
+            // weserv proxy src. (img.src may be a base64 data URI once the
+            // downscale cache is warm — img.url is always the https:// link.)
+            imgs[ii].src = imgs[ii].url || unwrapResizeProxyUrl(imgs[ii].src);
+          }
+        }
+      }
+      var html = [];
+      for (var i = 0; i < sections.length; i++) {
+        // opts.groupImages: render ONE section heading followed by all of
+        // its images. The published path (renderAppendImageSection) repeats
+        // the heading per full-page image because each lands on its own PDF
+        // page; on the continuous in-app preview that repetition reads as
+        // several identical stacked headings, so the preview groups instead.
+        var sec = sections[i];
+        if (opts && opts.groupImages && sec.fullPage) {
+          html.push('<section class="append-image-page">');
+          if (sec.label) {
+            html.push('<h2 class="append-image-title">' + esc(sec.label) + '</h2>');
+          }
+          var imgs2 = sec.images || [];
+          for (var k = 0; k < imgs2.length; k++) {
+            html.push('<img class="append-image" src="' + esc(imgs2[k].src) + '" ' +
+                      'alt="' + esc(imgs2[k].alt || sec.label) + '" />');
+          }
+          html.push('</section>');
+        } else {
+          renderAppendImageSection(sec, html);
+        }
+      }
+      return html.join('\n');
+    },
     // Page-ready gate. ops-stepper.js (and any other publish path
     // outside this file) calls isPageReady('scene_1096') before
     // firing a publish click. whenPageReady(sceneId, cb) is the

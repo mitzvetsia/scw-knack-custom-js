@@ -22,6 +22,31 @@ window.SCW = window.SCW || {};
   namespace.nolog = noop;
 })(window.SCW);
 
+// ── Gated perf timing ────────────────────────────────────────
+// SCW.perf('label') returns a stop() function. When SCW.perfLog is
+// truthy it logs the elapsed ms (and any extra note) to the console;
+// otherwise both the call and stop() are ~free. Use to find load-time
+// hot spots without leaving noise in production:
+//   var done = SCW.perf('device-worksheet.transformView view_3610');
+//   ...work...
+//   done('rows=' + n);
+// Flip on in the console: SCW.perfLog = true, then reload the page.
+(function (namespace) {
+  namespace.perfLog = namespace.perfLog || false;
+  var _now = (typeof performance !== 'undefined' && performance.now)
+    ? function () { return performance.now(); }
+    : function () { return Date.now(); };
+  namespace.perf = function (label) {
+    if (!namespace.perfLog) return function () {};
+    var t0 = _now();
+    return function (extra) {
+      var ms = (_now() - t0).toFixed(1);
+      console.log('[SCW perf] ' + label + ': ' + ms + 'ms' + (extra ? '  (' + extra + ')' : ''));
+    };
+  };
+})(window.SCW);
+
+
 (function initBindingsHelpers(namespace) {
   function normalizeNamespace(ns) {
     if (!ns) return '.scw';

@@ -1375,7 +1375,10 @@
   for (var v = 0; v < TARGET_VIEWS.length; v++) {
     (function (vid) {
       $(document).on('knack-view-render.' + vid, function () {
+        var done = (window.SCW && SCW.perf)
+          ? SCW.perf('inline-photo-row ' + vid) : null;
         processView(vid);
+        if (done) done();
       });
     })(TARGET_VIEWS[v]);
   }

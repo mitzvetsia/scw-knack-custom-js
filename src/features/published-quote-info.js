@@ -274,6 +274,11 @@
     if (typeof v === 'string' && v.trim()) {
       return /published/i.test(v.replace(/<[^>]*>/g, ''));
     }
+    // Status field absent from the model (not a column on this view) →
+    // accept the row, matching isPublishedRow's DOM behavior. Used for
+    // pre-filtered "published proposals" views (e.g. view_3886) that don't
+    // carry the status column.
+    if (raw === undefined && (v === undefined || v === null)) return true;
     return false;
   }
   function isPublishedRow(tr, statusField) {

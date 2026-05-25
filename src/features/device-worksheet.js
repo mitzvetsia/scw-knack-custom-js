@@ -1262,14 +1262,16 @@ td.${P}-sum-check input[type="checkbox"] {
   color: #6b7280;
 }
 
-/* Fixed-width warning slot between chevron and identity — always present */
+/* Fixed-width warning slot between chevron and identity — always present.
+   min-width keeps single-icon alignment; grows only in the rare case a row
+   carries two header warnings (e.g. accessory mismatch + discontinued). */
 .${P}-warn-slot {
-  flex: 0 0 18px;
-  width: 18px;
+  flex: 0 0 auto;
+  min-width: 18px;
   display: flex;
   align-items: center;
   justify-content: center;
-  align-self: center;
+  gap: 2px;
 }
 .${P}-warn-slot:empty {
   visibility: hidden;
@@ -1277,6 +1279,15 @@ td.${P}-sum-check input[type="checkbox"] {
 .${P}-warn-slot .scw-cr-hdr-warning {
   margin-left: 0;
   margin-top: 5px;
+}
+
+/* Discontinued-product flag — amber tint on the product name (warning
+   palette; red reserved for errors/destructive). The warning icon itself
+   sits in the shared warn-slot. Mirrors worksheet-v2. */
+td.${P}-sum-product--discontinued,
+td.${P}-sum-product--discontinued span {
+  color: #b45309 !important;
+  font-weight: 600 !important;
 }
 
 /* Label + Product identity block */
@@ -3387,6 +3398,27 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     return (td.textContent || '').replace(/[\u00a0\s]+/g, ' ').trim();
   }
 
+  // Discontinued-product flag (parity with worksheet-v2). field_2912 is a
+  // yes/no on the line item sourced from the connected product:
+  // Yes = still active, No/false = discontinued. Only flag an EXPLICIT
+  // No/false; a missing/empty value is "unknown" and not flagged so
+  // unpopulated rows don't show false positives. Requires field_2912 to be
+  // a column on the worksheet's source view so the cell renders.
+  var DISCONTINUED_SVG =
+    '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" ' +
+    'stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">' +
+    '<circle cx="12" cy="12" r="10"></circle>' +
+    '<line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line></svg>';
+
+  function isDiscontinuedRow(tr) {
+    var cell = findCell(tr, 'field_2912');
+    if (!cell) return false;
+    var s = (cell.textContent || '')
+      .replace(/<[^>]*>/g, '').replace(/[\u00a0\s]+/g, ' ').trim().toLowerCase();
+    if (!s) return false;
+    return s === 'no' || s === 'false';
+  }
+
   /** Resolve a field descriptor to its Knack key. */
   function fieldKey(viewCfg, name) {
     if (!viewCfg || !viewCfg.fields) return null;
@@ -5217,6 +5249,8 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       var warnChit = document.createElement('span');
       warnChit.className = P + '-warn-chit';
       if (warnVal > 0) {
+        warnChit.classList.add(P + '-warn-chit--active');
+        warnChit.setAttribute('data-scw-warn-type', 'photos');
         warnChit.innerHTML = '<svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M1 5.25A2.25 2.25 0 013.25 3h13.5A2.25 2.25 0 0119 5.25v9.5A2.25 2.25 0 0116.75 17H3.25A2.25 2.25 0 011 14.75v-9.5zm1.5 9.5c0 .414.336.75.75.75h13.5a.75.75 0 00.75-.75v-2.507l-3.22-3.22a.75.75 0 00-1.06 0l-3.22 3.22-1.72-1.72a.75.75 0 00-1.06 0L2.5 12.993v1.757zM12.75 7a1.25 1.25 0 100 2.5 1.25 1.25 0 000-2.5z" clip-rule="evenodd"/></svg>'
             + Math.round(warnVal);
       } else {
@@ -6098,6 +6132,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       if (parentField && parentField._hasWarning) {
         var warnIcon = document.createElement('span');
         warnIcon.className = 'scw-cr-hdr-warning';
+        warnIcon.setAttribute('data-scw-warn-type', 'accessory');
         warnIcon.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>';
         warnIcon.title = 'Accessory mismatch — one or more accessories do not match parent product';
 
@@ -6105,6 +6140,22 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         if (slot) slot.appendChild(warnIcon);
         break;
       }
+    }
+
+    // ── Discontinued-product header warning ──
+    // Same warn-slot as the accessory-mismatch icon (parity with all other
+    // header warnings); also tint the product name amber.
+    if (isDiscontinuedRow(tr)) {
+      var discIcon = document.createElement('span');
+      discIcon.className = 'scw-cr-hdr-warning';
+      discIcon.setAttribute('data-scw-warn-type', 'discontinued');
+      discIcon.innerHTML = DISCONTINUED_SVG;
+      discIcon.title =
+        'Product discontinued — no longer available. Replace before submitting.';
+      var discSlot = card.querySelector('.' + P + '-warn-slot');
+      if (discSlot) discSlot.appendChild(discIcon);
+      var discProd = card.querySelector('.' + P + '-sum-product');
+      if (discProd) discProd.classList.add(P + '-sum-product--discontinued');
     }
 
     // ── Apply bucket-based field hiding + label injection ──
@@ -6249,7 +6300,13 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     state.queued = false;
 
     try {
+      var _pfTransform = (window.SCW && SCW.perf)
+        ? SCW.perf('device-worksheet.transformView ' + viewId) : null;
       _transformViewImpl(viewCfg);
+      if (_pfTransform) {
+        var _tb = _tbodyOf(viewId);
+        _pfTransform(_tb ? ('cards=' + _tb.querySelectorAll('tr.scw-ws-row').length) : '');
+      }
     } catch (err) {
       console.error('[device-worksheet] transformView threw for ' + viewId, err);
     } finally {
