@@ -843,7 +843,7 @@
   // scrapeImagesFromView reads the cache and falls back to the original
   // URL on a miss, so a cold cache degrades to the prior behaviour rather
   // than breaking.
-  var IMG_MAX_EDGE = 2000;        // longest edge cap (preserves aspect ratio)
+  var IMG_MAX_EDGE = 3000;        // longest edge cap (preserves aspect ratio)
   var IMG_JPEG_QUALITY = 0.82;
   var _imgDownscaleCache = Object.create(null);    // url → dataURI ('' = failed)
   var _imgDownscaleInflight = Object.create(null); // url → Promise
