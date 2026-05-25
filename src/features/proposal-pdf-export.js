@@ -1007,20 +1007,31 @@
     return /^https?:\/\//.test(bare) ? bare : 'https://' + bare;
   }
 
-  // Rewrite every images.weserv.nl proxy src in an HTML string back to its
-  // original (clean, query-less) asset URL. Used to build the SNAPSHOT
-  // variant of the published HTML: the customer-facing published page
-  // renders the HTML stored in Knack's field_2680 rich-text field, whose
-  // sanitizer strips <img src> values containing a query string — which
-  // blanked the proxied Site Map images there (the SCW logo, a clean URL,
-  // survived). Raw Knack asset URLs have no query string, so they survive
-  // storage AND render natively in the browser. Additional-photo thumbnail
-  // URLs are already clean and aren't matched. The PDF keeps the small
-  // proxied variant via payload.htmlPdf.
-  function rawifySiteMapSrcs(html) {
-    if (!html) return html;
-    return html.replace(/https:\/\/images\.weserv\.nl\/\?url=[^"'\s>]+/g,
-      function (m) { return unwrapResizeProxyUrl(m); });
+  // Build the SNAPSHOT variant of the published HTML — the copy Make stores
+  // in Knack's field_2680 rich-text field (rendered on the customer-facing
+  // published page). That field's sanitizer strips <img src> values that are
+  // data: URIs or carry a query string, which blanked the Site Map images
+  // there: Site Maps render from an api.knack.com URL that collectDomImageSrcs
+  // doesn't recognize, so they take the canvas-downscale path and get embedded
+  // as base64 data URIs — exactly what the sanitizer drops (the clean https://
+  // logo URL survives). Swap each appended image's src to its original clean
+  // asset URL (img.url — always an https:// Knack/CDN link, no data:, no
+  // query), which survives storage AND renders natively. The PDF keeps the
+  // inline/resized variant via payload.htmlPdf.
+  function buildSnapshotHtml(payload, fallbackHtml) {
+    var secs = payload && payload.appendImageSections;
+    if (!secs || !secs.length) return fallbackHtml;
+    var saved = [];
+    for (var i = 0; i < secs.length; i++) {
+      var imgs = secs[i].images || [];
+      for (var j = 0; j < imgs.length; j++) {
+        saved.push([imgs[j], imgs[j].src]);
+        if (imgs[j].url) imgs[j].src = imgs[j].url;
+      }
+    }
+    var html = buildPdfHtml(payload);
+    for (var k = 0; k < saved.length; k++) saved[k][0].src = saved[k][1];
+    return html;
   }
 
   // Collect rendered <img> srcs from a view's table. Knack *Image*/File
@@ -3866,14 +3877,16 @@
       // via window.crypto.getRandomValues).
       proposalAccessToken:   accessToken,
       proposalAccessUrl:     accessUrl,
-      // `html` is the SNAPSHOT-safe variant (Site Map images use the raw,
-      // query-less Knack asset URL) — this is what Make should store in
-      // field_2680 so the customer-facing published page renders the maps.
-      // `htmlPdf` keeps the small images.weserv.nl-resized Site Map URLs
-      // for the PDF render (Make's PDF step should read htmlPdf). Until the
-      // Make scenario is pointed at htmlPdf, the PDF simply uses the raw
-      // (larger) images — never broken, just bigger. See CLAUDE.md.
-      html:                  rawifySiteMapSrcs(htmlStr),
+      // `html` is the SNAPSHOT-safe variant: appended-image srcs use the
+      // original clean Knack asset URL (no data: URI, no query string) so
+      // they survive Knack's field_2680 rich-text sanitizer and render on
+      // the customer-facing published page. This is what Make should store
+      // in field_2680. `htmlPdf` keeps the inline/resized variant (base64
+      // data URI for Site Maps, weserv for other DOM assets) for the PDF
+      // render — Make's PDF step should read htmlPdf. Until the Make
+      // scenario is pointed at htmlPdf, the PDF uses the raw (larger)
+      // images — never broken, just bigger. See CLAUDE.md.
+      html:                  buildSnapshotHtml(payload, htmlStr),
       htmlPdf:               htmlStr,
       plaintext:             plaintextStr,
       // Pre-escaped variant of `plaintext`, safe to drop directly between
@@ -3970,7 +3983,10 @@
         for (var s = 0; s < sections.length; s++) {
           var imgs = sections[s].images || [];
           for (var ii = 0; ii < imgs.length; ii++) {
-            imgs[ii].src = unwrapResizeProxyUrl(imgs[ii].src);
+            // Prefer the original clean asset URL; fall back to unwrapping a
+            // weserv proxy src. (img.src may be a base64 data URI once the
+            // downscale cache is warm — img.url is always the https:// link.)
+            imgs[ii].src = imgs[ii].url || unwrapResizeProxyUrl(imgs[ii].src);
           }
         }
       }
