@@ -40,15 +40,17 @@
       }
     },
     {
-      // Sales-side ask: when a sibling SOW on this project has been
-      // validated by Ops (field_2728 > 0) but THIS SOW hasn't
-      // (field_2723 != Yes) and no survey is requested on it yet
-      // (field_2706 != Yes), the "Request Site Survey" accordion below is
-      // greyed out ("SOW not yet validated"). Surface an action so Sales
-      // can ping Ops to validate THIS SOW instead of staring at a dead step.
-      // Fires MAKE_REQUEST_SOW_VALIDATION_WEBHOOK (notify-only; Ops still
-      // owns the field_2723 flip). Once Ops validates, field_2723 = Yes
-      // fails showWhen and this step disappears, unlocking the accordion.
+      // Sales-side ask: once the install project is initiated
+      // (field_1199 hasValue) but THIS SOW hasn't been validated by Ops
+      // (field_2723 != Yes) and no survey has been asked for by any path
+      // (field_2706 != Yes AND no change requests, field_2728 == 0), the
+      // "Request Site Survey" accordion below is greyed out ("SOW not yet
+      // validated"). Surface an action so Sales can ping Ops to validate
+      // THIS SOW instead of staring at a dead step. Fires
+      // MAKE_REQUEST_SOW_VALIDATION_WEBHOOK (notify-only; Ops still owns the
+      // field_2723 flip). Hides the moment Ops validates (field_2723 = Yes)
+      // or a survey is asked for (the inverse of the accordion's completed
+      // gate), so it never lingers once it's moot.
       type: 'action',
       id: 'request-sow-validation',
       label: 'Request SOW validated as ready for Survey',
@@ -56,9 +58,10 @@
       webhookAction: 'requestSowValidation',
       showWhen: {
         all: [
-          { field: 'field_2728', gt: 0 },
+          { field: 'field_1199', hasValue: true },
           { field: 'field_2723', notValue: 'Yes' },
-          { field: 'field_2706', notValue: 'Yes' }
+          { field: 'field_2706', notValue: 'Yes' },
+          { not: { field: 'field_2728', gt: 0 } }
         ]
       },
       // After a successful request, remember it per-SOW so the button locks

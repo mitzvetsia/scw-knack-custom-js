@@ -94,11 +94,11 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   //             or:  { success: false, error: "<message>" }
   MAKE_REQUEST_ALT_PROPOSAL_WEBHOOK: "https://hook.us1.make.com/r84mgo96cdsq3kox3y6lj0im6b7ovme2",
   // Fires on the Sales "Request SOW validated as ready for Survey" stepper
-  // action (workflow-stepper.js, scene_1116). Shown only when a sibling SOW
-  // on the project has been validated (field_2728 > 0) but THIS SOW has not
-  // (field_2723 != Yes) and no survey is requested on it yet (field_2706 !=
-  // Yes). It does NOT flip any flag — that's Ops's gate. It only notifies Ops
-  // to validate this SOW. Payload:
+  // action (workflow-stepper.js, scene_1116). Shown only when the install
+  // project is initiated (field_1199 hasValue) but THIS SOW has not been
+  // validated (field_2723 != Yes) and no survey has been asked for by any
+  // path (field_2706 != Yes AND field_2728 == 0). It does NOT flip any flag
+  // — that's Ops's gate. It only notifies Ops to validate this SOW. Payload:
   //   { sourceRecordId, stepId, actionLabel, notes, account, project,
   //     projectName, triggeredBy }
   //   Response body: { success: true } or any 2xx (fire-and-forget notify).
