@@ -979,8 +979,20 @@
     var w = (opts && opts.w) || 2000;
     var q = (opts && opts.q) || 80;
     var bare = url.replace(/^https?:\/\//, '');
+    // End the proxy URL with a real ".jpg" extension via weserv's `filename`
+    // param. The published HTML snapshot (field_2680) round-trips through a
+    // Knack rich-text field, whose sanitizer BLANKS <img src> URLs that don't
+    // end in a recognized image extension — the bare proxy URL ended in
+    // "&we", so the Site Map src came out empty in the stored snapshot and
+    // the customer-facing page showed a broken-image icon. (The PDF was
+    // unaffected because Make builds it from the live payload.html, not the
+    // stored snapshot.) `filename` only sets the download name — it does NOT
+    // change the rendered/resized output — so the PDF resize behaviour is
+    // identical; we're purely making the URL survive the sanitizer.
+    var base = basenameOf(url).replace(/\.[^.]+$/, '') || 'sitemap';
+    var dlName = encodeURIComponent(base) + '.jpg';
     return 'https://images.weserv.nl/?url=' + encodeURIComponent(bare) +
-           '&w=' + w + '&output=jpg&q=' + q + '&we';
+           '&w=' + w + '&output=jpg&q=' + q + '&we&filename=' + dlName;
   }
 
   // Collect rendered <img> srcs from a view's table. Knack *Image*/File
