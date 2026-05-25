@@ -114,16 +114,18 @@
       // record carrying { filename, url } / { public_url } — same
       // shape Knack uses for every file-upload field.
       // view_3929 (Additional Photos) is a Knack *Image* field (field_771)
-      // whose view renders pre-sized thumbnail columns. `domThumbField`
-      // tells the scraper to pull the 600x600 rendition straight from the
-      // rendered <img> in that column instead of the full-size original —
-      // the native thumbnail is already small, so we skip blowing the
-      // image back up to full size only to canvas-downscale it again.
-      // view_3928 (Site Maps) is a *File* field with no server thumbnails,
-      // so it stays on the record/full-size + canvas-downscale path.
+      // with server-generated thumbnail renditions. Knack thumbnail URLs are
+      // just the original asset URL with the `/original/` path segment swapped
+      // for `/thumb_NN/`, e.g.
+      //   .../<assetId>/original/photo.jpg  ->  .../<assetId>/thumb_15/photo.jpg
+      // `thumbVariant: 'thumb_15'` (the 600x600 rendition) is emitted directly
+      // — it's already small, so we skip the canvas-downscale round-trip.
+      // view_3928 (Site Maps) mixes File-field PDFs and Image-field uploads
+      // with no single known thumbnail rendition, so it stays on the
+      // record/full-size + canvas-downscale path.
       appendImageViews: [
         { viewId: 'view_3928', label: 'Site Maps' },
-        { viewId: 'view_3929', label: 'Additional Photos', domThumbField: 'field_771:thumb_15' }
+        { viewId: 'view_3929', label: 'Additional Photos', thumbVariant: 'thumb_15' }
       ],
       // JSON snapshot for this scene is intentionally slim:
       //   { sowRecordId, view_3896: [...full records...] }
@@ -900,83 +902,35 @@
       for (var s = 0; s < sections.length; s++) {
         var imgs = sections[s].images || [];
         for (var i = 0; i < imgs.length; i++) {
-          if (imgs[i] && imgs[i].url) downscaleImageToDataURL(imgs[i].url);
+          // Skip native server thumbnails — they're already small and are
+          // emitted as URLs directly, never read from the downscale cache.
+          if (imgs[i] && imgs[i].url && imgs[i].url.indexOf('/thumb_') === -1) {
+            downscaleImageToDataURL(imgs[i].url);
+          }
         }
       }
     } catch (e) { /* non-fatal */ }
   }
 
-  // Pull pre-sized thumbnail <img>s straight from a rendered Knack table.
-  // For Image fields, Knack renders one column per configured thumbnail
-  // size; the body <td>s all carry the bare field class (e.g. `field_771`)
-  // with no thumb suffix, so we can't select the right column by field key.
-  // Instead we locate the column INDEX from the <thead> cell whose
-  // data-field-key starts with `thumbFieldKey` (e.g. `field_771:thumb_15`)
-  // and read the <img> from that same column in every body row. Returns a
-  // file-like list ({ filename, url }) matching extractFilesFromRecord.
-  function scrapeThumbFilesFromDom(viewId, thumbFieldKey) {
-    var out = [];
-    var viewEl = document.getElementById(viewId);
-    if (!viewEl) return out;
-    var table = viewEl.querySelector('table');
-    if (!table) return out;
-
-    var colIdx = -1;
-    var ths = table.querySelectorAll('thead th');
-    for (var i = 0; i < ths.length; i++) {
-      var key = ths[i].getAttribute('data-field-key') || '';
-      if (key.indexOf(thumbFieldKey) === 0) { colIdx = i; break; }
-    }
-
-    var rows = table.querySelectorAll('tbody tr');
-    for (var r = 0; r < rows.length; r++) {
-      var tr = rows[r];
-      if (tr.className && /kn-table-group|kn-table-totals|kn-tr-nodata/.test(tr.className)) continue;
-      var img = null;
-      if (colIdx >= 0 && tr.children[colIdx]) img = tr.children[colIdx].querySelector('img');
-      // Fallback: the 600x600 column is rendered after the 300x300 one, so
-      // the last image in the row is the larger rendition.
-      if (!img) {
-        var imgs = tr.querySelectorAll('img');
-        if (imgs.length) img = imgs[imgs.length - 1];
-      }
-      if (!img) continue;
-      var src = img.getAttribute('src') || img.src || '';
-      if (!src) continue;
-      var fname = (img.getAttribute('alt') || '').trim();
-      if (!fname) {
-        var base = src.split('?')[0].split('/').pop() || '';
-        fname = decodeURIComponent(base);
-      }
-      out.push({ filename: fname, url: src });
-    }
-    return out;
+  // Knack thumbnail URLs are the original asset URL with the `/original/`
+  // path segment replaced by `/thumb_NN/`. Returns the original unchanged if
+  // it doesn't contain `/original/` (e.g. File-field uploads, which have no
+  // server thumbnail).
+  function toThumbUrl(url, variant) {
+    if (!url || !variant) return url;
+    return url.indexOf('/original/') !== -1
+      ? url.replace('/original/', '/' + variant + '/')
+      : url;
   }
 
   function scrapeImagesFromView(entry) {
     var viewId = entry.viewId;
     var label = entry.label;
     var out = [];
-
-    var files;
-    if (entry.domThumbField) {
-      // Image field with native thumbnail renditions — use the 600x600 src
-      // from the DOM directly (already small) rather than the full-size
-      // original from the record.
-      files = scrapeThumbFilesFromDom(viewId, entry.domThumbField);
-    } else {
-      if (typeof Knack === 'undefined' || !Knack.views) return out;
-      var view = Knack.views[viewId];
-      if (!view) return out;
-      var records = extractAppendImageViewRecords(view);
-      files = [];
-      for (var r = 0; r < records.length; r++) {
-        var recFiles = extractFilesFromRecord(records[r]);
-        for (var f = 0; f < recFiles.length; f++) {
-          if (isImageFile(recFiles[f])) files.push(recFiles[f]);
-        }
-      }
-    }
+    if (typeof Knack === 'undefined' || !Knack.views) return out;
+    var view = Knack.views[viewId];
+    if (!view) return out;
+    var records = extractAppendImageViewRecords(view);
 
     // Dedupe repeated uploads of the same file. view_3928 / view_3929 often
     // carry the same map/photo on multiple records (same filename, different
@@ -985,22 +939,39 @@
     // twice. Key on filename (the visible duplicate), falling back to the
     // URL when a file has no name.
     var seen = {};
-    for (var k = 0; k < files.length; k++) {
-      var file = files[k];
-      var url = file.url || file.public_url || '';
-      if (!url) continue;
-      var dkey = file.filename
-        ? 'fn:' + String(file.filename).toLowerCase().trim()
-        : 'url:' + url;
-      if (seen[dkey]) continue;
-      seen[dkey] = true;
-      var cachedDataUri = _imgDownscaleCache[url];
-      out.push({
-        src: cachedDataUri ? cachedDataUri : url,
-        url: url,
-        filename: file.filename || '',
-        alt: file.filename || label || ''
-      });
+    for (var r = 0; r < records.length; r++) {
+      var files = extractFilesFromRecord(records[r]);
+      for (var f = 0; f < files.length; f++) {
+        var file = files[f];
+        if (!isImageFile(file)) continue;
+        var url = file.url || file.public_url || '';
+        if (!url) continue;
+        var dkey = file.filename
+          ? 'fn:' + String(file.filename).toLowerCase().trim()
+          : 'url:' + url;
+        if (seen[dkey]) continue;
+        seen[dkey] = true;
+
+        if (entry.thumbVariant) {
+          // Native server thumbnail — already small, emit the URL directly
+          // (no canvas-downscale round-trip).
+          var thumbUrl = toThumbUrl(url, entry.thumbVariant);
+          out.push({
+            src: thumbUrl,
+            url: thumbUrl,
+            filename: file.filename || '',
+            alt: file.filename || label || ''
+          });
+        } else {
+          var cachedDataUri = _imgDownscaleCache[url];
+          out.push({
+            src: cachedDataUri ? cachedDataUri : url,
+            url: url,
+            filename: file.filename || '',
+            alt: file.filename || label || ''
+          });
+        }
+      }
     }
     return out;
   }
