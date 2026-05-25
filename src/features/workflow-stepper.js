@@ -24,6 +24,10 @@
       completed: { field: 'field_1199', hasValue: true },
       lockWhenCompleted: true,
       disabled: { field: 'field_2724', notValue: 'Yes', message: 'Complete the Project Playbook first' },
+      // When the Make automation finishes (field_1199 populated), refresh
+      // these views so their DOM reflects the new install-project state
+      // (e.g. view_3491's Clickup task / project link) without a manual reload.
+      refreshViewsOnComplete: ['view_3491'],
       // After the user clicks → submits the form → returns here, Make
       // takes a few seconds to populate field_1199 with the install
       // project link. Lock the action and poll view_3827 until that
@@ -1104,6 +1108,7 @@
               if (step.completed && conditionMet(step.completed)) {
                 clearPollFlag(step.id);
                 stopStepPoll(step.id);
+                refreshStepViews(step);
               }
               applySteps();
             }
@@ -1117,6 +1122,26 @@
       clearInterval(_activePolls[stepId]);
       delete _activePolls[stepId];
     }
+  }
+
+  // Re-fetch + re-render the views a step declares in refreshViewsOnComplete
+  // so their DOM reflects post-automation data (a bare model.fetch updates
+  // the model but doesn't repaint a details view).
+  function refreshStepViews(step) {
+    var views = step.refreshViewsOnComplete;
+    if (!views || !views.length) return;
+    views.forEach(function (vk) {
+      try {
+        var v = Knack && Knack.views && Knack.views[vk];
+        if (v && v.model && typeof v.model.fetch === 'function') {
+          v.model.fetch({
+            success: function () {
+              try { if (typeof v.render === 'function') v.render(); } catch (e) {}
+            }
+          });
+        }
+      } catch (e) { /* ignore */ }
+    });
   }
 
 
