@@ -27,32 +27,60 @@
       '  margin: 0;',
       '}',
 
-      /* ── SOW sections ────────────────────────────────────────── */
+      /* ── SOW sections ──────────────────────────────────────────
+         Styled to mirror the Build SOW page KTL accordions: white card,
+         subtle border + soft shadow, left accent bar, dark text on a
+         light header (instead of the old glaring dark-slate fill). */
       '.scw-bid-review__sow-section {',
-      '  margin-bottom: 24px;',
-      '  border: 1px solid #e2e8f0;',
-      '  border-radius: 6px;',
+      '  --scw-accent: #295f91;',
+      '  --scw-accent-rgb: 41, 95, 145;',
+      '  margin: 10px 0;',
+      '  background: #fff;',
+      '  border: 1px solid rgba(0,0,0,.08);',
+      '  border-radius: 14px;',
+      '  box-shadow: 0 2px 12px rgba(0,0,0,.06);',
       '  overflow: hidden;',
       '}',
 
       '.scw-bid-review__sow-title {',
+      '  position: relative;',
       '  display: flex;',
       '  align-items: center;',
       '  gap: 10px;',
-      '  padding: 10px 12px;',
-      '  background: #1e293b;',
-      '  color: #fff;',
+      '  min-height: 44px;',
+      '  padding: 14px 16px 14px 22px;',
+      '  background: transparent;',
+      '  color: #1a1a1a;',
       '  cursor: pointer;',
       '  user-select: none;',
       '  -webkit-user-select: none;',
+      '  transition: background 180ms ease;',
+      '}',
+
+      /* Left accent bar (clipped to the card radius by overflow:hidden) */
+      '.scw-bid-review__sow-title::before {',
+      '  content: "";',
+      '  position: absolute;',
+      '  left: 0; top: 0; bottom: 0;',
+      '  width: 6px;',
+      '  background: var(--scw-accent);',
       '}',
 
       '.scw-bid-review__sow-title:hover {',
-      '  background: #334155;',
+      '  background: rgba(var(--scw-accent-rgb), 0.06);',
+      '}',
+
+      /* Open header gets a faint accent tint, matching the KTL accordions */
+      '.scw-bid-review__sow-section:not(.scw-bid-review__sow-section--collapsed) .scw-bid-review__sow-title {',
+      '  background: rgba(var(--scw-accent-rgb), 0.10);',
+      '}',
+      '.scw-bid-review__sow-section:not(.scw-bid-review__sow-section--collapsed) .scw-bid-review__sow-title:hover {',
+      '  background: rgba(var(--scw-accent-rgb), 0.14);',
       '}',
 
       '.scw-bid-review__sow-chevron {',
       '  display: inline-flex;',
+      '  color: var(--scw-accent);',
       '  transition: transform .2s ease;',
       '}',
 
@@ -70,13 +98,14 @@
 
       '.scw-bid-review__sow-title-text {',
       '  font-size: 14px;',
-      '  font-weight: 700;',
+      '  font-weight: 600;',
+      '  color: #1a1a1a;',
       '}',
 
       '.scw-bid-review__sow-title-count {',
-      '  font-size: 11px;',
+      '  font-size: 12px;',
       '  font-weight: 400;',
-      '  color: #94a3b8;',
+      '  color: #64748b;',
       '}',
 
       /* ── SOW status bar (lives inside the SOW header cell, rowspan=2) ── */
