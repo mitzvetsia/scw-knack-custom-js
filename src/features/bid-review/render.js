@@ -2022,17 +2022,24 @@
     return snap;
   }
 
-  function restoreAccordionState(mount, snap) {
+  function restoreAccordionState(mount, snap, defaultOpenSowId) {
     if (!mount || !snap) return;
 
-    // Restore SOW sections. buildSowSection now defaults to collapsed
-    // (page loads with everything closed). If the snapshot says a
-    // section was previously OPEN, re-open it. Sections not in the
-    // snapshot (newly added SOWs) stay collapsed.
+    // Restore SOW sections. buildSowSection defaults each to collapsed.
+    // Precedence per section:
+    //   1. Prior user state from the snapshot (open/closed) — preserved
+    //      across re-renders (e.g. after a CR submission).
+    //   2. No prior state (first render / newly-added SOW) → apply the
+    //      default: open `defaultOpenSowId` (the last SOW, which is also
+    //      the only one when there's just one) and collapse the rest.
     var sections = mount.querySelectorAll('.scw-bid-review__sow-section');
     for (var i = 0; i < sections.length; i++) {
       var sowId = sections[i].getAttribute('data-sow-id');
-      if (sowId && snap.sow[sowId] === true) {
+      if (!sowId) continue;
+      var prev = snap.sow[sowId];
+      var open = (prev === true) ||
+                 (prev === undefined && sowId === defaultOpenSowId);
+      if (open) {
         sections[i].classList.remove('scw-bid-review__sow-section--collapsed');
         var hdr = sections[i].querySelector('.scw-bid-review__sow-title');
         if (hdr) hdr.setAttribute('aria-expanded', 'true');
@@ -2105,7 +2112,14 @@
       mount.appendChild(buildSowSection(state.sowGrids[i]));
     }
 
-    restoreAccordionState(mount, snap);
+    // Default-open SOW: the last one in render order (== the only one when
+    // there's a single SOW). restoreAccordionState applies this only to
+    // sections with no prior open/closed state in the snapshot.
+    var defaultOpenSowId = state.sowGrids.length
+      ? state.sowGrids[state.sowGrids.length - 1].sowId
+      : null;
+
+    restoreAccordionState(mount, snap, defaultOpenSowId);
 
     // Notify other modules that the grid has been built
     $(document).trigger('scw-bid-review-rendered');
