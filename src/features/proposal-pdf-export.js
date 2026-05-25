@@ -125,7 +125,10 @@
       // for downscaling from the rendered DOM <img> src (CORS-clean S3 host)
       // because their _raw.url taints the canvas (see collectDomImageSrcs).
       appendImageViews: [
-        { viewId: 'view_3928', label: 'Site Maps', fullPage: true },
+        // ⚠️ proxyResize routes DOM-rendered map assets (File-field
+        // floorplans that can't be canvas-downscaled) through a third-party
+        // resize CDN — see SECURITY note in CLAUDE.md and toProxyResizeUrl.
+        { viewId: 'view_3928', label: 'Site Maps', fullPage: true, proxyResize: { w: 2000, q: 80 } },
         { viewId: 'view_3929', label: 'Additional Photos', thumbVariant: 'thumb_14' }
       ],
       // JSON snapshot for this scene is intentionally slim:
@@ -903,10 +906,11 @@
       for (var s = 0; s < sections.length; s++) {
         var imgs = sections[s].images || [];
         for (var i = 0; i < imgs.length; i++) {
-          // Skip native server thumbnails — they're already small and are
-          // emitted as URLs directly, never read from the downscale cache.
-          if (imgs[i] && imgs[i].url && imgs[i].url.indexOf('/thumb_') === -1) {
-            downscaleImageToDataURL(imgs[i].url);
+          // Skip URLs that are emitted directly (server thumbnails, resize
+          // proxy) — they're already small and never read from the cache.
+          var pu = imgs[i] && imgs[i].url;
+          if (pu && pu.indexOf('/thumb_') === -1 && pu.indexOf('images.weserv.nl') === -1) {
+            downscaleImageToDataURL(pu);
           }
         }
       }
@@ -928,15 +932,37 @@
     return decodeURIComponent((url || '').split('?')[0].split('/').pop() || '');
   }
 
-  // Collect rendered <img> srcs from a view's table. Knack *Image* fields
-  // (e.g. field_754 Site Maps) render the asset from the CORS-clean S3 host
-  // (assets.knackhq.com), whereas the field's `_raw.url` can be a proxy /
-  // redirect URL that taints the canvas — blocking the cross-origin pixel
-  // read so the downscale silently fails and the full-size original gets
-  // embedded. Loading the downscale image from this rendered src instead
-  // lets the canvas read succeed (it's the same asset host that already
-  // downscales File-field maps correctly). Keyed by filename so it can
-  // override the record-derived URL.
+  // ⚠️ THIRD-PARTY IMAGE PROXY — see SECURITY note in CLAUDE.md.
+  // Site Map floorplans live in Knack *File* fields, which: (a) cannot have
+  // server-side thumbnails, and (b) are served from an asset host that does
+  // NOT send CORS headers — so they taint a <canvas> and can't be downscaled
+  // in the browser (verified: the embedded bytes were identical across
+  // builds). The only way to shrink them while keeping the "just send the
+  // HTML" pipeline is to point the <img> at a server-side resize proxy that
+  // Make fetches instead of the full-res original.
+  //
+  // images.weserv.nl is a free public image CDN. The asset URL is passed to
+  // it scheme-less and url-encoded. `&we` = no enlargement (don't upscale a
+  // smaller map). This means the floorplan image transits / may be cached by
+  // a third party. The Knack asset URLs are already public-but-unguessable,
+  // but these are camera-placement diagrams — treat as a known, accepted
+  // tradeoff, not something to extend silently to other images.
+  function toProxyResizeUrl(url, opts) {
+    if (!url) return url;
+    var w = (opts && opts.w) || 2000;
+    var q = (opts && opts.q) || 80;
+    var bare = url.replace(/^https?:\/\//, '');
+    return 'https://images.weserv.nl/?url=' + encodeURIComponent(bare) +
+           '&w=' + w + '&output=jpg&q=' + q + '&we';
+  }
+
+  // Collect rendered <img> srcs from a view's table. Knack *Image*/File
+  // assets (e.g. field_754 Site Maps) render the asset from an S3 host that
+  // does NOT allow cross-origin canvas reads, so the browser can display
+  // them but cannot downscale them (toDataURL taints → full-res original is
+  // embedded). We use this map both to identify those DOM-rendered assets
+  // and to route them through the server-side resize proxy. Keyed by
+  // filename so it can be matched against the record-derived files.
   function collectDomImageSrcs(viewId) {
     var map = {};
     var viewEl = document.getElementById(viewId);
@@ -977,19 +1003,20 @@
         var u = file.url || file.public_url || '';
         if (!u) continue;
         var fname = file.filename || basenameOf(u);
-        // Image-field assets: swap in the CORS-clean DOM src for downscaling.
+        // DOM-rendered assets (Image/File maps on the no-CORS S3 host) can't
+        // be canvas-downscaled; mark them so they go through the resize proxy.
         var domSrc = domSrcs[String(fname).toLowerCase()];
-        files.push({ filename: fname, url: domSrc || u });
+        files.push({ filename: fname, url: domSrc || u, fromDom: !!domSrc });
         if (fname) byName[String(fname).toLowerCase()] = true;
       }
     }
-    // Add any DOM images that have no matching record file (pure Image-field
-    // rows whose _raw lacks a usable filename/url, so extractFilesFromRecord
-    // didn't surface them).
+    // Add any DOM images that have no matching record file (map rows whose
+    // _raw lacks a usable filename/url, so extractFilesFromRecord didn't
+    // surface them).
     if (!entry.thumbVariant) {
       for (var key in domSrcs) {
         if (!domSrcs.hasOwnProperty(key) || byName[key]) continue;
-        files.push({ filename: basenameOf(domSrcs[key]), url: domSrcs[key] });
+        files.push({ filename: basenameOf(domSrcs[key]), url: domSrcs[key], fromDom: true });
       }
     }
 
@@ -1015,6 +1042,17 @@
         out.push({
           src: thumbUrl,
           url: thumbUrl,
+          filename: fl.filename || '',
+          alt: fl.filename || label || ''
+        });
+      } else if (entry.proxyResize && fl.fromDom) {
+        // DOM-rendered map asset that can't be canvas-downscaled (no CORS) —
+        // route through the server-side resize proxy so Make fetches a small
+        // copy. ⚠️ third-party CDN; see toProxyResizeUrl / CLAUDE.md.
+        var proxyUrl = toProxyResizeUrl(url, entry.proxyResize);
+        out.push({
+          src: proxyUrl,
+          url: proxyUrl,
           filename: fl.filename || '',
           alt: fl.filename || label || ''
         });

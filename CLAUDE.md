@@ -345,6 +345,39 @@ Notes:
 - The API key in the snippet is the live one. Treat the snippet
   contents as a secret; don't paste it into public PRs/issues.
 
+## Security & External Services
+
+### ⚠️ Third-party image-resize proxy (proposal PDF Site Maps)
+
+`proposal-pdf-export.js` routes **Site Map floorplan images through a
+public third-party CDN, `images.weserv.nl`**, to resize them before they
+land in the published PDF. This is a deliberate, user-approved tradeoff —
+**do not extend it to other images or remove the warnings without asking.**
+
+- **Where:** `toProxyResizeUrl()` + the `proxyResize` option on the
+  `view_3928` entry in `SCENES[...].appendImageViews`. Only assets that are
+  DOM-rendered map images (`fromDom`) get proxied; the File-field map and
+  the `field_771` photos do **not**.
+- **Why it exists:** Site Map floorplans live in Knack **File fields**, which
+  (a) can't have server-side thumbnails, and (b) are served from an S3 host
+  that sends **no CORS headers**, so they taint a `<canvas>` and cannot be
+  downscaled in the browser. Confirmed by byte-identical embedded images
+  across builds. The proxy is the only way to shrink them while keeping the
+  "just send the HTML" pipeline (no Knack thumbnail config, no Make resize
+  steps). A 12 MB / 4364px floorplan becomes a ~2000px JPEG well under 1 MB.
+- **The vulnerability / data-exposure to be aware of:** the floorplan image
+  URL is handed to `images.weserv.nl`, which fetches and may **cache** it on
+  its infrastructure. These are **camera-placement diagrams** of customer
+  facilities — more sensitive than a logo. The Knack asset URLs are already
+  public-but-unguessable, but routing them through a third party widens the
+  exposure surface and adds an **availability dependency** (if weserv is
+  down, those images break in newly-generated PDFs). It is **not** an
+  authenticated/private channel.
+- **If you need to remove the third-party dependency:** the only
+  alternatives are resizing inside the Make scenario (server-side, keeps
+  data in the Knack→Make pipeline, but extra Make steps) or self-hosting an
+  equivalent resize proxy.
+
 ## Coding Standards
 
 - **ES5-compatible** syntax for the most part (`var`, `function`, no arrow functions in older modules), though newer modules use `const`/`let` and template literals
