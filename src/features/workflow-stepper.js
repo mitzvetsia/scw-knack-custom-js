@@ -1230,12 +1230,29 @@
     setTimeout(init, 800);
   });
 
-  // Listen for form submissions on step accordion views
-  $(document).on('knack-form-submit.view_2924' + NS, function () {
-    onFormSubmit('view_2924');
-  });
-  $(document).on('knack-form-submit.view_3853' + NS, function () {
-    onFormSubmit('view_3853');
+  // Listen for form submissions on step accordion views. Knack fires
+  // different events depending on the form: a brand-new record emits
+  // knack-record-create, an edit emits knack-record-update, and
+  // knack-form-submit fires for some (but not all) forms — notably KTL
+  // persistent edit forms like the Playbook (view_2924) often emit only
+  // knack-record-update. Bind all three and de-dupe so onFormSubmit (which
+  // collapses the accordion + re-runs applySteps) always fires exactly once.
+  var STEP_FORM_VIEWS = ['view_2924', 'view_3853'];
+  var _lastStepFormHandled = {};
+
+  function handleStepFormSubmit(viewKey) {
+    var now = Date.now();
+    if (_lastStepFormHandled[viewKey] && (now - _lastStepFormHandled[viewKey]) < 1200) return;
+    _lastStepFormHandled[viewKey] = now;
+    onFormSubmit(viewKey);
+  }
+
+  STEP_FORM_VIEWS.forEach(function (vk) {
+    ['knack-form-submit', 'knack-record-update', 'knack-record-create'].forEach(function (evt) {
+      $(document)
+        .off(evt + '.' + vk + NS)
+        .on(evt + '.' + vk + NS, function () { handleStepFormSubmit(vk); });
+    });
   });
 
   // ── Cross-tab refresh after Ops stepper completion ───────
