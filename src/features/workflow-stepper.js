@@ -341,8 +341,23 @@
     document.head.appendChild(style);
   }
 
-  // ── Read field value from source view DOM ────────────────
+  // ── Read field value from the source view ────────────────
+  // Prefer the Knack model attributes: onFormSubmit calls model.fetch(),
+  // which refreshes the model with record-rule updates (e.g. field_2724
+  // flipping to Yes), but a bare fetch does NOT re-render the detail view's
+  // DOM — so reading the DOM alone returns the stale pre-submit value and
+  // the stepper never advances. Fall back to the DOM when the model isn't
+  // available or doesn't carry the field.
   function readField(fieldKey) {
+    try {
+      var v = Knack && Knack.views && Knack.views[SOURCE_VIEW];
+      var attrs = v && v.model && v.model.attributes;
+      if (attrs && Object.prototype.hasOwnProperty.call(attrs, fieldKey)) {
+        var raw = attrs[fieldKey];
+        if (raw == null) return '';
+        return String(raw).replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+      }
+    } catch (e) { /* fall back to DOM */ }
     var view = document.getElementById(SOURCE_VIEW);
     if (!view) return '';
     var cell = view.querySelector('.kn-detail.' + fieldKey + ' .kn-detail-body');
