@@ -5250,6 +5250,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       warnChit.className = P + '-warn-chit';
       if (warnVal > 0) {
         warnChit.classList.add(P + '-warn-chit--active');
+        warnChit.setAttribute('data-scw-warn-type', 'photos');
         warnChit.innerHTML = '<svg viewBox="0 0 20 20" fill="currentColor"><path fill-rule="evenodd" d="M1 5.25A2.25 2.25 0 013.25 3h13.5A2.25 2.25 0 0119 5.25v9.5A2.25 2.25 0 0116.75 17H3.25A2.25 2.25 0 011 14.75v-9.5zm1.5 9.5c0 .414.336.75.75.75h13.5a.75.75 0 00.75-.75v-2.507l-3.22-3.22a.75.75 0 00-1.06 0l-3.22 3.22-1.72-1.72a.75.75 0 00-1.06 0L2.5 12.993v1.757zM12.75 7a1.25 1.25 0 100 2.5 1.25 1.25 0 000-2.5z" clip-rule="evenodd"/></svg>'
             + Math.round(warnVal);
       } else {
@@ -6131,6 +6132,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       if (parentField && parentField._hasWarning) {
         var warnIcon = document.createElement('span');
         warnIcon.className = 'scw-cr-hdr-warning';
+        warnIcon.setAttribute('data-scw-warn-type', 'accessory');
         warnIcon.innerHTML = '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>';
         warnIcon.title = 'Accessory mismatch — one or more accessories do not match parent product';
 
@@ -6146,6 +6148,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     if (isDiscontinuedRow(tr)) {
       var discIcon = document.createElement('span');
       discIcon.className = 'scw-cr-hdr-warning';
+      discIcon.setAttribute('data-scw-warn-type', 'discontinued');
       discIcon.innerHTML = DISCONTINUED_SVG;
       discIcon.title =
         'Product discontinued — no longer available. Replace before submitting.';

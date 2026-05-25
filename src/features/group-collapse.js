@@ -415,23 +415,42 @@
       ? $wsRows.length
       : $block.not('.kn-table-group, .kn-table-totals, .scw-inline-photo-row, .scw-synth-divider').length);
 
-    // Count rows showing ANY per-record warning indicator within this
-    // group: the shared warn-slot chit (.scw-cr-hdr-warning — accessory
-    // mismatch, missing connection, cross-bid, etc.) OR the field_2454
-    // warning-count chit (.scw-ws-warn-chit--active). One increment per
-    // flagged row regardless of how many chits it carries.
+    // Roll up per-record warnings within this group and break them down by
+    // type so the badge tooltip says WHAT needs attention, not just how many.
+    // Sources: the shared warn-slot chits (.scw-cr-hdr-warning, tagged with
+    // data-scw-warn-type by device-worksheet) and the field_2454 photo
+    // warning chit (.scw-ws-warn-chit--active → type "photos"). warnCount is
+    // distinct flagged rows; warnTally counts rows per type (a row with two
+    // warning types contributes to both).
     var warnCount = 0;
+    var warnTally = {};
+    var warnOrder = [];
+    function bumpTally(type) {
+      if (warnTally[type] === undefined) { warnTally[type] = 0; warnOrder.push(type); }
+      warnTally[type]++;
+    }
     $wsRows.each(function () {
-      if (this.querySelector('.scw-cr-hdr-warning') ||
-          this.querySelector('.scw-ws-warn-chit--active')) warnCount++;
+      var types = {};
+      var hdrs = this.querySelectorAll('.scw-cr-hdr-warning');
+      for (var hi = 0; hi < hdrs.length; hi++) {
+        types[hdrs[hi].getAttribute('data-scw-warn-type') || 'other'] = true;
+      }
+      if (this.querySelector('.scw-ws-warn-chit--active')) types.photos = true;
+      var keys = Object.keys(types);
+      if (!keys.length) return;
+      warnCount++;
+      for (var ki = 0; ki < keys.length; ki++) bumpTally(keys[ki]);
     });
+
+    // Build the breakdown signature so we can skip redundant DOM writes.
+    var warnSig = warnOrder.map(function (t) { return t + ':' + warnTally[t]; }).join(',');
 
     // Skip DOM update if badges already show the correct values
     const $wrapper = $cell.find('.scw-group-badges');
     if ($wrapper.length) {
       var existingCount = $wrapper.find('.scw-record-count').text();
-      var existingWarn = $wrapper.find('.scw-warning-count').attr('data-count') || '0';
-      if (existingCount === String(count) && existingWarn === String(warnCount)) return;
+      var existingWarn = $wrapper.find('.scw-warning-count').attr('data-sig') || '';
+      if (existingCount === String(count) && existingWarn === warnSig) return;
     }
 
     $wrapper.remove();
@@ -439,7 +458,9 @@
     if (count > 0 || warnCount > 0) {
       var html = '<span class="scw-group-badges">';
       if (warnCount > 0) {
-        html += '<span class="scw-warning-count" data-count="' + warnCount + '" title="' + warnCount + ' line item' + (warnCount > 1 ? 's' : '') + ' with a warning in this group">' + WARNING_SVG + warnCount + '</span>';
+        html += '<span class="scw-warning-count" data-count="' + warnCount +
+          '" data-sig="' + warnSig + '" title="' + escAttr(buildWarnTitle(warnCount, warnOrder, warnTally)) +
+          '">' + WARNING_SVG + warnCount + '</span>';
       }
       if (count > 0) {
         html += '<span class="scw-record-count">' + count + '</span>';
@@ -448,6 +469,33 @@
       var $inner = $cell.children('.scw-group-inner');
       ($inner.length ? $inner : $cell).append(html);
     }
+  }
+
+  // type → [singular, plural] phrasing for the warning rollup tooltip.
+  var WARN_LABELS = {
+    discontinued: ['discontinued product', 'discontinued products'],
+    accessory:    ['accessory mismatch', 'accessory mismatches'],
+    photos:       ['item missing required photos', 'items missing required photos'],
+    other:        ['other warning', 'other warnings']
+  };
+
+  function escAttr(s) {
+    return String(s).replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;');
+  }
+
+  // "3 line items need attention in this group:\n• 2 discontinued products\n• 1 accessory mismatch"
+  function buildWarnTitle(total, order, tally) {
+    var lines = [
+      total + ' line item' + (total > 1 ? 's' : '') + ' need' + (total > 1 ? '' : 's') +
+        ' attention in this group:'
+    ];
+    for (var i = 0; i < order.length; i++) {
+      var t = order[i];
+      var n = tally[t];
+      var phrase = WARN_LABELS[t] || [t, t];
+      lines.push('• ' + n + ' ' + (n > 1 ? phrase[1] : phrase[0]));
+    }
+    return lines.join('\n');
   }
 
   function getRowLabelText($tr) {
