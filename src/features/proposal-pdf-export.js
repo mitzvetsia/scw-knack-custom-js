@@ -566,6 +566,25 @@
         continue;
       }
 
+      if (tr.classList.contains('scw-mounting-labor-line')) {
+        // The install-labor sub-line proposal-grid emits beneath an
+        // equipment accessory that carries its own labor (e.g. a rack
+        // enclosure). Unlike the equipment rollup line above, this IS
+        // install labor — leave it maskable so it renders "TBD" when the
+        // bid is unreleased.
+        if (!currentL3) continue;
+        var mltLabelTd = tr.querySelector('td:first-child');
+        if (!mltLabelTd) continue;
+        var mltName = norm(mltLabelTd.textContent);
+        if (!mltName) continue;
+        var mltCost = norm((tr.querySelector('td.' + keys.cost) || {}).textContent || '');
+        currentL3.lineItems.push({
+          level: 4, label: mltName, description: '',
+          qty: '', cost: mltCost, cameraList: '',
+        });
+        continue;
+      }
+
       if (tr.classList.contains('kn-group-level-4')) {
         if (!isVisibleRow(tr)) continue;
 

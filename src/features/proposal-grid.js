@@ -2452,6 +2452,8 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
     const qtyKey = ctx.keys.qty;
     const costKey = ctx.keys.cost;
     const hardwareKey = ctx.keys.hardware; // field_2201 — equipment-only extended price
+    const laborKey = ctx.keys.labor;       // field_2028 — install price extended
+    const descFieldKey = 'field_2019';     // DISPLAY_labor description
     const prefixKey = ctx.keys.prefix; // field_2240
     const numberKey = ctx.keys.number; // field_1951
 
@@ -2508,7 +2510,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
     // Clean up any synthetic product-line rows left over from a previous
     // pipeline run — relocateAccessoriesToParents can shift things around
     // and leave orphan rows in unexpected positions.
-    tbody.querySelectorAll('tr.scw-mounting-product-line').forEach(function (n) {
+    tbody.querySelectorAll('tr.scw-mounting-product-line, tr.scw-mounting-labor-line').forEach(function (n) {
       n.remove();
     });
 
@@ -2570,6 +2572,8 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
         const rows = byProduct[productName];
         let groupQty = 0;
         let groupCost = 0;
+        let groupLabor = 0;
+        let laborDesc = '';
         for (let k = 0; k < rows.length; k++) {
           groupQty += readNum(rows[k], qtyKey);
           // Sum the EQUIPMENT extended price (field_2201), not the line-item
@@ -2577,9 +2581,14 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
           // so the two are equal, but an accessory that carries its own
           // install (e.g. a Server Rack Enclosure: $515 equipment + $506
           // install = $1,021 total) must show the equipment price here — the
-          // install labor is represented separately, not folded into the
-          // equipment line.
+          // install labor is represented separately on its own line below.
           groupCost += readNum(rows[k], hardwareKey);
+          const rowLabor = readNum(rows[k], laborKey);
+          groupLabor += rowLabor;
+          if (rowLabor > 0 && !laborDesc) {
+            const dcell = rows[k].querySelector('td.' + descFieldKey);
+            if (dcell) laborDesc = (dcell.textContent || '').replace(/\s+/g, ' ').trim();
+          }
         }
         totalQty += groupQty;
         totalCost += groupCost;
@@ -2640,6 +2649,32 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
         }
 
         insertAfter = line;
+
+        // If this accessory carries its own install labor (e.g. a rack
+        // enclosure: equipment on the line above, install labor here), emit
+        // a labor sub-line right beneath the equipment line — mirroring how
+        // a normal product shows equipment then an indented labor line. The
+        // original relocated row stays in the DOM (hidden) so subtotals are
+        // unaffected; this row is display-only.
+        if (groupLabor > 0 && laborDesc) {
+          const laborRow = document.createElement('tr');
+          laborRow.className = 'scw-mounting-labor-line';
+          laborRow.setAttribute('data-scw-product', productName);
+          const ltds = ['<td>' + escapeHtml(laborDesc) + '</td>'];
+          const lcells = l4.querySelectorAll('td');
+          for (let lc = 1; lc < lcells.length; lc++) {
+            const lref = lcells[lc];
+            const lcls = lref.className || '';
+            if (lcls.indexOf(costKey) !== -1) {
+              ltds.push('<td class="' + lcls + '" style="text-align:center;">' + escapeHtml(formatMoney(groupLabor)) + '</td>');
+            } else {
+              ltds.push('<td class="' + lcls + '"></td>');
+            }
+          }
+          laborRow.innerHTML = ltds.join('');
+          tbody.insertBefore(laborRow, insertAfter.nextSibling);
+          insertAfter = laborRow;
+        }
       }
 
       // The L4 "Mounting Hardware" label-row is now just a section
