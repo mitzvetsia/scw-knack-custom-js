@@ -118,14 +118,15 @@
       // just the original asset URL with the `/original/` path segment swapped
       // for `/thumb_NN/`, e.g.
       //   .../<assetId>/original/photo.jpg  ->  .../<assetId>/thumb_15/photo.jpg
-      // `thumbVariant: 'thumb_15'` (the 600x600 rendition) is emitted directly
+      // `thumbVariant: 'thumb_14'` (the 300x300 rendition) is emitted directly
       // — it's already small, so we skip the canvas-downscale round-trip.
-      // view_3928 (Site Maps) mixes File-field PDFs and Image-field uploads
-      // with no single known thumbnail rendition, so it stays on the
-      // record/full-size + canvas-downscale path.
+      // view_3928 (Site Maps) has no server thumbnails, so it stays on the
+      // canvas-downscale path; its Image-field (field_754) assets are loaded
+      // for downscaling from the rendered DOM <img> src (CORS-clean S3 host)
+      // because their _raw.url taints the canvas (see collectDomImageSrcs).
       appendImageViews: [
         { viewId: 'view_3928', label: 'Site Maps' },
-        { viewId: 'view_3929', label: 'Additional Photos', thumbVariant: 'thumb_15' }
+        { viewId: 'view_3929', label: 'Additional Photos', thumbVariant: 'thumb_14' }
       ],
       // JSON snapshot for this scene is intentionally slim:
       //   { sowRecordId, view_3896: [...full records...] }
@@ -923,6 +924,34 @@
       : url;
   }
 
+  function basenameOf(url) {
+    return decodeURIComponent((url || '').split('?')[0].split('/').pop() || '');
+  }
+
+  // Collect rendered <img> srcs from a view's table. Knack *Image* fields
+  // (e.g. field_754 Site Maps) render the asset from the CORS-clean S3 host
+  // (assets.knackhq.com), whereas the field's `_raw.url` can be a proxy /
+  // redirect URL that taints the canvas — blocking the cross-origin pixel
+  // read so the downscale silently fails and the full-size original gets
+  // embedded. Loading the downscale image from this rendered src instead
+  // lets the canvas read succeed (it's the same asset host that already
+  // downscales File-field maps correctly). Keyed by filename so it can
+  // override the record-derived URL.
+  function collectDomImageSrcs(viewId) {
+    var map = {};
+    var viewEl = document.getElementById(viewId);
+    if (!viewEl) return map;
+    var imgs = viewEl.querySelectorAll('table img');
+    for (var i = 0; i < imgs.length; i++) {
+      var src = imgs[i].getAttribute('src') || imgs[i].src || '';
+      if (!src || src.indexOf('data:') === 0) continue;
+      if (src.indexOf('knackhq.com') === -1 && src.indexOf('amazonaws.com') === -1) continue;
+      var fn = basenameOf(src);
+      if (fn) map[fn.toLowerCase()] = src;
+    }
+    return map;
+  }
+
   function scrapeImagesFromView(entry) {
     var viewId = entry.viewId;
     var label = entry.label;
@@ -932,45 +961,71 @@
     if (!view) return out;
     var records = extractAppendImageViewRecords(view);
 
-    // Dedupe repeated uploads of the same file. view_3928 / view_3929 often
-    // carry the same map/photo on multiple records (same filename, different
+    // Gather image files from the records (File fields carry CORS-clean
+    // urls in _raw). For the canvas path, prefer the DOM-rendered <img> src
+    // when one matches by filename — Image-field _raw urls taint the canvas
+    // (see collectDomImageSrcs). The thumbVariant path doesn't canvas-read,
+    // so it always uses the record url + URL transform.
+    var domSrcs = entry.thumbVariant ? {} : collectDomImageSrcs(viewId);
+    var files = [];
+    var byName = {};
+    for (var r = 0; r < records.length; r++) {
+      var recFiles = extractFilesFromRecord(records[r]);
+      for (var f = 0; f < recFiles.length; f++) {
+        var file = recFiles[f];
+        if (!isImageFile(file)) continue;
+        var u = file.url || file.public_url || '';
+        if (!u) continue;
+        var fname = file.filename || basenameOf(u);
+        // Image-field assets: swap in the CORS-clean DOM src for downscaling.
+        var domSrc = domSrcs[String(fname).toLowerCase()];
+        files.push({ filename: fname, url: domSrc || u });
+        if (fname) byName[String(fname).toLowerCase()] = true;
+      }
+    }
+    // Add any DOM images that have no matching record file (pure Image-field
+    // rows whose _raw lacks a usable filename/url, so extractFilesFromRecord
+    // didn't surface them).
+    if (!entry.thumbVariant) {
+      for (var key in domSrcs) {
+        if (!domSrcs.hasOwnProperty(key) || byName[key]) continue;
+        files.push({ filename: basenameOf(domSrcs[key]), url: domSrcs[key] });
+      }
+    }
+
+    // Dedupe repeated uploads of the same file (same filename, different
     // asset ids); without this each duplicate becomes its own full-page
     // image in the PDF — bloating the file and showing the same picture
-    // twice. Key on filename (the visible duplicate), falling back to the
-    // URL when a file has no name.
+    // twice. Key on filename, falling back to the URL when there's no name.
     var seen = {};
-    for (var r = 0; r < records.length; r++) {
-      var files = extractFilesFromRecord(records[r]);
-      for (var f = 0; f < files.length; f++) {
-        var file = files[f];
-        if (!isImageFile(file)) continue;
-        var url = file.url || file.public_url || '';
-        if (!url) continue;
-        var dkey = file.filename
-          ? 'fn:' + String(file.filename).toLowerCase().trim()
-          : 'url:' + url;
-        if (seen[dkey]) continue;
-        seen[dkey] = true;
+    for (var k = 0; k < files.length; k++) {
+      var fl = files[k];
+      var url = fl.url;
+      if (!url) continue;
+      var dkey = fl.filename
+        ? 'fn:' + String(fl.filename).toLowerCase().trim()
+        : 'url:' + url;
+      if (seen[dkey]) continue;
+      seen[dkey] = true;
 
-        if (entry.thumbVariant) {
-          // Native server thumbnail — already small, emit the URL directly
-          // (no canvas-downscale round-trip).
-          var thumbUrl = toThumbUrl(url, entry.thumbVariant);
-          out.push({
-            src: thumbUrl,
-            url: thumbUrl,
-            filename: file.filename || '',
-            alt: file.filename || label || ''
-          });
-        } else {
-          var cachedDataUri = _imgDownscaleCache[url];
-          out.push({
-            src: cachedDataUri ? cachedDataUri : url,
-            url: url,
-            filename: file.filename || '',
-            alt: file.filename || label || ''
-          });
-        }
+      if (entry.thumbVariant) {
+        // Native server thumbnail — already small, emit the URL directly
+        // (no canvas-downscale round-trip).
+        var thumbUrl = toThumbUrl(url, entry.thumbVariant);
+        out.push({
+          src: thumbUrl,
+          url: thumbUrl,
+          filename: fl.filename || '',
+          alt: fl.filename || label || ''
+        });
+      } else {
+        var cachedDataUri = _imgDownscaleCache[url];
+        out.push({
+          src: cachedDataUri ? cachedDataUri : url,
+          url: url,
+          filename: fl.filename || '',
+          alt: fl.filename || label || ''
+        });
       }
     }
     return out;
