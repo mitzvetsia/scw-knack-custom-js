@@ -293,7 +293,9 @@
           'recordId', 'hash', 'sceneId', 'type',
           'sowId', 'equipmentTotal', 'installationTotal',
           'grandTotal', 'expirationDate',
-          'html', 'plaintext', 'plaintextJsonEscaped',
+          // html = snapshot-safe (raw Site Map URLs, for field_2680);
+          // htmlPdf = small weserv-resized variant for the PDF render.
+          'html', 'htmlPdf', 'plaintext', 'plaintextJsonEscaped',
           'scopeOfWorkDocumentElements', 'scopeOfWorkDocumentElementsString',
           'json', 'jsonString',
           'invoiceItems', 'invoiceItemsString',

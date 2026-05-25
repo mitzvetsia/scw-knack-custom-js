@@ -1007,6 +1007,22 @@
     return /^https?:\/\//.test(bare) ? bare : 'https://' + bare;
   }
 
+  // Rewrite every images.weserv.nl proxy src in an HTML string back to its
+  // original (clean, query-less) asset URL. Used to build the SNAPSHOT
+  // variant of the published HTML: the customer-facing published page
+  // renders the HTML stored in Knack's field_2680 rich-text field, whose
+  // sanitizer strips <img src> values containing a query string — which
+  // blanked the proxied Site Map images there (the SCW logo, a clean URL,
+  // survived). Raw Knack asset URLs have no query string, so they survive
+  // storage AND render natively in the browser. Additional-photo thumbnail
+  // URLs are already clean and aren't matched. The PDF keeps the small
+  // proxied variant via payload.htmlPdf.
+  function rawifySiteMapSrcs(html) {
+    if (!html) return html;
+    return html.replace(/https:\/\/images\.weserv\.nl\/\?url=[^"'\s>]+/g,
+      function (m) { return unwrapResizeProxyUrl(m); });
+  }
+
   // Collect rendered <img> srcs from a view's table. Knack *Image*/File
   // assets (e.g. field_754 Site Maps) render the asset from an S3 host that
   // does NOT allow cross-origin canvas reads, so the browser can display
@@ -3850,7 +3866,15 @@
       // via window.crypto.getRandomValues).
       proposalAccessToken:   accessToken,
       proposalAccessUrl:     accessUrl,
-      html:                  htmlStr,
+      // `html` is the SNAPSHOT-safe variant (Site Map images use the raw,
+      // query-less Knack asset URL) — this is what Make should store in
+      // field_2680 so the customer-facing published page renders the maps.
+      // `htmlPdf` keeps the small images.weserv.nl-resized Site Map URLs
+      // for the PDF render (Make's PDF step should read htmlPdf). Until the
+      // Make scenario is pointed at htmlPdf, the PDF simply uses the raw
+      // (larger) images — never broken, just bigger. See CLAUDE.md.
+      html:                  rawifySiteMapSrcs(htmlStr),
+      htmlPdf:               htmlStr,
       plaintext:             plaintextStr,
       // Pre-escaped variant of `plaintext`, safe to drop directly between
       // double quotes in a JSON string template (e.g. an esignatures.com

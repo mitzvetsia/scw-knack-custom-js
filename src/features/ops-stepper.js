@@ -687,7 +687,9 @@
             'recordId', 'hash', 'sceneId', 'type',
             'sowId', 'equipmentTotal', 'installationTotal',
             'grandTotal', 'expirationDate',
-            'html', 'plaintext', 'plaintextJsonEscaped',
+            // html = snapshot-safe (raw Site Map URLs, for field_2680);
+            // htmlPdf = small weserv-resized variant for the PDF render.
+            'html', 'htmlPdf', 'plaintext', 'plaintextJsonEscaped',
             'scopeOfWorkDocumentElements', 'scopeOfWorkDocumentElementsString',
             'json', 'jsonString',
             'invoiceItems', 'invoiceItemsString',
@@ -709,6 +711,11 @@
           if (step.id === 'publish-gfe' && typeof payload.html === 'string') {
             payload.publishAsGfe = true;
             payload.html = injectGfeCallout(payload.html);
+            // Mirror the callout into the PDF variant so the rendered PDF
+            // carries the GFE banner too.
+            if (typeof payload.htmlPdf === 'string') {
+              payload.htmlPdf = injectGfeCallout(payload.htmlPdf);
+            }
           }
         } else {
           console.warn('[scw-ops-stepper] buildPublishPayload returned null — ' +
