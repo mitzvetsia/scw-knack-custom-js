@@ -42,12 +42,6 @@
       id: 'publish-proposal',
       label: 'Publish Proposal',
       webhookKey: 'MAKE_OPS_PUBLISH_PROPOSAL_WEBHOOK',
-      modal: {
-        title:       'Publish Proposal',
-        intro:       'Publish this proposal for the customer.',
-        placeholder: 'Optional note to include with the publish…',
-        submitLabel: 'Publish'
-      },
       includeFullPayload: true
     }
   ];
@@ -112,35 +106,7 @@
       '  font-size: 12px; font-weight: 600; line-height: 1.35; color: #b45309;' +
       '  background: rgba(245,158,11,0.10); border: 1px solid rgba(245,158,11,0.35);' +
       '  border-radius: 8px;' +
-      '}' +
-
-      '.scw-sales-modal-overlay {' +
-      '  position: fixed; inset: 0; z-index: 10000; display: flex;' +
-      '  align-items: center; justify-content: center; background: rgba(15,23,42,0.55);' +
-      '}' +
-      '.scw-sales-modal {' +
-      '  width: 480px; max-width: 92vw; background: #fff; border-radius: 10px;' +
-      '  box-shadow: 0 10px 30px rgba(0,0,0,0.3); padding: 20px 22px 16px;' +
-      '  font-family: inherit; color: #111827;' +
-      '}' +
-      '.scw-sales-modal-hdr { font-size: 16px; font-weight: 700; margin-bottom: 4px; }' +
-      '.scw-sales-modal-intro { font-size: 13px; color: #4b5563; margin-bottom: 12px; }' +
-      '.scw-sales-modal-textarea {' +
-      '  width: 100%; box-sizing: border-box; min-height: 100px; padding: 8px 10px;' +
-      '  border: 1px solid #d1d5db; border-radius: 6px; font-family: inherit;' +
-      '  font-size: 13px; resize: vertical;' +
-      '}' +
-      '.scw-sales-modal-error { margin-top: 8px; color: #b91c1c; font-size: 12px; }' +
-      '.scw-sales-modal-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }' +
-      '.scw-sales-modal-cancel, .scw-sales-modal-submit {' +
-      '  padding: 7px 14px; border-radius: 5px; font-size: 13px; font-weight: 600;' +
-      '  cursor: pointer; border: 1px solid transparent;' +
-      '}' +
-      '.scw-sales-modal-cancel { background: #fff; color: #374151; border-color: #d1d5db; }' +
-      '.scw-sales-modal-cancel:hover { background: #f3f4f6; }' +
-      '.scw-sales-modal-submit { background: #2563eb; color: #fff; border-color: #1d4ed8; }' +
-      '.scw-sales-modal-submit:hover { background: #1d4ed8; }' +
-      '.scw-sales-modal-submit[disabled], .scw-sales-modal-cancel[disabled] { opacity: 0.6; cursor: wait; }';
+      '}';
 
     var s = document.createElement('style');
     s.id = STYLE_ID;
@@ -348,79 +314,6 @@
     return payload;
   }
 
-  // ── Notes prompt modal ───────────────────────────────────
-  function openNotesPromptModal(opts, onSubmit) {
-    opts = opts || {};
-    var overlay = document.createElement('div');
-    overlay.className = 'scw-sales-modal-overlay';
-
-    var card = document.createElement('div');
-    card.className = 'scw-sales-modal';
-
-    var hdr = document.createElement('div');
-    hdr.className = 'scw-sales-modal-hdr';
-    hdr.textContent = opts.title || 'Add a note';
-    card.appendChild(hdr);
-
-    if (opts.intro) {
-      var intro = document.createElement('div');
-      intro.className = 'scw-sales-modal-intro';
-      intro.textContent = opts.intro;
-      card.appendChild(intro);
-    }
-
-    var ta = document.createElement('textarea');
-    ta.className = 'scw-sales-modal-textarea';
-    ta.placeholder = opts.placeholder || '';
-    card.appendChild(ta);
-
-    var err = document.createElement('div');
-    err.className = 'scw-sales-modal-error';
-    err.style.display = 'none';
-    card.appendChild(err);
-
-    var actions = document.createElement('div');
-    actions.className = 'scw-sales-modal-actions';
-    var cancelBtn = document.createElement('button');
-    cancelBtn.type = 'button';
-    cancelBtn.className = 'scw-sales-modal-cancel';
-    cancelBtn.textContent = 'Cancel';
-    var submitBtn = document.createElement('button');
-    submitBtn.type = 'button';
-    submitBtn.className = 'scw-sales-modal-submit';
-    submitBtn.textContent = opts.submitLabel || 'Submit';
-    actions.appendChild(cancelBtn);
-    actions.appendChild(submitBtn);
-    card.appendChild(actions);
-
-    overlay.appendChild(card);
-    document.body.appendChild(overlay);
-    setTimeout(function () { try { ta.focus(); } catch (e) {} }, 30);
-
-    function close() { if (overlay.parentNode) overlay.parentNode.removeChild(overlay); }
-    function setSubmitting(on) {
-      submitBtn.disabled = !!on;
-      submitBtn.textContent = on ? 'Publishing…' : (opts.submitLabel || 'Submit');
-      cancelBtn.disabled = !!on;
-    }
-    function showError(msg) {
-      err.textContent = msg || 'Something went wrong.';
-      err.style.display = 'block';
-    }
-
-    cancelBtn.addEventListener('click', close);
-    overlay.addEventListener('click', function (e) { if (e.target === overlay) close(); });
-    document.addEventListener('keydown', function esc(e) {
-      if (e.key === 'Escape') { close(); document.removeEventListener('keydown', esc); }
-    });
-    submitBtn.addEventListener('click', function () {
-      err.style.display = 'none';
-      onSubmit((ta.value || '').trim(), {
-        setSubmitting: setSubmitting, showError: showError, close: close
-      });
-    });
-  }
-
   // Navigate up one level in Knack's hash route — strips the last two
   // hash segments (child-slug + child-id). Used as the fallback when the
   // browser blocks window.close().
@@ -498,23 +391,20 @@
       return;
     }
 
-    openNotesPromptModal(step.modal, function (notes, ctx) {
-      ctx.setSubmitting(true);
-      setBtnLoading(btn, true);
-      var payload = buildPayload(step, notes);
-      postWebhook(url, payload).then(function (resp) {
-        var accepted = resp.data && (
-          resp.data.success === true ||
-          (typeof resp.data.status === 'string' && resp.data.status.toLowerCase() === 'accepted')
-        );
-        if (!accepted) throw new Error(webhookErrorMsg(resp, step.label + ' webhook'));
-        ctx.close();
-        dismissAfterSuccess();
-      }).catch(function (e) {
-        setBtnLoading(btn, false);
-        ctx.setSubmitting(false);
-        ctx.showError((e && e.message) ? e.message : ('Network error: ' + e));
-      });
+    // Fire immediately — no notes prompt. The button shows a spinner
+    // while in flight; errors surface via alert().
+    setBtnLoading(btn, true);
+    var payload = buildPayload(step, '');
+    postWebhook(url, payload).then(function (resp) {
+      var accepted = resp.data && (
+        resp.data.success === true ||
+        (typeof resp.data.status === 'string' && resp.data.status.toLowerCase() === 'accepted')
+      );
+      if (!accepted) throw new Error(webhookErrorMsg(resp, step.label + ' webhook'));
+      dismissAfterSuccess();
+    }).catch(function (e) {
+      setBtnLoading(btn, false);
+      alert((e && e.message) ? e.message : ('Network error: ' + e));
     });
   }
 
