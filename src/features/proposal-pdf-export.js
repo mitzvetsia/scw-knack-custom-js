@@ -69,6 +69,9 @@
       // Ops stepper, not part of the published proposal. Keep it out
       // of the PDF scrape.
       // view_3345 is the Ops stepper host (rich-text role-gated).
+      // view_3969 is the Sales stepper host (rich-text role-gated) —
+      //   same deal as the Ops stepper; its action buttons must not
+      //   render into the published proposal.
       // view_3883 is the published-quote info host we inject into.
       // view_3886 is the published-proposals data source we read to
       //   populate view_3883 — itself not part of the quote.
@@ -77,6 +80,7 @@
         view_3342: true,
         view_3861: true,
         view_3345: true,
+        view_3969: true,
         view_3883: true,
         view_3886: true,
         // CTA button surfaced on the published-proposal page
@@ -830,6 +834,13 @@
     var view = Knack.views[viewId];
     if (!view) return out;
     var records = extractAppendImageViewRecords(view);
+    // Dedupe repeated uploads of the same file. view_3928 / view_3929 often
+    // carry the same map/photo on multiple records (same filename, different
+    // asset ids); without this each duplicate becomes its own full-page
+    // image in the PDF — bloating the file and showing the same picture
+    // twice. Key on filename (the visible duplicate), falling back to the
+    // URL when a file has no name.
+    var seen = {};
     for (var r = 0; r < records.length; r++) {
       var files = extractFilesFromRecord(records[r]);
       for (var f = 0; f < files.length; f++) {
@@ -837,6 +848,11 @@
         if (!isImageFile(file)) continue;
         var url = file.url || file.public_url || '';
         if (!url) continue;
+        var key = file.filename
+          ? 'fn:' + String(file.filename).toLowerCase().trim()
+          : 'url:' + url;
+        if (seen[key]) continue;
+        seen[key] = true;
         out.push({
           src: url,
           filename: file.filename || '',
