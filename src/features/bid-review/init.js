@@ -1648,8 +1648,11 @@
 
     setBusy(button, true);
 
+    // Resolve to { ok, recordId, xhr } either way so a single failing
+    // PUT doesn't reject the whole batch (and show a false "failed"
+    // toast while the rest actually landed). Caller tallies the results.
     function putField(viewId, recordId, fieldKey, value) {
-      return new Promise(function (resolve, reject) {
+      return new Promise(function (resolve) {
         var data = {};
         data[fieldKey] = value;
         SCW.knackAjax({
@@ -1660,29 +1663,44 @@
             if (typeof SCW.syncKnackModel === 'function') {
               SCW.syncKnackModel(viewId, recordId, resp, fieldKey, value);
             }
-            resolve(resp);
+            resolve({ ok: true, recordId: recordId });
           },
-          error: reject
+          error: function (xhr) {
+            if (CFG.debug) {
+              console.warn('[BidReview] Reopen PUT failed for', viewId, recordId, fieldKey,
+                '→', xhr && xhr.status, xhr && xhr.responseText);
+            }
+            resolve({ ok: false, recordId: recordId, xhr: xhr });
+          }
         });
       });
     }
 
-    putField(pkgView, pkgId, statusField, 'Draft')
-      .then(function () {
-        return Promise.all(itemIds.map(function (id) {
-          return putField(itemView, id, lockField, 'No');
-        }));
-      })
-      .then(function () {
-        ns.renderToast('Bid reopened — status set to Draft and ' +
-          itemIds.length + ' item' + (itemIds.length === 1 ? '' : 's') + ' unlocked', 'success');
+    putField(pkgView, pkgId, statusField, 'Draft').then(function (statusRes) {
+      return Promise.all(itemIds.map(function (id) {
+        return putField(itemView, id, lockField, 'No');
+      })).then(function (itemResults) {
+        var failedItems = 0;
+        for (var r = 0; r < itemResults.length; r++) if (!itemResults[r].ok) failedItems++;
+        var unlocked = itemIds.length - failedItems;
+
+        if (!statusRes.ok && failedItems === itemIds.length) {
+          // Nothing landed — a genuine failure.
+          ns.renderToast('Reopen failed — please retry', 'error');
+        } else if (statusRes.ok && failedItems === 0) {
+          ns.renderToast('Bid reopened — status set to Draft and ' +
+            unlocked + ' item' + (unlocked === 1 ? '' : 's') + ' unlocked', 'success');
+        } else {
+          // Partial success — tell the user exactly what didn't take.
+          var parts = [];
+          parts.push(statusRes.ok ? 'status set to Draft' : 'status NOT updated');
+          parts.push(unlocked + '/' + itemIds.length + ' items unlocked');
+          ns.renderToast('Bid partially reopened — ' + parts.join('; ') +
+            '. Check the console for details.', 'info');
+        }
         refreshSilently();
-      })
-      .catch(function (xhr) {
-        if (CFG.debug) console.warn('[BidReview] Reopen failed:', xhr && xhr.status, xhr && xhr.responseText);
-        ns.renderToast('Reopen failed — please retry', 'error');
-      })
-      .then(function () { setBusy(button, false); });
+      });
+    }).then(function () { setBusy(button, false); });
   }
 
   // ── Copy to SOW — processing toast + poll refresh ────────────
