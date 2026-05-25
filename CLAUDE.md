@@ -60,7 +60,29 @@ save.sh                        # Commit source changes only (excludes dist/)
 2. Add it to `build.sh` in the correct position (after its dependencies)
 3. Run `bash build.sh` to rebuild the dist bundle
 
-### Release workflow
+### Testing branch builds (NO release needed)
+
+**Do NOT assume the user must run `release.sh` (or that a tagged release) is
+required before changes are testable.** jsDelivr serves the bundle from ANY
+git ref — including a raw commit SHA — so the moment you `git push` a branch
+commit that includes a rebuilt `dist/knack-bundle.js`, that exact build is
+live on the CDN:
+
+```
+https://cdn.jsdelivr.net/gh/mitzvetsia/scw-knack-custom-js@<commit-sha>/dist/knack-bundle.js
+```
+
+The user pins the Knack loader directly to the pushed commit hash, so every
+branch push is immediately testable in the live app. **Never** tell the user
+that "this won't take effect until a release" or ask "did you release?" — and
+never block a debugging loop on a release. Just rebuild (`bash build.sh`),
+commit the `dist/` change, push the branch, and the new build is live at that
+SHA. (jsDelivr caches per-ref; a commit SHA is immutable so there's no cache
+staleness to worry about — each new commit is a new URL.)
+
+### Release workflow (production tags only)
+
+Tagged releases are for cutting a stable production version, not for testing.
 
 1. Commit all source changes first (use `save.sh` or manual git)
 2. Ensure working tree is clean
