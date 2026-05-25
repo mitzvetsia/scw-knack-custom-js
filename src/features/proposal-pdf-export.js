@@ -113,9 +113,17 @@
       // section label on top. Files come from any field_<N>_raw on the
       // record carrying { filename, url } / { public_url } — same
       // shape Knack uses for every file-upload field.
+      // view_3929 (Additional Photos) is a Knack *Image* field (field_771)
+      // whose view renders pre-sized thumbnail columns. `domThumbField`
+      // tells the scraper to pull the 600x600 rendition straight from the
+      // rendered <img> in that column instead of the full-size original —
+      // the native thumbnail is already small, so we skip blowing the
+      // image back up to full size only to canvas-downscale it again.
+      // view_3928 (Site Maps) is a *File* field with no server thumbnails,
+      // so it stays on the record/full-size + canvas-downscale path.
       appendImageViews: [
         { viewId: 'view_3928', label: 'Site Maps' },
-        { viewId: 'view_3929', label: 'Additional Photos' }
+        { viewId: 'view_3929', label: 'Additional Photos', domThumbField: 'field_771:thumb_15' }
       ],
       // JSON snapshot for this scene is intentionally slim:
       //   { sowRecordId, view_3896: [...full records...] }
@@ -898,12 +906,78 @@
     } catch (e) { /* non-fatal */ }
   }
 
-  function scrapeImagesFromView(viewId, label) {
+  // Pull pre-sized thumbnail <img>s straight from a rendered Knack table.
+  // For Image fields, Knack renders one column per configured thumbnail
+  // size; the body <td>s all carry the bare field class (e.g. `field_771`)
+  // with no thumb suffix, so we can't select the right column by field key.
+  // Instead we locate the column INDEX from the <thead> cell whose
+  // data-field-key starts with `thumbFieldKey` (e.g. `field_771:thumb_15`)
+  // and read the <img> from that same column in every body row. Returns a
+  // file-like list ({ filename, url }) matching extractFilesFromRecord.
+  function scrapeThumbFilesFromDom(viewId, thumbFieldKey) {
     var out = [];
-    if (typeof Knack === 'undefined' || !Knack.views) return out;
-    var view = Knack.views[viewId];
-    if (!view) return out;
-    var records = extractAppendImageViewRecords(view);
+    var viewEl = document.getElementById(viewId);
+    if (!viewEl) return out;
+    var table = viewEl.querySelector('table');
+    if (!table) return out;
+
+    var colIdx = -1;
+    var ths = table.querySelectorAll('thead th');
+    for (var i = 0; i < ths.length; i++) {
+      var key = ths[i].getAttribute('data-field-key') || '';
+      if (key.indexOf(thumbFieldKey) === 0) { colIdx = i; break; }
+    }
+
+    var rows = table.querySelectorAll('tbody tr');
+    for (var r = 0; r < rows.length; r++) {
+      var tr = rows[r];
+      if (tr.className && /kn-table-group|kn-table-totals|kn-tr-nodata/.test(tr.className)) continue;
+      var img = null;
+      if (colIdx >= 0 && tr.children[colIdx]) img = tr.children[colIdx].querySelector('img');
+      // Fallback: the 600x600 column is rendered after the 300x300 one, so
+      // the last image in the row is the larger rendition.
+      if (!img) {
+        var imgs = tr.querySelectorAll('img');
+        if (imgs.length) img = imgs[imgs.length - 1];
+      }
+      if (!img) continue;
+      var src = img.getAttribute('src') || img.src || '';
+      if (!src) continue;
+      var fname = (img.getAttribute('alt') || '').trim();
+      if (!fname) {
+        var base = src.split('?')[0].split('/').pop() || '';
+        fname = decodeURIComponent(base);
+      }
+      out.push({ filename: fname, url: src });
+    }
+    return out;
+  }
+
+  function scrapeImagesFromView(entry) {
+    var viewId = entry.viewId;
+    var label = entry.label;
+    var out = [];
+
+    var files;
+    if (entry.domThumbField) {
+      // Image field with native thumbnail renditions — use the 600x600 src
+      // from the DOM directly (already small) rather than the full-size
+      // original from the record.
+      files = scrapeThumbFilesFromDom(viewId, entry.domThumbField);
+    } else {
+      if (typeof Knack === 'undefined' || !Knack.views) return out;
+      var view = Knack.views[viewId];
+      if (!view) return out;
+      var records = extractAppendImageViewRecords(view);
+      files = [];
+      for (var r = 0; r < records.length; r++) {
+        var recFiles = extractFilesFromRecord(records[r]);
+        for (var f = 0; f < recFiles.length; f++) {
+          if (isImageFile(recFiles[f])) files.push(recFiles[f]);
+        }
+      }
+    }
+
     // Dedupe repeated uploads of the same file. view_3928 / view_3929 often
     // carry the same map/photo on multiple records (same filename, different
     // asset ids); without this each duplicate becomes its own full-page
@@ -911,26 +985,22 @@
     // twice. Key on filename (the visible duplicate), falling back to the
     // URL when a file has no name.
     var seen = {};
-    for (var r = 0; r < records.length; r++) {
-      var files = extractFilesFromRecord(records[r]);
-      for (var f = 0; f < files.length; f++) {
-        var file = files[f];
-        if (!isImageFile(file)) continue;
-        var url = file.url || file.public_url || '';
-        if (!url) continue;
-        var key = file.filename
-          ? 'fn:' + String(file.filename).toLowerCase().trim()
-          : 'url:' + url;
-        if (seen[key]) continue;
-        seen[key] = true;
-        var cachedDataUri = _imgDownscaleCache[url];
-        out.push({
-          src: cachedDataUri ? cachedDataUri : url,
-          url: url,
-          filename: file.filename || '',
-          alt: file.filename || label || ''
-        });
-      }
+    for (var k = 0; k < files.length; k++) {
+      var file = files[k];
+      var url = file.url || file.public_url || '';
+      if (!url) continue;
+      var dkey = file.filename
+        ? 'fn:' + String(file.filename).toLowerCase().trim()
+        : 'url:' + url;
+      if (seen[dkey]) continue;
+      seen[dkey] = true;
+      var cachedDataUri = _imgDownscaleCache[url];
+      out.push({
+        src: cachedDataUri ? cachedDataUri : url,
+        url: url,
+        filename: file.filename || '',
+        alt: file.filename || label || ''
+      });
     }
     return out;
   }
@@ -940,7 +1010,7 @@
     if (!cfg.appendImageViews || !cfg.appendImageViews.length) return sections;
     for (var i = 0; i < cfg.appendImageViews.length; i++) {
       var entry = cfg.appendImageViews[i];
-      var images = scrapeImagesFromView(entry.viewId, entry.label);
+      var images = scrapeImagesFromView(entry);
       if (!images.length) continue;
       sections.push({ viewId: entry.viewId, label: entry.label, images: images });
     }
