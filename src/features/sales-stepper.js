@@ -9,8 +9,10 @@
  * Steps
  *   1. Publish Proposal
  *        showWhen: always (no gate, for now)
- *        webhook : MAKE_OPS_PUBLISH_PROPOSAL_WEBHOOK (reused — was the
- *                  legacy single-publish hook, unused by ops-stepper)
+ *        webhook : MAKE_OPS_PUBLISH_PROPOSAL_WEBHOOK → the shared publish
+ *                  scenario (same Make hook as the ops publish variants);
+ *                  Make branches on payload.stepId. Payload shape matches
+ *                  ops-stepper's publish steps.
  *        TBD     : inherits the field_2725 default (tbdMode undefined) —
  *                  publishes with TBD labor until FLAG_released-to-sales
  *                  flips to Yes. See proposal-pdf-export.js shouldPublishAsTbd.
@@ -206,6 +208,10 @@
       stepId:         step.id,
       actionLabel:    step.label || '',
       notes:          notes || '',
+      // No submission/second-set concept on the sales publish, but keep
+      // the key so the body shape matches ops-stepper's publish payloads
+      // (Make's shared scenario maps it).
+      mode:           null,
       triggeredBy:    getTriggeredBy()
     };
     if (step.includeFullPayload) {

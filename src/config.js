@@ -120,11 +120,14 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   MAKE_OPS_PUBLISH_SOW_TBD_WEBHOOK:      "https://hook.us1.make.com/mezrtqmf6gh7yxlkx5fkit6fqrma213l",
   MAKE_OPS_PUBLISH_GFE_WEBHOOK:          "https://hook.us1.make.com/mezrtqmf6gh7yxlkx5fkit6fqrma213l",
   MAKE_OPS_PUBLISH_FINAL_WEBHOOK:        "https://hook.us1.make.com/mezrtqmf6gh7yxlkx5fkit6fqrma213l",
-  // Legacy single-publish webhook — kept so any external integrations
-  // linking to this URL keep working until they're migrated to one of
-  // the three variants above. Not referenced by ops-stepper after the
-  // three-button split.
-  MAKE_OPS_PUBLISH_PROPOSAL_WEBHOOK:     "https://hook.us1.make.com/c9ha12glmbnxponzny6ka7s7orr1226b",
+  // Sales stepper "Publish Proposal" (sales-stepper.js, stepId
+  // 'publish-proposal'). Points at the SAME shared publish scenario as
+  // the three ops publish variants above — Make branches on
+  // payload.stepId, and the payload shape matches those steps. Repointed
+  // here from the legacy single-publish hook (…c9ha12…) so every publish
+  // path lands in one scenario; that legacy URL is no longer referenced
+  // in code (external integrations hitting it directly are unaffected).
+  MAKE_OPS_PUBLISH_PROPOSAL_WEBHOOK:     "https://hook.us1.make.com/mezrtqmf6gh7yxlkx5fkit6fqrma213l",
   // Fires after a successful submit on the SOW Header update form when
   // field_2753 (target Project to clone into) is non-empty. Make handles
   // the deep clone (SOW + MDFs + photos) into the target Project. Payload:
