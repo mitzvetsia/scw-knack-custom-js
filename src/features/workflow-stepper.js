@@ -930,6 +930,19 @@
   }
 
   // ── Apply states to an action step ───────────────────────
+  // Hide the original Knack menu view (and any injected action button) that
+  // a step replaces, so the raw "Start Install Project" link never leaks
+  // through. Must run in every applyActionState path — including the
+  // processing/polling early-return — because the menu view re-renders
+  // visible on each poll fetch.
+  function hideStepMenu(step) {
+    if (!step.menuView) return;
+    var origMenu = document.getElementById(step.menuView);
+    if (origMenu) origMenu.style.display = 'none';
+    var injected = document.querySelector('.scw-acc-actions[data-scw-menu-src="' + step.menuView + '"]');
+    if (injected) injected.classList.add('scw-step-menu-hidden');
+  }
+
   function applyActionState(step) {
     var el = document.getElementById('scw-step-' + step.id);
 
@@ -994,6 +1007,7 @@
       // Drop the href so even an accessibility-tab-Enter doesn't fire.
       el.removeAttribute('href');
       renderHeaderMessage(el, step, step.id, false, false);
+      hideStepMenu(step);
       return;
     }
 
@@ -1021,12 +1035,7 @@
     renderHeaderMessage(el, step, step.id, isCompleted, baseDisabled);
 
     // Hide original menu view
-    if (step.menuView) {
-      var origMenu = document.getElementById(step.menuView);
-      if (origMenu) origMenu.style.display = 'none';
-      var injected = document.querySelector('.scw-acc-actions[data-scw-menu-src="' + step.menuView + '"]');
-      if (injected) injected.classList.add('scw-step-menu-hidden');
-    }
+    hideStepMenu(step);
   }
 
   // ── Main apply ───────────────────────────────────────────
