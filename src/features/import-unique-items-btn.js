@@ -600,7 +600,7 @@
   }
 
   function getItemLabel(itemId) {
-    return (itemLabels && itemLabels[itemId]) || itemId;
+    return (itemLabels && itemLabels[itemId]) || 'Untitled line item';
   }
 
   // Look up a SOW's "SW-####" token via the row in view_3869's DOM.
