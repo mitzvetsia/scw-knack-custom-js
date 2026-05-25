@@ -828,6 +828,76 @@
     return files;
   }
 
+  // ── Append-image downscaling ───────────────────────────────
+  // Site Maps / Additional Photos live in Knack *file* fields, which get
+  // no server-side thumbnails — appending the full-size original bloats
+  // the PDF to many MB. Instead we downscale each image in the browser
+  // (canvas → JPEG, longest edge ≤ IMG_MAX_EDGE) and inline the result as
+  // a data URI in the scraped HTML. Knack's asset host allows cross-
+  // origin canvas reads (verified), so toDataURL() doesn't taint.
+  //
+  // buildPublishPayload is synchronous and called from three publish
+  // paths, so we can't await the decode there. Instead we PRE-WARM a
+  // url→dataURI cache on scene/view render (prewarmAppendImages); by the
+  // time the user clicks Publish the cache is almost always ready.
+  // scrapeImagesFromView reads the cache and falls back to the original
+  // URL on a miss, so a cold cache degrades to the prior behaviour rather
+  // than breaking.
+  var IMG_MAX_EDGE = 1600;        // longest edge cap (preserves aspect ratio)
+  var IMG_JPEG_QUALITY = 0.82;
+  var _imgDownscaleCache = Object.create(null);    // url → dataURI ('' = failed)
+  var _imgDownscaleInflight = Object.create(null); // url → Promise
+
+  function downscaleImageToDataURL(url) {
+    if (!url) return Promise.resolve('');
+    if (_imgDownscaleCache[url] !== undefined) return Promise.resolve(_imgDownscaleCache[url]);
+    if (_imgDownscaleInflight[url]) return _imgDownscaleInflight[url];
+
+    var p = new Promise(function (resolve) {
+      var img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = function () {
+        try {
+          var w = img.naturalWidth || img.width;
+          var h = img.naturalHeight || img.height;
+          if (!w || !h) { _imgDownscaleCache[url] = ''; resolve(''); return; }
+          var scale = Math.min(1, IMG_MAX_EDGE / Math.max(w, h));
+          var cw = Math.max(1, Math.round(w * scale));
+          var ch = Math.max(1, Math.round(h * scale));
+          var canvas = document.createElement('canvas');
+          canvas.width = cw; canvas.height = ch;
+          canvas.getContext('2d').drawImage(img, 0, 0, cw, ch);
+          var dataUri = canvas.toDataURL('image/jpeg', IMG_JPEG_QUALITY);
+          _imgDownscaleCache[url] = dataUri;
+          resolve(dataUri);
+        } catch (e) {
+          _imgDownscaleCache[url] = '';   // CORS taint / canvas error → URL fallback
+          resolve('');
+        }
+      };
+      img.onerror = function () { _imgDownscaleCache[url] = ''; resolve(''); };
+      img.src = url;
+    });
+    _imgDownscaleInflight[url] = p;
+    return p;
+  }
+
+  // Kick off downscaling for every append-image URL on the scene so the
+  // cache is warm before the user publishes. Cheap + idempotent; safe to
+  // call repeatedly (downscaleImageToDataURL dedupes by URL).
+  function prewarmAppendImages(cfg) {
+    if (!cfg || !cfg.appendImageViews || !cfg.appendImageViews.length) return;
+    try {
+      var sections = scrapeAppendImageSections(cfg);
+      for (var s = 0; s < sections.length; s++) {
+        var imgs = sections[s].images || [];
+        for (var i = 0; i < imgs.length; i++) {
+          if (imgs[i] && imgs[i].url) downscaleImageToDataURL(imgs[i].url);
+        }
+      }
+    } catch (e) { /* non-fatal */ }
+  }
+
   function scrapeImagesFromView(viewId, label) {
     var out = [];
     if (typeof Knack === 'undefined' || !Knack.views) return out;
@@ -853,8 +923,10 @@
           : 'url:' + url;
         if (seen[key]) continue;
         seen[key] = true;
+        var cachedDataUri = _imgDownscaleCache[url];
         out.push({
-          src: url,
+          src: cachedDataUri ? cachedDataUri : url,
+          url: url,
           filename: file.filename || '',
           alt: file.filename || label || ''
         });
@@ -1983,6 +2055,21 @@
 
   function setupButtonTrigger(cfg) {
     var btnId = cfg.trigger.buttonId;
+
+    // Pre-warm the append-image downscale cache so the published PDF
+    // embeds small JPEGs instead of multi-MB file-field originals. These
+    // grids populate asynchronously, so warm on scene render AND whenever
+    // an append-image view (re)renders.
+    if (cfg.appendImageViews && cfg.appendImageViews.length) {
+      $(document).on('knack-scene-render.' + cfg.sceneId + '.scwImgPrewarm', function () {
+        setTimeout(function () { prewarmAppendImages(cfg); }, 300);
+      });
+      cfg.appendImageViews.forEach(function (entry) {
+        $(document).on('knack-view-render.' + entry.viewId + '.scwImgPrewarm', function () {
+          setTimeout(function () { prewarmAppendImages(cfg); }, 50);
+        });
+      });
+    }
 
     $(document).on('knack-scene-render.' + cfg.sceneId, function () {
       setTimeout(function () {
