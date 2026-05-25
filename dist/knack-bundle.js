@@ -1966,7 +1966,6 @@ Hardware`,addSlug:"add-accessory-line-item",itemSlug:"edit-accessory-line-item2"
         align-items: center;
         margin-left: 10px;
         flex-shrink: 0;
-        padding-top: 5px;
       }
       .scw-cr-hdr-warning svg {
         width: 18px;
@@ -2280,7 +2279,6 @@ td.${e}-sum-check input[type="checkbox"] {
   display: flex;
   align-items: center;
   justify-content: center;
-  align-self: center;
   gap: 2px;
 }
 .${e}-warn-slot:empty {

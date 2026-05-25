@@ -1271,7 +1271,6 @@ td.${P}-sum-check input[type="checkbox"] {
   display: flex;
   align-items: center;
   justify-content: center;
-  align-self: center;
   gap: 2px;
 }
 .${P}-warn-slot:empty {
