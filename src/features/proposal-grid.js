@@ -2397,8 +2397,30 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
         cur = cur.nextElementSibling;
       }
 
-      if (hasData) h.classList.remove('scw-empty-group-header');
-      else h.classList.add('scw-empty-group-header');
+      if (hasData) {
+        h.classList.remove('scw-empty-group-header');
+      } else {
+        h.classList.add('scw-empty-group-header');
+        // Hide any orphaned child group rows too. When a product's only
+        // line item is relocated as an accessory under another product,
+        // Knack leaves the product's L4 labor-description row behind. With
+        // the L3 header hidden but the L4 visible, that labor text floats
+        // "disembodied" under nothing, with no qty/cost. Hide the whole
+        // remnant.
+        if (level === 3) {
+          let child = h.nextElementSibling;
+          while (child) {
+            if (child.classList && child.classList.contains('kn-table-group')) {
+              const cm = child.className.match(/kn-group-level-(\d+)/);
+              if (cm && parseInt(cm[1], 10) <= 3) break;
+              child.classList.add('scw-empty-group-header');
+            } else if (child.tagName === 'TR' && child.id && child.id.indexOf('kn-') !== 0) {
+              break;
+            }
+            child = child.nextElementSibling;
+          }
+        }
+      }
     }
   }
 
@@ -2429,6 +2451,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
 
     const qtyKey = ctx.keys.qty;
     const costKey = ctx.keys.cost;
+    const hardwareKey = ctx.keys.hardware; // field_2201 — equipment-only extended price
     const prefixKey = ctx.keys.prefix; // field_2240
     const numberKey = ctx.keys.number; // field_1951
 
@@ -2549,7 +2572,14 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
         let groupCost = 0;
         for (let k = 0; k < rows.length; k++) {
           groupQty += readNum(rows[k], qtyKey);
-          groupCost += readNum(rows[k], costKey);
+          // Sum the EQUIPMENT extended price (field_2201), not the line-item
+          // total (field_2203). Most mounting hardware has no install labor
+          // so the two are equal, but an accessory that carries its own
+          // install (e.g. a Server Rack Enclosure: $515 equipment + $506
+          // install = $1,021 total) must show the equipment price here — the
+          // install labor is represented separately, not folded into the
+          // equipment line.
+          groupCost += readNum(rows[k], hardwareKey);
         }
         totalQty += groupQty;
         totalCost += groupCost;

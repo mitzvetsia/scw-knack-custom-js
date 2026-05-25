@@ -557,6 +557,11 @@
         currentL3.lineItems.push({
           level: 4, label: mptName, description: '',
           qty: mptQty, cost: mptCost, cameraList: mptParentList,
+          // These rollup lines are relocated EQUIPMENT accessories (hard
+          // drives, rack enclosures, box mounts) — their cost is an
+          // equipment price, not install labor, so it must NOT be masked to
+          // "TBD" when the bid is unreleased (see applyTbdToPublishPayload).
+          isEquipment: true,
         });
         continue;
       }
@@ -774,6 +779,9 @@
                 var prod = bucket.products[p];
                 if (!prod || !Array.isArray(prod.lineItems)) continue;
                 for (var li = 0; li < prod.lineItems.length; li++) {
+                  // Equipment accessory rollup lines carry a real equipment
+                  // price, not install labor — leave them alone.
+                  if (prod.lineItems[li].isEquipment) continue;
                   prod.lineItems[li].cost = TBD;
                 }
               }
