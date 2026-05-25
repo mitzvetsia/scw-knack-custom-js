@@ -27,7 +27,8 @@
   var GATE_VIEW        = 'view_3827';   // SOW detail view on the same scene
   var LINE_ITEM_VIEW   = 'view_3913';   // Hidden grid of all SOW line items on this project
   var SOW_CONN_FIELD   = 'field_2154';  // SOW Header connection on a line item
-  var ITEM_LABEL_FIELD = 'field_1950';  // Display label for a line item (added to view_3913)
+  var ITEM_LABEL_FIELD = 'field_1950';  // Device label for a line item (e.g. "E-003"; blank on non-device items)
+  var ITEM_PRODUCT_FIELD = 'field_1949'; // Product (connection) — fallback label for non-device line items
   var SURVEY_FIELD     = 'field_2706';  // Yes/No: "Survey Requested?" on a SOW Header
   var BTN_MARKER     = 'scw-import-unique-items-btn';
   var BTN_LABEL      = 'Add unique items';
@@ -535,6 +536,33 @@
     return null;
   }
 
+  // Strip HTML + collapse whitespace.
+  function cleanText(v) {
+    if (v == null) return '';
+    return String(v).replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
+  }
+
+  // Human-readable label for a line-item record from view_3913's model.
+  // Device label (field_1950) preferred; product name (field_1949) used as
+  // fallback (and appended when both exist) so non-device line items don't
+  // surface as raw record IDs in the modal.
+  function recordLabel(rec) {
+    var device = cleanText(rec[ITEM_LABEL_FIELD]);
+    var product = '';
+    var praw = rec[ITEM_PRODUCT_FIELD + '_raw'];
+    if (Array.isArray(praw) && praw.length) {
+      var names = [];
+      for (var i = 0; i < praw.length; i++) {
+        var n = praw[i] && cleanText(praw[i].identifier);
+        if (n) names.push(n);
+      }
+      product = names.join(', ');
+    }
+    if (!product) product = cleanText(rec[ITEM_PRODUCT_FIELD]);
+    if (device && product) return device + ' · ' + product;
+    return device || product || '';
+  }
+
   // Build sowId → Set<lineItemId> and itemId → label from view_3913's model.
   function buildSowIndex() {
     sowToItems = null;
@@ -549,12 +577,13 @@
         var rec = models[i] && models[i].attributes;
         if (!rec || !rec.id) continue;
 
-        // Display label — strip any HTML tags Knack may have wrapped it in.
-        var raw = rec[ITEM_LABEL_FIELD];
-        if (raw != null) {
-          var label = String(raw).replace(/<[^>]+>/g, '').replace(/\s+/g, ' ').trim();
-          if (label) labels[rec.id] = label;
-        }
+        // Display label. Prefer the device label (field_1950, e.g. "E-003"),
+        // but it's blank on line items that aren't survey devices (plain
+        // products / bid items), which would leave the modal showing raw
+        // record IDs. Fall back to the connected product name (field_1949),
+        // and combine both when present ("E-003 · Acme Camera").
+        var label = recordLabel(rec);
+        if (label) labels[rec.id] = label;
 
         var conns = rec[SOW_CONN_FIELD + '_raw'];
         if (!conns || !conns.length) continue;

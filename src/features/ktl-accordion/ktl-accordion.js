@@ -38,8 +38,14 @@
   var BTN_SEL    = '.ktlHideShowButton[id^="hideShow_view_"][id$="_button"]';
   var DISABLED_ACCORDION_SCENES = { scene_828: true, scene_833: true, scene_873: true, scene_1149: true };
 
-  // Views where the record count pill is hidden (set to true to hide)
-  var HIDE_COUNT = {};
+  // Views where the record count pill is hidden (set to true to hide).
+  // view_3869 (alternative SOWs on the project) always contains the
+  // current SOW's own row, which hide-self-row.js hides via display:none.
+  // The model-based count still includes it, so the pill reads 1 with zero
+  // alternatives and 2 with one — off by one and confusing. hide-self-row.js
+  // already hides the Knack entries summary for the same reason; hide the
+  // pill too.
+  var HIDE_COUNT = { view_3869: true };
 
   // ── SVG icons ──
   var DEFAULT_ICON_SVG =
