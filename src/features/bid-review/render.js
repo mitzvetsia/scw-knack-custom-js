@@ -364,7 +364,7 @@
       var sPkg = pending[pkgIds[si]];
       if (!sPkg || !sPkg.items || !sPkg.items.length) continue;
       crTd.appendChild(btn(
-        'Submit ' + sPkg.pkgName + ' (' + sPkg.items.length + ')', 'cr-submit sm',
+        'Submit Change Request (' + sPkg.items.length + ')', 'cr-submit sm',
         { 'data-action': 'cr_submit', 'data-pkg-id': pkgIds[si] }
       ));
     }
