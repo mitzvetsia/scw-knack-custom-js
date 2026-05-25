@@ -118,6 +118,7 @@ cat \
   src/features/sales-change-request/init.js \
   src/features/bid-revision-inject.js \
   src/features/sub-variant-bid.js \
+  src/features/reopen-bid.js \
   src/features/revision-accept-reject.js \
   src/features/proposal-type-chip.js \
   src/features/published-quote-info.js \
