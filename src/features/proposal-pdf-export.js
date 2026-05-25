@@ -995,6 +995,18 @@
            '&w=' + w + '&output=jpg&q=' + q + '&we&filename=' + dlName;
   }
 
+  // Inverse of toProxyResizeUrl — recover the original asset URL from a
+  // weserv proxy URL by reading back its `url=` param. Returns the input
+  // unchanged when it isn't a weserv URL. Used by the in-app preview to
+  // show raw full-size images without the third-party CDN round-trip.
+  function unwrapResizeProxyUrl(url) {
+    if (!url || url.indexOf('images.weserv.nl') === -1) return url;
+    var m = /[?&]url=([^&]+)/.exec(url);
+    if (!m) return url;
+    var bare = decodeURIComponent(m[1]);
+    return /^https?:\/\//.test(bare) ? bare : 'https://' + bare;
+  }
+
   // Collect rendered <img> srcs from a view's table. Knack *Image*/File
   // assets (e.g. field_754 Site Maps) render the asset from an S3 host that
   // does NOT allow cross-origin canvas reads, so the browser can display
@@ -3917,7 +3929,12 @@
     // injects this at the bottom of the in-app preview so staff see the
     // images that WILL publish. Returns '' when the scene has no
     // appendImageViews or none of them have images yet.
-    appendImagesHtml: function (sceneId) {
+    //
+    // opts.rawSiteMaps: unwrap the images.weserv.nl resize proxy back to
+    // the original asset URL. The in-app preview is internal and doesn't
+    // need the small/resized variant — showing the raw full-size image
+    // avoids routing internal viewing through the third-party CDN.
+    appendImagesHtml: function (sceneId, opts) {
       var cfg = null;
       for (var si = 0; si < SCENES.length; si++) {
         if (SCENES[si].sceneId === sceneId) { cfg = SCENES[si]; break; }
@@ -3925,6 +3942,14 @@
       if (!cfg) return '';
       var sections = scrapeAppendImageSections(cfg);
       if (!sections.length) return '';
+      if (opts && opts.rawSiteMaps) {
+        for (var s = 0; s < sections.length; s++) {
+          var imgs = sections[s].images || [];
+          for (var ii = 0; ii < imgs.length; ii++) {
+            imgs[ii].src = unwrapResizeProxyUrl(imgs[ii].src);
+          }
+        }
+      }
       var html = [];
       for (var i = 0; i < sections.length; i++) {
         renderAppendImageSection(sections[i], html);

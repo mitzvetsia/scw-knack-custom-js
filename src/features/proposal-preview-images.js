@@ -67,7 +67,9 @@
     var sceneEl = document.getElementById('kn-' + SCENE_ID);
     if (!sceneEl) return;
 
-    var html = SCW.pdfExport.appendImagesHtml(SCENE_ID);
+    // rawSiteMaps: the preview is internal — show raw full-size images
+    // instead of routing through the images.weserv.nl resize proxy.
+    var html = SCW.pdfExport.appendImagesHtml(SCENE_ID, { rawSiteMaps: true });
     var existing = document.getElementById(CONTAINER_ID);
 
     if (!html) {
