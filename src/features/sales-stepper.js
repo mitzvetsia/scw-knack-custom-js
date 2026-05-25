@@ -102,6 +102,17 @@
       '.scw-step-action.is-loading { pointer-events: none; opacity: 0.75; cursor: wait; }' +
       '.scw-step-action.is-loading .scw-step-icon svg { animation: scw-step-spin 0.8s linear infinite; }' +
       '@keyframes scw-step-spin { to { transform: rotate(360deg); } }' +
+      // Blocked: fully readable but not clickable (amber accent + lock-out).
+      '.scw-step-action.is-blocked { opacity: 0.55; pointer-events: none; cursor: default; --scw-step-accent: #b45309; }' +
+      '.scw-step-action.is-blocked .scw-step-icon { color: #b45309; opacity: 1; }' +
+      // Gate note shown beneath a blocked button (amber; red is for errors).
+      '.' + BLOCK_CLS + '__note {' +
+      '  display: flex; align-items: flex-start; gap: 6px;' +
+      '  margin: -2px 0 8px; padding: 7px 10px;' +
+      '  font-size: 12px; font-weight: 600; line-height: 1.35; color: #b45309;' +
+      '  background: rgba(245,158,11,0.10); border: 1px solid rgba(245,158,11,0.35);' +
+      '  border-radius: 8px;' +
+      '}' +
 
       '.scw-sales-modal-overlay {' +
       '  position: fixed; inset: 0; z-index: 10000; display: flex;' +
@@ -156,6 +167,88 @@
     var cell = view.querySelector('.kn-detail.' + fieldKey + ' .kn-detail-body');
     if (cell) return (cell.textContent || '').replace(/ /g, ' ').trim();
     return '';
+  }
+
+  // ── Publish gate ─────────────────────────────────────────
+  // Block (but don't hide) the Publish Proposal button when the SOW is
+  // released to sales (field_2725 = Yes) AND the install total has drifted
+  // since the last publish — i.e. the published-proposal record's stored
+  // installation total (field_2668) no longer matches the live grid total
+  // in view_3341. Forces a re-publish through Ops rather than letting Sales
+  // ship a quote whose numbers changed underneath it.
+  var GRID_VIEW            = 'view_3341';  // rendered proposal grid (project totals)
+  var PUBLISHED_DETAIL_VIEW = 'view_3883'; // published-proposal details on this scene
+  var PUBLISHED_LIST_VIEW   = 'view_3886'; // published-proposal data grid (fallback)
+  var INSTALL_TOTAL_FIELD   = 'field_2668';// published record's installation total
+
+  function parseMoney(s) {
+    if (s == null) return null;
+    var n = parseFloat(String(s).replace(/[^0-9.\-]/g, ''));
+    return isNaN(n) ? null : n;
+  }
+
+  // Live installation total from the rendered proposal grid (view_3341).
+  function readGridInstallationTotal() {
+    var view = document.getElementById(GRID_VIEW);
+    if (!view) return null;
+    var el = view.querySelector('.scw-project-totals--installation-total .scw-l1-value');
+    return el ? parseMoney(el.textContent) : null;
+  }
+
+  // Published record's stored installation total (field_2668). Tries the
+  // details view model/DOM, then the list view model. Returns null when no
+  // published record exists or the field isn't exposed — caller treats null
+  // as "nothing to compare" and does NOT block.
+  function readPublishedInstallationTotal() {
+    function fromAttrs(attrs) {
+      if (!attrs) return null;
+      var raw = attrs[INSTALL_TOTAL_FIELD + '_raw'];
+      if (raw != null && raw !== '') return parseMoney(raw);
+      var v = attrs[INSTALL_TOTAL_FIELD];
+      if (v != null && v !== '') return parseMoney(v);
+      return null;
+    }
+    try {
+      var dv = Knack.views && Knack.views[PUBLISHED_DETAIL_VIEW];
+      var dAttrs = dv && dv.model && (dv.model.attributes ||
+        (dv.model.toJSON && dv.model.toJSON()));
+      var fromDetail = fromAttrs(dAttrs);
+      if (fromDetail != null) return fromDetail;
+    } catch (e) { /* fall through */ }
+
+    var cell = document.querySelector('#' + PUBLISHED_DETAIL_VIEW +
+      ' .kn-detail.' + INSTALL_TOTAL_FIELD + ' .kn-detail-body');
+    if (cell) {
+      var domVal = parseMoney(cell.textContent);
+      if (domVal != null) return domVal;
+    }
+
+    try {
+      var lv = Knack.views && Knack.views[PUBLISHED_LIST_VIEW];
+      var models = lv && lv.model && lv.model.data && lv.model.data.models;
+      if (models && models.length) {
+        var fromList = fromAttrs(models[0].attributes || models[0]);
+        if (fromList != null) return fromList;
+      }
+    } catch (e) { /* ignore */ }
+    return null;
+  }
+
+  // { blocked, reason } — only blocks when released AND both totals are
+  // readable AND they differ (to the cent).
+  function evaluatePublishGate() {
+    var released = (readField('field_2725') || '').trim().toLowerCase() === 'yes';
+    if (!released) return { blocked: false };
+    var published = readPublishedInstallationTotal();
+    var grid = readGridInstallationTotal();
+    if (published == null || grid == null) return { blocked: false };
+    if (Math.round(published * 100) !== Math.round(grid * 100)) {
+      return {
+        blocked: true,
+        reason: 'Installation total has changed — check with Ops for re-publish.'
+      };
+    }
+    return { blocked: false };
   }
 
   function getTriggeredBy() {
@@ -377,6 +470,13 @@
       alert('Could not determine the SOW record ID from ' + SOURCE_VIEW + '.');
       return;
     }
+    // Hard re-check the publish gate at click time (defense in depth — the
+    // button is also visually blocked + pointer-events:none in renderInto).
+    var gate = evaluatePublishGate();
+    if (gate.blocked) {
+      alert(gate.reason);
+      return;
+    }
     // Publishing scrapes the full proposal scene — block until ready so
     // the payload isn't built from a half-rendered page.
     if (window.SCW && SCW.pdfExport && typeof SCW.pdfExport.isPageReady === 'function' &&
@@ -436,9 +536,24 @@
       el.addEventListener('click', function (e) {
         e.preventDefault();
         if (el.classList.contains('is-loading')) return;
+        if (el.classList.contains('is-blocked')) return;
         fireStep(step, el);
       });
       block.appendChild(el);
+
+      // Publish gate — block (don't hide) when the install total has
+      // drifted since the last publish on a released SOW.
+      if (step.id === 'publish-proposal') {
+        var gate = evaluatePublishGate();
+        if (gate.blocked) {
+          el.classList.add('is-blocked');
+          el.setAttribute('title', gate.reason);
+          var note = document.createElement('div');
+          note.className = BLOCK_CLS + '__note';
+          note.textContent = gate.reason;
+          block.appendChild(note);
+        }
+      }
     });
 
     host.appendChild(block);
@@ -459,6 +574,14 @@
     $(document)
       .off('knack-view-render.' + SOURCE_VIEW + NS)
       .on('knack-view-render.' + SOURCE_VIEW + NS, function () { setTimeout(render, 200); });
+    // Re-render when the proposal grid or published-proposal record renders
+    // so the publish gate re-evaluates as install totals change.
+    $(document)
+      .off('knack-view-render.' + GRID_VIEW + NS)
+      .on('knack-view-render.' + GRID_VIEW + NS, function () { setTimeout(render, 250); });
+    $(document)
+      .off('knack-view-render.' + PUBLISHED_DETAIL_VIEW + NS)
+      .on('knack-view-render.' + PUBLISHED_DETAIL_VIEW + NS, function () { setTimeout(render, 250); });
     $(document)
       .off('knack-scene-render.any' + NS)
       .on('knack-scene-render.any' + NS, function () { setTimeout(render, 600); });
