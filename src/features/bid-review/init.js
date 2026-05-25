@@ -275,6 +275,8 @@
         }
       } else if (action === 'set_project_margin') {
         handleSetProjectMargin(button);
+      } else if (action === 'package_reopen_bid') {
+        handleReopenBid(button);
       } else if (action.indexOf('package_') === 0) {
         handlePackageAction(button, action);
       } else if (action.indexOf('row_') === 0) {
@@ -1602,6 +1604,85 @@
     }).always(function () {
       setBusy(button, false);
     });
+  }
+
+  // ── Reopen Bid — status → Draft + unlock line items ─────────
+  //
+  // Puts a submitted bid back into an editable state:
+  //   1. bid package status (field_2550) → "Draft"  (write via view_3573)
+  //   2. every line item on that bid: lock flag (field_2551) → "No"
+  //      (write via the bid-review source view, CFG.viewKey)
+  // All client-side view PUTs — no webhook. Refreshes the matrix after.
+  function handleReopenBid(button) {
+    if (!_state) return;
+
+    var pkgId = button.getAttribute('data-package-id');
+    var sowId = button.getAttribute('data-sow-id');
+    var grid  = findSowGrid(sowId);
+    if (!grid) { ns.renderToast('SOW grid not found', 'error'); return; }
+
+    if (!SCW.knackRecordUrl || !SCW.knackAjax) {
+      ns.renderToast('Cannot reopen — Knack helpers unavailable', 'error');
+      return;
+    }
+
+    var statusField = CFG.fieldKeys.bidStatus;          // field_2550
+    var lockField   = 'field_2551';                      // line-item finalize/lock
+    var pkgView     = CFG.bidPackagesViewKey;            // view_3573 (bid package)
+    var itemView    = CFG.viewKey;                       // view_3680 (bid line items)
+
+    // Collect every line item record id for this package across the grid.
+    var itemIds = [];
+    var seen = {};
+    for (var i = 0; i < grid.rows.length; i++) {
+      var cell = grid.rows[i].cellsByPackage && grid.rows[i].cellsByPackage[pkgId];
+      if (cell && cell.id && !seen[cell.id]) { seen[cell.id] = true; itemIds.push(cell.id); }
+    }
+
+    var pkgName = findPackageName(grid, pkgId) || 'this bid';
+    if (!window.confirm(
+      'Reopen ' + pkgName + '?\n\nThis sets the bid status back to Draft and ' +
+      'unlocks ' + itemIds.length + ' line item' + (itemIds.length === 1 ? '' : 's') +
+      ' so they can be edited again.'
+    )) return;
+
+    setBusy(button, true);
+
+    function putField(viewId, recordId, fieldKey, value) {
+      return new Promise(function (resolve, reject) {
+        var data = {};
+        data[fieldKey] = value;
+        SCW.knackAjax({
+          url:  SCW.knackRecordUrl(viewId, recordId),
+          type: 'PUT',
+          data: JSON.stringify(data),
+          success: function (resp) {
+            if (typeof SCW.syncKnackModel === 'function') {
+              SCW.syncKnackModel(viewId, recordId, resp, fieldKey, value);
+            }
+            resolve(resp);
+          },
+          error: reject
+        });
+      });
+    }
+
+    putField(pkgView, pkgId, statusField, 'Draft')
+      .then(function () {
+        return Promise.all(itemIds.map(function (id) {
+          return putField(itemView, id, lockField, 'No');
+        }));
+      })
+      .then(function () {
+        ns.renderToast('Bid reopened — status set to Draft and ' +
+          itemIds.length + ' item' + (itemIds.length === 1 ? '' : 's') + ' unlocked', 'success');
+        refreshSilently();
+      })
+      .catch(function (xhr) {
+        if (CFG.debug) console.warn('[BidReview] Reopen failed:', xhr && xhr.status, xhr && xhr.responseText);
+        ns.renderToast('Reopen failed — please retry', 'error');
+      })
+      .then(function () { setBusy(button, false); });
   }
 
   // ── Copy to SOW — processing toast + poll refresh ────────────

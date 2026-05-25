@@ -877,6 +877,16 @@
       '  color: #fff;',
       '}',
 
+      '.scw-bid-review__btn--reopen {',
+      '  background: #fff;',
+      '  color: #b45309;',
+      '  border: 1px solid #d6a35c;',
+      '}',
+      '.scw-bid-review__btn--reopen:hover {',
+      '  background: #b45309;',
+      '  color: #fff;',
+      '}',
+
       '.scw-bid-review__btn--skip {',
       '  background: #e2e8f0;',
       '  color: #475569;',

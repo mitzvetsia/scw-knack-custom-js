@@ -347,6 +347,10 @@
           '+ Create new SOW', 'create',
           { 'data-action': 'package_create_sow', 'data-package-id': pkg2.id, 'data-sow-id': sowGrid.sowId }
         ));
+        actionTd.appendChild(btn(
+          'Reopen Bid', 'reopen',
+          { 'data-action': 'package_reopen_bid', 'data-package-id': pkg2.id, 'data-sow-id': sowGrid.sowId }
+        ));
       }
 
       r3.appendChild(actionTd);
