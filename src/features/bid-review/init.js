@@ -203,6 +203,7 @@
       // row click only fires when nothing more specific intercepted it).
       var rowTrigger = e.target.closest('.scw-bid-review__row--expandable');
       if (rowTrigger
+        && !e.target.closest('[data-action]')
         && !e.target.closest('.scw-bid-review__btn')
         && !e.target.closest('.scw-bid-review__overflow')
         && !e.target.closest('.scw-bid-review__overflow-item')
