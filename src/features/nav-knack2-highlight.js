@@ -31,12 +31,17 @@
   function injectStyles() {
     if (document.getElementById(STYLE_ID)) return;
     var css =
+      /* Across-the-board nav sizing: 16px, normal weight (primary bumps
+         weight back up below). */
+      '#' + NAV_VIEW + ' a.kn-link {' +
+      '  font-size: 16px !important; font-weight: 400 !important;' +
+      '}' +
       '#' + NAV_VIEW + ' a.kn-link.' + PRIMARY_CLS + ',' +
       '#' + NAV_VIEW + ' a.kn-link.' + PRIMARY_CLS + '.is-primary {' +
       '  background: #0891b2 !important;' +
       '  border-color: #0891b2 !important;' +
       '  color: #ffffff !important;' +
-      '  font-weight: 700 !important;' +
+      '  font-weight: 600 !important;' +
       '  box-shadow: 0 1px 4px rgba(8,145,178,0.40) !important;' +
       '}' +
       '#' + NAV_VIEW + ' a.kn-link.' + PRIMARY_CLS + ' span { color: #ffffff !important; }' +
