@@ -817,6 +817,19 @@ ${sel('tr.scw-mounting-product-line td')} {
 ${sel('tr.scw-mounting-product-line td:first-child')} {
   padding-left: 80px !important;
 }
+/* Install-labor sub-line beneath a mounting-hardware equipment line (e.g. a
+   rack enclosure's "Install and assemble…" row). Matches the lighter,
+   slightly-smaller install-description styling (.scw-l4-2019: weight 300,
+   color #07467c) and nests one indent deeper than the equipment line. */
+${sel('tr.scw-mounting-labor-line td')} {
+  color: #07467c !important;
+  font-size: 13px !important;
+  font-weight: 300 !important;
+  line-height: 1.2 !important;
+}
+${sel('tr.scw-mounting-labor-line td:first-child')} {
+  padding-left: 100px !important;
+}
 .scw-mounting-product-name {
   font-weight: 500;
   color: #07467c;
@@ -2574,6 +2587,13 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
         let groupCost = 0;
         let groupLabor = 0;
         let laborDesc = '';
+        // Mask-independent "this accessory carries install labor" flag.
+        // On masked grids zeroLaborCells() runs BEFORE this pass and sets
+        // every td.laborKey to "$0.00" (so groupLabor is 0), but it stamps
+        // data-scw-had-labor="1" on rows that originally had labor. Gate the
+        // synthetic labor line on hadLabor, not groupLabor, so the line shows
+        // on masked grids too — applyTBDLabels() masks its cost to TBD after.
+        let hadLabor = false;
         for (let k = 0; k < rows.length; k++) {
           groupQty += readNum(rows[k], qtyKey);
           // Sum the EQUIPMENT extended price (field_2201), not the line-item
@@ -2585,9 +2605,16 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
           groupCost += readNum(rows[k], hardwareKey);
           const rowLabor = readNum(rows[k], laborKey);
           groupLabor += rowLabor;
-          if (rowLabor > 0 && !laborDesc) {
-            const dcell = rows[k].querySelector('td.' + descFieldKey);
-            if (dcell) laborDesc = (dcell.textContent || '').replace(/\s+/g, ' ').trim();
+          const rowHadLabor =
+            rowLabor > 0 || rows[k].getAttribute('data-scw-had-labor') === '1';
+          if (rowHadLabor) {
+            hadLabor = true;
+            // The install-description field (field_2019) is NOT zeroed by
+            // zeroLaborCells, so it's readable on masked grids too.
+            if (!laborDesc) {
+              const dcell = rows[k].querySelector('td.' + descFieldKey);
+              if (dcell) laborDesc = (dcell.textContent || '').replace(/\s+/g, ' ').trim();
+            }
           }
         }
         totalQty += groupQty;
@@ -2656,7 +2683,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
         // a normal product shows equipment then an indented labor line. The
         // original relocated row stays in the DOM (hidden) so subtotals are
         // unaffected; this row is display-only.
-        if (groupLabor > 0 && laborDesc) {
+        if (hadLabor && laborDesc) {
           const laborRow = document.createElement('tr');
           laborRow.className = 'scw-mounting-labor-line';
           laborRow.setAttribute('data-scw-product', productName);
@@ -3191,6 +3218,15 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
     $view.find('tr.kn-table-group.kn-group-level-4').each(function () {
       var $costCell = $(this).find('td.' + costKey);
       if ($costCell.length) $costCell.html('<strong>' + TBD + '</strong>');
+    });
+
+    // Synthetic mounting-hardware install-labor lines (e.g. a rack
+    // enclosure's "Install and assemble…" line). postProcessMountingClusters
+    // builds these with a $0.00 cost on masked grids (labor cells were
+    // zeroed pre-pipeline); mask that cost to TBD like every other labor cell.
+    $view.find('tr.scw-mounting-labor-line').each(function () {
+      var $costCell = $(this).find('td.' + costKey);
+      if ($costCell.length) $costCell.html(TBD);
     });
 
     // Installation Total → TBD
