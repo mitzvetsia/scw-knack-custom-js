@@ -647,6 +647,21 @@ tr.scw-level-total-row.scw-project-totals.scw-project-totals--proposal-discount
   padding-top: 0 !important;
 }
 
+/* Client-facing discount reason (field_2291) beneath the Proposal Discount
+   amount. Muted + italic so it reads as a note, not another total line. */
+.scw-l1-disc-note {
+  margin-top: 3px;
+  font-size: 12px;
+  font-style: italic;
+  font-weight: 400;
+  line-height: 1.3;
+  color: #64748b;
+  text-align: right;
+  white-space: normal;
+  max-width: 340px;
+  margin-left: auto;
+}
+
 /* Tight spacing inside the Equipment Subtotal → Line Item Discounts →
    Equipment Total cluster, mirroring Proposal Discount → Grand Total. */
 tr.scw-level-total-row.scw-project-totals.scw-project-totals--equipment-subtotal td,
@@ -1753,6 +1768,13 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
     return Number.isFinite(num) ? num : 0;
   }
 
+  function readDomFieldText(fieldKey, viewId) {
+    const scope = viewId ? `#${viewId} ` : '';
+    const $el = $(scope + `.kn-detail.field_${fieldKey} .kn-detail-body`);
+    if (!$el.length) return '';
+    return ($el.first().text() || '').replace(/\s+/g, ' ').trim();
+  }
+
   function buildProjectTotalRows(ctx, caches, $tbody) {
     if (!ctx.showProjectTotals) return [];
 
@@ -1766,6 +1788,9 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
     const equipmentSubtotal = sumField(caches, $allDataRows, hardwareKey);
     const lineItemDiscounts = Math.abs(sumField(caches, $allDataRows, 'field_2303'));
     const proposalDiscount = Math.abs(readDomFieldValue('2302', 'view_3342'));
+    // Client-facing discount reason (field_2291) — shown beneath the
+    // Proposal Discount amount only when a discount is actually applied.
+    const proposalDiscountNote = readDomFieldText('2291', 'view_3342');
     // Proposal Discount is rendered AFTER Installation Total and applied
     // only at the Grand Total. It is NOT subtracted from Equipment Total
     // — equipment-side math stays equipmentSubtotal − lineItemDiscounts.
@@ -1802,7 +1827,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
       return $tr;
     }
 
-    function makeLineRow({ label, value, rowType, isLast, extraClass }) {
+    function makeLineRow({ label, value, rowType, isLast, extraClass, note }) {
       const labelSpan = Math.max(safeCostIdx, 1);
       const cls = `scw-l1-line-row scw-l1-line--${rowType}`
         + (isLast ? ' scw-project-totals-last-row' : '')
@@ -1818,6 +1843,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
       $tr.append(`
         <td class="${ctx.keys.cost} scw-l1-valuecell">
           <div class="scw-l1-value">${escapeHtml(value)}</div>
+          ${note ? `<div class="scw-l1-disc-note">${escapeHtml(note)}</div>` : ''}
         </td>
       `);
 
@@ -1879,6 +1905,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
         rowType: 'disc',
         isLast: false,
         extraClass: 'scw-project-totals--proposal-discount',
+        note: proposalDiscountNote,
       }));
     }
 
