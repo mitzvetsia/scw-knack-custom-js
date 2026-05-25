@@ -3911,6 +3911,26 @@
     },
     getCss: getPdfCss,
     buildPublishPayload: buildPublishPayload,
+    // Render just the appended image sections (Site Maps / Additional
+    // Photos) for a scene as an HTML string — the exact same markup the
+    // published PDF/HTML appends at the end. proposal-preview-images.js
+    // injects this at the bottom of the in-app preview so staff see the
+    // images that WILL publish. Returns '' when the scene has no
+    // appendImageViews or none of them have images yet.
+    appendImagesHtml: function (sceneId) {
+      var cfg = null;
+      for (var si = 0; si < SCENES.length; si++) {
+        if (SCENES[si].sceneId === sceneId) { cfg = SCENES[si]; break; }
+      }
+      if (!cfg) return '';
+      var sections = scrapeAppendImageSections(cfg);
+      if (!sections.length) return '';
+      var html = [];
+      for (var i = 0; i < sections.length; i++) {
+        renderAppendImageSection(sections[i], html);
+      }
+      return html.join('\n');
+    },
     // Page-ready gate. ops-stepper.js (and any other publish path
     // outside this file) calls isPageReady('scene_1096') before
     // firing a publish click. whenPageReady(sceneId, cb) is the
