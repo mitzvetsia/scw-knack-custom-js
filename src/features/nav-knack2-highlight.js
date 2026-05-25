@@ -22,9 +22,10 @@
   // Each primary entry matches if the link label equals `label` OR the
   // href contains `/slug/`. Slugs are the Knack page slugs in the URL hash.
   var PRIMARY = [
-    { label: 'dashboard',   slug: 'new-dashboard' },
-    { label: 'build sows',  slug: 'build-sow' },
-    { label: 'review bids', slug: 'review-bids' }
+    { label: 'dashboard',         slug: 'new-dashboard' },
+    { label: 'build sows',        slug: 'build-sow' },
+    { label: 'review bids',       slug: 'review-bids' },
+    { label: 'manage deployment', slug: 'manage-deployment' }
   ];
 
   // Teal = #0891b2 (our action-pill / CTA color).
