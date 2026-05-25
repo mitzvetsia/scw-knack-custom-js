@@ -1648,50 +1648,104 @@
 
     setBusy(button, true);
 
-    // Resolve to { ok, recordId, xhr } either way so a single failing
-    // PUT doesn't reject the whole batch (and show a false "failed"
-    // toast while the rest actually landed). Caller tallies the results.
-    function putField(viewId, recordId, fieldKey, value) {
+    // ── Reliability layer (mirrors mirror-connection-sync.js) ──────
+    // Knack rate-limits at ~10 req/s; a wide bid (30+ items) bursts past
+    // that and loses PUTs to 429s. So: cap concurrency, and retry
+    // transient failures (429 / 5xx / 408 / network) with exponential
+    // backoff + jitter. Permanent 4xx (403/404/400) don't retry.
+    var MAX_CONCURRENT = 4;
+    var MAX_ATTEMPTS   = 4;
+    var BASE_BACKOFF   = 350;
+
+    function isTransient(status) {
+      return status === 0 || status === 408 || status === 429 ||
+             (status >= 500 && status <= 599);
+    }
+
+    // Resolves to { ok, recordId, status } either way — a single failed
+    // PUT never rejects the batch (which would show a false "failed"
+    // toast while the rest landed). Caller tallies the results.
+    function putWithRetry(viewId, recordId, fieldKey, value) {
       return new Promise(function (resolve) {
+        var attempt = 0;
         var data = {};
         data[fieldKey] = value;
-        SCW.knackAjax({
-          url:  SCW.knackRecordUrl(viewId, recordId),
-          type: 'PUT',
-          data: JSON.stringify(data),
-          success: function (resp) {
-            if (typeof SCW.syncKnackModel === 'function') {
-              SCW.syncKnackModel(viewId, recordId, resp, fieldKey, value);
+        function go() {
+          attempt++;
+          SCW.knackAjax({
+            url:  SCW.knackRecordUrl(viewId, recordId),
+            type: 'PUT',
+            data: JSON.stringify(data),
+            success: function (resp) {
+              if (typeof SCW.syncKnackModel === 'function') {
+                SCW.syncKnackModel(viewId, recordId, resp, fieldKey, value);
+              }
+              resolve({ ok: true, recordId: recordId });
+            },
+            error: function (xhr) {
+              var status = xhr && xhr.status;
+              if (isTransient(status) && attempt < MAX_ATTEMPTS) {
+                var delay = BASE_BACKOFF * Math.pow(2, attempt - 1) +
+                            Math.floor(Math.random() * 250);
+                if (CFG.debug) {
+                  console.warn('[BidReview] transient PUT ' + status + ' on ' + recordId +
+                    ' — retry ' + attempt + '/' + (MAX_ATTEMPTS - 1) + ' in ' + delay + 'ms');
+                }
+                setTimeout(go, delay);
+                return;
+              }
+              if (CFG.debug) {
+                console.warn('[BidReview] Reopen PUT failed for', viewId, recordId, fieldKey,
+                  '→', status, xhr && xhr.responseText);
+              }
+              resolve({ ok: false, recordId: recordId, status: status });
             }
-            resolve({ ok: true, recordId: recordId });
-          },
-          error: function (xhr) {
-            if (CFG.debug) {
-              console.warn('[BidReview] Reopen PUT failed for', viewId, recordId, fieldKey,
-                '→', xhr && xhr.status, xhr && xhr.responseText);
-            }
-            resolve({ ok: false, recordId: recordId, xhr: xhr });
-          }
-        });
+          });
+        }
+        go();
       });
     }
 
-    putField(pkgView, pkgId, statusField, 'Draft').then(function (statusRes) {
-      return Promise.all(itemIds.map(function (id) {
-        return putField(itemView, id, lockField, 'No');
-      })).then(function (itemResults) {
+    // Concurrency-limited runner — keeps at most maxConcurrent PUTs in
+    // flight, starting the next as each settles. Results preserve order.
+    function runBatched(taskFns, maxConcurrent) {
+      return new Promise(function (resolve) {
+        var results = [];
+        var next = 0, running = 0, settled = 0;
+        if (!taskFns.length) { resolve(results); return; }
+        function pump() {
+          while (running < maxConcurrent && next < taskFns.length) {
+            var idx = next++;
+            running++;
+            taskFns[idx]().then(function (res) {
+              results[this.idx] = res;
+              running--; settled++;
+              if (settled === taskFns.length) resolve(results);
+              else pump();
+            }.bind({ idx: idx }));
+          }
+        }
+        pump();
+      });
+    }
+
+    // Status flip first (so we always know its outcome), then the
+    // line-item unlocks batched through the concurrency-limited queue.
+    putWithRetry(pkgView, pkgId, statusField, 'Draft').then(function (statusRes) {
+      var itemTasks = itemIds.map(function (id) {
+        return function () { return putWithRetry(itemView, id, lockField, 'No'); };
+      });
+      return runBatched(itemTasks, MAX_CONCURRENT).then(function (itemResults) {
         var failedItems = 0;
         for (var r = 0; r < itemResults.length; r++) if (!itemResults[r].ok) failedItems++;
         var unlocked = itemIds.length - failedItems;
 
         if (!statusRes.ok && failedItems === itemIds.length) {
-          // Nothing landed — a genuine failure.
           ns.renderToast('Reopen failed — please retry', 'error');
         } else if (statusRes.ok && failedItems === 0) {
           ns.renderToast('Bid reopened — status set to Draft and ' +
             unlocked + ' item' + (unlocked === 1 ? '' : 's') + ' unlocked', 'success');
         } else {
-          // Partial success — tell the user exactly what didn't take.
           var parts = [];
           parts.push(statusRes.ok ? 'status set to Draft' : 'status NOT updated');
           parts.push(unlocked + '/' + itemIds.length + ' items unlocked');
