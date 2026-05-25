@@ -6300,7 +6300,13 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     state.queued = false;
 
     try {
+      var _pfTransform = (window.SCW && SCW.perf)
+        ? SCW.perf('device-worksheet.transformView ' + viewId) : null;
       _transformViewImpl(viewCfg);
+      if (_pfTransform) {
+        var _tb = _tbodyOf(viewId);
+        _pfTransform(_tb ? ('cards=' + _tb.querySelectorAll('tr.scw-ws-row').length) : '');
+      }
     } catch (err) {
       console.error('[device-worksheet] transformView threw for ' + viewId, err);
     } finally {

@@ -1372,10 +1372,21 @@
     }
   });
 
+  // Photo rows aren't needed for the worksheet's first paint, so defer
+  // them to idle time (with a timeout cap so they still appear promptly).
+  var scwIdle = (typeof window.requestIdleCallback === 'function')
+    ? function (fn) { window.requestIdleCallback(fn, { timeout: 600 }); }
+    : function (fn) { setTimeout(fn, 0); };
+
   for (var v = 0; v < TARGET_VIEWS.length; v++) {
     (function (vid) {
       $(document).on('knack-view-render.' + vid, function () {
-        processView(vid);
+        scwIdle(function () {
+          var done = (window.SCW && SCW.perf)
+            ? SCW.perf('inline-photo-row ' + vid) : null;
+          processView(vid);
+          if (done) done();
+        });
       });
     })(TARGET_VIEWS[v]);
   }
