@@ -69,7 +69,12 @@
 
     // rawSiteMaps: the preview is internal — show raw full-size images
     // instead of routing through the images.weserv.nl resize proxy.
-    var html = SCW.pdfExport.appendImagesHtml(SCENE_ID, { rawSiteMaps: true });
+    // groupImages: one heading per section + all its images (the published
+    // per-page heading repetition looks wrong on a continuous preview).
+    var html = SCW.pdfExport.appendImagesHtml(SCENE_ID, {
+      rawSiteMaps: true,
+      groupImages: true
+    });
     var existing = document.getElementById(CONTAINER_ID);
 
     if (!html) {

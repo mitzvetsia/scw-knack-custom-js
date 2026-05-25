@@ -3952,7 +3952,26 @@
       }
       var html = [];
       for (var i = 0; i < sections.length; i++) {
-        renderAppendImageSection(sections[i], html);
+        // opts.groupImages: render ONE section heading followed by all of
+        // its images. The published path (renderAppendImageSection) repeats
+        // the heading per full-page image because each lands on its own PDF
+        // page; on the continuous in-app preview that repetition reads as
+        // several identical stacked headings, so the preview groups instead.
+        var sec = sections[i];
+        if (opts && opts.groupImages && sec.fullPage) {
+          html.push('<section class="append-image-page">');
+          if (sec.label) {
+            html.push('<h2 class="append-image-title">' + esc(sec.label) + '</h2>');
+          }
+          var imgs2 = sec.images || [];
+          for (var k = 0; k < imgs2.length; k++) {
+            html.push('<img class="append-image" src="' + esc(imgs2[k].src) + '" ' +
+                      'alt="' + esc(imgs2[k].alt || sec.label) + '" />');
+          }
+          html.push('</section>');
+        } else {
+          renderAppendImageSection(sec, html);
+        }
       }
       return html.join('\n');
     },
