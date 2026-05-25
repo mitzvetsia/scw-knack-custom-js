@@ -1262,14 +1262,17 @@ td.${P}-sum-check input[type="checkbox"] {
   color: #6b7280;
 }
 
-/* Fixed-width warning slot between chevron and identity — always present */
+/* Fixed-width warning slot between chevron and identity — always present.
+   min-width keeps single-icon alignment; grows only in the rare case a row
+   carries two header warnings (e.g. accessory mismatch + discontinued). */
 .${P}-warn-slot {
-  flex: 0 0 18px;
-  width: 18px;
+  flex: 0 0 auto;
+  min-width: 18px;
   display: flex;
   align-items: center;
   justify-content: center;
   align-self: center;
+  gap: 2px;
 }
 .${P}-warn-slot:empty {
   visibility: hidden;
@@ -1279,17 +1282,9 @@ td.${P}-sum-check input[type="checkbox"] {
   margin-top: 5px;
 }
 
-/* Discontinued-product flag — amber (warning palette; red reserved for
-   errors/destructive per project convention). Mirrors worksheet-v2. */
-.${P}-discontinued-badge {
-  display: inline-flex;
-  align-items: center;
-  color: #b45309;
-  flex-shrink: 0;
-  line-height: 1;
-  margin-right: 4px;
-}
-.${P}-discontinued-badge svg { width: 13px; height: 13px; }
+/* Discontinued-product flag — amber tint on the product name (warning
+   palette; red reserved for errors/destructive). The warning icon itself
+   sits in the shared warn-slot. Mirrors worksheet-v2. */
 td.${P}-sum-product--discontinued,
 td.${P}-sum-product--discontinued span {
   color: #b45309 !important;
@@ -5352,18 +5347,6 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
         productGroup.appendChild(productTd);
 
-        // Discontinued-product flag: amber badge to the left of the product
-        // name + amber tint on the name itself (parity with worksheet-v2).
-        if (isDiscontinuedRow(tr)) {
-          productTd.classList.add(P + '-sum-product--discontinued');
-          var discBadge = document.createElement('span');
-          discBadge.className = P + '-discontinued-badge';
-          discBadge.title =
-            'Product discontinued — no longer available. Replace before submitting.';
-          discBadge.innerHTML = DISCONTINUED_SVG;
-          productGroup.insertBefore(discBadge, productTd);
-        }
-
         // Render identity-grouped fields below the product
         // Text fields (readOnly/directEdit) render as block text;
         // chits collect into a single inline-flex row.
@@ -6156,6 +6139,21 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         if (slot) slot.appendChild(warnIcon);
         break;
       }
+    }
+
+    // ── Discontinued-product header warning ──
+    // Same warn-slot as the accessory-mismatch icon (parity with all other
+    // header warnings); also tint the product name amber.
+    if (isDiscontinuedRow(tr)) {
+      var discIcon = document.createElement('span');
+      discIcon.className = 'scw-cr-hdr-warning';
+      discIcon.innerHTML = DISCONTINUED_SVG;
+      discIcon.title =
+        'Product discontinued — no longer available. Replace before submitting.';
+      var discSlot = card.querySelector('.' + P + '-warn-slot');
+      if (discSlot) discSlot.appendChild(discIcon);
+      var discProd = card.querySelector('.' + P + '-sum-product');
+      if (discProd) discProd.classList.add(P + '-sum-product--discontinued');
     }
 
     // ── Apply bucket-based field hiding + label injection ──
