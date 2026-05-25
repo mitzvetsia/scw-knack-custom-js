@@ -828,7 +828,7 @@ ${sel('tr.scw-mounting-labor-line td')} {
   line-height: 1.2 !important;
 }
 ${sel('tr.scw-mounting-labor-line td:first-child')} {
-  padding-left: 100px !important;
+  padding-left: 80px !important;
 }
 .scw-mounting-product-name {
   font-weight: 500;
