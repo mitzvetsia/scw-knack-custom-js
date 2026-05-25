@@ -40,6 +40,36 @@
       }
     },
     {
+      // Sales-side ask: when a sibling SOW on this project has been
+      // validated by Ops (field_2728 > 0) but THIS SOW hasn't
+      // (field_2723 != Yes) and no survey is requested on it yet
+      // (field_2706 != Yes), the "Request Site Survey" accordion below is
+      // greyed out ("SOW not yet validated"). Surface an action so Sales
+      // can ping Ops to validate THIS SOW instead of staring at a dead step.
+      // Fires MAKE_REQUEST_SOW_VALIDATION_WEBHOOK (notify-only; Ops still
+      // owns the field_2723 flip). Once Ops validates, field_2723 = Yes
+      // fails showWhen and this step disappears, unlocking the accordion.
+      type: 'action',
+      id: 'request-sow-validation',
+      label: 'Request SOW validated as ready for Survey',
+      insertAfterStepId: 'initiate-install',
+      webhookAction: 'requestSowValidation',
+      showWhen: {
+        all: [
+          { field: 'field_2728', gt: 0 },
+          { field: 'field_2723', notValue: 'Yes' },
+          { field: 'field_2706', notValue: 'Yes' }
+        ]
+      },
+      // After a successful request, remember it per-SOW so the button locks
+      // into a non-clickable "requested" state instead of re-offering (and
+      // re-pinging Ops) until Ops validates the SOW.
+      requestedState: {
+        label: 'Validation requested — waiting on Ops',
+        timeoutMs: 24 * 60 * 60 * 1000
+      }
+    },
+    {
       type: 'accordion',
       viewKey: 'view_3853',
       label: 'Request Site Survey',
@@ -682,6 +712,75 @@
           });
         }
       });
+    },
+
+    // Sales asks Ops to validate THIS SOW as ready for survey. Notify-only:
+    // it does NOT flip field_2723 (Ops owns that gate). On success we stamp
+    // a per-SOW "requested" flag and reload so the step re-renders into the
+    // locked "Validation requested — waiting on Ops" state.
+    requestSowValidation: function (step, el) {
+      var url = (window.SCW && SCW.CONFIG && SCW.CONFIG.MAKE_REQUEST_SOW_VALIDATION_WEBHOOK) || '';
+      if (!url || /PLACEHOLDER/.test(url)) {
+        alert('Request-SOW-validation webhook URL is not configured.');
+        return;
+      }
+      var sourceRecordId = getSourceSowId();
+      if (!sourceRecordId) {
+        alert('Could not determine current SOW record ID.');
+        return;
+      }
+      openNotesPromptModal({
+        title:       'Request SOW Validation',
+        intro:       'Ask Ops to validate THIS SOW as ready for survey. Add any context that helps them prioritize it.',
+        placeholder: 'e.g. Customer chose this option — please validate so we can request the survey.',
+        submitLabel: 'Send Request',
+        onSubmit: function (notes, setSubmitting, onError) {
+          setSubmitting(true);
+          setStepLoading(el, true);
+          var account = readConnectionFromView('view_3491', 'field_2119');
+          var project = readConnectionFromView('view_3491', 'field_6');
+          var projectName = readFieldFromView('view_3491', 'field_1456');
+          fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              sourceRecordId: sourceRecordId,
+              stepId:         step.id,
+              actionLabel:    step.label || '',
+              notes:          notes,
+              account:        account,
+              project:        project,
+              projectName:    projectName,
+              triggeredBy:    getTriggeredBy()
+            })
+          }).then(function (resp) {
+            return resp.text().then(function (body) {
+              var data = null;
+              try { data = body ? JSON.parse(body) : null; } catch (e) {}
+              return { ok: resp.ok, status: resp.status, body: body, data: data };
+            });
+          }).then(function (resp) {
+            // Notify-only scenario may 200 with an empty body — treat any
+            // 2xx (or explicit success) as accepted.
+            var ok = resp.ok || (resp.data && resp.data.success === true);
+            if (!ok) {
+              setSubmitting(false);
+              setStepLoading(el, false);
+              onError(
+                (resp.data && (resp.data.error || resp.data.message)) ||
+                ('Webhook returned HTTP ' + resp.status + '.')
+              );
+              return;
+            }
+            setRequested(step.id);
+            window.location.reload();
+          }).catch(function (err) {
+            setSubmitting(false);
+            setStepLoading(el, false);
+            onError('Network error: ' + (err && err.message ? err.message : err));
+          });
+        }
+      });
     }
   };
 
@@ -970,6 +1069,23 @@
       if (href) el.href = href;
     }
 
+    // ── requestedState: lock after a fire-and-forget "request" action ──
+    // Steps that ping a human (e.g. asking Ops to validate the SOW) have no
+    // server flag of their own to flip, so we remember the request per-SOW
+    // in localStorage and render a non-clickable "requested" state until the
+    // gating field changes (which then hides the step via showWhen).
+    if (step.requestedState && isRequested(step)) {
+      var rIcon = el.querySelector('.scw-step-icon');
+      if (rIcon) rIcon.innerHTML = CHECK_CIRCLE_SVG;
+      var rTitle = el.querySelector('.scw-step-title');
+      if (rTitle) rTitle.textContent = step.requestedState.label || step.label;
+      el.classList.remove('is-processing', 'is-loading');
+      el.classList.add('is-completed', 'is-disabled');
+      el.removeAttribute('href');
+      renderHeaderMessage(el, step, step.id, false, false);
+      return;
+    }
+
     var isCompleted = step.completed ? conditionMet(step.completed) : false;
     var baseDisabled = step.disabled ? conditionMet(step.disabled) : false;
     var lockedByCompletion = !!(step.lockWhenCompleted && isCompleted);
@@ -1082,6 +1198,33 @@
   }
   function clearPollFlag(stepId) {
     try { localStorage.removeItem(pollFlagKey(stepId)); } catch (e) {}
+  }
+
+  // ── requestedState: remember a fired notify-only action per-SOW ──
+  // Used by webhook actions that ping a human and have no server flag of
+  // their own (e.g. "Request SOW validated as ready for Survey"). Keyed by
+  // stepId + SOW id and TTL-bounded so a stale request eventually re-offers.
+  var REQUESTED_FLAG_PREFIX = 'scw-step-requested:';
+  function requestedFlagKey(stepId) {
+    return REQUESTED_FLAG_PREFIX + stepId + ':' + (getSourceSowId() || '');
+  }
+  function isRequested(step) {
+    try {
+      var raw = localStorage.getItem(requestedFlagKey(step.id));
+      if (!raw) return false;
+      var ts = parseInt(raw, 10);
+      if (!isFinite(ts)) return false;
+      var ttl = (step.requestedState && step.requestedState.timeoutMs) || (24 * 60 * 60 * 1000);
+      if (Date.now() - ts > ttl) {
+        localStorage.removeItem(requestedFlagKey(step.id));
+        return false;
+      }
+      return true;
+    } catch (e) { return false; }
+  }
+  function setRequested(stepId) {
+    try { localStorage.setItem(requestedFlagKey(stepId), String(Date.now())); }
+    catch (e) {}
   }
 
   function startStepPoll(step) {
