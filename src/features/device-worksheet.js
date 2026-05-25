@@ -1279,6 +1279,23 @@ td.${P}-sum-check input[type="checkbox"] {
   margin-top: 5px;
 }
 
+/* Discontinued-product flag — amber (warning palette; red reserved for
+   errors/destructive per project convention). Mirrors worksheet-v2. */
+.${P}-discontinued-badge {
+  display: inline-flex;
+  align-items: center;
+  color: #b45309;
+  flex-shrink: 0;
+  line-height: 1;
+  margin-right: 4px;
+}
+.${P}-discontinued-badge svg { width: 13px; height: 13px; }
+td.${P}-sum-product--discontinued,
+td.${P}-sum-product--discontinued span {
+  color: #b45309 !important;
+  font-weight: 600 !important;
+}
+
 /* Label + Product identity block */
 .${P}-identity {
   display: flex;
@@ -3387,6 +3404,27 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     return (td.textContent || '').replace(/[\u00a0\s]+/g, ' ').trim();
   }
 
+  // Discontinued-product flag (parity with worksheet-v2). field_2912 is a
+  // yes/no on the line item sourced from the connected product:
+  // Yes = still active, No/false = discontinued. Only flag an EXPLICIT
+  // No/false; a missing/empty value is "unknown" and not flagged so
+  // unpopulated rows don't show false positives. Requires field_2912 to be
+  // a column on the worksheet's source view so the cell renders.
+  var DISCONTINUED_SVG =
+    '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" ' +
+    'stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">' +
+    '<circle cx="12" cy="12" r="10"></circle>' +
+    '<line x1="4.93" y1="4.93" x2="19.07" y2="19.07"></line></svg>';
+
+  function isDiscontinuedRow(tr) {
+    var cell = findCell(tr, 'field_2912');
+    if (!cell) return false;
+    var s = (cell.textContent || '')
+      .replace(/<[^>]*>/g, '').replace(/[\u00a0\s]+/g, ' ').trim().toLowerCase();
+    if (!s) return false;
+    return s === 'no' || s === 'false';
+  }
+
   /** Resolve a field descriptor to its Knack key. */
   function fieldKey(viewCfg, name) {
     if (!viewCfg || !viewCfg.fields) return null;
@@ -5313,6 +5351,18 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         }
 
         productGroup.appendChild(productTd);
+
+        // Discontinued-product flag: amber badge to the left of the product
+        // name + amber tint on the name itself (parity with worksheet-v2).
+        if (isDiscontinuedRow(tr)) {
+          productTd.classList.add(P + '-sum-product--discontinued');
+          var discBadge = document.createElement('span');
+          discBadge.className = P + '-discontinued-badge';
+          discBadge.title =
+            'Product discontinued — no longer available. Replace before submitting.';
+          discBadge.innerHTML = DISCONTINUED_SVG;
+          productGroup.insertBefore(discBadge, productTd);
+        }
 
         // Render identity-grouped fields below the product
         // Text fields (readOnly/directEdit) render as block text;
