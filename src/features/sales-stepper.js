@@ -421,13 +421,26 @@
     });
   }
 
-  // Navigate up one level in Knack's hash route after a successful
-  // publish — strips the last two hash segments (child-slug + child-id).
+  // Navigate up one level in Knack's hash route — strips the last two
+  // hash segments (child-slug + child-id). Used as the fallback when the
+  // browser blocks window.close().
   function redirectToParent() {
     var hash = (window.location.hash || '').split('?')[0].replace(/\/+$/, '');
     var parts = hash.replace(/^#\/?/, '').split('/');
     if (parts.length >= 2) { parts.splice(-2, 2); window.location.hash = '#' + parts.join('/'); }
     else { window.location.hash = '#'; }
+  }
+
+  // Close the tab on success. Browsers only allow window.close() on
+  // script-opened windows; if it's blocked (user navigated here directly)
+  // fall back to navigating up a level so they still leave the proposal.
+  // The small delay lets the success modal teardown settle first. Mirrors
+  // ops-stepper.js.
+  function dismissAfterSuccess() {
+    setTimeout(function () {
+      window.close();
+      setTimeout(function () { redirectToParent(); }, 300);
+    }, 150);
   }
 
   // ── Webhook ──────────────────────────────────────────────
@@ -496,7 +509,7 @@
         );
         if (!accepted) throw new Error(webhookErrorMsg(resp, step.label + ' webhook'));
         ctx.close();
-        redirectToParent();
+        dismissAfterSuccess();
       }).catch(function (e) {
         setBtnLoading(btn, false);
         ctx.setSubmitting(false);
