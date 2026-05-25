@@ -125,7 +125,7 @@
       // for downscaling from the rendered DOM <img> src (CORS-clean S3 host)
       // because their _raw.url taints the canvas (see collectDomImageSrcs).
       appendImageViews: [
-        { viewId: 'view_3928', label: 'Site Maps' },
+        { viewId: 'view_3928', label: 'Site Maps', fullPage: true },
         { viewId: 'view_3929', label: 'Additional Photos', thumbVariant: 'thumb_14' }
       ],
       // JSON snapshot for this scene is intentionally slim:
@@ -1038,7 +1038,7 @@
       var entry = cfg.appendImageViews[i];
       var images = scrapeImagesFromView(entry);
       if (!images.length) continue;
-      sections.push({ viewId: entry.viewId, label: entry.label, images: images });
+      sections.push({ viewId: entry.viewId, label: entry.label, images: images, fullPage: !!entry.fullPage });
     }
     return sections;
   }
@@ -1482,17 +1482,35 @@
   function renderAppendImageSection(section, html) {
     if (!section || !section.images || !section.images.length) return;
     var label = section.label || '';
-    for (var i = 0; i < section.images.length; i++) {
-      var img = section.images[i];
-      html.push('<section class="append-image-page">');
-      if (label) {
-        html.push('<h2 class="append-image-title">' + esc(label) + '</h2>');
+    if (section.fullPage) {
+      // One image per page, full width (Site Maps — floorplans need room).
+      for (var i = 0; i < section.images.length; i++) {
+        var img = section.images[i];
+        html.push('<section class="append-image-page">');
+        if (label) {
+          html.push('<h2 class="append-image-title">' + esc(label) + '</h2>');
+        }
+        html.push('<img class="append-image" width="780" ' +
+                  'src="' + esc(img.src) + '" ' +
+                  'alt="' + esc(img.alt || label) + '" />');
+        html.push('</section>');
       }
-      html.push('<img class="append-image" width="780" ' +
-                'src="' + esc(img.src) + '" ' +
-                'alt="' + esc(img.alt || label) + '" />');
-      html.push('</section>');
+      return;
     }
+    // Compact grid (Additional Photos — multiple per page, not full size).
+    html.push('<section class="append-image-grid-section">');
+    if (label) {
+      html.push('<h2 class="append-image-title">' + esc(label) + '</h2>');
+    }
+    html.push('<div class="append-image-grid">');
+    for (var j = 0; j < section.images.length; j++) {
+      var pimg = section.images[j];
+      html.push('<img class="append-image-thumb" ' +
+                'src="' + esc(pimg.src) + '" ' +
+                'alt="' + esc(pimg.alt || label) + '" />');
+    }
+    html.push('</div>');
+    html.push('</section>');
   }
 
   function hasSectionContent(section) {
@@ -1694,6 +1712,25 @@
       '  height: auto;',
       '  margin: 0 auto;',
       '  object-fit: contain;',
+      '}',
+      '.append-image-grid-section {',
+      '  page-break-before: always;',
+      '  break-before: page;',
+      '  padding-top: 8px;',
+      '}',
+      '.append-image-grid {',
+      '  display: flex;',
+      '  flex-wrap: wrap;',
+      '  gap: 10px;',
+      '}',
+      '.append-image-thumb {',
+      '  width: 250px;',
+      '  height: 250px;',
+      '  object-fit: contain;',
+      '  border: 1px solid #ddd;',
+      '  background: #fafafa;',
+      '  break-inside: avoid;',
+      '  page-break-inside: avoid;',
       '}',
     ].join('\n');
   }
