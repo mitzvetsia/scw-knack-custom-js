@@ -229,27 +229,17 @@
   // ============================================================
   // INIT
   // ============================================================
-  // Defer non-critical work to idle time so it doesn't block the
-  // worksheet's first paint. Falls back to a short setTimeout where
-  // requestIdleCallback is unavailable; the timeout option caps the
-  // wait so colors still apply promptly on a busy main thread.
-  var scwIdle = (typeof window.requestIdleCallback === 'function')
-    ? function (fn) { window.requestIdleCallback(fn, { timeout: 500 }); }
-    : function (fn) { setTimeout(fn, 0); };
-
   VIEWS.forEach(function (viewCfg) {
     var viewId = viewCfg.viewId;
 
     $(document)
       .off('knack-view-render.' + viewId + EVENT_NS)
       .on('knack-view-render.' + viewId + EVENT_NS, function () {
-        scwIdle(function () {
-          var done = (window.SCW && SCW.perf)
-            ? SCW.perf('dynamic-cell-colors ' + viewId) : null;
-          applyColorsForView(viewCfg);
-          installObserver(viewCfg);
-          if (done) done();
-        });
+        var done = (window.SCW && SCW.perf)
+          ? SCW.perf('dynamic-cell-colors ' + viewId) : null;
+        applyColorsForView(viewCfg);
+        installObserver(viewCfg);
+        if (done) done();
       });
   });
 })();

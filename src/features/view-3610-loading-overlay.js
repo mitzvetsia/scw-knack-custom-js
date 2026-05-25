@@ -172,6 +172,16 @@
       scheduleHide();
     });
 
+  // Authoritative dismissal: device-worksheet fires scw-worksheet-ready
+  // the instant its transform finishes (the same event mdf-summary uses).
+  // The view-render+isGridReady poll above can miss its window when
+  // transform runs late (idle work, event storms), leaving the overlay to
+  // sit until the 15s safety cap — which users experience as a 15s "load".
+  // Hiding directly on the ready signal removes that stall.
+  document.addEventListener('scw-worksheet-ready', function (e) {
+    if (e && e.detail && e.detail.viewId === TARGET_VIEW) hide();
+  });
+
   // First-paint attempt for the case where the scene already rendered
   // before this IIFE ran (hot reload, late bundle).
   setTimeout(function () {
