@@ -1174,13 +1174,32 @@
     setTimeout(bindPlaybookRules, 600);
   }
 
+  // Idempotent collapse of a step accordion. Unlike a header click (which
+  // toggles), this always forces the collapsed state, so it's safe to call
+  // repeatedly. Mirrors ktl-accordion's own collapse DOM ops.
+  function collapseStepAccordion(viewKey) {
+    var wrap = findAccordion(viewKey);
+    if (!wrap) return;
+    var hdr = wrap.querySelector('.scw-ktl-accordion__header');
+    wrap.classList.remove('is-expanded');
+    if (hdr) hdr.setAttribute('aria-expanded', 'false');
+    var body = wrap.querySelector('.scw-ktl-accordion__body');
+    if (body) body.style.display = 'none';
+    var section = document.querySelector('.hideShow_' + viewKey + '.ktlHideShowSection');
+    if (section) section.style.display = 'none';
+    var arrow = document.getElementById('hideShow_' + viewKey + '_arrow');
+    if (arrow) { arrow.classList.remove('ktlDown'); arrow.classList.add('ktlUp'); }
+  }
+
   // Collapse accordion and refresh steps after form submit
   function onFormSubmit(viewKey) {
-    var wrap = findAccordion(viewKey);
-    if (wrap && wrap.classList.contains('is-expanded')) {
-      var hdr = wrap.querySelector('.scw-ktl-accordion__header');
-      if (hdr) hdr.click();
-    }
+    // KTL persistent forms re-render after submit (showing the "Form
+    // successfully submitted" confirmation), which re-expands the section.
+    // Collapse now and re-assert a few times to outlast that re-render.
+    collapseStepAccordion(viewKey);
+    [300, 700, 1400].forEach(function (ms) {
+      setTimeout(function () { collapseStepAccordion(viewKey); }, ms);
+    });
     // Refresh source view to get updated field values, then re-apply steps
     if (typeof Knack !== 'undefined' && Knack.views[SOURCE_VIEW] && Knack.views[SOURCE_VIEW].model) {
       Knack.views[SOURCE_VIEW].model.fetch({

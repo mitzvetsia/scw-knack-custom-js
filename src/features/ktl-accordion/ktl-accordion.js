@@ -536,12 +536,28 @@
     }
   } catch (e) { /* ignore */ }
 
+  // Workflow-step accordions on the sales build-proposal page are an
+  // exception to the remember-open/closed persistence: on every page load
+  // (refresh / navigation) they ALWAYS start collapsed, regardless of how
+  // the user left them last session. The user can still open them during a
+  // session. This is applied on the page-load restore path only (see
+  // loadPersistedState); the post-edit in-memory snapshot path is untouched
+  // so an inline edit elsewhere doesn't slam an open step closed.
+  var ALWAYS_COLLAPSED_ON_LOAD = { view_2924: true, view_3853: true };
+
   /** Read persisted state from localStorage. */
   function loadPersistedState() {
+    var state = {};
     try {
       var raw = localStorage.getItem(STORAGE_KEY);
-      return raw ? JSON.parse(raw) : {};
-    } catch (e) { return {}; }
+      if (raw) state = JSON.parse(raw) || {};
+    } catch (e) { state = {}; }
+    // Force the always-collapsed step accordions closed on load even if a
+    // prior session persisted them open.
+    for (var vk in ALWAYS_COLLAPSED_ON_LOAD) {
+      if (ALWAYS_COLLAPSED_ON_LOAD[vk]) state[vk] = true;
+    }
+    return state;
   }
 
   /** Write state to localStorage. */
