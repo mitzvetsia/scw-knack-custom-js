@@ -35,12 +35,18 @@
     // live Knack page. The print-only page-break properties are dropped —
     // on screen the images simply flow, separated by margin.
     s.textContent = [
+      // Full-width container so Site Maps fill the preview page width
+      // (this is an internal staff preview — bigger floorplans = easier to
+      // read). Additional-photos section is re-constrained below so its
+      // thumbnail grid stays tidy and centered.
       '#' + CONTAINER_ID + ' {',
-      '  max-width: 8.5in; margin: 36px auto 0; padding: 0 16px 24px;',
+      '  max-width: none; width: 100%; margin: 36px auto 0; padding: 0 16px 24px;',
       '  box-sizing: border-box;',
       '}',
       '#' + CONTAINER_ID + ' .append-image-page { margin-top: 28px; text-align: center; }',
-      '#' + CONTAINER_ID + ' .append-image-grid-section { margin-top: 28px; }',
+      '#' + CONTAINER_ID + ' .append-image-grid-section {',
+      '  margin: 28px auto 0; max-width: 8.5in;',
+      '}',
       '#' + CONTAINER_ID + ' .append-image-title {',
       '  font-size: 18px; font-weight: 800; color: #07467c;',
       '  margin: 0 0 12px 0; padding-bottom: 6px;',
