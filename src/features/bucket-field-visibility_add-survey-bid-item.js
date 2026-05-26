@@ -81,6 +81,7 @@
       ['field_2250', 'REL_mdf-idf optional multi-select'],
       ['field_2432', 'INPUT_survey notes'],
       ['field_2913', 'REL_products for materials'],
+      ['field_2206', 'REL_product accessories'],
     ],
     //licenses
     '645554dce6f3a60028362a6a': [
