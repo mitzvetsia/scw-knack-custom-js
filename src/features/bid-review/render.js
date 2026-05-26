@@ -1165,13 +1165,14 @@
 
   // ── collapsible group header row ─────────────────────────────
 
-  function buildGroupHeader(group, colSpan, rowCount) {
+  function buildGroupHeader(group, colSpan, rowCount, collapsed) {
     var label   = group.label;
 
     var tr = el('tr', 'scw-bid-review__group-header');
     tr.setAttribute('role', 'button');
     tr.setAttribute('tabindex', '0');
-    tr.setAttribute('aria-expanded', 'true');
+    tr.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+    if (collapsed) tr.classList.add('scw-bid-review__group-header--collapsed');
 
     var td = el('td');
     td.setAttribute('colspan', colSpan);
@@ -1353,6 +1354,12 @@
 
   // ── assemble rows from grouped state ────────────────────────
 
+  // MDF/IDF groups start collapsed on every render. The grid leads with
+  // many groups, so opening them all buries the comparison; the reviewer
+  // expands the one they're working in. Hiding each group's rows up front
+  // mirrors the header click-toggle's display:none walk.
+  var GROUPS_START_COLLAPSED = true;
+
   function buildBodyRows(groups, packages, colSpan, sowId) {
     var frag = document.createDocumentFragment();
 
@@ -1367,8 +1374,16 @@
         }
       }
 
+      // Only hide child rows when there's a header to expand them again.
+      var hideChildren = GROUPS_START_COLLAPSED && !!group.label;
+      function appendChild(node) {
+        if (!node) return;
+        if (hideChildren) node.style.display = 'none';
+        frag.appendChild(node);
+      }
+
       if (group.label) {
-        frag.appendChild(buildGroupHeader(group, colSpan, totalRows));
+        frag.appendChild(buildGroupHeader(group, colSpan, totalRows, GROUPS_START_COLLAPSED));
         // Auto-mount the headend detail rows immediately under the L1
         // header so they're visible whenever the group is expanded
         // (default state). The accordion toggle on the header walks
@@ -1381,10 +1396,8 @@
         // returns null when its source is missing or empty, so the
         // table stays free of blank bands.
         if (group.mdfIdfId) {
-          var surveyNotes = buildL1SurveyNotesRow(group.mdfIdfId, colSpan);
-          if (surveyNotes) frag.appendChild(surveyNotes);
-          var detail = buildL1DetailRow(group.mdfIdfId, colSpan);
-          if (detail) frag.appendChild(detail);
+          appendChild(buildL1SurveyNotesRow(group.mdfIdfId, colSpan));
+          appendChild(buildL1DetailRow(group.mdfIdfId, colSpan));
         }
       }
 
@@ -1393,17 +1406,17 @@
         for (var si = 0; si < group.subgroups.length; si++) {
           var sub = group.subgroups[si];
           if (sub.label) {
-            frag.appendChild(buildSubgroupHeader(sub.label, colSpan, sub.rows.length));
+            appendChild(buildSubgroupHeader(sub.label, colSpan, sub.rows.length));
           }
           for (var ri = 0; ri < sub.rows.length; ri++) {
-            frag.appendChild(buildDataRow(sub.rows[ri], packages, sowId));
+            appendChild(buildDataRow(sub.rows[ri], packages, sowId));
           }
         }
       }
 
       // Direct rows (no subgroups)
       for (var di = 0; di < group.rows.length; di++) {
-        frag.appendChild(buildDataRow(group.rows[di], packages, sowId));
+        appendChild(buildDataRow(group.rows[di], packages, sowId));
       }
     }
 
