@@ -2082,8 +2082,11 @@
 
     var cell = row.cellsByPackage[pkgId];
     if (!cell) {
-      // noBid or surveyNoBid row — re-open add modal for editing the pending add-to-bid item
-      if ((row.noBid || row.surveyNoBid) && ns.changeRequests && ns.changeRequests.openAddItem) {
+      // No bid cell for this package. Either a noBid/surveyNoBid row, or
+      // a normal SOW row where THIS bidder simply didn't bid the line —
+      // in both cases open the add-to-bid modal so we can ask the bidder
+      // to add the item (prefilled from the SOW values).
+      if ((row.noBid || row.surveyNoBid || row.sowItem) && ns.changeRequests && ns.changeRequests.openAddItem) {
         var pendingData = ns.changeRequests.getPending();
         var pendItem = null;
         if (pendingData[pkgId]) {
