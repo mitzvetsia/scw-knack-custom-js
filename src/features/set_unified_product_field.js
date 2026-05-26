@@ -11,7 +11,10 @@
     VIEWS: ["view_3329","view_3544","view_3451","view_3619","view_3627","view_3748"],
 
     // parent product fields
-    PARENTS: ["field_2193", "field_2194", "field_2195"],
+    // field_2913 = Materials bucket product field (mirrors other-equipment
+    // field_2195 — it's a real catalog product that must flow into the
+    // unified field + be cleared on bucket change).
+    PARENTS: ["field_2193", "field_2194", "field_2195", "field_2913"],
 
     // unified field
     UNIFIED: "field_2246",
@@ -20,7 +23,7 @@
     RESET_ON_FIELD: "field_2223",
 
     // If unified is SINGLE connection, pick first non-empty in this order:
-    SINGLE_PRIORITY: ["field_2193", "field_2194", "field_2195"],
+    SINGLE_PRIORITY: ["field_2193", "field_2194", "field_2195", "field_2913"],
 
     // Hide unified visually but keep it in the DOM
     HIDE_UNIFIED_FIELD: true,
