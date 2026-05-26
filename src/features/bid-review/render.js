@@ -500,13 +500,17 @@
         // Multiple bids — let the user pick which one the CR targets.
         var choices = [];
         for (var sci = 0; sci < packages.length; sci++) {
-          var pInfo = diffsByPkg && diffsByPkg[packages[sci].id];
-          var matches = !(pInfo && pInfo.any);
+          var pkgId   = packages[sci].id;
+          var pInfo   = diffsByPkg && diffsByPkg[pkgId];
+          var hasBid  = !!(row.cellsByPackage && row.cellsByPackage[pkgId]);
+          // "matches" only when there IS a bid for this row AND it has no
+          // diffs. A package with no bid (pInfo === null) is NOT a match.
+          var matches = hasBid && !!pInfo && !pInfo.any;
           choices.push({
             label:   packages[sci].name,
-            attrs:   attrsBase(packages[sci].id),
+            attrs:   attrsBase(pkgId),
             matches: matches,
-            note:    matches ? '(matches)' : '',
+            note:    matches ? '(matches)' : (hasBid ? '' : '(no bid)'),
           });
         }
         rStack.appendChild(buildOverflowMenu(matchLabel, 'revise', choices));
