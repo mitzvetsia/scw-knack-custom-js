@@ -448,6 +448,11 @@
 
   function buildSowDetailCell(row, cablingVisible, connDevVisible, qtyVisible, diffs, sowId, packages, diffsByPkg) {
     var td = el('td', 'scw-bid-review__sow-detail');
+    // Removed-from-SOW: the line item is no longer on this SOW but still
+    // shows here because the bid record references the SOW. Give the SOW
+    // cell a blue dashed "cut-out" border so it reads as detached — the
+    // bid columns stay normal (the item really is still on the bid).
+    if (row.offSow) td.className += ' scw-bid-review__sow-detail--off-sow';
 
     // Lazy-built top-right action stack. "Revise bid to match" goes on
     // top (only when there are mismatches), "Disconnect from SOW" sits
@@ -518,21 +523,27 @@
       return td;
     }
 
-    // Bottom entry of the top-right stack: Disconnect from SOW. Removes
-    // this SOW's id from the SOW item record's field_2154 connection
-    // (leaving any other connected SOWs intact). The line item itself
-    // is NOT deleted.
+    // Bottom entry of the top-right stack. If the item is already
+    // removed from this SOW, show a "Removed from SOW" message in place
+    // of the button (nothing left to disconnect). Otherwise show the
+    // Disconnect from SOW action, which removes this SOW's id from the
+    // SOW item record's field_2154 connection (leaving any other
+    // connected SOWs intact). The line item itself is NOT deleted.
     if (row.sowItem && sowId) {
       var dStack = getTopRightStack();
-      var dBtn = el('button',
-        'scw-bid-review__cell-action scw-bid-review__cell-action--remove',
-        'Disconnect from SOW');
-      dBtn.type = 'button';
-      dBtn.setAttribute('data-action',  'cell_disconnect_from_sow');
-      dBtn.setAttribute('data-row-id',  row.id);
-      dBtn.setAttribute('data-sow-id',  sowId);
-      dBtn.setAttribute('data-sow-item-id', row.sowItem);
-      dStack.appendChild(dBtn);
+      if (row.offSow) {
+        dStack.appendChild(el('span', 'scw-bid-review__off-sow-tag', 'Removed from SOW'));
+      } else {
+        var dBtn = el('button',
+          'scw-bid-review__cell-action scw-bid-review__cell-action--remove',
+          'Disconnect from SOW');
+        dBtn.type = 'button';
+        dBtn.setAttribute('data-action',  'cell_disconnect_from_sow');
+        dBtn.setAttribute('data-row-id',  row.id);
+        dBtn.setAttribute('data-sow-id',  sowId);
+        dBtn.setAttribute('data-sow-item-id', row.sowItem);
+        dStack.appendChild(dBtn);
+      }
     }
 
     if (row.sowProduct) {
@@ -995,10 +1006,6 @@
     if (row.noBid) rowClass += ' scw-bid-review__row--no-bid';
     if (row.surveyNoBid) rowClass += ' scw-bid-review__row--survey-no-bid';
     if (row.sowItem) rowClass += ' scw-bid-review__row--expandable';
-    // Disconnected-from-SOW: the line item still exists (and still shows
-    // up here via the bid record's SOW connection) but is no longer on
-    // this SOW. Mute the whole row + tag it so it's unmistakable.
-    if (row.offSow) rowClass += ' scw-bid-review__row--off-sow';
     var tr = el('tr', rowClass);
     tr.setAttribute('data-row-id', row.id);
     if (row.sowItem) {
@@ -1010,9 +1017,6 @@
     // Only show displayLabel (field_2365) for Camera / Reader buckets
     var isCamReader = showCabling(row);
     var labelTd = el('td');
-    if (row.offSow) {
-      labelTd.appendChild(el('span', 'scw-bid-review__off-sow-tag', 'Removed from SOW'));
-    }
     if (row.noBid || row.surveyNoBid) {
       // Badge moved to bid-package columns — label cell matches sowItem style
       labelTd.className = 'scw-bid-review__sow-cell';
