@@ -441,7 +441,7 @@
       },
       {
         viewIds: ['view_3610', 'view_3921'],
-        layout: { productGroupWidth: 'flex', productGroupLayout: 'column', productEditable: true, identityWidth: '366px' },
+        layout: { productGroupWidth: 'flex', productGroupLayout: 'column', productEditable: true, identityWidth: '366px', labelWidth: '110px' },
         fields: {
           // ── Summary row ──
           product:          { key: 'field_1949', type: 'readOnly',    summary: true, productStyle: true, columnIndex: 3 },
