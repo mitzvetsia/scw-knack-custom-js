@@ -2738,13 +2738,18 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
       writeCellHtml(l4, costKey, '');
     }
 
-    // ── Pass 2: fix L3 Qty for groups that now contain accessories.
-    // The L3 cost stays as-is (it correctly includes brackets), but
-    // L3 Qty should reflect parent devices only.
+    // ── Pass 2: fix L3 Qty AND cost for groups that now contain
+    // accessories. The camera's product subtotal should reflect the
+    // PARENT DEVICES ONLY — relocated mounting brackets are itemized on
+    // their own synthetic lines below and still roll into the L2/grand
+    // totals (which sum every tr[id]), so excluding them here removes the
+    // double-show from the camera number without dropping them from the
+    // proposal total.
     const l3s = tbody.querySelectorAll('tr.kn-table-group.kn-group-level-3');
     for (let i = 0; i < l3s.length; i++) {
       const l3 = l3s[i];
       let nonAccessoryQty = 0;
+      let nonAccessoryCost = 0;
       let hasAccessory = false;
       let cur = l3.nextElementSibling;
       while (cur) {
@@ -2756,12 +2761,14 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
             hasAccessory = true;
           } else {
             nonAccessoryQty += readNum(cur, qtyKey);
+            nonAccessoryCost += readNum(cur, hardwareKey);
           }
         }
         cur = cur.nextElementSibling;
       }
       if (hasAccessory) {
         writeCellHtml(l3, qtyKey, '<strong>' + Math.round(nonAccessoryQty) + '</strong>');
+        writeCellHtml(l3, costKey, '<strong>' + escapeHtml(formatMoney(nonAccessoryCost)) + '</strong>');
       }
     }
 

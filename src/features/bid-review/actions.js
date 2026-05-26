@@ -49,6 +49,9 @@
     if (payload.items)       body.items       = payload.items;
     if (payload.matchedSowItems)  body.matchedSowItems  = payload.matchedSowItems;
     if (payload.orphanBidRecords) body.orphanBidRecords = payload.orphanBidRecords;
+    // Full raw source record (every field_NNNN + field_NNNN_raw) — used by
+    // row_add_to_sow so the Make scenario gets the entire bid/survey line item.
+    if (payload.sourceRecord)     body.sourceRecord     = payload.sourceRecord;
     // Survey-costs payload (PM-mobilization webhook). surveyCosts is
     // numeric; surveyCostsRaw preserves the user's literal entry; null
     // means the input was empty or non-numeric.

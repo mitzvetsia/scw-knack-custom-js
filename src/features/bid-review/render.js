@@ -347,6 +347,10 @@
           '+ Create new SOW', 'create',
           { 'data-action': 'package_create_sow', 'data-package-id': pkg2.id, 'data-sow-id': sowGrid.sowId }
         ));
+        actionTd.appendChild(btn(
+          'Reopen Bid', 'reopen',
+          { 'data-action': 'package_reopen_bid', 'data-package-id': pkg2.id, 'data-sow-id': sowGrid.sowId }
+        ));
       }
 
       r3.appendChild(actionTd);
@@ -360,7 +364,7 @@
       var sPkg = pending[pkgIds[si]];
       if (!sPkg || !sPkg.items || !sPkg.items.length) continue;
       crTd.appendChild(btn(
-        'Submit ' + sPkg.pkgName + ' (' + sPkg.items.length + ')', 'cr-submit sm',
+        'Submit Change Request (' + sPkg.items.length + ')', 'cr-submit sm',
         { 'data-action': 'cr_submit', 'data-pkg-id': pkgIds[si] }
       ));
     }

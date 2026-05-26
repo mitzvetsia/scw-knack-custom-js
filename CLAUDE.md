@@ -209,6 +209,36 @@ Features use Knack's internal APIs for saving data, in order of preference:
 2. `Knack.models[key].save(data)` — fallback
 3. Direct `$.ajax` PUT to Knack REST API — last resort
 
+### ⚠️ Pushing many PUTs at once — ALWAYS cap concurrency + retry with backoff
+
+**Any time a feature fires more than a handful of PUTs/POSTs in one user
+action (bulk field writes, unlocking/finalizing N rows, mirroring a
+connection cascade, etc.), you MUST run them through a concurrency-capped
+queue with retry-and-backoff.** Knack's REST API rate-limits at **~10
+req/s** and silently returns **429** for the overflow — so a naive
+`Promise.all` over 20–30 records reliably loses several writes, and any
+`Promise.all` that rejects on the first error also produces a *false*
+"failed" toast while most writes actually landed.
+
+The canonical implementation is in
+`src/features/mirror-connection-sync.js` (the `knackPutKeepalive` queue
++ `knackPutKeepaliveWithRetry`). The Reopen Bid handler in
+`src/features/bid-review/init.js` (`handleReopenBid`) is a second,
+self-contained copy of the same pattern. Copy one of these — do **not**
+hand-roll a bare `Promise.all` of PUTs. Required pieces:
+
+1. **Concurrency cap** — never more than ~4 requests in flight
+   (`MAX_CONCURRENT`). Excess requests queue and start as slots free.
+2. **Retry with exponential backoff + jitter** on *transient* failures
+   only — HTTP `429`, `5xx`, `408`, and network/`status 0`. Use
+   `BASE_BACKOFF * 2^(attempt-1) + random jitter`, up to ~4 attempts.
+   **Do not retry permanent `4xx`** (403/404/400) — they won't recover.
+3. **Settle, don't reject** — each write resolves to a
+   `{ ok, recordId, status }` result so one failure never rejects the
+   batch. Tally results afterward and report full / partial / total
+   failure precisely (and `console.warn` per-record failures when
+   `CONFIG.debug`).
+
 ### Setting Form Fields Programmatically
 
 Knack maintains an internal model for form data that is separate from the DOM. Changing DOM values alone (e.g., `$.val()`) will **not** persist on submit — you must also fire a `change` event so Knack's model syncs.

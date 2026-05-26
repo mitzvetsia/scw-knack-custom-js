@@ -35,12 +35,21 @@
     // live Knack page. The print-only page-break properties are dropped —
     // on screen the images simply flow, separated by margin.
     s.textContent = [
+      // Wider than the old 8.5in PDF-page cap so Site Maps are easy to
+      // read, but bounded (not full-bleed): the preview shows RAW
+      // full-size floorplans (~4000px/12MB), and painting those edge-to-
+      // edge on a wide monitor janks the main thread. 1100px is a good
+      // readable size without the decode/paint hang. (Images also get
+      // decoding=async + loading=lazy in render() so they don't all
+      // decode synchronously on first paint.)
       '#' + CONTAINER_ID + ' {',
-      '  max-width: 8.5in; margin: 36px auto 0; padding: 0 16px 24px;',
+      '  max-width: 1100px; width: 100%; margin: 36px auto 0; padding: 0 16px 24px;',
       '  box-sizing: border-box;',
       '}',
       '#' + CONTAINER_ID + ' .append-image-page { margin-top: 28px; text-align: center; }',
-      '#' + CONTAINER_ID + ' .append-image-grid-section { margin-top: 28px; }',
+      '#' + CONTAINER_ID + ' .append-image-grid-section {',
+      '  margin: 28px auto 0; max-width: 8.5in;',
+      '}',
       '#' + CONTAINER_ID + ' .append-image-title {',
       '  font-size: 18px; font-weight: 800; color: #07467c;',
       '  margin: 0 0 12px 0; padding-bottom: 6px;',
@@ -87,6 +96,13 @@
     var container = existing || document.createElement('div');
     container.id = CONTAINER_ID;
     container.innerHTML = html;
+    // Raw full-size floorplans are heavy — decode them off the main thread
+    // and lazy-load so the page doesn't hang while several decode at once.
+    var imgs = container.querySelectorAll('img');
+    for (var im = 0; im < imgs.length; im++) {
+      imgs[im].setAttribute('decoding', 'async');
+      imgs[im].setAttribute('loading', 'lazy');
+    }
     // Always re-anchor at the very bottom of the scene so it lands beneath
     // the line-items grid + totals regardless of view-render order.
     if (container.parentNode !== sceneEl ||

@@ -203,6 +203,7 @@
       // row click only fires when nothing more specific intercepted it).
       var rowTrigger = e.target.closest('.scw-bid-review__row--expandable');
       if (rowTrigger
+        && !e.target.closest('[data-action]')
         && !e.target.closest('.scw-bid-review__btn')
         && !e.target.closest('.scw-bid-review__overflow')
         && !e.target.closest('.scw-bid-review__overflow-item')
@@ -275,6 +276,8 @@
         }
       } else if (action === 'set_project_margin') {
         handleSetProjectMargin(button);
+      } else if (action === 'package_reopen_bid') {
+        handleReopenBid(button);
       } else if (action.indexOf('package_') === 0) {
         handlePackageAction(button, action);
       } else if (action.indexOf('row_') === 0) {
@@ -1604,6 +1607,157 @@
     });
   }
 
+  // ── Reopen Bid — status → Draft + unlock line items ─────────
+  //
+  // Puts a submitted bid back into an editable state:
+  //   1. bid package status (field_2550) → "Draft"  (write via view_3573)
+  //   2. every line item on that bid: lock flag (field_2551) → "No"
+  //      (write via the bid-review source view, CFG.viewKey)
+  // All client-side view PUTs — no webhook. Refreshes the matrix after.
+  function handleReopenBid(button) {
+    if (!_state) return;
+
+    var pkgId = button.getAttribute('data-package-id');
+    var sowId = button.getAttribute('data-sow-id');
+    var grid  = findSowGrid(sowId);
+    if (!grid) { ns.renderToast('SOW grid not found', 'error'); return; }
+
+    if (!SCW.knackRecordUrl || !SCW.knackAjax) {
+      ns.renderToast('Cannot reopen — Knack helpers unavailable', 'error');
+      return;
+    }
+
+    var statusField = CFG.fieldKeys.bidStatus;          // field_2550
+    var lockField   = 'field_2551';                      // line-item finalize/lock
+    var pkgView     = CFG.bidPackagesViewKey;            // view_3573 (bid package)
+    var itemView    = CFG.viewKey;                       // view_3680 (bid line items)
+
+    // Collect every line item record id for this package across the grid.
+    var itemIds = [];
+    var seen = {};
+    for (var i = 0; i < grid.rows.length; i++) {
+      var cell = grid.rows[i].cellsByPackage && grid.rows[i].cellsByPackage[pkgId];
+      if (cell && cell.id && !seen[cell.id]) { seen[cell.id] = true; itemIds.push(cell.id); }
+    }
+
+    var pkgName = findPackageName(grid, pkgId) || 'this bid';
+    if (!window.confirm(
+      'Reopen ' + pkgName + '?\n\nThis sets the bid status back to Draft and ' +
+      'unlocks ' + itemIds.length + ' line item' + (itemIds.length === 1 ? '' : 's') +
+      ' so they can be edited again.'
+    )) return;
+
+    setBusy(button, true);
+
+    // ── Reliability layer (mirrors mirror-connection-sync.js) ──────
+    // Knack rate-limits at ~10 req/s; a wide bid (30+ items) bursts past
+    // that and loses PUTs to 429s. So: cap concurrency, and retry
+    // transient failures (429 / 5xx / 408 / network) with exponential
+    // backoff + jitter. Permanent 4xx (403/404/400) don't retry.
+    var MAX_CONCURRENT = 4;
+    var MAX_ATTEMPTS   = 4;
+    var BASE_BACKOFF   = 350;
+
+    function isTransient(status) {
+      return status === 0 || status === 408 || status === 429 ||
+             (status >= 500 && status <= 599);
+    }
+
+    // Resolves to { ok, recordId, status } either way — a single failed
+    // PUT never rejects the batch (which would show a false "failed"
+    // toast while the rest landed). Caller tallies the results.
+    function putWithRetry(viewId, recordId, fieldKey, value) {
+      return new Promise(function (resolve) {
+        var attempt = 0;
+        var data = {};
+        data[fieldKey] = value;
+        function go() {
+          attempt++;
+          SCW.knackAjax({
+            url:  SCW.knackRecordUrl(viewId, recordId),
+            type: 'PUT',
+            data: JSON.stringify(data),
+            success: function (resp) {
+              if (typeof SCW.syncKnackModel === 'function') {
+                SCW.syncKnackModel(viewId, recordId, resp, fieldKey, value);
+              }
+              resolve({ ok: true, recordId: recordId });
+            },
+            error: function (xhr) {
+              var status = xhr && xhr.status;
+              if (isTransient(status) && attempt < MAX_ATTEMPTS) {
+                var delay = BASE_BACKOFF * Math.pow(2, attempt - 1) +
+                            Math.floor(Math.random() * 250);
+                if (CFG.debug) {
+                  console.warn('[BidReview] transient PUT ' + status + ' on ' + recordId +
+                    ' — retry ' + attempt + '/' + (MAX_ATTEMPTS - 1) + ' in ' + delay + 'ms');
+                }
+                setTimeout(go, delay);
+                return;
+              }
+              if (CFG.debug) {
+                console.warn('[BidReview] Reopen PUT failed for', viewId, recordId, fieldKey,
+                  '→', status, xhr && xhr.responseText);
+              }
+              resolve({ ok: false, recordId: recordId, status: status });
+            }
+          });
+        }
+        go();
+      });
+    }
+
+    // Concurrency-limited runner — keeps at most maxConcurrent PUTs in
+    // flight, starting the next as each settles. Results preserve order.
+    function runBatched(taskFns, maxConcurrent) {
+      return new Promise(function (resolve) {
+        var results = [];
+        var next = 0, running = 0, settled = 0;
+        if (!taskFns.length) { resolve(results); return; }
+        function pump() {
+          while (running < maxConcurrent && next < taskFns.length) {
+            var idx = next++;
+            running++;
+            taskFns[idx]().then(function (res) {
+              results[this.idx] = res;
+              running--; settled++;
+              if (settled === taskFns.length) resolve(results);
+              else pump();
+            }.bind({ idx: idx }));
+          }
+        }
+        pump();
+      });
+    }
+
+    // Status flip first (so we always know its outcome), then the
+    // line-item unlocks batched through the concurrency-limited queue.
+    putWithRetry(pkgView, pkgId, statusField, 'Draft').then(function (statusRes) {
+      var itemTasks = itemIds.map(function (id) {
+        return function () { return putWithRetry(itemView, id, lockField, 'No'); };
+      });
+      return runBatched(itemTasks, MAX_CONCURRENT).then(function (itemResults) {
+        var failedItems = 0;
+        for (var r = 0; r < itemResults.length; r++) if (!itemResults[r].ok) failedItems++;
+        var unlocked = itemIds.length - failedItems;
+
+        if (!statusRes.ok && failedItems === itemIds.length) {
+          ns.renderToast('Reopen failed — please retry', 'error');
+        } else if (statusRes.ok && failedItems === 0) {
+          ns.renderToast('Bid reopened — status set to Draft and ' +
+            unlocked + ' item' + (unlocked === 1 ? '' : 's') + ' unlocked', 'success');
+        } else {
+          var parts = [];
+          parts.push(statusRes.ok ? 'status set to Draft' : 'status NOT updated');
+          parts.push(unlocked + '/' + itemIds.length + ' items unlocked');
+          ns.renderToast('Bid partially reopened — ' + parts.join('; ') +
+            '. Check the console for details.', 'info');
+        }
+        refreshSilently();
+      });
+    }).then(function () { setBusy(button, false); });
+  }
+
   // ── Copy to SOW — processing toast + poll refresh ────────────
 
   var COPY_TOAST_ID  = 'scw-bid-review-copy-toast';
@@ -2348,6 +2502,28 @@
 
     if (pkgId) payload.packageId = pkgId;
     if (sowId) payload.sowId     = sowId;
+
+    // row_add_to_sow needs the FULL source line-item record so Make can
+    // build the SOW item. Find the row in state (by sowId, then any grid)
+    // and ship its raw record (every field_NNNN + field_NNNN_raw).
+    if (actionType === 'row_add_to_sow') {
+      var srcRow = null;
+      var grid = findSowGrid(sowId);
+      if (grid) {
+        for (var i = 0; i < grid.rows.length; i++) {
+          if (grid.rows[i].id === rowId) { srcRow = grid.rows[i]; break; }
+        }
+      }
+      if (!srcRow && _state) {
+        for (var g = 0; g < _state.sowGrids.length && !srcRow; g++) {
+          var rws = _state.sowGrids[g].rows;
+          for (var r = 0; r < rws.length; r++) {
+            if (rws[r].id === rowId) { srcRow = rws[r]; break; }
+          }
+        }
+      }
+      if (srcRow && srcRow._rawRecord) payload.sourceRecord = srcRow._rawRecord;
+    }
 
     ns.submitAction(payload).done(function () {
       refreshSilently();

@@ -85,6 +85,24 @@
           ['field_1926','INPUT_source'],
         ],
 
+//materials — mirrors other equipment
+        '6a14eee134e422f3769ada00': [
+          ['field_133','REL_equipment bucket'],
+          ['field_956','FLAG_product status'],
+          ['field_1563','FLAG_type of system'],
+          ['field_35','INPUT_product name'],
+          ['field_56','INPUT_sku'],
+          ['field_57','INPUT_description'],
+          ['field_74','INPUT_default quantity'],
+          ['field_146','INPUT_retail price'],
+          ['field_1562','FLAG_eligible for discount'],
+          ['field_1926','INPUT_source'],
+          ['field_2021','INPUT_default labor description'],
+          ['field_2166','INPUT_default sub bid'],
+          ['field_1517','INPUT_default installation hours'],
+          ['field_2220','FLAG_deliverables schema'],
+        ],
+
 //other services
         '6977caa7f246edf67b52cbcd': [],
 
