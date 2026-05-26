@@ -74,13 +74,13 @@
       ['field_2432', 'INPUT_survey notes'],
       ['field_2248', 'INPUT_assumptions'],
     ],
-    //materials — mirrors assumptions
+    //materials — mirrors assumptions, but its own product field (field_2913)
     '6a14eee134e422f3769ada00': [
       ['field_2181', 'REL_project'],
       ['field_2427', 'REL_bid'],
       ['field_2250', 'REL_mdf-idf optional multi-select'],
       ['field_2432', 'INPUT_survey notes'],
-      ['field_2248', 'INPUT_assumptions'],
+      ['field_2913', 'REL_products for materials'],
     ],
     //licenses
     '645554dce6f3a60028362a6a': [
@@ -93,7 +93,7 @@
   const ALL_FIELD_KEYS = [
     'field_2427','field_2180','field_2194','field_2183','field_2210','field_2224','field_2248','field_2250','field_2432','field_2181','field_2462',
     'field_2206','field_2195','field_2241','field_2184','field_2211','field_2233','field_2246',
-    'field_2739','field_2740',
+    'field_2739','field_2740','field_2913',
   ];
 
   function compileRules(human) {

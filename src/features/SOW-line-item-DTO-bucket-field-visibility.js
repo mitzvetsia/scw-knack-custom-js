@@ -71,11 +71,11 @@
       ['field_2250', 'REL_mdf-idf optional multi-select'],
       ['field_2248', 'REL_products for assumptions'],
     ],
-    //materials — mirrors assumptions
+    //materials — mirrors assumptions, but its own product field (field_2913)
     '6a14eee134e422f3769ada00': [
       ['field_2182', 'REL_scope of work'],
       ['field_2250', 'REL_mdf-idf optional multi-select'],
-      ['field_2248', 'REL_products for assumptions'],
+      ['field_2913', 'REL_products for materials'],
     ],
     //licenses
     '645554dce6f3a60028362a6a': [
@@ -88,7 +88,7 @@
   const ALL_FIELD_KEYS = [
     'field_2182','field_2180','field_2188','field_2193','field_2194','field_2183','field_2210','field_2224','field_2248','field_2250','field_2462',
     'field_2206','field_2195','field_2241','field_2184','field_2204', 'field_2211','field_2233','field_2246','field_2466',
-    'field_2739','field_2740',
+    'field_2739','field_2740','field_2913',
   ];
 
   function compileRules(human) {
