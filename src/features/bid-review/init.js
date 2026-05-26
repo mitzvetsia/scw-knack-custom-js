@@ -422,13 +422,11 @@
 
     injectWorksheetCard(sowItemId, wsCol);
 
-    // The worksheet card carries Knack's native row delete link. On the
-    // comparison page there's no delete route wired for view_3921, so
-    // clicking it just routes the user to the home page and deletes
-    // nothing. Re-point it at the row's "Disconnect from SOW" action so
-    // it removes the line item from THIS SOW without deleting the
-    // underlying record (the item can live on other SOWs).
-    rewirePanelDeleteLink(wsCol, rowTr);
+    // The worksheet card carries Knack's native row delete link, but
+    // scene_1155 has no delete route wired for view_3921 — so clicking it
+    // just routed the user to the home page and deleted nothing. Replace
+    // it with a real, API-backed delete of the SOW line item record.
+    rewirePanelDeleteLink(wsCol, rowTr, sowItemId);
 
     // Force the worksheet detail panel open so users see the full editor,
     // not just the summary header.
@@ -439,34 +437,54 @@
     }
   }
 
-  function rewirePanelDeleteLink(wsCol, rowTr) {
+  function rewirePanelDeleteLink(wsCol, rowTr, sowItemId) {
     if (!wsCol || !rowTr) return;
     var delLink = wsCol.querySelector('.scw-ws-sum-delete a, a.kn-link-delete');
     if (!delLink) return;
 
-    var disconnectBtn = rowTr.querySelector('[data-action="cell_disconnect_from_sow"]');
-
     // Replace the node to drop Knack's own navigation handlers.
     var newLink = delLink.cloneNode(true);
     newLink.removeAttribute('href');
+    newLink.setAttribute('title', 'Delete this line item');
     delLink.parentNode.replaceChild(newLink, delLink);
 
-    if (disconnectBtn) {
-      newLink.setAttribute('title', 'Remove this line item from this SOW (does not delete it)');
-      newLink.addEventListener('click', function (e) {
-        e.preventDefault();
-        e.stopPropagation();
-        disconnectBtn.click();
+    newLink.addEventListener('click', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      if (!sowItemId || newLink.getAttribute('data-busy')) return;
+
+      var lblEl = rowTr.querySelector('.scw-bid-review__row-label');
+      var itemName = (lblEl && (lblEl.textContent || '').trim()) || 'this line item';
+
+      if (!window.confirm(
+        'Delete ' + itemName + '?\n\n' +
+        'This permanently deletes the line item record. If it is connected ' +
+        'to more than one SOW it will be removed from all of them.'
+      )) return;
+
+      newLink.setAttribute('data-busy', '1');
+      newLink.style.pointerEvents = 'none';
+
+      SCW.knackAjax({
+        url:  SCW.knackRecordUrl(CFG.sowItemsViewKey, sowItemId),
+        type: 'DELETE',
+        success: function () {
+          ns.renderToast('Line item deleted', 'success');
+          var v = Knack && Knack.views && Knack.views[CFG.sowItemsViewKey];
+          if (v && v.model && typeof v.model.fetch === 'function') {
+            v.model.fetch().always(function () { if (ns.refresh) ns.refresh(); });
+          } else if (ns.refresh) {
+            ns.refresh();
+          }
+        },
+        error: function (xhr) {
+          newLink.removeAttribute('data-busy');
+          newLink.style.pointerEvents = '';
+          if (CFG.debug) console.warn('[BidReview] Delete line item failed:', xhr && xhr.status, xhr && xhr.responseText);
+          ns.renderToast('Delete failed — please try again', 'error');
+        }
       });
-    } else {
-      // No disconnect action on this row (e.g. a no-bid row). Rather than
-      // let the broken link dump the user to the home page, neutralize it.
-      newLink.setAttribute('title', 'Unavailable here');
-      newLink.addEventListener('click', function (e) {
-        e.preventDefault();
-        e.stopPropagation();
-      });
-    }
+    });
   }
 
   function buildPanelHeader(rowTr) {
@@ -2360,7 +2378,17 @@
     var rowId      = button.getAttribute('data-row-id');
     var sowId      = button.getAttribute('data-sow-id');
     var sowItemId  = button.getAttribute('data-sow-item-id');
-    if (!sowId || !sowItemId) return;
+    if (CFG.debug) {
+      SCW.debug('[BidReview] Disconnect click — sowId:', sowId,
+                'sowItemId:', sowItemId, 'rowId:', rowId);
+    }
+    if (!sowId || !sowItemId) {
+      // Previously a silent return — surface it so a misconfigured button
+      // (missing data-sow-id / data-sow-item-id) is diagnosable instead of
+      // looking like "nothing happens".
+      ns.renderToast('Cannot disconnect: this row is missing its SOW link', 'error');
+      return;
+    }
 
     // The disconnect reads + writes the SOW item record from the
     // view_3921 model. When several SOWs share the page the model can be
