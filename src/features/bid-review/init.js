@@ -422,12 +422,50 @@
 
     injectWorksheetCard(sowItemId, wsCol);
 
+    // The worksheet card carries Knack's native row delete link. On the
+    // comparison page there's no delete route wired for view_3921, so
+    // clicking it just routes the user to the home page and deletes
+    // nothing. Re-point it at the row's "Disconnect from SOW" action so
+    // it removes the line item from THIS SOW without deleting the
+    // underlying record (the item can live on other SOWs).
+    rewirePanelDeleteLink(wsCol, rowTr);
+
     // Force the worksheet detail panel open so users see the full editor,
     // not just the summary header.
     var toggleZone = wsCol.querySelector('.scw-ws-toggle-zone');
     var detail = wsCol.querySelector('.scw-ws-detail');
     if (toggleZone && detail && !detail.classList.contains('scw-ws-open')) {
       toggleZone.click();
+    }
+  }
+
+  function rewirePanelDeleteLink(wsCol, rowTr) {
+    if (!wsCol || !rowTr) return;
+    var delLink = wsCol.querySelector('.scw-ws-sum-delete a, a.kn-link-delete');
+    if (!delLink) return;
+
+    var disconnectBtn = rowTr.querySelector('[data-action="cell_disconnect_from_sow"]');
+
+    // Replace the node to drop Knack's own navigation handlers.
+    var newLink = delLink.cloneNode(true);
+    newLink.removeAttribute('href');
+    delLink.parentNode.replaceChild(newLink, delLink);
+
+    if (disconnectBtn) {
+      newLink.setAttribute('title', 'Remove this line item from this SOW (does not delete it)');
+      newLink.addEventListener('click', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        disconnectBtn.click();
+      });
+    } else {
+      // No disconnect action on this row (e.g. a no-bid row). Rather than
+      // let the broken link dump the user to the home page, neutralize it.
+      newLink.setAttribute('title', 'Unavailable here');
+      newLink.addEventListener('click', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+      });
     }
   }
 
@@ -2323,6 +2361,34 @@
     var sowId      = button.getAttribute('data-sow-id');
     var sowItemId  = button.getAttribute('data-sow-item-id');
     if (!sowId || !sowItemId) return;
+
+    // The disconnect reads + writes the SOW item record from the
+    // view_3921 model. When several SOWs share the page the model can be
+    // stale or not yet hold this record, which previously made the whole
+    // action bail with "Could not locate SOW line item record". Before
+    // doing anything user-visible (confirm dialog, accessory scan),
+    // make sure the record is actually in the model — if not, re-fetch
+    // the view once and retry, then give up gracefully.
+    var siView = Knack && Knack.views && Knack.views[CFG.sowItemsViewKey];
+    var siModels = siView && siView.model && siView.model.data && siView.model.data.models;
+    var present = false;
+    if (siModels) {
+      for (var pi = 0; pi < siModels.length; pi++) {
+        if (siModels[pi].id === sowItemId) { present = true; break; }
+      }
+    }
+    if (!present) {
+      if (!button.getAttribute('data-disc-retry')
+          && siView && siView.model && typeof siView.model.fetch === 'function') {
+        button.setAttribute('data-disc-retry', '1');
+        siView.model.fetch().always(function () { handleDisconnectFromSow(button); });
+        return;
+      }
+      button.removeAttribute('data-disc-retry');
+      ns.renderToast('Could not locate SOW line item record on the page', 'error');
+      return;
+    }
+    button.removeAttribute('data-disc-retry');
 
     var grid = findSowGrid(sowId);
     var row  = null;
