@@ -74,6 +74,14 @@
       ['field_2432', 'INPUT_survey notes'],
       ['field_2248', 'INPUT_assumptions'],
     ],
+    //materials — mirrors assumptions
+    '6a14eee134e422f3769ada00': [
+      ['field_2181', 'REL_project'],
+      ['field_2427', 'REL_bid'],
+      ['field_2250', 'REL_mdf-idf optional multi-select'],
+      ['field_2432', 'INPUT_survey notes'],
+      ['field_2248', 'INPUT_assumptions'],
+    ],
     //licenses
     '645554dce6f3a60028362a6a': [
       ['field_2427', 'REL_bid'],

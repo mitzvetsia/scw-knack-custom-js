@@ -71,6 +71,12 @@
       ['field_2250', 'REL_mdf-idf optional multi-select'],
       ['field_2248', 'REL_products for assumptions'],
     ],
+    //materials — mirrors assumptions
+    '6a14eee134e422f3769ada00': [
+      ['field_2182', 'REL_scope of work'],
+      ['field_2250', 'REL_mdf-idf optional multi-select'],
+      ['field_2248', 'REL_products for assumptions'],
+    ],
     //licenses
     '645554dce6f3a60028362a6a': [
       ['field_2182', 'REL_scope of work'],
