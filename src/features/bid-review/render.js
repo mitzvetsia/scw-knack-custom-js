@@ -91,9 +91,14 @@
     var menu = el('div', 'scw-bid-review__overflow-menu');
     for (var i = 0; i < choices.length; i++) {
       var ch = choices[i];
-      var itemEl = el('button', 'scw-bid-review__overflow-item');
+      var itemCls = 'scw-bid-review__overflow-item';
+      if (ch.matches) itemCls += ' scw-bid-review__overflow-item--matches';
+      var itemEl = el('button', itemCls);
       itemEl.type = 'button';
-      itemEl.textContent = ch.label;
+      itemEl.appendChild(el('span', 'scw-bid-review__overflow-item-label', ch.label));
+      if (ch.note) {
+        itemEl.appendChild(el('span', 'scw-bid-review__overflow-item-note', ch.note));
+      }
       var keys = Object.keys(ch.attrs);
       for (var k = 0; k < keys.length; k++) itemEl.setAttribute(keys[k], ch.attrs[keys[k]]);
       menu.appendChild(itemEl);
@@ -462,46 +467,49 @@
       return topRightStack;
     }
 
-    // Top entry: Revise bid to match — only for the packages whose
-    // bid actually differs from the SOW. If every bid matches, the
-    // button has nothing to ask for so we hide it entirely.
+    // Top entry: Revise bid to match — the user assigns the change
+    // request to whichever bid they choose. The selector lists EVERY bid
+    // on the row (not just the mismatched ones) so a CR can be sent to
+    // any bidder; bids whose values already match the SOW are still
+    // listed but flagged "(matches)" so the user can tell them apart.
     if (row.sowItem && !row.noBid && !row.surveyNoBid && packages && packages.length) {
-      var mismatched = [];
-      for (var mpi = 0; mpi < packages.length; mpi++) {
-        var pInfo = diffsByPkg && diffsByPkg[packages[mpi].id];
-        if (pInfo && pInfo.any) mismatched.push(packages[mpi]);
-      }
-
-      if (mismatched.length) {
-        var attrsBase = function (pkgId) {
-          return {
-            'data-action':     'cell_request_change_from_sow',
-            'data-row-id':     row.id,
-            'data-package-id': pkgId,
-            'data-sow-id':     sowId || '',
-            'data-vis-qty':     qtyVisible ? '1' : '0',
-            'data-vis-cabling': cablingVisible ? '1' : '0',
-            'data-vis-conn':    connDevVisible ? '1' : '0',
-          };
+      var attrsBase = function (pkgId) {
+        return {
+          'data-action':     'cell_request_change_from_sow',
+          'data-row-id':     row.id,
+          'data-package-id': pkgId,
+          'data-sow-id':     sowId || '',
+          'data-vis-qty':     qtyVisible ? '1' : '0',
+          'data-vis-cabling': cablingVisible ? '1' : '0',
+          'data-vis-conn':    connDevVisible ? '1' : '0',
         };
-        var matchLabel = 'Revise bid to match →';
-        var rStack = getTopRightStack();
-        if (mismatched.length === 1) {
-          var attrsR = attrsBase(mismatched[0].id);
-          var rBtn = el('button',
-            'scw-bid-review__cell-action scw-bid-review__cell-action--revise',
-            matchLabel);
-          rBtn.type = 'button';
-          var rKeys = Object.keys(attrsR);
-          for (var rk = 0; rk < rKeys.length; rk++) rBtn.setAttribute(rKeys[rk], attrsR[rKeys[rk]]);
-          rStack.appendChild(rBtn);
-        } else {
-          var choices = [];
-          for (var sci = 0; sci < mismatched.length; sci++) {
-            choices.push({ label: mismatched[sci].name, attrs: attrsBase(mismatched[sci].id) });
-          }
-          rStack.appendChild(buildOverflowMenu(matchLabel, 'revise', choices));
+      };
+      var matchLabel = 'Revise bid to match →';
+      var rStack = getTopRightStack();
+      if (packages.length === 1) {
+        // Only one bid on the row — no selection to make, direct button.
+        var attrsR = attrsBase(packages[0].id);
+        var rBtn = el('button',
+          'scw-bid-review__cell-action scw-bid-review__cell-action--revise',
+          matchLabel);
+        rBtn.type = 'button';
+        var rKeys = Object.keys(attrsR);
+        for (var rk = 0; rk < rKeys.length; rk++) rBtn.setAttribute(rKeys[rk], attrsR[rKeys[rk]]);
+        rStack.appendChild(rBtn);
+      } else {
+        // Multiple bids — let the user pick which one the CR targets.
+        var choices = [];
+        for (var sci = 0; sci < packages.length; sci++) {
+          var pInfo = diffsByPkg && diffsByPkg[packages[sci].id];
+          var matches = !(pInfo && pInfo.any);
+          choices.push({
+            label:   packages[sci].name,
+            attrs:   attrsBase(packages[sci].id),
+            matches: matches,
+            note:    matches ? '(matches)' : '',
+          });
         }
+        rStack.appendChild(buildOverflowMenu(matchLabel, 'revise', choices));
       }
     }
 
