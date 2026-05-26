@@ -178,6 +178,14 @@
             hideProduct: true,
             rowClass: 'scw-row--assumptions',
           },
+          '6a14eee134e422f3769ada00': {           // Materials — sub-provided priced equipment
+            // descLabel doubles as the un-gate switch: device-worksheet
+            // skips the field_2478 (require sub bid) showWhenFieldIsYes
+            // guards for any bucket whose rule carries a descLabel, so
+            // Qty / Unit Price / Ext render regardless of that flag.
+            descLabel: 'Materials',
+            fieldLabelOverrides: { field_2400: 'Unit Price' },
+          },
         },
         syntheticBucketGroups: [
           { cls: 'scw-row--services',    label: 'Project Wide Services' },
@@ -3070,6 +3078,16 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         var ldGroup = card.querySelector('[data-scw-fields="' + ldDesc.key + '"] > .' + P + '-sum-label');
         if (ldGroup) ldGroup.textContent = rule.descLabel;
       }
+    }
+
+    // ── Override individual summary-field labels per bucket ──
+    // e.g. Materials relabels the price column (field_2400) "Unit Price"
+    // instead of "Labor" — the sub is pricing equipment, not labor.
+    if (rule.fieldLabelOverrides) {
+      Object.keys(rule.fieldLabelOverrides).forEach(function (fk) {
+        var lblGrp = card.querySelector('[data-scw-fields="' + fk + '"] > .' + P + '-sum-label');
+        if (lblGrp) lblGrp.textContent = rule.fieldLabelOverrides[fk];
+      });
     }
 
     // ── Swap summary field with another field (read-only) ──
