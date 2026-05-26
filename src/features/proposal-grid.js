@@ -691,6 +691,18 @@ ${sel('> div.kn-records-nav > div.level > div.level-left > div.kn-entries-summar
 /* This hides all data rows (leaves only group headers + totals rows) */
 ${sel('.kn-table tbody tr[id]')} { display: none !important; }
 
+/* Hold the grid hidden until the first SETTLED pipeline run (accessory
+   relocation done, or nothing to relocate). The accessory→parent
+   connection (field_2464) isn't in this view's own model — it's
+   harvested from a sibling view that hydrates asynchronously — so the
+   first paint would otherwise show brackets in their own "Mounting
+   Hardware" section and then repaint them under their parent camera.
+   JS adds .scw-grid-ready once relocation settles; a fallback timer
+   reveals regardless so the grid never stays hidden. visibility (not
+   display) keeps the layout box so there's no CLS jump on reveal. */
+${sel('.kn-table')} { visibility: hidden; }
+${viewIds.map((id) => `#${id}.scw-grid-ready .kn-table`).join(', ')} { visibility: visible !important; }
+
 /* Hide vertical borders in the grid */
 ${sel('.kn-table th')},
 ${sel('.kn-table td')} { border-left: none !important; border-right: none !important; }
@@ -3320,6 +3332,19 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
 
           // Post-pipeline: replace zeroed labor with TBD labels
           if (masked) applyTBDLabels(ctx);
+
+          // Reveal the grid only once relocation has settled (or there
+          // was nothing to relocate). Until then it stays
+          // visibility:hidden so accessories never flash in their own
+          // section and then repaint under their parent camera — and so
+          // the camera line cost is never shown in its transient
+          // bracket-inclusive state. A fallback timer below force-reveals
+          // in case relocation can never settle (orphan accessories whose
+          // parent lives in another view).
+          if (!pipelineIncomplete()) {
+            const rootEl = document.getElementById(viewId);
+            if (rootEl) rootEl.classList.add('scw-grid-ready');
+          }
         }
 
         function totalsAreMissing() {
@@ -3404,6 +3429,17 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
           }, ms);
           _safetyState[viewId].timers.push(t);
         });
+
+        // Fallback reveal: never leave the grid hidden. If relocation can
+        // never settle (e.g. orphan accessories whose parent row lives in
+        // a different view), executePipeline won't add .scw-grid-ready on
+        // its own, so force it after a short grace period. The common case
+        // reveals far sooner — as soon as the first settled run completes.
+        var revealFallback = setTimeout(function () {
+          var rootEl = document.getElementById(viewId);
+          if (rootEl) rootEl.classList.add('scw-grid-ready');
+        }, 2500);
+        _safetyState[viewId].timers.push(revealFallback);
 
         // Safety net 2: short-lived MutationObserver on the view root.
         // Catches Knack wiping tbody content between our timer checks.
