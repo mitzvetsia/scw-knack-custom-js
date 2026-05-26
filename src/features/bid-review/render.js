@@ -1177,7 +1177,7 @@
 
   // ── collapsible group header row ─────────────────────────────
 
-  function buildGroupHeader(group, colSpan, rowCount, collapsed) {
+  function buildGroupHeader(group, colSpan, rowCount, collapsed, stateKey) {
     var label   = group.label;
 
     var tr = el('tr', 'scw-bid-review__group-header');
@@ -1214,6 +1214,10 @@
       var expanded = tr.getAttribute('aria-expanded') === 'true';
       tr.setAttribute('aria-expanded', String(!expanded));
       tr.classList.toggle('scw-bid-review__group-header--collapsed', expanded);
+
+      // Remember the new state so re-renders keep it. After the toggle
+      // the new collapsed state equals the OLD expanded value.
+      if (stateKey) _groupCollapseState[stateKey] = expanded;
 
       // Walk next siblings and toggle visibility
       var sibling = tr.nextElementSibling;
@@ -1366,11 +1370,34 @@
 
   // ── assemble rows from grouped state ────────────────────────
 
-  // MDF/IDF groups start collapsed on every render. The grid leads with
-  // many groups, so opening them all buries the comparison; the reviewer
-  // expands the one they're working in. Hiding each group's rows up front
-  // mirrors the header click-toggle's display:none walk.
+  // MDF/IDF groups start collapsed on FIRST render of a SOW. The grid
+  // leads with many groups, so opening them all buries the comparison;
+  // the reviewer expands the one they're working in. Hiding each group's
+  // rows up front mirrors the header click-toggle's display:none walk.
   var GROUPS_START_COLLAPSED = true;
+
+  // In-memory, per-session record of which MDF/IDF groups the user has
+  // opened/closed, keyed by sowId|groupKey. This survives grid
+  // re-renders within the session — submitting a change request,
+  // silent refreshes, switching between SOWs and back — so the grid
+  // keeps whatever the user had expanded. It is deliberately NOT
+  // persisted to storage: a fresh page load starts every group
+  // collapsed (the default reviewers asked for).
+  var _groupCollapseState = {};
+
+  function groupStateKey(sowId, group) {
+    return (sowId || '') + '|' + (group.mdfIdfId || group.label || '');
+  }
+
+  // Resolve a group's collapsed state: honor a remembered user toggle,
+  // otherwise fall back to the collapsed default.
+  function resolveCollapsed(sowId, group) {
+    var key = groupStateKey(sowId, group);
+    if (Object.prototype.hasOwnProperty.call(_groupCollapseState, key)) {
+      return _groupCollapseState[key];
+    }
+    return GROUPS_START_COLLAPSED;
+  }
 
   function buildBodyRows(groups, packages, colSpan, sowId) {
     var frag = document.createDocumentFragment();
@@ -1386,8 +1413,10 @@
         }
       }
 
+      var collapsed = resolveCollapsed(sowId, group);
+
       // Only hide child rows when there's a header to expand them again.
-      var hideChildren = GROUPS_START_COLLAPSED && !!group.label;
+      var hideChildren = collapsed && !!group.label;
       function appendChild(node) {
         if (!node) return;
         if (hideChildren) node.style.display = 'none';
@@ -1395,7 +1424,7 @@
       }
 
       if (group.label) {
-        frag.appendChild(buildGroupHeader(group, colSpan, totalRows, GROUPS_START_COLLAPSED));
+        frag.appendChild(buildGroupHeader(group, colSpan, totalRows, collapsed, groupStateKey(sowId, group)));
         // Auto-mount the headend detail rows immediately under the L1
         // header so they're visible whenever the group is expanded
         // (default state). The accordion toggle on the header walks
