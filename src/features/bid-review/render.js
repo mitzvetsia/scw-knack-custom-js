@@ -1816,9 +1816,19 @@
     //    document opens Knack's add-document child page under
     //    #review-bid so the user stays in the comparison flow.
     var docsIdx = buildDocsIndex();
-    var addDocUrl = sowId
-      ? '#review-bid/' + sowId + '/add-document-review-bid/' + sowId + '/'
-      : '';
+    // Anchor the add-document child-page URL to the LIVE hash, not a
+    // hardcoded top-level slug. scene_1155 is reached via a nested nav
+    // path (e.g. #team-calendar/project-dashboard/<projectId>/review-bids/
+    // <projectId>) that varies by entry point; a bare "#review-bid/..."
+    // doesn't resolve, so Knack bounces to the start page. Append the
+    // child slug + sowId to the current path instead.
+    var addDocUrl = '';
+    if (sowId) {
+      var base = (window.location.hash || '').split('?')[0].replace(/\/+$/, '');
+      // Drop an already-open add-document segment so re-renders don't nest.
+      base = base.replace(/\/add-document-review-bid\/[a-f0-9]{24}\/?$/i, '');
+      addDocUrl = base + '/add-document-review-bid/' + sowId + '/';
+    }
     var sowDocsBlock = buildSowDocsBlock(sowId, addDocUrl, docsIdx);
     if (sowDocsBlock) details.appendChild(sowDocsBlock);
 
