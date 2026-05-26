@@ -751,7 +751,18 @@
       for (var si2 = 0; si2 < sowItems.length; si2++) {
         var siRec = sowItems[si2];
         if (!siRec.id) continue;
+        // The SOW item's own field_2154 connections are the authoritative
+        // record of which SOWs this line item belongs to. A row can still
+        // appear under a SOW grid via the BID record's field_2154 even
+        // after the line item was disconnected — comparing against this
+        // set lets us flag those "no longer on this SOW" rows.
+        var siSowConns = connectionAll(siRec, SFK.sow);
+        var siSowIds = {};
+        for (var ss = 0; ss < siSowConns.length; ss++) {
+          if (siSowConns[ss] && siSowConns[ss].id) siSowIds[siSowConns[ss].id] = true;
+        }
         sowItemLookup[siRec.id] = {
+          sowIds:          siSowIds,
           mdfIdf:          connectionLabel(siRec, SFK.mdfIdf),
           installFee:      num(siRec, SFK.installFee),
           equipmentTotal:  num(siRec, SFK.equipmentTotal),
@@ -893,6 +904,11 @@
         var r2 = rows[mi2];
         if (r2.sowItem && sowItemLookup[r2.sowItem]) {
           var siData = sowItemLookup[r2.sowItem];
+          // The row is here because the bid record still points at this
+          // SOW, but the line item itself was disconnected — flag it so
+          // the grid can call it out instead of showing a misleading
+          // blank/normal SOW row.
+          r2.offSow = !siData.sowIds[sow.id];
           if (siData.mdfIdf && !r2.sowMdfIdf) {
             r2.sowMdfIdf = siData.mdfIdf;
           }

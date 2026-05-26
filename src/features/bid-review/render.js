@@ -995,6 +995,10 @@
     if (row.noBid) rowClass += ' scw-bid-review__row--no-bid';
     if (row.surveyNoBid) rowClass += ' scw-bid-review__row--survey-no-bid';
     if (row.sowItem) rowClass += ' scw-bid-review__row--expandable';
+    // Disconnected-from-SOW: the line item still exists (and still shows
+    // up here via the bid record's SOW connection) but is no longer on
+    // this SOW. Mute the whole row + tag it so it's unmistakable.
+    if (row.offSow) rowClass += ' scw-bid-review__row--off-sow';
     var tr = el('tr', rowClass);
     tr.setAttribute('data-row-id', row.id);
     if (row.sowItem) {
@@ -1006,6 +1010,9 @@
     // Only show displayLabel (field_2365) for Camera / Reader buckets
     var isCamReader = showCabling(row);
     var labelTd = el('td');
+    if (row.offSow) {
+      labelTd.appendChild(el('span', 'scw-bid-review__off-sow-tag', 'Removed from SOW'));
+    }
     if (row.noBid || row.surveyNoBid) {
       // Badge moved to bid-package columns — label cell matches sowItem style
       labelTd.className = 'scw-bid-review__sow-cell';

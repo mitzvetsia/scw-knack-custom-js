@@ -1769,6 +1769,38 @@
       '  background: #fef3c7 !important;',
       '}',
 
+      /* ── REMOVED FROM SOW: line item still exists + still shows here */
+      /*    via the bid connection, but is no longer on this SOW.       */
+      '.scw-bid-review__row--off-sow td {',
+      '  background: #f1f5f9 !important;',
+      '  color: #94a3b8;',
+      '}',
+
+      '.scw-bid-review__row--off-sow:hover td {',
+      '  background: #e2e8f0 !important;',
+      '}',
+
+      /* Mute everything inside the row so it visibly recedes, but keep */
+      /* the data legible (no display:none — the user wants to see it).  */
+      '.scw-bid-review__row--off-sow td * {',
+      '  opacity: 0.75;',
+      '}',
+
+      '.scw-bid-review__off-sow-tag {',
+      '  display: inline-block;',
+      '  padding: 1px 6px;',
+      '  border-radius: 3px;',
+      '  background: #64748b;',
+      '  color: #fff !important;',
+      '  font-size: 9px;',
+      '  font-weight: 700;',
+      '  text-transform: uppercase;',
+      '  letter-spacing: 0.5px;',
+      '  vertical-align: middle;',
+      '  margin-bottom: 3px;',
+      '  opacity: 1 !important;',
+      '}',
+
       /* ── package data cell ─────────────────────────────────── */
       '.scw-bid-review__cell-label {',
       '  font-size: 12px;',
