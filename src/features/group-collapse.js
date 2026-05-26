@@ -58,7 +58,7 @@
     // none are open" branch of exclusive enforcement, so a fresh load
     // (no saved state) shows every group collapsed.
     view_3586: { exclusive: true, startAllCollapsed: true },
-    view_3610: { exclusive: true },
+    view_3610: { exclusive: true, startAllCollapsed: true },
     view_3921: { exclusive: true },
   };
 
@@ -661,7 +661,16 @@
         viewRecordCounts[viewId] = allTr - groupTr - totalsTr;
       }
 
-      const belowThreshold = threshold > 0 && viewRecordCounts[viewId] < threshold;
+      // Exclusive accordions manage open/close purely through persisted
+      // state + single-open enforcement. The "below-threshold → default
+      // open" behaviour fights that: it force-opens every group, the
+      // accordion then collapses all but the first, and the stale-state
+      // clear below wipes the user's saved choice — so on refresh the
+      // view always snaps back to "first group open". Treat exclusive
+      // views as never-below-threshold so neither the clear nor the
+      // default-open path runs for them; their state survives refresh.
+      var isExclusiveView = !!(VIEW_OVERRIDES[viewId] && VIEW_OVERRIDES[viewId].exclusive);
+      const belowThreshold = !isExclusiveView && threshold > 0 && viewRecordCounts[viewId] < threshold;
 
       // On first encounter this session, clear stale localStorage for
       // below-threshold or defaultOpen views so the "default open" behaviour takes effect.
