@@ -2097,23 +2097,6 @@
       '  background: #f1f5f9;',
       '}',
 
-      '.scw-bid-review__overflow-item {',
-      '  display: flex;',
-      '  align-items: baseline;',
-      '  justify-content: space-between;',
-      '  gap: 10px;',
-      '}',
-
-      '.scw-bid-review__overflow-item-note {',
-      '  font-size: 11px;',
-      '  font-weight: 600;',
-      '  color: #16a34a;',
-      '}',
-
-      '.scw-bid-review__overflow-item--matches .scw-bid-review__overflow-item-label {',
-      '  color: #64748b;',
-      '}',
-
       /* ── change request column header controls ────────────── */
       '.scw-bid-review__cr-col-title {',
       '  font-size: 13px;',

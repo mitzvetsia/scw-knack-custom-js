@@ -2138,11 +2138,8 @@
 
     var cell = row.cellsByPackage[pkgId];
     if (!cell) {
-      // No bid cell for this package. Either a noBid/surveyNoBid row, or
-      // a normal SOW row where THIS bidder simply didn't bid the line —
-      // in both cases open the add-to-bid modal so we can ask the bidder
-      // to add the item (prefilled from the SOW values).
-      if ((row.noBid || row.surveyNoBid || row.sowItem) && ns.changeRequests && ns.changeRequests.openAddItem) {
+      // noBid or surveyNoBid row — re-open add modal for editing the pending add-to-bid item
+      if ((row.noBid || row.surveyNoBid) && ns.changeRequests && ns.changeRequests.openAddItem) {
         var pendingData = ns.changeRequests.getPending();
         var pendItem = null;
         if (pendingData[pkgId]) {
@@ -2378,45 +2375,7 @@
     var rowId      = button.getAttribute('data-row-id');
     var sowId      = button.getAttribute('data-sow-id');
     var sowItemId  = button.getAttribute('data-sow-item-id');
-    if (CFG.debug) {
-      SCW.debug('[BidReview] Disconnect click — sowId:', sowId,
-                'sowItemId:', sowItemId, 'rowId:', rowId);
-    }
-    if (!sowId || !sowItemId) {
-      // Previously a silent return — surface it so a misconfigured button
-      // (missing data-sow-id / data-sow-item-id) is diagnosable instead of
-      // looking like "nothing happens".
-      ns.renderToast('Cannot disconnect: this row is missing its SOW link', 'error');
-      return;
-    }
-
-    // The disconnect reads + writes the SOW item record from the
-    // view_3921 model. When several SOWs share the page the model can be
-    // stale or not yet hold this record, which previously made the whole
-    // action bail with "Could not locate SOW line item record". Before
-    // doing anything user-visible (confirm dialog, accessory scan),
-    // make sure the record is actually in the model — if not, re-fetch
-    // the view once and retry, then give up gracefully.
-    var siView = Knack && Knack.views && Knack.views[CFG.sowItemsViewKey];
-    var siModels = siView && siView.model && siView.model.data && siView.model.data.models;
-    var present = false;
-    if (siModels) {
-      for (var pi = 0; pi < siModels.length; pi++) {
-        if (siModels[pi].id === sowItemId) { present = true; break; }
-      }
-    }
-    if (!present) {
-      if (!button.getAttribute('data-disc-retry')
-          && siView && siView.model && typeof siView.model.fetch === 'function') {
-        button.setAttribute('data-disc-retry', '1');
-        siView.model.fetch().always(function () { handleDisconnectFromSow(button); });
-        return;
-      }
-      button.removeAttribute('data-disc-retry');
-      ns.renderToast('Could not locate SOW line item record on the page', 'error');
-      return;
-    }
-    button.removeAttribute('data-disc-retry');
+    if (!sowId || !sowItemId) return;
 
     var grid = findSowGrid(sowId);
     var row  = null;

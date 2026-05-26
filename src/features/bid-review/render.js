@@ -91,14 +91,9 @@
     var menu = el('div', 'scw-bid-review__overflow-menu');
     for (var i = 0; i < choices.length; i++) {
       var ch = choices[i];
-      var itemCls = 'scw-bid-review__overflow-item';
-      if (ch.matches) itemCls += ' scw-bid-review__overflow-item--matches';
-      var itemEl = el('button', itemCls);
+      var itemEl = el('button', 'scw-bid-review__overflow-item');
       itemEl.type = 'button';
-      itemEl.appendChild(el('span', 'scw-bid-review__overflow-item-label', ch.label));
-      if (ch.note) {
-        itemEl.appendChild(el('span', 'scw-bid-review__overflow-item-note', ch.note));
-      }
+      itemEl.textContent = ch.label;
       var keys = Object.keys(ch.attrs);
       for (var k = 0; k < keys.length; k++) itemEl.setAttribute(keys[k], ch.attrs[keys[k]]);
       menu.appendChild(itemEl);
@@ -467,53 +462,46 @@
       return topRightStack;
     }
 
-    // Top entry: Revise bid to match — the user assigns the change
-    // request to whichever bid they choose. The selector lists EVERY bid
-    // on the row (not just the mismatched ones) so a CR can be sent to
-    // any bidder; bids whose values already match the SOW are still
-    // listed but flagged "(matches)" so the user can tell them apart.
+    // Top entry: Revise bid to match — only for the packages whose
+    // bid actually differs from the SOW. If every bid matches, the
+    // button has nothing to ask for so we hide it entirely.
     if (row.sowItem && !row.noBid && !row.surveyNoBid && packages && packages.length) {
-      var attrsBase = function (pkgId) {
-        return {
-          'data-action':     'cell_request_change_from_sow',
-          'data-row-id':     row.id,
-          'data-package-id': pkgId,
-          'data-sow-id':     sowId || '',
-          'data-vis-qty':     qtyVisible ? '1' : '0',
-          'data-vis-cabling': cablingVisible ? '1' : '0',
-          'data-vis-conn':    connDevVisible ? '1' : '0',
+      var mismatched = [];
+      for (var mpi = 0; mpi < packages.length; mpi++) {
+        var pInfo = diffsByPkg && diffsByPkg[packages[mpi].id];
+        if (pInfo && pInfo.any) mismatched.push(packages[mpi]);
+      }
+
+      if (mismatched.length) {
+        var attrsBase = function (pkgId) {
+          return {
+            'data-action':     'cell_request_change_from_sow',
+            'data-row-id':     row.id,
+            'data-package-id': pkgId,
+            'data-sow-id':     sowId || '',
+            'data-vis-qty':     qtyVisible ? '1' : '0',
+            'data-vis-cabling': cablingVisible ? '1' : '0',
+            'data-vis-conn':    connDevVisible ? '1' : '0',
+          };
         };
-      };
-      var matchLabel = 'Revise bid to match →';
-      var rStack = getTopRightStack();
-      if (packages.length === 1) {
-        // Only one bid on the row — no selection to make, direct button.
-        var attrsR = attrsBase(packages[0].id);
-        var rBtn = el('button',
-          'scw-bid-review__cell-action scw-bid-review__cell-action--revise',
-          matchLabel);
-        rBtn.type = 'button';
-        var rKeys = Object.keys(attrsR);
-        for (var rk = 0; rk < rKeys.length; rk++) rBtn.setAttribute(rKeys[rk], attrsR[rKeys[rk]]);
-        rStack.appendChild(rBtn);
-      } else {
-        // Multiple bids — let the user pick which one the CR targets.
-        var choices = [];
-        for (var sci = 0; sci < packages.length; sci++) {
-          var pkgId   = packages[sci].id;
-          var pInfo   = diffsByPkg && diffsByPkg[pkgId];
-          var hasBid  = !!(row.cellsByPackage && row.cellsByPackage[pkgId]);
-          // "matches" only when there IS a bid for this row AND it has no
-          // diffs. A package with no bid (pInfo === null) is NOT a match.
-          var matches = hasBid && !!pInfo && !pInfo.any;
-          choices.push({
-            label:   packages[sci].name,
-            attrs:   attrsBase(pkgId),
-            matches: matches,
-            note:    matches ? '(matches)' : (hasBid ? '' : '(no bid)'),
-          });
+        var matchLabel = 'Revise bid to match →';
+        var rStack = getTopRightStack();
+        if (mismatched.length === 1) {
+          var attrsR = attrsBase(mismatched[0].id);
+          var rBtn = el('button',
+            'scw-bid-review__cell-action scw-bid-review__cell-action--revise',
+            matchLabel);
+          rBtn.type = 'button';
+          var rKeys = Object.keys(attrsR);
+          for (var rk = 0; rk < rKeys.length; rk++) rBtn.setAttribute(rKeys[rk], attrsR[rKeys[rk]]);
+          rStack.appendChild(rBtn);
+        } else {
+          var choices = [];
+          for (var sci = 0; sci < mismatched.length; sci++) {
+            choices.push({ label: mismatched[sci].name, attrs: attrsBase(mismatched[sci].id) });
+          }
+          rStack.appendChild(buildOverflowMenu(matchLabel, 'revise', choices));
         }
-        rStack.appendChild(buildOverflowMenu(matchLabel, 'revise', choices));
       }
     }
 
@@ -1177,7 +1165,7 @@
 
   // ── collapsible group header row ─────────────────────────────
 
-  function buildGroupHeader(group, colSpan, rowCount, collapsed, stateKey) {
+  function buildGroupHeader(group, colSpan, rowCount, collapsed) {
     var label   = group.label;
 
     var tr = el('tr', 'scw-bid-review__group-header');
@@ -1214,10 +1202,6 @@
       var expanded = tr.getAttribute('aria-expanded') === 'true';
       tr.setAttribute('aria-expanded', String(!expanded));
       tr.classList.toggle('scw-bid-review__group-header--collapsed', expanded);
-
-      // Remember the new state so re-renders keep it. After the toggle
-      // the new collapsed state equals the OLD expanded value.
-      if (stateKey) _groupCollapseState[stateKey] = expanded;
 
       // Walk next siblings and toggle visibility
       var sibling = tr.nextElementSibling;
@@ -1370,34 +1354,11 @@
 
   // ── assemble rows from grouped state ────────────────────────
 
-  // MDF/IDF groups start collapsed on FIRST render of a SOW. The grid
-  // leads with many groups, so opening them all buries the comparison;
-  // the reviewer expands the one they're working in. Hiding each group's
-  // rows up front mirrors the header click-toggle's display:none walk.
+  // MDF/IDF groups start collapsed on every render. The grid leads with
+  // many groups, so opening them all buries the comparison; the reviewer
+  // expands the one they're working in. Hiding each group's rows up front
+  // mirrors the header click-toggle's display:none walk.
   var GROUPS_START_COLLAPSED = true;
-
-  // In-memory, per-session record of which MDF/IDF groups the user has
-  // opened/closed, keyed by sowId|groupKey. This survives grid
-  // re-renders within the session — submitting a change request,
-  // silent refreshes, switching between SOWs and back — so the grid
-  // keeps whatever the user had expanded. It is deliberately NOT
-  // persisted to storage: a fresh page load starts every group
-  // collapsed (the default reviewers asked for).
-  var _groupCollapseState = {};
-
-  function groupStateKey(sowId, group) {
-    return (sowId || '') + '|' + (group.mdfIdfId || group.label || '');
-  }
-
-  // Resolve a group's collapsed state: honor a remembered user toggle,
-  // otherwise fall back to the collapsed default.
-  function resolveCollapsed(sowId, group) {
-    var key = groupStateKey(sowId, group);
-    if (Object.prototype.hasOwnProperty.call(_groupCollapseState, key)) {
-      return _groupCollapseState[key];
-    }
-    return GROUPS_START_COLLAPSED;
-  }
 
   function buildBodyRows(groups, packages, colSpan, sowId) {
     var frag = document.createDocumentFragment();
@@ -1413,10 +1374,8 @@
         }
       }
 
-      var collapsed = resolveCollapsed(sowId, group);
-
       // Only hide child rows when there's a header to expand them again.
-      var hideChildren = collapsed && !!group.label;
+      var hideChildren = GROUPS_START_COLLAPSED && !!group.label;
       function appendChild(node) {
         if (!node) return;
         if (hideChildren) node.style.display = 'none';
@@ -1424,7 +1383,7 @@
       }
 
       if (group.label) {
-        frag.appendChild(buildGroupHeader(group, colSpan, totalRows, collapsed, groupStateKey(sowId, group)));
+        frag.appendChild(buildGroupHeader(group, colSpan, totalRows, GROUPS_START_COLLAPSED));
         // Auto-mount the headend detail rows immediately under the L1
         // header so they're visible whenever the group is expanded
         // (default state). The accordion toggle on the header walks
