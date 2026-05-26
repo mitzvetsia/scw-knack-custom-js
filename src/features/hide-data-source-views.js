@@ -91,6 +91,10 @@
     // see the v1 grid (view_3610) + the v2 preview panel during
     // the parallel build.
     'view_3962',
+    // 'view_3966' — "Add Document" menu/button view on the review-bids
+    // page. Not a data source — purely an unwanted nav button the user
+    // doesn't want surfaced. Hidden via the same mechanism for simplicity.
+    'view_3966',
   ];
 
   if (!document.getElementById(STYLE_ID)) {
