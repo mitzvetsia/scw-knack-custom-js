@@ -47,10 +47,10 @@
     changeRequestWebhook:   'https://hook.us1.make.com/rpbu6rd1s5w2oth7r1wjzogseburbhxv',
     revisionResponseWebhook: 'https://hook.us1.make.com/t6hczsjuia9l21d1u9ghfohmifw0r43f',
     createNewSowWebhook:    'https://hook.us1.make.com/v95pack6vgu3wlr2q7finnendy4ht5ax',
-    // PLACEHOLDER — replace with the real Make webhook URL once the
-    // "Add to SOW" Make scenario is built. row_add_to_sow falls back to
-    // CFG.actionWebhook if this is left blank.
-    addToSowWebhook:        'https://hook.us1.make.com/PLACEHOLDER_ADD_TO_SOW',
+    // "Add to SOW" — creates a SOW line item from a bid/survey line item
+    // via Make. Payload includes the full source record (sourceRecord:
+    // every field_NNNN + field_NNNN_raw) so the scenario has everything.
+    addToSowWebhook:        'https://hook.us1.make.com/zie1ebynnpckwc4426qo91hreu6sasnr',
     // Fired from the "Add Project Management & Mobilization line item"
     // button inside the margin-low warning on each SOW section header.
     // Payload: { actionType, sowId, surveyCosts, surveyCostsField }.

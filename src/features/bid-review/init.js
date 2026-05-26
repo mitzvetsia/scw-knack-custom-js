@@ -2503,6 +2503,28 @@
     if (pkgId) payload.packageId = pkgId;
     if (sowId) payload.sowId     = sowId;
 
+    // row_add_to_sow needs the FULL source line-item record so Make can
+    // build the SOW item. Find the row in state (by sowId, then any grid)
+    // and ship its raw record (every field_NNNN + field_NNNN_raw).
+    if (actionType === 'row_add_to_sow') {
+      var srcRow = null;
+      var grid = findSowGrid(sowId);
+      if (grid) {
+        for (var i = 0; i < grid.rows.length; i++) {
+          if (grid.rows[i].id === rowId) { srcRow = grid.rows[i]; break; }
+        }
+      }
+      if (!srcRow && _state) {
+        for (var g = 0; g < _state.sowGrids.length && !srcRow; g++) {
+          var rws = _state.sowGrids[g].rows;
+          for (var r = 0; r < rws.length; r++) {
+            if (rws[r].id === rowId) { srcRow = rws[r]; break; }
+          }
+        }
+      }
+      if (srcRow && srcRow._rawRecord) payload.sourceRecord = srcRow._rawRecord;
+    }
+
     ns.submitAction(payload).done(function () {
       refreshSilently();
     }).always(function () {
