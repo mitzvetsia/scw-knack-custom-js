@@ -340,7 +340,7 @@
 
       if (isSubmitted) {
         actionTd.appendChild(btn(
-          '\u2190 Sync SOW to Bid', 'adopt',
+          '\u2190 Update SOW to match Bid', 'adopt',
           { 'data-action': 'package_copy_to_sow', 'data-package-id': pkg2.id, 'data-sow-id': sowGrid.sowId }
         ));
         actionTd.appendChild(btn(
