@@ -194,6 +194,9 @@
         // Removal: SOW item not covered by this bid package
         removals.push({
           sowItemId: row.sowItem,
+          // Human-readable name so the confirm modal can show WHICH
+          // items will be disconnected from the SOW.
+          label: row.displayLabel || row.sowProduct || row.productName || row.sowItem,
         });
       }
     }

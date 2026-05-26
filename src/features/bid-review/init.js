@@ -1852,35 +1852,192 @@
     }
   }
 
+  var COPYSYNC_CSS_ID     = 'scw-bid-review-copysync-css';
+  var COPYSYNC_OVERLAY_ID = 'scw-bid-review-copysync-overlay';
+
+  function injectCopySyncStyle() {
+    if (document.getElementById(COPYSYNC_CSS_ID)) return;
+    var s = document.createElement('style');
+    s.id = COPYSYNC_CSS_ID;
+    s.textContent = [
+      '#' + COPYSYNC_OVERLAY_ID + ' {',
+      '  position: fixed; inset: 0; background: rgba(15,23,42,.45);',
+      '  z-index: 10001; display: flex; align-items: center; justify-content: center;',
+      '}',
+      '#' + COPYSYNC_OVERLAY_ID + ' .scw-copysync-modal {',
+      '  background: #fff; border-radius: 10px; width: 460px; max-width: calc(100vw - 32px);',
+      '  max-height: calc(100vh - 64px); display: flex; flex-direction: column;',
+      '  box-shadow: 0 12px 40px rgba(0,0,0,.25); overflow: hidden;',
+      '}',
+      '.scw-copysync-modal__header { padding: 16px 18px 12px; border-bottom: 1px solid #e2e8f0; }',
+      '.scw-copysync-modal__title { font-size: 16px; font-weight: 700; color: #07467c; }',
+      '.scw-copysync-modal__subtitle { font-size: 12px; color: #64748b; margin-top: 2px; }',
+      '.scw-copysync-modal__body { padding: 14px 18px; overflow-y: auto; font-size: 13px; color: #334155; }',
+      '.scw-copysync-modal__summary { margin-bottom: 12px; }',
+      '.scw-copysync-modal__disc-head { font-weight: 600; color: #b45309; margin-bottom: 6px; }',
+      '.scw-copysync-modal__list { margin: 0 0 12px; padding-left: 18px; max-height: 180px; overflow-y: auto; }',
+      '.scw-copysync-modal__list li { margin: 2px 0; line-height: 1.35; }',
+      '.scw-copysync-modal__toggle {',
+      '  display: flex; align-items: flex-start; gap: 8px; padding: 10px 12px;',
+      '  background: #fff7ed; border: 1px solid #fed7aa; border-radius: 8px;',
+      '}',
+      '.scw-copysync-modal__toggle input { margin-top: 2px; flex-shrink: 0; }',
+      '.scw-copysync-modal__toggle-label { font-weight: 600; color: #9a3412; }',
+      '.scw-copysync-modal__toggle-hint { font-weight: 400; color: #9a3412; opacity: .85; display: block; margin-top: 2px; }',
+      '.scw-copysync-modal__footer { padding: 12px 18px; border-top: 1px solid #e2e8f0;',
+      '  display: flex; justify-content: flex-end; gap: 10px; }',
+      '.scw-copysync-modal__btn { padding: 8px 16px; border-radius: 6px; font-size: 13px;',
+      '  font-weight: 600; cursor: pointer; border: 1px solid transparent; }',
+      '.scw-copysync-modal__btn--cancel { background: #fff; color: #475569; border-color: #cbd5e1; }',
+      '.scw-copysync-modal__btn--cancel:hover { background: #f1f5f9; }',
+      '.scw-copysync-modal__btn--go { background: #07467c; color: #fff; }',
+      '.scw-copysync-modal__btn--go:hover { background: #063a66; }'
+    ].join('\n');
+    document.head.appendChild(s);
+  }
+
+  function closeCopySyncModal() {
+    var o = document.getElementById(COPYSYNC_OVERLAY_ID);
+    if (o && o.parentNode) o.parentNode.removeChild(o);
+  }
+
+  // Confirm modal for Update SOW to match Bid. Lists which SOW items
+  // will be disconnected (present on the SOW but absent from this bid)
+  // and offers a toggle to keep them instead. Calls onConfirm({disconnect}).
+  function confirmCopyToSow(opts) {
+    injectCopySyncStyle();
+    closeCopySyncModal();
+
+    var overlay = document.createElement('div');
+    overlay.id = COPYSYNC_OVERLAY_ID;
+    overlay.addEventListener('click', function (e) {
+      if (e.target === overlay) closeCopySyncModal();
+    });
+
+    var modal = document.createElement('div');
+    modal.className = 'scw-copysync-modal';
+
+    var header = document.createElement('div');
+    header.className = 'scw-copysync-modal__header';
+    var title = document.createElement('div');
+    title.className = 'scw-copysync-modal__title';
+    title.textContent = 'Update SOW to match Bid';
+    var subtitle = document.createElement('div');
+    subtitle.className = 'scw-copysync-modal__subtitle';
+    subtitle.textContent = opts.pkgName + ' → ' + opts.sowName;
+    header.appendChild(title);
+    header.appendChild(subtitle);
+    modal.appendChild(header);
+
+    var body = document.createElement('div');
+    body.className = 'scw-copysync-modal__body';
+
+    var summaryBits = [];
+    if (opts.payload.updates.length) summaryBits.push(opts.payload.updates.length + ' item(s) updated');
+    if (opts.payload.creates.length) summaryBits.push(opts.payload.creates.length + ' new item(s) created');
+    var summary = document.createElement('div');
+    summary.className = 'scw-copysync-modal__summary';
+    summary.textContent = summaryBits.length
+      ? summaryBits.join(', ') + '.'
+      : 'No items will be updated or created.';
+    body.appendChild(summary);
+
+    var removals = opts.payload.removals || [];
+    var toggle = null;
+    if (removals.length) {
+      var discHead = document.createElement('div');
+      discHead.className = 'scw-copysync-modal__disc-head';
+      discHead.textContent = removals.length + ' item(s) are on the SOW but not in this bid:';
+      body.appendChild(discHead);
+
+      var list = document.createElement('ul');
+      list.className = 'scw-copysync-modal__list';
+      for (var i = 0; i < removals.length; i++) {
+        var li = document.createElement('li');
+        li.textContent = removals[i].label || removals[i].sowItemId;
+        list.appendChild(li);
+      }
+      body.appendChild(list);
+
+      var toggleWrap = document.createElement('label');
+      toggleWrap.className = 'scw-copysync-modal__toggle';
+      toggle = document.createElement('input');
+      toggle.type = 'checkbox';
+      toggle.checked = true; // default: disconnect (preserves prior behavior)
+      var toggleText = document.createElement('span');
+      var toggleLabel = document.createElement('span');
+      toggleLabel.className = 'scw-copysync-modal__toggle-label';
+      toggleLabel.textContent = 'Disconnect these items from the SOW';
+      var toggleHint = document.createElement('span');
+      toggleHint.className = 'scw-copysync-modal__toggle-hint';
+      toggleHint.textContent = 'Uncheck to keep them on the SOW (they just won’t be touched).';
+      toggleText.appendChild(toggleLabel);
+      toggleText.appendChild(toggleHint);
+      toggleWrap.appendChild(toggle);
+      toggleWrap.appendChild(toggleText);
+      body.appendChild(toggleWrap);
+    }
+    modal.appendChild(body);
+
+    var footer = document.createElement('div');
+    footer.className = 'scw-copysync-modal__footer';
+    var cancelBtn = document.createElement('button');
+    cancelBtn.className = 'scw-copysync-modal__btn scw-copysync-modal__btn--cancel';
+    cancelBtn.textContent = 'Cancel';
+    cancelBtn.addEventListener('click', closeCopySyncModal);
+    var goBtn = document.createElement('button');
+    goBtn.className = 'scw-copysync-modal__btn scw-copysync-modal__btn--go';
+    goBtn.textContent = 'Update SOW';
+    goBtn.addEventListener('click', function () {
+      var disconnect = toggle ? toggle.checked : true;
+      closeCopySyncModal();
+      opts.onConfirm({ disconnect: disconnect });
+    });
+    footer.appendChild(cancelBtn);
+    footer.appendChild(goBtn);
+    modal.appendChild(footer);
+
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+  }
+
   function handleCopyToSow(button, pkgId, grid) {
     var payload = ns.buildCopyToSowPayload(pkgId, grid);
 
     var total = payload.updates.length + payload.creates.length + payload.removals.length;
     if (total === 0) {
-      ns.renderToast('Nothing to sync \u2014 SOW already matches this bid', 'info');
+      ns.renderToast('Nothing to update \u2014 SOW already matches this bid', 'info');
       return;
     }
 
     var pkgName = findPackageName(grid, pkgId);
 
-    var summary = [];
-    if (payload.updates.length)  summary.push(payload.updates.length  + ' update(s)');
-    if (payload.creates.length)  summary.push(payload.creates.length  + ' new item(s)');
-    if (payload.removals.length) summary.push(payload.removals.length + ' removal(s)');
+    confirmCopyToSow({
+      pkgName: pkgName,
+      sowName: grid.sowName,
+      payload: payload,
+      onConfirm: function (choice) {
+        // Honor the keep-on-SOW choice by dropping removals from the payload.
+        if (!choice.disconnect) payload.removals = [];
 
-    var confirmed = window.confirm(
-      'Copy ' + pkgName + ' to ' + grid.sowName + '?\n\n' + summary.join(', ')
-    );
-    if (!confirmed) return;
+        var total2 = payload.updates.length + payload.creates.length + payload.removals.length;
+        if (total2 === 0) {
+          ns.renderToast('Nothing to update \u2014 SOW already matches this bid', 'info');
+          return;
+        }
 
-    // Show processing toast and start polling
-    showCopyToast('Syncing ' + pkgName + ' \u2192 ' + grid.sowName + ': ' + summary.join(', ') + '\u2026');
-    startCopyPoll();
+        var summary = [];
+        if (payload.updates.length)  summary.push(payload.updates.length  + ' update(s)');
+        if (payload.creates.length)  summary.push(payload.creates.length  + ' new item(s)');
+        if (payload.removals.length) summary.push(payload.removals.length + ' disconnected from SOW');
 
-    setBusy(button, true);
+        showCopyToast('Updating ' + grid.sowName + ' to match ' + pkgName + ': ' + summary.join(', ') + '\u2026');
+        startCopyPoll();
 
-    ns.submitAction(payload)
-      .done(function () {
+        setBusy(button, true);
+
+        ns.submitAction(payload)
+          .done(function () {
         // Webhook responded 200 — Make scenario is complete.
         // Stop polling, refresh the grid immediately, and show success.
         if (CFG.debug) SCW.debug('[BidReview] Copy to SOW webhook completed');
@@ -1896,9 +2053,11 @@
             (xhr && xhr.status) + ') — continuing to poll');
         }
       })
-      .always(function () {
-        setBusy(button, false);
-      });
+          .always(function () {
+            setBusy(button, false);
+          });
+      }
+    });
   }
 
   // ── change request (per-cell) ────────────────────────────────
