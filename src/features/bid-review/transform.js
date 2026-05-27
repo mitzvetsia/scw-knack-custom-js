@@ -763,6 +763,13 @@
         }
         sowItemLookup[siRec.id] = {
           sowIds:          siSowIds,
+          // The SOW/survey line item's own label (field_1950) — used to
+          // name items in the Update SOW / Create new SOW modals so they
+          // don't fall back to the raw record id when the bid-side label
+          // (field_2365) is empty (items on the SOW but not on this bid).
+          label:           raw(siRec, SFK.displayLabel) ||
+                           connectionLabel(siRec, SFK.product) ||
+                           raw(siRec, SFK.productName),
           mdfIdf:          connectionLabel(siRec, SFK.mdfIdf),
           installFee:      num(siRec, SFK.installFee),
           equipmentTotal:  num(siRec, SFK.equipmentTotal),
@@ -909,6 +916,9 @@
           // the grid can call it out instead of showing a misleading
           // blank/normal SOW row.
           r2.offSow = !siData.sowIds[sow.id];
+          // Fall back to the SOW item's own label when the bid-side
+          // label is missing (item on the SOW but not on this bid).
+          r2.sowItemLabel = siData.label || '';
           if (siData.mdfIdf && !r2.sowMdfIdf) {
             r2.sowMdfIdf = siData.mdfIdf;
           }

@@ -201,8 +201,11 @@
         removals.push({
           sowItemId: row.sowItem,
           // Human-readable name so the confirm modal can show WHICH
-          // items will be disconnected from the SOW.
-          label: row.displayLabel || row.sowProduct || row.productName || row.sowItem,
+          // items will be disconnected from the SOW. Prefer the SOW
+          // item's own label (field_1950) — these items aren't on the
+          // bid, so the bid-side label is empty and we'd otherwise fall
+          // back to the raw record id.
+          label: row.sowItemLabel || row.displayLabel || row.sowProduct || row.productName || row.sowItem,
         });
       }
     }
@@ -408,6 +411,7 @@
           sourceSowName:   grid.sowName,
           sowItemId:       row.sowItem,
           displayLabel:    row.displayLabel,
+          sowItemLabel:    row.sowItemLabel,
           productName:     row.productName,
           mdfIdf:          row.mdfIdf,
           proposalBucket:  row.proposalBucket,

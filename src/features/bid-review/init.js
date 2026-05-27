@@ -1621,7 +1621,7 @@
     var pkgName = findPackageName(grid, pkgId) || 'this bid';
 
     function labelOf(it) {
-      return it.displayLabel || it.productName || it.label || '';
+      return it.displayLabel || it.sowItemLabel || it.productName || it.label || '';
     }
 
     confirmItemSelection({
