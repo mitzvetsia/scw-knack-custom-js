@@ -271,8 +271,8 @@
         question:   'After publishing, do you want to also submit?',
         noneLabel:  'No — just publish',
         options: [
-          { value: 'sales',      label: 'Also submit to Sales' },
-          { value: 'second-set', label: 'Submit to Second Set of Eyes (instead of Sales)' }
+          { value: 'second-set', label: 'Submit to Second Set of Eyes (instead of Sales)' },
+          { value: 'sales',      label: 'Also submit to Sales' }
         ]
       },
       clickupStatus: CLICKUP_STATUS_RADIO_FINAL,

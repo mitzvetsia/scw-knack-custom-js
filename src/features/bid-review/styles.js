@@ -34,7 +34,7 @@
       '.scw-bid-review__sow-section {',
       '  --scw-accent: #295f91;',
       '  --scw-accent-rgb: 41, 95, 145;',
-      '  margin: 10px 0;',
+      '  margin: 14px 0;',
       '  background: #fff;',
       '  border: 1px solid rgba(0,0,0,.08);',
       '  border-radius: 14px;',
@@ -100,6 +100,12 @@
       '  font-size: 14px;',
       '  font-weight: 600;',
       '  color: #1a1a1a;',
+      '}',
+
+      '.scw-bid-review__sow-title-name {',
+      '  font-size: 14px;',
+      '  font-weight: 600;',
+      '  color: #475569;',
       '}',
 
       '.scw-bid-review__sow-title-count {',
@@ -701,6 +707,20 @@
       '  color: #334155;',
       '  font-weight: 600 !important;',
       '}',
+      /* Per-bid delta vs the SOW sub-bid total. */
+      '.scw-bid-review__col-title-delta {',
+      '  font-size: 10.5px !important;',
+      '  font-weight: 700 !important;',
+      '  margin-top: 3px;',
+      '  text-transform: none !important;',
+      '  letter-spacing: 0 !important;',
+      '}',
+      '.scw-bid-review__col-title-delta--match {',
+      '  color: #16a34a;',
+      '}',
+      '.scw-bid-review__col-title-delta--gap {',
+      '  color: #b45309;',
+      '}',
       /* SOW Sub Bid Total vs Bid Sub Bid Total mismatch — loud red so */
       /* it can\'t be missed when the SOW line items are out of sync   */
       /* with what was actually bid.                                   */
@@ -777,6 +797,13 @@
       '  align-items: center;',
       '  justify-content: center;',
       '  gap: 4px;',
+      '  margin-top: 1px;',
+      '}',
+      '.scw-bid-review__col-friendly-name {',
+      '  font-size: 12px;',
+      '  font-weight: 600;',
+      '  color: #475569;',
+      '  text-align: center;',
       '  margin-top: 1px;',
       '}',
       '.scw-bid-review__col-links {',
@@ -915,10 +942,92 @@
 
       '.scw-bid-review__toolbar {',
       '  display: flex;',
-      '  justify-content: flex-end;',
+      '  align-items: center;',
+      '  justify-content: space-between;',
       '  gap: 8px;',
       '  padding: 8px 4px;',
       '  margin-bottom: 4px;',
+      '}',
+
+      '.scw-bid-review__toolbar-count {',
+      '  font-size: 12px;',
+      '  font-weight: 700;',
+      '  color: #475569;',
+      '  text-transform: uppercase;',
+      '  letter-spacing: 0.5px;',
+      '}',
+
+      /* push the buttons to the right even when there is no count label */
+      '.scw-bid-review__toolbar-btns {',
+      '  display: flex;',
+      '  gap: 8px;',
+      '  margin-left: auto;',
+      '}',
+
+      '.scw-bid-review__toolbar-btn {',
+      '  background: #fff;',
+      '  border: 1px solid #cbd5e1;',
+      '  border-radius: 6px;',
+      '  color: #334155;',
+      '  font-size: 12px;',
+      '  font-weight: 600;',
+      '  padding: 6px 12px;',
+      '  cursor: pointer;',
+      '  transition: background 150ms ease, border-color 150ms ease;',
+      '}',
+
+      '.scw-bid-review__toolbar-btn:hover {',
+      '  background: #f1f5f9;',
+      '  border-color: #94a3b8;',
+      '}',
+
+      '.scw-bid-review__toolbar-btn--primary {',
+      '  background: #07467c;',
+      '  border-color: #07467c;',
+      '  color: #fff;',
+      '}',
+
+      '.scw-bid-review__toolbar-btn--primary:hover {',
+      '  background: #063a68;',
+      '  border-color: #063a68;',
+      '}',
+
+      /* ── collapsible bid (subcontractor) columns ───────────── */
+      /* Collapse handle in the column title cell. */
+      '.scw-bid-review__pkg-header { position: relative; }',
+      '.scw-bid-review__pkg-collapse-btn {',
+      '  position: absolute; top: 4px; right: 4px;',
+      '  width: 18px; height: 18px; line-height: 16px; padding: 0;',
+      '  border: 1px solid #cbd5e1; border-radius: 4px;',
+      '  background: #fff; color: #64748b; font-size: 12px; cursor: pointer;',
+      '}',
+      '.scw-bid-review__pkg-collapse-btn:hover { background: #f1f5f9; color: #0f172a; }',
+
+      /* Expand handle — hidden until the column is collapsed. */
+      '.scw-bid-review__pkg-expand { display: none; }',
+
+      /* Collapsed column: shrink every cell in it to a thin strip and */
+      /* hide its content. The expand handle is the only visible child. */
+      '.scw-bid-review__pkg-col--collapsed {',
+      '  width: 30px !important; min-width: 30px !important; max-width: 30px !important;',
+      '  padding-left: 0 !important; padding-right: 0 !important;',
+      '  overflow: hidden; position: relative; background: #f8fafc !important;',
+      '}',
+      '.scw-bid-review__pkg-col--collapsed > * { display: none !important; }',
+      '.scw-bid-review__pkg-col--collapsed .scw-bid-review__cell-actions { display: none !important; }',
+
+      '.scw-bid-review__pkg-header.scw-bid-review__pkg-col--collapsed .scw-bid-review__pkg-expand {',
+      '  display: flex !important; flex-direction: column; align-items: center; gap: 6px;',
+      '  width: 100%; min-height: 70px; padding: 8px 0; border: none; cursor: pointer;',
+      '  background: transparent; color: #07467c; font-weight: 700; font-size: 11px;',
+      '}',
+      '.scw-bid-review__pkg-header.scw-bid-review__pkg-col--collapsed .scw-bid-review__pkg-expand:hover {',
+      '  background: #eef2f7;',
+      '}',
+      '.scw-bid-review__pkg-expand-icon { font-size: 14px; }',
+      '.scw-bid-review__pkg-expand-label {',
+      '  writing-mode: vertical-rl; transform: rotate(180deg);',
+      '  letter-spacing: 0.5px; white-space: nowrap;',
       '}',
 
       '.scw-bid-review__btn--create-sow {',
@@ -1767,6 +1876,31 @@
 
       '.scw-bid-review__row--survey-no-bid:hover td {',
       '  background: #fef3c7 !important;',
+      '}',
+
+      /* ── REMOVED FROM SOW: line item still exists + still shows here  */
+      /*    via the bid connection, but is no longer on this SOW. Only   */
+      /*    the SOW cell is treated (the bid columns stay normal — the   */
+      /*    item really is still on the bid). Blue dashed "cut-out"      */
+      /*    border so it reads as detached, no graying.                  */
+      '.scw-bid-review__sow-detail--off-sow {',
+      '  border: 2px dashed #2563eb !important;',
+      '  border-radius: 6px;',
+      '  background: #eff6ff !important;',
+      '  box-shadow: inset 0 0 0 9999px rgba(37,99,235,0.03);',
+      '}',
+
+      '.scw-bid-review__off-sow-tag {',
+      '  display: inline-block;',
+      '  padding: 2px 7px;',
+      '  border-radius: 3px;',
+      '  background: #2563eb;',
+      '  color: #fff !important;',
+      '  font-size: 9px;',
+      '  font-weight: 700;',
+      '  text-transform: uppercase;',
+      '  letter-spacing: 0.5px;',
+      '  white-space: nowrap;',
       '}',
 
       /* ── package data cell ─────────────────────────────────── */

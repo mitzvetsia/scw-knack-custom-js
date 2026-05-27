@@ -128,7 +128,10 @@
         // ⚠️ proxyResize routes DOM-rendered map assets (File-field
         // floorplans that can't be canvas-downscaled) through a third-party
         // resize CDN — see SECURITY note in CLAUDE.md and toProxyResizeUrl.
-        { viewId: 'view_3928', label: 'Site Maps', fullPage: true, proxyResize: { w: 2000, q: 80 } },
+        // includeFileLinks: surface non-image uploads (e.g. a PDF floorplan
+        // in field_68) as download links / merge-targets. Image maps
+        // (field_754) still go through proxyResize above.
+        { viewId: 'view_3928', label: 'Site Maps', fullPage: true, proxyResize: { w: 2000, q: 80 }, includeFileLinks: true },
         { viewId: 'view_3929', label: 'Additional Photos', thumbVariant: 'thumb_14' }
       ],
       // JSON snapshot for this scene is intentionally slim:
@@ -1147,14 +1150,48 @@
     return out;
   }
 
+  // Collect NON-image file attachments (e.g. a PDF site-map uploaded to a
+  // File field like view_3928 field_68) from a view's loaded records. These
+  // can't be inlined as <img>, so they surface as download links in the
+  // preview/published HTML and their URLs ride the payload for Make to merge.
+  // Only runs for entries flagged includeFileLinks; deduped by filename.
+  function scrapeFilesFromView(entry) {
+    var out = [];
+    if (!entry.includeFileLinks) return out;
+    if (typeof Knack === 'undefined' || !Knack.views) return out;
+    var view = Knack.views[entry.viewId];
+    if (!view) return out;
+    var records = extractAppendImageViewRecords(view);
+    var seen = {};
+    for (var r = 0; r < records.length; r++) {
+      var recFiles = extractFilesFromRecord(records[r]);
+      for (var f = 0; f < recFiles.length; f++) {
+        var file = recFiles[f];
+        if (isImageFile(file)) continue;   // images go through the image path
+        var url = file.url || file.public_url || '';
+        if (!url) continue;
+        var fname = file.filename || basenameOf(url);
+        var dkey = fname ? 'fn:' + String(fname).toLowerCase().trim() : 'url:' + url;
+        if (seen[dkey]) continue;
+        seen[dkey] = true;
+        out.push({ filename: fname || '', url: url });
+      }
+    }
+    return out;
+  }
+
   function scrapeAppendImageSections(cfg) {
     var sections = [];
     if (!cfg.appendImageViews || !cfg.appendImageViews.length) return sections;
     for (var i = 0; i < cfg.appendImageViews.length; i++) {
       var entry = cfg.appendImageViews[i];
       var images = scrapeImagesFromView(entry);
-      if (!images.length) continue;
-      sections.push({ viewId: entry.viewId, label: entry.label, images: images, fullPage: !!entry.fullPage });
+      var attachments = scrapeFilesFromView(entry);
+      if (!images.length && !attachments.length) continue;
+      sections.push({
+        viewId: entry.viewId, label: entry.label, images: images,
+        attachments: attachments, fullPage: !!entry.fullPage
+      });
     }
     return sections;
   }
@@ -1595,9 +1632,31 @@
     return html.join('\n');
   }
 
+  function renderAttachmentLinks(section, html, label) {
+    var atts = (section && section.attachments) || [];
+    if (!atts.length) return;
+    html.push('<section class="append-attachment-section">');
+    if (label) {
+      html.push('<h2 class="append-image-title">' + esc(label) + ' — Attachments</h2>');
+    }
+    html.push('<ul class="append-attachment-list">');
+    for (var a = 0; a < atts.length; a++) {
+      var name = atts[a].filename || basenameOf(atts[a].url) || 'Attachment';
+      html.push('<li><a class="append-attachment-link" href="' + esc(atts[a].url) + '">' +
+                esc(name) + '</a></li>');
+    }
+    html.push('</ul>');
+    html.push('</section>');
+  }
+
   function renderAppendImageSection(section, html) {
-    if (!section || !section.images || !section.images.length) return;
+    if (!section) return;
     var label = section.label || '';
+    if (!section.images || !section.images.length) {
+      // Attachment-only section (e.g. a PDF site map with no image rows).
+      renderAttachmentLinks(section, html, label);
+      return;
+    }
     if (section.fullPage) {
       // One image per page, full width (Site Maps — floorplans need room).
       for (var i = 0; i < section.images.length; i++) {
@@ -1611,6 +1670,7 @@
                   'alt="' + esc(img.alt || label) + '" />');
         html.push('</section>');
       }
+      renderAttachmentLinks(section, html, label);
       return;
     }
     // Compact grid (Additional Photos — multiple per page, not full size).
@@ -1627,6 +1687,7 @@
     }
     html.push('</div>');
     html.push('</section>');
+    renderAttachmentLinks(section, html, label);
   }
 
   function hasSectionContent(section) {
@@ -1847,6 +1908,22 @@
       '  background: #fafafa;',
       '  break-inside: avoid;',
       '  page-break-inside: avoid;',
+      '}',
+      '.append-attachment-section {',
+      '  padding-top: 8px;',
+      '}',
+      '.append-attachment-list {',
+      '  list-style: none;',
+      '  margin: 0;',
+      '  padding: 0;',
+      '}',
+      '.append-attachment-list li {',
+      '  margin: 4px 0;',
+      '}',
+      '.append-attachment-link {',
+      '  color: #07467c;',
+      '  font-weight: 600;',
+      '  text-decoration: underline;',
       '}',
     ].join('\n');
   }
@@ -3999,16 +4076,19 @@
         // several identical stacked headings, so the preview groups instead.
         var sec = sections[i];
         if (opts && opts.groupImages && sec.fullPage) {
-          html.push('<section class="append-image-page">');
-          if (sec.label) {
-            html.push('<h2 class="append-image-title">' + esc(sec.label) + '</h2>');
-          }
           var imgs2 = sec.images || [];
-          for (var k = 0; k < imgs2.length; k++) {
-            html.push('<img class="append-image" src="' + esc(imgs2[k].src) + '" ' +
-                      'alt="' + esc(imgs2[k].alt || sec.label) + '" />');
+          if (imgs2.length) {
+            html.push('<section class="append-image-page">');
+            if (sec.label) {
+              html.push('<h2 class="append-image-title">' + esc(sec.label) + '</h2>');
+            }
+            for (var k = 0; k < imgs2.length; k++) {
+              html.push('<img class="append-image" src="' + esc(imgs2[k].src) + '" ' +
+                        'alt="' + esc(imgs2[k].alt || sec.label) + '" />');
+            }
+            html.push('</section>');
           }
-          html.push('</section>');
+          renderAttachmentLinks(sec, html, sec.label);
         } else {
           renderAppendImageSection(sec, html);
         }

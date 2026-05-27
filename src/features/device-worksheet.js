@@ -5525,7 +5525,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     mounting:         'Mounting\nHardware',
     mountingHardware: 'Mounting\nHardware',
     connections:      'Connected to',
-    connectedDevice:  'Connected\nDevice',
+    connectedDevice:  'Connected To',
     scwNotes:         'SCW Notes',
     surveyNotes:      'Survey\nNotes',
     exterior:         'Exterior',

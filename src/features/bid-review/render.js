@@ -120,6 +120,186 @@
     'stroke-linecap="round" stroke-linejoin="round">' +
     '<polyline points="6 9 12 15 18 9"></polyline></svg>';
 
+  // ── collapsible bid (subcontractor) columns ─────────────────
+  // A reviewer can collapse a bid column down to a thin strip to get it
+  // out of the way (e.g. after creating a new SOW for that bid). State is
+  // per sowId::pkgId, in-memory so it survives grid re-renders within the
+  // session. Every cell in a column carries class scw-bid-review__pkg-col
+  // + data-package-id so a toggle can hit the whole column at once.
+  var _collapsedPkgCols = {};
+  // Columns the user has explicitly expanded/collapsed this session — their
+  // choice wins over the auto-collapse default for zero-on-SOW bids.
+  var _pkgColUserToggled = {};
+
+  function pkgColKey(sowId, pkgId) { return (sowId || '') + '::' + (pkgId || ''); }
+  function isPkgColCollapsed(sowId, pkgId) { return !!_collapsedPkgCols[pkgColKey(sowId, pkgId)]; }
+
+  // A bid whose items are ALL "other" (none on this SOW) renders collapsed
+  // by default — but only until the user toggles it.
+  function applyDefaultPkgCollapse(sowId, pkgId, shouldCollapse) {
+    var key = pkgColKey(sowId, pkgId);
+    if (_pkgColUserToggled[key]) return;
+    if (shouldCollapse) _collapsedPkgCols[key] = true;
+  }
+
+  // Tag a column cell so the collapse toggle can find it, and apply the
+  // collapsed class up front if this column is already collapsed.
+  function tagPkgCol(cell, sowId, pkgId) {
+    if (!cell) return cell;
+    cell.classList.add('scw-bid-review__pkg-col');
+    cell.setAttribute('data-package-id', pkgId);
+    if (isPkgColCollapsed(sowId, pkgId)) {
+      cell.classList.add('scw-bid-review__pkg-col--collapsed');
+    }
+    return cell;
+  }
+
+  function setPkgColCollapsed(sowId, pkgId, collapsed) {
+    var key = pkgColKey(sowId, pkgId);
+    _pkgColUserToggled[key] = true;
+    if (collapsed) _collapsedPkgCols[key] = true; else delete _collapsedPkgCols[key];
+    var scope = document.querySelector('.scw-bid-review__sow-section[data-sow-id="' + sowId + '"]');
+    if (!scope) return;
+    var cells = scope.querySelectorAll('.scw-bid-review__pkg-col[data-package-id="' + pkgId + '"]');
+    for (var i = 0; i < cells.length; i++) {
+      cells[i].classList.toggle('scw-bid-review__pkg-col--collapsed', collapsed);
+    }
+    // Collapsed (ignored) bids drop out of the SOW gap check — re-evaluate
+    // the SOW total's warning now that the active-bid set changed.
+    recomputeSowGap(scope);
+  }
+
+  // Build the per-bid "delta vs SOW" line (green match / amber gap), or
+  // null when the bid has no total to compare. Shared by the full render
+  // and the partial header refresh so both stay in sync.
+  function buildDeltaEl(hasBid, matches, amount) {
+    if (!hasBid) return null;
+    var dEl = el('div', 'scw-bid-review__col-title-delta ' +
+      (matches ? 'scw-bid-review__col-title-delta--match'
+               : 'scw-bid-review__col-title-delta--gap'));
+    if (matches) {
+      dEl.textContent = '✓ matches SOW';
+    } else {
+      var sign = amount > 0 ? '+' : '−';
+      dEl.textContent = sign + formatCurrency(Math.abs(amount)) + ' vs SOW';
+    }
+    return dEl;
+  }
+
+  // Partial refresh of a SOW section's header totals/flags after an
+  // in-place row patch (init.js's patchRows). Recomputes the SOW Sub Bid
+  // / Install totals (excluding offSow rows, matching the full render),
+  // each bid's total + delta line, the stashed data-subbid-total attrs,
+  // and the SOW gap warning — so the header never goes stale or shows the
+  // wrong value after an inline edit.
+  ns.refreshHeaderTotals = function refreshHeaderTotals(grid) {
+    if (!grid) return;
+    var section = document.querySelector('.scw-bid-review__sow-section[data-sow-id="' + grid.sowId + '"]');
+    if (!section) return;
+
+    var rows = grid.rows || [];
+    var sowSub = 0, sowInstall = 0, pkgTotals = {};
+    (grid.packages || []).forEach(function (p) { pkgTotals[p.id] = 0; });
+    rows.forEach(function (r) {
+      if (!r.offSow) {
+        if (r.sowFee) sowSub += Number(r.sowFee) || 0;
+        if (r.sowInstallFee) sowInstall += Number(r.sowInstallFee) || 0;
+      }
+      if (r.cellsByPackage) {
+        Object.keys(pkgTotals).forEach(function (pid) {
+          var c = r.cellsByPackage[pid];
+          if (c && c.labor) pkgTotals[pid] += Number(c.labor) || 0;
+        });
+      }
+    });
+
+    // SOW header cell — write each total to its OWN slot by label.
+    var sowCell = section.querySelector('.scw-bid-review__sow-detail-header');
+    if (sowCell) {
+      sowCell.setAttribute('data-subbid-total', String(sowSub));
+      var totDivs = sowCell.querySelectorAll('.scw-bid-review__col-title-total');
+      for (var d = 0; d < totDivs.length; d++) {
+        var lbl = (totDivs[d].querySelector('.scw-bid-review__col-title-total-label') || {}).textContent || '';
+        var valEl = totDivs[d].querySelector('.scw-bid-review__col-title-total-value');
+        if (!valEl) continue;
+        if (/sub bid/i.test(lbl)) valEl.textContent = formatCurrency(sowSub);
+        else if (/install/i.test(lbl)) valEl.textContent = formatCurrency(sowInstall);
+      }
+    }
+
+    // Bid header cells — value, delta line, stashed total.
+    var bidThs = section.querySelectorAll('th.scw-bid-review__pkg-header');
+    for (var i = 0; i < grid.packages.length && i < bidThs.length; i++) {
+      var pkgId = grid.packages[i].id;
+      var bt = pkgTotals[pkgId] || 0;
+      var th = bidThs[i];
+      th.setAttribute('data-subbid-total', String(bt));
+      var vEl = th.querySelector('.scw-bid-review__col-title-total-value');
+      if (vEl) vEl.textContent = formatCurrency(bt);
+      var matches = bt > 0 && Math.abs(bt - sowSub) <= 0.01;
+      var newDelta = buildDeltaEl(bt > 0, matches, bt - sowSub);
+      var oldDelta = th.querySelector('.scw-bid-review__col-title-delta');
+      if (oldDelta && newDelta) oldDelta.parentNode.replaceChild(newDelta, oldDelta);
+      else if (oldDelta && !newDelta) oldDelta.parentNode.removeChild(oldDelta);
+      else if (newDelta) th.appendChild(newDelta);
+    }
+
+    recomputeSowGap(section);
+  };
+
+  // Live re-evaluation of the SOW Sub Bid Total warning: it flags only
+  // when the SOW matches NONE of the active (non-collapsed) bids. Reads
+  // the totals stashed as data-subbid-total on the header cells.
+  function recomputeSowGap(section) {
+    if (!section) return;
+    var sowCell = section.querySelector('.scw-bid-review__sow-detail-header');
+    if (!sowCell) return;
+    var sowTotal = parseFloat(sowCell.getAttribute('data-subbid-total')) || 0;
+    var bidThs = section.querySelectorAll('th.scw-bid-review__pkg-header');
+    var activeCount = 0, matchesAny = false;
+    for (var i = 0; i < bidThs.length; i++) {
+      if (bidThs[i].classList.contains('scw-bid-review__pkg-col--collapsed')) continue;
+      var bt = parseFloat(bidThs[i].getAttribute('data-subbid-total')) || 0;
+      if (bt <= 0) continue;
+      activeCount++;
+      if (Math.abs(bt - sowTotal) <= 0.01) matchesAny = true;
+    }
+    var warn = activeCount > 0 && !matchesAny;
+    var sowSub = sowCell.querySelector('.scw-bid-review__sow-subbid');
+    if (sowSub) {
+      sowSub.classList.toggle('scw-bid-review__col-title-total--warn', warn);
+      if (warn) sowSub.title = 'SOW sub bid total matches none of the active bids';
+      else sowSub.removeAttribute('title');
+    }
+  }
+
+  // Collapse handle (in the column title cell) + expand handle (shown only
+  // while collapsed). Both attach their own listeners and stop propagation
+  // so they don't trip the delegated row/button handler in init.js.
+  function buildPkgCollapseControls(th, sowId, pkgId, pkgName) {
+    var collapseBtn = el('button', 'scw-bid-review__pkg-collapse-btn');
+    collapseBtn.type = 'button';
+    collapseBtn.title = 'Collapse this bid column';
+    collapseBtn.innerHTML = '&raquo;';
+    collapseBtn.addEventListener('click', function (e) {
+      e.preventDefault(); e.stopPropagation();
+      setPkgColCollapsed(sowId, pkgId, true);
+    });
+    th.appendChild(collapseBtn);
+
+    var expand = el('button', 'scw-bid-review__pkg-expand');
+    expand.type = 'button';
+    expand.title = 'Expand ' + (pkgName || 'bid');
+    expand.innerHTML = '<span class="scw-bid-review__pkg-expand-icon">&laquo;</span>' +
+      '<span class="scw-bid-review__pkg-expand-label"></span>';
+    expand.querySelector('.scw-bid-review__pkg-expand-label').textContent = pkgName || 'Bid';
+    expand.addEventListener('click', function (e) {
+      e.preventDefault(); e.stopPropagation();
+      setPkgColCollapsed(sowId, pkgId, false);
+    });
+    th.appendChild(expand);
+  }
+
   // ── mount point ─────────────────────────────────────────────
 
   function getOrCreateMount() {
@@ -142,12 +322,14 @@
     if (!mount) {
       mount = el('div');
       mount.id = CFG.mountSelector.replace(/^#/, '');
-      // Insert after the nav menu (view_44)
-      var nav = document.getElementById('view_44');
-      if (nav && nav.nextSibling) {
-        nav.parentNode.insertBefore(mount, nav.nextSibling);
-      } else if (nav) {
-        nav.parentNode.appendChild(mount);
+      // Insert immediately after the configured anchor view (default
+      // view_3970), falling back to the nav (view_44), then the scene.
+      var anchor = (CFG.gridAnchorView && document.getElementById(CFG.gridAnchorView))
+        || document.getElementById('view_44');
+      if (anchor && anchor.nextSibling) {
+        anchor.parentNode.insertBefore(mount, anchor.nextSibling);
+      } else if (anchor) {
+        anchor.parentNode.appendChild(mount);
       } else {
         var scene = document.getElementById(CFG.sceneKey);
         if (scene) {
@@ -185,8 +367,15 @@
     }
     for (var ri = 0; ri < sowGrid.rows.length; ri++) {
       var tRow = sowGrid.rows[ri];
-      if (tRow.sowInstallFee) sowInstallTotal += Number(tRow.sowInstallFee) || 0;
-      if (tRow.sowFee) sowSubBidTotal += Number(tRow.sowFee) || 0;
+      // Rows flagged offSow are no longer on this SOW (they only show
+      // here because the bid still references the SOW). Their SOW-side
+      // fees must NOT count toward the SOW totals — but they DO still
+      // count toward the bid column totals below, since the item is
+      // genuinely still on the bid.
+      if (!tRow.offSow) {
+        if (tRow.sowInstallFee) sowInstallTotal += Number(tRow.sowInstallFee) || 0;
+        if (tRow.sowFee) sowSubBidTotal += Number(tRow.sowFee) || 0;
+      }
       if (tRow.cellsByPackage) {
         for (var pid in pkgSubBidTotals) {
           var tCell = tRow.cellsByPackage[pid];
@@ -197,34 +386,58 @@
       }
     }
 
-    // Mismatch detection — penny-level tolerance, and only warn when
-    // there's actually a bid to compare against (skip if bid total is 0
-    // — that's a not-yet-bid column, not a discrepancy).
+    // ── multi-bid gap logic ─────────────────────────────────────
+    // Penny-level tolerance. A bid "matches" the SOW when its sub-bid
+    // total equals the SOW sub-bid total. With multiple bids the SOW can
+    // only match one, so:
+    //   • Each BID column shows its own delta vs the SOW (green "matches"
+    //     or amber "±$X vs SOW") — unambiguous, per column.
+    //   • The SOW total flags red ONLY when it matches NONE of the
+    //     *active* bids (collapsed/ignored bids are excluded). So matching
+    //     at least one active bid clears the SOW flag.
     var MISMATCH_EPSILON = 0.01;
-    function bidMismatches(pkgId) {
+    function bidMatchesSow(pkgId) {
       var bidTotal = pkgSubBidTotals[pkgId];
-      if (!bidTotal) return false;
-      return Math.abs(bidTotal - sowSubBidTotal) > MISMATCH_EPSILON;
+      return bidTotal > 0 && Math.abs(bidTotal - sowSubBidTotal) <= MISMATCH_EPSILON;
     }
-    var anySowMismatch = false;
+    var activeBidCount = 0, sowMatchesAny = false;
     for (var pidChk in pkgSubBidTotals) {
-      if (bidMismatches(pidChk)) { anySowMismatch = true; break; }
+      if (isPkgColCollapsed(sowGrid.sowId, pidChk)) continue; // ignored bid
+      if (pkgSubBidTotals[pidChk] > 0) {
+        activeBidCount++;
+        if (bidMatchesSow(pidChk)) sowMatchesAny = true;
+      }
     }
+    var sowWarn = activeBidCount > 0 && !sowMatchesAny;
 
-    function buildTitleCell(cls, title, totals) {
+    function buildTitleCell(cls, title, totals, pkgOpts) {
       var th = el('th', cls);
       th.appendChild(el('div', 'scw-bid-review__col-title-text', title));
       for (var i = 0; totals && i < totals.length; i++) {
         var t = totals[i];
         if (!t) continue;
+
+        // Delta-vs-SOW line for a bid column.
+        if (t.delta) {
+          var dEl = buildDeltaEl(t.hasBid, t.matches, t.amount);
+          if (dEl) th.appendChild(dEl);
+          continue;
+        }
+
         var subCls = 'scw-bid-review__col-title-total';
+        if (t.extraCls) subCls += ' ' + t.extraCls;
         if (t.warn) subCls += ' scw-bid-review__col-title-total--warn';
         var sub = el('div', subCls);
-        if (t.warn) sub.title = 'SOW sub bid total doesn’t match this bid';
+        if (t.warn) sub.title = t.warnTitle || 'SOW sub bid total matches none of the active bids';
         sub.appendChild(el('span', 'scw-bid-review__col-title-total-label', t.label));
         sub.appendChild(document.createTextNode(' '));
         sub.appendChild(el('span', 'scw-bid-review__col-title-total-value', formatCurrency(t.value || 0)));
         th.appendChild(sub);
+      }
+      if (pkgOpts) {
+        tagPkgCol(th, pkgOpts.sowId, pkgOpts.pkgId);
+        buildPkgCollapseControls(th, pkgOpts.sowId, pkgOpts.pkgId, pkgOpts.pkgName);
+        th.setAttribute('data-subbid-total', String(pkgOpts.subBidTotal || 0));
       }
       return th;
     }
@@ -233,18 +446,24 @@
     r1.appendChild(el('th', 'scw-bid-review__sow-header', 'Line Item'));
     r1.appendChild(el('th', 'scw-bid-review__photos-header', 'Photos'));
     // Sales Revisions column injected externally — leave gap
-    r1.appendChild(buildTitleCell(
+    var sowTitleTh = buildTitleCell(
       'scw-bid-review__sow-detail-header', 'SCW SOW', [
-        { label: 'Sub Bid Total:', value: sowSubBidTotal, warn: anySowMismatch },
+        { label: 'Sub Bid Total:', value: sowSubBidTotal, warn: sowWarn, extraCls: 'scw-bid-review__sow-subbid' },
         { label: 'Install Total:', value: sowInstallTotal }
       ]
-    ));
+    );
+    // Stash the SOW total so collapse toggles can recompute the gap live.
+    sowTitleTh.setAttribute('data-subbid-total', String(sowSubBidTotal));
+    r1.appendChild(sowTitleTh);
     for (var i = 0; i < sowGrid.packages.length; i++) {
       var pkgId = sowGrid.packages[i].id;
+      var bidTotal = pkgSubBidTotals[pkgId];
       r1.appendChild(buildTitleCell(
         'scw-bid-review__pkg-header', 'Subcontractor Bid', [
-          { label: 'Sub Bid Total:', value: pkgSubBidTotals[pkgId], warn: bidMismatches(pkgId) }
-        ]
+          { label: 'Sub Bid Total:', value: bidTotal },
+          { delta: true, hasBid: bidTotal > 0, matches: bidMatchesSow(pkgId), amount: bidTotal - sowSubBidTotal }
+        ],
+        { sowId: sowGrid.sowId, pkgId: pkgId, pkgName: sowGrid.packages[i].name, subBidTotal: bidTotal }
       ));
     }
     r1.appendChild(el('th', 'scw-bid-review__actions-header scw-bid-review__cr-col', 'Sub Bid Revisions'));
@@ -270,6 +489,7 @@
     for (var j = 0; j < sowGrid.packages.length; j++) {
       var pkg = sowGrid.packages[j];
       var td = el('td', 'scw-bid-review__header-detail-cell');
+      tagPkgCol(td, sowGrid.sowId, pkg.id);
 
       var statusVal = pkg.bidStatus || '';
       if (statusVal) {
@@ -291,6 +511,12 @@
         subtitle.appendChild(pdfLink);
       }
       td.appendChild(subtitle);
+
+      // Bid friendly name (field_2636) — mirrors the SOW friendly name
+      // shown under the SOW grid title.
+      if (pkg.bidName) {
+        td.appendChild(el('div', 'scw-bid-review__col-friendly-name', pkg.bidName));
+      }
 
       if (pkg.crPendingCount > 0 && pkg.crLinkUrl) {
         var crLink = document.createElement('a');
@@ -337,10 +563,11 @@
       var statusVal2 = pkg2.bidStatus || '';
       var isSubmitted = /^submitted$/i.test(String(statusVal2).trim());
       var actionTd = el('td', 'scw-bid-review__header-action-cell');
+      tagPkgCol(actionTd, sowGrid.sowId, pkg2.id);
 
       if (isSubmitted) {
         actionTd.appendChild(btn(
-          '\u2190 Sync SOW to Bid', 'adopt',
+          '\u2190 Update SOW to match Bid', 'adopt',
           { 'data-action': 'package_copy_to_sow', 'data-package-id': pkg2.id, 'data-sow-id': sowGrid.sowId }
         ));
         actionTd.appendChild(btn(
@@ -448,6 +675,11 @@
 
   function buildSowDetailCell(row, cablingVisible, connDevVisible, qtyVisible, diffs, sowId, packages, diffsByPkg) {
     var td = el('td', 'scw-bid-review__sow-detail');
+    // Removed-from-SOW: the line item is no longer on this SOW but still
+    // shows here because the bid record references the SOW. Give the SOW
+    // cell a blue dashed "cut-out" border so it reads as detached — the
+    // bid columns stay normal (the item really is still on the bid).
+    if (row.offSow) td.className += ' scw-bid-review__sow-detail--off-sow';
 
     // Lazy-built top-right action stack. "Revise bid to match" goes on
     // top (only when there are mismatches), "Disconnect from SOW" sits
@@ -518,21 +750,27 @@
       return td;
     }
 
-    // Bottom entry of the top-right stack: Disconnect from SOW. Removes
-    // this SOW's id from the SOW item record's field_2154 connection
-    // (leaving any other connected SOWs intact). The line item itself
-    // is NOT deleted.
+    // Bottom entry of the top-right stack. If the item is already
+    // removed from this SOW, show a "Removed from SOW" message in place
+    // of the button (nothing left to disconnect). Otherwise show the
+    // Disconnect from SOW action, which removes this SOW's id from the
+    // SOW item record's field_2154 connection (leaving any other
+    // connected SOWs intact). The line item itself is NOT deleted.
     if (row.sowItem && sowId) {
       var dStack = getTopRightStack();
-      var dBtn = el('button',
-        'scw-bid-review__cell-action scw-bid-review__cell-action--remove',
-        'Disconnect from SOW');
-      dBtn.type = 'button';
-      dBtn.setAttribute('data-action',  'cell_disconnect_from_sow');
-      dBtn.setAttribute('data-row-id',  row.id);
-      dBtn.setAttribute('data-sow-id',  sowId);
-      dBtn.setAttribute('data-sow-item-id', row.sowItem);
-      dStack.appendChild(dBtn);
+      if (row.offSow) {
+        dStack.appendChild(el('span', 'scw-bid-review__off-sow-tag', 'Not Included in SOW'));
+      } else {
+        var dBtn = el('button',
+          'scw-bid-review__cell-action scw-bid-review__cell-action--remove',
+          'Disconnect from SOW');
+        dBtn.type = 'button';
+        dBtn.setAttribute('data-action',  'cell_disconnect_from_sow');
+        dBtn.setAttribute('data-row-id',  row.id);
+        dBtn.setAttribute('data-sow-id',  sowId);
+        dBtn.setAttribute('data-sow-item-id', row.sowItem);
+        dStack.appendChild(dBtn);
+      }
     }
 
     if (row.sowProduct) {
@@ -1109,6 +1347,7 @@
         row.cellsByPackage[pid] || null, cablingVisible, connDevVisible, qtyVisible, d,
         { rowId: row.id, pkgId: pid, sowId: sowId }
       );
+      tagPkgCol(dataTd, sowId, pid);
       if (d && d.any) {
         dataTd.classList.add('scw-bid-review__cell--mismatch');
       }
@@ -1165,13 +1404,14 @@
 
   // ── collapsible group header row ─────────────────────────────
 
-  function buildGroupHeader(group, colSpan, rowCount) {
+  function buildGroupHeader(group, colSpan, rowCount, collapsed) {
     var label   = group.label;
 
     var tr = el('tr', 'scw-bid-review__group-header');
     tr.setAttribute('role', 'button');
     tr.setAttribute('tabindex', '0');
-    tr.setAttribute('aria-expanded', 'true');
+    tr.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+    if (collapsed) tr.classList.add('scw-bid-review__group-header--collapsed');
 
     var td = el('td');
     td.setAttribute('colspan', colSpan);
@@ -1209,6 +1449,7 @@
         sibling.style.display = expanded ? 'none' : '';
         sibling = sibling.nextElementSibling;
       }
+      persistAccordionState();
     });
 
     tr.addEventListener('keydown', function (e) {
@@ -1353,6 +1594,12 @@
 
   // ── assemble rows from grouped state ────────────────────────
 
+  // MDF/IDF groups start collapsed on every render. The grid leads with
+  // many groups, so opening them all buries the comparison; the reviewer
+  // expands the one they're working in. Hiding each group's rows up front
+  // mirrors the header click-toggle's display:none walk.
+  var GROUPS_START_COLLAPSED = true;
+
   function buildBodyRows(groups, packages, colSpan, sowId) {
     var frag = document.createDocumentFragment();
 
@@ -1367,8 +1614,16 @@
         }
       }
 
+      // Only hide child rows when there's a header to expand them again.
+      var hideChildren = GROUPS_START_COLLAPSED && !!group.label;
+      function appendChild(node) {
+        if (!node) return;
+        if (hideChildren) node.style.display = 'none';
+        frag.appendChild(node);
+      }
+
       if (group.label) {
-        frag.appendChild(buildGroupHeader(group, colSpan, totalRows));
+        frag.appendChild(buildGroupHeader(group, colSpan, totalRows, GROUPS_START_COLLAPSED));
         // Auto-mount the headend detail rows immediately under the L1
         // header so they're visible whenever the group is expanded
         // (default state). The accordion toggle on the header walks
@@ -1381,10 +1636,8 @@
         // returns null when its source is missing or empty, so the
         // table stays free of blank bands.
         if (group.mdfIdfId) {
-          var surveyNotes = buildL1SurveyNotesRow(group.mdfIdfId, colSpan);
-          if (surveyNotes) frag.appendChild(surveyNotes);
-          var detail = buildL1DetailRow(group.mdfIdfId, colSpan);
-          if (detail) frag.appendChild(detail);
+          appendChild(buildL1SurveyNotesRow(group.mdfIdfId, colSpan));
+          appendChild(buildL1DetailRow(group.mdfIdfId, colSpan));
         }
       }
 
@@ -1393,17 +1646,17 @@
         for (var si = 0; si < group.subgroups.length; si++) {
           var sub = group.subgroups[si];
           if (sub.label) {
-            frag.appendChild(buildSubgroupHeader(sub.label, colSpan, sub.rows.length));
+            appendChild(buildSubgroupHeader(sub.label, colSpan, sub.rows.length));
           }
           for (var ri = 0; ri < sub.rows.length; ri++) {
-            frag.appendChild(buildDataRow(sub.rows[ri], packages, sowId));
+            appendChild(buildDataRow(sub.rows[ri], packages, sowId));
           }
         }
       }
 
       // Direct rows (no subgroups)
       for (var di = 0; di < group.rows.length; di++) {
-        frag.appendChild(buildDataRow(group.rows[di], packages, sowId));
+        appendChild(buildDataRow(group.rows[di], packages, sowId));
       }
     }
 
@@ -1803,9 +2056,19 @@
     //    document opens Knack's add-document child page under
     //    #review-bid so the user stays in the comparison flow.
     var docsIdx = buildDocsIndex();
-    var addDocUrl = sowId
-      ? '#review-bid/' + sowId + '/add-document-review-bid/' + sowId + '/'
-      : '';
+    // Anchor the add-document child-page URL to the LIVE hash, not a
+    // hardcoded top-level slug. scene_1155 is reached via a nested nav
+    // path (e.g. #team-calendar/project-dashboard/<projectId>/review-bids/
+    // <projectId>) that varies by entry point; a bare "#review-bid/..."
+    // doesn't resolve, so Knack bounces to the start page. Append the
+    // child slug + sowId to the current path instead.
+    var addDocUrl = '';
+    if (sowId) {
+      var base = (window.location.hash || '').split('?')[0].replace(/\/+$/, '');
+      // Drop an already-open add-document segment so re-renders don't nest.
+      base = base.replace(/\/add-document-review-bid\/[a-f0-9]{24}\/?$/i, '');
+      addDocUrl = base + '/add-document-review-bid/' + sowId + '/';
+    }
     var sowDocsBlock = buildSowDocsBlock(sowId, addDocUrl, docsIdx);
     if (sowDocsBlock) details.appendChild(sowDocsBlock);
 
@@ -1894,6 +2157,15 @@
   }
 
   function buildSowSection(sowGrid) {
+    // Default-collapse any bid column whose items are all "other" (none on
+    // this SOW), unless the user has toggled it. Seed before the table is
+    // built so every cell in the column picks up the collapsed class.
+    for (var dc = 0; dc < sowGrid.packages.length; dc++) {
+      if (sowGrid.packages[dc].noOnSowItems) {
+        applyDefaultPkgCollapse(sowGrid.sowId, sowGrid.packages[dc].id, true);
+      }
+    }
+
     var section = el('div', 'scw-bid-review__sow-section');
     section.setAttribute('data-sow-id', sowGrid.sowId);
 
@@ -1912,6 +2184,12 @@
     header.appendChild(chevron);
 
     header.appendChild(el('span', 'scw-bid-review__sow-title-text', sowGrid.sowName));
+    // SOW Name (field_2126) alongside the SOW # — read from the next-step
+    // row, same source as the editable SOW Name input in the header.
+    var sowNameVal = readRowFieldText(findNextStepRow(sowGrid.sowId), CFG.sowNameField) || '';
+    if (sowNameVal && sowNameVal !== sowGrid.sowName) {
+      header.appendChild(el('span', 'scw-bid-review__sow-title-name', sowNameVal));
+    }
     header.appendChild(el('span', 'scw-bid-review__sow-title-count',
       sowGrid.rows.length + ' line item' + (sowGrid.rows.length !== 1 ? 's' : '') +
       ' \u00b7 ' + sowGrid.packages.length + ' bid' + (sowGrid.packages.length !== 1 ? 's' : '')));
@@ -1981,6 +2259,7 @@
       var expanded = header.getAttribute('aria-expanded') === 'true';
       header.setAttribute('aria-expanded', String(!expanded));
       section.classList.toggle('scw-bid-review__sow-section--collapsed', expanded);
+      persistAccordionState();
     });
 
     header.addEventListener('keydown', function (e) {
@@ -2050,7 +2329,10 @@
       }
     }
 
-    // Restore MDF/IDF group headers
+    // Restore MDF/IDF group headers. They're built collapsed, so we only
+    // need to RE-OPEN the ones that were open before the re-render —
+    // mirroring the SOW-section logic above. (Previously this branch only
+    // ever re-collapsed, so an open group always snapped shut on refresh.)
     var headers = mount.querySelectorAll('.scw-bid-review__group-header');
     for (var h = 0; h < headers.length; h++) {
       var section = headers[h].closest('.scw-bid-review__sow-section');
@@ -2058,28 +2340,119 @@
       var label = (headers[h].querySelector('.scw-bid-review__grp-title') || {}).textContent || '';
       var key = sowKey + '::' + label;
 
-      if (label && snap.group[key] === false) {
-        // Was collapsed — collapse it
-        headers[h].setAttribute('aria-expanded', 'false');
-        headers[h].classList.add('scw-bid-review__group-header--collapsed');
-        var sibling = headers[h].nextElementSibling;
-        while (sibling) {
-          if (sibling.classList.contains('scw-bid-review__group-header')) break;
-          sibling.style.display = 'none';
-          sibling = sibling.nextElementSibling;
-        }
+      if (label && snap.group[key] === true) {
+        setGroupHeaderOpen(headers[h], true);
       }
     }
   }
 
+  // ── persist accordion state across a full page reload ───────
+  // The snapshot/restore above is in-memory and dies on a page reload
+  // (e.g. the post-"Update SOW to match Bid" reload). Mirror it into
+  // sessionStorage so the user's open SOWs / MDF-IDF groups come back
+  // after the reload. sessionStorage (not localStorage) keeps it scoped
+  // to the current tab session.
+  var ACCORDION_STORE_PREFIX = 'scwBidReviewAccordion:';
+
+  function accordionStorageKey() {
+    var scene = (window.Knack && Knack.router && Knack.router.current_scene_key) || CFG.sceneKey;
+    return ACCORDION_STORE_PREFIX + scene;
+  }
+
+  function persistAccordionState() {
+    try {
+      var mount = document.querySelector(CFG.mountSelector);
+      if (!mount) return;
+      var snap = snapshotAccordionState(mount);
+      if (Object.keys(snap.sow).length || Object.keys(snap.group).length) {
+        sessionStorage.setItem(accordionStorageKey(), JSON.stringify(snap));
+      }
+    } catch (e) { /* sessionStorage unavailable — ignore */ }
+  }
+
+  function loadPersistedAccordionState() {
+    try {
+      var raw = sessionStorage.getItem(accordionStorageKey());
+      if (!raw) return null;
+      var parsed = JSON.parse(raw);
+      if (parsed && parsed.sow && parsed.group) return parsed;
+    } catch (e) { /* corrupt / unavailable — ignore */ }
+    return null;
+  }
+
+  ns.persistAccordionState = persistAccordionState;
+
+  // Capture the latest DOM state on unload (covers manual reloads and the
+  // programmatic post-sync reload alike). Registered once.
+  var _unloadPersistBound = false;
+  function bindUnloadPersist() {
+    if (_unloadPersistBound) return;
+    _unloadPersistBound = true;
+    window.addEventListener('beforeunload', persistAccordionState);
+  }
+
+  // ── shared accordion open/close helpers ─────────────────────
+  // Used by the per-header toggles, the snapshot/restore cycle, and the
+  // Expand all / Collapse all toolbar buttons so every path opens/closes
+  // a section the exact same way.
+
+  function setSowSectionOpen(section, open) {
+    if (!section) return;
+    section.classList.toggle('scw-bid-review__sow-section--collapsed', !open);
+    var hdr = section.querySelector('.scw-bid-review__sow-title');
+    if (hdr) hdr.setAttribute('aria-expanded', String(open));
+  }
+
+  function setGroupHeaderOpen(tr, open) {
+    if (!tr) return;
+    tr.setAttribute('aria-expanded', String(open));
+    tr.classList.toggle('scw-bid-review__group-header--collapsed', !open);
+    // Walk the sibling rows up to the next L1 group header, toggling them.
+    var sibling = tr.nextElementSibling;
+    while (sibling) {
+      if (sibling.classList.contains('scw-bid-review__group-header')) break;
+      sibling.style.display = open ? '' : 'none';
+      sibling = sibling.nextElementSibling;
+    }
+  }
+
+  function setAllAccordions(open) {
+    var mount = document.querySelector(CFG.mountSelector);
+    if (!mount) return;
+    var sections = mount.querySelectorAll('.scw-bid-review__sow-section');
+    for (var i = 0; i < sections.length; i++) setSowSectionOpen(sections[i], open);
+    var headers = mount.querySelectorAll('.scw-bid-review__group-header');
+    for (var h = 0; h < headers.length; h++) setGroupHeaderOpen(headers[h], open);
+    persistAccordionState();
+  }
+
   // ── grid toolbar (top of #bid-review-matrix) ────────────────
-  // Currently empty — the "+ Create New SOW" button was removed
-  // because it shouldn't be exposed from the bid-comparison surface.
-  // Kept as a stub so renderMatrix's `mount.appendChild(buildToolbar())`
-  // call doesn't have to be conditionally guarded; if new toolbar
-  // controls need to land later, mount them here.
-  function buildToolbar() {
-    return el('div', 'scw-bid-review__toolbar');
+  // Expand all / Collapse all drive every SOW section AND every MDF/IDF
+  // group at once. A left-side count makes a multi-SOW page read as a
+  // list of like items rather than an undifferentiated stack.
+  function buildToolbar(state) {
+    var bar = el('div', 'scw-bid-review__toolbar');
+
+    var sowCount = (state && state.sowGrids) ? state.sowGrids.length : 0;
+    if (sowCount > 1) {
+      bar.appendChild(el('span', 'scw-bid-review__toolbar-count',
+        sowCount + ' SOWs'));
+    }
+
+    var btns = el('div', 'scw-bid-review__toolbar-btns');
+
+    var btnCollapse = el('button', 'scw-bid-review__toolbar-btn', 'Collapse all');
+    btnCollapse.type = 'button';
+    btnCollapse.addEventListener('click', function () { setAllAccordions(false); });
+    btns.appendChild(btnCollapse);
+
+    var btnExpand = el('button', 'scw-bid-review__toolbar-btn scw-bid-review__toolbar-btn--primary', 'Expand all');
+    btnExpand.type = 'button';
+    btnExpand.addEventListener('click', function () { setAllAccordions(true); });
+    btns.appendChild(btnExpand);
+
+    bar.appendChild(btns);
+    return bar;
   }
 
   // ── public: renderMatrix ────────────────────────────────────
@@ -2094,8 +2467,19 @@
     var mount = getOrCreateMount();
     if (!mount) return null;   // wrong scene — scene gate refused
 
+    bindUnloadPersist();
+
     // Preserve accordion state across re-renders
     var snap = snapshotAccordionState(mount);
+
+    // On a fresh page load the mount is empty, so the live snapshot has
+    // nothing. Seed it from the persisted session snapshot so the user's
+    // open SOWs / groups survive a full page reload (e.g. the post-sync
+    // reload) instead of coming back all-collapsed.
+    if (!Object.keys(snap.sow).length && !Object.keys(snap.group).length) {
+      var persisted = loadPersistedAccordionState();
+      if (persisted) snap = persisted;
+    }
 
     // Drop the cached DOC_files index so the next docs lookup re-
     // scrapes view_3926 (post-mutation refreshes need fresh data).
@@ -2110,20 +2494,27 @@
       return mount;
     }
 
-    mount.appendChild(buildToolbar());
+    mount.appendChild(buildToolbar(state));
 
     for (var i = 0; i < state.sowGrids.length; i++) {
       mount.appendChild(buildSowSection(state.sowGrids[i]));
     }
 
-    // Default-open SOW: the last one in render order (== the only one when
-    // there's a single SOW). restoreAccordionState applies this only to
-    // sections with no prior open/closed state in the snapshot.
-    var defaultOpenSowId = state.sowGrids.length
-      ? state.sowGrids[state.sowGrids.length - 1].sowId
+    // Default-open SOW: ONLY when there's a single SOW (auto-open it so the
+    // user isn't staring at one collapsed card). With multiple SOWs we
+    // open none by default — otherwise the "last" SOW kept popping open on
+    // every refresh even while the user worked in a different one. The
+    // user expands what they want (or hits Expand all). restoreAccordionState
+    // applies this only to sections with no prior state in the snapshot.
+    var defaultOpenSowId = (state.sowGrids.length === 1)
+      ? state.sowGrids[0].sowId
       : null;
 
     restoreAccordionState(mount, snap, defaultOpenSowId);
+
+    // Mirror the just-restored state into sessionStorage so it's current
+    // even if the page reloads before any toggle/beforeunload fires.
+    persistAccordionState();
 
     // Notify other modules that the grid has been built
     $(document).trigger('scw-bid-review-rendered');

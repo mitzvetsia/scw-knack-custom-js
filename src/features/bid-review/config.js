@@ -58,6 +58,9 @@
 
     // ── DOM mount point (inserted after the source view) ──────
     mountSelector:     '#bid-review-matrix',
+    // The grid is inserted immediately AFTER this view in the DOM.
+    // Falls back to view_44 (nav), then the scene, if absent.
+    gridAnchorView:    'view_3970',
 
     // ── Knack field keys ──────────────────────────────────────
     fieldKeys: {
@@ -99,6 +102,7 @@
       bidPdf:          'field_2626',   // Current Bid PDF (file field on bid package)
       bidSurvey:       'field_2386',   // REL_survey (connection on bid package, view_3573)
       bidStatus:       'field_2550',   // Bid status (text field on bid package, view_3573)
+      bidName:         'field_2636',   // Bid friendly name (text field on bid package, view_3573)
       bidSow:          'field_2387',   // REL_SOW (connection on bid package, view_3573).
                                        // Used to gate which bid columns appear in each
                                        // SOW grid: a bid only shows on a SOW grid when
