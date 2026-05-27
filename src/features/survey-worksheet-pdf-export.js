@@ -566,6 +566,29 @@
         // resolved bucket override, which is the source of truth on
         // the live worksheet.
         rowObj.rowClasses = tr.className || '';
+
+        // TEMP DIAGNOSTIC — locate the connection field. Logs each
+        // card's scraped summary labels/values + every connection-type
+        // field on the model record (arrays of {id, identifier}). Remove
+        // once the connected-devices field is identified.
+        try {
+          var connFields = {};
+          if (rowObj.raw) {
+            Object.keys(rowObj.raw).forEach(function (k) {
+              if (!/_raw$/.test(k)) return;
+              var v = rowObj.raw[k];
+              if (Array.isArray(v) && v.length && v[0] && (v[0].identifier || v[0].id)) {
+                connFields[k] = v.map(function (e) { return e.identifier || e.id; }).join(', ');
+              }
+            });
+          }
+          console.log('[SCW survey-pdf] CARD', rowObj.label,
+            '| classes:', rowObj.rowClasses,
+            '| summaryFields:', (rowObj.summaryFields || []).map(function (s) { return s.label + '=' + s.value; }),
+            '| connectedText:', rowObj.connectedText,
+            '| model connection fields:', connFields);
+        } catch (e) { /* diagnostic only */ }
+
         out.push(rowObj);
       }
     }
