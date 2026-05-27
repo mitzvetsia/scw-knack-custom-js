@@ -185,8 +185,15 @@
     }
     for (var ri = 0; ri < sowGrid.rows.length; ri++) {
       var tRow = sowGrid.rows[ri];
-      if (tRow.sowInstallFee) sowInstallTotal += Number(tRow.sowInstallFee) || 0;
-      if (tRow.sowFee) sowSubBidTotal += Number(tRow.sowFee) || 0;
+      // Rows flagged offSow are no longer on this SOW (they only show
+      // here because the bid still references the SOW). Their SOW-side
+      // fees must NOT count toward the SOW totals — but they DO still
+      // count toward the bid column totals below, since the item is
+      // genuinely still on the bid.
+      if (!tRow.offSow) {
+        if (tRow.sowInstallFee) sowInstallTotal += Number(tRow.sowInstallFee) || 0;
+        if (tRow.sowFee) sowSubBidTotal += Number(tRow.sowFee) || 0;
+      }
       if (tRow.cellsByPackage) {
         for (var pid in pkgSubBidTotals) {
           var tCell = tRow.cellsByPackage[pid];
