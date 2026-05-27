@@ -532,7 +532,7 @@
     if (row.sowItem && sowId) {
       var dStack = getTopRightStack();
       if (row.offSow) {
-        dStack.appendChild(el('span', 'scw-bid-review__off-sow-tag', 'Removed from SOW'));
+        dStack.appendChild(el('span', 'scw-bid-review__off-sow-tag', 'Not Included in SOW'));
       } else {
         var dBtn = el('button',
           'scw-bid-review__cell-action scw-bid-review__cell-action--remove',
