@@ -172,6 +172,30 @@
     return stripped.length > 0;
   }
 
+  // Assumption / service text fields (field_2409) often hold rich-text
+  // HTML (<p>, <ul><li>, <br>). Scraped as a string it renders the raw
+  // tags literally in the PDF, so flatten to readable plain text:
+  // block tags → newlines, list items → bullets, strip the rest, decode
+  // the common entities. ws-brief-labor is white-space: pre-wrap so the
+  // newlines survive.
+  function htmlToPlainText(s) {
+    if (s == null) return '';
+    var t = String(s);
+    if (t.indexOf('<') === -1 && t.indexOf('&') === -1) return t;
+    t = t.replace(/<\s*li[^>]*>/gi, '\n• ');
+    t = t.replace(/<\s*br\s*\/?\s*>/gi, '\n');
+    t = t.replace(/<\s*\/\s*(p|div|ul|ol|li|h[1-6])\s*>/gi, '\n');
+    t = t.replace(/<[^>]+>/g, '');
+    t = t.replace(/&nbsp;/gi, ' ')
+         .replace(/&amp;/gi, '&')
+         .replace(/&lt;/gi, '<')
+         .replace(/&gt;/gi, '>')
+         .replace(/&#39;|&apos;/gi, "'")
+         .replace(/&quot;/gi, '"');
+    t = t.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n');
+    return t.replace(/^\s+|\s+$/g, '');
+  }
+
   function firstKeyValue(map, keys) {
     if (!map || !keys) return '';
     for (var i = 0; i < keys.length; i++) {
@@ -1619,14 +1643,24 @@
 
   function renderCard(card) {
     var h = [];
-    // Two-column body lights up when the card has detail data
-    // (cameras/readers, NVRs, switches). Service/assumption rows
-    // collapse to a single brief header line + body text.
-    var brief = !card.showDetail;
-    var isAssumption = card.rowClasses && /\bscw-row--assumptions\b/.test(card.rowClasses);
+    var isSvcOrAssump = isServiceOrAssumptionBucket(card);
+    var isAssumption  = card.rowClasses && /\bscw-row--assumptions\b/.test(card.rowClasses);
+    var isService     = isSvcOrAssump && !isAssumption;
+    var isProjectWideAssumption = isAssumption &&
+      /project wide/i.test(card.groupL1 || '');
+
+    // Two-column writing body lights up for normal detail cards
+    // (cameras/readers, NVRs, switches). SERVICE rows force a compact
+    // writing area too (techs scope services on site). ASSUMPTIONS are
+    // reference text only — never a writing area, regardless of where
+    // they sit or whether the worksheet left a residual detail field.
+    var renderBody = card.showDetail && !isSvcOrAssump;
+    var brief = !renderBody;
     var cls = 'ws-card' +
-      (card.showDetail ? '' : ' ws-card--header-only ws-card--brief') +
-      (isAssumption ? ' ws-card--assumption' : '');
+      (brief ? ' ws-card--header-only ws-card--brief' : '') +
+      (isAssumption ? ' ws-card--assumption' : '') +
+      (isService ? ' ws-card--service' : '') +
+      (isProjectWideAssumption ? ' ws-card--assumption-pw' : '');
     h.push('<section class="' + cls + '">');
 
     // ── Header row ──
@@ -1637,21 +1671,38 @@
     // Notes summary) only.
     h.push('<header class="ws-header">');
     h.push('<div class="ws-identity">');
-    if (brief) {
-      // Knack's identifier formula often concatenates "name - product"
-      // and renders a trailing " - " when product is empty (typical
-      // for assumption / service rows). Strip it so the header reads
-      // cleanly.
+
+    // Subtle bucket tag. SERVICE rows and ASSUMPTION rows that sit
+    // inside an MDF/IDF get a small pill so the tech can tell them apart
+    // from real devices. Project-wide assumptions need no tag — the
+    // "Project Wide Assumptions" group header already identifies them,
+    // and the row is pure reference text.
+    if (isService) {
+      h.push('<span class="ws-tag ws-tag--service">Service</span>');
+    } else if (isAssumption && !isProjectWideAssumption) {
+      h.push('<span class="ws-tag ws-tag--assumption">Assumption</span>');
+    }
+
+    // Identity line.
+    //  • Project-wide assumption: omit entirely — exclude the product /
+    //    identifier field and let the text below stand alone.
+    //  • Other brief / service rows: show the label, but drop the
+    //    product (hidden for these buckets) and the generic "Custom
+    //    Assumption" identifier (noise beside the tag + text).
+    if (!isProjectWideAssumption && (brief || isService)) {
       var briefLabel = String(card.label || '').replace(/\s*[-–—]\s*$/, '');
+      if (isAssumption && /^custom assumption$/i.test(briefLabel)) briefLabel = '';
       if (briefLabel) h.push('<span class="ws-label">' + esc(briefLabel) + '</span>');
-      if (briefLabel && card.product) h.push('<span class="ws-sep">&middot;</span>');
-      if (card.product) h.push('<span class="ws-product">' + esc(card.product) + '</span>');
+      if (!isSvcOrAssump) {
+        if (briefLabel && card.product) h.push('<span class="ws-sep">&middot;</span>');
+        if (card.product) h.push('<span class="ws-product">' + esc(card.product) + '</span>');
+      }
     }
     // Warning / alert chits intentionally suppressed — survey PDF
     // is a fill-in-the-field doc; on-screen QA chips are noise here.
     h.push('</div>');
 
-    if (card.summaryFields.length) {
+    if (card.summaryFields.length && !isAssumption) {
       h.push('<div class="ws-summary-fields">');
       for (var s = 0; s < card.summaryFields.length; s++) {
         var sf = card.summaryFields[s];
@@ -1684,13 +1735,13 @@
     // classification — if a service row has a residual chip-host
     // field, it'll classify as showDetail=true but we still want the
     // service description rendered prominently.
-    var isSvcOrAssump = isServiceOrAssumptionBucket(card);
     if (isSvcOrAssump && hasMeaningfulText(card.laborText)) {
-      h.push('<div class="ws-brief-labor">' + esc(card.laborText) + '</div>');
+      h.push('<div class="ws-brief-labor">' +
+        esc(htmlToPlainText(card.laborText)) + '</div>');
     }
 
     // ── Two-column body (camera/reader/NVR cards only) ──
-    if (card.showDetail) {
+    if (renderBody) {
       // Notes square is reserved for cards where the tech is likely
       // to capture install observations (cameras/readers/networking).
       // Other Equipment cards (UPS, racks, hard drives) don't need it
@@ -1768,6 +1819,13 @@
       }
 
       h.push('</div>');
+    }
+
+    // ── Service writing area ──
+    // Services get a compact bordered box to scope the work on site.
+    // (Assumptions never get one — reference text only.)
+    if (isService) {
+      h.push('<div class="ws-service-notes"></div>');
     }
 
     // ── Photo strip (full width below the 2-col body) ──
@@ -2249,6 +2307,16 @@
       '.ws-card--brief .ws-label { font-size: 10.5px; }',
       '.ws-card--brief .ws-product { font-size: 9.5px; }',
       '',
+      '/* ── Subtle bucket tags (Service / Assumption) ── */',
+      '.ws-tag {',
+      '  display: inline-block; font-size: 6.5px; font-weight: 700;',
+      '  letter-spacing: 0.5px; text-transform: uppercase;',
+      '  padding: 0 4px; border-radius: 3px; line-height: 1.5;',
+      '  vertical-align: middle; flex: 0 0 auto;',
+      '}',
+      '.ws-tag--service    { color: #07467c; background: #e0ecf7; }',
+      '.ws-tag--assumption { color: #6b7280; background: #f1f3f5; }',
+      '',
       '/* ── Assumptions: reference text, kept as tight as possible ── */',
       '.ws-card--assumption {',
       '  margin: 1px 0; padding: 1px 6px;',
@@ -2258,7 +2326,22 @@
       '.ws-card--assumption .ws-sum-value { font-size: 8px; line-height: 1.15; }',
       '.ws-card--assumption .ws-brief-labor {',
       '  margin-top: 0; padding-top: 0; border-top: none;',
-      '  font-size: 9px; line-height: 1.2;',
+      '  font-size: 9px; line-height: 1.25;',
+      '}',
+      '/* Project-wide assumption: text-only, no header chrome at all. */',
+      '.ws-card--assumption-pw .ws-header { display: none; }',
+      '.ws-card--assumption-pw .ws-brief-labor { margin: 0; }',
+      '',
+      '/* ── Services: tag + label + description + writing box ── */',
+      '.ws-card--service .ws-label { font-size: 10px; }',
+      '.ws-card--service .ws-brief-labor {',
+      '  margin-top: 2px; padding-top: 2px;',
+      '  font-size: 9.5px; line-height: 1.3;',
+      '}',
+      '.ws-service-notes {',
+      '  margin-top: 4px; min-height: 40px;',
+      '  border: 1px solid #d0d7de; border-radius: 3px;',
+      '  background: #fff;',
       '}',
       /* Brief-card labor block — service description / assumption text */
       '.ws-brief-labor {',
