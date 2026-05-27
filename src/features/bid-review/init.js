@@ -1649,27 +1649,47 @@
     }
 
     var pkgName = findPackageName(grid, pkgId) || 'this bid';
-    if (!window.confirm(
-      'Create a new SOW from ' + pkgName + ' (' + count + ' line item' +
-      (count === 1 ? '' : 's') + ')?'
-    )) return;
 
-    setBusy(button, true);
-    showCopyToast('Creating a new SOW from ' + pkgName + '…');
+    function labelOf(it) {
+      return it.displayLabel || it.productName || it.label || '';
+    }
 
-    ns.submitAction(payload)
-      .done(function () {
-        if (CFG.debug) SCW.debug('[BidReview] Create new SOW webhook completed — reloading page');
-        if (ns.persistAccordionState) ns.persistAccordionState();
-        window.location.reload();
-      })
-      .fail(function (xhr) {
-        if (CFG.debug) SCW.debug('[BidReview] Create new SOW webhook timeout/error (status ' + (xhr && xhr.status) + ')');
-      })
-      .always(function () {
-        hideCopyToast();
-        setBusy(button, false);
-      });
+    confirmItemSelection({
+      title:    'Create new SOW from bid',
+      subtitle: pkgName + ' → new SOW',
+      confirmLabel: 'Create SOW',
+      emptyText: 'This bid has no line items to build a SOW from.',
+      groups: [
+        { title: 'Existing SOW items', kind: 'matched', items: payload.matchedSowItems || [], labelOf: labelOf },
+        { title: 'Bid-only items (no SOW match yet)', kind: 'orphan', items: payload.orphanBidRecords || [], labelOf: labelOf }
+      ],
+      onConfirm: function (selected) {
+        payload.matchedSowItems  = selected.matched || [];
+        payload.orphanBidRecords = selected.orphan  || [];
+
+        if (!payload.matchedSowItems.length && !payload.orphanBidRecords.length) {
+          ns.renderToast('No items selected — nothing to create', 'info');
+          return;
+        }
+
+        setBusy(button, true);
+        showCopyToast('Creating a new SOW from ' + pkgName + '…');
+
+        ns.submitAction(payload)
+          .done(function () {
+            if (CFG.debug) SCW.debug('[BidReview] Create new SOW webhook completed — reloading page');
+            if (ns.persistAccordionState) ns.persistAccordionState();
+            window.location.reload();
+          })
+          .fail(function (xhr) {
+            if (CFG.debug) SCW.debug('[BidReview] Create new SOW webhook timeout/error (status ' + (xhr && xhr.status) + ')');
+          })
+          .always(function () {
+            hideCopyToast();
+            setBusy(button, false);
+          });
+      }
+    });
   }
 
   function handlePackageAction(button, actionType) {
@@ -2144,6 +2164,133 @@
       var selected = { updates: [], creates: [], removals: [] };
       for (var r = 0; r < rows.length; r++) {
         if (rows[r].cb.checked) selected[rows[r].kind].push(rows[r].item);
+      }
+      closeCopySyncModal();
+      opts.onConfirm(selected);
+    });
+    footer.appendChild(cancelBtn);
+    footer.appendChild(goBtn);
+    modal.appendChild(footer);
+
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+  }
+
+  // Generic per-item selection modal (same look as Update SOW to match
+  // Bid). opts: { title, subtitle, confirmLabel, emptyText,
+  // groups: [{ title, kind, items, labelOf }], onConfirm(selected) }
+  // where selected[kind] is the array of still-checked items.
+  function confirmItemSelection(opts) {
+    injectCopySyncStyle();
+    closeCopySyncModal();
+
+    var overlay = document.createElement('div');
+    overlay.id = COPYSYNC_OVERLAY_ID;
+    overlay.addEventListener('click', function (e) {
+      if (e.target === overlay) closeCopySyncModal();
+    });
+
+    var modal = document.createElement('div');
+    modal.className = 'scw-copysync-modal';
+
+    var header = document.createElement('div');
+    header.className = 'scw-copysync-modal__header';
+    var title = document.createElement('div');
+    title.className = 'scw-copysync-modal__title';
+    title.textContent = opts.title || 'Confirm';
+    header.appendChild(title);
+    if (opts.subtitle) {
+      var subtitle = document.createElement('div');
+      subtitle.className = 'scw-copysync-modal__subtitle';
+      subtitle.textContent = opts.subtitle;
+      header.appendChild(subtitle);
+    }
+    modal.appendChild(header);
+
+    var body = document.createElement('div');
+    body.className = 'scw-copysync-modal__body';
+
+    var rows = [];   // { cb, kind, item }
+
+    function renderGroup(group) {
+      if (!group || !group.items || !group.items.length) return;
+      var section = document.createElement('div');
+      section.className = 'scw-copysync-modal__group';
+
+      var head = document.createElement('div');
+      head.className = 'scw-copysync-modal__group-head';
+      var headLabel = document.createElement('span');
+      headLabel.textContent = group.title + ' (' + group.items.length + ')';
+      head.appendChild(headLabel);
+      var toggleAll = document.createElement('button');
+      toggleAll.type = 'button';
+      toggleAll.className = 'scw-copysync-modal__group-toggle';
+      toggleAll.textContent = 'Deselect all';
+      head.appendChild(toggleAll);
+      section.appendChild(head);
+
+      var groupCbs = [];
+      var list = document.createElement('div');
+      list.className = 'scw-copysync-modal__items';
+      for (var i = 0; i < group.items.length; i++) {
+        var item = group.items[i];
+        var rowLabel = document.createElement('label');
+        rowLabel.className = 'scw-copysync-modal__item';
+        var cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.checked = true;
+        var span = document.createElement('span');
+        span.textContent = (group.labelOf ? group.labelOf(item) : '') ||
+          item.label || item.displayLabel || item.productName ||
+          item.sowItemId || item.bidRecordId || 'Item';
+        rowLabel.appendChild(cb);
+        rowLabel.appendChild(span);
+        list.appendChild(rowLabel);
+        rows.push({ cb: cb, kind: group.kind, item: item });
+        groupCbs.push(cb);
+      }
+      section.appendChild(list);
+
+      toggleAll.addEventListener('click', function () {
+        var anyChecked = false;
+        for (var c = 0; c < groupCbs.length; c++) { if (groupCbs[c].checked) { anyChecked = true; break; } }
+        var next = !anyChecked;
+        for (var c2 = 0; c2 < groupCbs.length; c2++) groupCbs[c2].checked = next;
+        toggleAll.textContent = next ? 'Deselect all' : 'Select all';
+      });
+
+      body.appendChild(section);
+    }
+
+    for (var g = 0; g < (opts.groups || []).length; g++) renderGroup(opts.groups[g]);
+
+    if (!rows.length) {
+      var empty = document.createElement('div');
+      empty.className = 'scw-copysync-modal__summary';
+      empty.textContent = opts.emptyText || 'Nothing to include.';
+      body.appendChild(empty);
+    }
+    modal.appendChild(body);
+
+    var footer = document.createElement('div');
+    footer.className = 'scw-copysync-modal__footer';
+    var cancelBtn = document.createElement('button');
+    cancelBtn.className = 'scw-copysync-modal__btn scw-copysync-modal__btn--cancel';
+    cancelBtn.textContent = 'Cancel';
+    cancelBtn.addEventListener('click', closeCopySyncModal);
+    var goBtn = document.createElement('button');
+    goBtn.className = 'scw-copysync-modal__btn scw-copysync-modal__btn--go';
+    goBtn.textContent = opts.confirmLabel || 'Confirm';
+    goBtn.addEventListener('click', function () {
+      var selected = {};
+      for (var g2 = 0; g2 < (opts.groups || []).length; g2++) {
+        selected[opts.groups[g2].kind] = [];
+      }
+      for (var r = 0; r < rows.length; r++) {
+        if (rows[r].cb.checked) {
+          if (!selected[rows[r].kind]) selected[rows[r].kind] = [];
+          selected[rows[r].kind].push(rows[r].item);
+        }
       }
       closeCopySyncModal();
       opts.onConfirm(selected);
