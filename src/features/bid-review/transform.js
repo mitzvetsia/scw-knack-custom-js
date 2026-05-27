@@ -162,28 +162,42 @@
   /**
    * Splits records into buckets keyed by SOW id.
    * Records with 2+ SOW connections are duplicated into each bucket.
+   *
+   * A bid record's SOW membership is the UNION of:
+   *   (a) the bid record's own field_2154, and
+   *   (b) the SOW connections of its related SOW line item (field_2404 →
+   *       that SOW item's field_2154, via sowItemLookup.sowIds).
+   * The line item is the authoritative record of which SOWs it's on, and
+   * a bid record's own field_2154 can omit a SOW the line item is actually
+   * on (e.g. an item connected only to a secondary SOW). Without (b) those
+   * records fell through and never appeared in that SOW's grid, making the
+   * displayed bid incomplete.
+   *
    * Returns { sowId: [records] }
    */
-  function groupBySow(records) {
+  function groupBySow(records, sowItemLookup) {
     var buckets = {};
-
-    // Debug: log the SOW field shape from the first record
-    if (CFG.debug && records.length) {
-      var sample = records[0];
-      SCW.debug('[BidReview] SOW field debug:', {
-        key: FK.sow,
-        value: sample[FK.sow],
-        raw: sample[FK.sow + '_raw'],
-        type: typeof sample[FK.sow],
-        allKeys: Object.keys(sample).filter(function (k) { return k.indexOf('2154') !== -1; }),
-      });
-    }
+    sowItemLookup = sowItemLookup || {};
 
     for (var i = 0; i < records.length; i++) {
       var rec   = records[i];
       var conns = connectionAll(rec, FK.sow);
 
-      if (conns.length === 0) {
+      // Collect the union of SOW ids from the bid record and its line item.
+      var sowIdSet = {};
+      for (var c = 0; c < conns.length; c++) {
+        if (conns[c] && conns[c].id) sowIdSet[conns[c].id] = true;
+      }
+      var sowItemId = connectionId(rec, FK.relatedSowItem);
+      if (sowItemId && sowItemLookup[sowItemId] && sowItemLookup[sowItemId].sowIds) {
+        var liSowIds = sowItemLookup[sowItemId].sowIds;
+        for (var k in liSowIds) {
+          if (Object.prototype.hasOwnProperty.call(liSowIds, k)) sowIdSet[k] = true;
+        }
+      }
+
+      var ids = Object.keys(sowIdSet);
+      if (ids.length === 0) {
         // No SOW — put in a catch-all bucket
         var noSow = '__no_sow__';
         if (!buckets[noSow]) buckets[noSow] = [];
@@ -191,9 +205,8 @@
         continue;
       }
 
-      for (var c = 0; c < conns.length; c++) {
-        var sowId = conns[c].id;
-        if (!sowId) continue;
+      for (var s = 0; s < ids.length; s++) {
+        var sowId = ids[s];
         if (!buckets[sowId]) buckets[sowId] = [];
         buckets[sowId].push(rec);
       }
@@ -791,7 +804,7 @@
       }
     }
 
-    var sowBuckets = groupBySow(records);
+    var sowBuckets = groupBySow(records, sowItemLookup);
 
     // Distribute no-SOW records into SOW grids that share the same bid package.
     var noSowRecs = sowBuckets['__no_sow__'] || [];
