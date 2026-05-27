@@ -998,8 +998,14 @@
     // 3-column body's col-2 / col-3 renderers can pick them up.
     var laborText = '';
     var scwText   = '';
+    var connectedText = '';
     var LABOR_KEYS = ['field_2409', 'field_2020'];
     var SCW_KEYS   = ['field_2418', 'field_1953'];
+    // Connected-devices connection field. field_2381 = cam/reader,
+    // field_2380 = headend/networking (distribution-device override).
+    // Pulled out of the header summary so the renderer can relocate it
+    // (below Height for cam/reader; under the product for headend/net).
+    var CONNECT_KEYS = ['field_2381', 'field_2380'];
 
     // Summary fields (right bar + "fill" fields like Survey Notes)
     // Each .scw-ws-sum-group has a .scw-ws-sum-label + the field td.
@@ -1044,6 +1050,10 @@
         }
         if (fieldKey && SCW_KEYS.indexOf(fieldKey) !== -1) {
           if (val) scwText = val;
+          continue;
+        }
+        if (fieldKey && CONNECT_KEYS.indexOf(fieldKey) !== -1) {
+          if (val) connectedText = val;
           continue;
         }
         var lbl = lblEl ? textOf(lblEl) : '';
@@ -1125,6 +1135,7 @@
       detailValues: detailValues,
       laborText: laborText,
       scwText: scwText,
+      connectedText: connectedText,
       photos: photos,
       showDetail: showDetail,
       showPhotos: photos.length > 0
@@ -1340,6 +1351,21 @@
   function useStackedProductLabor(card) {
     return isOtherEquipmentBucket(card) ||
            bucketMatches(card, null, /network|headend/i);
+  }
+
+  function isHeadendOrNetworking(card) {
+    return bucketMatches(card, null, /network|headend/i);
+  }
+
+  // "Connected To" — the connected-devices connection field, rendered
+  // in the same compact label/value shape as the Mount ref item so it
+  // blends with the other detail info.
+  function renderConnectedTo(card) {
+    if (!card || !hasMeaningfulText(card.connectedText)) return '';
+    return '<div class="ws-ref"><div class="ws-ref-item">' +
+      '<span class="ws-ref-label">Connected To</span>' +
+      '<span class="ws-ref-value">' + esc(card.connectedText) + '</span>' +
+      '</div></div>';
   }
 
   function isDistributionDevice(card) {
@@ -1785,9 +1811,12 @@
         if (card.product) {
           h.push('<div class="ws-id-product ws-id-product--stacked">' + esc(card.product) + '</div>');
         }
+        // Headend / networking: Connected To sits directly under the
+        // product name; Mount info is suppressed.
+        h.push(renderConnectedTo(card));
         h.push(scwBlock());
         h.push(techNotesBlock());
-        h.push(renderRefSection(card));
+        if (!isHeadendOrNetworking(card)) h.push(renderRefSection(card));
         h.push(renderFlagsRow(card));
         h.push(renderMeasureRow(card));
         h.push('</div>');
@@ -1810,6 +1839,9 @@
         h.push(renderRefSection(card));
         h.push(renderFlagsRow(card));
         h.push(renderMeasureRow(card));
+        // Cam/reader: Connected To renders below Height/measure, styled
+        // like the other detail (ref) items.
+        h.push(renderConnectedTo(card));
         h.push('</div>');
 
         h.push('<div class="ws-body-col ws-body-col--mid">');
