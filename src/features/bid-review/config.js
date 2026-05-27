@@ -58,6 +58,9 @@
 
     // ── DOM mount point (inserted after the source view) ──────
     mountSelector:     '#bid-review-matrix',
+    // The grid is inserted immediately AFTER this view in the DOM.
+    // Falls back to view_44 (nav), then the scene, if absent.
+    gridAnchorView:    'view_3970',
 
     // ── Knack field keys ──────────────────────────────────────
     fieldKeys: {

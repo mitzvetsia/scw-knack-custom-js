@@ -203,12 +203,14 @@
     if (!mount) {
       mount = el('div');
       mount.id = CFG.mountSelector.replace(/^#/, '');
-      // Insert after the nav menu (view_44)
-      var nav = document.getElementById('view_44');
-      if (nav && nav.nextSibling) {
-        nav.parentNode.insertBefore(mount, nav.nextSibling);
-      } else if (nav) {
-        nav.parentNode.appendChild(mount);
+      // Insert immediately after the configured anchor view (default
+      // view_3970), falling back to the nav (view_44), then the scene.
+      var anchor = (CFG.gridAnchorView && document.getElementById(CFG.gridAnchorView))
+        || document.getElementById('view_44');
+      if (anchor && anchor.nextSibling) {
+        anchor.parentNode.insertBefore(mount, anchor.nextSibling);
+      } else if (anchor) {
+        anchor.parentNode.appendChild(mount);
       } else {
         var scene = document.getElementById(CFG.sceneKey);
         if (scene) {
@@ -1297,6 +1299,7 @@
         sibling.style.display = expanded ? 'none' : '';
         sibling = sibling.nextElementSibling;
       }
+      persistAccordionState();
     });
 
     tr.addEventListener('keydown', function (e) {
@@ -2091,6 +2094,7 @@
       var expanded = header.getAttribute('aria-expanded') === 'true';
       header.setAttribute('aria-expanded', String(!expanded));
       section.classList.toggle('scw-bid-review__sow-section--collapsed', expanded);
+      persistAccordionState();
     });
 
     header.addEventListener('keydown', function (e) {
@@ -2254,6 +2258,7 @@
     for (var i = 0; i < sections.length; i++) setSowSectionOpen(sections[i], open);
     var headers = mount.querySelectorAll('.scw-bid-review__group-header');
     for (var h = 0; h < headers.length; h++) setGroupHeaderOpen(headers[h], open);
+    persistAccordionState();
   }
 
   // ── grid toolbar (top of #bid-review-matrix) ────────────────
