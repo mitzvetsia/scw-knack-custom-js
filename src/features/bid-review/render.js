@@ -512,6 +512,12 @@
       }
       td.appendChild(subtitle);
 
+      // Bid friendly name (field_2636) — mirrors the SOW friendly name
+      // shown under the SOW grid title.
+      if (pkg.bidName) {
+        td.appendChild(el('div', 'scw-bid-review__col-friendly-name', pkg.bidName));
+      }
+
       if (pkg.crPendingCount > 0 && pkg.crLinkUrl) {
         var crLink = document.createElement('a');
         crLink.href = pkg.crLinkUrl;

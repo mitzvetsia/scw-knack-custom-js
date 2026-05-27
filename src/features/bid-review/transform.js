@@ -688,6 +688,13 @@
       }
       if (!bidStatus) bidStatus = stripHtml(rec[FK.bidStatus] || '');
       if (bidStatus) info.bidStatus = bidStatus;
+
+      // Bid friendly name (field_2636) — shown under the bid column title,
+      // mirroring the SOW friendly name under the SOW grid title.
+      if (FK.bidName) {
+        var bidName = raw(rec, FK.bidName);
+        if (bidName) info.bidName = bidName;
+      }
       if (CFG.debug) {
         SCW.debug('[BidReview] Pkg', id, 'field_2550:', rec[FK.bidStatus], '_raw:', rec[FK.bidStatus + '_raw'], '→ status:', bidStatus);
       }
@@ -741,6 +748,7 @@
         if (info.surveyId) allPkgs[pi].surveyId = info.surveyId;
         if (info.bidStatus) allPkgs[pi].bidStatus = info.bidStatus;
         if (info.bidSowId) allPkgs[pi].bidSowId = info.bidSowId;
+        if (info.bidName) allPkgs[pi].bidName = info.bidName;
       }
     }
 
