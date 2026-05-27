@@ -2084,7 +2084,10 @@
       }
     }
 
-    // Restore MDF/IDF group headers
+    // Restore MDF/IDF group headers. They're built collapsed, so we only
+    // need to RE-OPEN the ones that were open before the re-render —
+    // mirroring the SOW-section logic above. (Previously this branch only
+    // ever re-collapsed, so an open group always snapped shut on refresh.)
     var headers = mount.querySelectorAll('.scw-bid-review__group-header');
     for (var h = 0; h < headers.length; h++) {
       var section = headers[h].closest('.scw-bid-review__sow-section');
@@ -2092,28 +2095,73 @@
       var label = (headers[h].querySelector('.scw-bid-review__grp-title') || {}).textContent || '';
       var key = sowKey + '::' + label;
 
-      if (label && snap.group[key] === false) {
-        // Was collapsed — collapse it
-        headers[h].setAttribute('aria-expanded', 'false');
-        headers[h].classList.add('scw-bid-review__group-header--collapsed');
-        var sibling = headers[h].nextElementSibling;
-        while (sibling) {
-          if (sibling.classList.contains('scw-bid-review__group-header')) break;
-          sibling.style.display = 'none';
-          sibling = sibling.nextElementSibling;
-        }
+      if (label && snap.group[key] === true) {
+        setGroupHeaderOpen(headers[h], true);
       }
     }
   }
 
+  // ── shared accordion open/close helpers ─────────────────────
+  // Used by the per-header toggles, the snapshot/restore cycle, and the
+  // Expand all / Collapse all toolbar buttons so every path opens/closes
+  // a section the exact same way.
+
+  function setSowSectionOpen(section, open) {
+    if (!section) return;
+    section.classList.toggle('scw-bid-review__sow-section--collapsed', !open);
+    var hdr = section.querySelector('.scw-bid-review__sow-title');
+    if (hdr) hdr.setAttribute('aria-expanded', String(open));
+  }
+
+  function setGroupHeaderOpen(tr, open) {
+    if (!tr) return;
+    tr.setAttribute('aria-expanded', String(open));
+    tr.classList.toggle('scw-bid-review__group-header--collapsed', !open);
+    // Walk the sibling rows up to the next L1 group header, toggling them.
+    var sibling = tr.nextElementSibling;
+    while (sibling) {
+      if (sibling.classList.contains('scw-bid-review__group-header')) break;
+      sibling.style.display = open ? '' : 'none';
+      sibling = sibling.nextElementSibling;
+    }
+  }
+
+  function setAllAccordions(open) {
+    var mount = document.querySelector(CFG.mountSelector);
+    if (!mount) return;
+    var sections = mount.querySelectorAll('.scw-bid-review__sow-section');
+    for (var i = 0; i < sections.length; i++) setSowSectionOpen(sections[i], open);
+    var headers = mount.querySelectorAll('.scw-bid-review__group-header');
+    for (var h = 0; h < headers.length; h++) setGroupHeaderOpen(headers[h], open);
+  }
+
   // ── grid toolbar (top of #bid-review-matrix) ────────────────
-  // Currently empty — the "+ Create New SOW" button was removed
-  // because it shouldn't be exposed from the bid-comparison surface.
-  // Kept as a stub so renderMatrix's `mount.appendChild(buildToolbar())`
-  // call doesn't have to be conditionally guarded; if new toolbar
-  // controls need to land later, mount them here.
-  function buildToolbar() {
-    return el('div', 'scw-bid-review__toolbar');
+  // Expand all / Collapse all drive every SOW section AND every MDF/IDF
+  // group at once. A left-side count makes a multi-SOW page read as a
+  // list of like items rather than an undifferentiated stack.
+  function buildToolbar(state) {
+    var bar = el('div', 'scw-bid-review__toolbar');
+
+    var sowCount = (state && state.sowGrids) ? state.sowGrids.length : 0;
+    if (sowCount > 1) {
+      bar.appendChild(el('span', 'scw-bid-review__toolbar-count',
+        sowCount + ' SOWs'));
+    }
+
+    var btns = el('div', 'scw-bid-review__toolbar-btns');
+
+    var btnCollapse = el('button', 'scw-bid-review__toolbar-btn', 'Collapse all');
+    btnCollapse.type = 'button';
+    btnCollapse.addEventListener('click', function () { setAllAccordions(false); });
+    btns.appendChild(btnCollapse);
+
+    var btnExpand = el('button', 'scw-bid-review__toolbar-btn scw-bid-review__toolbar-btn--primary', 'Expand all');
+    btnExpand.type = 'button';
+    btnExpand.addEventListener('click', function () { setAllAccordions(true); });
+    btns.appendChild(btnExpand);
+
+    bar.appendChild(btns);
+    return bar;
   }
 
   // ── public: renderMatrix ────────────────────────────────────
@@ -2144,17 +2192,20 @@
       return mount;
     }
 
-    mount.appendChild(buildToolbar());
+    mount.appendChild(buildToolbar(state));
 
     for (var i = 0; i < state.sowGrids.length; i++) {
       mount.appendChild(buildSowSection(state.sowGrids[i]));
     }
 
-    // Default-open SOW: the last one in render order (== the only one when
-    // there's a single SOW). restoreAccordionState applies this only to
-    // sections with no prior open/closed state in the snapshot.
-    var defaultOpenSowId = state.sowGrids.length
-      ? state.sowGrids[state.sowGrids.length - 1].sowId
+    // Default-open SOW: ONLY when there's a single SOW (auto-open it so the
+    // user isn't staring at one collapsed card). With multiple SOWs we
+    // open none by default — otherwise the "last" SOW kept popping open on
+    // every refresh even while the user worked in a different one. The
+    // user expands what they want (or hits Expand all). restoreAccordionState
+    // applies this only to sections with no prior state in the snapshot.
+    var defaultOpenSowId = (state.sowGrids.length === 1)
+      ? state.sowGrids[0].sowId
       : null;
 
     restoreAccordionState(mount, snap, defaultOpenSowId);
