@@ -102,6 +102,12 @@
       '  color: #1a1a1a;',
       '}',
 
+      '.scw-bid-review__sow-title-name {',
+      '  font-size: 14px;',
+      '  font-weight: 600;',
+      '  color: #475569;',
+      '}',
+
       '.scw-bid-review__sow-title-count {',
       '  font-size: 12px;',
       '  font-weight: 400;',

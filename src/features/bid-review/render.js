@@ -2157,6 +2157,12 @@
     header.appendChild(chevron);
 
     header.appendChild(el('span', 'scw-bid-review__sow-title-text', sowGrid.sowName));
+    // SOW Name (field_2126) alongside the SOW # — read from the next-step
+    // row, same source as the editable SOW Name input in the header.
+    var sowNameVal = readRowFieldText(findNextStepRow(sowGrid.sowId), CFG.sowNameField) || '';
+    if (sowNameVal && sowNameVal !== sowGrid.sowName) {
+      header.appendChild(el('span', 'scw-bid-review__sow-title-name', sowNameVal));
+    }
     header.appendChild(el('span', 'scw-bid-review__sow-title-count',
       sowGrid.rows.length + ' line item' + (sowGrid.rows.length !== 1 ? 's' : '') +
       ' \u00b7 ' + sowGrid.packages.length + ' bid' + (sowGrid.packages.length !== 1 ? 's' : '')));
