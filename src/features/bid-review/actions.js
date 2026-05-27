@@ -41,7 +41,11 @@
 
     if (payload.reviewRowId) body.reviewRowId = payload.reviewRowId;
     if (payload.packageId)   body.packageId   = payload.packageId;
+    if (payload.packageName) body.packageName = payload.packageName;
+    if (payload.projectId)   body.projectId   = payload.projectId;
     if (payload.sowId)       body.sowId       = payload.sowId;
+    if (payload.sourceSowId) body.sourceSowId = payload.sourceSowId;
+    if (payload.sourceSowName) body.sourceSowName = payload.sourceSowName;
     if (payload.rowIds)      body.rowIds      = payload.rowIds;
     if (payload.updates)     body.updates     = payload.updates;
     if (payload.creates)     body.creates     = payload.creates;
