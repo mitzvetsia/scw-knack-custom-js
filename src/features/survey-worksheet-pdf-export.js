@@ -493,10 +493,11 @@
 
     for (var i = 0; i < kids.length; i++) {
       var tr = kids[i];
-      if (tr.style && tr.style.display === 'none') continue;
+      var trHidden = tr.style && tr.style.display === 'none';
 
       // ── group header rows ──
       if (tr.classList.contains('kn-table-group')) {
+        if (trHidden) continue;   // empty / removed group headers
         _scrapeStats.groupCount++;
         var level = tr.classList.contains('kn-group-level-1') ? 1
                   : tr.classList.contains('kn-group-level-2') ? 2
@@ -515,6 +516,13 @@
       if (tr.tagName === 'TR' && tr.id) _scrapeStats.knTableRowCount++;
 
       // ── worksheet card rows ──
+      // Do NOT skip rows hidden by group-collapse. The survey worksheet
+      // collapses its synthetic groups (Project Wide Services /
+      // Assumptions) by default, so those .scw-ws-row members are
+      // display:none on screen — but the PDF must include every item
+      // regardless of the on-screen accordion state. Knack's own
+      // source/helper rows are excluded by the .scw-ws-row check below,
+      // so they stay out even though they're also hidden.
       if (!tr.classList.contains('scw-ws-row')) continue;
       _scrapeStats.wsRowCount++;
       var card = tr.querySelector('.scw-ws-card');
@@ -605,7 +613,10 @@
     for (var i = 0; i < rows.length; i++) {
       var r = rows[i];
       out.push(r);
-      if (r.type === 'group' && r.level === 1) {
+      // Project Wide Assumptions is reference text, not a fill-in
+      // section — skip its blank writing-line block so it stays compact.
+      if (r.type === 'group' && r.level === 1 &&
+          !/project wide assumptions/i.test(r.label || '')) {
         out.push({ type: 'l1-notes', position: 'header', groupL1: r.label });
       }
     }
@@ -1612,8 +1623,10 @@
     // (cameras/readers, NVRs, switches). Service/assumption rows
     // collapse to a single brief header line + body text.
     var brief = !card.showDetail;
+    var isAssumption = card.rowClasses && /\bscw-row--assumptions\b/.test(card.rowClasses);
     var cls = 'ws-card' +
-      (card.showDetail ? '' : ' ws-card--header-only ws-card--brief');
+      (card.showDetail ? '' : ' ws-card--header-only ws-card--brief') +
+      (isAssumption ? ' ws-card--assumption' : '');
     h.push('<section class="' + cls + '">');
 
     // ── Header row ──
@@ -2235,6 +2248,18 @@
       '.ws-card--brief .ws-sum-label { font-size: 7.5px; }',
       '.ws-card--brief .ws-label { font-size: 10.5px; }',
       '.ws-card--brief .ws-product { font-size: 9.5px; }',
+      '',
+      '/* ── Assumptions: reference text, kept as tight as possible ── */',
+      '.ws-card--assumption {',
+      '  margin: 1px 0; padding: 1px 6px;',
+      '}',
+      '.ws-card--assumption .ws-header { gap: 4px; }',
+      '.ws-card--assumption .ws-label { font-size: 9px; }',
+      '.ws-card--assumption .ws-sum-value { font-size: 8px; line-height: 1.15; }',
+      '.ws-card--assumption .ws-brief-labor {',
+      '  margin-top: 0; padding-top: 0; border-top: none;',
+      '  font-size: 9px; line-height: 1.2;',
+      '}',
       /* Brief-card labor block — service description / assumption text */
       '.ws-brief-labor {',
       '  margin-top: 3px; padding-top: 3px;',
