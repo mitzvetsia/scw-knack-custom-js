@@ -701,6 +701,20 @@
       '  color: #334155;',
       '  font-weight: 600 !important;',
       '}',
+      /* Per-bid delta vs the SOW sub-bid total. */
+      '.scw-bid-review__col-title-delta {',
+      '  font-size: 10.5px !important;',
+      '  font-weight: 700 !important;',
+      '  margin-top: 3px;',
+      '  text-transform: none !important;',
+      '  letter-spacing: 0 !important;',
+      '}',
+      '.scw-bid-review__col-title-delta--match {',
+      '  color: #16a34a;',
+      '}',
+      '.scw-bid-review__col-title-delta--gap {',
+      '  color: #b45309;',
+      '}',
       /* SOW Sub Bid Total vs Bid Sub Bid Total mismatch — loud red so */
       /* it can\'t be missed when the SOW line items are out of sync   */
       /* with what was actually bid.                                   */

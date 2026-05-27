@@ -152,6 +152,35 @@
     for (var i = 0; i < cells.length; i++) {
       cells[i].classList.toggle('scw-bid-review__pkg-col--collapsed', collapsed);
     }
+    // Collapsed (ignored) bids drop out of the SOW gap check — re-evaluate
+    // the SOW total's warning now that the active-bid set changed.
+    recomputeSowGap(scope);
+  }
+
+  // Live re-evaluation of the SOW Sub Bid Total warning: it flags only
+  // when the SOW matches NONE of the active (non-collapsed) bids. Reads
+  // the totals stashed as data-subbid-total on the header cells.
+  function recomputeSowGap(section) {
+    if (!section) return;
+    var sowCell = section.querySelector('.scw-bid-review__sow-detail-header');
+    if (!sowCell) return;
+    var sowTotal = parseFloat(sowCell.getAttribute('data-subbid-total')) || 0;
+    var bidThs = section.querySelectorAll('th.scw-bid-review__pkg-header');
+    var activeCount = 0, matchesAny = false;
+    for (var i = 0; i < bidThs.length; i++) {
+      if (bidThs[i].classList.contains('scw-bid-review__pkg-col--collapsed')) continue;
+      var bt = parseFloat(bidThs[i].getAttribute('data-subbid-total')) || 0;
+      if (bt <= 0) continue;
+      activeCount++;
+      if (Math.abs(bt - sowTotal) <= 0.01) matchesAny = true;
+    }
+    var warn = activeCount > 0 && !matchesAny;
+    var sowSub = sowCell.querySelector('.scw-bid-review__sow-subbid');
+    if (sowSub) {
+      sowSub.classList.toggle('scw-bid-review__col-title-total--warn', warn);
+      if (warn) sowSub.title = 'SOW sub bid total matches none of the active bids';
+      else sowSub.removeAttribute('title');
+    }
   }
 
   // Collapse handle (in the column title cell) + expand handle (shown only
@@ -267,19 +296,29 @@
       }
     }
 
-    // Mismatch detection — penny-level tolerance, and only warn when
-    // there's actually a bid to compare against (skip if bid total is 0
-    // — that's a not-yet-bid column, not a discrepancy).
+    // ── multi-bid gap logic ─────────────────────────────────────
+    // Penny-level tolerance. A bid "matches" the SOW when its sub-bid
+    // total equals the SOW sub-bid total. With multiple bids the SOW can
+    // only match one, so:
+    //   • Each BID column shows its own delta vs the SOW (green "matches"
+    //     or amber "±$X vs SOW") — unambiguous, per column.
+    //   • The SOW total flags red ONLY when it matches NONE of the
+    //     *active* bids (collapsed/ignored bids are excluded). So matching
+    //     at least one active bid clears the SOW flag.
     var MISMATCH_EPSILON = 0.01;
-    function bidMismatches(pkgId) {
+    function bidMatchesSow(pkgId) {
       var bidTotal = pkgSubBidTotals[pkgId];
-      if (!bidTotal) return false;
-      return Math.abs(bidTotal - sowSubBidTotal) > MISMATCH_EPSILON;
+      return bidTotal > 0 && Math.abs(bidTotal - sowSubBidTotal) <= MISMATCH_EPSILON;
     }
-    var anySowMismatch = false;
+    var activeBidCount = 0, sowMatchesAny = false;
     for (var pidChk in pkgSubBidTotals) {
-      if (bidMismatches(pidChk)) { anySowMismatch = true; break; }
+      if (isPkgColCollapsed(sowGrid.sowId, pidChk)) continue; // ignored bid
+      if (pkgSubBidTotals[pidChk] > 0) {
+        activeBidCount++;
+        if (bidMatchesSow(pidChk)) sowMatchesAny = true;
+      }
     }
+    var sowWarn = activeBidCount > 0 && !sowMatchesAny;
 
     function buildTitleCell(cls, title, totals, pkgOpts) {
       var th = el('th', cls);
@@ -287,10 +326,29 @@
       for (var i = 0; totals && i < totals.length; i++) {
         var t = totals[i];
         if (!t) continue;
+
+        // Delta-vs-SOW line for a bid column.
+        if (t.delta) {
+          if (!(t.hasBid)) continue; // no bid yet → no delta line
+          var dCls = 'scw-bid-review__col-title-delta' +
+            (t.matches ? ' scw-bid-review__col-title-delta--match'
+                       : ' scw-bid-review__col-title-delta--gap');
+          var dEl = el('div', dCls);
+          if (t.matches) {
+            dEl.textContent = '✓ matches SOW';
+          } else {
+            var sign = t.amount > 0 ? '+' : '−';
+            dEl.textContent = sign + formatCurrency(Math.abs(t.amount)) + ' vs SOW';
+          }
+          th.appendChild(dEl);
+          continue;
+        }
+
         var subCls = 'scw-bid-review__col-title-total';
+        if (t.extraCls) subCls += ' ' + t.extraCls;
         if (t.warn) subCls += ' scw-bid-review__col-title-total--warn';
         var sub = el('div', subCls);
-        if (t.warn) sub.title = 'SOW sub bid total doesn’t match this bid';
+        if (t.warn) sub.title = t.warnTitle || 'SOW sub bid total matches none of the active bids';
         sub.appendChild(el('span', 'scw-bid-review__col-title-total-label', t.label));
         sub.appendChild(document.createTextNode(' '));
         sub.appendChild(el('span', 'scw-bid-review__col-title-total-value', formatCurrency(t.value || 0)));
@@ -299,6 +357,7 @@
       if (pkgOpts) {
         tagPkgCol(th, pkgOpts.sowId, pkgOpts.pkgId);
         buildPkgCollapseControls(th, pkgOpts.sowId, pkgOpts.pkgId, pkgOpts.pkgName);
+        th.setAttribute('data-subbid-total', String(pkgOpts.subBidTotal || 0));
       }
       return th;
     }
@@ -307,19 +366,24 @@
     r1.appendChild(el('th', 'scw-bid-review__sow-header', 'Line Item'));
     r1.appendChild(el('th', 'scw-bid-review__photos-header', 'Photos'));
     // Sales Revisions column injected externally — leave gap
-    r1.appendChild(buildTitleCell(
+    var sowTitleTh = buildTitleCell(
       'scw-bid-review__sow-detail-header', 'SCW SOW', [
-        { label: 'Sub Bid Total:', value: sowSubBidTotal, warn: anySowMismatch },
+        { label: 'Sub Bid Total:', value: sowSubBidTotal, warn: sowWarn, extraCls: 'scw-bid-review__sow-subbid' },
         { label: 'Install Total:', value: sowInstallTotal }
       ]
-    ));
+    );
+    // Stash the SOW total so collapse toggles can recompute the gap live.
+    sowTitleTh.setAttribute('data-subbid-total', String(sowSubBidTotal));
+    r1.appendChild(sowTitleTh);
     for (var i = 0; i < sowGrid.packages.length; i++) {
       var pkgId = sowGrid.packages[i].id;
+      var bidTotal = pkgSubBidTotals[pkgId];
       r1.appendChild(buildTitleCell(
         'scw-bid-review__pkg-header', 'Subcontractor Bid', [
-          { label: 'Sub Bid Total:', value: pkgSubBidTotals[pkgId], warn: bidMismatches(pkgId) }
+          { label: 'Sub Bid Total:', value: bidTotal },
+          { delta: true, hasBid: bidTotal > 0, matches: bidMatchesSow(pkgId), amount: bidTotal - sowSubBidTotal }
         ],
-        { sowId: sowGrid.sowId, pkgId: pkgId, pkgName: sowGrid.packages[i].name }
+        { sowId: sowGrid.sowId, pkgId: pkgId, pkgName: sowGrid.packages[i].name, subBidTotal: bidTotal }
       ));
     }
     r1.appendChild(el('th', 'scw-bid-review__actions-header scw-bid-review__cr-col', 'Sub Bid Revisions'));
