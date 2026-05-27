@@ -965,6 +965,44 @@
       '  border-color: #063a68;',
       '}',
 
+      /* ── collapsible bid (subcontractor) columns ───────────── */
+      /* Collapse handle in the column title cell. */
+      '.scw-bid-review__pkg-header { position: relative; }',
+      '.scw-bid-review__pkg-collapse-btn {',
+      '  position: absolute; top: 4px; right: 4px;',
+      '  width: 18px; height: 18px; line-height: 16px; padding: 0;',
+      '  border: 1px solid #cbd5e1; border-radius: 4px;',
+      '  background: #fff; color: #64748b; font-size: 12px; cursor: pointer;',
+      '}',
+      '.scw-bid-review__pkg-collapse-btn:hover { background: #f1f5f9; color: #0f172a; }',
+
+      /* Expand handle — hidden until the column is collapsed. */
+      '.scw-bid-review__pkg-expand { display: none; }',
+
+      /* Collapsed column: shrink every cell in it to a thin strip and */
+      /* hide its content. The expand handle is the only visible child. */
+      '.scw-bid-review__pkg-col--collapsed {',
+      '  width: 30px !important; min-width: 30px !important; max-width: 30px !important;',
+      '  padding-left: 0 !important; padding-right: 0 !important;',
+      '  overflow: hidden; position: relative; background: #f8fafc !important;',
+      '}',
+      '.scw-bid-review__pkg-col--collapsed > * { display: none !important; }',
+      '.scw-bid-review__pkg-col--collapsed .scw-bid-review__cell-actions { display: none !important; }',
+
+      '.scw-bid-review__pkg-header.scw-bid-review__pkg-col--collapsed .scw-bid-review__pkg-expand {',
+      '  display: flex !important; flex-direction: column; align-items: center; gap: 6px;',
+      '  width: 100%; min-height: 70px; padding: 8px 0; border: none; cursor: pointer;',
+      '  background: transparent; color: #07467c; font-weight: 700; font-size: 11px;',
+      '}',
+      '.scw-bid-review__pkg-header.scw-bid-review__pkg-col--collapsed .scw-bid-review__pkg-expand:hover {',
+      '  background: #eef2f7;',
+      '}',
+      '.scw-bid-review__pkg-expand-icon { font-size: 14px; }',
+      '.scw-bid-review__pkg-expand-label {',
+      '  writing-mode: vertical-rl; transform: rotate(180deg);',
+      '  letter-spacing: 0.5px; white-space: nowrap;',
+      '}',
+
       '.scw-bid-review__btn--create-sow {',
       '  background: #07467c;',
       '  color: #fff;',

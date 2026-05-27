@@ -278,6 +278,8 @@
         handleSetProjectMargin(button);
       } else if (action === 'package_reopen_bid') {
         handleReopenBid(button);
+      } else if (action === 'package_create_sow') {
+        handleCreateNewSowForPackage(button);
       } else if (action.indexOf('package_') === 0) {
         handlePackageAction(button, action);
       } else if (action.indexOf('row_') === 0) {
@@ -1610,6 +1612,50 @@
       button.classList.remove('scw-bid-review__btn--busy');
       button.disabled = false;
     });
+  }
+
+  // Per-bid "+ Create new SOW" — fires the create-new-SOW webhook scoped
+  // to just this subcontractor's bid (Make builds a whole new SOW from
+  // it). Distinct from handleCreateNewSow, which spans the whole state.
+  function handleCreateNewSowForPackage(button) {
+    if (!_state) {
+      ns.renderToast('Comparison data not loaded yet', 'error');
+      return;
+    }
+    var pkgId = button.getAttribute('data-package-id');
+    var sowId = button.getAttribute('data-sow-id');
+    var grid  = findSowGrid(sowId);
+    if (!grid) { ns.renderToast('SOW grid not found', 'error'); return; }
+
+    var payload = ns.buildCreateNewSowForPackagePayload(grid, pkgId);
+    var count = (payload.matchedSowItems || []).length + (payload.orphanBidRecords || []).length;
+    if (!count) {
+      ns.renderToast('This bid has no line items to build a SOW from', 'info');
+      return;
+    }
+
+    var pkgName = findPackageName(grid, pkgId) || 'this bid';
+    if (!window.confirm(
+      'Create a new SOW from ' + pkgName + ' (' + count + ' line item' +
+      (count === 1 ? '' : 's') + ')?'
+    )) return;
+
+    setBusy(button, true);
+    showCopyToast('Creating a new SOW from ' + pkgName + '…');
+
+    ns.submitAction(payload)
+      .done(function () {
+        if (CFG.debug) SCW.debug('[BidReview] Create new SOW webhook completed — reloading page');
+        if (ns.persistAccordionState) ns.persistAccordionState();
+        window.location.reload();
+      })
+      .fail(function (xhr) {
+        if (CFG.debug) SCW.debug('[BidReview] Create new SOW webhook timeout/error (status ' + (xhr && xhr.status) + ')');
+      })
+      .always(function () {
+        hideCopyToast();
+        setBusy(button, false);
+      });
   }
 
   function handlePackageAction(button, actionType) {

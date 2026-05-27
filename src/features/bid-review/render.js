@@ -120,6 +120,67 @@
     'stroke-linecap="round" stroke-linejoin="round">' +
     '<polyline points="6 9 12 15 18 9"></polyline></svg>';
 
+  // ── collapsible bid (subcontractor) columns ─────────────────
+  // A reviewer can collapse a bid column down to a thin strip to get it
+  // out of the way (e.g. after creating a new SOW for that bid). State is
+  // per sowId::pkgId, in-memory so it survives grid re-renders within the
+  // session. Every cell in a column carries class scw-bid-review__pkg-col
+  // + data-package-id so a toggle can hit the whole column at once.
+  var _collapsedPkgCols = {};
+
+  function pkgColKey(sowId, pkgId) { return (sowId || '') + '::' + (pkgId || ''); }
+  function isPkgColCollapsed(sowId, pkgId) { return !!_collapsedPkgCols[pkgColKey(sowId, pkgId)]; }
+
+  // Tag a column cell so the collapse toggle can find it, and apply the
+  // collapsed class up front if this column is already collapsed.
+  function tagPkgCol(cell, sowId, pkgId) {
+    if (!cell) return cell;
+    cell.classList.add('scw-bid-review__pkg-col');
+    cell.setAttribute('data-package-id', pkgId);
+    if (isPkgColCollapsed(sowId, pkgId)) {
+      cell.classList.add('scw-bid-review__pkg-col--collapsed');
+    }
+    return cell;
+  }
+
+  function setPkgColCollapsed(sowId, pkgId, collapsed) {
+    var key = pkgColKey(sowId, pkgId);
+    if (collapsed) _collapsedPkgCols[key] = true; else delete _collapsedPkgCols[key];
+    var scope = document.querySelector('.scw-bid-review__sow-section[data-sow-id="' + sowId + '"]');
+    if (!scope) return;
+    var cells = scope.querySelectorAll('.scw-bid-review__pkg-col[data-package-id="' + pkgId + '"]');
+    for (var i = 0; i < cells.length; i++) {
+      cells[i].classList.toggle('scw-bid-review__pkg-col--collapsed', collapsed);
+    }
+  }
+
+  // Collapse handle (in the column title cell) + expand handle (shown only
+  // while collapsed). Both attach their own listeners and stop propagation
+  // so they don't trip the delegated row/button handler in init.js.
+  function buildPkgCollapseControls(th, sowId, pkgId, pkgName) {
+    var collapseBtn = el('button', 'scw-bid-review__pkg-collapse-btn');
+    collapseBtn.type = 'button';
+    collapseBtn.title = 'Collapse this bid column';
+    collapseBtn.innerHTML = '&raquo;';
+    collapseBtn.addEventListener('click', function (e) {
+      e.preventDefault(); e.stopPropagation();
+      setPkgColCollapsed(sowId, pkgId, true);
+    });
+    th.appendChild(collapseBtn);
+
+    var expand = el('button', 'scw-bid-review__pkg-expand');
+    expand.type = 'button';
+    expand.title = 'Expand ' + (pkgName || 'bid');
+    expand.innerHTML = '<span class="scw-bid-review__pkg-expand-icon">&laquo;</span>' +
+      '<span class="scw-bid-review__pkg-expand-label"></span>';
+    expand.querySelector('.scw-bid-review__pkg-expand-label').textContent = pkgName || 'Bid';
+    expand.addEventListener('click', function (e) {
+      e.preventDefault(); e.stopPropagation();
+      setPkgColCollapsed(sowId, pkgId, false);
+    });
+    th.appendChild(expand);
+  }
+
   // ── mount point ─────────────────────────────────────────────
 
   function getOrCreateMount() {
@@ -218,7 +279,7 @@
       if (bidMismatches(pidChk)) { anySowMismatch = true; break; }
     }
 
-    function buildTitleCell(cls, title, totals) {
+    function buildTitleCell(cls, title, totals, pkgOpts) {
       var th = el('th', cls);
       th.appendChild(el('div', 'scw-bid-review__col-title-text', title));
       for (var i = 0; totals && i < totals.length; i++) {
@@ -232,6 +293,10 @@
         sub.appendChild(document.createTextNode(' '));
         sub.appendChild(el('span', 'scw-bid-review__col-title-total-value', formatCurrency(t.value || 0)));
         th.appendChild(sub);
+      }
+      if (pkgOpts) {
+        tagPkgCol(th, pkgOpts.sowId, pkgOpts.pkgId);
+        buildPkgCollapseControls(th, pkgOpts.sowId, pkgOpts.pkgId, pkgOpts.pkgName);
       }
       return th;
     }
@@ -251,7 +316,8 @@
       r1.appendChild(buildTitleCell(
         'scw-bid-review__pkg-header', 'Subcontractor Bid', [
           { label: 'Sub Bid Total:', value: pkgSubBidTotals[pkgId], warn: bidMismatches(pkgId) }
-        ]
+        ],
+        { sowId: sowGrid.sowId, pkgId: pkgId, pkgName: sowGrid.packages[i].name }
       ));
     }
     r1.appendChild(el('th', 'scw-bid-review__actions-header scw-bid-review__cr-col', 'Sub Bid Revisions'));
@@ -277,6 +343,7 @@
     for (var j = 0; j < sowGrid.packages.length; j++) {
       var pkg = sowGrid.packages[j];
       var td = el('td', 'scw-bid-review__header-detail-cell');
+      tagPkgCol(td, sowGrid.sowId, pkg.id);
 
       var statusVal = pkg.bidStatus || '';
       if (statusVal) {
@@ -344,6 +411,7 @@
       var statusVal2 = pkg2.bidStatus || '';
       var isSubmitted = /^submitted$/i.test(String(statusVal2).trim());
       var actionTd = el('td', 'scw-bid-review__header-action-cell');
+      tagPkgCol(actionTd, sowGrid.sowId, pkg2.id);
 
       if (isSubmitted) {
         actionTd.appendChild(btn(
@@ -1127,6 +1195,7 @@
         row.cellsByPackage[pid] || null, cablingVisible, connDevVisible, qtyVisible, d,
         { rowId: row.id, pkgId: pid, sowId: sowId }
       );
+      tagPkgCol(dataTd, sowId, pid);
       if (d && d.any) {
         dataTd.classList.add('scw-bid-review__cell--mismatch');
       }

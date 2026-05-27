@@ -348,6 +348,101 @@
   };
 
   /**
+   * Build a create-new-SOW payload scoped to a SINGLE bid package within
+   * one SOW grid. Fired by the per-bid "+ Create new SOW" header button —
+   * creates a whole new SOW in Make from just that subcontractor's bid.
+   * Same shape as buildCreateNewSowPayload (actionType create_new_sow) so
+   * it routes to the same webhook, but only that package's bid cells are
+   * included.
+   */
+  ns.buildCreateNewSowForPackagePayload = function buildCreateNewSowForPackagePayload(grid, pkgId) {
+    var matchedSowItems  = [];
+    var orphanBidRecords = [];
+
+    var pkgs = (grid && grid.packages) || [];
+    var pkgName = '';
+    for (var p = 0; p < pkgs.length; p++) { if (pkgs[p].id === pkgId) { pkgName = pkgs[p].name; break; } }
+
+    var rows = (grid && grid.rows) || [];
+    for (var i = 0; i < rows.length; i++) {
+      var row  = rows[i];
+      var cell = row.cellsByPackage && row.cellsByPackage[pkgId];
+      if (!cell) continue;
+
+      var bidCell = {
+        bidRecordId:    cell.id,
+        packageId:      pkgId,
+        packageName:    pkgName,
+        qty:            cell.qty,
+        rate:           cell.rate,
+        labor:          cell.labor,
+        laborDesc:      cell.laborDesc,
+        productName:    cell.productName,
+        existCabling:   /^yes$/i.test(cell.bidExistCabling),
+        connDevice:     cell.bidConnDeviceIds,
+        mapConn:        cell.mapConnections,
+        notes:          cell.notes,
+        product:        cell.field2627,
+        sku:            cell.sku,
+        price:          cell.price,
+        productDesc:    cell.productDesc,
+        dropLength:     cell.bidDropLength,
+        conduit:        cell.bidConduit,
+        plenum:         /^yes$/i.test(cell.bidPlenum),
+        dropPrefix:     cell.dropPrefix,
+        dropNumber:     cell.dropNumber,
+        exterior:       /^yes$/i.test(cell.bidExterior),
+        limitQtyOne:    cell.limitQtyOne,
+        proposalBucket: cell.proposalBucketId,
+        mdfIdf:         cell.mdfIdfId,
+        bidRecord:      cell._rawRecord || null,
+      };
+
+      if (row.sowItem) {
+        matchedSowItems.push({
+          sourceSowId:     grid.sowId,
+          sourceSowName:   grid.sowName,
+          sowItemId:       row.sowItem,
+          displayLabel:    row.displayLabel,
+          productName:     row.productName,
+          mdfIdf:          row.mdfIdf,
+          proposalBucket:  row.proposalBucket,
+          sortOrder:       row.sortOrder,
+          sowQty:          row.sowQty,
+          sowFee:          row.sowFee,
+          sowProduct:      row.sowProduct,
+          sowLaborDesc:    row.sowLaborDesc,
+          sowExistCabling: row.sowExistCabling,
+          sowPlenum:       row.sowPlenum,
+          sowExterior:     row.sowExterior,
+          sowDropLength:   row.sowDropLength,
+          sowConduit:      row.sowConduit,
+          sowConnDevice:   row.sowConnDeviceIds,
+          sowMapConn:      row.sowMapConn,
+          sowMdfIdf:       row.sowMdfIdf,
+          sourceRecord:    row._rawRecord || null,
+          bidRecords:      [bidCell],
+        });
+      } else {
+        bidCell.sourceSowId   = grid.sowId;
+        bidCell.sourceSowName = grid.sowName;
+        bidCell.displayLabel  = row.displayLabel;
+        orphanBidRecords.push(bidCell);
+      }
+    }
+
+    return {
+      actionType:       'create_new_sow',
+      packageId:        pkgId,
+      packageName:      pkgName,
+      sourceSowId:      grid ? grid.sowId : '',
+      sourceSowName:    grid ? grid.sowName : '',
+      matchedSowItems:  matchedSowItems,
+      orphanBidRecords: orphanBidRecords,
+    };
+  };
+
+  /**
    * Build a human-readable label for a toast message.
    */
   function describeAction(payload) {
