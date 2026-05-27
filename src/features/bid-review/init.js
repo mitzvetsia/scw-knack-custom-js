@@ -2136,13 +2136,12 @@
 
         ns.submitAction(payload)
           .done(function () {
-        // Webhook responded 200 — Make scenario is complete.
-        // Stop polling, refresh the grid immediately, and show success.
-        if (CFG.debug) SCW.debug('[BidReview] Copy to SOW webhook completed');
+        // Webhook responded 200 — Make scenario is complete. Reload the
+        // whole page so every view (grid, totals, SOW tables) re-fetches
+        // from scratch rather than relying on a silent partial refresh.
+        if (CFG.debug) SCW.debug('[BidReview] Copy to SOW webhook completed — reloading page');
         stopCopyPoll();
-        hideCopyToast();
-        refreshSilently();
-        ns.renderToast('SOW updated successfully', 'success');
+        window.location.reload();
       })
       .fail(function (xhr) {
         // Timeout or error — keep polling; Make may still be processing
