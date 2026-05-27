@@ -170,6 +170,18 @@
     return null;
   }
 
+  // Project record id — scene_1155 is reached via a nested nav path
+  // (#team-calendar/project-dashboard/<projectId>/review-bids/<projectId>).
+  // Pull the id that follows project-dashboard, falling back to the first
+  // 24-hex id in the hash.
+  function getProjectId() {
+    var hash = (window.location.hash || '');
+    var m = hash.match(/project-dashboard\/([a-f0-9]{24})/i);
+    if (m) return m[1];
+    m = hash.match(/[a-f0-9]{24}/i);
+    return m ? m[0] : '';
+  }
+
   // ── delegated click handler ─────────────────────────────────
 
   function attachClickHandler(mount) {
@@ -1589,6 +1601,7 @@
     }
 
     var payload = ns.buildCreateNewSowPayload(_state);
+    payload.projectId = getProjectId();
     var matched = (payload.matchedSowItems || []).length;
     var orphans = (payload.orphanBidRecords || []).length;
 
@@ -1628,6 +1641,7 @@
     if (!grid) { ns.renderToast('SOW grid not found', 'error'); return; }
 
     var payload = ns.buildCreateNewSowForPackagePayload(grid, pkgId);
+    payload.projectId = getProjectId();
     var count = (payload.matchedSowItems || []).length + (payload.orphanBidRecords || []).length;
     if (!count) {
       ns.renderToast('This bid has no line items to build a SOW from', 'info');
