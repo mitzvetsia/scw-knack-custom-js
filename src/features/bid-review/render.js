@@ -157,6 +157,84 @@
     recomputeSowGap(scope);
   }
 
+  // Build the per-bid "delta vs SOW" line (green match / amber gap), or
+  // null when the bid has no total to compare. Shared by the full render
+  // and the partial header refresh so both stay in sync.
+  function buildDeltaEl(hasBid, matches, amount) {
+    if (!hasBid) return null;
+    var dEl = el('div', 'scw-bid-review__col-title-delta ' +
+      (matches ? 'scw-bid-review__col-title-delta--match'
+               : 'scw-bid-review__col-title-delta--gap'));
+    if (matches) {
+      dEl.textContent = '✓ matches SOW';
+    } else {
+      var sign = amount > 0 ? '+' : '−';
+      dEl.textContent = sign + formatCurrency(Math.abs(amount)) + ' vs SOW';
+    }
+    return dEl;
+  }
+
+  // Partial refresh of a SOW section's header totals/flags after an
+  // in-place row patch (init.js's patchRows). Recomputes the SOW Sub Bid
+  // / Install totals (excluding offSow rows, matching the full render),
+  // each bid's total + delta line, the stashed data-subbid-total attrs,
+  // and the SOW gap warning — so the header never goes stale or shows the
+  // wrong value after an inline edit.
+  ns.refreshHeaderTotals = function refreshHeaderTotals(grid) {
+    if (!grid) return;
+    var section = document.querySelector('.scw-bid-review__sow-section[data-sow-id="' + grid.sowId + '"]');
+    if (!section) return;
+
+    var rows = grid.rows || [];
+    var sowSub = 0, sowInstall = 0, pkgTotals = {};
+    (grid.packages || []).forEach(function (p) { pkgTotals[p.id] = 0; });
+    rows.forEach(function (r) {
+      if (!r.offSow) {
+        if (r.sowFee) sowSub += Number(r.sowFee) || 0;
+        if (r.sowInstallFee) sowInstall += Number(r.sowInstallFee) || 0;
+      }
+      if (r.cellsByPackage) {
+        Object.keys(pkgTotals).forEach(function (pid) {
+          var c = r.cellsByPackage[pid];
+          if (c && c.labor) pkgTotals[pid] += Number(c.labor) || 0;
+        });
+      }
+    });
+
+    // SOW header cell — write each total to its OWN slot by label.
+    var sowCell = section.querySelector('.scw-bid-review__sow-detail-header');
+    if (sowCell) {
+      sowCell.setAttribute('data-subbid-total', String(sowSub));
+      var totDivs = sowCell.querySelectorAll('.scw-bid-review__col-title-total');
+      for (var d = 0; d < totDivs.length; d++) {
+        var lbl = (totDivs[d].querySelector('.scw-bid-review__col-title-total-label') || {}).textContent || '';
+        var valEl = totDivs[d].querySelector('.scw-bid-review__col-title-total-value');
+        if (!valEl) continue;
+        if (/sub bid/i.test(lbl)) valEl.textContent = formatCurrency(sowSub);
+        else if (/install/i.test(lbl)) valEl.textContent = formatCurrency(sowInstall);
+      }
+    }
+
+    // Bid header cells — value, delta line, stashed total.
+    var bidThs = section.querySelectorAll('th.scw-bid-review__pkg-header');
+    for (var i = 0; i < grid.packages.length && i < bidThs.length; i++) {
+      var pkgId = grid.packages[i].id;
+      var bt = pkgTotals[pkgId] || 0;
+      var th = bidThs[i];
+      th.setAttribute('data-subbid-total', String(bt));
+      var vEl = th.querySelector('.scw-bid-review__col-title-total-value');
+      if (vEl) vEl.textContent = formatCurrency(bt);
+      var matches = bt > 0 && Math.abs(bt - sowSub) <= 0.01;
+      var newDelta = buildDeltaEl(bt > 0, matches, bt - sowSub);
+      var oldDelta = th.querySelector('.scw-bid-review__col-title-delta');
+      if (oldDelta && newDelta) oldDelta.parentNode.replaceChild(newDelta, oldDelta);
+      else if (oldDelta && !newDelta) oldDelta.parentNode.removeChild(oldDelta);
+      else if (newDelta) th.appendChild(newDelta);
+    }
+
+    recomputeSowGap(section);
+  };
+
   // Live re-evaluation of the SOW Sub Bid Total warning: it flags only
   // when the SOW matches NONE of the active (non-collapsed) bids. Reads
   // the totals stashed as data-subbid-total on the header cells.
@@ -329,18 +407,8 @@
 
         // Delta-vs-SOW line for a bid column.
         if (t.delta) {
-          if (!(t.hasBid)) continue; // no bid yet → no delta line
-          var dCls = 'scw-bid-review__col-title-delta' +
-            (t.matches ? ' scw-bid-review__col-title-delta--match'
-                       : ' scw-bid-review__col-title-delta--gap');
-          var dEl = el('div', dCls);
-          if (t.matches) {
-            dEl.textContent = '✓ matches SOW';
-          } else {
-            var sign = t.amount > 0 ? '+' : '−';
-            dEl.textContent = sign + formatCurrency(Math.abs(t.amount)) + ' vs SOW';
-          }
-          th.appendChild(dEl);
+          var dEl = buildDeltaEl(t.hasBid, t.matches, t.amount);
+          if (dEl) th.appendChild(dEl);
           continue;
         }
 

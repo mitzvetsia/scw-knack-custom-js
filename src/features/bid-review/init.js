@@ -947,43 +947,13 @@
   // / Sub Bid Total) without rebuilding the rest of the table. Reads
   // the same projections renderMatrix uses.
   function updateSowHeaderTotals(state) {
-    if (!state || !state.sowGrids) return;
+    if (!state || !state.sowGrids || !ns.refreshHeaderTotals) return;
+    // Delegate to render.js so the partial refresh recomputes values,
+    // per-bid deltas, and the SOW gap flag with the exact same logic as
+    // the full render (and writes each total to its correct slot).
     state.sowGrids.forEach(function (grid) {
-      var section = document.querySelector(
-        '.scw-bid-review__sow-section[data-sow-id="' + grid.sowId + '"]'
-      );
-      if (!section) return;
-      var rows = grid.rows || [];
-      var installTotal = 0;
-      rows.forEach(function (r) {
-        if (typeof r.sowInstallFee === 'number') installTotal += r.sowInstallFee;
-      });
-      // Update install total in the SOW column header
-      var installEl = section.querySelector(
-        '.scw-bid-review__sow-detail-header .scw-bid-review__col-title-total-value'
-      );
-      if (installEl) installEl.textContent = formatCurrencyHdr(installTotal);
-
-      // Bid total per package — Sub Bid Total = Σ cell.labor (matches
-      // render.js's column header computation).
-      var pkgHeaders = section.querySelectorAll(
-        '.scw-bid-review__pkg-header .scw-bid-review__col-title-total-value'
-      );
-      for (var p = 0; p < grid.packages.length && p < pkgHeaders.length; p++) {
-        var pkg = grid.packages[p];
-        var bidTotal = 0;
-        rows.forEach(function (r) {
-          var cell = r.cellsByPackage && r.cellsByPackage[pkg.id];
-          if (cell && cell.labor) bidTotal += Number(cell.labor) || 0;
-        });
-        pkgHeaders[p].textContent = formatCurrencyHdr(bidTotal);
-      }
+      ns.refreshHeaderTotals(grid);
     });
-  }
-
-  function formatCurrencyHdr(n) {
-    if (!isFinite(n)) return '$0.00';
-    return '$' + n.toFixed(2).replace(/\B(?=(\d{3})+(?!\d))/g, ',');
   }
 
   // Wrap the handlers so jQuery event-arg-2 (the payload) reaches scheduleSilentRefresh.
