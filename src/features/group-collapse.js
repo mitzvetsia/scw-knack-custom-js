@@ -27,6 +27,19 @@
   // intermediate DOM states and layout-shifting flicker.
   let _suppressAutoEnhance = false;
 
+  // Coalesce window: after an enhance pass runs, redundant secondary
+  // triggers (the knack-view-render timer, the MutationObserver, and the
+  // post-edit coordinator's explicit call) skip if one ran within this
+  // window. device-worksheet's transformView calls enhance() inline, so
+  // the 2-3 follow-up passes that used to re-run on every inline edit —
+  // each a full O(rows) accordion rebuild that shifted layout under the
+  // scroll-restore — now collapse into that single pass.
+  let _lastEnhanceAt = 0;
+  const ENHANCE_COALESCE_MS = 350;
+  function recentlyEnhanced() {
+    return (Date.now() - _lastEnhanceAt) < ENHANCE_COALESCE_MS;
+  }
+
   // Record count badge: list view IDs to enable
   const RECORD_COUNT_VIEWS = ['view_3359', 'view_3313', 'view_3505', 'view_3512', 'view_3610', 'view_3586'];
 
@@ -626,6 +639,8 @@
     const $sceneRoot = $(`#kn-${sceneId}`);
     if (!$sceneRoot.length) return;
 
+    _lastEnhanceAt = Date.now();
+
     const cfg = SCENE_OVERRIDES[sceneId] || {};
     const threshold = cfg.openIfFewerThan || DEFAULT_THRESHOLD;
     const viewRecordCounts = {};
@@ -835,6 +850,10 @@
       if (debounceTimer) clearTimeout(debounceTimer);
       debounceTimer = setTimeout(() => {
         debounceTimer = 0;
+        // Skip redundant passes during a fresh enhance window (intermediate
+        // DOM states during transformView etc.). A later mutation outside
+        // the window still re-enhances.
+        if (recentlyEnhanced()) return;
         enhanceAllGroupedGrids(sceneId);
       }, 100);
     });
@@ -878,6 +897,10 @@
       if (viewRenderTimer) clearTimeout(viewRenderTimer);
       viewRenderTimer = setTimeout(function () {
         viewRenderTimer = 0;
+        // Skip if an enhance pass already ran (e.g. device-worksheet's
+        // transformView called enhance() inline) — avoids a second full
+        // accordion rebuild on every inline edit.
+        if (recentlyEnhanced()) return;
         enhanceAllGroupedGrids(sceneId);
       }, 200);
     });
@@ -902,7 +925,10 @@
     /** Suppress/resume automatic enhancement from MutationObserver and
      *  knack-view-render timer.  Used by the post-edit coordinator to
      *  prevent premature enhancement on intermediate DOM states. */
-    suppress: function (val) { _suppressAutoEnhance = !!val; }
+    suppress: function (val) { _suppressAutoEnhance = !!val; },
+    /** True if an enhance pass ran within the coalesce window — lets the
+     *  post-edit coordinator skip its own redundant enhance() call. */
+    recentlyEnhanced: recentlyEnhanced
   };
 })();
 /*************  Collapsible Level-1 & Level-2 Groups (collapsed by default) **************************/

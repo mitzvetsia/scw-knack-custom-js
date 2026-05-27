@@ -424,11 +424,18 @@
         window.SCW.groupCollapse.suppress(false);
       }
 
-      // Step 3: REBUILD GROUPED ACCORDIONS
+      // Step 3: REBUILD GROUPED ACCORDIONS — but only if an enhance pass
+      // hasn't already run in the current refresh window. device-worksheet's
+      // transformView calls enhance() inline; re-running it here was a
+      // redundant full O(rows) rebuild that shifted layout right before the
+      // scroll restore, causing the "lose your place" jump.
       var heightBefore = document.body.scrollHeight;
-      log('step 3: group-collapse enhance', { pageHeight: heightBefore });
-      if (window.SCW && window.SCW.groupCollapse) {
-        window.SCW.groupCollapse.enhance();
+      var gc = window.SCW && window.SCW.groupCollapse;
+      if (gc && !(gc.recentlyEnhanced && gc.recentlyEnhanced())) {
+        log('step 3: group-collapse enhance', { pageHeight: heightBefore });
+        gc.enhance();
+      } else {
+        log('step 3: skip group-collapse enhance (already enhanced this cycle)');
       }
       var heightAfterGC = document.body.scrollHeight;
       if (heightAfterGC !== heightBefore) {
