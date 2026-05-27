@@ -1001,11 +1001,6 @@
     var connectedText = '';
     var LABOR_KEYS = ['field_2409', 'field_2020'];
     var SCW_KEYS   = ['field_2418', 'field_1953'];
-    // Connected-devices connection field. field_2381 = cam/reader,
-    // field_2380 = headend/networking (distribution-device override).
-    // Pulled out of the header summary so the renderer can relocate it
-    // (below Height for cam/reader; under the product for headend/net).
-    var CONNECT_KEYS = ['field_2381', 'field_2380'];
 
     // Summary fields (right bar + "fill" fields like Survey Notes)
     // Each .scw-ws-sum-group has a .scw-ws-sum-label + the field td.
@@ -1052,11 +1047,15 @@
           if (val) scwText = val;
           continue;
         }
-        if (fieldKey && CONNECT_KEYS.indexOf(fieldKey) !== -1) {
+        var lbl = lblEl ? textOf(lblEl) : '';
+        // Connected-devices connection field. The worksheet already
+        // decides WHEN this shows (cam/reader: always; headend/net:
+        // only when it's a distribution device) — we just relocate it.
+        // Match by the label the worksheet stamps, not a hard-coded key.
+        if (/connected\s*devices?/i.test(lbl)) {
           if (val) connectedText = val;
           continue;
         }
-        var lbl = lblEl ? textOf(lblEl) : '';
         // Quantity is rendered on every card today even when it equals
         // 1, which is just visual noise. Hide qty <= 1, render >1 as
         // the small chip on the right of the header.
