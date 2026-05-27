@@ -123,6 +123,7 @@
         updates.push({
           sowItemId:    row.sowItem,
           bidRecordId:  cell.id,
+          label:        row.displayLabel || cell.productName || row.sowProduct || row.productName || row.sowItem,
           qty:          cell.qty,
           rate:         cell.rate,
           labor:        cell.labor,
@@ -159,6 +160,7 @@
         // NEW: create SOW item from bid data
         creates.push({
           bidRecordId:      cell.id,
+          label:            row.displayLabel || cell.productName || row.productName || cell.id,
           qty:              cell.qty,
           rate:             cell.rate,
           labor:            cell.labor,

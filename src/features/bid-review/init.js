@@ -1930,9 +1930,24 @@
       '.scw-copysync-modal__subtitle { font-size: 12px; color: #64748b; margin-top: 2px; }',
       '.scw-copysync-modal__body { padding: 14px 18px; overflow-y: auto; font-size: 13px; color: #334155; }',
       '.scw-copysync-modal__summary { margin-bottom: 12px; }',
-      '.scw-copysync-modal__disc-head { font-weight: 600; color: #b45309; margin-bottom: 6px; }',
-      '.scw-copysync-modal__list { margin: 0 0 12px; padding-left: 18px; max-height: 180px; overflow-y: auto; }',
-      '.scw-copysync-modal__list li { margin: 2px 0; line-height: 1.35; }',
+      '.scw-copysync-modal__group { margin-bottom: 14px; }',
+      '.scw-copysync-modal__group-head {',
+      '  display: flex; align-items: center; justify-content: space-between;',
+      '  font-weight: 700; color: #334155; margin-bottom: 6px;',
+      '}',
+      '.scw-copysync-modal__group-toggle {',
+      '  background: none; border: none; padding: 0; cursor: pointer;',
+      '  font-size: 12px; font-weight: 600; color: #2563eb;',
+      '}',
+      '.scw-copysync-modal__group-toggle:hover { text-decoration: underline; }',
+      '.scw-copysync-modal__items { max-height: 200px; overflow-y: auto;',
+      '  border: 1px solid #e2e8f0; border-radius: 8px; padding: 4px 0; }',
+      '.scw-copysync-modal__item {',
+      '  display: flex; align-items: center; gap: 8px; padding: 5px 12px;',
+      '  line-height: 1.35; cursor: pointer;',
+      '}',
+      '.scw-copysync-modal__item:hover { background: #f8fafc; }',
+      '.scw-copysync-modal__item input { flex-shrink: 0; }',
       '.scw-copysync-modal__toggle {',
       '  display: flex; align-items: flex-start; gap: 8px; padding: 10px 12px;',
       '  background: #fff7ed; border: 1px solid #fed7aa; border-radius: 8px;',
@@ -1957,9 +1972,11 @@
     if (o && o.parentNode) o.parentNode.removeChild(o);
   }
 
-  // Confirm modal for Update SOW to match Bid. Lists which SOW items
-  // will be disconnected (present on the SOW but absent from this bid)
-  // and offers a toggle to keep them instead. Calls onConfirm({disconnect}).
+  // Confirm modal for Update SOW to match Bid. Lists every item the sync
+  // will touch — grouped into Updates, New items, and Disconnections —
+  // each as a checkbox the user can deselect to leave that item alone.
+  // Calls onConfirm({ updates, creates, removals }) with only the
+  // still-checked items.
   function confirmCopyToSow(opts) {
     injectCopySyncStyle();
     closeCopySyncModal();
@@ -1988,51 +2005,70 @@
     var body = document.createElement('div');
     body.className = 'scw-copysync-modal__body';
 
-    var summaryBits = [];
-    if (opts.payload.updates.length) summaryBits.push(opts.payload.updates.length + ' item(s) updated');
-    if (opts.payload.creates.length) summaryBits.push(opts.payload.creates.length + ' new item(s) created');
-    var summary = document.createElement('div');
-    summary.className = 'scw-copysync-modal__summary';
-    summary.textContent = summaryBits.length
-      ? summaryBits.join(', ') + '.'
-      : 'No items will be updated or created.';
-    body.appendChild(summary);
+    // Track every rendered checkbox alongside the payload item it controls.
+    var rows = [];   // { cb, kind: 'updates'|'creates'|'removals', item }
 
-    var removals = opts.payload.removals || [];
-    var toggle = null;
-    if (removals.length) {
-      var discHead = document.createElement('div');
-      discHead.className = 'scw-copysync-modal__disc-head';
-      discHead.textContent = removals.length + ' item(s) are on the SOW but not in this bid:';
-      body.appendChild(discHead);
+    // Render one titled group of item checkboxes. Includes a select-all /
+    // none toggle in the group header for long lists.
+    function renderGroup(titleText, kind, items) {
+      if (!items || !items.length) return;
 
-      var list = document.createElement('ul');
-      list.className = 'scw-copysync-modal__list';
-      for (var i = 0; i < removals.length; i++) {
-        var li = document.createElement('li');
-        li.textContent = removals[i].label || removals[i].sowItemId;
-        list.appendChild(li);
+      var section = document.createElement('div');
+      section.className = 'scw-copysync-modal__group';
+
+      var head = document.createElement('div');
+      head.className = 'scw-copysync-modal__group-head';
+      var headLabel = document.createElement('span');
+      headLabel.textContent = titleText + ' (' + items.length + ')';
+      head.appendChild(headLabel);
+      var toggleAll = document.createElement('button');
+      toggleAll.type = 'button';
+      toggleAll.className = 'scw-copysync-modal__group-toggle';
+      toggleAll.textContent = 'Deselect all';
+      head.appendChild(toggleAll);
+      section.appendChild(head);
+
+      var groupCbs = [];
+      var list = document.createElement('div');
+      list.className = 'scw-copysync-modal__items';
+      for (var i = 0; i < items.length; i++) {
+        var rowLabel = document.createElement('label');
+        rowLabel.className = 'scw-copysync-modal__item';
+        var cb = document.createElement('input');
+        cb.type = 'checkbox';
+        cb.checked = true;
+        var span = document.createElement('span');
+        span.textContent = items[i].label || items[i].sowItemId || items[i].bidRecordId || 'Item';
+        rowLabel.appendChild(cb);
+        rowLabel.appendChild(span);
+        list.appendChild(rowLabel);
+        rows.push({ cb: cb, kind: kind, item: items[i] });
+        groupCbs.push(cb);
       }
-      body.appendChild(list);
+      section.appendChild(list);
 
-      var toggleWrap = document.createElement('label');
-      toggleWrap.className = 'scw-copysync-modal__toggle';
-      toggle = document.createElement('input');
-      toggle.type = 'checkbox';
-      toggle.checked = true; // default: disconnect (preserves prior behavior)
-      var toggleText = document.createElement('span');
-      var toggleLabel = document.createElement('span');
-      toggleLabel.className = 'scw-copysync-modal__toggle-label';
-      toggleLabel.textContent = 'Disconnect these items from the SOW';
-      var toggleHint = document.createElement('span');
-      toggleHint.className = 'scw-copysync-modal__toggle-hint';
-      toggleHint.textContent = 'Uncheck to keep them on the SOW (they just won’t be touched).';
-      toggleText.appendChild(toggleLabel);
-      toggleText.appendChild(toggleHint);
-      toggleWrap.appendChild(toggle);
-      toggleWrap.appendChild(toggleText);
-      body.appendChild(toggleWrap);
+      toggleAll.addEventListener('click', function () {
+        var anyChecked = false;
+        for (var c = 0; c < groupCbs.length; c++) { if (groupCbs[c].checked) { anyChecked = true; break; } }
+        var next = !anyChecked;
+        for (var c2 = 0; c2 < groupCbs.length; c2++) groupCbs[c2].checked = next;
+        toggleAll.textContent = next ? 'Deselect all' : 'Select all';
+      });
+
+      body.appendChild(section);
     }
+
+    renderGroup('Update existing SOW items', 'updates', opts.payload.updates);
+    renderGroup('Create new SOW items',      'creates', opts.payload.creates);
+    renderGroup('Disconnect from SOW (on the SOW, not in this bid)', 'removals', opts.payload.removals);
+
+    if (!rows.length) {
+      var empty = document.createElement('div');
+      empty.className = 'scw-copysync-modal__summary';
+      empty.textContent = 'No items will be updated or created.';
+      body.appendChild(empty);
+    }
+
     modal.appendChild(body);
 
     var footer = document.createElement('div');
@@ -2045,9 +2081,12 @@
     goBtn.className = 'scw-copysync-modal__btn scw-copysync-modal__btn--go';
     goBtn.textContent = 'Update SOW';
     goBtn.addEventListener('click', function () {
-      var disconnect = toggle ? toggle.checked : true;
+      var selected = { updates: [], creates: [], removals: [] };
+      for (var r = 0; r < rows.length; r++) {
+        if (rows[r].cb.checked) selected[rows[r].kind].push(rows[r].item);
+      }
       closeCopySyncModal();
-      opts.onConfirm({ disconnect: disconnect });
+      opts.onConfirm(selected);
     });
     footer.appendChild(cancelBtn);
     footer.appendChild(goBtn);
@@ -2072,9 +2111,12 @@
       pkgName: pkgName,
       sowName: grid.sowName,
       payload: payload,
-      onConfirm: function (choice) {
-        // Honor the keep-on-SOW choice by dropping removals from the payload.
-        if (!choice.disconnect) payload.removals = [];
+      onConfirm: function (selected) {
+        // Honor per-item deselection: only sync the items the user left
+        // checked in the confirm modal.
+        payload.updates  = selected.updates  || [];
+        payload.creates  = selected.creates  || [];
+        payload.removals = selected.removals || [];
 
         var total2 = payload.updates.length + payload.creates.length + payload.removals.length;
         if (total2 === 0) {
