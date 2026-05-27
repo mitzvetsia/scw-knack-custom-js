@@ -566,32 +566,19 @@
         // resolved bucket override, which is the source of truth on
         // the live worksheet.
         rowObj.rowClasses = tr.className || '';
-
-        // TEMP DIAGNOSTIC — locate the connection field. Logs each
-        // card's scraped summary labels/values + every connection-type
-        // field on the model record (arrays of {id, identifier}). Remove
-        // once the connected-devices field is identified.
-        try {
-          var connFields = {};
-          if (rowObj.raw) {
-            Object.keys(rowObj.raw).forEach(function (k) {
-              if (!/_raw$/.test(k)) return;
-              var v = rowObj.raw[k];
-              if (Array.isArray(v) && v.length && v[0] && (v[0].identifier || v[0].id)) {
-                connFields[k] = v.map(function (e) { return e.identifier || e.id; }).join(', ');
-              }
-            });
-          }
-          console.log('[SCW survey-pdf] CARD', rowObj.label,
-            '| classes:', rowObj.rowClasses,
-            '| summaryFields:', (rowObj.summaryFields || []).map(function (s) { return s.label + '=' + s.value; }),
-            '| connectedText:', rowObj.connectedText,
-            '| model connection fields:', connFields);
-        } catch (e) { /* diagnostic only */ }
-
         out.push(rowObj);
       }
     }
+
+    // ── Resolve Connected To / Connected Devices from the model ──
+    // The connection only lives on the distribution device (NVR/switch):
+    // its field_2380 lists the child devices it serves. So:
+    //   • distribution device → "Connected Devices" = its field_2380 list
+    //   • child (camera/reader) → "Connected To" = the parent that lists
+    //     it, found by matching the child's recordId against every
+    //     parent's field_2380 connection ids.
+    // The summary DOM doesn't surface this, so we read it from card.raw.
+    resolveConnections(out);
 
     console.log('[SCW survey-pdf] scrape', _scrapeStats);
     if (_scrapeStats.wsRowCount === 0 && _scrapeStats.knTableRowCount > 0) {
@@ -1071,14 +1058,6 @@
           continue;
         }
         var lbl = lblEl ? textOf(lblEl) : '';
-        // Connected-devices connection field. The worksheet already
-        // decides WHEN this shows (cam/reader: always; headend/net:
-        // only when it's a distribution device) — we just relocate it.
-        // Match by the label the worksheet stamps, not a hard-coded key.
-        if (/connected\s*devices?/i.test(lbl)) {
-          if (val) connectedText = val;
-          continue;
-        }
         // Quantity is rendered on every card today even when it equals
         // 1, which is just visual noise. Hide qty <= 1, render >1 as
         // the small chip on the right of the header.
@@ -1379,13 +1358,53 @@
     return bucketMatches(card, null, /network|headend/i);
   }
 
-  // "Connected To" — the connected-devices connection field, rendered
-  // in the same compact label/value shape as the Mount ref item so it
-  // blends with the other detail info.
-  function renderConnectedTo(card) {
+  // Join a connection field's display identifiers ("E-001, E-002, …").
+  function connIdentifiers(raw, key) {
+    var v = raw && raw[key];
+    if (!Array.isArray(v)) return '';
+    var out = [];
+    for (var i = 0; i < v.length; i++) {
+      var e = v[i];
+      if (e && (e.identifier || e.id)) out.push(e.identifier || e.id);
+    }
+    return out.join(', ');
+  }
+
+  // Populate card.connectedText from the model. Distribution devices
+  // carry the connection (field_2380 = the devices they serve); children
+  // get their parent resolved by recordId reverse-lookup.
+  function resolveConnections(rows) {
+    var parentByChildId = {};
+    var i, r;
+    for (i = 0; i < rows.length; i++) {
+      r = rows[i];
+      if (!r || r.type !== 'card' || !r.raw) continue;
+      var kids = r.raw.field_2380_raw;
+      if (!Array.isArray(kids) || !kids.length) continue;
+      var parentName = r.product || r.label || '';
+      for (var k = 0; k < kids.length; k++) {
+        if (kids[k] && kids[k].id) parentByChildId[kids[k].id] = parentName;
+      }
+    }
+    for (i = 0; i < rows.length; i++) {
+      r = rows[i];
+      if (!r || r.type !== 'card') continue;
+      var children = connIdentifiers(r.raw, 'field_2380_raw');
+      if (children) {
+        r.connectedText = children;                       // distribution device
+      } else if (r.raw && r.recordId) {
+        r.connectedText = parentByChildId[r.recordId] || ''; // child → parent
+      }
+    }
+  }
+
+  // "Connected To" / "Connected Devices" — rendered in the same compact
+  // label/value shape as the Mount ref item so it blends with the other
+  // detail info. The caller supplies the label (differs by bucket).
+  function renderConnectedTo(card, label) {
     if (!card || !hasMeaningfulText(card.connectedText)) return '';
     return '<div class="ws-ref"><div class="ws-ref-item">' +
-      '<span class="ws-ref-label">Connected To</span>' +
+      '<span class="ws-ref-label">' + esc(label || 'Connected To') + '</span>' +
       '<span class="ws-ref-value">' + esc(card.connectedText) + '</span>' +
       '</div></div>';
   }
@@ -1833,9 +1852,9 @@
         if (card.product) {
           h.push('<div class="ws-id-product ws-id-product--stacked">' + esc(card.product) + '</div>');
         }
-        // Headend / networking: Connected To sits directly under the
-        // product name; Mount info is suppressed.
-        h.push(renderConnectedTo(card));
+        // Headend / networking: Connected Devices sits directly under
+        // the product name; Mount info is suppressed.
+        h.push(renderConnectedTo(card, 'Connected Devices'));
         h.push(scwBlock());
         h.push(techNotesBlock());
         if (!isHeadendOrNetworking(card)) h.push(renderRefSection(card));
@@ -1863,7 +1882,7 @@
         h.push(renderMeasureRow(card));
         // Cam/reader: Connected To renders below Height/measure, styled
         // like the other detail (ref) items.
-        h.push(renderConnectedTo(card));
+        h.push(renderConnectedTo(card, 'Connected To'));
         h.push('</div>');
 
         h.push('<div class="ws-body-col ws-body-col--mid">');
