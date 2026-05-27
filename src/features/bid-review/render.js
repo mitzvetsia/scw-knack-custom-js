@@ -2101,6 +2101,51 @@
     }
   }
 
+  // ── persist accordion state across a full page reload ───────
+  // The snapshot/restore above is in-memory and dies on a page reload
+  // (e.g. the post-"Update SOW to match Bid" reload). Mirror it into
+  // sessionStorage so the user's open SOWs / MDF-IDF groups come back
+  // after the reload. sessionStorage (not localStorage) keeps it scoped
+  // to the current tab session.
+  var ACCORDION_STORE_PREFIX = 'scwBidReviewAccordion:';
+
+  function accordionStorageKey() {
+    var scene = (window.Knack && Knack.router && Knack.router.current_scene_key) || CFG.sceneKey;
+    return ACCORDION_STORE_PREFIX + scene;
+  }
+
+  function persistAccordionState() {
+    try {
+      var mount = document.querySelector(CFG.mountSelector);
+      if (!mount) return;
+      var snap = snapshotAccordionState(mount);
+      if (Object.keys(snap.sow).length || Object.keys(snap.group).length) {
+        sessionStorage.setItem(accordionStorageKey(), JSON.stringify(snap));
+      }
+    } catch (e) { /* sessionStorage unavailable — ignore */ }
+  }
+
+  function loadPersistedAccordionState() {
+    try {
+      var raw = sessionStorage.getItem(accordionStorageKey());
+      if (!raw) return null;
+      var parsed = JSON.parse(raw);
+      if (parsed && parsed.sow && parsed.group) return parsed;
+    } catch (e) { /* corrupt / unavailable — ignore */ }
+    return null;
+  }
+
+  ns.persistAccordionState = persistAccordionState;
+
+  // Capture the latest DOM state on unload (covers manual reloads and the
+  // programmatic post-sync reload alike). Registered once.
+  var _unloadPersistBound = false;
+  function bindUnloadPersist() {
+    if (_unloadPersistBound) return;
+    _unloadPersistBound = true;
+    window.addEventListener('beforeunload', persistAccordionState);
+  }
+
   // ── shared accordion open/close helpers ─────────────────────
   // Used by the per-header toggles, the snapshot/restore cycle, and the
   // Expand all / Collapse all toolbar buttons so every path opens/closes
@@ -2176,8 +2221,19 @@
     var mount = getOrCreateMount();
     if (!mount) return null;   // wrong scene — scene gate refused
 
+    bindUnloadPersist();
+
     // Preserve accordion state across re-renders
     var snap = snapshotAccordionState(mount);
+
+    // On a fresh page load the mount is empty, so the live snapshot has
+    // nothing. Seed it from the persisted session snapshot so the user's
+    // open SOWs / groups survive a full page reload (e.g. the post-sync
+    // reload) instead of coming back all-collapsed.
+    if (!Object.keys(snap.sow).length && !Object.keys(snap.group).length) {
+      var persisted = loadPersistedAccordionState();
+      if (persisted) snap = persisted;
+    }
 
     // Drop the cached DOC_files index so the next docs lookup re-
     // scrapes view_3926 (post-mutation refreshes need fresh data).
@@ -2209,6 +2265,10 @@
       : null;
 
     restoreAccordionState(mount, snap, defaultOpenSowId);
+
+    // Mirror the just-restored state into sessionStorage so it's current
+    // even if the page reloads before any toggle/beforeunload fires.
+    persistAccordionState();
 
     // Notify other modules that the grid has been built
     $(document).trigger('scw-bid-review-rendered');

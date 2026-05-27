@@ -2141,6 +2141,9 @@
         // from scratch rather than relying on a silent partial refresh.
         if (CFG.debug) SCW.debug('[BidReview] Copy to SOW webhook completed — reloading page');
         stopCopyPoll();
+        // Persist the open/closed accordion state so it survives the
+        // reload instead of coming back all-collapsed.
+        if (ns.persistAccordionState) ns.persistAccordionState();
         window.location.reload();
       })
       .fail(function (xhr) {
