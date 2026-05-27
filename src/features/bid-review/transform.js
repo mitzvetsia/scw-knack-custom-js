@@ -791,6 +791,41 @@
       }
     }
 
+    // Global index: bid package id → every bid record on that package
+    // (across the whole dataset). Used to make a bid COLUMN show all of
+    // its items wherever it appears, even ones whose line item lives on
+    // another SOW (those render in an "Other items on this bid" block).
+    var pkgAllRecords = {};
+    for (var pari = 0; pari < records.length; pari++) {
+      var parPkgs = connectionAll(records[pari], FK.bidPackage);
+      for (var parp = 0; parp < parPkgs.length; parp++) {
+        var parPid = parPkgs[parp].id;
+        if (!parPid) continue;
+        (pkgAllRecords[parPid] = pkgAllRecords[parPid] || []).push(records[pari]);
+      }
+    }
+
+    // Does a bid record "touch" a SOW? True if its own field_2154 lists
+    // the SOW, OR its related SOW line item (field_2404) is connected to
+    // it. A bid column shows on a SOW grid when any of its records touch.
+    function recordTouchesSow(rec, sowId) {
+      var sc = connectionAll(rec, FK.sow);
+      for (var x = 0; x < sc.length; x++) {
+        if (sc[x] && sc[x].id === sowId) return true;
+      }
+      var siId = connectionId(rec, FK.relatedSowItem);
+      if (siId && sowItemLookup[siId] && sowItemLookup[siId].sowIds &&
+          sowItemLookup[siId].sowIds[sowId]) return true;
+      return false;
+    }
+    function packageTouchesSow(pkgId, sowId) {
+      var precs = pkgAllRecords[pkgId] || [];
+      for (var t = 0; t < precs.length; t++) {
+        if (recordTouchesSow(precs[t], sowId)) return true;
+      }
+      return false;
+    }
+
     var sowBuckets = groupBySow(records);
 
     // Distribute no-SOW records into SOW grids that share the same bid package.
@@ -943,44 +978,91 @@
         }
       }
 
-      var pkgs    = extractPackages(recs);
-      // Attach PDF, survey, status, SOW, and CR info to per-SOW packages
-      for (var ppi = 0; ppi < pkgs.length; ppi++) {
-        var pCr = crMap[pkgs[ppi].id];
-        if (pCr) {
-          pkgs[ppi].crPendingCount = pCr.pendingCount;
-          pkgs[ppi].crLinkUrl      = pCr.linkUrl;
+      // Columns: a bid renders as a column on this SOW grid when the bid
+      // TOUCHES this SOW (any of its records' line items / own field_2154
+      // connect here) — so every SOW a bid touches shows that bid. Build
+      // from allPkgs (already carries CR / PDF / status / bidSow info) so
+      // a touching bid with no records bucketed into this SOW still shows.
+      var pkgs = [];
+      for (var api = 0; api < allPkgs.length; api++) {
+        if (!packageTouchesSow(allPkgs[api].id, sow.id)) continue;
+        var pc = {};
+        for (var pk in allPkgs[api]) {
+          if (Object.prototype.hasOwnProperty.call(allPkgs[api], pk)) pc[pk] = allPkgs[api][pk];
         }
-        var pInfo = pkgInfoMap[pkgs[ppi].id];
-        if (pInfo) {
-          if (pInfo.url) { pkgs[ppi].pdfUrl = pInfo.url; pkgs[ppi].pdfFilename = pInfo.filename; }
-          if (pInfo.surveyId) pkgs[ppi].surveyId = pInfo.surveyId;
-          if (pInfo.bidStatus) pkgs[ppi].bidStatus = pInfo.bidStatus;
-          if (pInfo.bidSowId) pkgs[ppi].bidSowId = pInfo.bidSowId;
-        }
+        pkgs.push(pc);
       }
 
-      // Gate columns: a bid only renders as a column on this SOW's grid
-      // when its field_2387 (bidSowId) is empty (unassigned) or matches
-      // the current SOW id. Bids tied to a sibling SOW are excluded —
-      // even if their survey items are shared with this SOW — so each
-      // grid is scoped to bids actually meant for this SOW.
-      pkgs = pkgs.filter(function (pkg) {
-        return !pkg.bidSowId || pkg.bidSowId === sow.id;
-      });
-      if (CFG.debug) {
-        SCW.debug('[BidReview] SOW', sow.id, 'pkgs after bidSow filter:',
-                  pkgs.map(function (p) { return p.name + (p.bidSowId ? '' : ' (unassigned)'); }));
+      // ── "Other items on this bid" — completeness ──────────────
+      // Every item on a displayed bid must appear in its column. Items
+      // whose line item isn't on this SOW have no matched row, so collect
+      // them into a separate bottom block. Track which bid records are
+      // already shown as matched rows (by record id) to avoid dupes.
+      var shownRecIds = {};
+      for (var sri = 0; sri < rows.length; sri++) {
+        var scells = rows[sri].cellsByPackage || {};
+        for (var scp in scells) {
+          if (scells[scp] && scells[scp].id) shownRecIds[scells[scp].id] = true;
+        }
+      }
+      var otherRecs = [], seenOther = {};
+      for (var oc = 0; oc < pkgs.length; oc++) {
+        var oprecs = pkgAllRecords[pkgs[oc].id] || [];
+        for (var op = 0; op < oprecs.length; op++) {
+          var orec = oprecs[op];
+          if (shownRecIds[orec.id] || seenOther[orec.id]) continue;
+          seenOther[orec.id] = true;
+          otherRecs.push(orec);
+        }
+      }
+      var otherRows = otherRecs.length ? buildRowsForSow(otherRecs) : [];
+      for (var orw = 0; orw < otherRows.length; orw++) {
+        var orr = otherRows[orw];
+        if (orr.sowItem && sowItemLookup[orr.sowItem]) {
+          orr.sowItemLabel = sowItemLookup[orr.sowItem].label || '';
+        }
+        // Not on this SOW — reuse the offSow treatment (cut-out SOW cell,
+        // excluded from SOW totals, still counted in the bid column total).
+        orr.offSow = true;
+        orr.otherBidItem = true;
       }
 
+      // Per-package on-SOW count: a column with ZERO matched on-SOW items
+      // (all of its items live on other SOWs) collapses by default.
+      for (var pcnt = 0; pcnt < pkgs.length; pcnt++) {
+        var onSow = 0;
+        for (var mr = 0; mr < rows.length; mr++) {
+          if (rows[mr].cellsByPackage && rows[mr].cellsByPackage[pkgs[pcnt].id]) onSow++;
+        }
+        pkgs[pcnt].onSowItemCount = onSow;
+        pkgs[pcnt].noOnSowItems   = (onSow === 0);
+      }
+
+      // Matched rows render in their MDF/IDF groups; "other" items go in a
+      // dedicated bottom group so the matched grid stays as-is.
       var groups  = groupRows(rows);
+      if (otherRows.length) {
+        groups.push({
+          key:       '__other_bid_items__',
+          label:     'Other items on these bids (not on this SOW)',
+          mdfIdfId:  '',
+          level:     1,
+          rows:      otherRows,
+          subgroups: [],
+          otherBidItems: true,
+        });
+      }
+
+      // sowGrid.rows includes the other items so bid column totals count
+      // them (header-total logic skips offSow rows for the SOW total).
+      var allRows = otherRows.length ? rows.concat(otherRows) : rows;
       var elig    = computeEligibility(rows, pkgs);
 
       sowGrids.push({
         sowId:       sow.id,
         sowName:     stripHtml(sow.name),
         packages:    pkgs,
-        rows:        rows,
+        rows:        allRows,
         groups:      groups,
         eligibility: elig,
         // Full table column count INCLUDING the Sub-Bid-Revisions

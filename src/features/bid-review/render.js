@@ -127,9 +127,20 @@
   // session. Every cell in a column carries class scw-bid-review__pkg-col
   // + data-package-id so a toggle can hit the whole column at once.
   var _collapsedPkgCols = {};
+  // Columns the user has explicitly expanded/collapsed this session — their
+  // choice wins over the auto-collapse default for zero-on-SOW bids.
+  var _pkgColUserToggled = {};
 
   function pkgColKey(sowId, pkgId) { return (sowId || '') + '::' + (pkgId || ''); }
   function isPkgColCollapsed(sowId, pkgId) { return !!_collapsedPkgCols[pkgColKey(sowId, pkgId)]; }
+
+  // A bid whose items are ALL "other" (none on this SOW) renders collapsed
+  // by default — but only until the user toggles it.
+  function applyDefaultPkgCollapse(sowId, pkgId, shouldCollapse) {
+    var key = pkgColKey(sowId, pkgId);
+    if (_pkgColUserToggled[key]) return;
+    if (shouldCollapse) _collapsedPkgCols[key] = true;
+  }
 
   // Tag a column cell so the collapse toggle can find it, and apply the
   // collapsed class up front if this column is already collapsed.
@@ -145,6 +156,7 @@
 
   function setPkgColCollapsed(sowId, pkgId, collapsed) {
     var key = pkgColKey(sowId, pkgId);
+    _pkgColUserToggled[key] = true;
     if (collapsed) _collapsedPkgCols[key] = true; else delete _collapsedPkgCols[key];
     var scope = document.querySelector('.scw-bid-review__sow-section[data-sow-id="' + sowId + '"]');
     if (!scope) return;
@@ -2139,6 +2151,15 @@
   }
 
   function buildSowSection(sowGrid) {
+    // Default-collapse any bid column whose items are all "other" (none on
+    // this SOW), unless the user has toggled it. Seed before the table is
+    // built so every cell in the column picks up the collapsed class.
+    for (var dc = 0; dc < sowGrid.packages.length; dc++) {
+      if (sowGrid.packages[dc].noOnSowItems) {
+        applyDefaultPkgCollapse(sowGrid.sowId, sowGrid.packages[dc].id, true);
+      }
+    }
+
     var section = el('div', 'scw-bid-review__sow-section');
     section.setAttribute('data-sow-id', sowGrid.sowId);
 
