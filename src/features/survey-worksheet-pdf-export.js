@@ -1403,8 +1403,8 @@
   // detail info. The caller supplies the label (differs by bucket).
   function renderConnectedTo(card, label) {
     if (!card || !hasMeaningfulText(card.connectedText)) return '';
-    return '<div class="ws-ref"><div class="ws-ref-item">' +
-      '<span class="ws-ref-label">' + esc(label || 'Connected To') + '</span>' +
+    return '<div class="ws-ref ws-ref--conn"><div class="ws-ref-item">' +
+      '<span class="ws-ref-label ws-ref-label--conn">' + esc(label || 'Connected To') + '</span>' +
       '<span class="ws-ref-value">' + esc(card.connectedText) + '</span>' +
       '</div></div>';
   }
@@ -2243,6 +2243,15 @@
       '.ws-ref-value {',
       '  color: #111827; flex: 1 1 auto;',
       '  white-space: pre-wrap; word-break: break-word;',
+      '}',
+      '/* Connected To / Connected Devices — blue label like the flag    */',
+      '/* labels, sized to content (no fixed gray uppercase column).     */',
+      '.ws-ref--conn { margin-top: 2px; }',
+      '.ws-ref-label--conn {',
+      '  min-width: 0; flex: 0 0 auto; text-align: left;',
+      '  white-space: nowrap; padding-top: 0;',
+      '  color: #07467c; font-weight: 700;',
+      '  font-size: 8.5px; letter-spacing: 0; text-transform: none;',
       '}',
       '',
       '/* ── Flag band (Existing / Exterior / Plenum) ────────────── */',
