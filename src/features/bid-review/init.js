@@ -1917,12 +1917,21 @@
         // Fire ClickUp webhook (fire-and-forget — failure here doesn't
         // undo the Knack writes that already landed).
         if (CFG.reopenBidWebhook) {
+          var user = null;
+          try {
+            var u = (typeof Knack !== 'undefined' && Knack.getUserAttributes)
+              ? Knack.getUserAttributes() : null;
+            if (u && typeof u === 'object') {
+              user = { id: u.id || '', name: u.name || '', email: u.email || '' };
+            }
+          } catch (e) {}
           SCW.knackAjax({
             url:  CFG.reopenBidWebhook,
             type: 'POST',
             data: JSON.stringify({
               bidId:     pkgId,
-              projectId: getProjectId()
+              projectId: getProjectId(),
+              user:      user
             }),
             error: function (xhr) {
               if (CFG.debug) console.warn('[BidReview] Reopen webhook failed', xhr && xhr.status);
