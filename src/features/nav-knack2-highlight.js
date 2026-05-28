@@ -19,13 +19,13 @@
   var PRIMARY_CLS = 'scw-nav2-primary';
   var LEGACY_CLS  = 'scw-nav2-legacy';
 
-  // Each primary entry matches if the link label equals `label` OR the
-  // href contains `/slug/`. Slugs are the Knack page slugs in the URL hash.
+  // Strict allow-list — only these two menu items should get the teal
+  // K2 treatment for now. Match by exact label only (slug fallback
+  // intentionally disabled — a slug match was lighting up legacy
+  // "Build SOWs" links on some users' menus).
   var PRIMARY = [
-    { label: 'dashboard',         slug: 'new-dashboard' },
-    { label: 'build sows',        slug: 'build-sow' },
-    { label: 'review bids',       slug: 'review-bids' },
-    { label: 'manage deployment', slug: 'manage-deployment' }
+    { label: 'k2: build sows',     slug: null },
+    { label: 'k2: reconcile bids', slug: null }
   ];
 
   // Teal palette:
