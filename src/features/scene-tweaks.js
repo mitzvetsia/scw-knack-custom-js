@@ -389,10 +389,91 @@
     // ── PROJECT TOTAL ──
     layout.appendChild(createGrandTotal('Project Total', formatMoney(projTotal)));
 
+    // ── SCW Notes button (field_1953) ──
+    // Show a small speak/comment icon when the SOW has SCW notes
+    // attached. Click reveals the full notes text in a popover so the
+    // panel doesn't grow vertically for every long note.
+    var scwNotes = readSowField('field_1953');
+    if (scwNotes && scwNotes.length) {
+      layout.appendChild(buildScwNotesButton(scwNotes));
+    }
+
     view.appendChild(layout);
 
-    // ── Published proposal info (from view_3814) ──
-    injectProposalInfo(layout);
+    // Published-proposal info now lives at the top of the SOW column
+    // (see published-proposal-sow-card.js). Don't render it in the
+    // totals here too — would just duplicate the same block.
+    // injectProposalInfo(layout);
+  }
+
+  // Build a small "SCW Notes" speak/comment button + click-to-toggle
+  // popover anchored below the totals. Idempotent — clicking outside
+  // closes it; clicking the icon toggles.
+  function buildScwNotesButton(notesText) {
+    var wrap = document.createElement('div');
+    wrap.className = 'scw-totals-notes';
+    wrap.style.cssText = 'position:relative;margin-top:10px;padding-top:10px;' +
+      'border-top:1px solid #e5e7eb;display:flex;justify-content:flex-end;';
+
+    var btn = document.createElement('button');
+    btn.type = 'button';
+    btn.className = 'scw-totals-notes-btn';
+    btn.setAttribute('aria-expanded', 'false');
+    btn.style.cssText =
+      'appearance:none;background:#f8fafc;border:1px solid #cbd5e1;' +
+      'border-radius:6px;padding:5px 10px;cursor:pointer;' +
+      'display:inline-flex;align-items:center;gap:6px;' +
+      'font:600 11.5px/1.2 system-ui,sans-serif;color:#475569;' +
+      'transition:background .12s, border-color .12s, color .12s;';
+    btn.innerHTML =
+      '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" ' +
+      'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+      'stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>' +
+      '<span>SCW Notes</span>';
+    wrap.appendChild(btn);
+
+    var pop = document.createElement('div');
+    pop.className = 'scw-totals-notes-pop';
+    pop.style.cssText =
+      'display:none;position:absolute;right:0;top:calc(100% + 4px);' +
+      'z-index:50;max-width:320px;min-width:220px;' +
+      'background:#fff;border:1px solid #cbd5e1;border-radius:8px;' +
+      'box-shadow:0 6px 20px rgba(15,23,42,0.12);' +
+      'padding:10px 12px;text-align:left;' +
+      'font:500 12px/1.45 system-ui,sans-serif;color:#1e293b;' +
+      'white-space:pre-wrap;word-break:break-word;';
+    pop.textContent = notesText;
+    wrap.appendChild(pop);
+
+    function close() {
+      pop.style.display = 'none';
+      btn.setAttribute('aria-expanded', 'false');
+      btn.style.background = '#f8fafc';
+      btn.style.borderColor = '#cbd5e1';
+      btn.style.color = '#475569';
+      document.removeEventListener('mousedown', onDocMouseDown, true);
+      document.removeEventListener('keydown', onKey, true);
+    }
+    function open() {
+      pop.style.display = 'block';
+      btn.setAttribute('aria-expanded', 'true');
+      btn.style.background = '#eef2f7';
+      btn.style.borderColor = '#94a3b8';
+      btn.style.color = '#0f4c75';
+      document.addEventListener('mousedown', onDocMouseDown, true);
+      document.addEventListener('keydown', onKey, true);
+    }
+    function onDocMouseDown(e) {
+      if (!wrap.contains(e.target)) close();
+    }
+    function onKey(e) { if (e.key === 'Escape') close(); }
+
+    btn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      if (pop.style.display === 'block') close(); else open();
+    });
+
+    return wrap;
   }
 
   function injectProposalInfo(container) {

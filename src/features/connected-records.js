@@ -596,14 +596,17 @@
       // Remove the item from the DOM
       itemEl.remove();
 
-      // Trigger preservation pipeline + refresh parent views
+      // Trigger preservation pipeline + refresh ONLY the issuing parent
+      // view. Refetching every parent view (view_3610 / view_3313 / etc.)
+      // on every delete used to cascade full re-renders into sibling
+      // grids that weren't even on screen.
       $(document).trigger('knack-cell-update.scwScrollPreserve');
-      CONFIG.views.forEach(function (cfg) {
-        var viewObj = Knack.views[cfg.parentViewId];
+      if (viewId) {
+        var viewObj = Knack.views[viewId];
         if (viewObj && viewObj.model && viewObj.model.fetch) {
           viewObj.model.fetch();
         }
-      });
+      }
     })
     .catch(function (err) {
       console.error('[SCW][CR-DELETE] Delete record error:', err);

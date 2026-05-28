@@ -77,7 +77,11 @@
     {
       viewId: 'view_3610',
       detectField: 'field_2219',
-      sortField: 'field_2218',
+      // sortField intentionally omitted — device-worksheet's rowSort
+      // already sorts this view in transformView Phase 2b; doing it
+      // again here is a full O(N) detach/reinsert of every row on every
+      // render for nothing.
+      sortField: null,
       labelTarget: 'field_1949',
       labelMode: 'prefix',
       laborDescField: null,
@@ -122,7 +126,10 @@
     {
       viewId: 'view_3586',
       detectField: 'field_2219',
-      sortField: 'field_2218',
+      // sortField intentionally omitted — device-worksheet's rowSort
+      // already sorts this view in transformView Phase 2b; duplicate
+      // sort here is wasted work on every render.
+      sortField: null,
       labelTarget: 'field_1949',
       labelMode: 'prefix',
       laborDescField: null,
@@ -499,7 +506,16 @@
     var obsTimer = 0;
     var obs = new MutationObserver(function () {
       if (obsTimer) clearTimeout(obsTimer);
-      obsTimer = setTimeout(function () { obsTimer = 0; applyForView(cfg); }, 150);
+      obsTimer = setTimeout(function () {
+        obsTimer = 0;
+        // Skip when device-worksheet's transformView caused these
+        // mutations — its knack-view-render handler already re-runs
+        // applyForView right after the transform completes.
+        if (window.SCW && window.SCW.deviceWorksheet &&
+            window.SCW.deviceWorksheet.isTransforming &&
+            window.SCW.deviceWorksheet.isTransforming(cfg.viewId)) return;
+        applyForView(cfg);
+      }, 150);
     });
     obs.observe(el, { childList: true, subtree: true });
   }

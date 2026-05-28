@@ -210,6 +210,21 @@
       '.scw-bid-review__sow-metric-input--saved {',
       '  background: #ecfdf5;',
       '}',
+      /* Inline date editor on the published-proposal expiration line
+         inside the SOW header cell. Sized to match the surrounding
+         "Expires:" label so the row stays compact. */
+      '.scw-bid-review__pq-exp-input {',
+      '  margin-left: 2px; padding: 1px 4px;',
+      '  border: 1px solid #cbd5e1; border-radius: 3px;',
+      '  font: 500 11px/1.2 system-ui, sans-serif; color: #0f172a;',
+      '  background: #fff;',
+      '}',
+      '.scw-bid-review__pq-exp-input:focus {',
+      '  outline: none; border-color: #0d9488;',
+      '  box-shadow: 0 0 0 2px rgba(13, 148, 136, 0.2);',
+      '}',
+      '.scw-bid-review__pq-exp-input--saving { background: #fef3c7; }',
+      '.scw-bid-review__pq-exp-input--saved  { background: #ecfdf5; }',
       /* Preview-Proposal pill inside the SOW status bar — restyled to
          match the .scw-bid-review__btn--adopt "Sync to SOW" button in
          the bid columns (same font / padding / border-radius / color). */
@@ -2030,7 +2045,7 @@
       '  display: flex;',
       '  flex-direction: column;',
       '  gap: 4px;',
-      '  align-items: flex-end;',
+      '  align-items: stretch;',  /* stretch so children share the column width — Revise/Remove line up exactly */
       '  z-index: 2;',
       '}',
       '.scw-bid-review__cell-action {',
@@ -2043,6 +2058,21 @@
       '  cursor: pointer;',
       '  letter-spacing: 0.02em;',
       '  white-space: nowrap;', /* never wrap inside an action button — keeps the absolute stack a predictable width */
+      '  text-align: center;',  /* center the label when the button stretches to share width */
+      '}',
+      /* Small "CRs" label above the action buttons in the bid column so
+         reviewers know these buttons spawn Change Requests, not direct
+         edits of the bid record. */
+      '.scw-bid-review__cell-actions-header {',
+      '  font: 700 8.5px/1 system-ui, sans-serif;',
+      '  color: #64748b;',
+      '  letter-spacing: 0.8px;',
+      '  text-transform: uppercase;',
+      '  padding: 0 2px 1px 0;',
+      '  margin-bottom: -1px;',  /* tuck up against the first button */
+      '  opacity: 0.75;',
+      '  user-select: none;',
+      '  pointer-events: none;',
       '}',
       '.scw-bid-review__cell-action--revise {',
       '  color: #0369a1;',
@@ -2135,6 +2165,7 @@
       '.scw-bid-review__overflow-trigger {',
       '  display: inline-flex;',
       '  align-items: center;',
+      '  justify-content: center;',  /* center "⋮ Revise" so it lines up with the centered Remove label */
       '  gap: 3px;',
       '  padding: 3px 8px;',
       '  border: 1px solid #cbd5e1;',
@@ -2145,6 +2176,15 @@
       '  cursor: pointer;',
       '  transition: background .15s, border-color .15s;',
       '  white-space: nowrap;',
+      '}',
+      /* When the trigger lives inside the cell-actions stack (stretch
+         layout), make sure both wrapper and button fill the column so
+         it matches the plain Revise/Remove button width exactly. */
+      '.scw-bid-review__cell-actions .scw-bid-review__overflow {',
+      '  width: 100%;',
+      '}',
+      '.scw-bid-review__cell-actions .scw-bid-review__overflow-trigger {',
+      '  width: 100%; box-sizing: border-box;',
       '}',
 
       '.scw-bid-review__overflow-trigger:hover {',

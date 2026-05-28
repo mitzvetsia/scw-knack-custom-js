@@ -681,10 +681,10 @@
     // bid columns stay normal (the item really is still on the bid).
     if (row.offSow) td.className += ' scw-bid-review__sow-detail--off-sow';
 
-    // Lazy-built top-right action stack. "Revise bid to match" goes on
-    // top (only when there are mismatches), "Disconnect from SOW" sits
-    // below. One stack so the two buttons line up cleanly in the same
-    // corner instead of fighting over different anchor points.
+    // Lazy-built top-right action stack. "Disconnect from SOW" (and
+    // the "Not Included in SOW" tag) sits here. The old "Revise bid
+    // to match" entry was removed — that action now lives on each
+    // bid-column cell's Revise chooser (see buildDataCell).
     var topRightStack = null;
     function getTopRightStack() {
       if (!topRightStack) {
@@ -692,49 +692,6 @@
         td.appendChild(topRightStack);
       }
       return topRightStack;
-    }
-
-    // Top entry: Revise bid to match — only for the packages whose
-    // bid actually differs from the SOW. If every bid matches, the
-    // button has nothing to ask for so we hide it entirely.
-    if (row.sowItem && !row.noBid && !row.surveyNoBid && packages && packages.length) {
-      var mismatched = [];
-      for (var mpi = 0; mpi < packages.length; mpi++) {
-        var pInfo = diffsByPkg && diffsByPkg[packages[mpi].id];
-        if (pInfo && pInfo.any) mismatched.push(packages[mpi]);
-      }
-
-      if (mismatched.length) {
-        var attrsBase = function (pkgId) {
-          return {
-            'data-action':     'cell_request_change_from_sow',
-            'data-row-id':     row.id,
-            'data-package-id': pkgId,
-            'data-sow-id':     sowId || '',
-            'data-vis-qty':     qtyVisible ? '1' : '0',
-            'data-vis-cabling': cablingVisible ? '1' : '0',
-            'data-vis-conn':    connDevVisible ? '1' : '0',
-          };
-        };
-        var matchLabel = 'Revise bid to match →';
-        var rStack = getTopRightStack();
-        if (mismatched.length === 1) {
-          var attrsR = attrsBase(mismatched[0].id);
-          var rBtn = el('button',
-            'scw-bid-review__cell-action scw-bid-review__cell-action--revise',
-            matchLabel);
-          rBtn.type = 'button';
-          var rKeys = Object.keys(attrsR);
-          for (var rk = 0; rk < rKeys.length; rk++) rBtn.setAttribute(rKeys[rk], attrsR[rKeys[rk]]);
-          rStack.appendChild(rBtn);
-        } else {
-          var choices = [];
-          for (var sci = 0; sci < mismatched.length; sci++) {
-            choices.push({ label: mismatched[sci].name, attrs: attrsBase(mismatched[sci].id) });
-          }
-          rStack.appendChild(buildOverflowMenu(matchLabel, 'revise', choices));
-        }
-      }
     }
 
     if (!row.sowItem) {
@@ -750,13 +707,14 @@
       return td;
     }
 
-    // Bottom entry of the top-right stack. If the item is already
-    // removed from this SOW, show a "Removed from SOW" message in place
-    // of the button (nothing left to disconnect). Otherwise show the
-    // Disconnect from SOW action, which removes this SOW's id from the
-    // SOW item record's field_2154 connection (leaving any other
-    // connected SOWs intact). The line item itself is NOT deleted.
-    if (row.sowItem && sowId) {
+    // Bottom entry of the top-right stack. DISCONNECT FROM SOW is
+    // temporarily disabled — kept here in case we want it back. The
+    // "Not Included in SOW" tag for already-disconnected rows is also
+    // hidden by the same toggle.
+    //
+    // To restore: flip SHOW_DISCONNECT to true.
+    var SHOW_DISCONNECT = false;
+    if (SHOW_DISCONNECT && row.sowItem && sowId) {
       var dStack = getTopRightStack();
       if (row.offSow) {
         dStack.appendChild(el('span', 'scw-bid-review__off-sow-tag', 'Not Included in SOW'));
@@ -885,10 +843,50 @@
           copy['data-action'] = act;
           return copy;
         }
-        td.appendChild(buildCellActions([
-          { label: 'Revise', mod: 'revise', attrs: withAction('cell_request_change') },
-          { label: 'Remove', mod: 'remove', attrs: withAction('cell_remove_from_bid') },
-        ]));
+
+        // Build the action stack manually so we can inject a "CRs"
+        // header above the buttons and swap the Revise button for a
+        // chooser when there's a SOW mismatch.
+        var wrap = el('div', 'scw-bid-review__cell-actions');
+
+        // Small label so the user knows these buttons open a Change
+        // Request flow (not a direct edit of the bid record).
+        var hdr = el('div', 'scw-bid-review__cell-actions-header', 'CRs');
+        wrap.appendChild(hdr);
+
+        // Revise: when this bid mismatches the SOW for this row, offer
+        // BOTH "Edit bid values" (free-form CR on the bid item) and
+        // "Match SOW values" (the old "Revise bid to match" flow,
+        // prefilled from SOW values). When there's nothing to match,
+        // collapse to the simple Revise button.
+        var bidMismatch = !!(diffs && diffs.any);
+        if (bidMismatch) {
+          var reviseChoices = [
+            { label: 'Edit bid values',  attrs: withAction('cell_request_change') },
+            { label: 'Match SOW values', attrs: withAction('cell_request_change_from_sow') },
+          ];
+          wrap.appendChild(buildOverflowMenu('Revise', 'revise', reviseChoices));
+        } else {
+          var reviseBtn = el('button',
+            'scw-bid-review__cell-action scw-bid-review__cell-action--revise',
+            'Revise');
+          reviseBtn.type = 'button';
+          var rAttrs = withAction('cell_request_change');
+          var rKeys  = Object.keys(rAttrs);
+          for (var rk = 0; rk < rKeys.length; rk++) reviseBtn.setAttribute(rKeys[rk], rAttrs[rKeys[rk]]);
+          wrap.appendChild(reviseBtn);
+        }
+
+        var removeBtn = el('button',
+          'scw-bid-review__cell-action scw-bid-review__cell-action--remove',
+          'Remove');
+        removeBtn.type = 'button';
+        var rmAttrs = withAction('cell_remove_from_bid');
+        var rmKeys  = Object.keys(rmAttrs);
+        for (var rmk = 0; rmk < rmKeys.length; rmk++) removeBtn.setAttribute(rmKeys[rmk], rmAttrs[rmKeys[rmk]]);
+        wrap.appendChild(removeBtn);
+
+        td.appendChild(wrap);
       }
     }
 
@@ -2045,6 +2043,38 @@
           pdfA.classList.add('scw-bid-review__pq-pdf-icon');
           nameDiv.appendChild(pdfA);
         }
+
+        // Inline edit on the proposal expiration date. CFG.proposalSourceView
+        // (view_3920) has inline-edit enabled on field_2659, so PUT through
+        // that view via the same dispatch pattern as SOW Name / Survey
+        // Costs (data-action handled in init.js).
+        var expEl       = proposalBlock.querySelector('.scw-pq-exp');
+        var proposalRid = proposalBlock.getAttribute('data-proposal-record-id');
+        if (expEl && proposalRid) {
+          // Pull the MM/DD/YYYY out of the rendered "Expires: 06/26/2026"
+          // (proposalBlock owns the formatting; we just convert to ISO for
+          // the input's value attribute).
+          var rawExp = (expEl.textContent || '').replace(/^[^0-9]*/, '').trim();
+          var isoExp = '';
+          var mExp   = rawExp.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+          if (mExp) {
+            isoExp = mExp[3] + '-' + ('0' + mExp[1]).slice(-2) + '-' + ('0' + mExp[2]).slice(-2);
+          }
+
+          expEl.textContent = '';
+          expEl.appendChild(document.createTextNode('Expires: '));
+          var expInput = document.createElement('input');
+          expInput.type = 'date';
+          expInput.className = 'scw-bid-review__pq-exp-input';
+          expInput.value = isoExp;
+          expInput.setAttribute('data-action',     'proposal_exp_update');
+          expInput.setAttribute('data-record-id',  proposalRid);
+          expInput.setAttribute('data-field',      'field_2659');
+          expInput.setAttribute('data-view',       CFG.proposalSourceView);
+          expInput.setAttribute('aria-label',      'Edit proposal expiration date');
+          expEl.appendChild(expInput);
+        }
+
         details.appendChild(proposalBlock);
       }
     }

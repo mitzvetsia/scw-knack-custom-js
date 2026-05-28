@@ -550,6 +550,12 @@
     var variant = opts.variant || 'regular';
     var block = document.createElement('div');
     block.className = 'scw-pq-info scw-pq-info--' + variant;
+    // Stamp the proposal's own record id so consumers (e.g. bid-review's
+    // SOW header) can attach inline-edit affordances to specific fields
+    // without re-walking the source view.
+    if (proposal && proposal.recordId) {
+      block.setAttribute('data-proposal-record-id', proposal.recordId);
+    }
 
     // Empty state — render only if emptyText is provided. Variants that
     // want to silently skip on empty just pass null and check upstream.

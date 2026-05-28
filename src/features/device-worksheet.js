@@ -7447,7 +7447,23 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
      *  opts.skipFocused — don't clobber inputs that currently have focus.
      *  Used by silent-poll-view-3505 to reflect webhook-driven record
      *  updates without re-rendering the view. */
-    patchCard: patchCardFromResponse
+    patchCard: patchCardFromResponse,
+    /** True while transformView is mid-pass on the given view. Other
+     *  per-row scanners (lock-fields, conditional-grayout, mdf-summary,
+     *  group-collapse, etc.) consult this to skip their own MutationObserver
+     *  re-passes during the burst — transformView's mutations would
+     *  otherwise re-fire their observers 150ms after they've already
+     *  applied. */
+    isTransforming: isTransformInFlight,
+    /** True while transformView is mid-pass on ANY view. Use this from
+     *  scene-wide observers (e.g. group-collapse's tbody MO) that don't
+     *  know which view triggered the mutation. */
+    isAnyTransforming: function () {
+      for (var k in _transformState) {
+        if (_transformState[k] && _transformState[k].inFlight) return true;
+      }
+      return false;
+    }
   };
 })();
 // ============================================================

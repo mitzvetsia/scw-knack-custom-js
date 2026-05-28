@@ -125,6 +125,7 @@ cat \
   src/features/ops-stepper.js \
   src/features/sales-stepper.js \
   src/features/published-quote-on-proposal-page.js \
+  src/features/published-proposal-sow-card.js \
   src/features/preview-proposal-btn.js \
   src/features/create-sow-option-btn.js \
   src/features/clone-sow-to-project.js \

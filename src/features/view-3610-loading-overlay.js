@@ -141,20 +141,30 @@
     }, HIDE_DELAY);
   }
 
-  // Initial-load coverage. show() is cheap (no-op if overlay already
-  // exists, no-op if view isn't on this scene) so we can fire it on
-  // every scene render without gating.
+  // Initial-load coverage. Skip MODAL scene renders — view_3610 is the
+  // parent, isn't re-rendering, and the overlay would just cover a
+  // static grid behind the modal until either the modal closes with a
+  // view_3610 re-render (sometimes happens) or the 15s safety timer
+  // fires (always happens). Clicking "+ Add" on the mounting-hardware
+  // widget is the canonical trigger for this — it opened a modal
+  // scene and made view_3610 look like it was refreshing in the
+  // background. (scene.attributes.modal is the same flag
+  // modal-refresh-redirect.js uses.)
   $(document)
     .off('knack-scene-render.any' + EVENT_NS)
-    .on('knack-scene-render.any' + EVENT_NS, function () { show(); });
+    .on('knack-scene-render.any' + EVENT_NS, function (event, scene) {
+      if (scene && scene.attributes && scene.attributes.modal === true) return;
+      show();
+    });
 
-  // Reload coverage. Any cell update on the scene can cascade into a
-  // view_3610 refetch via refresh-on-inline-edit's scene-wide rule —
-  // even edits to other views. Cover the grid eagerly; we'll hide
-  // again once view_3610 reports view-render.
+  // Reload coverage. Scope to view_3610's own cell-update events —
+  // unrelated cell edits elsewhere on the scene (totals view, sibling
+  // grids) used to mask view_3610 too, leaving the overlay up until
+  // the safety timer fired. The records-load handler below also catches
+  // model-refetch-driven reloads from sibling cascades.
   $(document)
-    .off('knack-cell-update.any' + EVENT_NS)
-    .on('knack-cell-update.any' + EVENT_NS, function () { show(); });
+    .off('knack-cell-update.' + TARGET_VIEW + EVENT_NS)
+    .on('knack-cell-update.' + TARGET_VIEW + EVENT_NS, function () { show(); });
 
   // knack-records-load is fired by Knack when the AJAX for a view's
   // records returns. Some flows fire records-load EARLIER than

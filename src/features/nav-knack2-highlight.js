@@ -19,16 +19,19 @@
   var PRIMARY_CLS = 'scw-nav2-primary';
   var LEGACY_CLS  = 'scw-nav2-legacy';
 
-  // Each primary entry matches if the link label equals `label` OR the
-  // href contains `/slug/`. Slugs are the Knack page slugs in the URL hash.
+  // Strict allow-list — only these two menu items should get the teal
+  // K2 treatment for now. Match by exact label only (slug fallback
+  // intentionally disabled — a slug match was lighting up legacy
+  // "Build SOWs" links on some users' menus).
   var PRIMARY = [
-    { label: 'dashboard',         slug: 'new-dashboard' },
-    { label: 'build sows',        slug: 'build-sow' },
-    { label: 'review bids',       slug: 'review-bids' },
-    { label: 'manage deployment', slug: 'manage-deployment' }
+    { label: 'k2: build sows',     slug: null },
+    { label: 'k2: reconcile bids', slug: null }
   ];
 
-  // Teal = #0891b2 (our action-pill / CTA color).
+  // Teal palette:
+  //   bright (#0891b2) = active page indicator only
+  //   pale  (#cffafe / #0e7490) = K2 group identity (non-active) +
+  //                                active legacy item indicator
   function injectStyles() {
     if (document.getElementById(STYLE_ID)) return;
     var css =
@@ -37,16 +40,39 @@
       '#' + NAV_VIEW + ' a.kn-link {' +
       '  font-size: 16px !important; font-weight: 400 !important;' +
       '}' +
-      '#' + NAV_VIEW + ' a.kn-link.' + PRIMARY_CLS + ',' +
-      '#' + NAV_VIEW + ' a.kn-link.' + PRIMARY_CLS + '.is-primary {' +
+      /* K2 primary items — PALE teal by default. The bright teal only
+         lights up the truly-active page so the user can tell where
+         they are. */
+      '#' + NAV_VIEW + ' a.kn-link.' + PRIMARY_CLS + ' {' +
+      '  background: #cffafe !important;' +
+      '  border-color: #a5f3fc !important;' +
+      '  color: #0e7490 !important;' +
+      '  font-weight: 600 !important;' +
+      '}' +
+      '#' + NAV_VIEW + ' a.kn-link.' + PRIMARY_CLS + ' span { color: #0e7490 !important; }' +
+      '#' + NAV_VIEW + ' a.kn-link.' + PRIMARY_CLS + ':hover {' +
+      '  background: #a5f3fc !important; border-color: #67e8f9 !important;' +
+      '}' +
+      /* Active K2 item — BRIGHT teal. Covers both Knack's anchor-level
+         (.is-active / .is-primary) and the parent-li-level (li.is-active
+         > a) variants since the active class lands in different places
+         depending on which menu chrome rendered the link. */
+      '#' + NAV_VIEW + ' a.kn-link.' + PRIMARY_CLS + '.is-active,' +
+      '#' + NAV_VIEW + ' a.kn-link.' + PRIMARY_CLS + '.is-primary,' +
+      '#' + NAV_VIEW + ' li.is-active > a.kn-link.' + PRIMARY_CLS + ' {' +
       '  background: #0891b2 !important;' +
       '  border-color: #0891b2 !important;' +
       '  color: #ffffff !important;' +
-      '  font-weight: 600 !important;' +
       '  box-shadow: 0 1px 4px rgba(8,145,178,0.40) !important;' +
       '}' +
-      '#' + NAV_VIEW + ' a.kn-link.' + PRIMARY_CLS + ' span { color: #ffffff !important; }' +
-      '#' + NAV_VIEW + ' a.kn-link.' + PRIMARY_CLS + ':hover {' +
+      '#' + NAV_VIEW + ' a.kn-link.' + PRIMARY_CLS + '.is-active span,' +
+      '#' + NAV_VIEW + ' a.kn-link.' + PRIMARY_CLS + '.is-primary span,' +
+      '#' + NAV_VIEW + ' li.is-active > a.kn-link.' + PRIMARY_CLS + ' span {' +
+      '  color: #ffffff !important;' +
+      '}' +
+      '#' + NAV_VIEW + ' a.kn-link.' + PRIMARY_CLS + '.is-active:hover,' +
+      '#' + NAV_VIEW + ' a.kn-link.' + PRIMARY_CLS + '.is-primary:hover,' +
+      '#' + NAV_VIEW + ' li.is-active > a.kn-link.' + PRIMARY_CLS + ':hover {' +
       '  background: #0e7490 !important; border-color: #0e7490 !important;' +
       '}' +
       /* Legacy items: clearly de-emphasized but still clickable, with a
@@ -55,7 +81,18 @@
       '  opacity: 0.42 !important; filter: grayscale(0.5);' +
       '  font-weight: 400 !important; transition: opacity .15s ease;' +
       '}' +
-      '#' + NAV_VIEW + ' a.kn-link.' + LEGACY_CLS + ':hover { opacity: 0.85 !important; }';
+      '#' + NAV_VIEW + ' a.kn-link.' + LEGACY_CLS + ':hover { opacity: 0.85 !important; }' +
+      /* Active legacy item — pale teal so the user can still tell which
+         legacy page they're on without competing with the bright K2
+         active state. */
+      '#' + NAV_VIEW + ' a.kn-link.' + LEGACY_CLS + '.is-active,' +
+      '#' + NAV_VIEW + ' a.kn-link.' + LEGACY_CLS + '.is-primary,' +
+      '#' + NAV_VIEW + ' li.is-active > a.kn-link.' + LEGACY_CLS + ' {' +
+      '  opacity: 1 !important; filter: none !important;' +
+      '  background: #ecfeff !important;' +
+      '  border-color: #a5f3fc !important;' +
+      '  color: #0e7490 !important;' +
+      '}';
 
     var s = document.createElement('style');
     s.id = STYLE_ID;

@@ -172,6 +172,30 @@
     return stripped.length > 0;
   }
 
+  // Assumption / service text fields (field_2409) often hold rich-text
+  // HTML (<p>, <ul><li>, <br>). Scraped as a string it renders the raw
+  // tags literally in the PDF, so flatten to readable plain text:
+  // block tags → newlines, list items → bullets, strip the rest, decode
+  // the common entities. ws-brief-labor is white-space: pre-wrap so the
+  // newlines survive.
+  function htmlToPlainText(s) {
+    if (s == null) return '';
+    var t = String(s);
+    if (t.indexOf('<') === -1 && t.indexOf('&') === -1) return t;
+    t = t.replace(/<\s*li[^>]*>/gi, '\n• ');
+    t = t.replace(/<\s*br\s*\/?\s*>/gi, '\n');
+    t = t.replace(/<\s*\/\s*(p|div|ul|ol|li|h[1-6])\s*>/gi, '\n');
+    t = t.replace(/<[^>]+>/g, '');
+    t = t.replace(/&nbsp;/gi, ' ')
+         .replace(/&amp;/gi, '&')
+         .replace(/&lt;/gi, '<')
+         .replace(/&gt;/gi, '>')
+         .replace(/&#39;|&apos;/gi, "'")
+         .replace(/&quot;/gi, '"');
+    t = t.replace(/[ \t]+\n/g, '\n').replace(/\n{3,}/g, '\n\n');
+    return t.replace(/^\s+|\s+$/g, '');
+  }
+
   function firstKeyValue(map, keys) {
     if (!map || !keys) return '';
     for (var i = 0; i < keys.length; i++) {
@@ -493,10 +517,11 @@
 
     for (var i = 0; i < kids.length; i++) {
       var tr = kids[i];
-      if (tr.style && tr.style.display === 'none') continue;
+      var trHidden = tr.style && tr.style.display === 'none';
 
       // ── group header rows ──
       if (tr.classList.contains('kn-table-group')) {
+        if (trHidden) continue;   // empty / removed group headers
         _scrapeStats.groupCount++;
         var level = tr.classList.contains('kn-group-level-1') ? 1
                   : tr.classList.contains('kn-group-level-2') ? 2
@@ -515,6 +540,13 @@
       if (tr.tagName === 'TR' && tr.id) _scrapeStats.knTableRowCount++;
 
       // ── worksheet card rows ──
+      // Do NOT skip rows hidden by group-collapse. The survey worksheet
+      // collapses its synthetic groups (Project Wide Services /
+      // Assumptions) by default, so those .scw-ws-row members are
+      // display:none on screen — but the PDF must include every item
+      // regardless of the on-screen accordion state. Knack's own
+      // source/helper rows are excluded by the .scw-ws-row check below,
+      // so they stay out even though they're also hidden.
       if (!tr.classList.contains('scw-ws-row')) continue;
       _scrapeStats.wsRowCount++;
       var card = tr.querySelector('.scw-ws-card');
@@ -537,6 +569,16 @@
         out.push(rowObj);
       }
     }
+
+    // ── Resolve Connected To / Connected Devices from the model ──
+    // The connection only lives on the distribution device (NVR/switch):
+    // its field_2380 lists the child devices it serves. So:
+    //   • distribution device → "Connected Devices" = its field_2380 list
+    //   • child (camera/reader) → "Connected To" = the parent that lists
+    //     it, found by matching the child's recordId against every
+    //     parent's field_2380 connection ids.
+    // The summary DOM doesn't surface this, so we read it from card.raw.
+    resolveConnections(out);
 
     console.log('[SCW survey-pdf] scrape', _scrapeStats);
     if (_scrapeStats.wsRowCount === 0 && _scrapeStats.knTableRowCount > 0) {
@@ -605,7 +647,10 @@
     for (var i = 0; i < rows.length; i++) {
       var r = rows[i];
       out.push(r);
-      if (r.type === 'group' && r.level === 1) {
+      // Project Wide Assumptions is reference text, not a fill-in
+      // section — skip its blank writing-line block so it stays compact.
+      if (r.type === 'group' && r.level === 1 &&
+          !/project wide assumptions/i.test(r.label || '')) {
         out.push({ type: 'l1-notes', position: 'header', groupL1: r.label });
       }
     }
@@ -963,6 +1008,7 @@
     // 3-column body's col-2 / col-3 renderers can pick them up.
     var laborText = '';
     var scwText   = '';
+    var connectedText = '';
     var LABOR_KEYS = ['field_2409', 'field_2020'];
     var SCW_KEYS   = ['field_2418', 'field_1953'];
 
@@ -1090,6 +1136,7 @@
       detailValues: detailValues,
       laborText: laborText,
       scwText: scwText,
+      connectedText: connectedText,
       photos: photos,
       showDetail: showDetail,
       showPhotos: photos.length > 0
@@ -1305,6 +1352,61 @@
   function useStackedProductLabor(card) {
     return isOtherEquipmentBucket(card) ||
            bucketMatches(card, null, /network|headend/i);
+  }
+
+  function isHeadendOrNetworking(card) {
+    return bucketMatches(card, null, /network|headend/i);
+  }
+
+  // Join a connection field's display identifiers ("E-001, E-002, …").
+  function connIdentifiers(raw, key) {
+    var v = raw && raw[key];
+    if (!Array.isArray(v)) return '';
+    var out = [];
+    for (var i = 0; i < v.length; i++) {
+      var e = v[i];
+      if (e && (e.identifier || e.id)) out.push(e.identifier || e.id);
+    }
+    return out.join(', ');
+  }
+
+  // Populate card.connectedText from the model. Distribution devices
+  // carry the connection (field_2380 = the devices they serve); children
+  // get their parent resolved by recordId reverse-lookup.
+  function resolveConnections(rows) {
+    var parentByChildId = {};
+    var i, r;
+    for (i = 0; i < rows.length; i++) {
+      r = rows[i];
+      if (!r || r.type !== 'card' || !r.raw) continue;
+      var kids = r.raw.field_2380_raw;
+      if (!Array.isArray(kids) || !kids.length) continue;
+      var parentName = r.product || r.label || '';
+      for (var k = 0; k < kids.length; k++) {
+        if (kids[k] && kids[k].id) parentByChildId[kids[k].id] = parentName;
+      }
+    }
+    for (i = 0; i < rows.length; i++) {
+      r = rows[i];
+      if (!r || r.type !== 'card') continue;
+      var children = connIdentifiers(r.raw, 'field_2380_raw');
+      if (children) {
+        r.connectedText = children;                       // distribution device
+      } else if (r.raw && r.recordId) {
+        r.connectedText = parentByChildId[r.recordId] || ''; // child → parent
+      }
+    }
+  }
+
+  // "Connected To" / "Connected Devices" — rendered in the same compact
+  // label/value shape as the Mount ref item so it blends with the other
+  // detail info. The caller supplies the label (differs by bucket).
+  function renderConnectedTo(card, label) {
+    if (!card || !hasMeaningfulText(card.connectedText)) return '';
+    return '<div class="ws-ref ws-ref--conn"><div class="ws-ref-item">' +
+      '<span class="ws-ref-label ws-ref-label--conn">' + esc(label || 'Connected To') + '</span>' +
+      '<span class="ws-ref-value">' + esc(card.connectedText) + '</span>' +
+      '</div></div>';
   }
 
   function isDistributionDevice(card) {
@@ -1608,12 +1710,24 @@
 
   function renderCard(card) {
     var h = [];
-    // Two-column body lights up when the card has detail data
-    // (cameras/readers, NVRs, switches). Service/assumption rows
-    // collapse to a single brief header line + body text.
-    var brief = !card.showDetail;
+    var isSvcOrAssump = isServiceOrAssumptionBucket(card);
+    var isAssumption  = card.rowClasses && /\bscw-row--assumptions\b/.test(card.rowClasses);
+    var isService     = isSvcOrAssump && !isAssumption;
+    var isProjectWideAssumption = isAssumption &&
+      /project wide/i.test(card.groupL1 || '');
+
+    // Two-column writing body lights up for normal detail cards
+    // (cameras/readers, NVRs, switches). SERVICE rows force a compact
+    // writing area too (techs scope services on site). ASSUMPTIONS are
+    // reference text only — never a writing area, regardless of where
+    // they sit or whether the worksheet left a residual detail field.
+    var renderBody = card.showDetail && !isSvcOrAssump;
+    var brief = !renderBody;
     var cls = 'ws-card' +
-      (card.showDetail ? '' : ' ws-card--header-only ws-card--brief');
+      (brief ? ' ws-card--header-only ws-card--brief' : '') +
+      (isAssumption ? ' ws-card--assumption' : '') +
+      (isService ? ' ws-card--service' : '') +
+      (isProjectWideAssumption ? ' ws-card--assumption-pw' : '');
     h.push('<section class="' + cls + '">');
 
     // ── Header row ──
@@ -1624,21 +1738,38 @@
     // Notes summary) only.
     h.push('<header class="ws-header">');
     h.push('<div class="ws-identity">');
-    if (brief) {
-      // Knack's identifier formula often concatenates "name - product"
-      // and renders a trailing " - " when product is empty (typical
-      // for assumption / service rows). Strip it so the header reads
-      // cleanly.
+
+    // Subtle bucket tag. SERVICE rows and ASSUMPTION rows that sit
+    // inside an MDF/IDF get a small pill so the tech can tell them apart
+    // from real devices. Project-wide assumptions need no tag — the
+    // "Project Wide Assumptions" group header already identifies them,
+    // and the row is pure reference text.
+    if (isService) {
+      h.push('<span class="ws-tag ws-tag--service">Service</span>');
+    } else if (isAssumption && !isProjectWideAssumption) {
+      h.push('<span class="ws-tag ws-tag--assumption">Assumption</span>');
+    }
+
+    // Identity line.
+    //  • Project-wide assumption: omit entirely — exclude the product /
+    //    identifier field and let the text below stand alone.
+    //  • Other brief / service rows: show the label, but drop the
+    //    product (hidden for these buckets) and the generic "Custom
+    //    Assumption" identifier (noise beside the tag + text).
+    if (!isProjectWideAssumption && (brief || isService)) {
       var briefLabel = String(card.label || '').replace(/\s*[-–—]\s*$/, '');
+      if (isAssumption && /^custom assumption$/i.test(briefLabel)) briefLabel = '';
       if (briefLabel) h.push('<span class="ws-label">' + esc(briefLabel) + '</span>');
-      if (briefLabel && card.product) h.push('<span class="ws-sep">&middot;</span>');
-      if (card.product) h.push('<span class="ws-product">' + esc(card.product) + '</span>');
+      if (!isSvcOrAssump) {
+        if (briefLabel && card.product) h.push('<span class="ws-sep">&middot;</span>');
+        if (card.product) h.push('<span class="ws-product">' + esc(card.product) + '</span>');
+      }
     }
     // Warning / alert chits intentionally suppressed — survey PDF
     // is a fill-in-the-field doc; on-screen QA chips are noise here.
     h.push('</div>');
 
-    if (card.summaryFields.length) {
+    if (card.summaryFields.length && !isAssumption) {
       h.push('<div class="ws-summary-fields">');
       for (var s = 0; s < card.summaryFields.length; s++) {
         var sf = card.summaryFields[s];
@@ -1671,13 +1802,13 @@
     // classification — if a service row has a residual chip-host
     // field, it'll classify as showDetail=true but we still want the
     // service description rendered prominently.
-    var isSvcOrAssump = isServiceOrAssumptionBucket(card);
     if (isSvcOrAssump && hasMeaningfulText(card.laborText)) {
-      h.push('<div class="ws-brief-labor">' + esc(card.laborText) + '</div>');
+      h.push('<div class="ws-brief-labor">' +
+        esc(htmlToPlainText(card.laborText)) + '</div>');
     }
 
     // ── Two-column body (camera/reader/NVR cards only) ──
-    if (card.showDetail) {
+    if (renderBody) {
       // Notes square is reserved for cards where the tech is likely
       // to capture install observations (cameras/readers/networking).
       // Other Equipment cards (UPS, racks, hard drives) don't need it
@@ -1721,9 +1852,12 @@
         if (card.product) {
           h.push('<div class="ws-id-product ws-id-product--stacked">' + esc(card.product) + '</div>');
         }
+        // Headend / networking: Connected Devices sits directly under
+        // the product name; Mount info is suppressed.
+        h.push(renderConnectedTo(card, 'Connected Devices'));
         h.push(scwBlock());
         h.push(techNotesBlock());
-        h.push(renderRefSection(card));
+        if (!isHeadendOrNetworking(card)) h.push(renderRefSection(card));
         h.push(renderFlagsRow(card));
         h.push(renderMeasureRow(card));
         h.push('</div>');
@@ -1746,6 +1880,9 @@
         h.push(renderRefSection(card));
         h.push(renderFlagsRow(card));
         h.push(renderMeasureRow(card));
+        // Cam/reader: Connected To renders below Height/measure, styled
+        // like the other detail (ref) items.
+        h.push(renderConnectedTo(card, 'Connected To'));
         h.push('</div>');
 
         h.push('<div class="ws-body-col ws-body-col--mid">');
@@ -1755,6 +1892,13 @@
       }
 
       h.push('</div>');
+    }
+
+    // ── Service writing area ──
+    // Services get a compact bordered box to scope the work on site.
+    // (Assumptions never get one — reference text only.)
+    if (isService) {
+      h.push('<div class="ws-service-notes"></div>');
     }
 
     // ── Photo strip (full width below the 2-col body) ──
@@ -2089,17 +2233,19 @@
       '  display: flex; gap: 4px; align-items: baseline;',
       '  break-inside: avoid;',
       '}',
+      '/* Detail labels (Mount / Connected To / Connected Devices) — blue,*/',
+      '/* sized to content, no fixed gray uppercase column.              */',
       '.ws-ref-label {',
-      '  font-weight: 700; color: #6b7280;',
-      '  font-size: 7.5px; letter-spacing: 0.4px;',
-      '  text-transform: uppercase;',
-      '  min-width: 38px; flex: 0 0 38px; text-align: right;',
-      '  padding-top: 1px;',
+      '  font-weight: 700; color: #07467c;',
+      '  font-size: 8.5px; letter-spacing: 0; text-transform: none;',
+      '  min-width: 0; flex: 0 0 auto; text-align: left;',
+      '  white-space: nowrap; padding-top: 0;',
       '}',
       '.ws-ref-value {',
       '  color: #111827; flex: 1 1 auto;',
       '  white-space: pre-wrap; word-break: break-word;',
       '}',
+      '.ws-ref--conn { margin-top: 2px; }',
       '',
       '/* ── Flag band (Existing / Exterior / Plenum) ────────────── */',
       '.ws-flags {',
@@ -2235,6 +2381,43 @@
       '.ws-card--brief .ws-sum-label { font-size: 7.5px; }',
       '.ws-card--brief .ws-label { font-size: 10.5px; }',
       '.ws-card--brief .ws-product { font-size: 9.5px; }',
+      '',
+      '/* ── Subtle bucket tags (Service / Assumption) ── */',
+      '.ws-tag {',
+      '  display: inline-block; font-size: 6.5px; font-weight: 700;',
+      '  letter-spacing: 0.5px; text-transform: uppercase;',
+      '  padding: 0 4px; border-radius: 3px; line-height: 1.5;',
+      '  vertical-align: middle; flex: 0 0 auto;',
+      '}',
+      '.ws-tag--service    { color: #07467c; background: #e0ecf7; }',
+      '.ws-tag--assumption { color: #6b7280; background: #f1f3f5; }',
+      '',
+      '/* ── Assumptions: reference text, kept as tight as possible ── */',
+      '.ws-card--assumption {',
+      '  margin: 1px 0; padding: 1px 6px;',
+      '}',
+      '.ws-card--assumption .ws-header { gap: 4px; }',
+      '.ws-card--assumption .ws-label { font-size: 9px; }',
+      '.ws-card--assumption .ws-sum-value { font-size: 8px; line-height: 1.15; }',
+      '.ws-card--assumption .ws-brief-labor {',
+      '  margin-top: 0; padding-top: 0; border-top: none;',
+      '  font-size: 9px; line-height: 1.25;',
+      '}',
+      '/* Project-wide assumption: text-only, no header chrome at all. */',
+      '.ws-card--assumption-pw .ws-header { display: none; }',
+      '.ws-card--assumption-pw .ws-brief-labor { margin: 0; }',
+      '',
+      '/* ── Services: tag + label + description + writing box ── */',
+      '.ws-card--service .ws-label { font-size: 10px; }',
+      '.ws-card--service .ws-brief-labor {',
+      '  margin-top: 2px; padding-top: 2px;',
+      '  font-size: 9.5px; line-height: 1.3;',
+      '}',
+      '.ws-service-notes {',
+      '  margin-top: 4px; min-height: 40px;',
+      '  border: 1px solid #d0d7de; border-radius: 3px;',
+      '  background: #fff;',
+      '}',
       /* Brief-card labor block — service description / assumption text */
       '.ws-brief-labor {',
       '  margin-top: 3px; padding-top: 3px;',
