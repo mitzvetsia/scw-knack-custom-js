@@ -391,8 +391,10 @@
 
     view.appendChild(layout);
 
-    // ── Published proposal info (from view_3814) ──
-    injectProposalInfo(layout);
+    // Published-proposal info now lives at the top of the SOW column
+    // (see published-proposal-sow-card.js). Don't render it in the
+    // totals here too — would just duplicate the same block.
+    // injectProposalInfo(layout);
   }
 
   function injectProposalInfo(container) {
