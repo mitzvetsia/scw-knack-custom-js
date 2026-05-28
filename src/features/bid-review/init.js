@@ -309,7 +309,13 @@
       // of stripping to a number, then echoes the new name into the
       // section header so the visible title stays in sync.
       var nameInput = e.target.closest('.scw-bid-review__sow-name-input[data-action="sow_name_update"]');
-      if (nameInput) handleSowNameSave(nameInput);
+      if (nameInput) { handleSowNameSave(nameInput); return; }
+      // Proposal expiration date — inline date input in the SOW header's
+      // published-proposal block. PUTs field_2659 on the proposal record
+      // through the proposal source view (view_3920), which has inline
+      // edit enabled on this field.
+      var expInput = e.target.closest('input[data-action="proposal_exp_update"]');
+      if (expInput) handleProposalExpSave(expInput);
     }, true);
   }
 
@@ -1013,6 +1019,55 @@
         input.classList.remove('scw-bid-review__sow-name-input--saving');
         if (CFG.debug) console.warn('[BidReview] SOW Name save failed:', xhr && xhr.status, xhr && xhr.responseText);
         ns.renderToast('SOW Name save failed', 'error');
+      }
+    });
+  }
+
+  // Save the proposal expiration date — the inline date input in the
+  // SOW header's published-proposal block. Mirrors handleSurveyCostsSave:
+  // optimistic UI state via saving/saved classes, single PUT through
+  // SCW.knackAjax with auth headers, syncKnackModel patches the cached
+  // proposal data so the next grid render reflects the new date.
+  function handleProposalExpSave(input) {
+    var recordId = input.getAttribute('data-record-id');
+    var fieldKey = input.getAttribute('data-field');
+    var viewKey  = input.getAttribute('data-view');
+    if (!recordId || !fieldKey || !viewKey || !SCW.knackRecordUrl) return;
+
+    // <input type="date"> gives ISO; Knack expects MM/DD/YYYY.
+    var iso = (input.value || '').trim();
+    var mdy = '';
+    var m = iso.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+    if (m) mdy = parseInt(m[2], 10) + '/' + parseInt(m[3], 10) + '/' + m[1];
+
+    input.classList.remove('scw-bid-review__pq-exp-input--saved');
+    input.classList.add('scw-bid-review__pq-exp-input--saving');
+
+    var payload = {};
+    payload[fieldKey] = mdy;   // empty string clears the date
+
+    SCW.knackAjax({
+      url:  SCW.knackRecordUrl(viewKey, recordId),
+      type: 'PUT',
+      data: JSON.stringify(payload),
+      success: function (resp) {
+        input.classList.remove('scw-bid-review__pq-exp-input--saving');
+        input.classList.add('scw-bid-review__pq-exp-input--saved');
+        if (typeof SCW.syncKnackModel === 'function') {
+          try { SCW.syncKnackModel(viewKey, recordId, resp, fieldKey, mdy); }
+          catch (e) { /* non-fatal */ }
+        }
+        // Refresh the proposal source view so the expired-state badge
+        // and any downstream pills update without a full reload.
+        try {
+          var v = Knack && Knack.views && Knack.views[viewKey];
+          if (v && v.model && typeof v.model.fetch === 'function') v.model.fetch();
+        } catch (e2) { /* ignore */ }
+      },
+      error: function (xhr) {
+        input.classList.remove('scw-bid-review__pq-exp-input--saving');
+        if (CFG.debug) console.warn('[BidReview] Proposal exp save failed:', xhr && xhr.status, xhr && xhr.responseText);
+        ns.renderToast('Expiration date save failed', 'error');
       }
     });
   }

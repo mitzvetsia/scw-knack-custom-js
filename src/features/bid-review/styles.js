@@ -210,6 +210,21 @@
       '.scw-bid-review__sow-metric-input--saved {',
       '  background: #ecfdf5;',
       '}',
+      /* Inline date editor on the published-proposal expiration line
+         inside the SOW header cell. Sized to match the surrounding
+         "Expires:" label so the row stays compact. */
+      '.scw-bid-review__pq-exp-input {',
+      '  margin-left: 2px; padding: 1px 4px;',
+      '  border: 1px solid #cbd5e1; border-radius: 3px;',
+      '  font: 500 11px/1.2 system-ui, sans-serif; color: #0f172a;',
+      '  background: #fff;',
+      '}',
+      '.scw-bid-review__pq-exp-input:focus {',
+      '  outline: none; border-color: #0d9488;',
+      '  box-shadow: 0 0 0 2px rgba(13, 148, 136, 0.2);',
+      '}',
+      '.scw-bid-review__pq-exp-input--saving { background: #fef3c7; }',
+      '.scw-bid-review__pq-exp-input--saved  { background: #ecfdf5; }',
       /* Preview-Proposal pill inside the SOW status bar — restyled to
          match the .scw-bid-review__btn--adopt "Sync to SOW" button in
          the bid columns (same font / padding / border-radius / color). */

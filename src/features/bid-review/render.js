@@ -2043,6 +2043,38 @@
           pdfA.classList.add('scw-bid-review__pq-pdf-icon');
           nameDiv.appendChild(pdfA);
         }
+
+        // Inline edit on the proposal expiration date. CFG.proposalSourceView
+        // (view_3920) has inline-edit enabled on field_2659, so PUT through
+        // that view via the same dispatch pattern as SOW Name / Survey
+        // Costs (data-action handled in init.js).
+        var expEl       = proposalBlock.querySelector('.scw-pq-exp');
+        var proposalRid = proposalBlock.getAttribute('data-proposal-record-id');
+        if (expEl && proposalRid) {
+          // Pull the MM/DD/YYYY out of the rendered "Expires: 06/26/2026"
+          // (proposalBlock owns the formatting; we just convert to ISO for
+          // the input's value attribute).
+          var rawExp = (expEl.textContent || '').replace(/^[^0-9]*/, '').trim();
+          var isoExp = '';
+          var mExp   = rawExp.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
+          if (mExp) {
+            isoExp = mExp[3] + '-' + ('0' + mExp[1]).slice(-2) + '-' + ('0' + mExp[2]).slice(-2);
+          }
+
+          expEl.textContent = '';
+          expEl.appendChild(document.createTextNode('Expires: '));
+          var expInput = document.createElement('input');
+          expInput.type = 'date';
+          expInput.className = 'scw-bid-review__pq-exp-input';
+          expInput.value = isoExp;
+          expInput.setAttribute('data-action',     'proposal_exp_update');
+          expInput.setAttribute('data-record-id',  proposalRid);
+          expInput.setAttribute('data-field',      'field_2659');
+          expInput.setAttribute('data-view',       CFG.proposalSourceView);
+          expInput.setAttribute('aria-label',      'Edit proposal expiration date');
+          expEl.appendChild(expInput);
+        }
+
         details.appendChild(proposalBlock);
       }
     }
