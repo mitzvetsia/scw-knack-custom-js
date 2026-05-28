@@ -77,9 +77,6 @@
     // surface reads/writes through this view (config.nextStepViewKey
     // + surveyCostsWriteView). Kept rendered for model access.
     'view_3918',
-    // 'view_3920' — SOW_published proposals, sourced by bid-review
-    // (config.proposalSourceView) to show published-proposal state.
-    'view_3920',
     // 'view_3923' — Update Installation Project form view used by
     // bid-review's margin edit flow (field_2158 PUT target).
     'view_3923',
