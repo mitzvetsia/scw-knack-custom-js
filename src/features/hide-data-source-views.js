@@ -97,18 +97,30 @@
     'view_3966',
   ];
 
+  // Views that must NEVER be hidden as collateral damage from the
+  // column-wrapper / accordion-shell rules below. Add ids here if you
+  // see a visible view disappear because it happens to share a column
+  // or KTL accordion with one of HIDDEN_VIEWS.
+  var NEVER_HIDE = {
+    'view_3885': 1   // published-proposal lookup on the ops-list scene
+                     // (shares chrome with view_3841 SOW edit-form).
+  };
+
   if (!document.getElementById(STYLE_ID)) {
     var selectors = [];
     for (var i = 0; i < HIDDEN_VIEWS.length; i++) {
       var v = HIDDEN_VIEWS[i];
+      // Always safe — hides the view element itself only.
       selectors.push('#' + v);
-      selectors.push('.view-column:has(> #' + v + ')');
-      selectors.push('.view-column:has(> .kn-view#' + v + ')');
-      // KTL accordion shell — hides both the header (e.g. "BID_packages")
-      // AND the body in one shot. Without this rule, hiding only the
-      // inner view leaves the accordion header visible with a "1" count
-      // pill next to it.
-      selectors.push('.scw-ktl-accordion:has(.scw-ktl-accordion__header[data-view-key="' + v + '"])');
+      // The column-wrapper and accordion-shell rules are LAYOUT helpers
+      // (kill empty columns / kill orphan accordion headers). They
+      // over-hide when the same column / accordion also holds a view
+      // we want visible — see hideOnRender below for the JS gates that
+      // make these conditional. The CSS rules are kept tight: column
+      // must have NO other direct child element; accordion must have
+      // NO other view-key headers inside.
+      selectors.push('.view-column:has(> #' + v + '):not(:has(> *:not(#' + v + '):not(.scw-ktl-accordion):not([class*="kn-view"])))');
+      selectors.push('.scw-ktl-accordion:has(.scw-ktl-accordion__header[data-view-key="' + v + '"]):not(:has(.scw-ktl-accordion__header[data-view-key]:not([data-view-key="' + v + '"])))');
     }
     var style = document.createElement('style');
     style.id = STYLE_ID;
@@ -117,24 +129,38 @@
     document.head.appendChild(style);
   }
 
+  // True when the column/accordion contains a view we must keep visible.
+  function containsProtectedView(container) {
+    if (!container) return false;
+    for (var id in NEVER_HIDE) {
+      if (container.querySelector('#' + id)) return true;
+    }
+    return false;
+  }
+
   // Belt-and-suspenders: on each render of a hidden view, also set
-  // inline display:none directly on the view element AND its KTL
-  // accordion wrapper. Inline beats any external stylesheet, so even
-  // if Knack or another feature re-shows the view at runtime, this
-  // re-hides it. SCW.onViewRender is idempotent — registering once
-  // per view is fine.
+  // inline display:none directly on the view element. We additionally
+  // try to hide the parent column wrapper and the KTL accordion shell —
+  // but ONLY when they're effectively single-tenant for this view.
+  // Otherwise we'd take sibling views like view_3885 down with us.
   function hideOnRender(viewId) {
     SCW.onViewRender(viewId, function () {
       var el = document.getElementById(viewId);
       if (!el) return;
       el.style.display = 'none';
-      // Also try the parent column wrapper — Knack sometimes nests
-      // grids inside a sized container that the CSS rule above misses.
+      // Column wrapper — only hide if this view is its only child AND
+      // it doesn't also contain a NEVER_HIDE view.
       var col = el.closest('.view-column');
-      if (col && col.children.length === 1) col.style.display = 'none';
-      // Hide the KTL accordion shell if this view is wrapped in one.
+      if (col && col.children.length === 1 && !containsProtectedView(col)) {
+        col.style.display = 'none';
+      }
+      // Accordion shell — only hide if no NEVER_HIDE view shares it,
+      // and only one accordion header inside (the one we're hiding).
       var acc = el.closest('.scw-ktl-accordion');
-      if (acc) acc.style.display = 'none';
+      if (acc && !containsProtectedView(acc)) {
+        var headers = acc.querySelectorAll('.scw-ktl-accordion__header[data-view-key]');
+        if (headers.length <= 1) acc.style.display = 'none';
+      }
     }, 'scwHideDataSource');
   }
   for (var h = 0; h < HIDDEN_VIEWS.length; h++) hideOnRender(HIDDEN_VIEWS[h]);
