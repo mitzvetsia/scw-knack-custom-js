@@ -707,13 +707,14 @@
       return td;
     }
 
-    // Bottom entry of the top-right stack. If the item is already
-    // removed from this SOW, show a "Removed from SOW" message in place
-    // of the button (nothing left to disconnect). Otherwise show the
-    // Disconnect from SOW action, which removes this SOW's id from the
-    // SOW item record's field_2154 connection (leaving any other
-    // connected SOWs intact). The line item itself is NOT deleted.
-    if (row.sowItem && sowId) {
+    // Bottom entry of the top-right stack. DISCONNECT FROM SOW is
+    // temporarily disabled — kept here in case we want it back. The
+    // "Not Included in SOW" tag for already-disconnected rows is also
+    // hidden by the same toggle.
+    //
+    // To restore: flip SHOW_DISCONNECT to true.
+    var SHOW_DISCONNECT = false;
+    if (SHOW_DISCONNECT && row.sowItem && sowId) {
       var dStack = getTopRightStack();
       if (row.offSow) {
         dStack.appendChild(el('span', 'scw-bid-review__off-sow-tag', 'Not Included in SOW'));

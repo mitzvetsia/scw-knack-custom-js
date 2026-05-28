@@ -2030,7 +2030,7 @@
       '  display: flex;',
       '  flex-direction: column;',
       '  gap: 4px;',
-      '  align-items: flex-end;',
+      '  align-items: stretch;',  /* stretch so children share the column width — Revise/Remove line up exactly */
       '  z-index: 2;',
       '}',
       '.scw-bid-review__cell-action {',
@@ -2043,6 +2043,7 @@
       '  cursor: pointer;',
       '  letter-spacing: 0.02em;',
       '  white-space: nowrap;', /* never wrap inside an action button — keeps the absolute stack a predictable width */
+      '  text-align: center;',  /* center the label when the button stretches to share width */
       '}',
       /* Small "CRs" label above the action buttons in the bid column so
          reviewers know these buttons spawn Change Requests, not direct
@@ -2149,6 +2150,7 @@
       '.scw-bid-review__overflow-trigger {',
       '  display: inline-flex;',
       '  align-items: center;',
+      '  justify-content: center;',  /* center "⋮ Revise" so it lines up with the centered Remove label */
       '  gap: 3px;',
       '  padding: 3px 8px;',
       '  border: 1px solid #cbd5e1;',
@@ -2159,6 +2161,15 @@
       '  cursor: pointer;',
       '  transition: background .15s, border-color .15s;',
       '  white-space: nowrap;',
+      '}',
+      /* When the trigger lives inside the cell-actions stack (stretch
+         layout), make sure both wrapper and button fill the column so
+         it matches the plain Revise/Remove button width exactly. */
+      '.scw-bid-review__cell-actions .scw-bid-review__overflow {',
+      '  width: 100%;',
+      '}',
+      '.scw-bid-review__cell-actions .scw-bid-review__overflow-trigger {',
+      '  width: 100%; box-sizing: border-box;',
       '}',
 
       '.scw-bid-review__overflow-trigger:hover {',
