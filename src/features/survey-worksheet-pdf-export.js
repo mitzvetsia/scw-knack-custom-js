@@ -1242,8 +1242,28 @@
       '</div>'
     );
 
+    // Walk rows, but coalesce consecutive camera/reader cards into a
+    // single in-place spreadsheet table. Subs prefer the spreadsheet
+    // layout for cams/readers, so we render those inline (in their
+    // MDF/IDF) instead of one card per item. Non-camera cards (NVR,
+    // racks, services, assumptions) keep the existing card render.
+    var pendingCams = [];
+    function flushCamBatch() {
+      if (!pendingCams.length) return;
+      html.push(renderCameraReaderBatchTable(pendingCams));
+      pendingCams = [];
+    }
     for (var i = 0; i < payload.rows.length; i++) {
       var row = payload.rows[i];
+      if (row.type === 'card' && isCamerasReadersBucket(row) &&
+          !/project wide/i.test(row.groupL1 || '')) {
+        pendingCams.push(row);
+        continue;
+      }
+      // Anything else flushes the buffered camera/reader table first,
+      // so the spreadsheet sits inside the same MDF/IDF block it came
+      // from. Then render the current row normally.
+      flushCamBatch();
       if (row.type === 'group') {
         html.push(renderGroupHeader(row));
       } else if (row.type === 'card') {
@@ -1252,18 +1272,12 @@
         html.push(renderL1Notes(row));
       }
     }
+    // Tail of the loop — if the document ends on cameras, flush them.
+    flushCamBatch();
 
     // ── Connection Map pivot (cameras/readers × distribution devices) ──
     var pivotHtml = renderConnectionPivot(payload);
     if (pivotHtml) html.push(pivotHtml);
-
-    // ── Camera/Reader spreadsheet (portrait, grouped by MDF/IDF) ──
-    // Mirrors the legacy "spreadsheet" view subs are used to. Restricted
-    // to camera/reader bucket rows; one table per MDF/IDF L1 group so
-    // the rows stay scoped to where they live. Appended AFTER the
-    // landscape pivot so the doc lands back on a portrait page.
-    var sheetHtml = renderCameraReaderSpreadsheet(payload);
-    if (sheetHtml) html.push(sheetHtml);
 
     // ── Trailing image sections (e.g. Additional Photos from view_3805) ──
     if (payload.trailingImageSections && payload.trailingImageSections.length) {
@@ -1574,81 +1588,54 @@
     return h.join('');
   }
 
-  // ── Camera/Reader spreadsheet section ──
-  // Subs keep asking for the old "spreadsheet" presentation for camera
-  // and reader rows. Renders a compact table per MDF/IDF L1 group with
-  // the same data the per-card view shows — including SCW's best-guess
-  // pre-fill marks so the tech can ink them over or strike out and
-  // correct. Camera/reader bucket only; project-wide rows skipped.
-  // Forced portrait via a dedicated named @page so it doesn't inherit
-  // the landscape orientation of the preceding pivot page.
-  function renderCameraReaderSpreadsheet(payload) {
-    if (!payload || !payload.rows || !payload.rows.length) return '';
-
-    var groupOrder = [];
-    var byGroup = {};
-    for (var i = 0; i < payload.rows.length; i++) {
-      var r = payload.rows[i];
-      if (!r || r.type !== 'card') continue;
-      if (!isCamerasReadersBucket(r)) continue;
-      if (/project wide/i.test(r.groupL1 || '')) continue;
-      var key = r.groupL1 || '(Unassigned)';
-      if (!byGroup[key]) { byGroup[key] = []; groupOrder.push(key); }
-      byGroup[key].push(r);
-    }
-    if (!groupOrder.length) return '';
-
-    var HEIGHT_CHOICES = ["<16'", "16-24'", ">24'"];
-
+  // ── Inline camera/reader spreadsheet table ──
+  // Renders one table for a contiguous batch of camera/reader cards
+  // within an MDF/IDF group (the caller buffers them out of the main
+  // render loop). Subs prefer the spreadsheet layout over per-card
+  // detail blocks; this lives inline so the table sits in its own
+  // MDF/IDF rather than being banished to the end of the document.
+  // Pre-filled cells use the gray ☒ convention so techs can ink over
+  // to confirm or strike + tick the other option to correct.
+  var CR_HEIGHT_CHOICES = ["<16'", "16-24'", ">24'"];
+  function renderCameraReaderBatchTable(cards) {
+    if (!cards || !cards.length) return '';
     var h = [];
-    h.push('<section class="cr-sheet">');
-    h.push('<h2 class="cr-sheet-title">Camera &amp; Reader Spreadsheet</h2>');
-    h.push('<div class="cr-sheet-sub">Gray marks are our best guess from file data. Ink over to confirm, or strike out + mark the right box to correct.</div>');
-
-    for (var g = 0; g < groupOrder.length; g++) {
-      var name = groupOrder[g];
-      var rowsInGroup = byGroup[name];
-      h.push('<div class="cr-sheet-group">');
-      h.push('<div class="cr-sheet-group-title">' + esc(name) + '</div>');
-      h.push('<table class="cr-sheet-table"><colgroup>');
-      h.push('<col class="cr-col-label"><col class="cr-col-product"><col class="cr-col-mount">');
-      h.push('<col class="cr-col-yn"><col class="cr-col-yn"><col class="cr-col-yn">');
-      h.push('<col class="cr-col-height"><col class="cr-col-drop"><col class="cr-col-drop"><col class="cr-col-notes">');
-      h.push('</colgroup><thead><tr>');
-      h.push('<th>Label</th>');
-      h.push('<th>Product</th>');
-      h.push('<th>Mount</th>');
-      h.push('<th>Existing</th>');
-      h.push('<th>Exterior</th>');
-      h.push('<th>Plenum</th>');
-      h.push('<th>Height</th>');
-      h.push('<th>Drop ft</th>');
-      h.push('<th>Conduit ft</th>');
-      h.push('<th>Notes</th>');
-      h.push('</tr></thead><tbody>');
-
-      for (var ri = 0; ri < rowsInGroup.length; ri++) {
-        var card = rowsInGroup[ri];
-        h.push('<tr>');
-        h.push('<td class="cr-cell-id">' + esc(card.label || '') + '</td>');
-        h.push('<td class="cr-cell-id">' + esc(card.product || '') + '</td>');
-        h.push('<td>' + esc(pickDetail(card, ['field_2463'])) + '</td>');
-        h.push('<td class="cr-cell-yn">' + renderSheetYn(card, ['field_2370', 'field_2461']) + '</td>');
-        h.push('<td class="cr-cell-yn">' + renderSheetYn(card, ['field_2372', 'field_1984', 'field_2739']) + '</td>');
-        h.push('<td class="cr-cell-yn">' + renderSheetYn(card, ['field_2371', 'field_1983', 'field_2740']) + '</td>');
-        h.push('<td class="cr-cell-choices">' + renderSheetChoices(card, 'field_2455', HEIGHT_CHOICES) + '</td>');
-        h.push('<td class="cr-cell-fill">' + esc(pickDetail(card, ['field_2367'])) + '</td>');
-        // Conduit always blank — survey is the source of truth (same
-        // rule as the inline measure-row renderer).
-        h.push('<td class="cr-cell-fill"></td>');
-        h.push('<td></td>');
-        h.push('</tr>');
-      }
-      h.push('</tbody></table>');
-      h.push('</div>');
+    h.push('<div class="cr-sheet-group cr-sheet-group--inline">');
+    h.push('<table class="cr-sheet-table"><colgroup>');
+    h.push('<col class="cr-col-label"><col class="cr-col-product"><col class="cr-col-mount">');
+    h.push('<col class="cr-col-yn"><col class="cr-col-yn"><col class="cr-col-yn">');
+    h.push('<col class="cr-col-height"><col class="cr-col-drop"><col class="cr-col-drop"><col class="cr-col-notes">');
+    h.push('</colgroup><thead><tr>');
+    h.push('<th>Label</th>');
+    h.push('<th>Product</th>');
+    h.push('<th>Mount</th>');
+    h.push('<th>Existing</th>');
+    h.push('<th>Exterior</th>');
+    h.push('<th>Plenum</th>');
+    h.push('<th>Height</th>');
+    h.push('<th>Drop ft</th>');
+    h.push('<th>Conduit ft</th>');
+    h.push('<th>Notes</th>');
+    h.push('</tr></thead><tbody>');
+    for (var ri = 0; ri < cards.length; ri++) {
+      var card = cards[ri];
+      h.push('<tr>');
+      h.push('<td class="cr-cell-id">' + esc(card.label || '') + '</td>');
+      h.push('<td class="cr-cell-id">' + esc(card.product || '') + '</td>');
+      h.push('<td>' + esc(pickDetail(card, ['field_2463'])) + '</td>');
+      h.push('<td class="cr-cell-yn">' + renderSheetYn(card, ['field_2370', 'field_2461']) + '</td>');
+      h.push('<td class="cr-cell-yn">' + renderSheetYn(card, ['field_2372', 'field_1984', 'field_2739']) + '</td>');
+      h.push('<td class="cr-cell-yn">' + renderSheetYn(card, ['field_2371', 'field_1983', 'field_2740']) + '</td>');
+      h.push('<td class="cr-cell-choices">' + renderSheetChoices(card, 'field_2455', CR_HEIGHT_CHOICES) + '</td>');
+      h.push('<td class="cr-cell-fill">' + esc(pickDetail(card, ['field_2367'])) + '</td>');
+      // Conduit always blank — survey is the source of truth (same
+      // rule as the inline measure-row renderer).
+      h.push('<td class="cr-cell-fill"></td>');
+      h.push('<td></td>');
+      h.push('</tr>');
     }
-
-    h.push('</section>');
+    h.push('</tbody></table>');
+    h.push('</div>');
     return h.join('');
   }
 
@@ -2634,34 +2621,10 @@
       '}',
       '.ws-notes-lines--l1 { gap: 9px; }',
       '',
-      '/* Camera & Reader spreadsheet — appended after the pivot.   */',
-      '/* Forces its own portrait @page so the orientation doesn\'t   */',
-      '/* inherit from the preceding landscape pivot section.         */',
-      '@page cr-sheet-page {',
-      '  size: letter landscape;',
-      '  margin: 0.3in 0.3in;',
-      '}',
-      '.cr-sheet {',
-      '  page: cr-sheet-page;',
-      '  page-break-before: always; break-before: page;',
-      '  padding: 0;',
-      '}',
-      '.cr-sheet-title {',
-      '  font-size: 13px; font-weight: 800; color: #07467c;',
-      '  margin: 0 0 1px 0; padding-bottom: 2px;',
-      '  border-bottom: 1.5px solid #07467c;',
-      '}',
-      '.cr-sheet-sub {',
-      '  font-size: 8px; color: #4b5563; margin-bottom: 5px;',
-      '  font-style: italic; line-height: 1.25;',
-      '}',
-      '.cr-sheet-group { margin-bottom: 6px; page-break-inside: avoid; }',
-      '.cr-sheet-group-title {',
-      '  font-size: 9.5px; font-weight: 800; color: #07467c;',
-      '  background: #eef4fb; padding: 2px 5px;',
-      '  border: 1px solid #07467c; border-bottom: none;',
-      '  text-transform: uppercase; letter-spacing: 0.4px;',
-      '}',
+      '/* Camera & Reader spreadsheet — rendered inline inside each   */',
+      '/* MDF/IDF group, replacing the per-card layout for cams/readers. */',
+      '.cr-sheet-group { margin: 4px 0 8px; page-break-inside: avoid; }',
+      '.cr-sheet-group--inline { margin-top: 2px; }',
       '.cr-sheet-table {',
       '  width: 100%; border-collapse: collapse; table-layout: fixed;',
       '  font-size: 7.7px; line-height: 1.2;',
