@@ -1480,6 +1480,22 @@
     } else {
       h.push('<h1 class="info-cover-title">Site Survey</h1>');
     }
+
+    // Total camera / reader count, derived from the same bucket gate
+    // the connection pivot uses. Rendered as a standalone callout above
+    // the rest of the cover fields so it reads as a headline figure.
+    var camCount = 0;
+    if (payload.rows && payload.rows.length) {
+      for (var ci = 0; ci < payload.rows.length; ci++) {
+        var cr = payload.rows[ci];
+        if (cr && cr.type === 'card' && isCamerasReadersBucket(cr)) camCount++;
+      }
+    }
+    h.push('<div class="info-cover-count">');
+    h.push('<span class="info-cover-count-num">' + camCount + '</span>');
+    h.push('<span class="info-cover-count-label">Total Cameras / Readers</span>');
+    h.push('</div>');
+
     for (var i = 0; i < payload.page1Sections.length; i++) {
       var sec = payload.page1Sections[i];
       h.push('<div class="info-cover-section">');
@@ -1852,9 +1868,9 @@
         if (card.product) {
           h.push('<div class="ws-id-product ws-id-product--stacked">' + esc(card.product) + '</div>');
         }
-        // Headend / networking: Connected Devices sits directly under
-        // the product name; Mount info is suppressed.
-        h.push(renderConnectedTo(card, 'Connected Devices'));
+        // Headend / networking: Connected Devices used to render here.
+        // Removed per request — leave a pass-through so the layout
+        // collapses naturally.
         h.push(scwBlock());
         h.push(techNotesBlock());
         if (!isHeadendOrNetworking(card)) h.push(renderRefSection(card));
@@ -1880,9 +1896,8 @@
         h.push(renderRefSection(card));
         h.push(renderFlagsRow(card));
         h.push(renderMeasureRow(card));
-        // Cam/reader: Connected To renders below Height/measure, styled
-        // like the other detail (ref) items.
-        h.push(renderConnectedTo(card, 'Connected To'));
+        // Cam/reader: Connected To used to render here. Removed per
+        // request.
         h.push('</div>');
 
         h.push('<div class="ws-body-col ws-body-col--mid">');
@@ -1992,6 +2007,19 @@
       '  font-size: 17px; font-weight: 800; color: #07467c;',
       '  margin: 0 0 8px 0; padding-bottom: 3px;',
       '  border-bottom: 2px solid #07467c; text-align: center;',
+      '}',
+      '.info-cover-count {',
+      '  display: flex; align-items: baseline; justify-content: center;',
+      '  gap: 10px; margin: 0 0 10px 0; padding: 8px 12px;',
+      '  border: 1px solid #07467c; border-radius: 4px;',
+      '  background: #eef4fb; page-break-inside: avoid;',
+      '}',
+      '.info-cover-count-num {',
+      '  font-size: 28px; font-weight: 800; color: #07467c; line-height: 1;',
+      '}',
+      '.info-cover-count-label {',
+      '  font-size: 11px; font-weight: 700; color: #07467c;',
+      '  text-transform: uppercase; letter-spacing: 0.5px;',
       '}',
       '.info-cover-section {',
       '  margin-bottom: 8px; padding: 6px 10px;',
