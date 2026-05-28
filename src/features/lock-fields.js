@@ -151,7 +151,16 @@
     let obsTimer = 0;
     const obs = new MutationObserver(() => {
       if (obsTimer) clearTimeout(obsTimer);
-      obsTimer = setTimeout(() => { obsTimer = 0; applyLocksForView(viewCfg); }, 150);
+      obsTimer = setTimeout(() => {
+        obsTimer = 0;
+        // Skip when device-worksheet's transformView caused these
+        // mutations — its knack-view-render handler already re-runs
+        // applyLocksForView right after the transform completes.
+        if (window.SCW && window.SCW.deviceWorksheet &&
+            window.SCW.deviceWorksheet.isTransforming &&
+            window.SCW.deviceWorksheet.isTransforming(viewId)) return;
+        applyLocksForView(viewCfg);
+      }, 150);
     });
     obs.observe(el, { childList: true, subtree: true });
   }

@@ -148,13 +148,14 @@
     .off('knack-scene-render.any' + EVENT_NS)
     .on('knack-scene-render.any' + EVENT_NS, function () { show(); });
 
-  // Reload coverage. Any cell update on the scene can cascade into a
-  // view_3610 refetch via refresh-on-inline-edit's scene-wide rule —
-  // even edits to other views. Cover the grid eagerly; we'll hide
-  // again once view_3610 reports view-render.
+  // Reload coverage. Scope to view_3610's own cell-update events —
+  // unrelated cell edits elsewhere on the scene (totals view, sibling
+  // grids) used to mask view_3610 too, leaving the overlay up until
+  // the safety timer fired. The records-load handler below also catches
+  // model-refetch-driven reloads from sibling cascades.
   $(document)
-    .off('knack-cell-update.any' + EVENT_NS)
-    .on('knack-cell-update.any' + EVENT_NS, function () { show(); });
+    .off('knack-cell-update.' + TARGET_VIEW + EVENT_NS)
+    .on('knack-cell-update.' + TARGET_VIEW + EVENT_NS, function () { show(); });
 
   // knack-records-load is fired by Knack when the AJAX for a view's
   // records returns. Some flows fire records-load EARLIER than

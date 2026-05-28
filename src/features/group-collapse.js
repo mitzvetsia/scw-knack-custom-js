@@ -839,6 +839,12 @@
       // Skip during coordinated post-edit restoration (coordinator
       // calls enhance() explicitly at the right time).
       if (_suppressAutoEnhance) return;
+      // Skip while any device-worksheet transformView is mid-pass —
+      // its mutations would re-fire this observer on top of the
+      // inline enhance() call transformView already makes.
+      if (window.SCW && window.SCW.deviceWorksheet &&
+          window.SCW.deviceWorksheet.isAnyTransforming &&
+          window.SCW.deviceWorksheet.isAnyTransforming()) return;
 
       const current = getCurrentSceneId();
       if (!isEnabledScene(current)) return;
@@ -901,6 +907,11 @@
         // transformView called enhance() inline) — avoids a second full
         // accordion rebuild on every inline edit.
         if (recentlyEnhanced()) return;
+        // Also skip if any transformView is still mid-pass — the
+        // inline enhance() at the end of transformView will cover it.
+        if (window.SCW && window.SCW.deviceWorksheet &&
+            window.SCW.deviceWorksheet.isAnyTransforming &&
+            window.SCW.deviceWorksheet.isAnyTransforming()) return;
         enhanceAllGroupedGrids(sceneId);
       }, 200);
     });

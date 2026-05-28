@@ -1270,6 +1270,11 @@
     var tbody = view.querySelector('table.kn-table tbody');
     if (!tbody || tbody.__scwMdfFilterObs) return;
     var mo = new MutationObserver(function (mutations) {
+      // Skip when device-worksheet is mid-transform — the post-transform
+      // knack-view-render handler reschedules transform(viewId) anyway.
+      if (window.SCW && window.SCW.deviceWorksheet &&
+          window.SCW.deviceWorksheet.isTransforming &&
+          window.SCW.deviceWorksheet.isTransforming(viewId)) return;
       for (var i = 0; i < mutations.length; i++) {
         var m = mutations[i];
         var prev = m.oldValue || '';
