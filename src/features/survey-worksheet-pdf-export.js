@@ -2262,15 +2262,18 @@
       // under the page floor. page-break-after starts the next
       // section on a fresh page.
       '.cover-page {',
-      '  page-break-after: always; break-after: page;',
-      '  page-break-inside: avoid; break-inside: avoid;',
+      // Use page-break-BEFORE instead of page-break-after so each cover
+      // page starts a new page, and the FIRST cover after the worksheet
+      // starts normally without leaving a trailing blank. The previous
+      // `after: always` combo (plus :last-of-type fallback) failed
+      // because :last-of-type matches the last <section> overall — and
+      // ws-card sections come later in the doc, so EVERY cover-page
+      // ended up with break-after, dragging a blank page in front of
+      // the worksheet via Chromium\'s break-collapsing oddities.
+      '  page-break-before: always; break-before: page;',
       '  text-align: center;',
       '  box-sizing: border-box;',
       '  width: 100%;',
-      '}',
-      '.cover-page:last-of-type {',
-      '  page-break-after: auto;',
-      '  break-after: auto;',
       '}',
       '.cover-section-label {',
       '  font-size: 8.5px; font-weight: 800; color: #07467c;',
