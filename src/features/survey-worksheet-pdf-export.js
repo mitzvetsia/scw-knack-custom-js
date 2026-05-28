@@ -1576,17 +1576,15 @@
 
   // ── Camera/Reader spreadsheet section ──
   // Subs keep asking for the old "spreadsheet" presentation for camera
-  // and reader rows. This renders a compact table per MDF/IDF L1 group,
-  // columns matching the same ref/flags/measure detail the cards show.
-  // Only the camera/reader bucket is included; project-wide rows are
-  // skipped (they aren't tied to a physical MDF/IDF). Portrait page —
-  // the surrounding worksheet is already portrait, and this section
-  // doesn't request the landscape-pivot page rule, so it lands portrait
-  // naturally after the pivot's page break.
+  // and reader rows. Renders a compact table per MDF/IDF L1 group with
+  // the same data the per-card view shows — including SCW's best-guess
+  // pre-fill marks so the tech can ink them over or strike out and
+  // correct. Camera/reader bucket only; project-wide rows skipped.
+  // Forced portrait via a dedicated named @page so it doesn't inherit
+  // the landscape orientation of the preceding pivot page.
   function renderCameraReaderSpreadsheet(payload) {
     if (!payload || !payload.rows || !payload.rows.length) return '';
 
-    // Bucket rows by their L1 group label, preserving group order.
     var groupOrder = [];
     var byGroup = {};
     for (var i = 0; i < payload.rows.length; i++) {
@@ -1600,48 +1598,50 @@
     }
     if (!groupOrder.length) return '';
 
-    // Column spec — keep it tight; spreadsheet sub-format prioritises
-    // density over visual hierarchy. Each entry pulls from card fields
-    // or detailValues; fall back to '' so empty cells render as blanks
-    // the tech can write into.
-    var COLS = [
-      { label: 'Label',     get: function (c) { return c.label || ''; } },
-      { label: 'Product',   get: function (c) { return c.product || ''; } },
-      { label: 'Mount',     get: function (c) { return pickDetail(c, ['field_2463']); } },
-      { label: 'Existing',  get: function (c) { return pickDetail(c, ['field_2370', 'field_2461']); } },
-      { label: 'Exterior',  get: function (c) { return pickDetail(c, ['field_2372', 'field_1984', 'field_2739']); } },
-      { label: 'Plenum',    get: function (c) { return pickDetail(c, ['field_2371', 'field_1983', 'field_2740']); } },
-      { label: 'Height',    get: function (c) { return pickDetail(c, ['field_2455']); } },
-      { label: 'Drop (ft)', get: function (c) { return pickDetail(c, ['field_2367']); } },
-      // Conduit always blank — survey is the source of truth here, same
-      // rule the measure-row renderer follows for the in-line layout.
-      { label: 'Conduit (ft)', get: function () { return ''; } },
-      { label: 'Notes',     get: function () { return ''; } }
-    ];
+    var HEIGHT_CHOICES = ["<16'", "16-24'", ">24'"];
 
     var h = [];
     h.push('<section class="cr-sheet">');
     h.push('<h2 class="cr-sheet-title">Camera &amp; Reader Spreadsheet</h2>');
-    h.push('<div class="cr-sheet-sub">Iterate / mark up — same data as the worksheet, in row form.</div>');
+    h.push('<div class="cr-sheet-sub">Gray marks are our best guess from file data. Ink over to confirm, or strike out + mark the right box to correct.</div>');
 
     for (var g = 0; g < groupOrder.length; g++) {
       var name = groupOrder[g];
       var rowsInGroup = byGroup[name];
       h.push('<div class="cr-sheet-group">');
       h.push('<div class="cr-sheet-group-title">' + esc(name) + '</div>');
-      h.push('<table class="cr-sheet-table"><thead><tr>');
-      for (var ci = 0; ci < COLS.length; ci++) {
-        h.push('<th>' + esc(COLS[ci].label) + '</th>');
-      }
+      h.push('<table class="cr-sheet-table"><colgroup>');
+      h.push('<col class="cr-col-label"><col class="cr-col-product"><col class="cr-col-mount">');
+      h.push('<col class="cr-col-yn"><col class="cr-col-yn"><col class="cr-col-yn">');
+      h.push('<col class="cr-col-height"><col class="cr-col-drop"><col class="cr-col-drop"><col class="cr-col-notes">');
+      h.push('</colgroup><thead><tr>');
+      h.push('<th>Label</th>');
+      h.push('<th>Product</th>');
+      h.push('<th>Mount</th>');
+      h.push('<th>Existing</th>');
+      h.push('<th>Exterior</th>');
+      h.push('<th>Plenum</th>');
+      h.push('<th>Height</th>');
+      h.push('<th>Drop ft</th>');
+      h.push('<th>Conduit ft</th>');
+      h.push('<th>Notes</th>');
       h.push('</tr></thead><tbody>');
+
       for (var ri = 0; ri < rowsInGroup.length; ri++) {
-        h.push('<tr>');
         var card = rowsInGroup[ri];
-        for (var ck = 0; ck < COLS.length; ck++) {
-          var v = '';
-          try { v = COLS[ck].get(card) || ''; } catch (e) { v = ''; }
-          h.push('<td>' + esc(v) + '</td>');
-        }
+        h.push('<tr>');
+        h.push('<td class="cr-cell-id">' + esc(card.label || '') + '</td>');
+        h.push('<td class="cr-cell-id">' + esc(card.product || '') + '</td>');
+        h.push('<td>' + esc(pickDetail(card, ['field_2463'])) + '</td>');
+        h.push('<td class="cr-cell-yn">' + renderSheetYn(card, ['field_2370', 'field_2461']) + '</td>');
+        h.push('<td class="cr-cell-yn">' + renderSheetYn(card, ['field_2372', 'field_1984', 'field_2739']) + '</td>');
+        h.push('<td class="cr-cell-yn">' + renderSheetYn(card, ['field_2371', 'field_1983', 'field_2740']) + '</td>');
+        h.push('<td class="cr-cell-choices">' + renderSheetChoices(card, 'field_2455', HEIGHT_CHOICES) + '</td>');
+        h.push('<td class="cr-cell-fill">' + esc(pickDetail(card, ['field_2367'])) + '</td>');
+        // Conduit always blank — survey is the source of truth (same
+        // rule as the inline measure-row renderer).
+        h.push('<td class="cr-cell-fill"></td>');
+        h.push('<td></td>');
         h.push('</tr>');
       }
       h.push('</tbody></table>');
@@ -1650,6 +1650,37 @@
 
     h.push('</section>');
     return h.join('');
+  }
+
+  // Compact Y/N pair with pre-fill on the matching option. Mirrors the
+  // worksheet flag-row treatment: gray ☒ is "our best guess," tech inks
+  // over to confirm or strikes out + ticks the other to correct.
+  function renderSheetYn(card, keys) {
+    var v = String(pickDetail(card, keys) || '').toLowerCase();
+    var yesOn = v === 'yes' || v === 'true';
+    var noOn  = v === 'no'  || v === 'false';
+    return (
+      '<span class="ws-box' + (yesOn ? ' is-on' : '') + '">' + (yesOn ? '☒' : '☐') + '</span>Y' +
+      '<span class="cr-yn-sep"></span>' +
+      '<span class="ws-box' + (noOn  ? ' is-on' : '') + '">' + (noOn  ? '☒' : '☐') + '</span>N'
+    );
+  }
+
+  // Height-style multi-choice with pre-fill on the matching option.
+  function renderSheetChoices(card, key, choices) {
+    var v = String((card.detailValues && card.detailValues[key]) || '').trim().toLowerCase();
+    var bits = [];
+    for (var i = 0; i < choices.length; i++) {
+      var opt = choices[i];
+      var on = v && opt.toLowerCase() === v;
+      bits.push(
+        '<span class="cr-choice">' +
+          '<span class="ws-box' + (on ? ' is-on' : '') + '">' + (on ? '☒' : '☐') + '</span>' +
+          esc(opt) +
+        '</span>'
+      );
+    }
+    return bits.join('');
   }
 
   // First non-empty detailValues hit across a list of field keys.
@@ -2604,43 +2635,72 @@
       '.ws-notes-lines--l1 { gap: 9px; }',
       '',
       '/* Camera & Reader spreadsheet — appended after the pivot.   */',
-      '/* No `page:` rule so it inherits the default portrait page.   */',
+      '/* Forces its own portrait @page so the orientation doesn\'t   */',
+      '/* inherit from the preceding landscape pivot section.         */',
+      '@page cr-sheet-page {',
+      '  size: letter portrait;',
+      '  margin: 0.35in 0.3in;',
+      '}',
       '.cr-sheet {',
+      '  page: cr-sheet-page;',
       '  page-break-before: always; break-before: page;',
-      '  padding: 0.1in 0.1in;',
+      '  padding: 0;',
       '}',
       '.cr-sheet-title {',
-      '  font-size: 14px; font-weight: 800; color: #07467c;',
-      '  margin: 0 0 2px 0; padding-bottom: 3px;',
-      '  border-bottom: 2px solid #07467c;',
+      '  font-size: 13px; font-weight: 800; color: #07467c;',
+      '  margin: 0 0 1px 0; padding-bottom: 2px;',
+      '  border-bottom: 1.5px solid #07467c;',
       '}',
       '.cr-sheet-sub {',
-      '  font-size: 9.5px; color: #6b7280; margin-bottom: 8px;',
-      '  font-style: italic;',
+      '  font-size: 8px; color: #4b5563; margin-bottom: 5px;',
+      '  font-style: italic; line-height: 1.25;',
       '}',
-      '.cr-sheet-group { margin-bottom: 10px; page-break-inside: avoid; }',
+      '.cr-sheet-group { margin-bottom: 6px; page-break-inside: avoid; }',
       '.cr-sheet-group-title {',
-      '  font-size: 11px; font-weight: 800; color: #07467c;',
-      '  background: #eef4fb; padding: 3px 6px;',
+      '  font-size: 9.5px; font-weight: 800; color: #07467c;',
+      '  background: #eef4fb; padding: 2px 5px;',
       '  border: 1px solid #07467c; border-bottom: none;',
       '  text-transform: uppercase; letter-spacing: 0.4px;',
       '}',
       '.cr-sheet-table {',
       '  width: 100%; border-collapse: collapse; table-layout: fixed;',
-      '  font-size: 8.5px;',
+      '  font-size: 7.5px; line-height: 1.15;',
       '}',
       '.cr-sheet-table th, .cr-sheet-table td {',
       '  border: 1px solid #94a3b8;',
-      '  padding: 3px 4px; vertical-align: top;',
+      '  padding: 1.5px 3px; vertical-align: middle;',
       '  word-break: break-word; overflow-wrap: anywhere;',
       '}',
       '.cr-sheet-table thead th {',
       '  background: #07467c; color: #fff;',
-      '  font-size: 8px; font-weight: 700;',
-      '  text-transform: uppercase; letter-spacing: 0.4px;',
+      '  font-size: 7px; font-weight: 700;',
+      '  text-transform: uppercase; letter-spacing: 0.3px;',
+      '  padding: 2px 3px;',
       '}',
       '.cr-sheet-table tbody tr:nth-child(even) td { background: #f8fafc; }',
-      '.cr-sheet-table td { min-height: 18px; }',
+      // Column width hints — sum to ~100%. Y/N cols share width; the
+      // notes column gets the remainder for write-in space.
+      '.cr-col-label   { width: 8%; }',
+      '.cr-col-product { width: 22%; }',
+      '.cr-col-mount   { width: 9%; }',
+      '.cr-col-yn      { width: 7%; }',
+      '.cr-col-height  { width: 12%; }',
+      '.cr-col-drop    { width: 6%; }',
+      '.cr-col-notes   { width: 16%; }',
+      '.cr-cell-id { font-weight: 600; }',
+      '.cr-cell-yn { text-align: center; white-space: nowrap; }',
+      '.cr-cell-yn .ws-box { font-size: 9px; margin-right: 0; }',
+      '.cr-yn-sep { display: inline-block; width: 4px; }',
+      '.cr-cell-choices {',
+      '  text-align: center; line-height: 1.25;',
+      '}',
+      '.cr-cell-choices .cr-choice {',
+      '  display: inline-block; white-space: nowrap; margin-right: 3px;',
+      '}',
+      '.cr-cell-choices .ws-box { font-size: 9px; margin-right: 0; }',
+      // Write-in cells (Drop, Conduit) — give the tech an underline-y',
+      // floor to scribble on rather than a blank cell.',
+      '.cr-cell-fill { background: #fdfdfe; }',
       '',
       '/* Connection Map pivot table — landscape page so we get more  */',
       '/* horizontal room for column headers and avoid vertical text. */',
