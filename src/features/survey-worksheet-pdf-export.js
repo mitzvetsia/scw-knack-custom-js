@@ -1242,38 +1242,74 @@
       '</div>'
     );
 
-    // Walk rows, but coalesce consecutive camera/reader cards into a
-    // single in-place spreadsheet table. Subs prefer the spreadsheet
-    // layout for cams/readers, so we render those inline (in their
-    // MDF/IDF) instead of one card per item. Non-camera cards (NVR,
-    // racks, services, assumptions) keep the existing card render.
+    // Walk rows with two buffers per MDF/IDF group:
+    //   • pendingCams   — consecutive camera/reader cards, flushed as
+    //                     one inline spreadsheet table inside the group.
+    //   • pendingNoBid  — non-cam cards whose product doesn't require a
+    //                     sub bid (field_2479 != Yes). Subs don't quote
+    //                     these so they get demoted: rendered compact
+    //                     and pushed to the bottom of the MDF/IDF.
+    // Both buffers flush at level-1 group headers and at the end of the
+    // document so demoted items stay scoped to their own MDF/IDF.
     var pendingCams = [];
+    var pendingNoBid = [];
     function flushCamBatch() {
       if (!pendingCams.length) return;
       html.push(renderCameraReaderBatchTable(pendingCams));
       pendingCams = [];
     }
+    function flushNoBidBatch() {
+      if (!pendingNoBid.length) return;
+      html.push('<div class="ws-nobid-stack">');
+      for (var n = 0; n < pendingNoBid.length; n++) {
+        html.push(renderCard(pendingNoBid[n]));
+      }
+      html.push('</div>');
+      pendingNoBid = [];
+    }
     for (var i = 0; i < payload.rows.length; i++) {
       var row = payload.rows[i];
+
+      // Cameras/readers go in the spreadsheet buffer (skip project-wide
+      // rows — they belong in the global section at the doc end).
       if (row.type === 'card' && isCamerasReadersBucket(row) &&
           !/project wide/i.test(row.groupL1 || '')) {
         pendingCams.push(row);
         continue;
       }
-      // Anything else flushes the buffered camera/reader table first,
-      // so the spreadsheet sits inside the same MDF/IDF block it came
-      // from. Then render the current row normally.
-      flushCamBatch();
-      if (row.type === 'group') {
+
+      // Non-cam cards whose product doesn't require a sub bid get
+      // demoted to the bottom of the current MDF/IDF group. Flush the
+      // cam spreadsheet first so it stays at the natural insertion
+      // point, then defer this card.
+      if (row.type === 'card' && !isNoBidProduct.skip(row) && isNoBidProduct(row) &&
+          !/project wide/i.test(row.groupL1 || '')) {
+        flushCamBatch();
+        pendingNoBid.push(row);
+        continue;
+      }
+
+      // Anything else: flush the cam batch first so the spreadsheet
+      // sits in-place. Group headers at level 1 also flush the demoted
+      // no-bid stack so it lands at the bottom of the OUTGOING group.
+      if (row.type === 'group' && (row.level || 1) === 1) {
+        flushCamBatch();
+        flushNoBidBatch();
+        html.push(renderGroupHeader(row));
+      } else if (row.type === 'group') {
+        flushCamBatch();
         html.push(renderGroupHeader(row));
       } else if (row.type === 'card') {
+        flushCamBatch();
         html.push(renderCard(row));
       } else if (row.type === 'l1-notes') {
+        flushCamBatch();
         html.push(renderL1Notes(row));
       }
     }
-    // Tail of the loop — if the document ends on cameras, flush them.
+    // Tail of the loop — flush any remaining buffers in the right order.
     flushCamBatch();
+    flushNoBidBatch();
 
     // ── Connection Map pivot (cameras/readers × distribution devices) ──
     var pivotHtml = renderConnectionPivot(payload);
@@ -1597,10 +1633,37 @@
   // Pre-filled cells use the gray ☒ convention so techs can ink over
   // to confirm or strike + tick the other option to correct.
   var CR_HEIGHT_CHOICES = ["<16'", "16-24'", ">24'"];
+  // "Require Sub Bid" flag on the line item's stored product. Yes means
+  // the sub has to quote this item; No / blank means it's stocked or
+  // labor-internal, no sub action needed. Keys cover the survey and SOW
+  // worksheet schemas (different field IDs hold the same flag).
+  var REQUIRE_SUB_BID_KEYS = ['field_2479', 'field_2478'];
+  function isNoBidProduct(card) {
+    if (!card || !card.raw) return false;
+    for (var i = 0; i < REQUIRE_SUB_BID_KEYS.length; i++) {
+      var k = REQUIRE_SUB_BID_KEYS[i];
+      var raw = card.raw[k + '_raw'];
+      var v = (raw !== undefined && raw !== null && raw !== '') ? raw : card.raw[k];
+      if (v === undefined || v === null || v === '') continue;
+      var s = String(v).toLowerCase().trim();
+      // Explicit "No" wins; treat anything else (including blank) as
+      // "leave it alone." Only demote cards where the field is set
+      // and the answer is No.
+      return s === 'no' || s === 'false' || s === '0';
+    }
+    return false;
+  }
+  // Skip the no-bid demotion for buckets we already special-case so we
+  // never accidentally double-handle a row.
+  isNoBidProduct.skip = function (card) {
+    return isCamerasReadersBucket(card);
+  };
+
   function renderCameraReaderBatchTable(cards) {
     if (!cards || !cards.length) return '';
     var h = [];
     h.push('<div class="cr-sheet-group cr-sheet-group--inline">');
+    h.push('<div class="cr-sheet-label">Cameras or Readers</div>');
     h.push('<table class="cr-sheet-table"><colgroup>');
     h.push('<col class="cr-col-label"><col class="cr-col-product"><col class="cr-col-mount">');
     h.push('<col class="cr-col-yn"><col class="cr-col-yn"><col class="cr-col-yn">');
@@ -2365,7 +2428,9 @@
       '.ws-id-product {',
       // Match the label styling (bold + blue) so the device reads as',
       // one unified identifier line instead of label-then-graytext.',
-      '  font-weight: 700; color: #07467c; font-size: 10.5px;',
+      // Shrunk ~35% from the original 10.5px — the product name is */
+      // useful context but doesn\'t need to compete with the label.   */',
+      '  font-weight: 700; color: #07467c; font-size: 7px;',
       '}',
       '',
       '/* ── Reference items (Mount / SCW) — same shape as ws-line ── */',
@@ -2625,6 +2690,37 @@
       '/* MDF/IDF group, replacing the per-card layout for cams/readers. */',
       '.cr-sheet-group { margin: 4px 0 8px; page-break-inside: avoid; }',
       '.cr-sheet-group--inline { margin-top: 2px; }',
+      // Section label that orients the reader before they hit the table.
+      '.cr-sheet-label {',
+      '  font-size: 9px; font-weight: 800; color: #07467c;',
+      '  text-transform: uppercase; letter-spacing: 0.5px;',
+      '  background: #eef4fb;',
+      '  border: 1px solid #07467c; border-bottom: none;',
+      '  padding: 2px 6px;',
+      '}',
+      // No-bid demotion stack — non-camera items whose product flag is
+      // No-bid render compact at the bottom of their MDF/IDF group. We
+      // shrink the cards visually rather than restructuring them so the
+      // existing renderCard layout still works; just a smaller box.
+      '.ws-nobid-stack {',
+      '  margin-top: 4px;',
+      '}',
+      '.ws-nobid-stack .ws-card {',
+      '  font-size: 70%;',
+      '  margin: 2px 0;',
+      '  padding: 3px 5px;',
+      '}',
+      '.ws-nobid-stack .ws-id-label,',
+      '.ws-nobid-stack .ws-id-label-block {',
+      '  font-size: 9px;',
+      '}',
+      '.ws-nobid-stack .ws-id-product,',
+      '.ws-nobid-stack .ws-id-product--stacked {',
+      '  font-size: 6px;',
+      '}',
+      '.ws-nobid-stack .ws-notes-open {',
+      '  min-height: 14px;',
+      '}',
       '.cr-sheet-table {',
       '  width: 100%; border-collapse: collapse; table-layout: fixed;',
       '  font-size: 7.7px; line-height: 1.2;',
