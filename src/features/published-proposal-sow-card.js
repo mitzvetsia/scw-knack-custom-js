@@ -162,41 +162,82 @@
     return parseInt(m[2], 10) + '/' + parseInt(m[3], 10) + '/' + m[1];
   }
 
-  // ── Save expiration date through the live Knack model ──────
-  // Backbone-style PATCH against view_3814's model. Knack's details-view
-  // models accept .save() for any field the underlying record exposes
-  // through that page — so as long as view_3814 has field_2659 readable
-  // on the page, the PUT goes through. If your installation tightened
-  // field permissions on view_3814 and the save 403s, expose the field
-  // editable on a hidden Update form view on scene_1116 and switch
-  // SAVE_VIEW below to that view's id.
+  // ── Save expiration date through Knack's page-view PUT API ──
+  // Mirrors the pattern used by ops-review-pill.js (SCW.knackAjax +
+  // SCW.knackRecordUrl). SAVE_VIEW must be a view on scene_1116 that
+  // permits writes to field_2659. view_3814 is the details view that
+  // already lives on this scene and is what we read from; if Knack
+  // rejects the PUT (403/400), set SAVE_VIEW to a dedicated Update
+  // form view for SOW_published_proposals with field_2659 editable.
   var SAVE_VIEW = SOURCE_VIEW;
 
+  function getProposalRecordId() {
+    var view = window.Knack && Knack.views && Knack.views[SOURCE_VIEW];
+    if (!view) return '';
+    // Details view: model.id (or attributes.id)
+    if (view.model) {
+      if (view.model.id) return view.model.id;
+      if (view.model.attributes && view.model.attributes.id) return view.model.attributes.id;
+    }
+    // Grid view fallback: first row of the data collection
+    if (view.model && view.model.data && view.model.data.length) {
+      var first = view.model.data.models && view.model.data.models[0];
+      if (first && first.id) return first.id;
+    }
+    return '';
+  }
+
   function saveExpiration(mdyValue, onDone) {
-    var view = window.Knack && Knack.views && Knack.views[SAVE_VIEW];
-    if (!view || !view.model || typeof view.model.save !== 'function') {
-      onDone(new Error('view_3814 model not ready'));
+    if (!window.SCW || typeof SCW.knackAjax !== 'function' ||
+        typeof SCW.knackRecordUrl !== 'function') {
+      onDone(new Error('SCW API helpers not loaded'));
       return;
     }
-    var payload = {};
-    payload[EXP_FIELD] = mdyValue;
-    view.model.save(payload, {
-      patch:   true,
-      wait:    true,
-      success: function () {
-        // Re-fetch to pick up any server-side recomputation (e.g. expired flag).
-        try { view.model.fetch({ success: function () { onDone(null); }, error: function () { onDone(null); } }); }
-        catch (e) { onDone(null); }
-      },
-      error: function (model, resp) {
-        var msg = 'Save failed';
+    var recordId = getProposalRecordId();
+    if (!recordId) {
+      onDone(new Error('Proposal record id not found on ' + SOURCE_VIEW));
+      return;
+    }
+    var body = {};
+    body[EXP_FIELD] = mdyValue;
+    SCW.knackAjax({
+      url:  SCW.knackRecordUrl(SAVE_VIEW, recordId),
+      type: 'PUT',
+      data: JSON.stringify(body),
+      success: function (resp) {
+        // Patch the live model so the card repaints with the new date
+        // without a full re-fetch. syncKnackModel touches both .data
+        // and ._raw on the model.
+        if (typeof SCW.syncKnackModel === 'function') {
+          try { SCW.syncKnackModel(SOURCE_VIEW, recordId, resp, EXP_FIELD, mdyValue); }
+          catch (e) { /* non-fatal */ }
+        }
+        // Best-effort fetch to pick up server-recomputed "expired" state.
         try {
-          if (resp && resp.responseJSON && resp.responseJSON.errors) {
-            msg = resp.responseJSON.errors.map(function (e) { return e.message || e; }).join('; ');
-          } else if (resp && resp.status) {
-            msg = 'Save failed (HTTP ' + resp.status + ')';
-          }
-        } catch (e) { /* ignore */ }
+          var v = window.Knack && Knack.views && Knack.views[SOURCE_VIEW];
+          if (v && v.model && typeof v.model.fetch === 'function') v.model.fetch();
+        } catch (e) { /* non-fatal */ }
+        onDone(null);
+      },
+      error: function (xhr) {
+        var status = xhr && xhr.status;
+        var msg = 'Save failed';
+        if (status === 403 || status === 401) {
+          msg = 'Save denied (HTTP ' + status + ') — need an editable ' +
+                'Update form view for SOW_published proposals on scene_1116 ' +
+                'with ' + EXP_FIELD + ' enabled. Set SAVE_VIEW to that view id.';
+        } else if (status === 404) {
+          msg = 'Save failed (404) — record or view path not found.';
+        } else if (status) {
+          msg = 'Save failed (HTTP ' + status + ')';
+          try {
+            var resp = xhr.responseJSON;
+            if (resp && resp.errors && resp.errors.length) {
+              msg += ': ' + resp.errors.map(function (e) { return e.message || JSON.stringify(e); }).join('; ');
+            }
+          } catch (e) { /* ignore parse errors */ }
+        }
+        console.warn('[scw-pp-sow-card] saveExpiration failed:', xhr && xhr.responseText);
         onDone(new Error(msg));
       }
     });
