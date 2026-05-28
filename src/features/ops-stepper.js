@@ -99,6 +99,24 @@
 
   var STEPS = [
     {
+      id: 'request-sow-review',
+      label: 'Request SOW Review',
+      tone: 'primary',
+      // Always available — Ops can request a peer review of the SOW at
+      // any point. Shares the Mark Ready webhook scenario; step.id is
+      // included in the payload so Make routes to the review-request
+      // branch instead of the mark-ready / publish-tbd branch.
+      webhookKey: 'MAKE_OPS_MARK_READY_WEBHOOK',
+      forceSubmission: 'sales',
+      modal: {
+        title:       'Request SOW Review',
+        intro:       'Note for the reviewer — what should they look at?',
+        placeholder: 'e.g. Please double-check the cabling assumptions on the MDF',
+        submitLabel: 'Request Review'
+      },
+      includeFullPayload: true
+    },
+    {
       id: 'mark-ready',
       label: 'Mark Ready for Survey',
       tone: 'primary',
@@ -201,9 +219,41 @@
       includeFullPayload: true
     },
     {
+      id: 'publish-final',
+      label: 'Publish Quote as Final',
+      tone: 'success',
+      // Gate disabled — always show Publish as Final. Was previously
+      // gated on (field_2728 > 0) OR (field_2723 = 'Yes') so the button
+      // only unlocked once a sub-bid had returned or Ops had marked the
+      // SOW ready. Restore the showWhen block to re-enable the gate.
+      webhookKey: 'MAKE_OPS_PUBLISH_FINAL_WEBHOOK',
+      submission: {
+        question:   'After publishing, do you want to also submit?',
+        noneLabel:  'No — just publish',
+        options: [
+          { value: 'second-set', label: 'Submit to Second Set of Eyes (instead of Sales)' },
+          { value: 'sales',      label: 'Also submit to Sales' }
+        ]
+      },
+      clickupStatus: CLICKUP_STATUS_RADIO_FINAL,
+      modal: {
+        title:       'Publish Quote as Final',
+        intro:       'Publishing the final, fully-priced quote.',
+        notePrompt:  'Do you want to include a message with your submission?',
+        placeholder: 'e.g. Final bid validated, SCW-1041 total $12,325.99',
+        submitLabel: 'Publish',
+        primaryMode: 'publish-and-notify'
+      },
+      includeFullPayload: true
+    },
+    // ── De-prioritized publishes ──────────────────────────────
+    // SOW-only and GFE publishes are kept at the bottom of the stepper
+    // with a muted "secondary" tone — they're less frequent than the
+    // Final publish and shouldn't compete with it for attention.
+    {
       id: 'publish-sow-tbd',
       label: 'Publish as SOW only (TBD Labor)',
-      tone: 'success',
+      tone: 'secondary',
       // Always available — SOW-only / TBD-labor publishing should be
       // reachable at any point in the workflow, including before Ops
       // has marked the SOW ready or any CRs have queued.
@@ -235,7 +285,7 @@
     {
       id: 'publish-gfe',
       label: 'Publish Quote as GFE',
-      tone: 'success',
+      tone: 'secondary',
       // Always available — GFEs are intentionally generatable at any
       // workflow stage so Sales can stamp something to send out before
       // SOW-ready / CR signals exist.
@@ -253,34 +303,6 @@
         title:       'Publish Quote as GFE',
         intro:       'Publishing as a Good-Faith Estimate (labor included).',
         placeholder: 'e.g. GFE bundle for client review — final on bid validation',
-        submitLabel: 'Publish',
-        primaryMode: 'publish-and-notify'
-      },
-      includeFullPayload: true
-    },
-    {
-      id: 'publish-final',
-      label: 'Publish Quote as Final',
-      tone: 'success',
-      // Gate disabled — always show Publish as Final. Was previously
-      // gated on (field_2728 > 0) OR (field_2723 = 'Yes') so the button
-      // only unlocked once a sub-bid had returned or Ops had marked the
-      // SOW ready. Restore the showWhen block to re-enable the gate.
-      webhookKey: 'MAKE_OPS_PUBLISH_FINAL_WEBHOOK',
-      submission: {
-        question:   'After publishing, do you want to also submit?',
-        noneLabel:  'No — just publish',
-        options: [
-          { value: 'second-set', label: 'Submit to Second Set of Eyes (instead of Sales)' },
-          { value: 'sales',      label: 'Also submit to Sales' }
-        ]
-      },
-      clickupStatus: CLICKUP_STATUS_RADIO_FINAL,
-      modal: {
-        title:       'Publish Quote as Final',
-        intro:       'Publishing the final, fully-priced quote.',
-        notePrompt:  'Do you want to include a message with your submission?',
-        placeholder: 'e.g. Final bid validated, SCW-1041 total $12,325.99',
         submitLabel: 'Publish',
         primaryMode: 'publish-and-notify'
       },
@@ -380,6 +402,21 @@
       '.scw-step-action.is-completed.is-disabled {' +
       '  opacity: 1; cursor: default; pointer-events: none;' +
       '}' +
+      /* Secondary tone — used for less-frequent publishes (SOW-only,
+         GFE). Muted slate accent + smaller title so they read as
+         secondary actions next to the primary Final publish above. */
+      '.scw-step-tone-secondary {' +
+      '  --scw-step-accent: #94a3b8;' +
+      '  background: #f8fafc;' +
+      '  border-color: #e2e8f0;' +
+      '}' +
+      '.scw-step-tone-secondary:hover {' +
+      '  background: rgba(148,163,184,0.10);' +
+      '}' +
+      '.scw-step-tone-secondary .scw-step-title {' +
+      '  font-size: 13px; font-weight: 500; color: #475569;' +
+      '}' +
+      '.scw-step-tone-secondary .scw-step-icon { color: #94a3b8; opacity: 1; }' +
       '.scw-step-action.is-completed.is-disabled .scw-step-icon {' +
       '  color: #16a34a; opacity: 1;' +
       '}' +
@@ -1465,6 +1502,7 @@
       var el = document.createElement('a');
       el.href = 'javascript:void(0)';
       var cls = 'scw-step-action';
+      if (step.tone) cls += ' scw-step-tone-' + step.tone;
       if (completed) cls += ' is-completed is-disabled';
       else if (locked) cls += ' is-disabled';
       el.className = cls;
