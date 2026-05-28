@@ -1914,6 +1914,22 @@
           ns.renderToast('Bid partially reopened — ' + parts.join('; ') +
             '. Check the console for details.', 'info');
         }
+        // Fire ClickUp webhook (fire-and-forget — failure here doesn't
+        // undo the Knack writes that already landed).
+        if (CFG.reopenBidWebhook) {
+          SCW.knackAjax({
+            url:  CFG.reopenBidWebhook,
+            type: 'POST',
+            data: JSON.stringify({
+              bidId:     pkgId,
+              projectId: getProjectId()
+            }),
+            error: function (xhr) {
+              if (CFG.debug) console.warn('[BidReview] Reopen webhook failed', xhr && xhr.status);
+            }
+          });
+        }
+
         refreshSilently();
       });
     }).then(function () { setBusy(button, false); });

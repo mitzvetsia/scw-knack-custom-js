@@ -55,6 +55,9 @@
     // button inside the margin-low warning on each SOW section header.
     // Payload: { actionType, sowId, surveyCosts, surveyCostsField }.
     addPmMobilizationWebhook: 'https://hook.us1.make.com/o13w6vyvijxcl0u823g6pg96qtc6psc1',
+    // Fires when the "Reopen Bid" button finishes its Knack writes.
+    // Payload: { bidId, projectId }. Used to drive ClickUp follow-ups.
+    reopenBidWebhook:         'https://hook.us1.make.com/6nxnhsddpts0qix09pm9p18ifkch6obw',
 
     // ── DOM mount point (inserted after the source view) ──────
     mountSelector:     '#bid-review-matrix',
