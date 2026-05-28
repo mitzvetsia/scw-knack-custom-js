@@ -2758,11 +2758,11 @@
       // notes column gets the remainder for write-in space.
       '.cr-col-label   { width: 6%; }',
       '.cr-col-product { width: 20%; }',
-      '.cr-col-mount   { width: 8%; }',
+      '.cr-col-mount   { width: 12%; }',
       '.cr-col-yn      { width: 6%; }',
       '.cr-col-height  { width: 11%; }',
       '.cr-col-drop    { width: 5%; }',
-      '.cr-col-notes   { width: 27%; }',
+      '.cr-col-notes   { width: 23%; }',
       '.cr-cell-id { font-weight: 600; }',
       '.cr-cell-yn { white-space: nowrap; }',
       '.cr-cell-yn .ws-box { font-size: 8px; margin-right: 0; }',
