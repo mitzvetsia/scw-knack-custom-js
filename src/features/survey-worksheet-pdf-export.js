@@ -1610,7 +1610,7 @@
     // second page — overflow there caused the blank-page-before-map
     // bug to come back when we flipped the doc to landscape.
     var imgStyle = 'display:block; margin:0 auto; ' +
-                   'max-width:100%; max-height:7.4in; ' +
+                   'max-width:100%; max-height:7.2in; ' +
                    'width:auto; height:auto; object-fit:contain;';
     for (var i = 0; i < section.images.length; i++) {
       var img = section.images[i];
@@ -2183,7 +2183,12 @@
       '/* Page 1 info cover (detail views: view_3796/3795/3798) */',
       '.info-cover {',
       '  page-break-after: always; break-after: page;',
-      '  padding: 0.1in 0.1in; min-height: 10.3in;',
+      // min-height was 10.3in (sized for portrait Letter's 11" tall page).
+      // The whole doc is now landscape — pages are only 8.5" tall — so a
+      // 10.3in min-height forced the info-cover to spill onto a second
+      // mostly-blank page, which then got page-break-after\'d, putting a
+      // blank page between the cover and the next section.
+      '  padding: 0.1in 0.1in; min-height: 7.5in;',
       '}',
       '.info-cover-title {',
       '  font-size: 8.5px; font-weight: 800; color: #07467c;',
@@ -2278,11 +2283,15 @@
       '  display: block;',
       '  width: 100% !important;',
       '  height: auto !important;',
-      // Letter landscape = 11" x 8.5".  With 0.18/0.2in margins minus
-      // ~0.25in for the section label, the usable area is roughly
-      // 10.6in x 8.0in. Bias height-bound for floor plans.
+      // Letter landscape = 11" x 8.5".  With 0.18in top + 0.3in bottom
+      // margins + footer + ~0.35in for the section label & border, the
+      // image floor is ~7.2in. We had 7.95in here which overflowed by
+      // ~0.6in, and `!important` was beating the inline 7.4in cap I
+      // added earlier — that\'s why the blank-page-around-site-maps
+      // bug came back. Set the class cap low enough that even a
+      // tall portrait floor plan can\'t spill past the page.
       '  max-width: 10.55in !important;',
-      '  max-height: 7.95in !important;',
+      '  max-height: 7.2in !important;',
       '  object-fit: contain;',
       '  margin: 0 auto;',
       '  -webkit-print-color-adjust: exact;',
