@@ -98,7 +98,7 @@
         text: 'Survey Requested on {link}',
         link: { view: 'view_3876', field: 'field_2329' }
       },
-      disabled: { field: 'field_2723', notValue: 'Yes', message: 'SOW not yet validated' }
+      disabled: { field: 'field_2723', notValue: 'Yes', message: 'Waiting on Ops to validate SOW' }
     },
     {
       type: 'action',
