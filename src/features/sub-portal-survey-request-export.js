@@ -264,7 +264,7 @@
       if (!_pollActive) return;
       var current = readTargetFieldSignature();
       if (current && current !== _pollInitial) {
-        stopPolling({ msg: 'Survey Field PDF updated.', variant: 'success' });
+        finishWithFieldReload();
         return;
       }
       // Re-apply overlay onto the freshly rendered detail row
@@ -278,7 +278,7 @@
       // trigger a re-render.
       var current = readTargetFieldSignature();
       if (current && current !== _pollInitial) {
-        stopPolling({ msg: 'Survey Field PDF updated.', variant: 'success' });
+        finishWithFieldReload();
         return;
       }
 
@@ -296,6 +296,32 @@
         if (model && typeof model.fetch === 'function') model.fetch();
       }
     }, POLL_INTERVAL_MS);
+  }
+
+  // Polling has detected the field change. Ideally we just re-render the
+  // detail view so the new PDF reference is shown — but Knack file/asset
+  // fields cache aggressively (the rendered <a> often points at the same
+  // CDN URL that the browser already has cached). Force a fresh model
+  // fetch, then fall back to a full page reload after a short delay so
+  // the user actually sees the new PDF instead of the cached old one.
+  function finishWithFieldReload() {
+    stopPolling({ msg: 'Survey Field PDF updated — reloading…', variant: 'success' });
+
+    // Last-chance field refresh (no-op if it just re-renders the same
+    // data; useful if Make wrote the field between our last poll tick
+    // and the change-detection re-render).
+    try {
+      if (typeof Knack !== 'undefined' && Knack.views && Knack.views[DETAIL_VIEW]) {
+        var model = Knack.views[DETAIL_VIEW].model;
+        if (model && typeof model.fetch === 'function') model.fetch();
+      }
+    } catch (e) {}
+
+    // Belt-and-braces: full page reload so the new PDF asset URL is
+    // fetched fresh. 900ms gives the toast time to be readable.
+    setTimeout(function () {
+      try { window.location.reload(); } catch (e) {}
+    }, 900);
   }
 
   // ── Button state ──
