@@ -2044,6 +2044,20 @@
       '  letter-spacing: 0.02em;',
       '  white-space: nowrap;', /* never wrap inside an action button — keeps the absolute stack a predictable width */
       '}',
+      /* Small "CRs" label above the action buttons in the bid column so
+         reviewers know these buttons spawn Change Requests, not direct
+         edits of the bid record. */
+      '.scw-bid-review__cell-actions-header {',
+      '  font: 700 8.5px/1 system-ui, sans-serif;',
+      '  color: #64748b;',
+      '  letter-spacing: 0.8px;',
+      '  text-transform: uppercase;',
+      '  padding: 0 2px 1px 0;',
+      '  margin-bottom: -1px;',  /* tuck up against the first button */
+      '  opacity: 0.75;',
+      '  user-select: none;',
+      '  pointer-events: none;',
+      '}',
       '.scw-bid-review__cell-action--revise {',
       '  color: #0369a1;',
       '  border-color: #bae6fd;',

@@ -885,10 +885,50 @@
           copy['data-action'] = act;
           return copy;
         }
-        td.appendChild(buildCellActions([
-          { label: 'Revise', mod: 'revise', attrs: withAction('cell_request_change') },
-          { label: 'Remove', mod: 'remove', attrs: withAction('cell_remove_from_bid') },
-        ]));
+
+        // Build the action stack manually so we can inject a "CRs"
+        // header above the buttons and swap the Revise button for a
+        // chooser when there's a SOW mismatch.
+        var wrap = el('div', 'scw-bid-review__cell-actions');
+
+        // Small label so the user knows these buttons open a Change
+        // Request flow (not a direct edit of the bid record).
+        var hdr = el('div', 'scw-bid-review__cell-actions-header', 'CRs');
+        wrap.appendChild(hdr);
+
+        // Revise: when this bid mismatches the SOW for this row, offer
+        // BOTH "Edit bid values" (free-form CR on the bid item) and
+        // "Match SOW values" (the old "Revise bid to match" flow,
+        // prefilled from SOW values). When there's nothing to match,
+        // collapse to the simple Revise button.
+        var bidMismatch = !!(diffs && diffs.any);
+        if (bidMismatch) {
+          var reviseChoices = [
+            { label: 'Edit bid values',  attrs: withAction('cell_request_change') },
+            { label: 'Match SOW values', attrs: withAction('cell_request_change_from_sow') },
+          ];
+          wrap.appendChild(buildOverflowMenu('Revise', 'revise', reviseChoices));
+        } else {
+          var reviseBtn = el('button',
+            'scw-bid-review__cell-action scw-bid-review__cell-action--revise',
+            'Revise');
+          reviseBtn.type = 'button';
+          var rAttrs = withAction('cell_request_change');
+          var rKeys  = Object.keys(rAttrs);
+          for (var rk = 0; rk < rKeys.length; rk++) reviseBtn.setAttribute(rKeys[rk], rAttrs[rKeys[rk]]);
+          wrap.appendChild(reviseBtn);
+        }
+
+        var removeBtn = el('button',
+          'scw-bid-review__cell-action scw-bid-review__cell-action--remove',
+          'Remove');
+        removeBtn.type = 'button';
+        var rmAttrs = withAction('cell_remove_from_bid');
+        var rmKeys  = Object.keys(rmAttrs);
+        for (var rmk = 0; rmk < rmKeys.length; rmk++) removeBtn.setAttribute(rmKeys[rmk], rmAttrs[rmKeys[rmk]]);
+        wrap.appendChild(removeBtn);
+
+        td.appendChild(wrap);
       }
     }
 
