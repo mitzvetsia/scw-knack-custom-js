@@ -61,7 +61,8 @@
           { field: 'field_1199', hasValue: true },
           { field: 'field_2723', notValue: 'Yes' },
           { field: 'field_2706', notValue: 'Yes' },
-          { not: { field: 'field_2728', gt: 0 } }
+          { not: { field: 'field_2728', gt: 0 } },
+          { field: 'field_2917', gt: 0 }
         ]
       },
       // After a successful request, remember it per-SOW so the button locks
