@@ -1602,12 +1602,15 @@
     // between consecutive maps. Constrain BOTH dimensions and use
     // object-fit so the image always fits one page regardless of
     // source aspect ratio.
-    // Portrait Letter useful area ~8.1in × 10.4in (minus margins +
-    // page footer). Subtract ~0.4in for the label + spacing on top.
-    // 8.5in keeps total section height ≈ 9in — comfortably under the
-    // 10in usable page area so the renderer never has to split.
+    // Whole document is now landscape (size: letter landscape on the
+    // default @page rule). Landscape Letter = 11in × 8.5in. With
+    // 0.18in top + 0.3in bottom margins and a ~0.4in label/section
+    // chrome above the image, the floor is ~8.5 − 0.18 − 0.3 − 0.4
+    // ≈ 7.6in. Set max-height ≤ that so the image NEVER spills onto a
+    // second page — overflow there caused the blank-page-before-map
+    // bug to come back when we flipped the doc to landscape.
     var imgStyle = 'display:block; margin:0 auto; ' +
-                   'max-width:100%; max-height:8.5in; ' +
+                   'max-width:100%; max-height:7.4in; ' +
                    'width:auto; height:auto; object-fit:contain;';
     for (var i = 0; i < section.images.length; i++) {
       var img = section.images[i];
