@@ -1257,6 +1257,14 @@
     var pivotHtml = renderConnectionPivot(payload);
     if (pivotHtml) html.push(pivotHtml);
 
+    // ── Camera/Reader spreadsheet (portrait, grouped by MDF/IDF) ──
+    // Mirrors the legacy "spreadsheet" view subs are used to. Restricted
+    // to camera/reader bucket rows; one table per MDF/IDF L1 group so
+    // the rows stay scoped to where they live. Appended AFTER the
+    // landscape pivot so the doc lands back on a portrait page.
+    var sheetHtml = renderCameraReaderSpreadsheet(payload);
+    if (sheetHtml) html.push(sheetHtml);
+
     // ── Trailing image sections (e.g. Additional Photos from view_3805) ──
     if (payload.trailingImageSections && payload.trailingImageSections.length) {
       for (var ts = 0; ts < payload.trailingImageSections.length; ts++) {
@@ -1564,6 +1572,96 @@
       h.push('</section>');
     }
     return h.join('');
+  }
+
+  // ── Camera/Reader spreadsheet section ──
+  // Subs keep asking for the old "spreadsheet" presentation for camera
+  // and reader rows. This renders a compact table per MDF/IDF L1 group,
+  // columns matching the same ref/flags/measure detail the cards show.
+  // Only the camera/reader bucket is included; project-wide rows are
+  // skipped (they aren't tied to a physical MDF/IDF). Portrait page —
+  // the surrounding worksheet is already portrait, and this section
+  // doesn't request the landscape-pivot page rule, so it lands portrait
+  // naturally after the pivot's page break.
+  function renderCameraReaderSpreadsheet(payload) {
+    if (!payload || !payload.rows || !payload.rows.length) return '';
+
+    // Bucket rows by their L1 group label, preserving group order.
+    var groupOrder = [];
+    var byGroup = {};
+    for (var i = 0; i < payload.rows.length; i++) {
+      var r = payload.rows[i];
+      if (!r || r.type !== 'card') continue;
+      if (!isCamerasReadersBucket(r)) continue;
+      if (/project wide/i.test(r.groupL1 || '')) continue;
+      var key = r.groupL1 || '(Unassigned)';
+      if (!byGroup[key]) { byGroup[key] = []; groupOrder.push(key); }
+      byGroup[key].push(r);
+    }
+    if (!groupOrder.length) return '';
+
+    // Column spec — keep it tight; spreadsheet sub-format prioritises
+    // density over visual hierarchy. Each entry pulls from card fields
+    // or detailValues; fall back to '' so empty cells render as blanks
+    // the tech can write into.
+    var COLS = [
+      { label: 'Label',     get: function (c) { return c.label || ''; } },
+      { label: 'Product',   get: function (c) { return c.product || ''; } },
+      { label: 'Mount',     get: function (c) { return pickDetail(c, ['field_2463']); } },
+      { label: 'Existing',  get: function (c) { return pickDetail(c, ['field_2370', 'field_2461']); } },
+      { label: 'Exterior',  get: function (c) { return pickDetail(c, ['field_2372', 'field_1984', 'field_2739']); } },
+      { label: 'Plenum',    get: function (c) { return pickDetail(c, ['field_2371', 'field_1983', 'field_2740']); } },
+      { label: 'Height',    get: function (c) { return pickDetail(c, ['field_2455']); } },
+      { label: 'Drop (ft)', get: function (c) { return pickDetail(c, ['field_2367']); } },
+      // Conduit always blank — survey is the source of truth here, same
+      // rule the measure-row renderer follows for the in-line layout.
+      { label: 'Conduit (ft)', get: function () { return ''; } },
+      { label: 'Notes',     get: function () { return ''; } }
+    ];
+
+    var h = [];
+    h.push('<section class="cr-sheet">');
+    h.push('<h2 class="cr-sheet-title">Camera &amp; Reader Spreadsheet</h2>');
+    h.push('<div class="cr-sheet-sub">Iterate / mark up — same data as the worksheet, in row form.</div>');
+
+    for (var g = 0; g < groupOrder.length; g++) {
+      var name = groupOrder[g];
+      var rowsInGroup = byGroup[name];
+      h.push('<div class="cr-sheet-group">');
+      h.push('<div class="cr-sheet-group-title">' + esc(name) + '</div>');
+      h.push('<table class="cr-sheet-table"><thead><tr>');
+      for (var ci = 0; ci < COLS.length; ci++) {
+        h.push('<th>' + esc(COLS[ci].label) + '</th>');
+      }
+      h.push('</tr></thead><tbody>');
+      for (var ri = 0; ri < rowsInGroup.length; ri++) {
+        h.push('<tr>');
+        var card = rowsInGroup[ri];
+        for (var ck = 0; ck < COLS.length; ck++) {
+          var v = '';
+          try { v = COLS[ck].get(card) || ''; } catch (e) { v = ''; }
+          h.push('<td>' + esc(v) + '</td>');
+        }
+        h.push('</tr>');
+      }
+      h.push('</tbody></table>');
+      h.push('</div>');
+    }
+
+    h.push('</section>');
+    return h.join('');
+  }
+
+  // First non-empty detailValues hit across a list of field keys.
+  // Mirrors the multi-schema lookup pattern used elsewhere (the same
+  // logical field has different keys in view_3800 vs view_3505 vs DTO).
+  function pickDetail(card, keys) {
+    if (!card || !card.detailValues || !keys) return '';
+    for (var i = 0; i < keys.length; i++) {
+      var v = card.detailValues[keys[i]];
+      if (v !== undefined && v !== null && String(v).length) return String(v);
+    }
+    return '';
   }
 
   // ── Trailing image section renderer (compact grid at end) ──
@@ -2504,6 +2602,45 @@
       '  letter-spacing: 0.3px;',
       '}',
       '.ws-notes-lines--l1 { gap: 9px; }',
+      '',
+      '/* Camera & Reader spreadsheet — appended after the pivot.   */',
+      '/* No `page:` rule so it inherits the default portrait page.   */',
+      '.cr-sheet {',
+      '  page-break-before: always; break-before: page;',
+      '  padding: 0.1in 0.1in;',
+      '}',
+      '.cr-sheet-title {',
+      '  font-size: 14px; font-weight: 800; color: #07467c;',
+      '  margin: 0 0 2px 0; padding-bottom: 3px;',
+      '  border-bottom: 2px solid #07467c;',
+      '}',
+      '.cr-sheet-sub {',
+      '  font-size: 9.5px; color: #6b7280; margin-bottom: 8px;',
+      '  font-style: italic;',
+      '}',
+      '.cr-sheet-group { margin-bottom: 10px; page-break-inside: avoid; }',
+      '.cr-sheet-group-title {',
+      '  font-size: 11px; font-weight: 800; color: #07467c;',
+      '  background: #eef4fb; padding: 3px 6px;',
+      '  border: 1px solid #07467c; border-bottom: none;',
+      '  text-transform: uppercase; letter-spacing: 0.4px;',
+      '}',
+      '.cr-sheet-table {',
+      '  width: 100%; border-collapse: collapse; table-layout: fixed;',
+      '  font-size: 8.5px;',
+      '}',
+      '.cr-sheet-table th, .cr-sheet-table td {',
+      '  border: 1px solid #94a3b8;',
+      '  padding: 3px 4px; vertical-align: top;',
+      '  word-break: break-word; overflow-wrap: anywhere;',
+      '}',
+      '.cr-sheet-table thead th {',
+      '  background: #07467c; color: #fff;',
+      '  font-size: 8px; font-weight: 700;',
+      '  text-transform: uppercase; letter-spacing: 0.4px;',
+      '}',
+      '.cr-sheet-table tbody tr:nth-child(even) td { background: #f8fafc; }',
+      '.cr-sheet-table td { min-height: 18px; }',
       '',
       '/* Connection Map pivot table — landscape page so we get more  */',
       '/* horizontal room for column headers and avoid vertical text. */',
