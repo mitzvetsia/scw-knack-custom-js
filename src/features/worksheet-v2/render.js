@@ -30,6 +30,42 @@
   // away by a sibling-triggered re-notify.
   var pending = Object.create(null);
 
+  /**
+   * Read every MDF/IDF location off the configured mdfSourceViewKey
+   * (e.g. view_3358) so v2 can show an L1 group for each one even
+   * when no SOW line items are assigned. Returns [{id, label}] keyed
+   * to match the identifiers that field_1946_raw[0] would produce on
+   * a real line item.
+   */
+  function readMdfSeedGroups(sourceViewKey) {
+    if (!ns.CONFIG || !ns.CONFIG.views) return [];
+    var vcfg = null;
+    var views = ns.CONFIG.views;
+    for (var i = 0; i < views.length; i++) {
+      if (views[i].sourceViewKey === sourceViewKey) { vcfg = views[i]; break; }
+    }
+    if (!vcfg || !vcfg.mdfSourceViewKey) return [];
+    try {
+      var v = Knack.views[vcfg.mdfSourceViewKey];
+      if (!v || !v.model || !v.model.data) return [];
+      var models = v.model.data.models || [];
+      var labelField = vcfg.mdfLabelField || 'field_1642';
+      var out = [];
+      for (var j = 0; j < models.length; j++) {
+        var attrs = models[j] && models[j].attributes;
+        if (!attrs || !attrs.id) continue;
+        var label = String(attrs[labelField] || attrs.identifier || '')
+          .replace(/<[^>]*>/g, '').trim();
+        if (!label) continue;
+        out.push({ id: attrs.id, label: label });
+      }
+      return out;
+    } catch (e) {
+      console.warn('[scw-ws-v2] readMdfSeedGroups threw for ' + sourceViewKey, e);
+      return [];
+    }
+  }
+
   function hasFocusInPanel(container) {
     var a = document.activeElement;
     if (!a || !container) return false;
@@ -85,6 +121,10 @@
     if (ns.card && typeof ns.card.buildCard === 'function') {
       for (var i = 0; i < l1.l2.length; i++) {
         var l2 = l1.l2[i];
+        // Empty seed L1 — skip the L2 header so we just show the
+        // group label with an empty body rather than a blank "0"
+        // sub-header that looks broken.
+        if (l2.id === '__empty_l2') continue;
         body.appendChild(buildL2Header(l2));
         for (var j = 0; j < l2.records.length; j++) {
           // Per-card try/catch — one malformed record shouldn't take
@@ -142,7 +182,8 @@
       return;
     }
 
-    var tree = ns.groups.buildGroupTree(records);
+    var seedGroups = readMdfSeedGroups(sourceViewKey);
+    var tree = ns.groups.buildGroupTree(records, seedGroups);
     if (ns.state && typeof ns.state.applyOpenState === 'function') {
       ns.state.applyOpenState(sourceViewKey, tree);
     } else {

@@ -50,7 +50,16 @@
         // retires v1, swap this to mount where view_3610 used to be.
         mountAfterSelector: '#view_3610',
         // Display label for the WIP banner.
-        label: 'SOW Line Items (v2 preview)'
+        label: 'SOW Line Items (v2 preview)',
+        // Source of MDF/IDF records for empty-group seeding. v2
+        // shows an L1 block for every MDF/IDF on this view even
+        // when no SOW line items are assigned to it (so users can
+        // see + drop items into an empty location).
+        mdfSourceViewKey: 'view_3358',
+        // Label field on the MDF/IDF object (matches the identifier
+        // returned by field_1946_raw[0].identifier on SOW line
+        // items, so empty + populated groups dedupe by id).
+        mdfLabelField:    'field_1642'
       }
     ]
   };

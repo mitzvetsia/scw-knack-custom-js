@@ -425,6 +425,16 @@
     var SETTLE_MS         = (config.SETTLE_MS       != null) ? config.SETTLE_MS       : 400;
     var EVENT_NS          = config.EVENT_NS         || '.scwSilentRegroup';
     var PUBLIC_API_NAME   = config.PUBLIC_API_NAME  || null;
+    // MODEL_ONLY: source view has no v1 worksheet DOM (no .scw-ws-row
+    // triplet, no .kn-table-group headers). Used by view_3962 — v2's
+    // dedicated source view. In this mode we never DOM-walk or DOM-mutate:
+    //   - candidate scan reads from the Backbone model
+    //   - destHeader lookup is skipped (always null, no DOM moves)
+    //   - patchCard calls are skipped (v1's API isn't bound here)
+    //   - mut-guard observer + view-render replay are skipped
+    //   - PUTs still fire normally; cascade-idle still emits when they
+    //     settle, so v2's data layer picks up fresh data via refetch
+    var MODEL_ONLY        = config.MODEL_ONLY === true;
     var LOG_PREFIX        = '[scw-silent-regroup.' + VIEW_ID + ']';
 
     function log() {
@@ -506,6 +516,27 @@
   function findRowsPointingTo(parentId) {
     var results = [];
     if (!parentId) return results;
+
+    // MODEL_ONLY: scan the Backbone model instead of the DOM. The v2
+    // source view has no v1 .scw-ws-row to walk, so DOM scraping
+    // returns 0 hits and breaks the diff.
+    if (MODEL_ONLY) {
+      var arr = getModelRecords();
+      for (var mi = 0; mi < arr.length; mi++) {
+        var attrs = arr[mi] && (arr[mi].attributes || arr[mi]);
+        if (!attrs || !attrs.id) continue;
+        var raw = attrs[CONNECTIONS_FIELD + '_raw'];
+        if (!Array.isArray(raw)) continue;
+        for (var mj = 0; mj < raw.length; mj++) {
+          if (raw[mj] && raw[mj].id === parentId) {
+            if (results.indexOf(attrs.id) === -1) results.push(attrs.id);
+            break;
+          }
+        }
+      }
+      return results;
+    }
+
     var view = document.getElementById(VIEW_ID);
     if (!view) return results;
 
@@ -536,6 +567,23 @@
    */
   function sampleIdentifierForParent(parentId) {
     if (!parentId) return '';
+
+    // MODEL_ONLY: skip the DOM scrape — no .scw-ws-row on this view.
+    // Drop straight to the model lookup below.
+    if (MODEL_ONLY) {
+      var arr0 = getModelRecords();
+      for (var ii = 0; ii < arr0.length; ii++) {
+        var a0 = arr0[ii] && (arr0[ii].attributes || arr0[ii]);
+        if (a0 && a0.id === parentId) {
+          // GROUPING_FIELD's _raw on R itself has the identifier we
+          // want; fall back to a record-pointing-to-R if not present.
+          // Use the record's own field_2365 / label as a last resort.
+          return String(a0.field_2365 || a0.identifier || '').trim();
+        }
+      }
+      return '';
+    }
+
     var view = document.getElementById(VIEW_ID);
     if (view) {
       // Same CSS-class-starts-with-digit gotcha as findRowsPointingTo —
@@ -1020,12 +1068,16 @@
       removed: removed
     };
     pendingPlan = plan;
-    startMutGuard(); // watchdog catches any DOM rebuild from here on out
+    // MODEL_ONLY: no DOM to watch. Skip the mut-guard + DOM lookups
+    // and route the rest of the flow through the PUT-only branch
+    // below — v2 picks up changes via scw-cascade-idle → refetch.
+    if (!MODEL_ONLY) startMutGuard();
 
     // --- 6. Check destination header ------------------------------------
-    var rWsTr = document.getElementById(R.id);
-    var destHeader = findL1HeaderBefore(rWsTr);
-    log('  R wsTr found=' + (!!rWsTr) + ' destHeader found=' + (!!destHeader));
+    var rWsTr = MODEL_ONLY ? null : document.getElementById(R.id);
+    var destHeader = MODEL_ONLY ? null : findL1HeaderBefore(rWsTr);
+    log('  R wsTr found=' + (!!rWsTr) + ' destHeader found=' + (!!destHeader) +
+        (MODEL_ONLY ? ' (MODEL_ONLY)' : ''));
 
     // --- 7. Start the PUT-completion tracker ----------------------------
     // When ALL of our child PUTs have landed on the server, we fire a
@@ -1086,14 +1138,25 @@
       done();
     }
 
-    if (added.length && !destHeader) {
-      log('  no destHeader for R — PUT-only + fallbackFetch');
+    // MODEL_ONLY OR no destHeader: skip DOM moves, just fire PUTs and
+    // let onPutFinished handle the post-settle model.fetch. For
+    // MODEL_ONLY this is the only path; for DOM-mode it's a fallback.
+    if (MODEL_ONLY || (added.length && !destHeader)) {
+      log('  ' + (MODEL_ONLY ? 'MODEL_ONLY' : 'no destHeader for R') +
+          ' — PUT-only + fallbackFetch');
       added.forEach(function (cid) { firePut(cid, buildAddedPut(rGroupId, R.id), onPutFinished); });
       removed.forEach(function (rid) { firePut(rid, buildRemovedPut(), onPutFinished); });
       accessoryPuts.forEach(function (ap) { fireAccessoryPut(ap.accId, ap.mdfId, onPutFinished); });
-      // Skip the duplicate fetch here — onPutFinished will fetch when
-      // all PUTs land.
-      clearPendingPlanSoon();
+      // If no PUTs were actually queued (e.g. nothing changed), the
+      // tracker never ticks and onPutFinished never fires — call done
+      // explicitly so the picker stage gate doesn't hang.
+      if (totalPuts === 0) {
+        pendingPlan = null;
+        if (planClearTimer) { clearTimeout(planClearTimer); planClearTimer = null; }
+        done();
+      } else {
+        clearPendingPlanSoon();
+      }
       return;
     }
 
@@ -1280,6 +1343,9 @@
       armSettle();
       return;
     }
+    // MODEL_ONLY: there's no DOM to replay against. Skip the
+    // mut-guard reattach + applyPlanToDom replays.
+    if (MODEL_ONLY) return;
     if (pendingPlan) {
       log('view re-rendered during replay window — scheduling replay checks');
       // Re-attach the mutation observer in case the tbody element was
@@ -1410,11 +1476,19 @@
   });
 
   // view_3962 is the v2 worksheet's dedicated source view — same SOW
-  // Line Items object as view_3610, same field keys. v2 PUTs route
-  // through view_3962 directly (instead of borrowing view_3610), so we
-  // need a mirror instance bound to view_3962 to keep the reciprocal +
-  // grouping cascade firing for v2 edits. Accessories on this scene
-  // still live on view_3888 (shared with view_3610).
+  // Line Items object as view_3610, same field keys, but v1's
+  // device-worksheet.js does NOT transform this view's DOM (no
+  // .scw-ws-row triplet, no Knack native grouping headers). So this
+  // instance runs in MODEL_ONLY mode: candidate scans + identifier
+  // lookups read from the Backbone model, no DOM mutations, no
+  // mut-guard, no view-render replay. PUTs still fire normally and
+  // scw-cascade-idle still emits when they settle, so v2's data
+  // layer picks up fresh data via refetchAndNotify.
+  //
+  // Accessories on this scene still live on view_3888 (shared with
+  // view_3610). The accessory model-lookup path
+  // (findAccessoryIdsFromAccessoryModel) is the primary source even
+  // in DOM mode, so it works unchanged here.
   createMirror({
     VIEW_ID:             'view_3962',
     TRIGGER_FIELD:       'field_1957',
@@ -1423,6 +1497,7 @@
     ACCESSORIES_FIELD:        'field_1958',
     ACCESSORIES_VIEW_ID:      'view_3888',
     ACCESSORIES_PARENT_FIELD: 'field_2464',
+    MODEL_ONLY:          true,
     PUBLIC_API_NAME:     'silentRegroupView3962'
   });
 

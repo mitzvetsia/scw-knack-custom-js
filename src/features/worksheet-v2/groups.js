@@ -75,14 +75,37 @@
   /**
    * Bucket records into the L1 → L2 → records tree.
    *
-   * @param {Array<Object>} records  — flat list of Backbone attrs hashes
+   * @param {Array<Object>} records      flat list of Backbone attrs hashes
+   * @param {Array<Object>} [seedL1Groups] optional list of { id, label }
+   *        for MDF/IDF locations that should appear as L1 groups even
+   *        when no records are assigned to them. Real groups deduped by
+   *        id with whatever the records contribute.
    * @returns {Array<Object>} L1 nodes, each:
    *   { id, label, isSynthetic, sortOrder, recordCount,
    *     l2: [{ id, label, sortOrder, records: [...] }, ...] }
    */
-  function buildGroupTree(records) {
+  function buildGroupTree(records, seedL1Groups) {
     // First pass: bucket into L1 → L2 maps
     var l1Map = Object.create(null);
+
+    // Seed empty L1 entries for every known MDF/IDF location, even
+    // ones that no SOW line items currently reference. Records below
+    // will hit `l1Map[id]` and add their counts/l2 entries to these.
+    if (Array.isArray(seedL1Groups)) {
+      for (var s = 0; s < seedL1Groups.length; s++) {
+        var seed = seedL1Groups[s];
+        if (!seed || !seed.id || !seed.label) continue;
+        if (l1Map[seed.id]) continue;
+        l1Map[seed.id] = {
+          id:           seed.id,
+          label:        seed.label,
+          isSynthetic:  false,
+          sortOrder:    Infinity,
+          recordCount:  0,
+          l2Map:        Object.create(null)
+        };
+      }
+    }
 
     for (var i = 0; i < records.length; i++) {
       var rec = records[i];
@@ -148,6 +171,13 @@
     l1List.forEach(function (l1) {
       var l2List = [];
       Object.keys(l1.l2Map).forEach(function (k) { l2List.push(l1.l2Map[k]); });
+      // Empty L1 (seeded group with no records) — emit a single
+      // placeholder L2 so render.js has something to walk over. Cards
+      // render zero records; only the L1 header is visible until a row
+      // gets moved in.
+      if (!l2List.length) {
+        l2List.push({ id: '__empty_l2', label: '', sortOrder: Infinity, records: [] });
+      }
 
       // L2 sort: by minimum sortOrder seen, then alphabetical fallback
       l2List.sort(function (a, b) {
