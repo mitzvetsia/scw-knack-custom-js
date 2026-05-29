@@ -142,7 +142,17 @@
       '<span class="scw-ws-v2-bulk-count">0 selected</span>' +
       '<button type="button" class="scw-ws-v2-bulk-edit" disabled>Edit selected</button>' +
       '<button type="button" class="scw-ws-v2-bulk-clear">Clear</button>' +
-      '<button type="button" class="scw-ws-v2-bulk-delete" disabled>Delete</button>';
+      '<button type="button" class="scw-ws-v2-bulk-delete" disabled>' +
+        '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" ' +
+          'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+          'stroke-linejoin="round">' +
+          '<polyline points="3 6 5 6 21 6"></polyline>' +
+          '<path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>' +
+          '<path d="M10 11v6"></path><path d="M14 11v6"></path>' +
+          '<path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"></path>' +
+        '</svg>' +
+        '<span class="scw-ws-v2-bulk-delete-label">Delete</span>' +
+      '</button>';
     document.body.appendChild(toolbar);
 
     toolbar.querySelector('.scw-ws-v2-bulk-clear').addEventListener('click', function () {
@@ -169,9 +179,10 @@
     toolbar.classList.toggle('scw-ws-v2-bulk-toolbar--active', n > 0);
     toolbar.querySelector('.scw-ws-v2-bulk-count').textContent = n + ' selected';
     toolbar.querySelector('.scw-ws-v2-bulk-edit').disabled   = (n === 0);
-    toolbar.querySelector('.scw-ws-v2-bulk-delete').disabled = (n === 0);
-    toolbar.querySelector('.scw-ws-v2-bulk-delete').textContent =
-      n > 0 ? ('Delete ' + n) : 'Delete';
+    var delBtn = toolbar.querySelector('.scw-ws-v2-bulk-delete');
+    delBtn.disabled = (n === 0);
+    var delLabel = delBtn.querySelector('.scw-ws-v2-bulk-delete-label');
+    if (delLabel) delLabel.textContent = n > 0 ? ('Delete ' + n) : 'Delete';
   }
 
   // ── DOM sync (when re-renders happen) ────────────────────────
@@ -435,7 +446,7 @@
         '<div class="scw-ws-v2-bulk-modal-head">' +
           '<div class="scw-ws-v2-bulk-modal-title">Delete ' + parentIds.length +
             ' line item' + (parentIds.length === 1 ? '' : 's') + '?</div>' +
-          '<div class="scw-ws-v2-bulk-modal-sub">' + esc(subline) +
+          '<div class="scw-ws-v2-bulk-modal-sub">' + escapeHtml(subline) +
             ' This cannot be undone.</div>' +
         '</div>' +
         '<div class="scw-ws-v2-bulk-modal-status"></div>' +
