@@ -154,14 +154,11 @@
   /** Quantity (field_1964) input — non-editable when field_2230 is yes.
    *  Locked rendering keeps the value visible on a white background per
    *  CLAUDE.md's "locked fields" rule (no opacity dimming). */
+  /** When field_2634 indicates the row doesn't carry a quantity, return
+   *  null so the row builder can render a blank slot (and also hide the
+   *  extended totals via a row-level class). */
   function qtyCell(rec, viewKey, value) {
-    if (isQtyLocked(rec)) {
-      return '<input type="number" step="any"' +
-        ' class="scw-ws-v2-input scw-ws-v2-input--num scw-ws-v2-input--locked"' +
-        ' aria-label="Qty (locked)" placeholder="Qty"' +
-        ' value="' + escapeHtml(value) + '"' +
-        ' readonly title="Quantity is locked for this row">';
-    }
+    if (isQtyLocked(rec)) return null;
     return numInput(rec, viewKey, 'field_1964', value, 'Qty');
   }
 
@@ -169,6 +166,18 @@
     return '<input type="text" class="scw-ws-v2-input scw-ws-v2-input--text" ' +
       'aria-label="' + escapeHtml(label) + '" placeholder="' + escapeHtml(label) + '" ' +
       'value="' + escapeHtml(value) + '"' + attrsFor(rec, viewKey, fieldKey) + '>';
+  }
+
+  /** Multi-line wrapping text field — used for labor description so
+   *  the full text is visible without horizontal scroll. Auto-grows
+   *  with content via CSS field-sizing / rows attribute fallback. */
+  function textArea(rec, viewKey, fieldKey, value, label) {
+    return '<textarea class="scw-ws-v2-input scw-ws-v2-input--textarea" ' +
+      'rows="2" ' +
+      'aria-label="' + escapeHtml(label) + '" placeholder="' + escapeHtml(label) + '"' +
+      attrsFor(rec, viewKey, fieldKey) + '>' +
+      escapeHtml(value) +
+    '</textarea>';
   }
 
   function stackCell(rec, viewKey, fieldKey, value, totalDisplay, label) {
@@ -305,7 +314,7 @@
       ro(label,   'scw-ws-v2-cell--label',   label) +
       productCell(rec, viewKey, product) +
       '<div class="scw-ws-v2-cell scw-ws-v2-cell--labor-desc">' +
-        textInput(rec, viewKey, 'field_2020', laborDesc, 'Labor description') +
+        textArea(rec, viewKey, 'field_2020', laborDesc, 'Labor description') +
       '</div>' +
       chips +
       stackCell(rec, viewKey, 'field_2150', subBid,  subBidTotal, 'Sub Bid') +
@@ -333,16 +342,21 @@
     var installFee  = readField(rec, 'field_2028');
     var sow         = readField(rec, 'field_2154');
 
-    return '<div class="scw-ws-v2-row scw-ws-v2-row--default">' +
+    var qtyInput = qtyCell(rec, viewKey, qty);
+    var noQty = (qtyInput === null);
+    var rowCls = 'scw-ws-v2-row scw-ws-v2-row--default' + (noQty ? ' scw-ws-v2-row--no-qty' : '');
+    var qtySlot = noQty
+      ? empty('scw-ws-v2-cell--num')
+      : '<div class="scw-ws-v2-cell scw-ws-v2-cell--num">' + qtyInput + '</div>';
+
+    return '<div class="' + rowCls + '">' +
       // Empty label slot keeps product / labor desc aligned with cam rows.
       empty('scw-ws-v2-cell--label') +
       productCell(rec, viewKey, product) +
       '<div class="scw-ws-v2-cell scw-ws-v2-cell--labor-desc">' +
-        textInput(rec, viewKey, 'field_2020', laborDesc, 'Labor description') +
+        textArea(rec, viewKey, 'field_2020', laborDesc, 'Labor description') +
       '</div>' +
-      '<div class="scw-ws-v2-cell scw-ws-v2-cell--num">' +
-        qtyCell(rec, viewKey, qty) +
-      '</div>' +
+      qtySlot +
       stackCell(rec, viewKey, 'field_2150', subBid,  subBidTotal, 'Sub Bid') +
       stackCell(rec, viewKey, 'field_1973', plusHrs, hrsTotal,    '+Hrs') +
       stackCell(rec, viewKey, 'field_1974', plusMat, matTotal,    '+Mat') +
@@ -368,17 +382,22 @@
     var installFee  = readField(rec, 'field_2028');
     var sow         = readField(rec, 'field_2154');
 
-    return '<div class="scw-ws-v2-row scw-ws-v2-row--services">' +
+    var qtyInput = qtyCell(rec, viewKey, qty);
+    var noQty = (qtyInput === null);
+    var rowCls = 'scw-ws-v2-row scw-ws-v2-row--services' + (noQty ? ' scw-ws-v2-row--no-qty' : '');
+    var qtySlot = noQty
+      ? empty('scw-ws-v2-cell--num')
+      : '<div class="scw-ws-v2-cell scw-ws-v2-cell--num">' + qtyInput + '</div>';
+
+    return '<div class="' + rowCls + '">' +
       // Share the cam/default column template so labor desc lines up.
       // Tag occupies the product slot; label slot is empty.
       empty('scw-ws-v2-cell--label') +
       ro('Service', 'scw-ws-v2-cell--tag') +
       '<div class="scw-ws-v2-cell scw-ws-v2-cell--labor-desc">' +
-        textInput(rec, viewKey, 'field_2020', laborDesc, 'Service description') +
+        textArea(rec, viewKey, 'field_2020', laborDesc, 'Service description') +
       '</div>' +
-      '<div class="scw-ws-v2-cell scw-ws-v2-cell--num">' +
-        qtyCell(rec, viewKey, qty) +
-      '</div>' +
+      qtySlot +
       stackCell(rec, viewKey, 'field_2150', subBid,  subBidTotal, 'Sub Bid') +
       stackCell(rec, viewKey, 'field_1973', plusHrs, hrsTotal,    '+Hrs') +
       stackCell(rec, viewKey, 'field_1974', plusMat, matTotal,    '+Mat') +
@@ -399,7 +418,7 @@
     return '<div class="scw-ws-v2-row scw-ws-v2-row--assumptions">' +
       ro('Assumption', 'scw-ws-v2-cell--tag') +
       '<div class="scw-ws-v2-cell scw-ws-v2-cell--labor-desc">' +
-        textInput(rec, viewKey, 'field_2020', laborDesc, 'Assumption text') +
+        textArea(rec, viewKey, 'field_2020', laborDesc, 'Assumption text') +
       '</div>' +
       chevronCell(rec) +
       kebabCell(rec) +

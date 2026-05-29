@@ -271,6 +271,26 @@
     '  text-overflow: ellipsis !important;',
     '}',
 
+    /* Multi-line labor description — wraps so full text is visible.
+       field-sizing:content auto-grows in modern browsers; rows=2 is the
+       fallback minimum. */
+    '.scw-ws-v2-input--textarea {',
+    '  white-space: pre-wrap !important;',
+    '  word-break: break-word !important;',
+    '  resize: vertical !important;',
+    '  min-height: 26px !important;',
+    '  line-height: 1.35 !important;',
+    '  font: inherit !important;',
+    '  field-sizing: content;',
+    '}',
+
+    /* Rows that don\'t carry a quantity (cam/reader, or field_2634 lock):
+       hide the per-input extended totals so the row reads cleanly. */
+    '.scw-ws-v2-row--cam .scw-ws-v2-stack-total,',
+    '.scw-ws-v2-row--no-qty .scw-ws-v2-stack-total {',
+    '  display: none !important;',
+    '}',
+
     /* ── Save state flashes ─────────────────────────────────── */
     '.scw-ws-v2-input--saving {',
     '  background-color: #dcfce7 !important;',
