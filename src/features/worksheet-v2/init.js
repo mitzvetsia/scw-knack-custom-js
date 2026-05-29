@@ -381,7 +381,16 @@
       }
       if (debugMapConn) {
         console.log('[scw-ws-v2] field_2197 picker — records:', records.length,
-          'candidates:', candidates.length, 'samples:', debugSamples);
+          'candidates:', candidates.length);
+        try {
+          console.log('[scw-ws-v2] samples:', JSON.stringify(debugSamples, null, 2));
+        } catch (e) { console.log('[scw-ws-v2] samples (raw):', debugSamples); }
+        // Also dump ALL field keys on the first record so we can see if
+        // field_2374 is even present in the model.
+        if (records[0]) {
+          console.log('[scw-ws-v2] record[0] keys:',
+            Object.keys(records[0]).sort().join(', '));
+        }
       }
 
       // Group by MDF/IDF (matches v1 connection-picker)
