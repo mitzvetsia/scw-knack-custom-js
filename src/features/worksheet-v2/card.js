@@ -233,6 +233,12 @@
   // the candidate source.
   function sowCell(rec, viewKey, value) {
     var title = (value || 'Set SOW') + ' — click to change SOW';
+    var parts = (value || '').split(/\s*,\s*/).filter(function (s) { return s.length; });
+    var inner = parts.length
+      ? parts.map(function (p) {
+          return '<span class="scw-ws-v2-sow-value">' + escapeHtml(p) + '</span>';
+        }).join('')
+      : '<span class="scw-ws-v2-sow-value">&mdash;</span>';
     return '<button type="button" ' +
       'class="scw-ws-v2-cell scw-ws-v2-cell--sow scw-ws-v2-cell--editable-conn" ' +
       'data-scw-ws-v2-conn="field_2154" ' +
@@ -240,7 +246,7 @@
       'data-scw-ws-v2-view="' + escapeHtml(viewKey) + '" ' +
       'data-scw-ws-v2-conn-label="SOW" ' +
       'title="' + escapeHtml(title) + '">' +
-      '<span class="scw-ws-v2-sow-value">' + escapeHtml(value || '—') + '</span>' +
+      inner +
     '</button>';
   }
 
