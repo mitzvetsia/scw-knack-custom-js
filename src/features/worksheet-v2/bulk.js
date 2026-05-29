@@ -189,15 +189,71 @@
   }
 
   // ── Delegated handlers ───────────────────────────────────────
+  // Last clicked row checkbox id — anchor for shift-click range select.
+  var lastAnchorId = null;
+
+  function rowCheckboxesInDocOrder() {
+    return document.querySelectorAll('[data-scw-ws-v2-select]');
+  }
+
+  function applyRange(anchorId, targetId, on) {
+    var boxes = rowCheckboxesInDocOrder();
+    var ai = -1, ti = -1;
+    for (var i = 0; i < boxes.length; i++) {
+      var id = boxes[i].getAttribute('data-scw-ws-v2-select');
+      if (id === anchorId) ai = i;
+      if (id === targetId) ti = i;
+    }
+    if (ai === -1 || ti === -1) return;
+    var lo = Math.min(ai, ti), hi = Math.max(ai, ti);
+    for (var j = lo; j <= hi; j++) {
+      var rid = boxes[j].getAttribute('data-scw-ws-v2-select');
+      setSelected(rid, on);
+    }
+  }
+
   function wireGlobalDelegates(sourceViewKey) {
     if (document.documentElement.hasAttribute('data-scw-ws-v2-bulk-bound')) return;
     document.documentElement.setAttribute('data-scw-ws-v2-bulk-bound', '1');
 
-    // Row checkbox toggles individual selection.
+    // Capture shift-state at mousedown — by the time `change` fires the
+    // modifier keys aren\'t on the event. We hijack the click on the row
+    // checkbox if shift is held, run a range-select, and prevent the
+    // default toggle (which would only flip the clicked box).
+    document.addEventListener('click', function (e) {
+      var t = e.target;
+      if (!t || !t.hasAttribute) return;
+      if (!t.hasAttribute('data-scw-ws-v2-select')) return;
+
+      // Stop the click bubbling to the card\'s expand handler.
+      e.stopPropagation();
+
+      if (e.shiftKey && lastAnchorId) {
+        // Range mode: the box\'s checked state already flipped via the
+        // browser default; use the new state as the "on/off" for the
+        // whole range. Then refresh DOM.
+        var targetId = t.getAttribute('data-scw-ws-v2-select');
+        applyRange(lastAnchorId, targetId, !!t.checked);
+        syncDomFromState();
+        refreshToolbar();
+        // Anchor stays put so consecutive shift-clicks extend from the
+        // original origin — matches Gmail / Finder behavior.
+        return;
+      }
+
+      // Plain click — let the change handler do the state update; just
+      // remember this id as the new anchor.
+      lastAnchorId = t.getAttribute('data-scw-ws-v2-select');
+    }, true);
+
+    // Row checkbox toggles individual selection (non-shift path).
     document.addEventListener('change', function (e) {
       var t = e.target;
       if (!t) return;
       if (t.hasAttribute && t.hasAttribute('data-scw-ws-v2-select')) {
+        // Shift-click was handled in the click listener above; here we
+        // only catch the plain toggle. If shift was held, the click
+        // handler already updated state.
         var id = t.getAttribute('data-scw-ws-v2-select');
         setSelected(id, !!t.checked);
         syncDomFromState();
@@ -216,15 +272,6 @@
         refreshToolbar();
       }
     });
-
-    // Prevent the row checkbox click from also opening the row\'s
-    // expand chevron or its kebab menu.
-    document.addEventListener('click', function (e) {
-      var t = e.target;
-      if (t && t.hasAttribute && t.hasAttribute('data-scw-ws-v2-select')) {
-        e.stopPropagation();
-      }
-    }, true);
   }
 
   // ── Save queue: concurrency-capped + retry + backoff ─────────
