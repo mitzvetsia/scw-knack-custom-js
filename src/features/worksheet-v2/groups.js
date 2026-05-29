@@ -56,21 +56,20 @@
     return '';
   }
 
-  /** Decide which loaded records are "attached accessories" — i.e.
-   *  brackets attached to a parent line item, which should be hidden
-   *  from the main tree because they show up inside the parent\'s
-   *  detail panel instead.
-   *
-   *  Walks BACKWARDS from the bracket: a record is attached iff
-   *    (a) its bucket is Mounting Hardware
-   *    (b) its own field_2464_raw (back-mirror to parent) resolves to
-   *        some other loaded record\'s id.
-   *
-   *  This signal lives entirely on the bracket itself — no chance for
-   *  cross-wired forward links (parent.field_1958 mistakenly listing
-   *  the parent\'s own id) to hide a real parent. A Mounting Hardware
-   *  record whose field_2464 doesn\'t resolve to a loaded parent falls
-   *  through and ends up under "Orphaned Mounting Brackets". */
+  /** "No" or "false" on a record\'s Require-Sub-Bid flag (field_2479).
+   *  Brackets are only HIDDEN (attached-under-parent) when this is
+   *  true; any other value — Yes, empty, missing — leaves the bracket
+   *  visible as its own line item so the user can adjust sub bid /
+   *  hours / materials on it directly. */
+  var REQUIRE_SUBBID_FIELD = 'field_2479';
+  function isRequireSubBidNoOrFalse(rec) {
+    var raw = rec && rec[REQUIRE_SUBBID_FIELD + '_raw'];
+    if (raw === false || raw === 'No' || raw === 'no' || raw === 0) return true;
+    if (raw === true || raw === 'Yes' || raw === 'yes' || raw === 1) return false;
+    var s = (rec && rec[REQUIRE_SUBBID_FIELD] || '').toString().trim().toLowerCase();
+    return s === 'no' || s === 'false' || s === '0';
+  }
+
   function collectAttachedAccessoryIds(records) {
     var recordById = Object.create(null);
     for (var i = 0; i < records.length; i++) {
@@ -81,6 +80,11 @@
       var rec = records[j];
       if (!rec || !rec.id) continue;
       if (bucketIdOf(rec) !== MOUNTING_HARDWARE_BUCKET) continue;
+      // Sub-bid gate: only hide brackets whose Require Sub Bid flag
+      // (field_2479) is explicitly No/false. Brackets with Yes,
+      // empty, or any other value stay visible as their own row so
+      // the user can edit their sub bid / hours / materials directly.
+      if (!isRequireSubBidNoOrFalse(rec)) continue;
       var raw = rec[ACCESSORY_PARENT_FIELD + '_raw'];
       if (!Array.isArray(raw)) continue;
       for (var k = 0; k < raw.length; k++) {
