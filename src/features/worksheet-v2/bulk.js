@@ -49,7 +49,7 @@
   //   - 'mh'      uses SCW.productMap (mounting hardware bucket)
   var FIELDS = {
     cam: [
-      { key: 'field_1949', label: 'Product',           kind: 'conn-single', candSource: 'products' },
+      { key: 'field_1949', label: 'Product',           kind: 'conn-single', candSource: 'products', writeViewKey: 'view_3610' },
       { key: 'field_2020', label: 'Labor description', kind: 'text' },
       { key: 'field_2240', label: 'Drop prefix',       kind: 'conn-single', candSource: 'dropPrefix' },
       { key: 'field_2150', label: 'Sub Bid',           kind: 'number' },
@@ -67,7 +67,7 @@
       { key: 'field_2197', label: 'Connected Device',  kind: 'conn-single', candSource: 'devices' }
     ],
     'default': [
-      { key: 'field_1949', label: 'Product',           kind: 'conn-single', candSource: 'products' },
+      { key: 'field_1949', label: 'Product',           kind: 'conn-single', candSource: 'products', writeViewKey: 'view_3610' },
       { key: 'field_2020', label: 'Labor description', kind: 'text' },
       { key: 'field_1964', label: 'Qty',               kind: 'number' },
       { key: 'field_2150', label: 'Sub Bid',           kind: 'number' },
@@ -882,22 +882,33 @@
     });
 
     saveBtn.addEventListener('click', function () {
-      // Build the body once from the rowState (same body for every record).
-      var body = {};
+      // Group applied fields by writeViewKey. Most fields write through
+      // the source view (view_3962); a few (e.g. Product, field_1949)
+      // need to route through view_3610 instead so v1\'s cascade
+      // (mirror-connection-sync, formula recomputes) fires. Each group
+      // becomes its own batch of PUTs.
+      var groups = Object.create(null);
       var applied = 0;
+      var fieldByKey = Object.create(null);
+      for (var fi = 0; fi < fields.length; fi++) fieldByKey[fields[fi].key] = fields[fi];
       Object.keys(rowState).forEach(function (k) {
-        if (rowState[k].apply) {
-          body[k] = rowState[k].value;
-          applied++;
-        }
+        if (!rowState[k].apply) return;
+        var f = fieldByKey[k];
+        var route = (f && f.writeViewKey) || sourceViewKey;
+        if (!groups[route]) groups[route] = {};
+        groups[route][k] = rowState[k].value;
+        applied++;
       });
       if (!applied) {
         status.textContent = 'Tick at least one field to apply.';
         return;
       }
 
-      var jobs = ids.map(function (rid) {
-        return { viewKey: sourceViewKey, recordId: rid, body: body };
+      var jobs = [];
+      Object.keys(groups).forEach(function (routeViewKey) {
+        ids.forEach(function (rid) {
+          jobs.push({ viewKey: routeViewKey, recordId: rid, body: groups[routeViewKey] });
+        });
       });
 
       saveBtn.disabled   = true;
