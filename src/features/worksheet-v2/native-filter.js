@@ -20,15 +20,23 @@
   var ns = window.SCW && window.SCW.worksheetV2;
   if (!ns) return;
 
-  function findFilterWidget(viewKey) {
-    // Prefer the whole .kn-filters-nav block (filter pills + Add filter
-    // button + Filter / Search dropdown). Fall back to the bare
-    // .kn-add-filter link if Knack hasn\'t rendered the wrapper yet.
+  function findFilterWidgets(viewKey) {
+    // Knack splits the filter UI into two siblings inside .kn-records-nav:
+    //   .kn-filters      → the rendered active filter PILLS (each
+    //                      clickable to edit + an X to remove)
+    //   .kn-filters-nav  → the "+ Add filter" link + Search dropdown
+    // Older / different layouts sometimes nest them together; pull
+    // whichever we find. Both go into the same toolbar slot so they
+    // sit next to each other.
     var view = document.getElementById(viewKey);
-    if (!view) return null;
-    return view.querySelector('.kn-filters-nav') ||
-           view.querySelector('.kn-add-filter') ||
-           null;
+    if (!view) return [];
+    var widgets = [];
+    var pills = view.querySelector('.kn-filters');
+    if (pills) widgets.push(pills);
+    var nav   = view.querySelector('.kn-filters-nav') ||
+                view.querySelector('.kn-add-filter');
+    if (nav) widgets.push(nav);
+    return widgets;
   }
 
   function mount(viewKey) {
@@ -37,27 +45,26 @@
     var toolbar = container.querySelector('.scw-ws-v2-toolbar');
     if (!toolbar) return;
 
-    // If we\'ve already hoisted and the moved widget is still attached,
-    // bail out — nothing to do. If the widget went missing (Knack
-    // re-rendered the source view and replaced its DOM), strip the
-    // empty slot and re-hoist below.
+    // If we\'ve already hoisted AND the moved widget is still attached,
+    // bail out. If Knack re-rendered the source view (e.g. after a
+    // filter change) some of the widgets we moved may have been
+    // replaced — strip the empty slot so we re-hoist on this pass.
     var existingSlot = toolbar.querySelector('.scw-ws-v2-native-filter-slot');
     if (existingSlot) {
-      if (existingSlot.querySelector('.kn-filters-nav, .kn-add-filter')) return;
+      var still = existingSlot.querySelector('.kn-filters-nav, .kn-add-filter, .kn-filters');
+      if (still) return;
       existingSlot.parentNode.removeChild(existingSlot);
     }
 
-    var widget = findFilterWidget(viewKey);
-    if (!widget) return; // Knack hasn\'t rendered it yet; next pass will catch it.
+    var widgets = findFilterWidgets(viewKey);
+    if (!widgets.length) return; // Knack hasn\'t rendered yet; next pass.
 
     var slot = document.createElement('div');
     slot.className = 'scw-ws-v2-native-filter-slot';
-    // Move (not clone) — Knack reuses the element on filter changes;
-    // a clone would go stale and detach from its event handlers.
-    slot.appendChild(widget);
+    // Move (not clone) — Knack reuses the elements on filter changes;
+    // clones would go stale and lose their handlers.
+    for (var i = 0; i < widgets.length; i++) slot.appendChild(widgets[i]);
 
-    // Insert right after the sort dropdown (or after the mode group
-    // if sort isn\'t mounted yet).
     var anchor = toolbar.querySelector('.scw-ws-v2-sort') ||
                  toolbar.querySelector('.scw-ws-v2-toolbar-group');
     if (anchor && anchor.nextSibling) {

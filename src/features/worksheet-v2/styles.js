@@ -1334,11 +1334,24 @@
     '.scw-ws-v2-native-filter-slot .kn-add-filter:hover {',
     '  background: #f1f5f9 !important;',
     '}',
-    /* Rendered filter pills (one per active filter). */
+    /* Rendered filter pills (one per active filter — clickable to
+       edit, with an X to remove). The .kn-filter element ships with
+       Knack-internal markup; we just give it our pill chrome and let
+       its inner links / remove buttons keep their native click
+       handlers. */
+    '.scw-ws-v2-native-filter-slot .kn-filters {',
+    '  display: inline-flex !important;',
+    '  align-items: center !important;',
+    '  gap: 6px !important;',
+    '  flex-wrap: wrap !important;',
+    '  margin: 0 !important;',
+    '}',
+    '.scw-ws-v2-native-filter-slot .kn-filters > * { margin: 0 !important; }',
     '.scw-ws-v2-native-filter-slot .kn-filter {',
     '  display: inline-flex !important;',
     '  align-items: center !important;',
-    '  padding: 4px 8px !important;',
+    '  gap: 4px !important;',
+    '  padding: 4px 10px !important;',
     '  background: #eff6ff !important;',
     '  color: #1d4ed8 !important;',
     '  border: 1px solid #bfdbfe !important;',
@@ -1346,10 +1359,28 @@
     '  font: 600 11px/1.2 system-ui, sans-serif !important;',
     '}',
     '.scw-ws-v2-native-filter-slot .kn-filter a,',
+    '.scw-ws-v2-native-filter-slot .kn-filter .kn-remove-filter,',
     '.scw-ws-v2-native-filter-slot .kn-remove-filter {',
     '  color: inherit !important;',
     '  text-decoration: none !important;',
+    '  cursor: pointer !important;',
+    '  margin-left: 0 !important;',
+    '}',
+    /* The remove (X) glyph — make it obvious as the close affordance. */
+    '.scw-ws-v2-native-filter-slot .kn-remove-filter {',
+    '  display: inline-flex !important;',
+    '  align-items: center !important;',
+    '  justify-content: center !important;',
+    '  width: 14px !important; height: 14px !important;',
+    '  border-radius: 50% !important;',
+    '  background: rgba(29, 78, 216, 0.12) !important;',
+    '  color: #1d4ed8 !important;',
+    '  font: 700 12px/1 system-ui, sans-serif !important;',
     '  margin-left: 4px !important;',
+    '}',
+    '.scw-ws-v2-native-filter-slot .kn-remove-filter:hover {',
+    '  background: #fee2e2 !important;',
+    '  color: #b91c1c !important;',
     '}',
 
     /* ── SOW FILTER PILLS ────────────────────────────────────── */
