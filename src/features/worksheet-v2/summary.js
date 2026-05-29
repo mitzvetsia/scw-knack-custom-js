@@ -56,77 +56,122 @@
   }
   function fmtNum(n) { return n ? String(n) : ''; }
 
-  // ── Aggregate records by product ────────────────────────────
+  // ── Aggregate records by product, grouped by bucket category ──
+  // Skips assumptions and services entirely (per v1 parity) — the
+  // summary table is about countable hardware, not text-only buckets.
+  // Returns:
+  //   { sections: [{label, products, subtotal}], totals }
+  // where sections are ordered: cam/reader first, then "default"
+  // (networking / headend / everything else).
   function aggregate(records) {
-    var CAM = (ns.card && ns.card.CAM_READER_BUCKET) || '6481e5ba38f283002898113c';
-    var bucketIdOf = (ns.card && ns.card.bucketIdOf) || function () { return ''; };
+    var bucketCategoryOf = (ns.card && ns.card.bucketCategoryOf) ||
+                           function () { return 'default'; };
 
-    var byProduct = Object.create(null);
-    var totals = {
-      count: 0, existCabling: 0, newCabling: 0,
-      exterior: 0, interior: 0, plenum: 0, subBidSum: 0
+    var groups = {
+      cam:      { label: 'Camera / Reader',     byProduct: Object.create(null),
+                  subtotal: emptyAgg() },
+      'default':{ label: 'Networking / Headend', byProduct: Object.create(null),
+                  subtotal: emptyAgg() }
     };
+    var totals = emptyAgg();
 
     for (var i = 0; i < records.length; i++) {
       var r = records[i];
       if (!r) continue;
+      var cat = bucketCategoryOf(r);
+      // Skip assumptions / services — they don\'t belong in the
+      // hardware summary.
+      if (cat === 'assumptions' || cat === 'services') continue;
+      var groupKey = (cat === 'cam') ? 'cam' : 'default';
+      var grp = groups[groupKey];
+
       var prod = stripHtml(r.field_1949) || '(unnamed)';
-      var bucketId = bucketIdOf(r);
       var qty = readNum(r, 'field_1964') || 1;
 
-      var p = byProduct[prod];
+      var p = grp.byProduct[prod];
       if (!p) {
-        p = byProduct[prod] = {
+        p = grp.byProduct[prod] = {
           label: prod,
-          count: 0,
-          isCamReader: false,
+          isCamReader: groupKey === 'cam',
           labels: [],
-          existCabling: 0, newCabling: 0,
-          exterior: 0, interior: 0, plenum: 0,
-          subBidSum: 0
+          count: 0, existCabling: 0, newCabling: 0,
+          exterior: 0, interior: 0, plenum: 0, subBidSum: 0
         };
-        byProduct[prod] = p;
       }
 
       p.count += qty;
-      totals.count += qty;
+      grp.subtotal.count += qty;
+      totals.count       += qty;
 
-      if (bucketId === CAM) {
-        p.isCamReader = true;
+      if (groupKey === 'cam') {
         var devLabel = stripHtml(r.field_1950);
         if (devLabel) p.labels.push(devLabel);
 
-        // Cabling: field_2461 (existing) Yes/No
         if (r.field_2461 != null && stripHtml(r.field_2461) !== '') {
-          if (isYes(r, 'field_2461')) { p.existCabling++; totals.existCabling++; }
-          else                          { p.newCabling++;   totals.newCabling++; }
+          if (isYes(r, 'field_2461')) {
+            p.existCabling++; grp.subtotal.existCabling++; totals.existCabling++;
+          } else {
+            p.newCabling++;   grp.subtotal.newCabling++;   totals.newCabling++;
+          }
         }
-        // Exterior: field_1984 Yes/No → interior is implicit "not yes"
         if (r.field_1984 != null && stripHtml(r.field_1984) !== '') {
-          if (isYes(r, 'field_1984')) { p.exterior++; totals.exterior++; }
-          else                          { p.interior++; totals.interior++; }
+          if (isYes(r, 'field_1984')) {
+            p.exterior++; grp.subtotal.exterior++; totals.exterior++;
+          } else {
+            p.interior++; grp.subtotal.interior++; totals.interior++;
+          }
         }
-        if (isYes(r, 'field_1983')) { p.plenum++; totals.plenum++; }
+        if (isYes(r, 'field_1983')) {
+          p.plenum++; grp.subtotal.plenum++; totals.plenum++;
+        }
       }
 
       var bid = readNum(r, 'field_2150');
       if (bid > 0) {
-        p.subBidSum  += bid;
-        totals.subBidSum += bid;
+        p.subBidSum         += bid;
+        grp.subtotal.subBidSum += bid;
+        totals.subBidSum    += bid;
       }
     }
 
-    var products = [];
-    for (var k in byProduct) products.push(byProduct[k]);
-    products.sort(function (a, b) {
-      // Cam/reader products first (they group naturally at the top),
-      // then alphabetical by label.
-      if (a.isCamReader !== b.isCamReader) return a.isCamReader ? -1 : 1;
-      return a.label.localeCompare(b.label, undefined,
-        { numeric: true, sensitivity: 'base' });
-    });
+    function productList(byProduct) {
+      var out = [];
+      for (var k in byProduct) out.push(byProduct[k]);
+      out.sort(function (a, b) {
+        return a.label.localeCompare(b.label, undefined,
+          { numeric: true, sensitivity: 'base' });
+      });
+      return out;
+    }
 
-    return { products: products, totals: totals };
+    var sections = [];
+    var camProducts = productList(groups.cam.byProduct);
+    if (camProducts.length) {
+      sections.push({
+        key: 'cam',
+        label: groups.cam.label,
+        isCamReader: true,
+        products: camProducts,
+        subtotal: groups.cam.subtotal
+      });
+    }
+    var defProducts = productList(groups['default'].byProduct);
+    if (defProducts.length) {
+      sections.push({
+        key: 'default',
+        label: groups['default'].label,
+        isCamReader: false,
+        products: defProducts,
+        subtotal: groups['default'].subtotal
+      });
+    }
+
+    return { sections: sections, totals: totals };
+  }
+
+  function emptyAgg() {
+    return { count: 0, existCabling: 0, newCabling: 0,
+             exterior: 0, interior: 0, plenum: 0, subBidSum: 0 };
   }
 
   function collectRecords(l1) {
@@ -164,47 +209,78 @@
     '</tr>';
   }
 
+  function tableHeaderRow() {
+    return '<thead><tr>' +
+      '<th class="scw-ws-v2-summary-prod">Product</th>' +
+      '<th class="scw-ws-v2-summary-num" title="Existing cabling">Exist Cab</th>' +
+      '<th class="scw-ws-v2-summary-num" title="New cabling">New Cab</th>' +
+      '<th class="scw-ws-v2-summary-num">Ext</th>' +
+      '<th class="scw-ws-v2-summary-num">Int</th>' +
+      '<th class="scw-ws-v2-summary-num">Plen</th>' +
+      '<th class="scw-ws-v2-summary-num">Qty</th>' +
+      '<th class="scw-ws-v2-summary-money">Sub Bid</th>' +
+    '</tr></thead>';
+  }
+
+  function sectionHeadRow(label) {
+    return '<tr class="scw-ws-v2-summary-row--bucket">' +
+      '<td colspan="8">' + esc(label) + '</td>' +
+    '</tr>';
+  }
+
+  function subtotalRow(label, sub, isCam) {
+    var p = {
+      label: label,
+      count: sub.count,
+      isCamReader: isCam,
+      labels: [],
+      existCabling: sub.existCabling,
+      newCabling:   sub.newCabling,
+      exterior:     sub.exterior,
+      interior:     sub.interior,
+      plenum:       sub.plenum,
+      subBidSum:    sub.subBidSum
+    };
+    return productRow(p, true);
+  }
+
+  function buildSectionsRows(agg, opts) {
+    opts = opts || {};
+    var rows = '';
+    for (var s = 0; s < agg.sections.length; s++) {
+      var sec = agg.sections[s];
+      rows += sectionHeadRow(sec.label);
+      for (var i = 0; i < sec.products.length; i++) {
+        rows += productRow(sec.products[i], false);
+      }
+      // Per-bucket subtotal — only when the section has >1 product
+      // OR the user asked for it explicitly via opts.alwaysSubtotal.
+      if (opts.alwaysSubtotal || sec.products.length > 1) {
+        rows += subtotalRow(sec.label + ' subtotal', sec.subtotal, sec.isCamReader);
+      }
+    }
+    // Grand total — across both sections
+    if (agg.sections.length > 1) {
+      rows += subtotalRow('Total', agg.totals, true);
+    }
+    return rows;
+  }
+
   function buildL1Summary(l1) {
     var recs = collectRecords(l1);
-    if (!recs.length) {
+    var agg = aggregate(recs);
+    if (!agg.sections.length) {
       var wrapEmpty = document.createElement('div');
       wrapEmpty.className = 'scw-ws-v2-summary scw-ws-v2-summary--empty';
       wrapEmpty.innerHTML = '<div class="scw-ws-v2-summary-empty">' +
-        'No line items in ' + esc(l1.label) + ' yet.</div>';
+        'No hardware in ' + esc(l1.label) + '.</div>';
       return wrapEmpty;
     }
-    var agg = aggregate(recs);
-    var rows = '';
-    for (var i = 0; i < agg.products.length; i++) {
-      rows += productRow(agg.products[i], false);
-    }
-    var totalProd = {
-      label: 'Total',
-      count: agg.totals.count,
-      isCamReader: true,
-      labels: [],
-      existCabling: agg.totals.existCabling,
-      newCabling:   agg.totals.newCabling,
-      exterior:     agg.totals.exterior,
-      interior:     agg.totals.interior,
-      plenum:       agg.totals.plenum,
-      subBidSum:    agg.totals.subBidSum
-    };
-    rows += productRow(totalProd, true);
 
     var html =
       '<table class="scw-ws-v2-summary-table">' +
-        '<thead><tr>' +
-          '<th class="scw-ws-v2-summary-prod">Product</th>' +
-          '<th class="scw-ws-v2-summary-num" title="Existing cabling">Exist Cab</th>' +
-          '<th class="scw-ws-v2-summary-num" title="New cabling">New Cab</th>' +
-          '<th class="scw-ws-v2-summary-num">Ext</th>' +
-          '<th class="scw-ws-v2-summary-num">Int</th>' +
-          '<th class="scw-ws-v2-summary-num">Plen</th>' +
-          '<th class="scw-ws-v2-summary-num">Qty</th>' +
-          '<th class="scw-ws-v2-summary-money">Sub Bid</th>' +
-        '</tr></thead>' +
-        '<tbody>' + rows + '</tbody>' +
+        tableHeaderRow() +
+        '<tbody>' + buildSectionsRows(agg) + '</tbody>' +
       '</table>';
 
     var wrap = document.createElement('div');
@@ -213,31 +289,20 @@
     return wrap;
   }
 
-  /** Grand summary — aggregates EVERY record across every L1. Same
-   *  table shape as the per-L1 summary so it reads consistently. */
+  /** Grand summary — aggregates EVERY record across every L1. */
   function buildGrandSummary(tree) {
     var all = [];
     for (var i = 0; i < tree.length; i++) {
       all = all.concat(collectRecords(tree[i]));
     }
     var agg = aggregate(all);
-    var rows = '';
-    for (var k = 0; k < agg.products.length; k++) {
-      rows += productRow(agg.products[k], false);
+    if (!agg.sections.length) {
+      var wrapEmpty = document.createElement('div');
+      wrapEmpty.className = 'scw-ws-v2-grand-summary scw-ws-v2-grand-summary--empty';
+      wrapEmpty.innerHTML = '<div class="scw-ws-v2-summary-empty">' +
+        'No hardware line items yet.</div>';
+      return wrapEmpty;
     }
-    var totalProd = {
-      label: 'Total',
-      count: agg.totals.count,
-      isCamReader: true,
-      labels: [],
-      existCabling: agg.totals.existCabling,
-      newCabling:   agg.totals.newCabling,
-      exterior:     agg.totals.exterior,
-      interior:     agg.totals.interior,
-      plenum:       agg.totals.plenum,
-      subBidSum:    agg.totals.subBidSum
-    };
-    rows += productRow(totalProd, true);
 
     var html =
       '<div class="scw-ws-v2-grand-summary-head">' +
@@ -248,17 +313,8 @@
         '</span>' +
       '</div>' +
       '<table class="scw-ws-v2-summary-table">' +
-        '<thead><tr>' +
-          '<th class="scw-ws-v2-summary-prod">Product</th>' +
-          '<th class="scw-ws-v2-summary-num" title="Existing cabling">Exist Cab</th>' +
-          '<th class="scw-ws-v2-summary-num" title="New cabling">New Cab</th>' +
-          '<th class="scw-ws-v2-summary-num">Ext</th>' +
-          '<th class="scw-ws-v2-summary-num">Int</th>' +
-          '<th class="scw-ws-v2-summary-num">Plen</th>' +
-          '<th class="scw-ws-v2-summary-num">Qty</th>' +
-          '<th class="scw-ws-v2-summary-money">Sub Bid</th>' +
-        '</tr></thead>' +
-        '<tbody>' + rows + '</tbody>' +
+        tableHeaderRow() +
+        '<tbody>' + buildSectionsRows(agg, { alwaysSubtotal: true }) + '</tbody>' +
       '</table>';
 
     var wrap = document.createElement('div');

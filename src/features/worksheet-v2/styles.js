@@ -1290,17 +1290,29 @@
     '  border: 0 !important;',
     '  gap: 6px !important;',
     '}',
+    /* Action buttons match v1\'s primary CTA palette (var(--scw-accent),
+       a corporate blue). Falls back to #295F91 if the token isn\'t
+       defined on this page. */
     '.scw-ws-v2-toolbar-btn--cta {',
-    '  background: #ed8326 !important;',
+    '  background: var(--scw-accent, #295F91) !important;',
     '  color: #fff !important;',
-    '  border: 1px solid #c4691a !important;',
-    '  border-radius: 5px !important;',
-    '  padding: 7px 12px !important;',
-    '  font-weight: 600 !important;',
+    '  border: 1px solid var(--scw-accent-strong, #1f4a72) !important;',
+    '  border-radius: 6px !important;',
+    '  padding: 7px 14px !important;',
+    '  font: 600 12px/1.2 system-ui, -apple-system, sans-serif !important;',
     '}',
-    '.scw-ws-v2-toolbar-btn--cta + .scw-ws-v2-toolbar-btn--cta { border-left: 1px solid #c4691a !important; }',
     '.scw-ws-v2-toolbar-btn--cta:hover {',
-    '  background: #c4691a !important; color: #fff !important;',
+    '  background: var(--scw-accent-strong, #1f4a72) !important;',
+    '  border-color: var(--scw-accent-deep, #14365a) !important;',
+    '  color: #fff !important;',
+    '}',
+    /* Mounting-box modal submit button — also use the blue accent so
+       the entire CTA path reads as one consistent color. */
+    '.scw-ws-v2-mb-submit {',
+    '  background: var(--scw-accent, #295F91) !important;',
+    '}',
+    '.scw-ws-v2-mb-submit:hover {',
+    '  background: var(--scw-accent-strong, #1f4a72) !important;',
     '}',
 
     /* ── MODE OVERRIDES ──────────────────────────────────────── */
@@ -1405,6 +1417,20 @@
     '  background: #f1f5f9 !important;',
     '  border-top: 1px solid #cbd5e1 !important;',
     '  border-bottom: 0 !important;',
+    '}',
+    /* Section heads (Camera/Reader, Networking/Headend) */
+    '.scw-ws-v2-summary-row--bucket td {',
+    '  font: 700 11px/1.2 system-ui, sans-serif !important;',
+    '  text-transform: uppercase !important;',
+    '  letter-spacing: 0.05em !important;',
+    '  color: #0f172a !important;',
+    '  background: #fff !important;',
+    '  border-top: 2px solid #cbd5e1 !important;',
+    '  border-bottom: 1px solid #cbd5e1 !important;',
+    '  padding: 6px 8px !important;',
+    '}',
+    '.scw-ws-v2-summary-table tr.scw-ws-v2-summary-row--bucket:first-child td {',
+    '  border-top: 0 !important;',
     '}',
 
     /* ── ADD-MOUNTING-BOX MODAL ─────────────────────────────── */
