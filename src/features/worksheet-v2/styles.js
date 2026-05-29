@@ -842,6 +842,11 @@
     '  background: transparent !important;',
     '  border: 0 !important;',
     '}',
+    /* V2 cutover — hide v1\'s view_3610 entirely once v2 is wired up.
+       Companion to the JS kill-switch in device-worksheet.js. Reverse
+       by removing this rule + the JS guard. */
+    '#view_3610 { display: none !important; }',
+
     '.scw-ws-v2-mh-step {',
     '  width: 16px !important; height: 18px !important;',
     '  padding: 0 !important;',

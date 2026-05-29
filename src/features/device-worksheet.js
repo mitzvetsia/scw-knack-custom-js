@@ -6301,6 +6301,23 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
   function transformView(viewCfg) {
     if (!viewCfg || viewCfg.disabled) return;
+    // V2 cutover kill-switch (Known Issue: v1→v2 migration). When v2 is
+    // enabled AND has a CONFIG entry for view_3962 (its source view),
+    // we treat view_3610 as superseded and bail out of v1\'s
+    // transformView entirely — no card builds, no group-collapse, no
+    // photo strips, no DOM thrash. Reversible: flip
+    // SCW.worksheetV2.CONFIG.enabled = false or comment out this block.
+    if (viewCfg.viewId === 'view_3610' &&
+        window.SCW && window.SCW.worksheetV2 &&
+        window.SCW.worksheetV2.CONFIG &&
+        window.SCW.worksheetV2.CONFIG.enabled !== false) {
+      var v2Views = (window.SCW.worksheetV2.CONFIG.views || []);
+      for (var v2i = 0; v2i < v2Views.length; v2i++) {
+        if (v2Views[v2i] && v2Views[v2i].sourceViewKey === 'view_3962') {
+          return;
+        }
+      }
+    }
     var viewId = viewCfg.viewId;
     var state = _transformViewState(viewId);
 
