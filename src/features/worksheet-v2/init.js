@@ -80,6 +80,11 @@
     views.forEach(function (vcfg) {
       ns.data.subscribe(vcfg.sourceViewKey, function (key, records) {
         ns.render.renderView(key, records);
+        // After every re-render, sync the bulk-select checkboxes to
+        // current selection state + refresh the floating toolbar.
+        if (ns.bulk && typeof ns.bulk.mount === 'function') {
+          ns.bulk.mount(key);
+        }
       });
     });
     ns.data.attachListeners();

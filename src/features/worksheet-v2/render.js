@@ -113,7 +113,19 @@
       (l1.isSynthetic ? ' scw-ws-v2-l1--synthetic' : '');
     block.setAttribute('data-scw-ws-v2-l1', l1.id);
 
-    block.appendChild(buildL1Header(l1, sourceViewKey));
+    // L1-level select-all checkbox lives in a flex wrapper alongside
+    // the head <button>, so clicking the checkbox doesn\'t toggle the
+    // accordion. bulk.js wires the change handler via delegation.
+    var headWrap = document.createElement('div');
+    headWrap.className = 'scw-ws-v2-l1-head-wrap';
+    var sel = document.createElement('input');
+    sel.type = 'checkbox';
+    sel.className = 'scw-ws-v2-l1-select';
+    sel.setAttribute('data-scw-ws-v2-l1-select', l1.id);
+    sel.setAttribute('aria-label', 'Select all in group');
+    headWrap.appendChild(sel);
+    headWrap.appendChild(buildL1Header(l1, sourceViewKey));
+    block.appendChild(headWrap);
 
     var body = document.createElement('div');
     body.className = 'scw-ws-v2-l1-body';

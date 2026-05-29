@@ -257,6 +257,15 @@
       var ids = [];
       for (var i = 0; i < inputs.length; i++) ids.push(inputs[i].value);
 
+      // Bulk-edit mode: caller wants the chosen ids only — no PUT.
+      // Used by bulk.js to capture a value the user picked once and
+      // then apply it across N records via its own concurrency queue.
+      if (opts.pickOnly && typeof opts.onChoose === 'function') {
+        close(overlay, onKey);
+        opts.onChoose(ids);
+        return;
+      }
+
       // For single-select fields, send the bare id (or empty string)
       // — multi-connection always sends an array.
       var body = {};
