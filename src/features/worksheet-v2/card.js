@@ -193,6 +193,26 @@
     '</button>';
   }
 
+  // SOW cell — connection field_2154 (multi-connection to Scopes of
+  // Work). v1 left this read-only; v2 makes it editable via the same
+  // picker pattern used for product / Connected Devices. The cell
+  // renders the comma-separated SOW identifiers (SW-1177, SW-1178)
+  // pulled from the record\'s detail HTML, and the click handler in
+  // init.js opens the picker with view_3325 (Scopes of Work grid) as
+  // the candidate source.
+  function sowCell(rec, viewKey, value) {
+    var title = (value || 'Set SOW') + ' — click to change SOW';
+    return '<button type="button" ' +
+      'class="scw-ws-v2-cell scw-ws-v2-cell--sow scw-ws-v2-cell--editable-conn" ' +
+      'data-scw-ws-v2-conn="field_2154" ' +
+      'data-scw-ws-v2-record="' + escapeHtml(rec.id) + '" ' +
+      'data-scw-ws-v2-view="' + escapeHtml(viewKey) + '" ' +
+      'data-scw-ws-v2-conn-label="SOW" ' +
+      'title="' + escapeHtml(title) + '">' +
+      '<span class="scw-ws-v2-sow-value">' + escapeHtml(value || '—') + '</span>' +
+    '</button>';
+  }
+
   function empty(cls) {
     return '<div class="scw-ws-v2-cell scw-ws-v2-cell--blank ' + (cls || '') + '"></div>';
   }
@@ -256,7 +276,7 @@
       stackCell(rec, viewKey, 'field_1973', plusHrs, hrsTotal,    '+Hrs') +
       stackCell(rec, viewKey, 'field_1974', plusMat, matTotal,    '+Mat') +
       ro(installFee, 'scw-ws-v2-cell--fee', 'Install fee') +
-      ro(sow,        'scw-ws-v2-cell--sow', 'SOW') +
+      sowCell(rec, viewKey, sow) +
       chevronCell(rec) +
     '</div>';
   }
@@ -288,7 +308,7 @@
       stackCell(rec, viewKey, 'field_1973', plusHrs, hrsTotal,    '+Hrs') +
       stackCell(rec, viewKey, 'field_1974', plusMat, matTotal,    '+Mat') +
       ro(installFee, 'scw-ws-v2-cell--fee', 'Install fee') +
-      ro(sow,        'scw-ws-v2-cell--sow', 'SOW') +
+      sowCell(rec, viewKey, sow) +
       chevronCell(rec) +
     '</div>';
   }
@@ -320,7 +340,7 @@
       stackCell(rec, viewKey, 'field_1973', plusHrs, hrsTotal,    '+Hrs') +
       stackCell(rec, viewKey, 'field_1974', plusMat, matTotal,    '+Mat') +
       ro(installFee, 'scw-ws-v2-cell--fee', 'Install fee') +
-      ro(sow,        'scw-ws-v2-cell--sow', 'SOW') +
+      sowCell(rec, viewKey, sow) +
       chevronCell(rec) +
     '</div>';
   }

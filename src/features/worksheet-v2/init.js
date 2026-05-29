@@ -280,6 +280,64 @@
         return;
       }
 
+      // SOW picker (field_2154) — candidates come from the Scopes of
+      // Work grid (view_3325) on the same scene. v1 left this field
+      // read-only; v2 adds an editable picker. Multi-connection: a
+      // single line item can belong to multiple SOWs.
+      if (fieldKey === 'field_2154') {
+        var SOW_SOURCE_VIEW = 'view_3325';
+        var sowView = (typeof Knack !== 'undefined' && Knack.views &&
+                       Knack.views[SOW_SOURCE_VIEW]) || null;
+        if (!sowView || !sowView.model || !sowView.model.data ||
+            !sowView.model.data.models) {
+          console.warn('[scw-ws-v2] view_3325 model missing — SOW picker can\'t open');
+          return;
+        }
+        var sowCandidates = [];
+        var sowRecords = sowView.model.data.models;
+        for (var sm = 0; sm < sowRecords.length; sm++) {
+          var sm_attrs = sowRecords[sm].attributes || {};
+          if (!sm_attrs.id) continue;
+          // field_2122 = SOW ID label (SW-####). Strip any HTML.
+          var sowId = (sm_attrs.field_2122 || '').toString()
+            .replace(/<[^>]*>/g, '').trim();
+          // field_2126 = SOW friendly name.
+          var sowName = (sm_attrs.field_2126 || '').toString()
+            .replace(/<[^>]*>/g, '').trim();
+          sowCandidates.push({
+            id:   sm_attrs.id,
+            sowId: sowId,
+            name: sowName
+          });
+        }
+        sowCandidates.sort(function (a, b) {
+          return String(a.sowId).localeCompare(String(b.sowId), undefined,
+            { numeric: true, sensitivity: 'base' });
+        });
+
+        ns.picker.open({
+          sourceViewKey: viewKey,
+          // PUT via view_3610 so v1's mirror/refresh chain fires the
+          // same way an inline Knack edit would have — keeps totals
+          // and any dependent recalcs honest.
+          putViewKey:    'view_3610',
+          recordId:      recordId,
+          fieldKey:      'field_2154',
+          label:         'SOW',
+          selectedIds:   sel,
+          candidates:    sowCandidates,
+          itemLabel:     function (rec) {
+            if (rec.sowId && rec.name) return rec.sowId + ' · ' + rec.name;
+            return rec.sowId || rec.name || rec.id;
+          },
+          multi:         true,
+          onSaved:       function () {
+            if (ns.data && typeof ns.data.notify === 'function') ns.data.notify(viewKey);
+          }
+        });
+        return;
+      }
+
       var candidates = [];
       for (var c = 0; c < records.length; c++) {
         var r = records[c];
