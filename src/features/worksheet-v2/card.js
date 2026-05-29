@@ -143,11 +143,11 @@
       'value="' + escapeHtml(value) + '"' + attrsFor(rec, viewKey, fieldKey) + '>';
   }
 
-  /** True when field_2634 (SOW line-item lock flag) is yes/true on the record. */
+  /** True when field_2230 (qty flag) is yes/true on the record. */
   function isQtyLocked(rec) {
-    var raw = rec && rec['field_2634_raw'];
+    var raw = rec && rec['field_2230_raw'];
     if (raw === true || raw === 'Yes' || raw === 'yes' || raw === 1) return true;
-    var s = (rec && rec['field_2634'] || '').toString().trim().toLowerCase();
+    var s = (rec && rec['field_2230'] || '').toString().trim().toLowerCase();
     return s === 'yes' || s === 'true' || s === '1';
   }
 
