@@ -1325,12 +1325,14 @@
     '.scw-ws-v2-mode-summary .scw-ws-v2-l2-head {',
     '  display: none !important;',
     '}',
-    /* Photos toggle — hide every strip site-wide on this view. Use a
-       higher-specificity selector so it beats the .scw-ws-v2-card--open
-       reveal rule above. */
-    '.scw-ws-v2-photos-hidden .scw-ws-v2-card .scw-ws-v2-photos,',
-    '.scw-ws-v2-photos-hidden .scw-ws-v2-card--open .scw-ws-v2-photos {',
-    '  display: none !important;',
+    /* Photos toggle (v1-parity): default is hidden when card collapsed,
+       shown when expanded. "Show photos" reveals the strip on every
+       card regardless of expand state. Selector specificity (3 classes)
+       beats the default `.scw-ws-v2-photos` (1) rule + ties the
+       `.scw-ws-v2-card--open` (2) reveal — declaration order then wins
+       since this rule is declared AFTER the defaults above. */
+    '.scw-ws-v2-photos-shown .scw-ws-v2-card .scw-ws-v2-photos {',
+    '  display: block !important;',
     '}',
 
     /* ── COLLAPSIBLE SUMMARY PANEL (grand + per-L1 share styles) ──

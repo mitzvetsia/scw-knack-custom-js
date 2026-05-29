@@ -45,28 +45,27 @@
     try { localStorage.setItem(modeKey(viewKey), mode); }
     catch (e) {}
   }
-  function loadPhotosHidden(viewKey) {
+  function loadPhotosShown(viewKey) {
     try { return localStorage.getItem(photosKey(viewKey)) === '1'; }
     catch (e) { return false; }
   }
-  function savePhotosHidden(viewKey, hidden) {
-    try { localStorage.setItem(photosKey(viewKey), hidden ? '1' : '0'); }
+  function savePhotosShown(viewKey, shown) {
+    try { localStorage.setItem(photosKey(viewKey), shown ? '1' : '0'); }
     catch (e) {}
   }
 
   function applyState(container, viewKey) {
     var mode  = loadMode(viewKey);
-    var hidden = loadPhotosHidden(viewKey);
+    var shown = loadPhotosShown(viewKey);
     container.classList.remove(
       'scw-ws-v2-mode-default',
       'scw-ws-v2-mode-summary'
     );
-    // Only "summary" survives as a CSS-driven mode (hides cards/L2
-    // heads). Expand/collapse mutate state directly so they don\'t
-    // fight per-L1 clicks.
     if (mode === 'summary') container.classList.add('scw-ws-v2-mode-summary');
     else container.classList.add('scw-ws-v2-mode-default');
-    container.classList.toggle('scw-ws-v2-photos-hidden', hidden);
+    // Mirror v1\'s view_3610 behavior — "Show photos" REVEALS strips on
+    // collapsed cards too (default is: strips show only when expanded).
+    container.classList.toggle('scw-ws-v2-photos-shown', shown);
 
     var bar = container.querySelector('.scw-ws-v2-toolbar');
     if (!bar) return;
@@ -95,10 +94,10 @@
 
     var photosBtn = bar.querySelector('[data-scw-ws-v2-photos-toggle]');
     if (photosBtn) {
-      photosBtn.classList.toggle('scw-ws-v2-toolbar-btn--active', !hidden);
-      photosBtn.setAttribute('aria-pressed', hidden ? 'false' : 'true');
+      photosBtn.classList.toggle('scw-ws-v2-toolbar-btn--active', shown);
+      photosBtn.setAttribute('aria-pressed', shown ? 'true' : 'false');
       var label = photosBtn.querySelector('.scw-ws-v2-photos-btn-label');
-      if (label) label.textContent = hidden ? 'Show photos' : 'Hide photos';
+      if (label) label.textContent = shown ? 'Hide photos' : 'Show photos';
     }
   }
 
@@ -129,6 +128,7 @@
       '<div class="scw-ws-v2-toolbar-spacer"></div>' +
       '<div class="scw-ws-v2-toolbar-group scw-ws-v2-toolbar-group--cta">' +
         actionBtn('add-sow',      '+ Add to SOW',         'Add a new SOW line item') +
+        actionBtn('add-photos',   '+ Add Photos',         'Bulk upload photos to this SOW') +
         actionBtn('add-mounting', '+ Add Mounting Boxes', 'Add a mounting box to each selected row') +
       '</div>';
     return bar;
@@ -243,9 +243,7 @@
       return;
     }
     if (action === 'add-photos') {
-      var base2 = buildSowBasePath();
-      if (!base2) { alert('Could not detect SOW context from the URL.'); return; }
-      window.location.hash = '#' + base2 + '/add-photos-to-sow/';
+      openBulkPhotoUpload();
       return;
     }
     if (action === 'add-mounting') {
@@ -271,6 +269,65 @@
       labels.push(label || rid);
     }
     return { ids: ids, labels: labels };
+  }
+
+  // ── Bulk photo upload ─────────────────────────────────────
+  // Mirrors v1\'s view_3610 inject target — picks the right linkField
+  // (projectID on project-dashboard route, sowID otherwise) and opens
+  // the existing SCW.bulkUpload modal. We borrow v1\'s registered view
+  // config so refresh hooks (re-fetch view_3610 / view_3962) stay
+  // consistent without us duplicating the list.
+  function openBulkPhotoUpload() {
+    var bu = window.SCW && window.SCW.bulkUpload;
+    if (!bu || typeof bu.open !== 'function' || !bu.config) {
+      alert('Bulk upload is not loaded. Refresh the page and try again.');
+      return;
+    }
+    // Find the SOW-context entry (menuViewId view_3482 has the SOW /
+    // build-sow / project-dashboard contexts wired). Fall back to a
+    // generic build-sow hash pattern if the entry isn\'t available.
+    var views = bu.config.VIEWS || [];
+    var viewCfg = null;
+    for (var i = 0; i < views.length; i++) {
+      if (views[i].menuViewId === 'view_3482') { viewCfg = views[i]; break; }
+    }
+    if (!viewCfg) {
+      alert('Bulk upload config for SOW photos not found.');
+      return;
+    }
+
+    // resolveContext-equivalent: project-dashboard takes precedence
+    // (its 24-hex id is the project), then the SOW page route.
+    var hash = window.location.hash || '';
+    var contexts = [
+      { linkField: 'projectID', hashPattern: /project-dashboard\/([a-f0-9]{24})/ },
+      { linkField: 'sowID',     hashPattern: /(?:scope-of-work-details|build-sow)\/([a-f0-9]{24})/ }
+    ];
+    var recordId = '', linkField = '';
+    for (var c = 0; c < contexts.length; c++) {
+      var m = hash.match(contexts[c].hashPattern);
+      if (m && m[1]) {
+        recordId  = m[1];
+        linkField = contexts[c].linkField;
+        break;
+      }
+    }
+    if (!recordId) {
+      var fallbackBase = buildSowBasePath();
+      if (fallbackBase) {
+        var fbMatch = fallbackBase.match(/\/([a-f0-9]{24})\/?$/);
+        if (fbMatch) {
+          recordId  = fbMatch[1];
+          linkField = viewCfg.linkField || 'sowID';
+        }
+      }
+    }
+    if (!recordId) {
+      alert('Could not determine record id from URL — open the bulk-photo modal from a SOW or project page.');
+      return;
+    }
+    var cfgForUpload = $.extend({}, viewCfg, { linkField: linkField });
+    bu.open(cfgForUpload, recordId);
   }
 
   function openMountingBoxModal(viewKey) {
@@ -430,7 +487,14 @@
           var requested = t.getAttribute('data-scw-ws-v2-mode');
           handleModeClick(requested, viewKey, container);
         } else if (t.hasAttribute('data-scw-ws-v2-photos-toggle')) {
-          savePhotosHidden(viewKey, !loadPhotosHidden(viewKey));
+          var nextShown = !loadPhotosShown(viewKey);
+          savePhotosShown(viewKey, nextShown);
+          // Mirror v1: when revealing photos, also expand every L1 so
+          // the user sees them right away. Hiding leaves L1 state alone.
+          if (nextShown && ns.state) {
+            ns.state.setAllOpen(viewKey, collectL1Ids(container));
+            rerender(viewKey);
+          }
           applyState(container, viewKey);
         } else if (t.hasAttribute('data-scw-ws-v2-action')) {
           handleAction(t.getAttribute('data-scw-ws-v2-action'), viewKey);
@@ -443,7 +507,7 @@
   ns.toolbar = {
     mount:           mount,
     loadMode:        loadMode,
-    loadPhotosHidden: loadPhotosHidden
+    loadPhotosShown: loadPhotosShown
   };
 })();
 /*** END WORKSHEET V2 — TOOLBAR ***********************************************/
