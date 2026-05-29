@@ -128,11 +128,13 @@
         var id = conns[c].id;
         if (!id || seen[id]) continue;
         seen[id] = true;
-        list.push({ id: id, name: conns[c].identifier || 'SOW ' + list.length });
+        list.push({ id: id, name: String(conns[c].identifier || ('SOW ' + list.length)) });
       }
     }
 
-    list.sort(function (a, b) { return a.name.localeCompare(b.name); });
+    list.sort(function (a, b) {
+      return String(a.name).localeCompare(String(b.name));
+    });
     return list;
   }
 
@@ -149,11 +151,13 @@
         var pkgName = stripHtml(conns[c].identifier || '');
         if (!pkgId || seen[pkgId]) continue;
         seen[pkgId] = true;
-        list.push({ id: pkgId, name: pkgName || 'Package ' + (list.length + 1) });
+        list.push({ id: pkgId, name: String(pkgName || ('Package ' + (list.length + 1))) });
       }
     }
 
-    list.sort(function (a, b) { return a.name.localeCompare(b.name); });
+    list.sort(function (a, b) {
+      return String(a.name).localeCompare(String(b.name));
+    });
     return list;
   }
 
