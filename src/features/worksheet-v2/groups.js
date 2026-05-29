@@ -56,68 +56,39 @@
     return '';
   }
 
-  /** Collect every accessory id referenced by any parent's field_1958.
-   *  Reads both the Backbone model (field_1958_raw) and view_3962's
-   *  rendered td.field_1958 cells. The DOM scrape is the safety net
-   *  for cases where Knack populates the rendered cell but not the
-   *  _raw companion in the model attributes hash. */
+  /** Decide which loaded records are "attached accessories" — i.e.
+   *  brackets attached to a parent line item, which should be hidden
+   *  from the main tree because they show up inside the parent\'s
+   *  detail panel instead.
+   *
+   *  Walks BACKWARDS from the bracket: a record is attached iff
+   *    (a) its bucket is Mounting Hardware
+   *    (b) its own field_2464_raw (back-mirror to parent) resolves to
+   *        some other loaded record\'s id.
+   *
+   *  This signal lives entirely on the bracket itself — no chance for
+   *  cross-wired forward links (parent.field_1958 mistakenly listing
+   *  the parent\'s own id) to hide a real parent. A Mounting Hardware
+   *  record whose field_2464 doesn\'t resolve to a loaded parent falls
+   *  through and ends up under "Orphaned Mounting Brackets". */
   function collectAttachedAccessoryIds(records) {
-    var attached = Object.create(null);
     var recordById = Object.create(null);
     for (var i = 0; i < records.length; i++) {
       if (records[i] && records[i].id) recordById[records[i].id] = records[i];
     }
-    for (var i2 = 0; i2 < records.length; i2++) {
-      var src = records[i2];
-      if (!src) continue;
-      // Mounting-hardware records sometimes get their own field_1958
-      // cross-wired by Knack add-accessory forms (it ends up pointing
-      // at the PARENT, not the accessory). Reading that as a forward
-      // link would mark the parent as "attached" and hide it from the
-      // tree. Skip the field_1958 scan on bracket-bucket records — the
-      // authoritative parent→accessory list lives on non-bracket
-      // records anyway.
-      if (bucketIdOf(src) === MOUNTING_HARDWARE_BUCKET) continue;
-      var raw = src[ACCESSORY_FORWARD_FIELD + '_raw'];
+    var attached = Object.create(null);
+    for (var j = 0; j < records.length; j++) {
+      var rec = records[j];
+      if (!rec || !rec.id) continue;
+      if (bucketIdOf(rec) !== MOUNTING_HARDWARE_BUCKET) continue;
+      var raw = rec[ACCESSORY_PARENT_FIELD + '_raw'];
       if (!Array.isArray(raw)) continue;
-      for (var j = 0; j < raw.length; j++) {
-        if (raw[j] && raw[j].id) attached[raw[j].id] = true;
-      }
-    }
-    try {
-      var v3962 = document.getElementById('view_3962');
-      if (v3962) {
-        // Walk EACH source-view <tr> and only pick up that row\'s
-        // field_1958 spans when the row\'s bucket isn\'t Mounting
-        // Hardware. Same guard as the model loop above — keeps a
-        // bracket\'s cross-wired field_1958 from hiding a real parent.
-        var trs = v3962.querySelectorAll('tr[id]');
-        for (var ti = 0; ti < trs.length; ti++) {
-          var tr = trs[ti];
-          var bucketSpan = tr.querySelector(
-            'td.field_2219 span[data-kn="connection-value"][id]'
-          );
-          var bucketId = bucketSpan ? (bucketSpan.getAttribute('id') || '').trim() : '';
-          if (bucketId === MOUNTING_HARDWARE_BUCKET) continue;
-          var spans = tr.querySelectorAll(
-            'td.' + ACCESSORY_FORWARD_FIELD + ' span[data-kn="connection-value"][id]'
-          );
-          for (var s = 0; s < spans.length; s++) {
-            var id = (spans[s].getAttribute('id') || '').trim();
-            if (id && /^[a-f0-9]{24}$/i.test(id)) attached[id] = true;
-          }
+      for (var k = 0; k < raw.length; k++) {
+        var parentId = raw[k] && raw[k].id;
+        if (parentId && recordById[parentId]) {
+          attached[rec.id] = true;
+          break;
         }
-      }
-    } catch (e) { /* DOM scrape is a fallback — silent on failure */ }
-
-    // Final safety net: even with both guards above, if any non-
-    // Mounting-Hardware record ended up in the attached set (e.g.
-    // stale data we don\'t fully understand), drop it. We never
-    // want to hide a non-bracket record from the tree.
-    for (var aid in attached) {
-      var rec = recordById[aid];
-      if (rec && bucketIdOf(rec) !== MOUNTING_HARDWARE_BUCKET) {
-        delete attached[aid];
       }
     }
     return attached;
