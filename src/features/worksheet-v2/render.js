@@ -142,6 +142,28 @@
     }
 
     if (ns.card && typeof ns.card.buildCard === 'function') {
+      // Column-header strip — one per L1 body, sits at the top so
+      // the field names are visible at a glance without bloating
+      // every card row. Uses the same grid template as the row so
+      // headers line up with their columns. Cam-row-shaped (with
+      // "Drop" slot) since the cam template is the superset.
+      var hdr = document.createElement('div');
+      hdr.className = 'scw-ws-v2-col-header';
+      hdr.innerHTML =
+        '<span></span>' + /* chevron slot */
+        '<span>Drop</span>' +
+        '<span>Product</span>' +
+        '<span>Description</span>' +
+        '<span>Qty</span>' +
+        '<span>Sub Bid</span>' +
+        '<span>+Hrs</span>' +
+        '<span>+Mat</span>' +
+        '<span>Fee</span>' +
+        '<span>SOW</span>' +
+        '<span></span>' + /* warning slot */
+        '<span></span>';   /* trash slot */
+      body.appendChild(hdr);
+
       for (var i = 0; i < l1.l2.length; i++) {
         var l2 = l1.l2[i];
         // Empty seed L1 — skip the L2 header so we just show the

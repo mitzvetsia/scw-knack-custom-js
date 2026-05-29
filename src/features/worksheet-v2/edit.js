@@ -71,12 +71,43 @@
       if (input.classList.contains(SAV_CLS)) input.classList.remove(SAV_CLS);
     }, FLASH_MS);
 
+    // Fields that influence the read-only Fee (field_2028) — when the
+    // user edits any of them, refetch the affected record after save
+    // so the row\'s Fee cell shows Knack\'s recomputed value.
+    var FEE_DEPS = { 'field_2150': 1, 'field_1973': 1, 'field_1974': 1, 'field_1964': 1 };
+
     savePut(viewKey, recordId, fieldKey, newValue)
-      .then(function () {
-        // Success path — nothing to do visually; the flash already
-        // signaled the save was acknowledged. The next data subscriber
-        // notify (from knack-cell-update) will re-render the card with
-        // Knack's authoritative response (formula recompute, etc.).
+      .then(function (resp) {
+        // SCW.knackAjax doesn\'t auto-fire knack-cell-update like
+        // Knack\'s native inline edit does. Patch the local model
+        // with whatever the server returned and notify subscribers
+        // so re-rendered cards reflect formula recomputes (Fee, etc).
+        try {
+          if (typeof SCW.syncKnackModel === 'function') {
+            SCW.syncKnackModel(viewKey, recordId, resp, fieldKey, newValue);
+          }
+        } catch (e) { /* ignore */ }
+        // Fee depends on server-side formula recompute. Refetch
+        // the SINGLE record so the row\'s Fee + extended totals
+        // pick up the new value without thrashing the whole grid.
+        if (FEE_DEPS[fieldKey]) {
+          try {
+            var v = Knack.views[viewKey];
+            var modelEntry = v && v.model && v.model.data &&
+                             v.model.data.get && v.model.data.get(recordId);
+            if (modelEntry && typeof modelEntry.fetch === 'function') {
+              modelEntry.fetch({
+                success: function () {
+                  if (ns.data && typeof ns.data.notify === 'function') {
+                    ns.data.notify(viewKey);
+                  }
+                }
+              });
+              return;
+            }
+          } catch (e) { /* fall through to notify */ }
+        }
+        if (ns.data && typeof ns.data.notify === 'function') ns.data.notify(viewKey);
       })
       .catch(function (xhr) {
         console.warn('[scw-ws-v2] save failed', { recordId: recordId, fieldKey: fieldKey, xhr: xhr });

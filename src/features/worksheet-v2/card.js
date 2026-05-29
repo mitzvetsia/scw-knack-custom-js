@@ -302,6 +302,29 @@
     '</button>';
   }
 
+  /** Warning-badge cell — sits in its own grid column to the LEFT
+   *  of the trash icon. Always emits a cell so the row grid stays
+   *  aligned; the cell is empty when the record has no issues. */
+  function warnCell(rec) {
+    var issues = (ns.warnings && typeof ns.warnings.getIssuesFor === 'function')
+      ? ns.warnings.getIssuesFor(rec.id) : [];
+    if (!issues || !issues.length) {
+      return '<span class="scw-ws-v2-cell scw-ws-v2-cell--warn scw-ws-v2-cell--blank"></span>';
+    }
+    var labels = (ns.warnings && ns.warnings.LABELS) || {};
+    var icons  = (ns.warnings && ns.warnings.ICONS)  || {};
+    var human = issues.map(function (k) { return labels[k] || k; }).join(', ');
+    var iconStack = issues.map(function (k) {
+      return '<span class="scw-ws-v2-warn-badge-icon" data-issue-type="' + k + '">' +
+        (icons[k] || '') + '</span>';
+    }).join('');
+    return '<button type="button" class="scw-ws-v2-cell scw-ws-v2-cell--warn scw-ws-v2-warn-badge" ' +
+      'data-scw-ws-v2-expand="' + escapeHtml(rec.id) + '" ' +
+      'title="Issues: ' + escapeHtml(human) + '">' +
+      iconStack +
+    '</button>';
+  }
+
   // ── Row builders (one per bucket category) ─────────────────
 
   function buildRow_cam(rec, viewKey) {
@@ -341,6 +364,7 @@
       stackCell(rec, viewKey, 'field_1974', plusMat, matTotal,    '+Mat') +
       ro(installFee, 'scw-ws-v2-cell--fee', 'Install fee') +
       sowCell(rec, viewKey, sow) +
+      warnCell(rec) +
       kebabCell(rec) +
     '</div>';
   }
@@ -381,6 +405,7 @@
       stackCell(rec, viewKey, 'field_1974', plusMat, matTotal,    '+Mat') +
       ro(installFee, 'scw-ws-v2-cell--fee', 'Install fee') +
       sowCell(rec, viewKey, sow) +
+      warnCell(rec) +
       kebabCell(rec) +
     '</div>';
   }
@@ -422,6 +447,7 @@
       stackCell(rec, viewKey, 'field_1974', plusMat, matTotal,    '+Mat') +
       ro(installFee, 'scw-ws-v2-cell--fee', 'Install fee') +
       sowCell(rec, viewKey, sow) +
+      warnCell(rec) +
       kebabCell(rec) +
     '</div>';
   }
@@ -441,6 +467,7 @@
       '<div class="scw-ws-v2-cell scw-ws-v2-cell--labor-desc">' +
         textArea(rec, viewKey, 'field_2020', laborDesc, 'Assumption text') +
       '</div>' +
+      warnCell(rec) +
       kebabCell(rec) +
     '</div>';
   }
@@ -780,25 +807,6 @@
       sel.setAttribute('data-scw-ws-v2-select', rec.id);
       sel.setAttribute('aria-label', 'Select row');
       rowEl.insertBefore(sel, rowEl.firstChild);
-
-      // Per-card warning badge — small amber triangle in the left
-      // gutter when the record has any detected issues. Hover gives
-      // the full list as a tooltip; clicking opens the card.
-      if (issues && issues.length) {
-        var labels = (ns.warnings && ns.warnings.LABELS) || {};
-        var icons  = (ns.warnings && ns.warnings.ICONS)  || {};
-        var human = issues.map(function (k) { return labels[k] || k; }).join(', ');
-        var iconStack = issues.map(function (k) {
-          return '<span class="scw-ws-v2-warn-badge-icon" ' +
-            'data-issue-type="' + k + '">' + (icons[k] || '') + '</span>';
-        }).join('');
-        var badge = document.createElement('span');
-        badge.className = 'scw-ws-v2-warn-badge';
-        badge.setAttribute('data-scw-ws-v2-expand', rec.id);
-        badge.setAttribute('title', 'Issues: ' + human);
-        badge.innerHTML = iconStack;
-        rowEl.appendChild(badge);
-      }
     }
     // Photo strip — appended AFTER the detail panel. Hidden by
     // default; only revealed when the card is expanded (matches the
