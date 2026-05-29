@@ -430,59 +430,61 @@
 
   /**
    * Mounting Hardware (field_1958) — connectedRecords pattern.
-   * Single source of truth: view_3610's rendered DOM. Mirrors v1's
-   * connected-records.js readConnectionLinks exactly:
    *
-   *   1. Find the parent row in view_3610 (still on the page during
-   *      the parallel v1/v2 build — see config.js mountAfterSelector).
-   *   2. view_3610 renders <td class="field_1958"> twice on each row
-   *      (inline-edit ghost column + display column). Iterate all
-   *      matching tds and pick the FIRST whose
-   *      <span data-kn="connection-value"> children have non-empty
-   *      text. That's the same "1st-or-2nd, whichever has data"
-   *      pattern as v1's readConnectionLinks (line 337).
-   *   3. Each span: textContent → chip label, span.id → 24-hex
-   *      connected record id (used to build the edit-accessory URL).
+   * v1 renders its OWN widget inside the worksheet card — not a plain
+   * `<td class="field_1958">` — so the earlier "scrape native td spans"
+   * pattern was looking in the wrong place and finding nothing. v2
+   * mirrors v1's rendered widget instead:
    *
-   * Fallback only when view_3610 isn't on the page (Phase 5 cleanup):
-   * read rec.field_1958_raw[*].identifier.
+   *   tr.scw-ws-row[id=recordId]
+   *     └─ .scw-ws-field[data-scw-field="field_1958"]
+   *           └─ .scw-cr-list
+   *                 ├─ .scw-cr-item
+   *                 │     ├─ a.scw-cr-link  (href = edit page, text = chip label)
+   *                 │     └─ button.scw-cr-remove[data-record-id]
+   *                 └─ a.scw-cr-add  (href = add page)
+   *
+   * Bonus: the URLs in v1's `.scw-cr-link.href` and `.scw-cr-add.href`
+   * are the source of truth — already scene-aware, no need to rebuild
+   * them from the current hash. That fixes the "+ Add" pill bouncing
+   * to home when buildSowBasePath() failed to match the URL.
+   *
+   * Fallback path (when view_3610 isn't on the page — Phase 5 cleanup):
+   *   - Chips come from rec.field_1958_raw[*].identifier
+   *   - Add href is rebuilt from buildSowBasePath() if it matches the
+   *     URL, else omitted entirely (better to hide than to dump the
+   *     user on the home page).
    */
   function detailMountingHardware(rec, viewKey) {
     var parentId = rec.id;
-    var base = buildSowBasePath();
-    var addHref = base ? base + '/add-accessory-line-item/' + parentId + '/' : '#';
 
-    // ── DOM source of truth (matches v1's connected-records.js) ──
-    // view_3610 renders <td class="field_1958"> TWICE on each row
-    // (inline-edit ghost column + display column). v1's
-    // readConnectionLinks iterates the matching tds and returns the
-    // first one whose spans have non-empty text. Replicate that here:
-    // each <span data-kn="connection-value"> in the winning td is one
-    // accessory — span.textContent is the chip label, span.id is the
-    // 24-hex connected record id.
-    var chips = [];
+    // ── Source 1: v1's rendered widget inside view_3610's worksheet card ──
+    var chips    = [];
+    var addHref  = '';
     try {
       var v3610 = document.getElementById('view_3610');
-      var tr = v3610 && v3610.querySelector('tr[id="' + parentId + '"]');
-      if (tr) {
-        var tds = tr.querySelectorAll('td.field_1958');
-        for (var t = 0; t < tds.length; t++) {
-          var spans = tds[t].querySelectorAll('span[data-kn="connection-value"]');
-          for (var s = 0; s < spans.length; s++) {
-            var spText = (spans[s].textContent || '').replace(/\s+/g, ' ').trim();
-            var spId = (spans[s].id && /^[a-f0-9]{24}$/.test(spans[s].id))
-              ? spans[s].id : '';
-            if (spText && spText !== ' ') {
-              chips.push({ id: spId, label: spText });
-            }
-          }
-          if (chips.length) break; // first non-empty td wins
+      var tr    = v3610 && v3610.querySelector('tr.scw-ws-row[id="' + parentId + '"]');
+      var list  = tr && tr.querySelector(
+        '.scw-ws-field[data-scw-field="field_1958"] .scw-cr-list'
+      );
+      if (list) {
+        var items = list.querySelectorAll('.scw-cr-item');
+        for (var ii = 0; ii < items.length; ii++) {
+          var linkEl = items[ii].querySelector('a.scw-cr-link');
+          var rmEl   = items[ii].querySelector('button.scw-cr-remove[data-record-id]');
+          var label  = linkEl
+            ? (linkEl.getAttribute('title') || linkEl.textContent || '').trim()
+            : '';
+          var href   = linkEl ? linkEl.getAttribute('href') : '';
+          var recId  = rmEl   ? rmEl.getAttribute('data-record-id') : '';
+          if (label) chips.push({ id: recId, label: label, href: href });
         }
+        var addEl = list.querySelector('a.scw-cr-add');
+        if (addEl) addHref = addEl.getAttribute('href') || '';
       }
     } catch (e) { /* fall through to raw fallback */ }
 
-    // Fallback for when view_3610 isn't on the page (Phase 5 retires
-    // v1). Pull identifiers from the model's field_1958_raw.
+    // ── Source 2 (fallback): record's field_1958_raw + rebuilt URLs ──
     if (chips.length === 0) {
       var raw = rec['field_1958_raw'];
       if (Array.isArray(raw)) {
@@ -492,32 +494,52 @@
           var lbl = a.identifier
             ? String(a.identifier).replace(/<[^>]*>/g, '').trim()
             : '';
-          chips.push({ id: a.id || '', label: lbl || a.id || '' });
+          chips.push({ id: a.id || '', label: lbl || a.id || '', href: '' });
         }
       }
     }
+    if (!addHref) {
+      var base = buildSowBasePath();
+      if (base) addHref = base + '/add-accessory-line-item/' + parentId + '/';
+    }
 
+    // ── Render ──
     var chipsHtml = '';
     if (chips.length === 0) {
       chipsHtml = '<span class="scw-ws-v2-mh-empty">&mdash;</span>';
     } else {
       for (var c = 0; c < chips.length; c++) {
-        var editHref = base && chips[c].id
-          ? base + '/edit-accessory-line-item2/' + chips[c].id + '/'
-          : '#';
-        chipsHtml += '<a class="scw-ws-v2-mh-chip" href="' + escapeHtml(editHref) + '"' +
-          ' title="Edit ' + escapeHtml(chips[c].label) + '">' +
-          escapeHtml(chips[c].label) +
-        '</a>';
+        var editHref = chips[c].href;
+        if (!editHref) {
+          var fbBase = buildSowBasePath();
+          editHref = (fbBase && chips[c].id)
+            ? fbBase + '/edit-accessory-line-item2/' + chips[c].id + '/'
+            : '';
+        }
+        // No href → render as non-link span so we never silently bounce
+        // the user back to the home page on click.
+        if (editHref) {
+          chipsHtml += '<a class="scw-ws-v2-mh-chip" href="' + escapeHtml(editHref) + '"' +
+            ' title="Edit ' + escapeHtml(chips[c].label) + '">' +
+            escapeHtml(chips[c].label) +
+          '</a>';
+        } else {
+          chipsHtml += '<span class="scw-ws-v2-mh-chip scw-ws-v2-mh-chip--inert"' +
+            ' title="' + escapeHtml(chips[c].label) + '">' +
+            escapeHtml(chips[c].label) +
+          '</span>';
+        }
       }
     }
 
+    var addHtml = addHref
+      ? '<a class="scw-ws-v2-mh-add" href="' + escapeHtml(addHref) + '"' +
+        ' title="Add mounting hardware">+ Add</a>'
+      : '';
+
     return '<div class="scw-ws-v2-detail-field scw-ws-v2-detail-field--mh">' +
       '<div class="scw-ws-v2-detail-label">Mounting Hardware</div>' +
-      '<div class="scw-ws-v2-mh-list">' + chipsHtml +
-        '<a class="scw-ws-v2-mh-add" href="' + escapeHtml(addHref) + '"' +
-          ' title="Add mounting hardware">+ Add</a>' +
-      '</div>' +
+      '<div class="scw-ws-v2-mh-list">' + chipsHtml + addHtml + '</div>' +
     '</div>';
   }
 
