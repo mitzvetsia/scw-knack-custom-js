@@ -859,6 +859,11 @@
 
               // Remove this accessory from each old parent\'s accessory
               // arrays.
+              console.log('[scw-ws-v2] cascade plan', {
+                recordId:     recordId,
+                newParentId:  newParentId,
+                oldParentIds: oldParentIds
+              });
               oldParentIds.forEach(function (opid) {
                 var ids = readIds(opid).filter(function (x) { return x !== recordId; });
                 patchParentLocal(opid, ids);
@@ -867,11 +872,23 @@
                   url:  SCW.knackRecordUrl(WRITE_VIEW, opid),
                   type: 'PUT',
                   data: buildBody(ids),
-                  success: function () { pendingPuts--; finish(); },
+                  success: function (resp) {
+                    var server2207 = resp && (resp.field_2207_raw ||
+                      (resp.record && resp.record.field_2207_raw));
+                    console.log('[scw-ws-v2] PUT field_2207 detach OK', {
+                      parent: opid,
+                      sent:   ids,
+                      got:    server2207
+                    });
+                    pendingPuts--; finish();
+                  },
                   error:   function (xhr) {
                     anyError = true;
                     pendingPuts--;
-                    console.warn('[scw-ws-v2] old-parent accessory detach failed', xhr);
+                    console.warn('[scw-ws-v2] old-parent accessory detach FAILED', {
+                      status: xhr && xhr.status,
+                      body:   xhr && xhr.responseText
+                    });
                     finish();
                   }
                 });
@@ -884,15 +901,32 @@
                   newIds.push(recordId);
                   patchParentLocal(newParentId, newIds);
                   pendingPuts++;
+                  console.log('[scw-ws-v2] PUT field_2207 attach', {
+                    url:    SCW.knackRecordUrl(WRITE_VIEW, newParentId),
+                    parent: newParentId,
+                    ids:    newIds
+                  });
                   SCW.knackAjax({
                     url:  SCW.knackRecordUrl(WRITE_VIEW, newParentId),
                     type: 'PUT',
                     data: buildBody(newIds),
-                    success: function () { pendingPuts--; finish(); },
+                    success: function (resp) {
+                      var server2207 = resp && (resp.field_2207_raw ||
+                        (resp.record && resp.record.field_2207_raw));
+                      console.log('[scw-ws-v2] PUT field_2207 attach OK', {
+                        parent: newParentId,
+                        sent:   newIds,
+                        got:    server2207
+                      });
+                      pendingPuts--; finish();
+                    },
                     error:   function (xhr) {
                       anyError = true;
                       pendingPuts--;
-                      console.warn('[scw-ws-v2] new-parent accessory attach failed', xhr);
+                      console.warn('[scw-ws-v2] new-parent accessory attach FAILED', {
+                        status:  xhr && xhr.status,
+                        body:    xhr && xhr.responseText
+                      });
                       finish();
                     }
                   });
