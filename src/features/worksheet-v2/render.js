@@ -206,7 +206,10 @@
     }
 
     var seedGroups = readMdfSeedGroups(sourceViewKey);
-    var tree = ns.groups.buildGroupTree(records, seedGroups);
+    var sortPreset = (ns.sort && typeof ns.sort.getActivePreset === 'function')
+      ? ns.sort.getActivePreset(sourceViewKey)
+      : null;
+    var tree = ns.groups.buildGroupTree(records, seedGroups, { sortPreset: sortPreset });
     if (ns.state && typeof ns.state.applyOpenState === 'function') {
       ns.state.applyOpenState(sourceViewKey, tree);
     } else {

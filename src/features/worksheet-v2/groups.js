@@ -155,7 +155,9 @@
    *   { id, label, isSynthetic, sortOrder, recordCount,
    *     l2: [{ id, label, sortOrder, records: [...] }, ...] }
    */
-  function buildGroupTree(records, seedL1Groups) {
+  function buildGroupTree(records, seedL1Groups, opts) {
+    opts = opts || {};
+    var sortPreset = opts.sortPreset || null;
     // First pass: bucket into L1 → L2 maps
     var l1Map = Object.create(null);
 
@@ -276,30 +278,65 @@
       // prefix, text) → field_1951 (drop number, numeric). The same
       // three-key sort device-worksheet.js applies after Knack's own
       // server-side ordering.
+      function compareDefault(a, b) {
+        var sa = readNumber(a, FIELD_SORT);
+        var sb = readNumber(b, FIELD_SORT);
+        if (sa != null && sb != null && sa !== sb) return sa - sb;
+        if (sa != null && sb == null) return -1;
+        if (sa == null && sb != null) return 1;
+        var pa = readPlain(a, 'field_2240');
+        var pb = readPlain(b, 'field_2240');
+        var cmpP = pa.localeCompare(pb, undefined, { sensitivity: 'base' });
+        if (cmpP !== 0) return cmpP;
+        var na = readNumber(a, 'field_1951');
+        var nb = readNumber(b, 'field_1951');
+        if (na != null && nb != null && na !== nb) return na - nb;
+        if (na != null && nb == null) return -1;
+        if (na == null && nb != null) return 1;
+        var la = readPlain(a, FIELD_LABEL);
+        var lb = readPlain(b, FIELD_LABEL);
+        return la.localeCompare(lb, undefined, { numeric: true, sensitivity: 'base' });
+      }
+
+      function cmpField(a, b, field, type, order) {
+        var sign = (order === 'desc') ? -1 : 1;
+        if (type === 'number') {
+          var av = readNumber(a, field);
+          var bv = readNumber(b, field);
+          if (av != null && bv != null && av !== bv) return sign * (av - bv);
+          if (av != null && bv == null) return -1 * sign;
+          if (av == null && bv != null) return 1 * sign;
+          return 0;
+        }
+        var sa = readPlain(a, field);
+        var sb = readPlain(b, field);
+        return sign * sa.localeCompare(sb, undefined,
+          { numeric: true, sensitivity: 'base' });
+      }
+
+      // Preset-driven sort with default fallback for ties.
+      function compareWithPreset(a, b) {
+        if (!sortPreset) return compareDefault(a, b);
+        if (sortPreset.rule && sortPreset.rule.length) {
+          for (var k = 0; k < sortPreset.rule.length; k++) {
+            var r = sortPreset.rule[k];
+            var c = cmpField(a, b, r.field, r.type || 'text', r.order || 'asc');
+            if (c !== 0) return c;
+          }
+          return compareDefault(a, b);
+        }
+        if (sortPreset.field) {
+          var cp = cmpField(a, b, sortPreset.field,
+                            sortPreset.type || 'text',
+                            sortPreset.order || 'asc');
+          if (cp !== 0) return cp;
+          return compareDefault(a, b);
+        }
+        return compareDefault(a, b);
+      }
+
       l2List.forEach(function (l2) {
-        l2.records.sort(function (a, b) {
-          // Primary — bucket sort order
-          var sa = readNumber(a, FIELD_SORT);
-          var sb = readNumber(b, FIELD_SORT);
-          if (sa != null && sb != null && sa !== sb) return sa - sb;
-          if (sa != null && sb == null) return -1;
-          if (sa == null && sb != null) return 1;
-          // Secondary — drop prefix (E, I, C, …)
-          var pa = readPlain(a, 'field_2240');
-          var pb = readPlain(b, 'field_2240');
-          var cmpP = pa.localeCompare(pb, undefined, { sensitivity: 'base' });
-          if (cmpP !== 0) return cmpP;
-          // Tertiary — drop number (1, 2, 3, …)
-          var na = readNumber(a, 'field_1951');
-          var nb = readNumber(b, 'field_1951');
-          if (na != null && nb != null && na !== nb) return na - nb;
-          if (na != null && nb == null) return -1;
-          if (na == null && nb != null) return 1;
-          // Final fallback — label, so identically-keyed rows stay stable
-          var la = readPlain(a, FIELD_LABEL);
-          var lb = readPlain(b, FIELD_LABEL);
-          return la.localeCompare(lb, undefined, { numeric: true, sensitivity: 'base' });
-        });
+        l2.records.sort(compareWithPreset);
       });
 
       l1.l2 = l2List;

@@ -722,6 +722,16 @@
     var bid = bucketIdOf(rec);
     if (bid) card.setAttribute('data-scw-ws-v2-bucket', bid);
 
+    // SOW connection ids — space-separated for the SOW filter pills.
+    var sowRaw = rec['field_2154_raw'];
+    if (Array.isArray(sowRaw) && sowRaw.length) {
+      var sowIds = [];
+      for (var si = 0; si < sowRaw.length; si++) {
+        if (sowRaw[si] && sowRaw[si].id) sowIds.push(sowRaw[si].id);
+      }
+      if (sowIds.length) card.setAttribute('data-scw-ws-v2-sow', sowIds.join(' '));
+    }
+
     var row, det;
     if (cat === 'cam') {
       row = buildRow_cam(rec, sourceViewKey);

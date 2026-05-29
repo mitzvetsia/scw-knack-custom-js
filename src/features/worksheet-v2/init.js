@@ -84,6 +84,12 @@
         if (ns.toolbar && typeof ns.toolbar.mount === 'function') {
           ns.toolbar.mount(key);
         }
+        if (ns.sort && typeof ns.sort.mount === 'function') {
+          ns.sort.mount(key);
+        }
+        if (ns.sowFilter && typeof ns.sowFilter.mount === 'function') {
+          ns.sowFilter.mount(key);
+        }
         // After every re-render, sync the bulk-select checkboxes to
         // current selection state + refresh the floating toolbar.
         if (ns.bulk && typeof ns.bulk.mount === 'function') {
