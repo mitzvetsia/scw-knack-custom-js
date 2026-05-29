@@ -106,9 +106,22 @@
     return next;
   }
 
+  /**
+   * Force a specific L1 open (exclusive — closes any other open L1).
+   * Used by render.js when a cascade moves a record into a different
+   * MDF/IDF and we need to make sure the new L1 is visible.
+   */
+  function setOpenExclusive(sourceViewKey, l1Id) {
+    if (!l1Id) return;
+    var next = {};
+    next[l1Id] = 'open';
+    saveRaw(sourceViewKey, next);
+  }
+
   ns.state = {
-    applyOpenState: applyOpenState,
-    toggleL1:       toggleL1,
+    applyOpenState:   applyOpenState,
+    toggleL1:         toggleL1,
+    setOpenExclusive: setOpenExclusive,
     DEFAULT_OPEN_THRESHOLD: DEFAULT_OPEN_THRESHOLD
   };
 })();

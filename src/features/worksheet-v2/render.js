@@ -169,12 +169,30 @@
     body.innerHTML = '';
     body.appendChild(frag);
 
-    // Reapply card-level open state.
+    // Reapply card-level open state. If the cascade moved a record to
+    // a different MDF/IDF, the card lives in a new L1 — open that L1
+    // too so the card is actually visible after the rebuild.
     Object.keys(openIds).forEach(function (rid) {
       var card = body.querySelector(
         '.scw-ws-v2-card[data-scw-ws-v2-record="' + rid.replace(/"/g, '\\"') + '"]'
       );
-      if (card) card.classList.add('scw-ws-v2-card--open');
+      if (!card) return;
+      card.classList.add('scw-ws-v2-card--open');
+      var l1Block = card.closest('.scw-ws-v2-l1');
+      if (l1Block && !l1Block.classList.contains('scw-ws-v2-l1--open')) {
+        l1Block.classList.add('scw-ws-v2-l1--open');
+        var l1Head = l1Block.querySelector('.scw-ws-v2-l1-head');
+        if (l1Head) {
+          l1Head.classList.add('scw-ws-v2-l1-head--open');
+          l1Head.setAttribute('aria-expanded', 'true');
+        }
+        // Persist the change so a follow-up re-render doesn't snap it
+        // back closed via the saved collapse state.
+        var l1Id = l1Block.getAttribute('data-scw-ws-v2-l1');
+        if (l1Id && ns.state && typeof ns.state.setOpenExclusive === 'function') {
+          ns.state.setOpenExclusive(sourceViewKey, l1Id);
+        }
+      }
     });
   }
 
