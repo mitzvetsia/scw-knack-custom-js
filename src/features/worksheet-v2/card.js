@@ -748,17 +748,13 @@
       sel.setAttribute('aria-label', 'Select row');
       rowEl.insertBefore(sel, rowEl.firstChild);
     }
-    // Photo strip — always-visible (matches v1\'s inline-photo-row.js
-    // UX). Inserted between the row and the detail panel so it shows
-    // even when the row is collapsed.
+    // Photo strip — appended AFTER the detail panel. Hidden by
+    // default; only revealed when the card is expanded (matches the
+    // detail panel\'s show-on-open behavior).
     if (ns.photos && typeof ns.photos.buildStrip === 'function') {
       try {
         var strip = ns.photos.buildStrip(rec, sourceViewKey);
-        if (strip) {
-          var detailEl = card.querySelector('.scw-ws-v2-detail');
-          if (detailEl) card.insertBefore(strip, detailEl);
-          else card.appendChild(strip);
-        }
+        if (strip) card.appendChild(strip);
       } catch (photoErr) {
         console.warn('[scw-ws-v2] photo strip failed for record', rec.id, photoErr);
       }

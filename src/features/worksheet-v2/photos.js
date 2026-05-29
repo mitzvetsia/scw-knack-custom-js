@@ -177,44 +177,55 @@
     strip.className = 'scw-ws-v2-photos';
     strip.setAttribute('data-scw-ws-v2-photos', rec.id);
 
+    var html = '<div class="scw-ws-v2-photos-label">Photos</div>' +
+               '<div class="scw-ws-v2-photos-strip">';
+
     if (!photos.length) {
-      strip.innerHTML =
-        '<div class="scw-ws-v2-photos-empty">No photos.</div>' +
-        (addHref
-          ? '<a class="scw-ws-v2-photo-add" href="' + escapeHtml(addHref) +
-              '" title="Add photo">+ Add photo</a>'
-          : '');
-      return strip;
+      html += '<div class="scw-ws-v2-photo-empty">' +
+                '<span class="scw-ws-v2-photo-empty-icon">+</span>' +
+                'No photos yet' +
+              '</div>';
+    } else {
+      for (var i = 0; i < photos.length; i++) {
+        var p = photos[i];
+        var href = editPhotoHref(p.id);
+        var missing = p.required && !p.completed;
+        var cls = 'scw-ws-v2-photo-card' +
+          (p.required ? ' scw-ws-v2-photo-card--required' : '') +
+          (missing   ? ' scw-ws-v2-photo-card--missing'  : '');
+        var thumb = p.imgUrl
+          ? '<img class="scw-ws-v2-photo-img" src="' + escapeHtml(p.imgUrl) + '" alt="">'
+          : '<div class="scw-ws-v2-photo-img scw-ws-v2-photo-img--placeholder">No image</div>';
+        var typeHtml = p.type
+          ? '<div class="scw-ws-v2-photo-type">' + escapeHtml(p.type) + '</div>'
+          : '';
+        var reqHtml = '';
+        if (p.required) {
+          reqHtml = '<div class="scw-ws-v2-photo-req' +
+                      (p.completed ? ' scw-ws-v2-photo-req--ok' : '') +
+                    '">' + (p.completed ? 'REQUIRED &#10003;' : 'REQUIRED') + '</div>';
+        }
+        var openAttrs = href
+          ? ' href="' + escapeHtml(href) + '"'
+          : ' href="#" data-no-nav="1"';
+        html +=
+          '<a class="' + cls + '"' + openAttrs +
+              ' title="' + escapeHtml((p.type || 'Photo') + (p.required ? ' (Required)' : '')) + '">' +
+            thumb + typeHtml + reqHtml +
+          '</a>';
+      }
     }
 
-    var html = '';
-    for (var i = 0; i < photos.length; i++) {
-      var p = photos[i];
-      var href = editPhotoHref(p.id);
-      var missing = p.required && !p.completed;
-      var cls = 'scw-ws-v2-photo-card' +
-        (p.required ? ' scw-ws-v2-photo-card--required' : '') +
-        (missing   ? ' scw-ws-v2-photo-card--missing'  : '');
-      var thumb = p.imgUrl
-        ? '<img class="scw-ws-v2-photo-img" src="' + escapeHtml(p.imgUrl) + '" alt="">'
-        : '<div class="scw-ws-v2-photo-img scw-ws-v2-photo-img--placeholder">?</div>';
-      var typeHtml = p.type
-        ? '<div class="scw-ws-v2-photo-type">' + escapeHtml(p.type) + '</div>'
-        : '';
-      var openAttrs = href
-        ? ' href="' + escapeHtml(href) + '"'
-        : ' href="#" data-no-nav="1"';
-      html +=
-        '<a class="' + cls + '"' + openAttrs +
-            ' title="' + escapeHtml((p.type || 'Photo') + (p.required ? ' (Required)' : '')) + '">' +
-          thumb + typeHtml +
-          (missing ? '<span class="scw-ws-v2-photo-flag" title="Required photo missing">!</span>' : '') +
-        '</a>';
-    }
     if (addHref) {
-      html += '<a class="scw-ws-v2-photo-add" href="' + escapeHtml(addHref) +
-                '" title="Add photo">+ Add</a>';
+      html += '<a class="scw-ws-v2-photo-add' +
+                (photos.length ? '' : ' scw-ws-v2-photo-add--solo') +
+                '" href="' + escapeHtml(addHref) + '" title="Add photo">' +
+                '<span class="scw-ws-v2-photo-add-icon">+</span>' +
+                '<span class="scw-ws-v2-photo-add-text">Add photo</span>' +
+              '</a>';
     }
+
+    html += '</div>';
     strip.innerHTML = html;
     return strip;
   }
