@@ -284,11 +284,16 @@
     '  field-sizing: content;',
     '}',
 
-    /* Non-cam rows have no label — drop the blank label cell so the
-       product / Service tag slides left and reclaims that column. */
+    /* Non-cam rows have no label — let the product / Service tag span
+       both the label column AND its own column so it gets the full
+       width of a cam row\'s label+product slot. */
     '.scw-ws-v2-row--default > .scw-ws-v2-cell--label.scw-ws-v2-cell--blank,',
     '.scw-ws-v2-row--services > .scw-ws-v2-cell--label.scw-ws-v2-cell--blank {',
     '  display: none !important;',
+    '}',
+    '.scw-ws-v2-row--default > .scw-ws-v2-cell--product,',
+    '.scw-ws-v2-row--services > .scw-ws-v2-cell--tag {',
+    '  grid-column: 1 / span 2 !important;',
     '}',
 
     /* Rows that don\'t carry a quantity (cam/reader, or field_2634 lock):
