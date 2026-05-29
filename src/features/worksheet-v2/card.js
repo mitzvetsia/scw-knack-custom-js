@@ -739,6 +739,15 @@
       if (sowIds.length) card.setAttribute('data-scw-ws-v2-sow', sowIds.join(' '));
     }
 
+    // Warning issue types (from ns.warnings cache) — space-separated
+    // attribute so CSS can show the per-card amber dot when any
+    // issue is present.
+    var issues = (ns.warnings && typeof ns.warnings.getIssuesFor === 'function')
+      ? ns.warnings.getIssuesFor(rec.id) : [];
+    if (issues && issues.length) {
+      card.setAttribute('data-scw-ws-v2-warnings', issues.join(' '));
+    }
+
     var row, det;
     if (cat === 'cam') {
       row = buildRow_cam(rec, sourceViewKey);
@@ -766,6 +775,28 @@
       sel.setAttribute('data-scw-ws-v2-select', rec.id);
       sel.setAttribute('aria-label', 'Select row');
       rowEl.insertBefore(sel, rowEl.firstChild);
+
+      // Per-card warning badge — small amber triangle in the left
+      // gutter when the record has any detected issues. Hover gives
+      // the full list as a tooltip; clicking opens the card.
+      if (issues && issues.length) {
+        var labels = (ns.warnings && ns.warnings.LABELS) || {};
+        var human = issues.map(function (k) {
+          return labels[k] || k;
+        }).join(', ');
+        var badge = document.createElement('span');
+        badge.className = 'scw-ws-v2-warn-badge';
+        badge.setAttribute('data-scw-ws-v2-expand', rec.id);
+        badge.setAttribute('title', 'Issues: ' + human);
+        badge.innerHTML =
+          '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" ' +
+          'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+          'stroke-linejoin="round">' +
+          '<path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>' +
+          '<line x1="12" y1="9" x2="12" y2="13"/>' +
+          '<line x1="12" y1="17" x2="12.01" y2="17"/></svg>';
+        rowEl.appendChild(badge);
+      }
     }
     // Photo strip — appended AFTER the detail panel. Hidden by
     // default; only revealed when the card is expanded (matches the

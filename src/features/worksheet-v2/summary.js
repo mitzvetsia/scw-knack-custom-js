@@ -289,6 +289,54 @@
     'stroke="currentColor" stroke-width="2.5" stroke-linecap="round" ' +
     'stroke-linejoin="round"><polyline points="9 6 15 12 9 18"></polyline></svg>';
 
+  var WARN_SVG =
+    '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" ' +
+    'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+    'stroke-linejoin="round">' +
+    '<path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>' +
+    '<line x1="12" y1="9" x2="12" y2="13"/>' +
+    '<line x1="12" y1="17" x2="12.01" y2="17"/></svg>';
+
+  /** Issue-chip strip rendered into the summary head. Reads from
+   *  ns.warnings cache (analyzed once per render in render.js). Empty
+   *  string when there are no flagged records in the given set. */
+  function fmtIssueChips(recordIds) {
+    if (!ns.warnings || typeof ns.warnings.getCountsForRecords !== 'function') return '';
+    if (!recordIds.length) return '';
+    var counts;
+    try { counts = ns.warnings.getCountsForRecords(recordIds); }
+    catch (e) { return ''; }
+    var labels = ns.warnings.LABELS || {};
+    var types  = ns.warnings.TYPES  || [];
+    var parts = [];
+    for (var t = 0; t < types.length; t++) {
+      var k = types[t];
+      var n = counts[k] || 0;
+      if (!n) continue;
+      parts.push(
+        '<span class="scw-ws-v2-warn-chip" title="' +
+          n + ' ' + esc(labels[k] || k) + '">' +
+          WARN_SVG +
+          '<span class="scw-ws-v2-warn-chip-n">' + n + '</span>' +
+          '<span class="scw-ws-v2-warn-chip-l">' + esc(labels[k] || k) + '</span>' +
+        '</span>'
+      );
+    }
+    return parts.length
+      ? '<span class="scw-ws-v2-warn-chips">' + parts.join('') + '</span>'
+      : '';
+  }
+
+  function collectRecordIds(l1) {
+    var out = [];
+    var l2s = (l1 && l1.l2) || [];
+    for (var i = 0; i < l2s.length; i++) {
+      var recs = (l2s[i] && l2s[i].records) || [];
+      for (var j = 0; j < recs.length; j++) if (recs[j] && recs[j].id) out.push(recs[j].id);
+    }
+    return out;
+  }
+
   function fmtSummaryStat(totals) {
     var bits = [];
     if (totals.count) bits.push(totals.count + ' items');
@@ -313,6 +361,7 @@
         '<tbody>' + buildSectionsRows(agg) + '</tbody>' +
       '</table>';
 
+    var chips = fmtIssueChips(collectRecordIds(l1));
     var wrap = document.createElement('div');
     wrap.className = 'scw-ws-v2-summary';
     wrap.innerHTML =
@@ -321,6 +370,7 @@
         '<span class="scw-ws-v2-summary-chev">' + CHEV_SVG + '</span>' +
         '<span class="scw-ws-v2-summary-title">Summary</span>' +
         '<span class="scw-ws-v2-summary-stats">' + esc(fmtSummaryStat(agg.totals)) + '</span>' +
+        chips +
       '</button>' +
       '<div class="scw-ws-v2-summary-body">' + tableHtml + '</div>';
     return wrap;
@@ -347,6 +397,10 @@
         '<tbody>' + buildSectionsRows(agg, { alwaysSubtotal: true }) + '</tbody>' +
       '</table>';
 
+    var allIds = [];
+    for (var ri = 0; ri < all.length; ri++) if (all[ri] && all[ri].id) allIds.push(all[ri].id);
+    var grandChips = fmtIssueChips(allIds);
+
     var wrap = document.createElement('div');
     wrap.className = 'scw-ws-v2-grand-summary';
     wrap.innerHTML =
@@ -357,6 +411,7 @@
         '<span class="scw-ws-v2-summary-stats">' +
           all.length + ' line items · ' + esc(fmtSummaryStat(agg.totals)) +
         '</span>' +
+        grandChips +
       '</button>' +
       '<div class="scw-ws-v2-summary-body">' + tableHtml + '</div>';
     return wrap;

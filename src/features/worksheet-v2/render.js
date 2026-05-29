@@ -215,6 +215,13 @@
     var effectiveRecords = (ns.sowFilter && typeof ns.sowFilter.filterRecords === 'function')
       ? ns.sowFilter.filterRecords(sourceViewKey, records)
       : records;
+    // Detect issues once per render — cards + summary chips read from
+    // the cached analysis. Runs against the filtered records so the
+    // counts reflect what\'s actually visible.
+    if (ns.warnings && typeof ns.warnings.analyze === 'function') {
+      try { ns.warnings.analyze(effectiveRecords, sourceViewKey); }
+      catch (e) { console.warn('[scw-ws-v2] warnings analyze failed', e); }
+    }
     var sortPreset = (ns.sort && typeof ns.sort.getActivePreset === 'function')
       ? ns.sort.getActivePreset(sourceViewKey)
       : null;
