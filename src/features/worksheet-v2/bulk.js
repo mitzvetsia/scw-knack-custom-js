@@ -312,6 +312,177 @@
     }
     return d.promise();
   }
+  /** POST to MAKE_DELETE_RECORD_WEBHOOK with { recordId } — same
+   *  contract the per-row trash + chip × handlers use. Retried on
+   *  transient errors. Resolves to a settle-shaped result so partial
+   *  failures don\'t reject the whole batch. */
+  function doDeleteWithRetry(recordId, webhookUrl, attempt) {
+    attempt = attempt || 1;
+    var d = $.Deferred();
+    try {
+      $.ajax({
+        url:  webhookUrl,
+        type: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify({ recordId: recordId }),
+        crossDomain: true,
+        timeout: 60000,
+        success: function () { d.resolve({ ok: true, recordId: recordId, status: 200 }); },
+        error: function (xhr) {
+          // Make webhooks often CORS-block the response (status 0)
+          // even when the scenario ran fine — treat as success.
+          if (xhr && xhr.status === 0) {
+            d.resolve({ ok: true, recordId: recordId, status: 0 });
+            return;
+          }
+          if (attempt < MAX_ATTEMPTS && isRetryable(xhr)) {
+            var wait = BASE_BACKOFF * Math.pow(2, attempt - 1) + Math.random() * 250;
+            setTimeout(function () {
+              doDeleteWithRetry(recordId, webhookUrl, attempt + 1)
+                .then(function (r) { d.resolve(r); });
+            }, wait);
+          } else {
+            d.resolve({ ok: false, recordId: recordId, status: xhr && xhr.status });
+          }
+        }
+      });
+    } catch (e) {
+      d.resolve({ ok: false, recordId: recordId, status: -1 });
+    }
+    return d.promise();
+  }
+
+  /** Generic concurrency-capped job runner — takes a list of work
+   *  items and an async fn(item) → promise<result>. Same in-flight
+   *  cap as runQueue. */
+  function runJobQueue(items, fn, onProgress) {
+    var results = [];
+    var i = 0, inflight = 0, total = items.length;
+    var d = $.Deferred();
+    function pump() {
+      while (inflight < MAX_CONCURRENT && i < total) {
+        var item = items[i++];
+        inflight++;
+        fn(item).then(function (r) {
+          inflight--;
+          results.push(r);
+          if (typeof onProgress === 'function') onProgress(results.length, total);
+          if (results.length === total) d.resolve(results);
+          else pump();
+        });
+      }
+    }
+    if (!total) d.resolve(results);
+    else pump();
+    return d.promise();
+  }
+
+  /** Collect the accessory line-item ids attached (via field_2464
+   *  back-mirror) to any of the given parent ids. Walks the source
+   *  view\'s model — accessories are hidden from the v2 tree but
+   *  still present in Knack\'s records. */
+  function collectAccessoryIds(parentIds, sourceViewKey) {
+    var parentSet = Object.create(null);
+    for (var p = 0; p < parentIds.length; p++) parentSet[parentIds[p]] = true;
+
+    var v = window.Knack && Knack.views && Knack.views[sourceViewKey];
+    if (!v || !v.model || !v.model.data) return [];
+    var models = v.model.data.models || [];
+    var accIds = [];
+    var seen = Object.create(null);
+    for (var i = 0; i < models.length; i++) {
+      var r = models[i] && models[i].attributes;
+      if (!r || !r.id) continue;
+      // Skip parents themselves — we delete them separately.
+      if (parentSet[r.id]) continue;
+      var raw = r.field_2464_raw;
+      if (!Array.isArray(raw)) continue;
+      for (var j = 0; j < raw.length; j++) {
+        if (raw[j] && parentSet[raw[j].id]) {
+          if (!seen[r.id]) { seen[r.id] = true; accIds.push(r.id); }
+          break;
+        }
+      }
+    }
+    return accIds;
+  }
+
+  /** Bulk delete — accessories first, then parents. Both go through
+   *  the existing MAKE_DELETE_RECORD_WEBHOOK (no API keys, no auto-
+   *  confirm modal serialization), capped at MAX_CONCURRENT in flight
+   *  with retry-on-transient-error. */
+  function runBulkDelete(parentIds, sourceViewKey, overlay, status, saveBtn, cancelBtn, deleteBtn, close) {
+    var webhookUrl = (window.SCW && SCW.CONFIG && SCW.CONFIG.MAKE_DELETE_RECORD_WEBHOOK) || '';
+    if (!webhookUrl || /PLACEHOLDER/.test(webhookUrl)) {
+      status.innerHTML = '<div class="scw-ws-v2-bulk-fail">' +
+        'Delete webhook URL not configured (MAKE_DELETE_RECORD_WEBHOOK).</div>';
+      return;
+    }
+    var accIds  = collectAccessoryIds(parentIds, sourceViewKey);
+    var totalN  = parentIds.length + accIds.length;
+    var msg = 'Delete ' + parentIds.length +
+              ' line item' + (parentIds.length === 1 ? '' : 's');
+    if (accIds.length) {
+      msg += ' AND ' + accIds.length + ' attached accessor' +
+             (accIds.length === 1 ? 'y' : 'ies');
+    }
+    msg += '? This cannot be undone.';
+    if (!window.confirm(msg)) return;
+
+    // Disable everything in the modal while delete runs.
+    saveBtn.disabled   = true;
+    cancelBtn.disabled = true;
+    deleteBtn.disabled = true;
+    overlay.classList.add('scw-ws-v2-bulk-overlay--saving');
+    status.innerHTML =
+      '<div class="scw-ws-v2-bulk-progress">' +
+        '<div class="scw-ws-v2-bulk-progress-bar" style="width:0%"></div>' +
+      '</div>' +
+      '<div class="scw-ws-v2-bulk-progress-text">' +
+        '<span class="scw-ws-v2-bulk-spinner"></span>' +
+        '<span class="scw-ws-v2-bulk-progress-label">Deleting 0 of ' + totalN + '…</span>' +
+      '</div>';
+    var bar   = status.querySelector('.scw-ws-v2-bulk-progress-bar');
+    var label = status.querySelector('.scw-ws-v2-bulk-progress-label');
+
+    // Accessories first so the parent\'s connections don\'t go stale
+    // mid-cascade.
+    var jobs = accIds.concat(parentIds);
+    runJobQueue(jobs, function (id) {
+      return doDeleteWithRetry(id, webhookUrl);
+    }, function (done, total) {
+      var pct = Math.round((done / total) * 100);
+      if (bar) bar.style.width = pct + '%';
+      if (label) label.textContent = 'Deleting ' + done + ' of ' + total + '… (' + pct + '%)';
+    }).then(function (results) {
+      var ok = 0, fail = 0;
+      for (var r = 0; r < results.length; r++) {
+        if (results[r].ok) ok++; else fail++;
+      }
+      overlay.classList.remove('scw-ws-v2-bulk-overlay--saving');
+      if (fail === 0) {
+        status.innerHTML = '<div class="scw-ws-v2-bulk-success">' +
+          '<span class="scw-ws-v2-bulk-success-check">&#10003;</span>' +
+          'Deleted ' + ok + ' records. Refreshing…</div>';
+        setTimeout(function () {
+          close();
+          clearAll();
+          if (ns.data && typeof ns.data.refetchAndNotify === 'function') {
+            ns.data.refetchAndNotify(sourceViewKey);
+          }
+          syncDomFromState();
+          refreshToolbar();
+        }, 1200);
+      } else {
+        status.innerHTML = '<div class="scw-ws-v2-bulk-fail">' +
+          'Deleted ' + ok + ', failed ' + fail + '. Try again or close.</div>';
+        saveBtn.disabled   = false;
+        cancelBtn.disabled = false;
+        deleteBtn.disabled = false;
+      }
+    });
+  }
+
   function runQueue(jobs, onProgress) {
     // jobs: [{viewKey, recordId, body}, ...]
     var results = [];
@@ -462,6 +633,11 @@
         '<div class="scw-ws-v2-bulk-modal-body"></div>' +
         '<div class="scw-ws-v2-bulk-modal-status"></div>' +
         '<div class="scw-ws-v2-bulk-modal-actions">' +
+          '<button type="button" class="scw-ws-v2-bulk-modal-delete" ' +
+            'title="Delete every selected line item AND its attached mounting hardware">' +
+            'Delete ' + ids.length + ' row' + (ids.length === 1 ? '' : 's') +
+          '</button>' +
+          '<div class="scw-ws-v2-bulk-modal-actions-spacer"></div>' +
           '<button type="button" class="scw-ws-v2-bulk-modal-cancel">Cancel</button>' +
           '<button type="button" class="scw-ws-v2-bulk-modal-save">Apply to ' + ids.length + ' rows</button>' +
         '</div>' +
@@ -594,6 +770,13 @@
     overlay.addEventListener('click', function (e) {
       if (e.target === overlay) close();
     });
+
+    var deleteBtn = overlay.querySelector('.scw-ws-v2-bulk-modal-delete');
+    if (deleteBtn) {
+      deleteBtn.addEventListener('click', function () {
+        runBulkDelete(ids, sourceViewKey, overlay, status, saveBtn, cancelBtn, deleteBtn, close);
+      });
+    }
 
     saveBtn.addEventListener('click', function () {
       // Build the body once from the rowState (same body for every record).
