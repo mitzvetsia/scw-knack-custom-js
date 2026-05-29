@@ -497,11 +497,20 @@
     '.scw-ws-v2-detail {',
     '  display: none !important;',
     '  padding: 10px 14px 12px !important;',
-    '  background: #f8fafc !important;',
-    '  border-top: 1px dashed var(--scw-border-default, #cbd5e1) !important;',
+    '  background: #eef4fb !important;',
     '}',
     '.scw-ws-v2-card--open .scw-ws-v2-detail {',
     '  display: block !important;',
+    '}',
+    /* Expanded card — tint the whole card (row + detail) so it pops
+       from the zebra-striped list. Override hover/zebra so the open
+       state wins. */
+    '.scw-ws-v2-card--open,',
+    '.scw-ws-v2-card--open:hover,',
+    '.scw-ws-v2-card--open:nth-child(even),',
+    '.scw-ws-v2-card--open:nth-child(even):hover {',
+    '  background: #eef4fb !important;',
+    '  box-shadow: inset 3px 0 0 #2563eb !important;',
     '}',
     '.scw-ws-v2-detail-grid {',
     '  display: grid !important;',
