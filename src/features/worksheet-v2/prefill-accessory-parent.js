@@ -144,9 +144,15 @@
     $select.val(parentId);
 
     // Also patch the hidden connection input so Knack\'s submit handler
-    // reads the correct value even before the Chosen UI sync.
+    // reads the correct value even before the Chosen UI sync. Knack\'s
+    // search-style connection picker expects a URL-encoded JSON array
+    // (e.g. %5B%22<id>%22%5D), NOT the bare id — bare id makes submit
+    // post the visible label as a string instead of resolving the
+    // connection. Match the format used by clone-sow-to-project.
     var $hidden = jQuery('#kn-input-' + PARENT_FIELD + ' input.connection[name="' + PARENT_FIELD + '"]');
-    $hidden.val(parentId);
+    if ($hidden.length) {
+      $hidden.val(encodeURIComponent(JSON.stringify([parentId])));
+    }
 
     // Sync Chosen + Knack model — both event names cover the two
     // Chosen variants Knack ships.
@@ -155,11 +161,113 @@
     $select.trigger('change');
   }
 
+  /** Build a clean v2-styled picker UI inside view_3580\'s form and
+   *  hide Knack\'s default Chosen-based form-group. The native
+   *  <select id="view_3580-field_1949"> and its hidden connection
+   *  input remain in the DOM so Knack\'s form submit still reads
+   *  values from them — we just write through our own UI. */
+  function buildCustomShell(parentProductId) {
+    var viewEl = document.getElementById(ADD_ACCESSORY_VIEW);
+    if (!viewEl) return;
+    var form = viewEl.querySelector('form');
+    if (!form) return;
+    // Mark the view so our CSS can hide Knack\'s rendered field UI.
+    viewEl.classList.add('scw-ws-v2-acc-modal-shell');
+
+    // Idempotent: bail if we already built the shell for this render.
+    if (form.querySelector('.scw-ws-v2-acc-shell-picker')) return;
+
+    var catalog = (window.SCW && window.SCW.mountingBoxProducts) || [];
+    if (!catalog.length) return; // catalog still loading — retry on next event
+
+    // Same filter + grouping as rewriteProductPicker, but built into
+    // an inline node we own.
+    var filtered = catalog.filter(function (p) {
+      if (!p) return false;
+      if (!parentProductId) return true;
+      var a = Array.isArray(p.compatibleProducts)    ? p.compatibleProducts    : null;
+      var b = Array.isArray(p.compatibleProductsAlt) ? p.compatibleProductsAlt : null;
+      if (!a && !b) return true;
+      return (a && a.indexOf(parentProductId) !== -1) ||
+             (b && b.indexOf(parentProductId) !== -1);
+    });
+    var grouped = Object.create(null);
+    for (var i = 0; i < filtered.length; i++) {
+      var p = filtered[i];
+      var key   = p.bucketId   || '__other';
+      var label = p.bucketName || 'Other';
+      if (!grouped[key]) grouped[key] = { label: label, items: [] };
+      grouped[key].items.push(p);
+    }
+    var groupList = Object.keys(grouped).map(function (k) { return grouped[k]; });
+    groupList.sort(function (a, b) {
+      if (a.label === 'Other' && b.label !== 'Other') return 1;
+      if (b.label === 'Other' && a.label !== 'Other') return -1;
+      return a.label.localeCompare(b.label, undefined,
+        { numeric: true, sensitivity: 'base' });
+    });
+
+    // Build the shell HTML — title + native <select> with <optgroup>
+    // sections. Native select is reliable, accessible, and bypasses
+    // Chosen\'s init lag entirely.
+    var shell = document.createElement('div');
+    shell.className = 'scw-ws-v2-acc-shell-picker';
+    var html =
+      '<div class="scw-ws-v2-acc-shell-title">Pick an accessory product</div>' +
+      '<select class="scw-ws-v2-acc-shell-select">' +
+        '<option value="">— Choose an accessory —</option>';
+    groupList.forEach(function (g) {
+      g.items.sort(function (a, b) {
+        return String(a.name).localeCompare(String(b.name), undefined,
+          { numeric: true, sensitivity: 'base' });
+      });
+      html += '<optgroup label="' + jQuery('<div/>').text(g.label).html() + '">';
+      g.items.forEach(function (pp) {
+        html += '<option value="' + pp.id + '">' +
+          jQuery('<div/>').text(pp.name || '(unnamed)').html() +
+        '</option>';
+      });
+      html += '</optgroup>';
+    });
+    html += '</select>';
+    shell.innerHTML = html;
+
+    // Insert before Knack\'s submit block so the existing submit button
+    // stays visible + functional.
+    var submitBlock = form.querySelector('.kn-submit');
+    if (submitBlock) form.insertBefore(shell, submitBlock);
+    else form.appendChild(shell);
+
+    // On select change, mirror the value into Knack\'s native <select>
+    // + the hidden connection input so the form submit picks it up.
+    var $ourSelect = jQuery(shell).find('.scw-ws-v2-acc-shell-select');
+    var $knackSelect = jQuery('#' + ADD_ACCESSORY_VIEW + '-' + PRODUCT_FIELD);
+    var $knackHidden = jQuery('#kn-input-' + PRODUCT_FIELD +
+                              ' input.connection[name="' + PRODUCT_FIELD + '"]');
+    $ourSelect.on('change', function () {
+      var v = $ourSelect.val() || '';
+      // Make sure the option exists on Knack\'s select (was rewritten
+      // above) — if not, append one so .val() takes.
+      if (v && !$knackSelect.find('option[value="' + v + '"]').length) {
+        var label = $ourSelect.find('option:selected').text();
+        $knackSelect.append(
+          jQuery('<option></option>').attr('value', v).text(label)
+        );
+      }
+      $knackSelect.val(v);
+      $knackHidden.val(v);
+      $knackSelect.trigger('chosen:updated');
+      $knackSelect.trigger('liszt:updated');
+      $knackSelect.trigger('change');
+    });
+  }
+
   function applyAll() {
     prefill();
     var parentId = lastIdInHash();
     var parentProductId = parentId ? lookupParentProductId(parentId) : '';
     rewriteProductPicker(parentProductId);
+    // buildCustomShell(parentProductId);  // paused — verify parent prefill first
   }
 
   // Two render events bracket the modal mount (view + modal). Bind to

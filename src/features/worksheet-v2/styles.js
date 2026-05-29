@@ -2093,7 +2093,40 @@
     '  font: 600 13px/1.2 system-ui, sans-serif !important;',
     '  cursor: pointer !important;',
     '}',
-    '.scw-ws-v2-mb-submit:disabled { background: #94a3b8 !important; cursor: not-allowed !important; }'
+    '.scw-ws-v2-mb-submit:disabled { background: #94a3b8 !important; cursor: not-allowed !important; }',
+
+    /* Add-accessory modal custom shell — hide Knack\'s rendered form */
+    /* widgets (Chosen pickers, labels, the page modal title) and show */
+    /* only our clean picker + Knack\'s native submit button.          */
+    '.scw-ws-v2-acc-modal-shell .kn-form-group { display: none !important; }',
+    '.scw-ws-v2-acc-modal-shell .kn-form-group.kn-submit { display: block !important; }',
+    '.scw-ws-v2-acc-modal-shell .kn-submit { display: block !important; }',
+    '.scw-ws-v2-acc-modal-shell .kn-title,',
+    '.scw-ws-v2-acc-modal-shell .view-header,',
+    '.scw-ws-v2-acc-modal-shell h1.kn-title { display: none !important; }',
+    '.scw-ws-v2-acc-shell-picker {',
+    '  padding: 16px 18px 4px !important;',
+    '  background: #fff !important;',
+    '}',
+    '.scw-ws-v2-acc-shell-title {',
+    '  font: 600 14px/1.3 system-ui, sans-serif !important;',
+    '  color: #0f172a !important;',
+    '  margin: 0 0 8px !important;',
+    '}',
+    '.scw-ws-v2-acc-shell-select {',
+    '  width: 100% !important;',
+    '  padding: 8px 10px !important;',
+    '  border: 1px solid #cbd5e1 !important;',
+    '  border-radius: 5px !important;',
+    '  font: 13px/1.3 system-ui, sans-serif !important;',
+    '  background: #fff !important;',
+    '  box-sizing: border-box !important;',
+    '}',
+    '.scw-ws-v2-acc-modal-shell .kn-submit {',
+    '  padding: 12px 18px 16px !important;',
+    '  border-top: 1px solid #e2e8f0 !important;',
+    '  background: #f8fafc !important;',
+    '}'
   ].join('\n');
 
   var s = document.createElement('style');
