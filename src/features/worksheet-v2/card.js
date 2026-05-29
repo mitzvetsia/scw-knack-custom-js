@@ -261,6 +261,20 @@
     '</button>';
   }
 
+  var KEBAB_SVG =
+    '<svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">' +
+    '<circle cx="12" cy="5" r="1.6"></circle>' +
+    '<circle cx="12" cy="12" r="1.6"></circle>' +
+    '<circle cx="12" cy="19" r="1.6"></circle></svg>';
+
+  function kebabCell(rec) {
+    return '<button type="button" class="scw-ws-v2-cell scw-ws-v2-kebab" ' +
+      'data-scw-ws-v2-kebab="' + escapeHtml(rec.id) + '" ' +
+      'aria-label="More actions" title="More actions">' +
+      KEBAB_SVG +
+    '</button>';
+  }
+
   // ── Row builders (one per bucket category) ─────────────────
 
   function buildRow_cam(rec, viewKey) {
@@ -300,6 +314,7 @@
       ro(installFee, 'scw-ws-v2-cell--fee', 'Install fee') +
       sowCell(rec, viewKey, sow) +
       chevronCell(rec) +
+      kebabCell(rec) +
     '</div>';
   }
 
@@ -332,6 +347,7 @@
       ro(installFee, 'scw-ws-v2-cell--fee', 'Install fee') +
       sowCell(rec, viewKey, sow) +
       chevronCell(rec) +
+      kebabCell(rec) +
     '</div>';
   }
 
@@ -364,6 +380,7 @@
       ro(installFee, 'scw-ws-v2-cell--fee', 'Install fee') +
       sowCell(rec, viewKey, sow) +
       chevronCell(rec) +
+      kebabCell(rec) +
     '</div>';
   }
 
@@ -380,6 +397,7 @@
         textInput(rec, viewKey, 'field_2020', laborDesc, 'Assumption text') +
       '</div>' +
       chevronCell(rec) +
+      kebabCell(rec) +
     '</div>';
   }
 
@@ -580,24 +598,6 @@
     '</div>';
   }
 
-  /** Delete-row button — routes the click to v1's a.kn-link-delete on
-   *  the matching tr in view_3610 (Knack's native delete confirmation
-   *  + cascade fires through v1). Falls back to a no-op render when
-   *  the v1 row isn't present. */
-  function deleteRowButton(rec) {
-    return '<button type="button" class="scw-ws-v2-row-del" ' +
-      'data-scw-ws-v2-row-del="' + escapeHtml(rec.id) + '" ' +
-      'title="Delete this line item">' +
-      '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" ' +
-      'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
-      'stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline>' +
-      '<path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>' +
-      '<path d="M10 11v6"></path><path d="M14 11v6"></path>' +
-      '<path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"></path></svg>' +
-      '<span>Delete line item</span>' +
-    '</button>';
-  }
-
   function buildDetail_cam(rec, viewKey) {
     return '<div class="scw-ws-v2-detail">' +
       '<div class="scw-ws-v2-detail-grid">' +
@@ -617,7 +617,6 @@
         detailField(rec,            viewKey, 'field_1953', 'SCW Notes',   'text') +
         detailReadOnly(rec,                  'field_2412', 'Survey Notes') +
       '</div>' +
-      '<div class="scw-ws-v2-detail-actions">' + deleteRowButton(rec) + '</div>' +
     '</div>';
   }
 
@@ -633,7 +632,6 @@
         detailField(rec,            viewKey, 'field_1953', 'SCW Notes', 'text') +
         detailReadOnly(rec,                  'field_2412', 'Survey Notes') +
       '</div>' +
-      '<div class="scw-ws-v2-detail-actions">' + deleteRowButton(rec) + '</div>' +
     '</div>';
   }
 
@@ -644,7 +642,6 @@
         detailField(rec,      viewKey, 'field_1953', 'SCW Notes', 'text') +
         detailReadOnly(rec,            'field_2412', 'Survey Notes') +
       '</div>' +
-      '<div class="scw-ws-v2-detail-actions">' + deleteRowButton(rec) + '</div>' +
     '</div>';
   }
 
@@ -657,7 +654,6 @@
         detailConnection(rec, viewKey, 'field_1946', 'MDF / IDF') +
         detailField(rec,      viewKey, 'field_1953', 'SCW Notes', 'text') +
       '</div>' +
-      '<div class="scw-ws-v2-detail-actions">' + deleteRowButton(rec) + '</div>' +
     '</div>';
   }
 

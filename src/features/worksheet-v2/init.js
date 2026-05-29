@@ -161,70 +161,113 @@
     });
   }
 
-  // Line item delete — clicks the Knack-native a.kn-link-delete on
-  // the matching row in the v2 source view (view_3962). Same column
-  // shows up in view_3610 too, but routing through 3962 keeps v2 off
-  // of v1's DOM so this still works after Phase 5 cutover.
-  if (!document.documentElement.hasAttribute('data-scw-ws-v2-rowdel-bound')) {
-    document.documentElement.setAttribute('data-scw-ws-v2-rowdel-bound', '1');
+  // Kebab menu — two-click delete with no confirm prompt.
+  //   1. Click kebab → menu opens positioned under the button
+  //   2. Click "Delete line item" → POST to MAKE_DELETE_RECORD_WEBHOOK
+  //      with { recordId } (mirrors connected-records.js deleteRecord).
+  //      Make does the actual delete server-side, no keys in the bundle.
+  // Single popover element reused across cards. Outside click closes.
+  if (!document.documentElement.hasAttribute('data-scw-ws-v2-kebab-bound')) {
+    document.documentElement.setAttribute('data-scw-ws-v2-kebab-bound', '1');
+
+    var menu = document.createElement('div');
+    menu.className = 'scw-ws-v2-kebab-menu';
+    menu.innerHTML =
+      '<button type="button" class="scw-ws-v2-kebab-item scw-ws-v2-kebab-item--danger" ' +
+        'data-scw-ws-v2-action="delete">' +
+        '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" ' +
+          'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+          'stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline>' +
+          '<path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>' +
+          '<path d="M10 11v6"></path><path d="M14 11v6"></path>' +
+          '<path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"></path></svg>' +
+        '<span>Delete line item</span>' +
+      '</button>';
+    document.body.appendChild(menu);
+
+    var menuRowId  = null;
+    var menuViewId = null;
+
+    function closeMenu() {
+      menu.classList.remove('is-open');
+      menuRowId  = null;
+      menuViewId = null;
+    }
+
     document.addEventListener('click', function (e) {
-      var btn = e.target && e.target.closest && e.target.closest('[data-scw-ws-v2-row-del]');
-      if (!btn) return;
-      e.preventDefault();
-      e.stopPropagation();
-      var rowId = btn.getAttribute('data-scw-ws-v2-row-del');
-      if (!rowId) return;
-      var srcView = document.getElementById('view_3962');
-      // Probe several selectors — Knack tables don't always put the
-      // record id on the tr's id attribute. Some views use data-id,
-      // some put it on a nested element, some don't expose it at all.
-      var link = null;
-      var selectorsTried = [];
-      if (srcView) {
-        var attempts = [
-          'tr#' + rowId + ' a.kn-link-delete',
-          'tr[data-record-id="' + rowId + '"] a.kn-link-delete',
-          'tr[data-id="' + rowId + '"] a.kn-link-delete'
-        ];
-        for (var ai = 0; ai < attempts.length; ai++) {
-          selectorsTried.push(attempts[ai]);
-          link = srcView.querySelector(attempts[ai]);
-          if (link) break;
-        }
-        // Last resort: scan every kn-link-delete for one whose closest
-        // tr contains the record id somewhere (class, id, data-*).
-        if (!link) {
-          var all = srcView.querySelectorAll('a.kn-link-delete');
-          for (var aj = 0; aj < all.length; aj++) {
-            var tr = all[aj].closest('tr');
-            if (!tr) continue;
-            if (tr.id === rowId ||
-                tr.getAttribute('data-record-id') === rowId ||
-                tr.getAttribute('data-id') === rowId ||
-                tr.outerHTML.indexOf(rowId) !== -1) {
-              link = all[aj];
-              break;
-            }
-          }
-        }
+      var kebab = e.target && e.target.closest && e.target.closest('[data-scw-ws-v2-kebab]');
+      if (kebab) {
+        e.preventDefault();
+        e.stopPropagation();
+        menuRowId  = kebab.getAttribute('data-scw-ws-v2-kebab');
+        // Find the owning v2 container so we know which source view
+        // to refetch after the delete settles.
+        var container = kebab.closest('[id^="scw-ws-v2-"]');
+        menuViewId = container
+          ? container.id.replace(/^scw-ws-v2-/, '')
+          : null;
+        var rect = kebab.getBoundingClientRect();
+        menu.style.top  = (rect.bottom + 4) + 'px';
+        // Right-align the menu under the kebab (160px min-width).
+        menu.style.left = Math.max(8, rect.right - 160) + 'px';
+        menu.classList.add('is-open');
+        return;
       }
-      console.log('[scw-ws-v2] row delete probe', {
-        rowId: rowId,
-        srcView: !!srcView,
-        link: !!link,
-        linkHref: link ? link.getAttribute('href') : null,
-        totalDeleteLinks: srcView ? srcView.querySelectorAll('a.kn-link-delete').length : 0,
-        selectorsTried: selectorsTried,
-        sampleRowOuter: srcView
-          ? (srcView.querySelector('tr') ? srcView.querySelector('tr').outerHTML.slice(0, 240) : null)
-          : null
-      });
-      if (link) {
-        link.click();
-      } else {
-        console.warn('[scw-ws-v2] view_3962 delete link not found for row ' + rowId);
+      // Click on a menu item
+      var item = e.target && e.target.closest && e.target.closest('[data-scw-ws-v2-action]');
+      if (item && menu.contains(item)) {
+        e.preventDefault();
+        e.stopPropagation();
+        var action = item.getAttribute('data-scw-ws-v2-action');
+        var rowId  = menuRowId;
+        var viewId = menuViewId;
+        closeMenu();
+        if (action === 'delete' && rowId) {
+          var webhookUrl = (window.SCW && SCW.CONFIG && SCW.CONFIG.MAKE_DELETE_RECORD_WEBHOOK) || '';
+          if (!webhookUrl) {
+            console.warn('[scw-ws-v2] MAKE_DELETE_RECORD_WEBHOOK not configured');
+            return;
+          }
+          // Hide the card optimistically so the user sees the row
+          // disappear immediately. The post-cascade refetch will
+          // confirm; on failure the row pops back.
+          var card = document.querySelector(
+            '.scw-ws-v2-card[data-scw-ws-v2-record="' + rowId.replace(/"/g, '\\"') + '"]'
+          );
+          if (card) card.style.display = 'none';
+          fetch(webhookUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ recordId: rowId })
+          })
+          .then(function (resp) {
+            if (!resp.ok) throw new Error('webhook ' + resp.status);
+            if (viewId && ns.data && typeof ns.data.refetchAndNotify === 'function') {
+              // Small delay so Make has time to process the delete
+              // before we refetch (otherwise the record may still
+              // appear in the next fetch).
+              setTimeout(function () { ns.data.refetchAndNotify(viewId); }, 1200);
+            }
+          })
+          .catch(function (err) {
+            console.warn('[scw-ws-v2] delete webhook failed', err);
+            if (card) card.style.display = '';
+          });
+        }
+        return;
+      }
+      // Outside click → close
+      if (menu.classList.contains('is-open') && !menu.contains(e.target)) {
+        closeMenu();
       }
     });
+
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && menu.classList.contains('is-open')) closeMenu();
+    });
+    window.addEventListener('scroll', function () {
+      if (menu.classList.contains('is-open')) closeMenu();
+    }, true);
   }
 
   // Connection-cell click — opens the picker modal scoped to the
