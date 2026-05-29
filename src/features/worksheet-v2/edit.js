@@ -87,25 +87,17 @@
             SCW.syncKnackModel(viewKey, recordId, resp, fieldKey, newValue);
           }
         } catch (e) { /* ignore */ }
-        // Fee depends on server-side formula recompute. Refetch
-        // the SINGLE record so the row\'s Fee + extended totals
-        // pick up the new value without thrashing the whole grid.
+        // Fee depends on a server-side formula recompute. The per-
+        // record fetch is unreliable on this view, so refetch the
+        // whole view\'s model — heavier but the only path that
+        // surfaces Knack\'s recomputed Fee + extended totals
+        // consistently. refetchAndNotify handles the fetch+notify
+        // pair atomically.
         if (FEE_DEPS[fieldKey]) {
-          try {
-            var v = Knack.views[viewKey];
-            var modelEntry = v && v.model && v.model.data &&
-                             v.model.data.get && v.model.data.get(recordId);
-            if (modelEntry && typeof modelEntry.fetch === 'function') {
-              modelEntry.fetch({
-                success: function () {
-                  if (ns.data && typeof ns.data.notify === 'function') {
-                    ns.data.notify(viewKey);
-                  }
-                }
-              });
-              return;
-            }
-          } catch (e) { /* fall through to notify */ }
+          if (ns.data && typeof ns.data.refetchAndNotify === 'function') {
+            ns.data.refetchAndNotify(viewKey);
+            return;
+          }
         }
         if (ns.data && typeof ns.data.notify === 'function') ns.data.notify(viewKey);
       })

@@ -624,9 +624,29 @@
         }
       }
     }
+    // addHref fallback: the slug `add-accessory-line-item` differs
+    // between Knack scenes — guessing it bounces the user to the
+    // home page. First look for a real Knack-rendered "Add" link
+    // anywhere in v1\'s accessory widget (it knows the right slug
+    // for THIS scene); only fall back to the manual construction
+    // when nothing is found.
+    if (!addHref) {
+      try {
+        var srcView2 = document.getElementById(viewKey) ||
+                       document.getElementById('view_3962') ||
+                       document.getElementById('view_3610');
+        var liveTr   = srcView2 && srcView2.querySelector('tr[id="' + parentId + '"]');
+        var liveAdd  = liveTr && liveTr.querySelector('a.scw-cr-add[href]');
+        if (liveAdd) {
+          addHref = liveAdd.getAttribute('href');
+          // Knack links from this widget are already hash paths.
+          if (addHref && addHref.charAt(0) !== '#') addHref = '#' + addHref;
+        }
+      } catch (e) { /* fall through */ }
+    }
     if (!addHref) {
       var base = buildSowBasePath();
-      if (base) addHref = base + '/add-accessory-line-item/' + parentId + '/';
+      if (base) addHref = '#' + base + '/add-accessory-line-item/' + parentId + '/';
     }
 
     // ── Render ──

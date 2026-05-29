@@ -136,7 +136,7 @@
     '  color: #94a3b8 !important;',
     '  white-space: nowrap !important;',
     '}',
-    '.scw-ws-v2-col-header > span:nth-child(n+5):nth-child(-n+9) {',
+    '.scw-ws-v2-col-header > span {',
     '  text-align: center !important;',
     '}',
     /* ASSUMPTIONS bucket — almost full-width text. No money. */
@@ -299,7 +299,7 @@
     '}',
 
     '.scw-ws-v2-input--num {',
-    '  text-align: right !important;',
+    '  text-align: center !important;',
     '  font-variant-numeric: tabular-nums !important;',
     '  -moz-appearance: textfield !important;', /* Firefox: kill spinner */
     '}',
@@ -521,6 +521,7 @@
     '  white-space: nowrap !important;',
     '  overflow: hidden !important;',
     '  text-overflow: ellipsis !important;',
+    '  text-align: center !important;',
     '}',
     '.scw-ws-v2-cell--stack {',
     '  display: flex !important;',
