@@ -82,52 +82,69 @@
     return list;
   }
 
-  function applyFilter(container, activeIds) {
+  function applyFilter(container, activeIds, viewKey) {
     var hasAny = activeIds && activeIds.length > 0;
     if (hasAny) container.setAttribute('data-scw-ws-v2-sow-filter', activeIds.join(','));
     else container.removeAttribute('data-scw-ws-v2-sow-filter');
 
-    // Per-card class toggle. A card is visible (no --sow-filtered)
-    // if at least one of its SOW ids is in activeIds, OR if it has
-    // no SOW ids and the "(blank)" sentinel is active.
+    // Refresh the pill active states (don\'t need to walk cards — the
+    // re-render below rebuilds them from filtered records, so summary
+    // counts adjust to match.)
     var activeSet = Object.create(null);
     var blankActive = false;
     for (var a = 0; a < activeIds.length; a++) {
       if (activeIds[a] === BLANK) blankActive = true;
       else activeSet[activeIds[a]] = true;
     }
-
-    var cards = container.querySelectorAll('.scw-ws-v2-card');
-    for (var c = 0; c < cards.length; c++) {
-      if (!hasAny) {
-        cards[c].classList.remove('scw-ws-v2-card--sow-filtered');
-        continue;
-      }
-      var attr = cards[c].getAttribute('data-scw-ws-v2-sow') || '';
-      var ids  = attr ? attr.split(/\s+/) : [];
-      var hit = false;
-      if (!ids.length) {
-        hit = blankActive;
-      } else {
-        for (var k = 0; k < ids.length; k++) {
-          if (activeSet[ids[k]]) { hit = true; break; }
+    var strip = container.querySelector('.scw-ws-v2-sow-pills');
+    if (strip) {
+      var pills = strip.querySelectorAll('[data-scw-ws-v2-sow-pill]');
+      for (var i = 0; i < pills.length; i++) {
+        var pid = pills[i].getAttribute('data-scw-ws-v2-sow-pill');
+        if (pid === '__all') {
+          pills[i].classList.toggle('scw-ws-v2-sow-pill--active', !hasAny);
+        } else {
+          pills[i].classList.toggle('scw-ws-v2-sow-pill--active',
+            activeSet[pid] || (pid === BLANK && blankActive));
         }
       }
-      cards[c].classList.toggle('scw-ws-v2-card--sow-filtered', !hit);
     }
 
-    var strip = container.querySelector('.scw-ws-v2-sow-pills');
-    if (!strip) return;
-    var pills = strip.querySelectorAll('[data-scw-ws-v2-sow-pill]');
-    for (var i = 0; i < pills.length; i++) {
-      var pid = pills[i].getAttribute('data-scw-ws-v2-sow-pill');
-      if (pid === '__all') {
-        pills[i].classList.toggle('scw-ws-v2-sow-pill--active', !hasAny);
-      } else {
-        pills[i].classList.toggle('scw-ws-v2-sow-pill--active',
-          activeSet[pid] || (pid === BLANK && blankActive));
-      }
+    // Trigger a re-render so the summary counts + grouping + cards
+    // reflect the filtered subset. Falls back gracefully if data/render
+    // aren\'t ready yet (initial boot).
+    if (viewKey && ns.data && ns.render) {
+      var records = ns.data.readRecords(viewKey);
+      ns.render.renderView(viewKey, records);
     }
+  }
+
+  /** Filter a flat records array by the active SOW filter for this
+   *  view. Public so render.js can apply it before group-tree build. */
+  function filterRecords(viewKey, records) {
+    var active = loadActive(viewKey);
+    if (!active.length) return records;
+    var activeSet = Object.create(null);
+    var blankActive = false;
+    for (var a = 0; a < active.length; a++) {
+      if (active[a] === BLANK) blankActive = true;
+      else activeSet[active[a]] = true;
+    }
+    var out = [];
+    for (var i = 0; i < records.length; i++) {
+      var r = records[i];
+      var raw = r && r.field_2154_raw;
+      if (!Array.isArray(raw) || raw.length === 0) {
+        if (blankActive) out.push(r);
+        continue;
+      }
+      var hit = false;
+      for (var j = 0; j < raw.length; j++) {
+        if (raw[j] && activeSet[raw[j].id]) { hit = true; break; }
+      }
+      if (hit) out.push(r);
+    }
+    return out;
   }
 
   function mount(viewKey) {
@@ -169,7 +186,7 @@
     valid[BLANK] = true;
     var active = loadActive(viewKey).filter(function (id) { return valid[id]; });
     saveActive(viewKey, active);
-    applyFilter(container, active);
+    applyFilter(container, active, viewKey);
 
     if (!strip.hasAttribute('data-scw-bound')) {
       strip.setAttribute('data-scw-bound', '1');
@@ -182,25 +199,20 @@
         if (id === '__all') {
           next = [];
         } else {
-          // Toggle individual pill in/out of the active set.
           var idx = current.indexOf(id);
-          if (idx === -1) {
-            next = current.slice();
-            next.push(id);
-          } else {
-            next = current.slice();
-            next.splice(idx, 1);
-          }
+          if (idx === -1) { next = current.slice(); next.push(id); }
+          else            { next = current.slice(); next.splice(idx, 1); }
         }
         saveActive(viewKey, next);
-        applyFilter(container, next);
+        applyFilter(container, next, viewKey);
       });
     }
   }
 
   ns.sowFilter = {
-    mount:      mount,
-    loadActive: loadActive
+    mount:          mount,
+    loadActive:     loadActive,
+    filterRecords:  filterRecords
   };
 })();
 /*** END WORKSHEET V2 — SOW FILTER PILLS **************************************/

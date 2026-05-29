@@ -208,10 +208,17 @@
     }
 
     var seedGroups = readMdfSeedGroups(sourceViewKey);
+    // Apply SOW filter at the data layer so the grand + per-L1
+    // summaries reflect only the visible (filtered) subset. The
+    // pill strip itself still mounts off the unfiltered model so
+    // every SOW remains selectable.
+    var effectiveRecords = (ns.sowFilter && typeof ns.sowFilter.filterRecords === 'function')
+      ? ns.sowFilter.filterRecords(sourceViewKey, records)
+      : records;
     var sortPreset = (ns.sort && typeof ns.sort.getActivePreset === 'function')
       ? ns.sort.getActivePreset(sourceViewKey)
       : null;
-    var tree = ns.groups.buildGroupTree(records, seedGroups, { sortPreset: sortPreset });
+    var tree = ns.groups.buildGroupTree(effectiveRecords, seedGroups, { sortPreset: sortPreset });
     if (ns.state && typeof ns.state.applyOpenState === 'function') {
       ns.state.applyOpenState(sourceViewKey, tree);
     } else {
