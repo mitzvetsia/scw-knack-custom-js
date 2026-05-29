@@ -50,7 +50,7 @@
   var FIELDS = {
     cam: [
       { key: 'field_2020', label: 'Labor description', kind: 'text' },
-      { key: 'field_2240', label: 'Drop prefix',       kind: 'text' },
+      { key: 'field_2240', label: 'Drop prefix',       kind: 'conn-single', candSource: 'dropPrefix' },
       { key: 'field_2150', label: 'Sub Bid',           kind: 'number' },
       { key: 'field_1973', label: '+Hrs',              kind: 'number' },
       { key: 'field_1974', label: '+Mat',              kind: 'number' },
@@ -665,6 +665,19 @@
           return lbl || prod || r.id;
         }
       };
+    }
+
+    if (field.candSource === 'dropPrefix') {
+      // Catalog loaded by the Builder JS snippet (see CLAUDE.md
+      // "Out-of-bundle Knack Builder snippets"). Each entry:
+      //   { id: <24-hex>, identifier: '<label>' }
+      var raw = (window.SCW && window.SCW.dropPrefixOptions) || [];
+      var cands = [];
+      for (var dp = 0; dp < raw.length; dp++) {
+        var rec = raw[dp];
+        if (rec && rec.id && rec.identifier) cands.push(rec);
+      }
+      return { candidates: cands, groupBy: null, itemLabel: null };
     }
 
     return { candidates: [], groupBy: null, itemLabel: null };
