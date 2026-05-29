@@ -87,6 +87,9 @@
         if (ns.sort && typeof ns.sort.mount === 'function') {
           ns.sort.mount(key);
         }
+        if (ns.nativeFilter && typeof ns.nativeFilter.mount === 'function') {
+          ns.nativeFilter.mount(key);
+        }
         if (ns.sowFilter && typeof ns.sowFilter.mount === 'function') {
           ns.sowFilter.mount(key);
         }
