@@ -105,6 +105,22 @@
   // Exclusive accordion is enforced by state.toggleL1 — opening L1-B
   // implicitly closes L1-A in the persisted state, so the next render
   // shows the right thing.
+  // Per-panel summary toggle — click the header to expand/collapse.
+  // Idempotent; binds once globally.
+  if (!document.documentElement.hasAttribute('data-scw-ws-v2-summary-bound')) {
+    document.documentElement.setAttribute('data-scw-ws-v2-summary-bound', '1');
+    document.addEventListener('click', function (e) {
+      var head = e.target && e.target.closest &&
+                 e.target.closest('[data-scw-ws-v2-summary-toggle]');
+      if (!head) return;
+      var panel = head.parentNode;
+      if (!panel) return;
+      var nowOpen = !panel.classList.contains('scw-ws-v2-summary--open');
+      panel.classList.toggle('scw-ws-v2-summary--open', nowOpen);
+      head.setAttribute('aria-expanded', nowOpen ? 'true' : 'false');
+    });
+  }
+
   if (!document.documentElement.hasAttribute('data-scw-ws-v2-l1-bound')) {
     document.documentElement.setAttribute('data-scw-ws-v2-l1-bound', '1');
     document.addEventListener('click', function (e) {

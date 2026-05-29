@@ -69,9 +69,9 @@
 
     var groups = {
       cam:      { label: 'Camera / Reader',     byProduct: Object.create(null),
-                  subtotal: emptyAgg() },
+                  subtotal: emptyAgg(), minSort: Infinity },
       'default':{ label: 'Networking / Headend', byProduct: Object.create(null),
-                  subtotal: emptyAgg() }
+                  subtotal: emptyAgg(), minSort: Infinity }
     };
     var totals = emptyAgg();
 
@@ -84,6 +84,12 @@
       if (cat === 'assumptions' || cat === 'services') continue;
       var groupKey = (cat === 'cam') ? 'cam' : 'default';
       var grp = groups[groupKey];
+
+      // Track the section\'s sort key = minimum field_2218 (proposal
+      // bucket sortOrder) across its records, so the section ordering
+      // matches the main grid\'s L2 sort.
+      var so = readNum(r, 'field_2218');
+      if (isFinite(so) && so < grp.minSort) grp.minSort = so;
 
       var prod = stripHtml(r.field_1949) || '(unnamed)';
       var qty = readNum(r, 'field_1964') || 1;
@@ -151,6 +157,7 @@
         key: 'cam',
         label: groups.cam.label,
         isCamReader: true,
+        sortOrder: groups.cam.minSort,
         products: camProducts,
         subtotal: groups.cam.subtotal
       });
@@ -161,10 +168,21 @@
         key: 'default',
         label: groups['default'].label,
         isCamReader: false,
+        sortOrder: groups['default'].minSort,
         products: defProducts,
         subtotal: groups['default'].subtotal
       });
     }
+    // Sort sections by their minimum field_2218 (proposal bucket
+    // sortOrder) so the grouping order matches the main grid\'s L2
+    // ordering. Ties fall back to the original push order so
+    // cam/reader still wins when both buckets resolve to the same
+    // sortOrder (e.g. when the field is missing on records).
+    sections.sort(function (a, b) {
+      var ao = isFinite(a.sortOrder) ? a.sortOrder : Infinity;
+      var bo = isFinite(b.sortOrder) ? b.sortOrder : Infinity;
+      return ao - bo;
+    });
 
     return { sections: sections, totals: totals };
   }
@@ -266,6 +284,18 @@
     return rows;
   }
 
+  var CHEV_SVG =
+    '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" ' +
+    'stroke="currentColor" stroke-width="2.5" stroke-linecap="round" ' +
+    'stroke-linejoin="round"><polyline points="9 6 15 12 9 18"></polyline></svg>';
+
+  function fmtSummaryStat(totals) {
+    var bits = [];
+    if (totals.count) bits.push(totals.count + ' items');
+    if (totals.subBidSum) bits.push(fmtMoney(totals.subBidSum));
+    return bits.join(' · ');
+  }
+
   function buildL1Summary(l1) {
     var recs = collectRecords(l1);
     var agg = aggregate(recs);
@@ -277,7 +307,7 @@
       return wrapEmpty;
     }
 
-    var html =
+    var tableHtml =
       '<table class="scw-ws-v2-summary-table">' +
         tableHeaderRow() +
         '<tbody>' + buildSectionsRows(agg) + '</tbody>' +
@@ -285,7 +315,14 @@
 
     var wrap = document.createElement('div');
     wrap.className = 'scw-ws-v2-summary';
-    wrap.innerHTML = html;
+    wrap.innerHTML =
+      '<button type="button" class="scw-ws-v2-summary-head" ' +
+        'data-scw-ws-v2-summary-toggle aria-expanded="false">' +
+        '<span class="scw-ws-v2-summary-chev">' + CHEV_SVG + '</span>' +
+        '<span class="scw-ws-v2-summary-title">Summary</span>' +
+        '<span class="scw-ws-v2-summary-stats">' + esc(fmtSummaryStat(agg.totals)) + '</span>' +
+      '</button>' +
+      '<div class="scw-ws-v2-summary-body">' + tableHtml + '</div>';
     return wrap;
   }
 
@@ -304,14 +341,7 @@
       return wrapEmpty;
     }
 
-    var html =
-      '<div class="scw-ws-v2-grand-summary-head">' +
-        '<span class="scw-ws-v2-grand-summary-title">Whole-grid summary</span>' +
-        '<span class="scw-ws-v2-grand-summary-meta">' +
-          all.length + ' line items across ' + tree.length + ' MDF/IDF location' +
-          (tree.length === 1 ? '' : 's') +
-        '</span>' +
-      '</div>' +
+    var tableHtml =
       '<table class="scw-ws-v2-summary-table">' +
         tableHeaderRow() +
         '<tbody>' + buildSectionsRows(agg, { alwaysSubtotal: true }) + '</tbody>' +
@@ -319,7 +349,16 @@
 
     var wrap = document.createElement('div');
     wrap.className = 'scw-ws-v2-grand-summary';
-    wrap.innerHTML = html;
+    wrap.innerHTML =
+      '<button type="button" class="scw-ws-v2-summary-head scw-ws-v2-summary-head--grand" ' +
+        'data-scw-ws-v2-summary-toggle aria-expanded="false">' +
+        '<span class="scw-ws-v2-summary-chev">' + CHEV_SVG + '</span>' +
+        '<span class="scw-ws-v2-summary-title">Summary</span>' +
+        '<span class="scw-ws-v2-summary-stats">' +
+          all.length + ' line items · ' + esc(fmtSummaryStat(agg.totals)) +
+        '</span>' +
+      '</button>' +
+      '<div class="scw-ws-v2-summary-body">' + tableHtml + '</div>';
     return wrap;
   }
 

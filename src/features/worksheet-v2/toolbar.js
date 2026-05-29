@@ -105,7 +105,6 @@
     bar.className = 'scw-ws-v2-toolbar';
     bar.innerHTML =
       '<div class="scw-ws-v2-toolbar-group" role="group" aria-label="View mode">' +
-        btn('default',  'Default',          'Per-group accordion (default)') +
         // Single Expand⇄Collapse toggle. Label flips depending on the
         // current state (handled in applyState below).
         btn('expand',   'Expand all',       'Open every group + show all rows') +
