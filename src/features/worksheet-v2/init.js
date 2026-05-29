@@ -170,6 +170,22 @@
 
       autoConfirmKnackDelete();
       link.click();
+
+      // Knack's delete sometimes doesn't fire knack-view-render on
+      // view_3962, so the model stays populated with the deleted
+      // bracket until a manual refresh. Explicitly refetch view_3962
+      // a beat after the delete confirms — by then Knack's PUT/DELETE
+      // has settled server-side and the fresh fetch returns the new
+      // state without the bracket.
+      var v3962Container = btn.closest('[id^="scw-ws-v2-"]');
+      var v3962ViewKey = v3962Container
+        ? v3962Container.id.replace(/^scw-ws-v2-/, '')
+        : 'view_3962';
+      setTimeout(function () {
+        if (ns.data && typeof ns.data.refetchAndNotify === 'function') {
+          ns.data.refetchAndNotify(v3962ViewKey);
+        }
+      }, 1500);
     });
   }
 
@@ -341,6 +357,15 @@
           }
           autoConfirmKnackDelete();
           link.click();
+
+          // Refetch the source view a beat after the delete so the
+          // row stays gone even if Knack didn't fire a fresh
+          // view-render. Mirrors the chip × delete handler below.
+          setTimeout(function () {
+            if (viewId && ns.data && typeof ns.data.refetchAndNotify === 'function') {
+              ns.data.refetchAndNotify(viewId);
+            }
+          }, 1500);
         }
         return;
       }
