@@ -744,31 +744,121 @@
             // Cascade — when the accessory\'s parent (field_2464)
             // changes, add this accessory to the NEW parent\'s
             // field_1958 (Accessories) array so the forward link is
-            // in sync with the back-mirror. We deliberately punt on
-            // the remove-from-old-parent half per user direction —
-            // there\'s no visible disconnect/remove path on the
-            // parent\'s accessory field today.
-            try {
-              var newParentId = chosenIds && chosenIds[0];
-              if (newParentId) {
+            // in sync with the back-mirror, AND remove it from the OLD
+            // parent\'s field_1958 so its accessory grouping refreshes.
+            // Both rows (accessory + new parent + old parent) need to
+            // re-render — we sync the local Knack models inline for a
+            // snappy first paint, then defer refetchAndNotify until the
+            // server PUTs land so the next pass reads fresh data.
+            var pendingPuts = 0;
+            var anyError = false;
+            function finish() {
+              if (pendingPuts > 0) return;
+              if (ns.data && typeof ns.data.refetchAndNotify === 'function') {
+                ns.data.refetchAndNotify(viewKey);
+              } else if (ns.data && typeof ns.data.notify === 'function') {
+                ns.data.notify(viewKey);
+              }
+            }
+            function patchParentLocal(parentId, newIds) {
+              try {
                 var pView = Knack.views && Knack.views[viewKey];
                 var pModel = pView && pView.model && pView.model.data &&
-                             pView.model.data.get && pView.model.data.get(newParentId);
+                             pView.model.data.get && pView.model.data.get(parentId);
+                if (!pModel) return;
+                var raw = [];
+                for (var i = 0; i < newIds.length; i++) {
+                  raw.push({ id: newIds[i], identifier: '' });
+                }
+                pModel.set({ field_1958_raw: raw, field_1958: newIds.join(',') }, { silent: true });
+              } catch (e) { /* best-effort */ }
+            }
+            function readIds(parentId) {
+              try {
+                var pView = Knack.views && Knack.views[viewKey];
+                var pModel = pView && pView.model && pView.model.data &&
+                             pView.model.data.get && pView.model.data.get(parentId);
                 var pAttrs = pModel && pModel.attributes;
                 var existing = (pAttrs && pAttrs.field_1958_raw) || [];
                 var ids = [];
-                for (var pi = 0; pi < existing.length; pi++) {
-                  if (existing[pi] && existing[pi].id) ids.push(existing[pi].id);
+                for (var i = 0; i < existing.length; i++) {
+                  if (existing[i] && existing[i].id) ids.push(existing[i].id);
                 }
-                if (ids.indexOf(recordId) === -1) {
-                  ids.push(recordId);
+                return ids;
+              } catch (e) { return []; }
+            }
+            try {
+              var newParentId = chosenIds && chosenIds[0];
+
+              // Find the OLD parent (the one the accessory had before
+              // this edit). The picker already PUT field_2464 on the
+              // accessory and syncKnackModel patched its local copy —
+              // so reading field_2464_raw here gives the NEW parent.
+              // We need the OLD value, which is whatever parents
+              // currently list this accessory in field_1958.
+              var oldParentIds = [];
+              try {
+                var srcView = Knack.views && Knack.views[viewKey];
+                var srcRecs = (srcView && srcView.model && srcView.model.data &&
+                               typeof srcView.model.data.toJSON === 'function')
+                                ? srcView.model.data.toJSON() : [];
+                for (var oi = 0; oi < srcRecs.length; oi++) {
+                  var sr = srcRecs[oi];
+                  if (!sr || !sr.id || sr.id === newParentId) continue;
+                  var srRaw = sr.field_1958_raw;
+                  if (!Array.isArray(srRaw)) continue;
+                  for (var oj = 0; oj < srRaw.length; oj++) {
+                    if (srRaw[oj] && srRaw[oj].id === recordId) {
+                      oldParentIds.push(sr.id);
+                      break;
+                    }
+                  }
+                }
+              } catch (eOld) { /* ignore */ }
+
+              // PUTs route through view_3610 (v1 grid) because that\'s
+              // where field_1958 is exposed as editable — v2\'s source
+              // view doesn\'t grant edit perms on the parent\'s
+              // accessory array, so a view-scoped PUT through viewKey
+              // 403s silently.
+              var WRITE_VIEW = 'view_3610';
+
+              // Remove this accessory from each old parent\'s field_1958.
+              oldParentIds.forEach(function (opid) {
+                var ids = readIds(opid).filter(function (x) { return x !== recordId; });
+                patchParentLocal(opid, ids);
+                pendingPuts++;
+                SCW.knackAjax({
+                  url:  SCW.knackRecordUrl(WRITE_VIEW, opid),
+                  type: 'PUT',
+                  data: JSON.stringify({ field_1958: ids }),
+                  success: function () { pendingPuts--; finish(); },
+                  error:   function (xhr) {
+                    anyError = true;
+                    pendingPuts--;
+                    console.warn('[scw-ws-v2] old-parent field_1958 detach failed', xhr);
+                    finish();
+                  }
+                });
+              });
+
+              // Add this accessory to the NEW parent\'s field_1958.
+              if (newParentId) {
+                var newIds = readIds(newParentId);
+                if (newIds.indexOf(recordId) === -1) {
+                  newIds.push(recordId);
+                  patchParentLocal(newParentId, newIds);
+                  pendingPuts++;
                   SCW.knackAjax({
-                    url:  SCW.knackRecordUrl(viewKey, newParentId),
+                    url:  SCW.knackRecordUrl(WRITE_VIEW, newParentId),
                     type: 'PUT',
-                    data: JSON.stringify({ field_1958: ids }),
-                    success: function () { /* refetch below catches the update */ },
+                    data: JSON.stringify({ field_1958: newIds }),
+                    success: function () { pendingPuts--; finish(); },
                     error:   function (xhr) {
-                      console.warn('[scw-ws-v2] field_1958 forward-link cascade failed', xhr);
+                      anyError = true;
+                      pendingPuts--;
+                      console.warn('[scw-ws-v2] new-parent field_1958 attach failed', xhr);
+                      finish();
                     }
                   });
                 }
@@ -776,9 +866,16 @@
             } catch (e) {
               console.warn('[scw-ws-v2] parent cascade threw', e);
             }
-            if (ns.data && typeof ns.data.refetchAndNotify === 'function') {
-              ns.data.refetchAndNotify(viewKey);
+
+            // Immediate re-render so accessory row + both parent rows
+            // reflect the local-model patches we just made. The
+            // post-PUT refetch in finish() will reconcile with server.
+            if (ns.data && typeof ns.data.notify === 'function') {
+              ns.data.notify(viewKey);
             }
+            // If no PUTs were queued, still kick a refetch so the
+            // server\'s authoritative state lands.
+            if (pendingPuts === 0) finish();
           }
         });
         return;
