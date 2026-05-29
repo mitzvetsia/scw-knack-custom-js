@@ -735,14 +735,19 @@
       det = buildDetail_default(rec, sourceViewKey);
     }
 
-    // Leading bulk-select checkbox — absolutely positioned so the row
-    // grid templates don\'t need a new column. bulk.js owns the click
-    // and selection state.
-    card.innerHTML =
-      '<input type="checkbox" class="scw-ws-v2-select" ' +
-        'data-scw-ws-v2-select="' + escapeHtml(rec.id) + '" ' +
-        'aria-label="Select row">' +
-      row + det;
+    card.innerHTML = row + det;
+    // Leading bulk-select checkbox — absolutely positioned INSIDE the
+    // row so it vertically centers with the row\'s actual height
+    // (multi-line labor desc rows are taller than single-line ones).
+    var rowEl = card.querySelector('.scw-ws-v2-row');
+    if (rowEl) {
+      var sel = document.createElement('input');
+      sel.type = 'checkbox';
+      sel.className = 'scw-ws-v2-select';
+      sel.setAttribute('data-scw-ws-v2-select', rec.id);
+      sel.setAttribute('aria-label', 'Select row');
+      rowEl.insertBefore(sel, rowEl.firstChild);
+    }
     return card;
   }
 
