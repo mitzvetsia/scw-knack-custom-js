@@ -148,7 +148,9 @@
         // group label with an empty body rather than a blank "0"
         // sub-header that looks broken.
         if (l2.id === '__empty_l2') continue;
-        body.appendChild(buildL2Header(l2));
+        // Skip the sub-header for the flat (single-bucket) L2 — MDF/IDF
+        // is the only grouping; bucket-level sub-heads were noise.
+        if (l2.id !== '__flat') body.appendChild(buildL2Header(l2));
         for (var j = 0; j < l2.records.length; j++) {
           // Per-card try/catch — one malformed record shouldn't take
           // down the entire panel. Failed cards render an inline

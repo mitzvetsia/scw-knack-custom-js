@@ -253,14 +253,26 @@
     });
 
     l1List.forEach(function (l1) {
-      var l2List = [];
-      Object.keys(l1.l2Map).forEach(function (k) { l2List.push(l1.l2Map[k]); });
-      // Empty L1 (seeded group with no records) — emit a single
-      // placeholder L2 so render.js has something to walk over. Cards
-      // render zero records; only the L1 header is visible until a row
-      // gets moved in.
-      if (!l2List.length) {
-        l2List.push({ id: '__empty_l2', label: '', sortOrder: Infinity, records: [] });
+      // Flatten every per-bucket L2 into a single records list so
+      // proposal-bucket sub-headers go away — MDF/IDF is the only
+      // grouping. The L2 list then has exactly one synthetic entry
+      // ("__flat") containing all records, ordered by the active
+      // sort preset (or the default rule if none).
+      var allRecords = [];
+      Object.keys(l1.l2Map).forEach(function (k) {
+        var rs = l1.l2Map[k].records || [];
+        for (var ri = 0; ri < rs.length; ri++) allRecords.push(rs[ri]);
+      });
+      var l2List = [{
+        id: '__flat',
+        label: '',
+        sortOrder: 0,
+        records: allRecords
+      }];
+      // Empty L1 (seeded group with no records) — emit an empty
+      // placeholder so render.js still walks the L1 header.
+      if (!allRecords.length) {
+        l2List[0].id = '__empty_l2';
       }
 
       // L2 sort: by minimum sortOrder seen, then alphabetical fallback
