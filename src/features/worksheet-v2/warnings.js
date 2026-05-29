@@ -37,6 +37,35 @@
     bracket:      'wrong bracket'
   };
 
+  // Per-issue-type inline SVG. Picked to match v1\'s vocabulary —
+  // photos → camera, disconnected → broken link, bracket → cube. All
+  // currentColor so the amber chip palette tints them automatically.
+  var ICONS = {
+    photos:
+      '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" ' +
+      'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+      'stroke-linejoin="round">' +
+      '<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>' +
+      '<circle cx="12" cy="13" r="4"/></svg>',
+    disconnected:
+      '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" ' +
+      'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+      'stroke-linejoin="round">' +
+      // Broken-link icon: two link halves with a slash through the gap.
+      '<path d="M9 17H7a5 5 0 0 1 0-10h2"/>' +
+      '<path d="M15 7h2a5 5 0 0 1 4.54 7.13"/>' +
+      '<line x1="8" y1="12" x2="13" y2="12"/>' +
+      '<line x1="2" y1="22" x2="22" y2="2"/></svg>',
+    bracket:
+      '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" ' +
+      'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+      'stroke-linejoin="round">' +
+      // Cube / bracket box.
+      '<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>' +
+      '<polyline points="3.27 6.96 12 12.01 20.73 6.96"/>' +
+      '<line x1="12" y1="22.08" x2="12" y2="12"/></svg>'
+  };
+
   // Per-view cache of the last analyze() result. analyze() is cheap
   // (one pass through records + one accessory scan) so we re-run it
   // on every render rather than trying to memoize across renders.
@@ -139,6 +168,7 @@
   ns.warnings = {
     TYPES:               TYPES,
     LABELS:              LABELS,
+    ICONS:               ICONS,
     analyze:             analyze,
     getIssuesFor:        getIssuesFor,
     getCountsForRecords: getCountsForRecords

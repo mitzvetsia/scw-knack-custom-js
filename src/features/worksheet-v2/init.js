@@ -119,6 +119,18 @@
   if (!document.documentElement.hasAttribute('data-scw-ws-v2-summary-bound')) {
     document.documentElement.setAttribute('data-scw-ws-v2-summary-bound', '1');
     document.addEventListener('click', function (e) {
+      // Warning chip → highlight affected cards instead of toggling
+      // the summary panel. Must intercept BEFORE the summary toggle
+      // walk-up below, since chips are buttons inside the summary
+      // head button.
+      var chip = e.target && e.target.closest &&
+                 e.target.closest('[data-scw-ws-v2-warn-chip]');
+      if (chip) {
+        e.preventDefault();
+        e.stopPropagation();
+        highlightIssueType(chip);
+        return;
+      }
       var head = e.target && e.target.closest &&
                  e.target.closest('[data-scw-ws-v2-summary-toggle]');
       if (!head) return;
@@ -128,6 +140,53 @@
       panel.classList.toggle('scw-ws-v2-summary--open', nowOpen);
       head.setAttribute('aria-expanded', nowOpen ? 'true' : 'false');
     });
+  }
+
+  /** When a warning chip is clicked, scope to its summary panel
+   *  (grand → whole grid; per-L1 → that L1 only), find every card
+   *  whose data-scw-ws-v2-warnings includes the chip\'s issue type,
+   *  scroll the first one into view, and add a brief highlight
+   *  animation to all of them. */
+  function highlightIssueType(chip) {
+    var type = chip.getAttribute('data-scw-ws-v2-warn-chip');
+    if (!type) return;
+    // Scope = the L1 block containing this chip, OR the whole v2
+    // container if the chip is inside the grand summary head.
+    var scope = chip.closest('.scw-ws-v2-l1') ||
+                chip.closest('[id^="scw-ws-v2-"]') ||
+                document;
+    var matches = [];
+    var cards = scope.querySelectorAll('.scw-ws-v2-card[data-scw-ws-v2-warnings]');
+    for (var i = 0; i < cards.length; i++) {
+      var attr = cards[i].getAttribute('data-scw-ws-v2-warnings') || '';
+      if ((' ' + attr + ' ').indexOf(' ' + type + ' ') !== -1) {
+        matches.push(cards[i]);
+      }
+    }
+    if (!matches.length) return;
+    // Open the containing L1 + summary panels first if they\'re
+    // collapsed, otherwise the scrollIntoView lands on an invisible row.
+    var l1 = matches[0].closest('.scw-ws-v2-l1');
+    if (l1 && !l1.classList.contains('scw-ws-v2-l1--open')) {
+      // Honor the existing accordion handler by simulating a click on
+      // the head button — that persists state + re-renders. Defer the
+      // highlight until after the re-render.
+      var head = l1.querySelector('[data-scw-ws-v2-l1-toggle]');
+      if (head) {
+        head.click();
+        setTimeout(function () { highlightIssueType(chip); }, 50);
+        return;
+      }
+    }
+    matches[0].scrollIntoView({ behavior: 'smooth', block: 'center' });
+    for (var m = 0; m < matches.length; m++) {
+      (function (card) {
+        card.classList.add('scw-ws-v2-card--warn-flash');
+        setTimeout(function () {
+          card.classList.remove('scw-ws-v2-card--warn-flash');
+        }, 2200);
+      })(matches[m]);
+    }
   }
 
   if (!document.documentElement.hasAttribute('data-scw-ws-v2-l1-bound')) {

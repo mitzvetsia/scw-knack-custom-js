@@ -307,6 +307,7 @@
     try { counts = ns.warnings.getCountsForRecords(recordIds); }
     catch (e) { return ''; }
     var labels = ns.warnings.LABELS || {};
+    var icons  = ns.warnings.ICONS  || {};
     var types  = ns.warnings.TYPES  || [];
     var parts = [];
     for (var t = 0; t < types.length; t++) {
@@ -314,12 +315,14 @@
       var n = counts[k] || 0;
       if (!n) continue;
       parts.push(
-        '<span class="scw-ws-v2-warn-chip" title="' +
-          n + ' ' + esc(labels[k] || k) + '">' +
-          WARN_SVG +
+        '<button type="button" class="scw-ws-v2-warn-chip" ' +
+          'data-scw-ws-v2-warn-chip="' + k + '" ' +
+          'title="Click to highlight the ' + n + ' affected row' +
+          (n === 1 ? '' : 's') + '">' +
+          (icons[k] || WARN_SVG) +
           '<span class="scw-ws-v2-warn-chip-n">' + n + '</span>' +
           '<span class="scw-ws-v2-warn-chip-l">' + esc(labels[k] || k) + '</span>' +
-        '</span>'
+        '</button>'
       );
     }
     return parts.length

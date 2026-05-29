@@ -181,7 +181,12 @@
   }
 
   function stackCell(rec, viewKey, fieldKey, value, totalDisplay, label) {
-    return '<div class="scw-ws-v2-cell scw-ws-v2-cell--stack">' +
+    // Currency fields (sub bid, +Mat, fee subtotals) get a $ glyph
+    // prefix so users see the unit without having to type it.
+    var isCurrency = (fieldKey === 'field_2150' || fieldKey === 'field_1974');
+    return '<div class="scw-ws-v2-cell scw-ws-v2-cell--stack' +
+      (isCurrency ? ' scw-ws-v2-cell--currency' : '') + '">' +
+      (isCurrency ? '<span class="scw-ws-v2-currency-glyph">$</span>' : '') +
       numInput(rec, viewKey, fieldKey, value, label) +
       '<div class="scw-ws-v2-stack-total"' +
         (totalDisplay ? ' title="Total"' : '') + '>' +
@@ -781,20 +786,17 @@
       // the full list as a tooltip; clicking opens the card.
       if (issues && issues.length) {
         var labels = (ns.warnings && ns.warnings.LABELS) || {};
-        var human = issues.map(function (k) {
-          return labels[k] || k;
-        }).join(', ');
+        var icons  = (ns.warnings && ns.warnings.ICONS)  || {};
+        var human = issues.map(function (k) { return labels[k] || k; }).join(', ');
+        var iconStack = issues.map(function (k) {
+          return '<span class="scw-ws-v2-warn-badge-icon" ' +
+            'data-issue-type="' + k + '">' + (icons[k] || '') + '</span>';
+        }).join('');
         var badge = document.createElement('span');
         badge.className = 'scw-ws-v2-warn-badge';
         badge.setAttribute('data-scw-ws-v2-expand', rec.id);
         badge.setAttribute('title', 'Issues: ' + human);
-        badge.innerHTML =
-          '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" ' +
-          'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
-          'stroke-linejoin="round">' +
-          '<path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>' +
-          '<line x1="12" y1="9" x2="12" y2="13"/>' +
-          '<line x1="12" y1="17" x2="12.01" y2="17"/></svg>';
+        badge.innerHTML = iconStack;
         rowEl.appendChild(badge);
       }
     }
