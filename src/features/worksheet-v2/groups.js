@@ -31,6 +31,22 @@
   var FIELD_SORT    = 'field_2218';
   var FIELD_LABEL   = 'field_2365'; // tiebreaker — display label (E-001, etc.)
 
+  // Accessory rows (mounting brackets etc.) live on the same SOW Line
+  // Items object and start showing up in view_3962 once their
+  // filter is dropped. They're visible inside each parent's mounting-
+  // hardware chip widget, so they don't belong as standalone cards in
+  // the L1 tree. Skip them here. Match by field_2464_raw — that's the
+  // accessory's back-connection to its parent line item (populated
+  // exactly when this record IS an accessory).
+  var ACCESSORY_PARENT_FIELD = 'field_2464';
+
+  function isAccessoryRecord(rec) {
+    var raw = rec && rec[ACCESSORY_PARENT_FIELD + '_raw'];
+    if (Array.isArray(raw) && raw.length && raw[0] && raw[0].id) return true;
+    if (raw && typeof raw === 'object' && raw.id) return true;
+    return false;
+  }
+
   // Synthetic L1 buckets. Records with no MDF/IDF go into one of
   // these based on the bucket's identifier text.
   var SYNTHETIC_SERVICES_LABEL    = 'Project Wide Services';
@@ -109,6 +125,7 @@
 
     for (var i = 0; i < records.length; i++) {
       var rec = records[i];
+      if (isAccessoryRecord(rec)) continue;
 
       var l1Conn   = readConn(rec, FIELD_MDF_IDF);
       var l2Conn   = readConn(rec, FIELD_BUCKET);

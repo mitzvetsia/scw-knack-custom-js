@@ -269,18 +269,53 @@
         var viewId = menuViewId;
         closeMenu();
         if (action === 'delete' && rowId) {
-          // Find the Knack-native delete link on the v2 source view
-          // and click it. Then auto-confirm Knack's modal so the user
-          // doesn't see a third click — keeps the flow at two clicks
-          // (kebab → Delete).
+          // 1. Find any accessory records connected back to this
+          //    line item (mounting brackets etc, identified by
+          //    field_2464_raw pointing at rowId) and fire the Make
+          //    delete webhook for each. They're hidden from the v2
+          //    tree but still exist in the source view's model.
+          var allRecs = (viewId && ns.data && typeof ns.data.readRecords === 'function')
+            ? ns.data.readRecords(viewId) : [];
+          var accIds = [];
+          for (var ri = 0; ri < allRecs.length; ri++) {
+            var r = allRecs[ri];
+            var raw = r && r['field_2464_raw'];
+            if (Array.isArray(raw)) {
+              for (var rj = 0; rj < raw.length; rj++) {
+                if (raw[rj] && raw[rj].id === rowId) {
+                  if (accIds.indexOf(r.id) === -1) accIds.push(r.id);
+                  break;
+                }
+              }
+            }
+          }
+          var webhookUrl = (window.SCW && SCW.CONFIG && SCW.CONFIG.MAKE_DELETE_RECORD_WEBHOOK) || '';
+          if (accIds.length && webhookUrl) {
+            for (var ai = 0; ai < accIds.length; ai++) {
+              (function (accId) {
+                fetch(webhookUrl, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ recordId: accId })
+                }).catch(function (err) {
+                  console.warn('[scw-ws-v2] accessory delete webhook failed for ' +
+                    accId, err);
+                });
+              })(accIds[ai]);
+            }
+          } else if (accIds.length && !webhookUrl) {
+            console.warn('[scw-ws-v2] ' + accIds.length +
+              ' accessories not deleted — MAKE_DELETE_RECORD_WEBHOOK missing');
+          }
+
+          // 2. Delete the parent through Knack's native delete link.
+          //    Auto-confirm the modal so it stays a two-click flow.
           var srcView = viewId ? document.getElementById(viewId) : null;
           var link = srcView && (
             srcView.querySelector('tr#' + rowId + ' a.kn-link-delete') ||
             srcView.querySelector('tr[id="' + rowId + '"] a.kn-link-delete')
           );
           if (!link) {
-            // Fallback to view_3610 while the parallel build is up —
-            // same SOW Line Items object, same delete column.
             var v3610 = document.getElementById('view_3610');
             link = v3610 && v3610.querySelector('tr#' + rowId + ' a.kn-link-delete');
           }
@@ -288,8 +323,6 @@
             console.warn('[scw-ws-v2] kn-link-delete not found for ' + rowId);
             return;
           }
-          // Arm a one-shot observer to catch the confirm modal Knack
-          // pops up next and auto-click its primary (confirm) button.
           autoConfirmKnackDelete();
           link.click();
         }
