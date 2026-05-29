@@ -301,17 +301,44 @@
           mdfRecords = (mdfView.model.data && mdfView.model.data.models) ||
                        mdfView.model.models || null;
         }
+        var allViewKeys = (typeof Knack !== 'undefined' && Knack.views)
+          ? Object.keys(Knack.views) : [];
         console.log('[scw-ws-v2] MDF picker probe', {
-          hasKnackViews: !!(typeof Knack !== 'undefined' && Knack.views),
-          knackViewKeys: (typeof Knack !== 'undefined' && Knack.views)
-            ? Object.keys(Knack.views).filter(function (k) {
-                return k.indexOf('view_33') === 0 || k.indexOf('view_3358') === 0;
-              }) : [],
-          mdfView:    !!mdfView,
-          mdfModel:   !!(mdfView && mdfView.model),
-          mdfData:    !!(mdfView && mdfView.model && mdfView.model.data),
+          allViewKeys: allViewKeys,
+          mdfView:     !!mdfView,
+          mdfModel:    !!(mdfView && mdfView.model),
+          modelKeys:   (mdfView && mdfView.model) ? Object.keys(mdfView.model) : null,
+          modelAttrs:  (mdfView && mdfView.model && mdfView.model.attributes)
+                          ? Object.keys(mdfView.model.attributes).slice(0, 20) : null,
+          modelToJSON: (mdfView && mdfView.model && typeof mdfView.model.toJSON === 'function')
+                          ? (function () {
+                              try {
+                                var j = mdfView.model.toJSON();
+                                return j && typeof j === 'object'
+                                  ? Object.keys(j).slice(0, 12) : typeof j;
+                              } catch (e) { return 'toJSON threw'; }
+                            })() : null,
           mdfRecords: mdfRecords ? mdfRecords.length : 'null'
         });
+        // Also probe every view that looks like an MDF/IDF source.
+        for (var pk = 0; pk < allViewKeys.length; pk++) {
+          var probeKey = allViewKeys[pk];
+          var pv = Knack.views[probeKey];
+          var pvModels = (pv && pv.model && pv.model.data && pv.model.data.models) ||
+                         (pv && pv.model && pv.model.models) || null;
+          if (pvModels && pvModels.length) {
+            var first = pvModels[0] && (pvModels[0].attributes || pvModels[0]);
+            if (first && (first.field_1642 != null || first.field_2375 != null)) {
+              console.log('[scw-ws-v2] candidate MDF view ' + probeKey + ' has ' +
+                pvModels.length + ' records, sample:', {
+                  id: first.id,
+                  field_1642: first.field_1642,
+                  field_2375: first.field_2375,
+                  keys: Object.keys(first).slice(0, 30)
+                });
+            }
+          }
+        }
         if (!mdfRecords || !mdfRecords.length) {
           console.warn('[scw-ws-v2] view_3358 model empty/missing — MDF picker can\'t open');
           return;
