@@ -808,7 +808,7 @@
 
     /* Per-row select checkbox — lives INSIDE the row so it centers
        on the row\'s actual height (multi-line rows are taller). */
-    '.scw-ws-v2-row { position: relative !important; padding-left: 32px !important; }',
+    '.scw-ws-v2-row { position: relative !important; padding-left: 34px !important; }',
     '.scw-ws-v2-row > .scw-ws-v2-select {',
     '  position: absolute !important;',
     '  top: 50% !important;',
@@ -828,7 +828,7 @@
     '}',
     /* Pad the detail panel to the same left gutter so its content
        aligns with the row content above. */
-    '.scw-ws-v2-detail { padding-left: 32px !important; }',
+    '.scw-ws-v2-detail { padding-left: 34px !important; }',
     '.scw-ws-v2-card--selected {',
     '  background: #fff8e1 !important;',
     '  box-shadow: inset 3px 0 0 #f59e0b !important;',
