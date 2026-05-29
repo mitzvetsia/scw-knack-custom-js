@@ -284,6 +284,13 @@
     '  field-sizing: content;',
     '}',
 
+    /* Non-cam rows have no label — drop the blank label cell so the
+       product / Service tag slides left and reclaims that column. */
+    '.scw-ws-v2-row--default > .scw-ws-v2-cell--label.scw-ws-v2-cell--blank,',
+    '.scw-ws-v2-row--services > .scw-ws-v2-cell--label.scw-ws-v2-cell--blank {',
+    '  display: none !important;',
+    '}',
+
     /* Rows that don\'t carry a quantity (cam/reader, or field_2634 lock):
        hide the per-input extended totals so the row reads cleanly. */
     '.scw-ws-v2-row--cam .scw-ws-v2-stack-total,',
