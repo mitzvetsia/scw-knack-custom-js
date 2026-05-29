@@ -121,9 +121,9 @@
     '.scw-ws-v2-row--assumptions {',
     '  display: grid !important;',
     '  grid-template-columns:',
-    '    100px            /* "Assumption" tag */',
     '    1fr              /* text */',
-    '    28px             /* chevron */ !important;',
+    '    28px             /* chevron */',
+    '    28px             /* kebab */ !important;',
     '  gap: 6px !important;',
     '  align-items: center !important;',
     '  padding: 4px 10px !important;',
@@ -1316,22 +1316,20 @@
     '}',
 
     /* ── MODE OVERRIDES ──────────────────────────────────────── */
-    /* Expand all + Summary only: force every L1 body open, regardless
-       of the per-L1 accordion state. Default mode lets state win. */
-    '.scw-ws-v2-mode-expand .scw-ws-v2-l1-body,',
-    '.scw-ws-v2-mode-summary .scw-ws-v2-l1-body {',
-    '  display: block !important;',
-    '}',
-    '.scw-ws-v2-mode-collapse .scw-ws-v2-l1-body {',
-    '  display: none !important;',
-    '}',
-    /* Summary only: cards hidden, summary panel takes the room. */
+    /* Summary-only mode hides cards + L2 sub-headers so just the
+       per-L1 summary panel shows. Expand/Collapse mutate the L1 open
+       state directly (via state.setAllOpen / setAllClosed) so they
+       don\'t need CSS overrides — that lets the per-L1 click handler
+       toggle individual L1s while the toolbar mode is "active". */
     '.scw-ws-v2-mode-summary .scw-ws-v2-card,',
     '.scw-ws-v2-mode-summary .scw-ws-v2-l2-head {',
     '  display: none !important;',
     '}',
-    /* Photos toggle — hide every strip site-wide on this view. */
-    '.scw-ws-v2-photos-hidden .scw-ws-v2-photos {',
+    /* Photos toggle — hide every strip site-wide on this view. Use a
+       higher-specificity selector so it beats the .scw-ws-v2-card--open
+       reveal rule above. */
+    '.scw-ws-v2-photos-hidden .scw-ws-v2-card .scw-ws-v2-photos,',
+    '.scw-ws-v2-photos-hidden .scw-ws-v2-card--open .scw-ws-v2-photos {',
     '  display: none !important;',
     '}',
 
@@ -1403,16 +1401,11 @@
     '  padding: 10px 14px !important;',
     '  border-bottom: 1px solid #e2e8f0 !important;',
     '}',
-    /* Summary-only mode = force every summary open. Cards/L2 heads are
-       already hidden by the existing mode-summary rules below. */
-    '.scw-ws-v2-mode-summary .scw-ws-v2-summary-body,',
-    '.scw-ws-v2-mode-summary .scw-ws-v2-grand-summary > .scw-ws-v2-summary-body {',
-    '  display: block !important;',
-    '  padding: 10px 14px !important;',
-    '}',
-    '.scw-ws-v2-mode-summary .scw-ws-v2-summary-chev {',
-    '  transform: rotate(90deg) !important;',
-    '}',
+    /* Summary-only mode no longer force-opens panels via CSS — the
+       toolbar walks the DOM after switching modes and adds the
+       --open class to every summary head. That way each panel
+       remains individually collapsible (clicking the head removes
+       --open even while mode-summary is active). */
     '.scw-ws-v2-summary-empty {',
     '  font: 500 12px/1.4 system-ui, sans-serif !important;',
     '  color: #94a3b8 !important;',

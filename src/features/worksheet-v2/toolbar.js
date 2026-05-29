@@ -59,44 +59,46 @@
     var hidden = loadPhotosHidden(viewKey);
     container.classList.remove(
       'scw-ws-v2-mode-default',
-      'scw-ws-v2-mode-expand',
-      'scw-ws-v2-mode-collapse',
       'scw-ws-v2-mode-summary'
     );
-    container.classList.add('scw-ws-v2-mode-' + mode);
+    // Only "summary" survives as a CSS-driven mode (hides cards/L2
+    // heads). Expand/collapse mutate state directly so they don\'t
+    // fight per-L1 clicks.
+    if (mode === 'summary') container.classList.add('scw-ws-v2-mode-summary');
+    else container.classList.add('scw-ws-v2-mode-default');
     container.classList.toggle('scw-ws-v2-photos-hidden', hidden);
 
     var bar = container.querySelector('.scw-ws-v2-toolbar');
     if (!bar) return;
-    var btns = bar.querySelectorAll('[data-scw-ws-v2-mode]');
-    for (var i = 0; i < btns.length; i++) {
-      var m = btns[i].getAttribute('data-scw-ws-v2-mode');
-      // The expand button doubles as a collapse-when-active toggle:
-      // when mode is "expand", clicking it should switch to "collapse".
-      // We flip the data-mode and label on the fly so a single click
-      // moves between the two states.
-      if (m === 'expand' || m === 'collapse') {
-        if (mode === 'expand') {
-          btns[i].setAttribute('data-scw-ws-v2-mode', 'collapse');
-          btns[i].textContent = 'Collapse all';
-          btns[i].classList.add('scw-ws-v2-toolbar-btn--active');
-        } else if (mode === 'collapse') {
-          btns[i].setAttribute('data-scw-ws-v2-mode', 'expand');
-          btns[i].textContent = 'Expand all';
-          btns[i].classList.add('scw-ws-v2-toolbar-btn--active');
-        } else {
-          btns[i].setAttribute('data-scw-ws-v2-mode', 'expand');
-          btns[i].textContent = 'Expand all';
-          btns[i].classList.remove('scw-ws-v2-toolbar-btn--active');
-        }
-      } else {
-        btns[i].classList.toggle('scw-ws-v2-toolbar-btn--active', m === mode);
-      }
+
+    // Expand/Collapse toggle button label reflects the LIVE L1 state:
+    // if every L1 in the view is currently open, the button collapses
+    // them; otherwise it expands. This way the button is always honest
+    // about what the next click will do.
+    var l1Sections = container.querySelectorAll('.scw-ws-v2-l1');
+    var openCount = 0;
+    for (var li = 0; li < l1Sections.length; li++) {
+      if (l1Sections[li].classList.contains('scw-ws-v2-l1--open')) openCount++;
     }
+    var allOpen = l1Sections.length > 0 && openCount === l1Sections.length;
+    var toggleBtn = bar.querySelector('[data-scw-ws-v2-mode="expand"], ' +
+                                     '[data-scw-ws-v2-mode="collapse"]');
+    if (toggleBtn) {
+      toggleBtn.setAttribute('data-scw-ws-v2-mode', allOpen ? 'collapse' : 'expand');
+      toggleBtn.textContent = allOpen ? 'Collapse all' : 'Expand all';
+    }
+
+    var summaryBtn = bar.querySelector('[data-scw-ws-v2-mode="summary"]');
+    if (summaryBtn) {
+      summaryBtn.classList.toggle('scw-ws-v2-toolbar-btn--active', mode === 'summary');
+    }
+
     var photosBtn = bar.querySelector('[data-scw-ws-v2-photos-toggle]');
     if (photosBtn) {
       photosBtn.classList.toggle('scw-ws-v2-toolbar-btn--active', !hidden);
       photosBtn.setAttribute('aria-pressed', hidden ? 'false' : 'true');
+      var label = photosBtn.querySelector('.scw-ws-v2-photos-btn-label');
+      if (label) label.textContent = hidden ? 'Show photos' : 'Hide photos';
     }
   }
 
@@ -113,7 +115,7 @@
       '<div class="scw-ws-v2-toolbar-group">' +
         '<button type="button" class="scw-ws-v2-toolbar-btn"' +
           ' data-scw-ws-v2-photos-toggle aria-pressed="true"' +
-          ' title="Show/hide attached photos on expanded rows">' +
+          ' title="Show or hide attached photos on expanded rows">' +
           '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" ' +
             'stroke="currentColor" stroke-width="1.7" stroke-linecap="round" ' +
             'stroke-linejoin="round">' +
@@ -121,7 +123,7 @@
             '<circle cx="9" cy="9" r="1.8"></circle>' +
             '<path d="M21 16l-5-5-9 9"></path>' +
           '</svg>' +
-          '<span>Photos</span>' +
+          '<span class="scw-ws-v2-photos-btn-label">Hide photos</span>' +
         '</button>' +
       '</div>' +
       '<div class="scw-ws-v2-toolbar-spacer"></div>' +
@@ -163,6 +165,71 @@
   function getTriggeredBy() {
     var u = (window.Knack && Knack.getUserAttributes && Knack.getUserAttributes()) || {};
     return u.id || u.email || '';
+  }
+
+  // ── Mode handler — mutates persistent state for expand/collapse,
+  //    keeps Summary as a CSS mode that ALSO opens summary panels. ──
+  function collectL1Ids(container) {
+    var nodes = container.querySelectorAll('[data-scw-ws-v2-l1]');
+    var ids = [];
+    for (var i = 0; i < nodes.length; i++) {
+      var id = nodes[i].getAttribute('data-scw-ws-v2-l1');
+      if (id) ids.push(id);
+    }
+    return ids;
+  }
+
+  function rerender(viewKey) {
+    if (!ns.data || !ns.render) return;
+    var records = ns.data.readRecords(viewKey);
+    ns.render.renderView(viewKey, records);
+  }
+
+  function openAllSummaryPanels(container) {
+    var heads = container.querySelectorAll('[data-scw-ws-v2-summary-toggle]');
+    for (var i = 0; i < heads.length; i++) {
+      var panel = heads[i].parentNode;
+      if (!panel) continue;
+      panel.classList.add('scw-ws-v2-summary--open');
+      heads[i].setAttribute('aria-expanded', 'true');
+    }
+  }
+
+  function handleModeClick(requested, viewKey, container) {
+    var ids = collectL1Ids(container);
+    var currentMode = loadMode(viewKey);
+
+    if (requested === 'expand' || requested === 'collapse') {
+      // Mutate persistent state directly — no CSS override fighting
+      // the per-L1 click handler. Clear summary mode if it was active.
+      if (currentMode === 'summary') saveMode(viewKey, 'default');
+      if (ns.state) {
+        if (requested === 'expand') ns.state.setAllOpen(viewKey, ids);
+        else                          ns.state.setAllClosed(viewKey, ids);
+      }
+      rerender(viewKey);
+      applyState(container, viewKey);
+      return;
+    }
+
+    if (requested === 'summary') {
+      // Toggle: leaving summary mode collapses everything; entering
+      // opens every L1 (so summary panels are visible) AND opens
+      // every summary panel head.
+      if (currentMode === 'summary') {
+        saveMode(viewKey, 'default');
+        if (ns.state) ns.state.setAllClosed(viewKey, ids);
+        rerender(viewKey);
+        applyState(container, viewKey);
+      } else {
+        saveMode(viewKey, 'summary');
+        if (ns.state) ns.state.setAllOpen(viewKey, ids);
+        rerender(viewKey);
+        openAllSummaryPanels(container);
+        applyState(container, viewKey);
+      }
+      return;
+    }
   }
 
   // ── Action handlers ──
@@ -361,16 +428,7 @@
         if (!t || !bar.contains(t)) return;
         if (t.hasAttribute('data-scw-ws-v2-mode')) {
           var requested = t.getAttribute('data-scw-ws-v2-mode');
-          var currentMode = loadMode(viewKey);
-          // Summary button is a toggle: clicking it while already in
-          // summary mode collapses everything (just headers + grand
-          // summary). Default/expand/collapse work as plain selects.
-          if (requested === 'summary' && currentMode === 'summary') {
-            saveMode(viewKey, 'collapse');
-          } else {
-            saveMode(viewKey, requested);
-          }
-          applyState(container, viewKey);
+          handleModeClick(requested, viewKey, container);
         } else if (t.hasAttribute('data-scw-ws-v2-photos-toggle')) {
           savePhotosHidden(viewKey, !loadPhotosHidden(viewKey));
           applyState(container, viewKey);

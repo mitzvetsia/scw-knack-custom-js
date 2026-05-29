@@ -118,10 +118,33 @@
     saveRaw(sourceViewKey, next);
   }
 
+  /**
+   * Force every L1 in `l1Ids` to OPEN (non-exclusive). Used by the
+   * toolbar\'s "Expand all" action so individual L1 toggles still
+   * work afterward without the CSS-override conflict.
+   */
+  function setAllOpen(sourceViewKey, l1Ids) {
+    var next = {};
+    for (var i = 0; i < l1Ids.length; i++) next[l1Ids[i]] = 'open';
+    saveRaw(sourceViewKey, next);
+    return next;
+  }
+
+  /** Force every L1 in `l1Ids` to CLOSED. Explicit "closed" marker
+   *  beats the default-open threshold logic. */
+  function setAllClosed(sourceViewKey, l1Ids) {
+    var next = {};
+    for (var i = 0; i < l1Ids.length; i++) next[l1Ids[i]] = 'closed';
+    saveRaw(sourceViewKey, next);
+    return next;
+  }
+
   ns.state = {
     applyOpenState:   applyOpenState,
     toggleL1:         toggleL1,
     setOpenExclusive: setOpenExclusive,
+    setAllOpen:       setAllOpen,
+    setAllClosed:     setAllClosed,
     DEFAULT_OPEN_THRESHOLD: DEFAULT_OPEN_THRESHOLD
   };
 })();

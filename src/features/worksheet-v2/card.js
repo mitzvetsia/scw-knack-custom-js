@@ -421,8 +421,10 @@
     // money fields, and renames labor desc to 'ASSUMPTION'.
     var laborDesc = readField(rec, 'field_2020');
 
+    // Assumption tag dropped — the L1 group header already labels the
+    // section ("Project Wide Assumptions"), so the inline "Assumption"
+    // chip was redundant noise.
     return '<div class="scw-ws-v2-row scw-ws-v2-row--assumptions">' +
-      ro('Assumption', 'scw-ws-v2-cell--tag') +
       '<div class="scw-ws-v2-cell scw-ws-v2-cell--labor-desc">' +
         textArea(rec, viewKey, 'field_2020', laborDesc, 'Assumption text') +
       '</div>' +
