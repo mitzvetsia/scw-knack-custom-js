@@ -567,7 +567,7 @@
   }
 
   /**
-   * Mounting Hardware (field_1958) — connectedRecords pattern.
+   * Accessories (field_1958) — connectedRecords pattern.
    *
    * v1 renders its OWN widget inside the worksheet card — not a plain
    * `<td class="field_1958">` — so the earlier "scrape native td spans"
@@ -726,7 +726,7 @@
       : '';
 
     return '<div class="scw-ws-v2-detail-field scw-ws-v2-detail-field--mh">' +
-      '<div class="scw-ws-v2-detail-label">Mounting Hardware</div>' +
+      '<div class="scw-ws-v2-detail-label">Accessories</div>' +
       '<div class="scw-ws-v2-mh-list">' + chipsHtml + addHtml + '</div>' +
     '</div>';
   }

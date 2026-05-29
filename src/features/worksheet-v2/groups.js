@@ -47,7 +47,7 @@
   var ACCESSORY_PARENT_FIELD     = 'field_2464';
   var ACCESSORY_FORWARD_FIELD    = 'field_1958';
   var MOUNTING_HARDWARE_BUCKET   = '594a94536877675816984cb9';
-  var SYNTHETIC_ORPHAN_BRACKETS_LABEL = 'Orphaned Mounting Brackets';
+  var SYNTHETIC_ORPHAN_BRACKETS_LABEL = 'Orphaned Accessories';
 
   function bucketIdOf(rec) {
     var raw = rec && rec['field_2219_raw'];

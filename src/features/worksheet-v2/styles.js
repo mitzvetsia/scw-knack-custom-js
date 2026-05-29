@@ -768,7 +768,7 @@
     '  border-radius: 3px !important;',
     '}',
 
-    /* Mounting Hardware widget — chip list with edit links + add */
+    /* Accessories widget — chip list with edit links + add */
     '.scw-ws-v2-mh-list {',
     '  display: flex !important; flex-wrap: wrap !important; gap: 4px !important;',
     '  align-items: center !important;',

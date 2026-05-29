@@ -129,7 +129,7 @@
       '<div class="scw-ws-v2-toolbar-group scw-ws-v2-toolbar-group--cta">' +
         actionBtn('add-sow',      '+ Add to SOW',         'Add a new SOW line item') +
         actionBtn('add-photos',   '+ Add Photos',         'Bulk upload photos to this SOW') +
-        actionBtn('add-mounting', '+ Add Mounting Boxes', 'Add a mounting box to each selected row') +
+        actionBtn('add-mounting', '+ Add Accessories', 'Add an accessory to each selected row') +
       '</div>';
     return bar;
   }
@@ -362,7 +362,7 @@
   function openMountingBoxModal(viewKey) {
     var sel = selectedIdsAndLabels(viewKey);
     if (!sel.ids.length) {
-      alert('Select one or more rows first — the mounting box gets attached to each selected row.');
+      alert('Select one or more rows first — an accessory will be added to each selected row.');
       return;
     }
     var products = (window.SCW && SCW.mountingBoxProducts) || [];
@@ -372,7 +372,7 @@
     overlay.className = 'scw-ws-v2-mb-overlay';
     overlay.innerHTML =
       '<div class="scw-ws-v2-mb-modal">' +
-        '<div class="scw-ws-v2-mb-title">Add mounting box to ' +
+        '<div class="scw-ws-v2-mb-title">Add accessory to ' +
           sel.ids.length + ' row' + (sel.ids.length === 1 ? '' : 's') + '</div>' +
         '<div class="scw-ws-v2-mb-sub">One mounting-box line item will be created per ' +
           'selected row, connected back to the parent.</div>' +
@@ -384,7 +384,7 @@
         '<label class="scw-ws-v2-mb-label">Mounting box product</label>' +
         (hasList
           ? '<select class="scw-ws-v2-mb-input"></select>'
-          : '<input class="scw-ws-v2-mb-input" type="text" placeholder="Type the mounting box product name">') +
+          : '<input class="scw-ws-v2-mb-input" type="text" placeholder="Type the accessory product name">') +
         (!hasList
           ? '<div class="scw-ws-v2-mb-note">window.SCW.mountingBoxProducts not loaded — ' +
             'using free text. Wire the Builder snippet for the dropdown.</div>'
@@ -402,7 +402,7 @@
     if (hasList) {
       var selEl = overlay.querySelector('select.scw-ws-v2-mb-input');
       var blank = document.createElement('option');
-      blank.value = ''; blank.textContent = '— Choose a mounting box —';
+      blank.value = ''; blank.textContent = '— Choose an accessory —';
       selEl.appendChild(blank);
       for (var pi = 0; pi < products.length; pi++) {
         var p = products[pi];
@@ -429,7 +429,7 @@
         productId = picker.value;
         var opt2 = picker.options[picker.selectedIndex];
         productName = opt2 ? (opt2.dataset.name || opt2.textContent) : '';
-        if (!productId) { status.textContent = 'Pick a mounting box product first.'; return; }
+        if (!productId) { status.textContent = 'Pick an accessory product first.'; return; }
       } else {
         productName = (picker.value || '').trim();
         if (!productName) { status.textContent = 'Type a product name first.'; return; }
