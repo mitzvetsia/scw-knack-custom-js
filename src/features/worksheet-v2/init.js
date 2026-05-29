@@ -229,6 +229,63 @@
   // click view_3962's native a.kn-link-delete on the chip's record row
   // and auto-confirm Knack's modal. The chip's record IS just another
   // line item in view_3962, so it has the standard delete column.
+  // Accessory qty stepper — click ± next to a chip in the parent\'s
+  // Accessories detail to PUT the bracket\'s field_1964 (qty). Only
+  // bound to chips whose field_2230 allows multi-qty (see card.js).
+  // Idempotent global binding.
+  if (!document.documentElement.hasAttribute('data-scw-ws-v2-accstep-bound')) {
+    document.documentElement.setAttribute('data-scw-ws-v2-accstep-bound', '1');
+    document.addEventListener('click', function (e) {
+      var step = e.target && e.target.closest &&
+                 e.target.closest('[data-scw-ws-v2-acc-step]');
+      if (!step || step.disabled) return;
+      e.preventDefault();
+      e.stopPropagation();
+      var accId = step.getAttribute('data-scw-ws-v2-acc-id');
+      var dir   = step.getAttribute('data-scw-ws-v2-acc-step');
+      if (!accId || !dir) return;
+      var container = step.closest('[id^="scw-ws-v2-"]');
+      var viewKey = container ? container.id.replace(/^scw-ws-v2-/, '') : '';
+      if (!viewKey) return;
+      // Read current qty from the model so we don\'t race the DOM.
+      var records = (ns.data && typeof ns.data.readRecords === 'function')
+        ? ns.data.readRecords(viewKey) : [];
+      var rec = null;
+      for (var i = 0; i < records.length; i++) {
+        if (records[i] && records[i].id === accId) { rec = records[i]; break; }
+      }
+      var raw = rec ? rec.field_1964_raw : null;
+      var cur = (typeof raw === 'number') ? raw
+              : parseFloat((rec && rec.field_1964 || '1').toString().replace(/[^0-9.\-]/g, ''));
+      if (!isFinite(cur) || cur < 1) cur = 1;
+      var next = dir === 'up' ? cur + 1 : Math.max(1, cur - 1);
+      if (next === cur) return;
+      // Optimistic UI — update the visible qty immediately.
+      var qtyEl = step.parentNode && step.parentNode.querySelector('.scw-ws-v2-mh-qty');
+      if (qtyEl) qtyEl.textContent = next;
+      // PUT through SCW.knackAjax + refetch via the existing data layer.
+      try {
+        SCW.knackAjax({
+          url:  SCW.knackRecordUrl(viewKey, accId),
+          type: 'PUT',
+          data: JSON.stringify({ field_1964: next }),
+          success: function () {
+            if (ns.data && typeof ns.data.refetchAndNotify === 'function') {
+              ns.data.refetchAndNotify(viewKey);
+            }
+          },
+          error: function (xhr) {
+            console.warn('[scw-ws-v2] accessory qty step PUT failed', xhr);
+            if (qtyEl) qtyEl.textContent = cur; // revert
+          }
+        });
+      } catch (err) {
+        console.warn('[scw-ws-v2] accessory qty step threw', err);
+        if (qtyEl) qtyEl.textContent = cur;
+      }
+    });
+  }
+
   if (!document.documentElement.hasAttribute('data-scw-ws-v2-mhdel-bound')) {
     document.documentElement.setAttribute('data-scw-ws-v2-mhdel-bound', '1');
     document.addEventListener('click', function (e) {

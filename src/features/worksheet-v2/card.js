@@ -676,28 +676,58 @@
       if (base) addHref = '#' + base + '/add-accessory-line-item/' + parentId + '/';
     }
 
+    // Build a quick lookup of source-view records so we can read each
+    // bracket\'s own attrs (qty + multi-allowed flag) inline.
+    var accAttrsById = Object.create(null);
+    try {
+      var allRecs = (ns.data && typeof ns.data.readRecords === 'function')
+        ? ns.data.readRecords(viewKey) : [];
+      for (var ai = 0; ai < allRecs.length; ai++) {
+        if (allRecs[ai] && allRecs[ai].id) accAttrsById[allRecs[ai].id] = allRecs[ai];
+      }
+    } catch (e) { /* model not ready — chips render without stepper */ }
+
     // ── Render ──
     var chipsHtml = '';
     if (chips.length === 0) {
       chipsHtml = '<span class="scw-ws-v2-mh-empty">&mdash;</span>';
     } else {
       for (var c = 0; c < chips.length; c++) {
-        var editHref = chips[c].href;
+        var chip = chips[c];
+        var editHref = chip.href;
         if (!editHref) {
           var fbBase = buildSowBasePath();
-          editHref = (fbBase && chips[c].id)
-            ? fbBase + '/edit-accessory-line-item2/' + chips[c].id + '/'
+          editHref = (fbBase && chip.id)
+            ? fbBase + '/edit-accessory-line-item2/' + chip.id + '/'
             : '';
         }
+        // Multi-qty stepper — only rendered when the bracket\'s
+        // field_2230 ("allows multiple quantity") is FALSE/empty.
+        // Locked (field_2230 = Yes) means single-qty only and we omit
+        // the stepper entirely (qty is implicit = 1).
+        var accRec  = accAttrsById[chip.id] || null;
+        var canMulti = accRec ? !isQtyLocked(accRec) : false;
+        var curQty  = accRec ? (parseFloat(readNum(accRec, 'field_1964')) || 1) : 1;
+        var stepperHtml = canMulti
+          ? '<span class="scw-ws-v2-mh-stepper" data-scw-ws-v2-acc-id="' + escapeHtml(chip.id) + '">' +
+              '<button type="button" class="scw-ws-v2-mh-step" ' +
+                'data-scw-ws-v2-acc-step="down" data-scw-ws-v2-acc-id="' + escapeHtml(chip.id) + '" ' +
+                'title="Decrease quantity"' + (curQty <= 1 ? ' disabled' : '') + '>&minus;</button>' +
+              '<span class="scw-ws-v2-mh-qty">' + curQty + '</span>' +
+              '<button type="button" class="scw-ws-v2-mh-step" ' +
+                'data-scw-ws-v2-acc-step="up" data-scw-ws-v2-acc-id="' + escapeHtml(chip.id) + '" ' +
+                'title="Increase quantity">+</button>' +
+            '</span>'
+          : '';
         // Delete X — only when we have the chip's record id AND a
         // parentId, since the click handler reaches into v1's widget
         // to drive its existing delete flow (confirm modal + Make
         // webhook).
-        var delX = (chips[c].id && parentId)
+        var delX = (chip.id && parentId)
           ? '<button type="button" class="scw-ws-v2-mh-del" ' +
-              'data-scw-ws-v2-mh-del="' + escapeHtml(chips[c].id) + '" ' +
+              'data-scw-ws-v2-mh-del="' + escapeHtml(chip.id) + '" ' +
               'data-scw-ws-v2-mh-parent="' + escapeHtml(parentId) + '" ' +
-              'title="Delete ' + escapeHtml(chips[c].label) + '">' +
+              'title="Delete ' + escapeHtml(chip.label) + '">' +
               '&times;</button>'
           : '';
         // No href → render as non-link span so we never silently bounce
@@ -705,16 +735,16 @@
         if (editHref) {
           chipsHtml += '<span class="scw-ws-v2-mh-chip-wrap">' +
             '<a class="scw-ws-v2-mh-chip" href="' + escapeHtml(editHref) + '"' +
-              ' title="Edit ' + escapeHtml(chips[c].label) + '">' +
-              escapeHtml(chips[c].label) +
-            '</a>' + delX +
+              ' title="Edit ' + escapeHtml(chip.label) + '">' +
+              escapeHtml(chip.label) +
+            '</a>' + stepperHtml + delX +
           '</span>';
         } else {
           chipsHtml += '<span class="scw-ws-v2-mh-chip-wrap">' +
             '<span class="scw-ws-v2-mh-chip scw-ws-v2-mh-chip--inert"' +
-              ' title="' + escapeHtml(chips[c].label) + '">' +
-              escapeHtml(chips[c].label) +
-            '</span>' + delX +
+              ' title="' + escapeHtml(chip.label) + '">' +
+              escapeHtml(chip.label) +
+            '</span>' + stepperHtml + delX +
           '</span>';
         }
       }
