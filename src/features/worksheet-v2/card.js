@@ -647,9 +647,9 @@
           detailField(rec,    viewKey, 'field_2035', 'Conduit', 'number') +
         '</div>' +
         '<div class="scw-ws-v2-detail-zone scw-ws-v2-detail-zone--connections">' +
-          detailConnection(rec,       viewKey, 'field_1946', 'MDF / IDF') +
           detailMountingHardware(rec, viewKey) +
           detailConnection(rec,       viewKey, 'field_2197', 'Connected Device') +
+          detailConnection(rec,       viewKey, 'field_1946', 'MDF / IDF') +
         '</div>' +
       '</div>' +
       '<div class="scw-ws-v2-detail-notes">' +
@@ -663,9 +663,9 @@
     return '<div class="scw-ws-v2-detail">' +
       '<div class="scw-ws-v2-detail-zones">' +
         '<div class="scw-ws-v2-detail-zone scw-ws-v2-detail-zone--connections">' +
-          detailConnection(rec,       viewKey, 'field_1946', 'MDF / IDF') +
           detailMountingHardware(rec, viewKey) +
           detailConnection(rec,       viewKey, 'field_1957', 'Connected Devices') +
+          detailConnection(rec,       viewKey, 'field_1946', 'MDF / IDF') +
         '</div>' +
       '</div>' +
       '<div class="scw-ws-v2-detail-notes">' +

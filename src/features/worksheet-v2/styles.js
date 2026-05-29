@@ -559,8 +559,33 @@
     '  grid-template-columns: 1fr 1fr !important;',
     '  gap: 8px 16px !important;',
     '  margin-top: 10px !important;',
-    '  padding-top: 10px !important;',
-    '  border-top: 1px solid #e2e8f0 !important;',
+    '}',
+    /* Always-visible border on editable inputs inside the detail panel
+       so the SCW Notes field doesn\'t look like dead space until hover. */
+    '.scw-ws-v2-detail .scw-ws-v2-input {',
+    '  border-color: var(--scw-border-subtle, #e2e8f0) !important;',
+    '  background: #fff !important;',
+    '}',
+    /* Read-only fields (Survey Notes) — visually distinct from editable
+       inputs: light gray background, no border, italic placeholder when
+       empty. Mirrors CLAUDE.md\'s "look readable but clearly not
+       interactive" rule. */
+    '.scw-ws-v2-detail .scw-ws-v2-display {',
+    '  padding: 4px 6px !important;',
+    '  min-height: 26px !important;',
+    '  background: #f1f5f9 !important;',
+    '  border: 1px solid transparent !important;',
+    '  border-radius: 3px !important;',
+    '  color: #475569 !important;',
+    '  font-size: 13px !important;',
+    '  line-height: 1.35 !important;',
+    '  white-space: pre-wrap !important;',
+    '  word-break: break-word !important;',
+    '}',
+    '.scw-ws-v2-detail .scw-ws-v2-display:empty::before {',
+    '  content: "(none)";',
+    '  color: #94a3b8 !important;',
+    '  font-style: italic;',
     '}',
     /* When there\'s no identity zone (default/services), let connections
        fill the full width. */
