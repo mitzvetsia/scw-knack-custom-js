@@ -36,6 +36,7 @@
   var CAM_READER_BUCKET   = '6481e5ba38f283002898113c';
   var SERVICES_BUCKET     = '6977caa7f246edf67b52cbcd';
   var ASSUMPTIONS_BUCKET  = '697b7a023a31502ec68b3303';
+  var NETWORKING_BUCKET   = '647953bb54b4e1002931ed97';
 
   function escapeHtml(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
@@ -771,12 +772,20 @@
   }
 
   function buildDetail_default(rec, viewKey) {
-    var hasParent      = !!readParentRef(rec);
+    var hasParent       = !!readParentRef(rec);
     var showConnDevices = isMapConnectionsRow(rec);
+    // Parent field shows for any default-category record that is NOT
+    // Networking/Headend — those are themselves primary line items
+    // and aren\'t meant to become accessories. Once a record HAS a
+    // parent we always show the field (even on Networking rows, in
+    // case someone needs to clear it). Cam/services/assumptions have
+    // their own detail builders and never show Parent.
+    var bid = bucketIdOf(rec);
+    var showParent = hasParent || (bid !== NETWORKING_BUCKET);
     return '<div class="scw-ws-v2-detail">' +
       '<div class="scw-ws-v2-detail-zones">' +
         '<div class="scw-ws-v2-detail-zone scw-ws-v2-detail-zone--connections">' +
-          (hasParent ? detailConnection(rec, viewKey, 'field_2464', 'Parent') : '') +
+          (showParent ? detailConnection(rec, viewKey, 'field_2464', 'Parent') : '') +
           detailMountingHardware(rec, viewKey) +
           (showConnDevices ? detailConnection(rec, viewKey, 'field_1957', 'Connected Devices') : '') +
           detailConnection(rec,       viewKey, 'field_1946', 'MDF / IDF') +
@@ -919,6 +928,7 @@
     CAM_READER_BUCKET:   CAM_READER_BUCKET,
     SERVICES_BUCKET:     SERVICES_BUCKET,
     ASSUMPTIONS_BUCKET:  ASSUMPTIONS_BUCKET,
+    NETWORKING_BUCKET:   NETWORKING_BUCKET,
     bucketCategoryOf:    bucketCategoryOf
   };
 })();

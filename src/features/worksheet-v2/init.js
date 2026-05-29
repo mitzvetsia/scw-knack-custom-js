@@ -697,12 +697,13 @@
       // line item on the source view. Single-select. Used by
       // promoted accessories to re-parent themselves.
       if (fieldKey === 'field_2464') {
-        // Bucket ids to exclude from parent candidates — accessories
-        // (mounting hardware), services, and assumptions are never
-        // valid parents for an attached line item.
-        var SERVICES   = (ns.card && ns.card.SERVICES_BUCKET)    || '6977caa7f246edf67b52cbcd';
-        var ASSUMPTIO  = (ns.card && ns.card.ASSUMPTIONS_BUCKET) || '697b7a023a31502ec68b3303';
-        var MOUNTING   = '594a94536877675816984cb9';
+        // Parent candidates are constrained to Cam/Reader and
+        // Networking/Headend records — those are the only buckets that
+        // make sense as "primary" line items something else attaches
+        // to. We also drop records that are themselves accessories
+        // (they can\'t be parents) and the record being edited itself.
+        var CAM        = (ns.card && ns.card.CAM_READER_BUCKET) || '6481e5ba38f283002898113c';
+        var NETWORKING = (ns.card && ns.card.NETWORKING_BUCKET) || '647953bb54b4e1002931ed97';
         function _bucketIdOf(r) {
           var raw = r && r.field_2219_raw;
           if (Array.isArray(raw) && raw.length && raw[0]) return raw[0].id || '';
@@ -712,13 +713,10 @@
         for (var pc = 0; pc < records.length; pc++) {
           var r = records[pc];
           if (!r || !r.id || r.id === recordId) continue;
-          // Skip records that are themselves accessories — they can\'t
-          // be parents (a parent can\'t have its own parent).
           var ownParentRaw = r.field_2464_raw;
           if (Array.isArray(ownParentRaw) && ownParentRaw.length) continue;
-          // Skip ineligible buckets.
           var b = _bucketIdOf(r);
-          if (b === MOUNTING || b === SERVICES || b === ASSUMPTIO) continue;
+          if (b !== CAM && b !== NETWORKING) continue;
           parentCands.push(r);
         }
         ns.picker.open({
