@@ -498,33 +498,48 @@
   function detailMountingHardware(rec, viewKey) {
     var parentId = rec.id;
 
-    // ── Source 1: v1's rendered widget inside view_3610's worksheet card ──
+    // Source: view_3962's native td.field_1958 cell. Knack renders it
+    // as an outer span.col-N wrapping one <a data-kn="connection-link">
+    // per chip, each with an inner <span data-kn="connection-value"
+    // id="<recordId>">label</span>. This is the authoritative source —
+    // the v2 source view itself — and it's always present, unlike
+    // v1's .scw-cr-list widget which lives in view_3610 and renders
+    // asynchronously.
     var chips    = [];
     var addHref  = '';
     try {
-      var v3610 = document.getElementById('view_3610');
-      var tr    = v3610 && v3610.querySelector('tr.scw-ws-row[id="' + parentId + '"]');
-      var list  = tr && tr.querySelector(
-        '.scw-ws-field[data-scw-field="field_1958"] .scw-cr-list'
+      var srcView = document.getElementById(viewKey) ||
+                    document.getElementById('view_3962');
+      var tr      = srcView && srcView.querySelector(
+        'tr[id="' + parentId + '"]'
       );
-      if (list) {
-        var items = list.querySelectorAll('.scw-cr-item');
-        for (var ii = 0; ii < items.length; ii++) {
-          var linkEl = items[ii].querySelector('a.scw-cr-link');
-          var rmEl   = items[ii].querySelector('button.scw-cr-remove[data-record-id]');
-          var label  = linkEl
-            ? (linkEl.getAttribute('title') || linkEl.textContent || '').trim()
-            : '';
-          var href   = linkEl ? linkEl.getAttribute('href') : '';
-          var recId  = rmEl   ? rmEl.getAttribute('data-record-id') : '';
-          if (label) chips.push({ id: recId, label: label, href: href });
+      var td      = tr && tr.querySelector('td.field_1958');
+      if (td) {
+        var anchors = td.querySelectorAll('a[data-kn="connection-link"]');
+        if (anchors.length) {
+          for (var ai = 0; ai < anchors.length; ai++) {
+            var inner = anchors[ai].querySelector('span[data-kn="connection-value"][id]');
+            if (!inner) continue;
+            var id    = (inner.getAttribute('id') || '').trim();
+            var label = (inner.textContent || '').trim();
+            var href  = anchors[ai].getAttribute('href') || '';
+            if (id) chips.push({ id: id, label: label || id, href: href });
+          }
+        } else {
+          // Sometimes Knack renders bare spans without wrapping <a>
+          // (e.g. when the field is read-only for this view). Still
+          // grab the ids + labels.
+          var bareSpans = td.querySelectorAll('span[data-kn="connection-value"][id]');
+          for (var bi = 0; bi < bareSpans.length; bi++) {
+            var bid    = (bareSpans[bi].getAttribute('id') || '').trim();
+            var blabel = (bareSpans[bi].textContent || '').trim();
+            if (bid) chips.push({ id: bid, label: blabel || bid, href: '' });
+          }
         }
-        var addEl = list.querySelector('a.scw-cr-add');
-        if (addEl) addHref = addEl.getAttribute('href') || '';
       }
     } catch (e) { /* fall through to raw fallback */ }
 
-    // ── Source 2 (fallback): record's field_1958_raw + rebuilt URLs ──
+    // Fallback: record's field_1958_raw + rebuilt URLs.
     if (chips.length === 0) {
       var raw = rec['field_1958_raw'];
       if (Array.isArray(raw)) {

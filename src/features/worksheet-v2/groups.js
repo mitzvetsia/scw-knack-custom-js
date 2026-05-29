@@ -56,7 +56,11 @@
     return '';
   }
 
-  /** Collect every accessory id referenced by any parent's field_1958. */
+  /** Collect every accessory id referenced by any parent's field_1958.
+   *  Reads both the Backbone model (field_1958_raw) and view_3962's
+   *  rendered td.field_1958 cells. The DOM scrape is the safety net
+   *  for cases where Knack populates the rendered cell but not the
+   *  _raw companion in the model attributes hash. */
   function collectAttachedAccessoryIds(records) {
     var attached = Object.create(null);
     for (var i = 0; i < records.length; i++) {
@@ -66,6 +70,18 @@
         if (raw[j] && raw[j].id) attached[raw[j].id] = true;
       }
     }
+    try {
+      var v3962 = document.getElementById('view_3962');
+      if (v3962) {
+        var spans = v3962.querySelectorAll(
+          'td.' + ACCESSORY_FORWARD_FIELD + ' span[data-kn="connection-value"][id]'
+        );
+        for (var s = 0; s < spans.length; s++) {
+          var id = (spans[s].getAttribute('id') || '').trim();
+          if (id && /^[a-f0-9]{24}$/i.test(id)) attached[id] = true;
+        }
+      }
+    } catch (e) { /* DOM scrape is a fallback — silent on failure */ }
     return attached;
   }
 
