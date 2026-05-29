@@ -170,8 +170,12 @@
    *  base path) — saves visual noise on routes we don\'t support. */
   function buildStrip(rec, sourceViewKey) {
     var photos = extractPhotoRecords(sourceViewKey, rec.id);
+    // Empty strips clutter every expanded card with a stray "+ Add"
+    // icon and a blank row of dead space. If this record has no
+    // attached photos, render nothing — the top-toolbar "+ Add Photos"
+    // CTA handles the no-photos-yet path.
+    if (!photos.length) return null;
     var addHref = addPhotoHref(rec.id);
-    if (!photos.length && !addHref) return null;
 
     var strip = document.createElement('div');
     strip.className = 'scw-ws-v2-photos';
