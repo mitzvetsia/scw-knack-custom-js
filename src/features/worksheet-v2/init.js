@@ -245,39 +245,29 @@
       e.preventDefault();
       e.stopPropagation();
       var parentId = link.getAttribute('data-scw-ws-v2-add-accessory') || '';
-      // Find any anchor on the page whose href contains
-      // "add-accessory-line-item". Knack-rendered details/menu links
-      // generate the scene-correct slug for us; we just borrow it. We
-      // try a parent-specific match first (so the URL targets THIS
-      // line item) and fall back to any matching href.
-      var anchors = document.querySelectorAll('a[href*="add-accessory-line-item"]');
-      var match = null;
-      if (parentId) {
-        for (var ci = 0; ci < anchors.length; ci++) {
-          if ((anchors[ci].getAttribute('href') || '').indexOf(parentId) !== -1) {
-            match = anchors[ci]; break;
-          }
-        }
+      if (!parentId) return;
+      // Build the URL deterministically from the same base path the
+      // chip edit links use. buildSowBasePath() matches against the
+      // current hash; if it returns nothing we surface an alert
+      // rather than silently bouncing to home.
+      var hash = window.location.hash || '';
+      var patterns = [
+        /(team-calendar\/project-dashboard\/[a-f0-9]{24}\/build-(?:sow|quote)\/[a-f0-9]{24})/,
+        /(team-calendar\/project-dashboard\/[a-f0-9]{24}\/review-bids\/[a-f0-9]{24})/,
+        /(team-calendar\/project-dashboard\/[a-f0-9]{24}\/deploy\/[a-f0-9]{24})/,
+        /(sales-portal\/company-details\/[a-f0-9]{24}\/scope-of-work-details\/[a-f0-9]{24})/,
+        /(proposals\/scope-of-work\/[a-f0-9]{24})/
+      ];
+      var base = '';
+      for (var p = 0; p < patterns.length; p++) {
+        var m = hash.match(patterns[p]);
+        if (m) { base = m[1]; break; }
       }
-      if (!match && anchors.length) {
-        // No parent-specific link — borrow any add-accessory link and
-        // rewrite the trailing id segment to point at THIS parent.
-        var srcHref = anchors[0].getAttribute('href') || '';
-        var rewritten = srcHref.replace(
-          /(add-accessory-line-item[^/]*\/)[a-f0-9]{24}/,
-          '$1' + parentId
-        );
-        if (rewritten && rewritten !== srcHref) {
-          window.location.hash = (rewritten.charAt(0) === '#') ? rewritten : '#' + rewritten;
-          return;
-        }
-        // No id segment in the template — just click it.
-        anchors[0].click();
+      if (!base) {
+        alert('Could not detect SOW context from the URL.');
         return;
       }
-      if (match) { match.click(); return; }
-      alert('Could not find an add-accessory-line-item link on this page. ' +
-            'Make sure the Knack details/menu link is enabled on the scene.');
+      window.location.hash = '#' + base + '/add-accessory-line-item/' + parentId;
     });
   }
 
