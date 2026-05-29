@@ -291,6 +291,9 @@
     var installFee  = readField(rec, 'field_2028');
     var sow         = readField(rec, 'field_2154');
 
+    // Cameras/readers don't carry a quantity — the qty slot is reused
+    // for the Existing/Exterior/Plenum chip stack so the rest of the
+    // row (labor desc and money columns) aligns with default rows.
     var chips =
       '<div class="scw-ws-v2-cell scw-ws-v2-cell--chips">' +
         chip(rec, viewKey, 'field_2461', 'Existing', 'Existing cabling') +
@@ -301,13 +304,10 @@
     return '<div class="scw-ws-v2-row scw-ws-v2-row--cam">' +
       ro(label,   'scw-ws-v2-cell--label',   label) +
       productCell(rec, viewKey, product) +
-      chips +
       '<div class="scw-ws-v2-cell scw-ws-v2-cell--labor-desc">' +
         textInput(rec, viewKey, 'field_2020', laborDesc, 'Labor description') +
       '</div>' +
-      '<div class="scw-ws-v2-cell scw-ws-v2-cell--num">' +
-        qtyCell(rec, viewKey, qty) +
-      '</div>' +
+      chips +
       stackCell(rec, viewKey, 'field_2150', subBid,  subBidTotal, 'Sub Bid') +
       stackCell(rec, viewKey, 'field_1973', plusHrs, hrsTotal,    '+Hrs') +
       stackCell(rec, viewKey, 'field_1974', plusMat, matTotal,    '+Mat') +
@@ -334,6 +334,8 @@
     var sow         = readField(rec, 'field_2154');
 
     return '<div class="scw-ws-v2-row scw-ws-v2-row--default">' +
+      // Empty label slot keeps product / labor desc aligned with cam rows.
+      empty('scw-ws-v2-cell--label') +
       productCell(rec, viewKey, product) +
       '<div class="scw-ws-v2-cell scw-ws-v2-cell--labor-desc">' +
         textInput(rec, viewKey, 'field_2020', laborDesc, 'Labor description') +
@@ -367,6 +369,9 @@
     var sow         = readField(rec, 'field_2154');
 
     return '<div class="scw-ws-v2-row scw-ws-v2-row--services">' +
+      // Share the cam/default column template so labor desc lines up.
+      // Tag occupies the product slot; label slot is empty.
+      empty('scw-ws-v2-cell--label') +
       ro('Service', 'scw-ws-v2-cell--tag') +
       '<div class="scw-ws-v2-cell scw-ws-v2-cell--labor-desc">' +
         textInput(rec, viewKey, 'field_2020', laborDesc, 'Service description') +

@@ -90,49 +90,28 @@
     '}',
 
     /* ── Row grid ───────────────────────────────────────────── */
-    /* DEFAULT bucket (Networking / Other Equipment / Mounting Hardware /
-       any non-special bucket). No label column, no chips. */
-    '.scw-ws-v2-row--default {',
+    /* Shared column template across default / cam / services so that
+       label, product, labor desc, and the money columns all line up
+       row-to-row. Cam rows fill the label slot with the drop label
+       and reuse the qty slot for the Existing/Exterior/Plenum chip
+       stack (cameras don't carry a quantity). Services rows leave
+       the label slot empty and put the "Service" tag in the product
+       slot. Default rows leave the label slot empty. Assumptions
+       keeps its own narrower template below. */
+    '.scw-ws-v2-row--default, .scw-ws-v2-row--cam, .scw-ws-v2-row--services {',
     '  display: grid !important;',
     '  grid-template-columns:',
-    '    minmax(160px, 1.4fr)  /* product */',
+    '    64px                  /* label / drop label */',
+    '    minmax(160px, 1.4fr)  /* product or Service tag */',
     '    minmax(160px, 1.6fr)  /* labor desc */',
-    '    64px              /* qty     */',
-    '    78px              /* subBid  */',
-    '    64px              /* +Hrs    */',
-    '    64px              /* +Mat    */',
-    '    72px              /* fee     */',
-    '    52px              /* sow     */',
-    '    28px              /* chevron */',
-    '    28px              /* kebab */ !important;',
-    '  gap: 6px !important;',
-    '  align-items: center !important;',
-    '  padding: 4px 10px !important;',
-    '  min-height: 40px !important;',
-    '}',
-    /* CAM/READER bucket — adds label + chip-stack columns. */
-    '.scw-ws-v2-row--cam {',
-    '  display: grid !important;',
-    '  grid-template-columns:',
-    '    64px                  /* label   */',
-    '    minmax(140px, 1.4fr)  /* product */',
-    '    100px                 /* chips   */',
-    '    minmax(120px, 1.4fr)  /* labor desc */',
-    '    64px 78px 64px 64px 72px 52px 28px 28px !important;',
-    '  gap: 6px !important;',
-    '  align-items: center !important;',
-    '  padding: 4px 10px !important;',
-    '  min-height: 40px !important;',
-    '}',
-    /* SERVICES bucket — replaces product with a "Service" tag. Keeps
-       qty / money / fee / sow because service rows still carry a
-       dollar value. */
-    '.scw-ws-v2-row--services {',
-    '  display: grid !important;',
-    '  grid-template-columns:',
-    '    80px                  /* "Service" tag */',
-    '    minmax(220px, 1.6fr)  /* description */',
-    '    64px 78px 64px 64px 72px 52px 28px 28px !important;',
+    '    72px                  /* qty input OR chip stack */',
+    '    78px                  /* subBid  */',
+    '    64px                  /* +Hrs    */',
+    '    64px                  /* +Mat    */',
+    '    72px                  /* fee     */',
+    '    52px                  /* sow     */',
+    '    28px                  /* chevron */',
+    '    28px                  /* kebab */ !important;',
     '  gap: 6px !important;',
     '  align-items: center !important;',
     '  padding: 4px 10px !important;',
@@ -434,8 +413,8 @@
     '  font-size: 10px !important;',
     '  color: var(--scw-text-caption, #64748b) !important;',
     '  font-variant-numeric: tabular-nums !important;',
-    '  text-align: right !important;',
-    '  padding: 0 6px !important;',
+    '  text-align: center !important;',
+    '  padding: 0 2px !important;',
     '  min-height: 12px !important;',
     '}',
 
