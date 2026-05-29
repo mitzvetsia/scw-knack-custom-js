@@ -566,3 +566,11 @@ This is a **copy-paste-and-modify codebase, not a design space.** Every feature 
 - **Intercept point**: `inline-photo-row.js:1236` (and the empty-card branches at 1262/1271). Bind the new modal's `open()` before the `navigateToHash(editPhotoHash(...))` call; if the modal can't open (e.g. no save view configured, or fields missing) fall through to the existing navigate so the feature degrades gracefully.
 - **Sibling to copy from**: `qa-popover.js` — same modal scaffold, save-view contract, and field-mapping shape. Inject CSS once, build the form in JS, snapshot initial state to detect changes, save through Knack's view-based PUT endpoint.
 - **Why deferred**: each piece is small but the dependency chain (save view setup → modal scaffold → upload pipeline) deserves a focused pass instead of being squeezed alongside other worksheet work.
+
+### 11. Drop Prefix snippet — role-based visibility filtering
+- **Status**: deferred — current Builder snippet (`window.SCW.dropPrefixOptions`) returns every Drop Prefix record regardless of who's viewing the page. Used by worksheet-v2's bulk-edit picker for `field_2240`.
+- **What's needed**: when we build the sales and subcontractor pages we'll want the picker to honor two existing visibility flags on the Drop Prefix object:
+  - `field_2440` — **Sales-visible** (Yes/No). Filter out records where this is No when the loader runs inside a sales scene.
+  - `field_2439` — **Subcontractor-visible** (Yes/No). Filter out records where this is No when the loader runs inside a subcontractor scene.
+- **How to scope**: cheapest path is to detect the scene class on `document.body` (e.g. `scene_1140` = sales build SOW vs. subcontractor scenes have their own ids) and union the right filter into the snippet's `filters=` query before the fetch. Internal/PM scenes get the unfiltered list.
+- **Why deferred**: we don't have the sales / subcontractor scene ids fully sorted yet, and the filter is dead weight on internal pages. Land the scene-id mapping in the same pass.
