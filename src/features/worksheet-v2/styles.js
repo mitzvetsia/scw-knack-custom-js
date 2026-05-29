@@ -161,7 +161,12 @@
     '  text-overflow: ellipsis !important;',
     '}',
 
-    '.scw-ws-v2-cell--product {',
+    /* Product cell — always-visible bounding box so it reads as a
+       field with a clear click target. Overrides .scw-ws-v2-cell--
+       editable-conn\'s `border: none` via more-specific compound
+       selector + !important. */
+    '.scw-ws-v2-cell.scw-ws-v2-cell--product,',
+    '.scw-ws-v2-cell--editable-conn.scw-ws-v2-cell--product {',
     '  color: var(--scw-text-default, #1f2937) !important;',
     '  white-space: nowrap !important;',
     '  overflow: hidden !important;',
@@ -170,10 +175,14 @@
     '  background: #fff !important;',
     '  border: 1px solid var(--scw-border-subtle, #e2e8f0) !important;',
     '  border-radius: 4px !important;',
-    '  transition: border-color 100ms ease !important;',
+    '  transition: border-color 100ms ease, background 100ms ease !important;',
     '}',
     '.scw-ws-v2-card:hover .scw-ws-v2-cell--product { border-color: #cbd5e1 !important; }',
-    '.scw-ws-v2-cell--product:hover { border-color: #93c5fd !important; }',
+    '.scw-ws-v2-cell--product:hover {',
+    '  border-color: #93c5fd !important;',
+    '  background: #eff6ff !important;',
+    '  text-decoration: none !important;',
+    '}',
     '.scw-ws-v2-cell--product .scw-ws-v2-product-name {',
     '  overflow: hidden !important;',
     '  text-overflow: ellipsis !important;',
@@ -297,9 +306,13 @@
     '.scw-ws-v2-row--services > .scw-ws-v2-cell--label.scw-ws-v2-cell--blank {',
     '  display: none !important;',
     '}',
+    /* Non-cam rows hide the (blank) label cell and let the product /
+       Service tag span the chevron-adjacent label column + the product
+       column itself. Chevron is col 1, label is col 2, product is col
+       3 — so spanning 2-4 absorbs the label slot for product. */
     '.scw-ws-v2-row--default > .scw-ws-v2-cell--product,',
     '.scw-ws-v2-row--services > .scw-ws-v2-cell--tag {',
-    '  grid-column: 1 / span 2 !important;',
+    '  grid-column: 2 / span 2 !important;',
     '}',
 
     /* Rows that don\'t carry a quantity (cam/reader, or field_2634 lock):
@@ -366,7 +379,7 @@
     '  transition: transform 150ms ease !important;',
     '}',
     '.scw-ws-v2-l1-head--open .scw-ws-v2-l1-chevron {',
-    '  transform: rotate(180deg) !important;',
+    '  transform: rotate(90deg) !important;',
     '}',
     '.scw-ws-v2-l1-label {',
     '  flex: 1 1 auto !important;',
@@ -794,8 +807,8 @@
     '.scw-ws-v2-chevron {',
     '  display: inline-flex !important;',
     '  align-items: center !important;',
-    '  justify-content: flex-start !important;',
-    '  width: 20px !important;',
+    '  justify-content: center !important;',
+    '  width: 18px !important;',
     '  height: 24px !important;',
     '  padding: 0 !important;',
     '  margin: 0 !important;',
@@ -818,11 +831,11 @@
 
     /* Per-row select checkbox — lives INSIDE the row so it centers
        on the row\'s actual height (multi-line rows are taller). */
-    '.scw-ws-v2-row { position: relative !important; padding-left: 48px !important; }',
+    '.scw-ws-v2-row { position: relative !important; padding-left: 44px !important; }',
     '.scw-ws-v2-row > .scw-ws-v2-select {',
     '  position: absolute !important;',
     '  top: 50% !important;',
-    '  left: 10px !important;',
+    '  left: 16px !important;',
     '  transform: translateY(-50%) !important;',
     '  width: 14px !important; height: 14px !important;',
     '  margin: 0 !important;',
@@ -838,7 +851,7 @@
     '}',
     /* Pad the detail panel to the same left gutter so its content
        aligns with the row content above. */
-    '.scw-ws-v2-detail { padding-left: 48px !important; }',
+    '.scw-ws-v2-detail { padding-left: 44px !important; }',
     '.scw-ws-v2-card--selected {',
     '  background: #fff8e1 !important;',
     '  box-shadow: inset 3px 0 0 #f59e0b !important;',
