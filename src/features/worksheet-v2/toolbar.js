@@ -370,7 +370,59 @@
       alert('Select one or more rows first — an accessory will be added to each selected row.');
       return;
     }
-    var products = (window.SCW && SCW.mountingBoxProducts) || [];
+    // Compatibility filter — only show accessory products whose
+    // compatibility lists (field_2236 OR field_2205 on the product
+    // object) contain the line item\'s product. Walks each selected
+    // record and collects the set of "selectionProductIds" from
+    // view_3962\'s model; an accessory must list EVERY one of those
+    // ids to be eligible (intersection — safer than union for bulk).
+    // Falls back to the unfiltered list when:
+    //   - the snippet hasn\'t exposed the compatibility arrays yet
+    //   - none of the selected records have a product
+    var selectionProductIds = (function () {
+      var v = window.Knack && Knack.views && Knack.views[viewKey];
+      var models = (v && v.model && v.model.data && v.model.data.models) || [];
+      var byId = Object.create(null);
+      for (var i = 0; i < models.length; i++) {
+        var a = models[i] && models[i].attributes;
+        if (a && a.id) byId[a.id] = a;
+      }
+      var seen = Object.create(null);
+      for (var k = 0; k < sel.ids.length; k++) {
+        var attrs = byId[sel.ids[k]];
+        if (!attrs) continue;
+        var raw = attrs.field_1949_raw;
+        if (Array.isArray(raw)) {
+          for (var ri = 0; ri < raw.length; ri++) {
+            if (raw[ri] && raw[ri].id) seen[raw[ri].id] = true;
+          }
+        } else if (raw && raw.id) {
+          seen[raw.id] = true;
+        }
+      }
+      var out = [];
+      for (var pid in seen) out.push(pid);
+      return out;
+    })();
+
+    var rawProducts = (window.SCW && SCW.mountingBoxProducts) || [];
+    var products = rawProducts;
+    if (selectionProductIds.length) {
+      products = rawProducts.filter(function (p) {
+        if (!p) return false;
+        var a = Array.isArray(p.compatibleProducts)    ? p.compatibleProducts    : null;
+        var b = Array.isArray(p.compatibleProductsAlt) ? p.compatibleProductsAlt : null;
+        // If neither list is exposed on the entry, fall through and
+        // include — handles old catalog data without the new fields.
+        if (!a && !b) return true;
+        for (var i = 0; i < selectionProductIds.length; i++) {
+          var pid = selectionProductIds[i];
+          var hit = (a && a.indexOf(pid) !== -1) || (b && b.indexOf(pid) !== -1);
+          if (!hit) return false;
+        }
+        return true;
+      });
+    }
     var hasList  = products && products.length > 0;
 
     var overlay = document.createElement('div');
