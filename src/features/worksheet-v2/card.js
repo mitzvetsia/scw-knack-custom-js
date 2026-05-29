@@ -757,7 +757,8 @@
 
     return '<div class="scw-ws-v2-detail-field scw-ws-v2-detail-field--mh">' +
       '<div class="scw-ws-v2-detail-label">Accessories</div>' +
-      '<div class="scw-ws-v2-mh-list">' + chipsHtml + addHtml + '</div>' +
+      '<div class="scw-ws-v2-mh-list">' + chipsHtml + '</div>' +
+      (addHtml ? '<div class="scw-ws-v2-mh-addrow">' + addHtml + '</div>' : '') +
     '</div>';
   }
 
