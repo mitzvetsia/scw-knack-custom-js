@@ -269,10 +269,30 @@
           url:  SCW.knackRecordUrl(viewKey, accId),
           type: 'PUT',
           data: JSON.stringify({ field_1964: next }),
-          success: function () {
-            if (ns.data && typeof ns.data.refetchAndNotify === 'function') {
-              ns.data.refetchAndNotify(viewKey);
-            }
+          success: function (resp) {
+            // Patch the local model with the new qty so the next
+            // re-render shows the right value — but DO NOT call
+            // notify/refetch here. The detail panel\'s innerHTML
+            // rebuild causes a visible flicker on every step, and
+            // accessory qty doesn\'t influence any other visible
+            // computed field on the parent\'s row. The optimistic UI
+            // update above is the authoritative display until the
+            // next user-initiated render.
+            try {
+              if (typeof SCW.syncKnackModel === 'function') {
+                SCW.syncKnackModel(viewKey, accId, resp,
+                  'field_1964', next);
+              } else {
+                // Fallback: patch the attrs directly so the model
+                // doesn\'t drift on the next re-render.
+                var v2 = window.Knack && Knack.views && Knack.views[viewKey];
+                var m  = v2 && v2.model && v2.model.data &&
+                         v2.model.data.get && v2.model.data.get(accId);
+                if (m && m.set) {
+                  m.set({ 'field_1964': next, 'field_1964_raw': next });
+                }
+              }
+            } catch (e) { /* ignore — DOM already shows the right qty */ }
           },
           error: function (xhr) {
             console.warn('[scw-ws-v2] accessory qty step PUT failed', xhr);
