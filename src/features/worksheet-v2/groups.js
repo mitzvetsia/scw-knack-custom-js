@@ -31,20 +31,23 @@
   var FIELD_SORT    = 'field_2218';
   var FIELD_LABEL   = 'field_2365'; // tiebreaker — display label (E-001, etc.)
 
-  // Accessory rows (mounting brackets etc.) live on the same SOW Line
-  // Items object and start showing up in view_3962 once their
-  // filter is dropped. They're visible inside each parent's mounting-
-  // hardware chip widget, so they don't belong as standalone cards in
-  // the L1 tree. Skip them here. Match by field_2464_raw — that's the
-  // accessory's back-connection to its parent line item (populated
-  // exactly when this record IS an accessory).
-  var ACCESSORY_PARENT_FIELD = 'field_2464';
-  // Mounting Hardware proposal bucket id — must match card.js's
-  // MOUNTING_HARDWARE_BUCKET. A record in this bucket with field_2464
-  // populated is an attached accessory (hidden as a chip on its
-  // parent's card). The same bucket with field_2464 EMPTY means an
-  // orphaned mounting bracket — we surface those in a synthetic L1.
-  var MOUNTING_HARDWARE_BUCKET = '594a94536877675816984cb9';
+  // Mounting hardware accessories live on the same SOW Line Items
+  // object. A parent line item's field_1958 ("Mounting Hardware") is a
+  // multi-connection pointing at its accessory rows; each accessory's
+  // field_2464 mirrors that connection back at the parent.
+  //
+  // Authoritative definition of "attached" for v2's filter: the
+  // accessory's record id appears in SOME parent's field_1958_raw.
+  // We build that referenced-id set once per buildGroupTree pass and
+  // use it both to hide attached accessories AND to surface
+  // unreferenced mounting-bucket records as a synthetic "Orphaned
+  // Mounting Brackets" L1. Reading the forward link instead of the
+  // back-link sidesteps any case where field_2464 hasn't caught up to
+  // a recent field_1958 edit.
+  var ACCESSORY_PARENT_FIELD     = 'field_2464';
+  var ACCESSORY_FORWARD_FIELD    = 'field_1958';
+  var MOUNTING_HARDWARE_BUCKET   = '594a94536877675816984cb9';
+  var SYNTHETIC_ORPHAN_BRACKETS_LABEL = 'Orphaned Mounting Brackets';
 
   function bucketIdOf(rec) {
     var raw = rec && rec['field_2219_raw'];
@@ -53,18 +56,18 @@
     return '';
   }
 
-  function isAccessoryRecord(rec) {
-    var raw = rec && rec[ACCESSORY_PARENT_FIELD + '_raw'];
-    if (Array.isArray(raw) && raw.length && raw[0] && raw[0].id) return true;
-    if (raw && typeof raw === 'object' && raw.id) return true;
-    return false;
+  /** Collect every accessory id referenced by any parent's field_1958. */
+  function collectAttachedAccessoryIds(records) {
+    var attached = Object.create(null);
+    for (var i = 0; i < records.length; i++) {
+      var raw = records[i] && records[i][ACCESSORY_FORWARD_FIELD + '_raw'];
+      if (!Array.isArray(raw)) continue;
+      for (var j = 0; j < raw.length; j++) {
+        if (raw[j] && raw[j].id) attached[raw[j].id] = true;
+      }
+    }
+    return attached;
   }
-
-  function isOrphanedMountingBracket(rec) {
-    return bucketIdOf(rec) === MOUNTING_HARDWARE_BUCKET && !isAccessoryRecord(rec);
-  }
-
-  var SYNTHETIC_ORPHAN_BRACKETS_LABEL = 'Orphaned Mounting Brackets';
 
   // Synthetic L1 buckets. Records with no MDF/IDF go into one of
   // these based on the bucket's identifier text.
@@ -142,20 +145,22 @@
       }
     }
 
+    var attachedIds = collectAttachedAccessoryIds(records);
+
     for (var i = 0; i < records.length; i++) {
       var rec = records[i];
-      var orphanBracket = isOrphanedMountingBracket(rec);
-      // Skip attached accessories (they show up inside parent's MH widget).
-      // Orphan brackets fall through to the bucketing below but are
-      // forced into a dedicated synthetic L1 regardless of their MDF.
-      if (isAccessoryRecord(rec)) continue;
+      var inMountingBucket = bucketIdOf(rec) === MOUNTING_HARDWARE_BUCKET;
+      // Attached accessory → hide. Authoritative test: this record's
+      // id is referenced by SOME parent's field_1958_raw.
+      if (rec.id && attachedIds[rec.id]) continue;
 
       var l1Conn   = readConn(rec, FIELD_MDF_IDF);
       var l2Conn   = readConn(rec, FIELD_BUCKET);
       var sortOrd  = readNumber(rec, FIELD_SORT);
 
       var l1Id, l1Label, isSynthetic;
-      if (orphanBracket) {
+      if (inMountingBucket) {
+        // Unreferenced mounting-hardware row → orphan synthetic L1.
         l1Label     = SYNTHETIC_ORPHAN_BRACKETS_LABEL;
         l1Id        = '__synthetic__' + l1Label;
         isSynthetic = true;

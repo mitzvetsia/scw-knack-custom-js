@@ -132,13 +132,10 @@
     });
   }
 
-  // Mounting hardware chip × — POSTs the chip's recordId to
-  // MAKE_DELETE_RECORD_WEBHOOK directly. Mirrors connected-records.js
-  // deleteRecord but skips its v1 confirmation modal: we already make
-  // the user click twice (× then implicitly drag the eye over the
-  // chip's name), no extra "are you sure" needed. Optimistically hide
-  // the chip; v2 picks up the actual removal via scw-cascade-idle or
-  // the next view-render after Make finishes.
+  // Mounting hardware chip × — same flow as the kebab "Delete line item":
+  // click view_3962's native a.kn-link-delete on the chip's record row
+  // and auto-confirm Knack's modal. The chip's record IS just another
+  // line item in view_3962, so it has the standard delete column.
   if (!document.documentElement.hasAttribute('data-scw-ws-v2-mhdel-bound')) {
     document.documentElement.setAttribute('data-scw-ws-v2-mhdel-bound', '1');
     document.addEventListener('click', function (e) {
@@ -148,33 +145,31 @@
       e.stopPropagation();
       var chipId = btn.getAttribute('data-scw-ws-v2-mh-del');
       if (!chipId) return;
-      var webhookUrl = (window.SCW && SCW.CONFIG && SCW.CONFIG.MAKE_DELETE_RECORD_WEBHOOK) || '';
-      if (!webhookUrl) {
-        console.warn('[scw-ws-v2] MAKE_DELETE_RECORD_WEBHOOK not configured');
+
+      // Same selector idiom as the kebab handler — attribute form so
+      // 24-hex IDs starting with a digit don't blow up the selector.
+      var srcView = document.getElementById('view_3962');
+      var link = srcView && srcView.querySelector(
+        'tr[id="' + chipId + '"] a.kn-link-delete'
+      );
+      if (!link) {
+        var v3610 = document.getElementById('view_3610');
+        link = v3610 && v3610.querySelector(
+          'tr[id="' + chipId + '"] a.kn-link-delete'
+        );
+      }
+      if (!link) {
+        console.warn('[scw-ws-v2] kn-link-delete not found for chip ' + chipId);
         return;
       }
-      // Hide the chip wrapper so the row updates instantly.
+
+      // Optimistic hide so the row updates instantly. v2 picks up the
+      // actual removal once Knack re-renders after the delete settles.
       var wrap = btn.closest('.scw-ws-v2-mh-chip-wrap');
       if (wrap) wrap.style.display = 'none';
-      fetch(webhookUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ recordId: chipId })
-      })
-      .then(function (resp) {
-        if (!resp.ok) throw new Error('webhook ' + resp.status);
-        // Refetch the source view a beat later so the chip stays gone
-        // after Make finishes processing.
-        var container = btn.closest('[id^="scw-ws-v2-"]');
-        var viewId = container ? container.id.replace(/^scw-ws-v2-/, '') : null;
-        if (viewId && ns.data && typeof ns.data.refetchAndNotify === 'function') {
-          setTimeout(function () { ns.data.refetchAndNotify(viewId); }, 1200);
-        }
-      })
-      .catch(function (err) {
-        console.warn('[scw-ws-v2] mh chip delete webhook failed', err);
-        if (wrap) wrap.style.display = '';
-      });
+
+      autoConfirmKnackDelete();
+      link.click();
     });
   }
 
