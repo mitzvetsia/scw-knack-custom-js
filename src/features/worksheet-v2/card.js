@@ -293,9 +293,9 @@
 
     var chips =
       '<div class="scw-ws-v2-cell scw-ws-v2-cell--chips">' +
-        chip(rec, viewKey, 'field_2461', 'Cab', 'Existing cabling') +
-        chip(rec, viewKey, 'field_1984', 'Ext', 'Exterior') +
-        chip(rec, viewKey, 'field_1983', 'Pln', 'Plenum') +
+        chip(rec, viewKey, 'field_2461', 'Existing', 'Existing cabling') +
+        chip(rec, viewKey, 'field_1984', 'Exterior', 'Exterior') +
+        chip(rec, viewKey, 'field_1983', 'Plenum',   'Plenum') +
       '</div>';
 
     return '<div class="scw-ws-v2-row scw-ws-v2-row--cam">' +
