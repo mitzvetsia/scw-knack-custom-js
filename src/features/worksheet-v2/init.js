@@ -310,14 +310,18 @@
 
           // 2. Delete the parent through Knack's native delete link.
           //    Auto-confirm the modal so it stays a two-click flow.
+          // Knack record IDs are 24-char hex strings — many start with
+          // a digit, which CSS doesn't allow as the first char of an
+          // ID selector. Use the attribute selector form instead.
           var srcView = viewId ? document.getElementById(viewId) : null;
-          var link = srcView && (
-            srcView.querySelector('tr#' + rowId + ' a.kn-link-delete') ||
-            srcView.querySelector('tr[id="' + rowId + '"] a.kn-link-delete')
+          var link = srcView && srcView.querySelector(
+            'tr[id="' + rowId + '"] a.kn-link-delete'
           );
           if (!link) {
             var v3610 = document.getElementById('view_3610');
-            link = v3610 && v3610.querySelector('tr#' + rowId + ' a.kn-link-delete');
+            link = v3610 && v3610.querySelector(
+              'tr[id="' + rowId + '"] a.kn-link-delete'
+            );
           }
           if (!link) {
             console.warn('[scw-ws-v2] kn-link-delete not found for ' + rowId);
