@@ -49,6 +49,7 @@
   //   - 'mh'      uses SCW.productMap (mounting hardware bucket)
   var FIELDS = {
     cam: [
+      { key: 'field_1949', label: 'Product',           kind: 'conn-single', candSource: 'products' },
       { key: 'field_2020', label: 'Labor description', kind: 'text' },
       { key: 'field_2240', label: 'Drop prefix',       kind: 'conn-single', candSource: 'dropPrefix' },
       { key: 'field_2150', label: 'Sub Bid',           kind: 'number' },
@@ -66,6 +67,7 @@
       { key: 'field_2197', label: 'Connected Device',  kind: 'conn-single', candSource: 'devices' }
     ],
     'default': [
+      { key: 'field_1949', label: 'Product',           kind: 'conn-single', candSource: 'products' },
       { key: 'field_2020', label: 'Labor description', kind: 'text' },
       { key: 'field_1964', label: 'Qty',               kind: 'number' },
       { key: 'field_2150', label: 'Sub Bid',           kind: 'number' },
@@ -579,7 +581,7 @@
     return s === 'yes' || s === 'true' || s === '1';
   }
 
-  function getSourceCandidatesForConn(field, sourceViewKey) {
+  function getSourceCandidatesForConn(field, sourceViewKey, selectedIds) {
     // Returns: { candidates: [...], groupBy: fn|null, itemLabel: fn|null }
     // - mdf:     MDF/IDF locations from CONFIG.mdfSourceViewKey
     // - sows:    Scopes of Work from view_3325 (field_2122 = SW-#### id, field_2126 = name)
@@ -665,6 +667,50 @@
           return lbl || prod || r.id;
         }
       };
+    }
+
+    if (field.candSource === 'products') {
+      // Same source as the per-row product picker — window.SCW.productMap
+      // (id → {name, buckets[]}), populated by the Builder snippet on
+      // app boot. Filter to products allowed for EVERY selected record\'s
+      // bucket so a bulk write can\'t land an invalid product on some
+      // rows. Products with no buckets list are universal (included
+      // regardless) — matches per-row picker behavior.
+      var pmap = (window.SCW && window.SCW.productMap) || {};
+      var v = window.Knack && Knack.views && Knack.views[sourceViewKey];
+      var models = (v && v.model && v.model.data && v.model.data.models) || [];
+      var bucketsInSelection = Object.create(null);
+      var sel = Object.create(null);
+      var i;
+      for (i = 0; i < (selectedIds || []).length; i++) sel[selectedIds[i]] = true;
+      for (i = 0; i < models.length; i++) {
+        var a = models[i] && models[i].attributes;
+        if (!a || !sel[a.id]) continue;
+        var raw = a.field_2219_raw;
+        var bid = (Array.isArray(raw) && raw.length && raw[0] && raw[0].id) || '';
+        if (bid) bucketsInSelection[bid] = true;
+      }
+      var prodCands = [];
+      for (var pid in pmap) {
+        if (!Object.prototype.hasOwnProperty.call(pmap, pid)) continue;
+        var p = pmap[pid];
+        if (!p) continue;
+        // Universal product (no buckets list) → always include.
+        if (Array.isArray(p.buckets) && p.buckets.length > 0) {
+          // Must allow EVERY bucket in the selection.
+          var ok = true;
+          for (var bk in bucketsInSelection) {
+            if (p.buckets.indexOf(bk) === -1) { ok = false; break; }
+          }
+          if (!ok) continue;
+        }
+        prodCands.push({ id: pid, identifier: p.name || '(unnamed)' });
+      }
+      prodCands.sort(function (a, b) {
+        return String(a.identifier).localeCompare(String(b.identifier), undefined,
+          { numeric: true, sensitivity: 'base' });
+      });
+      return { candidates: prodCands, groupBy: null, itemLabel: null };
     }
 
     if (field.candSource === 'dropPrefix') {
@@ -776,7 +822,7 @@
             '<span class="scw-ws-v2-bulk-conn-edit">pick</span>' +
           '</button>';
         slot.querySelector('button').addEventListener('click', function () {
-          var resolved = getSourceCandidatesForConn(f, sourceViewKey);
+          var resolved = getSourceCandidatesForConn(f, sourceViewKey, ids);
           var cands = resolved.candidates;
           if (!ns.picker || typeof ns.picker.open !== 'function') {
             status.textContent = 'Picker not available.';
