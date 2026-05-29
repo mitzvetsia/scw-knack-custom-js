@@ -70,8 +70,28 @@
     if (!bar) return;
     var btns = bar.querySelectorAll('[data-scw-ws-v2-mode]');
     for (var i = 0; i < btns.length; i++) {
-      btns[i].classList.toggle('scw-ws-v2-toolbar-btn--active',
-        btns[i].getAttribute('data-scw-ws-v2-mode') === mode);
+      var m = btns[i].getAttribute('data-scw-ws-v2-mode');
+      // The expand button doubles as a collapse-when-active toggle:
+      // when mode is "expand", clicking it should switch to "collapse".
+      // We flip the data-mode and label on the fly so a single click
+      // moves between the two states.
+      if (m === 'expand' || m === 'collapse') {
+        if (mode === 'expand') {
+          btns[i].setAttribute('data-scw-ws-v2-mode', 'collapse');
+          btns[i].textContent = 'Collapse all';
+          btns[i].classList.add('scw-ws-v2-toolbar-btn--active');
+        } else if (mode === 'collapse') {
+          btns[i].setAttribute('data-scw-ws-v2-mode', 'expand');
+          btns[i].textContent = 'Expand all';
+          btns[i].classList.add('scw-ws-v2-toolbar-btn--active');
+        } else {
+          btns[i].setAttribute('data-scw-ws-v2-mode', 'expand');
+          btns[i].textContent = 'Expand all';
+          btns[i].classList.remove('scw-ws-v2-toolbar-btn--active');
+        }
+      } else {
+        btns[i].classList.toggle('scw-ws-v2-toolbar-btn--active', m === mode);
+      }
     }
     var photosBtn = bar.querySelector('[data-scw-ws-v2-photos-toggle]');
     if (photosBtn) {
@@ -85,10 +105,11 @@
     bar.className = 'scw-ws-v2-toolbar';
     bar.innerHTML =
       '<div class="scw-ws-v2-toolbar-group" role="group" aria-label="View mode">' +
-        btn('default',  'Default',      'Per-group accordion (default)') +
-        btn('expand',   'Expand all',   'Open every group + show all rows') +
-        btn('collapse', 'Collapse all', 'Close every group') +
-        btn('summary',  'Summary only', 'Open every group + show only the L1 summary') +
+        btn('default',  'Default',          'Per-group accordion (default)') +
+        // Single Expand⇄Collapse toggle. Label flips depending on the
+        // current state (handled in applyState below).
+        btn('expand',   'Expand all',       'Open every group + show all rows') +
+        btn('summary',  'Summary only',     'Open every group + show only the L1 summary') +
       '</div>' +
       '<div class="scw-ws-v2-toolbar-group">' +
         '<button type="button" class="scw-ws-v2-toolbar-btn"' +
@@ -103,8 +124,213 @@
           '</svg>' +
           '<span>Photos</span>' +
         '</button>' +
+      '</div>' +
+      '<div class="scw-ws-v2-toolbar-spacer"></div>' +
+      '<div class="scw-ws-v2-toolbar-group scw-ws-v2-toolbar-group--cta">' +
+        actionBtn('add-sow',      '+ Add to SOW',         'Add a new SOW line item') +
+        actionBtn('add-photos',   '+ Add Photos',         'Bulk upload photos for this SOW') +
+        actionBtn('add-mounting', '+ Add Mounting Boxes', 'Add a mounting box to each selected row') +
       '</div>';
     return bar;
+  }
+
+  function actionBtn(action, label, title) {
+    return '<button type="button" class="scw-ws-v2-toolbar-btn scw-ws-v2-toolbar-btn--cta" ' +
+      'data-scw-ws-v2-action="' + action + '" ' +
+      'title="' + esc(title) + '">' + esc(label) + '</button>';
+  }
+
+  // ── URL helpers (same pattern as photos.js / inline-photo-row.js) ──
+  function buildSowBasePath() {
+    var hash = window.location.hash || '';
+    var patterns = [
+      /(team-calendar\/project-dashboard\/[a-f0-9]{24}\/build-(?:sow|quote)\/[a-f0-9]{24})/,
+      /(team-calendar\/project-dashboard\/[a-f0-9]{24}\/review-bids\/[a-f0-9]{24})/,
+      /(team-calendar\/project-dashboard\/[a-f0-9]{24}\/deploy\/[a-f0-9]{24})/,
+      /(sales-portal\/company-details\/[a-f0-9]{24}\/scope-of-work-details\/[a-f0-9]{24})/,
+      /(proposals\/scope-of-work\/[a-f0-9]{24})/
+    ];
+    for (var i = 0; i < patterns.length; i++) {
+      var m = hash.match(patterns[i]);
+      if (m) return m[1];
+    }
+    return '';
+  }
+  function getSowIdFromHash() {
+    var base = buildSowBasePath();
+    if (!base) return '';
+    var m = base.match(/\/([a-f0-9]{24})\/?$/);
+    return m ? m[1] : '';
+  }
+  function getTriggeredBy() {
+    var u = (window.Knack && Knack.getUserAttributes && Knack.getUserAttributes()) || {};
+    return u.id || u.email || '';
+  }
+
+  // ── Action handlers ──
+  function handleAction(action, viewKey) {
+    if (action === 'add-sow') {
+      var base = buildSowBasePath();
+      if (!base) { alert('Could not detect SOW context from the URL.'); return; }
+      // Slug matches the v1 KTL accordion config — adjust the slug if
+      // the deployed Knack route differs.
+      window.location.hash = '#' + base + '/add-sow-line-item/';
+      return;
+    }
+    if (action === 'add-photos') {
+      var base2 = buildSowBasePath();
+      if (!base2) { alert('Could not detect SOW context from the URL.'); return; }
+      window.location.hash = '#' + base2 + '/add-photos-to-sow/';
+      return;
+    }
+    if (action === 'add-mounting') {
+      openMountingBoxModal(viewKey);
+      return;
+    }
+  }
+
+  function selectedIdsAndLabels(viewKey) {
+    // Pull selection from bulk.js — if bulk isn\'t loaded, fall back to
+    // scanning the DOM for checked select boxes.
+    var ids = [];
+    var labels = [];
+    var boxes = document.querySelectorAll('[data-scw-ws-v2-select]:checked');
+    for (var i = 0; i < boxes.length; i++) {
+      var rid = boxes[i].getAttribute('data-scw-ws-v2-select');
+      var card = boxes[i].closest('.scw-ws-v2-card');
+      var label = card
+        ? ((card.querySelector('.scw-ws-v2-cell--label') ||
+            card.querySelector('.scw-ws-v2-product-name') || {}).textContent || '').trim()
+        : '';
+      ids.push(rid);
+      labels.push(label || rid);
+    }
+    return { ids: ids, labels: labels };
+  }
+
+  function openMountingBoxModal(viewKey) {
+    var sel = selectedIdsAndLabels(viewKey);
+    if (!sel.ids.length) {
+      alert('Select one or more rows first — the mounting box gets attached to each selected row.');
+      return;
+    }
+    var products = (window.SCW && SCW.mountingBoxProducts) || [];
+    var hasList  = products && products.length > 0;
+
+    var overlay = document.createElement('div');
+    overlay.className = 'scw-ws-v2-mb-overlay';
+    overlay.innerHTML =
+      '<div class="scw-ws-v2-mb-modal">' +
+        '<div class="scw-ws-v2-mb-title">Add mounting box to ' +
+          sel.ids.length + ' row' + (sel.ids.length === 1 ? '' : 's') + '</div>' +
+        '<div class="scw-ws-v2-mb-sub">One mounting-box line item will be created per ' +
+          'selected row, connected back to the parent.</div>' +
+        '<div class="scw-ws-v2-mb-rowlist">' +
+          sel.labels.map(function (l) {
+            return '<div>' + esc(l) + '</div>';
+          }).join('') +
+        '</div>' +
+        '<label class="scw-ws-v2-mb-label">Mounting box product</label>' +
+        (hasList
+          ? '<select class="scw-ws-v2-mb-input"></select>'
+          : '<input class="scw-ws-v2-mb-input" type="text" placeholder="Type the mounting box product name">') +
+        (!hasList
+          ? '<div class="scw-ws-v2-mb-note">window.SCW.mountingBoxProducts not loaded — ' +
+            'using free text. Wire the Builder snippet for the dropdown.</div>'
+          : '') +
+        '<div class="scw-ws-v2-mb-status"></div>' +
+        '<div class="scw-ws-v2-mb-actions">' +
+          '<button type="button" class="scw-ws-v2-mb-cancel">Cancel</button>' +
+          '<button type="button" class="scw-ws-v2-mb-submit">' +
+            'Add to ' + sel.ids.length + ' row' + (sel.ids.length === 1 ? '' : 's') +
+          '</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(overlay);
+
+    if (hasList) {
+      var selEl = overlay.querySelector('select.scw-ws-v2-mb-input');
+      var blank = document.createElement('option');
+      blank.value = ''; blank.textContent = '— Choose a mounting box —';
+      selEl.appendChild(blank);
+      for (var pi = 0; pi < products.length; pi++) {
+        var p = products[pi];
+        var opt = document.createElement('option');
+        opt.value = p.id;
+        opt.textContent = p.name;
+        opt.dataset.name = p.name;
+        selEl.appendChild(opt);
+      }
+    }
+
+    var picker  = overlay.querySelector('.scw-ws-v2-mb-input');
+    var status  = overlay.querySelector('.scw-ws-v2-mb-status');
+    var cancel  = overlay.querySelector('.scw-ws-v2-mb-cancel');
+    var submit  = overlay.querySelector('.scw-ws-v2-mb-submit');
+
+    function close() { overlay.parentNode && overlay.parentNode.removeChild(overlay); }
+    cancel.addEventListener('click', close);
+    overlay.addEventListener('click', function (e) { if (e.target === overlay) close(); });
+
+    submit.addEventListener('click', function () {
+      var productId, productName;
+      if (hasList) {
+        productId = picker.value;
+        var opt2 = picker.options[picker.selectedIndex];
+        productName = opt2 ? (opt2.dataset.name || opt2.textContent) : '';
+        if (!productId) { status.textContent = 'Pick a mounting box product first.'; return; }
+      } else {
+        productName = (picker.value || '').trim();
+        if (!productName) { status.textContent = 'Type a product name first.'; return; }
+      }
+
+      var url = (window.SCW && SCW.CONFIG && SCW.CONFIG.MAKE_BULK_ADD_MOUNTING_BOX_WEBHOOK) || '';
+      if (!url || /PLACEHOLDER/.test(url)) {
+        status.textContent = 'Webhook URL not configured (MAKE_BULK_ADD_MOUNTING_BOX_WEBHOOK).';
+        return;
+      }
+
+      submit.disabled = true;
+      cancel.disabled = true;
+      submit.textContent = 'Submitting…';
+
+      var payload = {
+        sowId:           getSowIdFromHash(),
+        productId:       productId || '',
+        productName:     productName,
+        parentRecordIds: sel.ids,
+        parentLabels:    sel.labels,
+        sourceViewId:    viewKey,
+        triggeredBy:     getTriggeredBy()
+      };
+
+      $.ajax({
+        url: url, type: 'POST', contentType: 'application/json',
+        data: JSON.stringify(payload), crossDomain: true, timeout: 60000,
+        success: function () {
+          close();
+          status.textContent = '';
+          if (ns.data && typeof ns.data.refetchAndNotify === 'function') {
+            setTimeout(function () { ns.data.refetchAndNotify(viewKey); }, 1500);
+          }
+        },
+        error: function (xhr, st) {
+          // Make webhooks often blocked by CORS but the scenario fires.
+          if (xhr && xhr.status === 0) {
+            close();
+            if (ns.data && typeof ns.data.refetchAndNotify === 'function') {
+              setTimeout(function () { ns.data.refetchAndNotify(viewKey); }, 1500);
+            }
+            return;
+          }
+          submit.disabled = false;
+          cancel.disabled = false;
+          submit.textContent = 'Add to ' + sel.ids.length + ' row' +
+                               (sel.ids.length === 1 ? '' : 's');
+          status.textContent = 'Webhook failed (' + st + '). Try again.';
+        }
+      });
+    });
   }
 
   function btn(mode, label, title) {
@@ -141,6 +367,8 @@
         } else if (t.hasAttribute('data-scw-ws-v2-photos-toggle')) {
           savePhotosHidden(viewKey, !loadPhotosHidden(viewKey));
           applyState(container, viewKey);
+        } else if (t.hasAttribute('data-scw-ws-v2-action')) {
+          handleAction(t.getAttribute('data-scw-ws-v2-action'), viewKey);
         }
       });
     }
