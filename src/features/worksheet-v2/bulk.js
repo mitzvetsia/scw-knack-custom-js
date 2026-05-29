@@ -342,42 +342,105 @@
     });
   }
 
+  function stripHtml(s) {
+    return String(s == null ? '' : s).replace(/<[^>]*>/g, '').trim();
+  }
+  function isMapConnectionsRow(rec) {
+    var raw = rec && rec['field_2231_raw'];
+    if (raw === true || raw === 'Yes' || raw === 'yes' || raw === 1) return true;
+    var s = (rec && rec['field_2231'] || '').toString().trim().toLowerCase();
+    return s === 'yes' || s === 'true' || s === '1';
+  }
+
   function getSourceCandidatesForConn(field, sourceViewKey) {
-    // Use the same candidate-resolution pattern as init.js\'s per-row
-    // pickers, simplified to "give me [{id, identifier}] for this
-    // field". We don\'t try to filter by NVR/cam compatibility here —
-    // the modal is a "set everyone to this value" tool; user owns
-    // the choice.
-    var out = [];
-    function fromView(vk, labelField) {
+    // Returns: { candidates: [...], groupBy: fn|null, itemLabel: fn|null }
+    // - mdf:     MDF/IDF locations from CONFIG.mdfSourceViewKey
+    // - sows:    Scopes of Work from view_3325 (field_2122 = SW-#### id, field_2126 = name)
+    // - devices: NVR/headend rows from the worksheet source view,
+    //            filtered to records with field_2231 (Map Connections) = Yes,
+    //            grouped by MDF/IDF (field_1946_raw[0])
+    function fromViewAttrs(vk) {
       var v = Knack.views[vk];
       if (!v || !v.model || !v.model.data) return [];
       var models = v.model.data.models || [];
       var list = [];
       for (var i = 0; i < models.length; i++) {
         var a = models[i].attributes || models[i];
-        if (!a || !a.id) continue;
-        var lbl = String(a[labelField] || a.identifier || '')
-          .replace(/<[^>]*>/g, '').trim();
-        if (lbl) list.push({ id: a.id, identifier: lbl });
+        if (a && a.id) list.push(a);
       }
       return list;
     }
+
     if (field.candSource === 'mdf') {
       var cfgViews = (ns.CONFIG && ns.CONFIG.views) || [];
+      var labelField = 'field_1642';
+      var mdfViewKey = '';
       for (var v = 0; v < cfgViews.length; v++) {
         if (cfgViews[v].sourceViewKey === sourceViewKey) {
-          out = fromView(cfgViews[v].mdfSourceViewKey,
-                         cfgViews[v].mdfLabelField || 'field_1642');
+          mdfViewKey = cfgViews[v].mdfSourceViewKey;
+          labelField = cfgViews[v].mdfLabelField || 'field_1642';
           break;
         }
       }
-    } else if (field.candSource === 'sows') {
-      out = fromView('view_3325', 'field_2022');
-    } else if (field.candSource === 'devices') {
-      out = fromView(sourceViewKey, 'field_1949');
+      var mdfAttrs = fromViewAttrs(mdfViewKey);
+      var mdfCands = mdfAttrs.map(function (a) {
+        return { id: a.id, identifier: stripHtml(a[labelField] || a.identifier) };
+      }).filter(function (c) { return c.identifier; });
+      return { candidates: mdfCands, groupBy: null, itemLabel: null };
     }
-    return out;
+
+    if (field.candSource === 'sows') {
+      var sowAttrs = fromViewAttrs('view_3325');
+      var sowCands = [];
+      for (var s = 0; s < sowAttrs.length; s++) {
+        var a = sowAttrs[s];
+        var sowId   = stripHtml(a.field_2122);
+        var sowName = stripHtml(a.field_2126);
+        if (!sowId && !sowName) continue;
+        sowCands.push({ id: a.id, sowId: sowId, name: sowName,
+                        identifier: sowId || sowName });
+      }
+      sowCands.sort(function (a, b) {
+        return String(a.sowId).localeCompare(String(b.sowId), undefined,
+          { numeric: true, sensitivity: 'base' });
+      });
+      return {
+        candidates: sowCands,
+        groupBy:    null,
+        itemLabel:  function (r) {
+          if (r.sowId && r.name) return r.sowId + ' · ' + r.name;
+          return r.sowId || r.name || r.id;
+        }
+      };
+    }
+
+    if (field.candSource === 'devices') {
+      var devAttrs = fromViewAttrs(sourceViewKey);
+      var devCands = [];
+      for (var d = 0; d < devAttrs.length; d++) {
+        var r = devAttrs[d];
+        if (!isMapConnectionsRow(r)) continue;
+        devCands.push(r);
+      }
+      return {
+        candidates: devCands,
+        groupBy: function (r) {
+          var raw = r.field_1946_raw;
+          if (Array.isArray(raw) && raw.length && raw[0]) {
+            return { id: raw[0].id, label: raw[0].identifier || '' };
+          }
+          return { id: '__unknown', label: 'Unassigned' };
+        },
+        itemLabel: function (r) {
+          var lbl  = stripHtml(r.field_1950);
+          var prod = stripHtml(r.field_1949);
+          if (lbl && prod) return lbl + ' · ' + prod;
+          return lbl || prod || r.id;
+        }
+      };
+    }
+
+    return { candidates: [], groupBy: null, itemLabel: null };
   }
 
   function openBulkModal(ids, sourceViewKey) {
@@ -473,9 +536,14 @@
             '<span class="scw-ws-v2-bulk-conn-edit">pick</span>' +
           '</button>';
         slot.querySelector('button').addEventListener('click', function () {
-          var cands = getSourceCandidatesForConn(f, sourceViewKey);
+          var resolved = getSourceCandidatesForConn(f, sourceViewKey);
+          var cands = resolved.candidates;
           if (!ns.picker || typeof ns.picker.open !== 'function') {
             status.textContent = 'Picker not available.';
+            return;
+          }
+          if (!cands.length) {
+            status.textContent = 'No candidates available for ' + f.label + '.';
             return;
           }
           ns.picker.open({
@@ -485,9 +553,10 @@
             label:         f.label,
             selectedIds:   [],
             candidates:    cands,
+            groupBy:       resolved.groupBy || undefined,
             multi:         f.kind === 'conn-multi',
             pickOnly:      true,
-            itemLabel:     function (r) { return r.identifier || r.id; },
+            itemLabel:     resolved.itemLabel || function (r) { return r.identifier || r.id; },
             onChoose: function (chosenIds) {
               rowState[f.key].value = f.kind === 'conn-multi'
                 ? chosenIds
@@ -501,7 +570,9 @@
                 for (var ci = 0; ci < cands.length; ci++) {
                   if (cands[ci].id === chosenIds[0]) { match = cands[ci]; break; }
                 }
-                lbl = match ? match.identifier : chosenIds[0];
+                lbl = match
+                  ? (resolved.itemLabel ? resolved.itemLabel(match) : match.identifier)
+                  : chosenIds[0];
               } else {
                 lbl = chosenIds.length + ' selected';
               }
@@ -545,32 +616,56 @@
 
       saveBtn.disabled   = true;
       cancelBtn.disabled = true;
-      status.textContent = 'Saving 0 / ' + jobs.length + '…';
+      overlay.classList.add('scw-ws-v2-bulk-overlay--saving');
+      status.innerHTML =
+        '<div class="scw-ws-v2-bulk-progress">' +
+          '<div class="scw-ws-v2-bulk-progress-bar" style="width:0%"></div>' +
+        '</div>' +
+        '<div class="scw-ws-v2-bulk-progress-text">' +
+          '<span class="scw-ws-v2-bulk-spinner"></span>' +
+          '<span class="scw-ws-v2-bulk-progress-label">Saving 0 of ' + jobs.length + '…</span>' +
+        '</div>';
+      var bar   = status.querySelector('.scw-ws-v2-bulk-progress-bar');
+      var label = status.querySelector('.scw-ws-v2-bulk-progress-label');
 
       runQueue(jobs, function (done, total) {
-        status.textContent = 'Saving ' + done + ' / ' + total + '…';
+        var pct = Math.round((done / total) * 100);
+        if (bar) bar.style.width = pct + '%';
+        if (label) label.textContent = 'Saving ' + done + ' of ' + total + '… (' + pct + '%)';
       }).then(function (results) {
         var ok = 0, fail = 0;
         for (var r = 0; r < results.length; r++) {
           if (results[r].ok) ok++; else fail++;
         }
+        overlay.classList.remove('scw-ws-v2-bulk-overlay--saving');
         if (fail === 0) {
-          status.textContent = 'Saved ' + ok + ' rows.';
+          status.innerHTML =
+            '<div class="scw-ws-v2-bulk-success">' +
+              '<span class="scw-ws-v2-bulk-success-check">&#10003;</span>' +
+              'Saved ' + ok + ' rows. Refreshing…' +
+            '</div>';
           setTimeout(function () {
             close();
             clearAll();
-            // Re-fetch source view so cards rebuild with new values.
             try {
-              var v = Knack.views[sourceViewKey];
-              if (v && v.model && typeof v.model.fetch === 'function') {
-                v.model.fetch();
+              if (ns.data && typeof ns.data.refetchAndNotify === 'function') {
+                ns.data.refetchAndNotify(sourceViewKey);
+              } else {
+                var v = Knack.views[sourceViewKey];
+                if (v && v.model && typeof v.model.fetch === 'function') {
+                  v.model.fetch();
+                }
               }
             } catch (e) { /* ignore */ }
             syncDomFromState();
             refreshToolbar();
-          }, 600);
+          }, 900);
         } else {
-          status.textContent = 'Saved ' + ok + ', failed ' + fail + '. Try again or close.';
+          status.innerHTML =
+            '<div class="scw-ws-v2-bulk-fail">' +
+              'Saved ' + ok + ', failed ' + fail +
+              '. Try again or close — Knack may have rate-limited.' +
+            '</div>';
           saveBtn.disabled   = false;
           cancelBtn.disabled = false;
         }
