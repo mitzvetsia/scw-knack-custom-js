@@ -292,15 +292,33 @@
         var MDF_SOURCE_VIEW = 'view_3358';
         var mdfView = (typeof Knack !== 'undefined' && Knack.views &&
                        Knack.views[MDF_SOURCE_VIEW]) || null;
-        if (!mdfView || !mdfView.model || !mdfView.model.data ||
-            !mdfView.model.data.models) {
-          console.warn('[scw-ws-v2] view_3358 model missing — MDF picker can\'t open');
+        // Knack exposes models inconsistently across view types:
+        // some at view.model.data.models (Backbone collection), some
+        // at view.model.models, some only after fetch. Probe both
+        // shapes before bailing.
+        var mdfRecords = null;
+        if (mdfView && mdfView.model) {
+          mdfRecords = (mdfView.model.data && mdfView.model.data.models) ||
+                       mdfView.model.models || null;
+        }
+        console.log('[scw-ws-v2] MDF picker probe', {
+          hasKnackViews: !!(typeof Knack !== 'undefined' && Knack.views),
+          knackViewKeys: (typeof Knack !== 'undefined' && Knack.views)
+            ? Object.keys(Knack.views).filter(function (k) {
+                return k.indexOf('view_33') === 0 || k.indexOf('view_3358') === 0;
+              }) : [],
+          mdfView:    !!mdfView,
+          mdfModel:   !!(mdfView && mdfView.model),
+          mdfData:    !!(mdfView && mdfView.model && mdfView.model.data),
+          mdfRecords: mdfRecords ? mdfRecords.length : 'null'
+        });
+        if (!mdfRecords || !mdfRecords.length) {
+          console.warn('[scw-ws-v2] view_3358 model empty/missing — MDF picker can\'t open');
           return;
         }
         var mdfCandidates = [];
-        var mdfRecords = mdfView.model.data.models;
         for (var mm = 0; mm < mdfRecords.length; mm++) {
-          var mm_attrs = mdfRecords[mm].attributes || {};
+          var mm_attrs = mdfRecords[mm].attributes || mdfRecords[mm] || {};
           if (!mm_attrs.id) continue;
           // field_1642 = MDF/IDF full label (e.g. "HEADEND: : Pole #1")
           var mdfLabel = (mm_attrs.field_1642 || mm_attrs.identifier || '')
