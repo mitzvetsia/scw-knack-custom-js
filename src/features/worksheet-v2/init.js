@@ -132,6 +132,63 @@
     });
   }
 
+  // Mounting hardware chip × — proxies to v1's matching
+  // button.scw-cr-remove inside view_3610's worksheet card. v1's
+  // connected-records.js already wires that button to its delete
+  // confirm modal + Make webhook + cascade — we just need to fire
+  // its click. Falls back to a console warning if v1 isn't present.
+  if (!document.documentElement.hasAttribute('data-scw-ws-v2-mhdel-bound')) {
+    document.documentElement.setAttribute('data-scw-ws-v2-mhdel-bound', '1');
+    document.addEventListener('click', function (e) {
+      var btn = e.target && e.target.closest && e.target.closest('[data-scw-ws-v2-mh-del]');
+      if (!btn) return;
+      e.preventDefault();
+      e.stopPropagation();
+      var chipId   = btn.getAttribute('data-scw-ws-v2-mh-del');
+      var parentId = btn.getAttribute('data-scw-ws-v2-mh-parent');
+      if (!chipId || !parentId) return;
+      var v3610 = document.getElementById('view_3610');
+      var v1Btn = v3610 && v3610.querySelector(
+        'tr.scw-ws-row[id="' + parentId + '"] ' +
+        '.scw-ws-field[data-scw-field="field_1958"] ' +
+        'button.scw-cr-remove[data-record-id="' + chipId + '"]'
+      );
+      if (v1Btn) {
+        v1Btn.click();
+      } else {
+        console.warn('[scw-ws-v2] v1 mh delete button not found for ' + chipId);
+      }
+    });
+  }
+
+  // Line item delete — routes to v1's a.kn-link-delete on the
+  // matching tr in view_3610. Same proxy pattern as the chip
+  // delete: v1 already owns the confirm + delete flow.
+  if (!document.documentElement.hasAttribute('data-scw-ws-v2-rowdel-bound')) {
+    document.documentElement.setAttribute('data-scw-ws-v2-rowdel-bound', '1');
+    document.addEventListener('click', function (e) {
+      var btn = e.target && e.target.closest && e.target.closest('[data-scw-ws-v2-row-del]');
+      if (!btn) return;
+      e.preventDefault();
+      e.stopPropagation();
+      var rowId = btn.getAttribute('data-scw-ws-v2-row-del');
+      if (!rowId) return;
+      var v3610 = document.getElementById('view_3610');
+      // v1 hoists the delete link into .scw-ws-sum-delete inside the
+      // wsTr; try that first, then fall back to whatever Knack-native
+      // link is anywhere under the matching tr.
+      var v1Link = v3610 && (
+        v3610.querySelector('tr.scw-ws-row[id="' + rowId + '"] a.kn-link-delete') ||
+        v3610.querySelector('tr#' + rowId + ' a.kn-link-delete')
+      );
+      if (v1Link) {
+        v1Link.click();
+      } else {
+        console.warn('[scw-ws-v2] v1 delete link not found for row ' + rowId);
+      }
+    });
+  }
+
   // Connection-cell click — opens the picker modal scoped to the
   // record's bucket-appropriate candidate set. Currently wired for
   // field_1957 (Connected Devices) on default-bucket rows; reusable

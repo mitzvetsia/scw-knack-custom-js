@@ -143,6 +143,28 @@
       'value="' + escapeHtml(value) + '"' + attrsFor(rec, viewKey, fieldKey) + '>';
   }
 
+  /** True when field_2230 (locked qty flag) is yes/true on the record. */
+  function isQtyLocked(rec) {
+    var raw = rec && rec['field_2230_raw'];
+    if (raw === true || raw === 'Yes' || raw === 'yes' || raw === 1) return true;
+    var s = (rec && rec['field_2230'] || '').toString().trim().toLowerCase();
+    return s === 'yes' || s === 'true' || s === '1';
+  }
+
+  /** Quantity (field_1964) input — non-editable when field_2230 is yes.
+   *  Locked rendering keeps the value visible on a white background per
+   *  CLAUDE.md's "locked fields" rule (no opacity dimming). */
+  function qtyCell(rec, viewKey, value) {
+    if (isQtyLocked(rec)) {
+      return '<input type="number" step="any"' +
+        ' class="scw-ws-v2-input scw-ws-v2-input--num scw-ws-v2-input--locked"' +
+        ' aria-label="Qty (locked)" placeholder="Qty"' +
+        ' value="' + escapeHtml(value) + '"' +
+        ' readonly title="Quantity is locked for this row">';
+    }
+    return numInput(rec, viewKey, 'field_1964', value, 'Qty');
+  }
+
   function textInput(rec, viewKey, fieldKey, value, label) {
     return '<input type="text" class="scw-ws-v2-input scw-ws-v2-input--text" ' +
       'aria-label="' + escapeHtml(label) + '" placeholder="' + escapeHtml(label) + '" ' +
@@ -270,7 +292,7 @@
         textInput(rec, viewKey, 'field_2020', laborDesc, 'Labor description') +
       '</div>' +
       '<div class="scw-ws-v2-cell scw-ws-v2-cell--num">' +
-        numInput(rec, viewKey, 'field_1964', qty, 'Qty') +
+        qtyCell(rec, viewKey, qty) +
       '</div>' +
       stackCell(rec, viewKey, 'field_2150', subBid,  subBidTotal, 'Sub Bid') +
       stackCell(rec, viewKey, 'field_1973', plusHrs, hrsTotal,    '+Hrs') +
@@ -302,7 +324,7 @@
         textInput(rec, viewKey, 'field_2020', laborDesc, 'Labor description') +
       '</div>' +
       '<div class="scw-ws-v2-cell scw-ws-v2-cell--num">' +
-        numInput(rec, viewKey, 'field_1964', qty, 'Qty') +
+        qtyCell(rec, viewKey, qty) +
       '</div>' +
       stackCell(rec, viewKey, 'field_2150', subBid,  subBidTotal, 'Sub Bid') +
       stackCell(rec, viewKey, 'field_1973', plusHrs, hrsTotal,    '+Hrs') +
@@ -334,7 +356,7 @@
         textInput(rec, viewKey, 'field_2020', laborDesc, 'Service description') +
       '</div>' +
       '<div class="scw-ws-v2-cell scw-ws-v2-cell--num">' +
-        numInput(rec, viewKey, 'field_1964', qty, 'Qty') +
+        qtyCell(rec, viewKey, qty) +
       '</div>' +
       stackCell(rec, viewKey, 'field_2150', subBid,  subBidTotal, 'Sub Bid') +
       stackCell(rec, viewKey, 'field_1973', plusHrs, hrsTotal,    '+Hrs') +
@@ -516,17 +538,32 @@
             ? fbBase + '/edit-accessory-line-item2/' + chips[c].id + '/'
             : '';
         }
+        // Delete X — only when we have the chip's record id AND a
+        // parentId, since the click handler reaches into v1's widget
+        // to drive its existing delete flow (confirm modal + Make
+        // webhook).
+        var delX = (chips[c].id && parentId)
+          ? '<button type="button" class="scw-ws-v2-mh-del" ' +
+              'data-scw-ws-v2-mh-del="' + escapeHtml(chips[c].id) + '" ' +
+              'data-scw-ws-v2-mh-parent="' + escapeHtml(parentId) + '" ' +
+              'title="Delete ' + escapeHtml(chips[c].label) + '">' +
+              '&times;</button>'
+          : '';
         // No href → render as non-link span so we never silently bounce
         // the user back to the home page on click.
         if (editHref) {
-          chipsHtml += '<a class="scw-ws-v2-mh-chip" href="' + escapeHtml(editHref) + '"' +
-            ' title="Edit ' + escapeHtml(chips[c].label) + '">' +
-            escapeHtml(chips[c].label) +
-          '</a>';
+          chipsHtml += '<span class="scw-ws-v2-mh-chip-wrap">' +
+            '<a class="scw-ws-v2-mh-chip" href="' + escapeHtml(editHref) + '"' +
+              ' title="Edit ' + escapeHtml(chips[c].label) + '">' +
+              escapeHtml(chips[c].label) +
+            '</a>' + delX +
+          '</span>';
         } else {
-          chipsHtml += '<span class="scw-ws-v2-mh-chip scw-ws-v2-mh-chip--inert"' +
-            ' title="' + escapeHtml(chips[c].label) + '">' +
-            escapeHtml(chips[c].label) +
+          chipsHtml += '<span class="scw-ws-v2-mh-chip-wrap">' +
+            '<span class="scw-ws-v2-mh-chip scw-ws-v2-mh-chip--inert"' +
+              ' title="' + escapeHtml(chips[c].label) + '">' +
+              escapeHtml(chips[c].label) +
+            '</span>' + delX +
           '</span>';
         }
       }
@@ -541,6 +578,24 @@
       '<div class="scw-ws-v2-detail-label">Mounting Hardware</div>' +
       '<div class="scw-ws-v2-mh-list">' + chipsHtml + addHtml + '</div>' +
     '</div>';
+  }
+
+  /** Delete-row button — routes the click to v1's a.kn-link-delete on
+   *  the matching tr in view_3610 (Knack's native delete confirmation
+   *  + cascade fires through v1). Falls back to a no-op render when
+   *  the v1 row isn't present. */
+  function deleteRowButton(rec) {
+    return '<button type="button" class="scw-ws-v2-row-del" ' +
+      'data-scw-ws-v2-row-del="' + escapeHtml(rec.id) + '" ' +
+      'title="Delete this line item">' +
+      '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" ' +
+      'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+      'stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline>' +
+      '<path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>' +
+      '<path d="M10 11v6"></path><path d="M14 11v6"></path>' +
+      '<path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"></path></svg>' +
+      '<span>Delete line item</span>' +
+    '</button>';
   }
 
   function buildDetail_cam(rec, viewKey) {
@@ -562,6 +617,7 @@
         detailField(rec,            viewKey, 'field_1953', 'SCW Notes',   'text') +
         detailReadOnly(rec,                  'field_2412', 'Survey Notes') +
       '</div>' +
+      '<div class="scw-ws-v2-detail-actions">' + deleteRowButton(rec) + '</div>' +
     '</div>';
   }
 
@@ -577,6 +633,7 @@
         detailField(rec,            viewKey, 'field_1953', 'SCW Notes', 'text') +
         detailReadOnly(rec,                  'field_2412', 'Survey Notes') +
       '</div>' +
+      '<div class="scw-ws-v2-detail-actions">' + deleteRowButton(rec) + '</div>' +
     '</div>';
   }
 
@@ -587,6 +644,7 @@
         detailField(rec,      viewKey, 'field_1953', 'SCW Notes', 'text') +
         detailReadOnly(rec,            'field_2412', 'Survey Notes') +
       '</div>' +
+      '<div class="scw-ws-v2-detail-actions">' + deleteRowButton(rec) + '</div>' +
     '</div>';
   }
 
@@ -599,6 +657,7 @@
         detailConnection(rec, viewKey, 'field_1946', 'MDF / IDF') +
         detailField(rec,      viewKey, 'field_1953', 'SCW Notes', 'text') +
       '</div>' +
+      '<div class="scw-ws-v2-detail-actions">' + deleteRowButton(rec) + '</div>' +
     '</div>';
   }
 
