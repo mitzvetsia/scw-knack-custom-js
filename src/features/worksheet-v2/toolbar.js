@@ -128,7 +128,6 @@
       '<div class="scw-ws-v2-toolbar-spacer"></div>' +
       '<div class="scw-ws-v2-toolbar-group scw-ws-v2-toolbar-group--cta">' +
         actionBtn('add-sow',      '+ Add to SOW',         'Add a new SOW line item') +
-        actionBtn('add-photos',   '+ Add Photos',         'Bulk upload photos for this SOW') +
         actionBtn('add-mounting', '+ Add Mounting Boxes', 'Add a mounting box to each selected row') +
       '</div>';
     return bar;
