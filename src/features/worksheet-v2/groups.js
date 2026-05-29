@@ -106,9 +106,26 @@
   function readNumber(rec, fieldKey) {
     var raw = rec[fieldKey + '_raw'];
     if (typeof raw === 'number') return raw;
+    // Connection-via-formula fields (e.g. field_2218 — the proposal
+    // bucket's sortOrder pulled through the bucket connection) come
+    // back as [{id, identifier}]. The identifier holds the actual
+    // numeric value; fall back to it before scraping text.
+    if (Array.isArray(raw) && raw.length && raw[0]) {
+      var ident = raw[0].identifier;
+      if (typeof ident === 'number') return ident;
+      if (typeof ident === 'string') {
+        var ni = parseFloat(ident);
+        if (isFinite(ni)) return ni;
+      }
+    }
     var s = rec[fieldKey];
     if (s == null) return null;
-    var n = parseFloat(String(s).replace(/[^0-9.\-]/g, ''));
+    // Strip HTML tags BEFORE stripping non-digits — otherwise the hex
+    // record ids on connection-cell <span> attrs get concatenated with
+    // the value and produce nonsense like 697b7a023a31502ec68b33030
+    // for an actual sortOrder of 8.
+    s = String(s).replace(/<[^>]*>/g, ' ');
+    var n = parseFloat(s.replace(/[^0-9.\-]/g, ''));
     return isFinite(n) ? n : null;
   }
 
