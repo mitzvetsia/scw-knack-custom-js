@@ -78,6 +78,12 @@
     if (!ns.data) return;
     var views = ns.CONFIG.views || [];
     views.forEach(function (vcfg) {
+      // Background polling — keep v2 in sync with records added via
+      // API / other tabs / Make scenarios. 2-min default, 15-sec
+      // burst for 5 minutes after a known local change.
+      if (ns.poll && typeof ns.poll.start === 'function') {
+        ns.poll.start(vcfg.sourceViewKey);
+      }
       ns.data.subscribe(vcfg.sourceViewKey, function (key, records) {
         ns.render.renderView(key, records);
         // Mode/photos toolbar — mount idempotently above the L1 list.

@@ -104,14 +104,25 @@
     return !Array.isArray(raw) || raw.length === 0;
   }
 
+  function isNoOrUnset(rec, fieldKey) {
+    var raw = rec && rec[fieldKey + '_raw'];
+    if (raw === false || raw === 'No' || raw === 'no' || raw === 0) return true;
+    if (raw === true || raw === 'Yes' || raw === 'yes' || raw === 1) return false;
+    var s = (rec && rec[fieldKey] || '').toString().trim().toLowerCase();
+    if (s === 'yes' || s === 'true' || s === '1') return false;
+    // empty / "no" / "false" / "0" → treated as warning state
+    return true;
+  }
+
   /** Build a Set of parent ids whose attached accessories have
-   *  field_2244 = Yes. One pass through the full record list. */
+   *  field_2244 ≠ Yes (i.e., the accessory match check is No or
+   *  hasn\'t been confirmed). One pass through the full record list. */
   function buildBracketParentSet(records) {
     var flagged = Object.create(null);
     for (var i = 0; i < records.length; i++) {
       var r = records[i];
       if (!r) continue;
-      if (!isYes(r, 'field_2244')) continue;
+      if (!isNoOrUnset(r, 'field_2244')) continue;
       var raw = r.field_2464_raw;
       if (!Array.isArray(raw)) continue;
       for (var j = 0; j < raw.length; j++) {

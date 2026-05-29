@@ -549,7 +549,7 @@
           close();
           status.textContent = '';
           if (ns.data && typeof ns.data.refetchAndNotify === 'function') {
-            setTimeout(function () { ns.data.refetchAndNotify(viewKey); }, 1500);
+            setTimeout(function () { ns.data.refetchAndNotify(viewKey); if (ns.poll && ns.poll.triggerBurst) ns.poll.triggerBurst(viewKey); }, 1500);
           }
         },
         error: function (xhr, st) {
@@ -557,7 +557,7 @@
           if (xhr && xhr.status === 0) {
             close();
             if (ns.data && typeof ns.data.refetchAndNotify === 'function') {
-              setTimeout(function () { ns.data.refetchAndNotify(viewKey); }, 1500);
+              setTimeout(function () { ns.data.refetchAndNotify(viewKey); if (ns.poll && ns.poll.triggerBurst) ns.poll.triggerBurst(viewKey); }, 1500);
             }
             return;
           }
