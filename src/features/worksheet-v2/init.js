@@ -80,6 +80,10 @@
     views.forEach(function (vcfg) {
       ns.data.subscribe(vcfg.sourceViewKey, function (key, records) {
         ns.render.renderView(key, records);
+        // Mode/photos toolbar — mount idempotently above the L1 list.
+        if (ns.toolbar && typeof ns.toolbar.mount === 'function') {
+          ns.toolbar.mount(key);
+        }
         // After every re-render, sync the bulk-select checkboxes to
         // current selection state + refresh the floating toolbar.
         if (ns.bulk && typeof ns.bulk.mount === 'function') {

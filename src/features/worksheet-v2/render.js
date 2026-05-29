@@ -130,6 +130,17 @@
     var body = document.createElement('div');
     body.className = 'scw-ws-v2-l1-body';
 
+    // Per-L1 summary block — sits at the top of the body, always
+    // rendered; CSS controls its visibility per toolbar mode.
+    if (ns.summary && typeof ns.summary.buildL1Summary === 'function') {
+      try {
+        var sumEl = ns.summary.buildL1Summary(l1);
+        if (sumEl) body.appendChild(sumEl);
+      } catch (sumErr) {
+        console.warn('[scw-ws-v2] summary build failed for L1', l1 && l1.id, sumErr);
+      }
+    }
+
     if (ns.card && typeof ns.card.buildCard === 'function') {
       for (var i = 0; i < l1.l2.length; i++) {
         var l2 = l1.l2[i];

@@ -156,10 +156,12 @@ cat \
   src/features/worksheet-v2/data.js \
   src/features/worksheet-v2/groups.js \
   src/features/worksheet-v2/card.js \
+  src/features/worksheet-v2/summary.js \
   src/features/worksheet-v2/photos.js \
   src/features/worksheet-v2/picker.js \
   src/features/worksheet-v2/edit.js \
   src/features/worksheet-v2/render.js \
+  src/features/worksheet-v2/toolbar.js \
   src/features/worksheet-v2/bulk.js \
   src/features/worksheet-v2/init.js \
   > "$TMP_BUNDLE"
