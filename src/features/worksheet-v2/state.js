@@ -91,19 +91,14 @@
   function toggleL1(sourceViewKey, l1Id) {
     var state = loadRaw(sourceViewKey);
     var currentlyOpen = state[l1Id] === 'open';
-
-    // Wipe and re-set — exclusive accordion means only one L1 is
-    // ever in the 'open' slot. Closed L1s persist as 'closed' so
-    // the next render's defaults logic stays honored.
-    var next = {};
-    if (!currentlyOpen) next[l1Id] = 'open';
-    // Don't bother recording explicit 'closed' for every group — an
-    // empty state is treated as "use defaults", which avoids storage
-    // bloat as more L1s appear over time. The presence/absence of
-    // exactly one 'open' is all we need.
-
-    saveRaw(sourceViewKey, next);
-    return next;
+    // Flip just THIS L1\'s state — leave every other L1\'s entry
+    // alone. Write the new state explicitly (\'open\' or \'closed\')
+    // so applyOpenState\'s default-open fallback can\'t fight us:
+    // on small datasets where defaultOpen=true, omitting the
+    // marker would silently re-open the L1 on every render.
+    state[l1Id] = currentlyOpen ? 'closed' : 'open';
+    saveRaw(sourceViewKey, state);
+    return state;
   }
 
   /**
