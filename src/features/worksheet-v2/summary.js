@@ -213,8 +213,63 @@
     return wrap;
   }
 
+  /** Grand summary — aggregates EVERY record across every L1. Same
+   *  table shape as the per-L1 summary so it reads consistently. */
+  function buildGrandSummary(tree) {
+    var all = [];
+    for (var i = 0; i < tree.length; i++) {
+      all = all.concat(collectRecords(tree[i]));
+    }
+    var agg = aggregate(all);
+    var rows = '';
+    for (var k = 0; k < agg.products.length; k++) {
+      rows += productRow(agg.products[k], false);
+    }
+    var totalProd = {
+      label: 'Total',
+      count: agg.totals.count,
+      isCamReader: true,
+      labels: [],
+      existCabling: agg.totals.existCabling,
+      newCabling:   agg.totals.newCabling,
+      exterior:     agg.totals.exterior,
+      interior:     agg.totals.interior,
+      plenum:       agg.totals.plenum,
+      subBidSum:    agg.totals.subBidSum
+    };
+    rows += productRow(totalProd, true);
+
+    var html =
+      '<div class="scw-ws-v2-grand-summary-head">' +
+        '<span class="scw-ws-v2-grand-summary-title">Whole-grid summary</span>' +
+        '<span class="scw-ws-v2-grand-summary-meta">' +
+          all.length + ' line items across ' + tree.length + ' MDF/IDF location' +
+          (tree.length === 1 ? '' : 's') +
+        '</span>' +
+      '</div>' +
+      '<table class="scw-ws-v2-summary-table">' +
+        '<thead><tr>' +
+          '<th class="scw-ws-v2-summary-prod">Product</th>' +
+          '<th class="scw-ws-v2-summary-num" title="Existing cabling">Exist Cab</th>' +
+          '<th class="scw-ws-v2-summary-num" title="New cabling">New Cab</th>' +
+          '<th class="scw-ws-v2-summary-num">Ext</th>' +
+          '<th class="scw-ws-v2-summary-num">Int</th>' +
+          '<th class="scw-ws-v2-summary-num">Plen</th>' +
+          '<th class="scw-ws-v2-summary-num">Qty</th>' +
+          '<th class="scw-ws-v2-summary-money">Sub Bid</th>' +
+        '</tr></thead>' +
+        '<tbody>' + rows + '</tbody>' +
+      '</table>';
+
+    var wrap = document.createElement('div');
+    wrap.className = 'scw-ws-v2-grand-summary';
+    wrap.innerHTML = html;
+    return wrap;
+  }
+
   ns.summary = {
-    buildL1Summary: buildL1Summary
+    buildL1Summary:    buildL1Summary,
+    buildGrandSummary: buildGrandSummary
   };
 })();
 /*** END WORKSHEET V2 — SUMMARY ***********************************************/

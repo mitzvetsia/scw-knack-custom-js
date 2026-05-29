@@ -362,7 +362,16 @@
         var t = e.target && e.target.closest && e.target.closest('button');
         if (!t || !bar.contains(t)) return;
         if (t.hasAttribute('data-scw-ws-v2-mode')) {
-          saveMode(viewKey, t.getAttribute('data-scw-ws-v2-mode'));
+          var requested = t.getAttribute('data-scw-ws-v2-mode');
+          var currentMode = loadMode(viewKey);
+          // Summary button is a toggle: clicking it while already in
+          // summary mode collapses everything (just headers + grand
+          // summary). Default/expand/collapse work as plain selects.
+          if (requested === 'summary' && currentMode === 'summary') {
+            saveMode(viewKey, 'collapse');
+          } else {
+            saveMode(viewKey, requested);
+          }
           applyState(container, viewKey);
         } else if (t.hasAttribute('data-scw-ws-v2-photos-toggle')) {
           savePhotosHidden(viewKey, !loadPhotosHidden(viewKey));

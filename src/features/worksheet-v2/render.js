@@ -226,6 +226,16 @@
     }
 
     var frag = document.createDocumentFragment();
+    // Whole-grid summary at the top — aggregates every L1\'s records
+    // into one table. Visible in default mode AND summary-only mode.
+    if (ns.summary && typeof ns.summary.buildGrandSummary === 'function') {
+      try {
+        var grand = ns.summary.buildGrandSummary(tree);
+        if (grand) frag.appendChild(grand);
+      } catch (gErr) {
+        console.warn('[scw-ws-v2] grand summary failed', gErr);
+      }
+    }
     for (var i = 0; i < tree.length; i++) {
       frag.appendChild(buildL1Block(tree[i], sourceViewKey));
     }
