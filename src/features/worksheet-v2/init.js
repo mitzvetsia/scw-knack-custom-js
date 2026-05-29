@@ -280,6 +280,61 @@
         return;
       }
 
+      // MDF/IDF picker (field_1946) — candidates come from view_3358
+      // (the Network Locations grid on the same scene). Single-select.
+      // The MODEL_ONLY cascade in mirror-connection-sync handles
+      // accessory re-grouping when this changes.
+      if (fieldKey === 'field_1946') {
+        var MDF_SOURCE_VIEW = 'view_3358';
+        var mdfView = (typeof Knack !== 'undefined' && Knack.views &&
+                       Knack.views[MDF_SOURCE_VIEW]) || null;
+        if (!mdfView || !mdfView.model || !mdfView.model.data ||
+            !mdfView.model.data.models) {
+          console.warn('[scw-ws-v2] view_3358 model missing — MDF picker can\'t open');
+          return;
+        }
+        var mdfCandidates = [];
+        var mdfRecords = mdfView.model.data.models;
+        for (var mm = 0; mm < mdfRecords.length; mm++) {
+          var mm_attrs = mdfRecords[mm].attributes || {};
+          if (!mm_attrs.id) continue;
+          // field_1642 = MDF/IDF full label (e.g. "HEADEND: : Pole #1")
+          var mdfLabel = (mm_attrs.field_1642 || mm_attrs.identifier || '')
+            .toString().replace(/<[^>]*>/g, '').trim();
+          if (!mdfLabel) continue;
+          mdfCandidates.push({ id: mm_attrs.id, name: mdfLabel });
+        }
+        mdfCandidates.sort(function (a, b) {
+          return String(a.name).localeCompare(String(b.name), undefined,
+            { numeric: true, sensitivity: 'base' });
+        });
+
+        ns.picker.open({
+          sourceViewKey: viewKey,
+          putViewKey:    viewKey,
+          recordId:      recordId,
+          fieldKey:      'field_1946',
+          label:         'MDF / IDF',
+          selectedIds:   sel,
+          candidates:    mdfCandidates,
+          itemLabel:     function (rec) { return rec.name || rec.id; },
+          multi:         false,
+          onSaved:       function () {
+            // Mirror's MODEL_ONLY cascade handles accessory MDF
+            // updates via scw-cascade-idle → refetchAndNotify. Also
+            // refetch explicitly in case there are no accessories
+            // to cascade (cascade only fires on records with PUTs in
+            // flight).
+            if (ns.data && typeof ns.data.refetchAndNotify === 'function') {
+              ns.data.refetchAndNotify(viewKey);
+            } else if (ns.data && typeof ns.data.notify === 'function') {
+              ns.data.notify(viewKey);
+            }
+          }
+        });
+        return;
+      }
+
       // SOW picker (field_2154) — candidates come from the Scopes of
       // Work grid (view_3325) on the same scene. v1 left this field
       // read-only; v2 adds an editable picker. Multi-connection: a

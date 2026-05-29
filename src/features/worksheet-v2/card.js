@@ -548,6 +548,7 @@
       '<div class="scw-ws-v2-detail-grid">' +
         detailReadOnly(rec,                  'field_2240', 'Drop Prefix') +
         detailField(rec,            viewKey, 'field_1951', 'Drop Number', 'number') +
+        detailConnection(rec,       viewKey, 'field_1946', 'MDF / IDF') +
         // Mounting Hardware (field_1958) renders as a connected-records
         // widget with chip-style edit links + an "+ Add" navigation —
         // matches v1's UX on view_3610 (no inline modal, just navigation).
@@ -567,6 +568,7 @@
   function buildDetail_default(rec, viewKey) {
     return '<div class="scw-ws-v2-detail">' +
       '<div class="scw-ws-v2-detail-grid">' +
+        detailConnection(rec,       viewKey, 'field_1946', 'MDF / IDF') +
         // Mounting Hardware — same connected-records widget as cam/reader.
         detailMountingHardware(rec, viewKey) +
         // Connected Devices (field_1957) — multi-select picker for NVR
@@ -581,8 +583,9 @@
   function buildDetail_services(rec, viewKey) {
     return '<div class="scw-ws-v2-detail">' +
       '<div class="scw-ws-v2-detail-grid">' +
-        detailField(rec,    viewKey, 'field_1953', 'SCW Notes', 'text') +
-        detailReadOnly(rec,          'field_2412', 'Survey Notes') +
+        detailConnection(rec, viewKey, 'field_1946', 'MDF / IDF') +
+        detailField(rec,      viewKey, 'field_1953', 'SCW Notes', 'text') +
+        detailReadOnly(rec,            'field_2412', 'Survey Notes') +
       '</div>' +
     '</div>';
   }
@@ -593,7 +596,8 @@
     // SCW Notes for internal annotations.
     return '<div class="scw-ws-v2-detail">' +
       '<div class="scw-ws-v2-detail-grid">' +
-        detailField(rec,    viewKey, 'field_1953', 'SCW Notes', 'text') +
+        detailConnection(rec, viewKey, 'field_1946', 'MDF / IDF') +
+        detailField(rec,      viewKey, 'field_1953', 'SCW Notes', 'text') +
       '</div>' +
     '</div>';
   }

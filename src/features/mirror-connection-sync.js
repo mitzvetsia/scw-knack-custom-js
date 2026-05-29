@@ -1286,6 +1286,57 @@
   $(document).on('knack-view-render.' + VIEW_ID + EVENT_NS + '-prime',
     function () { primeReciprocalCache(); });
 
+  // Per-record cache of the LAST seen GROUPING_FIELD id so the
+  // mdf-direct-edit handler can detect a true change vs. an echo.
+  var lastMdfSeen = {};
+  function serializeMdf(attrs) {
+    var raw = attrs && attrs[GROUPING_FIELD + '_raw'];
+    if (Array.isArray(raw) && raw[0] && raw[0].id) return raw[0].id;
+    return '';
+  }
+  function primeMdfCache() {
+    var records = getModelRecords();
+    for (var i = 0; i < records.length; i++) {
+      var attrs = records[i] && (records[i].attributes || records[i]);
+      if (attrs && attrs.id) lastMdfSeen[attrs.id] = serializeMdf(attrs);
+    }
+  }
+  $(document).on('knack-view-render.' + VIEW_ID + EVENT_NS + '-mdfprime',
+    function () { primeMdfCache(); });
+
+  // MODEL_ONLY: when a child's GROUPING_FIELD (field_1946) is edited
+  // directly via the v2 MDF picker, cascade the new group id down to
+  // its mounting-hardware accessories so they regroup alongside the
+  // parent. In v1 DOM mode this fires through the forward cascade
+  // path (when field_1957 changes); the direct field_1946 edit is a
+  // v2-only entry point so we scope the handler to MODEL_ONLY.
+  $(document).on('knack-cell-update.' + VIEW_ID + EVENT_NS + '-mdf',
+    function (event, view, record) {
+      try {
+        if (!MODEL_ONLY) return;
+        if (!ACCESSORIES_VIEW_ID) return;
+        if (!record || !record.id) return;
+        if (ownPuts[record.id]) return;
+
+        var prevMdf = lastMdfSeen[record.id] || '';
+        var currMdf = serializeMdf(record);
+        if (prevMdf === currMdf) return;
+        lastMdfSeen[record.id] = currMdf;
+        if (!currMdf) return; // disconnect — leave accessories alone
+
+        var accIds = findAccessoryIdsForParent(record.id);
+        if (!accIds.length) return;
+
+        log('mdf-direct-edit cascade: ' + GROUPING_FIELD + ' on ' +
+            record.id + ' → ' + accIds.length + ' accessory PUT(s) to ' + currMdf);
+        for (var k = 0; k < accIds.length; k++) {
+          fireAccessoryPut(accIds[k], currMdf);
+        }
+      } catch (e) {
+        console.warn(LOG_PREFIX, 'mdf-direct-edit handler threw', e);
+      }
+    });
+
   $(document).on('knack-cell-update.' + VIEW_ID + EVENT_NS + '-recip',
     function (event, view, record) {
       try {
