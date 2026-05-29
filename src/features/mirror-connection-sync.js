@@ -1409,6 +1409,23 @@
     PUBLIC_API_NAME:     'silentRegroupView3610'
   });
 
+  // view_3962 is the v2 worksheet's dedicated source view — same SOW
+  // Line Items object as view_3610, same field keys. v2 PUTs route
+  // through view_3962 directly (instead of borrowing view_3610), so we
+  // need a mirror instance bound to view_3962 to keep the reciprocal +
+  // grouping cascade firing for v2 edits. Accessories on this scene
+  // still live on view_3888 (shared with view_3610).
+  createMirror({
+    VIEW_ID:             'view_3962',
+    TRIGGER_FIELD:       'field_1957',
+    CONNECTIONS_FIELD:   'field_2197',
+    GROUPING_FIELD:      'field_1946',
+    ACCESSORIES_FIELD:        'field_1958',
+    ACCESSORIES_VIEW_ID:      'view_3888',
+    ACCESSORIES_PARENT_FIELD: 'field_2464',
+    PUBLIC_API_NAME:     'silentRegroupView3962'
+  });
+
   // view_3921 (SOW Line Items source for the bid-review comparison
   // grid). Same SOW Line Items object as view_3586/3610, same field
   // keys, same regroup semantics. The bid-review feature edits

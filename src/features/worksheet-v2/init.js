@@ -317,10 +317,10 @@
 
         ns.picker.open({
           sourceViewKey: viewKey,
-          // PUT via view_3610 so v1's mirror/refresh chain fires the
-          // same way an inline Knack edit would have — keeps totals
-          // and any dependent recalcs honest.
-          putViewKey:    'view_3610',
+          // PUT via the v2 source view (view_3962). mirror-connection-sync
+          // has its own createMirror() instance bound to view_3962 so the
+          // cascade still fires server-side.
+          putViewKey:    viewKey,
           recordId:      recordId,
           fieldKey:      'field_2154',
           label:         'SOW',
@@ -386,13 +386,10 @@
         return lbl || prod || rec.id;
       }
 
-      // mirror-connection-sync is bound to view_3610. For ANY
-      // connection field whose cascade should fire (field_1957 +
-      // field_2197), PUT through view_3610 so the cascade runs.
-      // v2 still reads candidates from view_3962.
-      var putViewKey = (fieldKey === 'field_1957' || fieldKey === 'field_2197')
-        ? 'view_3610'
-        : viewKey;
+      // mirror-connection-sync has a createMirror() instance bound to
+      // view_3962 (the v2 source view), so v2 PUTs route through the
+      // source view directly — the cascade still fires.
+      var putViewKey = viewKey;
 
       // field_1957 is multi-connection (one NVR → many cams).
       // field_2197 is single-connection (one cam → one NVR).
