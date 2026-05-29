@@ -20,6 +20,7 @@
 
   var ADD_ACCESSORY_VIEW = 'view_3580';
   var PARENT_FIELD       = 'field_2464';
+  var PRODUCT_FIELD      = 'field_1949';
   var SOURCE_VIEW        = 'view_3962'; // v2 worksheet source for label lookup
 
   function lastIdInHash() {
@@ -42,7 +43,87 @@
     } catch (e) { return ''; }
   }
 
-  function prefill() {
+  /** Read the parent\'s field_1949 (product) id from view_3962. */
+  function lookupParentProductId(parentId) {
+    try {
+      var v = window.Knack && Knack.views && Knack.views[SOURCE_VIEW];
+      if (!v || !v.model || !v.model.data || typeof v.model.data.get !== 'function') return '';
+      var rec = v.model.data.get(parentId);
+      if (!rec) return '';
+      var attrs = rec.attributes || rec;
+      var raw = attrs.field_1949_raw;
+      if (Array.isArray(raw) && raw.length && raw[0]) return raw[0].id || '';
+      if (raw && raw.id) return raw.id;
+      return '';
+    } catch (e) { return ''; }
+  }
+
+  /** Build the bucket-grouped, compatibility-filtered option set for
+   *  the accessory product picker and rewrite the Chosen <select> in
+   *  place. We rely on Chosen\'s native <optgroup> rendering — Knack\'s
+   *  form submit just reads the selected value as before. */
+  function rewriteProductPicker(parentProductId) {
+    var $select = window.jQuery && jQuery('#' + ADD_ACCESSORY_VIEW + '-' + PRODUCT_FIELD);
+    if (!$select || !$select.length) return;
+    var catalog = (window.SCW && window.SCW.mountingBoxProducts) || [];
+    if (!catalog.length) return; // snippet hasn\'t loaded yet — leave Knack\'s default
+
+    // Compatibility gate: an accessory is eligible if its
+    // field_2236 OR field_2205 list contains the parent\'s product id.
+    // Entries with neither field exposed pass through (old catalog data).
+    var filtered = catalog.filter(function (p) {
+      if (!p) return false;
+      if (!parentProductId) return true;
+      var a = Array.isArray(p.compatibleProducts)    ? p.compatibleProducts    : null;
+      var b = Array.isArray(p.compatibleProductsAlt) ? p.compatibleProductsAlt : null;
+      if (!a && !b) return true;
+      return (a && a.indexOf(parentProductId) !== -1) ||
+             (b && b.indexOf(parentProductId) !== -1);
+    });
+
+    // Group by proposal bucket (field_133-derived bucketName), same
+    // shape as the toolbar\'s + Add Accessories modal.
+    var grouped = Object.create(null);
+    for (var i = 0; i < filtered.length; i++) {
+      var p = filtered[i];
+      var key   = p.bucketId   || '__other';
+      var label = p.bucketName || 'Other';
+      if (!grouped[key]) grouped[key] = { label: label, items: [] };
+      grouped[key].items.push(p);
+    }
+    var groupList = Object.keys(grouped).map(function (k) { return grouped[k]; });
+    groupList.sort(function (a, b) {
+      if (a.label === 'Other' && b.label !== 'Other') return 1;
+      if (b.label === 'Other' && a.label !== 'Other') return -1;
+      return a.label.localeCompare(b.label, undefined,
+        { numeric: true, sensitivity: 'base' });
+    });
+
+    // Rebuild the select. Keep Knack\'s "Select" placeholder, then
+    // emit one <optgroup> per bucket with its products sorted by name.
+    var prev = $select.val();
+    $select.empty();
+    $select.append('<option value="">Select</option>');
+    groupList.forEach(function (g) {
+      g.items.sort(function (a, b) {
+        return String(a.name).localeCompare(String(b.name), undefined,
+          { numeric: true, sensitivity: 'base' });
+      });
+      var $og = jQuery('<optgroup></optgroup>').attr('label', g.label);
+      g.items.forEach(function (p) {
+        $og.append(
+          jQuery('<option></option>')
+            .attr('value', p.id)
+            .text(p.name || '(unnamed)')
+        );
+      });
+      $select.append($og);
+    });
+    if (prev) $select.val(prev);
+    // Refresh Chosen so the new options render with groups.
+    $select.trigger('chosen:updated');
+    $select.trigger('liszt:updated');
+  }
     var parentId = lastIdInHash();
     if (!parentId) return;
     var $select = window.jQuery && jQuery('#' + ADD_ACCESSORY_VIEW + '-' + PARENT_FIELD);
@@ -72,13 +153,27 @@
     $select.trigger('change');
   }
 
+  function applyAll() {
+    prefill();
+    var parentId = lastIdInHash();
+    var parentProductId = parentId ? lookupParentProductId(parentId) : '';
+    rewriteProductPicker(parentProductId);
+  }
+
   // Two render events bracket the modal mount (view + modal). Bind to
   // both so we don\'t miss the right pass on either path.
   $(document).on('knack-view-render.' + ADD_ACCESSORY_VIEW, function () {
-    setTimeout(prefill, 1);
+    setTimeout(applyAll, 1);
   });
   $(document).on('knack-modal-render.' + ADD_ACCESSORY_VIEW, function () {
-    setTimeout(prefill, 1);
+    setTimeout(applyAll, 1);
+  });
+
+  // If the catalog is still loading when the modal opens, rewrite once
+  // it lands (the snippet dispatches this event when out is ready).
+  document.addEventListener('scw-mounting-box-products-ready', function () {
+    var openModal = document.querySelector('#' + ADD_ACCESSORY_VIEW);
+    if (openModal) applyAll();
   });
 })();
 /*** END WORKSHEET V2 — PREFILL ACCESSORY PARENT *****************************/
