@@ -149,6 +149,18 @@
       tree.forEach(function (l1) { l1.isOpen = true; });
     }
 
+    // Snapshot which cards are currently expanded so we can reapply
+    // the open state after the full-tree rebuild. Card expansion state
+    // lives only in the DOM (no persistence), so without this an edit
+    // submitted from inside an open card would collapse the card on the
+    // post-save re-render.
+    var openIds = Object.create(null);
+    var openNodes = body.querySelectorAll('.scw-ws-v2-card.scw-ws-v2-card--open');
+    for (var oi = 0; oi < openNodes.length; oi++) {
+      var rid = openNodes[oi].getAttribute('data-scw-ws-v2-record');
+      if (rid) openIds[rid] = true;
+    }
+
     var frag = document.createDocumentFragment();
     for (var i = 0; i < tree.length; i++) {
       frag.appendChild(buildL1Block(tree[i], sourceViewKey));
@@ -156,6 +168,14 @@
 
     body.innerHTML = '';
     body.appendChild(frag);
+
+    // Reapply card-level open state.
+    Object.keys(openIds).forEach(function (rid) {
+      var card = body.querySelector(
+        '.scw-ws-v2-card[data-scw-ws-v2-record="' + rid.replace(/"/g, '\\"') + '"]'
+      );
+      if (card) card.classList.add('scw-ws-v2-card--open');
+    });
   }
 
   // Resume deferred renders when focus leaves the panel.
