@@ -310,10 +310,13 @@
         return;
       }
 
-      // For single-select fields, send the bare id (or empty string)
-      // — multi-connection always sends an array.
+      // Always send connection fields as arrays — Knack\'s REST API
+      // accepts arrays for single- and multi-connection writes alike,
+      // but a bare string can silently no-op on connection fields
+      // whose mirror (or the field itself) is many-sided. Sending
+      // [id] (or [] to clear) is the safe canonical form.
       var body = {};
-      body[opts.fieldKey] = multi ? ids : (ids[0] || '');
+      body[opts.fieldKey] = ids;
 
       confirmBtn.disabled = true;
       cancelBtn.disabled  = true;
