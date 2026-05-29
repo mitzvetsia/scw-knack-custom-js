@@ -643,30 +643,15 @@
         }
       }
     }
-    // addHref fallback: the slug `add-accessory-line-item` differs
-    // between Knack scenes — guessing it bounces the user to the
-    // home page. First look for a real Knack-rendered "Add" link
-    // anywhere in v1\'s accessory widget (it knows the right slug
-    // for THIS scene); only fall back to the manual construction
-    // when nothing is found.
-    if (!addHref) {
-      try {
-        var srcView2 = document.getElementById(viewKey) ||
-                       document.getElementById('view_3962') ||
-                       document.getElementById('view_3610');
-        var liveTr   = srcView2 && srcView2.querySelector('tr[id="' + parentId + '"]');
-        var liveAdd  = liveTr && liveTr.querySelector('a.scw-cr-add[href]');
-        if (liveAdd) {
-          addHref = liveAdd.getAttribute('href');
-          // Knack links from this widget are already hash paths.
-          if (addHref && addHref.charAt(0) !== '#') addHref = '#' + addHref;
-        }
-      } catch (e) { /* fall through */ }
-    }
-    if (!addHref) {
-      var base = buildSowBasePath();
-      if (base) addHref = '#' + base + '/add-accessory-line-item/' + parentId + '/';
-    }
+    // addHref fallback: the `add-accessory-line-item` slug differs
+    // between Knack scenes — and with v1 disabled, v1\'s scw-cr-add
+    // anchors aren\'t in the DOM anymore. So we resolve the live
+    // route lazily AT CLICK TIME (see init.js \'data-scw-ws-v2-add-
+    // accessory\' handler) by searching the whole page for any Knack
+    // menu/details link whose text matches a known add-accessory
+    // label. Rendering a placeholder href here means we never put a
+    // home-bouncing URL into the chip.
+    addHref = addHref || '__resolve-on-click__';
 
     // Build a quick lookup of source-view records so we can read each
     // bracket\'s own attrs (qty + multi-allowed flag) inline.
@@ -742,10 +727,12 @@
       }
     }
 
-    var addHtml = addHref
-      ? '<a class="scw-ws-v2-mh-add" href="' + escapeHtml(addHref) + '"' +
-        ' title="Add mounting hardware">+ Add</a>'
-      : '';
+    // The href stays a placeholder; init.js intercepts the click
+    // and resolves the right Knack-rendered link by text on the page.
+    var addHtml =
+      '<a class="scw-ws-v2-mh-add" href="#" ' +
+        'data-scw-ws-v2-add-accessory="' + escapeHtml(parentId) + '" ' +
+        'title="Add accessory">+ Add</a>';
 
     return '<div class="scw-ws-v2-detail-field scw-ws-v2-detail-field--mh">' +
       '<div class="scw-ws-v2-detail-label">Accessories</div>' +

@@ -229,6 +229,45 @@
   // click view_3962's native a.kn-link-delete on the chip's record row
   // and auto-confirm Knack's modal. The chip's record IS just another
   // line item in view_3962, so it has the standard delete column.
+  // "+ Add" accessory link in the parent\'s detail panel — resolves
+  // the live Knack route at click time so we don\'t hard-code a slug
+  // that bounces to home on scenes where it doesn\'t match. Walks
+  // the page for any anchor whose text matches a known add-accessory
+  // label; if one matches, we click() it (Knack handles the
+  // navigation, preserving SPA / parent-id wiring). If nothing
+  // matches we surface an alert instead of going home.
+  if (!document.documentElement.hasAttribute('data-scw-ws-v2-addacc-bound')) {
+    document.documentElement.setAttribute('data-scw-ws-v2-addacc-bound', '1');
+    document.addEventListener('click', function (e) {
+      var link = e.target && e.target.closest &&
+                 e.target.closest('[data-scw-ws-v2-add-accessory]');
+      if (!link) return;
+      e.preventDefault();
+      e.stopPropagation();
+      var candidates = [
+        'Add Accessory',
+        'Add Accessories',
+        'Add Mounting Hardware',
+        'Add Mounting Bracket',
+        'Add Hardware',
+        'Add to Scope of Work'
+      ];
+      var anchors = document.querySelectorAll('a.kn-link, a.kn-link-page, .scw-acc-action-btn, a');
+      var match = null;
+      for (var ci = 0; ci < anchors.length && !match; ci++) {
+        var txt = (anchors[ci].textContent || '').trim();
+        for (var ti = 0; ti < candidates.length; ti++) {
+          if (txt === candidates[ti] || txt.toLowerCase() === candidates[ti].toLowerCase()) {
+            if (anchors[ci].getAttribute('href')) { match = anchors[ci]; break; }
+          }
+        }
+      }
+      if (match) { match.click(); return; }
+      alert('Could not find the "Add Accessory" link on this page. ' +
+            'Make sure the Knack details/menu link is enabled on the scene.');
+    });
+  }
+
   // Accessory qty stepper — click ± next to a chip in the parent\'s
   // Accessories detail to PUT the bracket\'s field_1964 (qty). Only
   // bound to chips whose field_2230 allows multi-qty (see card.js).
