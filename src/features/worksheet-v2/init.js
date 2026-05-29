@@ -332,7 +332,15 @@
           },
           multi:         true,
           onSaved:       function () {
-            if (ns.data && typeof ns.data.notify === 'function') ns.data.notify(viewKey);
+            // PUT went via view_3610, but v2 reads from view_3962 —
+            // whose Backbone model doesn't auto-refresh, and field_2154
+            // isn't in the mirror-connection-sync cascade so the
+            // scw-cascade-idle path never fires. Refetch explicitly.
+            if (ns.data && typeof ns.data.refetchAndNotify === 'function') {
+              ns.data.refetchAndNotify(viewKey);
+            } else if (ns.data && typeof ns.data.notify === 'function') {
+              ns.data.notify(viewKey);
+            }
           }
         });
         return;

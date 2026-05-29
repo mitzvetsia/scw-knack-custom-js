@@ -135,6 +135,7 @@
     readRecords: readRecords,
     subscribe:   subscribe,
     notify:      notify,
+    refetchAndNotify: refetchAndNotify,
     attachListeners: attachListeners
   };
 })();
