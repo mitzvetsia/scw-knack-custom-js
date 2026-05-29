@@ -832,12 +832,51 @@
             status.textContent = 'No candidates available for ' + f.label + '.';
             return;
           }
+          // Pre-select if EVERY selected record currently holds the
+          // same value on this field — that way the picker opens on
+          // the existing choice instead of a blank slate. Mixed
+          // selections (different values across records) get no
+          // pre-select, since there\'s no single answer to surface.
+          var preselect = [];
+          try {
+            var sourceView = window.Knack && Knack.views &&
+                             Knack.views[sourceViewKey];
+            var models = (sourceView && sourceView.model && sourceView.model.data &&
+                          sourceView.model.data.models) || [];
+            var byId = Object.create(null);
+            for (var mi = 0; mi < models.length; mi++) {
+              var a = models[mi] && models[mi].attributes;
+              if (a && a.id) byId[a.id] = a;
+            }
+            var seen = null;       // serialized form of the first record\'s value
+            var allSame = true;
+            for (var ii = 0; ii < ids.length && allSame; ii++) {
+              var attrs = byId[ids[ii]];
+              if (!attrs) { allSame = false; break; }
+              var raw = attrs[f.key + '_raw'];
+              var arr = [];
+              if (Array.isArray(raw)) {
+                for (var ri = 0; ri < raw.length; ri++) {
+                  if (raw[ri] && raw[ri].id) arr.push(raw[ri].id);
+                }
+              } else if (raw && raw.id) {
+                arr.push(raw.id);
+              }
+              arr.sort();
+              var key = arr.join('|');
+              if (seen === null) seen = key;
+              else if (seen !== key) allSame = false;
+              if (allSame && ii === 0) preselect = arr.slice();
+            }
+            if (!allSame) preselect = [];
+          } catch (e) { preselect = []; }
+
           ns.picker.open({
             sourceViewKey: sourceViewKey,
             recordId:      ids[0], // not used in pickOnly mode
             fieldKey:      f.key,
             label:         f.label,
-            selectedIds:   [],
+            selectedIds:   preselect,
             candidates:    cands,
             groupBy:       resolved.groupBy || undefined,
             multi:         f.kind === 'conn-multi',
