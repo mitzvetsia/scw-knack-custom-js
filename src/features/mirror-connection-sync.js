@@ -1317,6 +1317,35 @@
         }
         var parentGroupId = parentGroupRaw[0].id;
 
+        // MODEL_ONLY: also move the CHILD itself to the new parent's
+        // MDF. In v1 (DOM mode) this case is handled by the v1
+        // connection-picker reframing the edit as a parent-side
+        // field_1957 update + driving applyDeterministicRegroup on
+        // the parent — that cascade PUTs child's GROUPING_FIELD as
+        // part of the added-child handling. v2's picker PUTs
+        // field_2197 directly on the child instead, so without this
+        // the child stays in its old MDF after a connection change.
+        if (MODEL_ONLY) {
+          var parentGroupIdent =
+            (parentGroupRaw[0] && parentGroupRaw[0].identifier) || '';
+          var childBody = {};
+          childBody[GROUPING_FIELD] = [parentGroupId];
+          // Patch the local model immediately so the v2 tree rebuild
+          // on scw-cascade-idle puts the card under the new L1
+          // without waiting for the PUT to land.
+          syncModelChild(record.id, (function () {
+            var p = {};
+            p[GROUPING_FIELD] = parentGroupIdent;
+            p[GROUPING_FIELD + '_raw'] = [{
+              id: parentGroupId, identifier: parentGroupIdent
+            }];
+            return p;
+          })());
+          log('inverse cascade (MODEL_ONLY): also moving child ' +
+              record.id + ' to MDF ' + parentGroupId);
+          firePut(record.id, childBody);
+        }
+
         var accIds = findAccessoryIdsForParent(record.id);
         if (!accIds.length) return;
 
