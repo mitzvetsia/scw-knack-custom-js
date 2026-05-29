@@ -720,18 +720,21 @@
     '}',
 
     /* Kebab button — three-dot icon at the far right of each row */
-    '.scw-ws-v2-kebab {',
+    /* Trash icon (was a kebab) — direct delete, no menu. Faded by
+       default; red on hover so the destructive affordance reads. */
+    '.scw-ws-v2-trash, .scw-ws-v2-kebab {',
     '  display: inline-flex !important; align-items: center !important; justify-content: center !important;',
     '  width: 24px !important; height: 24px !important;',
     '  padding: 0 !important;',
     '  background: transparent !important;',
     '  border: 0 !important; border-radius: 4px !important;',
-    '  color: #94a3b8 !important;',
+    '  color: #cbd5e1 !important;',
     '  cursor: pointer !important;',
     '  transition: background 100ms ease, color 100ms ease !important;',
     '}',
-    '.scw-ws-v2-kebab:hover {',
-    '  background: #f1f5f9 !important; color: #475569 !important;',
+    '.scw-ws-v2-card:hover .scw-ws-v2-trash { color: #94a3b8 !important; }',
+    '.scw-ws-v2-trash:hover, .scw-ws-v2-kebab:hover {',
+    '  background: #fee2e2 !important; color: #b91c1c !important;',
     '}',
     /* Global popover menu rendered once and positioned on each open */
     '.scw-ws-v2-kebab-menu {',

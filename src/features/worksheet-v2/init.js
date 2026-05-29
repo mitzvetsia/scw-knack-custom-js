@@ -278,59 +278,20 @@
   if (!document.documentElement.hasAttribute('data-scw-ws-v2-kebab-bound')) {
     document.documentElement.setAttribute('data-scw-ws-v2-kebab-bound', '1');
 
-    var menu = document.createElement('div');
-    menu.className = 'scw-ws-v2-kebab-menu';
-    menu.innerHTML =
-      '<button type="button" class="scw-ws-v2-kebab-item scw-ws-v2-kebab-item--danger" ' +
-        'data-scw-ws-v2-action="delete">' +
-        '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" ' +
-          'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
-          'stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline>' +
-          '<path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>' +
-          '<path d="M10 11v6"></path><path d="M14 11v6"></path>' +
-          '<path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"></path></svg>' +
-        '<span>Delete line item</span>' +
-      '</button>';
-    document.body.appendChild(menu);
-
-    var menuRowId  = null;
-    var menuViewId = null;
-
-    function closeMenu() {
-      menu.classList.remove('is-open');
-      menuRowId  = null;
-      menuViewId = null;
-    }
-
     document.addEventListener('click', function (e) {
       var kebab = e.target && e.target.closest && e.target.closest('[data-scw-ws-v2-kebab]');
       if (kebab) {
         e.preventDefault();
         e.stopPropagation();
-        menuRowId  = kebab.getAttribute('data-scw-ws-v2-kebab');
-        // Find the owning v2 container so we know which source view
-        // to refetch after the delete settles.
+        var rowId  = kebab.getAttribute('data-scw-ws-v2-kebab');
         var container = kebab.closest('[id^="scw-ws-v2-"]');
-        menuViewId = container
+        var viewId = container
           ? container.id.replace(/^scw-ws-v2-/, '')
           : null;
-        var rect = kebab.getBoundingClientRect();
-        menu.style.top  = (rect.bottom + 4) + 'px';
-        // Right-align the menu under the kebab (160px min-width).
-        menu.style.left = Math.max(8, rect.right - 160) + 'px';
-        menu.classList.add('is-open');
-        return;
-      }
-      // Click on a menu item
-      var item = e.target && e.target.closest && e.target.closest('[data-scw-ws-v2-action]');
-      if (item && menu.contains(item)) {
-        e.preventDefault();
-        e.stopPropagation();
-        var action = item.getAttribute('data-scw-ws-v2-action');
-        var rowId  = menuRowId;
-        var viewId = menuViewId;
-        closeMenu();
-        if (action === 'delete' && rowId) {
+        // Trash icon = direct delete (two-click via Knack\'s native
+        // confirm modal which we auto-accept). Same cascade logic
+        // that the old kebab menu fired — moved inline here.
+        if (rowId) {
           // 1. Find any accessory records connected back to this
           //    line item (mounting brackets etc, identified by
           //    field_2464_raw pointing at rowId) and fire the Make
@@ -403,18 +364,7 @@
         }
         return;
       }
-      // Outside click → close
-      if (menu.classList.contains('is-open') && !menu.contains(e.target)) {
-        closeMenu();
-      }
     });
-
-    document.addEventListener('keydown', function (e) {
-      if (e.key === 'Escape' && menu.classList.contains('is-open')) closeMenu();
-    });
-    window.addEventListener('scroll', function () {
-      if (menu.classList.contains('is-open')) closeMenu();
-    }, true);
   }
 
   // Connection-cell click — opens the picker modal scoped to the
