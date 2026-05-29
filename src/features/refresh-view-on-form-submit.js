@@ -203,6 +203,12 @@
       '  border-top-color: #fff; border-radius: 50%;',
       '  animation: scwDtoSpin .8s linear infinite;',
       '}',
+      '#' + TOAST_ID + ' .scw-dto-refresh {',
+      '  background: #fff; color: #1e3a5f; border: none;',
+      '  border-radius: 4px; padding: 4px 10px; font-size: 12px;',
+      '  font-weight: 700; cursor: pointer; letter-spacing: .2px;',
+      '}',
+      '#' + TOAST_ID + ' .scw-dto-refresh:hover { background: #e0e7f1; }',
       '#' + TOAST_ID + ' .scw-dto-close {',
       '  background: none; border: none; color: rgba(255,255,255,.7);',
       '  font-size: 16px; cursor: pointer; padding: 0 0 0 6px;',
@@ -222,12 +228,13 @@
     if (document.getElementById(TOAST_ID)) return;
     var toast = document.createElement('div');
     toast.id = TOAST_ID;
-    toast.innerHTML = '<span class="scw-dto-spinner"></span> Adding records \u2014 grids will refresh automatically\u2026';
+    toast.innerHTML = '<span class="scw-dto-spinner"></span> ' +
+      '<span class="scw-dto-msg">Adding records in the background\u2026</span>';
 
     var closeBtn = document.createElement('button');
     closeBtn.className = 'scw-dto-close';
     closeBtn.textContent = '\u00d7';
-    closeBtn.title = 'Dismiss and stop refreshing';
+    closeBtn.title = 'Dismiss and stop checking';
     closeBtn.addEventListener('click', function () {
       if (_dtoPollTimer) { clearInterval(_dtoPollTimer); _dtoPollTimer = null; }
       hideDtoToast();
@@ -244,6 +251,46 @@
     setTimeout(function () { if (toast.parentNode) toast.remove(); }, 350);
   }
 
+  // Swap the toast's content from "checking" to "N new records ready \u2014
+  // Refresh now". Clicking Refresh is the ONLY thing that actually
+  // rebuilds the grid; the user opts into the disruption rather than
+  // having it dropped on them mid-edit.
+  function showDtoReadyToast(viewIds, newCount) {
+    var toast = document.getElementById(TOAST_ID);
+    if (!toast) {
+      injectToastStyle();
+      toast = document.createElement('div');
+      toast.id = TOAST_ID;
+      document.body.appendChild(toast);
+    }
+    while (toast.firstChild) toast.removeChild(toast.firstChild);
+
+    var msg = document.createElement('span');
+    msg.className = 'scw-dto-msg';
+    msg.textContent = newCount + ' new record' + (newCount === 1 ? '' : 's') +
+      ' added \u2014 ready when you are.';
+    toast.appendChild(msg);
+
+    var refreshBtn = document.createElement('button');
+    refreshBtn.className = 'scw-dto-refresh';
+    refreshBtn.textContent = 'Refresh now';
+    refreshBtn.addEventListener('click', function () {
+      viewIds.forEach(function (vid) { fetchGrid(vid); });
+      hideDtoToast();
+    });
+    toast.appendChild(refreshBtn);
+
+    var closeBtn = document.createElement('button');
+    closeBtn.className = 'scw-dto-close';
+    closeBtn.textContent = '\u00d7';
+    closeBtn.title = 'Dismiss (records will appear on next page load)';
+    closeBtn.addEventListener('click', hideDtoToast);
+    toast.appendChild(closeBtn);
+  }
+
+  // Hard refresh \u2014 only called when the user clicks "Refresh now",
+  // or from the legacy non-DTO paths above. NOT used by the silent
+  // poll itself.
   function fetchGrid(viewId) {
     if (typeof Knack === 'undefined') return;
     var view = Knack.views && Knack.views[viewId];
@@ -256,17 +303,52 @@
     }
   }
 
+  // Silent record-count probe. Hits the view's records endpoint
+  // directly via the REST API so Backbone's view.model never sees the
+  // response \u2014 no model.fetch, no re-render, no scroll loss, no
+  // collapsed worksheet panels. Resolves with the total_records the
+  // API reports. Used purely to detect when Make has finished adding
+  // records; the rebuild is gated on a user click.
+  function countGridSilent(viewId, cb) {
+    if (typeof Knack === 'undefined' || !Knack.router ||
+        !Knack.router.current_scene_key) {
+      cb(new Error('no scene'));
+      return;
+    }
+    var url = Knack.api_url + '/v1/pages/' +
+              Knack.router.current_scene_key +
+              '/views/' + viewId +
+              '/records?rows_per_page=1&page=1';
+    SCW.knackAjax({
+      url:  url,
+      type: 'GET',
+      success: function (resp) {
+        if (resp && typeof resp.total_records === 'number') {
+          cb(null, resp.total_records); return;
+        }
+        // Fallback for shapes that omit total_records.
+        var n = (resp && Array.isArray(resp.records)) ? resp.records.length : 0;
+        cb(null, n);
+      },
+      error: function (xhr) { cb(xhr || new Error('http error')); }
+    });
+  }
+
   $(document).off('knack-form-submit.' + DTO_FORM + DTO_NS)
              .on('knack-form-submit.' + DTO_FORM + DTO_NS, function () {
-    SCW.debug('[scw-refresh] DTO form submitted \u2014 polling grids for new records');
+    SCW.debug('[scw-refresh] DTO form submitted \u2014 silently checking for new records');
     showDtoToast();
 
-    // Capture initial record counts so we can detect when new records arrive
+    // Baseline counts via the silent probe so we compare like-for-like
+    // in the poll loop. Falls back to 0 on a failed probe so we still
+    // detect the obvious "records went up" case.
     var startCounts = {};
+    var pendingStarts = DTO_GRIDS.length;
     DTO_GRIDS.forEach(function (viewId) {
-      var view = Knack.views && Knack.views[viewId];
-      startCounts[viewId] = (view && view.model && view.model.data)
-        ? view.model.data.length : 0;
+      countGridSilent(viewId, function (err, total) {
+        startCounts[viewId] = err ? 0 : total;
+        pendingStarts--;
+      });
     });
 
     var elapsed = 0;
@@ -274,37 +356,50 @@
     _dtoPollTimer = setInterval(function () {
       elapsed += DTO_POLL_MS;
 
-      DTO_GRIDS.forEach(function (viewId) { fetchGrid(viewId); });
-
-      // Check if any grid gained records
-      var gained = DTO_GRIDS.some(function (viewId) {
-        var view = Knack.views && Knack.views[viewId];
-        var current = (view && view.model && view.model.data)
-          ? view.model.data.length : 0;
-        return current > (startCounts[viewId] || 0);
-      });
-
-      if (gained) {
-        SCW.debug('[scw-refresh] New records detected \u2014 stopping poll');
-        // Keep polling a few more times to catch stragglers
-        setTimeout(function () {
-          DTO_GRIDS.forEach(function (viewId) { fetchGrid(viewId); });
-        }, DTO_POLL_MS);
-        setTimeout(function () {
-          DTO_GRIDS.forEach(function (viewId) { fetchGrid(viewId); });
+      // Wait for the baseline counts to land before comparing; without
+      // this guard a slow first probe would compare against 0 and
+      // declare false-positive new records.
+      if (pendingStarts > 0) {
+        if (elapsed >= DTO_TIMEOUT_MS) {
+          SCW.debug('[scw-refresh] DTO poll timeout (baseline never landed)');
+          clearInterval(_dtoPollTimer);
+          _dtoPollTimer = null;
           hideDtoToast();
-        }, DTO_POLL_MS * 2);
-        clearInterval(_dtoPollTimer);
-        _dtoPollTimer = null;
+        }
         return;
       }
 
-      if (elapsed >= DTO_TIMEOUT_MS) {
-        SCW.debug('[scw-refresh] DTO poll timeout');
-        clearInterval(_dtoPollTimer);
-        _dtoPollTimer = null;
-        hideDtoToast();
-      }
+      // Silent probe each grid; if ANY has gained records, surface a
+      // manual "Refresh now" toast and stop polling. The rendered
+      // grids stay untouched until the user opts in.
+      var pending = DTO_GRIDS.length;
+      var gainedViews = [];
+      var maxGain = 0;
+      DTO_GRIDS.forEach(function (viewId) {
+        countGridSilent(viewId, function (err, total) {
+          pending--;
+          if (!err && typeof total === 'number') {
+            var gain = total - (startCounts[viewId] || 0);
+            if (gain > 0) {
+              gainedViews.push(viewId);
+              if (gain > maxGain) maxGain = gain;
+            }
+          }
+          if (pending === 0) {
+            if (gainedViews.length) {
+              SCW.debug('[scw-refresh] New records detected \u2014 surfacing manual refresh');
+              showDtoReadyToast(gainedViews, maxGain);
+              clearInterval(_dtoPollTimer);
+              _dtoPollTimer = null;
+            } else if (elapsed >= DTO_TIMEOUT_MS) {
+              SCW.debug('[scw-refresh] DTO poll timeout');
+              clearInterval(_dtoPollTimer);
+              _dtoPollTimer = null;
+              hideDtoToast();
+            }
+          }
+        });
+      });
     }, DTO_POLL_MS);
   });
 })();
