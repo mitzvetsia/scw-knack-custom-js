@@ -753,32 +753,29 @@
     '</div>';
   }
 
+  function isMapConnectionsRow(rec) {
+    var raw = rec && rec['field_2231_raw'];
+    if (raw === true || raw === 'Yes' || raw === 'yes' || raw === 1) return true;
+    var s = (rec && rec['field_2231'] || '').toString().trim().toLowerCase();
+    return s === 'yes' || s === 'true' || s === '1';
+  }
+
   function buildDetail_default(rec, viewKey) {
-    var hasParent = !!readParentRef(rec);
+    var hasParent      = !!readParentRef(rec);
+    var showConnDevices = isMapConnectionsRow(rec);
     return '<div class="scw-ws-v2-detail">' +
       '<div class="scw-ws-v2-detail-zones">' +
         '<div class="scw-ws-v2-detail-zone scw-ws-v2-detail-zone--connections">' +
+          (hasParent ? detailConnection(rec, viewKey, 'field_2464', 'Parent') : '') +
           detailMountingHardware(rec, viewKey) +
-          detailConnection(rec,       viewKey, 'field_1957', 'Connected Devices') +
+          (showConnDevices ? detailConnection(rec, viewKey, 'field_1957', 'Connected Devices') : '') +
           detailConnection(rec,       viewKey, 'field_1946', 'MDF / IDF') +
-          (hasParent ? detailSubBidToggle(rec, viewKey) : '') +
         '</div>' +
       '</div>' +
       '<div class="scw-ws-v2-detail-notes">' +
         detailField(rec,    viewKey, 'field_1953', 'SCW Notes', 'text') +
         detailReadOnly(rec,          'field_2412', 'Survey Notes') +
       '</div>' +
-    '</div>';
-  }
-
-  /** Require-Sub-Bid toggle (field_2479) — only meaningful for
-   *  accessories (records with a field_2464 parent). Clicking flips
-   *  Yes ↔ No. Flipping to No hides the row from the main tree on
-   *  the next render (it becomes attached under its parent). */
-  function detailSubBidToggle(rec, viewKey) {
-    return '<div class="scw-ws-v2-detail-field">' +
-      '<div class="scw-ws-v2-detail-label">Require Sub Bid</div>' +
-      chip(rec, viewKey, 'field_2479', 'Sub Bid Required', 'Require Sub Bid') +
     '</div>';
   }
 

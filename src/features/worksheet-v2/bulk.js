@@ -50,6 +50,7 @@
   var FIELDS = {
     cam: [
       { key: 'field_2020', label: 'Labor description', kind: 'text' },
+      { key: 'field_2240', label: 'Drop prefix',       kind: 'text' },
       { key: 'field_2150', label: 'Sub Bid',           kind: 'number' },
       { key: 'field_1973', label: '+Hrs',              kind: 'number' },
       { key: 'field_1974', label: '+Mat',              kind: 'number' },

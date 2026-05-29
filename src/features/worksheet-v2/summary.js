@@ -301,6 +301,12 @@
    *  ns.warnings cache (analyzed once per render in render.js). Empty
    *  string when there are no flagged records in the given set. */
   function fmtIssueChips(recordIds) {
+    // Disabled — the per-card warning badge already surfaces this
+    // info on each row; the summary-head chips never landed cleanly
+    // on the right edge across all browsers. Re-enable once we have
+    // a reliable layout.
+    return '';
+    /* eslint-disable */
     if (!ns.warnings || typeof ns.warnings.getCountsForRecords !== 'function') return '';
     if (!recordIds.length) return '';
     var counts;

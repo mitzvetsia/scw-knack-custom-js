@@ -574,6 +574,44 @@
         return;
       }
 
+      // Parent picker (field_2464) — candidates are every other
+      // line item on the source view. Single-select. Used by
+      // promoted accessories to re-parent themselves.
+      if (fieldKey === 'field_2464') {
+        var parentCands = [];
+        for (var pc = 0; pc < records.length; pc++) {
+          var r = records[pc];
+          if (!r || !r.id || r.id === recordId) continue;
+          // Don\'t list other accessories as candidates; only line
+          // items with no field_2464 back-mirror of their own.
+          var ownParentRaw = r.field_2464_raw;
+          if (Array.isArray(ownParentRaw) && ownParentRaw.length) continue;
+          parentCands.push(r);
+        }
+        ns.picker.open({
+          sourceViewKey: viewKey,
+          putViewKey:    viewKey,
+          recordId:      recordId,
+          fieldKey:      'field_2464',
+          label:         'Parent',
+          selectedIds:   sel,
+          candidates:    parentCands,
+          multi:         false,
+          itemLabel: function (r) {
+            var lbl  = (r.field_1950 || '').toString().replace(/<[^>]*>/g, '').trim();
+            var prod = (r.field_1949 || '').toString().replace(/<[^>]*>/g, '').trim();
+            if (lbl && prod) return lbl + ' · ' + prod;
+            return lbl || prod || r.id;
+          },
+          onSaved: function () {
+            if (ns.data && typeof ns.data.refetchAndNotify === 'function') {
+              ns.data.refetchAndNotify(viewKey);
+            }
+          }
+        });
+        return;
+      }
+
       // MDF/IDF picker (field_1946) — candidates come from view_3577
       // (the Network Locations grid on the same scene). Single-select.
       // The MODEL_ONLY cascade in mirror-connection-sync handles
