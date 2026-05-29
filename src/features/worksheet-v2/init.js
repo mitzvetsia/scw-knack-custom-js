@@ -746,15 +746,20 @@
             return lbl || prod || r.id;
           },
           onSaved: function (chosenIds) {
-            // Cascade — when the accessory\'s parent (field_2464)
-            // changes, add this accessory to the NEW parent\'s
-            // field_1958 (Accessories) array so the forward link is
-            // in sync with the back-mirror, AND remove it from the OLD
-            // parent\'s field_1958 so its accessory grouping refreshes.
+            // Data model:
+            //   accessory.field_2464 = "my parent"     (single connection)
+            //   parent.field_2207    = "my children"   (array of accessory ids)
+            //
+            // The picker already PUT field_2464 on the accessory. Now we
+            // need to keep the parent\'s field_2207 in sync:
+            //   • Add this accessory\'s id to the NEW parent\'s field_2207
+            //   • Remove this accessory\'s id from the OLD parent\'s
+            //     field_2207 (whichever record currently lists it)
+            //
             // Both rows (accessory + new parent + old parent) need to
-            // re-render — we sync the local Knack models inline for a
-            // snappy first paint, then defer refetchAndNotify until the
-            // server PUTs land so the next pass reads fresh data.
+            // re-render. We patch local Knack models inline for snappy
+            // first paint, then refetchAndNotify after the server PUTs
+            // settle so the next pass reads fresh data.
             //
             // The picker\'s PUT goes through view_3610 (putViewKey
             // above), so syncKnackModel only patched view_3610\'s copy
@@ -798,8 +803,6 @@
                   raw.push({ id: newIds[i], identifier: '' });
                 }
                 pModel.set({
-                  field_1958_raw: raw,
-                  field_1958:     newIds.join(','),
                   field_2207_raw: raw,
                   field_2207:     newIds.join(',')
                 }, { silent: true });
@@ -811,7 +814,7 @@
                 var pModel = pView && pView.model && pView.model.data &&
                              pView.model.data.get && pView.model.data.get(parentId);
                 var pAttrs = pModel && pModel.attributes;
-                var existing = (pAttrs && pAttrs.field_1958_raw) || [];
+                var existing = (pAttrs && pAttrs.field_2207_raw) || [];
                 var ids = [];
                 for (var i = 0; i < existing.length; i++) {
                   if (existing[i] && existing[i].id) ids.push(existing[i].id);
@@ -822,12 +825,8 @@
             try {
               var newParentId = chosenIds && chosenIds[0];
 
-              // Find the OLD parent (the one the accessory had before
-              // this edit). The picker already PUT field_2464 on the
-              // accessory and syncKnackModel patched its local copy —
-              // so reading field_2464_raw here gives the NEW parent.
-              // We need the OLD value, which is whatever parents
-              // currently list this accessory in field_1958.
+              // Find the OLD parent (the record that currently lists
+              // this accessory in its field_2207 "children" array).
               var oldParentIds = [];
               try {
                 var srcView = Knack.views && Knack.views[viewKey];
@@ -837,7 +836,7 @@
                 for (var oi = 0; oi < srcRecs.length; oi++) {
                   var sr = srcRecs[oi];
                   if (!sr || !sr.id || sr.id === newParentId) continue;
-                  var srRaw = sr.field_1958_raw;
+                  var srRaw = sr.field_2207_raw;
                   if (!Array.isArray(srRaw)) continue;
                   for (var oj = 0; oj < srRaw.length; oj++) {
                     if (srRaw[oj] && srRaw[oj].id === recordId) {
@@ -849,20 +848,13 @@
               } catch (eOld) { /* ignore */ }
 
               // PUTs route through view_3610 (v1 grid) because that\'s
-              // where field_1958 is exposed as editable — v2\'s source
-              // view doesn\'t grant edit perms on the parent\'s
-              // accessory array, so a view-scoped PUT through viewKey
+              // where field_2207 is exposed as editable — v2\'s source
+              // view (view_3962) is MODEL_ONLY and a PUT through it
               // 403s silently.
               var WRITE_VIEW = 'view_3610';
 
-              // The parent\'s accessory connection exists under TWO field
-              // keys: field_1958 (legacy "Mounting Hardware") and
-              // field_2207 (current "Accessories" array). User confirmed
-              // field_2207 is the one that wasn\'t cascading — write both
-              // in a single PUT so server-side stays consistent
-              // regardless of which one downstream surfaces read from.
               function buildBody(ids) {
-                return JSON.stringify({ field_1958: ids, field_2207: ids });
+                return JSON.stringify({ field_2207: ids });
               }
 
               // Remove this accessory from each old parent\'s accessory
