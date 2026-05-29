@@ -639,59 +639,65 @@
 
   function buildDetail_cam(rec, viewKey) {
     return '<div class="scw-ws-v2-detail">' +
-      '<div class="scw-ws-v2-detail-grid">' +
-        detailReadOnly(rec,                  'field_2240', 'Drop Prefix') +
-        detailField(rec,            viewKey, 'field_1951', 'Drop Number', 'number') +
-        detailConnection(rec,       viewKey, 'field_1946', 'MDF / IDF') +
-        // Mounting Hardware (field_1958) renders as a connected-records
-        // widget with chip-style edit links + an "+ Add" navigation —
-        // matches v1's UX on view_3610 (no inline modal, just navigation).
-        detailMountingHardware(rec, viewKey) +
-        // Connected Device (field_2197) — single-select picker on
-        // cam/reader rows. Candidates filtered to Map-Connections-Yes
-        // rows; see init.js click handler.
-        detailConnection(rec,       viewKey, 'field_2197', 'Connected Device') +
-        detailField(rec,            viewKey, 'field_1965', 'Drop Length', 'number') +
-        detailField(rec,            viewKey, 'field_2035', 'Conduit',     'number') +
-        detailField(rec,            viewKey, 'field_1953', 'SCW Notes',   'text') +
-        detailReadOnly(rec,                  'field_2412', 'Survey Notes') +
+      '<div class="scw-ws-v2-detail-zones">' +
+        '<div class="scw-ws-v2-detail-zone scw-ws-v2-detail-zone--identity">' +
+          detailReadOnly(rec,          'field_2240', 'Prefix') +
+          detailField(rec,    viewKey, 'field_1951', 'Drop #',  'number') +
+          detailField(rec,    viewKey, 'field_1965', 'Length',  'number') +
+          detailField(rec,    viewKey, 'field_2035', 'Conduit', 'number') +
+        '</div>' +
+        '<div class="scw-ws-v2-detail-zone scw-ws-v2-detail-zone--connections">' +
+          detailConnection(rec,       viewKey, 'field_1946', 'MDF / IDF') +
+          detailMountingHardware(rec, viewKey) +
+          detailConnection(rec,       viewKey, 'field_2197', 'Connected Device') +
+        '</div>' +
+      '</div>' +
+      '<div class="scw-ws-v2-detail-notes">' +
+        detailField(rec,    viewKey, 'field_1953', 'SCW Notes',   'text') +
+        detailReadOnly(rec,          'field_2412', 'Survey Notes') +
       '</div>' +
     '</div>';
   }
 
   function buildDetail_default(rec, viewKey) {
     return '<div class="scw-ws-v2-detail">' +
-      '<div class="scw-ws-v2-detail-grid">' +
-        detailConnection(rec,       viewKey, 'field_1946', 'MDF / IDF') +
-        // Mounting Hardware — same connected-records widget as cam/reader.
-        detailMountingHardware(rec, viewKey) +
-        // Connected Devices (field_1957) — multi-select picker for NVR
-        // rows attaching cam/readers (existing wiring in init.js).
-        detailConnection(rec,       viewKey, 'field_1957', 'Connected Devices') +
-        detailField(rec,            viewKey, 'field_1953', 'SCW Notes', 'text') +
-        detailReadOnly(rec,                  'field_2412', 'Survey Notes') +
+      '<div class="scw-ws-v2-detail-zones">' +
+        '<div class="scw-ws-v2-detail-zone scw-ws-v2-detail-zone--connections">' +
+          detailConnection(rec,       viewKey, 'field_1946', 'MDF / IDF') +
+          detailMountingHardware(rec, viewKey) +
+          detailConnection(rec,       viewKey, 'field_1957', 'Connected Devices') +
+        '</div>' +
+      '</div>' +
+      '<div class="scw-ws-v2-detail-notes">' +
+        detailField(rec,    viewKey, 'field_1953', 'SCW Notes', 'text') +
+        detailReadOnly(rec,          'field_2412', 'Survey Notes') +
       '</div>' +
     '</div>';
   }
 
   function buildDetail_services(rec, viewKey) {
     return '<div class="scw-ws-v2-detail">' +
-      '<div class="scw-ws-v2-detail-grid">' +
-        detailConnection(rec, viewKey, 'field_1946', 'MDF / IDF') +
-        detailField(rec,      viewKey, 'field_1953', 'SCW Notes', 'text') +
-        detailReadOnly(rec,            'field_2412', 'Survey Notes') +
+      '<div class="scw-ws-v2-detail-zones">' +
+        '<div class="scw-ws-v2-detail-zone scw-ws-v2-detail-zone--connections">' +
+          detailConnection(rec, viewKey, 'field_1946', 'MDF / IDF') +
+        '</div>' +
+      '</div>' +
+      '<div class="scw-ws-v2-detail-notes">' +
+        detailField(rec,    viewKey, 'field_1953', 'SCW Notes', 'text') +
+        detailReadOnly(rec,          'field_2412', 'Survey Notes') +
       '</div>' +
     '</div>';
   }
 
   function buildDetail_assumptions(rec, viewKey) {
-    // Assumptions are essentially long-form text. The labor desc in
-    // the summary row is the primary text; the detail panel adds
-    // SCW Notes for internal annotations.
     return '<div class="scw-ws-v2-detail">' +
-      '<div class="scw-ws-v2-detail-grid">' +
-        detailConnection(rec, viewKey, 'field_1946', 'MDF / IDF') +
-        detailField(rec,      viewKey, 'field_1953', 'SCW Notes', 'text') +
+      '<div class="scw-ws-v2-detail-zones">' +
+        '<div class="scw-ws-v2-detail-zone scw-ws-v2-detail-zone--connections">' +
+          detailConnection(rec, viewKey, 'field_1946', 'MDF / IDF') +
+        '</div>' +
+      '</div>' +
+      '<div class="scw-ws-v2-detail-notes">' +
+        detailField(rec,    viewKey, 'field_1953', 'SCW Notes', 'text') +
       '</div>' +
     '</div>';
   }
