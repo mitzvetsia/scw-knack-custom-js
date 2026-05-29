@@ -1,26 +1,31 @@
 /*** WORKSHEET V2 — SOW FILTER PILLS ******************************************
  *
- * Quick-filter strip mounted above the L1 list. One pill per unique
- * SOW (field_2154) connected to any record on the view, plus a
- * "Show All" pill. Clicking a SOW pill hides cards that don\'t connect
- * to that SOW; "Show All" resets.
+ * Multi-select quick-filter strip mounted above the L1 list. One pill
+ * per unique SOW (field_2154) connected to any record on the view,
+ * plus a "(blank)" pill that scopes to records with no SOW, plus a
+ * "Show All" reset. Pills toggle independently — clicking SW-1001
+ * AND SW-1060 shows every card connected to EITHER SOW; clicking
+ * "(blank)" alongside SW-1001 also surfaces no-SOW rows.
  *
- * Implementation:
- *   - Cards carry a `data-scw-ws-v2-sow` attribute holding the
- *     space-separated SOW record ids (added by card.js).
- *   - The container gets `data-scw-ws-v2-sow-filter="<sowId>"` when a
- *     filter is active. CSS hides every card whose data-sow attr
- *     doesn\'t include the selected id.
- *   - Empty L1 sections (where every card got filtered) auto-hide via
- *     CSS using :has() (per-L1 has zero visible cards). Falls back
- *     gracefully on browsers without :has().
- *   - Selection persists per (scene, viewKey) in localStorage.
+ * Storage: comma-separated list of selected ids in localStorage. The
+ * sentinel `__blank` represents the "no SOW connection" filter.
+ * Empty string = Show All (no filter active).
+ *
+ * The container gets `data-scw-ws-v2-sow-filter` (a single comma-
+ * joined value, for inspectability); per-card class `--sow-filtered`
+ * does the actual hide. CSS can\'t do dynamic-id matching, so the
+ * match logic runs in JS.
+ *
+ * Selection persists per (scene, viewKey). Stale ids that no longer
+ * correspond to a real SOW are dropped silently on mount.
  ****************************************************************************/
 (function () {
   'use strict';
 
   var ns = window.SCW && window.SCW.worksheetV2;
   if (!ns) return;
+
+  var BLANK = '__blank';
 
   function getSceneId() {
     var m = (document.body.id || '').match(/scene_\d+/);
@@ -30,13 +35,16 @@
     return 'scw:ws-v2:sow-filter:' + getSceneId() + ':' + viewKey;
   }
   function loadActive(viewKey) {
-    try { return localStorage.getItem(storageKey(viewKey)) || ''; }
-    catch (e) { return ''; }
-  }
-  function saveActive(viewKey, sowId) {
     try {
-      if (sowId) localStorage.setItem(storageKey(viewKey), sowId);
-      else       localStorage.removeItem(storageKey(viewKey));
+      var raw = localStorage.getItem(storageKey(viewKey)) || '';
+      if (!raw) return [];
+      return raw.split(',').filter(function (s) { return s.length; });
+    } catch (e) { return []; }
+  }
+  function saveActive(viewKey, ids) {
+    try {
+      if (!ids || !ids.length) localStorage.removeItem(storageKey(viewKey));
+      else                     localStorage.setItem(storageKey(viewKey), ids.join(','));
     } catch (e) {}
   }
 
@@ -49,8 +57,6 @@
     });
   }
 
-  /** Collect unique SOWs from the source view\'s records — returns
-   *  [{id, label}] sorted by label (numeric-aware so SW-1001 < SW-1002). */
   function collectSowList(viewKey) {
     var v = window.Knack && Knack.views && Knack.views[viewKey];
     if (!v || !v.model || !v.model.data) return [];
@@ -76,24 +82,37 @@
     return list;
   }
 
-  function applyFilter(container, sowId) {
-    if (sowId) container.setAttribute('data-scw-ws-v2-sow-filter', sowId);
+  function applyFilter(container, activeIds) {
+    var hasAny = activeIds && activeIds.length > 0;
+    if (hasAny) container.setAttribute('data-scw-ws-v2-sow-filter', activeIds.join(','));
     else container.removeAttribute('data-scw-ws-v2-sow-filter');
 
-    // Per-card class toggle: cards whose data-scw-ws-v2-sow does NOT
-    // include the active SOW id get the --sow-filtered class. CSS
-    // can\'t do dynamic attribute matching for a runtime-chosen value,
-    // so we do it in JS.
+    // Per-card class toggle. A card is visible (no --sow-filtered)
+    // if at least one of its SOW ids is in activeIds, OR if it has
+    // no SOW ids and the "(blank)" sentinel is active.
+    var activeSet = Object.create(null);
+    var blankActive = false;
+    for (var a = 0; a < activeIds.length; a++) {
+      if (activeIds[a] === BLANK) blankActive = true;
+      else activeSet[activeIds[a]] = true;
+    }
+
     var cards = container.querySelectorAll('.scw-ws-v2-card');
     for (var c = 0; c < cards.length; c++) {
-      if (!sowId) {
+      if (!hasAny) {
         cards[c].classList.remove('scw-ws-v2-card--sow-filtered');
         continue;
       }
       var attr = cards[c].getAttribute('data-scw-ws-v2-sow') || '';
-      var ids = attr.split(/\s+/);
+      var ids  = attr ? attr.split(/\s+/) : [];
       var hit = false;
-      for (var k = 0; k < ids.length; k++) if (ids[k] === sowId) { hit = true; break; }
+      if (!ids.length) {
+        hit = blankActive;
+      } else {
+        for (var k = 0; k < ids.length; k++) {
+          if (activeSet[ids[k]]) { hit = true; break; }
+        }
+      }
       cards[c].classList.toggle('scw-ws-v2-card--sow-filtered', !hit);
     }
 
@@ -102,8 +121,12 @@
     var pills = strip.querySelectorAll('[data-scw-ws-v2-sow-pill]');
     for (var i = 0; i < pills.length; i++) {
       var pid = pills[i].getAttribute('data-scw-ws-v2-sow-pill');
-      pills[i].classList.toggle('scw-ws-v2-sow-pill--active',
-        pid === sowId || (!sowId && pid === '__all'));
+      if (pid === '__all') {
+        pills[i].classList.toggle('scw-ws-v2-sow-pill--active', !hasAny);
+      } else {
+        pills[i].classList.toggle('scw-ws-v2-sow-pill--active',
+          activeSet[pid] || (pid === BLANK && blankActive));
+      }
     }
   }
 
@@ -117,7 +140,6 @@
 
     var existing = container.querySelector(':scope > .scw-ws-v2-sow-pills');
     if (!sows.length) {
-      // No SOWs → no pills. Strip any stale one and clear filter.
       if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
       container.removeAttribute('data-scw-ws-v2-sow-filter');
       return;
@@ -132,27 +154,21 @@
           return '<button type="button" class="scw-ws-v2-sow-pill" ' +
             'data-scw-ws-v2-sow-pill="' + esc(s.id) + '">' + esc(s.label) + '</button>';
         }).join('') +
+        '<button type="button" class="scw-ws-v2-sow-pill scw-ws-v2-sow-pill--blank" ' +
+          'data-scw-ws-v2-sow-pill="' + BLANK + '">(blank)</button>' +
       '</div>';
 
-    if (existing) {
-      existing.outerHTML = html;
-    } else {
-      // Mount BEFORE the body so the strip sits above the grand summary.
-      body.insertAdjacentHTML('beforebegin', html);
-    }
+    if (existing) existing.outerHTML = html;
+    else body.insertAdjacentHTML('beforebegin', html);
 
     var strip = container.querySelector(':scope > .scw-ws-v2-sow-pills');
     if (!strip) return;
 
-    var active = loadActive(viewKey);
-    // Validate the stored selection — if the SOW no longer exists,
-    // reset to Show All.
-    var stillValid = false;
-    for (var s = 0; s < sows.length; s++) if (sows[s].id === active) { stillValid = true; break; }
-    if (!stillValid) {
-      active = '';
-      saveActive(viewKey, '');
-    }
+    var valid = Object.create(null);
+    for (var s = 0; s < sows.length; s++) valid[sows[s].id] = true;
+    valid[BLANK] = true;
+    var active = loadActive(viewKey).filter(function (id) { return valid[id]; });
+    saveActive(viewKey, active);
     applyFilter(container, active);
 
     if (!strip.hasAttribute('data-scw-bound')) {
@@ -161,7 +177,21 @@
         var pill = e.target && e.target.closest && e.target.closest('[data-scw-ws-v2-sow-pill]');
         if (!pill) return;
         var id = pill.getAttribute('data-scw-ws-v2-sow-pill');
-        var next = id === '__all' ? '' : id;
+        var current = loadActive(viewKey);
+        var next;
+        if (id === '__all') {
+          next = [];
+        } else {
+          // Toggle individual pill in/out of the active set.
+          var idx = current.indexOf(id);
+          if (idx === -1) {
+            next = current.slice();
+            next.push(id);
+          } else {
+            next = current.slice();
+            next.splice(idx, 1);
+          }
+        }
         saveActive(viewKey, next);
         applyFilter(container, next);
       });
@@ -169,8 +199,8 @@
   }
 
   ns.sowFilter = {
-    mount:       mount,
-    loadActive:  loadActive
+    mount:      mount,
+    loadActive: loadActive
   };
 })();
 /*** END WORKSHEET V2 — SOW FILTER PILLS **************************************/

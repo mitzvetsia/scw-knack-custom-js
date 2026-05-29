@@ -1417,6 +1417,18 @@
     '  color: #fff !important;',
     '  border-color: var(--scw-accent-strong, #1f4a72) !important;',
     '}',
+    /* (blank) pill — italic + muted so it visually separates from
+       the real SOW labels. Active state matches the others. */
+    '.scw-ws-v2-sow-pill--blank {',
+    '  font-style: italic !important;',
+    '  color: #64748b !important;',
+    '  border-style: dashed !important;',
+    '}',
+    '.scw-ws-v2-sow-pill--blank.scw-ws-v2-sow-pill--active {',
+    '  font-style: normal !important;',
+    '  color: #fff !important;',
+    '  border-style: solid !important;',
+    '}',
     /* Cards excluded by the SOW filter — sow-filter.js applies this
        class to non-matching cards (JS-side because the filter id is
        dynamic and CSS can\'t do dynamic attribute matching). */
