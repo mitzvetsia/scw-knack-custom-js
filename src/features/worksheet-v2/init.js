@@ -725,9 +725,14 @@
           if (b !== CAM && b !== NETWORKING) continue;
           parentCands.push(r);
         }
+        // Route the PUT through view_3610 — view_3962 (v2 source) is
+        // MODEL_ONLY and doesn\'t expose field_2464 as editable, so a
+        // view-scoped PUT through viewKey 403s silently and the
+        // server-side mirror (field_2207 on the parent) never updates.
+        // Same routing pattern as the field_1958 cascade below.
         ns.picker.open({
           sourceViewKey: viewKey,
-          putViewKey:    viewKey,
+          putViewKey:    'view_3610',
           recordId:      recordId,
           fieldKey:      'field_2464',
           label:         'Parent',
@@ -750,6 +755,28 @@
             // re-render — we sync the local Knack models inline for a
             // snappy first paint, then defer refetchAndNotify until the
             // server PUTs land so the next pass reads fresh data.
+            //
+            // The picker\'s PUT goes through view_3610 (putViewKey
+            // above), so syncKnackModel only patched view_3610\'s copy
+            // of the accessory. The v2 grid reads from view_3962 — we
+            // need to patch its model too so notify() renders the new
+            // parent immediately instead of waiting for refetch.
+            try {
+              var srcView = Knack.views && Knack.views[viewKey];
+              var srcRec  = srcView && srcView.model && srcView.model.data &&
+                            srcView.model.data.get && srcView.model.data.get(recordId);
+              if (srcRec) {
+                var newRaw = [];
+                if (chosenIds && chosenIds[0]) {
+                  newRaw.push({ id: chosenIds[0], identifier: '' });
+                }
+                srcRec.set({
+                  field_2464_raw: newRaw,
+                  field_2464:     chosenIds && chosenIds[0] ? chosenIds[0] : ''
+                }, { silent: true });
+              }
+            } catch (eSrc) { /* best-effort */ }
+
             var pendingPuts = 0;
             var anyError = false;
             function finish() {
