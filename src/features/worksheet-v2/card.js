@@ -317,6 +317,7 @@
       '</div>';
 
     return '<div class="scw-ws-v2-row scw-ws-v2-row--cam">' +
+      chevronCell(rec) +
       ro(label,   'scw-ws-v2-cell--label',   label) +
       productCell(rec, viewKey, product) +
       '<div class="scw-ws-v2-cell scw-ws-v2-cell--labor-desc">' +
@@ -328,7 +329,6 @@
       stackCell(rec, viewKey, 'field_1974', plusMat, matTotal,    '+Mat') +
       ro(installFee, 'scw-ws-v2-cell--fee', 'Install fee') +
       sowCell(rec, viewKey, sow) +
-      chevronCell(rec) +
       kebabCell(rec) +
     '</div>';
   }
@@ -356,6 +356,7 @@
       : '<div class="scw-ws-v2-cell scw-ws-v2-cell--num">' + qtyInput + '</div>';
 
     return '<div class="' + rowCls + '">' +
+      chevronCell(rec) +
       // Empty label slot keeps product / labor desc aligned with cam rows.
       empty('scw-ws-v2-cell--label') +
       productCell(rec, viewKey, product) +
@@ -368,7 +369,6 @@
       stackCell(rec, viewKey, 'field_1974', plusMat, matTotal,    '+Mat') +
       ro(installFee, 'scw-ws-v2-cell--fee', 'Install fee') +
       sowCell(rec, viewKey, sow) +
-      chevronCell(rec) +
       kebabCell(rec) +
     '</div>';
   }
@@ -396,6 +396,7 @@
       : '<div class="scw-ws-v2-cell scw-ws-v2-cell--num">' + qtyInput + '</div>';
 
     return '<div class="' + rowCls + '">' +
+      chevronCell(rec) +
       // Share the cam/default column template so labor desc lines up.
       // Tag occupies the product slot; label slot is empty.
       empty('scw-ws-v2-cell--label') +
@@ -409,7 +410,6 @@
       stackCell(rec, viewKey, 'field_1974', plusMat, matTotal,    '+Mat') +
       ro(installFee, 'scw-ws-v2-cell--fee', 'Install fee') +
       sowCell(rec, viewKey, sow) +
-      chevronCell(rec) +
       kebabCell(rec) +
     '</div>';
   }
@@ -425,10 +425,10 @@
     // section ("Project Wide Assumptions"), so the inline "Assumption"
     // chip was redundant noise.
     return '<div class="scw-ws-v2-row scw-ws-v2-row--assumptions">' +
+      chevronCell(rec) +
       '<div class="scw-ws-v2-cell scw-ws-v2-cell--labor-desc">' +
         textArea(rec, viewKey, 'field_2020', laborDesc, 'Assumption text') +
       '</div>' +
-      chevronCell(rec) +
       kebabCell(rec) +
     '</div>';
   }
