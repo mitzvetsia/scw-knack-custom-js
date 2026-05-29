@@ -461,14 +461,44 @@
       var blank = document.createElement('option');
       blank.value = ''; blank.textContent = '— Choose an accessory —';
       selEl.appendChild(blank);
+
+      // Group products by their proposal bucket. Entries that don\'t
+      // carry a bucket (e.g. catalog rows pre-dating the snippet\'s
+      // bucket field) land in a single "Other" group at the bottom so
+      // they\'re still pickable. Each group sorts its products by
+      // name alphabetically.
+      var grouped = Object.create(null);
       for (var pi = 0; pi < products.length; pi++) {
         var p = products[pi];
-        var opt = document.createElement('option');
-        opt.value = p.id;
-        opt.textContent = p.name;
-        opt.dataset.name = p.name;
-        selEl.appendChild(opt);
+        var key   = p.bucketId   || '__other';
+        var label = p.bucketName || 'Other';
+        if (!grouped[key]) grouped[key] = { label: label, items: [] };
+        grouped[key].items.push(p);
       }
+      var groupList = Object.keys(grouped).map(function (k) { return grouped[k]; });
+      groupList.sort(function (a, b) {
+        // "Other" sinks to the bottom; everything else alphabetical.
+        if (a.label === 'Other' && b.label !== 'Other') return 1;
+        if (b.label === 'Other' && a.label !== 'Other') return -1;
+        return a.label.localeCompare(b.label, undefined,
+          { numeric: true, sensitivity: 'base' });
+      });
+      groupList.forEach(function (g) {
+        g.items.sort(function (a, b) {
+          return String(a.name).localeCompare(String(b.name), undefined,
+            { numeric: true, sensitivity: 'base' });
+        });
+        var og = document.createElement('optgroup');
+        og.label = g.label;
+        g.items.forEach(function (p) {
+          var opt = document.createElement('option');
+          opt.value = p.id;
+          opt.textContent = p.name;
+          opt.dataset.name = p.name;
+          og.appendChild(opt);
+        });
+        selEl.appendChild(og);
+      });
     }
 
     var picker  = overlay.querySelector('.scw-ws-v2-mb-input');
