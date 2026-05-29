@@ -290,12 +290,17 @@
     for (var i = 0; i < boxes.length; i++) {
       var rid = boxes[i].getAttribute('data-scw-ws-v2-select');
       var card = boxes[i].closest('.scw-ws-v2-card');
-      var label = card
-        ? ((card.querySelector('.scw-ws-v2-cell--label') ||
-            card.querySelector('.scw-ws-v2-product-name') || {}).textContent || '').trim()
-        : '';
+      // Prefer the drop label (E-001 etc.), then fall back to the
+      // product name — non-cam rows don\'t have a label cell, so the
+      // raw record id was leaking through for NVRs / switches.
+      var labelEl = card && card.querySelector('.scw-ws-v2-cell--label');
+      var labelText = labelEl ? (labelEl.textContent || '').trim() : '';
+      if (!labelText) {
+        var prodEl = card && card.querySelector('.scw-ws-v2-product-name');
+        labelText = prodEl ? (prodEl.textContent || '').trim() : '';
+      }
       ids.push(rid);
-      labels.push(label || rid);
+      labels.push(labelText || rid);
     }
     return { ids: ids, labels: labels };
   }
