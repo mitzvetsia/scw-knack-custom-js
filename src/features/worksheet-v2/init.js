@@ -244,26 +244,39 @@
       if (!link) return;
       e.preventDefault();
       e.stopPropagation();
-      var candidates = [
-        'Add Accessory',
-        'Add Accessories',
-        'Add Mounting Hardware',
-        'Add Mounting Bracket',
-        'Add Hardware',
-        'Add to Scope of Work'
-      ];
-      var anchors = document.querySelectorAll('a.kn-link, a.kn-link-page, .scw-acc-action-btn, a');
+      var parentId = link.getAttribute('data-scw-ws-v2-add-accessory') || '';
+      // Find any anchor on the page whose href contains
+      // "add-accessory-line-item". Knack-rendered details/menu links
+      // generate the scene-correct slug for us; we just borrow it. We
+      // try a parent-specific match first (so the URL targets THIS
+      // line item) and fall back to any matching href.
+      var anchors = document.querySelectorAll('a[href*="add-accessory-line-item"]');
       var match = null;
-      for (var ci = 0; ci < anchors.length && !match; ci++) {
-        var txt = (anchors[ci].textContent || '').trim();
-        for (var ti = 0; ti < candidates.length; ti++) {
-          if (txt === candidates[ti] || txt.toLowerCase() === candidates[ti].toLowerCase()) {
-            if (anchors[ci].getAttribute('href')) { match = anchors[ci]; break; }
+      if (parentId) {
+        for (var ci = 0; ci < anchors.length; ci++) {
+          if ((anchors[ci].getAttribute('href') || '').indexOf(parentId) !== -1) {
+            match = anchors[ci]; break;
           }
         }
       }
+      if (!match && anchors.length) {
+        // No parent-specific link — borrow any add-accessory link and
+        // rewrite the trailing id segment to point at THIS parent.
+        var srcHref = anchors[0].getAttribute('href') || '';
+        var rewritten = srcHref.replace(
+          /(add-accessory-line-item[^/]*\/)[a-f0-9]{24}/,
+          '$1' + parentId
+        );
+        if (rewritten && rewritten !== srcHref) {
+          window.location.hash = (rewritten.charAt(0) === '#') ? rewritten : '#' + rewritten;
+          return;
+        }
+        // No id segment in the template — just click it.
+        anchors[0].click();
+        return;
+      }
       if (match) { match.click(); return; }
-      alert('Could not find the "Add Accessory" link on this page. ' +
+      alert('Could not find an add-accessory-line-item link on this page. ' +
             'Make sure the Knack details/menu link is enabled on the scene.');
     });
   }
