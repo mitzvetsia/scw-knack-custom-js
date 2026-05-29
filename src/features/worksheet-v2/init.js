@@ -132,11 +132,13 @@
     });
   }
 
-  // Mounting hardware chip × — proxies to v1's matching
-  // button.scw-cr-remove inside view_3610's worksheet card. v1's
-  // connected-records.js already wires that button to its delete
-  // confirm modal + Make webhook + cascade — we just need to fire
-  // its click. Falls back to a console warning if v1 isn't present.
+  // Mounting hardware chip × — POSTs the chip's recordId to
+  // MAKE_DELETE_RECORD_WEBHOOK directly. Mirrors connected-records.js
+  // deleteRecord but skips its v1 confirmation modal: we already make
+  // the user click twice (× then implicitly drag the eye over the
+  // chip's name), no extra "are you sure" needed. Optimistically hide
+  // the chip; v2 picks up the actual removal via scw-cascade-idle or
+  // the next view-render after Make finishes.
   if (!document.documentElement.hasAttribute('data-scw-ws-v2-mhdel-bound')) {
     document.documentElement.setAttribute('data-scw-ws-v2-mhdel-bound', '1');
     document.addEventListener('click', function (e) {
@@ -144,20 +146,35 @@
       if (!btn) return;
       e.preventDefault();
       e.stopPropagation();
-      var chipId   = btn.getAttribute('data-scw-ws-v2-mh-del');
-      var parentId = btn.getAttribute('data-scw-ws-v2-mh-parent');
-      if (!chipId || !parentId) return;
-      var v3610 = document.getElementById('view_3610');
-      var v1Btn = v3610 && v3610.querySelector(
-        'tr.scw-ws-row[id="' + parentId + '"] ' +
-        '.scw-ws-field[data-scw-field="field_1958"] ' +
-        'button.scw-cr-remove[data-record-id="' + chipId + '"]'
-      );
-      if (v1Btn) {
-        v1Btn.click();
-      } else {
-        console.warn('[scw-ws-v2] v1 mh delete button not found for ' + chipId);
+      var chipId = btn.getAttribute('data-scw-ws-v2-mh-del');
+      if (!chipId) return;
+      var webhookUrl = (window.SCW && SCW.CONFIG && SCW.CONFIG.MAKE_DELETE_RECORD_WEBHOOK) || '';
+      if (!webhookUrl) {
+        console.warn('[scw-ws-v2] MAKE_DELETE_RECORD_WEBHOOK not configured');
+        return;
       }
+      // Hide the chip wrapper so the row updates instantly.
+      var wrap = btn.closest('.scw-ws-v2-mh-chip-wrap');
+      if (wrap) wrap.style.display = 'none';
+      fetch(webhookUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ recordId: chipId })
+      })
+      .then(function (resp) {
+        if (!resp.ok) throw new Error('webhook ' + resp.status);
+        // Refetch the source view a beat later so the chip stays gone
+        // after Make finishes processing.
+        var container = btn.closest('[id^="scw-ws-v2-"]');
+        var viewId = container ? container.id.replace(/^scw-ws-v2-/, '') : null;
+        if (viewId && ns.data && typeof ns.data.refetchAndNotify === 'function') {
+          setTimeout(function () { ns.data.refetchAndNotify(viewId); }, 1200);
+        }
+      })
+      .catch(function (err) {
+        console.warn('[scw-ws-v2] mh chip delete webhook failed', err);
+        if (wrap) wrap.style.display = '';
+      });
     });
   }
 

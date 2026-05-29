@@ -39,6 +39,19 @@
   // accessory's back-connection to its parent line item (populated
   // exactly when this record IS an accessory).
   var ACCESSORY_PARENT_FIELD = 'field_2464';
+  // Mounting Hardware proposal bucket id — must match card.js's
+  // MOUNTING_HARDWARE_BUCKET. A record in this bucket with field_2464
+  // populated is an attached accessory (hidden as a chip on its
+  // parent's card). The same bucket with field_2464 EMPTY means an
+  // orphaned mounting bracket — we surface those in a synthetic L1.
+  var MOUNTING_HARDWARE_BUCKET = '594a94536877675816984cb9';
+
+  function bucketIdOf(rec) {
+    var raw = rec && rec['field_2219_raw'];
+    if (Array.isArray(raw) && raw.length && raw[0]) return raw[0].id || '';
+    if (raw && typeof raw === 'object' && raw.id) return raw.id;
+    return '';
+  }
 
   function isAccessoryRecord(rec) {
     var raw = rec && rec[ACCESSORY_PARENT_FIELD + '_raw'];
@@ -46,6 +59,12 @@
     if (raw && typeof raw === 'object' && raw.id) return true;
     return false;
   }
+
+  function isOrphanedMountingBracket(rec) {
+    return bucketIdOf(rec) === MOUNTING_HARDWARE_BUCKET && !isAccessoryRecord(rec);
+  }
+
+  var SYNTHETIC_ORPHAN_BRACKETS_LABEL = 'Orphaned Mounting Brackets';
 
   // Synthetic L1 buckets. Records with no MDF/IDF go into one of
   // these based on the bucket's identifier text.
@@ -125,6 +144,10 @@
 
     for (var i = 0; i < records.length; i++) {
       var rec = records[i];
+      var orphanBracket = isOrphanedMountingBracket(rec);
+      // Skip attached accessories (they show up inside parent's MH widget).
+      // Orphan brackets fall through to the bucketing below but are
+      // forced into a dedicated synthetic L1 regardless of their MDF.
       if (isAccessoryRecord(rec)) continue;
 
       var l1Conn   = readConn(rec, FIELD_MDF_IDF);
@@ -132,7 +155,11 @@
       var sortOrd  = readNumber(rec, FIELD_SORT);
 
       var l1Id, l1Label, isSynthetic;
-      if (l1Conn.label) {
+      if (orphanBracket) {
+        l1Label     = SYNTHETIC_ORPHAN_BRACKETS_LABEL;
+        l1Id        = '__synthetic__' + l1Label;
+        isSynthetic = true;
+      } else if (l1Conn.label) {
         l1Id        = l1Conn.id || l1Conn.label;
         l1Label     = l1Conn.label;
         isSynthetic = false;
