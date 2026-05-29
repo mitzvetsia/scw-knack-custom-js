@@ -194,11 +194,11 @@
         return out;
       }
 
-      /** True when a candidate row's field_2374 (Map Connections) is Yes. */
+      /** True when a candidate row's field_2231 (Map Connections, SOW side) is Yes. */
       function isMapConnectionsRow(rec) {
-        var raw = rec && rec['field_2374_raw'];
+        var raw = rec && rec['field_2231_raw'];
         if (raw === true || raw === 'Yes' || raw === 'yes' || raw === 1) return true;
-        var s = (rec && rec['field_2374'] || '').toString().trim().toLowerCase();
+        var s = (rec && rec['field_2231'] || '').toString().trim().toLowerCase();
         return s === 'yes' || s === 'true' || s === '1';
       }
 
@@ -347,19 +347,9 @@
       }
 
       var candidates = [];
-      var debugMapConn = (fieldKey === 'field_2197');
-      var debugSamples = [];
       for (var c = 0; c < records.length; c++) {
         var r = records[c];
         if (!r || !r.id || r.id === recordId) continue;
-        if (debugMapConn && debugSamples.length < 3) {
-          debugSamples.push({
-            id: r.id,
-            field_2374: r.field_2374,
-            field_2374_raw: r.field_2374_raw,
-            keys: Object.keys(r).filter(function (k) { return k.indexOf('field_2374') === 0; })
-          });
-        }
         if (fieldKey === 'field_1957') {
           // Connected Devices (NVR side): pick from cam/reader rows
           // whose reciprocal field_2197 is empty or already points
@@ -373,24 +363,10 @@
         } else if (fieldKey === 'field_2197') {
           // Connected Device (cam/reader side): pick the NVR/headend
           // this device connects to. Candidates = rows with the
-          // Map-Connections flag (field_2374 = Yes) — same filter
-          // Knack's column already serves on view_3610.
+          // Map-Connections flag (field_2231 = Yes).
           if (!isMapConnectionsRow(r)) continue;
         }
         candidates.push(r);
-      }
-      if (debugMapConn) {
-        console.log('[scw-ws-v2] field_2197 picker — records:', records.length,
-          'candidates:', candidates.length);
-        try {
-          console.log('[scw-ws-v2] samples:', JSON.stringify(debugSamples, null, 2));
-        } catch (e) { console.log('[scw-ws-v2] samples (raw):', debugSamples); }
-        // Also dump ALL field keys on the first record so we can see if
-        // field_2374 is even present in the model.
-        if (records[0]) {
-          console.log('[scw-ws-v2] record[0] keys:',
-            Object.keys(records[0]).sort().join(', '));
-        }
       }
 
       // Group by MDF/IDF (matches v1 connection-picker)
