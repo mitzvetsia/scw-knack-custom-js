@@ -797,7 +797,12 @@
                 for (var i = 0; i < newIds.length; i++) {
                   raw.push({ id: newIds[i], identifier: '' });
                 }
-                pModel.set({ field_1958_raw: raw, field_1958: newIds.join(',') }, { silent: true });
+                pModel.set({
+                  field_1958_raw: raw,
+                  field_1958:     newIds.join(','),
+                  field_2207_raw: raw,
+                  field_2207:     newIds.join(',')
+                }, { silent: true });
               } catch (e) { /* best-effort */ }
             }
             function readIds(parentId) {
@@ -850,7 +855,18 @@
               // 403s silently.
               var WRITE_VIEW = 'view_3610';
 
-              // Remove this accessory from each old parent\'s field_1958.
+              // The parent\'s accessory connection exists under TWO field
+              // keys: field_1958 (legacy "Mounting Hardware") and
+              // field_2207 (current "Accessories" array). User confirmed
+              // field_2207 is the one that wasn\'t cascading — write both
+              // in a single PUT so server-side stays consistent
+              // regardless of which one downstream surfaces read from.
+              function buildBody(ids) {
+                return JSON.stringify({ field_1958: ids, field_2207: ids });
+              }
+
+              // Remove this accessory from each old parent\'s accessory
+              // arrays.
               oldParentIds.forEach(function (opid) {
                 var ids = readIds(opid).filter(function (x) { return x !== recordId; });
                 patchParentLocal(opid, ids);
@@ -858,18 +874,18 @@
                 SCW.knackAjax({
                   url:  SCW.knackRecordUrl(WRITE_VIEW, opid),
                   type: 'PUT',
-                  data: JSON.stringify({ field_1958: ids }),
+                  data: buildBody(ids),
                   success: function () { pendingPuts--; finish(); },
                   error:   function (xhr) {
                     anyError = true;
                     pendingPuts--;
-                    console.warn('[scw-ws-v2] old-parent field_1958 detach failed', xhr);
+                    console.warn('[scw-ws-v2] old-parent accessory detach failed', xhr);
                     finish();
                   }
                 });
               });
 
-              // Add this accessory to the NEW parent\'s field_1958.
+              // Add this accessory to the NEW parent\'s accessory arrays.
               if (newParentId) {
                 var newIds = readIds(newParentId);
                 if (newIds.indexOf(recordId) === -1) {
@@ -879,12 +895,12 @@
                   SCW.knackAjax({
                     url:  SCW.knackRecordUrl(WRITE_VIEW, newParentId),
                     type: 'PUT',
-                    data: JSON.stringify({ field_1958: newIds }),
+                    data: buildBody(newIds),
                     success: function () { pendingPuts--; finish(); },
                     error:   function (xhr) {
                       anyError = true;
                       pendingPuts--;
-                      console.warn('[scw-ws-v2] new-parent field_1958 attach failed', xhr);
+                      console.warn('[scw-ws-v2] new-parent accessory attach failed', xhr);
                       finish();
                     }
                   });
