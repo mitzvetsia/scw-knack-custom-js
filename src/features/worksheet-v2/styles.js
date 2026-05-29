@@ -830,6 +830,31 @@
     '.scw-ws-v2-mh-del:hover {',
     '  background: #fee2e2 !important; color: #b91c1c !important;',
     '}',
+    /* Attached-to caption above the row for promoted accessories.
+       Muted slate-blue so it reads as metadata, not a warning. */
+    '.scw-ws-v2-attached-caption {',
+    '  display: block !important;',
+    '  padding: 4px 14px 0 44px !important;', /* match row padding-left */
+    '  font: 500 11px/1.2 system-ui, -apple-system, sans-serif !important;',
+    '  color: #64748b !important;',
+    '  white-space: nowrap !important;',
+    '  overflow: hidden !important;',
+    '  text-overflow: ellipsis !important;',
+    '}',
+    '.scw-ws-v2-attached-caption .scw-ws-v2-attached-name {',
+    '  color: #1d4ed8 !important;',
+    '  font-weight: 600 !important;',
+    '}',
+    /* Stepper baseline tweak — chip text sits low because of the
+       border-radius pill, so nudge the buttons + qty down a hair to
+       sit on the same midline. */
+    '.scw-ws-v2-mh-chip-wrap {',
+    '  align-items: center !important;',
+    '  line-height: 1 !important;',
+    '}',
+    '.scw-ws-v2-mh-stepper {',
+    '  align-self: center !important;',
+    '}',
     /* Accessory qty stepper — sits visually inside the chip wrap,
        no border / no box. Subtle ± glyphs that only show on chip
        hover keeps the resting state clean. */
@@ -842,9 +867,14 @@
     '  background: transparent !important;',
     '  border: 0 !important;',
     '}',
-    /* V2 cutover — hide v1\'s view_3610 entirely once v2 is wired up.
-       Companion to the JS kill-switch in device-worksheet.js. Reverse
-       by removing this rule + the JS guard. */
+    /* V2 cutover — hide the entire KTL accordion that wraps v1\'s
+       view_3610 (header bar, body, the lot). Companion to the JS
+       kill-switch in device-worksheet.js. Reverse by removing this
+       block + the JS guard. The :has() selector targets the
+       accordion containing view_3610 directly; the standalone view
+       rule is the fallback for builds where the accordion wrapper
+       isn\'t injected (cleaner failure mode than visible v1). */
+    '.scw-ktl-accordion:has(#view_3610) { display: none !important; }',
     '#view_3610 { display: none !important; }',
 
     '.scw-ws-v2-mh-step {',

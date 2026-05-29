@@ -221,20 +221,12 @@
     return String(ident).replace(/<[^>]*>/g, '').trim();
   }
 
-  /** Label slot or attached-to chip — for non-cam rows (default/
-   *  services) the label slot is normally blank. When the record is
-   *  a promoted accessory (has a resolved parent), use that slot to
-   *  show the attached-to chip instead of jamming it inside the
-   *  product button (which is itself a click target). */
+  /** Label slot — for non-cam rows (default/services) the slot is
+   *  normally blank. We keep it blank here regardless of parent-ref,
+   *  because the attached-to indicator now lives in a thin caption
+   *  row ABOVE the main row (rendered post-build, not in the grid). */
   function labelCellOrBlank(rec) {
-    var parentRef = readParentRef(rec);
-    if (!parentRef) return empty('scw-ws-v2-cell--label');
-    return '<div class="scw-ws-v2-cell scw-ws-v2-cell--label scw-ws-v2-cell--attached" ' +
-      'title="Attached to ' + escapeHtml(parentRef) + '">' +
-      '<span class="scw-ws-v2-attached-chip">' +
-        '↳ ' + escapeHtml(parentRef) +
-      '</span>' +
-    '</div>';
+    return empty('scw-ws-v2-cell--label');
   }
 
   function productCell(rec, viewKey, value) {
@@ -890,7 +882,24 @@
       det = buildDetail_default(rec, sourceViewKey);
     }
 
-    card.innerHTML = row + det;
+    // Attached-to caption — small slate-gray line above the main row
+    // for any record that resolves a parent via field_2464. Replaces
+    // the previous amber label-slot chip (which truncated and read
+    // like an error). Lives inside the card so background tinting on
+    // open / selected propagates naturally.
+    var attachedCaption = '';
+    var parentRefLabel  = readParentRef(rec);
+    if (parentRefLabel) {
+      attachedCaption =
+        '<div class="scw-ws-v2-attached-caption" ' +
+          'title="Attached to ' + escapeHtml(parentRefLabel) + '">' +
+          '↳ attached to <span class="scw-ws-v2-attached-name">' +
+            escapeHtml(parentRefLabel) +
+          '</span>' +
+        '</div>';
+    }
+
+    card.innerHTML = attachedCaption + row + det;
     // Leading bulk-select checkbox — absolutely positioned INSIDE the
     // row so it vertically centers with the row\'s actual height
     // (multi-line labor desc rows are taller than single-line ones).

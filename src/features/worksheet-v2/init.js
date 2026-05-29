@@ -694,7 +694,42 @@
             if (lbl && prod) return lbl + ' · ' + prod;
             return lbl || prod || r.id;
           },
-          onSaved: function () {
+          onSaved: function (chosenIds) {
+            // Cascade — when the accessory\'s parent (field_2464)
+            // changes, add this accessory to the NEW parent\'s
+            // field_1958 (Accessories) array so the forward link is
+            // in sync with the back-mirror. We deliberately punt on
+            // the remove-from-old-parent half per user direction —
+            // there\'s no visible disconnect/remove path on the
+            // parent\'s accessory field today.
+            try {
+              var newParentId = chosenIds && chosenIds[0];
+              if (newParentId) {
+                var pView = Knack.views && Knack.views[viewKey];
+                var pModel = pView && pView.model && pView.model.data &&
+                             pView.model.data.get && pView.model.data.get(newParentId);
+                var pAttrs = pModel && pModel.attributes;
+                var existing = (pAttrs && pAttrs.field_1958_raw) || [];
+                var ids = [];
+                for (var pi = 0; pi < existing.length; pi++) {
+                  if (existing[pi] && existing[pi].id) ids.push(existing[pi].id);
+                }
+                if (ids.indexOf(recordId) === -1) {
+                  ids.push(recordId);
+                  SCW.knackAjax({
+                    url:  SCW.knackRecordUrl(viewKey, newParentId),
+                    type: 'PUT',
+                    data: JSON.stringify({ field_1958: ids }),
+                    success: function () { /* refetch below catches the update */ },
+                    error:   function (xhr) {
+                      console.warn('[scw-ws-v2] field_1958 forward-link cascade failed', xhr);
+                    }
+                  });
+                }
+              }
+            } catch (e) {
+              console.warn('[scw-ws-v2] parent cascade threw', e);
+            }
             if (ns.data && typeof ns.data.refetchAndNotify === 'function') {
               ns.data.refetchAndNotify(viewKey);
             }
