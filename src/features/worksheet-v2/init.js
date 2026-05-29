@@ -148,10 +148,6 @@
       var recordId = btn.getAttribute('data-scw-ws-v2-record');
       var viewKey  = btn.getAttribute('data-scw-ws-v2-view');
       var label    = btn.getAttribute('data-scw-ws-v2-conn-label') || fieldKey;
-      console.log('[scw-ws-v2] conn click', {
-        fieldKey: fieldKey, recordId: recordId, viewKey: viewKey,
-        hasPicker: !!(ns.picker && ns.picker.open)
-      });
       if (!fieldKey || !recordId || !viewKey) return;
       if (!ns.picker || typeof ns.picker.open !== 'function') return;
 
@@ -284,12 +280,12 @@
         return;
       }
 
-      // MDF/IDF picker (field_1946) — candidates come from view_3358
+      // MDF/IDF picker (field_1946) — candidates come from view_3577
       // (the Network Locations grid on the same scene). Single-select.
       // The MODEL_ONLY cascade in mirror-connection-sync handles
       // accessory re-grouping when this changes.
       if (fieldKey === 'field_1946') {
-        var MDF_SOURCE_VIEW = 'view_3358';
+        var MDF_SOURCE_VIEW = 'view_3577';
         var mdfView = (typeof Knack !== 'undefined' && Knack.views &&
                        Knack.views[MDF_SOURCE_VIEW]) || null;
         // Knack exposes models inconsistently across view types:
@@ -301,46 +297,8 @@
           mdfRecords = (mdfView.model.data && mdfView.model.data.models) ||
                        mdfView.model.models || null;
         }
-        var allViewKeys = (typeof Knack !== 'undefined' && Knack.views)
-          ? Object.keys(Knack.views) : [];
-        console.log('[scw-ws-v2] MDF picker probe', {
-          allViewKeys: allViewKeys,
-          mdfView:     !!mdfView,
-          mdfModel:    !!(mdfView && mdfView.model),
-          modelKeys:   (mdfView && mdfView.model) ? Object.keys(mdfView.model) : null,
-          modelAttrs:  (mdfView && mdfView.model && mdfView.model.attributes)
-                          ? Object.keys(mdfView.model.attributes).slice(0, 20) : null,
-          modelToJSON: (mdfView && mdfView.model && typeof mdfView.model.toJSON === 'function')
-                          ? (function () {
-                              try {
-                                var j = mdfView.model.toJSON();
-                                return j && typeof j === 'object'
-                                  ? Object.keys(j).slice(0, 12) : typeof j;
-                              } catch (e) { return 'toJSON threw'; }
-                            })() : null,
-          mdfRecords: mdfRecords ? mdfRecords.length : 'null'
-        });
-        // Also probe every view that looks like an MDF/IDF source.
-        for (var pk = 0; pk < allViewKeys.length; pk++) {
-          var probeKey = allViewKeys[pk];
-          var pv = Knack.views[probeKey];
-          var pvModels = (pv && pv.model && pv.model.data && pv.model.data.models) ||
-                         (pv && pv.model && pv.model.models) || null;
-          if (pvModels && pvModels.length) {
-            var first = pvModels[0] && (pvModels[0].attributes || pvModels[0]);
-            if (first && (first.field_1642 != null || first.field_2375 != null)) {
-              console.log('[scw-ws-v2] candidate MDF view ' + probeKey + ' has ' +
-                pvModels.length + ' records, sample:', {
-                  id: first.id,
-                  field_1642: first.field_1642,
-                  field_2375: first.field_2375,
-                  keys: Object.keys(first).slice(0, 30)
-                });
-            }
-          }
-        }
         if (!mdfRecords || !mdfRecords.length) {
-          console.warn('[scw-ws-v2] view_3358 model empty/missing — MDF picker can\'t open');
+          console.warn('[scw-ws-v2] view_3577 model empty/missing — MDF picker can\'t open');
           return;
         }
         var mdfCandidates = [];

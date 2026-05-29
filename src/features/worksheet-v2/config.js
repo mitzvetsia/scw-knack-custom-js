@@ -55,7 +55,7 @@
         // shows an L1 block for every MDF/IDF on this view even
         // when no SOW line items are assigned to it (so users can
         // see + drop items into an empty location).
-        mdfSourceViewKey: 'view_3358',
+        mdfSourceViewKey: 'view_3577',
         // Label field on the MDF/IDF object (matches the identifier
         // returned by field_1946_raw[0].identifier on SOW line
         // items, so empty + populated groups dedupe by id).
