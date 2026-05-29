@@ -161,9 +161,10 @@
     });
   }
 
-  // Line item delete — routes to v1's a.kn-link-delete on the
-  // matching tr in view_3610. Same proxy pattern as the chip
-  // delete: v1 already owns the confirm + delete flow.
+  // Line item delete — clicks the Knack-native a.kn-link-delete on
+  // the matching row in the v2 source view (view_3962). Same column
+  // shows up in view_3610 too, but routing through 3962 keeps v2 off
+  // of v1's DOM so this still works after Phase 5 cutover.
   if (!document.documentElement.hasAttribute('data-scw-ws-v2-rowdel-bound')) {
     document.documentElement.setAttribute('data-scw-ws-v2-rowdel-bound', '1');
     document.addEventListener('click', function (e) {
@@ -173,18 +174,14 @@
       e.stopPropagation();
       var rowId = btn.getAttribute('data-scw-ws-v2-row-del');
       if (!rowId) return;
-      var v3610 = document.getElementById('view_3610');
-      // v1 hoists the delete link into .scw-ws-sum-delete inside the
-      // wsTr; try that first, then fall back to whatever Knack-native
-      // link is anywhere under the matching tr.
-      var v1Link = v3610 && (
-        v3610.querySelector('tr.scw-ws-row[id="' + rowId + '"] a.kn-link-delete') ||
-        v3610.querySelector('tr#' + rowId + ' a.kn-link-delete')
+      var srcView = document.getElementById('view_3962');
+      var link = srcView && srcView.querySelector(
+        'tr#' + rowId + ' a.kn-link-delete'
       );
-      if (v1Link) {
-        v1Link.click();
+      if (link) {
+        link.click();
       } else {
-        console.warn('[scw-ws-v2] v1 delete link not found for row ' + rowId);
+        console.warn('[scw-ws-v2] view_3962 delete link not found for row ' + rowId);
       }
     });
   }
