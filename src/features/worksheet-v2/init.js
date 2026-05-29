@@ -161,6 +161,52 @@
     });
   }
 
+  // Watch the DOM for Knack's confirm-delete modal and auto-click its
+  // confirm button. Called immediately before triggering a
+  // .kn-link-delete click. Disconnects after firing (or after 1.5s
+  // if nothing appears) so we don't intercept unrelated modals.
+  function autoConfirmKnackDelete() {
+    var done = false;
+    var obs = new MutationObserver(function () {
+      if (done) return;
+      // Knack renders a confirm dialog inside .kn-modal-bg with a
+      // primary button labelled "Yes" / "Delete" (class is-primary
+      // or kn-button-primary). Click the first one we find.
+      var modals = document.querySelectorAll(
+        '.kn-modal-bg .kn-modal, .kn-modal-bg, .kn-modal'
+      );
+      for (var i = 0; i < modals.length; i++) {
+        var btn = modals[i].querySelector(
+          'button.is-primary, .kn-button.is-primary, ' +
+          'button[type="submit"].kn-button, ' +
+          'a.kn-button.is-primary'
+        );
+        if (!btn) {
+          // Fall back to any button whose visible text is Yes/Delete.
+          var candidates = modals[i].querySelectorAll('button, a.kn-button');
+          for (var j = 0; j < candidates.length; j++) {
+            var t = (candidates[j].textContent || '').trim().toLowerCase();
+            if (t === 'yes' || t === 'delete' || t === 'confirm' || t === 'ok') {
+              btn = candidates[j];
+              break;
+            }
+          }
+        }
+        if (btn) {
+          done = true;
+          btn.click();
+          obs.disconnect();
+          return;
+        }
+      }
+    });
+    obs.observe(document.body, { childList: true, subtree: true });
+    // Safety: drop the observer after 1.5s no matter what.
+    setTimeout(function () {
+      if (!done) { done = true; obs.disconnect(); }
+    }, 1500);
+  }
+
   // Kebab menu — two-click delete with no confirm prompt.
   //   1. Click kebab → menu opens positioned under the button
   //   2. Click "Delete line item" → POST to MAKE_DELETE_RECORD_WEBHOOK
@@ -223,36 +269,29 @@
         var viewId = menuViewId;
         closeMenu();
         if (action === 'delete' && rowId) {
-          var webhookUrl = (window.SCW && SCW.CONFIG && SCW.CONFIG.MAKE_DELETE_RECORD_WEBHOOK) || '';
-          if (!webhookUrl) {
-            console.warn('[scw-ws-v2] MAKE_DELETE_RECORD_WEBHOOK not configured');
+          // Find the Knack-native delete link on the v2 source view
+          // and click it. Then auto-confirm Knack's modal so the user
+          // doesn't see a third click — keeps the flow at two clicks
+          // (kebab → Delete).
+          var srcView = viewId ? document.getElementById(viewId) : null;
+          var link = srcView && (
+            srcView.querySelector('tr#' + rowId + ' a.kn-link-delete') ||
+            srcView.querySelector('tr[id="' + rowId + '"] a.kn-link-delete')
+          );
+          if (!link) {
+            // Fallback to view_3610 while the parallel build is up —
+            // same SOW Line Items object, same delete column.
+            var v3610 = document.getElementById('view_3610');
+            link = v3610 && v3610.querySelector('tr#' + rowId + ' a.kn-link-delete');
+          }
+          if (!link) {
+            console.warn('[scw-ws-v2] kn-link-delete not found for ' + rowId);
             return;
           }
-          // Hide the card optimistically so the user sees the row
-          // disappear immediately. The post-cascade refetch will
-          // confirm; on failure the row pops back.
-          var card = document.querySelector(
-            '.scw-ws-v2-card[data-scw-ws-v2-record="' + rowId.replace(/"/g, '\\"') + '"]'
-          );
-          if (card) card.style.display = 'none';
-          fetch(webhookUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ recordId: rowId })
-          })
-          .then(function (resp) {
-            if (!resp.ok) throw new Error('webhook ' + resp.status);
-            if (viewId && ns.data && typeof ns.data.refetchAndNotify === 'function') {
-              // Small delay so Make has time to process the delete
-              // before we refetch (otherwise the record may still
-              // appear in the next fetch).
-              setTimeout(function () { ns.data.refetchAndNotify(viewId); }, 1200);
-            }
-          })
-          .catch(function (err) {
-            console.warn('[scw-ws-v2] delete webhook failed', err);
-            if (card) card.style.display = '';
-          });
+          // Arm a one-shot observer to catch the confirm modal Knack
+          // pops up next and auto-click its primary (confirm) button.
+          autoConfirmKnackDelete();
+          link.click();
         }
         return;
       }
