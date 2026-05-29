@@ -241,17 +241,16 @@
     '  width: 100% !important;',
     '  box-sizing: border-box !important;',
     '  padding: 4px 6px !important;',
-    '  border: 1px solid transparent !important;', /* hide chrome until hover/focus — looks like v1's inline cells */
+    '  border: 1px solid var(--scw-border-subtle, #e2e8f0) !important;',
     '  border-radius: 3px !important;',
-    '  background: transparent !important;',
+    '  background: #fff !important;',
     '  font: inherit !important;',
     '  color: var(--scw-text-default, #1f2937) !important;',
     '  min-height: 26px !important;',
     '  transition: border-color 100ms ease, background-color 100ms ease, box-shadow 100ms ease !important;',
     '}',
     '.scw-ws-v2-card:hover .scw-ws-v2-input {',
-    '  border-color: var(--scw-border-subtle, #e2e8f0) !important;',
-    '  background: #fff !important;',
+    '  border-color: #cbd5e1 !important;',
     '}',
     '.scw-ws-v2-input:focus {',
     '  outline: none !important;',
@@ -559,12 +558,6 @@
     '  grid-template-columns: 1fr 1fr !important;',
     '  gap: 8px 16px !important;',
     '  margin-top: 10px !important;',
-    '}',
-    /* Always-visible border on editable inputs inside the detail panel
-       so the SCW Notes field doesn\'t look like dead space until hover. */
-    '.scw-ws-v2-detail .scw-ws-v2-input {',
-    '  border-color: var(--scw-border-subtle, #e2e8f0) !important;',
-    '  background: #fff !important;',
     '}',
     /* Read-only fields (Survey Notes) — visually distinct from editable
        inputs: light gray background, no border, italic placeholder when
