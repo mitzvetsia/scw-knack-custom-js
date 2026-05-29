@@ -124,6 +124,8 @@
     $select.trigger('chosen:updated');
     $select.trigger('liszt:updated');
   }
+
+  function prefill() {
     var parentId = lastIdInHash();
     if (!parentId) return;
     var $select = window.jQuery && jQuery('#' + ADD_ACCESSORY_VIEW + '-' + PARENT_FIELD);
