@@ -148,6 +148,10 @@
       var recordId = btn.getAttribute('data-scw-ws-v2-record');
       var viewKey  = btn.getAttribute('data-scw-ws-v2-view');
       var label    = btn.getAttribute('data-scw-ws-v2-conn-label') || fieldKey;
+      console.log('[scw-ws-v2] conn click', {
+        fieldKey: fieldKey, recordId: recordId, viewKey: viewKey,
+        hasPicker: !!(ns.picker && ns.picker.open)
+      });
       if (!fieldKey || !recordId || !viewKey) return;
       if (!ns.picker || typeof ns.picker.open !== 'function') return;
 
