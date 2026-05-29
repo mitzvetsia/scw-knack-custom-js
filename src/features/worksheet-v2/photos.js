@@ -177,51 +177,54 @@
     strip.className = 'scw-ws-v2-photos';
     strip.setAttribute('data-scw-ws-v2-photos', rec.id);
 
-    var html = '<div class="scw-ws-v2-photos-label">Photos</div>' +
-               '<div class="scw-ws-v2-photos-strip">';
+    // SVG picture icon — used in the add button and (eventually) anywhere
+    // we need an "image" affordance. Outline-style so it sits well on
+    // the dashed placeholder background.
+    var PIC_SVG =
+      '<svg viewBox="0 0 24 24" width="28" height="28" fill="none" ' +
+      'stroke="currentColor" stroke-width="1.6" stroke-linecap="round" ' +
+      'stroke-linejoin="round">' +
+        '<rect x="3" y="3" width="18" height="18" rx="2"></rect>' +
+        '<circle cx="9" cy="9" r="1.8"></circle>' +
+        '<path d="M21 16l-5-5-9 9"></path>' +
+      '</svg>';
 
-    if (!photos.length) {
-      html += '<div class="scw-ws-v2-photo-empty">' +
-                '<span class="scw-ws-v2-photo-empty-icon">+</span>' +
-                'No photos yet' +
-              '</div>';
-    } else {
-      for (var i = 0; i < photos.length; i++) {
-        var p = photos[i];
-        var href = editPhotoHref(p.id);
-        var missing = p.required && !p.completed;
-        var cls = 'scw-ws-v2-photo-card' +
-          (p.required ? ' scw-ws-v2-photo-card--required' : '') +
-          (missing   ? ' scw-ws-v2-photo-card--missing'  : '');
-        var thumb = p.imgUrl
-          ? '<img class="scw-ws-v2-photo-img" src="' + escapeHtml(p.imgUrl) + '" alt="">'
-          : '<div class="scw-ws-v2-photo-img scw-ws-v2-photo-img--placeholder">No image</div>';
-        var typeHtml = p.type
-          ? '<div class="scw-ws-v2-photo-type">' + escapeHtml(p.type) + '</div>'
-          : '';
-        var reqHtml = '';
-        if (p.required) {
-          reqHtml = '<div class="scw-ws-v2-photo-req' +
-                      (p.completed ? ' scw-ws-v2-photo-req--ok' : '') +
-                    '">' + (p.completed ? 'REQUIRED &#10003;' : 'REQUIRED') + '</div>';
-        }
-        var openAttrs = href
-          ? ' href="' + escapeHtml(href) + '"'
-          : ' href="#" data-no-nav="1"';
-        html +=
-          '<a class="' + cls + '"' + openAttrs +
-              ' title="' + escapeHtml((p.type || 'Photo') + (p.required ? ' (Required)' : '')) + '">' +
-            thumb + typeHtml + reqHtml +
-          '</a>';
+    var html = '<div class="scw-ws-v2-photos-strip">';
+
+    for (var i = 0; i < photos.length; i++) {
+      var p = photos[i];
+      var href = editPhotoHref(p.id);
+      var missing = p.required && !p.completed;
+      var cls = 'scw-ws-v2-photo-card' +
+        (p.required ? ' scw-ws-v2-photo-card--required' : '') +
+        (missing   ? ' scw-ws-v2-photo-card--missing'  : '');
+      var thumb = p.imgUrl
+        ? '<img class="scw-ws-v2-photo-img" src="' + escapeHtml(p.imgUrl) + '" alt="">'
+        : '<div class="scw-ws-v2-photo-img scw-ws-v2-photo-img--placeholder">No image</div>';
+      var typeHtml = p.type
+        ? '<div class="scw-ws-v2-photo-type">' + escapeHtml(p.type) + '</div>'
+        : '';
+      var reqHtml = '';
+      if (p.required) {
+        reqHtml = '<div class="scw-ws-v2-photo-req' +
+                    (p.completed ? ' scw-ws-v2-photo-req--ok' : '') +
+                  '">' + (p.completed ? 'REQUIRED &#10003;' : 'REQUIRED') + '</div>';
       }
+      var openAttrs = href
+        ? ' href="' + escapeHtml(href) + '"'
+        : ' href="#" data-no-nav="1"';
+      html +=
+        '<a class="' + cls + '"' + openAttrs +
+            ' title="' + escapeHtml((p.type || 'Photo') + (p.required ? ' (Required)' : '')) + '">' +
+          thumb + typeHtml + reqHtml +
+        '</a>';
     }
 
     if (addHref) {
       html += '<a class="scw-ws-v2-photo-add' +
                 (photos.length ? '' : ' scw-ws-v2-photo-add--solo') +
-                '" href="' + escapeHtml(addHref) + '" title="Add photo">' +
-                '<span class="scw-ws-v2-photo-add-icon">+</span>' +
-                '<span class="scw-ws-v2-photo-add-text">Add photo</span>' +
+                '" href="' + escapeHtml(addHref) + '" title="Add photo" aria-label="Add photo">' +
+                PIC_SVG +
               '</a>';
     }
 
