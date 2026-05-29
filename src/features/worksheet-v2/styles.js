@@ -382,6 +382,23 @@
     '.scw-ws-v2-row--services > .scw-ws-v2-cell--tag {',
     '  grid-column: 2 / span 2 !important;',
     '}',
+    /* When the row carries an attached-to chip in the label slot
+       (promoted accessory), the label slot stays visible so we
+       collapse the product back to a single column. */
+    '.scw-ws-v2-row--default:has(.scw-ws-v2-cell--attached) > .scw-ws-v2-cell--product,',
+    '.scw-ws-v2-row--services:has(.scw-ws-v2-cell--attached) > .scw-ws-v2-cell--tag {',
+    '  grid-column: auto !important;',
+    '}',
+    /* Attached-label cell — small italic identifier; visually distinct
+       from interactive cells (no border, no cursor). */
+    '.scw-ws-v2-cell--attached {',
+    '  display: inline-flex !important;',
+    '  align-items: center !important;',
+    '  justify-content: flex-start !important;',
+    '  cursor: default !important;',
+    '  padding: 0 !important;',
+    '  overflow: hidden !important;',
+    '}',
 
     /* Rows that don\'t carry a quantity (cam/reader, or field_2634 lock):
        hide the per-input extended totals so the row reads cleanly. */
@@ -1751,8 +1768,9 @@
     '  display: inline-flex !important;',
     '  gap: 6px !important;',
     '  align-items: center !important;',
-    '  margin-left: 10px !important;',
+    '  margin-left: auto !important;', /* pin to the right edge of the head */
     '  flex: 0 0 auto !important;',
+    '  order: 99 !important;',          /* belt-and-suspenders against any flex re-order */
     '}',
     '.scw-ws-v2-warn-chip {',
     '  display: inline-flex !important;',

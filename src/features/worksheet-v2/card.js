@@ -221,20 +221,29 @@
     return String(ident).replace(/<[^>]*>/g, '').trim();
   }
 
+  /** Label slot or attached-to chip — for non-cam rows (default/
+   *  services) the label slot is normally blank. When the record is
+   *  a promoted accessory (has a resolved parent), use that slot to
+   *  show the attached-to chip instead of jamming it inside the
+   *  product button (which is itself a click target). */
+  function labelCellOrBlank(rec) {
+    var parentRef = readParentRef(rec);
+    if (!parentRef) return empty('scw-ws-v2-cell--label');
+    return '<div class="scw-ws-v2-cell scw-ws-v2-cell--label scw-ws-v2-cell--attached" ' +
+      'title="Attached to ' + escapeHtml(parentRef) + '">' +
+      '<span class="scw-ws-v2-attached-chip">' +
+        '↳ ' + escapeHtml(parentRef) +
+      '</span>' +
+    '</div>';
+  }
+
   function productCell(rec, viewKey, value) {
     var discontinued = isDiscontinued(rec);
-    var parentRef = readParentRef(rec);
     var cls = 'scw-ws-v2-cell scw-ws-v2-cell--product scw-ws-v2-cell--editable-conn' +
       (discontinued ? ' scw-ws-v2-cell--discontinued' : '');
     var title = discontinued
       ? value + ' — DISCONTINUED product. Click to replace.'
       : value + ' — click to change product';
-    var attachedChip = parentRef
-      ? '<span class="scw-ws-v2-attached-chip" ' +
-          'title="Attached to ' + escapeHtml(parentRef) + ' — click the row chevron to expand details">' +
-          '↳ ' + escapeHtml(parentRef) +
-        '</span>'
-      : '';
     return '<button type="button" ' +
       'class="' + cls + '" ' +
       'data-scw-ws-v2-conn="field_1949" ' +
@@ -244,7 +253,6 @@
       'title="' + escapeHtml(title) + '">' +
       (discontinued ? discontinuedBadge() : '') +
       '<span class="scw-ws-v2-product-name">' + escapeHtml(value) + '</span>' +
-      attachedChip +
     '</button>';
   }
 
@@ -413,7 +421,7 @@
     return '<div class="' + rowCls + '">' +
       chevronCell(rec) +
       // Empty label slot keeps product / labor desc aligned with cam rows.
-      empty('scw-ws-v2-cell--label') +
+      labelCellOrBlank(rec) +
       productCell(rec, viewKey, product) +
       '<div class="scw-ws-v2-cell scw-ws-v2-cell--labor-desc">' +
         textArea(rec, viewKey, 'field_2020', laborDesc, 'Labor description') +
@@ -455,7 +463,7 @@
       chevronCell(rec) +
       // Share the cam/default column template so labor desc lines up.
       // Tag occupies the product slot; label slot is empty.
-      empty('scw-ws-v2-cell--label') +
+      labelCellOrBlank(rec) +
       ro('Service', 'scw-ws-v2-cell--tag') +
       '<div class="scw-ws-v2-cell scw-ws-v2-cell--labor-desc">' +
         textArea(rec, viewKey, 'field_2020', laborDesc, 'Service description') +

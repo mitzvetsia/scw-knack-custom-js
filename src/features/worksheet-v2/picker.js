@@ -94,6 +94,26 @@
       '  font-weight: 500; font-size: 12px; color: #64748b;',
       '  margin-left: auto;',
       '}',
+      '.scw-ws-v2-picker-close {',
+      '  flex: 0 0 auto;',
+      '  width: 28px; height: 28px;',
+      '  padding: 0;',
+      '  background: transparent;',
+      '  color: #64748b;',
+      '  border: 0;',
+      '  border-radius: 50%;',
+      '  font: 700 22px/1 system-ui, sans-serif;',
+      '  cursor: pointer;',
+      '  display: inline-flex; align-items: center; justify-content: center;',
+      '}',
+      '.scw-ws-v2-picker-close:hover { background: #fee2e2; color: #b91c1c; }',
+      '.scw-ws-v2-picker-item--none {',
+      '  background: #f8fafc;',
+      '  border-bottom: 1px solid #e2e8f0;',
+      '  font-style: italic;',
+      '  color: #64748b;',
+      '}',
+      '.scw-ws-v2-picker-item--none:hover { background: #f1f5f9; }',
       '.scw-ws-v2-picker-bd {',
       '  flex: 1 1 auto; overflow: auto; padding: 8px 0;',
       '}',
@@ -193,7 +213,8 @@
     hd.innerHTML = escapeHtml(opts.label || 'Pick a record') +
       '<span class="scw-ws-v2-picker-sub">' +
         (multi ? candidates.length + ' options' : 'Single select') +
-      '</span>';
+      '</span>' +
+      '<button type="button" class="scw-ws-v2-picker-close" aria-label="Close">&times;</button>';
     card.appendChild(hd);
 
     var bd = document.createElement('div');
@@ -205,6 +226,21 @@
     } else {
       var inputType = multi ? 'checkbox' : 'radio';
       var inputName = 'scw-ws-v2-pick-' + opts.fieldKey;
+      // Always-available "(no choice)" sentinel — same input name as
+      // the regular options so the radio/checkbox model handles the
+      // exclusivity automatically. Confirm reads `[name]:checked` and
+      // builds the ids array — the none row\'s value is '' so it
+      // serializes to either an empty string (single) or skipped
+      // entirely (multi → resulting in `[]`).
+      var noneRow = document.createElement('label');
+      noneRow.className = 'scw-ws-v2-picker-item scw-ws-v2-picker-item--none';
+      noneRow.innerHTML =
+        '<input type="' + inputType + '" name="' + inputName + '" value=""' +
+          (selected.length === 0 ? ' checked' : '') + '>' +
+        '<span class="scw-ws-v2-picker-item-text">' +
+          (multi ? 'Clear all selections' : '(no selection)') +
+        '</span>';
+      bd.appendChild(noneRow);
       groups.forEach(function (g) {
         if (g.label) {
           var head = document.createElement('div');
@@ -231,13 +267,15 @@
     ft.innerHTML =
       '<span class="scw-ws-v2-picker-status"></span>' +
       '<div class="scw-ws-v2-picker-actions">' +
-        '<button type="button" class="scw-ws-v2-picker-btn scw-ws-v2-picker-btn--cancel">Cancel</button>' +
         '<button type="button" class="scw-ws-v2-picker-btn scw-ws-v2-picker-btn--confirm">Save</button>' +
       '</div>';
     card.appendChild(ft);
 
     var statusEl  = ft.querySelector('.scw-ws-v2-picker-status');
-    var cancelBtn = ft.querySelector('.scw-ws-v2-picker-btn--cancel');
+    // Cancel is now the X in the header. Keep the binding name
+    // so the in-flight handlers (which call cancelBtn.disabled = …)
+    // still resolve to a real element.
+    var cancelBtn = hd.querySelector('.scw-ws-v2-picker-close');
     var confirmBtn = ft.querySelector('.scw-ws-v2-picker-btn--confirm');
 
     function setStatus(msg, err) {
@@ -255,7 +293,13 @@
     confirmBtn.addEventListener('click', function () {
       var inputs = bd.querySelectorAll('input[name="' + 'scw-ws-v2-pick-' + opts.fieldKey + '"]:checked');
       var ids = [];
-      for (var i = 0; i < inputs.length; i++) ids.push(inputs[i].value);
+      for (var i = 0; i < inputs.length; i++) {
+        // The "(no selection)" row\'s value is '' — drop it so the
+        // confirm sends [] for multi / '' for single, which Knack
+        // interprets as "clear the connection".
+        var v = inputs[i].value;
+        if (v) ids.push(v);
+      }
 
       // Bulk-edit mode: caller wants the chosen ids only — no PUT.
       // Used by bulk.js to capture a value the user picked once and
