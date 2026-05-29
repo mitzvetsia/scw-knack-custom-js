@@ -210,13 +210,31 @@
    * is SCW.productMap (Builder boot snippet); filter logic lives in
    * init.js next to the existing field_1957/field_2197 branches.
    */
+  /** Read the parent line item\'s label from the back-mirror
+   *  (field_2464_raw[0].identifier). Returns '' when the bracket
+   *  doesn\'t have a resolved parent. */
+  function readParentRef(rec) {
+    var raw = rec && rec['field_2464_raw'];
+    if (!Array.isArray(raw) || !raw.length || !raw[0]) return '';
+    var ident = raw[0].identifier;
+    if (!ident) return '';
+    return String(ident).replace(/<[^>]*>/g, '').trim();
+  }
+
   function productCell(rec, viewKey, value) {
     var discontinued = isDiscontinued(rec);
+    var parentRef = readParentRef(rec);
     var cls = 'scw-ws-v2-cell scw-ws-v2-cell--product scw-ws-v2-cell--editable-conn' +
       (discontinued ? ' scw-ws-v2-cell--discontinued' : '');
     var title = discontinued
       ? value + ' — DISCONTINUED product. Click to replace.'
       : value + ' — click to change product';
+    var attachedChip = parentRef
+      ? '<span class="scw-ws-v2-attached-chip" ' +
+          'title="Attached to ' + escapeHtml(parentRef) + ' — click the row chevron to expand details">' +
+          '↳ ' + escapeHtml(parentRef) +
+        '</span>'
+      : '';
     return '<button type="button" ' +
       'class="' + cls + '" ' +
       'data-scw-ws-v2-conn="field_1949" ' +
@@ -226,6 +244,7 @@
       'title="' + escapeHtml(title) + '">' +
       (discontinued ? discontinuedBadge() : '') +
       '<span class="scw-ws-v2-product-name">' + escapeHtml(value) + '</span>' +
+      attachedChip +
     '</button>';
   }
 
@@ -727,18 +746,31 @@
   }
 
   function buildDetail_default(rec, viewKey) {
+    var hasParent = !!readParentRef(rec);
     return '<div class="scw-ws-v2-detail">' +
       '<div class="scw-ws-v2-detail-zones">' +
         '<div class="scw-ws-v2-detail-zone scw-ws-v2-detail-zone--connections">' +
           detailMountingHardware(rec, viewKey) +
           detailConnection(rec,       viewKey, 'field_1957', 'Connected Devices') +
           detailConnection(rec,       viewKey, 'field_1946', 'MDF / IDF') +
+          (hasParent ? detailSubBidToggle(rec, viewKey) : '') +
         '</div>' +
       '</div>' +
       '<div class="scw-ws-v2-detail-notes">' +
         detailField(rec,    viewKey, 'field_1953', 'SCW Notes', 'text') +
         detailReadOnly(rec,          'field_2412', 'Survey Notes') +
       '</div>' +
+    '</div>';
+  }
+
+  /** Require-Sub-Bid toggle (field_2479) — only meaningful for
+   *  accessories (records with a field_2464 parent). Clicking flips
+   *  Yes ↔ No. Flipping to No hides the row from the main tree on
+   *  the next render (it becomes attached under its parent). */
+  function detailSubBidToggle(rec, viewKey) {
+    return '<div class="scw-ws-v2-detail-field">' +
+      '<div class="scw-ws-v2-detail-label">Require Sub Bid</div>' +
+      chip(rec, viewKey, 'field_2479', 'Sub Bid Required', 'Require Sub Bid') +
     '</div>';
   }
 
@@ -780,6 +812,13 @@
     card.classList.add('scw-ws-v2-card--' + cat);
     var bid = bucketIdOf(rec);
     if (bid) card.setAttribute('data-scw-ws-v2-bucket', bid);
+    // Promoted-bracket marker: the bracket has a parent (field_2464
+    // resolves) but is showing as its own row because Require Sub
+    // Bid (field_2479) isn\'t No/false. Used by CSS for the amber
+    // left accent + the inline attached-to chip.
+    if (readParentRef(rec)) {
+      card.classList.add('scw-ws-v2-card--promoted-bracket');
+    }
 
     // SOW connection ids — space-separated for the SOW filter pills.
     var sowRaw = rec['field_2154_raw'];

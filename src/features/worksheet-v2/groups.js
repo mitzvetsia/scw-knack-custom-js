@@ -79,11 +79,9 @@
     for (var j = 0; j < records.length; j++) {
       var rec = records[j];
       if (!rec || !rec.id) continue;
-      if (bucketIdOf(rec) !== MOUNTING_HARDWARE_BUCKET) continue;
-      // Sub-bid gate: only hide brackets whose Require Sub Bid flag
-      // (field_2479) is explicitly No/false. Brackets with Yes,
-      // empty, or any other value stay visible as their own row so
-      // the user can edit their sub bid / hours / materials directly.
+      // No bucket check — any record (any bucket) is "attached and
+      // hidden" when it has a parent AND its Require Sub Bid flag is
+      // explicitly No/false. Otherwise it shows as its own line item.
       if (!isRequireSubBidNoOrFalse(rec)) continue;
       var raw = rec[ACCESSORY_PARENT_FIELD + '_raw'];
       if (!Array.isArray(raw)) continue;
@@ -194,6 +192,13 @@
     }
 
     var attachedIds = collectAttachedAccessoryIds(records);
+    // Local recordById lookup for the promoted-bracket parent-inherit
+    // logic below — we need to resolve a bracket\'s field_2464 parent
+    // to walk to its MDF/IDF.
+    var recordByIdLocal = Object.create(null);
+    for (var rb = 0; rb < records.length; rb++) {
+      if (records[rb] && records[rb].id) recordByIdLocal[records[rb].id] = records[rb];
+    }
 
     for (var i = 0; i < records.length; i++) {
       var rec = records[i];
@@ -207,11 +212,42 @@
       var sortOrd  = readNumber(rec, FIELD_SORT);
 
       var l1Id, l1Label, isSynthetic;
+      // For mounting-hardware records that survived the attached-hide
+      // gate: split orphans (no loaded parent) from promoted brackets
+      // (parent loaded, but Require Sub Bid is non-No so the bracket
+      // shows as its own row). Promoted brackets inherit the parent\'s
+      // MDF/IDF L1 so they sit alongside the parent in the tree.
+      var promotedParent = null;
       if (inMountingBucket) {
-        // Unreferenced mounting-hardware row → orphan synthetic L1.
+        var parRaw = rec[ACCESSORY_PARENT_FIELD + '_raw'];
+        if (Array.isArray(parRaw)) {
+          for (var pp = 0; pp < parRaw.length; pp++) {
+            var pid = parRaw[pp] && parRaw[pp].id;
+            if (pid && recordByIdLocal[pid]) { promotedParent = recordByIdLocal[pid]; break; }
+          }
+        }
+      }
+      if (inMountingBucket && !promotedParent) {
+        // Truly unreferenced mounting-hardware row → orphan synthetic L1.
         l1Label     = SYNTHETIC_ORPHAN_BRACKETS_LABEL;
         l1Id        = '__synthetic__' + l1Label;
         isSynthetic = true;
+      } else if (promotedParent) {
+        // Promoted bracket: inherit the parent\'s MDF/IDF so it sits
+        // adjacent to its parent in the tree. Fall back to the
+        // bracket\'s own MDF/IDF if the parent has none.
+        var pMdf = readConn(promotedParent, FIELD_MDF_IDF);
+        if (pMdf.label) {
+          l1Id    = pMdf.id || pMdf.label;
+          l1Label = pMdf.label;
+        } else if (l1Conn.label) {
+          l1Id    = l1Conn.id || l1Conn.label;
+          l1Label = l1Conn.label;
+        } else {
+          l1Label = syntheticL1ForBucket(l2Conn.label);
+          l1Id    = '__synthetic__' + l1Label;
+        }
+        isSynthetic = !pMdf.label && !l1Conn.label;
       } else if (l1Conn.label) {
         l1Id        = l1Conn.id || l1Conn.label;
         l1Label     = l1Conn.label;
