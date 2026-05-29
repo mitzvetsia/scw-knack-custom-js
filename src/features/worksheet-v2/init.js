@@ -175,9 +175,50 @@
       var rowId = btn.getAttribute('data-scw-ws-v2-row-del');
       if (!rowId) return;
       var srcView = document.getElementById('view_3962');
-      var link = srcView && srcView.querySelector(
-        'tr#' + rowId + ' a.kn-link-delete'
-      );
+      // Probe several selectors — Knack tables don't always put the
+      // record id on the tr's id attribute. Some views use data-id,
+      // some put it on a nested element, some don't expose it at all.
+      var link = null;
+      var selectorsTried = [];
+      if (srcView) {
+        var attempts = [
+          'tr#' + rowId + ' a.kn-link-delete',
+          'tr[data-record-id="' + rowId + '"] a.kn-link-delete',
+          'tr[data-id="' + rowId + '"] a.kn-link-delete'
+        ];
+        for (var ai = 0; ai < attempts.length; ai++) {
+          selectorsTried.push(attempts[ai]);
+          link = srcView.querySelector(attempts[ai]);
+          if (link) break;
+        }
+        // Last resort: scan every kn-link-delete for one whose closest
+        // tr contains the record id somewhere (class, id, data-*).
+        if (!link) {
+          var all = srcView.querySelectorAll('a.kn-link-delete');
+          for (var aj = 0; aj < all.length; aj++) {
+            var tr = all[aj].closest('tr');
+            if (!tr) continue;
+            if (tr.id === rowId ||
+                tr.getAttribute('data-record-id') === rowId ||
+                tr.getAttribute('data-id') === rowId ||
+                tr.outerHTML.indexOf(rowId) !== -1) {
+              link = all[aj];
+              break;
+            }
+          }
+        }
+      }
+      console.log('[scw-ws-v2] row delete probe', {
+        rowId: rowId,
+        srcView: !!srcView,
+        link: !!link,
+        linkHref: link ? link.getAttribute('href') : null,
+        totalDeleteLinks: srcView ? srcView.querySelectorAll('a.kn-link-delete').length : 0,
+        selectorsTried: selectorsTried,
+        sampleRowOuter: srcView
+          ? (srcView.querySelector('tr') ? srcView.querySelector('tr').outerHTML.slice(0, 240) : null)
+          : null
+      });
       if (link) {
         link.click();
       } else {
