@@ -217,9 +217,39 @@
   function readParentRef(rec) {
     var raw = rec && rec['field_2464_raw'];
     if (!Array.isArray(raw) || !raw.length || !raw[0]) return '';
+    var parentId = raw[0].id || '';
+
+    // Prefer a real product/drop label looked up from view_3962\'s
+    // model — Knack\'s auto-built identifier on the line-item object
+    // is "<recordId> (<mdfLabel>)" because the object has no proper
+    // identifier field, which reads like garbage in the UI.
+    if (parentId) {
+      try {
+        var v = window.Knack && Knack.views && Knack.views.view_3962;
+        var prec = v && v.model && v.model.data &&
+                   typeof v.model.data.get === 'function' &&
+                   v.model.data.get(parentId);
+        if (prec) {
+          var pa   = prec.attributes || prec;
+          var drop = (pa.field_1950 || '').toString().replace(/<[^>]*>/g, '').trim();
+          var prod = (pa.field_1949 || '').toString().replace(/<[^>]*>/g, '').trim();
+          if (drop && prod) return drop + ' · ' + prod;
+          if (prod)         return prod;
+          if (drop)         return drop;
+        }
+      } catch (e) { /* fall through to identifier */ }
+    }
+
     var ident = raw[0].identifier;
-    if (!ident) return '';
-    return String(ident).replace(/<[^>]*>/g, '').trim();
+    if (ident) {
+      var s = String(ident).replace(/<[^>]*>/g, '').trim();
+      // Strip Knack\'s default "<recordId> (<label>)" wrapper if the
+      // model lookup above didn\'t find anything cleaner.
+      var m = s.match(/^[a-f0-9]{24}\s*\(([^)]+)\)\s*$/);
+      if (m) return m[1].trim();
+      return s;
+    }
+    return '';
   }
 
   /** Label slot — for non-cam rows (default/services) the slot is
