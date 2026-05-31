@@ -738,23 +738,13 @@
           candidates:    parentCands,
           multi:         false,
           itemLabel: function (r) {
-            // Networking/headend records often have field_1949 stored
-            // only in _raw (no flat-text render in v2's source view) —
-            // so the previous "field_1949 only" path fell back to r.id
-            // for those. Try every label source we know about.
-            function clean(v) {
-              return (v || '').toString().replace(/<[^>]*>/g, '').trim();
+            // Share the same product/drop resolver the card display
+            // uses — it strips Knack\'s "<recordId> (<mdfLabel>)"
+            // auto-identifier for buckets with no real drop label.
+            if (ns.card && typeof ns.card.labelLineItem === 'function') {
+              return ns.card.labelLineItem(r);
             }
-            function connIdent(raw) {
-              if (Array.isArray(raw) && raw.length && raw[0]) {
-                return clean(raw[0].identifier || raw[0].name || '');
-              }
-              return '';
-            }
-            var lbl  = clean(r.field_1950) || connIdent(r.field_1950_raw);
-            var prod = clean(r.field_1949) || connIdent(r.field_1949_raw);
-            if (lbl && prod) return lbl + ' · ' + prod;
-            return lbl || prod || r.id;
+            return r.id;
           },
           onSaved: function (chosenIds) {
             // Data model:

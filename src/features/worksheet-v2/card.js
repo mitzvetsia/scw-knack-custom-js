@@ -982,6 +982,30 @@
     return card;
   }
 
+  /** Public label resolver for a line-item record — same product/drop
+   *  lookup readParentRef uses, but starts from the record itself
+   *  instead of the parent connection. Strips Knack\'s synthesized
+   *  "<recordId> (<mdfLabel>)" identifier the same way. Used by
+   *  init.js\'s parent-picker itemLabel so candidates render cleanly
+   *  regardless of bucket. */
+  function labelLineItem(rec) {
+    if (!rec) return '';
+    var a = rec.attributes || rec;
+    function clean(v) { return (v || '').toString().replace(/<[^>]*>/g, '').trim(); }
+    function connIdent(raw) {
+      if (Array.isArray(raw) && raw.length && raw[0]) {
+        return clean(raw[0].identifier || raw[0].name || '');
+      }
+      return '';
+    }
+    var drop = clean(a.field_1950) || connIdent(a.field_1950_raw);
+    var prod = clean(a.field_1949) || connIdent(a.field_1949_raw);
+    if (/^[a-f0-9]{24}(\s|\b|$)/i.test(drop)) drop = '';
+    if (/^[a-f0-9]{24}(\s|\b|$)/i.test(prod)) prod = '';
+    if (drop && prod) return drop + ' · ' + prod;
+    return prod || drop || rec.id || '';
+  }
+
   ns.card = {
     buildCard:           buildCard,
     bucketIdOf:          bucketIdOf,
@@ -989,7 +1013,8 @@
     SERVICES_BUCKET:     SERVICES_BUCKET,
     ASSUMPTIONS_BUCKET:  ASSUMPTIONS_BUCKET,
     NETWORKING_BUCKET:   NETWORKING_BUCKET,
-    bucketCategoryOf:    bucketCategoryOf
+    bucketCategoryOf:    bucketCategoryOf,
+    labelLineItem:       labelLineItem
   };
 })();
 /*** END WORKSHEET V2 — CARD **************************************************/
