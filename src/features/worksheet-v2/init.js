@@ -747,26 +747,25 @@
             return r.id;
           },
           onSaved: function (chosenIds) {
-            // Data model:
-            //   accessory.field_2464 = "my parent"     (single connection)
-            //   parent.field_2207    = "my children"   (array of accessory ids)
+            // Data model — there is NO server-side auto-mirror; the
+            // cascade has to be done by us:
+            //   accessory.field_2464 = "my parent"    (single conn)
+            //   parent.field_2207    = "my children"  (array conn)
             //
-            // The picker already PUT field_2464 on the accessory. Now we
-            // need to keep the parent\'s field_2207 in sync:
-            //   • Add this accessory\'s id to the NEW parent\'s field_2207
-            //   • Remove this accessory\'s id from the OLD parent\'s
-            //     field_2207 (whichever record currently lists it)
+            // The picker already PUT field_2464 on the accessory. Now
+            // we mutate field_2207 on the OLD parent (remove this
+            // accessory) and NEW parent (add it).
             //
-            // Both rows (accessory + new parent + old parent) need to
-            // re-render. We patch local Knack models inline for snappy
-            // first paint, then refetchAndNotify after the server PUTs
-            // settle so the next pass reads fresh data.
-            //
-            // The picker\'s PUT goes through view_3610 (putViewKey
-            // above), so syncKnackModel only patched view_3610\'s copy
-            // of the accessory. The v2 grid reads from view_3962 — we
-            // need to patch its model too so notify() renders the new
-            // parent immediately instead of waiting for refetch.
+            // CRITICAL: we GET each parent from the server before we
+            // PUT, so we read the authoritative current child list. An
+            // earlier version read from the local Backbone model — but
+            // view_3962 doesn\'t expose field_2207 fully, so the model
+            // had [] and we then PUT [newAccessoryId], WIPING every
+            // other child the parent already had. Read-then-write
+            // against the live server avoids that wipe.
+
+            // Patch the accessory\'s local back-pointer so the row
+            // re-groups under the new parent before refetch.
             try {
               var srcView = Knack.views && Knack.views[viewKey];
               var srcRec  = srcView && srcView.model && srcView.model.data &&
@@ -783,191 +782,106 @@
               }
             } catch (eSrc) { /* best-effort */ }
 
-            var pendingPuts = 0;
-            var anyError = false;
-            function finish() {
-              if (pendingPuts > 0) return;
-              if (ns.data && typeof ns.data.refetchAndNotify === 'function') {
-                ns.data.refetchAndNotify(viewKey);
-              } else if (ns.data && typeof ns.data.notify === 'function') {
-                ns.data.notify(viewKey);
-              }
-            }
-            function identifierFor(accId) {
-              try {
-                var sv = Knack.views && Knack.views[viewKey];
-                var rec = sv && sv.model && sv.model.data &&
-                          sv.model.data.get && sv.model.data.get(accId);
-                if (!rec) return '';
-                var a = rec.attributes || rec;
-                var drop = (a.field_1950 || '').toString().replace(/<[^>]*>/g, '').trim();
-                var prod = (a.field_1949 || '').toString().replace(/<[^>]*>/g, '').trim();
-                if (drop && prod) return drop + ' · ' + prod;
-                return drop || prod || '';
-              } catch (e) { return ''; }
-            }
-            function patchParentLocal(parentId, newIds) {
-              try {
-                var pView = Knack.views && Knack.views[viewKey];
-                var pModel = pView && pView.model && pView.model.data &&
-                             pView.model.data.get && pView.model.data.get(parentId);
-                if (!pModel) return;
-                var raw = [];
-                for (var i = 0; i < newIds.length; i++) {
-                  raw.push({ id: newIds[i], identifier: identifierFor(newIds[i]) });
-                }
-                // Patch BOTH field_2207 (the actual children array,
-                // written to the server) and field_1958 (a related
-                // connection that card.detailMountingHardware reads to
-                // render the chips). Only field_2207 is written
-                // server-side; the field_1958 patch is optimistic
-                // local-only so the parent\'s accessory chips refresh
-                // before refetchAndNotify lands. Refetch will overwrite
-                // both with whatever the server returns.
-                pModel.set({
-                  field_2207_raw: raw,
-                  field_2207:     newIds.join(','),
-                  field_1958_raw: raw,
-                  field_1958:     newIds.join(',')
-                }, { silent: true });
-              } catch (e) { /* best-effort */ }
-            }
-            function readIds(parentId) {
-              try {
-                var pView = Knack.views && Knack.views[viewKey];
-                var pModel = pView && pView.model && pView.model.data &&
-                             pView.model.data.get && pView.model.data.get(parentId);
-                var pAttrs = pModel && pModel.attributes;
-                var existing = (pAttrs && pAttrs.field_2207_raw) || [];
-                var ids = [];
-                for (var i = 0; i < existing.length; i++) {
-                  if (existing[i] && existing[i].id) ids.push(existing[i].id);
-                }
-                return ids;
-              } catch (e) { return []; }
-            }
-            try {
-              var newParentId = chosenIds && chosenIds[0];
+            var newParentId = (chosenIds && chosenIds[0]) || '';
 
-              // Find the OLD parent (the record that currently lists
-              // this accessory in its field_2207 "children" array).
-              var oldParentIds = [];
-              try {
-                var srcView = Knack.views && Knack.views[viewKey];
-                var srcRecs = (srcView && srcView.model && srcView.model.data &&
-                               typeof srcView.model.data.toJSON === 'function')
-                                ? srcView.model.data.toJSON() : [];
-                for (var oi = 0; oi < srcRecs.length; oi++) {
-                  var sr = srcRecs[oi];
-                  if (!sr || !sr.id || sr.id === newParentId) continue;
-                  var srRaw = sr.field_2207_raw;
-                  if (!Array.isArray(srRaw)) continue;
-                  for (var oj = 0; oj < srRaw.length; oj++) {
-                    if (srRaw[oj] && srRaw[oj].id === recordId) {
-                      oldParentIds.push(sr.id);
+            // Find candidate old parents — any record in the v2 source
+            // model that lists this accessory in field_2207_raw OR
+            // field_1958_raw (whichever the view happens to expose).
+            // The local model can be empty/stale here; that\'s fine,
+            // each candidate is re-verified via a GET below.
+            var oldParentCandidates = [];
+            try {
+              var sv = Knack.views && Knack.views[viewKey];
+              var jr = (sv && sv.model && sv.model.data &&
+                        typeof sv.model.data.toJSON === 'function')
+                          ? sv.model.data.toJSON() : [];
+              for (var oi = 0; oi < jr.length; oi++) {
+                var r = jr[oi];
+                if (!r || !r.id || r.id === newParentId) continue;
+                var raws = [r.field_2207_raw, r.field_1958_raw];
+                for (var ri = 0; ri < raws.length; ri++) {
+                  var raw = raws[ri];
+                  if (!Array.isArray(raw)) continue;
+                  for (var oj = 0; oj < raw.length; oj++) {
+                    if (raw[oj] && raw[oj].id === recordId) {
+                      oldParentCandidates.push(r.id);
+                      ri = raws.length; // break outer
                       break;
                     }
                   }
                 }
-              } catch (eOld) { /* ignore */ }
-
-              // PUTs route through v2's source view (viewKey =
-              // view_3962). v1's view_3610 is no longer on this page
-              // post-cutover.
-              var WRITE_VIEW = viewKey;
-
-              function buildBody(ids) {
-                return JSON.stringify({ field_2207: ids });
               }
+            } catch (eScan) { /* ignore */ }
 
-              // Remove this accessory from each old parent\'s accessory
-              // arrays.
-              console.log('[scw-ws-v2] cascade plan', {
-                recordId:     recordId,
-                newParentId:  newParentId,
-                oldParentIds: oldParentIds
-              });
-              oldParentIds.forEach(function (opid) {
-                var ids = readIds(opid).filter(function (x) { return x !== recordId; });
-                patchParentLocal(opid, ids);
-                pendingPuts++;
-                SCW.knackAjax({
-                  url:  SCW.knackRecordUrl(WRITE_VIEW, opid),
-                  type: 'PUT',
-                  data: buildBody(ids),
-                  success: function (resp) {
-                    var server2207 = resp && (resp.field_2207_raw ||
-                      (resp.record && resp.record.field_2207_raw));
-                    console.log('[scw-ws-v2] PUT field_2207 detach OK', {
-                      parent: opid,
-                      sent:   ids,
-                      got:    server2207
-                    });
-                    pendingPuts--; finish();
-                  },
-                  error:   function (xhr) {
-                    anyError = true;
-                    pendingPuts--;
-                    console.warn('[scw-ws-v2] old-parent accessory detach FAILED', {
-                      status: xhr && xhr.status,
-                      body:   xhr && xhr.responseText
-                    });
-                    finish();
-                  }
-                });
-              });
-
-              // Add this accessory to the NEW parent\'s accessory arrays.
-              if (newParentId) {
-                var newIds = readIds(newParentId);
-                if (newIds.indexOf(recordId) === -1) {
-                  newIds.push(recordId);
-                  patchParentLocal(newParentId, newIds);
-                  pendingPuts++;
-                  console.log('[scw-ws-v2] PUT field_2207 attach', {
-                    url:    SCW.knackRecordUrl(WRITE_VIEW, newParentId),
-                    parent: newParentId,
-                    ids:    newIds
-                  });
-                  SCW.knackAjax({
-                    url:  SCW.knackRecordUrl(WRITE_VIEW, newParentId),
-                    type: 'PUT',
-                    data: buildBody(newIds),
-                    success: function (resp) {
-                      var server2207 = resp && (resp.field_2207_raw ||
-                        (resp.record && resp.record.field_2207_raw));
-                      console.log('[scw-ws-v2] PUT field_2207 attach OK', {
-                        parent: newParentId,
-                        sent:   newIds,
-                        got:    server2207
-                      });
-                      pendingPuts--; finish();
-                    },
-                    error:   function (xhr) {
-                      anyError = true;
-                      pendingPuts--;
-                      console.warn('[scw-ws-v2] new-parent accessory attach FAILED', {
-                        status:  xhr && xhr.status,
-                        body:    xhr && xhr.responseText
-                      });
-                      finish();
-                    }
-                  });
-                }
+            var pending = 0;
+            function done() {
+              if (pending > 0) return;
+              if (ns.data && typeof ns.data.refetchAndNotify === 'function') {
+                ns.data.refetchAndNotify(viewKey);
               }
-            } catch (e) {
-              console.warn('[scw-ws-v2] parent cascade threw', e);
             }
 
-            // Immediate re-render so accessory row + both parent rows
-            // reflect the local-model patches we just made. The
-            // post-PUT refetch in finish() will reconcile with server.
+            // Read the parent\'s CURRENT field_2207 from the server,
+            // mutate (add or remove this accessory), then PUT.
+            function rewriteParent(parentId, mode /* 'add' | 'remove' */) {
+              pending++;
+              SCW.knackAjax({
+                url:  SCW.knackRecordUrl(viewKey, parentId),
+                type: 'GET',
+                success: function (resp) {
+                  var rec = resp && resp.record ? resp.record : resp;
+                  var rawArr = (rec && rec.field_2207_raw) || [];
+                  var ids = [];
+                  for (var i = 0; i < rawArr.length; i++) {
+                    if (rawArr[i] && rawArr[i].id) ids.push(rawArr[i].id);
+                  }
+                  var has = ids.indexOf(recordId) !== -1;
+                  if (mode === 'add' && !has) ids.push(recordId);
+                  if (mode === 'remove' && has) {
+                    ids = ids.filter(function (x) { return x !== recordId; });
+                  }
+                  if ((mode === 'add' && has) || (mode === 'remove' && !has)) {
+                    // No-op — already in the right state server-side.
+                    pending--; done();
+                    return;
+                  }
+                  console.log('[scw-ws-v2] cascade ' + mode, {
+                    parent: parentId, ids: ids
+                  });
+                  SCW.knackAjax({
+                    url:  SCW.knackRecordUrl(viewKey, parentId),
+                    type: 'PUT',
+                    data: JSON.stringify({ field_2207: ids }),
+                    success: function () { pending--; done(); },
+                    error:   function (xhr) {
+                      console.warn('[scw-ws-v2] cascade ' + mode + ' PUT failed', {
+                        parent: parentId, status: xhr && xhr.status
+                      });
+                      pending--; done();
+                    }
+                  });
+                },
+                error: function (xhr) {
+                  console.warn('[scw-ws-v2] cascade ' + mode + ' GET failed', {
+                    parent: parentId, status: xhr && xhr.status
+                  });
+                  pending--; done();
+                }
+              });
+            }
+
+            oldParentCandidates.forEach(function (opid) {
+              if (opid !== newParentId) rewriteParent(opid, 'remove');
+            });
+            if (newParentId) rewriteParent(newParentId, 'add');
+
+            // Immediate re-render so the accessory regroups under the
+            // new parent based on the field_2464_raw patch above. The
+            // post-PUT refetch in done() will reconcile parent chips.
             if (ns.data && typeof ns.data.notify === 'function') {
               ns.data.notify(viewKey);
             }
-            // If no PUTs were queued, still kick a refetch so the
-            // server\'s authoritative state lands.
-            if (pendingPuts === 0) finish();
+            if (pending === 0) done();
           }
         });
         return;
