@@ -672,9 +672,9 @@
 
           ns.picker.open({
             sourceViewKey: viewKey,
-            // Write through view_3610 so v1's mirror-connection-sync
-            // + dependent recalcs (line item totals, etc.) fire.
-            putViewKey:    'view_3610',
+            // Route writes through v2's source view (view_3962). v1's
+            // view_3610 is no longer on this page post-cutover.
+            putViewKey:    viewKey,
             recordId:      recordId,
             fieldKey:      'field_1949',
             label:         'Product',
@@ -725,14 +725,12 @@
           if (b !== CAM && b !== NETWORKING) continue;
           parentCands.push(r);
         }
-        // Route the PUT through view_3610 — view_3962 (v2 source) is
-        // MODEL_ONLY and doesn\'t expose field_2464 as editable, so a
-        // view-scoped PUT through viewKey 403s silently and the
-        // server-side mirror (field_2207 on the parent) never updates.
-        // Same routing pattern as the field_1958 cascade below.
+        // Route writes through v2's source view (view_3962). v1's
+        // view_3610 is no longer on this page post-cutover, so PUTs
+        // through it silently drop fields the dead view doesn't expose.
         ns.picker.open({
           sourceViewKey: viewKey,
-          putViewKey:    'view_3610',
+          putViewKey:    viewKey,
           recordId:      recordId,
           fieldKey:      'field_2464',
           label:         'Parent',
@@ -847,11 +845,10 @@
                 }
               } catch (eOld) { /* ignore */ }
 
-              // PUTs route through view_3610 (v1 grid) because that\'s
-              // where field_2207 is exposed as editable — v2\'s source
-              // view (view_3962) is MODEL_ONLY and a PUT through it
-              // 403s silently.
-              var WRITE_VIEW = 'view_3610';
+              // PUTs route through v2's source view (viewKey =
+              // view_3962). v1's view_3610 is no longer on this page
+              // post-cutover.
+              var WRITE_VIEW = viewKey;
 
               function buildBody(ids) {
                 return JSON.stringify({ field_2207: ids });

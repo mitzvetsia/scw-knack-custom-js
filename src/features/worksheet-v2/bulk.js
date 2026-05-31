@@ -49,7 +49,7 @@
   //   - 'mh'      uses SCW.productMap (mounting hardware bucket)
   var FIELDS = {
     cam: [
-      { key: 'field_1949', label: 'Product',           kind: 'conn-single', candSource: 'products', writeViewKey: 'view_3610' },
+      { key: 'field_1949', label: 'Product',           kind: 'conn-single', candSource: 'products' },
       { key: 'field_2020', label: 'Labor description', kind: 'text' },
       { key: 'field_2240', label: 'Drop prefix',       kind: 'conn-single', candSource: 'dropPrefix' },
       { key: 'field_2150', label: 'Sub Bid',           kind: 'number' },
@@ -67,7 +67,7 @@
       { key: 'field_2197', label: 'Connected Device',  kind: 'conn-single', candSource: 'devices' }
     ],
     'default': [
-      { key: 'field_1949', label: 'Product',           kind: 'conn-single', candSource: 'products', writeViewKey: 'view_3610' },
+      { key: 'field_1949', label: 'Product',           kind: 'conn-single', candSource: 'products' },
       { key: 'field_2020', label: 'Labor description', kind: 'text' },
       { key: 'field_1964', label: 'Qty',               kind: 'number' },
       { key: 'field_2150', label: 'Sub Bid',           kind: 'number' },
@@ -921,11 +921,11 @@
     });
 
     saveBtn.addEventListener('click', function () {
-      // Group applied fields by writeViewKey. Most fields write through
-      // the source view (view_3962); a few (e.g. Product, field_1949)
-      // need to route through view_3610 instead so v1\'s cascade
-      // (mirror-connection-sync, formula recomputes) fires. Each group
-      // becomes its own batch of PUTs.
+      // Group applied fields by writeViewKey. All fields write through
+      // the source view (view_3962) post-cutover — v1's view_3610 is
+      // off the page, so any writeViewKey override would 404. Kept as
+      // a generic group-by route in case a future field needs a custom
+      // routing target.
       var groups = Object.create(null);
       var applied = 0;
       var fieldByKey = Object.create(null);
