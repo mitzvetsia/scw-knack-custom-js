@@ -825,16 +825,7 @@
             // mutate (add or remove this accessory), then PUT.
             function rewriteParent(parentId, mode /* 'add' | 'remove' */) {
               pending++;
-              // view_3962 (v2 source) does not expose field_2207 — the
-              // GET response confirmed field_2207 / field_1958 come
-              // back undefined, and the PUT response shows the field
-              // being silently dropped (got_field_2207: ''). v1's
-              // view_3610 is still on the page (CSS-hidden, not torn
-              // down) and HAS field_2207 editable, so route the parent
-              // cascade through it. The accessory write (field_2464)
-              // still routes through viewKey (v2 source) above.
-              var CASCADE_VIEW = 'view_3610';
-              var url = SCW.knackRecordUrl(CASCADE_VIEW, parentId);
+              var url = SCW.knackRecordUrl(viewKey, parentId);
               console.log('[scw-ws-v2] cascade GET', { url: url, parent: parentId, mode: mode });
               SCW.knackAjax({
                 url:  url,
