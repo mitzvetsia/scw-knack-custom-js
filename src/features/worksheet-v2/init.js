@@ -738,8 +738,21 @@
           candidates:    parentCands,
           multi:         false,
           itemLabel: function (r) {
-            var lbl  = (r.field_1950 || '').toString().replace(/<[^>]*>/g, '').trim();
-            var prod = (r.field_1949 || '').toString().replace(/<[^>]*>/g, '').trim();
+            // Networking/headend records often have field_1949 stored
+            // only in _raw (no flat-text render in v2's source view) —
+            // so the previous "field_1949 only" path fell back to r.id
+            // for those. Try every label source we know about.
+            function clean(v) {
+              return (v || '').toString().replace(/<[^>]*>/g, '').trim();
+            }
+            function connIdent(raw) {
+              if (Array.isArray(raw) && raw.length && raw[0]) {
+                return clean(raw[0].identifier || raw[0].name || '');
+              }
+              return '';
+            }
+            var lbl  = clean(r.field_1950) || connIdent(r.field_1950_raw);
+            var prod = clean(r.field_1949) || connIdent(r.field_1949_raw);
             if (lbl && prod) return lbl + ' · ' + prod;
             return lbl || prod || r.id;
           },
@@ -790,6 +803,19 @@
                 ns.data.notify(viewKey);
               }
             }
+            function identifierFor(accId) {
+              try {
+                var sv = Knack.views && Knack.views[viewKey];
+                var rec = sv && sv.model && sv.model.data &&
+                          sv.model.data.get && sv.model.data.get(accId);
+                if (!rec) return '';
+                var a = rec.attributes || rec;
+                var drop = (a.field_1950 || '').toString().replace(/<[^>]*>/g, '').trim();
+                var prod = (a.field_1949 || '').toString().replace(/<[^>]*>/g, '').trim();
+                if (drop && prod) return drop + ' · ' + prod;
+                return drop || prod || '';
+              } catch (e) { return ''; }
+            }
             function patchParentLocal(parentId, newIds) {
               try {
                 var pView = Knack.views && Knack.views[viewKey];
@@ -798,11 +824,21 @@
                 if (!pModel) return;
                 var raw = [];
                 for (var i = 0; i < newIds.length; i++) {
-                  raw.push({ id: newIds[i], identifier: '' });
+                  raw.push({ id: newIds[i], identifier: identifierFor(newIds[i]) });
                 }
+                // Patch BOTH field_2207 (the actual children array,
+                // written to the server) and field_1958 (a related
+                // connection that card.detailMountingHardware reads to
+                // render the chips). Only field_2207 is written
+                // server-side; the field_1958 patch is optimistic
+                // local-only so the parent\'s accessory chips refresh
+                // before refetchAndNotify lands. Refetch will overwrite
+                // both with whatever the server returns.
                 pModel.set({
                   field_2207_raw: raw,
-                  field_2207:     newIds.join(',')
+                  field_2207:     newIds.join(','),
+                  field_1958_raw: raw,
+                  field_1958:     newIds.join(',')
                 }, { silent: true });
               } catch (e) { /* best-effort */ }
             }

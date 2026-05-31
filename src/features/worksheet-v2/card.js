@@ -598,51 +598,67 @@
     // asynchronously.
     var chips    = [];
     var addHref  = '';
-    try {
-      var srcView = document.getElementById(viewKey) ||
-                    document.getElementById('view_3962');
-      var tr      = srcView && srcView.querySelector(
-        'tr[id="' + parentId + '"]'
-      );
-      var td      = tr && tr.querySelector('td.field_1958');
-      if (td) {
-        var anchors = td.querySelectorAll('a[data-kn="connection-link"]');
-        if (anchors.length) {
-          for (var ai = 0; ai < anchors.length; ai++) {
-            var inner = anchors[ai].querySelector('span[data-kn="connection-value"][id]');
-            if (!inner) continue;
-            var id    = (inner.getAttribute('id') || '').trim();
-            var label = (inner.textContent || '').trim();
-            var href  = anchors[ai].getAttribute('href') || '';
-            if (id) chips.push({ id: id, label: label || id, href: href });
-          }
-        } else {
-          // Sometimes Knack renders bare spans without wrapping <a>
-          // (e.g. when the field is read-only for this view). Still
-          // grab the ids + labels.
-          var bareSpans = td.querySelectorAll('span[data-kn="connection-value"][id]');
-          for (var bi = 0; bi < bareSpans.length; bi++) {
-            var bid    = (bareSpans[bi].getAttribute('id') || '').trim();
-            var blabel = (bareSpans[bi].textContent || '').trim();
-            if (bid) chips.push({ id: bid, label: blabel || bid, href: '' });
-          }
-        }
-      }
-    } catch (e) { /* fall through to raw fallback */ }
 
-    // Fallback: record's field_1958_raw + rebuilt URLs.
-    if (chips.length === 0) {
-      var raw = rec['field_1958_raw'];
-      if (Array.isArray(raw)) {
-        for (var ri = 0; ri < raw.length; ri++) {
-          var a = raw[ri];
-          if (!a) continue;
-          var lbl = a.identifier
-            ? String(a.identifier).replace(/<[^>]*>/g, '').trim()
-            : '';
-          chips.push({ id: a.id || '', label: lbl || a.id || '', href: '' });
-        }
+    // Prefer the Backbone model over the DOM scrape. The parent\'s
+    // td.field_1958 cell in view_3962 doesn\'t re-render on its own
+    // when we optimistically patch the parent\'s field_2207/_1958 from
+    // a re-parent action — so a DOM-first scrape returns stale chips
+    // and the user sees the old child list until the next refetch.
+    // The model is patched synchronously in init.js\'s parent-picker
+    // onSaved (and refetched after the server PUT settles), so it\'s
+    // always at least as fresh as the DOM and usually fresher.
+    //
+    // Source priority: field_2207_raw (the real "my children" array)
+    // first, falling back to field_1958_raw for records the back-end
+    // surfaces only under the legacy key.
+    var modelRaw = rec['field_2207_raw'];
+    if (!Array.isArray(modelRaw) || modelRaw.length === 0) {
+      modelRaw = rec['field_1958_raw'];
+    }
+    if (Array.isArray(modelRaw) && modelRaw.length) {
+      for (var mri = 0; mri < modelRaw.length; mri++) {
+        var ma = modelRaw[mri];
+        if (!ma || !ma.id) continue;
+        var mlbl = ma.identifier
+          ? String(ma.identifier).replace(/<[^>]*>/g, '').trim()
+          : '';
+        chips.push({ id: ma.id, label: mlbl || ma.id, href: '' });
       }
+    }
+
+    // Final fallback: DOM scrape from the source view, for the case
+    // where the model has nothing (e.g. first paint before subscribers
+    // re-emit) — Knack\'s native td.field_1958 markup gives us labels
+    // AND clickable hrefs.
+    if (chips.length === 0) {
+      try {
+        var srcView = document.getElementById(viewKey) ||
+                      document.getElementById('view_3962');
+        var tr      = srcView && srcView.querySelector(
+          'tr[id="' + parentId + '"]'
+        );
+        var td      = tr && tr.querySelector('td.field_1958');
+        if (td) {
+          var anchors = td.querySelectorAll('a[data-kn="connection-link"]');
+          if (anchors.length) {
+            for (var ai = 0; ai < anchors.length; ai++) {
+              var inner = anchors[ai].querySelector('span[data-kn="connection-value"][id]');
+              if (!inner) continue;
+              var id    = (inner.getAttribute('id') || '').trim();
+              var label = (inner.textContent || '').trim();
+              var href  = anchors[ai].getAttribute('href') || '';
+              if (id) chips.push({ id: id, label: label || id, href: href });
+            }
+          } else {
+            var bareSpans = td.querySelectorAll('span[data-kn="connection-value"][id]');
+            for (var bi = 0; bi < bareSpans.length; bi++) {
+              var bid    = (bareSpans[bi].getAttribute('id') || '').trim();
+              var blabel = (bareSpans[bi].textContent || '').trim();
+              if (bid) chips.push({ id: bid, label: blabel || bid, href: '' });
+            }
+          }
+        }
+      } catch (e) { /* swallow */ }
     }
     // addHref fallback: the `add-accessory-line-item` slug differs
     // between Knack scenes — and with v1 disabled, v1\'s scw-cr-add
