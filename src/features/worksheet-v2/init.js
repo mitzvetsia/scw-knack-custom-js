@@ -825,11 +825,23 @@
             // mutate (add or remove this accessory), then PUT.
             function rewriteParent(parentId, mode /* 'add' | 'remove' */) {
               pending++;
+              var url = SCW.knackRecordUrl(viewKey, parentId);
+              console.log('[scw-ws-v2] cascade GET', { url: url, parent: parentId, mode: mode });
               SCW.knackAjax({
-                url:  SCW.knackRecordUrl(viewKey, parentId),
+                url:  url,
                 type: 'GET',
                 success: function (resp) {
                   var rec = resp && resp.record ? resp.record : resp;
+                  console.log('[scw-ws-v2] cascade GET resp', {
+                    parent: parentId,
+                    field_2207:     rec && rec.field_2207,
+                    field_2207_raw: rec && rec.field_2207_raw,
+                    field_1958:     rec && rec.field_1958,
+                    field_1958_raw: rec && rec.field_1958_raw,
+                    keysReturned:   rec ? Object.keys(rec).filter(function (k) {
+                      return /^field_\d+$/.test(k);
+                    }) : []
+                  });
                   var rawArr = (rec && rec.field_2207_raw) || [];
                   var ids = [];
                   for (var i = 0; i < rawArr.length; i++) {
@@ -841,29 +853,45 @@
                     ids = ids.filter(function (x) { return x !== recordId; });
                   }
                   if ((mode === 'add' && has) || (mode === 'remove' && !has)) {
-                    // No-op — already in the right state server-side.
+                    console.log('[scw-ws-v2] cascade ' + mode + ' noop (already in state)', {
+                      parent: parentId, ids: ids
+                    });
                     pending--; done();
                     return;
                   }
-                  console.log('[scw-ws-v2] cascade ' + mode, {
-                    parent: parentId, ids: ids
+                  var body = JSON.stringify({ field_2207: ids });
+                  console.log('[scw-ws-v2] cascade ' + mode + ' PUT', {
+                    url: url, body: body
                   });
                   SCW.knackAjax({
-                    url:  SCW.knackRecordUrl(viewKey, parentId),
+                    url:  url,
                     type: 'PUT',
-                    data: JSON.stringify({ field_2207: ids }),
-                    success: function () { pending--; done(); },
+                    data: body,
+                    success: function (putResp) {
+                      var rp = putResp && putResp.record ? putResp.record : putResp;
+                      console.log('[scw-ws-v2] cascade ' + mode + ' PUT OK', {
+                        parent: parentId,
+                        sent:           ids,
+                        got_field_2207: rp && rp.field_2207,
+                        got_2207_raw:   rp && rp.field_2207_raw
+                      });
+                      pending--; done();
+                    },
                     error:   function (xhr) {
-                      console.warn('[scw-ws-v2] cascade ' + mode + ' PUT failed', {
-                        parent: parentId, status: xhr && xhr.status
+                      console.warn('[scw-ws-v2] cascade ' + mode + ' PUT FAILED', {
+                        parent: parentId,
+                        status: xhr && xhr.status,
+                        body:   xhr && xhr.responseText
                       });
                       pending--; done();
                     }
                   });
                 },
                 error: function (xhr) {
-                  console.warn('[scw-ws-v2] cascade ' + mode + ' GET failed', {
-                    parent: parentId, status: xhr && xhr.status
+                  console.warn('[scw-ws-v2] cascade ' + mode + ' GET FAILED', {
+                    parent: parentId,
+                    status: xhr && xhr.status,
+                    body:   xhr && xhr.responseText
                   });
                   pending--; done();
                 }
