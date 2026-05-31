@@ -233,6 +233,12 @@
           var pa   = prec.attributes || prec;
           var drop = (pa.field_1950 || '').toString().replace(/<[^>]*>/g, '').trim();
           var prod = (pa.field_1949 || '').toString().replace(/<[^>]*>/g, '').trim();
+          // Knack synthesizes a "<24-hex> (<mdf>)" string for line-item
+          // records that have no real drop label (networking/headend
+          // bucket). Reject it — that\'s the garbage we\'re trying to
+          // avoid printing in the first place.
+          if (/^[a-f0-9]{24}(\s|\b|$)/i.test(drop)) drop = '';
+          if (/^[a-f0-9]{24}(\s|\b|$)/i.test(prod)) prod = '';
           if (drop && prod) return drop + ' · ' + prod;
           if (prod)         return prod;
           if (drop)         return drop;
@@ -553,7 +559,15 @@
    * opens the picker modal.
    */
   function detailConnection(rec, viewKey, fieldKey, label) {
-    var val = readField(rec, fieldKey) || '(none)';
+    // Special-case the Parent connection: the line-item object\'s auto
+    // identifier is "<recordId> (<mdfLabel>)", which reads like garbage.
+    // readParentRef does a proper product/drop lookup — reuse it.
+    var val;
+    if (fieldKey === 'field_2464') {
+      val = readParentRef(rec) || '(none)';
+    } else {
+      val = readField(rec, fieldKey) || '(none)';
+    }
     return '<div class="scw-ws-v2-detail-field scw-ws-v2-detail-field--conn">' +
       '<div class="scw-ws-v2-detail-label">' + escapeHtml(label) + '</div>' +
       '<button type="button" class="scw-ws-v2-conn-btn" ' +
