@@ -113,6 +113,54 @@
     return tr;
   }
 
+  function buildL1HeaderRow(group, colspan) {
+    var tr = document.createElement('tr');
+    tr.className = 'scw-bid-review-v2__l1-row';
+    tr.setAttribute('data-l1-id', group.key);
+    var td = document.createElement('td');
+    td.colSpan = colspan;
+    td.className = 'scw-bid-review-v2__l1-cell';
+    var rowCount =
+      (group.rows ? group.rows.length : 0) +
+      (group.subgroups || []).reduce(function (a, s) { return a + s.rows.length; }, 0);
+    td.innerHTML =
+      '<span class="scw-bid-review-v2__l1-label">' + escapeHtml(group.label) + '</span>' +
+      '<span class="scw-bid-review-v2__l1-count">' + rowCount + '</span>';
+    tr.appendChild(td);
+    return tr;
+  }
+
+  function buildL2HeaderRow(sub, colspan) {
+    var tr = document.createElement('tr');
+    tr.className = 'scw-bid-review-v2__l2-row';
+    var td = document.createElement('td');
+    td.colSpan = colspan;
+    td.className = 'scw-bid-review-v2__l2-cell';
+    td.innerHTML =
+      '<span class="scw-bid-review-v2__l2-label">' + escapeHtml(sub.label) + '</span>' +
+      '<span class="scw-bid-review-v2__l2-count">' + sub.rows.length + '</span>';
+    tr.appendChild(td);
+    return tr;
+  }
+
+  function appendGroup(tbody, group, packages, colspan) {
+    // Level 0 means "flat" — no MDF/IDF on any row, just render rows.
+    if (group.level === 1) tbody.appendChild(buildL1HeaderRow(group, colspan));
+    // Direct rows (when there are no subgroups).
+    for (var i = 0; i < group.rows.length; i++) {
+      tbody.appendChild(buildBidRow(group.rows[i], packages));
+    }
+    // Subgroups (L2 — proposal bucket).
+    var subs = group.subgroups || [];
+    for (var s = 0; s < subs.length; s++) {
+      var sub = subs[s];
+      tbody.appendChild(buildL2HeaderRow(sub, colspan));
+      for (var sr = 0; sr < sub.rows.length; sr++) {
+        tbody.appendChild(buildBidRow(sub.rows[sr], packages));
+      }
+    }
+  }
+
   function buildSowSection(grid) {
     var section = document.createElement('section');
     section.className = 'scw-bid-review-v2__sow';
@@ -145,8 +193,10 @@
     table.appendChild(thead);
 
     var tbody = document.createElement('tbody');
-    for (var r = 0; r < grid.rows.length; r++) {
-      tbody.appendChild(buildBidRow(grid.rows[r], grid.packages));
+    var colspan = grid.packages.length + 1;
+    var groups = grid.groups || [{ key: '__all__', level: 0, rows: grid.rows, subgroups: [] }];
+    for (var g = 0; g < groups.length; g++) {
+      appendGroup(tbody, groups[g], grid.packages, colspan);
     }
     table.appendChild(tbody);
     section.appendChild(table);

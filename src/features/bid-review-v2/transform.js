@@ -185,8 +185,98 @@
       displayLabel: raw(meta, FK.displayLabel),
       productName:  raw(meta, FK.productName),
       sortOrder:    num(meta, FK.sortOrder),
+      mdfIdf:       connectionLabel(meta, FK.mdfIdf),
+      mdfIdfId:     connectionId(meta, FK.mdfIdf),
+      proposalBucket: connectionLabel(meta, FK.proposalBucket),
       cellsByPackage: cellsByPackage
     };
+  }
+
+  // ── grouping (L1 = MDF/IDF, L2 = proposal bucket) ──────────
+  //
+  // Copy-pruned from v1's groupRows(). When no row has an mdfIdf value,
+  // returns a single "__all__" group so the renderer can stay uniform.
+  // Otherwise: L1 by MDF/IDF label, then L2 by proposalBucket if any
+  // row in the L1 has one. "Unassigned" L1 always sorts last.
+
+  function groupRows(rows) {
+    var hasMdf = false;
+    for (var i = 0; i < rows.length; i++) {
+      if (rows[i].mdfIdf) { hasMdf = true; break; }
+    }
+    if (!hasMdf) {
+      return [{ key: '__all__', label: '', level: 0, rows: rows, subgroups: [] }];
+    }
+
+    var mdfMap = Object.create(null);
+    var mdfOrder = [];
+    for (var j = 0; j < rows.length; j++) {
+      var r = rows[j];
+      var mdf = r.mdfIdf || 'Unassigned';
+      if (!mdfMap[mdf]) { mdfMap[mdf] = []; mdfOrder.push(mdf); }
+      mdfMap[mdf].push(r);
+    }
+    mdfOrder.sort(function (a, b) {
+      if (a === 'Unassigned') return 1;
+      if (b === 'Unassigned') return -1;
+      return a.localeCompare(b);
+    });
+
+    var groups = [];
+    for (var gi = 0; gi < mdfOrder.length; gi++) {
+      var mdfKey = mdfOrder[gi];
+      var mdfRows = mdfMap[mdfKey];
+      var mdfIdfId = '';
+      for (var fi = 0; fi < mdfRows.length; fi++) {
+        if (mdfRows[fi].mdfIdfId) { mdfIdfId = mdfRows[fi].mdfIdfId; break; }
+      }
+
+      var hasBucket = false;
+      for (var bi = 0; bi < mdfRows.length; bi++) {
+        if (mdfRows[bi].proposalBucket) { hasBucket = true; break; }
+      }
+
+      if (hasBucket) {
+        var bucketMap = Object.create(null);
+        var bucketOrder = [];
+        for (var ri = 0; ri < mdfRows.length; ri++) {
+          var row = mdfRows[ri];
+          var bkt = row.proposalBucket || 'Other';
+          if (!bucketMap[bkt]) {
+            bucketMap[bkt] = { rows: [], minSort: row.sortOrder };
+            bucketOrder.push(bkt);
+          }
+          bucketMap[bkt].rows.push(row);
+          if (row.sortOrder < bucketMap[bkt].minSort) {
+            bucketMap[bkt].minSort = row.sortOrder;
+          }
+        }
+        bucketOrder.sort(function (a, b) {
+          return bucketMap[a].minSort - bucketMap[b].minSort;
+        });
+        var subs = [];
+        for (var si = 0; si < bucketOrder.length; si++) {
+          var bKey = bucketOrder[si];
+          var bRows = bucketMap[bKey].rows.slice().sort(function (a, b) {
+            return (a.displayLabel || '').localeCompare(b.displayLabel || '');
+          });
+          subs.push({ key: mdfKey + '::' + bKey, label: bKey, level: 2, rows: bRows });
+        }
+        groups.push({
+          key: mdfKey, label: mdfKey, mdfIdfId: mdfIdfId,
+          level: 1, rows: [], subgroups: subs
+        });
+      } else {
+        var flat = mdfRows.slice().sort(function (a, b) {
+          return (a.displayLabel || '').localeCompare(b.displayLabel || '');
+        });
+        groups.push({
+          key: mdfKey, label: mdfKey, mdfIdfId: mdfIdfId,
+          level: 1, rows: flat, subgroups: []
+        });
+      }
+    }
+    return groups;
   }
 
   function buildState(records) {
@@ -197,11 +287,13 @@
       var sow = sows[i];
       var bucket = buckets[sow.id] || [];
       var packages = extractPackages(bucket);
+      var rows = buildRowsForSow(bucket);
       sowGrids.push({
         sowId:    sow.id,
         sowName:  sow.name,
         packages: packages,
-        rows:     buildRowsForSow(bucket)
+        rows:     rows,
+        groups:   groupRows(rows)
       });
     }
     return { sowGrids: sowGrids, isEmpty: sowGrids.length === 0 };
@@ -209,6 +301,7 @@
 
   ns.transform = {
     buildState:       buildState,
+    groupRows:        groupRows,
     stripHtml:        stripHtml,
     raw:              raw,
     rawHtml:          rawHtml,
