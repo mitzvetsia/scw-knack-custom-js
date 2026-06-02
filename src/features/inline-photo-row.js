@@ -30,7 +30,7 @@
   'use strict';
 
   // ── Config ──────────────────────────────────────────────────────
-  var TARGET_VIEWS = ['view_3512', 'view_3505', 'view_3559', 'view_3577', 'view_3602', 'view_3313', 'view_3586', 'view_3596', 'view_3608', 'view_3610', 'view_3617', 'view_3915', 'view_3921', 'view_3800', 'view_3803'];
+  var TARGET_VIEWS = ['view_3512', 'view_3505', 'view_3559', 'view_3577', 'view_3602', 'view_3313', 'view_3586', 'view_3596', 'view_3997', 'view_3608', 'view_3610', 'view_3617', 'view_3915', 'view_3921', 'view_3800', 'view_3803'];
   var CSS_ID       = 'scw-inline-photo-row-css';
   var ROW_CLS      = 'scw-inline-photo-row';
   var STRIP_CLS    = 'scw-inline-photo-strip';
@@ -64,6 +64,7 @@
     'view_3577': 'add-photo-to-mdf-idf2',
     'view_3602': 'add-photo-to-mdf-idf2',
     'view_3596': 'add-photo-to-sow-line-item3',
+    'view_3997': 'add-photo-to-sow-line-item3',
     'view_3608': 'add-photo-to-sow-line-item2',
     'view_3617': 'add-photo-to-mdf-idf4',
     'view_3803': 'add-photo-to-mdf-idf'
@@ -545,7 +546,7 @@
   // Also covers the deploy page (view_3915) which uses the
   // same #team-calendar/project-dashboard/{id}/deploy/{id}/
   // base path — extracted by getBuildSowBasePath().
-  var SOW_VIEWS = { 'view_3313': true, 'view_3577': true, 'view_3602': true, 'view_3586': true, 'view_3610': true, 'view_3921': true, 'view_3596': true, 'view_3915': true };
+  var SOW_VIEWS = { 'view_3313': true, 'view_3577': true, 'view_3602': true, 'view_3586': true, 'view_3610': true, 'view_3921': true, 'view_3596': true, 'view_3997': true, 'view_3915': true };
 
   /** Build the edit-photo hash path for a photo record. */
   function editPhotoHash(photoRecordId, viewId) {

@@ -12,7 +12,7 @@
     'view_3962',
     // All WORKSHEET_CONFIG views from device-worksheet.js
     'view_3313', 'view_3450', 'view_3505', 'view_3512', 'view_3575',
-    'view_3596', 'view_3602', 'view_3608', 'view_3800', 'view_3915'
+    'view_3596', 'view_3997', 'view_3602', 'view_3608', 'view_3800', 'view_3915'
   ];
   const LIMIT_VALUE = '1000';
   const LIMIT_NUM = 1000;
@@ -31,7 +31,7 @@
     'view_3962',
     // change-record-limit.js — device-worksheet views
     'view_3313', 'view_3450', 'view_3505', 'view_3512', 'view_3575',
-    'view_3596', 'view_3602', 'view_3608', 'view_3800', 'view_3915',
+    'view_3596', 'view_3997', 'view_3602', 'view_3608', 'view_3800', 'view_3915',
     // import-unique-items-btn.js
     'view_3913',
     // bid-review (CFG.viewKey, sowItemsViewKey, bidPackagesViewKey, docFilesViewKey)

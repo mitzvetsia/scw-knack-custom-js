@@ -745,6 +745,72 @@
         }
       },
       {
+        viewId: 'view_3997',
+        layout: { productGroupWidth: 'flex', productGroupLayout: 'column', identityWidth: '366px' },
+        stackedSummary: false,
+        photoAlwaysVisible: true,
+        qtyBadgeField: 'field_1964',
+        bucketField: 'field_2219',
+        rowSort: [
+          { field: 'field_2218', order: 'asc', type: 'number' },
+          { field: 'field_1950', order: 'asc', type: 'text'   }
+        ],
+        fields: {
+          label:            { key: 'field_1950', type: 'readOnly',    summary: true },
+          product:          { key: 'field_1949', type: 'readOnly',    summary: true, productStyle: true },
+          laborDescription: { key: 'field_2020', type: 'directEdit',  summary: true, label: 'Description of Work', group: 'fill', multiline: true },
+          existingCabling:  { key: 'field_2461', type: 'toggleChit',  summary: true, showOnlyIfYes: true },
+          connectedDevice:  { key: 'field_2197', type: 'readOnly' },
+          mountingHardware: { key: 'field_1958', type: 'readOnly' },
+          scwNotes:         { key: 'field_1953', type: 'readOnly',  notes: true },
+          surveyNotes:      { key: 'field_2412', type: 'readOnly',  notes: true, label: 'Survey Notes' }
+        },
+        summaryLayout: ['laborDescription', 'existingCabling'],
+        detailLayout: {
+          left:  ['mountingHardware', 'connectedDevice', 'scwNotes'],
+          right: ['surveyNotes']
+        },
+        syntheticGroupsPosition: 'bottom',
+        bucketRules: {
+          '6977caa7f246edf67b52cbcd': {
+            hideFields: ['field_1949', 'field_1957'],
+            label: '+fee',
+            descLabel: 'Service',
+            hideProduct: true,
+            hideDetail: true,
+            rowClass: 'scw-row--services',
+          },
+          '697b7a023a31502ec68b3303': {
+            hideFields: ['field_1949', 'field_1957'],
+            label: 'ASSUMPTION',
+            descLabel: 'Assumption',
+            hideProduct: true,
+            hideDetail: true,
+            rowClass: 'scw-row--assumptions',
+          },
+        },
+        syntheticBucketGroups: [
+          { cls: 'scw-row--services',    label: 'Project Wide Services' },
+          { cls: 'scw-row--assumptions', label: 'Project Wide Assumptions' },
+        ],
+        bucketOverride: {
+          keepBuckets: ['6481e5ba38f283002898113c'],
+          fields: {
+            product:          { key: 'field_1949', type: 'readOnly',    summary: true, productStyle: true },
+            laborDescription: { key: 'field_2020', type: 'readOnly',  summary: true, label: ' ', group: 'fill', multiline: true },
+            connectedDevice:  { key: 'field_1957', type: 'readOnly',    summary: true, label: 'Connected Devices', showWhenFieldIsYes: 'field_2231' },
+            mountingHardware: { key: 'field_1958', type: 'readOnly' },
+            scwNotes:         { key: 'field_1953', type: 'readOnly',  notes: true },
+            surveyNotes:      { key: 'field_2412', type: 'readOnly',  notes: true, label: 'Survey Notes' }
+          },
+          summaryLayout: ['laborDescription', 'connectedDevice'],
+          detailLayout: {
+            left:  ['scwNotes'],
+            right: ['mountingHardware', 'surveyNotes']
+          }
+        }
+      },
+      {
         viewId: 'view_3596',
         layout: { productGroupWidth: 'flex', productGroupLayout: 'column', identityWidth: '366px' },
         stackedSummary: false,
@@ -2679,33 +2745,43 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 }).filter(Boolean).join('\n\n')}
 
 /* ── view_3596: summary border on top, not bottom ── */
-#view_3596 .${P}-summary {
+#view_3596 .${P}-summary,
+#view_3997 .${P}-summary {
   border-bottom: none;
   border-top: 1px solid #e5e7eb;
 }
-#view_3596 .${P}-sum-group--fill .${P}-sum-label {
+#view_3596 .${P}-sum-group--fill .${P}-sum-label,
+#view_3997 .${P}-sum-group--fill .${P}-sum-label {
   display: none;
 }
-#view_3596 .${P}-bucket-override .${P}-sum-group--fill .${P}-sum-label {
+#view_3596 .${P}-bucket-override .${P}-sum-group--fill .${P}-sum-label,
+#view_3997 .${P}-bucket-override .${P}-sum-group--fill .${P}-sum-label {
   display: block;
 }
-#view_3596 .${P}-bucket-override .${P}-identity {
+#view_3596 .${P}-bucket-override .${P}-identity,
+#view_3997 .${P}-bucket-override .${P}-identity {
   gap: 0;
 }
-#view_3596 .${P}-bucket-override .${P}-sum-sep {
+#view_3596 .${P}-bucket-override .${P}-sum-sep,
+#view_3997 .${P}-bucket-override .${P}-sum-sep {
   display: none !important;
 }
-#view_3596 .${P}-bucket-override td.${P}-sum-field-ro {
+#view_3596 .${P}-bucket-override td.${P}-sum-field-ro,
+#view_3997 .${P}-bucket-override td.${P}-sum-field-ro {
   padding-left: 0 !important;
 }
-#view_3596 .scw-inline-photo-label {
+#view_3596 .scw-inline-photo-label,
+#view_3997 .scw-inline-photo-label {
   display: none;
 }
 
-/* ── view_3596: disable clicks on detail links and photo strip ── */
+/* ── view_3596 / view_3997: disable clicks on detail links and photo strip ── */
 #view_3596 .${P}-detail a,
 #view_3596 .${P}-photo-wrap a,
-#view_3596 .${P}-photo-wrap .scw-inline-photo-card {
+#view_3596 .${P}-photo-wrap .scw-inline-photo-card,
+#view_3997 .${P}-detail a,
+#view_3997 .${P}-photo-wrap a,
+#view_3997 .${P}-photo-wrap .scw-inline-photo-card {
   pointer-events: none;
   cursor: default;
   color: inherit;
