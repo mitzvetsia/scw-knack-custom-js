@@ -1354,31 +1354,30 @@
         var isMissingBid = false;
         if (row.surveyNoBid || row.noBid) {
           // Mirror the SOW-side --off-sow blue-dashed cut-out: the bid
-          // is "detached" from this row. Inside the cut-out: the badge
-          // at top and (when present) the survey note from the SOW
-          // item, so reviewers can see the survey context they need to
-          // decide whether to request the bid be added.
+          // is "detached" from this row. The border lives on the TD
+          // itself (so the cut-out wraps the whole cell, not an inner
+          // div). Inside: badge, optional survey note, and the
+          // Add-to-bid CR button — styled to match the Revise/Remove
+          // pair so the entire CR vocabulary stays consistent.
           dataTd.textContent = '';
           dataTd.classList.add('scw-bid-review__cell--no-bid-cutout');
-          var cutoutWrap = el('div', 'scw-bid-review__no-bid-cutout');
           var badgeText = row.surveyNoBid ? 'NOT ON BID' : 'NOT SURVEYED';
           var badgeCls  = row.surveyNoBid
             ? 'scw-bid-review__survey-no-bid-badge'
             : 'scw-bid-review__no-bid-badge';
-          cutoutWrap.appendChild(el('span', badgeCls, badgeText));
+          dataTd.appendChild(el('span', badgeCls, badgeText));
           if (row.surveyNotes) {
             var notesEl = el('div', 'scw-bid-review__cell-notes');
             notesEl.appendChild(el('span', 'scw-bid-review__field-label', 'Survey Note: '));
             notesEl.appendChild(document.createTextNode(row.surveyNotes));
-            cutoutWrap.appendChild(notesEl);
+            dataTd.appendChild(notesEl);
           }
-          dataTd.appendChild(cutoutWrap);
           isMissingBid = true;
         }
-        // Surface "+ Add to bid" inside the data cell when the
-        // bidder hasn't bid this row. Used to live in the Sub Bid
-        // Revisions column; moving it here lets that column hide
-        // entirely when no CRs are pending submission.
+        // Add to bid is a Change Request — render it in the same
+        // CR-styled action stack (with the "CRs" header) used by the
+        // Revise + Remove buttons in normal bid cells. Same width and
+        // visual weight so the column reads consistently.
         if (isMissingBid) {
           var pendingAdds = (ns.changeRequests && ns.changeRequests.getPending) ? ns.changeRequests.getPending() : {};
           var alreadyPendingAdd = false;
@@ -1391,15 +1390,18 @@
             }
           }
           if (!alreadyPendingAdd) {
+            var addWrap = el('div', 'scw-bid-review__cell-actions');
+            addWrap.appendChild(el('div', 'scw-bid-review__cell-actions-header', 'CRs'));
             var addBtn = document.createElement('button');
             addBtn.type = 'button';
-            addBtn.className = 'scw-bid-review__inline-add-btn';
+            addBtn.className = 'scw-bid-review__cell-action scw-bid-review__cell-action--add';
             addBtn.textContent = '+ Add to bid';
             addBtn.setAttribute('data-action',     'cell_add_to_bid');
             addBtn.setAttribute('data-row-id',     row.id);
             addBtn.setAttribute('data-package-id', pid);
             addBtn.setAttribute('data-sow-id',     sowId);
-            dataTd.appendChild(addBtn);
+            addWrap.appendChild(addBtn);
+            dataTd.appendChild(addWrap);
           }
         }
       }

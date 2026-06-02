@@ -1907,19 +1907,26 @@
 
       /* ── NOT ON BID / NOT SURVEYED bid cell: same blue dashed cut-out  */
       /*    as --off-sow, applied to the bid-package cell instead of the */
-      /*    SOW detail cell. Carries the badge AND any survey notes so   */
-      /*    reviewers can see the survey context for the missing bid.    */
-      '.scw-bid-review__cell--no-bid-cutout { padding: 4px !important; }',
-      '.scw-bid-review__no-bid-cutout {',
+      /*    SOW detail cell. Border lives on the TD so the cut-out wraps */
+      /*    the whole cell. Carries the badge, the survey note when     */
+      /*    present, and the Add-to-bid CR button.                       */
+      '.scw-bid-review__cell--no-bid-cutout {',
       '  border: 2px dashed #2563eb !important;',
       '  border-radius: 6px;',
       '  background: #eff6ff !important;',
       '  box-shadow: inset 0 0 0 9999px rgba(37,99,235,0.03);',
-      '  padding: 6px 8px;',
-      '  display: flex; flex-direction: column; gap: 6px;',
+      '  padding: 8px !important;',
+      '  vertical-align: top;',
       '}',
-      '.scw-bid-review__no-bid-cutout .scw-bid-review__cell-notes {',
-      '  font-size: 11px; color: #334155; line-height: 1.35;',
+      '.scw-bid-review__cell--no-bid-cutout .scw-bid-review__cell-notes {',
+      '  font-size: 11px; color: #334155; line-height: 1.35; margin-top: 6px;',
+      '}',
+      '.scw-bid-review__cell-action--add {',
+      '  background: #2563eb !important; color: #fff !important;',
+      '  border-color: #1d4ed8 !important;',
+      '}',
+      '.scw-bid-review__cell-action--add:hover {',
+      '  background: #1d4ed8 !important; border-color: #1e40af !important;',
       '}',
 
       '.scw-bid-review__off-sow-tag {',
