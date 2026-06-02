@@ -376,18 +376,43 @@
           'tr[id="' + chipId + '"] a.kn-link-delete'
         );
       }
-      if (!link) {
-        console.warn('[scw-ws-v2] kn-link-delete not found for chip ' + chipId);
-        return;
-      }
-
       // Optimistic hide so the row updates instantly. v2 picks up the
       // actual removal once Knack re-renders after the delete settles.
       var wrap = btn.closest('.scw-ws-v2-mh-chip-wrap');
       if (wrap) wrap.style.display = 'none';
 
-      autoConfirmKnackDelete();
-      link.click();
+      var v3962Container = btn.closest('[id^="scw-ws-v2-"]');
+      var v3962ViewKey = v3962Container
+        ? v3962Container.id.replace(/^scw-ws-v2-/, '')
+        : 'view_3962';
+
+      if (link) {
+        autoConfirmKnackDelete();
+        link.click();
+      } else {
+        // Freshly-created accessory records don\'t always have a
+        // <tr> rendered with kn-link-delete in either source view
+        // (view_3962 / view_3610) — the source view\'s DOM lags the
+        // model. Fall back to the same Make webhook the kebab
+        // handler uses, so the delete still goes through.
+        var webhookUrl = (window.SCW && SCW.CONFIG && SCW.CONFIG.MAKE_DELETE_RECORD_WEBHOOK) || '';
+        if (!webhookUrl) {
+          console.warn('[scw-ws-v2] kn-link-delete missing AND ' +
+            'MAKE_DELETE_RECORD_WEBHOOK not configured; cannot ' +
+            'delete accessory ' + chipId);
+          if (wrap) wrap.style.display = '';
+          return;
+        }
+        fetch(webhookUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ recordId: chipId })
+        }).catch(function (err) {
+          console.warn('[scw-ws-v2] accessory delete webhook failed for ' +
+            chipId, err);
+          if (wrap) wrap.style.display = '';
+        });
+      }
 
       // Knack's delete sometimes doesn't fire knack-view-render on
       // view_3962, so the model stays populated with the deleted
@@ -395,10 +420,6 @@
       // a beat after the delete confirms — by then Knack's PUT/DELETE
       // has settled server-side and the fresh fetch returns the new
       // state without the bracket.
-      var v3962Container = btn.closest('[id^="scw-ws-v2-"]');
-      var v3962ViewKey = v3962Container
-        ? v3962Container.id.replace(/^scw-ws-v2-/, '')
-        : 'view_3962';
       setTimeout(function () {
         if (ns.data && typeof ns.data.refetchAndNotify === 'function') {
           ns.data.refetchAndNotify(v3962ViewKey);

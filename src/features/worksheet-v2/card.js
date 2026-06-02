@@ -715,7 +715,12 @@
     addHref = addHref || '__resolve-on-click__';
 
     // Build a quick lookup of source-view records so we can read each
-    // bracket\'s own attrs (qty + multi-allowed flag) inline.
+    // bracket\'s own attrs (qty + multi-allowed flag) inline, AND so
+    // we can enrich chip labels when the parent\'s field_2207_raw
+    // entry came back without an identifier (freshly-created
+    // accessory records where the back-end hasn\'t resolved the
+    // synthetic identifier yet — without enrichment we\'d render the
+    // 24-char record id as the chip label).
     var accAttrsById = Object.create(null);
     try {
       var allRecs = (ns.data && typeof ns.data.readRecords === 'function')
@@ -724,6 +729,20 @@
         if (allRecs[ai] && allRecs[ai].id) accAttrsById[allRecs[ai].id] = allRecs[ai];
       }
     } catch (e) { /* model not ready — chips render without stepper */ }
+
+    // Label enrichment pass — replace any chip whose label is a bare
+    // 24-hex record id with the resolved product / drop label from the
+    // accessory\'s own record. Mirrors readParentRef\'s rejection of
+    // Knack\'s "<recordId> (<mdfLabel>)" synthetic identifier pattern.
+    var HEX_24 = /^[a-f0-9]{24}(\s|\b|$)/i;
+    for (var ci = 0; ci < chips.length; ci++) {
+      var ch = chips[ci];
+      if (ch.label && !HEX_24.test(ch.label)) continue;
+      var src = accAttrsById[ch.id];
+      if (!src) continue;
+      var resolved = labelLineItem(src);
+      if (resolved && !HEX_24.test(resolved)) ch.label = resolved;
+    }
 
     // ── Render ──
     var chipsHtml = '';
