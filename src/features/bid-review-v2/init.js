@@ -64,10 +64,37 @@
     if (ns.data && ns.render) ns.render.renderSnapshot(ns.data.readAll());
   }
 
+  // Delegated click handler for L1 group header rows — toggles the
+  // --collapsed modifier on the <tr> and hides all sibling rows that
+  // belong to the same group until the next group header.
+  function wireGroupCollapse() {
+    if (document.documentElement.hasAttribute('data-scw-br-v2-collapse-bound')) return;
+    document.documentElement.setAttribute('data-scw-br-v2-collapse-bound', '1');
+
+    document.addEventListener('click', function (e) {
+      var head = e.target.closest && e.target.closest('.scw-bid-review-v2__group-header');
+      if (!head) return;
+      // Don't intercept clicks on inputs / buttons inside the header.
+      if (e.target.closest('input, button, select, textarea, a')) return;
+      var collapsed = head.classList.toggle('scw-bid-review-v2__group-header--collapsed');
+      head.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+      var n = head.nextElementSibling;
+      while (n && !n.classList.contains('scw-bid-review-v2__group-header')) {
+        if (n.classList.contains('scw-bid-review-v2__row') ||
+            n.classList.contains('scw-bid-review-v2__subgroup-header')) {
+          n.classList.toggle('scw-bid-review-v2__row--hidden', collapsed);
+          n.classList.toggle('scw-bid-review-v2__subgroup-header--hidden', collapsed);
+        }
+        n = n.nextElementSibling;
+      }
+    });
+  }
+
   function init() {
     // Inject CSS (styles.js self-injects if not present)
     if (ns.data) ns.data.attachListeners();
     if (ns.edit && typeof ns.edit.wire === 'function') ns.edit.wire();
+    wireGroupCollapse();
     if (ns.data && ns.render) {
       ns.data.subscribe(function (snapshot) {
         ns.render.renderSnapshot(snapshot);

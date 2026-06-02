@@ -167,15 +167,16 @@
         var pid = pkgs[p].id;
         if (!pid || cellsByPackage[pid]) continue;
         cellsByPackage[pid] = {
-          id:         rec.id,
-          qty:        num(rec, FK.qty),
-          rate:       num(rec, FK.rate),
-          labor:      num(rec, FK.labor),
-          laborDesc:  rawHtml(rec, FK.laborDesc),
-          notes:      raw(rec, FK.notes),
+          id:           rec.id,
+          productName:  raw(rec, FK.productName),
+          qty:          num(rec, FK.qty),
+          rate:         num(rec, FK.rate),
+          labor:        num(rec, FK.labor),
+          laborDesc:    rawHtml(rec, FK.laborDesc),
+          notes:        raw(rec, FK.notes),
           existCabling: bool(rec, FK.bidExistCabling),
-          plenum:     bool(rec, FK.plenum),
-          exterior:   bool(rec, FK.exterior)
+          plenum:       bool(rec, FK.plenum),
+          exterior:     bool(rec, FK.exterior)
         };
       }
     }
@@ -185,9 +186,10 @@
       displayLabel: raw(meta, FK.displayLabel),
       productName:  raw(meta, FK.productName),
       sortOrder:    num(meta, FK.sortOrder),
-      mdfIdf:       connectionLabel(meta, FK.mdfIdf),
-      mdfIdfId:     connectionId(meta, FK.mdfIdf),
-      proposalBucket: connectionLabel(meta, FK.proposalBucket),
+      mdfIdf:           connectionLabel(meta, FK.mdfIdf),
+      mdfIdfId:         connectionId(meta, FK.mdfIdf),
+      proposalBucket:   connectionLabel(meta, FK.proposalBucket),
+      proposalBucketId: connectionId(meta, FK.proposalBucket),
       cellsByPackage: cellsByPackage
     };
   }

@@ -29,6 +29,24 @@
     });
   }
 
+  // Cam/reader detection — mirrors v1's showCabling(). Only these
+  // buckets get the displayLabel column (E-001, E-002, …) and the
+  // cabling/plenum/exterior chips (Phase 2).
+  var CAM_READER_BUCKET_ID = '6481e5ba38f283002898113c';
+  function isCamReader(row) {
+    if (row.proposalBucketId === CAM_READER_BUCKET_ID) return true;
+    var b = (row.proposalBucket || '').toLowerCase().trim();
+    return b === 'camera' || b === 'cameras' ||
+           b === 'reader' || b === 'readers' ||
+           /(camera|reader)/.test(b);
+  }
+
+  // Chevron SVG — same shape v1's group header uses.
+  var GROUP_CHEVRON_SVG =
+    '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" ' +
+    'stroke="currentColor" stroke-width="2.5" stroke-linecap="round" ' +
+    'stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>';
+
   function fmtMoney(n) {
     if (n == null || isNaN(n)) return '';
     return '$' + Number(n).toLocaleString(undefined, {
@@ -61,7 +79,16 @@
         ' data-scw-br-v2-view="' + BID_VIEW + '">';
     }
 
+    // Bid product name — read-only, identifies the bid line item.
+    var productHtml = cell.productName
+      ? '<div class="scw-bid-review-v2__cell-product" title="' +
+          escapeHtml(cell.productName) + '">' +
+          escapeHtml(cell.productName) +
+        '</div>'
+      : '';
+
     td.innerHTML =
+      productHtml +
       '<div class="scw-bid-review-v2__cell-line">' +
         '<label class="scw-bid-review-v2__cell-label">Qty</label>' +
         inputHtml(FK.qty,  cell.qty,  'scw-bid-review-v2-input--qty',  '1') +
@@ -93,15 +120,16 @@
     tr.setAttribute('data-row-id', row.id);
     if (row.sowItem) tr.setAttribute('data-sow-item-id', row.sowItem);
 
-    // Label column
+    // Label column — only show displayLabel (E-001, etc.) for cam/reader
+    // rows. Everything else (networking, services, assumptions) is
+    // identified by product name only, in the bid cell columns.
     var labelTd = document.createElement('td');
     labelTd.className = 'scw-bid-review-v2__row-label-cell';
-    labelTd.innerHTML =
-      '<div class="scw-bid-review-v2__row-label">' +
-        escapeHtml(row.displayLabel || row.productName || '(unlabeled)') +
-      '</div>' +
-      (row.productName && row.displayLabel ?
-        '<div class="scw-bid-review-v2__row-product">' + escapeHtml(row.productName) + '</div>' : '');
+    if (isCamReader(row) && row.displayLabel) {
+      labelTd.innerHTML =
+        '<div class="scw-bid-review-v2__row-label">' +
+          escapeHtml(row.displayLabel) + '</div>';
+    }
     tr.appendChild(labelTd);
 
     // One cell per package
@@ -115,30 +143,35 @@
 
   function buildL1HeaderRow(group, colspan) {
     var tr = document.createElement('tr');
-    tr.className = 'scw-bid-review-v2__l1-row';
+    tr.className = 'scw-bid-review-v2__group-header';
     tr.setAttribute('data-l1-id', group.key);
+    tr.setAttribute('role', 'button');
+    tr.setAttribute('aria-expanded', 'true');
     var td = document.createElement('td');
     td.colSpan = colspan;
-    td.className = 'scw-bid-review-v2__l1-cell';
     var rowCount =
       (group.rows ? group.rows.length : 0) +
       (group.subgroups || []).reduce(function (a, s) { return a + s.rows.length; }, 0);
     td.innerHTML =
-      '<span class="scw-bid-review-v2__l1-label">' + escapeHtml(group.label) + '</span>' +
-      '<span class="scw-bid-review-v2__l1-count">' + rowCount + '</span>';
+      '<div class="scw-bid-review-v2__grp-inner">' +
+        '<span class="scw-bid-review-v2__grp-chevron">' + GROUP_CHEVRON_SVG + '</span>' +
+        '<span class="scw-bid-review-v2__grp-title">' + escapeHtml(group.label) + '</span>' +
+        '<span class="scw-bid-review-v2__grp-count">' + rowCount + '</span>' +
+      '</div>';
     tr.appendChild(td);
     return tr;
   }
 
   function buildL2HeaderRow(sub, colspan) {
     var tr = document.createElement('tr');
-    tr.className = 'scw-bid-review-v2__l2-row';
+    tr.className = 'scw-bid-review-v2__subgroup-header';
     var td = document.createElement('td');
     td.colSpan = colspan;
-    td.className = 'scw-bid-review-v2__l2-cell';
     td.innerHTML =
-      '<span class="scw-bid-review-v2__l2-label">' + escapeHtml(sub.label) + '</span>' +
-      '<span class="scw-bid-review-v2__l2-count">' + sub.rows.length + '</span>';
+      '<div class="scw-bid-review-v2__subgrp-inner">' +
+        '<span class="scw-bid-review-v2__subgrp-title">' + escapeHtml(sub.label) + '</span>' +
+        '<span class="scw-bid-review-v2__subgrp-count">' + sub.rows.length + '</span>' +
+      '</div>';
     tr.appendChild(td);
     return tr;
   }
