@@ -1222,6 +1222,10 @@
     if (urls.length || !_photoCache[cacheKey]) {
       _photoCache[cacheKey] = urls;
     }
+    if (window.SCW && SCW.CONFIG && SCW.CONFIG.debug) {
+      console.log('[BidReview] scrapeRowPhotoUrls',
+        { rowId: rowId, bidRowId: bidRowId, found: urls.length, urls: urls });
+    }
     return _photoCache[cacheKey];
   }
 
@@ -1344,13 +1348,12 @@
     // Photos column — dedicated cell so thumbs can be tall enough
     // to read alongside the SOW/Bid cells. Empty for NEW rows that
     // don't have a SOW line item yet.
-    // For surveyNoBid rows, the bid record exists in view_3680 (row.id is
-    // its id) but there's no SOW item / wsTr to scrape. Pass row.id as the
-    // bidRowId so the view_3680 model/DOM fallbacks can find the photos.
-    tr.appendChild(buildPhotosCell(
-      row.sowItem || null,
-      row.surveyNoBid ? row.id : null
-    ));
+    // Always thread row.id through as the bid-side lookup id. For rows
+    // that originate in view_3680 (bid+sow, surveyNoBid, or bid-only-no-
+    // sow) row.id IS the view_3680 record id, so the model/DOM fallbacks
+    // can find field_771 photos. For noBid rows (built from view_3921)
+    // the lookup harmlessly misses and the wsTr scrape wins.
+    tr.appendChild(buildPhotosCell(row.sowItem || null, row.id || null));
 
     // Cabling fields only shown/compared for Camera or Reader buckets
     var cablingVisible = showCabling(row);
