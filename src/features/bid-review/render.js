@@ -1139,14 +1139,14 @@
   var ROW_PHOTO_VISIBLE = 1;
   var _photoCache = Object.create(null);
 
-  function scrapeRowPhotoUrls(rowId) {
-    if (!rowId) return null;
+  function scrapeRowPhotoUrls(rowId, bidRowId) {
+    if (!rowId && !bidRowId) return null;
     // Primary path — photos live inside the wsTr (.scw-ws-row) that
     // device-worksheet builds from view_3921 (SOW item) rows. Each
     // photo is a .scw-inline-photo-card injected by inline-photo-row.js.
     // The wsTr may be in view_3921's tbody or moved into our expand
     // panel when the row is open.
-    var wsTr = document.querySelector('tr.scw-ws-row[id="' + rowId + '"]');
+    var wsTr = rowId ? document.querySelector('tr.scw-ws-row[id="' + rowId + '"]') : null;
     var urls = [];
     if (wsTr) {
       var cards = wsTr.querySelectorAll(
@@ -1170,12 +1170,13 @@
     //     accordion is collapsed and no <tr> is rendered).
     //  b. view_3680's native <tr> DOM (works when the accordion is
     //     open) — same selector inline-photo-row.js uses.
-    if (!urls.length) {
+    var lookupId = bidRowId || rowId;
+    if (!urls.length && lookupId) {
       try {
         var v3680 = window.Knack && Knack.views && Knack.views.view_3680;
         var rec   = v3680 && v3680.model && v3680.model.data &&
                     typeof v3680.model.data.get === 'function' &&
-                    v3680.model.data.get(rowId);
+                    v3680.model.data.get(lookupId);
         if (rec) {
           var attrs = rec.attributes || rec;
           var raw   = attrs.field_771_raw;
@@ -1194,8 +1195,8 @@
         }
       } catch (e) { /* ignore */ }
     }
-    if (!urls.length) {
-      var bidTr = document.querySelector('#view_3680 tr[id="' + rowId + '"]');
+    if (!urls.length && lookupId) {
+      var bidTr = document.querySelector('#view_3680 tr[id="' + lookupId + '"]');
       if (bidTr) {
         var imgCells = bidTr.querySelectorAll('td[data-field-key="field_771"]');
         for (var ic = 0; ic < imgCells.length; ic++) {
@@ -1217,18 +1218,19 @@
     // Only overwrite the cache when we got a non-empty read OR we
     // have no cached value yet — covers the moment when wsTr / bidTr
     // exists but photo records haven't been hydrated yet.
-    if (urls.length || !_photoCache[rowId]) {
-      _photoCache[rowId] = urls;
+    var cacheKey = rowId || bidRowId;
+    if (urls.length || !_photoCache[cacheKey]) {
+      _photoCache[cacheKey] = urls;
     }
-    return _photoCache[rowId];
+    return _photoCache[cacheKey];
   }
 
   // Builds the contents of the Photos column cell for one row.
   // Returns a <td> ready to append. Empty when no photos (so the
   // column still claims its width and the row reads consistently).
-  function buildPhotosCell(rowId) {
+  function buildPhotosCell(rowId, bidRowId) {
     var td = el('td', 'scw-bid-review__photos-cell');
-    var urls = rowId ? scrapeRowPhotoUrls(rowId) : null;
+    var urls = (rowId || bidRowId) ? scrapeRowPhotoUrls(rowId, bidRowId) : null;
     if (!urls || !urls.length) {
       td.appendChild(el('div', 'scw-bid-review__photos-empty', '—'));
       return td;
@@ -1342,7 +1344,13 @@
     // Photos column — dedicated cell so thumbs can be tall enough
     // to read alongside the SOW/Bid cells. Empty for NEW rows that
     // don't have a SOW line item yet.
-    tr.appendChild(buildPhotosCell(row.sowItem || null));
+    // For surveyNoBid rows, the bid record exists in view_3680 (row.id is
+    // its id) but there's no SOW item / wsTr to scrape. Pass row.id as the
+    // bidRowId so the view_3680 model/DOM fallbacks can find the photos.
+    tr.appendChild(buildPhotosCell(
+      row.sowItem || null,
+      row.surveyNoBid ? row.id : null
+    ));
 
     // Cabling fields only shown/compared for Camera or Reader buckets
     var cablingVisible = showCabling(row);
