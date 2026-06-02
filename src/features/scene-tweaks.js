@@ -346,13 +346,16 @@
     if (existing) existing.remove();
 
     // ── Calculate from DOM cells ──
-    // Extended list price = qty × unit list. field_1960 is the UNIT
-    // price; any line with qty > 1 (e.g. NanoBeam ×2, Wattbox ×2,
-    // mounting accessories ×N) would be undercounted if we summed
-    // field_1960. field_2201 is the per-line CALC of qty × list.
-    var retail       = sumViewField(ALL_VIEWS, 'field_2201');        // extended list price (devices + hardware)
+    // field_2269 is the per-line "Total" column (extended NET price,
+    // qty × unit minus per-line discount). It's rendered in the view,
+    // so we can sum it from the DOM. We need to add the line discount
+    // back to recover the extended list (retail) for the display row.
+    // Don't sum field_1960 (unit price) — it undercounts any line with
+    // qty > 1 (NanoBeam ×2, Wattbox ×2, etc.).
     var lineDiscount = sumViewField(EQUIPMENT_VIEWS, 'field_2303');  // device applied discount (extended)
     var hwDiscount   = sumViewField(HARDWARE_VIEWS, 'field_2303');   // hardware applied discount (extended)
+    var eqNet        = sumViewField(ALL_VIEWS, 'field_2269');        // extended net price (devices + hardware)
+    var retail       = eqNet + Math.abs(lineDiscount) + Math.abs(hwDiscount);
     var lumpDiscount = getLumpDiscount();
     var discount     = Math.abs(lineDiscount) + Math.abs(hwDiscount) + Math.abs(lumpDiscount);
     var discountPct  = retail > 0 ? (discount / retail * 100) : 0;
