@@ -281,15 +281,45 @@
     return groups;
   }
 
-  function buildState(records) {
+  function buildState(records, sowItems) {
     var sows = extractSows(records);
     var buckets = groupBySow(records);
+
+    // Index SOW items by id for fast per-row lookup. The row carries a
+    // `sowItem` id from the bid record's field_2404 (relatedSowItem);
+    // we use it to attach the SOW-side product / qty / fee / desc so
+    // each row reads as "this SOW line item, compared across these bids".
+    var SFK = ns.CONFIG.sowItemFieldKeys || {};
+    var sowItemIndex = Object.create(null);
+    var sowItemList = sowItems || [];
+    for (var si = 0; si < sowItemList.length; si++) {
+      var s = sowItemList[si];
+      if (!s || !s.id) continue;
+      sowItemIndex[s.id] = {
+        id:          s.id,
+        productName: raw(s, SFK.productName) || connectionLabel(s, SFK.product),
+        qty:         num(s, SFK.qty),
+        fee:         num(s, SFK.fee),
+        installFee:  num(s, SFK.installFee),
+        laborDesc:   rawHtml(s, SFK.laborDesc),
+        displayLabel: raw(s, SFK.displayLabel),
+        mdfIdf:      connectionLabel(s, SFK.mdfIdf),
+        proposalBucket: connectionLabel(s, SFK.proposalBucket)
+      };
+    }
+
     var sowGrids = [];
     for (var i = 0; i < sows.length; i++) {
       var sow = sows[i];
       var bucket = buckets[sow.id] || [];
       var packages = extractPackages(bucket);
       var rows = buildRowsForSow(bucket);
+      // Attach the SOW-item snapshot to each row so card.js can render
+      // the leftmost SOW column. Rows whose relatedSowItem points at a
+      // record we never loaded fall through with `sowItemData: null`.
+      for (var r = 0; r < rows.length; r++) {
+        rows[r].sowItemData = rows[r].sowItem ? (sowItemIndex[rows[r].sowItem] || null) : null;
+      }
       sowGrids.push({
         sowId:    sow.id,
         sowName:  sow.name,

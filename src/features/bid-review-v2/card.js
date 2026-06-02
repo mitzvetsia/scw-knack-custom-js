@@ -55,6 +55,42 @@
   }
 
   /**
+   * SOW item cell — leftmost data column. Read-only summary of the
+   * underlying SOW line item that anchors this row. Edits to SOW
+   * fields flow through worksheet-v2; bid-review v2 only displays.
+   */
+  function buildSowCell(sowItemData) {
+    var td = document.createElement('td');
+    td.className = 'scw-bid-review-v2__sow-cell';
+    if (!sowItemData) {
+      td.classList.add('scw-bid-review-v2__sow-cell--empty');
+      td.innerHTML = '<span class="scw-bid-review-v2__cell-empty-mark">—</span>';
+      return td;
+    }
+    var qtyTxt  = sowItemData.qty ? String(sowItemData.qty) : '';
+    var feeTxt  = sowItemData.fee ? fmtMoney(sowItemData.fee) : '';
+    var descTxt = ns.transform.stripHtml(sowItemData.laborDesc || '');
+    td.innerHTML =
+      (sowItemData.productName ?
+        '<div class="scw-bid-review-v2__sow-product" title="' +
+          escapeHtml(sowItemData.productName) + '">' +
+          escapeHtml(sowItemData.productName) +
+        '</div>' : '') +
+      (qtyTxt || feeTxt ?
+        '<div class="scw-bid-review-v2__sow-numbers">' +
+          (qtyTxt ? '<span class="scw-bid-review-v2__sow-num"><label>Qty</label>' +
+            escapeHtml(qtyTxt) + '</span>' : '') +
+          (feeTxt ? '<span class="scw-bid-review-v2__sow-num"><label>Fee</label>' +
+            escapeHtml(feeTxt) + '</span>' : '') +
+        '</div>' : '') +
+      (descTxt ?
+        '<div class="scw-bid-review-v2__sow-desc" title="' +
+          escapeHtml(descTxt) + '">' + escapeHtml(descTxt) +
+        '</div>' : '');
+    return td;
+  }
+
+  /**
    * One bid cell — the (row × package) intersection. Pure HTML
    * factory; events bind via delegation in edit.js.
    */
@@ -132,7 +168,10 @@
     }
     tr.appendChild(labelTd);
 
-    // One cell per package
+    // SOW item column — anchors the row, always second from left.
+    tr.appendChild(buildSowCell(row.sowItemData));
+
+    // One cell per bid package
     for (var p = 0; p < packages.length; p++) {
       var pkg = packages[p];
       var cell = row.cellsByPackage[pkg.id] || null;
@@ -212,10 +251,12 @@
     var table = document.createElement('table');
     table.className = 'scw-bid-review-v2__table';
 
-    // Column headers
+    // Column headers — Label | SOW | Bid 1 | Bid 2 | …
     var thead = document.createElement('thead');
     var headRow = document.createElement('tr');
-    headRow.innerHTML = '<th class="scw-bid-review-v2__th scw-bid-review-v2__th--label">Line item</th>';
+    headRow.innerHTML =
+      '<th class="scw-bid-review-v2__th scw-bid-review-v2__th--label">Line item</th>' +
+      '<th class="scw-bid-review-v2__th scw-bid-review-v2__th--sow">SOW item</th>';
     for (var p = 0; p < grid.packages.length; p++) {
       headRow.innerHTML +=
         '<th class="scw-bid-review-v2__th">' +
@@ -226,7 +267,8 @@
     table.appendChild(thead);
 
     var tbody = document.createElement('tbody');
-    var colspan = grid.packages.length + 1;
+    // colspan = label + sow + one per bid package
+    var colspan = grid.packages.length + 2;
     var groups = grid.groups || [{ key: '__all__', level: 0, rows: grid.rows, subgroups: [] }];
     for (var g = 0; g < groups.length; g++) {
       appendGroup(tbody, groups[g], grid.packages, colspan);

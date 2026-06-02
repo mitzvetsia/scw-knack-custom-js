@@ -37,13 +37,16 @@
     }
     _pendingSnapshot = null;
 
-    var bidViewKey = (ns.CONFIG.sourceViewKeys || [])[0];
-    var bidRecords = (snapshot && bidViewKey && snapshot[bidViewKey]) || [];
+    var sourceKeys = ns.CONFIG.sourceViewKeys || [];
+    var bidRecords = (snapshot && sourceKeys[0] && snapshot[sourceKeys[0]]) || [];
+    // SOW items live on the second source view (view_3921). They feed
+    // the SOW column on the left side of the comparison grid.
+    var sowItems = (snapshot && sourceKeys[1] && snapshot[sourceKeys[1]]) || [];
     if (!ns.transform || typeof ns.transform.buildState !== 'function') {
       body.innerHTML = '<div class="scw-bid-review-v2-empty">transform.js not loaded.</div>';
       return;
     }
-    var state = ns.transform.buildState(bidRecords);
+    var state = ns.transform.buildState(bidRecords, sowItems);
 
     if (count) {
       count.textContent = state.sowGrids.length + ' SOW' +
