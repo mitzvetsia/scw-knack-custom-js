@@ -57,6 +57,12 @@ cat \
   src/features/bid-review/actions.js \
   src/features/bid-review/change-requests.js \
   src/features/bid-review/init.js \
+  src/features/bid-review-v2/config.js \
+  src/features/bid-review-v2/styles.js \
+  src/features/bid-review-v2/state.js \
+  src/features/bid-review-v2/data.js \
+  src/features/bid-review-v2/render.js \
+  src/features/bid-review-v2/init.js \
   src/features/sales-revision-column.js \
   src/features/group-collapse.js \
   src/features/sow-filter-pills.js \
