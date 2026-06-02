@@ -1197,7 +1197,7 @@
     if (!urls.length) {
       var bidTr = document.querySelector('#view_3680 tr[id="' + rowId + '"]');
       if (bidTr) {
-        var imgCells = bidTr.querySelectorAll('td.field_771');
+        var imgCells = bidTr.querySelectorAll('td[data-field-key="field_771"]');
         for (var ic = 0; ic < imgCells.length; ic++) {
           var spans = imgCells[ic].querySelectorAll(
             'span[id][data-kn="connection-value"]'
