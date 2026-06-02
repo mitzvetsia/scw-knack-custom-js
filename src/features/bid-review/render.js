@@ -1163,10 +1163,37 @@
     // Fallback — bid records that have no matching SOW item (the
     // "+ Add to SOW" rows) have no wsTr because view_3921 never
     // produced one. The bid grid (view_3680) now carries its own
-    // photo column (field_771 mirroring the SOW-side field), so we
-    // can scrape directly from view_3680's native <tr> for this
-    // record. Same DOM pattern inline-photo-row.js uses:
-    //   td.field_771 > span[id][data-kn="connection-value"] > img
+    // photo column (field_771 mirroring the SOW-side field).
+    //
+    // Two read paths, in order:
+    //  a. view_3680's Knack model (works even when the view's
+    //     accordion is collapsed and no <tr> is rendered).
+    //  b. view_3680's native <tr> DOM (works when the accordion is
+    //     open) — same selector inline-photo-row.js uses.
+    if (!urls.length) {
+      try {
+        var v3680 = window.Knack && Knack.views && Knack.views.view_3680;
+        var rec   = v3680 && v3680.model && v3680.model.data &&
+                    typeof v3680.model.data.get === 'function' &&
+                    v3680.model.data.get(rowId);
+        if (rec) {
+          var attrs = rec.attributes || rec;
+          var raw   = attrs.field_771_raw;
+          if (Array.isArray(raw)) {
+            for (var ri = 0; ri < raw.length; ri++) {
+              var r = raw[ri];
+              if (!r) continue;
+              // Knack image-field connection records expose a few url
+              // shapes depending on field config — try the common ones.
+              var u = r.url || r.thumb_url || r.image ||
+                      (r.original && r.original.url) || '';
+              if (!u && typeof r === 'string') u = r;
+              if (u) urls.push(u);
+            }
+          }
+        }
+      } catch (e) { /* ignore */ }
+    }
     if (!urls.length) {
       var bidTr = document.querySelector('#view_3680 tr[id="' + rowId + '"]');
       if (bidTr) {
@@ -1179,9 +1206,9 @@
             var im = spans[s].querySelector('img[data-kn-img-gallery]')
                   || spans[s].querySelector('img');
             if (!im) continue;
-            var u = im.getAttribute('data-kn-img-gallery') ||
-                    im.getAttribute('src') || '';
-            if (u) urls.push(u);
+            var u2 = im.getAttribute('data-kn-img-gallery') ||
+                     im.getAttribute('src') || '';
+            if (u2) urls.push(u2);
           }
         }
       }
