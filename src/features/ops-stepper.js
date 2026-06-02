@@ -220,7 +220,7 @@
     },
     {
       id: 'publish-final',
-      label: 'Publish Quote as Final',
+      label: 'Post and/or Publish Final',
       tone: 'success',
       // Gate disabled — always show Publish as Final. Was previously
       // gated on (field_2728 > 0) OR (field_2723 = 'Yes') so the button
@@ -237,7 +237,7 @@
       },
       clickupStatus: CLICKUP_STATUS_RADIO_FINAL,
       modal: {
-        title:       'Publish Quote as Final',
+        title:       'Post and/or Publish Final',
         intro:       'Publishing the final, fully-priced quote.',
         notePrompt:  'Do you want to include a message with your submission?',
         placeholder: 'e.g. Final bid validated, SCW-1041 total $12,325.99',
