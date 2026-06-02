@@ -293,24 +293,246 @@
       });
   };
 
-  // ── TODO: bulk path ───────────────────────────────────────────
-  // Native Knack / KTL bulk edits on view_3313 don\'t flow through
-  // handleDirectEditSave — they fire PUTs directly to the API. To
-  // gate them with the same two rules:
-  //   1. Add a $.ajaxPrefilter (or XHR interceptor — see
-  //      chit-bulk-edit-fix.js for the same pattern) that detects
-  //      a PUT to view_3313 with field_2150 in the body.
-  //   2. Before the PUT fires, scan the affected record ids:
-  //        - which have field_2415 blank → collect for the note prompt
-  //        - is the field_2150 value 0 → trigger the $0 modal once
-  //   3. Show ONE note prompt for all blank-bid rows; apply the note
-  //      to field_2412 only on rows where field_2412 is currently
-  //      empty (don\'t clobber existing notes).
-  //   4. Either chain the PUTs ourselves (modified bodies per row)
-  //      or send a single follow-up batch to write field_2412 on the
-  //      affected rows after the original bulk edit lands.
-  // Holding off until we know which bulk surface (Knack native,
-  // KTL, or a custom one we add) is the dominant path in practice.
+  // ── Bid-clear gate (Knack inline picker + KTL bulk edit) ─────
+  //
+  // The directEdit preSaveHook above only fires for inline-edit fields
+  // that flow through device-worksheet.js (Sub Bid). Clearing field_2415
+  // (Bid) happens via Knack\'s native connection picker or KTL\'s bulk
+  // edit — both fire PUTs through different paths that never reach our
+  // hook.
+  //
+  // We intercept those PUTs at the XHR layer:
+  //   1. Detect PUT to view_3313 records with field_2415 transitioning
+  //      from set → cleared.
+  //   2. Abort the request before it goes to the server.
+  //   3. Queue it; debounce ~250ms to batch bulk-edit aborts.
+  //   4. Show ONE modal asking for a survey note.
+  //   5. On confirm: re-fire each queued PUT with field_2412 added.
+  //      Skip rows that already have field_2412 set (don\'t clobber).
+  //   6. On cancel: show toast, refetch the view so the picker\'s
+  //      optimistic UI reverts to server-side state.
+
+  var BATCH_WINDOW_MS = 250;
+  var _gateQueue   = [];
+  var _gateTimer   = null;
+  var _gateModalOpen = false;
+
+  function isView3313RecordUrl(url) {
+    if (!url) return false;
+    return /\/views\/view_3313\/records\/[a-f0-9]{24}\b/i.test(url);
+  }
+  function isWriteMethod(m) {
+    if (!m) return false;
+    var u = String(m).toUpperCase();
+    return u === 'PUT' || u === 'POST' || u === 'PATCH';
+  }
+  function isFieldCleared(val) {
+    if (val == null) return true;
+    if (val === '' || val === '[]') return true;
+    if (Array.isArray(val) && val.length === 0) return true;
+    // Knack sometimes sends URL-encoded JSON like %5B%5D
+    if (typeof val === 'string') {
+      try {
+        var dec = decodeURIComponent(val);
+        if (dec === '[]' || dec === '') return true;
+        var parsed = JSON.parse(dec);
+        if (Array.isArray(parsed) && parsed.length === 0) return true;
+      } catch (e) { /* not encoded JSON */ }
+    }
+    return false;
+  }
+  function parseBidConnFromBody(body) {
+    if (typeof body !== 'string' || !body) return undefined;
+    if (body.indexOf(BID_CONN) === -1) return undefined;
+    try {
+      var p = JSON.parse(body);
+      if (p && Object.prototype.hasOwnProperty.call(p, BID_CONN)) return p[BID_CONN];
+    } catch (e) { /* not JSON; ignore form-encoded for now */ }
+    return undefined;
+  }
+  function recordIdFromUrl(url) {
+    var m = url && url.match(/\/records\/([a-f0-9]{24})\b/i);
+    return m ? m[1] : '';
+  }
+  /** True if the model says field_2415 currently has a value. */
+  function bidCurrentlySet(recordId) {
+    try {
+      var v = Knack.views && Knack.views[VIEW_ID];
+      if (!v || !v.model || !v.model.data) return false;
+      var rec = (typeof v.model.data.get === 'function') ? v.model.data.get(recordId) : null;
+      if (!rec) return false;
+      var a   = rec.attributes || rec;
+      var raw = a[BID_CONN + '_raw'];
+      if (Array.isArray(raw) && raw.length && raw[0] && raw[0].id) return true;
+      if (raw && typeof raw === 'object' && raw.id) return true;
+      return false;
+    } catch (e) { return false; }
+  }
+  /** True if the record already has a survey note we shouldn\'t clobber. */
+  function noteAlreadySet(recordId) {
+    try {
+      var v = Knack.views && Knack.views[VIEW_ID];
+      if (!v || !v.model || !v.model.data) return false;
+      var rec = (typeof v.model.data.get === 'function') ? v.model.data.get(recordId) : null;
+      if (!rec) return false;
+      var a = rec.attributes || rec;
+      var s = (a[NOTES] || '').toString().trim();
+      return !!s;
+    } catch (e) { return false; }
+  }
+
+  /** Re-fire a queued PUT with field_2412 merged in. */
+  function replayWithNote(item, note) {
+    try {
+      var body = JSON.parse(item.body);
+      if (!body || typeof body !== 'object') body = {};
+      // Don\'t clobber existing notes — only fill empty ones.
+      if (!noteAlreadySet(item.recordId)) {
+        body[NOTES] = note;
+      }
+      $.ajax({
+        url:  item.url,
+        type: item.method,
+        contentType: 'application/json',
+        data: JSON.stringify(body),
+        headers: item.headers || {},
+        success: function () { /* server has the right state now */ },
+        error:   function (xhr) {
+          console.warn('[scw-survey-bid-validate] replay failed', xhr);
+        }
+      });
+    } catch (e) {
+      console.warn('[scw-survey-bid-validate] replay threw', e);
+    }
+  }
+
+  function refreshView3313() {
+    try {
+      var v = Knack.views && Knack.views[VIEW_ID];
+      if (v && v.model && typeof v.model.fetch === 'function') v.model.fetch();
+    } catch (e) { /* ignore */ }
+  }
+
+  function processGateQueue() {
+    _gateTimer = null;
+    if (!_gateQueue.length) return;
+    if (_gateModalOpen) {
+      // Modal already up — fold any new aborts into the same prompt
+      // when the existing modal resolves. Re-schedule to retry.
+      _gateTimer = setTimeout(processGateQueue, BATCH_WINDOW_MS);
+      return;
+    }
+    var batch = _gateQueue.splice(0, _gateQueue.length);
+    _gateModalOpen = true;
+    var n = batch.length;
+    showModal({
+      kind: 'warn',
+      title: n > 1
+        ? ('Survey note required (' + n + ' records)')
+        : 'Survey note required',
+      html:
+        '<p>You\'re <strong>removing ' +
+        (n > 1 ? n + ' items' : 'an item') +
+        ' from the bid</strong>.</p>' +
+        '<p>Capture a survey note explaining why — the note will be ' +
+        'saved on ' + (n > 1 ? 'each item' : 'the item') +
+        ' (existing notes won\'t be overwritten).</p>',
+      inputPlaceholder: 'e.g. Item not needed per customer; ' +
+                        'duplicate of E-014; etc.',
+      withInput: true,
+      okLabel: 'Save with note',
+      cancelLabel: 'Cancel — restore bid link'
+    }).then(function (r) {
+      _gateModalOpen = false;
+      if (!r.ok) {
+        // Aborted PUTs never landed; the model fetch will restore
+        // whatever the server still says.
+        refreshView3313();
+        return;
+      }
+      for (var i = 0; i < batch.length; i++) replayWithNote(batch[i], r.value);
+      // Give the server a moment to land all PUTs then refresh.
+      setTimeout(refreshView3313, 600);
+    });
+  }
+
+  function queueGate(item) {
+    _gateQueue.push(item);
+    if (_gateTimer) clearTimeout(_gateTimer);
+    _gateTimer = setTimeout(processGateQueue, BATCH_WINDOW_MS);
+  }
+
+  function shouldGate(method, url, body) {
+    if (!isWriteMethod(method)) return false;
+    if (!isView3313RecordUrl(url)) return false;
+    var incoming = parseBidConnFromBody(body);
+    if (incoming === undefined) return false; // field_2415 not in body
+    if (!isFieldCleared(incoming)) return false;
+    var recordId = recordIdFromUrl(url);
+    if (!recordId) return false;
+    if (!bidCurrentlySet(recordId)) return false; // already empty, no-op
+    return recordId;
+  }
+
+  // ── 1. jQuery $.ajaxPrefilter (Knack uses jQuery for inline edits)
+  if (typeof $ !== 'undefined' && $.ajaxPrefilter) {
+    $.ajaxPrefilter(function (options, originalOptions, jqXHR) {
+      try {
+        var recordId = shouldGate(options.type, options.url || '', options.data);
+        if (!recordId) return;
+        queueGate({
+          recordId: recordId,
+          url:      options.url,
+          method:   options.type,
+          body:     options.data,
+          headers:  options.headers || {}
+        });
+        // Cancel the original request — we\'ll re-fire with the note
+        // attached once the user fills out the modal.
+        jqXHR.abort();
+      } catch (e) {
+        console.warn('[scw-survey-bid-validate] prefilter threw', e);
+      }
+    });
+  }
+
+  // ── 2. XMLHttpRequest.send (covers KTL\'s native XHR bulk edits)
+  if (typeof XMLHttpRequest !== 'undefined' && XMLHttpRequest.prototype) {
+    var origOpen = XMLHttpRequest.prototype.open;
+    var origSend = XMLHttpRequest.prototype.send;
+    XMLHttpRequest.prototype.open = function (method, url) {
+      this.__scwSbvMethod = method;
+      this.__scwSbvUrl    = url;
+      return origOpen.apply(this, arguments);
+    };
+    XMLHttpRequest.prototype.send = function (body) {
+      try {
+        var recordId = shouldGate(this.__scwSbvMethod, this.__scwSbvUrl, body);
+        if (recordId) {
+          queueGate({
+            recordId: recordId,
+            url:      this.__scwSbvUrl,
+            method:   this.__scwSbvMethod,
+            body:     typeof body === 'string' ? body : '',
+            headers:  {} // headers from native XHR aren\'t easy to read; replay uses jQuery defaults
+          });
+          this.abort();
+          return; // don\'t send the original
+        }
+      } catch (e) {
+        console.warn('[scw-survey-bid-validate] XHR send hook threw', e);
+      }
+      return origSend.apply(this, arguments);
+    };
+  }
+
+  // ── TODO: bulk path for field_2150 (Sub Bid) ─────────────────
+  // The preSaveHook above gates Sub Bid commits row-by-row. KTL bulk
+  // edits that set field_2150 still fire PUTs through XHR and bypass
+  // the hook entirely. Same shape as the field_2415 gate could apply,
+  // but with the additional $0 check and a more nuanced bulk note
+  // rule (apply only to rows with empty field_2412). Holding off
+  // until we see how often this happens in practice.
 
 })();
 /*** END FEATURE: Survey worksheet Sub Bid validation *************************/
