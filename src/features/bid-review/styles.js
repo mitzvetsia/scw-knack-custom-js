@@ -1923,15 +1923,16 @@
       '.scw-bid-review__cell--no-bid-cutout .scw-bid-review__cell-notes {',
       '  font-size: 11px; color: #334155; line-height: 1.35; margin-top: 6px;',
       '}',
-      /* Green Reinstate / Add-to-bid CR button — matches the visual    */
-      /* vocabulary of Revise (neutral) and Remove (red): same base     */
-      /* .scw-bid-review__cell-action class, just paints green.         */
+      /* Pale-green Reinstate / Add-to-bid CR button — matches the      */
+      /* tinted-outline vocabulary of Revise (pale blue) and Remove     */
+      /* (pale red): white background, green text, soft green border,   */
+      /* tinted hover.                                                  */
       '.scw-bid-review__cell-action--reinstate {',
-      '  background: #16a34a !important; color: #fff !important;',
-      '  border-color: #15803d !important;',
+      '  color: #15803d;',
+      '  border-color: #bbf7d0;',
       '}',
       '.scw-bid-review__cell-action--reinstate:hover {',
-      '  background: #15803d !important; border-color: #14532d !important;',
+      '  background: #f0fdf4; border-color: #4ade80;',
       '}',
 
       '.scw-bid-review__off-sow-tag {',
