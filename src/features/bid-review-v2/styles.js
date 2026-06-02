@@ -81,7 +81,7 @@
     '}',
     '.scw-bid-review-v2__th {',
     '  background: #f1f5f9; color: #475569; font-weight: 600;',
-    '  text-align: left; padding: 12px 18px;',
+    '  text-align: left; padding: 14px 22px !important;',
     '  border-bottom: 1px solid #cbd5e1;',
     '  font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em;',
     '}',
@@ -174,7 +174,7 @@
     '}',
     /* Line-item label cell (E-001, etc) */
     '.scw-bid-review-v2__row-label-cell {',
-    '  padding: 16px 14px;',
+    '  padding: 20px 16px !important;',
     '  background: #f8fafc;',
     '  border-right: 1px solid #e2e8f0;',
     '  font-variant-numeric: tabular-nums;',
@@ -184,7 +184,7 @@
     '}',
     /* ── SOW item cell — editable anchor column ────────────── */
     '.scw-bid-review-v2__sow-cell {',
-    '  padding: 16px 18px;',
+    '  padding: 20px 22px !important;',
     '  background: #f4f8fc; border-right: 2px solid #cbd5e1;',
     '  width: 280px; min-width: 240px;',
     '}',
@@ -212,7 +212,7 @@
     '.scw-bid-review-v2__sow-desc-wrap { margin-top: 4px; }',
     /* ── Bid cells (read-only) ─────────────────────────────── */
     '.scw-bid-review-v2__cell {',
-    '  padding: 16px 18px;',
+    '  padding: 20px 22px !important;',
     '  border-right: 1px solid #f1f5f9; min-width: 220px;',
     '  background: #fff;',
     '}',

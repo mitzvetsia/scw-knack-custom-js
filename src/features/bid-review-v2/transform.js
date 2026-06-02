@@ -299,7 +299,14 @@
       sowFullByItem[s.id] = s;
       sowItemIndex[s.id] = {
         id:          s.id,
-        productName: raw(s, SFK.productName) || connectionLabel(s, SFK.product),
+        // Read the product connection FIRST. On view_3921, field_1958
+        // ("stored product name") renders as a concatenation of the
+        // line item's product AND its mounting accessories with no
+        // separator — so `raw(s, field_1958)` produces unusable
+        // garbage like "Pole Mount BracketRound Electrical Box Mount".
+        // The connection on field_1949 holds just the single product
+        // identifier, which is what we actually want here.
+        productName: connectionLabel(s, SFK.product) || raw(s, SFK.productName),
         qty:         num(s, SFK.qty),
         fee:         num(s, SFK.fee),
         installFee:  num(s, SFK.installFee),
