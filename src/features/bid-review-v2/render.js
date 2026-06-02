@@ -1,13 +1,12 @@
 /*** BID REVIEW V2 — RENDER ***************************************************
  *
- * Phase 0: prove the data pipeline. Renders a banner + a count of
- * records pulled from each source view. Once Phase 1 lands (custom
- * bid-cell row with our own pickers/inputs), this file grows the real
- * grid renderer modeled on worksheet-v2/render.js.
+ * Phase 1: real grid. For each SOW, render a section with a table —
+ * line items × bid packages, with our own number inputs and textarea
+ * for labor description. Custom edits ONLY — no Knack inline-edit.
  *
- * The renderer is intentionally cheap on Phase 0 — every notify fires
- * a full DOM rewrite into .scw-bid-review-v2-body. No diffing yet;
- * pivot-grid keyed updates can come once perf demands it.
+ * Mid-edit guard mirrors worksheet-v2/render.js: if the user is focused
+ * on a v2 input when a re-notify fires, defer the rebuild until focus
+ * leaves the panel.
  ****************************************************************************/
 (function () {
   'use strict';
@@ -15,49 +14,72 @@
   var ns = window.SCW.bidReviewV2;
   if (!ns) return;
 
-  function escapeHtml(s) {
-    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
-      return ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[c];
-    });
+  var _pendingSnapshot = null;
+
+  function hasFocusInPanel(container) {
+    var a = document.activeElement;
+    if (!a || !container) return false;
+    if (!a.hasAttribute || !a.hasAttribute('data-scw-br-v2-field')) return false;
+    return container.contains(a);
   }
 
   function renderSnapshot(snapshot) {
     if (!ns.CONFIG) return;
     var container = document.getElementById(ns.CONFIG.mountId);
     if (!container) return;
-    var body = container.querySelector('.scw-bid-review-v2-body');
+    var body  = container.querySelector('.scw-bid-review-v2-body');
     var count = container.querySelector('.scw-bid-review-v2-count');
     if (!body) return;
 
-    var keys = Object.keys(snapshot);
-    var totals = keys.map(function (k) {
-      return { viewKey: k, n: (snapshot[k] || []).length };
-    });
-    var grand = totals.reduce(function (a, t) { return a + t.n; }, 0);
+    if (hasFocusInPanel(container)) {
+      _pendingSnapshot = snapshot;
+      return;
+    }
+    _pendingSnapshot = null;
+
+    var bidViewKey = (ns.CONFIG.sourceViewKeys || [])[0];
+    var bidRecords = (snapshot && bidViewKey && snapshot[bidViewKey]) || [];
+    if (!ns.transform || typeof ns.transform.buildState !== 'function') {
+      body.innerHTML = '<div class="scw-bid-review-v2-empty">transform.js not loaded.</div>';
+      return;
+    }
+    var state = ns.transform.buildState(bidRecords);
 
     if (count) {
-      count.textContent = grand + ' record' + (grand === 1 ? '' : 's') +
-        ' across ' + keys.length + ' view' + (keys.length === 1 ? '' : 's');
+      count.textContent = state.sowGrids.length + ' SOW' +
+        (state.sowGrids.length === 1 ? '' : 's') + ' / ' +
+        bidRecords.length + ' bid record' + (bidRecords.length === 1 ? '' : 's');
     }
 
-    if (!grand) {
+    if (state.isEmpty) {
       body.innerHTML = '<div class="scw-bid-review-v2-empty">' +
-        'Waiting for source views to load…</div>';
+        'No bid records loaded yet.</div>';
       return;
     }
 
-    var rows = totals.map(function (t) {
-      return '<tr><td style="padding:4px 12px 4px 0;color:#475569;">' +
-        escapeHtml(t.viewKey) + '</td>' +
-        '<td style="padding:4px 0;font-variant-numeric:tabular-nums;">' +
-        t.n + '</td></tr>';
-    }).join('');
-    body.innerHTML =
-      '<div style="font-size:12px;color:#64748b;margin-bottom:8px;">' +
-      'Phase 0 — data pipeline check. Counts read from <code>Knack.views[k].model.data</code>:' +
-      '</div>' +
-      '<table style="font-size:13px;">' + rows + '</table>';
+    var frag = document.createDocumentFragment();
+    for (var i = 0; i < state.sowGrids.length; i++) {
+      try {
+        frag.appendChild(ns.card.buildSowSection(state.sowGrids[i]));
+      } catch (e) {
+        console.warn('[scw-br-v2] buildSowSection threw', state.sowGrids[i] && state.sowGrids[i].sowId, e);
+      }
+    }
+    body.innerHTML = '';
+    body.appendChild(frag);
   }
+
+  // Resume deferred render when focus leaves the panel.
+  document.addEventListener('focusout', function () {
+    setTimeout(function () {
+      if (!_pendingSnapshot) return;
+      var container = document.getElementById(ns.CONFIG && ns.CONFIG.mountId);
+      if (!container || hasFocusInPanel(container)) return;
+      var snap = _pendingSnapshot;
+      _pendingSnapshot = null;
+      renderSnapshot(snap);
+    }, 0);
+  }, true);
 
   ns.render = { renderSnapshot: renderSnapshot };
 })();

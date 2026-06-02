@@ -67,6 +67,7 @@
   function init() {
     // Inject CSS (styles.js self-injects if not present)
     if (ns.data) ns.data.attachListeners();
+    if (ns.edit && typeof ns.edit.wire === 'function') ns.edit.wire();
     if (ns.data && ns.render) {
       ns.data.subscribe(function (snapshot) {
         ns.render.renderSnapshot(snapshot);

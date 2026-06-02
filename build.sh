@@ -61,6 +61,9 @@ cat \
   src/features/bid-review-v2/styles.js \
   src/features/bid-review-v2/state.js \
   src/features/bid-review-v2/data.js \
+  src/features/bid-review-v2/transform.js \
+  src/features/bid-review-v2/edit.js \
+  src/features/bid-review-v2/card.js \
   src/features/bid-review-v2/render.js \
   src/features/bid-review-v2/init.js \
   src/features/sales-revision-column.js \
