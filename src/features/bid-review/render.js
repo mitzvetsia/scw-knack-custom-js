@@ -1353,32 +1353,16 @@
       if (!row.cellsByPackage[pid]) {
         var isMissingBid = false;
         if (row.surveyNoBid || row.noBid) {
-          // Mirror the SOW-side --off-sow blue-dashed cut-out: the bid
-          // is "detached" from this row. The border lives on the TD
-          // itself (so the cut-out wraps the whole cell, not an inner
-          // div). Inside: badge, optional survey note, and the
-          // Add-to-bid CR button — styled to match the Revise/Remove
-          // pair so the entire CR vocabulary stays consistent.
+          // Blue dashed cut-out (mirror of --off-sow on the SOW side):
+          // the bid is detached from this row. The cell renders the
+          // SAME data skeleton a normal bid cell would, populated from
+          // the SOW item\'s values, so the reviewer sees product, qty,
+          // chips, labor, notes, etc. — the only difference is the
+          // dashed border + badge + CR action.
           dataTd.textContent = '';
           dataTd.classList.add('scw-bid-review__cell--no-bid-cutout');
-          var badgeText = row.surveyNoBid ? 'NOT ON BID' : 'NOT SURVEYED';
-          var badgeCls  = row.surveyNoBid
-            ? 'scw-bid-review__survey-no-bid-badge'
-            : 'scw-bid-review__no-bid-badge';
-          dataTd.appendChild(el('span', badgeCls, badgeText));
-          if (row.surveyNotes) {
-            var notesEl = el('div', 'scw-bid-review__cell-notes');
-            notesEl.appendChild(el('span', 'scw-bid-review__field-label', 'Survey Note: '));
-            notesEl.appendChild(document.createTextNode(row.surveyNotes));
-            dataTd.appendChild(notesEl);
-          }
-          isMissingBid = true;
-        }
-        // Add to bid is a Change Request — render it in the same
-        // CR-styled action stack (with the "CRs" header) used by the
-        // Revise + Remove buttons in normal bid cells. Same width and
-        // visual weight so the column reads consistently.
-        if (isMissingBid) {
+
+          // CR action stack (CRs header + Reinstate/Add-to-bid button)
           var pendingAdds = (ns.changeRequests && ns.changeRequests.getPending) ? ns.changeRequests.getPending() : {};
           var alreadyPendingAdd = false;
           if (pendingAdds[pid] && pendingAdds[pid].items) {
@@ -1394,8 +1378,11 @@
             addWrap.appendChild(el('div', 'scw-bid-review__cell-actions-header', 'CRs'));
             var addBtn = document.createElement('button');
             addBtn.type = 'button';
-            addBtn.className = 'scw-bid-review__cell-action scw-bid-review__cell-action--add';
-            addBtn.textContent = '+ Add to bid';
+            addBtn.className = 'scw-bid-review__cell-action scw-bid-review__cell-action--reinstate';
+            // surveyNoBid → was once surveyed, needs reinstating to the
+            // bid. noBid → never surveyed, "add to bid". Color is green
+            // either way (matches Revise/Remove button vocabulary).
+            addBtn.textContent = row.surveyNoBid ? '+ Reinstate' : '+ Add to bid';
             addBtn.setAttribute('data-action',     'cell_add_to_bid');
             addBtn.setAttribute('data-row-id',     row.id);
             addBtn.setAttribute('data-package-id', pid);
@@ -1403,6 +1390,76 @@
             addWrap.appendChild(addBtn);
             dataTd.appendChild(addWrap);
           }
+
+          // Badge under the actions
+          var badgeText = row.surveyNoBid ? 'NOT ON BID' : 'NOT SURVEYED';
+          var badgeCls  = row.surveyNoBid
+            ? 'scw-bid-review__survey-no-bid-badge'
+            : 'scw-bid-review__no-bid-badge';
+          dataTd.appendChild(el('span', badgeCls, badgeText));
+
+          // Same field skeleton a normal bid cell renders — populated
+          // from SOW values since there\'s no bid record. Lets the
+          // reviewer see exactly what would be on the bid if the
+          // bidder reinstated / added it.
+          if (row.sowProduct) {
+            dataTd.appendChild(el('div', 'scw-bid-review__cell-label', row.sowProduct));
+          }
+          if (qtyVisible && row.sowQty) {
+            var qtyEl2 = el('div', 'scw-bid-review__cell-qty');
+            qtyEl2.appendChild(el('span', 'scw-bid-review__field-label', 'Qty: '));
+            qtyEl2.appendChild(document.createTextNode(row.sowQty));
+            dataTd.appendChild(qtyEl2);
+          }
+          if (row.sowLaborDesc) {
+            var ldEl2 = el('div', 'scw-bid-review__cell-labor-desc');
+            ldEl2.appendChild(el('span', 'scw-bid-review__field-label', 'Labor Desc: '));
+            var ldVal2 = document.createElement('span');
+            ldVal2.className = 'scw-bid-review__cell-labor-desc-value';
+            ldVal2.innerHTML = row.sowLaborDesc;
+            ldEl2.appendChild(ldVal2);
+            dataTd.appendChild(ldEl2);
+          }
+          if (connDevVisible && row.sowConnDevice) {
+            var cdLabel = Array.isArray(row.sowConnDevice)
+              ? row.sowConnDevice.join(', ')
+              : row.sowConnDevice;
+            if (cdLabel) {
+              dataTd.appendChild(el('div', 'scw-bid-review__cell-conn-device', cdLabel));
+            }
+          }
+          if (cablingVisible) {
+            dataTd.appendChild(buildCablingChip(row.sowExistCabling));
+            dataTd.appendChild(buildBoolChip('Plenum',   row.sowPlenum));
+            dataTd.appendChild(buildBoolChip('Exterior', row.sowExterior));
+            if (row.sowDropLength) {
+              var dlEl2 = el('div', 'scw-bid-review__cell-qty');
+              dlEl2.appendChild(el('span', 'scw-bid-review__field-label', 'Length: '));
+              dlEl2.appendChild(document.createTextNode(row.sowDropLength));
+              dataTd.appendChild(dlEl2);
+            }
+            if (row.sowConduit) {
+              var cnEl2 = el('div', 'scw-bid-review__cell-qty');
+              cnEl2.appendChild(el('span', 'scw-bid-review__field-label', 'Conduit: '));
+              cnEl2.appendChild(document.createTextNode(row.sowConduit));
+              dataTd.appendChild(cnEl2);
+            }
+          }
+          var sowFee = row.sowFee || row.sowInstallFee || row.sowEquipmentTotal;
+          if (sowFee) {
+            var valsEl2 = el('div', 'scw-bid-review__cell-values');
+            valsEl2.appendChild(el('span', 'scw-bid-review__cell-value',
+              formatCurrency(sowFee)));
+            dataTd.appendChild(valsEl2);
+          }
+          if (row.surveyNotes) {
+            dataTd.appendChild(el('hr', 'scw-bid-review__cell-notes-divider'));
+            var notesEl2 = el('div', 'scw-bid-review__cell-notes');
+            notesEl2.appendChild(el('span', 'scw-bid-review__field-label', 'Survey Note: '));
+            notesEl2.appendChild(document.createTextNode(row.surveyNotes));
+            dataTd.appendChild(notesEl2);
+          }
+          isMissingBid = true;
         }
       }
       tr.appendChild(dataTd);
