@@ -90,11 +90,106 @@
     });
   }
 
+  // Delegated click on an expandable data row — toggle an expand <tr>
+  // beneath it that mounts worksheet-v2's card for the matching SOW
+  // item record. Reuses the same edit pipeline used on the build-SOW
+  // page so the experience is identical (chips, picker, photos,
+  // accessories, direct PUTs).
+  function wireRowExpand() {
+    if (document.documentElement.hasAttribute('data-scw-br-v2-rowexpand-bound')) return;
+    document.documentElement.setAttribute('data-scw-br-v2-rowexpand-bound', '1');
+
+    document.addEventListener('click', function (e) {
+      var row = e.target.closest && e.target.closest('.scw-bid-review-v2__row--expandable');
+      if (!row) return;
+      // Don't intercept clicks on interactive elements inside the row.
+      if (e.target.closest('input, button, select, textarea, a')) return;
+      // Don't intercept clicks on the L1 group header (handled separately).
+      if (e.target.closest('.scw-bid-review-v2__group-header')) return;
+      toggleRowExpand(row);
+    });
+  }
+
+  function toggleRowExpand(row) {
+    var next = row.nextElementSibling;
+    var isOpen = next && next.classList &&
+      next.classList.contains('scw-bid-review-v2__expand-row');
+    if (isOpen) {
+      next.parentNode.removeChild(next);
+      row.setAttribute('aria-expanded', 'false');
+      row.classList.remove('scw-bid-review-v2__row--open');
+      return;
+    }
+    var sowItemId = row.getAttribute('data-sow-item-id');
+    if (!sowItemId) return;
+    var sowRec = lookupSowRecord(sowItemId);
+    if (!sowRec) {
+      console.warn('[scw-br-v2] SOW item not found in model:', sowItemId);
+      return;
+    }
+
+    var expand = document.createElement('tr');
+    expand.className = 'scw-bid-review-v2__expand-row';
+    expand.setAttribute('data-expand-for', sowItemId);
+    var td = document.createElement('td');
+    td.colSpan = row.children.length;
+    td.className = 'scw-bid-review-v2__expand-cell';
+    expand.appendChild(td);
+    row.parentNode.insertBefore(expand, row.nextSibling);
+    row.classList.add('scw-bid-review-v2__row--open');
+    row.setAttribute('aria-expanded', 'true');
+
+    mountWorksheetV2Card(td, sowRec);
+  }
+
+  // Find the full Backbone-style attributes hash for a SOW item id.
+  // Prefer the live model so we always see the freshest values; fall
+  // back to the snapshot the v2 grid was rendered against.
+  function lookupSowRecord(sowItemId) {
+    try {
+      var sowViewKey = (ns.CONFIG.sourceViewKeys || [])[1];
+      var v = sowViewKey && Knack.views && Knack.views[sowViewKey];
+      if (v && v.model && v.model.data && typeof v.model.data.get === 'function') {
+        var m = v.model.data.get(sowItemId);
+        if (m && m.attributes) return m.attributes;
+      }
+    } catch (e) { /* fall through */ }
+    return null;
+  }
+
+  function mountWorksheetV2Card(hostTd, sowRec) {
+    var wsv2 = window.SCW && SCW.worksheetV2;
+    if (!wsv2 || !wsv2.card || typeof wsv2.card.buildCard !== 'function') {
+      hostTd.innerHTML =
+        '<div class="scw-bid-review-v2__expand-loading">' +
+          'worksheet-v2 not available — open the SOW Line Items page ' +
+          'and reload to use the inline editor.' +
+        '</div>';
+      return;
+    }
+    // Force the card open so the user lands directly in the editor,
+    // not on the summary header.
+    var card;
+    try {
+      card = wsv2.card.buildCard(sowRec, (ns.CONFIG.sourceViewKeys || [])[1]);
+    } catch (err) {
+      console.warn('[scw-br-v2] worksheet-v2 buildCard threw', err);
+      hostTd.innerHTML =
+        '<div class="scw-bid-review-v2__expand-loading">' +
+          'Failed to render the worksheet-v2 card — see console.' +
+        '</div>';
+      return;
+    }
+    card.classList.add('scw-ws-v2-card--open');
+    hostTd.appendChild(card);
+  }
+
   function init() {
     // Inject CSS (styles.js self-injects if not present)
     if (ns.data) ns.data.attachListeners();
     if (ns.edit && typeof ns.edit.wire === 'function') ns.edit.wire();
     wireGroupCollapse();
+    wireRowExpand();
     if (ns.data && ns.render) {
       ns.data.subscribe(function (snapshot) {
         ns.render.renderSnapshot(snapshot);

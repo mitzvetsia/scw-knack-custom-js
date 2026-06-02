@@ -291,10 +291,12 @@
     // each row reads as "this SOW line item, compared across these bids".
     var SFK = ns.CONFIG.sowItemFieldKeys || {};
     var sowItemIndex = Object.create(null);
+    var sowFullByItem = Object.create(null); // keeps the raw record for expand-panel use
     var sowItemList = sowItems || [];
     for (var si = 0; si < sowItemList.length; si++) {
       var s = sowItemList[si];
       if (!s || !s.id) continue;
+      sowFullByItem[s.id] = s;
       sowItemIndex[s.id] = {
         id:          s.id,
         productName: raw(s, SFK.productName) || connectionLabel(s, SFK.product),
@@ -318,7 +320,9 @@
       // the leftmost SOW column. Rows whose relatedSowItem points at a
       // record we never loaded fall through with `sowItemData: null`.
       for (var r = 0; r < rows.length; r++) {
-        rows[r].sowItemData = rows[r].sowItem ? (sowItemIndex[rows[r].sowItem] || null) : null;
+        var sid = rows[r].sowItem;
+        rows[r].sowItemData   = sid ? (sowItemIndex[sid]   || null) : null;
+        rows[r].sowFullRecord = sid ? (sowFullByItem[sid] || null) : null;
       }
       sowGrids.push({
         sowId:    sow.id,

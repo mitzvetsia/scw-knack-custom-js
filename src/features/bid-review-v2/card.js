@@ -71,17 +71,9 @@
       td.innerHTML = '<span class="scw-bid-review-v2__cell-empty-mark">—</span>';
       return td;
     }
-
-    function sowInput(fieldKey, value, cls, step) {
-      return '<input type="number" class="scw-bid-review-v2-input ' + cls + '"' +
-        ' value="' + escapeHtml(value == null || value === 0 ? '' : value) + '"' +
-        (step ? ' step="' + step + '"' : '') +
-        ' data-scw-br-v2-field="' + fieldKey + '"' +
-        ' data-scw-br-v2-record="' + sowItemData.id + '"' +
-        ' data-scw-br-v2-view="' + SOW_VIEW + '">';
-    }
-    var descText = ns.transform.stripHtml(sowItemData.laborDesc || '');
-
+    var qtyTxt  = sowItemData.qty ? String(sowItemData.qty) : '—';
+    var feeTxt  = sowItemData.fee ? fmtMoney(sowItemData.fee) : '—';
+    var descTxt = ns.transform.stripHtml(sowItemData.laborDesc || '');
     td.innerHTML =
       (sowItemData.productName ?
         '<div class="scw-bid-review-v2__sow-product" title="' +
@@ -89,24 +81,15 @@
           escapeHtml(sowItemData.productName) +
         '</div>' : '') +
       '<div class="scw-bid-review-v2__sow-numbers">' +
-        '<span class="scw-bid-review-v2__sow-num">' +
-          '<label>Qty</label>' +
-          sowInput(SFK.qty, sowItemData.qty, 'scw-bid-review-v2-input--qty', '1') +
-        '</span>' +
-        '<span class="scw-bid-review-v2__sow-num">' +
-          '<label>Fee</label>' +
-          sowInput(SFK.fee, sowItemData.fee, 'scw-bid-review-v2-input--rate', '0.01') +
-        '</span>' +
+        '<span class="scw-bid-review-v2__sow-num"><label>Qty</label>' +
+          escapeHtml(qtyTxt) + '</span>' +
+        '<span class="scw-bid-review-v2__sow-num"><label>Fee</label>' +
+          escapeHtml(feeTxt) + '</span>' +
       '</div>' +
-      '<div class="scw-bid-review-v2__sow-desc-wrap">' +
-        '<textarea class="scw-bid-review-v2-input scw-bid-review-v2-input--desc"' +
-          ' rows="2" placeholder="Labor description"' +
-          ' data-scw-br-v2-field="' + SFK.laborDesc + '"' +
-          ' data-scw-br-v2-record="' + sowItemData.id + '"' +
-          ' data-scw-br-v2-view="' + SOW_VIEW + '">' +
-          escapeHtml(descText) +
-        '</textarea>' +
-      '</div>';
+      (descTxt ?
+        '<div class="scw-bid-review-v2__sow-desc" title="' +
+          escapeHtml(descTxt) + '">' + escapeHtml(descTxt) +
+        '</div>' : '');
     return td;
   }
 
@@ -156,8 +139,10 @@
   function buildBidRow(row, packages) {
     var tr = document.createElement('tr');
     tr.className = 'scw-bid-review-v2__row';
+    if (row.sowItem) tr.classList.add('scw-bid-review-v2__row--expandable');
     tr.setAttribute('data-row-id', row.id);
     if (row.sowItem) tr.setAttribute('data-sow-item-id', row.sowItem);
+    tr.setAttribute('aria-expanded', 'false');
 
     // Label column — only show displayLabel (E-001, etc.) for cam/reader
     // rows. Everything else (networking, services, assumptions) is
