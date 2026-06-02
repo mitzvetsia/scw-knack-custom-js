@@ -346,9 +346,13 @@
     if (existing) existing.remove();
 
     // ── Calculate from DOM cells ──
-    var retail       = sumViewField(ALL_VIEWS, 'field_1960');        // retail price (devices + hardware)
-    var lineDiscount = sumViewField(EQUIPMENT_VIEWS, 'field_2303');  // device applied discount
-    var hwDiscount   = sumViewField(HARDWARE_VIEWS, 'field_2267');   // hardware effective discount
+    // Extended list price = qty × unit list. field_1960 is the UNIT
+    // price; any line with qty > 1 (e.g. NanoBeam ×2, Wattbox ×2,
+    // mounting accessories ×N) would be undercounted if we summed
+    // field_1960. field_2201 is the per-line CALC of qty × list.
+    var retail       = sumViewField(ALL_VIEWS, 'field_2201');        // extended list price (devices + hardware)
+    var lineDiscount = sumViewField(EQUIPMENT_VIEWS, 'field_2303');  // device applied discount (extended)
+    var hwDiscount   = sumViewField(HARDWARE_VIEWS, 'field_2303');   // hardware applied discount (extended)
     var lumpDiscount = getLumpDiscount();
     var discount     = Math.abs(lineDiscount) + Math.abs(hwDiscount) + Math.abs(lumpDiscount);
     var discountPct  = retail > 0 ? (discount / retail * 100) : 0;
