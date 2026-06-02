@@ -509,20 +509,33 @@
   }
 
   function buildRow_assumptions(rec, viewKey) {
-    // Assumptions: just a tag + the description text + chevron.
-    // No qty, no money. Mirrors v1's bucketRules['697b7a023a31502ec68b3303']
-    // which hides field_1949 (product), field_1964 (qty), all the
-    // money fields, and renames labor desc to 'ASSUMPTION'.
+    // Assumptions: text + SOW + chevron/warn/kebab. No qty, no money.
+    // Mirrors v1's bucketRules['697b7a023a31502ec68b3303'] which hides
+    // field_1949 (product), field_1964 (qty), and all the money fields,
+    // but keeps SOW so the user can target the assumption at a specific
+    // SOW (vs leaving it project-wide).
+    //
+    // We render the full 12-column template (with blank cells for the
+    // hidden slots) so SOW lands at the same horizontal position as it
+    // does on default / cam / services rows — see CSS where assumption
+    // rows now share the default grid template AND the labor-desc cell
+    // spans the empty middle columns for readability.
     var laborDesc = readField(rec, 'field_2020');
+    var sow       = readField(rec, 'field_2154');
 
-    // Assumption tag dropped — the L1 group header already labels the
-    // section ("Project Wide Assumptions"), so the inline "Assumption"
-    // chip was redundant noise.
     return '<div class="scw-ws-v2-row scw-ws-v2-row--assumptions">' +
       chevronCell(rec) +
+      labelCellOrBlank(rec) +
+      empty('scw-ws-v2-cell--product') +
       '<div class="scw-ws-v2-cell scw-ws-v2-cell--labor-desc">' +
         textArea(rec, viewKey, 'field_2020', laborDesc, 'Assumption text') +
       '</div>' +
+      empty('scw-ws-v2-cell--num') +
+      empty('scw-ws-v2-cell--stack') +
+      empty('scw-ws-v2-cell--stack') +
+      empty('scw-ws-v2-cell--stack') +
+      empty('scw-ws-v2-cell--fee') +
+      sowCell(rec, viewKey, sow) +
       warnCell(rec) +
       kebabCell(rec) +
     '</div>';

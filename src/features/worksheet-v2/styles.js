@@ -98,7 +98,7 @@
        the label slot empty and put the "Service" tag in the product
        slot. Default rows leave the label slot empty. Assumptions
        keeps its own narrower template below. */
-    '.scw-ws-v2-row--default, .scw-ws-v2-row--cam, .scw-ws-v2-row--services {',
+    '.scw-ws-v2-row--default, .scw-ws-v2-row--cam, .scw-ws-v2-row--services, .scw-ws-v2-row--assumptions {',
     '  display: grid !important;',
     '  grid-template-columns:',
     '    20px                  /* expand chevron (now on the LEFT) */',
@@ -140,17 +140,19 @@
     '  text-align: center !important;',
     '}',
     /* ASSUMPTIONS bucket — almost full-width text. No money. */
-    '.scw-ws-v2-row--assumptions {',
-    '  display: grid !important;',
-    '  grid-template-columns:',
-    '    20px             /* expand chevron */',
-    '    1fr              /* text */',
-    '    28px             /* warning */',
-    '    28px             /* kebab */ !important;',
-    '  gap: 6px !important;',
-    '  align-items: center !important;',
-    '  padding: 4px 10px !important;',
-    '  min-height: 40px !important;',
+    /* Assumption rows share the default 12-col grid (above) so SOW
+       lands in the same horizontal position as cam/default/services.
+       The labor-desc cell spans cols 3-9 since assumptions have no
+       product/qty/money to fill those slots; the blank placeholder
+       cells are hidden so they don\'t eat clicks or whitespace. */
+    '.scw-ws-v2-row--assumptions > .scw-ws-v2-cell--labor-desc {',
+    '  grid-column: 3 / 10 !important;',
+    '}',
+    '.scw-ws-v2-row--assumptions > .scw-ws-v2-cell--product,',
+    '.scw-ws-v2-row--assumptions > .scw-ws-v2-cell--num,',
+    '.scw-ws-v2-row--assumptions > .scw-ws-v2-cell--stack,',
+    '.scw-ws-v2-row--assumptions > .scw-ws-v2-cell--fee {',
+    '  display: none !important;',
     '}',
 
     /* Bucket tag cell ("Service" / "Assumption") */
