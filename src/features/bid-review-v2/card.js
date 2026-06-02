@@ -18,10 +18,14 @@
   var ns = window.SCW.bidReviewV2;
   if (!ns || !ns.CONFIG) return;
 
-  var FK = ns.CONFIG.fieldKeys;
-  // Bid records are the FIRST source view (view_3680). All cell PUTs
-  // target it because that's where the editable cell records live.
+  var FK  = ns.CONFIG.fieldKeys;
+  var SFK = ns.CONFIG.sowItemFieldKeys || {};
+  // Source views:
+  //   [0] view_3680 — bid records  (READ-ONLY in this grid; changes go
+  //                                 through Change Requests)
+  //   [1] view_3921 — SOW items    (EDITABLE — source of truth)
   var BID_VIEW = (ns.CONFIG.sourceViewKeys || [])[0];
+  var SOW_VIEW = (ns.CONFIG.sourceViewKeys || [])[1];
 
   function escapeHtml(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
@@ -67,26 +71,42 @@
       td.innerHTML = '<span class="scw-bid-review-v2__cell-empty-mark">—</span>';
       return td;
     }
-    var qtyTxt  = sowItemData.qty ? String(sowItemData.qty) : '';
-    var feeTxt  = sowItemData.fee ? fmtMoney(sowItemData.fee) : '';
-    var descTxt = ns.transform.stripHtml(sowItemData.laborDesc || '');
+
+    function sowInput(fieldKey, value, cls, step) {
+      return '<input type="number" class="scw-bid-review-v2-input ' + cls + '"' +
+        ' value="' + escapeHtml(value == null || value === 0 ? '' : value) + '"' +
+        (step ? ' step="' + step + '"' : '') +
+        ' data-scw-br-v2-field="' + fieldKey + '"' +
+        ' data-scw-br-v2-record="' + sowItemData.id + '"' +
+        ' data-scw-br-v2-view="' + SOW_VIEW + '">';
+    }
+    var descText = ns.transform.stripHtml(sowItemData.laborDesc || '');
+
     td.innerHTML =
       (sowItemData.productName ?
         '<div class="scw-bid-review-v2__sow-product" title="' +
           escapeHtml(sowItemData.productName) + '">' +
           escapeHtml(sowItemData.productName) +
         '</div>' : '') +
-      (qtyTxt || feeTxt ?
-        '<div class="scw-bid-review-v2__sow-numbers">' +
-          (qtyTxt ? '<span class="scw-bid-review-v2__sow-num"><label>Qty</label>' +
-            escapeHtml(qtyTxt) + '</span>' : '') +
-          (feeTxt ? '<span class="scw-bid-review-v2__sow-num"><label>Fee</label>' +
-            escapeHtml(feeTxt) + '</span>' : '') +
-        '</div>' : '') +
-      (descTxt ?
-        '<div class="scw-bid-review-v2__sow-desc" title="' +
-          escapeHtml(descTxt) + '">' + escapeHtml(descTxt) +
-        '</div>' : '');
+      '<div class="scw-bid-review-v2__sow-numbers">' +
+        '<span class="scw-bid-review-v2__sow-num">' +
+          '<label>Qty</label>' +
+          sowInput(SFK.qty, sowItemData.qty, 'scw-bid-review-v2-input--qty', '1') +
+        '</span>' +
+        '<span class="scw-bid-review-v2__sow-num">' +
+          '<label>Fee</label>' +
+          sowInput(SFK.fee, sowItemData.fee, 'scw-bid-review-v2-input--rate', '0.01') +
+        '</span>' +
+      '</div>' +
+      '<div class="scw-bid-review-v2__sow-desc-wrap">' +
+        '<textarea class="scw-bid-review-v2-input scw-bid-review-v2-input--desc"' +
+          ' rows="2" placeholder="Labor description"' +
+          ' data-scw-br-v2-field="' + SFK.laborDesc + '"' +
+          ' data-scw-br-v2-record="' + sowItemData.id + '"' +
+          ' data-scw-br-v2-view="' + SOW_VIEW + '">' +
+          escapeHtml(descText) +
+        '</textarea>' +
+      '</div>';
     return td;
   }
 
@@ -98,55 +118,38 @@
     var td = document.createElement('td');
     td.className = 'scw-bid-review-v2__cell';
     if (!cell) {
-      // No bid record for this row/package — render an empty cell so
-      // the column lines up. Phase 2 will render "+ Add to bid" here.
+      // No bid record for this row/package — Phase 4 will render
+      // "+ Add to bid" here. For now just keep the column aligned.
       td.classList.add('scw-bid-review-v2__cell--empty');
       td.innerHTML = '<span class="scw-bid-review-v2__cell-empty-mark">—</span>';
       return td;
     }
 
-    // qty + rate inputs (numeric)
-    function inputHtml(fieldKey, value, cls, step) {
-      return '<input type="number" class="scw-bid-review-v2-input ' + cls + '"' +
-        ' value="' + escapeHtml(value == null ? '' : value) + '"' +
-        (step ? ' step="' + step + '"' : '') +
-        ' data-scw-br-v2-field="' + fieldKey + '"' +
-        ' data-scw-br-v2-record="' + cell.id + '"' +
-        ' data-scw-br-v2-view="' + BID_VIEW + '">';
-    }
-
-    // Bid product name — read-only, identifies the bid line item.
-    var productHtml = cell.productName
-      ? '<div class="scw-bid-review-v2__cell-product" title="' +
-          escapeHtml(cell.productName) + '">' +
-          escapeHtml(cell.productName) +
-        '</div>'
-      : '';
+    var qtyTxt  = cell.qty  ? String(cell.qty) : '—';
+    var rateTxt = cell.rate ? fmtMoney(cell.rate) : '—';
+    var extTxt  = cell.labor ? fmtMoney(cell.labor) : '—';
+    var descTxt = ns.transform.stripHtml(cell.laborDesc || '');
 
     td.innerHTML =
-      productHtml +
-      '<div class="scw-bid-review-v2__cell-line">' +
-        '<label class="scw-bid-review-v2__cell-label">Qty</label>' +
-        inputHtml(FK.qty,  cell.qty,  'scw-bid-review-v2-input--qty',  '1') +
+      (cell.productName ?
+        '<div class="scw-bid-review-v2__cell-product" title="' +
+          escapeHtml(cell.productName) + '">' +
+          escapeHtml(cell.productName) +
+        '</div>' : '') +
+      '<div class="scw-bid-review-v2__cell-numbers">' +
+        '<span class="scw-bid-review-v2__cell-num"><label>Qty</label>' +
+          escapeHtml(qtyTxt) + '</span>' +
+        '<span class="scw-bid-review-v2__cell-num"><label>Rate</label>' +
+          escapeHtml(rateTxt) + '</span>' +
+        '<span class="scw-bid-review-v2__cell-num"><label>Ext</label>' +
+          escapeHtml(extTxt) + '</span>' +
       '</div>' +
-      '<div class="scw-bid-review-v2__cell-line">' +
-        '<label class="scw-bid-review-v2__cell-label">Rate</label>' +
-        inputHtml(FK.rate, cell.rate, 'scw-bid-review-v2-input--rate', '0.01') +
-      '</div>' +
-      '<div class="scw-bid-review-v2__cell-line scw-bid-review-v2__cell-line--ext">' +
-        '<label class="scw-bid-review-v2__cell-label">Ext</label>' +
-        '<span class="scw-bid-review-v2__cell-ext">' + escapeHtml(fmtMoney(cell.labor)) + '</span>' +
-      '</div>' +
-      '<div class="scw-bid-review-v2__cell-desc-wrap">' +
-        '<textarea class="scw-bid-review-v2-input scw-bid-review-v2-input--desc"' +
-          ' rows="2" placeholder="Labor description"' +
-          ' data-scw-br-v2-field="' + FK.laborDesc + '"' +
-          ' data-scw-br-v2-record="' + cell.id + '"' +
-          ' data-scw-br-v2-view="' + BID_VIEW + '">' +
-          escapeHtml(ns.transform.stripHtml(cell.laborDesc || '')) +
-        '</textarea>' +
-      '</div>';
-
+      (descTxt ?
+        '<div class="scw-bid-review-v2__cell-desc" title="' +
+          escapeHtml(descTxt) + '">' + escapeHtml(descTxt) +
+        '</div>' : '');
+    // Phase 5 will append the Revise / Remove / +Add-to-bid action stack
+    // here. Editing happens through change requests, never inline.
     return td;
   }
 
