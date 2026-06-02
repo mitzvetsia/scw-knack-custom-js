@@ -226,6 +226,29 @@
             if (pid && recordByIdLocal[pid]) { promotedParent = recordByIdLocal[pid]; break; }
           }
         }
+        // Asymmetric-orphan check: accessory\'s back-pointer
+        // (field_2464) names a parent that IS loaded, but the
+        // parent\'s children array (field_2207) doesn\'t list this
+        // accessory back. Treat as orphaned so the user sees it in
+        // the synthetic L1 and can re-pick the parent (which fires
+        // the field_2207 cascade to repair the link).
+        //
+        // If field_2207_raw is undefined on the parent (Knack isn\'t
+        // returning the field on this view), we can\'t verify either
+        // way — leave the record as a promoted bracket. No false
+        // positives.
+        if (promotedParent) {
+          var childArr = promotedParent.field_2207_raw;
+          if (Array.isArray(childArr)) {
+            var listed = false;
+            for (var ci = 0; ci < childArr.length; ci++) {
+              if (childArr[ci] && childArr[ci].id === rec.id) {
+                listed = true; break;
+              }
+            }
+            if (!listed) promotedParent = null;
+          }
+        }
       }
       if (inMountingBucket && !promotedParent) {
         // Truly unreferenced mounting-hardware row → orphan synthetic L1.
