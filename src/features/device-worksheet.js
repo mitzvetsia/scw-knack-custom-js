@@ -4332,11 +4332,22 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
    *  the recalculated formula from the response.  For other fields,
    *  prefers model.updateRecord to avoid a full re-render.
    *  Calls onSuccess(resp) or onError(message) when done. */
-  function saveDirectEditValue(viewId, recordId, fieldKey, value, onSuccess, onError) {
+  function saveDirectEditValue(viewId, recordId, fieldKey, value, onSuccess, onError, extraData) {
     if (typeof Knack === 'undefined') return;
 
     var data = {};
     data[fieldKey] = value;
+    // Pre-save hooks (e.g. survey-bid-validate) can pass companion
+    // field writes through extraData so they land in the same PUT —
+    // e.g. saving field_2150 also writing the survey note to
+    // field_2412 in a single transaction.
+    if (extraData && typeof extraData === 'object') {
+      for (var ek in extraData) {
+        if (Object.prototype.hasOwnProperty.call(extraData, ek)) {
+          data[ek] = extraData[ek];
+        }
+      }
+    }
     var trigger = isHeaderTrigger(viewId, fieldKey);
 
     // Always use AJAX PUT so we get the full response for card patching
@@ -4430,12 +4441,43 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       viewId = viewEl ? viewEl.id : null;
     }
     if (recordId && viewId) {
-      saveDirectEditValue(viewId, recordId, fieldKey, newValue,
-        function () {
-          showInputSuccess(input);
-        },
-        function (msg) { showInputError(input, msg, previousValue); }
-      );
+      // Pre-save hook — feature modules (e.g. survey-bid-validate) can
+      // register a function on SCW.deviceWorksheet.preSaveHook to
+      // gate or augment a save. Hook signature:
+      //   preSaveHook({ viewId, recordId, fieldKey, newValue,
+      //                 previousValue, input }) → Promise<{
+      //                   proceed: bool,    // false → revert
+      //                   extraData?: {}    // merged into PUT body
+      //                 }>
+      var doSave = function (extraData) {
+        saveDirectEditValue(viewId, recordId, fieldKey, newValue,
+          function () { showInputSuccess(input); },
+          function (msg) { showInputError(input, msg, previousValue); },
+          extraData || null
+        );
+      };
+      var hook = (window.SCW && SCW.deviceWorksheet && SCW.deviceWorksheet.preSaveHook);
+      if (typeof hook === 'function') {
+        var hookCtx = {
+          viewId: viewId, recordId: recordId, fieldKey: fieldKey,
+          newValue: newValue, previousValue: previousValue, input: input
+        };
+        Promise.resolve()
+          .then(function () { return hook(hookCtx); })
+          .then(function (decision) {
+            if (decision && decision.proceed === false) {
+              showInputError(input, 'Save canceled', previousValue);
+              return;
+            }
+            doSave(decision && decision.extraData);
+          })
+          .catch(function (err) {
+            console.warn('[scw-ws-direct] preSaveHook threw', err);
+            doSave();
+          });
+      } else {
+        doSave();
+      }
     }
   }
 
