@@ -346,11 +346,15 @@
   // working on the clones.
   function toggleRowExpand(tr) {
     var sowItemId = tr.getAttribute('data-sow-item-id');
-    if (!sowItemId) return;
+    var bidOnly   = !sowItemId && tr.classList.contains('scw-bid-review__row--bid-only');
+    // Key the expand-row off whichever id is available — sowItemId for
+    // regular rows, the bid record id for bid-only rows.
+    var expandKey = sowItemId || (bidOnly ? tr.getAttribute('data-row-id') : null);
+    if (!expandKey) return;
 
     var expandTr = tr.nextElementSibling;
     var alreadyHasExpand = expandTr && expandTr.classList.contains('scw-bid-review__expand-row')
-      && expandTr.getAttribute('data-expand-for') === sowItemId;
+      && expandTr.getAttribute('data-expand-for') === expandKey;
 
     if (alreadyHasExpand && expandTr.classList.contains('scw-bid-review__expand-row--open')) {
       // Commit any in-flight inline edit before collapsing — clicking
@@ -363,22 +367,24 @@
       // wiped on the next silent refresh, and reopening shows
       // "Loading editor…" forever (view_3921 never re-renders to
       // recreate the wsTr because direct-edit PUTs bypass it).
-      var wsTr = expandTr.querySelector('tr.scw-ws-row[id="' + sowItemId + '"]');
-      if (wsTr) {
-        var sowView = document.getElementById(CFG.sowItemsViewKey);
-        var sowTbody = sowView ? sowView.querySelector('table.kn-table-table tbody') : null;
-        if (sowTbody) sowTbody.appendChild(wsTr);
+      if (sowItemId) {
+        var wsTr = expandTr.querySelector('tr.scw-ws-row[id="' + sowItemId + '"]');
+        if (wsTr) {
+          var sowView = document.getElementById(CFG.sowItemsViewKey);
+          var sowTbody = sowView ? sowView.querySelector('table.kn-table-table tbody') : null;
+          if (sowTbody) sowTbody.appendChild(wsTr);
+        }
       }
       expandTr.classList.remove('scw-bid-review__expand-row--open');
       tr.setAttribute('aria-expanded', 'false');
-      delete _expandedSowItems[sowItemId];
+      delete _expandedSowItems[expandKey];
       return;
     }
 
     if (!alreadyHasExpand) {
       expandTr = document.createElement('tr');
       expandTr.className = 'scw-bid-review__expand-row';
-      expandTr.setAttribute('data-expand-for', sowItemId);
+      expandTr.setAttribute('data-expand-for', expandKey);
       var td = document.createElement('td');
       td.className = 'scw-bid-review__expand-cell';
       td.setAttribute('colspan', String(tr.children.length));
@@ -388,7 +394,7 @@
 
     expandTr.classList.add('scw-bid-review__expand-row--open');
     tr.setAttribute('aria-expanded', 'true');
-    _expandedSowItems[sowItemId] = true;
+    _expandedSowItems[expandKey] = true;
     buildExpandPanel(tr, expandTr.firstElementChild, sowItemId);
 
     // If the row has photos, mount the side-by-side viewer too so the
@@ -402,8 +408,11 @@
       // cell-build time. Falls back to data-row-id for any synthetic
       // rows that happen to share the same id space (no-bid /
       // surveyed-no-bid rows where row.id === row.sowItem).
-      var rowId = tr.getAttribute('data-sow-item-id') || tr.getAttribute('data-row-id');
-      var urls = rowId ? ns.scrapeRowPhotoUrls(rowId) : null;
+      var sowId = tr.getAttribute('data-sow-item-id');
+      var bidId = tr.getAttribute('data-row-id');
+      var urls = (sowId || bidId)
+        ? ns.scrapeRowPhotoUrls(sowId || null, bidId || null)
+        : null;
       if (urls && urls.length) openWithPhoto(tr, urls, 0);
     }
   }
@@ -440,20 +449,29 @@
     panel.appendChild(layout);
     hostTd.appendChild(panel);
 
-    injectWorksheetCard(sowItemId, wsCol);
+    if (sowItemId) {
+      injectWorksheetCard(sowItemId, wsCol);
 
-    // The worksheet card carries Knack's native row delete link, but
-    // scene_1155 has no delete route wired for view_3921 — so clicking it
-    // just routed the user to the home page and deleted nothing. Replace
-    // it with a real, API-backed delete of the SOW line item record.
-    rewirePanelDeleteLink(wsCol, rowTr, sowItemId);
+      // The worksheet card carries Knack's native row delete link, but
+      // scene_1155 has no delete route wired for view_3921 — so clicking it
+      // just routed the user to the home page and deleted nothing. Replace
+      // it with a real, API-backed delete of the SOW line item record.
+      rewirePanelDeleteLink(wsCol, rowTr, sowItemId);
 
-    // Force the worksheet detail panel open so users see the full editor,
-    // not just the summary header.
-    var toggleZone = wsCol.querySelector('.scw-ws-toggle-zone');
-    var detail = wsCol.querySelector('.scw-ws-detail');
-    if (toggleZone && detail && !detail.classList.contains('scw-ws-open')) {
-      toggleZone.click();
+      // Force the worksheet detail panel open so users see the full editor,
+      // not just the summary header.
+      var toggleZone = wsCol.querySelector('.scw-ws-toggle-zone');
+      var detail = wsCol.querySelector('.scw-ws-detail');
+      if (toggleZone && detail && !detail.classList.contains('scw-ws-open')) {
+        toggleZone.click();
+      }
+    } else {
+      // Bid-only row — no SOW line item exists yet. Show a placeholder so
+      // the layout still reads as three columns (photo | sow | bid).
+      var ph = document.createElement('div');
+      ph.className = 'scw-bid-review__expand-empty-sow';
+      ph.textContent = 'No SOW line item — this bid record is not connected to a SOW item yet.';
+      wsCol.appendChild(ph);
     }
   }
 

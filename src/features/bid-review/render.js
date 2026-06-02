@@ -1287,6 +1287,13 @@
     if (row.noBid) rowClass += ' scw-bid-review__row--no-bid';
     if (row.surveyNoBid) rowClass += ' scw-bid-review__row--survey-no-bid';
     if (row.sowItem) rowClass += ' scw-bid-review__row--expandable';
+    // Bid-only rows (no SOW item) still get expand-on-click so the user
+    // can see the photo viewer and bid details in a panel. The expand
+    // panel skips the wsTr injection — there's no SOW worksheet card to
+    // show. Detected later via missing data-sow-item-id.
+    else if (!row.noBid && !row.surveyNoBid) {
+      rowClass += ' scw-bid-review__row--expandable scw-bid-review__row--bid-only';
+    }
     var tr = el('tr', rowClass);
     tr.setAttribute('data-row-id', row.id);
     if (row.sowItem) {

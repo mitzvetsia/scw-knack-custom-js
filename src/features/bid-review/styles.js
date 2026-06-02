@@ -1475,6 +1475,12 @@
       '.scw-bid-review__expand-loading {',
       '  padding: 16px; color: #64748b; font-size: 13px; text-align: center;',
       '}',
+      '.scw-bid-review__expand-empty-sow {',
+      '  padding: 24px 16px; color: #64748b; font-size: 13px;',
+      '  text-align: center; font-style: italic;',
+      '  border: 1px dashed #cbd5e1; border-radius: 6px;',
+      '  background: #f8fafc; margin: 8px;',
+      '}',
 
       /* ── Three-column expand panel ────────────────────────────
          When the user opens a row, the original <tr> is hidden (rule
