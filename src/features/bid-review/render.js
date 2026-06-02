@@ -1141,32 +1141,55 @@
 
   function scrapeRowPhotoUrls(rowId) {
     if (!rowId) return null;
-    // Photos live inside the wsTr (.scw-ws-row) that device-worksheet
-    // builds. Each photo is a .scw-inline-photo-card injected by
-    // inline-photo-row.js. The original Knack <tr> in view_3921 has
-    // its field cells moved into the wsTr, so scraping td.field_771
-    // out of the source row returns empty.
-    //
-    // Look up the wsTr globally — it may live in view_3921's tbody
-    // (unexpanded rows) or inside our expand panel (when the row is
-    // open and the card was moved over).
+    // Primary path — photos live inside the wsTr (.scw-ws-row) that
+    // device-worksheet builds from view_3921 (SOW item) rows. Each
+    // photo is a .scw-inline-photo-card injected by inline-photo-row.js.
+    // The wsTr may be in view_3921's tbody or moved into our expand
+    // panel when the row is open.
     var wsTr = document.querySelector('tr.scw-ws-row[id="' + rowId + '"]');
-    if (!wsTr) return _photoCache[rowId] || null;
-
-    var cards = wsTr.querySelectorAll(
-      '.scw-inline-photo-card[data-photo-has-image="true"]'
-    );
     var urls = [];
-    for (var i = 0; i < cards.length; i++) {
-      var img = cards[i].querySelector('img');
-      if (!img) continue;
-      var url = img.getAttribute('src') || img.getAttribute('data-kn-img-gallery') || '';
-      if (url) urls.push(url);
+    if (wsTr) {
+      var cards = wsTr.querySelectorAll(
+        '.scw-inline-photo-card[data-photo-has-image="true"]'
+      );
+      for (var i = 0; i < cards.length; i++) {
+        var img = cards[i].querySelector('img');
+        if (!img) continue;
+        var url = img.getAttribute('src') || img.getAttribute('data-kn-img-gallery') || '';
+        if (url) urls.push(url);
+      }
+    }
+
+    // Fallback — bid records that have no matching SOW item (the
+    // "+ Add to SOW" rows) have no wsTr because view_3921 never
+    // produced one. The bid grid (view_3680) now carries its own
+    // photo column (field_771 mirroring the SOW-side field), so we
+    // can scrape directly from view_3680's native <tr> for this
+    // record. Same DOM pattern inline-photo-row.js uses:
+    //   td.field_771 > span[id][data-kn="connection-value"] > img
+    if (!urls.length) {
+      var bidTr = document.querySelector('#view_3680 tr[id="' + rowId + '"]');
+      if (bidTr) {
+        var imgCells = bidTr.querySelectorAll('td.field_771');
+        for (var ic = 0; ic < imgCells.length; ic++) {
+          var spans = imgCells[ic].querySelectorAll(
+            'span[id][data-kn="connection-value"]'
+          );
+          for (var s = 0; s < spans.length; s++) {
+            var im = spans[s].querySelector('img[data-kn-img-gallery]')
+                  || spans[s].querySelector('img');
+            if (!im) continue;
+            var u = im.getAttribute('data-kn-img-gallery') ||
+                    im.getAttribute('src') || '';
+            if (u) urls.push(u);
+          }
+        }
+      }
     }
 
     // Only overwrite the cache when we got a non-empty read OR we
-    // have no cached value yet — covers the moment when wsTr exists
-    // but photo cards haven't been injected yet.
+    // have no cached value yet — covers the moment when wsTr / bidTr
+    // exists but photo records haven't been hydrated yet.
     if (urls.length || !_photoCache[rowId]) {
       _photoCache[rowId] = urls;
     }
