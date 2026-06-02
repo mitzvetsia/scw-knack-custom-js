@@ -1791,6 +1791,13 @@
     '.scw-ws-v2-photos-shown .scw-ws-v2-card .scw-ws-v2-photos {',
     '  display: block !important;',
     '}',
+    /* Photos-shown is a "give me an overview" mode — cards with zero
+       photos shouldn\'t add visual noise just to show a +Add button. The
+       expanded-card path still reveals the strip (rule above), so the
+       user can attach the first photo from inside the card. */
+    '.scw-ws-v2-photos-shown .scw-ws-v2-card:not(.scw-ws-v2-card--open) .scw-ws-v2-photos--add-only {',
+    '  display: none !important;',
+    '}',
 
     /* ── COLLAPSIBLE SUMMARY PANEL (grand + per-L1 share styles) ──
        Collapsed by default; click the head to toggle. In Summary

@@ -177,7 +177,8 @@
     if (!photos.length && !addHref) return null;
 
     var strip = document.createElement('div');
-    strip.className = 'scw-ws-v2-photos';
+    strip.className = 'scw-ws-v2-photos' +
+      (photos.length ? '' : ' scw-ws-v2-photos--add-only');
     strip.setAttribute('data-scw-ws-v2-photos', rec.id);
 
     // SVG picture icon — used in the add button and (eventually) anywhere
