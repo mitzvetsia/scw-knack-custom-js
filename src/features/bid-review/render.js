@@ -1352,13 +1352,27 @@
       // Show bid-status badge in the package cell when there's no bid data
       if (!row.cellsByPackage[pid]) {
         var isMissingBid = false;
-        if (row.surveyNoBid) {
+        if (row.surveyNoBid || row.noBid) {
+          // Mirror the SOW-side --off-sow blue-dashed cut-out: the bid
+          // is "detached" from this row. Inside the cut-out: the badge
+          // at top and (when present) the survey note from the SOW
+          // item, so reviewers can see the survey context they need to
+          // decide whether to request the bid be added.
           dataTd.textContent = '';
-          dataTd.appendChild(el('span', 'scw-bid-review__survey-no-bid-badge', 'NOT ON BID'));
-          isMissingBid = true;
-        } else if (row.noBid) {
-          dataTd.textContent = '';
-          dataTd.appendChild(el('span', 'scw-bid-review__no-bid-badge', 'NOT SURVEYED'));
+          dataTd.classList.add('scw-bid-review__cell--no-bid-cutout');
+          var cutoutWrap = el('div', 'scw-bid-review__no-bid-cutout');
+          var badgeText = row.surveyNoBid ? 'NOT ON BID' : 'NOT SURVEYED';
+          var badgeCls  = row.surveyNoBid
+            ? 'scw-bid-review__survey-no-bid-badge'
+            : 'scw-bid-review__no-bid-badge';
+          cutoutWrap.appendChild(el('span', badgeCls, badgeText));
+          if (row.surveyNotes) {
+            var notesEl = el('div', 'scw-bid-review__cell-notes');
+            notesEl.appendChild(el('span', 'scw-bid-review__field-label', 'Survey Note: '));
+            notesEl.appendChild(document.createTextNode(row.surveyNotes));
+            cutoutWrap.appendChild(notesEl);
+          }
+          dataTd.appendChild(cutoutWrap);
           isMissingBid = true;
         }
         // Surface "+ Add to bid" inside the data cell when the

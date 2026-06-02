@@ -165,6 +165,7 @@
       exterior:        'field_1984',   // BOOL_exterior (SOW side)
       dropLength:      'field_1965',   // drop length (SOW side)
       conduit:         'field_2035',   // conduit (SOW side)
+      notes:           'field_2412',   // survey notes (same field key as bid side)
     },
 
     // ── Timing ────────────────────────────────────────────────

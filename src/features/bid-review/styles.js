@@ -1905,6 +1905,23 @@
       '  box-shadow: inset 0 0 0 9999px rgba(37,99,235,0.03);',
       '}',
 
+      /* ── NOT ON BID / NOT SURVEYED bid cell: same blue dashed cut-out  */
+      /*    as --off-sow, applied to the bid-package cell instead of the */
+      /*    SOW detail cell. Carries the badge AND any survey notes so   */
+      /*    reviewers can see the survey context for the missing bid.    */
+      '.scw-bid-review__cell--no-bid-cutout { padding: 4px !important; }',
+      '.scw-bid-review__no-bid-cutout {',
+      '  border: 2px dashed #2563eb !important;',
+      '  border-radius: 6px;',
+      '  background: #eff6ff !important;',
+      '  box-shadow: inset 0 0 0 9999px rgba(37,99,235,0.03);',
+      '  padding: 6px 8px;',
+      '  display: flex; flex-direction: column; gap: 6px;',
+      '}',
+      '.scw-bid-review__no-bid-cutout .scw-bid-review__cell-notes {',
+      '  font-size: 11px; color: #334155; line-height: 1.35;',
+      '}',
+
       '.scw-bid-review__off-sow-tag {',
       '  display: inline-block;',
       '  padding: 2px 7px;',

@@ -355,6 +355,11 @@
       bidMapConn:      raw(meta, FK.bidMapConn),
       cellsByPackage:  cellsByPackage,
       surveyNoBid:     surveyNoBid,
+      // Survey notes (field_2412) — pulled from the bid-side record so
+      // we can surface them in the bid cell when surveyNoBid is true.
+      // Normally these are rendered per-bid-cell from cell.notes; this
+      // row-level copy gives the "not on bid" path something to show.
+      surveyNotes:     raw(meta, FK.notes) || '',
       // Full raw view_3680 record (meta) for downstream payloads
       _rawRecord:      meta,
     };
@@ -586,6 +591,9 @@
           sowConnDeviceIds: connectionIdsAll(rec, SFK.connDevice),
           sowMapConn:      raw(rec, SFK.mapConn),
           sowMdfIdf:       connectionLabel(rec, SFK.mdfIdf),
+          // Survey notes (same field key as bid-side). Lets the "not
+          // on bid" cell render the notes the user needs to see.
+          surveyNotes:     raw(rec, SFK.notes) || '',
           // No bid data at all
           cellsByPackage:  {},
           noBid:           true,
