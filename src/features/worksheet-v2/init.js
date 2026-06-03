@@ -243,41 +243,36 @@
   // navigation, preserving SPA / parent-id wiring). If nothing
   // matches we surface an alert instead of going home.
   // Resolve the "#{base}/add-accessory-line-item/{parentId}" base path.
-  // The strict per-slug patterns cover the canonical routes (build-sow,
-  // review-bids, deploy, sales scope-of-work). They all require a
-  // trailing SOW id in the hash — which is present when you open a SOW
-  // directly, but NOT always when a user reaches the bid comparison
-  // grid via a different route or role-specific page slug. In that case
-  // we fall back to (a) a generic project-dashboard slug + trailing id,
-  // then (b) recovering the SOW id from the comparison grid section the
-  // clicked link lives in (bid-review-v2 stamps data-sow-id on it) and
-  // appending it to whatever project/slug base the hash does contain.
+  //
+  // The base is the FULL route prefix up to and including the SOW id —
+  // and it must preserve every breadcrumb scene in the current hash,
+  // because Knack hash routing needs the whole ancestor chain to resolve
+  // the child scene. The earlier per-slug patterns hard-required
+  // `team-calendar/project-dashboard` to be adjacent, which broke for any
+  // user who drilled in through an intermediate scene (e.g.
+  //   team-calendar/edit-client/{clientId}/project-dashboard/{pid}/build-sow/{sid}
+  // ) — that `edit-client/{id}/` crumb is exactly what produced the
+  // "Could not detect SOW context" alert for some users but not others.
+  //
+  // So: greedily capture from the start of the hash through the terminal
+  // SOW scene slug + 24-hex id, whatever crumbs sit in between. If the
+  // hash has no trailing SOW id (e.g. some comparison-grid routes), fall
+  // back to recovering it from the grid section the link lives in
+  // (bid-review-v2 stamps data-sow-id) and appending it to the slug base.
+  var SOW_SLUG = '(?:build-(?:sow|quote)|review-bids|deploy|scope-of-work-details|scope-of-work)';
   function resolveAddAccessoryBase(link) {
-    var hash = window.location.hash || '';
-    var patterns = [
-      /(team-calendar\/project-dashboard\/[a-f0-9]{24}\/build-(?:sow|quote)\/[a-f0-9]{24})/,
-      /(team-calendar\/project-dashboard\/[a-f0-9]{24}\/review-bids\/[a-f0-9]{24})/,
-      /(team-calendar\/project-dashboard\/[a-f0-9]{24}\/deploy\/[a-f0-9]{24})/,
-      /(sales-portal\/company-details\/[a-f0-9]{24}\/scope-of-work-details\/[a-f0-9]{24})/,
-      /(proposals\/scope-of-work\/[a-f0-9]{24})/
-    ];
-    for (var p = 0; p < patterns.length; p++) {
-      var m = hash.match(patterns[p]);
-      if (m) return m[1];
-    }
-    // Generic: any project-dashboard scene slug followed by a SOW id.
-    var gen = hash.match(
-      /(team-calendar\/project-dashboard\/[a-f0-9]{24}\/[a-z0-9-]+\/[a-f0-9]{24})/);
-    if (gen) return gen[1];
-    // Last resort: hash has the project + scene slug but no trailing SOW
-    // id. Recover the SOW id from the comparison grid section (or any
-    // ancestor carrying data-sow-id) and append it to the slug base.
+    // Drop the leading '#' and any trailing ?query (Knack appends
+    // per-page params after the route).
+    var hash = (window.location.hash || '').replace(/^#/, '').replace(/\/?\?.*$/, '');
+
+    var anchored = hash.match(new RegExp('^(.*\\/' + SOW_SLUG + '\\/[a-f0-9]{24})'));
+    if (anchored) return anchored[1];
+
     var sowId = '';
     var sec = link && link.closest && link.closest('[data-sow-id]');
     if (sec) sowId = sec.getAttribute('data-sow-id') || '';
     if (sowId) {
-      var slugBase = hash.match(
-        /(team-calendar\/project-dashboard\/[a-f0-9]{24}\/[a-z0-9-]+)/);
+      var slugBase = hash.match(new RegExp('^(.*\\/' + SOW_SLUG + ')(?:\\/|$)'));
       if (slugBase) return slugBase[1] + '/' + sowId;
     }
     return '';
