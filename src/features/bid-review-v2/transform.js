@@ -282,9 +282,53 @@
     return groups;
   }
 
-  function buildState(records, sowItems) {
+  // Index bid-package records (view_3573) by id → { bidStatus, bidName,
+  // pdfUrl, pdfFilename }. Ported from v1's buildPkgInfoMap.
+  function buildPkgInfoMap(bidPackages) {
+    var map = Object.create(null);
+    if (!bidPackages || !bidPackages.length) return map;
+    for (var i = 0; i < bidPackages.length; i++) {
+      var rec = bidPackages[i];
+      if (!rec || !rec.id) continue;
+      var info = {};
+
+      var bidStatus = '';
+      var bsRaw = rec[FK.bidStatus + '_raw'];
+      if (Array.isArray(bsRaw) && bsRaw.length && bsRaw[0].identifier) {
+        bidStatus = stripHtml(bsRaw[0].identifier);
+      } else if (bsRaw && typeof bsRaw === 'object' && bsRaw.identifier) {
+        bidStatus = stripHtml(bsRaw.identifier);
+      } else if (typeof bsRaw === 'string') {
+        bidStatus = stripHtml(bsRaw);
+      }
+      if (!bidStatus) bidStatus = stripHtml(rec[FK.bidStatus] || '');
+      if (bidStatus) info.bidStatus = bidStatus;
+
+      if (FK.bidName) {
+        var bidName = raw(rec, FK.bidName);
+        if (bidName) info.bidName = bidName;
+      }
+
+      var rawPdf = rec[FK.bidPdf + '_raw'] || rec[FK.bidPdf];
+      if (rawPdf) {
+        if (typeof rawPdf === 'object' && rawPdf.url) {
+          info.pdfUrl = rawPdf.url; info.pdfFilename = rawPdf.filename || '';
+        } else if (typeof rawPdf === 'string') {
+          var m  = rawPdf.match(/href="([^"]+)"/);
+          var fn = rawPdf.match(/>([^<]+)<\/a>/);
+          if (m) { info.pdfUrl = m[1]; info.pdfFilename = fn ? fn[1] : ''; }
+        }
+      }
+
+      map[rec.id] = info;
+    }
+    return map;
+  }
+
+  function buildState(records, sowItems, bidPackages) {
     var sows = extractSows(records);
     var buckets = groupBySow(records);
+    var pkgInfo = buildPkgInfoMap(bidPackages);
 
     // Index SOW items by id for fast per-row lookup. The row carries a
     // `sowItem` id from the bid record's field_2404 (relatedSowItem);
@@ -366,6 +410,12 @@
         packages[pi].subBidTotal = pkgTotal;
         packages[pi].deltaVsSow  = pkgTotal - sowSub;
         packages[pi].matchesSow  = Math.abs(pkgTotal - sowSub) <= 0.01;
+        // Identity/status from the bid-package record (view_3573).
+        var info = pkgInfo[packages[pi].id] || {};
+        packages[pi].bidStatus   = info.bidStatus || '';
+        packages[pi].bidName     = info.bidName || '';
+        packages[pi].pdfUrl      = info.pdfUrl || '';
+        packages[pi].pdfFilename = info.pdfFilename || '';
       }
 
       sowGrids.push({

@@ -42,11 +42,13 @@
     // SOW items live on the second source view (view_3921). They feed
     // the SOW column on the left side of the comparison grid.
     var sowItems = (snapshot && sourceKeys[1] && snapshot[sourceKeys[1]]) || [];
+    // Bid package records (view_3573) carry status / friendly name / PDF.
+    var bidPackages = (snapshot && sourceKeys[2] && snapshot[sourceKeys[2]]) || [];
     if (!ns.transform || typeof ns.transform.buildState !== 'function') {
       body.innerHTML = '<div class="scw-bid-review-v2-empty">transform.js not loaded.</div>';
       return;
     }
-    var state = ns.transform.buildState(bidRecords, sowItems);
+    var state = ns.transform.buildState(bidRecords, sowItems, bidPackages);
 
     if (count) {
       count.textContent = state.sowGrids.length + ' SOW' +

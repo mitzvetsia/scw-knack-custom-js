@@ -45,6 +45,15 @@
            /(camera|reader)/.test(b);
   }
 
+  // PDF document icon — same shape v1's bid PDF link uses.
+  var PDF_SVG =
+    '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" ' +
+    'viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" ' +
+    'stroke-linecap="round" stroke-linejoin="round">' +
+    '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>' +
+    '<polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/>' +
+    '<line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg>';
+
   // Chevron SVG — same shape v1's group header uses.
   var GROUP_CHEVRON_SVG =
     '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" ' +
@@ -358,10 +367,32 @@
       delta = '<div class="scw-bid-review-v2__head-delta scw-bid-review-v2__head-delta--gap">' +
         sign + (fmtMoney(Math.abs(pkg.deltaVsSow)) || '$0.00') + ' vs SOW</div>';
     }
+    // Status badge (field_2550).
+    var statusBadge = pkg.bidStatus
+      ? '<span class="scw-bid-review-v2__status-badge" data-status="' +
+          escapeHtml(pkg.bidStatus.toLowerCase().replace(/\s+/g, '-')) + '">' +
+          escapeHtml(pkg.bidStatus) + '</span>'
+      : '';
+    // PDF link (field_2626) — icon beside the bid label.
+    var pdfLink = pkg.pdfUrl
+      ? '<a class="scw-bid-review-v2__pdf-link" href="' + escapeHtml(pkg.pdfUrl) + '" ' +
+          'target="_blank" rel="noopener" title="' +
+          escapeHtml(pkg.pdfFilename || 'View PDF') + '">' + PDF_SVG + '</a>'
+      : '';
+    // Friendly name (field_2636).
+    var friendly = pkg.bidName
+      ? '<div class="scw-bid-review-v2__head-friendly">' + escapeHtml(pkg.bidName) + '</div>'
+      : '';
+
     return '<th class="scw-bid-review-v2__th scw-bid-review-v2__head--pkg" ' +
         'data-pkg-id="' + escapeHtml(pkg.id) + '">' +
       '<div class="scw-bid-review-v2__head-title">Subcontractor Bid</div>' +
-      '<div class="scw-bid-review-v2__head-subtitle">' + escapeHtml(pkg.label) + '</div>' +
+      '<div class="scw-bid-review-v2__head-subtitle">' +
+        '<span class="scw-bid-review-v2__head-pkg-label">' + escapeHtml(pkg.label) + '</span>' +
+        pdfLink +
+      '</div>' +
+      (statusBadge ? '<div class="scw-bid-review-v2__head-statusline">' + statusBadge + '</div>' : '') +
+      friendly +
       '<div class="scw-bid-review-v2__head-totals">' +
         headTotal('Sub Bid', pkg.subBidTotal) +
       '</div>' +
