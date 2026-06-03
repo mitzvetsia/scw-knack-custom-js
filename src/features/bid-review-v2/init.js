@@ -451,6 +451,45 @@
     }
     relocateSowField(card);
     removeSurveyNotes(card);
+    lineBreakConnectedDevices(card);
+    makeScwNotesTextarea(card);
+  }
+
+  // Connected Devices (field_1957) is multi-value; show each on its own
+  // line instead of comma-joined.
+  function lineBreakConnectedDevices(card) {
+    var vals = card.querySelectorAll(
+      '[data-scw-ws-v2-conn="field_1957"] .scw-ws-v2-conn-btn-val');
+    for (var i = 0; i < vals.length; i++) {
+      var elv = vals[i];
+      var txt = (elv.textContent || '').trim();
+      if (!txt || txt === '(none)') continue;
+      var parts = txt.split(/\s*,\s*/);
+      if (parts.length < 2) continue;
+      elv.textContent = '';
+      for (var p = 0; p < parts.length; p++) {
+        if (p) elv.appendChild(document.createElement('br'));
+        elv.appendChild(document.createTextNode(parts[p]));
+      }
+    }
+  }
+
+  // SCW Notes (field_1953) should read like the labor description: a
+  // full-width, wrapping textarea rather than a single-line input. Swap
+  // the input for a textarea, carrying its value + data-* attrs so the
+  // edit/save path keeps working.
+  function makeScwNotesTextarea(card) {
+    var inp = card.querySelector('input[data-scw-ws-v2-field="field_1953"]');
+    if (!inp || inp.tagName === 'TEXTAREA') return;
+    var ta = document.createElement('textarea');
+    ta.className = 'scw-ws-v2-input scw-ws-v2-input--textarea';
+    ta.value = inp.value;
+    for (var i = 0; i < inp.attributes.length; i++) {
+      var a = inp.attributes[i];
+      if (a.name === 'type' || a.name === 'class' || a.name === 'value') continue;
+      ta.setAttribute(a.name, a.value);
+    }
+    inp.parentNode.replaceChild(ta, inp);
   }
 
   function findDetailFieldByLabel(card, labelText) {

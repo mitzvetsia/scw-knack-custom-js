@@ -277,6 +277,16 @@
     '.scw-bid-review-v2__panel-col--card .scw-br-v2-sow-field .scw-ws-v2-cell--sow {',
     '  max-width: none !important; width: 100% !important;',
     '}',
+    /* Stack the connection fields one per line so MDF/IDF sits directly
+       under the SOW picker instead of wrapping into a second column. */
+    '.scw-bid-review-v2__panel-col--card .scw-ws-v2-detail-zone--connections {',
+    '  grid-template-columns: 1fr !important;',
+    '}',
+    /* SCW Notes full-width (Survey Notes is removed, so notes is a single
+       field now) and the swapped-in textarea mirrors labor description. */
+    '.scw-bid-review-v2__panel-col--card .scw-ws-v2-detail-notes {',
+    '  grid-template-columns: 1fr !important;',
+    '}',
     '.scw-bid-review-v2__panel-col--card .scw-ws-v2-input--num { width: 72px !important; }',
     '.scw-bid-review-v2__panel-col--card .scw-ws-v2-cell--blank { display: none !important; }',
     '.scw-bid-review-v2__panel-col--card .scw-ws-v2-col-header { display: none !important; }',
