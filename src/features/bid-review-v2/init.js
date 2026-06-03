@@ -61,7 +61,23 @@
     }
 
     // Initial paint — v1 may have already loaded the records.
-    if (ns.data && ns.render) ns.render.renderSnapshot(ns.data.readAll());
+    if (ns.data && ns.render) {
+      ns.render.renderSnapshot(ns.data.readAll());
+      mountBulk();
+    }
+  }
+
+  // Wire the shared worksheet-v2 bulk module to the comparison grid. The
+  // grid rows carry data-scw-ws-v2-select checkboxes keyed on the SOW
+  // line-item id; bulk reads/writes those records via the SOW source
+  // view (view_3921). Idempotent — mount re-syncs checkbox state after
+  // each grid re-render.
+  function mountBulk() {
+    var bulk = window.SCW && SCW.worksheetV2 && SCW.worksheetV2.bulk;
+    var sowView = (ns.CONFIG.sourceViewKeys || [])[1];
+    if (bulk && typeof bulk.mount === 'function' && sowView) {
+      bulk.mount(sowView);
+    }
   }
 
   // Delegated click handler for L1 group header rows — toggles the
@@ -541,6 +557,7 @@
     if (ns.data && ns.render) {
       ns.data.subscribe(function (snapshot) {
         ns.render.renderSnapshot(snapshot);
+        mountBulk();
       });
     }
 

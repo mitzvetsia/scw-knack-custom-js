@@ -419,6 +419,14 @@
     '.scw-bid-review-v2__row-total--install .scw-bid-review-v2__row-total-value {',
     '  color: #295f91;',
     '}',
+    /* Bulk-select checkbox in the leftmost grid cell. */
+    '.scw-br-v2-rowselect {',
+    '  display: block; width: 16px; height: 16px; margin: 0 0 8px 0;',
+    '  cursor: pointer; accent-color: #295f91;',
+    '}',
+    /* The worksheet card carries its own bulk-select checkbox; hide it in
+       the editor panel since selection happens from the grid column. */
+    '.scw-bid-review-v2__panel-col--card .scw-ws-v2-select { display: none !important; }',
     /* ── SOW item cell — editable anchor column ────────────── */
     '.scw-bid-review-v2__sow-cell {',
     '  padding: 20px 22px !important;',

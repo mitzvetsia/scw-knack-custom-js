@@ -194,7 +194,11 @@
     for (var i = 0; i < boxes.length; i++) {
       var id = boxes[i].getAttribute('data-scw-ws-v2-select');
       boxes[i].checked = isSelected(id);
-      boxes[i].closest('.scw-ws-v2-card').classList.toggle('scw-ws-v2-card--selected', isSelected(id));
+      // Checkboxes live inside a card on the worksheet page, but in a
+      // plain grid cell on the bid-review comparison grid — guard the
+      // card lookup so the latter doesn't throw.
+      var selCard = boxes[i].closest('.scw-ws-v2-card');
+      if (selCard) selCard.classList.toggle('scw-ws-v2-card--selected', isSelected(id));
     }
     // L1 select-all reflects child state.
     var heads = document.querySelectorAll('[data-scw-ws-v2-l1-select]');
@@ -599,6 +603,16 @@
       }
       return list;
     }
+    // First view in the list that yields records — lets connection
+    // candidates source from the build-SOW-scene view OR its bid-review
+    // equivalent, whichever is on the page.
+    function fromFirstView(vks) {
+      for (var i = 0; i < vks.length; i++) {
+        var a = fromViewAttrs(vks[i]);
+        if (a && a.length) return a;
+      }
+      return [];
+    }
 
     if (field.candSource === 'mdf') {
       var cfgViews = (ns.CONFIG && ns.CONFIG.views) || [];
@@ -611,7 +625,7 @@
           break;
         }
       }
-      var mdfAttrs = fromViewAttrs(mdfViewKey);
+      var mdfAttrs = fromFirstView([mdfViewKey, 'view_3822']);
       var mdfCands = mdfAttrs.map(function (a) {
         return { id: a.id, identifier: stripHtml(a[labelField] || a.identifier) };
       }).filter(function (c) { return c.identifier; });
@@ -619,7 +633,7 @@
     }
 
     if (field.candSource === 'sows') {
-      var sowAttrs = fromViewAttrs('view_3325');
+      var sowAttrs = fromFirstView(['view_3325', 'view_3918']);
       var sowCands = [];
       for (var s = 0; s < sowAttrs.length; s++) {
         var a = sowAttrs[s];

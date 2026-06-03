@@ -218,6 +218,16 @@
     var labelTd = document.createElement('td');
     labelTd.className = 'scw-bid-review-v2__row-label-cell';
     var labelHtml = '';
+    // Bulk-select checkbox — keyed on the SOW line-item id so the shared
+    // worksheet-v2 bulk module (mounted on the SOW view) drives selection
+    // + the floating edit/delete toolbar. Only for rows backed by a SOW
+    // item (the editable record).
+    if (row.sowItem) {
+      labelHtml +=
+        '<input type="checkbox" class="scw-br-v2-rowselect" ' +
+        'data-scw-ws-v2-select="' + escapeHtml(row.sowItem) + '" ' +
+        'aria-label="Select line item">';
+    }
     if (isCamReader(row) && row.displayLabel) {
       labelHtml +=
         '<div class="scw-bid-review-v2__row-label">' +
