@@ -242,6 +242,47 @@
   // label; if one matches, we click() it (Knack handles the
   // navigation, preserving SPA / parent-id wiring). If nothing
   // matches we surface an alert instead of going home.
+  // Resolve the "#{base}/add-accessory-line-item/{parentId}" base path.
+  // The strict per-slug patterns cover the canonical routes (build-sow,
+  // review-bids, deploy, sales scope-of-work). They all require a
+  // trailing SOW id in the hash — which is present when you open a SOW
+  // directly, but NOT always when a user reaches the bid comparison
+  // grid via a different route or role-specific page slug. In that case
+  // we fall back to (a) a generic project-dashboard slug + trailing id,
+  // then (b) recovering the SOW id from the comparison grid section the
+  // clicked link lives in (bid-review-v2 stamps data-sow-id on it) and
+  // appending it to whatever project/slug base the hash does contain.
+  function resolveAddAccessoryBase(link) {
+    var hash = window.location.hash || '';
+    var patterns = [
+      /(team-calendar\/project-dashboard\/[a-f0-9]{24}\/build-(?:sow|quote)\/[a-f0-9]{24})/,
+      /(team-calendar\/project-dashboard\/[a-f0-9]{24}\/review-bids\/[a-f0-9]{24})/,
+      /(team-calendar\/project-dashboard\/[a-f0-9]{24}\/deploy\/[a-f0-9]{24})/,
+      /(sales-portal\/company-details\/[a-f0-9]{24}\/scope-of-work-details\/[a-f0-9]{24})/,
+      /(proposals\/scope-of-work\/[a-f0-9]{24})/
+    ];
+    for (var p = 0; p < patterns.length; p++) {
+      var m = hash.match(patterns[p]);
+      if (m) return m[1];
+    }
+    // Generic: any project-dashboard scene slug followed by a SOW id.
+    var gen = hash.match(
+      /(team-calendar\/project-dashboard\/[a-f0-9]{24}\/[a-z0-9-]+\/[a-f0-9]{24})/);
+    if (gen) return gen[1];
+    // Last resort: hash has the project + scene slug but no trailing SOW
+    // id. Recover the SOW id from the comparison grid section (or any
+    // ancestor carrying data-sow-id) and append it to the slug base.
+    var sowId = '';
+    var sec = link && link.closest && link.closest('[data-sow-id]');
+    if (sec) sowId = sec.getAttribute('data-sow-id') || '';
+    if (sowId) {
+      var slugBase = hash.match(
+        /(team-calendar\/project-dashboard\/[a-f0-9]{24}\/[a-z0-9-]+)/);
+      if (slugBase) return slugBase[1] + '/' + sowId;
+    }
+    return '';
+  }
+
   if (!document.documentElement.hasAttribute('data-scw-ws-v2-addacc-bound')) {
     document.documentElement.setAttribute('data-scw-ws-v2-addacc-bound', '1');
     document.addEventListener('click', function (e) {
@@ -253,23 +294,15 @@
       var parentId = link.getAttribute('data-scw-ws-v2-add-accessory') || '';
       if (!parentId) return;
       // Build the URL deterministically from the same base path the
-      // chip edit links use. buildSowBasePath() matches against the
-      // current hash; if it returns nothing we surface an alert
+      // chip edit links use. resolveAddAccessoryBase() matches against
+      // the current hash; if it returns nothing we surface an alert
       // rather than silently bouncing to home.
-      var hash = window.location.hash || '';
-      var patterns = [
-        /(team-calendar\/project-dashboard\/[a-f0-9]{24}\/build-(?:sow|quote)\/[a-f0-9]{24})/,
-        /(team-calendar\/project-dashboard\/[a-f0-9]{24}\/review-bids\/[a-f0-9]{24})/,
-        /(team-calendar\/project-dashboard\/[a-f0-9]{24}\/deploy\/[a-f0-9]{24})/,
-        /(sales-portal\/company-details\/[a-f0-9]{24}\/scope-of-work-details\/[a-f0-9]{24})/,
-        /(proposals\/scope-of-work\/[a-f0-9]{24})/
-      ];
-      var base = '';
-      for (var p = 0; p < patterns.length; p++) {
-        var m = hash.match(patterns[p]);
-        if (m) { base = m[1]; break; }
-      }
+      var base = resolveAddAccessoryBase(link);
       if (!base) {
+        if (window.console) {
+          console.warn('[scw-ws-v2] add-accessory: no SOW base from hash',
+            window.location.hash);
+        }
         alert('Could not detect SOW context from the URL.');
         return;
       }
