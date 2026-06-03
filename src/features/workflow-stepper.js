@@ -107,6 +107,7 @@
       menuView: 'view_3862',
       insertAfter: 'view_3853',
       activeIcon: 'eye',
+      newTab: true,
       // Locked only when the survey hasn't been requested AND the
       // workflow hasn't advanced via the change-request path (field_2728 > 0).
       disabled: {
@@ -143,6 +144,7 @@
       insertAfterStepId: 'request-alternative-proposal',
       hrefSelector: '#view_3814 tbody tr a.kn-link-page',
       activeIcon: 'eye',
+      newTab: true,
       disabled: { field: 'field_2725', notValue: 'Yes', message: 'Not yet released to Sales' }
     }
   ];
@@ -475,6 +477,10 @@
     } else {
       var href = resolveHref(step);
       if (href) el.href = href;
+      if (step.newTab) {
+        el.target = '_blank';
+        el.rel = 'noopener';
+      }
       // pollAfterClick steps: stamp a per-SOW flag the moment the
       // user clicks. The browser then navigates to the form view as
       // normal; when the user returns, applyActionState sees the
