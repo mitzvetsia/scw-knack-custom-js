@@ -221,6 +221,18 @@
     header.className = 'scw-bid-review-v2__panel-header';
     header.setAttribute('title', 'Click to close');
 
+    // Open caret — kept on the LEFT so it doesn't jump position vs. the
+    // closed grid-row caret. Points down (open); the whole header bar is
+    // the click target to close.
+    var caret = document.createElement('span');
+    caret.className = 'scw-bid-review-v2__panel-caret';
+    caret.setAttribute('aria-hidden', 'true');
+    caret.innerHTML =
+      '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" ' +
+      'stroke="currentColor" stroke-width="3" stroke-linecap="round" ' +
+      'stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>';
+    header.appendChild(caret);
+
     // Bulk-select checkbox — the grid-row checkbox is hidden while the row
     // is expanded, so surface one here keyed on the same SOW item id.
     var sowItemId = rowTr.getAttribute('data-sow-item-id');
@@ -250,18 +262,6 @@
     if (label)   title.appendChild(chip('label', label));
     if (product) title.appendChild(chip('product', product));
     header.appendChild(title);
-
-    // Open caret — the whole header bar is the click target to close, so
-    // the caret is just an affordance (no separate × button). Points down
-    // (open); rows in the grid show a right-pointing caret (closed).
-    var caret = document.createElement('span');
-    caret.className = 'scw-bid-review-v2__panel-caret';
-    caret.setAttribute('aria-hidden', 'true');
-    caret.innerHTML =
-      '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" ' +
-      'stroke="currentColor" stroke-width="2.5" stroke-linecap="round" ' +
-      'stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>';
-    header.appendChild(caret);
     return header;
   }
 
