@@ -110,6 +110,23 @@
     });
   }
 
+  // The data row is hidden while expanded, so collapse is driven from
+  // the panel header / × button instead of a click on the row.
+  function wirePanelClose() {
+    if (document.documentElement.hasAttribute('data-scw-br-v2-panelclose-bound')) return;
+    document.documentElement.setAttribute('data-scw-br-v2-panelclose-bound', '1');
+    document.addEventListener('click', function (e) {
+      var hdr = e.target.closest && e.target.closest('.scw-bid-review-v2__panel-header');
+      if (!hdr) return;
+      var expandRow = hdr.closest('.scw-bid-review-v2__expand-row');
+      if (!expandRow) return;
+      var dataRow = expandRow.previousElementSibling;
+      if (dataRow && dataRow.classList.contains('scw-bid-review-v2__row')) {
+        toggleRowExpand(dataRow);
+      }
+    });
+  }
+
   function toggleRowExpand(row) {
     var next = row.nextElementSibling;
     var isOpen = next && next.classList &&
@@ -135,22 +152,30 @@
     td.colSpan = row.children.length;
     td.className = 'scw-bid-review-v2__expand-cell';
 
-    // Three-part layout (v1 parity): photo viewer (left, collapsed
-    // until photos load) | worksheet-v2 SOW editor (middle) | bid
-    // details (right). The bid details rebuild the row's bid cells as
-    // compact cards so the SOW editor and the bids stay side-by-side
-    // and scannable while the row is open.
+    // Panel layout. The data row is hidden while open (CSS keyed on
+    // aria-expanded) so the SOW/bid data isn't shown twice — a compact
+    // header built from the leftmost column stands in for it (v1 parity).
+    //   header
+    //   [photo viewer | worksheet-v2 SOW editor]   ← top flex
+    //   bid details strip                          ← full-width, below
+    // Bids live on their own full-width row so they never compete with
+    // the (wide) worksheet editor for horizontal space.
+    var panel = document.createElement('div');
+    panel.className = 'scw-bid-review-v2__panel';
+    panel.appendChild(buildExpandHeader(row));
+
     var flex = document.createElement('div');
     flex.className = 'scw-bid-review-v2__expand-flex';
     var photoCol = document.createElement('div');
     photoCol.className = 'scw-bid-review-v2__panel-col--photo';
     var cardCol = document.createElement('div');
     cardCol.className = 'scw-bid-review-v2__panel-col--card';
-    var bidCol = buildBidDetailsColumn(row);
     flex.appendChild(photoCol);
     flex.appendChild(cardCol);
-    flex.appendChild(bidCol);
-    td.appendChild(flex);
+    panel.appendChild(flex);
+
+    panel.appendChild(buildBidDetailsColumn(row));
+    td.appendChild(panel);
 
     expand.appendChild(td);
     row.parentNode.insertBefore(expand, row.nextSibling);
@@ -169,6 +194,41 @@
       var urls = scrape(sowItemId || null, rowId || null);
       if (urls && urls.length) openWithPhoto(row, urls, 0);
     }
+  }
+
+  // Compact header for the expand panel, built from the (now-hidden)
+  // data row's leftmost columns — the line label + SOW product name —
+  // plus a close affordance. Replaces re-showing the full SOW/bid data.
+  function buildExpandHeader(rowTr) {
+    var header = document.createElement('div');
+    header.className = 'scw-bid-review-v2__panel-header';
+    header.setAttribute('title', 'Click to close');
+
+    var title = document.createElement('div');
+    title.className = 'scw-bid-review-v2__panel-title';
+    function readText(sel) {
+      var el = rowTr.querySelector(sel);
+      return el ? (el.textContent || '').trim() : '';
+    }
+    function chip(cls, text) {
+      var s = document.createElement('span');
+      s.className = 'scw-bid-review-v2__panel-title-' + cls;
+      s.textContent = text;
+      return s;
+    }
+    var label   = readText('.scw-bid-review-v2__row-label');
+    var product = readText('.scw-bid-review-v2__sow-product');
+    if (label)   title.appendChild(chip('label', label));
+    if (product) title.appendChild(chip('product', product));
+    header.appendChild(title);
+
+    var close = document.createElement('button');
+    close.type = 'button';
+    close.className = 'scw-bid-review-v2__panel-close';
+    close.setAttribute('title', 'Close');
+    close.textContent = '×';
+    header.appendChild(close);
+    return header;
   }
 
   // Right-side column of the expand panel. Rebuilds each bid-package
@@ -366,6 +426,7 @@
     if (ns.edit && typeof ns.edit.wire === 'function') ns.edit.wire();
     wireGroupCollapse();
     wireRowExpand();
+    wirePanelClose();
     if (ns.data && ns.render) {
       ns.data.subscribe(function (snapshot) {
         ns.render.renderSnapshot(snapshot);

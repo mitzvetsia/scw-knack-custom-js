@@ -187,20 +187,52 @@
     '}',
     /* Side-by-side layout: photo viewer (left) + worksheet card (right).
        The photo column is collapsed until openWithPhoto() activates it. */
-    '.scw-bid-review-v2__expand-flex {',
-    '  display: flex; align-items: stretch; gap: 12px; width: 100%;',
+    /* Hide the data row while it's expanded — the panel header stands in
+       for it, so SOW/bid data isn't shown twice. */
+    '.scw-bid-review-v2__row[aria-expanded="true"] { display: none !important; }',
+    /* ── Expand panel ──────────────────────────────────────── */
+    '.scw-bid-review-v2__panel { width: 100%; }',
+    '.scw-bid-review-v2__panel-header {',
+    '  display: flex; align-items: center; gap: 10px;',
+    '  padding: 4px 4px 12px; cursor: pointer;',
+    '  border-bottom: 1px solid #e2e8f0; margin-bottom: 12px;',
     '}',
-    '.scw-bid-review-v2__panel-col--card { flex: 1 1 360px; min-width: 0; }',
+    '.scw-bid-review-v2__panel-title {',
+    '  display: flex; align-items: baseline; gap: 10px;',
+    '  flex: 1 1 auto; min-width: 0; flex-wrap: wrap;',
+    '}',
+    '.scw-bid-review-v2__panel-title-label {',
+    '  font-weight: 700; font-size: 13px; color: #0f172a;',
+    '  font-variant-numeric: tabular-nums;',
+    '}',
+    '.scw-bid-review-v2__panel-title-product {',
+    '  font-weight: 600; font-size: 13px; color: #295f91;',
+    '}',
+    '.scw-bid-review-v2__panel-close {',
+    '  flex: 0 0 auto; width: 26px; height: 26px; border-radius: 50%;',
+    '  border: 1px solid #cbd5e1; background: #fff; color: #475569;',
+    '  font-size: 17px; line-height: 1; cursor: pointer;',
+    '  display: inline-flex; align-items: center; justify-content: center;',
+    '}',
+    '.scw-bid-review-v2__panel-close:hover { background: #f1f5f9; color: #0f172a; }',
+    /* Top flex: photo viewer (left, collapsed until photos load) + the
+       worksheet-v2 SOW editor. The editor row is a wide fixed grid, so
+       its column scrolls horizontally rather than overflowing onto the
+       neighbour when space is tight (e.g. photo viewer open). */
+    '.scw-bid-review-v2__expand-flex {',
+    '  display: flex; align-items: flex-start; gap: 12px; width: 100%;',
+    '}',
+    '.scw-bid-review-v2__panel-col--card {',
+    '  flex: 1 1 100%; min-width: 0; overflow-x: auto;',
+    '}',
     '.scw-bid-review-v2__panel-col--photo { display: none; }',
     '.scw-bid-review-v2__panel-col--photo-active {',
-    '  display: flex; flex: 0 0 42%; max-width: 560px; min-width: 0;',
+    '  display: flex; flex: 0 0 38%; max-width: 480px; min-width: 0;',
     '}',
-    /* Bid details column — compact cards rebuilt from the row's bid
-       cells, so the SOW editor (middle) and the bids stay side-by-side
-       and scannable while the row is open. Cards wrap so multiple bids
-       read in a row. */
+    /* Bid details — full-width scannable strip below the editor. Compact
+       cards (one per bid package) wrap so several bids read across. */
     '.scw-bid-review-v2__panel-col--bid {',
-    '  flex: 1 1 320px; min-width: 0;',
+    '  width: 100%; margin-top: 14px;',
     '  display: flex; flex-wrap: wrap; gap: 10px; align-content: flex-start;',
     '}',
     '.scw-bid-review-v2__bid-card {',
