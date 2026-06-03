@@ -418,29 +418,35 @@
   }
 
   function pkgDetailsCell(pkg) {
+    // Bid Name (field_2636) FIRST, with a label above it — mirrors the
+    // "SOW Name" label/value at the top of the SOW details band so the two
+    // columns' details line up vertically. Always rendered (placeholder
+    // when empty) to keep the band height consistent across columns.
+    var nameBlock =
+      '<div class="scw-bid-review-v2__head-name">' +
+        '<span class="scw-bid-review-v2__head-name-label">Bid Name</span>' +
+        '<span class="scw-bid-review-v2__head-name-value">' +
+          escapeHtml(pkg.bidName || '—') + '</span>' +
+      '</div>';
+    // PDF link (field_2626) — icon beside the bid label (BD-#).
+    var pdfLink = pkg.pdfUrl
+      ? '<a class="scw-bid-review-v2__pdf-link" href="' + escapeHtml(pkg.pdfUrl) + '" ' +
+          'target="_blank" rel="noopener" title="' +
+          escapeHtml(pkg.pdfFilename || 'View PDF') + '">' + PDF_SVG + '</a>'
+      : '';
     // Status badge (field_2550).
     var statusBadge = pkg.bidStatus
       ? '<span class="scw-bid-review-v2__status-badge" data-status="' +
           escapeHtml(pkg.bidStatus.toLowerCase().replace(/\s+/g, '-')) + '">' +
           escapeHtml(pkg.bidStatus) + '</span>'
       : '';
-    // PDF link (field_2626) — icon beside the bid label.
-    var pdfLink = pkg.pdfUrl
-      ? '<a class="scw-bid-review-v2__pdf-link" href="' + escapeHtml(pkg.pdfUrl) + '" ' +
-          'target="_blank" rel="noopener" title="' +
-          escapeHtml(pkg.pdfFilename || 'View PDF') + '">' + PDF_SVG + '</a>'
-      : '';
-    // Friendly name (field_2636).
-    var friendly = pkg.bidName
-      ? '<div class="scw-bid-review-v2__head-friendly">' + escapeHtml(pkg.bidName) + '</div>'
-      : '';
     return pkgTh(pkg, 'scw-bid-review-v2__head-cell--details',
+      nameBlock +
       '<div class="scw-bid-review-v2__head-subtitle">' +
         '<span class="scw-bid-review-v2__head-pkg-label">' + escapeHtml(pkg.label) + '</span>' +
         pdfLink +
       '</div>' +
-      (statusBadge ? '<div class="scw-bid-review-v2__head-statusline">' + statusBadge + '</div>' : '') +
-      friendly);
+      (statusBadge ? '<div class="scw-bid-review-v2__head-statusline">' + statusBadge + '</div>' : ''));
   }
 
   function pkgActionsCell(pkg, sowId) {
