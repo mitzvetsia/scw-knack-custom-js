@@ -344,10 +344,35 @@
         var flag = sowFlag || row.requireSubBid || '';
         return !/^no$/i.test(String(flag).trim());
       });
+
+      // ── Column totals + SOW match delta ────────────────────────
+      // SOW sub-bid total = Σ SOW-item fee (field_2151); install total =
+      // Σ install fee (field_2028). Each bid column total = Σ cell labor
+      // (field_2401). A bid "matches" the SOW within a penny.
+      var sowSub = 0, sowInstall = 0;
+      for (var sr = 0; sr < rows.length; sr++) {
+        var sdat = rows[sr].sowItemData;
+        if (sdat) {
+          sowSub     += sdat.fee || 0;
+          sowInstall += sdat.installFee || 0;
+        }
+      }
+      for (var pi = 0; pi < packages.length; pi++) {
+        var pkgTotal = 0;
+        for (var pr = 0; pr < rows.length; pr++) {
+          var cpkg = rows[pr].cellsByPackage[packages[pi].id];
+          if (cpkg) pkgTotal += cpkg.labor || 0;
+        }
+        packages[pi].subBidTotal = pkgTotal;
+        packages[pi].deltaVsSow  = pkgTotal - sowSub;
+        packages[pi].matchesSow  = Math.abs(pkgTotal - sowSub) <= 0.01;
+      }
+
       sowGrids.push({
         sowId:    sow.id,
         sowName:  sow.name,
         packages: packages,
+        sowTotals: { subBid: sowSub, install: sowInstall },
         rows:     rows,
         groups:   groupRows(rows)
       });

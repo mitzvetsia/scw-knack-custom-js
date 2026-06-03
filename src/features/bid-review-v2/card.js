@@ -336,6 +336,39 @@
     }
   }
 
+  // One labelled money figure in a column header (Sub Bid / Install).
+  function headTotal(label, amount) {
+    return '<div class="scw-bid-review-v2__head-total">' +
+      '<span class="scw-bid-review-v2__head-total-label">' + escapeHtml(label) + '</span>' +
+      '<span class="scw-bid-review-v2__head-total-value">' +
+        escapeHtml(fmtMoney(amount) || '$0.00') + '</span>' +
+    '</div>';
+  }
+
+  // A bid (package) column header: title, bid label, sub-bid total, and a
+  // match/gap delta vs the SOW. Identity (status/PDF/CR) + actions land in
+  // later phases.
+  function buildPkgHead(pkg) {
+    var delta;
+    if (pkg.matchesSow) {
+      delta = '<div class="scw-bid-review-v2__head-delta scw-bid-review-v2__head-delta--match">' +
+        '✓ matches SOW</div>';
+    } else {
+      var sign = pkg.deltaVsSow > 0 ? '+' : '−';
+      delta = '<div class="scw-bid-review-v2__head-delta scw-bid-review-v2__head-delta--gap">' +
+        sign + (fmtMoney(Math.abs(pkg.deltaVsSow)) || '$0.00') + ' vs SOW</div>';
+    }
+    return '<th class="scw-bid-review-v2__th scw-bid-review-v2__head--pkg" ' +
+        'data-pkg-id="' + escapeHtml(pkg.id) + '">' +
+      '<div class="scw-bid-review-v2__head-title">Subcontractor Bid</div>' +
+      '<div class="scw-bid-review-v2__head-subtitle">' + escapeHtml(pkg.label) + '</div>' +
+      '<div class="scw-bid-review-v2__head-totals">' +
+        headTotal('Sub Bid', pkg.subBidTotal) +
+      '</div>' +
+      delta +
+    '</th>';
+  }
+
   function buildSowSection(grid) {
     var section = document.createElement('section');
     section.className = 'scw-bid-review-v2__sow';
@@ -354,19 +387,25 @@
     var table = document.createElement('table');
     table.className = 'scw-bid-review-v2__table';
 
-    // Column headers — Label | SOW | Bid 1 | Bid 2 | …
+    // Column headers — Line item | Photos | SOW (totals) | Bid… (totals + delta)
     var thead = document.createElement('thead');
     var headRow = document.createElement('tr');
-    headRow.innerHTML =
-      '<th class="scw-bid-review-v2__th scw-bid-review-v2__th--label">Line item</th>' +
+    headRow.className = 'scw-bid-review-v2__head-row';
+    var totals = grid.sowTotals || { subBid: 0, install: 0 };
+    var headHtml =
+      '<th class="scw-bid-review-v2__th scw-bid-review-v2__th--label"></th>' +
       '<th class="scw-bid-review-v2__th scw-bid-review-v2__th--photos">Photos</th>' +
-      '<th class="scw-bid-review-v2__th scw-bid-review-v2__th--sow">SOW item</th>';
+      '<th class="scw-bid-review-v2__th scw-bid-review-v2__th--sow scw-bid-review-v2__head--sow">' +
+        '<div class="scw-bid-review-v2__head-title">SCW SOW</div>' +
+        '<div class="scw-bid-review-v2__head-totals">' +
+          headTotal('Sub Bid', totals.subBid) +
+          headTotal('Install', totals.install) +
+        '</div>' +
+      '</th>';
     for (var p = 0; p < grid.packages.length; p++) {
-      headRow.innerHTML +=
-        '<th class="scw-bid-review-v2__th">' +
-          escapeHtml(grid.packages[p].label) +
-        '</th>';
+      headHtml += buildPkgHead(grid.packages[p]);
     }
+    headRow.innerHTML = headHtml;
     thead.appendChild(headRow);
     table.appendChild(thead);
 
