@@ -215,28 +215,27 @@
     '  display: inline-flex; align-items: center; justify-content: center;',
     '}',
     '.scw-bid-review-v2__panel-close:hover { background: #f1f5f9; color: #0f172a; }',
-    /* Top flex: photo viewer (left, collapsed until photos load) + the
-       worksheet-v2 SOW editor. The editor row is a wide fixed grid, so
-       its column scrolls horizontally rather than overflowing onto the
-       neighbour when space is tight (e.g. photo viewer open). */
+    /* Side-by-side: photo viewer (collapsed until photos load) | the
+       worksheet-v2 SOW editor (reflowed narrow, see overrides below) |
+       bid details. Wraps on very narrow viewports. */
     '.scw-bid-review-v2__expand-flex {',
-    '  display: flex; align-items: flex-start; gap: 12px; width: 100%;',
+    '  display: flex; flex-wrap: wrap; align-items: flex-start;',
+    '  gap: 14px; width: 100%;',
     '}',
-    '.scw-bid-review-v2__panel-col--card {',
-    '  flex: 1 1 100%; min-width: 0; overflow-x: auto;',
-    '}',
+    '.scw-bid-review-v2__panel-col--card { flex: 2 1 340px; min-width: 0; }',
     '.scw-bid-review-v2__panel-col--photo { display: none; }',
     '.scw-bid-review-v2__panel-col--photo-active {',
-    '  display: flex; flex: 0 0 38%; max-width: 480px; min-width: 0;',
+    '  display: flex; flex: 1 1 300px; max-width: 480px; min-width: 0;',
     '}',
-    /* Bid details — full-width scannable strip below the editor. Compact
-       cards (one per bid package) wrap so several bids read across. */
+    /* Bid details — compact comparison cards beside the editor. Cards
+       wrap so multiple bids read across; the whole column wraps below
+       the editor when the panel is too narrow to hold both. */
     '.scw-bid-review-v2__panel-col--bid {',
-    '  width: 100%; margin-top: 14px;',
+    '  flex: 1 1 260px; min-width: 0;',
     '  display: flex; flex-wrap: wrap; gap: 10px; align-content: flex-start;',
     '}',
     '.scw-bid-review-v2__bid-card {',
-    '  flex: 1 1 200px; min-width: 180px; max-width: 340px;',
+    '  flex: 1 1 180px; min-width: 160px; max-width: 320px;',
     '  background: #fff; border: 1px solid #e2e8f0; border-radius: 8px;',
     '  padding: 12px 14px; align-self: flex-start;',
     '}',
@@ -246,6 +245,34 @@
     '  margin-bottom: 8px; padding-bottom: 6px;',
     '  border-bottom: 1px solid #e2e8f0;',
     '}',
+    /* ── Narrow-editor reflow (scoped to the panel) ─────────────
+       The worksheet-v2 summary row is a fixed ~930px 12-column grid that
+       can't shrink. Inside the bid-review panel we reflow it into a
+       wrapping form so it fits beside the bid cards: product + labor desc
+       go full-width, the number inputs flow compactly under them. The
+       grid-aligned column-header strip is hidden since it can't line up
+       with a wrapped row. */
+    '.scw-bid-review-v2__panel-col--card .scw-ws-v2-row--default,',
+    '.scw-bid-review-v2__panel-col--card .scw-ws-v2-row--cam,',
+    '.scw-bid-review-v2__panel-col--card .scw-ws-v2-row--services,',
+    '.scw-bid-review-v2__panel-col--card .scw-ws-v2-row--assumptions {',
+    '  display: flex !important; flex-wrap: wrap !important;',
+    '  align-items: flex-end !important; gap: 8px 10px !important;',
+    '}',
+    '.scw-bid-review-v2__panel-col--card .scw-ws-v2-cell--product,',
+    '.scw-bid-review-v2__panel-col--card .scw-ws-v2-cell--labor-desc {',
+    '  flex: 1 1 100% !important; min-width: 0 !important;',
+    '  grid-column: auto !important;',
+    '}',
+    '.scw-bid-review-v2__panel-col--card .scw-ws-v2-cell--num,',
+    '.scw-bid-review-v2__panel-col--card .scw-ws-v2-cell--stack,',
+    '.scw-bid-review-v2__panel-col--card .scw-ws-v2-cell--fee,',
+    '.scw-bid-review-v2__panel-col--card .scw-ws-v2-cell--chips {',
+    '  flex: 0 1 auto !important;',
+    '}',
+    '.scw-bid-review-v2__panel-col--card .scw-ws-v2-input--num { width: 72px !important; }',
+    '.scw-bid-review-v2__panel-col--card .scw-ws-v2-cell--blank { display: none !important; }',
+    '.scw-bid-review-v2__panel-col--card .scw-ws-v2-col-header { display: none !important; }',
     /* ── Photo viewer (ported from v1) ─────────────────────── */
     '.scw-bid-review-v2__photo-viewer {',
     '  flex: 1 1 auto; display: flex; flex-direction: column;',

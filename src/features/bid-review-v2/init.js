@@ -172,9 +172,8 @@
     cardCol.className = 'scw-bid-review-v2__panel-col--card';
     flex.appendChild(photoCol);
     flex.appendChild(cardCol);
+    flex.appendChild(buildBidDetailsColumn(row));
     panel.appendChild(flex);
-
-    panel.appendChild(buildBidDetailsColumn(row));
     td.appendChild(panel);
 
     expand.appendChild(td);
