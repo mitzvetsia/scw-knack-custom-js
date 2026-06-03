@@ -106,33 +106,55 @@
     });
   }
 
-  // Delegated click for header action buttons (Update SOW / Create SOW /
-  // Reopen Bid). Routes to v1's handlers via SCW.bidReview.dispatchHeaderAction
-  // — v1 renders on the same scene so its _state is live.
+  // Delegated clicks for everything that routes into v1's handlers:
+  //   • header action buttons (Update SOW / Create SOW / Reopen Bid)
+  //   • header CR controls (Submit Change Request / Clear All)
+  //   • cell CR buttons (Revise / Remove / + Add to bid)
+  //   • pending CR summary cards (click to edit)
+  // v1 renders on the same scene so its _state + CR pending are live.
   function wireHeaderActions() {
     if (document.documentElement.hasAttribute('data-scw-br-v2-actions-bound')) return;
     document.documentElement.setAttribute('data-scw-br-v2-actions-bound', '1');
 
     document.addEventListener('click', function (e) {
-      var btn = e.target.closest && e.target.closest('.scw-bid-review-v2__head-btn[data-action]');
-      if (!btn) return;
-      e.preventDefault();
-      e.stopPropagation();
       var v1 = window.SCW.bidReview;
-      if (v1 && typeof v1.dispatchHeaderAction === 'function') {
-        v1.dispatchHeaderAction(btn);
-      } else if (console && console.warn) {
-        console.warn('[BidReviewV2] v1 dispatchHeaderAction unavailable');
+      if (!v1 || !e.target.closest) return;
+
+      // Header buttons — package_* go to dispatchHeaderAction, cr_* fall
+      // through to dispatchCRAction.
+      var headBtn = e.target.closest('.scw-bid-review-v2__head-btn[data-action]');
+      if (headBtn) {
+        e.preventDefault(); e.stopPropagation();
+        var handled = v1.dispatchHeaderAction && v1.dispatchHeaderAction(headBtn);
+        if (!handled && v1.dispatchCRAction) v1.dispatchCRAction(headBtn);
+        return;
+      }
+
+      // Cell CR buttons (Revise / Remove / + Add to bid).
+      var cellBtn = e.target.closest('.scw-bid-review-v2__cell-action[data-action]');
+      if (cellBtn) {
+        e.preventDefault(); e.stopPropagation();
+        if (v1.dispatchCRAction) v1.dispatchCRAction(cellBtn);
+        return;
+      }
+
+      // Pending CR card — click re-opens the edit modal.
+      var crCard = e.target.closest('.scw-bid-cr-card[data-action]');
+      if (crCard) {
+        e.preventDefault(); e.stopPropagation();
+        if (v1.dispatchCRAction) v1.dispatchCRAction(crCard);
+        return;
       }
     });
 
     // SOW metric inputs (survey costs / SOW name / proposal expiration)
-    // live inside the v1 status bar v2 injects — route their change events
-    // to v1's save handlers. Capture phase to match v1's own listener.
+    // live inside the v1 status bar v2 injects into the SOW header cell —
+    // route their change events to v1's save handlers. Capture phase to
+    // match v1's own listener.
     document.addEventListener('change', function (e) {
       var input = e.target;
       if (!input || !input.matches) return;
-      if (!input.closest('.scw-bid-review-v2__sow-statusbar')) return;
+      if (!input.closest('.scw-bid-review-v2__head--sow')) return;
       var v1 = window.SCW.bidReview;
       if (v1 && typeof v1.dispatchMetricChange === 'function') {
         v1.dispatchMetricChange(input);
@@ -600,6 +622,25 @@
     if (sn && sn.parentNode) sn.parentNode.removeChild(sn);
   }
 
+  // v1's change-request module re-renders the grid via SCW.bidReview.rerender
+  // after any pending-CR mutation (add / edit / remove / submit / clear).
+  // Wrap it so v2 re-renders too — v2 reads the same _pending state, so a
+  // fresh notify() repaints cell cards + header Submit counts. Idempotent.
+  function hookV1Rerender() {
+    var v1 = window.SCW.bidReview;
+    if (!v1 || v1._scwV2RerenderHooked) return;
+    var orig = v1.rerender;
+    v1.rerender = function () {
+      if (typeof orig === 'function') {
+        try { orig.apply(v1, arguments); } catch (e) { /* ignore */ }
+      }
+      if (ns.data && typeof ns.data.notify === 'function') {
+        try { ns.data.notify(); } catch (e) { /* ignore */ }
+      }
+    };
+    v1._scwV2RerenderHooked = true;
+  }
+
   function init() {
     // Inject CSS (styles.js self-injects if not present)
     if (ns.data) ns.data.attachListeners();
@@ -608,6 +649,7 @@
     wireRowExpand();
     wirePanelClose();
     wireHeaderActions();
+    hookV1Rerender();
     if (ns.data && ns.render) {
       ns.data.subscribe(function (snapshot) {
         ns.render.renderSnapshot(snapshot);

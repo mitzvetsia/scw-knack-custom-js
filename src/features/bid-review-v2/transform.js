@@ -142,6 +142,12 @@
     var order  = [];
     for (var i = 0; i < records.length; i++) {
       var rec = records[i];
+      // Mirror v1: drop survey-only records (not on any bid AND not
+      // connected to a SOW). This keeps row identity (meta.id) identical
+      // to v1 so CR buttons dispatched to v1's handlers resolve the row.
+      var hasBid = connectionAll(rec, FK.bidPackage).length > 0;
+      var hasSow = connectionAll(rec, FK.sow).length > 0;
+      if (!hasBid && !hasSow) continue;
       var sowItem = connectionId(rec, FK.relatedSowItem);
       var key = sowItem ? ('sow::' + sowItem) : ('rec::' + rec.id);
       if (!rowMap[key]) { rowMap[key] = { meta: rec, cells: [] }; order.push(key); }

@@ -3107,6 +3107,37 @@
     return true;
   };
 
+  // Public dispatcher for change-request actions so v2 can drive v1's CR
+  // flow (modals + pending state + submit) verbatim. `button` carries the
+  // same data-action / data-row-id / data-package-id / data-sow-id (and
+  // data-pkg-id for cr_submit) attrs v1's own click handler reads. v1's
+  // _state is live (same scene), so row lookups by id resolve. Returns
+  // true if dispatched.
+  ns.dispatchCRAction = function dispatchCRAction(button) {
+    if (!button) return false;
+    var action = button.getAttribute('data-action');
+    if (!action) return false;
+    if (action === 'cell_request_change')          { handleChangeRequest(button); return true; }
+    if (action === 'cell_request_change_from_sow')  { handleChangeRequest(button, { sourceFromSow: true }); return true; }
+    if (action === 'cell_remove_from_bid')          { handleRemoveFromBid(button); return true; }
+    if (action === 'cell_add_to_bid')               { handleAddToBid(button); return true; }
+    if (action === 'cr_submit') {
+      var pkgId = button.getAttribute('data-pkg-id');
+      if (ns.changeRequests && ns.changeRequests.submitForPackage) {
+        ns.changeRequests.submitForPackage(pkgId);
+      }
+      return true;
+    }
+    if (action === 'cr_clear_all') {
+      if (ns.changeRequests && ns.changeRequests.clear &&
+          window.confirm('Clear all pending change requests?')) {
+        ns.changeRequests.clear();
+      }
+      return true;
+    }
+    return false;
+  };
+
   // Public change dispatcher for the SOW metric inputs v2 renders via
   // buildSowStatusBar (exposed from render.js). Mirrors v1's mount change
   // listener.

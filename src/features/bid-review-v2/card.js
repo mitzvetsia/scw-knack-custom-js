@@ -185,18 +185,66 @@
     return td;
   }
 
+  // v1's change-request API + the pending state (live on the same scene).
+  function crApi() {
+    return (window.SCW.bidReview && window.SCW.bidReview.changeRequests) || null;
+  }
+  // Find the pending CR item for a given row+package, if any.
+  function findPendingItem(rowId, pkgId) {
+    var api = crApi();
+    if (!api || !api.getPending) return null;
+    var pending = api.getPending() || {};
+    var bucket = pending[pkgId];
+    if (!bucket || !bucket.items) return null;
+    for (var i = 0; i < bucket.items.length; i++) {
+      if (bucket.items[i].rowId === rowId) return bucket.items[i];
+    }
+    return null;
+  }
+  // Shared data-* attrs string for a cell CR button.
+  function crAttrs(action, rowId, pkgId, sowId) {
+    return 'data-action="' + escapeHtml(action) + '" ' +
+      'data-row-id="' + escapeHtml(rowId || '') + '" ' +
+      'data-package-id="' + escapeHtml(pkgId || '') + '" ' +
+      'data-sow-id="' + escapeHtml(sowId || '') + '"';
+  }
+  // Revise + Remove stack for a populated bid cell. Skipped for
+  // requireSubBid:No rows (informational items the bidder isn't pricing).
+  function cellActionStack(row, pkgId, sowId) {
+    var noSubBid = row.requireSubBid && /^no$/i.test(String(row.requireSubBid).trim());
+    if (noSubBid) return '';
+    return '<div class="scw-bid-review-v2__cell-actions">' +
+      '<button type="button" class="scw-bid-review__cell-action ' +
+        'scw-bid-review__cell-action--revise scw-bid-review-v2__cell-action" ' +
+        crAttrs('cell_request_change', row.id, pkgId, sowId) + '>Revise</button>' +
+      '<button type="button" class="scw-bid-review__cell-action ' +
+        'scw-bid-review__cell-action--remove scw-bid-review-v2__cell-action" ' +
+        crAttrs('cell_remove_from_bid', row.id, pkgId, sowId) + '>Remove</button>' +
+    '</div>';
+  }
+
   /**
-   * One bid cell — the (row × package) intersection. Pure HTML
-   * factory; events bind via delegation in edit.js.
+   * One bid cell — the (row × package) intersection. Pure HTML factory
+   * for content; CR buttons + pending card are appended after. Events
+   * bind via delegation (edit.js for inputs, init.js for CR actions).
    */
-  function buildBidCell(cell, recordId, isAssumption) {
+  function buildBidCell(cell, row, pkg, sowId, isAssumption) {
     var td = document.createElement('td');
     td.className = 'scw-bid-review-v2__cell';
+    var pkgId = pkg && pkg.id;
+    var pendingItem = row ? findPendingItem(row.id, pkgId) : null;
+
     if (!cell) {
-      // No bid record for this row/package — Phase 4 will render
-      // "+ Add to bid" here. For now just keep the column aligned.
+      // No bid record for this row/package — offer "+ Add to bid".
       td.classList.add('scw-bid-review-v2__cell--empty');
-      td.innerHTML = '<span class="scw-bid-review-v2__cell-empty-mark">—</span>';
+      td.innerHTML =
+        '<span class="scw-bid-review-v2__cell-empty-mark">—</span>' +
+        (row ? '<div class="scw-bid-review-v2__cell-actions">' +
+          '<button type="button" class="scw-bid-review__cell-action ' +
+            'scw-bid-review__cell-action--add scw-bid-review-v2__cell-action" ' +
+            crAttrs('cell_add_to_bid', row.id, pkgId, sowId) + '>+ Add to bid</button>' +
+        '</div>' : '');
+      appendPendingCard(td, pendingItem, row, pkg, sowId);
       return td;
     }
 
@@ -209,6 +257,8 @@
         ? '<div class="scw-bid-review-v2__cell-desc" title="' +
             escapeHtml(descTxt) + '">' + escapeHtml(descTxt) + '</div>'
         : '<span class="scw-bid-review-v2__cell-empty-mark">—</span>';
+      td.innerHTML += cellActionStack(row, pkgId, sowId);
+      appendPendingCard(td, pendingItem, row, pkg, sowId);
       return td;
     }
 
@@ -237,13 +287,34 @@
       (descTxt ?
         '<div class="scw-bid-review-v2__cell-desc" title="' +
           escapeHtml(descTxt) + '">' + escapeHtml(descTxt) +
-        '</div>' : '');
-    // Phase 5 will append the Revise / Remove / +Add-to-bid action stack
-    // here. Editing happens through change requests, never inline.
+        '</div>' : '') +
+      cellActionStack(row, pkgId, sowId);
+    appendPendingCard(td, pendingItem, row, pkg, sowId);
     return td;
   }
 
-  function buildBidRow(row, packages) {
+  // Append v1's pending-CR summary card (if any) into a cell + flag the
+  // cell so it reads as "has a pending change". The card carries the CR
+  // dispatch attrs so clicking it re-opens the edit modal (v1 parity).
+  function appendPendingCard(td, pendingItem, row, pkg, sowId) {
+    if (!pendingItem) return;
+    var api = crApi();
+    if (!api || !api.buildSummaryCard) return;
+    try {
+      var card = api.buildSummaryCard(pendingItem, pkg && pkg.id, pkg && pkg.label);
+      if (card) {
+        card.classList.add('scw-bid-review-v2__cell-cr-card');
+        card.setAttribute('data-action', 'cell_request_change');
+        card.setAttribute('data-row-id', (row && row.id) || '');
+        card.setAttribute('data-package-id', (pkg && pkg.id) || '');
+        card.setAttribute('data-sow-id', sowId || '');
+        td.classList.add('scw-bid-review-v2__cell--has-cr');
+        td.appendChild(card);
+      }
+    } catch (e) { /* ignore */ }
+  }
+
+  function buildBidRow(row, packages, sowId) {
     var tr = document.createElement('tr');
     tr.className = 'scw-bid-review-v2__row';
     if (row.sowItem) tr.classList.add('scw-bid-review-v2__row--expandable');
@@ -319,7 +390,7 @@
     for (var p = 0; p < packages.length; p++) {
       var pkg = packages[p];
       var cell = row.cellsByPackage[pkg.id] || null;
-      tr.appendChild(buildBidCell(cell, row.id, assumption));
+      tr.appendChild(buildBidCell(cell, row, pkg, sowId, assumption));
     }
     return tr;
   }
@@ -359,12 +430,12 @@
     return tr;
   }
 
-  function appendGroup(tbody, group, packages, colspan) {
+  function appendGroup(tbody, group, packages, colspan, sowId) {
     // Level 0 means "flat" — no MDF/IDF on any row, just render rows.
     if (group.level === 1) tbody.appendChild(buildL1HeaderRow(group, colspan));
     // Direct rows (when there are no subgroups).
     for (var i = 0; i < group.rows.length; i++) {
-      tbody.appendChild(buildBidRow(group.rows[i], packages));
+      tbody.appendChild(buildBidRow(group.rows[i], packages, sowId));
     }
     // Subgroups (L2 — proposal bucket).
     var subs = group.subgroups || [];
@@ -372,7 +443,7 @@
       var sub = subs[s];
       tbody.appendChild(buildL2HeaderRow(sub, colspan));
       for (var sr = 0; sr < sub.rows.length; sr++) {
-        tbody.appendChild(buildBidRow(sub.rows[sr], packages));
+        tbody.appendChild(buildBidRow(sub.rows[sr], packages, sowId));
       }
     }
   }
@@ -464,7 +535,26 @@
           headBtn('← Update SOW to match Bid', 'adopt', 'package_copy_to_sow', pkg.id, sowId) +
         '</div>';
     }
-    return pkgTh(pkg, 'scw-bid-review-v2__head-cell--actions', actions);
+
+    // Pending change-request controls — Submit (N) + Clear All, shown when
+    // this package has pending CRs. Route through dispatchCRAction.
+    var api = crApi();
+    var pending = (api && api.getPending) ? (api.getPending() || {}) : {};
+    var bucket = pending[pkg.id];
+    var crCount = (bucket && bucket.items) ? bucket.items.length : 0;
+    var crBtns = '';
+    if (crCount) {
+      crBtns =
+        '<div class="scw-bid-review-v2__head-cr-actions">' +
+          '<button type="button" class="scw-bid-review__btn scw-bid-review-v2__head-btn ' +
+            'scw-bid-review-v2__head-btn--cr-clear" data-action="cr_clear_all">Clear All</button>' +
+          '<button type="button" class="scw-bid-review__btn scw-bid-review-v2__head-btn ' +
+            'scw-bid-review-v2__head-btn--cr-submit" data-action="cr_submit" ' +
+            'data-pkg-id="' + escapeHtml(pkg.id) + '">Submit Change Request (' + crCount + ')</button>' +
+        '</div>';
+    }
+
+    return pkgTh(pkg, 'scw-bid-review-v2__head-cell--actions', actions + crBtns);
   }
 
   // A header action button — v1-compatible classes + data attrs so
@@ -581,7 +671,7 @@
     var colspan = grid.packages.length + 3;
     var groups = grid.groups || [{ key: '__all__', level: 0, rows: grid.rows, subgroups: [] }];
     for (var g = 0; g < groups.length; g++) {
-      appendGroup(tbody, groups[g], grid.packages, colspan);
+      appendGroup(tbody, groups[g], grid.packages, colspan, grid.sowId);
     }
     table.appendChild(tbody);
     section.appendChild(table);
