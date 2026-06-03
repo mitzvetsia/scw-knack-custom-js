@@ -134,6 +134,8 @@
     document.addEventListener('click', function (e) {
       var hdr = e.target.closest && e.target.closest('.scw-bid-review-v2__panel-header');
       if (!hdr) return;
+      // Don't collapse when the click is the bulk-select checkbox.
+      if (e.target.closest('input, .scw-br-v2-rowselect')) return;
       var expandRow = hdr.closest('.scw-bid-review-v2__expand-row');
       if (!expandRow) return;
       var dataRow = expandRow.previousElementSibling;
@@ -218,6 +220,18 @@
     var header = document.createElement('div');
     header.className = 'scw-bid-review-v2__panel-header';
     header.setAttribute('title', 'Click to close');
+
+    // Bulk-select checkbox — the grid-row checkbox is hidden while the row
+    // is expanded, so surface one here keyed on the same SOW item id.
+    var sowItemId = rowTr.getAttribute('data-sow-item-id');
+    if (sowItemId) {
+      var cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.className = 'scw-br-v2-rowselect scw-br-v2-rowselect--header';
+      cb.setAttribute('data-scw-ws-v2-select', sowItemId);
+      cb.setAttribute('aria-label', 'Select line item');
+      header.appendChild(cb);
+    }
 
     var title = document.createElement('div');
     title.className = 'scw-bid-review-v2__panel-title';

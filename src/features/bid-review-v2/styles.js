@@ -393,11 +393,15 @@
     '}',
     /* Line-item label cell (E-001, etc) */
     '.scw-bid-review-v2__row-label-cell {',
-    '  padding: 20px 16px !important;',
+    '  padding: 16px 14px !important;',
     '  background: #f8fafc;',
     '  border-right: 1px solid #e2e8f0;',
     '  font-variant-numeric: tabular-nums;',
+    '  vertical-align: top;',
     '}',
+    /* Stack the checkbox, line label and totals with clear spacing so the
+       checkbox isn\'t crammed against the Equip/Install labels. */
+    '.scw-bid-review-v2__row-label-cell > * + * { margin-top: 10px; }',
     '.scw-bid-review-v2__row-label {',
     '  font-weight: 600; color: #0f172a; font-size: 12px;',
     '  margin-bottom: 8px;',
@@ -421,9 +425,11 @@
     '}',
     /* Bulk-select checkbox in the leftmost grid cell. */
     '.scw-br-v2-rowselect {',
-    '  display: block; width: 16px; height: 16px; margin: 0 0 8px 0;',
-    '  cursor: pointer; accent-color: #295f91;',
+    '  display: block; width: 16px; height: 16px; margin: 0;',
+    '  cursor: pointer; accent-color: #295f91; flex: 0 0 auto;',
     '}',
+    /* Header variant — sits inline in the expand header, no stacking margin. */
+    '.scw-bid-review-v2__panel-header .scw-br-v2-rowselect--header { margin: 0; }',
     /* The worksheet card carries its own bulk-select checkbox; hide it in
        the editor panel since selection happens from the grid column. */
     '.scw-bid-review-v2__panel-col--card .scw-ws-v2-select { display: none !important; }',
