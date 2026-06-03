@@ -389,7 +389,7 @@
   // A bid (package) column header: title, bid label, sub-bid total, and a
   // match/gap delta vs the SOW. Identity (status/PDF/CR) + actions land in
   // later phases.
-  function buildPkgHead(pkg) {
+  function buildPkgHead(pkg, sowId) {
     var delta;
     if (pkg.matchesSow) {
       delta = '<div class="scw-bid-review-v2__head-delta scw-bid-review-v2__head-delta--match">' +
@@ -416,6 +416,21 @@
       ? '<div class="scw-bid-review-v2__head-friendly">' + escapeHtml(pkg.bidName) + '</div>'
       : '';
 
+    // Action buttons (Submitted bids only) — reuse v1's handlers via
+    // SCW.bidReview.dispatchHeaderAction. Buttons carry the same data-*
+    // attrs + .scw-bid-review__btn class v1's setBusy/CSS expect. Order:
+    // destructive/secondary first, primary (adopt) last per house style.
+    var isSubmitted = /^submitted$/i.test(String(pkg.bidStatus || '').trim());
+    var actions = '';
+    if (isSubmitted) {
+      actions =
+        '<div class="scw-bid-review-v2__head-actions">' +
+          headBtn('Reopen Bid', 'reopen', 'package_reopen_bid', pkg.id, sowId) +
+          headBtn('+ Create new SOW', 'create', 'package_create_sow', pkg.id, sowId) +
+          headBtn('← Update SOW to match Bid', 'adopt', 'package_copy_to_sow', pkg.id, sowId) +
+        '</div>';
+    }
+
     return '<th class="scw-bid-review-v2__th scw-bid-review-v2__head--pkg" ' +
         'data-pkg-id="' + escapeHtml(pkg.id) + '">' +
       '<div class="scw-bid-review-v2__head-title">Subcontractor Bid</div>' +
@@ -429,7 +444,21 @@
         headTotal('Sub Bid', pkg.subBidTotal) +
       '</div>' +
       delta +
+      actions +
     '</th>';
+  }
+
+  // A header action button — v1-compatible classes + data attrs so
+  // SCW.bidReview.dispatchHeaderAction can route it to v1's handler.
+  function headBtn(label, mod, action, pkgId, sowId) {
+    return '<button type="button" ' +
+      'class="scw-bid-review__btn scw-bid-review__btn--' + mod +
+        ' scw-bid-review-v2__head-btn" ' +
+      'data-action="' + escapeHtml(action) + '" ' +
+      'data-package-id="' + escapeHtml(pkgId) + '" ' +
+      'data-sow-id="' + escapeHtml(sowId || '') + '">' +
+      escapeHtml(label) +
+    '</button>';
   }
 
   function buildSowSection(grid) {
@@ -466,7 +495,7 @@
         '</div>' +
       '</th>';
     for (var p = 0; p < grid.packages.length; p++) {
-      headHtml += buildPkgHead(grid.packages[p]);
+      headHtml += buildPkgHead(grid.packages[p], grid.sowId);
     }
     headRow.innerHTML = headHtml;
     thead.appendChild(headRow);

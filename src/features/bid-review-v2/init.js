@@ -106,6 +106,27 @@
     });
   }
 
+  // Delegated click for header action buttons (Update SOW / Create SOW /
+  // Reopen Bid). Routes to v1's handlers via SCW.bidReview.dispatchHeaderAction
+  // — v1 renders on the same scene so its _state is live.
+  function wireHeaderActions() {
+    if (document.documentElement.hasAttribute('data-scw-br-v2-actions-bound')) return;
+    document.documentElement.setAttribute('data-scw-br-v2-actions-bound', '1');
+
+    document.addEventListener('click', function (e) {
+      var btn = e.target.closest && e.target.closest('.scw-bid-review-v2__head-btn[data-action]');
+      if (!btn) return;
+      e.preventDefault();
+      e.stopPropagation();
+      var v1 = window.SCW.bidReview;
+      if (v1 && typeof v1.dispatchHeaderAction === 'function') {
+        v1.dispatchHeaderAction(btn);
+      } else if (console && console.warn) {
+        console.warn('[BidReviewV2] v1 dispatchHeaderAction unavailable');
+      }
+    });
+  }
+
   // Delegated click on an expandable data row — toggle an expand <tr>
   // beneath it that mounts worksheet-v2's card for the matching SOW
   // item record. Reuses the same edit pipeline used on the build-SOW
@@ -573,6 +594,7 @@
     wireGroupCollapse();
     wireRowExpand();
     wirePanelClose();
+    wireHeaderActions();
     if (ns.data && ns.render) {
       ns.data.subscribe(function (snapshot) {
         ns.render.renderSnapshot(snapshot);

@@ -3086,6 +3086,27 @@
     runPipeline();
   };
 
+  // Public dispatcher so v2's header buttons can reuse v1's action
+  // handlers verbatim. `button` must carry data-action / data-package-id /
+  // data-sow-id; v1 looks the SOW grid up in its own _state (which is live
+  // because v2 renders on the same scene). Returns true if dispatched.
+  ns.dispatchHeaderAction = function dispatchHeaderAction(button) {
+    if (!button) return false;
+    var action = button.getAttribute('data-action');
+    if (!action) return false;
+    if (button.classList.contains('scw-bid-review__btn--busy')) return false;
+    if (action === 'package_copy_to_sow') {
+      handlePackageAction(button, action);
+    } else if (action === 'package_create_sow') {
+      handleCreateNewSowForPackage(button);
+    } else if (action === 'package_reopen_bid') {
+      handleReopenBid(button);
+    } else {
+      return false;
+    }
+    return true;
+  };
+
   // Photo thumb click handler in render.js calls this to open the
   // editor with a side-by-side photo viewer pane.
   ns.openWithPhoto = openWithPhoto;
