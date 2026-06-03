@@ -104,7 +104,9 @@
       type: 'action',
       id: 'review-site-survey',
       label: 'Review Site Survey Report',
-      menuView: 'view_3862',
+      // Route to the new survey-report-page (the old view_3862 menu
+      // pointed at the deprecated site-survey-report-deprecated route).
+      hrefTemplate: '#survey-report-page/site-survey-report/{sowId}/',
       insertAfter: 'view_3853',
       activeIcon: 'eye',
       newTab: true,
@@ -451,6 +453,14 @@
   // Used so a step can point at, e.g., a row inside a table view
   // rather than a single-link menu view.
   function resolveHref(step) {
+    if (step.hrefTemplate) {
+      var sowId = '';
+      try {
+        var v = Knack && Knack.views && Knack.views[SOURCE_VIEW];
+        sowId = (v && v.model && (v.model.id || (v.model.attributes && v.model.attributes.id))) || '';
+      } catch (e) { /* ignore */ }
+      if (sowId) return step.hrefTemplate.replace('{sowId}', sowId);
+    }
     if (step.hrefSelector) {
       var el = document.querySelector(step.hrefSelector);
       if (el) return el.getAttribute('href') || '';
