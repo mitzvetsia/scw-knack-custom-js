@@ -269,20 +269,37 @@
     '}',
     '.scw-bid-review-v2__panel-col--card .scw-ws-v2-cell--num,',
     '.scw-bid-review-v2__panel-col--card .scw-ws-v2-cell--stack,',
-    '.scw-bid-review-v2__panel-col--card .scw-ws-v2-cell--fee,',
-    '.scw-bid-review-v2__panel-col--card .scw-ws-v2-cell--sow {',
+    '.scw-bid-review-v2__panel-col--card .scw-ws-v2-cell--fee {',
     '  flex: 0 1 auto !important;',
+    '}',
+    /* SOW connection cell doesn\'t need much width — keep it compact so it
+       sits on the same line as the sub-bid / install-fee cells. */
+    '.scw-bid-review-v2__panel-col--card .scw-ws-v2-cell--sow {',
+    '  flex: 0 1 auto !important; min-width: 0 !important; max-width: 96px !important;',
     '}',
     '.scw-bid-review-v2__panel-col--card .scw-ws-v2-input--num { width: 72px !important; }',
     '.scw-bid-review-v2__panel-col--card .scw-ws-v2-cell--blank { display: none !important; }',
     '.scw-bid-review-v2__panel-col--card .scw-ws-v2-col-header { display: none !important; }',
     /* Field labels above each reflowed input (the grid column-header is
-       hidden, so labels are injected per-cell by decorateNarrowEditor). */
+       hidden, so labels are injected per-cell by decorateNarrowEditor).
+       Centered over the input; a fixed height keeps the currency-glyph
+       offset below deterministic. */
     '.scw-bid-review-v2__panel-col--card .scw-br-v2-flabel {',
-    '  display: block; margin-bottom: 3px; white-space: nowrap;',
-    '  font: 700 9px/1.2 system-ui, -apple-system, sans-serif;',
+    '  display: block; text-align: center; white-space: nowrap;',
+    '  height: 11px; line-height: 11px; margin-bottom: 4px;',
+    '  font: 700 9px system-ui, -apple-system, sans-serif;',
     '  text-transform: uppercase; letter-spacing: 0.05em; color: #94a3b8;',
     '}',
+    /* Labor description is a wide field — its label reads better left. */
+    '.scw-bid-review-v2__panel-col--card .scw-ws-v2-cell--labor-desc .scw-br-v2-flabel {',
+    '  text-align: left;',
+    '}',
+    /* The $ glyph is absolutely positioned to the cell top; the injected
+       label pushes the input down, so drop the glyph to sit over it. */
+    '.scw-bid-review-v2__panel-col--card .scw-ws-v2-currency-glyph {',
+    '  top: 19px !important;',
+    '}',
+    '.scw-bid-review-v2__panel-col--card .scw-ws-v2-stack-total { text-align: center !important; }',
     /* Existing / Exterior / Plenum chips inline, not stacked. */
     '.scw-bid-review-v2__panel-col--card .scw-ws-v2-cell--chips {',
     '  flex: 1 1 100% !important; display: flex !important;',
@@ -293,7 +310,13 @@
        of letting it flow mid-form. */
     '.scw-bid-review-v2__panel-col--card .scw-ws-v2-trash {',
     '  position: absolute !important; top: 0 !important; right: 0 !important;',
-    '  margin: 0 !important;',
+    '  margin: 0 !important; padding: 5px !important;',
+    '  background: #fee2e2 !important; border: 1px solid #fecaca !important;',
+    '  color: #dc2626 !important; border-radius: 6px !important;',
+    '}',
+    '.scw-bid-review-v2__panel-col--card .scw-ws-v2-trash:hover {',
+    '  background: #fecaca !important; border-color: #f87171 !important;',
+    '  color: #b91c1c !important;',
     '}',
     /* ── Photo viewer (ported from v1) ─────────────────────── */
     '.scw-bid-review-v2__photo-viewer {',
