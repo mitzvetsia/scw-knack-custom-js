@@ -401,6 +401,11 @@
     '  border-right: 1px solid #e2e8f0;',
     '  font-variant-numeric: tabular-nums;',
     '  vertical-align: top;',
+    '}',
+    /* Inner wrapper carries the flex stack; the <td> stays a table-cell so
+       its background spans the full row height (e.g. when there are no
+       photos to make the row tall). */
+    '.scw-bid-review-v2__row-label-inner {',
     '  display: flex; flex-direction: column; align-items: flex-start; gap: 8px;',
     '}',
     /* Caret affordance — same circular blue chip in the grid (closed,
