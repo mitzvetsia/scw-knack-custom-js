@@ -498,6 +498,28 @@
       headHtml += buildPkgHead(grid.packages[p], grid.sowId);
     }
     headRow.innerHTML = headHtml;
+    // SOW metrics — reuse v1's status-bar renderer (SOW name, published
+    // proposal, docs, survey costs, margin, margin-low warning, preview
+    // pill). v1 runs on the same scene, so its DOM scrapers + opsReview are
+    // live. Inject into the SOW header cell.
+    var v1 = window.SCW.bidReview;
+    var sowTh = headRow.querySelector('.scw-bid-review-v2__head--sow');
+    if (sowTh && v1 && typeof v1.buildSowStatusBar === 'function') {
+      try {
+        var bar = v1.buildSowStatusBar({ sowId: grid.sowId, sowName: grid.sowName });
+        if (bar) {
+          var wrap = document.createElement('div');
+          wrap.className = 'scw-bid-review-v2__sow-statusbar';
+          if (bar.details) wrap.appendChild(bar.details);
+          if (bar.actions) wrap.appendChild(bar.actions);
+          sowTh.appendChild(wrap);
+        }
+      } catch (err) {
+        if (window.console && console.warn) {
+          console.warn('[BidReviewV2] buildSowStatusBar failed', err);
+        }
+      }
+    }
     thead.appendChild(headRow);
     table.appendChild(thead);
 

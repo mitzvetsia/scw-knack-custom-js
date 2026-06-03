@@ -3107,6 +3107,29 @@
     return true;
   };
 
+  // Public so v2 can build the SOW column header (name / proposal / docs /
+  // survey costs / margin / margin-low warning / preview pill) from v1's
+  // exact renderer. Takes any object with { sowId, sowName }.
+  ns.buildSowStatusBar = function (sowGridLike) {
+    return buildSowStatusBar(sowGridLike);
+  };
+
+  // Public change dispatcher for the SOW metric inputs v2 renders via
+  // buildSowStatusBar. Mirrors v1's mount change listener.
+  ns.dispatchMetricChange = function dispatchMetricChange(input) {
+    if (!input) return false;
+    if (input.matches('.scw-bid-review__sow-metric-input[data-action="sow_survey_costs"]')) {
+      handleSurveyCostsSave(input); return true;
+    }
+    if (input.matches('.scw-bid-review__sow-name-input[data-action="sow_name_update"]')) {
+      handleSowNameSave(input); return true;
+    }
+    if (input.matches('input[data-action="proposal_exp_update"]')) {
+      handleProposalExpSave(input); return true;
+    }
+    return false;
+  };
+
   // Photo thumb click handler in render.js calls this to open the
   // editor with a side-by-side photo viewer pane.
   ns.openWithPhoto = openWithPhoto;

@@ -125,6 +125,19 @@
         console.warn('[BidReviewV2] v1 dispatchHeaderAction unavailable');
       }
     });
+
+    // SOW metric inputs (survey costs / SOW name / proposal expiration)
+    // live inside the v1 status bar v2 injects — route their change events
+    // to v1's save handlers. Capture phase to match v1's own listener.
+    document.addEventListener('change', function (e) {
+      var input = e.target;
+      if (!input || !input.matches) return;
+      if (!input.closest('.scw-bid-review-v2__sow-statusbar')) return;
+      var v1 = window.SCW.bidReview;
+      if (v1 && typeof v1.dispatchMetricChange === 'function') {
+        v1.dispatchMetricChange(input);
+      }
+    }, true);
   }
 
   // Delegated click on an expandable data row — toggle an expand <tr>
