@@ -190,10 +190,29 @@
     '.scw-bid-review-v2__expand-flex {',
     '  display: flex; align-items: stretch; gap: 12px; width: 100%;',
     '}',
-    '.scw-bid-review-v2__panel-col--card { flex: 1 1 0; min-width: 0; }',
+    '.scw-bid-review-v2__panel-col--card { flex: 1 1 360px; min-width: 0; }',
     '.scw-bid-review-v2__panel-col--photo { display: none; }',
     '.scw-bid-review-v2__panel-col--photo-active {',
     '  display: flex; flex: 0 0 42%; max-width: 560px; min-width: 0;',
+    '}',
+    /* Bid details column — compact cards rebuilt from the row's bid
+       cells, so the SOW editor (middle) and the bids stay side-by-side
+       and scannable while the row is open. Cards wrap so multiple bids
+       read in a row. */
+    '.scw-bid-review-v2__panel-col--bid {',
+    '  flex: 1 1 320px; min-width: 0;',
+    '  display: flex; flex-wrap: wrap; gap: 10px; align-content: flex-start;',
+    '}',
+    '.scw-bid-review-v2__bid-card {',
+    '  flex: 1 1 200px; min-width: 180px; max-width: 340px;',
+    '  background: #fff; border: 1px solid #e2e8f0; border-radius: 8px;',
+    '  padding: 12px 14px; align-self: flex-start;',
+    '}',
+    '.scw-bid-review-v2__bid-card-label {',
+    '  font-size: 11px; font-weight: 700; text-transform: uppercase;',
+    '  letter-spacing: 0.04em; color: #295f91;',
+    '  margin-bottom: 8px; padding-bottom: 6px;',
+    '  border-bottom: 1px solid #e2e8f0;',
     '}',
     /* ── Photo viewer (ported from v1) ─────────────────────── */
     '.scw-bid-review-v2__photo-viewer {',

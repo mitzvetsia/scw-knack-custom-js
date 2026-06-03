@@ -135,17 +135,21 @@
     td.colSpan = row.children.length;
     td.className = 'scw-bid-review-v2__expand-cell';
 
-    // Side-by-side layout (v1 parity): photo viewer on the left,
-    // worksheet-v2 card on the right. The photo column stays collapsed
-    // until openWithPhoto() fills it (i.e. the user clicked a thumb).
+    // Three-part layout (v1 parity): photo viewer (left, collapsed
+    // until photos load) | worksheet-v2 SOW editor (middle) | bid
+    // details (right). The bid details rebuild the row's bid cells as
+    // compact cards so the SOW editor and the bids stay side-by-side
+    // and scannable while the row is open.
     var flex = document.createElement('div');
     flex.className = 'scw-bid-review-v2__expand-flex';
     var photoCol = document.createElement('div');
     photoCol.className = 'scw-bid-review-v2__panel-col--photo';
     var cardCol = document.createElement('div');
     cardCol.className = 'scw-bid-review-v2__panel-col--card';
+    var bidCol = buildBidDetailsColumn(row);
     flex.appendChild(photoCol);
     flex.appendChild(cardCol);
+    flex.appendChild(bidCol);
     td.appendChild(flex);
 
     expand.appendChild(td);
@@ -154,6 +158,54 @@
     row.setAttribute('aria-expanded', 'true');
 
     mountWorksheetV2Card(cardCol, sowRec);
+
+    // Auto-mount the photo viewer when the row has photos, so expanding
+    // (by clicking the SOW cell, the row, or a thumb) always surfaces
+    // them — matching v1. aria-expanded is already 'true' above, so
+    // openWithPhoto won't recurse back into toggleRowExpand.
+    var scrape = window.SCW && SCW.bidReview && SCW.bidReview.scrapeRowPhotoUrls;
+    if (typeof scrape === 'function') {
+      var rowId = row.getAttribute('data-row-id');
+      var urls = scrape(sowItemId || null, rowId || null);
+      if (urls && urls.length) openWithPhoto(row, urls, 0);
+    }
+  }
+
+  // Right-side column of the expand panel. Rebuilds each bid-package
+  // cell from the (still-visible) data row as a labelled compact card,
+  // so the SOW editor and the bids read side-by-side for comparison.
+  // Cells: 0 = line label, 1 = photos, 2 = SOW, 3+ = bid packages.
+  function buildBidDetailsColumn(rowTr) {
+    var col = document.createElement('div');
+    col.className = 'scw-bid-review-v2__panel-col--bid';
+
+    var labels = [];
+    var table = rowTr.closest('table');
+    if (table) {
+      var ths = table.querySelectorAll('thead th');
+      for (var t = 0; t < ths.length; t++) {
+        labels.push((ths[t].textContent || '').replace(/\s+/g, ' ').trim());
+      }
+    }
+
+    var cells = rowTr.children;
+    for (var i = 3; i < cells.length; i++) {
+      var card = document.createElement('div');
+      card.className = 'scw-bid-review-v2__bid-card';
+      var lbl = document.createElement('div');
+      lbl.className = 'scw-bid-review-v2__bid-card-label';
+      lbl.textContent = labels[i] || ('Bid ' + (i - 2));
+      card.appendChild(lbl);
+      var body = document.createElement('div');
+      body.className = 'scw-bid-review-v2__bid-card-body';
+      // Clone the cell's children (not the <td> itself) so the original
+      // row keeps its cells intact for re-renders.
+      var clone = cells[i].cloneNode(true);
+      while (clone.firstChild) body.appendChild(clone.firstChild);
+      card.appendChild(body);
+      col.appendChild(card);
+    }
+    return col;
   }
 
   // ── Photo viewer (ported from v1's init.js, v2-scoped classes) ──
