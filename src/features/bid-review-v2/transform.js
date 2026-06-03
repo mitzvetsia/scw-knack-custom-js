@@ -310,6 +310,7 @@
         qty:         num(s, SFK.qty),
         fee:         num(s, SFK.fee),
         installFee:  num(s, SFK.installFee),
+        equipmentTotal: num(s, SFK.equipmentTotal),
         laborDesc:   rawHtml(s, SFK.laborDesc),
         displayLabel: raw(s, SFK.displayLabel),
         mdfIdf:      connectionLabel(s, SFK.mdfIdf),

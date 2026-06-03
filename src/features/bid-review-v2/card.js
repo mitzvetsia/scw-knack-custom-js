@@ -217,11 +217,36 @@
     // identified by product name only, in the bid cell columns.
     var labelTd = document.createElement('td');
     labelTd.className = 'scw-bid-review-v2__row-label-cell';
+    var labelHtml = '';
     if (isCamReader(row) && row.displayLabel) {
-      labelTd.innerHTML =
+      labelHtml +=
         '<div class="scw-bid-review-v2__row-label">' +
           escapeHtml(row.displayLabel) + '</div>';
     }
+    // Per-row SOW totals — Equipment Total above Install Fee, mirroring
+    // v1's leftmost column. Read from the SOW item snapshot.
+    var sd = row.sowItemData;
+    if (sd && (sd.equipmentTotal || sd.installFee)) {
+      labelHtml += '<div class="scw-bid-review-v2__row-totals">';
+      if (sd.equipmentTotal) {
+        labelHtml +=
+          '<div class="scw-bid-review-v2__row-total scw-bid-review-v2__row-total--equip">' +
+            '<span class="scw-bid-review-v2__row-total-label">Equip</span>' +
+            '<span class="scw-bid-review-v2__row-total-value">' +
+              escapeHtml(fmtMoney(sd.equipmentTotal)) + '</span>' +
+          '</div>';
+      }
+      if (sd.installFee) {
+        labelHtml +=
+          '<div class="scw-bid-review-v2__row-total scw-bid-review-v2__row-total--install">' +
+            '<span class="scw-bid-review-v2__row-total-label">Install</span>' +
+            '<span class="scw-bid-review-v2__row-total-value">' +
+              escapeHtml(fmtMoney(sd.installFee)) + '</span>' +
+          '</div>';
+      }
+      labelHtml += '</div>';
+    }
+    labelTd.innerHTML = labelHtml;
     tr.appendChild(labelTd);
 
     // Photos column — one big thumb + "+N more"; click opens the

@@ -417,6 +417,40 @@
     }
     card.classList.add('scw-ws-v2-card--open');
     hostTd.appendChild(card);
+    decorateNarrowEditor(card);
+  }
+
+  // The narrow reflow hides the grid-aligned column-header strip, so the
+  // summary-row inputs lose their labels. Re-attach a small label above
+  // each labelled cell from the input's aria-label / placeholder (or the
+  // cell title for read-only cells). Scoped to the summary row — the
+  // detail panel carries its own labels.
+  function decorateNarrowEditor(card) {
+    var rows = card.querySelectorAll('.scw-ws-v2-row');
+    for (var r = 0; r < rows.length; r++) {
+      var cells = rows[r].querySelectorAll(
+        '.scw-ws-v2-cell--num, .scw-ws-v2-cell--stack, ' +
+        '.scw-ws-v2-cell--fee, .scw-ws-v2-cell--labor-desc, ' +
+        '.scw-ws-v2-cell--sow');
+      for (var i = 0; i < cells.length; i++) {
+        var cell = cells[i];
+        if (cell.getAttribute('data-scw-flabel')) continue;
+        var input = cell.querySelector('input, textarea');
+        var text = '';
+        if (input) {
+          text = input.getAttribute('aria-label') ||
+                 input.getAttribute('placeholder') || '';
+        }
+        if (!text) text = cell.getAttribute('title') || '';
+        if (!text && cell.classList.contains('scw-ws-v2-cell--sow')) text = 'SOW';
+        if (!text) continue;
+        cell.setAttribute('data-scw-flabel', '1');
+        var lab = document.createElement('span');
+        lab.className = 'scw-br-v2-flabel';
+        lab.textContent = text;
+        cell.insertBefore(lab, cell.firstChild);
+      }
+    }
   }
 
   function init() {
