@@ -392,16 +392,29 @@
     '  border-radius: 6px; box-shadow: 0 8px 40px rgba(0,0,0,0.5);',
     '}',
     /* Line-item label cell (E-001, etc) */
+    /* Caret gutter on the left; checkbox / label / totals stack with a
+       clean gap so nothing is crammed together. */
     '.scw-bid-review-v2__row-label-cell {',
-    '  padding: 16px 14px !important;',
+    '  position: relative;',
+    '  padding: 16px 14px 16px 30px !important;',
     '  background: #f8fafc;',
     '  border-right: 1px solid #e2e8f0;',
     '  font-variant-numeric: tabular-nums;',
     '  vertical-align: top;',
+    '  display: flex; flex-direction: column; align-items: flex-start; gap: 8px;',
     '}',
-    /* Stack the checkbox, line label and totals with clear spacing so the
-       checkbox isn\'t crammed against the Equip/Install labels. */
-    '.scw-bid-review-v2__row-label-cell > * + * { margin-top: 10px; }',
+    '.scw-bid-review-v2__row-caret {',
+    '  position: absolute; left: 7px; top: 15px;',
+    '  display: inline-flex; color: #94a3b8;',
+    '  transform: rotate(-90deg);', /* point right when closed */
+    '  transition: transform 150ms ease, color 150ms ease;',
+    '}',
+    '.scw-bid-review-v2__row--expandable:hover .scw-bid-review-v2__row-caret {',
+    '  color: #295f91;',
+    '}',
+    '.scw-bid-review-v2__panel-caret {',
+    '  flex: 0 0 auto; display: inline-flex; color: #64748b;',
+    '}',
     '.scw-bid-review-v2__row-label {',
     '  font-weight: 600; color: #0f172a; font-size: 12px;',
     '  margin-bottom: 8px;',

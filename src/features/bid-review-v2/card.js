@@ -218,6 +218,14 @@
     var labelTd = document.createElement('td');
     labelTd.className = 'scw-bid-review-v2__row-label-cell';
     var labelHtml = '';
+    // Expand caret — affordance that the line opens/closes. Only on
+    // expandable rows; rotates open via the row's --open state (though the
+    // row itself hides on expand, the header carries an open caret).
+    if (row.sowItem) {
+      labelHtml +=
+        '<span class="scw-bid-review-v2__row-caret" aria-hidden="true">' +
+          GROUP_CHEVRON_SVG + '</span>';
+    }
     // Bulk-select checkbox — keyed on the SOW line-item id so the shared
     // worksheet-v2 bulk module (mounted on the SOW view) drives selection
     // + the floating edit/delete toolbar. Only for rows backed by a SOW

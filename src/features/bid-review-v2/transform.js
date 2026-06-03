@@ -186,6 +186,7 @@
       displayLabel: raw(meta, FK.displayLabel),
       productName:  raw(meta, FK.productName),
       sortOrder:    num(meta, FK.sortOrder),
+      requireSubBid: raw(meta, FK.requireSubBid),
       mdfIdf:           connectionLabel(meta, FK.mdfIdf),
       mdfIdfId:         connectionId(meta, FK.mdfIdf),
       proposalBucket:   connectionLabel(meta, FK.proposalBucket),
@@ -332,6 +333,17 @@
         rows[r].sowItemData   = sid ? (sowItemIndex[sid]   || null) : null;
         rows[r].sowFullRecord = sid ? (sowFullByItem[sid] || null) : null;
       }
+      // Drop informational line items the bidder isn't pricing: when
+      // "require sub bid" (field_2478) is No, the item shouldn't appear as
+      // its own comparison row. Mirrors the device-worksheet behavior of
+      // hiding the priced fields for these items. Prefer the SOW item's
+      // flag; fall back to the bid record's. Missing/blank = keep.
+      rows = rows.filter(function (row) {
+        var sowFlag = row.sowFullRecord
+          ? raw(row.sowFullRecord, FK.requireSubBid) : '';
+        var flag = sowFlag || row.requireSubBid || '';
+        return !/^no$/i.test(String(flag).trim());
+      });
       sowGrids.push({
         sowId:    sow.id,
         sowName:  sow.name,
