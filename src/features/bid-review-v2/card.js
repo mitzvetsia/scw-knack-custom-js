@@ -386,10 +386,22 @@
     '</div>';
   }
 
-  // A bid (package) column header: title, bid label, sub-bid total, and a
-  // match/gap delta vs the SOW. Identity (status/PDF/CR) + actions land in
-  // later phases.
-  function buildPkgHead(pkg, sowId) {
+  // ── Per-column header cells, one per header band ──────────────────
+  // The header is built as four aligned <tr> bands (title / totals /
+  // details / actions) so the SOW column and every bid column line up
+  // horizontally row-for-row. Each builder returns one <th> for a band.
+
+  function pkgTh(pkg, bandCls, inner) {
+    return '<th class="scw-bid-review-v2__th scw-bid-review-v2__head--pkg ' +
+        bandCls + '" data-pkg-id="' + escapeHtml(pkg.id) + '">' + inner + '</th>';
+  }
+
+  function pkgTitleCell(pkg) {
+    return pkgTh(pkg, 'scw-bid-review-v2__head-cell--title',
+      '<div class="scw-bid-review-v2__head-title">Subcontractor Bid</div>');
+  }
+
+  function pkgTotalsCell(pkg) {
     var delta;
     if (pkg.matchesSow) {
       delta = '<div class="scw-bid-review-v2__head-delta scw-bid-review-v2__head-delta--match">' +
@@ -399,6 +411,13 @@
       delta = '<div class="scw-bid-review-v2__head-delta scw-bid-review-v2__head-delta--gap">' +
         sign + (fmtMoney(Math.abs(pkg.deltaVsSow)) || '$0.00') + ' vs SOW</div>';
     }
+    return pkgTh(pkg, 'scw-bid-review-v2__head-cell--totals',
+      '<div class="scw-bid-review-v2__head-totals">' +
+        headTotal('Sub Bid', pkg.subBidTotal) +
+      '</div>' + delta);
+  }
+
+  function pkgDetailsCell(pkg) {
     // Status badge (field_2550).
     var statusBadge = pkg.bidStatus
       ? '<span class="scw-bid-review-v2__status-badge" data-status="' +
@@ -415,7 +434,16 @@
     var friendly = pkg.bidName
       ? '<div class="scw-bid-review-v2__head-friendly">' + escapeHtml(pkg.bidName) + '</div>'
       : '';
+    return pkgTh(pkg, 'scw-bid-review-v2__head-cell--details',
+      '<div class="scw-bid-review-v2__head-subtitle">' +
+        '<span class="scw-bid-review-v2__head-pkg-label">' + escapeHtml(pkg.label) + '</span>' +
+        pdfLink +
+      '</div>' +
+      (statusBadge ? '<div class="scw-bid-review-v2__head-statusline">' + statusBadge + '</div>' : '') +
+      friendly);
+  }
 
+  function pkgActionsCell(pkg, sowId) {
     // Action buttons (Submitted bids only) — reuse v1's handlers via
     // SCW.bidReview.dispatchHeaderAction. Buttons carry the same data-*
     // attrs + .scw-bid-review__btn class v1's setBusy/CSS expect. Order:
@@ -430,22 +458,7 @@
           headBtn('← Update SOW to match Bid', 'adopt', 'package_copy_to_sow', pkg.id, sowId) +
         '</div>';
     }
-
-    return '<th class="scw-bid-review-v2__th scw-bid-review-v2__head--pkg" ' +
-        'data-pkg-id="' + escapeHtml(pkg.id) + '">' +
-      '<div class="scw-bid-review-v2__head-title">Subcontractor Bid</div>' +
-      '<div class="scw-bid-review-v2__head-subtitle">' +
-        '<span class="scw-bid-review-v2__head-pkg-label">' + escapeHtml(pkg.label) + '</span>' +
-        pdfLink +
-      '</div>' +
-      (statusBadge ? '<div class="scw-bid-review-v2__head-statusline">' + statusBadge + '</div>' : '') +
-      friendly +
-      '<div class="scw-bid-review-v2__head-totals">' +
-        headTotal('Sub Bid', pkg.subBidTotal) +
-      '</div>' +
-      delta +
-      actions +
-    '</th>';
+    return pkgTh(pkg, 'scw-bid-review-v2__head-cell--actions', actions);
   }
 
   // A header action button — v1-compatible classes + data attrs so
@@ -479,40 +492,75 @@
     var table = document.createElement('table');
     table.className = 'scw-bid-review-v2__table';
 
-    // Column headers — Line item | Photos | SOW (totals) | Bid… (totals + delta)
+    // Column headers — four aligned bands so SOW + bid columns line up
+    // row-for-row: title / totals / details / actions. Line-item + Photos
+    // columns span all four bands (rowspan).
     var thead = document.createElement('thead');
-    var headRow = document.createElement('tr');
-    headRow.className = 'scw-bid-review-v2__head-row';
     var totals = grid.sowTotals || { subBid: 0, install: 0 };
-    var headHtml =
-      '<th class="scw-bid-review-v2__th scw-bid-review-v2__th--label"></th>' +
-      '<th class="scw-bid-review-v2__th scw-bid-review-v2__th--photos">Photos</th>' +
-      '<th class="scw-bid-review-v2__th scw-bid-review-v2__th--sow scw-bid-review-v2__head--sow">' +
-        '<div class="scw-bid-review-v2__head-title">SCW SOW</div>' +
+    var pkgs = grid.packages;
+
+    function makeRow(bandMod, sowCellHtml, pkgCellFn) {
+      var tr = document.createElement('tr');
+      tr.className = 'scw-bid-review-v2__head-row scw-bid-review-v2__head-row--' + bandMod;
+      var html = sowCellHtml;
+      for (var i = 0; i < pkgs.length; i++) html += pkgCellFn(pkgs[i]);
+      tr.innerHTML = html;
+      return tr;
+    }
+
+    function sowTh(bandCls, inner) {
+      return '<th class="scw-bid-review-v2__th scw-bid-review-v2__th--sow ' +
+        'scw-bid-review-v2__head--sow ' + bandCls + '">' + inner + '</th>';
+    }
+
+    // Band 1 — titles. Line-item + Photos columns rowspan the whole head.
+    var r1 = document.createElement('tr');
+    r1.className = 'scw-bid-review-v2__head-row scw-bid-review-v2__head-row--title';
+    var r1Html =
+      '<th class="scw-bid-review-v2__th scw-bid-review-v2__th--label" rowspan="4"></th>' +
+      '<th class="scw-bid-review-v2__th scw-bid-review-v2__th--photos" rowspan="4">Photos</th>' +
+      sowTh('scw-bid-review-v2__head-cell--title',
+        '<div class="scw-bid-review-v2__head-title">SCW SOW</div>');
+    for (var p1 = 0; p1 < pkgs.length; p1++) r1Html += pkgTitleCell(pkgs[p1]);
+    r1.innerHTML = r1Html;
+    thead.appendChild(r1);
+
+    // Band 2 — totals (Sub Bid aligned across SOW + bids).
+    thead.appendChild(makeRow('totals',
+      sowTh('scw-bid-review-v2__head-cell--totals',
         '<div class="scw-bid-review-v2__head-totals">' +
           headTotal('Sub Bid', totals.subBid) +
           headTotal('Install', totals.install) +
-        '</div>' +
-      '</th>';
-    for (var p = 0; p < grid.packages.length; p++) {
-      headHtml += buildPkgHead(grid.packages[p], grid.sowId);
-    }
-    headRow.innerHTML = headHtml;
+        '</div>'),
+      pkgTotalsCell));
+
+    // Band 3 — details (SOW name/proposal/docs/survey/margin ‖ bid label/PDF/status).
+    var r3 = makeRow('details',
+      sowTh('scw-bid-review-v2__head-cell--details scw-bid-review-v2__head--sow-details', ''),
+      pkgDetailsCell);
+    thead.appendChild(r3);
+
+    // Band 4 — actions (both columns' buttons at the bottom).
+    var r4 = makeRow('actions',
+      sowTh('scw-bid-review-v2__head-cell--actions scw-bid-review-v2__head--sow-actions', ''),
+      function (pkg) { return pkgActionsCell(pkg, grid.sowId); });
+    thead.appendChild(r4);
+
     // SOW metrics — reuse v1's status-bar renderer (SOW name, published
     // proposal, docs, survey costs, margin, margin-low warning, preview
     // pill). v1 runs on the same scene, so its DOM scrapers + opsReview are
-    // live. Inject into the SOW header cell.
+    // live. The renderer returns { details, actions }; place details in the
+    // details band and actions in the actions band so the SOW column tracks
+    // the bid columns' layout.
     var v1 = window.SCW.bidReview;
-    var sowTh = headRow.querySelector('.scw-bid-review-v2__head--sow');
-    if (sowTh && v1 && typeof v1.buildSowStatusBar === 'function') {
+    if (v1 && typeof v1.buildSowStatusBar === 'function') {
       try {
         var bar = v1.buildSowStatusBar({ sowId: grid.sowId, sowName: grid.sowName });
         if (bar) {
-          var wrap = document.createElement('div');
-          wrap.className = 'scw-bid-review-v2__sow-statusbar';
-          if (bar.details) wrap.appendChild(bar.details);
-          if (bar.actions) wrap.appendChild(bar.actions);
-          sowTh.appendChild(wrap);
+          var detSlot = r3.querySelector('.scw-bid-review-v2__head--sow-details');
+          var actSlot = r4.querySelector('.scw-bid-review-v2__head--sow-actions');
+          if (detSlot && bar.details) detSlot.appendChild(bar.details);
+          if (actSlot && bar.actions) actSlot.appendChild(bar.actions);
         }
       } catch (err) {
         if (window.console && console.warn) {
@@ -520,7 +568,6 @@
         }
       }
     }
-    thead.appendChild(headRow);
     table.appendChild(thead);
 
     var tbody = document.createElement('tbody');
