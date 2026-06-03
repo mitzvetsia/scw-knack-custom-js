@@ -175,7 +175,7 @@
       '<div class="scw-bid-review-v2__sow-numbers">' +
         '<span class="scw-bid-review-v2__sow-num"><label>Qty</label>' +
           escapeHtml(qtyTxt) + '</span>' +
-        '<span class="scw-bid-review-v2__sow-num"><label>Fee</label>' +
+        '<span class="scw-bid-review-v2__sow-num"><label>Sub Bid</label>' +
           escapeHtml(feeTxt) + '</span>' +
       '</div>' +
       (descTxt ?
@@ -228,7 +228,7 @@
       '<div class="scw-bid-review-v2__cell-numbers">' +
         '<span class="scw-bid-review-v2__cell-num"><label>Qty</label>' +
           escapeHtml(qtyTxt) + '</span>' +
-        '<span class="scw-bid-review-v2__cell-num"><label>Rate</label>' +
+        '<span class="scw-bid-review-v2__cell-num"><label>Sub Bid</label>' +
           escapeHtml(rateTxt) + '</span>' +
         (showExt ?
           '<span class="scw-bid-review-v2__cell-num"><label>Ext</label>' +

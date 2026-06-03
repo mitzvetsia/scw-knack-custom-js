@@ -2634,6 +2634,13 @@
   ns.buildDataRow = buildDataRow;
   ns.scrapeRowPhotoUrls = scrapeRowPhotoUrls;
 
+  // Public so v2 can build the SOW column header (name / proposal / docs /
+  // survey costs / margin / margin-low warning / preview pill) from v1's
+  // exact renderer. Takes any object with { sowId, sowName }.
+  ns.buildSowStatusBar = function (sowGridLike) {
+    return buildSowStatusBar(sowGridLike);
+  };
+
   ns.renderMatrix = function renderMatrix(state) {
     var mount = getOrCreateMount();
     if (!mount) return null;   // wrong scene — scene gate refused
