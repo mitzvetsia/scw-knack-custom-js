@@ -95,8 +95,12 @@
     '.scw-bid-review-v2__th--photos {',
     '  width: 150px; text-align: center;',
     '}',
+    /* No explicit width — under table-layout:fixed the SOW column then
+       shares the leftover space (after the fixed label + photos columns)
+       equally with the bid columns, so SOW and each bid are the same
+       width. */
     '.scw-bid-review-v2__th--sow {',
-    '  width: 240px; background: #e3edf6; color: #295f91;',
+    '  background: #e3edf6; color: #295f91;',
     '  border-right: 2px solid #cbd5e1;',
     '}',
     /* ── L1 group header (MDF/IDF) ─────────────────────────── */
