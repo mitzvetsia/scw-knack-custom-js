@@ -58,6 +58,74 @@
     });
   }
 
+  // ── Photos column ────────────────────────────────────────────
+  // Mirrors v1's dedicated Photos column: one large thumb per row with
+  // a "+N more" pill for the rest; clicking opens the row's expand
+  // panel WITH a side-by-side photo viewer (init.js openWithPhoto).
+  // We reuse v1's scraper verbatim — it already handles the 3-path
+  // fallback (SOW-side .scw-inline-photo-card → view_3680 model
+  // field_771_raw → view_3680 DOM) and caches across re-renders.
+  var ROW_PHOTO_VISIBLE = 1;
+
+  function getRowPhotoUrls(row) {
+    var fn = window.SCW && SCW.bidReview && SCW.bidReview.scrapeRowPhotoUrls;
+    if (typeof fn !== 'function') return null;
+    // row.sowItem is the wsTr id (primary path); row.id is a bid
+    // record id used by the fallback paths.
+    return fn(row.sowItem || null, row.id || null);
+  }
+
+  function buildPhotosCell(row) {
+    var td = document.createElement('td');
+    td.className = 'scw-bid-review-v2__photos-cell';
+    var urls = getRowPhotoUrls(row);
+    if (!urls || !urls.length) {
+      td.innerHTML = '<div class="scw-bid-review-v2__photos-empty">—</div>';
+      return td;
+    }
+
+    var stack = document.createElement('div');
+    stack.className = 'scw-bid-review-v2__photos-stack';
+    stack.setAttribute('title', urls.length + ' photo' +
+      (urls.length === 1 ? '' : 's') +
+      ' — click to open the editor with a full-size viewer');
+
+    function openViewer(idx, e) {
+      // Suppress the row's click-to-expand: we drive expansion ourselves
+      // so the viewer mounts together with the panel.
+      if (e) { e.preventDefault(); e.stopPropagation(); }
+      var rowTr = td.parentNode;
+      if (!rowTr || !ns.openWithPhoto) return;
+      ns.openWithPhoto(rowTr, urls, idx);
+    }
+
+    var visible = Math.min(ROW_PHOTO_VISIBLE, urls.length);
+    for (var v = 0; v < visible; v++) {
+      (function (idx) {
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'scw-bid-review-v2__photos-thumb';
+        btn.addEventListener('click', function (e) { openViewer(idx, e); });
+        var img = document.createElement('img');
+        img.src = urls[idx]; img.alt = ''; img.loading = 'lazy';
+        btn.appendChild(img);
+        stack.appendChild(btn);
+      })(v);
+    }
+    var hidden = urls.length - visible;
+    if (hidden > 0) {
+      (function (idx) {
+        var more = document.createElement('span');
+        more.className = 'scw-bid-review-v2__photos-more';
+        more.textContent = '+' + hidden + ' more';
+        more.addEventListener('click', function (e) { openViewer(idx, e); });
+        stack.appendChild(more);
+      })(visible);
+    }
+    td.appendChild(stack);
+    return td;
+  }
+
   /**
    * SOW item cell — leftmost data column. Read-only summary of the
    * underlying SOW line item that anchors this row. Edits to SOW
@@ -156,6 +224,10 @@
     }
     tr.appendChild(labelTd);
 
+    // Photos column — one big thumb + "+N more"; click opens the
+    // expand panel with a side-by-side viewer (v1 parity).
+    tr.appendChild(buildPhotosCell(row));
+
     // SOW item column — anchors the row, always second from left.
     tr.appendChild(buildSowCell(row.sowItemData));
 
@@ -244,6 +316,7 @@
     var headRow = document.createElement('tr');
     headRow.innerHTML =
       '<th class="scw-bid-review-v2__th scw-bid-review-v2__th--label">Line item</th>' +
+      '<th class="scw-bid-review-v2__th scw-bid-review-v2__th--photos">Photos</th>' +
       '<th class="scw-bid-review-v2__th scw-bid-review-v2__th--sow">SOW item</th>';
     for (var p = 0; p < grid.packages.length; p++) {
       headRow.innerHTML +=
@@ -255,8 +328,8 @@
     table.appendChild(thead);
 
     var tbody = document.createElement('tbody');
-    // colspan = label + sow + one per bid package
-    var colspan = grid.packages.length + 2;
+    // colspan = label + photos + sow + one per bid package
+    var colspan = grid.packages.length + 3;
     var groups = grid.groups || [{ key: '__all__', level: 0, rows: grid.rows, subgroups: [] }];
     for (var g = 0; g < groups.length; g++) {
       appendGroup(tbody, groups[g], grid.packages, colspan);

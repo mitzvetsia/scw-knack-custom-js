@@ -134,13 +134,137 @@
     var td = document.createElement('td');
     td.colSpan = row.children.length;
     td.className = 'scw-bid-review-v2__expand-cell';
+
+    // Side-by-side layout (v1 parity): photo viewer on the left,
+    // worksheet-v2 card on the right. The photo column stays collapsed
+    // until openWithPhoto() fills it (i.e. the user clicked a thumb).
+    var flex = document.createElement('div');
+    flex.className = 'scw-bid-review-v2__expand-flex';
+    var photoCol = document.createElement('div');
+    photoCol.className = 'scw-bid-review-v2__panel-col--photo';
+    var cardCol = document.createElement('div');
+    cardCol.className = 'scw-bid-review-v2__panel-col--card';
+    flex.appendChild(photoCol);
+    flex.appendChild(cardCol);
+    td.appendChild(flex);
+
     expand.appendChild(td);
     row.parentNode.insertBefore(expand, row.nextSibling);
     row.classList.add('scw-bid-review-v2__row--open');
     row.setAttribute('aria-expanded', 'true');
 
-    mountWorksheetV2Card(td, sowRec);
+    mountWorksheetV2Card(cardCol, sowRec);
   }
+
+  // ── Photo viewer (ported from v1's init.js, v2-scoped classes) ──
+  // Open the row's expand panel AND mount a side-by-side photo viewer
+  // in the panel's left column. Thumbnail strip lets the reviewer flip
+  // between photos without leaving the editor.
+  function openWithPhoto(rowTr, urls, activeIdx) {
+    if (!rowTr || !urls || !urls.length) return;
+    if (activeIdx == null || activeIdx < 0 || activeIdx >= urls.length) activeIdx = 0;
+
+    if (rowTr.getAttribute('aria-expanded') !== 'true') {
+      toggleRowExpand(rowTr);
+    }
+    var expandTr = rowTr.nextElementSibling;
+    if (!expandTr || !expandTr.classList.contains('scw-bid-review-v2__expand-row')) return;
+    var photoCol = expandTr.querySelector('.scw-bid-review-v2__panel-col--photo');
+    if (!photoCol) return;
+
+    var existing = photoCol.querySelector('.scw-bid-review-v2__photo-viewer');
+    if (existing) { updatePhotoViewer(existing, urls, activeIdx); return; }
+
+    photoCol.classList.add('scw-bid-review-v2__panel-col--photo-active');
+    photoCol.appendChild(buildPhotoViewer(urls, activeIdx));
+  }
+
+  function buildPhotoViewer(urls, activeIdx) {
+    var wrap = document.createElement('div');
+    wrap.className = 'scw-bid-review-v2__photo-viewer';
+
+    var stage = document.createElement('div');
+    stage.className = 'scw-bid-review-v2__photo-viewer-stage';
+    stage.setAttribute('title', 'Click photo to zoom');
+
+    var openLink = document.createElement('a');
+    openLink.className = 'scw-bid-review-v2__photo-viewer-open';
+    openLink.target = '_blank';
+    openLink.rel = 'noopener';
+    openLink.title = 'Open full size in a new tab';
+    openLink.textContent = 'Open ↗';
+    openLink.addEventListener('click', function (e) { e.stopPropagation(); });
+    stage.appendChild(openLink);
+
+    var img = document.createElement('img');
+    img.alt = '';
+    stage.appendChild(img);
+
+    stage.addEventListener('click', function (e) {
+      if (e.target.closest('.scw-bid-review-v2__photo-viewer-open')) return;
+      openLightbox(img.src);
+    });
+    wrap.appendChild(stage);
+
+    var strip = document.createElement('div');
+    strip.className = 'scw-bid-review-v2__photo-viewer-strip';
+    wrap.appendChild(strip);
+
+    updatePhotoViewer(wrap, urls, activeIdx);
+    return wrap;
+  }
+
+  function openLightbox(url) {
+    if (!url) return;
+    var overlay = document.createElement('div');
+    overlay.className = 'scw-bid-review-v2__lightbox';
+    var img = document.createElement('img');
+    img.src = url;
+    img.alt = '';
+    overlay.appendChild(img);
+
+    function dismiss() {
+      overlay.parentNode && overlay.parentNode.removeChild(overlay);
+      document.removeEventListener('keydown', onKey);
+    }
+    function onKey(e) { if (e.key === 'Escape') dismiss(); }
+
+    overlay.addEventListener('click', dismiss);
+    document.addEventListener('keydown', onKey);
+    document.body.appendChild(overlay);
+  }
+
+  function updatePhotoViewer(viewer, urls, activeIdx) {
+    var stageImg = viewer.querySelector('.scw-bid-review-v2__photo-viewer-stage img');
+    var openLink = viewer.querySelector('.scw-bid-review-v2__photo-viewer-open');
+    var strip    = viewer.querySelector('.scw-bid-review-v2__photo-viewer-strip');
+    if (stageImg) stageImg.src = urls[activeIdx];
+    if (openLink) openLink.href = urls[activeIdx];
+
+    if (!strip) return;
+    strip.innerHTML = '';
+    if (urls.length < 2) { strip.style.display = 'none'; return; }
+    strip.style.display = '';
+    for (var i = 0; i < urls.length; i++) {
+      (function (idx) {
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'scw-bid-review-v2__photo-viewer-thumb' +
+          (idx === activeIdx ? ' scw-bid-review-v2__photo-viewer-thumb--active' : '');
+        btn.addEventListener('click', function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          updatePhotoViewer(viewer, urls, idx);
+        });
+        var img = document.createElement('img');
+        img.src = urls[idx]; img.alt = ''; img.loading = 'lazy';
+        btn.appendChild(img);
+        strip.appendChild(btn);
+      })(i);
+    }
+  }
+
+  ns.openWithPhoto = openWithPhoto;
 
   // Find the full Backbone-style attributes hash for a SOW item id.
   // Prefer the live model so we always see the freshest values; fall
