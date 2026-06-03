@@ -600,6 +600,20 @@
     });
   }
 
+  // Return the Backbone records of the first present+populated view in
+  // the list. Lets a picker source from its build-SOW-scene view OR a
+  // bid-review-scene equivalent, whichever is actually on the page.
+  function firstViewRecords(viewKeys) {
+    for (var i = 0; i < viewKeys.length; i++) {
+      var v = (typeof Knack !== 'undefined' && Knack.views &&
+               Knack.views[viewKeys[i]]) || null;
+      if (!v || !v.model) continue;
+      var recs = (v.model.data && v.model.data.models) || v.model.models || null;
+      if (recs && recs.length) return recs;
+    }
+    return null;
+  }
+
   // Connection-cell click — opens the picker modal scoped to the
   // record's bucket-appropriate candidate set. Currently wired for
   // field_1957 (Connected Devices) on default-bucket rows; reusable
@@ -971,20 +985,11 @@
       // The MODEL_ONLY cascade in mirror-connection-sync handles
       // accessory re-grouping when this changes.
       if (fieldKey === 'field_1946') {
-        var MDF_SOURCE_VIEW = 'view_3577';
-        var mdfView = (typeof Knack !== 'undefined' && Knack.views &&
-                       Knack.views[MDF_SOURCE_VIEW]) || null;
-        // Knack exposes models inconsistently across view types:
-        // some at view.model.data.models (Backbone collection), some
-        // at view.model.models, some only after fetch. Probe both
-        // shapes before bailing.
-        var mdfRecords = null;
-        if (mdfView && mdfView.model) {
-          mdfRecords = (mdfView.model.data && mdfView.model.data.models) ||
-                       mdfView.model.models || null;
-        }
+        // view_3577 on the build-SOW scene; view_3822 (MDF/IDF locations)
+        // on the bid-review scene. Same MDF/IDF object (field_1642 label).
+        var mdfRecords = firstViewRecords(['view_3577', 'view_3822']);
         if (!mdfRecords || !mdfRecords.length) {
-          console.warn('[scw-ws-v2] view_3577 model empty/missing — MDF picker can\'t open');
+          console.warn('[scw-ws-v2] view_3577/view_3822 model empty/missing — MDF picker can\'t open');
           return;
         }
         var mdfCandidates = [];
@@ -1033,16 +1038,15 @@
       // read-only; v2 adds an editable picker. Multi-connection: a
       // single line item can belong to multiple SOWs.
       if (fieldKey === 'field_2154') {
-        var SOW_SOURCE_VIEW = 'view_3325';
-        var sowView = (typeof Knack !== 'undefined' && Knack.views &&
-                       Knack.views[SOW_SOURCE_VIEW]) || null;
-        if (!sowView || !sowView.model || !sowView.model.data ||
-            !sowView.model.data.models) {
-          console.warn('[scw-ws-v2] view_3325 model missing — SOW picker can\'t open');
+        // view_3325 on the build-SOW scene; view_3918 (Scopes of Work) on
+        // the bid-review scene. Same SOW object (field_2122 SW-####,
+        // field_2126 name).
+        var sowRecords = firstViewRecords(['view_3325', 'view_3918']);
+        if (!sowRecords || !sowRecords.length) {
+          console.warn('[scw-ws-v2] view_3325/view_3918 model missing — SOW picker can\'t open');
           return;
         }
         var sowCandidates = [];
-        var sowRecords = sowView.model.data.models;
         for (var sm = 0; sm < sowRecords.length; sm++) {
           var sm_attrs = sowRecords[sm].attributes || {};
           if (!sm_attrs.id) continue;
