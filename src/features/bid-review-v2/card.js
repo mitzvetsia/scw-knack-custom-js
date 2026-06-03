@@ -45,6 +45,12 @@
            /(camera|reader)/.test(b);
   }
 
+  // Assumption rows are free-text line items (no product, no qty/rate/fee).
+  function isAssumption(row) {
+    var b = (row && row.proposalBucket || '').toLowerCase().trim();
+    return b.indexOf('assumption') !== -1;
+  }
+
   // PDF document icon — same shape v1's bid PDF link uses.
   var PDF_SVG =
     '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" ' +
@@ -140,7 +146,7 @@
    * underlying SOW line item that anchors this row. Edits to SOW
    * fields flow through worksheet-v2; bid-review v2 only displays.
    */
-  function buildSowCell(sowItemData) {
+  function buildSowCell(sowItemData, isAssumption) {
     var td = document.createElement('td');
     td.className = 'scw-bid-review-v2__sow-cell';
     if (!sowItemData) {
@@ -148,9 +154,18 @@
       td.innerHTML = '<span class="scw-bid-review-v2__cell-empty-mark">—</span>';
       return td;
     }
+    var descTxt = ns.transform.stripHtml(sowItemData.laborDesc || '');
+    // Assumptions are free-text only — no product name, no qty/fee numbers.
+    if (isAssumption) {
+      td.classList.add('scw-bid-review-v2__sow-cell--assumption');
+      td.innerHTML = descTxt
+        ? '<div class="scw-bid-review-v2__sow-desc" title="' +
+            escapeHtml(descTxt) + '">' + escapeHtml(descTxt) + '</div>'
+        : '<span class="scw-bid-review-v2__cell-empty-mark">—</span>';
+      return td;
+    }
     var qtyTxt  = sowItemData.qty ? String(sowItemData.qty) : '—';
     var feeTxt  = sowItemData.fee ? fmtMoney(sowItemData.fee) : '—';
-    var descTxt = ns.transform.stripHtml(sowItemData.laborDesc || '');
     td.innerHTML =
       (sowItemData.productName ?
         '<div class="scw-bid-review-v2__sow-product" title="' +
@@ -174,7 +189,7 @@
    * One bid cell — the (row × package) intersection. Pure HTML
    * factory; events bind via delegation in edit.js.
    */
-  function buildBidCell(cell, recordId) {
+  function buildBidCell(cell, recordId, isAssumption) {
     var td = document.createElement('td');
     td.className = 'scw-bid-review-v2__cell';
     if (!cell) {
@@ -185,10 +200,24 @@
       return td;
     }
 
+    var descTxt = ns.transform.stripHtml(cell.laborDesc || '');
+
+    // Assumptions are free-text only — no product name, no qty/rate/ext.
+    if (isAssumption) {
+      td.classList.add('scw-bid-review-v2__cell--assumption');
+      td.innerHTML = descTxt
+        ? '<div class="scw-bid-review-v2__cell-desc" title="' +
+            escapeHtml(descTxt) + '">' + escapeHtml(descTxt) + '</div>'
+        : '<span class="scw-bid-review-v2__cell-empty-mark">—</span>';
+      return td;
+    }
+
     var qtyTxt  = cell.qty  ? String(cell.qty) : '—';
     var rateTxt = cell.rate ? fmtMoney(cell.rate) : '—';
     var extTxt  = cell.labor ? fmtMoney(cell.labor) : '—';
-    var descTxt = ns.transform.stripHtml(cell.laborDesc || '');
+    // Ext (qty × rate) is only meaningful when the quantity can exceed 1.
+    // When qty is 1 (or unset), Ext equals Rate — redundant, so hide it.
+    var showExt = (Number(cell.qty) || 0) > 1;
 
     td.innerHTML =
       (cell.productName ?
@@ -201,8 +230,9 @@
           escapeHtml(qtyTxt) + '</span>' +
         '<span class="scw-bid-review-v2__cell-num"><label>Rate</label>' +
           escapeHtml(rateTxt) + '</span>' +
-        '<span class="scw-bid-review-v2__cell-num"><label>Ext</label>' +
-          escapeHtml(extTxt) + '</span>' +
+        (showExt ?
+          '<span class="scw-bid-review-v2__cell-num"><label>Ext</label>' +
+            escapeHtml(extTxt) + '</span>' : '') +
       '</div>' +
       (descTxt ?
         '<div class="scw-bid-review-v2__cell-desc" title="' +
@@ -280,14 +310,16 @@
     // expand panel with a side-by-side viewer (v1 parity).
     tr.appendChild(buildPhotosCell(row));
 
+    var assumption = isAssumption(row);
+
     // SOW item column — anchors the row, always second from left.
-    tr.appendChild(buildSowCell(row.sowItemData));
+    tr.appendChild(buildSowCell(row.sowItemData, assumption));
 
     // One cell per bid package
     for (var p = 0; p < packages.length; p++) {
       var pkg = packages[p];
       var cell = row.cellsByPackage[pkg.id] || null;
-      tr.appendChild(buildBidCell(cell, row.id));
+      tr.appendChild(buildBidCell(cell, row.id, assumption));
     }
     return tr;
   }
