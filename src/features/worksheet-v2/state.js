@@ -91,24 +91,55 @@
   function toggleL1(sourceViewKey, l1Id) {
     var state = loadRaw(sourceViewKey);
     var currentlyOpen = state[l1Id] === 'open';
+    // Flip just THIS L1\'s state — leave every other L1\'s entry
+    // alone. Write the new state explicitly (\'open\' or \'closed\')
+    // so applyOpenState\'s default-open fallback can\'t fight us:
+    // on small datasets where defaultOpen=true, omitting the
+    // marker would silently re-open the L1 on every render.
+    state[l1Id] = currentlyOpen ? 'closed' : 'open';
+    saveRaw(sourceViewKey, state);
+    return state;
+  }
 
-    // Wipe and re-set — exclusive accordion means only one L1 is
-    // ever in the 'open' slot. Closed L1s persist as 'closed' so
-    // the next render's defaults logic stays honored.
+  /**
+   * Force a specific L1 open (exclusive — closes any other open L1).
+   * Used by render.js when a cascade moves a record into a different
+   * MDF/IDF and we need to make sure the new L1 is visible.
+   */
+  function setOpenExclusive(sourceViewKey, l1Id) {
+    if (!l1Id) return;
     var next = {};
-    if (!currentlyOpen) next[l1Id] = 'open';
-    // Don't bother recording explicit 'closed' for every group — an
-    // empty state is treated as "use defaults", which avoids storage
-    // bloat as more L1s appear over time. The presence/absence of
-    // exactly one 'open' is all we need.
+    next[l1Id] = 'open';
+    saveRaw(sourceViewKey, next);
+  }
 
+  /**
+   * Force every L1 in `l1Ids` to OPEN (non-exclusive). Used by the
+   * toolbar\'s "Expand all" action so individual L1 toggles still
+   * work afterward without the CSS-override conflict.
+   */
+  function setAllOpen(sourceViewKey, l1Ids) {
+    var next = {};
+    for (var i = 0; i < l1Ids.length; i++) next[l1Ids[i]] = 'open';
+    saveRaw(sourceViewKey, next);
+    return next;
+  }
+
+  /** Force every L1 in `l1Ids` to CLOSED. Explicit "closed" marker
+   *  beats the default-open threshold logic. */
+  function setAllClosed(sourceViewKey, l1Ids) {
+    var next = {};
+    for (var i = 0; i < l1Ids.length; i++) next[l1Ids[i]] = 'closed';
     saveRaw(sourceViewKey, next);
     return next;
   }
 
   ns.state = {
-    applyOpenState: applyOpenState,
-    toggleL1:       toggleL1,
+    applyOpenState:   applyOpenState,
+    toggleL1:         toggleL1,
+    setOpenExclusive: setOpenExclusive,
+    setAllOpen:       setAllOpen,
+    setAllClosed:     setAllClosed,
     DEFAULT_OPEN_THRESHOLD: DEFAULT_OPEN_THRESHOLD
   };
 })();

@@ -111,6 +111,17 @@
       $(document)
         .off('knack-cell-update.' + key + '.scwWsV2')
         .on('knack-cell-update.' + key + '.scwWsV2', function () { notify(key); });
+
+      // If this view is seeded with empty L1 groups from a separate
+      // MDF/IDF source view (e.g. view_3358), re-notify whenever that
+      // view renders — otherwise empty groups don't appear until the
+      // next source-view render fires.
+      if (vcfg.mdfSourceViewKey) {
+        var mdfKey = vcfg.mdfSourceViewKey;
+        $(document)
+          .off('knack-view-render.' + mdfKey + '.scwWsV2-' + key)
+          .on('knack-view-render.' + mdfKey + '.scwWsV2-' + key, function () { notify(key); });
+      }
     });
 
     // mirror-connection-sync emits this when its reciprocal/cascade
@@ -135,6 +146,7 @@
     readRecords: readRecords,
     subscribe:   subscribe,
     notify:      notify,
+    refetchAndNotify: refetchAndNotify,
     attachListeners: attachListeners
   };
 })();

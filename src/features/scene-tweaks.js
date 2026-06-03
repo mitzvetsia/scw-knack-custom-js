@@ -309,14 +309,38 @@
   function sumViewField(viewIds, fieldKey) {
     var total = 0;
     for (var v = 0; v < viewIds.length; v++) {
-      var container = document.getElementById(viewIds[v]);
-      if (!container) { SCW.debug('[scw-totals] container not found:', viewIds[v]); continue; }
+      var viewId = viewIds[v];
+      // Prefer Knack's Backbone model — it has every record regardless
+      // of how device-worksheet rearranged the DOM. Some records get
+      // their data <tr> eaten during the transform (e.g. the first
+      // service row's data <td>s end up absorbed into the card and the
+      // td.field_XXXX disappears from the DOM), so summing DOM cells
+      // undercounts. Same record IS still in the model.
+      var view = (typeof Knack !== 'undefined' && Knack.views) ? Knack.views[viewId] : null;
+      var models = view && view.model && view.model.data && view.model.data.models;
+      if (models && models.length) {
+        for (var i = 0; i < models.length; i++) {
+          var attrs = models[i].attributes || {};
+          var raw = attrs[fieldKey];
+          // Equation/sum fields may live on the _raw companion as an
+          // object {currency_field_extended: ...}. Try a few shapes.
+          if (raw && typeof raw === 'object') {
+            raw = raw.currency_field_extended || raw.amount || raw.value || JSON.stringify(raw);
+          }
+          var val = parseNum(raw);
+          SCW.debug('[scw-totals model]', viewId, fieldKey, '[' + i + ']', raw, '→', val);
+          total += val;
+        }
+        continue;
+      }
+      // DOM fallback when the model isn't available
+      var container = document.getElementById(viewId);
+      if (!container) { SCW.debug('[scw-totals] container not found:', viewId); continue; }
       var cells = container.querySelectorAll('td[data-field-key="' + fieldKey + '"]');
-      SCW.debug('[scw-totals]', viewIds[v], fieldKey, '→', cells.length, 'cells');
-      for (var i = 0; i < cells.length; i++) {
-        var val = parseNum(cells[i].textContent);
-        SCW.debug('  [' + i + ']', cells[i].textContent.trim(), '→', val);
-        total += val;
+      SCW.debug('[scw-totals dom]', viewId, fieldKey, '→', cells.length, 'cells');
+      for (var j = 0; j < cells.length; j++) {
+        var domVal = parseNum(cells[j].textContent);
+        total += domVal;
       }
     }
     SCW.debug('[scw-totals] SUM', fieldKey, '=', total);
@@ -346,9 +370,16 @@
     if (existing) existing.remove();
 
     // ── Calculate from DOM cells ──
-    var retail       = sumViewField(ALL_VIEWS, 'field_1960');        // retail price (devices + hardware)
-    var lineDiscount = sumViewField(EQUIPMENT_VIEWS, 'field_2303');  // device applied discount
-    var hwDiscount   = sumViewField(HARDWARE_VIEWS, 'field_2267');   // hardware effective discount
+    // field_2269 is the per-line "Total" column (extended NET price,
+    // qty × unit minus per-line discount). It's rendered in the view,
+    // so we can sum it from the DOM. We need to add the line discount
+    // back to recover the extended list (retail) for the display row.
+    // Don't sum field_1960 (unit price) — it undercounts any line with
+    // qty > 1 (NanoBeam ×2, Wattbox ×2, etc.).
+    var lineDiscount = sumViewField(EQUIPMENT_VIEWS, 'field_2303');  // device applied discount (extended)
+    var hwDiscount   = sumViewField(HARDWARE_VIEWS, 'field_2303');   // hardware applied discount (extended)
+    var eqNet        = sumViewField(ALL_VIEWS, 'field_2269');        // extended net price (devices + hardware)
+    var retail       = eqNet + Math.abs(lineDiscount) + Math.abs(hwDiscount);
     var lumpDiscount = getLumpDiscount();
     var discount     = Math.abs(lineDiscount) + Math.abs(hwDiscount) + Math.abs(lumpDiscount);
     var discountPct  = retail > 0 ? (discount / retail * 100) : 0;
@@ -400,10 +431,14 @@
 
     view.appendChild(layout);
 
-    // Published-proposal info now lives at the top of the SOW column
-    // (see published-proposal-sow-card.js). Don't render it in the
-    // totals here too — would just duplicate the same block.
-    // injectProposalInfo(layout);
+    // Inject the published-proposal block (PDF link + Open Customer
+    // Link + Preview Draft Proposal link) at the bottom of the totals
+    // panel. published-proposal-sow-card.js also renders this on the
+    // scene, but it anchors above view_3827 which lives at the very
+    // bottom of the page (after every accordion) — practically
+    // invisible. The totals panel is where users actually look, so
+    // duplicate it here too.
+    injectProposalInfo(layout);
   }
 
   // Build a small "SCW Notes" speak/comment button + click-to-toggle

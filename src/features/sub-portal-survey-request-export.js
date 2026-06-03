@@ -264,7 +264,7 @@
       if (!_pollActive) return;
       var current = readTargetFieldSignature();
       if (current && current !== _pollInitial) {
-        stopPolling({ msg: 'Survey Field PDF updated.', variant: 'success' });
+        finishWithFieldReload();
         return;
       }
       // Re-apply overlay onto the freshly rendered detail row
@@ -278,7 +278,7 @@
       // trigger a re-render.
       var current = readTargetFieldSignature();
       if (current && current !== _pollInitial) {
-        stopPolling({ msg: 'Survey Field PDF updated.', variant: 'success' });
+        finishWithFieldReload();
         return;
       }
 
@@ -296,6 +296,68 @@
         if (model && typeof model.fetch === 'function') model.fetch();
       }
     }, POLL_INTERVAL_MS);
+  }
+
+  // Polling has detected the field change. Re-render the detail view so
+  // the new PDF reference is shown, then bust any cached asset URLs
+  // inside the field — Knack file/asset fields keep pointing at the same
+  // CDN URL and the browser happily serves the cached old PDF unless we
+  // force a refetch. Append a cache-busting query param to every link /
+  // iframe / img inside the target field so the click goes to a fresh
+  // copy without forcing a full page reload.
+  function finishWithFieldReload() {
+    stopPolling({ msg: 'Survey Field PDF updated.', variant: 'success' });
+
+    // Last-chance field refresh — picks up any write Make landed
+    // between our last poll tick and the change-detection render.
+    try {
+      if (typeof Knack !== 'undefined' && Knack.views && Knack.views[DETAIL_VIEW]) {
+        var model = Knack.views[DETAIL_VIEW].model;
+        if (model && typeof model.fetch === 'function') model.fetch();
+      }
+    } catch (e) {}
+
+    // Cache-bust the asset URLs once the re-render lands. Knack triggers
+    // knack-view-render after model.fetch resolves; do it then so we\'re
+    // working with the FRESH DOM (the old <a> tags get nuked on render).
+    var BUST_NS = EVENT_NS + '.bust';
+    $(document).off('knack-view-render.' + DETAIL_VIEW + BUST_NS);
+    $(document).on('knack-view-render.' + DETAIL_VIEW + BUST_NS, function () {
+      $(document).off('knack-view-render.' + DETAIL_VIEW + BUST_NS);
+      bustFieldAssetCache();
+    });
+
+    // Belt: also bust immediately in case the re-render already happened
+    // (the polling tick that detected the change may have been triggered
+    // by the very render that landed the new value).
+    bustFieldAssetCache();
+  }
+
+  // Append a cache-busting query param to every asset URL inside the
+  // target field's detail cell. Covers Knack\'s common renderings:
+  //   • <a class="kn-view-asset" href="...">file.pdf</a>
+  //   • <iframe src="..."> for preview embeds
+  //   • <img src="..."> for image-field thumbnails (unlikely on a PDF
+  //     field but cheap to handle)
+  function bustFieldAssetCache() {
+    var view = document.getElementById(DETAIL_VIEW);
+    if (!view) return;
+    var cell = view.querySelector('.' + TARGET_FIELD) ||
+               view.querySelector('[data-field-key="' + TARGET_FIELD + '"]');
+    if (!cell) return;
+    var stamp = '_cb=' + Date.now();
+    function bust(url) {
+      if (!url) return url;
+      // Don't bust hash-only fragments or javascript: links.
+      if (/^(#|javascript:)/i.test(url)) return url;
+      return url + (url.indexOf('?') === -1 ? '?' : '&') + stamp;
+    }
+    var links = cell.querySelectorAll('a[href]');
+    for (var i = 0; i < links.length; i++) links[i].setAttribute('href', bust(links[i].getAttribute('href')));
+    var iframes = cell.querySelectorAll('iframe[src]');
+    for (var j = 0; j < iframes.length; j++) iframes[j].setAttribute('src', bust(iframes[j].getAttribute('src')));
+    var imgs = cell.querySelectorAll('img[src]');
+    for (var k = 0; k < imgs.length; k++) imgs[k].setAttribute('src', bust(imgs[k].getAttribute('src')));
   }
 
   // ── Button state ──

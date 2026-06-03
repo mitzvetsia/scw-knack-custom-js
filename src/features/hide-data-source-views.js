@@ -56,7 +56,9 @@
     // own composite #bid-review-matrix mount. Keep them rendered
     // (Backbone models still need to populate) but visually hidden.
     // 'view_3680' — bid records (the bids being compared).
-    'view_3680',
+    // TEMPORARILY UNHIDDEN: debugging field_771 (photos) read path
+    // for rows with no matching SOW item. Restore by uncommenting.
+    // 'view_3680',
     // 'view_3921' — SOW line items (unbid noBid rows + worksheet
     // wsTrs that get moved into the expand panel).
     'view_3921',
@@ -77,9 +79,6 @@
     // surface reads/writes through this view (config.nextStepViewKey
     // + surveyCostsWriteView). Kept rendered for model access.
     'view_3918',
-    // 'view_3920' — SOW_published proposals, sourced by bid-review
-    // (config.proposalSourceView) to show published-proposal state.
-    'view_3920',
     // 'view_3923' — Update Installation Project form view used by
     // bid-review's margin edit flow (field_2158 PUT target).
     'view_3923',

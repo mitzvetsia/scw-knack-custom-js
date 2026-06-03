@@ -61,7 +61,8 @@
           { field: 'field_1199', hasValue: true },
           { field: 'field_2723', notValue: 'Yes' },
           { field: 'field_2706', notValue: 'Yes' },
-          { not: { field: 'field_2728', gt: 0 } }
+          { not: { field: 'field_2728', gt: 0 } },
+          { field: 'field_2917', gt: 0 }
         ]
       },
       // After a successful request, remember it per-SOW so the button locks
@@ -97,15 +98,18 @@
         text: 'Survey Requested on {link}',
         link: { view: 'view_3876', field: 'field_2329' }
       },
-      disabled: { field: 'field_2723', notValue: 'Yes', message: 'SOW not yet validated' }
+      disabled: { field: 'field_2723', notValue: 'Yes', message: 'Waiting on Ops to validate SOW' }
     },
     {
       type: 'action',
       id: 'review-site-survey',
       label: 'Review Site Survey Report',
-      menuView: 'view_3862',
+      // Route to the new survey-report-page (the old view_3862 menu
+      // pointed at the deprecated site-survey-report-deprecated route).
+      hrefTemplate: '#survey-report-page/site-survey-report/{sowId}/',
       insertAfter: 'view_3853',
       activeIcon: 'eye',
+      newTab: true,
       // Locked only when the survey hasn't been requested AND the
       // workflow hasn't advanced via the change-request path (field_2728 > 0).
       disabled: {
@@ -142,6 +146,7 @@
       insertAfterStepId: 'request-alternative-proposal',
       hrefSelector: '#view_3814 tbody tr a.kn-link-page',
       activeIcon: 'eye',
+      newTab: true,
       disabled: { field: 'field_2725', notValue: 'Yes', message: 'Not yet released to Sales' }
     }
   ];
@@ -448,6 +453,14 @@
   // Used so a step can point at, e.g., a row inside a table view
   // rather than a single-link menu view.
   function resolveHref(step) {
+    if (step.hrefTemplate) {
+      var sowId = '';
+      try {
+        var v = Knack && Knack.views && Knack.views[SOURCE_VIEW];
+        sowId = (v && v.model && (v.model.id || (v.model.attributes && v.model.attributes.id))) || '';
+      } catch (e) { /* ignore */ }
+      if (sowId) return step.hrefTemplate.replace('{sowId}', sowId);
+    }
     if (step.hrefSelector) {
       var el = document.querySelector(step.hrefSelector);
       if (el) return el.getAttribute('href') || '';
@@ -474,6 +487,10 @@
     } else {
       var href = resolveHref(step);
       if (href) el.href = href;
+      if (step.newTab) {
+        el.target = '_blank';
+        el.rel = 'noopener';
+      }
       // pollAfterClick steps: stamp a per-SOW flag the moment the
       // user clicks. The browser then navigates to the form view as
       // normal; when the user returns, applyActionState sees the

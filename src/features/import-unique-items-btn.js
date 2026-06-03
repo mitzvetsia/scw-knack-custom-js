@@ -29,6 +29,9 @@
   var SOW_CONN_FIELD   = 'field_2154';  // SOW Header connection on a line item
   var ITEM_LABEL_FIELD = 'field_1950';  // Device label for a line item (e.g. "E-003"; blank on non-device items)
   var ITEM_PRODUCT_FIELD = 'field_1949'; // Product (connection) — fallback label for non-device line items
+  var MDF_FIELD        = 'field_1946';  // MDF/IDF connection on a line item
+  var BUCKET_FIELD     = 'field_2219';  // Proposal bucket connection
+  var ASSUMPTIONS_BUCKET_ID = '697b7a023a31502ec68b3303';
   var SURVEY_FIELD     = 'field_2706';  // Yes/No: "Survey Requested?" on a SOW Header
   var BTN_MARKER     = 'scw-import-unique-items-btn';
   var BTN_LABEL      = 'Add unique items';
@@ -38,6 +41,7 @@
   // sowId → Set<lineItemId>
   var sowToItems = null;
   var itemLabels = null;   // itemId → display label (field_1950)
+  var itemMeta   = null;   // itemId → { mdfId, mdfLabel, isAssumption }
 
   var DOWNLOAD_SVG =
     '<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" ' +
@@ -263,7 +267,13 @@
   //   When passed a single group, no group header is rendered.
   function renderItemChecklist(container, groups, onChange) {
     var totalCount = 0;
-    groups.forEach(function (g) { totalCount += g.items.length; });
+    var defaultSelectedCount = 0;
+    groups.forEach(function (g) {
+      totalCount += g.items.length;
+      g.items.forEach(function (it) {
+        if (it.defaultChecked !== false) defaultSelectedCount++;
+      });
+    });
     var showGroupHeaders = groups.length > 1 ||
       (groups.length === 1 && groups[0].token);
 
@@ -271,10 +281,10 @@
       '<div class="scw-iui-items">' +
         '<div class="scw-iui-items-header">' +
           '<span class="scw-iui-items-count">' +
-            totalCount + ' of ' + totalCount + ' selected' +
+            defaultSelectedCount + ' of ' + totalCount + ' selected' +
           '</span>' +
           '<button type="button" class="scw-iui-link scw-iui-toggle-all">' +
-            'Deselect all' +
+            (defaultSelectedCount === totalCount ? 'Deselect all' : 'Select all') +
           '</button>' +
         '</div>' +
         '<div class="scw-iui-items-list">';
@@ -287,9 +297,10 @@
           '</div>';
       }
       g.items.forEach(function (item) {
+        var checked = (item.defaultChecked !== false) ? ' checked' : '';
         html += '<label class="scw-iui-item">' +
           '<input type="checkbox" class="scw-iui-item-cb" ' +
-            'data-item-id="' + escapeHtml(item.id) + '" checked>' +
+            'data-item-id="' + escapeHtml(item.id) + '"' + checked + '>' +
           '<span class="scw-iui-item-label" title="' + escapeHtml(item.label) + '">' +
             escapeHtml(item.label) +
           '</span>' +
@@ -567,23 +578,39 @@
   function buildSowIndex() {
     sowToItems = null;
     itemLabels = null;
+    itemMeta   = null;
     try {
       var v = Knack.views && Knack.views[LINE_ITEM_VIEW];
       if (!v || !v.model || !v.model.data || !v.model.data.models) return;
       var models = v.model.data.models;
       var idx    = {};
       var labels = {};
+      var meta   = {};
       for (var i = 0; i < models.length; i++) {
         var rec = models[i] && models[i].attributes;
         if (!rec || !rec.id) continue;
 
-        // Display label. Prefer the device label (field_1950, e.g. "E-003"),
-        // but it's blank on line items that aren't survey devices (plain
-        // products / bid items), which would leave the modal showing raw
-        // record IDs. Fall back to the connected product name (field_1949),
-        // and combine both when present ("E-003 · Acme Camera").
         var label = recordLabel(rec);
         if (label) labels[rec.id] = label;
+
+        // MDF/IDF + bucket signal for the modal\'s grouping +
+        // default-deselect-assumptions behavior.
+        var mdfRaw = rec[MDF_FIELD + '_raw'];
+        var mdfId = '', mdfLabel = '';
+        if (Array.isArray(mdfRaw) && mdfRaw.length && mdfRaw[0]) {
+          mdfId    = mdfRaw[0].id || '';
+          mdfLabel = cleanText(mdfRaw[0].identifier) || '';
+        }
+        var bucketRaw = rec[BUCKET_FIELD + '_raw'];
+        var bucketId = '';
+        if (Array.isArray(bucketRaw) && bucketRaw.length && bucketRaw[0]) {
+          bucketId = bucketRaw[0].id || '';
+        }
+        meta[rec.id] = {
+          mdfId: mdfId,
+          mdfLabel: mdfLabel,
+          isAssumption: (bucketId === ASSUMPTIONS_BUCKET_ID)
+        };
 
         var conns = rec[SOW_CONN_FIELD + '_raw'];
         if (!conns || !conns.length) continue;
@@ -596,7 +623,12 @@
       }
       sowToItems = idx;
       itemLabels = labels;
+      itemMeta   = meta;
     } catch (e) { /* ignore */ }
+  }
+
+  function getItemMeta(id) {
+    return (itemMeta && itemMeta[id]) || { mdfId: '', mdfLabel: '', isAssumption: false };
   }
 
   function getItemLabel(itemId) {
@@ -1046,26 +1078,50 @@
         var aggNow = rcvNow ? aggregateAllUnique(rcvNow) : null;
         if (!aggNow || !aggNow.itemIds.length) return;
 
-        // Build per-source groups so each item shows under its source SOW.
-        // Re-walk sowToItems instead of inverting agg.itemIds — we need the
-        // original SOW grouping, not the deduped union.
+        // Group every unique item by its MDF/IDF location. Items
+        // without an MDF connection (typically Project Wide assumptions
+        // / services) land in a "Project Wide" bucket and are
+        // pre-deselected for assumption-bucket items.
         var rcvSet = sowToItems[rcvNow] || {};
-        var groups = [];
         var seenItem = {};
-        for (var si = 0; si < aggNow.sourceIds.length; si++) {
-          var sowId = aggNow.sourceIds[si];
-          var items = sowToItems[sowId] || {};
-          var groupItems = [];
-          for (var iid in items) {
-            if (!Object.prototype.hasOwnProperty.call(items, iid)) continue;
+        var byMdf = Object.create(null);   // mdfId → { label, items: [] }
+        var PROJECT_WIDE_KEY = '__project_wide__';
+        for (var si2 = 0; si2 < aggNow.sourceIds.length; si2++) {
+          var sowId2 = aggNow.sourceIds[si2];
+          var items2 = sowToItems[sowId2] || {};
+          for (var iid in items2) {
+            if (!Object.prototype.hasOwnProperty.call(items2, iid)) continue;
             if (rcvSet[iid] || seenItem[iid]) continue;
             seenItem[iid] = 1;
-            groupItems.push({ id: iid, label: getItemLabel(iid) });
-          }
-          if (groupItems.length) {
-            groups.push({ token: getSowToken(sowId), items: groupItems });
+            var m = getItemMeta(iid);
+            var key   = m.mdfId || PROJECT_WIDE_KEY;
+            var label = m.mdfLabel || 'Project Wide';
+            if (!byMdf[key]) byMdf[key] = { label: label, items: [] };
+            // Default-deselect for project-wide assumption items.
+            var defaultChecked = !(key === PROJECT_WIDE_KEY && m.isAssumption);
+            byMdf[key].items.push({
+              id: iid,
+              label: getItemLabel(iid),
+              defaultChecked: defaultChecked
+            });
           }
         }
+        // Sort the groups: real MDF/IDF entries first, then Project
+        // Wide at the bottom. Within each, sort items alphabetically.
+        var groups = [];
+        Object.keys(byMdf).forEach(function (k) {
+          byMdf[k].items.sort(function (a, b) {
+            return a.label.localeCompare(b.label, undefined,
+              { numeric: true, sensitivity: 'base' });
+          });
+          groups.push({ key: k, token: byMdf[k].label, items: byMdf[k].items });
+        });
+        groups.sort(function (a, b) {
+          if (a.key === PROJECT_WIDE_KEY) return 1;
+          if (b.key === PROJECT_WIDE_KEY) return -1;
+          return a.token.localeCompare(b.token, undefined,
+            { numeric: true, sensitivity: 'base' });
+        });
 
         showBulkConfirm({
           sourceCount:    aggNow.sourceIds.length,

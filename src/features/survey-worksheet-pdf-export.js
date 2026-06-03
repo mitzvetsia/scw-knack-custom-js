@@ -1242,16 +1242,74 @@
       '</div>'
     );
 
+    // Walk rows with two buffers per MDF/IDF group:
+    //   • pendingCams   — consecutive camera/reader cards, flushed as
+    //                     one inline spreadsheet table inside the group.
+    //   • pendingNoBid  — non-cam cards whose product doesn't require a
+    //                     sub bid (field_2479 != Yes). Subs don't quote
+    //                     these so they get demoted: rendered compact
+    //                     and pushed to the bottom of the MDF/IDF.
+    // Both buffers flush at level-1 group headers and at the end of the
+    // document so demoted items stay scoped to their own MDF/IDF.
+    var pendingCams = [];
+    var pendingNoBid = [];
+    function flushCamBatch() {
+      if (!pendingCams.length) return;
+      html.push(renderCameraReaderBatchTable(pendingCams));
+      pendingCams = [];
+    }
+    function flushNoBidBatch() {
+      if (!pendingNoBid.length) return;
+      html.push('<div class="ws-nobid-stack">');
+      for (var n = 0; n < pendingNoBid.length; n++) {
+        html.push(renderCard(pendingNoBid[n]));
+      }
+      html.push('</div>');
+      pendingNoBid = [];
+    }
     for (var i = 0; i < payload.rows.length; i++) {
       var row = payload.rows[i];
-      if (row.type === 'group') {
+
+      // Cameras/readers go in the spreadsheet buffer (skip project-wide
+      // rows — they belong in the global section at the doc end).
+      if (row.type === 'card' && isCamerasReadersBucket(row) &&
+          !/project wide/i.test(row.groupL1 || '')) {
+        pendingCams.push(row);
+        continue;
+      }
+
+      // Non-cam cards whose product doesn't require a sub bid get
+      // demoted to the bottom of the current MDF/IDF group. Flush the
+      // cam spreadsheet first so it stays at the natural insertion
+      // point, then defer this card.
+      if (row.type === 'card' && !isNoBidProduct.skip(row) && isNoBidProduct(row) &&
+          !/project wide/i.test(row.groupL1 || '')) {
+        flushCamBatch();
+        pendingNoBid.push(row);
+        continue;
+      }
+
+      // Anything else: flush the cam batch first so the spreadsheet
+      // sits in-place. Group headers at level 1 also flush the demoted
+      // no-bid stack so it lands at the bottom of the OUTGOING group.
+      if (row.type === 'group' && (row.level || 1) === 1) {
+        flushCamBatch();
+        flushNoBidBatch();
+        html.push(renderGroupHeader(row));
+      } else if (row.type === 'group') {
+        flushCamBatch();
         html.push(renderGroupHeader(row));
       } else if (row.type === 'card') {
+        flushCamBatch();
         html.push(renderCard(row));
       } else if (row.type === 'l1-notes') {
+        flushCamBatch();
         html.push(renderL1Notes(row));
       }
     }
+    // Tail of the loop — flush any remaining buffers in the right order.
+    flushCamBatch();
+    flushNoBidBatch();
 
     // ── Connection Map pivot (cameras/readers × distribution devices) ──
     var pivotHtml = renderConnectionPivot(payload);
@@ -1480,6 +1538,22 @@
     } else {
       h.push('<h1 class="info-cover-title">Site Survey</h1>');
     }
+
+    // Total camera / reader count, derived from the same bucket gate
+    // the connection pivot uses. Rendered as a standalone callout above
+    // the rest of the cover fields so it reads as a headline figure.
+    var camCount = 0;
+    if (payload.rows && payload.rows.length) {
+      for (var ci = 0; ci < payload.rows.length; ci++) {
+        var cr = payload.rows[ci];
+        if (cr && cr.type === 'card' && isCamerasReadersBucket(cr)) camCount++;
+      }
+    }
+    h.push('<div class="info-cover-count">');
+    h.push('<span class="info-cover-count-num">' + camCount + '</span>');
+    h.push('<span class="info-cover-count-label">Total Cameras / Readers</span>');
+    h.push('</div>');
+
     for (var i = 0; i < payload.page1Sections.length; i++) {
       var sec = payload.page1Sections[i];
       h.push('<div class="info-cover-section">');
@@ -1528,12 +1602,15 @@
     // between consecutive maps. Constrain BOTH dimensions and use
     // object-fit so the image always fits one page regardless of
     // source aspect ratio.
-    // Portrait Letter useful area ~8.1in × 10.4in (minus margins +
-    // page footer). Subtract ~0.4in for the label + spacing on top.
-    // 8.5in keeps total section height ≈ 9in — comfortably under the
-    // 10in usable page area so the renderer never has to split.
+    // Whole document is now landscape (size: letter landscape on the
+    // default @page rule). Landscape Letter = 11in × 8.5in. With
+    // 0.18in top + 0.3in bottom margins and a ~0.4in label/section
+    // chrome above the image, the floor is ~8.5 − 0.18 − 0.3 − 0.4
+    // ≈ 7.6in. Set max-height ≤ that so the image NEVER spills onto a
+    // second page — overflow there caused the blank-page-before-map
+    // bug to come back when we flipped the doc to landscape.
     var imgStyle = 'display:block; margin:0 auto; ' +
-                   'max-width:100%; max-height:8.5in; ' +
+                   'max-width:100%; max-height:7.2in; ' +
                    'width:auto; height:auto; object-fit:contain;';
     for (var i = 0; i < section.images.length; i++) {
       var img = section.images[i];
@@ -1548,6 +1625,127 @@
       h.push('</section>');
     }
     return h.join('');
+  }
+
+  // ── Inline camera/reader spreadsheet table ──
+  // Renders one table for a contiguous batch of camera/reader cards
+  // within an MDF/IDF group (the caller buffers them out of the main
+  // render loop). Subs prefer the spreadsheet layout over per-card
+  // detail blocks; this lives inline so the table sits in its own
+  // MDF/IDF rather than being banished to the end of the document.
+  // Pre-filled cells use the gray ☒ convention so techs can ink over
+  // to confirm or strike + tick the other option to correct.
+  var CR_HEIGHT_CHOICES = ["<16'", "16-24'", ">24'"];
+  // "Require Sub Bid" flag on the line item's stored product. Yes means
+  // the sub has to quote this item; No / blank means it's stocked or
+  // labor-internal, no sub action needed. Keys cover the survey and SOW
+  // worksheet schemas (different field IDs hold the same flag).
+  var REQUIRE_SUB_BID_KEYS = ['field_2479', 'field_2478'];
+  function isNoBidProduct(card) {
+    if (!card || !card.raw) return false;
+    for (var i = 0; i < REQUIRE_SUB_BID_KEYS.length; i++) {
+      var k = REQUIRE_SUB_BID_KEYS[i];
+      var raw = card.raw[k + '_raw'];
+      var v = (raw !== undefined && raw !== null && raw !== '') ? raw : card.raw[k];
+      if (v === undefined || v === null || v === '') continue;
+      var s = String(v).toLowerCase().trim();
+      // Explicit "No" wins; treat anything else (including blank) as
+      // "leave it alone." Only demote cards where the field is set
+      // and the answer is No.
+      return s === 'no' || s === 'false' || s === '0';
+    }
+    return false;
+  }
+  // Skip the no-bid demotion for buckets we already special-case so we
+  // never accidentally double-handle a row.
+  isNoBidProduct.skip = function (card) {
+    return isCamerasReadersBucket(card);
+  };
+
+  function renderCameraReaderBatchTable(cards) {
+    if (!cards || !cards.length) return '';
+    var h = [];
+    h.push('<div class="cr-sheet-group cr-sheet-group--inline">');
+    h.push('<div class="cr-sheet-label">Cameras or Readers</div>');
+    h.push('<table class="cr-sheet-table"><colgroup>');
+    h.push('<col class="cr-col-label"><col class="cr-col-product"><col class="cr-col-mount">');
+    h.push('<col class="cr-col-yn"><col class="cr-col-yn"><col class="cr-col-yn">');
+    h.push('<col class="cr-col-height"><col class="cr-col-drop"><col class="cr-col-drop"><col class="cr-col-notes">');
+    h.push('</colgroup><thead><tr>');
+    h.push('<th>Label</th>');
+    h.push('<th>Product</th>');
+    h.push('<th>Mount</th>');
+    h.push('<th>Existing</th>');
+    h.push('<th>Exterior</th>');
+    h.push('<th>Plenum</th>');
+    h.push('<th>Height</th>');
+    h.push('<th>Drop ft</th>');
+    h.push('<th>Conduit ft</th>');
+    h.push('<th>Notes</th>');
+    h.push('</tr></thead><tbody>');
+    for (var ri = 0; ri < cards.length; ri++) {
+      var card = cards[ri];
+      h.push('<tr>');
+      h.push('<td class="cr-cell-id">' + esc(card.label || '') + '</td>');
+      h.push('<td class="cr-cell-id">' + esc(card.product || '') + '</td>');
+      h.push('<td>' + esc(pickDetail(card, ['field_2463'])) + '</td>');
+      h.push('<td class="cr-cell-yn">' + renderSheetYn(card, ['field_2370', 'field_2461']) + '</td>');
+      h.push('<td class="cr-cell-yn">' + renderSheetYn(card, ['field_2372', 'field_1984', 'field_2739']) + '</td>');
+      h.push('<td class="cr-cell-yn">' + renderSheetYn(card, ['field_2371', 'field_1983', 'field_2740']) + '</td>');
+      h.push('<td class="cr-cell-choices">' + renderSheetChoices(card, 'field_2455', CR_HEIGHT_CHOICES) + '</td>');
+      h.push('<td class="cr-cell-fill">' + esc(pickDetail(card, ['field_2367'])) + '</td>');
+      // Conduit always blank — survey is the source of truth (same
+      // rule as the inline measure-row renderer).
+      h.push('<td class="cr-cell-fill"></td>');
+      h.push('<td></td>');
+      h.push('</tr>');
+    }
+    h.push('</tbody></table>');
+    h.push('</div>');
+    return h.join('');
+  }
+
+  // Compact Y/N pair with pre-fill on the matching option. Mirrors the
+  // worksheet flag-row treatment: gray ☒ is "our best guess," tech inks
+  // over to confirm or strikes out + ticks the other to correct.
+  function renderSheetYn(card, keys) {
+    var v = String(pickDetail(card, keys) || '').toLowerCase();
+    var yesOn = v === 'yes' || v === 'true';
+    var noOn  = v === 'no'  || v === 'false';
+    return (
+      '<span class="ws-box' + (yesOn ? ' is-on' : '') + '">' + (yesOn ? '☒' : '☐') + '</span>Y' +
+      '<span class="cr-yn-sep"></span>' +
+      '<span class="ws-box' + (noOn  ? ' is-on' : '') + '">' + (noOn  ? '☒' : '☐') + '</span>N'
+    );
+  }
+
+  // Height-style multi-choice with pre-fill on the matching option.
+  function renderSheetChoices(card, key, choices) {
+    var v = String((card.detailValues && card.detailValues[key]) || '').trim().toLowerCase();
+    var bits = [];
+    for (var i = 0; i < choices.length; i++) {
+      var opt = choices[i];
+      var on = v && opt.toLowerCase() === v;
+      bits.push(
+        '<span class="cr-choice">' +
+          '<span class="ws-box' + (on ? ' is-on' : '') + '">' + (on ? '☒' : '☐') + '</span>' +
+          esc(opt) +
+        '</span>'
+      );
+    }
+    return bits.join('');
+  }
+
+  // First non-empty detailValues hit across a list of field keys.
+  // Mirrors the multi-schema lookup pattern used elsewhere (the same
+  // logical field has different keys in view_3800 vs view_3505 vs DTO).
+  function pickDetail(card, keys) {
+    if (!card || !card.detailValues || !keys) return '';
+    for (var i = 0; i < keys.length; i++) {
+      var v = card.detailValues[keys[i]];
+      if (v !== undefined && v !== null && String(v).length) return String(v);
+    }
+    return '';
   }
 
   // ── Trailing image section renderer (compact grid at end) ──
@@ -1852,9 +2050,9 @@
         if (card.product) {
           h.push('<div class="ws-id-product ws-id-product--stacked">' + esc(card.product) + '</div>');
         }
-        // Headend / networking: Connected Devices sits directly under
-        // the product name; Mount info is suppressed.
-        h.push(renderConnectedTo(card, 'Connected Devices'));
+        // Headend / networking: Connected Devices used to render here.
+        // Removed per request — leave a pass-through so the layout
+        // collapses naturally.
         h.push(scwBlock());
         h.push(techNotesBlock());
         if (!isHeadendOrNetworking(card)) h.push(renderRefSection(card));
@@ -1880,9 +2078,8 @@
         h.push(renderRefSection(card));
         h.push(renderFlagsRow(card));
         h.push(renderMeasureRow(card));
-        // Cam/reader: Connected To renders below Height/measure, styled
-        // like the other detail (ref) items.
-        h.push(renderConnectedTo(card, 'Connected To'));
+        // Cam/reader: Connected To used to render here. Removed per
+        // request.
         h.push('</div>');
 
         h.push('<div class="ws-body-col ws-body-col--mid">');
@@ -1938,7 +2135,7 @@
 
     return [
       '@page {',
-      '  size: letter portrait;',
+      '  size: letter landscape;',
       '  margin: 0.18in 0.2in 0.3in 0.2in;',
       '  @bottom-center {',
       '    content: "' + footerPrefix + '" counter(page) " of " counter(pages);',
@@ -1978,7 +2175,7 @@
       '  margin: 0; padding: 4px;',
       '}',
       '.doc-title {',
-      '  font-size: 16px; font-weight: 800; color: #07467c;',
+      '  font-size: 11px; font-weight: 800; color: #07467c;',
       '  margin: 0 0 6px 0; padding-bottom: 3px;',
       '  border-bottom: 2px solid #07467c;',
       '}',
@@ -1986,12 +2183,30 @@
       '/* Page 1 info cover (detail views: view_3796/3795/3798) */',
       '.info-cover {',
       '  page-break-after: always; break-after: page;',
-      '  padding: 0.1in 0.1in; min-height: 10.3in;',
+      // min-height was 10.3in (sized for portrait Letter's 11" tall page).
+      // The whole doc is now landscape — pages are only 8.5" tall — so a
+      // 10.3in min-height forced the info-cover to spill onto a second
+      // mostly-blank page, which then got page-break-after\'d, putting a
+      // blank page between the cover and the next section.
+      '  padding: 0.1in 0.1in; min-height: 7.5in;',
       '}',
       '.info-cover-title {',
-      '  font-size: 17px; font-weight: 800; color: #07467c;',
+      '  font-size: 8.5px; font-weight: 800; color: #07467c;',
       '  margin: 0 0 8px 0; padding-bottom: 3px;',
       '  border-bottom: 2px solid #07467c; text-align: center;',
+      '}',
+      '.info-cover-count {',
+      '  display: flex; align-items: baseline; justify-content: center;',
+      '  gap: 10px; margin: 0 0 10px 0; padding: 8px 12px;',
+      '  border: 1px solid #07467c; border-radius: 4px;',
+      '  background: #eef4fb; page-break-inside: avoid;',
+      '}',
+      '.info-cover-count-num {',
+      '  font-size: 20px; font-weight: 800; color: #07467c; line-height: 1;',
+      '}',
+      '.info-cover-count-label {',
+      '  font-size: 8px; font-weight: 700; color: #07467c;',
+      '  text-transform: uppercase; letter-spacing: 0.5px;',
       '}',
       '.info-cover-section {',
       '  margin-bottom: 8px; padding: 6px 10px;',
@@ -1999,7 +2214,7 @@
       '  background: #f8fafc; page-break-inside: avoid;',
       '}',
       '.info-cover-section-title {',
-      '  font-size: 11px; font-weight: 700; color: #07467c;',
+      '  font-size: 8px; font-weight: 700; color: #07467c;',
       '  margin: 0 0 4px 0; padding-bottom: 2px;',
       '  border-bottom: 1px dashed #c9d4de;',
       '  text-transform: uppercase; letter-spacing: 0.4px;',
@@ -2047,18 +2262,21 @@
       // under the page floor. page-break-after starts the next
       // section on a fresh page.
       '.cover-page {',
-      '  page-break-after: always; break-after: page;',
-      '  page-break-inside: avoid; break-inside: avoid;',
+      // Use page-break-BEFORE instead of page-break-after so each cover
+      // page starts a new page, and the FIRST cover after the worksheet
+      // starts normally without leaving a trailing blank. The previous
+      // `after: always` combo (plus :last-of-type fallback) failed
+      // because :last-of-type matches the last <section> overall — and
+      // ws-card sections come later in the doc, so EVERY cover-page
+      // ended up with break-after, dragging a blank page in front of
+      // the worksheet via Chromium\'s break-collapsing oddities.
+      '  page-break-before: always; break-before: page;',
       '  text-align: center;',
       '  box-sizing: border-box;',
       '  width: 100%;',
       '}',
-      '.cover-page:last-of-type {',
-      '  page-break-after: auto;',
-      '  break-after: auto;',
-      '}',
       '.cover-section-label {',
-      '  font-size: 12px; font-weight: 800; color: #07467c;',
+      '  font-size: 8.5px; font-weight: 800; color: #07467c;',
       '  text-transform: uppercase; letter-spacing: 0.5px;',
       '  margin: 0 0 3px 0; padding: 2px 0 3px 0;',
       '  border-bottom: 2px solid #07467c; width: 100%;',
@@ -2068,11 +2286,15 @@
       '  display: block;',
       '  width: 100% !important;',
       '  height: auto !important;',
-      // Letter landscape = 11" x 8.5".  With 0.18/0.2in margins minus
-      // ~0.25in for the section label, the usable area is roughly
-      // 10.6in x 8.0in. Bias height-bound for floor plans.
+      // Letter landscape = 11" x 8.5".  With 0.18in top + 0.3in bottom
+      // margins + footer + ~0.35in for the section label & border, the
+      // image floor is ~7.2in. We had 7.95in here which overflowed by
+      // ~0.6in, and `!important` was beating the inline 7.4in cap I
+      // added earlier — that\'s why the blank-page-around-site-maps
+      // bug came back. Set the class cap low enough that even a
+      // tall portrait floor plan can\'t spill past the page.
       '  max-width: 10.55in !important;',
-      '  max-height: 7.95in !important;',
+      '  max-height: 7.2in !important;',
       '  object-fit: contain;',
       '  margin: 0 auto;',
       '  -webkit-print-color-adjust: exact;',
@@ -2086,7 +2308,7 @@
       '  page-break-before: auto;',
       '}',
       '.trailing-photos-title {',
-      '  font-size: 12px; font-weight: 800; color: #07467c;',
+      '  font-size: 8.5px; font-weight: 800; color: #07467c;',
       '  margin: 0 0 4px 0;',
       '  text-transform: uppercase; letter-spacing: 0.5px;',
       '}',
@@ -2106,7 +2328,7 @@
       '  display: block; border-radius: 2px;',
       '}',
       '.group-header {',
-      '  font-size: 11px; font-weight: 600; color: #07467c;',
+      '  font-size: 8px; font-weight: 600; color: #07467c;',
       '  background: #eef5fb; padding: 3px 8px;',
       '  margin: 5px 0 2px 0; border-left: 3px solid #5b9bd5;',
       '  page-break-after: avoid;',
@@ -2132,7 +2354,7 @@
       '  min-width: 0; flex: 1 1 auto;',
       '}',
       '.ws-label {',
-      '  font-size: 11.5px; font-weight: 700; color: #07467c;',
+      '  font-size: 8px; font-weight: 700; color: #07467c;',
       '}',
       '.ws-sep { color: #94a3b8; }',
       '.ws-product {',
@@ -2197,7 +2419,7 @@
          its 11.5px bold blue styling; labor uses the standard
          ws-labor sizing. */
       '.ws-id-label-block {',
-      '  font-weight: 700; color: #07467c; font-size: 11.5px;',
+      '  font-weight: 700; color: #07467c; font-size: 8px;',
       '  line-height: 1.2;',
       '}',
       '.ws-id-product--stacked {',
@@ -2216,12 +2438,14 @@
       '  margin-bottom: 1px;',
       '}',
       '.ws-id-label {',
-      '  font-weight: 700; color: #07467c; font-size: 11.5px;',
+      '  font-weight: 700; color: #07467c; font-size: 8px;',
       '}',
       '.ws-id-product {',
       // Match the label styling (bold + blue) so the device reads as',
       // one unified identifier line instead of label-then-graytext.',
-      '  font-weight: 700; color: #07467c; font-size: 10.5px;',
+      // Shrunk ~35% from the original 10.5px — the product name is */
+      // useful context but doesn\'t need to compete with the label.   */',
+      '  font-weight: 700; color: #07467c; font-size: 5px;',
       '}',
       '',
       '/* ── Reference items (Mount / SCW) — same shape as ws-line ── */',
@@ -2467,7 +2691,7 @@
       '  background: #fbfdff;',
       '}',
       '.ws-notes-heading {',
-      '  font-size: 9px; font-weight: 800; color: #07467c;',
+      '  font-size: 6.5px; font-weight: 800; color: #07467c;',
       '  text-transform: uppercase; letter-spacing: 0.5px;',
       '  margin-bottom: 3px;',
       '}',
@@ -2476,6 +2700,98 @@
       '  letter-spacing: 0.3px;',
       '}',
       '.ws-notes-lines--l1 { gap: 9px; }',
+      '',
+      '/* Camera & Reader spreadsheet — rendered inline inside each   */',
+      '/* MDF/IDF group, replacing the per-card layout for cams/readers. */',
+      '.cr-sheet-group { margin: 4px 0 8px; page-break-inside: avoid; }',
+      '.cr-sheet-group--inline { margin-top: 2px; }',
+      // Section label that orients the reader before they hit the table.
+      '.cr-sheet-label {',
+      '  font-size: 6.5px; font-weight: 800; color: #07467c;',
+      '  text-transform: uppercase; letter-spacing: 0.5px;',
+      '  background: #eef4fb;',
+      '  border: 1px solid #07467c; border-bottom: none;',
+      '  padding: 2px 6px;',
+      '}',
+      // No-bid demotion stack — non-camera items whose product flag is
+      // No-bid render at the bottom of their MDF/IDF group, styled
+      // exactly like an assumption (tight padding, smaller gray label,
+      // tiny value text). Mirrors the .ws-card--assumption rules with
+      // class selectors that match the wrapper instead of the card
+      // class, so the existing renderCard output works as-is.
+      '.ws-nobid-stack { margin-top: 4px; }',
+      '.ws-nobid-stack .ws-card {',
+      '  margin: 1px 0; padding: 1px 6px;',
+      '  background: #fafafa; border-color: #e5e7eb;',
+      '}',
+      '.ws-nobid-stack .ws-header { gap: 4px; }',
+      '.ws-nobid-stack .ws-label { font-size: 9px; color: #6b7280; }',
+      '.ws-nobid-stack .ws-sum-value {',
+      '  font-size: 8px; line-height: 1.15; color: #6b7280;',
+      '}',
+      '.ws-nobid-stack .ws-brief-labor {',
+      '  margin-top: 0; padding-top: 0; border-top: none;',
+      '  font-size: 9px; line-height: 1.25; color: #6b7280;',
+      '}',
+      // Hide the writing square + ref/flag/measure detail bands for
+      // no-bid items — they don\'t get surveyed, no need to give them
+      // room to write in.
+      '.ws-nobid-stack .ws-notes-open,',
+      '.ws-nobid-stack .ws-ref,',
+      '.ws-nobid-stack .ws-flags,',
+      '.ws-nobid-stack .ws-measure,',
+      '.ws-nobid-stack .ws-labor--scw { display: none; }',
+      '.ws-nobid-stack .ws-id-product,',
+      '.ws-nobid-stack .ws-id-product--stacked {',
+      '  font-size: 6.5px; color: #6b7280;',
+      '}',
+      '.ws-nobid-stack .ws-id-label,',
+      '.ws-nobid-stack .ws-id-label-block {',
+      '  font-size: 9px; color: #6b7280;',
+      '}',
+      '.cr-sheet-table {',
+      '  width: 100%; border-collapse: collapse; table-layout: fixed;',
+      '  font-size: 7.7px; line-height: 1.2;',
+      '}',
+      '.cr-sheet-table th, .cr-sheet-table td {',
+      '  border: 1px solid #94a3b8;',
+      '  padding: 2px 2px; vertical-align: middle;',
+      '  text-align: center;',
+      '  word-break: break-word; overflow-wrap: anywhere;',
+      '}',
+      // Body rows get a 2-line floor so techs have room to mark up and
+      // write in the Notes column. table-cell `height` acts as min-height.
+      '.cr-sheet-table tbody td { height: 28px; }',
+      '.cr-sheet-table thead th {',
+      '  background: #07467c; color: #fff;',
+      '  font-size: 6.5px; font-weight: 700;',
+      '  text-transform: uppercase; letter-spacing: 0.3px;',
+      '  padding: 2px 2px;',
+      '}',
+      '.cr-sheet-table tbody tr:nth-child(even) td { background: #f8fafc; }',
+      // Column width hints — sum to ~100%. Y/N cols share width; the
+      // notes column gets the remainder for write-in space.
+      '.cr-col-label   { width: 6%; }',
+      '.cr-col-product { width: 20%; }',
+      '.cr-col-mount   { width: 12%; }',
+      '.cr-col-yn      { width: 6%; }',
+      '.cr-col-height  { width: 11%; }',
+      '.cr-col-drop    { width: 5%; }',
+      '.cr-col-notes   { width: 23%; }',
+      '.cr-cell-id { font-weight: 600; }',
+      '.cr-cell-yn { white-space: nowrap; }',
+      '.cr-cell-yn .ws-box { font-size: 8px; margin-right: 0; }',
+      '.cr-yn-sep { display: inline-block; width: 3px; }',
+      '.cr-cell-choices {',
+      '  line-height: 1.25;',
+      '}',
+      '.cr-cell-choices .cr-choice {',
+      '  display: inline-block; white-space: nowrap; margin-right: 2px;',
+      '}',
+      '.cr-cell-choices .ws-box { font-size: 8px; margin-right: 0; }',
+      // Write-in cells (Drop, Conduit) — give the tech an underline-y',
+      // floor to scribble on rather than a blank cell.',
+      '.cr-cell-fill { background: #fdfdfe; }',
       '',
       '/* Connection Map pivot table — landscape page so we get more  */',
       '/* horizontal room for column headers and avoid vertical text. */',
@@ -2486,7 +2802,7 @@
       '  break-before: page; break-after: page;',
       '}',
       '.pivot-title {',
-      '  font-size: 13px; font-weight: 800; color: #07467c;',
+      '  font-size: 9px; font-weight: 800; color: #07467c;',
       '  margin: 0 0 4px 0;',
       '  text-transform: uppercase; letter-spacing: 0.5px;',
       '}',
@@ -2512,7 +2828,7 @@
       '  writing-mode: vertical-rl; transform: rotate(180deg);',
       '  display: inline-block;',
       '  height: 104px;',
-      '  font-weight: 700; color: #07467c; font-size: 8.5px;',
+      '  font-weight: 700; color: #07467c; font-size: 6px;',
       '  line-height: 1.1;',
       '  white-space: normal; word-break: break-word; overflow-wrap: break-word;',
       '}',

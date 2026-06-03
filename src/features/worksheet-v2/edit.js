@@ -71,12 +71,35 @@
       if (input.classList.contains(SAV_CLS)) input.classList.remove(SAV_CLS);
     }, FLASH_MS);
 
+    // Fields that influence the read-only Fee (field_2028) — when the
+    // user edits any of them, refetch the affected record after save
+    // so the row\'s Fee cell shows Knack\'s recomputed value.
+    var FEE_DEPS = { 'field_2150': 1, 'field_1973': 1, 'field_1974': 1, 'field_1964': 1 };
+
     savePut(viewKey, recordId, fieldKey, newValue)
-      .then(function () {
-        // Success path — nothing to do visually; the flash already
-        // signaled the save was acknowledged. The next data subscriber
-        // notify (from knack-cell-update) will re-render the card with
-        // Knack's authoritative response (formula recompute, etc.).
+      .then(function (resp) {
+        // SCW.knackAjax doesn\'t auto-fire knack-cell-update like
+        // Knack\'s native inline edit does. Patch the local model
+        // with whatever the server returned and notify subscribers
+        // so re-rendered cards reflect formula recomputes (Fee, etc).
+        try {
+          if (typeof SCW.syncKnackModel === 'function') {
+            SCW.syncKnackModel(viewKey, recordId, resp, fieldKey, newValue);
+          }
+        } catch (e) { /* ignore */ }
+        // Fee depends on a server-side formula recompute. The per-
+        // record fetch is unreliable on this view, so refetch the
+        // whole view\'s model — heavier but the only path that
+        // surfaces Knack\'s recomputed Fee + extended totals
+        // consistently. refetchAndNotify handles the fetch+notify
+        // pair atomically.
+        if (FEE_DEPS[fieldKey]) {
+          if (ns.data && typeof ns.data.refetchAndNotify === 'function') {
+            ns.data.refetchAndNotify(viewKey);
+            return;
+          }
+        }
+        if (ns.data && typeof ns.data.notify === 'function') ns.data.notify(viewKey);
       })
       .catch(function (xhr) {
         console.warn('[scw-ws-v2] save failed', { recordId: recordId, fieldKey: fieldKey, xhr: xhr });

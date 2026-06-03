@@ -56,6 +56,7 @@
     view_3331: { theme: 'sow-blue' },
     view_3475: { theme: 'slate' },
     view_3596: { defaultOpen: true },
+    view_3997: { defaultOpen: true },
     // Device worksheet views — groups default expanded
     view_3512: { defaultOpen: true },
     view_3505: { defaultOpen: true },

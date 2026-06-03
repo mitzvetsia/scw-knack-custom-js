@@ -128,11 +128,13 @@
         var id = conns[c].id;
         if (!id || seen[id]) continue;
         seen[id] = true;
-        list.push({ id: id, name: conns[c].identifier || 'SOW ' + list.length });
+        list.push({ id: id, name: String(conns[c].identifier || ('SOW ' + list.length)) });
       }
     }
 
-    list.sort(function (a, b) { return a.name.localeCompare(b.name); });
+    list.sort(function (a, b) {
+      return String(a.name).localeCompare(String(b.name));
+    });
     return list;
   }
 
@@ -149,11 +151,13 @@
         var pkgName = stripHtml(conns[c].identifier || '');
         if (!pkgId || seen[pkgId]) continue;
         seen[pkgId] = true;
-        list.push({ id: pkgId, name: pkgName || 'Package ' + (list.length + 1) });
+        list.push({ id: pkgId, name: String(pkgName || ('Package ' + (list.length + 1))) });
       }
     }
 
-    list.sort(function (a, b) { return a.name.localeCompare(b.name); });
+    list.sort(function (a, b) {
+      return String(a.name).localeCompare(String(b.name));
+    });
     return list;
   }
 
@@ -351,6 +355,11 @@
       bidMapConn:      raw(meta, FK.bidMapConn),
       cellsByPackage:  cellsByPackage,
       surveyNoBid:     surveyNoBid,
+      // Survey notes (field_2412) — pulled from the bid-side record so
+      // we can surface them in the bid cell when surveyNoBid is true.
+      // Normally these are rendered per-bid-cell from cell.notes; this
+      // row-level copy gives the "not on bid" path something to show.
+      surveyNotes:     raw(meta, FK.notes) || '',
       // Full raw view_3680 record (meta) for downstream payloads
       _rawRecord:      meta,
     };
@@ -582,6 +591,9 @@
           sowConnDeviceIds: connectionIdsAll(rec, SFK.connDevice),
           sowMapConn:      raw(rec, SFK.mapConn),
           sowMdfIdf:       connectionLabel(rec, SFK.mdfIdf),
+          // Survey notes (same field key as bid-side). Lets the "not
+          // on bid" cell render the notes the user needs to see.
+          surveyNotes:     raw(rec, SFK.notes) || '',
           // No bid data at all
           cellsByPackage:  {},
           noBid:           true,

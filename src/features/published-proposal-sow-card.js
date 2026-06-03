@@ -443,6 +443,15 @@
     // Insert as the FIRST child of view_3827's column so the proposal
     // info reads as the lead element of the SOW header area.
     column.insertBefore(card, column.firstChild);
+
+    // hide-data-source-views.js hides view_3827 AND its parent column
+    // (because at first render view_3827 is the column's only child).
+    // Our card is now a sibling in that hidden column — clear the
+    // inline display:none so the card is actually visible. view_3827
+    // itself stays hidden via its own inline style + the CSS rule.
+    if (column.style && column.style.display === 'none') {
+      column.style.removeProperty('display');
+    }
   }
 
   // ── Wiring ──────────────────────────────────────────────────

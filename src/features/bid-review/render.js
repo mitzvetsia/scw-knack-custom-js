@@ -1139,46 +1139,102 @@
   var ROW_PHOTO_VISIBLE = 1;
   var _photoCache = Object.create(null);
 
-  function scrapeRowPhotoUrls(rowId) {
-    if (!rowId) return null;
-    // Photos live inside the wsTr (.scw-ws-row) that device-worksheet
-    // builds. Each photo is a .scw-inline-photo-card injected by
-    // inline-photo-row.js. The original Knack <tr> in view_3921 has
-    // its field cells moved into the wsTr, so scraping td.field_771
-    // out of the source row returns empty.
-    //
-    // Look up the wsTr globally — it may live in view_3921's tbody
-    // (unexpanded rows) or inside our expand panel (when the row is
-    // open and the card was moved over).
-    var wsTr = document.querySelector('tr.scw-ws-row[id="' + rowId + '"]');
-    if (!wsTr) return _photoCache[rowId] || null;
-
-    var cards = wsTr.querySelectorAll(
-      '.scw-inline-photo-card[data-photo-has-image="true"]'
-    );
+  function scrapeRowPhotoUrls(rowId, bidRowId) {
+    if (!rowId && !bidRowId) return null;
+    // Primary path — photos live inside the wsTr (.scw-ws-row) that
+    // device-worksheet builds from view_3921 (SOW item) rows. Each
+    // photo is a .scw-inline-photo-card injected by inline-photo-row.js.
+    // The wsTr may be in view_3921's tbody or moved into our expand
+    // panel when the row is open.
+    var wsTr = rowId ? document.querySelector('tr.scw-ws-row[id="' + rowId + '"]') : null;
     var urls = [];
-    for (var i = 0; i < cards.length; i++) {
-      var img = cards[i].querySelector('img');
-      if (!img) continue;
-      var url = img.getAttribute('src') || img.getAttribute('data-kn-img-gallery') || '';
-      if (url) urls.push(url);
+    if (wsTr) {
+      var cards = wsTr.querySelectorAll(
+        '.scw-inline-photo-card[data-photo-has-image="true"]'
+      );
+      for (var i = 0; i < cards.length; i++) {
+        var img = cards[i].querySelector('img');
+        if (!img) continue;
+        var url = img.getAttribute('src') || img.getAttribute('data-kn-img-gallery') || '';
+        if (url) urls.push(url);
+      }
+    }
+
+    // Fallback — bid records that have no matching SOW item (the
+    // "+ Add to SOW" rows) have no wsTr because view_3921 never
+    // produced one. The bid grid (view_3680) now carries its own
+    // photo column (field_771 mirroring the SOW-side field).
+    //
+    // Two read paths, in order:
+    //  a. view_3680's Knack model (works even when the view's
+    //     accordion is collapsed and no <tr> is rendered).
+    //  b. view_3680's native <tr> DOM (works when the accordion is
+    //     open) — same selector inline-photo-row.js uses.
+    var lookupId = bidRowId || rowId;
+    if (!urls.length && lookupId) {
+      try {
+        var v3680 = window.Knack && Knack.views && Knack.views.view_3680;
+        var rec   = v3680 && v3680.model && v3680.model.data &&
+                    typeof v3680.model.data.get === 'function' &&
+                    v3680.model.data.get(lookupId);
+        if (rec) {
+          var attrs = rec.attributes || rec;
+          var raw   = attrs.field_771_raw;
+          if (Array.isArray(raw)) {
+            for (var ri = 0; ri < raw.length; ri++) {
+              var r = raw[ri];
+              if (!r) continue;
+              // Knack image-field connection records expose a few url
+              // shapes depending on field config — try the common ones.
+              var u = r.url || r.thumb_url || r.image ||
+                      (r.original && r.original.url) || '';
+              if (!u && typeof r === 'string') u = r;
+              if (u) urls.push(u);
+            }
+          }
+        }
+      } catch (e) { /* ignore */ }
+    }
+    if (!urls.length && lookupId) {
+      var bidTr = document.querySelector('#view_3680 tr[id="' + lookupId + '"]');
+      if (bidTr) {
+        var imgCells = bidTr.querySelectorAll('td[data-field-key="field_771"]');
+        for (var ic = 0; ic < imgCells.length; ic++) {
+          var spans = imgCells[ic].querySelectorAll(
+            'span[id][data-kn="connection-value"]'
+          );
+          for (var s = 0; s < spans.length; s++) {
+            var im = spans[s].querySelector('img[data-kn-img-gallery]')
+                  || spans[s].querySelector('img');
+            if (!im) continue;
+            var u2 = im.getAttribute('data-kn-img-gallery') ||
+                     im.getAttribute('src') || '';
+            if (u2) urls.push(u2);
+          }
+        }
+      }
     }
 
     // Only overwrite the cache when we got a non-empty read OR we
-    // have no cached value yet — covers the moment when wsTr exists
-    // but photo cards haven't been injected yet.
-    if (urls.length || !_photoCache[rowId]) {
-      _photoCache[rowId] = urls;
+    // have no cached value yet — covers the moment when wsTr / bidTr
+    // exists but photo records haven't been hydrated yet.
+    var cacheKey = rowId || bidRowId;
+    if (urls.length || !_photoCache[cacheKey]) {
+      _photoCache[cacheKey] = urls;
     }
-    return _photoCache[rowId];
+    if (window.SCW && SCW.CONFIG && SCW.CONFIG.debug) {
+      console.log('[BidReview] scrapeRowPhotoUrls',
+        { rowId: rowId, bidRowId: bidRowId, found: urls.length, urls: urls });
+    }
+    return _photoCache[cacheKey];
   }
 
   // Builds the contents of the Photos column cell for one row.
   // Returns a <td> ready to append. Empty when no photos (so the
   // column still claims its width and the row reads consistently).
-  function buildPhotosCell(rowId) {
+  function buildPhotosCell(rowId, bidRowId) {
     var td = el('td', 'scw-bid-review__photos-cell');
-    var urls = rowId ? scrapeRowPhotoUrls(rowId) : null;
+    var urls = (rowId || bidRowId) ? scrapeRowPhotoUrls(rowId, bidRowId) : null;
     if (!urls || !urls.length) {
       td.appendChild(el('div', 'scw-bid-review__photos-empty', '—'));
       return td;
@@ -1231,6 +1287,13 @@
     if (row.noBid) rowClass += ' scw-bid-review__row--no-bid';
     if (row.surveyNoBid) rowClass += ' scw-bid-review__row--survey-no-bid';
     if (row.sowItem) rowClass += ' scw-bid-review__row--expandable';
+    // Bid-only rows (no SOW item) still get expand-on-click so the user
+    // can see the photo viewer and bid details in a panel. The expand
+    // panel skips the wsTr injection — there's no SOW worksheet card to
+    // show. Detected later via missing data-sow-item-id.
+    else if (!row.noBid && !row.surveyNoBid) {
+      rowClass += ' scw-bid-review__row--expandable scw-bid-review__row--bid-only';
+    }
     var tr = el('tr', rowClass);
     tr.setAttribute('data-row-id', row.id);
     if (row.sowItem) {
@@ -1292,7 +1355,12 @@
     // Photos column — dedicated cell so thumbs can be tall enough
     // to read alongside the SOW/Bid cells. Empty for NEW rows that
     // don't have a SOW line item yet.
-    tr.appendChild(buildPhotosCell(row.sowItem || null));
+    // Always thread row.id through as the bid-side lookup id. For rows
+    // that originate in view_3680 (bid+sow, surveyNoBid, or bid-only-no-
+    // sow) row.id IS the view_3680 record id, so the model/DOM fallbacks
+    // can find field_771 photos. For noBid rows (built from view_3921)
+    // the lookup harmlessly misses and the wsTr scrape wins.
+    tr.appendChild(buildPhotosCell(row.sowItem || null, row.id || null));
 
     // Cabling fields only shown/compared for Camera or Reader buckets
     var cablingVisible = showCabling(row);
@@ -1352,20 +1420,17 @@
       // Show bid-status badge in the package cell when there's no bid data
       if (!row.cellsByPackage[pid]) {
         var isMissingBid = false;
-        if (row.surveyNoBid) {
+        if (row.surveyNoBid || row.noBid) {
+          // Blue dashed cut-out (mirror of --off-sow on the SOW side):
+          // the bid is detached from this row. The cell renders the
+          // SAME data skeleton a normal bid cell would, populated from
+          // the SOW item\'s values, so the reviewer sees product, qty,
+          // chips, labor, notes, etc. — the only difference is the
+          // dashed border + badge + CR action.
           dataTd.textContent = '';
-          dataTd.appendChild(el('span', 'scw-bid-review__survey-no-bid-badge', 'NOT ON BID'));
-          isMissingBid = true;
-        } else if (row.noBid) {
-          dataTd.textContent = '';
-          dataTd.appendChild(el('span', 'scw-bid-review__no-bid-badge', 'NOT SURVEYED'));
-          isMissingBid = true;
-        }
-        // Surface "+ Add to bid" inside the data cell when the
-        // bidder hasn't bid this row. Used to live in the Sub Bid
-        // Revisions column; moving it here lets that column hide
-        // entirely when no CRs are pending submission.
-        if (isMissingBid) {
+          dataTd.classList.add('scw-bid-review__cell--no-bid-cutout');
+
+          // CR action stack (CRs header + Reinstate/Add-to-bid button)
           var pendingAdds = (ns.changeRequests && ns.changeRequests.getPending) ? ns.changeRequests.getPending() : {};
           var alreadyPendingAdd = false;
           if (pendingAdds[pid] && pendingAdds[pid].items) {
@@ -1377,16 +1442,92 @@
             }
           }
           if (!alreadyPendingAdd) {
+            var addWrap = el('div', 'scw-bid-review__cell-actions');
+            addWrap.appendChild(el('div', 'scw-bid-review__cell-actions-header', 'CRs'));
             var addBtn = document.createElement('button');
             addBtn.type = 'button';
-            addBtn.className = 'scw-bid-review__inline-add-btn';
-            addBtn.textContent = '+ Add to bid';
+            addBtn.className = 'scw-bid-review__cell-action scw-bid-review__cell-action--reinstate';
+            // surveyNoBid → was once surveyed, needs reinstating to the
+            // bid. noBid → never surveyed, "add to bid". Color is green
+            // either way (matches Revise/Remove button vocabulary).
+            addBtn.textContent = row.surveyNoBid ? '+ Reinstate' : '+ Add to bid';
             addBtn.setAttribute('data-action',     'cell_add_to_bid');
             addBtn.setAttribute('data-row-id',     row.id);
             addBtn.setAttribute('data-package-id', pid);
             addBtn.setAttribute('data-sow-id',     sowId);
-            dataTd.appendChild(addBtn);
+            addWrap.appendChild(addBtn);
+            dataTd.appendChild(addWrap);
           }
+
+          // Badge under the actions
+          var badgeText = row.surveyNoBid ? 'NOT ON BID' : 'NOT SURVEYED';
+          var badgeCls  = row.surveyNoBid
+            ? 'scw-bid-review__survey-no-bid-badge'
+            : 'scw-bid-review__no-bid-badge';
+          dataTd.appendChild(el('span', badgeCls, badgeText));
+
+          // Same field skeleton a normal bid cell renders — populated
+          // from SOW values since there\'s no bid record. Lets the
+          // reviewer see exactly what would be on the bid if the
+          // bidder reinstated / added it.
+          if (row.sowProduct) {
+            dataTd.appendChild(el('div', 'scw-bid-review__cell-label', row.sowProduct));
+          }
+          if (qtyVisible && row.sowQty) {
+            var qtyEl2 = el('div', 'scw-bid-review__cell-qty');
+            qtyEl2.appendChild(el('span', 'scw-bid-review__field-label', 'Qty: '));
+            qtyEl2.appendChild(document.createTextNode(row.sowQty));
+            dataTd.appendChild(qtyEl2);
+          }
+          if (row.sowLaborDesc) {
+            var ldEl2 = el('div', 'scw-bid-review__cell-labor-desc');
+            ldEl2.appendChild(el('span', 'scw-bid-review__field-label', 'Labor Desc: '));
+            var ldVal2 = document.createElement('span');
+            ldVal2.className = 'scw-bid-review__cell-labor-desc-value';
+            ldVal2.innerHTML = row.sowLaborDesc;
+            ldEl2.appendChild(ldVal2);
+            dataTd.appendChild(ldEl2);
+          }
+          if (connDevVisible && row.sowConnDevice) {
+            var cdLabel = Array.isArray(row.sowConnDevice)
+              ? row.sowConnDevice.join(', ')
+              : row.sowConnDevice;
+            if (cdLabel) {
+              dataTd.appendChild(el('div', 'scw-bid-review__cell-conn-device', cdLabel));
+            }
+          }
+          if (cablingVisible) {
+            dataTd.appendChild(buildCablingChip(row.sowExistCabling));
+            dataTd.appendChild(buildBoolChip('Plenum',   row.sowPlenum));
+            dataTd.appendChild(buildBoolChip('Exterior', row.sowExterior));
+            if (row.sowDropLength) {
+              var dlEl2 = el('div', 'scw-bid-review__cell-qty');
+              dlEl2.appendChild(el('span', 'scw-bid-review__field-label', 'Length: '));
+              dlEl2.appendChild(document.createTextNode(row.sowDropLength));
+              dataTd.appendChild(dlEl2);
+            }
+            if (row.sowConduit) {
+              var cnEl2 = el('div', 'scw-bid-review__cell-qty');
+              cnEl2.appendChild(el('span', 'scw-bid-review__field-label', 'Conduit: '));
+              cnEl2.appendChild(document.createTextNode(row.sowConduit));
+              dataTd.appendChild(cnEl2);
+            }
+          }
+          var sowFee = row.sowFee || row.sowInstallFee || row.sowEquipmentTotal;
+          if (sowFee) {
+            var valsEl2 = el('div', 'scw-bid-review__cell-values');
+            valsEl2.appendChild(el('span', 'scw-bid-review__cell-value',
+              formatCurrency(sowFee)));
+            dataTd.appendChild(valsEl2);
+          }
+          if (row.surveyNotes) {
+            dataTd.appendChild(el('hr', 'scw-bid-review__cell-notes-divider'));
+            var notesEl2 = el('div', 'scw-bid-review__cell-notes');
+            notesEl2.appendChild(el('span', 'scw-bid-review__field-label', 'Survey Note: '));
+            notesEl2.appendChild(document.createTextNode(row.surveyNotes));
+            dataTd.appendChild(notesEl2);
+          }
+          isMissingBid = true;
         }
       }
       tr.appendChild(dataTd);

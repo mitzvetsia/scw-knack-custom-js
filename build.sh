@@ -57,6 +57,15 @@ cat \
   src/features/bid-review/actions.js \
   src/features/bid-review/change-requests.js \
   src/features/bid-review/init.js \
+  src/features/bid-review-v2/config.js \
+  src/features/bid-review-v2/styles.js \
+  src/features/bid-review-v2/state.js \
+  src/features/bid-review-v2/data.js \
+  src/features/bid-review-v2/transform.js \
+  src/features/bid-review-v2/edit.js \
+  src/features/bid-review-v2/card.js \
+  src/features/bid-review-v2/render.js \
+  src/features/bid-review-v2/init.js \
   src/features/sales-revision-column.js \
   src/features/group-collapse.js \
   src/features/sow-filter-pills.js \
@@ -97,6 +106,7 @@ cat \
   src/features/delete-intercept.js \
   src/features/connected-records.js \
   src/features/device-worksheet.js \
+  src/features/survey-bid-validate.js \
   src/features/device-worksheet-expand-all.js \
   src/features/device-worksheet-photo-toggle.js \
   src/features/device-worksheet-toolbar.js \
@@ -156,9 +166,19 @@ cat \
   src/features/worksheet-v2/data.js \
   src/features/worksheet-v2/groups.js \
   src/features/worksheet-v2/card.js \
+  src/features/worksheet-v2/photos.js \
+  src/features/worksheet-v2/warnings.js \
+  src/features/worksheet-v2/summary.js \
   src/features/worksheet-v2/picker.js \
   src/features/worksheet-v2/edit.js \
   src/features/worksheet-v2/render.js \
+  src/features/worksheet-v2/toolbar.js \
+  src/features/worksheet-v2/sort.js \
+  src/features/worksheet-v2/sow-filter.js \
+  src/features/worksheet-v2/native-filter.js \
+  src/features/worksheet-v2/bulk.js \
+  src/features/worksheet-v2/prefill-accessory-parent.js \
+  src/features/worksheet-v2/poll.js \
   src/features/worksheet-v2/init.js \
   > "$TMP_BUNDLE"
 

@@ -1,0 +1,275 @@
+/*** BID REVIEW V2 — CARD *****************************************************
+ *
+ * HTML factories for the v2 grid:
+ *   buildSowSection(grid)        →  one SOW section (header + table)
+ *   buildBidRow(row, packages)   →  one <tr> for one line item
+ *   buildBidCell(cell, ctx)      →  one <td> for one (row × package) pair
+ *
+ * Every editable input is OUR input — never a Knack inline-edit field.
+ * Inputs carry data-scw-br-v2-field / -record / -view; edit.js handles
+ * commit + PUT.
+ *
+ * Phase 1: qty, rate, labor desc as plain inputs. Chips, connection
+ * pickers, change-request buttons come in Phase 2.
+ ****************************************************************************/
+(function () {
+  'use strict';
+
+  var ns = window.SCW.bidReviewV2;
+  if (!ns || !ns.CONFIG) return;
+
+  var FK  = ns.CONFIG.fieldKeys;
+  var SFK = ns.CONFIG.sowItemFieldKeys || {};
+  // Source views:
+  //   [0] view_3680 — bid records  (READ-ONLY in this grid; changes go
+  //                                 through Change Requests)
+  //   [1] view_3921 — SOW items    (EDITABLE — source of truth)
+  var BID_VIEW = (ns.CONFIG.sourceViewKeys || [])[0];
+  var SOW_VIEW = (ns.CONFIG.sourceViewKeys || [])[1];
+
+  function escapeHtml(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[c];
+    });
+  }
+
+  // Cam/reader detection — mirrors v1's showCabling(). Only these
+  // buckets get the displayLabel column (E-001, E-002, …) and the
+  // cabling/plenum/exterior chips (Phase 2).
+  var CAM_READER_BUCKET_ID = '6481e5ba38f283002898113c';
+  function isCamReader(row) {
+    if (row.proposalBucketId === CAM_READER_BUCKET_ID) return true;
+    var b = (row.proposalBucket || '').toLowerCase().trim();
+    return b === 'camera' || b === 'cameras' ||
+           b === 'reader' || b === 'readers' ||
+           /(camera|reader)/.test(b);
+  }
+
+  // Chevron SVG — same shape v1's group header uses.
+  var GROUP_CHEVRON_SVG =
+    '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" ' +
+    'stroke="currentColor" stroke-width="2.5" stroke-linecap="round" ' +
+    'stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>';
+
+  function fmtMoney(n) {
+    if (n == null || isNaN(n)) return '';
+    return '$' + Number(n).toLocaleString(undefined, {
+      minimumFractionDigits: 2, maximumFractionDigits: 2
+    });
+  }
+
+  /**
+   * SOW item cell — leftmost data column. Read-only summary of the
+   * underlying SOW line item that anchors this row. Edits to SOW
+   * fields flow through worksheet-v2; bid-review v2 only displays.
+   */
+  function buildSowCell(sowItemData) {
+    var td = document.createElement('td');
+    td.className = 'scw-bid-review-v2__sow-cell';
+    if (!sowItemData) {
+      td.classList.add('scw-bid-review-v2__sow-cell--empty');
+      td.innerHTML = '<span class="scw-bid-review-v2__cell-empty-mark">—</span>';
+      return td;
+    }
+    var qtyTxt  = sowItemData.qty ? String(sowItemData.qty) : '—';
+    var feeTxt  = sowItemData.fee ? fmtMoney(sowItemData.fee) : '—';
+    var descTxt = ns.transform.stripHtml(sowItemData.laborDesc || '');
+    td.innerHTML =
+      (sowItemData.productName ?
+        '<div class="scw-bid-review-v2__sow-product" title="' +
+          escapeHtml(sowItemData.productName) + '">' +
+          escapeHtml(sowItemData.productName) +
+        '</div>' : '') +
+      '<div class="scw-bid-review-v2__sow-numbers">' +
+        '<span class="scw-bid-review-v2__sow-num"><label>Qty</label>' +
+          escapeHtml(qtyTxt) + '</span>' +
+        '<span class="scw-bid-review-v2__sow-num"><label>Fee</label>' +
+          escapeHtml(feeTxt) + '</span>' +
+      '</div>' +
+      (descTxt ?
+        '<div class="scw-bid-review-v2__sow-desc" title="' +
+          escapeHtml(descTxt) + '">' + escapeHtml(descTxt) +
+        '</div>' : '');
+    return td;
+  }
+
+  /**
+   * One bid cell — the (row × package) intersection. Pure HTML
+   * factory; events bind via delegation in edit.js.
+   */
+  function buildBidCell(cell, recordId) {
+    var td = document.createElement('td');
+    td.className = 'scw-bid-review-v2__cell';
+    if (!cell) {
+      // No bid record for this row/package — Phase 4 will render
+      // "+ Add to bid" here. For now just keep the column aligned.
+      td.classList.add('scw-bid-review-v2__cell--empty');
+      td.innerHTML = '<span class="scw-bid-review-v2__cell-empty-mark">—</span>';
+      return td;
+    }
+
+    var qtyTxt  = cell.qty  ? String(cell.qty) : '—';
+    var rateTxt = cell.rate ? fmtMoney(cell.rate) : '—';
+    var extTxt  = cell.labor ? fmtMoney(cell.labor) : '—';
+    var descTxt = ns.transform.stripHtml(cell.laborDesc || '');
+
+    td.innerHTML =
+      (cell.productName ?
+        '<div class="scw-bid-review-v2__cell-product" title="' +
+          escapeHtml(cell.productName) + '">' +
+          escapeHtml(cell.productName) +
+        '</div>' : '') +
+      '<div class="scw-bid-review-v2__cell-numbers">' +
+        '<span class="scw-bid-review-v2__cell-num"><label>Qty</label>' +
+          escapeHtml(qtyTxt) + '</span>' +
+        '<span class="scw-bid-review-v2__cell-num"><label>Rate</label>' +
+          escapeHtml(rateTxt) + '</span>' +
+        '<span class="scw-bid-review-v2__cell-num"><label>Ext</label>' +
+          escapeHtml(extTxt) + '</span>' +
+      '</div>' +
+      (descTxt ?
+        '<div class="scw-bid-review-v2__cell-desc" title="' +
+          escapeHtml(descTxt) + '">' + escapeHtml(descTxt) +
+        '</div>' : '');
+    // Phase 5 will append the Revise / Remove / +Add-to-bid action stack
+    // here. Editing happens through change requests, never inline.
+    return td;
+  }
+
+  function buildBidRow(row, packages) {
+    var tr = document.createElement('tr');
+    tr.className = 'scw-bid-review-v2__row';
+    if (row.sowItem) tr.classList.add('scw-bid-review-v2__row--expandable');
+    tr.setAttribute('data-row-id', row.id);
+    if (row.sowItem) tr.setAttribute('data-sow-item-id', row.sowItem);
+    tr.setAttribute('aria-expanded', 'false');
+
+    // Label column — only show displayLabel (E-001, etc.) for cam/reader
+    // rows. Everything else (networking, services, assumptions) is
+    // identified by product name only, in the bid cell columns.
+    var labelTd = document.createElement('td');
+    labelTd.className = 'scw-bid-review-v2__row-label-cell';
+    if (isCamReader(row) && row.displayLabel) {
+      labelTd.innerHTML =
+        '<div class="scw-bid-review-v2__row-label">' +
+          escapeHtml(row.displayLabel) + '</div>';
+    }
+    tr.appendChild(labelTd);
+
+    // SOW item column — anchors the row, always second from left.
+    tr.appendChild(buildSowCell(row.sowItemData));
+
+    // One cell per bid package
+    for (var p = 0; p < packages.length; p++) {
+      var pkg = packages[p];
+      var cell = row.cellsByPackage[pkg.id] || null;
+      tr.appendChild(buildBidCell(cell, row.id));
+    }
+    return tr;
+  }
+
+  function buildL1HeaderRow(group, colspan) {
+    var tr = document.createElement('tr');
+    tr.className = 'scw-bid-review-v2__group-header';
+    tr.setAttribute('data-l1-id', group.key);
+    tr.setAttribute('role', 'button');
+    tr.setAttribute('aria-expanded', 'true');
+    var td = document.createElement('td');
+    td.colSpan = colspan;
+    var rowCount =
+      (group.rows ? group.rows.length : 0) +
+      (group.subgroups || []).reduce(function (a, s) { return a + s.rows.length; }, 0);
+    td.innerHTML =
+      '<div class="scw-bid-review-v2__grp-inner">' +
+        '<span class="scw-bid-review-v2__grp-chevron">' + GROUP_CHEVRON_SVG + '</span>' +
+        '<span class="scw-bid-review-v2__grp-title">' + escapeHtml(group.label) + '</span>' +
+        '<span class="scw-bid-review-v2__grp-count">' + rowCount + '</span>' +
+      '</div>';
+    tr.appendChild(td);
+    return tr;
+  }
+
+  function buildL2HeaderRow(sub, colspan) {
+    var tr = document.createElement('tr');
+    tr.className = 'scw-bid-review-v2__subgroup-header';
+    var td = document.createElement('td');
+    td.colSpan = colspan;
+    td.innerHTML =
+      '<div class="scw-bid-review-v2__subgrp-inner">' +
+        '<span class="scw-bid-review-v2__subgrp-title">' + escapeHtml(sub.label) + '</span>' +
+        '<span class="scw-bid-review-v2__subgrp-count">' + sub.rows.length + '</span>' +
+      '</div>';
+    tr.appendChild(td);
+    return tr;
+  }
+
+  function appendGroup(tbody, group, packages, colspan) {
+    // Level 0 means "flat" — no MDF/IDF on any row, just render rows.
+    if (group.level === 1) tbody.appendChild(buildL1HeaderRow(group, colspan));
+    // Direct rows (when there are no subgroups).
+    for (var i = 0; i < group.rows.length; i++) {
+      tbody.appendChild(buildBidRow(group.rows[i], packages));
+    }
+    // Subgroups (L2 — proposal bucket).
+    var subs = group.subgroups || [];
+    for (var s = 0; s < subs.length; s++) {
+      var sub = subs[s];
+      tbody.appendChild(buildL2HeaderRow(sub, colspan));
+      for (var sr = 0; sr < sub.rows.length; sr++) {
+        tbody.appendChild(buildBidRow(sub.rows[sr], packages));
+      }
+    }
+  }
+
+  function buildSowSection(grid) {
+    var section = document.createElement('section');
+    section.className = 'scw-bid-review-v2__sow';
+    section.setAttribute('data-sow-id', grid.sowId);
+
+    var header = document.createElement('header');
+    header.className = 'scw-bid-review-v2__sow-header';
+    header.innerHTML =
+      '<span class="scw-bid-review-v2__sow-name">' + escapeHtml(grid.sowName) + '</span>' +
+      '<span class="scw-bid-review-v2__sow-meta">' +
+        grid.rows.length + ' line item' + (grid.rows.length === 1 ? '' : 's') +
+        ' × ' + grid.packages.length + ' bid' + (grid.packages.length === 1 ? '' : 's') +
+      '</span>';
+    section.appendChild(header);
+
+    var table = document.createElement('table');
+    table.className = 'scw-bid-review-v2__table';
+
+    // Column headers — Label | SOW | Bid 1 | Bid 2 | …
+    var thead = document.createElement('thead');
+    var headRow = document.createElement('tr');
+    headRow.innerHTML =
+      '<th class="scw-bid-review-v2__th scw-bid-review-v2__th--label">Line item</th>' +
+      '<th class="scw-bid-review-v2__th scw-bid-review-v2__th--sow">SOW item</th>';
+    for (var p = 0; p < grid.packages.length; p++) {
+      headRow.innerHTML +=
+        '<th class="scw-bid-review-v2__th">' +
+          escapeHtml(grid.packages[p].label) +
+        '</th>';
+    }
+    thead.appendChild(headRow);
+    table.appendChild(thead);
+
+    var tbody = document.createElement('tbody');
+    // colspan = label + sow + one per bid package
+    var colspan = grid.packages.length + 2;
+    var groups = grid.groups || [{ key: '__all__', level: 0, rows: grid.rows, subgroups: [] }];
+    for (var g = 0; g < groups.length; g++) {
+      appendGroup(tbody, groups[g], grid.packages, colspan);
+    }
+    table.appendChild(tbody);
+    section.appendChild(table);
+    return section;
+  }
+
+  ns.card = {
+    buildSowSection: buildSowSection,
+    buildBidRow:     buildBidRow,
+    buildBidCell:    buildBidCell
+  };
+})();
+/*** END BID REVIEW V2 — CARD *************************************************/

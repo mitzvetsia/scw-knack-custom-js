@@ -745,6 +745,72 @@
         }
       },
       {
+        viewId: 'view_3997',
+        layout: { productGroupWidth: 'flex', productGroupLayout: 'column', identityWidth: '366px' },
+        stackedSummary: false,
+        photoAlwaysVisible: true,
+        qtyBadgeField: 'field_1964',
+        bucketField: 'field_2219',
+        rowSort: [
+          { field: 'field_2218', order: 'asc', type: 'number' },
+          { field: 'field_1950', order: 'asc', type: 'text'   }
+        ],
+        fields: {
+          label:            { key: 'field_1950', type: 'readOnly',    summary: true },
+          product:          { key: 'field_1949', type: 'readOnly',    summary: true, productStyle: true },
+          laborDescription: { key: 'field_2020', type: 'directEdit',  summary: true, label: 'Description of Work', group: 'fill', multiline: true },
+          existingCabling:  { key: 'field_2461', type: 'toggleChit',  summary: true, showOnlyIfYes: true },
+          connectedDevice:  { key: 'field_2197', type: 'readOnly' },
+          mountingHardware: { key: 'field_1958', type: 'readOnly' },
+          scwNotes:         { key: 'field_1953', type: 'readOnly',  notes: true },
+          surveyNotes:      { key: 'field_2412', type: 'readOnly',  notes: true, label: 'Survey Notes' }
+        },
+        summaryLayout: ['laborDescription', 'existingCabling'],
+        detailLayout: {
+          left:  ['mountingHardware', 'connectedDevice', 'scwNotes'],
+          right: ['surveyNotes']
+        },
+        syntheticGroupsPosition: 'bottom',
+        bucketRules: {
+          '6977caa7f246edf67b52cbcd': {
+            hideFields: ['field_1949', 'field_1957'],
+            label: '+fee',
+            descLabel: 'Service',
+            hideProduct: true,
+            hideDetail: true,
+            rowClass: 'scw-row--services',
+          },
+          '697b7a023a31502ec68b3303': {
+            hideFields: ['field_1949', 'field_1957'],
+            label: 'ASSUMPTION',
+            descLabel: 'Assumption',
+            hideProduct: true,
+            hideDetail: true,
+            rowClass: 'scw-row--assumptions',
+          },
+        },
+        syntheticBucketGroups: [
+          { cls: 'scw-row--services',    label: 'Project Wide Services' },
+          { cls: 'scw-row--assumptions', label: 'Project Wide Assumptions' },
+        ],
+        bucketOverride: {
+          keepBuckets: ['6481e5ba38f283002898113c'],
+          fields: {
+            product:          { key: 'field_1949', type: 'readOnly',    summary: true, productStyle: true },
+            laborDescription: { key: 'field_2020', type: 'readOnly',  summary: true, label: ' ', group: 'fill', multiline: true },
+            connectedDevice:  { key: 'field_1957', type: 'readOnly',    summary: true, label: 'Connected Devices', showWhenFieldIsYes: 'field_2231' },
+            mountingHardware: { key: 'field_1958', type: 'readOnly' },
+            scwNotes:         { key: 'field_1953', type: 'readOnly',  notes: true },
+            surveyNotes:      { key: 'field_2412', type: 'readOnly',  notes: true, label: 'Survey Notes' }
+          },
+          summaryLayout: ['laborDescription', 'connectedDevice'],
+          detailLayout: {
+            left:  ['scwNotes'],
+            right: ['mountingHardware', 'surveyNotes']
+          }
+        }
+      },
+      {
         viewId: 'view_3596',
         layout: { productGroupWidth: 'flex', productGroupLayout: 'column', identityWidth: '366px' },
         stackedSummary: false,
@@ -2679,33 +2745,43 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 }).filter(Boolean).join('\n\n')}
 
 /* ── view_3596: summary border on top, not bottom ── */
-#view_3596 .${P}-summary {
+#view_3596 .${P}-summary,
+#view_3997 .${P}-summary {
   border-bottom: none;
   border-top: 1px solid #e5e7eb;
 }
-#view_3596 .${P}-sum-group--fill .${P}-sum-label {
+#view_3596 .${P}-sum-group--fill .${P}-sum-label,
+#view_3997 .${P}-sum-group--fill .${P}-sum-label {
   display: none;
 }
-#view_3596 .${P}-bucket-override .${P}-sum-group--fill .${P}-sum-label {
+#view_3596 .${P}-bucket-override .${P}-sum-group--fill .${P}-sum-label,
+#view_3997 .${P}-bucket-override .${P}-sum-group--fill .${P}-sum-label {
   display: block;
 }
-#view_3596 .${P}-bucket-override .${P}-identity {
+#view_3596 .${P}-bucket-override .${P}-identity,
+#view_3997 .${P}-bucket-override .${P}-identity {
   gap: 0;
 }
-#view_3596 .${P}-bucket-override .${P}-sum-sep {
+#view_3596 .${P}-bucket-override .${P}-sum-sep,
+#view_3997 .${P}-bucket-override .${P}-sum-sep {
   display: none !important;
 }
-#view_3596 .${P}-bucket-override td.${P}-sum-field-ro {
+#view_3596 .${P}-bucket-override td.${P}-sum-field-ro,
+#view_3997 .${P}-bucket-override td.${P}-sum-field-ro {
   padding-left: 0 !important;
 }
-#view_3596 .scw-inline-photo-label {
+#view_3596 .scw-inline-photo-label,
+#view_3997 .scw-inline-photo-label {
   display: none;
 }
 
-/* ── view_3596: disable clicks on detail links and photo strip ── */
+/* ── view_3596 / view_3997: disable clicks on detail links and photo strip ── */
 #view_3596 .${P}-detail a,
 #view_3596 .${P}-photo-wrap a,
-#view_3596 .${P}-photo-wrap .scw-inline-photo-card {
+#view_3596 .${P}-photo-wrap .scw-inline-photo-card,
+#view_3997 .${P}-detail a,
+#view_3997 .${P}-photo-wrap a,
+#view_3997 .${P}-photo-wrap .scw-inline-photo-card {
   pointer-events: none;
   cursor: default;
   color: inherit;
@@ -4332,11 +4408,22 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
    *  the recalculated formula from the response.  For other fields,
    *  prefers model.updateRecord to avoid a full re-render.
    *  Calls onSuccess(resp) or onError(message) when done. */
-  function saveDirectEditValue(viewId, recordId, fieldKey, value, onSuccess, onError) {
+  function saveDirectEditValue(viewId, recordId, fieldKey, value, onSuccess, onError, extraData) {
     if (typeof Knack === 'undefined') return;
 
     var data = {};
     data[fieldKey] = value;
+    // Pre-save hooks (e.g. survey-bid-validate) can pass companion
+    // field writes through extraData so they land in the same PUT —
+    // e.g. saving field_2150 also writing the survey note to
+    // field_2412 in a single transaction.
+    if (extraData && typeof extraData === 'object') {
+      for (var ek in extraData) {
+        if (Object.prototype.hasOwnProperty.call(extraData, ek)) {
+          data[ek] = extraData[ek];
+        }
+      }
+    }
     var trigger = isHeaderTrigger(viewId, fieldKey);
 
     // Always use AJAX PUT so we get the full response for card patching
@@ -4430,12 +4517,43 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       viewId = viewEl ? viewEl.id : null;
     }
     if (recordId && viewId) {
-      saveDirectEditValue(viewId, recordId, fieldKey, newValue,
-        function () {
-          showInputSuccess(input);
-        },
-        function (msg) { showInputError(input, msg, previousValue); }
-      );
+      // Pre-save hook — feature modules (e.g. survey-bid-validate) can
+      // register a function on SCW.deviceWorksheet.preSaveHook to
+      // gate or augment a save. Hook signature:
+      //   preSaveHook({ viewId, recordId, fieldKey, newValue,
+      //                 previousValue, input }) → Promise<{
+      //                   proceed: bool,    // false → revert
+      //                   extraData?: {}    // merged into PUT body
+      //                 }>
+      var doSave = function (extraData) {
+        saveDirectEditValue(viewId, recordId, fieldKey, newValue,
+          function () { showInputSuccess(input); },
+          function (msg) { showInputError(input, msg, previousValue); },
+          extraData || null
+        );
+      };
+      var hook = (window.SCW && SCW.deviceWorksheet && SCW.deviceWorksheet.preSaveHook);
+      if (typeof hook === 'function') {
+        var hookCtx = {
+          viewId: viewId, recordId: recordId, fieldKey: fieldKey,
+          newValue: newValue, previousValue: previousValue, input: input
+        };
+        Promise.resolve()
+          .then(function () { return hook(hookCtx); })
+          .then(function (decision) {
+            if (decision && decision.proceed === false) {
+              showInputError(input, 'Save canceled', previousValue);
+              return;
+            }
+            doSave(decision && decision.extraData);
+          })
+          .catch(function (err) {
+            console.warn('[scw-ws-direct] preSaveHook threw', err);
+            doSave();
+          });
+      } else {
+        doSave();
+      }
     }
   }
 
@@ -6301,6 +6419,23 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
 
   function transformView(viewCfg) {
     if (!viewCfg || viewCfg.disabled) return;
+    // V2 cutover kill-switch (Known Issue: v1→v2 migration). When v2 is
+    // enabled AND has a CONFIG entry for view_3962 (its source view),
+    // we treat view_3610 as superseded and bail out of v1\'s
+    // transformView entirely — no card builds, no group-collapse, no
+    // photo strips, no DOM thrash. Reversible: flip
+    // SCW.worksheetV2.CONFIG.enabled = false or comment out this block.
+    if (viewCfg.viewId === 'view_3610' &&
+        window.SCW && window.SCW.worksheetV2 &&
+        window.SCW.worksheetV2.CONFIG &&
+        window.SCW.worksheetV2.CONFIG.enabled !== false) {
+      var v2Views = (window.SCW.worksheetV2.CONFIG.views || []);
+      for (var v2i = 0; v2i < v2Views.length; v2i++) {
+        if (v2Views[v2i] && v2Views[v2i].sourceViewKey === 'view_3962') {
+          return;
+        }
+      }
+    }
     var viewId = viewCfg.viewId;
     var state = _transformViewState(viewId);
 

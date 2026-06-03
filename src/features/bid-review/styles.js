@@ -1475,6 +1475,12 @@
       '.scw-bid-review__expand-loading {',
       '  padding: 16px; color: #64748b; font-size: 13px; text-align: center;',
       '}',
+      '.scw-bid-review__expand-empty-sow {',
+      '  padding: 24px 16px; color: #64748b; font-size: 13px;',
+      '  text-align: center; font-style: italic;',
+      '  border: 1px dashed #cbd5e1; border-radius: 6px;',
+      '  background: #f8fafc; margin: 8px;',
+      '}',
 
       /* ── Three-column expand panel ────────────────────────────
          When the user opens a row, the original <tr> is hidden (rule
@@ -1903,6 +1909,36 @@
       '  border-radius: 6px;',
       '  background: #eff6ff !important;',
       '  box-shadow: inset 0 0 0 9999px rgba(37,99,235,0.03);',
+      '}',
+
+      /* ── NOT ON BID / NOT SURVEYED bid cell: blue dashed cut-out      */
+      /*    around the WHOLE cell (border-collapse on the table eats     */
+      /*    top/bottom borders, so we use outline instead — outline      */
+      /*    isn\'t collapsed and renders on all four sides). Carries     */
+      /*    the badge, the same field skeleton a normal bid cell shows  */
+      /*    (populated from SOW values), and the green Reinstate CR.    */
+      '.scw-bid-review__cell--no-bid-cutout {',
+      '  outline: 2px dashed #2563eb !important;',
+      '  outline-offset: -2px;',
+      '  border-radius: 6px;',
+      '  background: #eff6ff !important;',
+      '  padding: 8px !important;',
+      '  vertical-align: top;',
+      '  position: relative;',
+      '}',
+      '.scw-bid-review__cell--no-bid-cutout .scw-bid-review__cell-notes {',
+      '  font-size: 11px; color: #334155; line-height: 1.35; margin-top: 6px;',
+      '}',
+      /* Pale-green Reinstate / Add-to-bid CR button — matches the      */
+      /* tinted-outline vocabulary of Revise (pale blue) and Remove     */
+      /* (pale red): white background, green text, soft green border,   */
+      /* tinted hover.                                                  */
+      '.scw-bid-review__cell-action--reinstate {',
+      '  color: #15803d;',
+      '  border-color: #bbf7d0;',
+      '}',
+      '.scw-bid-review__cell-action--reinstate:hover {',
+      '  background: #f0fdf4; border-color: #4ade80;',
       '}',
 
       '.scw-bid-review__off-sow-tag {',
