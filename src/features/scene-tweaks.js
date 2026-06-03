@@ -431,10 +431,14 @@
 
     view.appendChild(layout);
 
-    // Published-proposal info now lives at the top of the SOW column
-    // (see published-proposal-sow-card.js). Don't render it in the
-    // totals here too — would just duplicate the same block.
-    // injectProposalInfo(layout);
+    // Inject the published-proposal block (PDF link + Open Customer
+    // Link + Preview Draft Proposal link) at the bottom of the totals
+    // panel. published-proposal-sow-card.js also renders this on the
+    // scene, but it anchors above view_3827 which lives at the very
+    // bottom of the page (after every accordion) — practically
+    // invisible. The totals panel is where users actually look, so
+    // duplicate it here too.
+    injectProposalInfo(layout);
   }
 
   // Build a small "SCW Notes" speak/comment button + click-to-toggle
