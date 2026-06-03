@@ -272,10 +272,10 @@
     '.scw-bid-review-v2__panel-col--card .scw-ws-v2-cell--fee {',
     '  flex: 0 1 auto !important;',
     '}',
-    /* SOW connection cell doesn\'t need much width — keep it compact so it
-       sits on the same line as the sub-bid / install-fee cells. */
-    '.scw-bid-review-v2__panel-col--card .scw-ws-v2-cell--sow {',
-    '  flex: 0 1 auto !important; min-width: 0 !important; max-width: 96px !important;',
+    /* SOW connection is relocated into the detail panel (above MDF/IDF) by
+       decorateNarrowEditor — let it fill its detail field there. */
+    '.scw-bid-review-v2__panel-col--card .scw-br-v2-sow-field .scw-ws-v2-cell--sow {',
+    '  max-width: none !important; width: 100% !important;',
     '}',
     '.scw-bid-review-v2__panel-col--card .scw-ws-v2-input--num { width: 72px !important; }',
     '.scw-bid-review-v2__panel-col--card .scw-ws-v2-cell--blank { display: none !important; }',

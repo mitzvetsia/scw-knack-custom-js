@@ -430,8 +430,7 @@
     for (var r = 0; r < rows.length; r++) {
       var cells = rows[r].querySelectorAll(
         '.scw-ws-v2-cell--num, .scw-ws-v2-cell--stack, ' +
-        '.scw-ws-v2-cell--fee, .scw-ws-v2-cell--labor-desc, ' +
-        '.scw-ws-v2-cell--sow');
+        '.scw-ws-v2-cell--fee, .scw-ws-v2-cell--labor-desc');
       for (var i = 0; i < cells.length; i++) {
         var cell = cells[i];
         if (cell.getAttribute('data-scw-flabel')) continue;
@@ -442,7 +441,6 @@
                  input.getAttribute('placeholder') || '';
         }
         if (!text) text = cell.getAttribute('title') || '';
-        if (!text && cell.classList.contains('scw-ws-v2-cell--sow')) text = 'SOW';
         if (!text) continue;
         cell.setAttribute('data-scw-flabel', '1');
         var lab = document.createElement('span');
@@ -451,6 +449,47 @@
         cell.insertBefore(lab, cell.firstChild);
       }
     }
+    relocateSowField(card);
+    removeSurveyNotes(card);
+  }
+
+  function findDetailFieldByLabel(card, labelText) {
+    var fields = card.querySelectorAll('.scw-ws-v2-detail-field');
+    for (var i = 0; i < fields.length; i++) {
+      var l = fields[i].querySelector('.scw-ws-v2-detail-label');
+      if (l && (l.textContent || '').trim().toLowerCase() === labelText.toLowerCase()) {
+        return fields[i];
+      }
+    }
+    return null;
+  }
+
+  // Move the SOW connection out of the inline summary row into the detail
+  // panel, above MDF / IDF. Inline it looked cramped — and broke down with
+  // multiple connected SOWs. Labelled simply "SOW".
+  function relocateSowField(card) {
+    var sowCell = card.querySelector('.scw-ws-v2-cell--sow');
+    if (!sowCell || sowCell.closest('.scw-br-v2-sow-field')) return;
+    var mdf  = findDetailFieldByLabel(card, 'MDF / IDF');
+    var zone = mdf ? mdf.parentNode
+                   : card.querySelector('.scw-ws-v2-detail-zone--connections');
+    if (!zone) return;
+    var field = document.createElement('div');
+    field.className =
+      'scw-ws-v2-detail-field scw-ws-v2-detail-field--conn scw-br-v2-sow-field';
+    var lab = document.createElement('div');
+    lab.className = 'scw-ws-v2-detail-label';
+    lab.textContent = 'SOW';
+    field.appendChild(lab);
+    field.appendChild(sowCell);
+    if (mdf) zone.insertBefore(field, mdf);
+    else zone.appendChild(field);
+  }
+
+  // Survey Notes belong on the bid, not in this SOW editor — drop them.
+  function removeSurveyNotes(card) {
+    var sn = findDetailFieldByLabel(card, 'Survey Notes');
+    if (sn && sn.parentNode) sn.parentNode.removeChild(sn);
   }
 
   function init() {
