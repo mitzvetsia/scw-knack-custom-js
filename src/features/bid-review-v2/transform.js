@@ -197,6 +197,13 @@
       mdfIdfId:         connectionId(meta, FK.mdfIdf),
       proposalBucket:   connectionLabel(meta, FK.proposalBucket),
       proposalBucketId: connectionId(meta, FK.proposalBucket),
+      // SOW-side values for DIFF comparison — read from the bid record
+      // (meta, view_3680), NOT view_3921. Mirrors v1 exactly: the product
+      // comparison basis is field_1958 (sowProduct) on the bid record, not
+      // the field_1949 connection v2 DISPLAYS in the SOW cell.
+      sowProduct:    connectionLabel(meta, FK.sowProduct) || raw(meta, FK.sowProduct),
+      sowLaborDesc:  rawHtml(meta, FK.sowLaborDesc),
+      sowFee:        num(meta, FK.sowFee),
       cellsByPackage: cellsByPackage
     };
   }
@@ -436,9 +443,30 @@
     return { sowGrids: sowGrids, isEmpty: sowGrids.length === 0 };
   }
 
+  // Diff a bid cell against its SOW line item. Ported from v1's
+  // getMismatches, restricted to the fields v2 surfaces in cells
+  // (product / labor desc / fee). Comparison fields are read off the bid
+  // record (see buildRow) so the basis matches v1, not v2's display field.
+  function getMismatches(row, cell) {
+    if (!row || !row.sowItem || !cell) return null;
+    function norm(v) {
+      if (v == null) return '';
+      return String(v).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ')
+        .toLowerCase().trim();
+    }
+    var m = {
+      product:   norm(row.sowProduct)   !== norm(cell.productName),
+      laborDesc: norm(row.sowLaborDesc) !== norm(cell.laborDesc),
+      fee:       Math.abs((Number(row.sowFee) || 0) - (Number(cell.labor) || 0)) > 0.001
+    };
+    m.any = m.product || m.laborDesc || m.fee;
+    return m;
+  }
+
   ns.transform = {
     buildState:       buildState,
     groupRows:        groupRows,
+    getMismatches:    getMismatches,
     stripHtml:        stripHtml,
     raw:              raw,
     rawHtml:          rawHtml,

@@ -269,23 +269,35 @@
     // When qty is 1 (or unset), Ext equals Rate — redundant, so hide it.
     var showExt = (Number(cell.qty) || 0) > 1;
 
+    // Diff against the SOW line item (v1 parity). Flag the whole cell +
+    // pinpoint the differing fields. The fee diff (SOW fee vs bid extended
+    // total) lands on Ext when shown, else on the Sub Bid figure (qty≤1 →
+    // Ext == Sub Bid).
+    var diffs = ns.transform.getMismatches(row, cell);
+    var DIFF = ' scw-bid-review-v2__field-diff';
+    if (diffs && diffs.any) td.classList.add('scw-bid-review-v2__cell--mismatch');
+    var prodDiff = (diffs && diffs.product) ? DIFF : '';
+    var descDiff = (diffs && diffs.laborDesc) ? DIFF : '';
+    var feeOnExt = (diffs && diffs.fee && showExt) ? DIFF : '';
+    var feeOnBid = (diffs && diffs.fee && !showExt) ? DIFF : '';
+
     td.innerHTML =
       (cell.productName ?
-        '<div class="scw-bid-review-v2__cell-product" title="' +
+        '<div class="scw-bid-review-v2__cell-product' + prodDiff + '" title="' +
           escapeHtml(cell.productName) + '">' +
           escapeHtml(cell.productName) +
         '</div>' : '') +
       '<div class="scw-bid-review-v2__cell-numbers">' +
         '<span class="scw-bid-review-v2__cell-num"><label>Qty</label>' +
           escapeHtml(qtyTxt) + '</span>' +
-        '<span class="scw-bid-review-v2__cell-num"><label>Sub Bid</label>' +
+        '<span class="scw-bid-review-v2__cell-num' + feeOnBid + '"><label>Sub Bid</label>' +
           escapeHtml(rateTxt) + '</span>' +
         (showExt ?
-          '<span class="scw-bid-review-v2__cell-num"><label>Ext</label>' +
+          '<span class="scw-bid-review-v2__cell-num' + feeOnExt + '"><label>Ext</label>' +
             escapeHtml(extTxt) + '</span>' : '') +
       '</div>' +
       (descTxt ?
-        '<div class="scw-bid-review-v2__cell-desc" title="' +
+        '<div class="scw-bid-review-v2__cell-desc' + descDiff + '" title="' +
           escapeHtml(descTxt) + '">' + escapeHtml(descTxt) +
         '</div>' : '') +
       cellActionStack(row, pkgId, sowId);
