@@ -139,13 +139,13 @@
     if (toolbar) return toolbar;
     toolbar = document.createElement('div');
     toolbar.className = 'scw-ws-v2-bulk-toolbar';
-    // Destructive action on the LEFT per CLAUDE.md\'s button-order
-    // rule (destructive first, primary action last).
+    // Order: Edit · Add accessories · Remove accessories · Delete · Clear.
+    // Standardized sentence-case labels; all share the v2-preview purple
+    // except Delete (pale red) and Clear (ghost purple).
     toolbar.innerHTML =
       '<span class="scw-ws-v2-bulk-count">0 selected</span>' +
-      '<button type="button" class="scw-ws-v2-bulk-add-acc" disabled>+ Add accessories</button>' +
       '<button type="button" class="scw-ws-v2-bulk-edit" disabled>Edit selected</button>' +
-      '<button type="button" class="scw-ws-v2-bulk-clear">Clear</button>' +
+      '<button type="button" class="scw-ws-v2-bulk-add-acc" disabled>Add accessories</button>' +
       '<button type="button" class="scw-ws-v2-bulk-remove-acc" disabled>' +
         '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" ' +
           'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
@@ -166,7 +166,8 @@
           '<path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"></path>' +
         '</svg>' +
         '<span class="scw-ws-v2-bulk-delete-label">Delete</span>' +
-      '</button>';
+      '</button>' +
+      '<button type="button" class="scw-ws-v2-bulk-clear">Clear</button>';
     document.body.appendChild(toolbar);
 
     toolbar.querySelector('.scw-ws-v2-bulk-add-acc').addEventListener('click', function () {
@@ -213,7 +214,7 @@
     var delBtn = toolbar.querySelector('.scw-ws-v2-bulk-delete');
     delBtn.disabled = (n === 0);
     var delLabel = delBtn.querySelector('.scw-ws-v2-bulk-delete-label');
-    if (delLabel) delLabel.textContent = n > 0 ? ('Delete ' + n) : 'Delete';
+    if (delLabel) delLabel.textContent = n > 0 ? ('Delete (' + n + ')') : 'Delete';
     var raBtn = toolbar.querySelector('.scw-ws-v2-bulk-remove-acc');
     if (raBtn) raBtn.disabled = (n === 0);
   }
