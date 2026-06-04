@@ -408,13 +408,16 @@
 
     var rawProducts = (window.SCW && SCW.mountingBoxProducts) || [];
     var products = rawProducts;
-    if (selectionProductIds.length) {
-      products = rawProducts.filter(function (p) {
+    if (selectionProductIds.length && rawProducts.length) {
+      var filtered = rawProducts.filter(function (p) {
         if (!p) return false;
-        var a = Array.isArray(p.compatibleProducts)    ? p.compatibleProducts    : null;
-        var b = Array.isArray(p.compatibleProductsAlt) ? p.compatibleProductsAlt : null;
-        // If neither list is exposed on the entry, fall through and
-        // include — handles old catalog data without the new fields.
+        // Treat an EMPTY compat array the same as a missing one. The
+        // catalog loader always sets these to [] (never null), so a bare
+        // Array.isArray() check would treat "no compat data" as "compat
+        // list that matches nothing" and wrongly drop the product.
+        var a = (Array.isArray(p.compatibleProducts)    && p.compatibleProducts.length)    ? p.compatibleProducts    : null;
+        var b = (Array.isArray(p.compatibleProductsAlt) && p.compatibleProductsAlt.length) ? p.compatibleProductsAlt : null;
+        // No compat list at all → universally applicable, include it.
         if (!a && !b) return true;
         for (var i = 0; i < selectionProductIds.length; i++) {
           var pid = selectionProductIds[i];
@@ -423,6 +426,9 @@
         }
         return true;
       });
+      // Don't dead-end: if the compatibility filter removes everything,
+      // fall back to the full catalog instead of dropping to free text.
+      products = filtered.length ? filtered : rawProducts;
     }
     var hasList  = products && products.length > 0;
 
