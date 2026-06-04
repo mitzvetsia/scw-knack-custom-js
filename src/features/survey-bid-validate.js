@@ -396,19 +396,48 @@
     var m = url && url.match(/\/records\/([a-f0-9]{24})\b/i);
     return m ? m[1] : '';
   }
-  /** True if the model says field_2415 currently has a value. */
-  function bidCurrentlySet(viewId, recordId) {
+  /** Normalize a field_2415 value (from a PUT body) into an array of
+   *  24-hex bid record ids. Handles arrays of strings/objects, JSON
+   *  strings, and URL-encoded JSON. */
+  function normalizeBidIds(val) {
+    if (val == null) return [];
+    if (typeof val === 'string') {
+      var s = val.trim();
+      if (s === '' || s === '[]') return [];
+      // Try plain, then URL-decoded, JSON.
+      var parsed = null;
+      try { parsed = JSON.parse(s); }
+      catch (e) {
+        try { parsed = JSON.parse(decodeURIComponent(s)); }
+        catch (e2) { parsed = null; }
+      }
+      if (parsed == null) {
+        // Bare 24-hex id string.
+        return /^[a-f0-9]{24}$/i.test(s) ? [s] : [];
+      }
+      val = parsed;
+    }
+    if (!Array.isArray(val)) val = [val];
+    var out = [];
+    for (var i = 0; i < val.length; i++) {
+      var r = val[i];
+      if (!r) continue;
+      if (typeof r === 'object') { if (r.id) out.push(r.id); }
+      else if (typeof r === 'string' && /^[a-f0-9]{24}$/i.test(r)) out.push(r);
+    }
+    return out;
+  }
+
+  /** The bid (field_2415) record ids currently on this record per the model. */
+  function currentBidIds(viewId, recordId) {
     try {
       var v = Knack.views && Knack.views[viewId];
-      if (!v || !v.model || !v.model.data) return false;
+      if (!v || !v.model || !v.model.data) return [];
       var rec = (typeof v.model.data.get === 'function') ? v.model.data.get(recordId) : null;
-      if (!rec) return false;
+      if (!rec) return [];
       var a   = rec.attributes || rec;
-      var raw = a[BID_CONN + '_raw'];
-      if (Array.isArray(raw) && raw.length && raw[0] && raw[0].id) return true;
-      if (raw && typeof raw === 'object' && raw.id) return true;
-      return false;
-    } catch (e) { return false; }
+      return normalizeBidIds(a[BID_CONN + '_raw']);
+    } catch (e) { return []; }
   }
   /** True if the record already has a survey note we shouldn\'t clobber. */
   function noteAlreadySet(viewId, recordId) {
@@ -510,17 +539,27 @@
     _gateTimer = setTimeout(processGateQueue, BATCH_WINDOW_MS);
   }
 
-  /** Returns { viewId, recordId } when this PUT should be gated, else null. */
+  /** Returns { viewId, recordId } when this PUT should be gated, else null.
+   *  Bid (field_2415) is a MULTI-connection — a line item can sit on several
+   *  bids at once. "Removing from a bid" means the array SHRINKS (loses an
+   *  id), which is NOT the same as the field going empty. Gate whenever any
+   *  currently-connected bid id is missing from the incoming value. */
   function shouldGate(method, url, body) {
     if (!isWriteMethod(method)) return null;
     var viewId = gateViewForUrl(url);
     if (!viewId) return null;
     var incoming = parseBidConnFromBody(body);
     if (incoming === undefined) return null; // field_2415 not in body
-    if (!isFieldCleared(incoming)) return null;
     var recordId = recordIdFromUrl(url);
     if (!recordId) return null;
-    if (!bidCurrentlySet(viewId, recordId)) return null; // already empty, no-op
+    var before = currentBidIds(viewId, recordId);
+    if (!before.length) return null; // nothing connected → nothing to remove
+    var after  = normalizeBidIds(incoming);
+    var removedAny = false;
+    for (var i = 0; i < before.length; i++) {
+      if (after.indexOf(before[i]) === -1) { removedAny = true; break; }
+    }
+    if (!removedAny) return null; // pure add or no-op — don't gate
     return { viewId: viewId, recordId: recordId };
   }
 
