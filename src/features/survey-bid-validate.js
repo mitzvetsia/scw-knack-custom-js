@@ -42,6 +42,25 @@
   var NOTES      = 'field_2412';   // INPUT_survey notes
   var STYLE_ID   = 'scw-survey-bid-validate-css';
 
+  // Fields where committing a $0 value should trigger the "you're
+  // bidding to do this for free — NOT removing it from the bid"
+  // confirmation. The survey worksheet's Sub Bid (view_3313/field_2150)
+  // and the subcontractor bid worksheet's Labor/bid (view_3505/
+  // field_2400) both flow through device-worksheet's directEdit
+  // preSaveHook, so a single gate covers both. (The blank-bid survey
+  // note rule below stays view_3313-only.)
+  var ZERO_CONFIRM_TARGETS = [
+    { viewId: 'view_3313', fieldKey: 'field_2150' },
+    { viewId: 'view_3505', fieldKey: 'field_2400' }
+  ];
+  function isZeroConfirmTarget(viewId, fieldKey) {
+    for (var i = 0; i < ZERO_CONFIRM_TARGETS.length; i++) {
+      if (ZERO_CONFIRM_TARGETS[i].viewId === viewId &&
+          ZERO_CONFIRM_TARGETS[i].fieldKey === fieldKey) return true;
+    }
+    return false;
+  }
+
   /** Read field_2415 (Bid connection) from the live Knack model. The
    *  worksheet input has already been optimistically updated, but
    *  field_2415 is read-only on this view so the model copy is the
@@ -230,17 +249,20 @@
   // ── Pre-save hook ─────────────────────────────────────────────
 
   SCW.deviceWorksheet.preSaveHook = function (ctx) {
-    // Only intercept Sub Bid commits on the survey worksheet.
-    if (ctx.viewId !== VIEW_ID) return { proceed: true };
-    if (ctx.fieldKey !== SUB_BID) return { proceed: true };
+    // The survey worksheet's Sub Bid commit gets BOTH gates (blank-bid
+    // note + $0 confirm). Any other configured $0-confirm field (e.g.
+    // the subcontractor worksheet's Labor/bid) gets the $0 confirm only.
+    var isSurveySubBid = (ctx.viewId === VIEW_ID && ctx.fieldKey === SUB_BID);
+    var isZeroTarget   = isZeroConfirmTarget(ctx.viewId, ctx.fieldKey);
+    if (!isSurveySubBid && !isZeroTarget) return { proceed: true };
 
     var newNum = numericOrNull(ctx.newValue);
     var extraData = null;
 
-    // Rule 1: bid connection is blank → require a survey note.
-    var needNote = bidIsBlank(ctx.viewId, ctx.recordId);
-    // Rule 2: Sub Bid being committed as $0 → confirm intent.
-    var isZero = (newNum === 0);
+    // Rule 1 (survey worksheet only): bid connection blank → require note.
+    var needNote = isSurveySubBid && bidIsBlank(ctx.viewId, ctx.recordId);
+    // Rule 2: bid being committed as $0 → confirm intent.
+    var isZero = isZeroTarget && (newNum === 0);
 
     return Promise.resolve()
       .then(function () {
@@ -271,13 +293,14 @@
         if (!isZero) return null;
         return showModal({
           kind: 'info',
-          title: 'Confirm $0 Sub Bid',
+          title: 'Confirm $0 bid',
           html:
-            '<p>You\'re setting Sub Bid to <strong>$0</strong>.</p>' +
-            '<p>That means <strong>SCW will do this work for free</strong>, ' +
-            'not "skip this item." If the item shouldn\'t be done, ' +
-            '<strong>remove it from the bid</strong> instead — leaving ' +
-            'a $0 line still commits SCW to deliver it at no cost.</p>' +
+            '<p>You\'re setting this bid to <strong>$0</strong>.</p>' +
+            '<p>That means you\'re committing to <strong>do this item ' +
+            'for free</strong> — it does <strong>not</strong> remove it ' +
+            'from the bid. If this item shouldn\'t be done, ' +
+            '<strong>take it off the bid</strong> instead; a $0 line ' +
+            'still commits you to deliver it at no cost.</p>' +
             '<p>Continue with $0?</p>',
           withInput: false,
           okLabel: 'Yes, $0 is correct',
