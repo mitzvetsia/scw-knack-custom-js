@@ -369,6 +369,48 @@
     var u = String(m).toUpperCase();
     return u === 'PUT' || u === 'POST' || u === 'PATCH';
   }
+
+  // ── TEMP DIAGNOSTICS ─────────────────────────────────────────
+  // Flip on to log every write whose body/URL mentions the Bid field or
+  // a gated view, across all three transports (fetch / XHR / jQuery), so
+  // we can see exactly what the subcontractor portal fires on a bid
+  // removal. Turn off (or remove) once the gate is confirmed working.
+  var SBV_DIAG = true;
+  function bodyToStr(body) {
+    if (body == null) return '';
+    if (typeof body === 'string') return body;
+    try { return JSON.stringify(body); } catch (e) { return String(body); }
+  }
+  function sbvDiag(tag, method, url, body) {
+    if (!SBV_DIAG) return;
+    try {
+      var s = bodyToStr(body);
+      var u = String(url || '');
+      if (u.indexOf('view_3505') === -1 &&
+          u.indexOf('field_2415') === -1 &&
+          s.indexOf(BID_CONN) === -1) return; // unrelated write
+      console.log('[scw-sbv-diag] ' + tag, {
+        method: method, url: u,
+        bodyType: (typeof body), body: s,
+        gateView: gateViewForUrl(u),
+        bidInBody: parseBidConnFromBody(typeof body === 'string' ? body : s)
+      });
+    } catch (e) { /* ignore */ }
+  }
+  // Wrap fetch (Knack's Vue views use it). Log only — no gating yet.
+  if (SBV_DIAG && typeof window.fetch === 'function' && !window.__scwSbvFetchWrapped) {
+    window.__scwSbvFetchWrapped = true;
+    var _origFetch = window.fetch;
+    window.fetch = function (input, init) {
+      try {
+        var url = (typeof input === 'string') ? input : (input && input.url) || '';
+        var method = (init && init.method) || (input && input.method) || 'GET';
+        var body = init && init.body;
+        sbvDiag('fetch', method, url, body);
+      } catch (e) { /* ignore */ }
+      return _origFetch.apply(this, arguments);
+    };
+  }
   function isFieldCleared(val) {
     if (val == null) return true;
     if (val === '' || val === '[]') return true;
@@ -562,6 +604,7 @@
   if (typeof $ !== 'undefined' && $.ajaxPrefilter) {
     $.ajaxPrefilter(function (options, originalOptions, jqXHR) {
       try {
+        sbvDiag('jquery', options.type, options.url || '', options.data);
         var gate = shouldGate(options.type, options.url || '', options.data);
         if (!gate) return;
         queueGate({
@@ -592,6 +635,7 @@
     };
     XMLHttpRequest.prototype.send = function (body) {
       try {
+        sbvDiag('xhr', this.__scwSbvMethod, this.__scwSbvUrl, body);
         var gate = shouldGate(this.__scwSbvMethod, this.__scwSbvUrl, body);
         if (gate) {
           queueGate({
