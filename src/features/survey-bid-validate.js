@@ -706,6 +706,18 @@
     });
   }
 
+  /** Current survey-note (field_2412) text for a record, from the model. */
+  function readNoteText(viewId, recordId) {
+    try {
+      var v = Knack.views && Knack.views[viewId];
+      if (!v || !v.model || !v.model.data) return '';
+      var rec = (typeof v.model.data.get === 'function') ? v.model.data.get(recordId) : null;
+      if (!rec) return '';
+      var a = rec.attributes || rec;
+      return (a[NOTES] || '').toString().replace(/<[^>]*>/g, '').trim();
+    } catch (e) { return ''; }
+  }
+
   function promptBidRemovalNote(viewId, recordId, beforeIds) {
     if (_bidGateModalOpen) return;
     _bidGateModalOpen = true;
@@ -714,8 +726,8 @@
       title: 'Survey note required',
       html:
         '<p>You\'re <strong>removing this item from the bid</strong>.</p>' +
-        '<p>Capture a survey note explaining why — it\'s saved on the ' +
-        'item (existing notes won\'t be overwritten).</p>',
+        '<p>Capture a survey note explaining why — it\'s appended to any ' +
+        'existing note on the item.</p>',
       inputPlaceholder: 'e.g. Item not needed per customer; duplicate; etc.',
       withInput: true,
       okLabel: 'Save with note',
@@ -723,8 +735,10 @@
     }).then(function (r) {
       _bidGateModalOpen = false;
       if (r.ok) {
-        if (noteAlreadySet(viewId, recordId)) { return; } // don't clobber
-        var body = {}; body[NOTES] = r.value;
+        // Append to any existing note rather than overwriting it.
+        var existing = readNoteText(viewId, recordId);
+        var combined = existing ? (existing + '\n' + r.value) : r.value;
+        var body = {}; body[NOTES] = combined;
         putRecord(viewId, recordId, body);
       } else {
         // Re-attach the bid the user just removed, then refresh so the
