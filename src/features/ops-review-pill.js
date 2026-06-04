@@ -412,19 +412,44 @@
     'Enter survey costs first (enter $0 if there were none) to preview the proposal.';
 
   // Block + restyle a Preview pill when survey costs are missing. Shared by
-  // renderCell (view_3325) and buildPillForRow (bid-review v1 + v2).
-  function gatePillForSurvey(pill, tr) {
-    if (!pill || !surveyCostsBlank(tr)) return pill;
-    pill.classList.add('scw-ops-pill--gated');
-    pill.removeAttribute('href');
-    pill.setAttribute('aria-disabled', 'true');
-    pill.setAttribute('data-scw-tip', SURVEY_GATE_TIP);
-    pill.setAttribute('title', SURVEY_GATE_TIP);
-    pill.addEventListener('click', function (e) {
-      e.preventDefault();
-      e.stopPropagation();
-    });
+  // renderCell (view_3325) and buildPillForRow (bid-review v1 + v2). The
+  // gate is class-based so it can be toggled live (see applySurveyGate)
+  // without a re-render; a delegated click handler (below) blocks navigation
+  // on any .scw-ops-pill--gated.
+  function applySurveyGate(pill, blank) {
+    if (!pill) return pill;
+    if (blank) {
+      pill.classList.add('scw-ops-pill--gated');
+      // Stash + strip href so the link can't be followed (keyboard, etc.).
+      var href = pill.getAttribute('href');
+      if (href != null) {
+        pill.setAttribute('data-scw-gated-href', href);
+        pill.removeAttribute('href');
+      }
+      pill.setAttribute('aria-disabled', 'true');
+      pill.setAttribute('data-scw-tip', SURVEY_GATE_TIP);
+      pill.setAttribute('title', SURVEY_GATE_TIP);
+    } else {
+      pill.classList.remove('scw-ops-pill--gated');
+      var stashed = pill.getAttribute('data-scw-gated-href');
+      if (stashed != null) {
+        pill.setAttribute('href', stashed);
+        pill.removeAttribute('data-scw-gated-href');
+      }
+      pill.removeAttribute('aria-disabled');
+      // Only clear the tip/title if it's the gate's (don't clobber notes).
+      if (pill.getAttribute('data-scw-tip') === SURVEY_GATE_TIP) {
+        pill.removeAttribute('data-scw-tip');
+      }
+      if (pill.getAttribute('title') === SURVEY_GATE_TIP) {
+        pill.removeAttribute('title');
+      }
+    }
     return pill;
+  }
+
+  function gatePillForSurvey(pill, tr) {
+    return applySurveyGate(pill, surveyCostsBlank(tr));
   }
 
   // Flag the survey-costs cell red in view_3325 when blank.
@@ -792,6 +817,34 @@
       e.stopPropagation();
     }
   }, true);
+
+  // Block navigation on any gated Preview pill (survey costs missing),
+  // anywhere it's rendered — view_3325 cell OR the bid-review status bar.
+  document.addEventListener('click', function (e) {
+    var gated = e.target.closest && e.target.closest('.scw-ops-pill--gated');
+    if (gated) { e.preventDefault(); e.stopPropagation(); }
+  }, true);
+
+  // Live gate for the bid-review status-bar survey-costs input (v1 + v2).
+  // Toggle the Preview pill + the red field flag as the user types, so the
+  // gate clears the instant a value (incl. $0) is entered — no waiting for
+  // a grid re-render. The pill lives in the same SOW header (thead) as the
+  // input; there's exactly one .scw-ops-pill per SOW header.
+  function liveSurveyGate(e) {
+    var input = e.target;
+    if (!input || !input.classList ||
+        !input.classList.contains('scw-bid-review__sow-metric-input') ||
+        input.getAttribute('data-action') !== 'sow_survey_costs') return;
+    var blank = String(input.value == null ? '' : input.value).trim() === '';
+    var head = input.closest('thead') ||
+               input.closest('.scw-bid-review__sow-section') || document;
+    var pill = head.querySelector('.scw-ops-pill');
+    if (pill) applySurveyGate(pill, blank);
+    var wrap = input.closest('.scw-bid-review__sow-metric');
+    if (wrap) wrap.classList.toggle('scw-bid-review__sow-metric--missing', blank);
+  }
+  document.addEventListener('input', liveSurveyGate, true);
+  document.addEventListener('change', liveSurveyGate, true);
 
   // ── Floating tooltip ────────────────────────────────────
   // Single tooltip element on <body>, positioned with fixed coords on
@@ -1204,6 +1257,7 @@
   SCW.opsReview.buildBlockForRow           = buildBlockForRow;
   SCW.opsReview.buildPillForRow            = buildPillForRow;
   SCW.opsReview.surveyCostsBlank           = surveyCostsBlank;
+  SCW.opsReview.applySurveyGate            = applySurveyGate;
   SCW.opsReview.buildMarginWarningForRow   = buildMarginWarningForRow;
   SCW.opsReview.buildProposalBlockForRow   = buildProposalBlockForRow;
 })();
