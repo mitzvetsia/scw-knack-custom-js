@@ -139,6 +139,7 @@
       '  padding: 6px 18px;',
       '  font-size: 13px; color: #1f2937;',
       '  cursor: pointer;',
+      '  user-select: none; -webkit-user-select: none;',
       '  transition: background-color 80ms ease;',
       '}',
       '.scw-ws-v2-picker-item:hover { background: #f1f5f9; }',
@@ -201,6 +202,16 @@
       ? opts.itemLabel
       : function (r) { return (r.identifier || r.id) || ''; };
 
+    // Sort each group's items by their display label (natural/numeric
+    // ascending) so e.g. Connected Devices read E-001, E-002, … E-010
+    // rather than in raw record order.
+    groups.forEach(function (g) {
+      g.items.sort(function (a, b) {
+        return String(itemLabel(a)).localeCompare(String(itemLabel(b)),
+          undefined, { numeric: true, sensitivity: 'base' });
+      });
+    });
+
     // Build modal scaffold
     var overlay = document.createElement('div');
     overlay.className = 'scw-ws-v2-picker-overlay';
@@ -258,6 +269,29 @@
               escapeHtml(rec.id) + '"' + (isChecked ? ' checked' : '') + '>' +
             '<span class="scw-ws-v2-picker-item-name">' + escapeHtml(labelText) + '</span>';
           bd.appendChild(row);
+        });
+      });
+    }
+
+    // Shift-click range multi-select (multi/checkbox mode only). Click one
+    // option, then shift-click another, and every option between them takes
+    // the second one's checked state — same idiom as Gmail / file managers.
+    if (multi && candidates.length) {
+      var optBoxes = Array.prototype.slice.call(bd.querySelectorAll(
+        '.scw-ws-v2-picker-item:not(.scw-ws-v2-picker-item--none) input[type="checkbox"]'));
+      var lastIdx = null;
+      // Suppress the browser's native shift-click text selection.
+      bd.addEventListener('mousedown', function (e) {
+        if (e.shiftKey) e.preventDefault();
+      });
+      optBoxes.forEach(function (box, idx) {
+        box.addEventListener('click', function (e) {
+          if (e.shiftKey && lastIdx !== null && lastIdx !== idx) {
+            var lo = Math.min(lastIdx, idx), hi = Math.max(lastIdx, idx);
+            var state = box.checked; // the just-clicked box's new state
+            for (var k = lo; k <= hi; k++) optBoxes[k].checked = state;
+          }
+          lastIdx = idx;
         });
       });
     }
