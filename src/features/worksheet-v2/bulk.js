@@ -145,6 +145,16 @@
       '<span class="scw-ws-v2-bulk-count">0 selected</span>' +
       '<button type="button" class="scw-ws-v2-bulk-edit" disabled>Edit selected</button>' +
       '<button type="button" class="scw-ws-v2-bulk-clear">Clear</button>' +
+      '<button type="button" class="scw-ws-v2-bulk-remove-acc" disabled>' +
+        '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" ' +
+          'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+          'stroke-linejoin="round">' +
+          '<polyline points="3 6 5 6 21 6"></polyline>' +
+          '<path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>' +
+          '<path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"></path>' +
+        '</svg>' +
+        '<span class="scw-ws-v2-bulk-remove-acc-label">Remove accessories</span>' +
+      '</button>' +
       '<button type="button" class="scw-ws-v2-bulk-delete" disabled>' +
         '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" ' +
           'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
@@ -162,6 +172,11 @@
       clearAll();
       syncDomFromState();
       refreshToolbar();
+    });
+    toolbar.querySelector('.scw-ws-v2-bulk-remove-acc').addEventListener('click', function () {
+      var ids = selList();
+      if (!ids.length) return;
+      openRemoveAccessoriesConfirm(ids, sourceViewKey);
     });
     toolbar.querySelector('.scw-ws-v2-bulk-edit').addEventListener('click', function () {
       var ids = selList();
@@ -186,6 +201,8 @@
     delBtn.disabled = (n === 0);
     var delLabel = delBtn.querySelector('.scw-ws-v2-bulk-delete-label');
     if (delLabel) delLabel.textContent = n > 0 ? ('Delete ' + n) : 'Delete';
+    var raBtn = toolbar.querySelector('.scw-ws-v2-bulk-remove-acc');
+    if (raBtn) raBtn.disabled = (n === 0);
   }
 
   // ── DOM sync (when re-renders happen) ────────────────────────
@@ -477,6 +494,73 @@
 
     confirmBtn.addEventListener('click', function () {
       runBulkDelete(parentIds, accIds, sourceViewKey, overlay, status,
+        confirmBtn, cancelBtn, close);
+    });
+  }
+
+  /** Bulk REMOVE accessories — deletes every accessory attached to the
+   *  selected parent rows, leaving the parents intact. Symmetric with the
+   *  toolbar's "+ Add Accessories" action (which adds one per row). Reuses
+   *  collectAccessoryIds + the capped/retry delete queue. */
+  function openRemoveAccessoriesConfirm(parentIds, sourceViewKey) {
+    var accIds = collectAccessoryIds(parentIds, sourceViewKey);
+
+    var overlay = document.createElement('div');
+    overlay.className = 'scw-ws-v2-bulk-overlay';
+
+    if (!accIds.length) {
+      // Nothing to remove — short informational modal, no destructive CTA.
+      overlay.innerHTML =
+        '<div class="scw-ws-v2-bulk-modal scw-ws-v2-bulk-modal--confirm">' +
+          '<div class="scw-ws-v2-bulk-modal-head">' +
+            '<div class="scw-ws-v2-bulk-modal-title">No accessories to remove</div>' +
+            '<div class="scw-ws-v2-bulk-modal-sub">The ' + parentIds.length +
+              ' selected line item' + (parentIds.length === 1 ? '' : 's') +
+              ' have no attached accessories (mounting hardware, etc.).</div>' +
+          '</div>' +
+          '<div class="scw-ws-v2-bulk-modal-actions">' +
+            '<button type="button" class="scw-ws-v2-bulk-modal-cancel">Close</button>' +
+          '</div>' +
+        '</div>';
+      document.body.appendChild(overlay);
+      var closeInfo = function () { overlay.parentNode && overlay.parentNode.removeChild(overlay); };
+      overlay.querySelector('.scw-ws-v2-bulk-modal-cancel').addEventListener('click', closeInfo);
+      overlay.addEventListener('click', function (e) { if (e.target === overlay) closeInfo(); });
+      return;
+    }
+
+    overlay.innerHTML =
+      '<div class="scw-ws-v2-bulk-modal scw-ws-v2-bulk-modal--confirm">' +
+        '<div class="scw-ws-v2-bulk-modal-head">' +
+          '<div class="scw-ws-v2-bulk-modal-title">Remove ' + accIds.length +
+            ' accessor' + (accIds.length === 1 ? 'y' : 'ies') + '?</div>' +
+          '<div class="scw-ws-v2-bulk-modal-sub">Deletes every accessory attached to the ' +
+            parentIds.length + ' selected line item' + (parentIds.length === 1 ? '' : 's') +
+            ' (mounting hardware, etc.). The line item' +
+            (parentIds.length === 1 ? '' : 's') + ' themselves are kept. ' +
+            'This cannot be undone.</div>' +
+        '</div>' +
+        '<div class="scw-ws-v2-bulk-modal-status"></div>' +
+        '<div class="scw-ws-v2-bulk-modal-actions">' +
+          '<button type="button" class="scw-ws-v2-bulk-modal-cancel">Cancel</button>' +
+          '<button type="button" class="scw-ws-v2-bulk-modal-confirm-delete">' +
+            'Remove ' + accIds.length + ' accessor' + (accIds.length === 1 ? 'y' : 'ies') +
+          '</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(overlay);
+
+    var status    = overlay.querySelector('.scw-ws-v2-bulk-modal-status');
+    var cancelBtn = overlay.querySelector('.scw-ws-v2-bulk-modal-cancel');
+    var confirmBtn = overlay.querySelector('.scw-ws-v2-bulk-modal-confirm-delete');
+
+    function close() { overlay.parentNode && overlay.parentNode.removeChild(overlay); }
+    cancelBtn.addEventListener('click', close);
+    overlay.addEventListener('click', function (e) { if (e.target === overlay) close(); });
+
+    confirmBtn.addEventListener('click', function () {
+      // Reuse runBulkDelete with NO parents — accessories only.
+      runBulkDelete([], accIds, sourceViewKey, overlay, status,
         confirmBtn, cancelBtn, close);
     });
   }
