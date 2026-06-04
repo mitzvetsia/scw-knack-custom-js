@@ -56,7 +56,7 @@
   // preSaveHook, so a single gate covers both. (The blank-bid survey
   // note rule below stays view_3313-only.)
   var ZERO_CONFIRM_TARGETS = [
-    { viewId: 'view_3313', fieldKey: 'field_2150' },
+    // view_3313 (site-survey worksheet) is no longer a live grid.
     { viewId: 'view_3505', fieldKey: 'field_2400' }
   ];
   function isZeroConfirmTarget(viewId, fieldKey) {
@@ -345,7 +345,8 @@
   // Views whose records require a survey note when their Bid (field_2415)
   // connection is cleared. Both are device-worksheet bid surfaces sharing
   // the same field keys (field_2415 Bid, field_2412 note).
-  var BID_GATE_VIEWS = ['view_3313', 'view_3505'];
+  // view_3313 (site-survey worksheet) is no longer a live grid.
+  var BID_GATE_VIEWS = ['view_3505'];
 
   var BATCH_WINDOW_MS = 250;
   var _gateQueue   = [];
@@ -540,26 +541,20 @@
   }
 
   /** Returns { viewId, recordId } when this PUT should be gated, else null.
-   *  Bid (field_2415) is a MULTI-connection — a line item can sit on several
-   *  bids at once. "Removing from a bid" means the array SHRINKS (loses an
-   *  id), which is NOT the same as the field going empty. Gate whenever any
-   *  currently-connected bid id is missing from the incoming value. */
+   *  Gate ONLY when the bid (field_2415) connection is being fully cleared —
+   *  i.e. the incoming value is an empty array and the record currently has
+   *  at least one bid. Removing one bid while others remain (a multi-bid
+   *  array merely shrinking) is intentionally NOT gated. */
   function shouldGate(method, url, body) {
     if (!isWriteMethod(method)) return null;
     var viewId = gateViewForUrl(url);
     if (!viewId) return null;
     var incoming = parseBidConnFromBody(body);
     if (incoming === undefined) return null; // field_2415 not in body
+    if (normalizeBidIds(incoming).length !== 0) return null; // not emptied
     var recordId = recordIdFromUrl(url);
     if (!recordId) return null;
-    var before = currentBidIds(viewId, recordId);
-    if (!before.length) return null; // nothing connected → nothing to remove
-    var after  = normalizeBidIds(incoming);
-    var removedAny = false;
-    for (var i = 0; i < before.length; i++) {
-      if (after.indexOf(before[i]) === -1) { removedAny = true; break; }
-    }
-    if (!removedAny) return null; // pure add or no-op — don't gate
+    if (!currentBidIds(viewId, recordId).length) return null; // already empty
     return { viewId: viewId, recordId: recordId };
   }
 
