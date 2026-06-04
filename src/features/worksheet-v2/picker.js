@@ -273,24 +273,43 @@
       });
     }
 
-    // Shift-click range multi-select (multi/checkbox mode only). Click one
-    // option, then shift-click another, and every option between them takes
-    // the second one's checked state — same idiom as Gmail / file managers.
+    // Multi/checkbox-mode behaviors. Checkboxes that share a `name` do NOT
+    // get radio-style exclusivity (only radios do), so the "Clear all
+    // selections" row needs its mutual-exclusivity wired in JS.
     if (multi && candidates.length) {
       var optBoxes = Array.prototype.slice.call(bd.querySelectorAll(
         '.scw-ws-v2-picker-item:not(.scw-ws-v2-picker-item--none) input[type="checkbox"]'));
+      var noneBox = bd.querySelector(
+        '.scw-ws-v2-picker-item--none input[type="checkbox"]');
       var lastIdx = null;
+
+      // "Clear all selections" — checking it unchecks every option.
+      if (noneBox) {
+        noneBox.addEventListener('change', function () {
+          if (noneBox.checked) {
+            optBoxes.forEach(function (b) { b.checked = false; });
+            lastIdx = null;
+          }
+        });
+      }
+
       // Suppress the browser's native shift-click text selection.
       bd.addEventListener('mousedown', function (e) {
         if (e.shiftKey) e.preventDefault();
       });
+
       optBoxes.forEach(function (box, idx) {
         box.addEventListener('click', function (e) {
+          // Shift-click range select — click one option, then shift-click
+          // another to set every option between them to the second's state
+          // (Gmail / file-manager idiom).
           if (e.shiftKey && lastIdx !== null && lastIdx !== idx) {
             var lo = Math.min(lastIdx, idx), hi = Math.max(lastIdx, idx);
             var state = box.checked; // the just-clicked box's new state
             for (var k = lo; k <= hi; k++) optBoxes[k].checked = state;
           }
+          // Selecting any option clears the "Clear all" sentinel.
+          if (box.checked && noneBox) noneBox.checked = false;
           lastIdx = idx;
         });
       });
