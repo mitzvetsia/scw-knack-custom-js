@@ -386,9 +386,14 @@
     try {
       var s = bodyToStr(body);
       var u = String(url || '');
-      if (u.indexOf('view_3505') === -1 &&
+      // Log any Knack record write, plus anything mentioning the Bid
+      // field or a gated view, so an edit-page form submit through a
+      // different view still surfaces.
+      var isRecordWrite = isWriteMethod(method) && /\/records\//i.test(u);
+      if (!isRecordWrite &&
+          u.indexOf('view_3505') === -1 &&
           u.indexOf('field_2415') === -1 &&
-          s.indexOf(BID_CONN) === -1) return; // unrelated write
+          s.indexOf(BID_CONN) === -1) return;
       console.log('[scw-sbv-diag] ' + tag, {
         method: method, url: u,
         bodyType: (typeof body), body: s,
@@ -663,6 +668,17 @@
   // but with the additional $0 check and a more nuanced bulk note
   // rule (apply only to rows with empty field_2412). Holding off
   // until we see how often this happens in practice.
+
+  if (SBV_DIAG) {
+    try {
+      console.log('[scw-sbv] interceptors installed', {
+        gateViews: BID_GATE_VIEWS,
+        fetchWrapped: !!window.__scwSbvFetchWrapped,
+        jqueryPrefilter: (typeof $ !== 'undefined' && !!$.ajaxPrefilter),
+        xhrWrapped: (typeof XMLHttpRequest !== 'undefined')
+      });
+    } catch (e) { /* ignore */ }
+  }
 
 })();
 /*** END FEATURE: Survey worksheet Sub Bid validation *************************/
