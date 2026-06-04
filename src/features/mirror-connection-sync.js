@@ -1389,11 +1389,15 @@
   // field_1957 changes); the direct field_1946 edit is a v2-only entry
   // point so we scope the handler to MODEL_ONLY.
   $(document).on('knack-cell-update.' + VIEW_ID + EVENT_NS + '-mdf',
-    function (event, view, record) {
+    function (event, view, record, editedFieldKey) {
       try {
         if (!MODEL_ONLY) return;
         if (!record || !record.id) return;
         if (ownPuts[record.id]) return;
+        // When the v2 picker tells us which field was edited, only run
+        // the MDF-move logic for an actual GROUPING_FIELD edit. (Native
+        // inline edits supply no key → fall back to the cache diff.)
+        if (editedFieldKey && editedFieldKey !== GROUPING_FIELD) return;
 
         var prevMdf = lastMdfSeen[record.id] || '';
         var currMdf = serializeMdf(record);
@@ -1420,11 +1424,22 @@
     });
 
   $(document).on('knack-cell-update.' + VIEW_ID + EVENT_NS + '-recip',
-    function (event, view, record) {
+    function (event, view, record, editedFieldKey) {
       try {
         if (!ACCESSORIES_VIEW_ID) return;
         if (!record || !record.id) return;
         if (ownPuts[record.id]) return;
+        // The inverse cascade ("connection changed → pull child to the
+        // new parent's MDF") must NOT fire when the user only moved the
+        // MDF/IDF. The v2 picker reports the edited field; if it's not
+        // the connection field, bail — otherwise the MDF move snaps the
+        // device straight back to its parent's group. Re-prime the cache
+        // so a later real connection edit still diffs correctly. (Native
+        // inline edits supply no key → keep the cache-diff behavior.)
+        if (editedFieldKey && editedFieldKey !== CONNECTIONS_FIELD) {
+          lastReciprocalSeen[record.id] = serializeReciprocal(record);
+          return;
+        }
 
         var prev = lastReciprocalSeen[record.id] || '';
         var curr = serializeReciprocal(record);

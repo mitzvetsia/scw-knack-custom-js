@@ -414,9 +414,14 @@
                   ? view.model.data.get(opts.recordId)
                   : null;
                 if (rec) {
+                  // Pass the edited field key as a 4th arg so mirror-
+                  // connection-sync can tell an MDF/IDF move (field_1946)
+                  // apart from a connection edit (field_2197/field_1957).
+                  // Native Knack inline edits don't supply this, so the
+                  // mirror falls back to its cache-diff path there.
                   $(document).trigger(
                     'knack-cell-update.' + putKey,
-                    [view, rec.attributes || rec]
+                    [view, rec.attributes || rec, opts.fieldKey]
                   );
                 }
               }
