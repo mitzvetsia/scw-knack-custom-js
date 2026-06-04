@@ -1304,17 +1304,94 @@
   $(document).on('knack-view-render.' + VIEW_ID + EVENT_NS + '-mdfprime',
     function () { primeMdfCache(); });
 
+  /**
+   * After a device's MDF/IDF (GROUPING_FIELD) is moved via the v2
+   * picker, drop any cross-MDF peer connection it can no longer
+   * physically have. A camera/reader points at its NVR/headend via
+   * CONNECTIONS_FIELD (field_2197); the NVR lists its devices in
+   * TRIGGER_FIELD (field_1957). An NVR only serves devices in its own
+   * MDF/IDF, so once the device lands in a DIFFERENT location than its
+   * peer, the link is stale — clear BOTH sides of the mirror.
+   *
+   * The peer's group is read from the freshly-synced Backbone model
+   * (the v2 picker patches the model BEFORE dispatching the
+   * knack-cell-update that drives this handler), so the "what MDF/IDF
+   * does this belong in" comparison reflects the settled post-move
+   * state, not a mid-edit snapshot — this is the timing fix.
+   *
+   * Guard rails:
+   *   - Only acts when the peer's MDF is KNOWN and DIFFERENT. An
+   *     unknown peer MDF (peer not loaded in the model) leaves the
+   *     connection untouched rather than guessing.
+   *   - The moving-NVR case is a no-op here: an NVR has no
+   *     CONNECTIONS_FIELD value (it's the parent side), so peerId is
+   *     empty. Children that should follow a moved NVR are handled by
+   *     the forward field_1957 cascade, not this disconnect.
+   */
+  function maybeClearCrossMdfConnection(record, currMdf) {
+    var connRaw = record[CONNECTIONS_FIELD + '_raw'];
+    var peerId  = (Array.isArray(connRaw) && connRaw[0] && connRaw[0].id)
+      ? connRaw[0].id : '';
+    if (!peerId) return;
+
+    var peerAttrs = getModelAttrs(peerId);
+    var peerMdf   = peerAttrs ? serializeMdf(peerAttrs) : '';
+    // Only disconnect when the peer is positively in a DIFFERENT, known MDF.
+    if (!peerMdf || peerMdf === currMdf) return;
+
+    log('mdf-direct-edit: ' + record.id + ' left peer ' + peerId +
+        ' (peer MDF ' + peerMdf + ' != new ' + currMdf + ') — clearing connection');
+
+    // Child side: clear CONNECTIONS_FIELD on the moved record. Patch the
+    // local model + reciprocal cache so the -recip handler reads this as
+    // a no-op (empty) rather than a fresh re-parent.
+    var childBody = {};
+    childBody[CONNECTIONS_FIELD] = [];
+    lastReciprocalSeen[record.id] = '';
+    syncModelChild(record.id, (function () {
+      var p = {};
+      p[CONNECTIONS_FIELD] = '';
+      p[CONNECTIONS_FIELD + '_raw'] = [];
+      return p;
+    })());
+    firePut(record.id, childBody);
+
+    // Parent side: drop the moved record from the peer's TRIGGER_FIELD
+    // list (these are mirrored fields, not reciprocal halves of one
+    // Knack connection, so both must be written).
+    var peerRaw = peerAttrs[TRIGGER_FIELD + '_raw'];
+    if (!Array.isArray(peerRaw) || !peerRaw.length) return;
+    var remainingRaw = [];
+    var remainingIds = [];
+    for (var i = 0; i < peerRaw.length; i++) {
+      if (peerRaw[i] && peerRaw[i].id && peerRaw[i].id !== record.id) {
+        remainingRaw.push(peerRaw[i]);
+        remainingIds.push(peerRaw[i].id);
+      }
+    }
+    if (remainingIds.length === peerRaw.length) return; // record wasn't listed
+    var peerBody = {};
+    peerBody[TRIGGER_FIELD] = remainingIds;
+    syncModelChild(peerId, (function () {
+      var p = {};
+      p[TRIGGER_FIELD + '_raw'] = remainingRaw;
+      return p;
+    })());
+    firePut(peerId, peerBody);
+  }
+
   // MODEL_ONLY: when a child's GROUPING_FIELD (field_1946) is edited
-  // directly via the v2 MDF picker, cascade the new group id down to
-  // its mounting-hardware accessories so they regroup alongside the
-  // parent. In v1 DOM mode this fires through the forward cascade
-  // path (when field_1957 changes); the direct field_1946 edit is a
-  // v2-only entry point so we scope the handler to MODEL_ONLY.
+  // directly via the v2 MDF picker, (1) drop any peer connection the
+  // device can no longer physically have now that it's left its peer's
+  // MDF/IDF, and (2) cascade the new group id down to its
+  // mounting-hardware accessories so they regroup alongside the parent.
+  // In v1 DOM mode this fires through the forward cascade path (when
+  // field_1957 changes); the direct field_1946 edit is a v2-only entry
+  // point so we scope the handler to MODEL_ONLY.
   $(document).on('knack-cell-update.' + VIEW_ID + EVENT_NS + '-mdf',
     function (event, view, record) {
       try {
         if (!MODEL_ONLY) return;
-        if (!ACCESSORIES_VIEW_ID) return;
         if (!record || !record.id) return;
         if (ownPuts[record.id]) return;
 
@@ -1322,8 +1399,13 @@
         var currMdf = serializeMdf(record);
         if (prevMdf === currMdf) return;
         lastMdfSeen[record.id] = currMdf;
-        if (!currMdf) return; // disconnect — leave accessories alone
+        if (!currMdf) return; // MDF cleared entirely — leave links alone
 
+        // Always allow the move; clear a now-cross-MDF peer connection.
+        maybeClearCrossMdfConnection(record, currMdf);
+
+        // Cascade the new group down to mounting-hardware accessories.
+        if (!ACCESSORIES_VIEW_ID) return;
         var accIds = findAccessoryIdsForParent(record.id);
         if (!accIds.length) return;
 
