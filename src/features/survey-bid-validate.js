@@ -661,6 +661,108 @@
     };
   }
 
+  // ── 3. knack-cell-update gate (the real path for inline bid edits) ──
+  // On the worksheet the Bid (field_2415) is edited via Knack's native
+  // inline connection popover. On the Vue-rendered subcontractor grid
+  // that save goes over a transport our XHR/ajax/fetch hooks can't see
+  // (Knack captured `fetch` before our bundle loaded). But Knack still
+  // fires its own knack-cell-update.<viewId> event after the save — the
+  // worksheet card already rebuilds off it — so we gate there instead.
+  //
+  // We keep a per-record cache of the Bid ids primed on view-render;
+  // when a gated record's bid array goes fully empty, force a survey
+  // note (field_2412). Cancel restores the prior bid connection. The
+  // PUT has already hit the server by the time this fires, so "cancel"
+  // is a re-PUT of the previous value rather than an abort.
+  var _bidCache = Object.create(null);   // recordId -> [bidIds]
+  var _bidGateModalOpen = false;
+  var _bidOwnPuts = Object.create(null);
+
+  function primeBidCache(viewId) {
+    try {
+      var v = Knack.views && Knack.views[viewId];
+      if (!v || !v.model || !v.model.data) return;
+      var models = v.model.data.models || [];
+      for (var i = 0; i < models.length; i++) {
+        var id = models[i] && models[i].id;
+        var a  = (models[i] && (models[i].attributes || models[i])) || null;
+        if (id && a) _bidCache[id] = normalizeBidIds(a[BID_CONN + '_raw']);
+      }
+    } catch (e) { /* ignore */ }
+  }
+
+  function putRecord(viewId, recordId, body, done) {
+    var url = (window.SCW && typeof SCW.knackRecordUrl === 'function')
+      ? SCW.knackRecordUrl(viewId, recordId) : null;
+    if (!url || !window.SCW || typeof SCW.knackAjax !== 'function') {
+      if (done) done(); return;
+    }
+    _bidOwnPuts[recordId] = true;
+    SCW.knackAjax({
+      url: url, type: 'PUT', data: JSON.stringify(body),
+      success: function () { delete _bidOwnPuts[recordId]; if (done) done(); },
+      error:   function (x) { delete _bidOwnPuts[recordId];
+        console.warn('[scw-survey-bid-validate] bid-gate PUT failed', x); if (done) done(); }
+    });
+  }
+
+  function promptBidRemovalNote(viewId, recordId, beforeIds) {
+    if (_bidGateModalOpen) return;
+    _bidGateModalOpen = true;
+    showModal({
+      kind: 'warn',
+      title: 'Survey note required',
+      html:
+        '<p>You\'re <strong>removing this item from the bid</strong>.</p>' +
+        '<p>Capture a survey note explaining why — it\'s saved on the ' +
+        'item (existing notes won\'t be overwritten).</p>',
+      inputPlaceholder: 'e.g. Item not needed per customer; duplicate; etc.',
+      withInput: true,
+      okLabel: 'Save with note',
+      cancelLabel: 'Cancel — restore bid'
+    }).then(function (r) {
+      _bidGateModalOpen = false;
+      if (r.ok) {
+        if (noteAlreadySet(viewId, recordId)) { return; } // don't clobber
+        var body = {}; body[NOTES] = r.value;
+        putRecord(viewId, recordId, body);
+      } else {
+        // Re-attach the bid the user just removed, then refresh so the
+        // grid reflects the restored connection.
+        var rbody = {}; rbody[BID_CONN] = beforeIds;
+        _bidCache[recordId] = beforeIds;
+        putRecord(viewId, recordId, rbody, function () { refreshGateViews(); });
+      }
+    });
+  }
+
+  function onBidCellUpdate(viewId, record) {
+    try {
+      if (!record || !record.id) return;
+      if (_bidOwnPuts[record.id]) return;        // ignore our own writes
+      var after  = normalizeBidIds(record[BID_CONN + '_raw']);
+      var before = _bidCache[record.id] || [];
+      _bidCache[record.id] = after;              // keep cache fresh
+      if (before.length === 0) return;           // had no bid → nothing removed
+      if (after.length !== 0) return;            // still on a bid → not a full clear
+      if (SBV_DIAG) console.log('[scw-sbv] bid emptied → prompting note', { recordId: record.id, before: before });
+      promptBidRemovalNote(viewId, record.id, before);
+    } catch (e) {
+      console.warn('[scw-survey-bid-validate] bid cell-update handler threw', e);
+    }
+  }
+
+  BID_GATE_VIEWS.forEach(function (vid) {
+    $(document)
+      .off('knack-view-render.' + vid + '.scwSbvBidCache')
+      .on('knack-view-render.' + vid + '.scwSbvBidCache', function () { primeBidCache(vid); });
+    $(document)
+      .off('knack-cell-update.' + vid + '.scwSbvBidGate')
+      .on('knack-cell-update.' + vid + '.scwSbvBidGate', function (e, view, record) {
+        onBidCellUpdate(vid, record);
+      });
+  });
+
   // ── TODO: bulk path for field_2150 (Sub Bid) ─────────────────
   // The preSaveHook above gates Sub Bid commits row-by-row. KTL bulk
   // edits that set field_2150 still fire PUTs through XHR and bypass
