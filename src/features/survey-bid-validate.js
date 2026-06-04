@@ -1,4 +1,10 @@
-/*** FEATURE: Survey worksheet Sub Bid validation (view_3313) *****************
+/*** FEATURE: Bid worksheet validation (view_3313 + view_3505) ***************
+ *
+ * Save-gates for the bid worksheets. The $0-bid confirm and the
+ * remove-from-bid survey-note gate apply to BOTH the site-survey
+ * worksheet (view_3313) and the subcontractor bid worksheet (view_3505);
+ * the blank-bid note rule stays view_3313-only. See ZERO_CONFIRM_TARGETS
+ * and BID_GATE_VIEWS for the per-view wiring.
  *
  * Two save-gates fire when the user commits field_2150 (Sub Bid) on
  * the site-survey device worksheet (view_3313):
@@ -325,8 +331,9 @@
   // hook.
   //
   // We intercept those PUTs at the XHR layer:
-  //   1. Detect PUT to view_3313 records with field_2415 transitioning
-  //      from set → cleared.
+  //   1. Detect PUT to a gated bid-worksheet record (view_3313 survey or
+  //      view_3505 subcontractor) with field_2415 transitioning from
+  //      set → cleared.
   //   2. Abort the request before it goes to the server.
   //   3. Queue it; debounce ~250ms to batch bulk-edit aborts.
   //   4. Show ONE modal asking for a survey note.
@@ -335,14 +342,26 @@
   //   6. On cancel: show toast, refetch the view so the picker\'s
   //      optimistic UI reverts to server-side state.
 
+  // Views whose records require a survey note when their Bid (field_2415)
+  // connection is cleared. Both are device-worksheet bid surfaces sharing
+  // the same field keys (field_2415 Bid, field_2412 note).
+  var BID_GATE_VIEWS = ['view_3313', 'view_3505'];
+
   var BATCH_WINDOW_MS = 250;
   var _gateQueue   = [];
   var _gateTimer   = null;
   var _gateModalOpen = false;
 
-  function isView3313RecordUrl(url) {
-    if (!url) return false;
-    return /\/views\/view_3313\/records\/[a-f0-9]{24}\b/i.test(url);
+  /** Return the gated view id this record URL belongs to, or '' if none. */
+  function gateViewForUrl(url) {
+    if (!url) return '';
+    for (var i = 0; i < BID_GATE_VIEWS.length; i++) {
+      var v = BID_GATE_VIEWS[i];
+      if (new RegExp('/views/' + v + '/records/[a-f0-9]{24}\\b', 'i').test(url)) {
+        return v;
+      }
+    }
+    return '';
   }
   function isWriteMethod(m) {
     if (!m) return false;
@@ -378,9 +397,9 @@
     return m ? m[1] : '';
   }
   /** True if the model says field_2415 currently has a value. */
-  function bidCurrentlySet(recordId) {
+  function bidCurrentlySet(viewId, recordId) {
     try {
-      var v = Knack.views && Knack.views[VIEW_ID];
+      var v = Knack.views && Knack.views[viewId];
       if (!v || !v.model || !v.model.data) return false;
       var rec = (typeof v.model.data.get === 'function') ? v.model.data.get(recordId) : null;
       if (!rec) return false;
@@ -392,9 +411,9 @@
     } catch (e) { return false; }
   }
   /** True if the record already has a survey note we shouldn\'t clobber. */
-  function noteAlreadySet(recordId) {
+  function noteAlreadySet(viewId, recordId) {
     try {
-      var v = Knack.views && Knack.views[VIEW_ID];
+      var v = Knack.views && Knack.views[viewId];
       if (!v || !v.model || !v.model.data) return false;
       var rec = (typeof v.model.data.get === 'function') ? v.model.data.get(recordId) : null;
       if (!rec) return false;
@@ -410,7 +429,7 @@
       var body = JSON.parse(item.body);
       if (!body || typeof body !== 'object') body = {};
       // Don\'t clobber existing notes — only fill empty ones.
-      if (!noteAlreadySet(item.recordId)) {
+      if (!noteAlreadySet(item.viewId, item.recordId)) {
         body[NOTES] = note;
       }
       $.ajax({
@@ -429,11 +448,17 @@
     }
   }
 
-  function refreshView3313() {
-    try {
-      var v = Knack.views && Knack.views[VIEW_ID];
-      if (v && v.model && typeof v.model.fetch === 'function') v.model.fetch();
-    } catch (e) { /* ignore */ }
+  /** Refetch every gated view that's currently on the page so the
+   *  picker's optimistic UI reverts (cancel) or reflects the note PUTs
+   *  (confirm). Refetching all gate views is cheap and avoids tracking
+   *  which views a batch touched. */
+  function refreshGateViews() {
+    for (var i = 0; i < BID_GATE_VIEWS.length; i++) {
+      try {
+        var v = Knack.views && Knack.views[BID_GATE_VIEWS[i]];
+        if (v && v.model && typeof v.model.fetch === 'function') v.model.fetch();
+      } catch (e) { /* ignore */ }
+    }
   }
 
   function processGateQueue() {
@@ -470,12 +495,12 @@
       if (!r.ok) {
         // Aborted PUTs never landed; the model fetch will restore
         // whatever the server still says.
-        refreshView3313();
+        refreshGateViews();
         return;
       }
       for (var i = 0; i < batch.length; i++) replayWithNote(batch[i], r.value);
       // Give the server a moment to land all PUTs then refresh.
-      setTimeout(refreshView3313, 600);
+      setTimeout(refreshGateViews, 600);
     });
   }
 
@@ -485,26 +510,29 @@
     _gateTimer = setTimeout(processGateQueue, BATCH_WINDOW_MS);
   }
 
+  /** Returns { viewId, recordId } when this PUT should be gated, else null. */
   function shouldGate(method, url, body) {
-    if (!isWriteMethod(method)) return false;
-    if (!isView3313RecordUrl(url)) return false;
+    if (!isWriteMethod(method)) return null;
+    var viewId = gateViewForUrl(url);
+    if (!viewId) return null;
     var incoming = parseBidConnFromBody(body);
-    if (incoming === undefined) return false; // field_2415 not in body
-    if (!isFieldCleared(incoming)) return false;
+    if (incoming === undefined) return null; // field_2415 not in body
+    if (!isFieldCleared(incoming)) return null;
     var recordId = recordIdFromUrl(url);
-    if (!recordId) return false;
-    if (!bidCurrentlySet(recordId)) return false; // already empty, no-op
-    return recordId;
+    if (!recordId) return null;
+    if (!bidCurrentlySet(viewId, recordId)) return null; // already empty, no-op
+    return { viewId: viewId, recordId: recordId };
   }
 
   // ── 1. jQuery $.ajaxPrefilter (Knack uses jQuery for inline edits)
   if (typeof $ !== 'undefined' && $.ajaxPrefilter) {
     $.ajaxPrefilter(function (options, originalOptions, jqXHR) {
       try {
-        var recordId = shouldGate(options.type, options.url || '', options.data);
-        if (!recordId) return;
+        var gate = shouldGate(options.type, options.url || '', options.data);
+        if (!gate) return;
         queueGate({
-          recordId: recordId,
+          viewId:   gate.viewId,
+          recordId: gate.recordId,
           url:      options.url,
           method:   options.type,
           body:     options.data,
@@ -530,10 +558,11 @@
     };
     XMLHttpRequest.prototype.send = function (body) {
       try {
-        var recordId = shouldGate(this.__scwSbvMethod, this.__scwSbvUrl, body);
-        if (recordId) {
+        var gate = shouldGate(this.__scwSbvMethod, this.__scwSbvUrl, body);
+        if (gate) {
           queueGate({
-            recordId: recordId,
+            viewId:   gate.viewId,
+            recordId: gate.recordId,
             url:      this.__scwSbvUrl,
             method:   this.__scwSbvMethod,
             body:     typeof body === 'string' ? body : '',
