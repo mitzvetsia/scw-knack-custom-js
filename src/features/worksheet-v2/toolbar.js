@@ -129,7 +129,8 @@
       '<div class="scw-ws-v2-toolbar-group scw-ws-v2-toolbar-group--cta">' +
         actionBtn('add-sow',      '+ Add to SOW',         'Add a new SOW line item') +
         actionBtn('add-photos',   '+ Add Photos',         'Bulk upload photos to this SOW') +
-        actionBtn('add-mounting', '+ Add Accessories', 'Add an accessory to each selected row') +
+        // "+ Add Accessories" lives in the floating bulk panel (bulk.js)
+        // now — it only applies to a row selection, same as Remove.
       '</div>';
     return bar;
   }
@@ -623,7 +624,11 @@
   ns.toolbar = {
     mount:           mount,
     loadMode:        loadMode,
-    loadPhotosShown: loadPhotosShown
+    loadPhotosShown: loadPhotosShown,
+    // Exposed so the floating bulk panel (bulk.js) can open the
+    // add-accessory modal — it applies to a row selection, same as the
+    // bulk Remove-accessories action, so both live together there.
+    openAddAccessories: openMountingBoxModal
   };
 })();
 /*** END WORKSHEET V2 — TOOLBAR ***********************************************/
