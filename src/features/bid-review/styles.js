@@ -210,6 +210,17 @@
       '.scw-bid-review__sow-metric-input--saved {',
       '  background: #ecfdf5;',
       '}',
+      /* Survey-costs missing — BLANK (not $0) is an error/blocker that
+         gates the Preview pill, so it's flagged red (not amber). */
+      '.scw-bid-review__sow-metric--missing .scw-bid-review__sow-metric-input {',
+      '  border-color: #dc2626 !important;',
+      '  box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.18);',
+      '  background: #fef2f2;',
+      '}',
+      '.scw-bid-review__sow-metric-warn {',
+      '  display: block; margin-top: 3px;',
+      '  font-size: 11px; font-weight: 600; color: #dc2626;',
+      '}',
       /* Inline date editor on the published-proposal expiration line
          inside the SOW header cell. Sized to match the surrounding
          "Expires:" label so the row stays compact. */

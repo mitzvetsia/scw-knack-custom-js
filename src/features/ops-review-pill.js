@@ -304,6 +304,21 @@
          to <body> and positions it via fixed coords on hover. CSS pseudo
          tooltips were getting clipped by Knack's .kn-table-wrapper /
          accordion overflow chain; living on body bypasses all of that. */
+      /* Survey-costs gate. A BLANK survey-costs field blocks the Preview
+         pill and flags the field red; an explicit $0 is a valid answer
+         and clears the gate. */
+      '.scw-ops-pill--gated {' +
+      '  background: #e5e7eb !important; color: #9ca3af !important;' +
+      '  border-color: #d1d5db !important; cursor: not-allowed !important;' +
+      '  box-shadow: none !important; pointer-events: auto;' +
+      '}' +
+      '.scw-ops-pill--gated .scw-ops-arrow { opacity: 0.5; }' +
+      '#' + VIEW_ID + ' td.scw-ops-survey-missing,' +
+      '#' + VIEW_ID + ' td.scw-ops-survey-missing.cell-edit {' +
+      '  background: #fef2f2 !important;' +
+      '  box-shadow: inset 0 0 0 2px #dc2626 !important;' +
+      '}' +
+
       '.scw-ops-floating-tip {' +
       '  position: fixed; display: none;' +
       '  background: #1f2937; color: #fff;' +
@@ -380,6 +395,45 @@
     return isNaN(n) ? 0 : n;
   }
   function readNote(tr) { return readText(tr, NOTE_FIELD); }
+
+  // ── Survey-costs gate ──────────────────────────────────────────
+  // Survey costs (field_2750) must be answered before a proposal can be
+  // previewed. BLANK (never entered) blocks the Preview pill; an explicit
+  // $0 is a valid answer ("no survey costs") and clears the gate. Zero and
+  // blank are distinguishable because a real 0 reads as "0" while an empty
+  // field reads as "".
+  function surveyCostsBlank(tr) {
+    if (!tr) return false;
+    var raw = String(readText(tr, SURVEY_COSTS_FIELD) || '').trim();
+    return raw === '';
+  }
+
+  var SURVEY_GATE_TIP =
+    'Enter survey costs first (enter $0 if there were none) to preview the proposal.';
+
+  // Block + restyle a Preview pill when survey costs are missing. Shared by
+  // renderCell (view_3325) and buildPillForRow (bid-review v1 + v2).
+  function gatePillForSurvey(pill, tr) {
+    if (!pill || !surveyCostsBlank(tr)) return pill;
+    pill.classList.add('scw-ops-pill--gated');
+    pill.removeAttribute('href');
+    pill.setAttribute('aria-disabled', 'true');
+    pill.setAttribute('data-scw-tip', SURVEY_GATE_TIP);
+    pill.setAttribute('title', SURVEY_GATE_TIP);
+    pill.addEventListener('click', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    });
+    return pill;
+  }
+
+  // Flag the survey-costs cell red in view_3325 when blank.
+  function markSurveyCostCell(tr) {
+    if (!tr) return;
+    var td = tr.querySelector('td.' + SURVEY_COSTS_FIELD +
+      ', td[data-field-key="' + SURVEY_COSTS_FIELD + '"]');
+    if (td) td.classList.toggle('scw-ops-survey-missing', surveyCostsBlank(tr));
+  }
 
   // Returns the margin as a percent (0-100). Knack percent fields can
   // be stored as a fraction (0.095) or as a percent (9.5) depending on
@@ -641,6 +695,11 @@
     arrow.className = 'scw-ops-arrow';
     arrow.textContent = '›';
     pill.appendChild(arrow);
+
+    // Gate the Preview pill + flag the survey-costs cell when survey
+    // costs are blank ($0 is a valid answer and clears the gate).
+    gatePillForSurvey(pill, tr);
+    markSurveyCostCell(tr);
 
     hostTd.appendChild(pill);
 
@@ -906,6 +965,9 @@
     arrow.textContent = '›';
     pill.appendChild(arrow);
 
+    // Block when survey costs are blank (bid-review v1 + v2 reuse this).
+    gatePillForSurvey(pill, tr);
+
     return pill;
   }
 
@@ -1141,6 +1203,7 @@
   SCW.opsReview.autoRevertValidation       = autoRevertValidation;
   SCW.opsReview.buildBlockForRow           = buildBlockForRow;
   SCW.opsReview.buildPillForRow            = buildPillForRow;
+  SCW.opsReview.surveyCostsBlank           = surveyCostsBlank;
   SCW.opsReview.buildMarginWarningForRow   = buildMarginWarningForRow;
   SCW.opsReview.buildProposalBlockForRow   = buildProposalBlockForRow;
 })();
