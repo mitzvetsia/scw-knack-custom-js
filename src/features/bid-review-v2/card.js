@@ -259,6 +259,16 @@
       //   surveyNoBid → was surveyed, detached from bid → "NOT ON BID" /
       //                 "+ Reinstate".
       //   noBid       → never on a bid → "NOT SURVEYED" / "+ Add to bid".
+      // Removed items: read-only "REMOVED" badge, no add action — these
+      // were intentionally pulled from both the bid and the SOW.
+      if (row && row.removed) {
+        td.classList.add('scw-bid-review-v2__cell--no-bid-cutout');
+        td.innerHTML =
+          '<span class="scw-bid-review-v2__no-bid-badge ' +
+            'scw-bid-review-v2__no-bid-badge--removed">REMOVED</span>';
+        appendPendingCard(td, pendingItem, row, pkg, sowId);
+        return td;
+      }
       var isNoBidState = row && (row.noBid || row.surveyNoBid);
       if (isNoBidState) {
         td.classList.add('scw-bid-review-v2__cell--no-bid-cutout');
@@ -371,6 +381,7 @@
     if (row.noBid)       tr.classList.add('scw-bid-review-v2__row--no-bid');
     if (row.surveyNoBid) tr.classList.add('scw-bid-review-v2__row--survey-no-bid');
     if (row.offSow)      tr.classList.add('scw-bid-review-v2__row--off-sow');
+    if (row.removed)     tr.classList.add('scw-bid-review-v2__row--removed');
     if (row.sowItem) tr.classList.add('scw-bid-review-v2__row--expandable');
     tr.setAttribute('data-row-id', row.id);
     if (row.sowItem) tr.setAttribute('data-sow-item-id', row.sowItem);
@@ -453,9 +464,11 @@
     var tr = document.createElement('tr');
     tr.className = 'scw-bid-review-v2__group-header';
     if (group.otherBidItems) tr.className += ' scw-bid-review-v2__group-header--other';
+    if (group.removedItems)  tr.className += ' scw-bid-review-v2__group-header--removed';
+    if (group.defaultCollapsed) tr.className += ' scw-bid-review-v2__group-header--collapsed';
     tr.setAttribute('data-l1-id', group.key);
     tr.setAttribute('role', 'button');
-    tr.setAttribute('aria-expanded', 'true');
+    tr.setAttribute('aria-expanded', group.defaultCollapsed ? 'false' : 'true');
     var td = document.createElement('td');
     td.colSpan = colspan;
     var rowCount =
@@ -541,24 +554,34 @@
   }
 
   function appendGroup(tbody, group, packages, colspan, sowId) {
+    // Default-collapsed groups (e.g. "Removed items") render their rows
+    // pre-hidden; the L1 collapse toggle in init.js flips them back.
+    var hide = !!group.defaultCollapsed;
+    function addRow(tr) {
+      if (hide) {
+        tr.classList.add('scw-bid-review-v2__row--hidden');
+        tr.classList.add('scw-bid-review-v2__subgroup-header--hidden');
+      }
+      tbody.appendChild(tr);
+    }
     // Level 0 means "flat" — no MDF/IDF on any row, just render rows.
     if (group.level === 1) {
       tbody.appendChild(buildL1HeaderRow(group, colspan));
       // MDF/IDF survey-notes callout immediately under the L1 header.
       var snRow = buildL1SurveyNotesRow(group.mdfIdfId, colspan);
-      if (snRow) tbody.appendChild(snRow);
+      if (snRow) addRow(snRow);
     }
     // Direct rows (when there are no subgroups).
     for (var i = 0; i < group.rows.length; i++) {
-      tbody.appendChild(buildBidRow(group.rows[i], packages, sowId));
+      addRow(buildBidRow(group.rows[i], packages, sowId));
     }
     // Subgroups (L2 — proposal bucket).
     var subs = group.subgroups || [];
     for (var s = 0; s < subs.length; s++) {
       var sub = subs[s];
-      tbody.appendChild(buildL2HeaderRow(sub, colspan));
+      addRow(buildL2HeaderRow(sub, colspan));
       for (var sr = 0; sr < sub.rows.length; sr++) {
-        tbody.appendChild(buildBidRow(sub.rows[sr], packages, sowId));
+        addRow(buildBidRow(sub.rows[sr], packages, sowId));
       }
     }
   }

@@ -483,6 +483,46 @@
       return !/^no$/i.test(String(flag).trim());
     }
 
+    // ── "Removed" items — no longer on ANY SOW and not on any bid ──
+    // When a contractor removes an item from a bid and it's then pulled
+    // from the SOW, the survey line item (view_3921) is left with no SOW
+    // connection and no bid record. v1 (and v2 until now) drop these
+    // entirely, which makes reviewers wonder whether the item was lost or
+    // deliberately removed. We surface them in a default-collapsed section
+    // atop every SOW grid so the removal reads as intentional.
+    var bidItemIds = Object.create(null);   // SOW-item ids referenced by an on-bid record
+    for (var bii = 0; bii < records.length; bii++) {
+      if (!connectionAll(records[bii], FK.bidPackage).length) continue;
+      var bsi = connectionId(records[bii], FK.relatedSowItem);
+      if (bsi) bidItemIds[bsi] = true;
+    }
+    var removedRows = [];
+    for (var rmi = 0; rmi < sowItemList.length; rmi++) {
+      var rrec = sowItemList[rmi];
+      if (!rrec || !rrec.id) continue;
+      if (connectionAll(rrec, SFK.sow).length) continue;   // still on a SOW
+      if (bidItemIds[rrec.id]) continue;                   // still on a bid
+      removedRows.push({
+        id:               rrec.id,
+        sowItem:          rrec.id,
+        displayLabel:     raw(rrec, SFK.displayLabel) || connectionLabel(rrec, SFK.product),
+        productName:      raw(rrec, SFK.productName),
+        sortOrder:        num(rrec, SFK.sortOrder),
+        requireSubBid:    raw(rrec, FK.requireSubBid),
+        mdfIdf:           connectionLabel(rrec, SFK.mdfIdf),
+        mdfIdfId:         connectionId(rrec, SFK.mdfIdf),
+        proposalBucket:   connectionLabel(rrec, SFK.proposalBucket),
+        proposalBucketId: connectionId(rrec, SFK.proposalBucket),
+        cellsByPackage:   Object.create(null),
+        noBid:            true,    // empty cells → cut-out treatment
+        surveyNoBid:      false,
+        offSow:           false,
+        removed:          true,
+        sowItemData:      sowItemIndex[rrec.id]   || null,
+        sowFullRecord:    sowFullByItem[rrec.id]  || null
+      });
+    }
+
     var sowGrids = [];
     for (var i = 0; i < sows.length; i++) {
       var sow = sows[i];
@@ -617,6 +657,21 @@
           rows:          otherRows,
           subgroups:     [],
           otherBidItems: true
+        });
+      }
+      // Removed items pinned to the TOP, default-collapsed. Same set on
+      // every SOW grid (they belong to no SOW). Not added to allRows, so
+      // they never touch SOW or bid-column totals.
+      if (removedRows.length) {
+        groups.unshift({
+          key:             '__removed_items__',
+          label:           'Removed — no longer on any SOW or bid',
+          mdfIdfId:        '',
+          level:           1,
+          rows:            removedRows,
+          subgroups:       [],
+          removedItems:    true,
+          defaultCollapsed: true
         });
       }
 
