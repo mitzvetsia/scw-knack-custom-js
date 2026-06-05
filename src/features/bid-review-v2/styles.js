@@ -710,6 +710,29 @@
     '  background: #fafafa; text-align: center; color: #cbd5e1;',
     '}',
     '.scw-bid-review-v2__cell-empty-mark { font-size: 18px; line-height: 1; }',
+    /* ── Bid-vs-SOW mismatch states (v1 parity) ───────────────── */
+    /* On-bid-but-not-on-this-SOW: blue dashed cut-out on the SOW cell. */
+    '.scw-bid-review-v2__sow-cell--off-sow {',
+    '  border: 1.5px dashed #2563eb !important;',
+    '  background: repeating-linear-gradient(135deg,#eff6ff,#eff6ff 8px,#fff 8px,#fff 16px);',
+    '}',
+    /* On-SOW-but-not-on-bid (noBid / surveyNoBid): same cut-out on the
+       bid cell, with a centered badge + action. */
+    '.scw-bid-review-v2__cell--no-bid-cutout {',
+    '  border: 1.5px dashed #2563eb !important;',
+    '  background: repeating-linear-gradient(135deg,#eff6ff,#eff6ff 8px,#fff 8px,#fff 16px);',
+    '  text-align: center;',
+    '}',
+    '.scw-bid-review-v2__no-bid-badge {',
+    '  display: inline-block; margin-bottom: 8px;',
+    '  padding: 2px 8px; border-radius: 10px;',
+    '  background: #dbeafe; color: #1e40af;',
+    '  font-size: 10px; font-weight: 700; letter-spacing: 0.04em;',
+    '  text-transform: uppercase;',
+    '}',
+    /* Subtle full-row tint so mismatched rows are scannable at a glance. */
+    '.scw-bid-review-v2__row--no-bid > td,',
+    '.scw-bid-review-v2__row--survey-no-bid > td { background: #fbfdff; }',
     '.scw-bid-review-v2__cell-product {',
     '  font-weight: 600; font-size: 13px; color: #0f172a;',
     '  margin-bottom: 10px; line-height: 1.35;',

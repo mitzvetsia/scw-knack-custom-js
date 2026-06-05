@@ -193,6 +193,11 @@
       productName:  raw(meta, FK.productName),
       sortOrder:    num(meta, FK.sortOrder),
       requireSubBid: raw(meta, FK.requireSubBid),
+      // A bid-side row (view_3680) that has a SOW connection but ZERO bid
+      // cells is "surveyed but not on any bid" → NOT ON BID treatment.
+      surveyNoBid:  Object.keys(cellsByPackage).length === 0,
+      noBid:        false,
+      offSow:       false,
       mdfIdf:           connectionLabel(meta, FK.mdfIdf),
       mdfIdfId:         connectionId(meta, FK.mdfIdf),
       proposalBucket:   connectionLabel(meta, FK.proposalBucket),
@@ -295,6 +300,52 @@
     return groups;
   }
 
+  // ── "NO BID" rows from unbid SOW items (view_3921) ──────────
+  //
+  // Ported from v1's buildNoBidRows. A SOW line item (view_3921) that
+  // is connected to a SOW but has no bid-side record at all is a "NOT
+  // SURVEYED / not on any bid" row. We synthesize a row for it keyed by
+  // SOW so it renders cut-out cells across every bid column with an
+  // "+ Add to bid" action. Returns { sowId: [row, ...] }.
+  function buildNoBidRows(sowItems) {
+    var SFK = ns.CONFIG.sowItemFieldKeys || {};
+    var bySow = Object.create(null);
+    var list = sowItems || [];
+    for (var i = 0; i < list.length; i++) {
+      var rec = list[i];
+      if (!rec || !rec.id) continue;
+      var conns = connectionAll(rec, SFK.sow);
+      if (!conns.length) continue;
+      for (var c = 0; c < conns.length; c++) {
+        var sowId = conns[c].id;
+        if (!sowId) continue;
+        if (!bySow[sowId]) bySow[sowId] = [];
+        bySow[sowId].push({
+          id:               rec.id,
+          sowItem:          rec.id,                 // it IS a SOW item
+          displayLabel:     raw(rec, SFK.displayLabel) || connectionLabel(rec, SFK.product),
+          productName:      raw(rec, SFK.productName),
+          sortOrder:        num(rec, SFK.sortOrder),
+          requireSubBid:    raw(rec, FK.requireSubBid),
+          mdfIdf:           connectionLabel(rec, SFK.mdfIdf),
+          mdfIdfId:         connectionId(rec, SFK.mdfIdf),
+          proposalBucket:   connectionLabel(rec, SFK.proposalBucket),
+          proposalBucketId: connectionId(rec, SFK.proposalBucket),
+          // No bid record at all.
+          cellsByPackage:   Object.create(null),
+          noBid:            true,
+          surveyNoBid:      false,
+          offSow:           false,
+          // Diff basis (unused for noBid cells, kept for shape parity).
+          sowProduct:       connectionLabel(rec, SFK.product) || raw(rec, SFK.productName),
+          sowLaborDesc:     rawHtml(rec, SFK.laborDesc),
+          sowFee:           num(rec, SFK.fee)
+        });
+      }
+    }
+    return bySow;
+  }
+
   // Index bid-package records (view_3573) by id → { bidStatus, bidName,
   // pdfUrl, pdfFilename }. Ported from v1's buildPkgInfoMap.
   function buildPkgInfoMap(bidPackages) {
@@ -355,8 +406,18 @@
       var s = sowItemList[si];
       if (!s || !s.id) continue;
       sowFullByItem[s.id] = s;
+      // Authoritative SOW membership: the SOW item's own field_2154
+      // connections. A bid row can still appear under a SOW via the BID
+      // record's connection after the line item was disconnected —
+      // comparing against this set flags those "not on this SOW" rows.
+      var sowConns = connectionAll(s, SFK.sow);
+      var sowIds = Object.create(null);
+      for (var sc = 0; sc < sowConns.length; sc++) {
+        if (sowConns[sc] && sowConns[sc].id) sowIds[sowConns[sc].id] = true;
+      }
       sowItemIndex[s.id] = {
         id:          s.id,
+        sowIds:      sowIds,
         // Read the product connection FIRST. On view_3921, field_1958
         // ("stored product name") renders as a concatenation of the
         // line item's product AND its mounting accessories with no
@@ -376,19 +437,42 @@
       };
     }
 
+    // SOW items that aren't on any bid → synthesized "NOT SURVEYED" rows,
+    // keyed by SOW. Merged into each SOW grid below.
+    var noBidBySow = buildNoBidRows(sowItemList);
+
     var sowGrids = [];
     for (var i = 0; i < sows.length; i++) {
       var sow = sows[i];
       var bucket = buckets[sow.id] || [];
       var packages = extractPackages(bucket);
       var rows = buildRowsForSow(bucket);
+
+      // Merge in NO BID rows for this SOW — skip any whose SOW item is
+      // already represented by a bid-side (view_3680) row.
+      var existingSowItems = Object.create(null);
+      for (var ei = 0; ei < rows.length; ei++) {
+        if (rows[ei].sowItem) existingSowItems[rows[ei].sowItem] = true;
+      }
+      var noBidRows = noBidBySow[sow.id] || [];
+      for (var nb = 0; nb < noBidRows.length; nb++) {
+        if (noBidRows[nb].sowItem && existingSowItems[noBidRows[nb].sowItem]) continue;
+        rows.push(noBidRows[nb]);
+      }
+
       // Attach the SOW-item snapshot to each row so card.js can render
       // the leftmost SOW column. Rows whose relatedSowItem points at a
       // record we never loaded fall through with `sowItemData: null`.
+      // Also flag `offSow`: the bid record references this SOW, but the
+      // line item's OWN field_2154 no longer lists it (on-bid, not on
+      // this SOW). noBid rows are on the SOW by definition → offSow stays
+      // false.
       for (var r = 0; r < rows.length; r++) {
         var sid = rows[r].sowItem;
-        rows[r].sowItemData   = sid ? (sowItemIndex[sid]   || null) : null;
+        var sidx = sid ? (sowItemIndex[sid] || null) : null;
+        rows[r].sowItemData   = sidx;
         rows[r].sowFullRecord = sid ? (sowFullByItem[sid] || null) : null;
+        if (sidx && sidx.sowIds && !sidx.sowIds[sow.id]) rows[r].offSow = true;
       }
       // Drop informational line items the bidder isn't pricing: when
       // "require sub bid" (field_2478) is No, the item shouldn't appear as
@@ -409,7 +493,10 @@
       var sowSub = 0, sowInstall = 0;
       for (var sr = 0; sr < rows.length; sr++) {
         var sdat = rows[sr].sowItemData;
-        if (sdat) {
+        // offSow rows are no longer part of this SOW — exclude from the
+        // SOW totals (they still count in the bid-column total below,
+        // since the item really is on the bid).
+        if (sdat && !rows[sr].offSow) {
           sowSub     += sdat.fee || 0;
           sowInstall += sdat.installFee || 0;
         }

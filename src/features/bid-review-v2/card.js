@@ -146,9 +146,28 @@
    * underlying SOW line item that anchors this row. Edits to SOW
    * fields flow through worksheet-v2; bid-review v2 only displays.
    */
-  function buildSowCell(sowItemData, isAssumption) {
+  function buildSowCell(row, isAssumption, sowId) {
+    var sowItemData = row && row.sowItemData;
     var td = document.createElement('td');
     td.className = 'scw-bid-review-v2__sow-cell';
+
+    // New bid line with no SOW item yet → offer "+ Add to SOW" (v1 parity).
+    if (row && !row.sowItem) {
+      td.classList.add('scw-bid-review-v2__sow-cell--empty');
+      td.innerHTML =
+        '<span class="scw-bid-review-v2__cell-empty-mark">—</span>' +
+        '<div class="scw-bid-review-v2__cell-actions">' +
+          '<button type="button" class="scw-bid-review__cell-action ' +
+            'scw-bid-review__cell-action--add scw-bid-review-v2__cell-action" ' +
+            crAttrs('row_add_to_sow', row.id, '', sowId) + '>+ Add to SOW</button>' +
+        '</div>';
+      return td;
+    }
+
+    // On-bid but no longer on THIS SOW → blue dashed cut-out so it reads
+    // as detached from the SOW (the bid columns stay normal).
+    if (row && row.offSow) td.classList.add('scw-bid-review-v2__sow-cell--off-sow');
+
     if (!sowItemData) {
       td.classList.add('scw-bid-review-v2__sow-cell--empty');
       td.innerHTML = '<span class="scw-bid-review-v2__cell-empty-mark">—</span>';
@@ -235,15 +254,33 @@
     var pendingItem = row ? findPendingItem(row.id, pkgId) : null;
 
     if (!cell) {
-      // No bid record for this row/package — offer "+ Add to bid".
       td.classList.add('scw-bid-review-v2__cell--empty');
-      td.innerHTML =
-        '<span class="scw-bid-review-v2__cell-empty-mark">—</span>' +
-        (row ? '<div class="scw-bid-review-v2__cell-actions">' +
-          '<button type="button" class="scw-bid-review__cell-action ' +
-            'scw-bid-review__cell-action--add scw-bid-review-v2__cell-action" ' +
-            crAttrs('cell_add_to_bid', row.id, pkgId, sowId) + '>+ Add to bid</button>' +
-        '</div>' : '');
+      // noBid / surveyNoBid rows: dashed cut-out + badge (mirrors v1).
+      //   surveyNoBid → was surveyed, detached from bid → "NOT ON BID" /
+      //                 "+ Reinstate".
+      //   noBid       → never on a bid → "NOT SURVEYED" / "+ Add to bid".
+      var isNoBidState = row && (row.noBid || row.surveyNoBid);
+      if (isNoBidState) {
+        td.classList.add('scw-bid-review-v2__cell--no-bid-cutout');
+        var badgeText = row.surveyNoBid ? 'NOT ON BID' : 'NOT SURVEYED';
+        var addLabel  = row.surveyNoBid ? '+ Reinstate' : '+ Add to bid';
+        td.innerHTML =
+          '<span class="scw-bid-review-v2__no-bid-badge">' + escapeHtml(badgeText) + '</span>' +
+          '<div class="scw-bid-review-v2__cell-actions">' +
+            '<button type="button" class="scw-bid-review__cell-action ' +
+              'scw-bid-review__cell-action--add scw-bid-review-v2__cell-action" ' +
+              crAttrs('cell_add_to_bid', row.id, pkgId, sowId) + '>' + addLabel + '</button>' +
+          '</div>';
+      } else {
+        // Plain empty intersection — generic "+ Add to bid".
+        td.innerHTML =
+          '<span class="scw-bid-review-v2__cell-empty-mark">—</span>' +
+          (row ? '<div class="scw-bid-review-v2__cell-actions">' +
+            '<button type="button" class="scw-bid-review__cell-action ' +
+              'scw-bid-review__cell-action--add scw-bid-review-v2__cell-action" ' +
+              crAttrs('cell_add_to_bid', row.id, pkgId, sowId) + '>+ Add to bid</button>' +
+          '</div>' : '');
+      }
       appendPendingCard(td, pendingItem, row, pkg, sowId);
       return td;
     }
@@ -329,6 +366,11 @@
   function buildBidRow(row, packages, sowId) {
     var tr = document.createElement('tr');
     tr.className = 'scw-bid-review-v2__row';
+    // Mismatch-state classes (v1 parity): on-SOW-not-on-bid and
+    // on-bid-not-on-SOW. Styling lives in styles.js.
+    if (row.noBid)       tr.classList.add('scw-bid-review-v2__row--no-bid');
+    if (row.surveyNoBid) tr.classList.add('scw-bid-review-v2__row--survey-no-bid');
+    if (row.offSow)      tr.classList.add('scw-bid-review-v2__row--off-sow');
     if (row.sowItem) tr.classList.add('scw-bid-review-v2__row--expandable');
     tr.setAttribute('data-row-id', row.id);
     if (row.sowItem) tr.setAttribute('data-sow-item-id', row.sowItem);
@@ -396,7 +438,7 @@
     var assumption = isAssumption(row);
 
     // SOW item column — anchors the row, always second from left.
-    tr.appendChild(buildSowCell(row.sowItemData, assumption));
+    tr.appendChild(buildSowCell(row, assumption, sowId));
 
     // One cell per bid package
     for (var p = 0; p < packages.length; p++) {
