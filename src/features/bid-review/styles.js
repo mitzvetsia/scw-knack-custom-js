@@ -217,8 +217,12 @@
       '  box-shadow: 0 0 0 2px rgba(220, 38, 38, 0.18);',
       '  background: #fef2f2;',
       '}',
+      /* Let the missing-survey-costs row wrap so the warning drops onto
+         its own line BELOW the input instead of sitting to its right. */
+      '.scw-bid-review__sow-metric--missing { flex-wrap: wrap; }',
       '.scw-bid-review__sow-metric-warn {',
-      '  display: block; margin-top: 3px;',
+      '  display: block; flex-basis: 100%; width: 100%; margin-top: 3px;',
+      '  text-align: left;',
       '  font-size: 11px; font-weight: 600; color: #dc2626;',
       '}',
       /* Inline date editor on the published-proposal expiration line
