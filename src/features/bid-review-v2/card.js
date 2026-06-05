@@ -452,6 +452,7 @@
   function buildL1HeaderRow(group, colspan) {
     var tr = document.createElement('tr');
     tr.className = 'scw-bid-review-v2__group-header';
+    if (group.otherBidItems) tr.className += ' scw-bid-review-v2__group-header--other';
     tr.setAttribute('data-l1-id', group.key);
     tr.setAttribute('role', 'button');
     tr.setAttribute('aria-expanded', 'true');

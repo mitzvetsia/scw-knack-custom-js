@@ -441,11 +441,64 @@
     // keyed by SOW. Merged into each SOW grid below.
     var noBidBySow = buildNoBidRows(sowItemList);
 
+    // ── Bid-column "touch" model + global package index (v1 parity) ──
+    // A bid column shows on a SOW grid when the bid TOUCHES that SOW —
+    // i.e. any of its records' own field_2154 lists the SOW, OR the
+    // record's related SOW line item is on the SOW. This lets a bid
+    // appear on every SOW it touches, and lets us collect the bid's items
+    // that live on OTHER SOWs into a dedicated "Other items" block.
+    var allPackages = extractPackages(records);
+    var pkgAllRecords = Object.create(null);  // pkgId → [every record on it]
+    for (var pai = 0; pai < records.length; pai++) {
+      var paPkgs = connectionAll(records[pai], FK.bidPackage);
+      for (var pap = 0; pap < paPkgs.length; pap++) {
+        var paPid = paPkgs[pap].id;
+        if (!paPid) continue;
+        (pkgAllRecords[paPid] = pkgAllRecords[paPid] || []).push(records[pai]);
+      }
+    }
+    function recordTouchesSow(rec, sowId) {
+      var sc = connectionAll(rec, FK.sow);
+      for (var x = 0; x < sc.length; x++) {
+        if (sc[x] && sc[x].id === sowId) return true;
+      }
+      var siId = connectionId(rec, FK.relatedSowItem);
+      if (siId && sowItemIndex[siId] && sowItemIndex[siId].sowIds &&
+          sowItemIndex[siId].sowIds[sowId]) return true;
+      return false;
+    }
+    function packageTouchesSow(pkgId, sowId) {
+      var precs = pkgAllRecords[pkgId] || [];
+      for (var t = 0; t < precs.length; t++) {
+        if (recordTouchesSow(precs[t], sowId)) return true;
+      }
+      return false;
+    }
+
+    // Shared require-sub-bid drop test — applied to both matched rows and
+    // the "other items" rows so informational (No) items never appear.
+    function keepRow(row) {
+      var sowFlag = row.sowFullRecord ? raw(row.sowFullRecord, FK.requireSubBid) : '';
+      var flag = sowFlag || row.requireSubBid || '';
+      return !/^no$/i.test(String(flag).trim());
+    }
+
     var sowGrids = [];
     for (var i = 0; i < sows.length; i++) {
       var sow = sows[i];
       var bucket = buckets[sow.id] || [];
-      var packages = extractPackages(bucket);
+      // Columns: every package that TOUCHES this SOW (not just ones with
+      // a bucketed record), cloned so per-SOW totals/status don't bleed
+      // across grids.
+      var packages = [];
+      for (var ap = 0; ap < allPackages.length; ap++) {
+        if (!packageTouchesSow(allPackages[ap].id, sow.id)) continue;
+        var pc = {};
+        for (var pk in allPackages[ap]) {
+          if (Object.prototype.hasOwnProperty.call(allPackages[ap], pk)) pc[pk] = allPackages[ap][pk];
+        }
+        packages.push(pc);
+      }
       var rows = buildRowsForSow(bucket);
 
       // Merge in NO BID rows for this SOW — skip any whose SOW item is
@@ -474,42 +527,78 @@
         rows[r].sowFullRecord = sid ? (sowFullByItem[sid] || null) : null;
         if (sidx && sidx.sowIds && !sidx.sowIds[sow.id]) rows[r].offSow = true;
       }
-      // Drop informational line items the bidder isn't pricing: when
-      // "require sub bid" (field_2478) is No, the item shouldn't appear as
-      // its own comparison row. Mirrors the device-worksheet behavior of
-      // hiding the priced fields for these items. Prefer the SOW item's
-      // flag; fall back to the bid record's. Missing/blank = keep.
-      rows = rows.filter(function (row) {
-        var sowFlag = row.sowFullRecord
-          ? raw(row.sowFullRecord, FK.requireSubBid) : '';
-        var flag = sowFlag || row.requireSubBid || '';
-        return !/^no$/i.test(String(flag).trim());
-      });
+      // Drop informational line items the bidder isn't pricing
+      // (require-sub-bid = No).
+      rows = rows.filter(keepRow);
+
+      // ── "Other items on these bids (not on this SOW)" ──────────
+      // Every item on a displayed bid must appear in its column. Items
+      // whose line item isn't on this SOW have no matched row, so collect
+      // them into a separate bottom block. Skip records already shown as
+      // matched rows (by record id).
+      var shownRecIds = Object.create(null);
+      for (var sri = 0; sri < rows.length; sri++) {
+        var scells = rows[sri].cellsByPackage || {};
+        for (var scp in scells) {
+          if (scells[scp] && scells[scp].id) shownRecIds[scells[scp].id] = true;
+        }
+      }
+      var otherRecs = [], seenOther = Object.create(null);
+      for (var oc = 0; oc < packages.length; oc++) {
+        var oprecs = pkgAllRecords[packages[oc].id] || [];
+        for (var op = 0; op < oprecs.length; op++) {
+          var orec = oprecs[op];
+          if (shownRecIds[orec.id] || seenOther[orec.id]) continue;
+          seenOther[orec.id] = true;
+          otherRecs.push(orec);
+        }
+      }
+      var otherRows = otherRecs.length ? buildRowsForSow(otherRecs) : [];
+      for (var orw = 0; orw < otherRows.length; orw++) {
+        var orr = otherRows[orw];
+        var oid = orr.sowItem;
+        orr.sowItemData   = oid ? (sowItemIndex[oid] || null) : null;
+        orr.sowFullRecord = oid ? (sowFullByItem[oid] || null) : null;
+        // Not on this SOW: cut-out SOW cell, excluded from SOW totals,
+        // still counted in the bid-column total.
+        orr.offSow       = true;
+        orr.otherBidItem = true;
+      }
+      otherRows = otherRows.filter(keepRow);
+
+      // Rows used for totals/grid include the "other" items; rendering
+      // keeps them in a dedicated bottom group so the matched grid is
+      // unaffected.
+      var allRows = otherRows.length ? rows.concat(otherRows) : rows;
 
       // ── Column totals + SOW match delta ────────────────────────
-      // SOW sub-bid total = Σ SOW-item fee (field_2151); install total =
-      // Σ install fee (field_2028). Each bid column total = Σ cell labor
-      // (field_2401). A bid "matches" the SOW within a penny.
+      // SOW sub-bid total = Σ SOW-item fee; install = Σ install fee, both
+      // excluding offSow rows. Each bid column total = Σ cell labor
+      // across ALL rows (matched + other). A bid "matches" within a penny.
       var sowSub = 0, sowInstall = 0;
-      for (var sr = 0; sr < rows.length; sr++) {
-        var sdat = rows[sr].sowItemData;
-        // offSow rows are no longer part of this SOW — exclude from the
-        // SOW totals (they still count in the bid-column total below,
-        // since the item really is on the bid).
-        if (sdat && !rows[sr].offSow) {
+      for (var sr = 0; sr < allRows.length; sr++) {
+        var sdat = allRows[sr].sowItemData;
+        if (sdat && !allRows[sr].offSow) {
           sowSub     += sdat.fee || 0;
           sowInstall += sdat.installFee || 0;
         }
       }
       for (var pi = 0; pi < packages.length; pi++) {
-        var pkgTotal = 0;
-        for (var pr = 0; pr < rows.length; pr++) {
-          var cpkg = rows[pr].cellsByPackage[packages[pi].id];
-          if (cpkg) pkgTotal += cpkg.labor || 0;
+        var pkgTotal = 0, onSowCount = 0;
+        for (var pr = 0; pr < allRows.length; pr++) {
+          var cpkg = allRows[pr].cellsByPackage[packages[pi].id];
+          if (cpkg) {
+            pkgTotal += cpkg.labor || 0;
+            if (!allRows[pr].offSow) onSowCount++;
+          }
         }
-        packages[pi].subBidTotal = pkgTotal;
-        packages[pi].deltaVsSow  = pkgTotal - sowSub;
-        packages[pi].matchesSow  = Math.abs(pkgTotal - sowSub) <= 0.01;
+        packages[pi].subBidTotal   = pkgTotal;
+        packages[pi].deltaVsSow    = pkgTotal - sowSub;
+        packages[pi].matchesSow    = Math.abs(pkgTotal - sowSub) <= 0.01;
+        // A column whose items ALL live on other SOWs has nothing matched
+        // here — flag it so the renderer can de-emphasize / auto-collapse.
+        packages[pi].onSowItemCount = onSowCount;
+        packages[pi].noOnSowItems   = (onSowCount === 0);
         // Identity/status from the bid-package record (view_3573).
         var info = pkgInfo[packages[pi].id] || {};
         packages[pi].bidStatus   = info.bidStatus || '';
@@ -518,13 +607,26 @@
         packages[pi].pdfFilename = info.pdfFilename || '';
       }
 
+      var groups = groupRows(rows);
+      if (otherRows.length) {
+        groups.push({
+          key:           '__other_bid_items__',
+          label:         'Other items on these bids (not on this SOW)',
+          mdfIdfId:      '',
+          level:         1,
+          rows:          otherRows,
+          subgroups:     [],
+          otherBidItems: true
+        });
+      }
+
       sowGrids.push({
         sowId:    sow.id,
         sowName:  sow.name,
         packages: packages,
         sowTotals: { subBid: sowSub, install: sowInstall },
-        rows:     rows,
-        groups:   groupRows(rows)
+        rows:     allRows,
+        groups:   groups
       });
     }
     return { sowGrids: sowGrids, isEmpty: sowGrids.length === 0 };

@@ -715,6 +715,7 @@
     '.scw-bid-review-v2__sow-cell--off-sow {',
     '  border: 1.5px dashed #2563eb !important;',
     '  background: repeating-linear-gradient(135deg,#eff6ff,#eff6ff 8px,#fff 8px,#fff 16px);',
+    '  position: relative; z-index: 1;',
     '}',
     /* On-SOW-but-not-on-bid (noBid / surveyNoBid): same cut-out on the
        bid cell, with a centered badge + action. */
@@ -722,6 +723,9 @@
     '  border: 1.5px dashed #2563eb !important;',
     '  background: repeating-linear-gradient(135deg,#eff6ff,#eff6ff 8px,#fff 8px,#fff 16px);',
     '  text-align: center;',
+    /* lift above the neighbouring SOW cell\'s 2px right border so the
+       dashed left edge isn\'t painted over */
+    '  position: relative; z-index: 1;',
     '}',
     '.scw-bid-review-v2__no-bid-badge {',
     '  display: inline-block; margin-bottom: 8px;',
@@ -733,6 +737,13 @@
     /* Subtle full-row tint so mismatched rows are scannable at a glance. */
     '.scw-bid-review-v2__row--no-bid > td,',
     '.scw-bid-review-v2__row--survey-no-bid > td { background: #fbfdff; }',
+    /* "Other items on these bids (not on this SOW)" group header. */
+    '.scw-bid-review-v2__group-header--other .scw-bid-review-v2__grp-inner {',
+    '  background: #eef2f7; color: #475569;',
+    '}',
+    '.scw-bid-review-v2__group-header--other .scw-bid-review-v2__grp-title {',
+    '  font-style: italic; font-weight: 600;',
+    '}',
     '.scw-bid-review-v2__cell-product {',
     '  font-weight: 600; font-size: 13px; color: #0f172a;',
     '  margin-bottom: 10px; line-height: 1.35;',
