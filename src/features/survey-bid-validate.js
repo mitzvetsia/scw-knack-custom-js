@@ -737,7 +737,7 @@
       if (r.ok) {
         // Append to any existing note rather than overwriting it.
         var existing = readNoteText(viewId, recordId);
-        var combined = existing ? (existing + '\n' + r.value) : r.value;
+        var combined = existing ? (existing + ' - ' + r.value) : r.value;
         var body = {}; body[NOTES] = combined;
         putRecord(viewId, recordId, body);
       } else {
