@@ -485,9 +485,69 @@
     return tr;
   }
 
+  // ── L1 survey-notes callout (ported from v1) ─────────────────
+  // MDF/IDF-level survey notes (field_2457 on view_3822) are the most
+  // actionable thing the surveyor leaves; v1 promotes them to an amber
+  // callout under each L1 group header. Scraped from the live view_3822
+  // DOM, keyed by the group's mdfIdfId. Null when the source row is
+  // missing or the field is empty (no callout = no clutter).
+  var SURVEY_NOTES_SVG =
+    '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" ' +
+    'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+    'stroke-linejoin="round">' +
+    '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>' +
+    '<polyline points="14 2 14 8 20 8"/>' +
+    '<line x1="9" y1="13" x2="15" y2="13"/>' +
+    '<line x1="9" y1="17" x2="15" y2="17"/></svg>';
+
+  function readSourceFieldText(sourceTr, fieldKey) {
+    if (!sourceTr) return '';
+    var cells = sourceTr.getElementsByTagName('td');
+    for (var i = 0; i < cells.length; i++) {
+      if (cells[i].getAttribute('data-field-key') === fieldKey) {
+        return (cells[i].textContent || '').replace(/ /g, ' ').trim();
+      }
+    }
+    return '';
+  }
+
+  function buildL1SurveyNotesRow(mdfIdfId, colspan) {
+    if (!mdfIdfId) return null;
+    var viewKey = (window.SCW.bidReview && window.SCW.bidReview.CONFIG &&
+      window.SCW.bidReview.CONFIG.mdfIdfViewKey) || 'view_3822';
+    var view = document.getElementById(viewKey);
+    var src  = view ? view.querySelector('tbody tr[id="' + mdfIdfId + '"]') : null;
+    if (!src) return null;
+    var txt = readSourceFieldText(src, 'field_2457');
+    if (!txt) return null;
+
+    var tr = document.createElement('tr');
+    // Tag as a __row so the L1 collapse toggle (init.js) hides it with
+    // the rest of the group.
+    tr.className = 'scw-bid-review-v2__row scw-bid-review-v2__l1-survey-notes-row';
+    var td = document.createElement('td');
+    td.colSpan = colspan;
+    td.className = 'scw-bid-review-v2__l1-survey-notes-cell';
+    td.innerHTML =
+      '<div class="scw-bid-review-v2__l1-survey-notes-wrap">' +
+        '<span class="scw-bid-review-v2__l1-survey-notes-icon">' + SURVEY_NOTES_SVG + '</span>' +
+        '<div class="scw-bid-review-v2__l1-survey-notes-body">' +
+          '<div class="scw-bid-review-v2__l1-survey-notes-label">Survey Notes</div>' +
+          '<div class="scw-bid-review-v2__l1-survey-notes-text">' + escapeHtml(txt) + '</div>' +
+        '</div>' +
+      '</div>';
+    tr.appendChild(td);
+    return tr;
+  }
+
   function appendGroup(tbody, group, packages, colspan, sowId) {
     // Level 0 means "flat" — no MDF/IDF on any row, just render rows.
-    if (group.level === 1) tbody.appendChild(buildL1HeaderRow(group, colspan));
+    if (group.level === 1) {
+      tbody.appendChild(buildL1HeaderRow(group, colspan));
+      // MDF/IDF survey-notes callout immediately under the L1 header.
+      var snRow = buildL1SurveyNotesRow(group.mdfIdfId, colspan);
+      if (snRow) tbody.appendChild(snRow);
+    }
     // Direct rows (when there are no subgroups).
     for (var i = 0; i < group.rows.length; i++) {
       tbody.appendChild(buildBidRow(group.rows[i], packages, sowId));
