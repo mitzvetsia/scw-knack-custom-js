@@ -87,6 +87,34 @@
     if (document.documentElement.hasAttribute('data-scw-br-v2-collapse-bound')) return;
     document.documentElement.setAttribute('data-scw-br-v2-collapse-bound', '1');
 
+    // SOW-section collapse: clicking the SOW header folds the whole
+    // section (header stays, table hides). State persists per SOW.
+    function sowCollapseKey(sowId) {
+      var m = (document.body.id || '').match(/scene_\d+/);
+      return 'scw:br-v2:sow-collapse:' + (m ? m[0] : 'default') + ':' + sowId;
+    }
+    document.addEventListener('click', function (e) {
+      var sowHead = e.target.closest && e.target.closest('.scw-bid-review-v2__sow-header');
+      if (!sowHead) return;
+      if (e.target.closest('input, button, select, textarea, a')) return;
+      var section = sowHead.closest('.scw-bid-review-v2__sow');
+      if (!section) return;
+      var collapsed = section.classList.toggle('scw-bid-review-v2__sow--collapsed');
+      sowHead.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+      try {
+        if (collapsed) localStorage.setItem(sowCollapseKey(section.getAttribute('data-sow-id')), '1');
+        else localStorage.removeItem(sowCollapseKey(section.getAttribute('data-sow-id')));
+      } catch (err) { /* ignore */ }
+    });
+    // Keyboard toggle for the SOW header (Enter / Space).
+    document.addEventListener('keydown', function (e) {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      var sowHead = e.target.closest && e.target.closest('.scw-bid-review-v2__sow-header');
+      if (!sowHead || e.target !== sowHead) return;
+      e.preventDefault();
+      sowHead.click();
+    });
+
     document.addEventListener('click', function (e) {
       var head = e.target.closest && e.target.closest('.scw-bid-review-v2__group-header');
       if (!head) return;

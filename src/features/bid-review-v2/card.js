@@ -582,14 +582,38 @@
     '</button>';
   }
 
+  // ── Per-SOW collapse persistence ─────────────────────────────
+  function sowCollapseScene() {
+    var m = (document.body.id || '').match(/scene_\d+/);
+    return m ? m[0] : 'default';
+  }
+  function sowCollapseKey(sowId) {
+    return 'scw:br-v2:sow-collapse:' + sowCollapseScene() + ':' + sowId;
+  }
+  function isSowCollapsed(sowId) {
+    try { return localStorage.getItem(sowCollapseKey(sowId)) === '1'; }
+    catch (e) { return false; }
+  }
+
+  var SOW_CARET =
+    '<svg class="scw-bid-review-v2__sow-caret" viewBox="0 0 24 24" width="14" height="14" ' +
+    'fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" ' +
+    'stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>';
+
   function buildSowSection(grid) {
     var section = document.createElement('section');
     section.className = 'scw-bid-review-v2__sow';
     section.setAttribute('data-sow-id', grid.sowId);
+    var collapsed = isSowCollapsed(grid.sowId);
+    if (collapsed) section.classList.add('scw-bid-review-v2__sow--collapsed');
 
     var header = document.createElement('header');
     header.className = 'scw-bid-review-v2__sow-header';
+    header.setAttribute('role', 'button');
+    header.setAttribute('tabindex', '0');
+    header.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
     header.innerHTML =
+      SOW_CARET +
       '<span class="scw-bid-review-v2__sow-name">' + escapeHtml(grid.sowName) + '</span>' +
       '<span class="scw-bid-review-v2__sow-meta">' +
         grid.rows.length + ' line item' + (grid.rows.length === 1 ? '' : 's') +
