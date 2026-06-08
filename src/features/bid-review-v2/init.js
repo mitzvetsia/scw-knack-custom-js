@@ -163,6 +163,27 @@
       var v1 = window.SCW.bidReview;
       if (!v1 || !e.target.closest) return;
 
+      // Revise dropdown trigger — toggle its menu open/closed (v1 parity).
+      // The trigger carries no data-action so it never dispatches a CR.
+      var ovTrigger = e.target.closest('.scw-bid-review-v2__overflow-trigger');
+      if (ovTrigger) {
+        e.preventDefault(); e.stopPropagation();
+        var ov = ovTrigger.closest('.scw-bid-review__overflow');
+        var open = document.querySelectorAll('.scw-bid-review__overflow--open');
+        for (var oi = 0; oi < open.length; oi++) {
+          if (open[oi] !== ov) open[oi].classList.remove('scw-bid-review__overflow--open');
+        }
+        if (ov) ov.classList.toggle('scw-bid-review__overflow--open');
+        return;
+      }
+      // Any other click closes open Revise menus before proceeding. A menu
+      // item is still in the DOM (just visually hidden), so its dispatch
+      // below still resolves via closest().
+      var openMenus = document.querySelectorAll('.scw-bid-review__overflow--open');
+      for (var om = 0; om < openMenus.length; om++) {
+        openMenus[om].classList.remove('scw-bid-review__overflow--open');
+      }
+
       // Header buttons — package_* go to dispatchHeaderAction, cr_* fall
       // through to dispatchCRAction.
       var headBtn = e.target.closest('.scw-bid-review-v2__head-btn[data-action]');

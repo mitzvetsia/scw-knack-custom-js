@@ -297,20 +297,28 @@
   function cellActionStack(row, pkgId, sowId, diffs) {
     var noSubBid = row.requireSubBid && /^no$/i.test(String(row.requireSubBid).trim());
     if (noSubBid) return '';
-    // When the bid mismatches the SOW for this row, offer v1's two-way
-    // Revise: "Edit bid" (free-form CR on the bid item) and "Match SOW"
-    // (prefill the CR from the SOW values). v1's dispatchCRAction handles
+    // When the bid mismatches the SOW for this row, the Revise button
+    // becomes a dropdown (v1 parity): "Edit bid values" (free-form CR) +
+    // "Match SOW values" (CR prefilled from SOW). dispatchCRAction handles
     // both cell_request_change and cell_request_change_from_sow. With no
-    // mismatch, collapse to the single Revise button.
+    // mismatch, it's a single Revise button. Reuses v1's .scw-bid-review__
+    // overflow* classes (v1 CSS is on the same scene); the menu items also
+    // carry the v2 cell-action class so v2's delegated click dispatches
+    // them, and the trigger toggle is wired in init.js.
     var revise;
     if (diffs && diffs.any) {
       revise =
-        '<button type="button" class="scw-bid-review__cell-action ' +
-          'scw-bid-review__cell-action--revise scw-bid-review-v2__cell-action" ' +
-          crAttrs('cell_request_change', row.id, pkgId, sowId) + '>Edit bid</button>' +
-        '<button type="button" class="scw-bid-review__cell-action ' +
-          'scw-bid-review__cell-action--revise scw-bid-review-v2__cell-action" ' +
-          crAttrs('cell_request_change_from_sow', row.id, pkgId, sowId) + '>Match SOW</button>';
+        '<div class="scw-bid-review__overflow scw-bid-review-v2__overflow">' +
+          '<button type="button" class="scw-bid-review__overflow-trigger ' +
+            'scw-bid-review__overflow-trigger--revise scw-bid-review-v2__overflow-trigger">' +
+            '<span class="scw-bid-review__overflow-dots">⋮</span> Revise</button>' +
+          '<div class="scw-bid-review__overflow-menu">' +
+            '<button type="button" class="scw-bid-review__overflow-item scw-bid-review-v2__cell-action" ' +
+              crAttrs('cell_request_change', row.id, pkgId, sowId) + '>Edit bid values</button>' +
+            '<button type="button" class="scw-bid-review__overflow-item scw-bid-review-v2__cell-action" ' +
+              crAttrs('cell_request_change_from_sow', row.id, pkgId, sowId) + '>Match SOW values</button>' +
+          '</div>' +
+        '</div>';
     } else {
       revise =
         '<button type="button" class="scw-bid-review__cell-action ' +
@@ -344,28 +352,17 @@
         appendPendingCard(td, pendingItem, row, pkg, sowId);
         return td;
       }
-      // Only whole-row "no bid for this item" states get the cut-out +
-      // badge + action: noBid (on a SOW, no bid record anywhere),
-      // surveyNoBid (a bid record exists but is unlinked from any package),
-      // and removed rows. A normal multi-package row that simply isn't
-      // priced by THIS bidder just shows a dash (v1 parity) — it IS
-      // surveyed, it's just not on this one bid.
-      var rowNoBidState = row && (row.noBid || row.surveyNoBid || row.removed);
-      if (!rowNoBidState) {
-        td.innerHTML = '<span class="scw-bid-review-v2__cell-empty-mark">—</span>';
-        appendPendingCard(td, pendingItem, row, pkg, sowId);
-        return td;
-      }
-      // "not on this bid" → blue diagonal hash. If a bid record exists
-      // elsewhere (unlinked surveyNoBid, or a removed-from-bid item) show
-      // its details inside the hash.
+      // Any empty real-line-item cell is "not on this bid" → blue diagonal
+      // hash. The LABEL depends on whether a bid item exists anywhere:
+      //   • bid item exists (a populated cell elsewhere on this row, an
+      //     unlinked surveyNoBid record, or a removed-from-bid snapshot)
+      //     → "Removed from bid" + "Reinstate".
+      //   • NO bid item points back at the SOW item at all (noBid, or an
+      //     orphaned removed survey item) → "Not surveyed" + "Add to bid".
       td.classList.add('scw-bid-review-v2__cell--no-bid-cutout');
-      // A bid item exists (just unlinked from this bid) when we have a
-      // bid-side snapshot or the survey flagged an unlinked record. Those
-      // read as "Removed from bid" and offer "Reinstate". "Not surveyed"
-      // means it's on the SOW but NO bid item points back at it → no bid
-      // record (noBid / orphaned removed item) → "Add to bid".
-      var hasBidRecord = !!(row && (row.hasBidRecord ||
+      var rowHasAnyBidCell = !!(row && row.cellsByPackage &&
+        Object.keys(row.cellsByPackage).length > 0);
+      var hasBidRecord = !!(row && (row.hasBidRecord || rowHasAnyBidCell ||
         (row.detail && row.detail.side === 'BID') || row.surveyNoBid));
       var badge    = hasBidRecord ? 'Removed from bid' : 'Not surveyed';
       var badgeCls = 'scw-bid-review-v2__no-bid-badge' +
@@ -625,25 +622,53 @@
     return '';
   }
 
-  function buildL1SurveyNotesRow(mdfIdfId, colspan) {
+  // Find the view_3822 source row for an MDF/IDF group. Prefer the record
+  // id (fast, exact); fall back to matching the group's L1 label against a
+  // row's text when the id is missing — connectionId() returns '' for
+  // records lacking a *_raw connection array even though connectionLabel()
+  // still resolves a label from the formatted value, so a group can have a
+  // label but an empty mdfIdfId.
+  function findMdfIdfSourceRow(view, mdfIdfId, label) {
+    if (!view) return null;
+    if (mdfIdfId) {
+      var byId = view.querySelector('tbody tr[id="' + mdfIdfId + '"]');
+      if (byId) return byId;
+    }
+    if (!label) return null;
+    var target = String(label).replace(/\s+/g, ' ').trim().toLowerCase();
+    if (!target) return null;
+    var rows = view.querySelectorAll('tbody tr[id]');
+    for (var i = 0; i < rows.length; i++) {
+      var cells = rows[i].getElementsByTagName('td');
+      for (var c = 0; c < cells.length; c++) {
+        var t = (cells[c].textContent || '').replace(/\s+/g, ' ').trim().toLowerCase();
+        if (t === target) return rows[i];
+      }
+    }
+    return null;
+  }
+
+  function buildL1SurveyNotesRow(group, colspan) {
     var dbg = !!(window.SCW.bidReview && window.SCW.bidReview.CONFIG &&
       window.SCW.bidReview.CONFIG.debug);
-    if (!mdfIdfId) {
-      if (dbg) console.log('[scw-br-v2] survey-notes: no mdfIdfId on group');
+    var mdfIdfId = group && group.mdfIdfId;
+    var label    = group && group.label;
+    if (!mdfIdfId && !label) {
+      if (dbg) console.log('[scw-br-v2] survey-notes: no mdfIdfId or label on group');
       return null;
     }
     var viewKey = (window.SCW.bidReview && window.SCW.bidReview.CONFIG &&
       window.SCW.bidReview.CONFIG.mdfIdfViewKey) || 'view_3822';
     var view = document.getElementById(viewKey);
-    var src  = view ? view.querySelector('tbody tr[id="' + mdfIdfId + '"]') : null;
+    var src  = findMdfIdfSourceRow(view, mdfIdfId, label);
     if (!src) {
       if (dbg) console.log('[scw-br-v2] survey-notes: no source row', {
-        mdfIdfId: mdfIdfId, viewKey: viewKey, viewFound: !!view });
+        mdfIdfId: mdfIdfId, label: label, viewKey: viewKey, viewFound: !!view });
       return null;
     }
     var txt = readSourceFieldText(src, 'field_2457');
     if (dbg) console.log('[scw-br-v2] survey-notes: read', {
-      mdfIdfId: mdfIdfId, len: txt ? txt.length : 0, txt: txt });
+      mdfIdfId: mdfIdfId, label: label, len: txt ? txt.length : 0, txt: txt });
     if (!txt) return null;
 
     var tr = document.createElement('tr');
@@ -680,7 +705,7 @@
     if (group.level === 1) {
       tbody.appendChild(buildL1HeaderRow(group, colspan));
       // MDF/IDF survey-notes callout immediately under the L1 header.
-      var snRow = buildL1SurveyNotesRow(group.mdfIdfId, colspan);
+      var snRow = buildL1SurveyNotesRow(group, colspan);
       if (snRow) addRow(snRow);
     }
     // Direct rows (when there are no subgroups).
