@@ -648,32 +648,45 @@
     return null;
   }
 
-  // Resolve survey-notes text (field_2457) for an MDF/IDF group from v1's
-  // API-loaded records (preferred — they carry field_2457 + the field_1642
-  // label regardless of which columns view_3822 renders), matching by
-  // record id then by label. Returns '' when no match / no notes.
-  function notesFromV1Records(mdfIdfId, label) {
-    var v1 = window.SCW.bidReview;
-    var recs = (v1 && typeof v1.getMdfIdfRecords === 'function') ? v1.getMdfIdfRecords() : null;
-    if (!recs || !recs.length) return '';
-    function strip(v) {
-      return String(v == null ? '' : v).replace(/<[^>]*>/g, ' ')
-        .replace(/\s+/g, ' ').trim();
+  // Resolve survey-notes text (field_2457) for an MDF/IDF group from the
+  // Knack model records of view_3822 (a v2 source view, so its Backbone
+  // model is in memory with field_2457_raw + the field_1642 label — even
+  // when those columns aren't rendered in the DOM). Match by record id,
+  // then by label. Falls back to v1's API-loaded records. Returns ''.
+  function stripTags(v) {
+    return String(v == null ? '' : v).replace(/<[^>]*>/g, ' ')
+      .replace(/\s+/g, ' ').trim();
+  }
+  function notesFromRecord(rec) {
+    if (!rec) return '';
+    return stripTags(rec.field_2457_raw != null ? rec.field_2457_raw : rec.field_2457);
+  }
+  function notesFromModel(mdfIdfId, label) {
+    var recs = [];
+    try {
+      if (ns.data && ns.data.readRecords) {
+        var viewKey = (window.SCW.bidReview && window.SCW.bidReview.CONFIG &&
+          window.SCW.bidReview.CONFIG.mdfIdfViewKey) || 'view_3822';
+        recs = ns.data.readRecords(viewKey) || [];
+      }
+    } catch (e) { recs = []; }
+    // Fall back to v1's API-loaded records if the model read came up empty.
+    if (!recs.length) {
+      var v1 = window.SCW.bidReview;
+      if (v1 && typeof v1.getMdfIdfRecords === 'function') recs = v1.getMdfIdfRecords() || [];
     }
-    var target = label ? strip(label).toLowerCase() : '';
+    if (!recs.length) return '';
+    var target = label ? stripTags(label).toLowerCase() : '';
     var byLabel = null;
     for (var i = 0; i < recs.length; i++) {
       var rec = recs[i];
-      if (mdfIdfId && rec.id === mdfIdfId) {
-        return strip(rec.field_2457_raw != null ? rec.field_2457_raw : rec.field_2457);
-      }
+      if (mdfIdfId && rec.id === mdfIdfId) return notesFromRecord(rec);
       if (target && !byLabel) {
-        var lbl = strip(rec.field_1642).toLowerCase();
+        var lbl = stripTags(rec.field_1642).toLowerCase();
         if (lbl && lbl === target) byLabel = rec;
       }
     }
-    if (byLabel) return strip(byLabel.field_2457_raw != null ? byLabel.field_2457_raw : byLabel.field_2457);
-    return '';
+    return byLabel ? notesFromRecord(byLabel) : '';
   }
 
   function buildL1SurveyNotesRow(group, colspan) {
@@ -685,9 +698,10 @@
       if (dbg) console.log('[scw-br-v2] survey-notes: no mdfIdfId or label on group');
       return null;
     }
-    // Primary source: v1's loaded MDF/IDF records.
-    var txt = notesFromV1Records(mdfIdfId, label);
-    // Fallback: scrape the live view_3822 DOM.
+    // Primary source: the in-memory view_3822 model records.
+    var txt = notesFromModel(mdfIdfId, label);
+    // Last resort: scrape the live view_3822 DOM (only works if field_2457
+    // is a rendered column).
     if (!txt) {
       var viewKey = (window.SCW.bidReview && window.SCW.bidReview.CONFIG &&
         window.SCW.bidReview.CONFIG.mdfIdfViewKey) || 'view_3822';
