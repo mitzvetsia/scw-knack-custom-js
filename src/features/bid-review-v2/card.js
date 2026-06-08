@@ -344,14 +344,27 @@
         appendPendingCard(td, pendingItem, row, pkg, sowId);
         return td;
       }
-      // Any real line-item row with no bid cell here is "not on this bid"
-      // → blue diagonal hash. If a bid record exists elsewhere (unlinked
-      // surveyNoBid, or removed) show its details inside the hash.
+      // Only whole-row "no bid for this item" states get the cut-out +
+      // badge + action: noBid (on a SOW, no bid record anywhere),
+      // surveyNoBid (a bid record exists but is unlinked from any package),
+      // and removed rows. A normal multi-package row that simply isn't
+      // priced by THIS bidder just shows a dash (v1 parity) — it IS
+      // surveyed, it's just not on this one bid.
+      var rowNoBidState = row && (row.noBid || row.surveyNoBid || row.removed);
+      if (!rowNoBidState) {
+        td.innerHTML = '<span class="scw-bid-review-v2__cell-empty-mark">—</span>';
+        appendPendingCard(td, pendingItem, row, pkg, sowId);
+        return td;
+      }
+      // "not on this bid" → blue diagonal hash. If a bid record exists
+      // elsewhere (unlinked surveyNoBid, or a removed-from-bid item) show
+      // its details inside the hash.
       td.classList.add('scw-bid-review-v2__cell--no-bid-cutout');
       // A bid item exists (just unlinked from this bid) when we have a
       // bid-side snapshot or the survey flagged an unlinked record. Those
-      // read as "Removed from bid" and offer "Reinstate". When there's no
-      // bid item at all, it reads as "Not surveyed" → "Add to bid".
+      // read as "Removed from bid" and offer "Reinstate". "Not surveyed"
+      // means it's on the SOW but NO bid item points back at it → no bid
+      // record (noBid / orphaned removed item) → "Add to bid".
       var hasBidRecord = !!(row && (row.hasBidRecord ||
         (row.detail && row.detail.side === 'BID') || row.surveyNoBid));
       var badge    = hasBidRecord ? 'Removed from bid' : 'Not surveyed';
