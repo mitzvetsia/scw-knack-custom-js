@@ -401,6 +401,8 @@
 
   function buildState(records, sowItems, bidPackages) {
     var sows = extractSows(records);
+    var sowNameById = Object.create(null);
+    for (var sni = 0; sni < sows.length; sni++) sowNameById[sows[sni].id] = sows[sni].name;
     var buckets = groupBySow(records);
     var pkgInfo = buildPkgInfoMap(bidPackages);
 
@@ -665,21 +667,42 @@
           otherRecs.push(orec);
         }
       }
-      var otherRows = otherRecs.length ? buildRowsForSow(otherRecs) : [];
-      for (var orw = 0; orw < otherRows.length; orw++) {
-        var orr = otherRows[orw];
-        var oid = orr.sowItem;
-        orr.sowItemData   = oid ? (sowItemIndex[oid] || null) : null;
+      // "Other items" split into TWO kinds, treated differently:
+      //   • on-another-SOW — the bid item HAS a SOW line item, it just
+      //     belongs to a different SOW. Informational (cut-out, shows
+      //     which SOW it's on).
+      //   • bid-only — added to the bid with NO corresponding SOW item
+      //     anywhere. Actionable: the SOW cell offers "+ Add to SOW".
+      var builtOther = otherRecs.length ? buildRowsForSow(otherRecs) : [];
+      var otherSowRows = [], bidOnlyRows = [];
+      for (var orw = 0; orw < builtOther.length; orw++) {
+        var orr = builtOther[orw];
+        if (!keepRow(orr)) continue;
+        var oid  = orr.sowItem;
+        var oIdx = oid ? (sowItemIndex[oid] || null) : null;
+        orr.sowItemData   = oIdx;
         orr.sowFullRecord = oid ? (sowFullByItem[oid] || null) : null;
-        // Not on this SOW: cut-out SOW cell, excluded from SOW totals,
-        // still counted in the bid-column total.
+        // Not on THIS SOW → excluded from SOW totals, still in bid total.
         orr.offSow       = true;
         orr.otherBidItem = true;
+        var onSomeSow = !!(oIdx && oIdx.sowIds && Object.keys(oIdx.sowIds).length);
+        if (onSomeSow) {
+          orr.otherKind = 'other-sow';
+          // Names of the OTHER SOW(s) this item belongs to, for display.
+          orr.otherSowNames = Object.keys(oIdx.sowIds)
+            .map(function (id) { return sowNameById[id] || ''; })
+            .filter(Boolean);
+          otherSowRows.push(orr);
+        } else {
+          orr.otherKind = 'bid-only';
+          orr.needsSow  = true;   // → SOW cell offers "+ Add to SOW"
+          bidOnlyRows.push(orr);
+        }
       }
-      otherRows = otherRows.filter(keepRow);
+      var otherRows = otherSowRows.concat(bidOnlyRows);
 
       // Rows used for totals/grid include the "other" items; rendering
-      // keeps them in a dedicated bottom group so the matched grid is
+      // keeps them in dedicated bottom groups so the matched grid is
       // unaffected.
       var allRows = otherRows.length ? rows.concat(otherRows) : rows;
 
@@ -720,15 +743,26 @@
       }
 
       var groups = groupRows(rows);
-      if (otherRows.length) {
+      if (otherSowRows.length) {
         groups.push({
-          key:           '__other_bid_items__',
-          label:         'Other items on these bids (not on this SOW)',
+          key:           '__other_sow_items__',
+          label:         'On these bids — belong to another SOW',
           mdfIdfId:      '',
           level:         1,
-          rows:          otherRows,
+          rows:          otherSowRows,
           subgroups:     [],
           otherBidItems: true
+        });
+      }
+      if (bidOnlyRows.length) {
+        groups.push({
+          key:           '__bid_only_items__',
+          label:         'Added to these bids — no SOW item yet',
+          mdfIdfId:      '',
+          level:         1,
+          rows:          bidOnlyRows,
+          subgroups:     [],
+          bidOnlyItems:  true
         });
       }
       // Removed items pinned to the TOP, default-collapsed. Same set on

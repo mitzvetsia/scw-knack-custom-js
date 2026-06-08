@@ -3135,6 +3135,10 @@
       }
       return true;
     }
+    // Row-level actions (e.g. row_add_to_sow) — v2's cell buttons route
+    // here too, and v1 binds clicks to its own grid mount so it never
+    // sees v2's buttons. Hand them to the shared row-action handler.
+    if (action.indexOf('row_') === 0) { handleRowAction(button, action); return true; }
     return false;
   };
 

@@ -787,12 +787,23 @@
     '  font-size: 14px; line-height: 1.5; font-weight: 500; color: #0f172a;',
     '  white-space: pre-wrap; word-break: break-word;',
     '}',
-    /* "Other items on these bids (not on this SOW)" group header. */
+    /* "On these bids — belong to another SOW" group header. */
     '.scw-bid-review-v2__group-header--other .scw-bid-review-v2__grp-inner {',
     '  background: #eef2f7; color: #475569;',
     '}',
     '.scw-bid-review-v2__group-header--other .scw-bid-review-v2__grp-title {',
     '  font-style: italic; font-weight: 600;',
+    '}',
+    /* "Added to these bids — no SOW item yet" group header (needs action). */
+    '.scw-bid-review-v2__group-header--bid-only .scw-bid-review-v2__grp-inner {',
+    '  background: #fef9c3; color: #854d0e;',
+    '}',
+    '.scw-bid-review-v2__group-header--bid-only .scw-bid-review-v2__grp-title {',
+    '  font-weight: 700;',
+    '}',
+    /* "on SW-####" note under a SOW item that lives on another SOW. */
+    '.scw-bid-review-v2__sow-elsewhere {',
+    '  margin-top: 6px; font-size: 11px; font-weight: 600; color: #2563eb;',
     '}',
     '.scw-bid-review-v2__cell-product {',
     '  font-weight: 600; font-size: 13px; color: #0f172a;',

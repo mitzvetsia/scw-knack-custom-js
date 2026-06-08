@@ -197,36 +197,30 @@
     var td = document.createElement('td');
     td.className = 'scw-bid-review-v2__sow-cell';
 
-    // New bid line with no SOW item yet → offer "+ Add to SOW" (v1 parity).
-    if (row && !row.sowItem) {
-      td.classList.add('scw-bid-review-v2__sow-cell--empty');
-      td.innerHTML =
-        '<span class="scw-bid-review-v2__cell-empty-mark">—</span>' +
-        '<div class="scw-bid-review-v2__cell-actions">' +
-          '<button type="button" class="scw-bid-review__cell-action ' +
-            'scw-bid-review__cell-action--add scw-bid-review-v2__cell-action" ' +
-            crAttrs('row_add_to_sow', row.id, '', sowId) + '>+ Add to SOW</button>' +
-        '</div>';
-      return td;
-    }
-
-    // On-bid-but-not-on-this-SOW (offSow) OR fully removed → blue dashed
-    // cut-out so it reads as "not actually on this SOW". Content still
-    // renders inside the cut-out so the reviewer sees what it was.
-    if (row && (row.offSow || row.removed)) td.classList.add('scw-bid-review-v2__sow-cell--off-sow');
-
+    // No SOW item record exists for this row.
     if (!sowItemData) {
-      // No SOW snapshot — but a removed row may still carry a `detail`
-      // snapshot of what it was; show that inside the cut-out so the SOW
-      // column isn't blank.
-      if (row && row.detail) {
-        td.innerHTML = detailBlockHtml(row.detail);
+      td.classList.add('scw-bid-review-v2__sow-cell--empty');
+      // Offer "+ Add to SOW" for bid items with no SOW counterpart — but
+      // not for intentionally-removed rows (those stay blank).
+      if (row && !row.removed && (!row.sowItem || row.needsSow)) {
+        td.innerHTML =
+          '<span class="scw-bid-review-v2__cell-empty-mark">—</span>' +
+          '<div class="scw-bid-review-v2__cell-actions">' +
+            '<button type="button" class="scw-bid-review__cell-action ' +
+              'scw-bid-review__cell-action--add scw-bid-review-v2__cell-action" ' +
+              crAttrs('row_add_to_sow', row.id, '', sowId) + '>+ Add to SOW</button>' +
+          '</div>';
       } else {
-        td.classList.add('scw-bid-review-v2__sow-cell--empty');
+        // A blank cell means no corresponding SOW record exists.
         td.innerHTML = '<span class="scw-bid-review-v2__cell-empty-mark">—</span>';
       }
       return td;
     }
+
+    // The SOW item EXISTS → always show its details. If it isn't on THIS
+    // SOW (offSow / belongs to another SOW / removed), wrap in the blue
+    // cut-out so it reads as "exists, but not on this SOW".
+    if (row && (row.offSow || row.removed)) td.classList.add('scw-bid-review-v2__sow-cell--off-sow');
     // Soft whole-cell tint when anything differs (no per-field hard
     // highlight on the SOW side — that's reserved for the bid columns).
     // The specific differing field lights up on hover of its bid-cell
@@ -259,7 +253,11 @@
       (descTxt ?
         '<div class="scw-bid-review-v2__sow-desc" data-scw-sow-field="desc" title="' +
           escapeHtml(descTxt) + '">' + escapeHtml(descTxt) +
-        '</div>' : '');
+        '</div>' : '') +
+      // "belongs to another SOW" rows note which SOW(s) the item is on.
+      ((row && row.otherKind === 'other-sow' && row.otherSowNames && row.otherSowNames.length) ?
+        '<div class="scw-bid-review-v2__sow-elsewhere">on ' +
+          escapeHtml(row.otherSowNames.join(', ')) + '</div>' : '');
     return td;
   }
 
@@ -314,42 +312,31 @@
 
     if (!cell) {
       td.classList.add('scw-bid-review-v2__cell--empty');
-      // noBid / surveyNoBid rows: dashed cut-out + badge (mirrors v1).
-      //   surveyNoBid → was surveyed, detached from bid → "NOT ON BID" /
-      //                 "+ Reinstate".
-      //   noBid       → never on a bid → "NOT SURVEYED" / "+ Add to bid".
-      // Removed items: read-only "REMOVED" badge + a snapshot of what it
-      // was (no add action — intentionally pulled from bid AND SOW).
-      if (row && row.removed) {
+      // A bid RECORD exists for this row but isn't a cell on this package
+      // — it's unlinked from the bid (surveyNoBid) or was removed. Show
+      // its details inside the cut-out (the record DOES exist).
+      var hasBidRecord = row && row.detail && row.detail.side === 'BID';
+      if (hasBidRecord) {
         td.classList.add('scw-bid-review-v2__cell--no-bid-cutout');
-        td.innerHTML =
-          '<span class="scw-bid-review-v2__no-bid-badge ' +
-            'scw-bid-review-v2__no-bid-badge--removed">REMOVED</span>' +
-          detailBlockHtml(row.detail);
-        appendPendingCard(td, pendingItem, row, pkg, sowId);
-        return td;
-      }
-      var isNoBidState = row && (row.noBid || row.surveyNoBid);
-      if (isNoBidState) {
-        td.classList.add('scw-bid-review-v2__cell--no-bid-cutout');
-        var badgeText = row.surveyNoBid ? 'NOT ON BID' : 'NOT SURVEYED';
-        var addLabel  = row.surveyNoBid ? '+ Reinstate' : '+ Add to bid';
-        // surveyNoBid: the bid RECORD exists (just unlinked) → show its
-        // bid-side detail so the reviewer sees what would be reinstated.
-        var detailHtml = row.surveyNoBid ? detailBlockHtml(row.detail) : '';
-        td.innerHTML =
-          '<span class="scw-bid-review-v2__no-bid-badge">' + escapeHtml(badgeText) + '</span>' +
-          detailHtml +
-          '<div class="scw-bid-review-v2__cell-actions">' +
+        var badge = row.removed ? 'REMOVED' : (row.surveyNoBid ? 'NOT ON BID' : '');
+        var badgeCls = 'scw-bid-review-v2__no-bid-badge' +
+          (row.removed ? ' scw-bid-review-v2__no-bid-badge--removed' : '');
+        // Reinstate only for surveyNoBid (record exists, just unlinked);
+        // removed items are read-only.
+        var actions = (row.surveyNoBid && !row.removed) ?
+          ('<div class="scw-bid-review-v2__cell-actions">' +
             '<button type="button" class="scw-bid-review__cell-action ' +
               'scw-bid-review__cell-action--add scw-bid-review-v2__cell-action" ' +
-              crAttrs('cell_add_to_bid', row.id, pkgId, sowId) + '>' + addLabel + '</button>' +
-          '</div>';
-      } else {
-        // Plain empty intersection — generic "+ Add to bid".
+              crAttrs('cell_add_to_bid', row.id, pkgId, sowId) + '>+ Reinstate</button>' +
+          '</div>') : '';
         td.innerHTML =
-          '<span class="scw-bid-review-v2__cell-empty-mark">—</span>' +
-          (row ? '<div class="scw-bid-review-v2__cell-actions">' +
+          (badge ? '<span class="' + badgeCls + '">' + badge + '</span>' : '') +
+          detailBlockHtml(row.detail) + actions;
+      } else {
+        // No bid record on this package at all → a truly blank cell.
+        // Offer "+ Add to bid" unless the row was intentionally removed.
+        td.innerHTML = '<span class="scw-bid-review-v2__cell-empty-mark">—</span>' +
+          ((row && !row.removed) ? '<div class="scw-bid-review-v2__cell-actions">' +
             '<button type="button" class="scw-bid-review__cell-action ' +
               'scw-bid-review__cell-action--add scw-bid-review-v2__cell-action" ' +
               crAttrs('cell_add_to_bid', row.id, pkgId, sowId) + '>+ Add to bid</button>' +
@@ -534,6 +521,7 @@
     var tr = document.createElement('tr');
     tr.className = 'scw-bid-review-v2__group-header';
     if (group.otherBidItems) tr.className += ' scw-bid-review-v2__group-header--other';
+    if (group.bidOnlyItems)  tr.className += ' scw-bid-review-v2__group-header--bid-only';
     if (group.removedItems)  tr.className += ' scw-bid-review-v2__group-header--removed';
     if (group.defaultCollapsed) tr.className += ' scw-bid-review-v2__group-header--collapsed';
     tr.setAttribute('data-l1-id', group.key);
