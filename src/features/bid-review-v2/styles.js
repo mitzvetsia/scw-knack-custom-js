@@ -266,6 +266,18 @@
     '  background: #fed7aa; border-radius: 3px; padding: 0 4px;',
     '  box-decoration-break: clone; -webkit-box-decoration-break: clone;',
     '}',
+    /* SOW cell: soft whole-cell tint when any field differs from a bid —
+       no per-field hard highlight here (that lives on the bid columns). */
+    '.scw-bid-review-v2__sow-cell--has-diff {',
+    '  background: #fff7ed;',
+    '}',
+    /* Transient highlight on a SOW field while its differing bid-cell
+       counterpart is hovered. */
+    '.scw-bid-review-v2__sow-field-hl {',
+    '  background: #fed7aa; border-radius: 3px;',
+    '  box-shadow: 0 0 0 2px #fed7aa;',
+    '  transition: background 80ms ease;',
+    '}',
     '.scw-bid-review-v2__head-btn {',
     '  display: inline-block; width: 100%; text-align: center;',
     '  padding: 6px 10px; border-radius: 7px; border: 1px solid transparent;',

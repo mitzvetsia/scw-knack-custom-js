@@ -227,9 +227,11 @@
       }
       return td;
     }
-    var prodDiff = (diff && diff.product)   ? FIELD_DIFF : '';
-    var feeDiff  = (diff && diff.fee)       ? FIELD_DIFF : '';
-    var descDiff = (diff && diff.laborDesc) ? FIELD_DIFF : '';
+    // Soft whole-cell tint when anything differs (no per-field hard
+    // highlight on the SOW side — that's reserved for the bid columns).
+    // The specific differing field lights up on hover of its bid-cell
+    // counterpart, via the data-scw-sow-field hooks below.
+    if (diff && diff.any) td.classList.add('scw-bid-review-v2__sow-cell--has-diff');
     var descTxt = ns.transform.stripHtml(sowItemData.laborDesc || '');
     // Assumptions are free-text only — no product name, no qty/fee numbers.
     if (isAssumption) {
@@ -244,18 +246,18 @@
     var feeTxt  = sowItemData.fee ? fmtMoney(sowItemData.fee) : '—';
     td.innerHTML =
       (sowItemData.productName ?
-        '<div class="scw-bid-review-v2__sow-product' + prodDiff + '" title="' +
+        '<div class="scw-bid-review-v2__sow-product" data-scw-sow-field="product" title="' +
           escapeHtml(sowItemData.productName) + '">' +
           escapeHtml(sowItemData.productName) +
         '</div>' : '') +
       '<div class="scw-bid-review-v2__sow-numbers">' +
         '<span class="scw-bid-review-v2__sow-num"><label>Qty</label>' +
           escapeHtml(qtyTxt) + '</span>' +
-        '<span class="scw-bid-review-v2__sow-num' + feeDiff + '"><label>Sub Bid</label>' +
+        '<span class="scw-bid-review-v2__sow-num" data-scw-sow-field="fee"><label>Sub Bid</label>' +
           escapeHtml(feeTxt) + '</span>' +
       '</div>' +
       (descTxt ?
-        '<div class="scw-bid-review-v2__sow-desc' + descDiff + '" title="' +
+        '<div class="scw-bid-review-v2__sow-desc" data-scw-sow-field="desc" title="' +
           escapeHtml(descTxt) + '">' + escapeHtml(descTxt) +
         '</div>' : '');
     return td;
@@ -389,24 +391,30 @@
     var descDiff = (diffs && diffs.laborDesc) ? DIFF : '';
     var feeOnExt = (diffs && diffs.fee && showExt) ? DIFF : '';
     var feeOnBid = (diffs && diffs.fee && !showExt) ? DIFF : '';
+    // Hover hooks: hovering a differing field highlights its SOW-cell
+    // counterpart (init.js wires the mouseover). Only the actually-
+    // differing field carries the hook.
+    var prodHover = (diffs && diffs.product)   ? ' data-scw-diff-field="product"' : '';
+    var feeHover  = (diffs && diffs.fee)       ? ' data-scw-diff-field="fee"' : '';
+    var descHover = (diffs && diffs.laborDesc) ? ' data-scw-diff-field="desc"' : '';
 
     td.innerHTML =
       (cell.productName ?
-        '<div class="scw-bid-review-v2__cell-product' + prodDiff + '" title="' +
+        '<div class="scw-bid-review-v2__cell-product' + prodDiff + '"' + prodHover + ' title="' +
           escapeHtml(cell.productName) + '">' +
           escapeHtml(cell.productName) +
         '</div>' : '') +
       '<div class="scw-bid-review-v2__cell-numbers">' +
         '<span class="scw-bid-review-v2__cell-num"><label>Qty</label>' +
           escapeHtml(qtyTxt) + '</span>' +
-        '<span class="scw-bid-review-v2__cell-num' + feeOnBid + '"><label>Sub Bid</label>' +
-          escapeHtml(rateTxt) + '</span>' +
+        '<span class="scw-bid-review-v2__cell-num' + feeOnBid + '"' + (showExt ? '' : feeHover) +
+          '><label>Sub Bid</label>' + escapeHtml(rateTxt) + '</span>' +
         (showExt ?
-          '<span class="scw-bid-review-v2__cell-num' + feeOnExt + '"><label>Ext</label>' +
-            escapeHtml(extTxt) + '</span>' : '') +
+          '<span class="scw-bid-review-v2__cell-num' + feeOnExt + '"' + feeHover +
+            '><label>Ext</label>' + escapeHtml(extTxt) + '</span>' : '') +
       '</div>' +
       (descTxt ?
-        '<div class="scw-bid-review-v2__cell-desc' + descDiff + '" title="' +
+        '<div class="scw-bid-review-v2__cell-desc' + descDiff + '"' + descHover + ' title="' +
           escapeHtml(descTxt) + '">' + escapeHtml(descTxt) +
         '</div>' : '') +
       cellActionStack(row, pkgId, sowId);

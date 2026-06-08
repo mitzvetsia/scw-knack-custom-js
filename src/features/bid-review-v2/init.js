@@ -132,6 +132,21 @@
         n = n.nextElementSibling;
       }
     });
+
+    // Diff hover-link: hovering a differing field in a bid cell
+    // temporarily highlights the matching field in this row's SOW cell.
+    function hoverField(e, on) {
+      var f = e.target.closest && e.target.closest('[data-scw-diff-field]');
+      if (!f) return;
+      var tr = f.closest('tr');
+      if (!tr) return;
+      var type = f.getAttribute('data-scw-diff-field');
+      var target = tr.querySelector(
+        '.scw-bid-review-v2__sow-cell [data-scw-sow-field="' + type + '"]');
+      if (target) target.classList.toggle('scw-bid-review-v2__sow-field-hl', on);
+    }
+    document.addEventListener('mouseover', function (e) { hoverField(e, true); });
+    document.addEventListener('mouseout',  function (e) { hoverField(e, false); });
   }
 
   // Delegated clicks for everything that routes into v1's handlers:
