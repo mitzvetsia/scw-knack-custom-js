@@ -697,6 +697,18 @@
     '  margin-bottom: 10px; line-height: 1.35;',
     '  overflow-wrap: anywhere; word-break: break-word;',
     '}',
+    /* Per-line-item survey note (field_2412) — amber callout under the SOW
+       item details, matching the L1 survey-notes palette. */
+    '.scw-bid-review-v2__sow-survey-note {',
+    '  margin-top: 8px; padding: 6px 8px; border-radius: 6px;',
+    '  background: #fffbeb; border: 1px solid #fde68a;',
+    '  font-size: 12px; line-height: 1.4; color: #92400e;',
+    '  overflow-wrap: anywhere; word-break: break-word;',
+    '}',
+    '.scw-bid-review-v2__sow-survey-note-label {',
+    '  font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em;',
+    '  font-size: 10px; color: #b45309;',
+    '}',
     '.scw-bid-review-v2__sow-numbers {',
     '  display: flex; gap: 16px; align-items: center;',
     '  margin-bottom: 10px;',

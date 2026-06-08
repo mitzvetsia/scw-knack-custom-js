@@ -262,6 +262,13 @@
         '<div class="scw-bid-review-v2__sow-desc" data-scw-sow-field="desc" title="' +
           escapeHtml(descTxt) + '">' + escapeHtml(descTxt) +
         '</div>' : '') +
+      // Per-line-item survey note (field_2412), v1 parity.
+      (sowItemData.surveyNotes ?
+        '<div class="scw-bid-review-v2__sow-survey-note" title="' +
+          escapeHtml(sowItemData.surveyNotes) + '">' +
+          '<span class="scw-bid-review-v2__sow-survey-note-label">Survey Note</span> ' +
+          escapeHtml(sowItemData.surveyNotes) +
+        '</div>' : '') +
       // "belongs to another SOW" rows note which SOW(s) the item is on.
       ((row && row.otherKind === 'other-sow' && row.otherSowNames && row.otherSowNames.length) ?
         '<div class="scw-bid-review-v2__sow-elsewhere">on ' +
