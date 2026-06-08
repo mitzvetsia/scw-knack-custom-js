@@ -613,6 +613,15 @@
 
   function readSourceFieldText(sourceTr, fieldKey) {
     if (!sourceTr) return '';
+    // Mirror v1's readRowFieldText: match the cell by CLASS or by
+    // data-field-key (some views render the td with only the field class,
+    // no data-field-key attr), and read the inner span.col-N when present.
+    var td = sourceTr.querySelector('td.' + fieldKey +
+      ', td[data-field-key="' + fieldKey + '"]');
+    if (td) {
+      var sp = td.querySelector('span.col-1, span[class^="col-"]');
+      return ((sp || td).textContent || '').replace(/ /g, ' ').trim();
+    }
     var cells = sourceTr.getElementsByTagName('td');
     for (var i = 0; i < cells.length; i++) {
       if (cells[i].getAttribute('data-field-key') === fieldKey) {
