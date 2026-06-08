@@ -200,9 +200,17 @@
     // No SOW item record exists for this row.
     if (!sowItemData) {
       td.classList.add('scw-bid-review-v2__sow-cell--empty');
-      // Offer "+ Add to SOW" for bid items with no SOW counterpart — but
-      // not for intentionally-removed rows (those stay blank).
-      if (row && !row.removed && (!row.sowItem || row.needsSow)) {
+      if (row && row.removed) {
+        // Removed from everything → blue hash here too ("not on this
+        // SOW"). A removed item still has a record somewhere (the bid
+        // item, or the orphaned survey line item) — show what it WAS
+        // inside the cut-out so reviewers see the removed item's details.
+        td.classList.add('scw-bid-review-v2__sow-cell--off-sow');
+        var rDetail = row.detail ? detailBlockHtml(row.detail) : '';
+        td.innerHTML = rDetail ||
+          '<span class="scw-bid-review-v2__cell-empty-mark">—</span>';
+      } else if (row && (!row.sowItem || row.needsSow)) {
+        // Bid item with no SOW counterpart → offer "+ Add to SOW".
         td.innerHTML =
           '<span class="scw-bid-review-v2__cell-empty-mark">—</span>' +
           '<div class="scw-bid-review-v2__cell-actions">' +
@@ -286,13 +294,31 @@
   }
   // Revise + Remove stack for a populated bid cell. Skipped for
   // requireSubBid:No rows (informational items the bidder isn't pricing).
-  function cellActionStack(row, pkgId, sowId) {
+  function cellActionStack(row, pkgId, sowId, diffs) {
     var noSubBid = row.requireSubBid && /^no$/i.test(String(row.requireSubBid).trim());
     if (noSubBid) return '';
+    // When the bid mismatches the SOW for this row, offer v1's two-way
+    // Revise: "Edit bid" (free-form CR on the bid item) and "Match SOW"
+    // (prefill the CR from the SOW values). v1's dispatchCRAction handles
+    // both cell_request_change and cell_request_change_from_sow. With no
+    // mismatch, collapse to the single Revise button.
+    var revise;
+    if (diffs && diffs.any) {
+      revise =
+        '<button type="button" class="scw-bid-review__cell-action ' +
+          'scw-bid-review__cell-action--revise scw-bid-review-v2__cell-action" ' +
+          crAttrs('cell_request_change', row.id, pkgId, sowId) + '>Edit bid</button>' +
+        '<button type="button" class="scw-bid-review__cell-action ' +
+          'scw-bid-review__cell-action--revise scw-bid-review-v2__cell-action" ' +
+          crAttrs('cell_request_change_from_sow', row.id, pkgId, sowId) + '>Match SOW</button>';
+    } else {
+      revise =
+        '<button type="button" class="scw-bid-review__cell-action ' +
+          'scw-bid-review__cell-action--revise scw-bid-review-v2__cell-action" ' +
+          crAttrs('cell_request_change', row.id, pkgId, sowId) + '>Revise</button>';
+    }
     return '<div class="scw-bid-review-v2__cell-actions">' +
-      '<button type="button" class="scw-bid-review__cell-action ' +
-        'scw-bid-review__cell-action--revise scw-bid-review-v2__cell-action" ' +
-        crAttrs('cell_request_change', row.id, pkgId, sowId) + '>Revise</button>' +
+      revise +
       '<button type="button" class="scw-bid-review__cell-action ' +
         'scw-bid-review__cell-action--remove scw-bid-review-v2__cell-action" ' +
         crAttrs('cell_remove_from_bid', row.id, pkgId, sowId) + '>Remove</button>' +
@@ -322,14 +348,21 @@
       // → blue diagonal hash. If a bid record exists elsewhere (unlinked
       // surveyNoBid, or removed) show its details inside the hash.
       td.classList.add('scw-bid-review-v2__cell--no-bid-cutout');
-      var hasBidRecord = row && row.detail && row.detail.side === 'BID';
-      var badge    = (row && row.removed) ? 'REMOVED' : 'Removed from bid';
+      // A bid item exists (just unlinked from this bid) when we have a
+      // bid-side snapshot or the survey flagged an unlinked record. Those
+      // read as "Removed from bid" and offer "Reinstate". When there's no
+      // bid item at all, it reads as "Not surveyed" → "Add to bid".
+      var hasBidRecord = !!(row && (row.hasBidRecord ||
+        (row.detail && row.detail.side === 'BID') || row.surveyNoBid));
+      var badge    = hasBidRecord ? 'Removed from bid' : 'Not surveyed';
       var badgeCls = 'scw-bid-review-v2__no-bid-badge' +
-        ((row && row.removed) ? ' scw-bid-review-v2__no-bid-badge--removed' : '');
-      var detail   = hasBidRecord ? detailBlockHtml(row.detail) : '';
+        (hasBidRecord ? ' scw-bid-review-v2__no-bid-badge--removed' : '');
+      // Show the bid item's details inside the hash when we have them.
+      var detail   = (row && row.detail && row.detail.side === 'BID')
+        ? detailBlockHtml(row.detail) : '';
       var actions  = '';
-      if (row && !row.removed) {
-        var addLabel = row.surveyNoBid ? '+ Reinstate' : '+ Add to bid';
+      if (row) {
+        var addLabel = hasBidRecord ? '+ Reinstate' : '+ Add to bid';
         actions =
           '<div class="scw-bid-review-v2__cell-actions">' +
             '<button type="button" class="scw-bid-review__cell-action ' +
@@ -401,7 +434,7 @@
         '<div class="scw-bid-review-v2__cell-desc' + descDiff + '"' + descHover + ' title="' +
           escapeHtml(descTxt) + '">' + escapeHtml(descTxt) +
         '</div>' : '') +
-      cellActionStack(row, pkgId, sowId);
+      cellActionStack(row, pkgId, sowId, diffs);
     appendPendingCard(td, pendingItem, row, pkg, sowId);
     return td;
   }
@@ -580,13 +613,24 @@
   }
 
   function buildL1SurveyNotesRow(mdfIdfId, colspan) {
-    if (!mdfIdfId) return null;
+    var dbg = !!(window.SCW.bidReview && window.SCW.bidReview.CONFIG &&
+      window.SCW.bidReview.CONFIG.debug);
+    if (!mdfIdfId) {
+      if (dbg) console.log('[scw-br-v2] survey-notes: no mdfIdfId on group');
+      return null;
+    }
     var viewKey = (window.SCW.bidReview && window.SCW.bidReview.CONFIG &&
       window.SCW.bidReview.CONFIG.mdfIdfViewKey) || 'view_3822';
     var view = document.getElementById(viewKey);
     var src  = view ? view.querySelector('tbody tr[id="' + mdfIdfId + '"]') : null;
-    if (!src) return null;
+    if (!src) {
+      if (dbg) console.log('[scw-br-v2] survey-notes: no source row', {
+        mdfIdfId: mdfIdfId, viewKey: viewKey, viewFound: !!view });
+      return null;
+    }
     var txt = readSourceFieldText(src, 'field_2457');
+    if (dbg) console.log('[scw-br-v2] survey-notes: read', {
+      mdfIdfId: mdfIdfId, len: txt ? txt.length : 0, txt: txt });
     if (!txt) return null;
 
     var tr = document.createElement('tr');

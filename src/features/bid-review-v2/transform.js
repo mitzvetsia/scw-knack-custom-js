@@ -511,12 +511,55 @@
     var removedRows = [];
     var removedSeen = Object.create(null);   // dedupe by SOW-item id / rec id
 
-    // Source A — view_3921 survey items off ALL SOWs and not on a bid.
+    // Source B (runs FIRST) — leftover view_3680 bid-side records with NO
+    // bid package AND no SOW connection. These items WERE on a bid (a bid
+    // record still exists for them), so they read as "removed from bid":
+    // the bid item is intact, just disconnected. We show the bid item's
+    // detail in the SOW column and offer "Reinstate". Running this before
+    // Source A means an item that has a leftover bid record always carries
+    // the bid snapshot (side='BID') rather than the SOW snapshot.
+    for (var obi = 0; obi < records.length; obi++) {
+      var obrec = records[obi];
+      if (!obrec || !obrec.id) continue;
+      if (connectionAll(obrec, FK.bidPackage).length) continue; // still on a bid
+      if (connectionAll(obrec, FK.sow).length) continue;        // still on a SOW
+      var obsi = connectionId(obrec, FK.relatedSowItem);
+      var okey = obsi || ('rec::' + obrec.id);
+      if (removedSeen[okey] || (obsi && removedSeen[obsi])) continue;
+      removedSeen[okey] = true;
+      if (obsi) removedSeen[obsi] = true;
+      var obrow = buildRow(obrec, [obrec]);   // empty cells (no package)
+      obrow.removed      = true;
+      obrow.noBid        = true;
+      obrow.surveyNoBid  = false;
+      obrow.offSow       = false;
+      obrow.hasBidRecord = true;              // bid item exists → "Reinstate"
+      var obIdx = obsi ? (sowItemIndex[obsi] || null) : null;
+      obrow.sowItemData   = obIdx;
+      obrow.sowFullRecord = obsi ? (sowFullByItem[obsi] || null) : null;
+      // What it WAS — bid-side snapshot read straight off the leftover
+      // view_3680 record (its per-package cell is gone with the package).
+      obrow.detail = {
+        side:    'BID',
+        product: raw(obrec, FK.productName) || obrow.productName,
+        qty:     num(obrec, FK.qty),
+        fee:     num(obrec, FK.labor),
+        desc:    rawHtml(obrec, FK.laborDesc)
+      };
+      removedRows.push(obrow);
+    }
+
+    // Source A — view_3921 survey items off ALL SOWs and not on a bid, with
+    // NO leftover bid record (deduped against Source B). These were never
+    // surveyed onto a bid, so they read as "not surveyed": no bid item
+    // exists → offer "Add to bid". We show the SOW-side snapshot of what
+    // the item was.
     for (var rmi = 0; rmi < sowItemList.length; rmi++) {
       var rrec = sowItemList[rmi];
       if (!rrec || !rrec.id) continue;
       if (connectionAll(rrec, SFK.sow).length) continue;   // still on a SOW
       if (bidItemIds[rrec.id]) continue;                   // still on a bid
+      if (removedSeen[rrec.id]) continue;                  // already from Source B
       removedSeen[rrec.id] = true;
       var aIdx = sowItemIndex[rrec.id] || null;
       removedRows.push({
@@ -535,7 +578,8 @@
         surveyNoBid:      false,
         offSow:           false,
         removed:          true,
-        // What the item WAS — SOW-side snapshot (the bid record is gone).
+        hasBidRecord:     false,   // no bid item → "Add to bid"
+        // What the item WAS — SOW-side snapshot (no bid record exists).
         detail: {
           side:    'SOW',
           product: (aIdx && aIdx.productName) || connectionLabel(rrec, SFK.product) || raw(rrec, SFK.productName),
@@ -546,38 +590,6 @@
         sowItemData:      aIdx,
         sowFullRecord:    sowFullByItem[rrec.id]  || null
       });
-    }
-
-    // Source B — leftover view_3680 bid-side records with NO bid package
-    // AND no SOW connection (buildRowsForSow drops these). Their related
-    // SOW line item dedupes against Source A.
-    for (var obi = 0; obi < records.length; obi++) {
-      var obrec = records[obi];
-      if (!obrec || !obrec.id) continue;
-      if (connectionAll(obrec, FK.bidPackage).length) continue; // still on a bid
-      if (connectionAll(obrec, FK.sow).length) continue;        // still on a SOW
-      var obsi = connectionId(obrec, FK.relatedSowItem);
-      var okey = obsi || ('rec::' + obrec.id);
-      if (removedSeen[okey] || (obsi && removedSeen[obsi])) continue;
-      removedSeen[okey] = true;
-      var obrow = buildRow(obrec, [obrec]);   // empty cells (no package)
-      obrow.removed     = true;
-      obrow.noBid       = true;
-      obrow.surveyNoBid = false;
-      obrow.offSow      = false;
-      var obIdx = obsi ? (sowItemIndex[obsi] || null) : null;
-      obrow.sowItemData   = obIdx;
-      obrow.sowFullRecord = obsi ? (sowFullByItem[obsi] || null) : null;
-      // What it WAS — bid-side snapshot read straight off the leftover
-      // view_3680 record (its per-package cell is gone with the package).
-      obrow.detail = {
-        side:    'BID',
-        product: raw(obrec, FK.productName) || obrow.productName,
-        qty:     num(obrec, FK.qty),
-        fee:     num(obrec, FK.labor),
-        desc:    rawHtml(obrec, FK.laborDesc)
-      };
-      removedRows.push(obrow);
     }
 
     if (ns.CONFIG.debug) {
@@ -813,7 +825,10 @@
       var s = String(v == null ? '' : v).replace(/<[^>]*>/g, ' ');
       var i = s.lastIndexOf(' - ');
       if (i > 0) s = s.slice(0, i);
-      return s.replace(/\s+/g, ' ').toLowerCase().trim();
+      s = s.replace(/\s+/g, ' ').toLowerCase().trim();
+      // Ignore a leading article so "The Admiral Pro" == "Admiral Pro".
+      s = s.replace(/^(?:the|a|an)\s+/, '');
+      return s;
     }
     var sowProd  = (row.sowItemData && row.sowItemData.productName) || row.sowProduct;
     var spBase   = baseProduct(sowProd);

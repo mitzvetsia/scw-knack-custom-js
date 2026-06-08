@@ -747,7 +747,7 @@
     '  text-transform: uppercase;',
     '}',
     '.scw-bid-review-v2__no-bid-badge--removed {',
-    '  background: #fee2e2; color: #991b1b; margin-bottom: 0;',
+    '  background: #fee2e2; color: #991b1b;',
     '}',
     /* Removed-items group: muted red header, pinned at the top. */
     '.scw-bid-review-v2__group-header--removed .scw-bid-review-v2__grp-inner {',
