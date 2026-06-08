@@ -648,6 +648,34 @@
     return null;
   }
 
+  // Resolve survey-notes text (field_2457) for an MDF/IDF group from v1's
+  // API-loaded records (preferred — they carry field_2457 + the field_1642
+  // label regardless of which columns view_3822 renders), matching by
+  // record id then by label. Returns '' when no match / no notes.
+  function notesFromV1Records(mdfIdfId, label) {
+    var v1 = window.SCW.bidReview;
+    var recs = (v1 && typeof v1.getMdfIdfRecords === 'function') ? v1.getMdfIdfRecords() : null;
+    if (!recs || !recs.length) return '';
+    function strip(v) {
+      return String(v == null ? '' : v).replace(/<[^>]*>/g, ' ')
+        .replace(/\s+/g, ' ').trim();
+    }
+    var target = label ? strip(label).toLowerCase() : '';
+    var byLabel = null;
+    for (var i = 0; i < recs.length; i++) {
+      var rec = recs[i];
+      if (mdfIdfId && rec.id === mdfIdfId) {
+        return strip(rec.field_2457_raw != null ? rec.field_2457_raw : rec.field_2457);
+      }
+      if (target && !byLabel) {
+        var lbl = strip(rec.field_1642).toLowerCase();
+        if (lbl && lbl === target) byLabel = rec;
+      }
+    }
+    if (byLabel) return strip(byLabel.field_2457_raw != null ? byLabel.field_2457_raw : byLabel.field_2457);
+    return '';
+  }
+
   function buildL1SurveyNotesRow(group, colspan) {
     var dbg = !!(window.SCW.bidReview && window.SCW.bidReview.CONFIG &&
       window.SCW.bidReview.CONFIG.debug);
@@ -657,17 +685,17 @@
       if (dbg) console.log('[scw-br-v2] survey-notes: no mdfIdfId or label on group');
       return null;
     }
-    var viewKey = (window.SCW.bidReview && window.SCW.bidReview.CONFIG &&
-      window.SCW.bidReview.CONFIG.mdfIdfViewKey) || 'view_3822';
-    var view = document.getElementById(viewKey);
-    var src  = findMdfIdfSourceRow(view, mdfIdfId, label);
-    if (!src) {
-      if (dbg) console.log('[scw-br-v2] survey-notes: no source row', {
-        mdfIdfId: mdfIdfId, label: label, viewKey: viewKey, viewFound: !!view });
-      return null;
+    // Primary source: v1's loaded MDF/IDF records.
+    var txt = notesFromV1Records(mdfIdfId, label);
+    // Fallback: scrape the live view_3822 DOM.
+    if (!txt) {
+      var viewKey = (window.SCW.bidReview && window.SCW.bidReview.CONFIG &&
+        window.SCW.bidReview.CONFIG.mdfIdfViewKey) || 'view_3822';
+      var view = document.getElementById(viewKey);
+      var src  = findMdfIdfSourceRow(view, mdfIdfId, label);
+      if (src) txt = readSourceFieldText(src, 'field_2457');
     }
-    var txt = readSourceFieldText(src, 'field_2457');
-    if (dbg) console.log('[scw-br-v2] survey-notes: read', {
+    if (dbg) console.log('[scw-br-v2] survey-notes:', {
       mdfIdfId: mdfIdfId, label: label, len: txt ? txt.length : 0, txt: txt });
     if (!txt) return null;
 

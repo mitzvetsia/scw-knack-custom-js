@@ -3145,6 +3145,11 @@
   // Public change dispatcher for the SOW metric inputs v2 renders via
   // buildSowStatusBar (exposed from render.js). Mirrors v1's mount change
   // listener.
+  // Expose the API-loaded MDF/IDF location records (view_3822) so v2 can
+  // resolve survey notes (field_2457) by record id or display label
+  // (field_1642) without relying on the DOM-rendered columns.
+  ns.getMdfIdfRecords = function getMdfIdfRecords() { return _mdfIdfRecords || []; };
+
   ns.dispatchMetricChange = function dispatchMetricChange(input) {
     if (!input) return false;
     if (input.matches('.scw-bid-review__sow-metric-input[data-action="sow_survey_costs"]')) {
