@@ -770,8 +770,23 @@
       return String(v).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ')
         .toLowerCase().trim();
     }
+    // Product comparison: the SOW side renders the product CONNECTION
+    // label ("Name - SKU"), the bid side renders the stored product name
+    // ("Name") — same product, different string. Strip the trailing
+    // " - SKU" so we compare base product names, and don't flag when
+    // either side is blank (nothing meaningful to compare).
+    function baseProduct(v) {
+      var s = String(v == null ? '' : v).replace(/<[^>]*>/g, ' ');
+      var i = s.lastIndexOf(' - ');
+      if (i > 0) s = s.slice(0, i);
+      return s.replace(/\s+/g, ' ').toLowerCase().trim();
+    }
+    var sowProd  = (row.sowItemData && row.sowItemData.productName) || row.sowProduct;
+    var spBase   = baseProduct(sowProd);
+    var cpBase   = baseProduct(cell.productName);
+    var productDiff = (spBase && cpBase) ? (spBase !== cpBase) : false;
     var m = {
-      product:   norm(row.sowProduct)   !== norm(cell.productName),
+      product:   productDiff,
       laborDesc: norm(row.sowLaborDesc) !== norm(cell.laborDesc),
       fee:       Math.abs((Number(row.sowFee) || 0) - (Number(cell.labor) || 0)) > 0.001
     };
