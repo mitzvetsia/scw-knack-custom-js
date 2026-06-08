@@ -351,7 +351,8 @@
           // Diff basis (unused for noBid cells, kept for shape parity).
           sowProduct:       connectionLabel(rec, SFK.product) || raw(rec, SFK.productName),
           sowLaborDesc:     rawHtml(rec, SFK.laborDesc),
-          sowFee:           num(rec, SFK.fee)
+          sowFee:           num(rec, SFK.fee),
+          surveyNotes:      raw(rec, SFK.notes)
         });
       }
     }

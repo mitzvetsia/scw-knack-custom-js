@@ -262,14 +262,6 @@
         '<div class="scw-bid-review-v2__sow-desc" data-scw-sow-field="desc" title="' +
           escapeHtml(descTxt) + '">' + escapeHtml(descTxt) +
         '</div>' : '') +
-      // Per-line-item survey note — lives on the bid record (field_2412),
-      // falls back to the SOW item snapshot. v1 parity.
-      (((row && row.surveyNotes) || sowItemData.surveyNotes) ?
-        '<div class="scw-bid-review-v2__sow-survey-note" title="' +
-          escapeHtml((row && row.surveyNotes) || sowItemData.surveyNotes) + '">' +
-          '<span class="scw-bid-review-v2__sow-survey-note-label">Survey Note</span> ' +
-          escapeHtml((row && row.surveyNotes) || sowItemData.surveyNotes) +
-        '</div>' : '') +
       // "belongs to another SOW" rows note which SOW(s) the item is on.
       ((row && row.otherKind === 'other-sow' && row.otherSowNames && row.otherSowNames.length) ?
         '<div class="scw-bid-review-v2__sow-elsewhere">on ' +
@@ -378,6 +370,13 @@
       // Show the bid item's details inside the hash when we have them.
       var detail   = (row && row.detail && row.detail.side === 'BID')
         ? detailBlockHtml(row.detail) : '';
+      // Survey note (field_2412) — v1 renders it inside the no-bid cell.
+      var noteHtml = (row && row.surveyNotes)
+        ? '<div class="scw-bid-review-v2__cell-survey-note" title="' +
+            escapeHtml(row.surveyNotes) + '">' +
+            '<span class="scw-bid-review-v2__cell-survey-note-label">Survey Note</span> ' +
+            escapeHtml(row.surveyNotes) + '</div>'
+        : '';
       var actions  = '';
       if (row) {
         var addLabel = hasBidRecord ? '+ Reinstate' : '+ Add to bid';
@@ -389,7 +388,7 @@
           '</div>';
       }
       td.innerHTML =
-        '<span class="' + badgeCls + '">' + badge + '</span>' + detail + actions;
+        '<span class="' + badgeCls + '">' + badge + '</span>' + detail + noteHtml + actions;
       appendPendingCard(td, pendingItem, row, pkg, sowId);
       return td;
     }
