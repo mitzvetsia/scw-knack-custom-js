@@ -146,8 +146,54 @@
    * underlying SOW line item that anchors this row. Edits to SOW
    * fields flow through worksheet-v2; bid-review v2 only displays.
    */
+  var FIELD_DIFF = ' scw-bid-review-v2__field-diff';
+
+  // Aggregate field-level mismatch across ALL of a row's bid cells, so we
+  // can flag the differing field on the SOW side too (a field counts as
+  // "different" when it doesn't match at least one displayed bid).
+  function aggregateMismatch(row) {
+    if (!row || !row.cellsByPackage || !ns.transform.getMismatches) return null;
+    var agg = { product: false, laborDesc: false, fee: false, any: false };
+    for (var pid in row.cellsByPackage) {
+      if (!Object.prototype.hasOwnProperty.call(row.cellsByPackage, pid)) continue;
+      var m = ns.transform.getMismatches(row, row.cellsByPackage[pid]);
+      if (!m) continue;
+      if (m.product)   agg.product = true;
+      if (m.laborDesc) agg.laborDesc = true;
+      if (m.fee)       agg.fee = true;
+      if (m.any)       agg.any = true;
+    }
+    return agg;
+  }
+
+  // Render a "what it was" detail block (product / qty / sub-bid / desc)
+  // for cut-out cells where the live record/cell is gone or unlinked.
+  function detailBlockHtml(d) {
+    if (!d) return '';
+    var html = '';
+    if (d.product) {
+      html += '<div class="scw-bid-review-v2__cell-product" title="' +
+        escapeHtml(d.product) + '">' + escapeHtml(d.product) + '</div>';
+    }
+    var qtyTxt = (d.qty != null && d.qty !== '' && d.qty !== 0) ? String(d.qty) : '';
+    var feeTxt = d.fee ? fmtMoney(d.fee) : '';
+    if (qtyTxt || feeTxt) {
+      html += '<div class="scw-bid-review-v2__cell-numbers">';
+      if (qtyTxt) html += '<span class="scw-bid-review-v2__cell-num"><label>Qty</label>' +
+        escapeHtml(qtyTxt) + '</span>';
+      if (feeTxt) html += '<span class="scw-bid-review-v2__cell-num"><label>Sub Bid</label>' +
+        escapeHtml(feeTxt) + '</span>';
+      html += '</div>';
+    }
+    var descTxt = ns.transform.stripHtml(d.desc || '');
+    if (descTxt) html += '<div class="scw-bid-review-v2__cell-desc" title="' +
+      escapeHtml(descTxt) + '">' + escapeHtml(descTxt) + '</div>';
+    return html;
+  }
+
   function buildSowCell(row, isAssumption, sowId) {
     var sowItemData = row && row.sowItemData;
+    var diff = aggregateMismatch(row);
     var td = document.createElement('td');
     td.className = 'scw-bid-review-v2__sow-cell';
 
@@ -170,10 +216,20 @@
     if (row && (row.offSow || row.removed)) td.classList.add('scw-bid-review-v2__sow-cell--off-sow');
 
     if (!sowItemData) {
-      td.classList.add('scw-bid-review-v2__sow-cell--empty');
-      td.innerHTML = '<span class="scw-bid-review-v2__cell-empty-mark">—</span>';
+      // No SOW snapshot — but a removed row may still carry a `detail`
+      // snapshot of what it was; show that inside the cut-out so the SOW
+      // column isn't blank.
+      if (row && row.detail) {
+        td.innerHTML = detailBlockHtml(row.detail);
+      } else {
+        td.classList.add('scw-bid-review-v2__sow-cell--empty');
+        td.innerHTML = '<span class="scw-bid-review-v2__cell-empty-mark">—</span>';
+      }
       return td;
     }
+    var prodDiff = (diff && diff.product)   ? FIELD_DIFF : '';
+    var feeDiff  = (diff && diff.fee)       ? FIELD_DIFF : '';
+    var descDiff = (diff && diff.laborDesc) ? FIELD_DIFF : '';
     var descTxt = ns.transform.stripHtml(sowItemData.laborDesc || '');
     // Assumptions are free-text only — no product name, no qty/fee numbers.
     if (isAssumption) {
@@ -188,18 +244,18 @@
     var feeTxt  = sowItemData.fee ? fmtMoney(sowItemData.fee) : '—';
     td.innerHTML =
       (sowItemData.productName ?
-        '<div class="scw-bid-review-v2__sow-product" title="' +
+        '<div class="scw-bid-review-v2__sow-product' + prodDiff + '" title="' +
           escapeHtml(sowItemData.productName) + '">' +
           escapeHtml(sowItemData.productName) +
         '</div>' : '') +
       '<div class="scw-bid-review-v2__sow-numbers">' +
         '<span class="scw-bid-review-v2__sow-num"><label>Qty</label>' +
           escapeHtml(qtyTxt) + '</span>' +
-        '<span class="scw-bid-review-v2__sow-num"><label>Sub Bid</label>' +
+        '<span class="scw-bid-review-v2__sow-num' + feeDiff + '"><label>Sub Bid</label>' +
           escapeHtml(feeTxt) + '</span>' +
       '</div>' +
       (descTxt ?
-        '<div class="scw-bid-review-v2__sow-desc" title="' +
+        '<div class="scw-bid-review-v2__sow-desc' + descDiff + '" title="' +
           escapeHtml(descTxt) + '">' + escapeHtml(descTxt) +
         '</div>' : '');
     return td;
@@ -260,13 +316,14 @@
       //   surveyNoBid → was surveyed, detached from bid → "NOT ON BID" /
       //                 "+ Reinstate".
       //   noBid       → never on a bid → "NOT SURVEYED" / "+ Add to bid".
-      // Removed items: read-only "REMOVED" badge, no add action — these
-      // were intentionally pulled from both the bid and the SOW.
+      // Removed items: read-only "REMOVED" badge + a snapshot of what it
+      // was (no add action — intentionally pulled from bid AND SOW).
       if (row && row.removed) {
         td.classList.add('scw-bid-review-v2__cell--no-bid-cutout');
         td.innerHTML =
           '<span class="scw-bid-review-v2__no-bid-badge ' +
-            'scw-bid-review-v2__no-bid-badge--removed">REMOVED</span>';
+            'scw-bid-review-v2__no-bid-badge--removed">REMOVED</span>' +
+          detailBlockHtml(row.detail);
         appendPendingCard(td, pendingItem, row, pkg, sowId);
         return td;
       }
@@ -275,8 +332,12 @@
         td.classList.add('scw-bid-review-v2__cell--no-bid-cutout');
         var badgeText = row.surveyNoBid ? 'NOT ON BID' : 'NOT SURVEYED';
         var addLabel  = row.surveyNoBid ? '+ Reinstate' : '+ Add to bid';
+        // surveyNoBid: the bid RECORD exists (just unlinked) → show its
+        // bid-side detail so the reviewer sees what would be reinstated.
+        var detailHtml = row.surveyNoBid ? detailBlockHtml(row.detail) : '';
         td.innerHTML =
           '<span class="scw-bid-review-v2__no-bid-badge">' + escapeHtml(badgeText) + '</span>' +
+          detailHtml +
           '<div class="scw-bid-review-v2__cell-actions">' +
             '<button type="button" class="scw-bid-review__cell-action ' +
               'scw-bid-review__cell-action--add scw-bid-review-v2__cell-action" ' +

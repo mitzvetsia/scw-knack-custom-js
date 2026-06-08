@@ -195,7 +195,17 @@
       requireSubBid: raw(meta, FK.requireSubBid),
       // A bid-side row (view_3680) that has a SOW connection but ZERO bid
       // cells is "surveyed but not on any bid" → NOT ON BID treatment.
+      // The bid RECORD still exists (just unlinked from a package), so we
+      // snapshot its bid-side detail to display in the cut-out cell.
       surveyNoBid:  Object.keys(cellsByPackage).length === 0,
+      detail: (Object.keys(cellsByPackage).length === 0) ? {
+        side:    'BID',
+        product: raw(meta, FK.productName),
+        qty:     num(meta, FK.qty),
+        rate:    num(meta, FK.rate),
+        fee:     num(meta, FK.labor),
+        desc:    rawHtml(meta, FK.laborDesc)
+      } : null,
       noBid:        false,
       offSow:       false,
       mdfIdf:           connectionLabel(meta, FK.mdfIdf),
@@ -506,6 +516,7 @@
       if (connectionAll(rrec, SFK.sow).length) continue;   // still on a SOW
       if (bidItemIds[rrec.id]) continue;                   // still on a bid
       removedSeen[rrec.id] = true;
+      var aIdx = sowItemIndex[rrec.id] || null;
       removedRows.push({
         id:               rrec.id,
         sowItem:          rrec.id,
@@ -522,7 +533,15 @@
         surveyNoBid:      false,
         offSow:           false,
         removed:          true,
-        sowItemData:      sowItemIndex[rrec.id]   || null,
+        // What the item WAS — SOW-side snapshot (the bid record is gone).
+        detail: {
+          side:    'SOW',
+          product: (aIdx && aIdx.productName) || connectionLabel(rrec, SFK.product) || raw(rrec, SFK.productName),
+          qty:     aIdx ? aIdx.qty : num(rrec, SFK.qty),
+          fee:     aIdx ? aIdx.fee : num(rrec, SFK.fee),
+          desc:    aIdx ? aIdx.laborDesc : rawHtml(rrec, SFK.laborDesc)
+        },
+        sowItemData:      aIdx,
         sowFullRecord:    sowFullByItem[rrec.id]  || null
       });
     }
@@ -547,6 +566,15 @@
       var obIdx = obsi ? (sowItemIndex[obsi] || null) : null;
       obrow.sowItemData   = obIdx;
       obrow.sowFullRecord = obsi ? (sowFullByItem[obsi] || null) : null;
+      // What it WAS — bid-side snapshot read straight off the leftover
+      // view_3680 record (its per-package cell is gone with the package).
+      obrow.detail = {
+        side:    'BID',
+        product: raw(obrec, FK.productName) || obrow.productName,
+        qty:     num(obrec, FK.qty),
+        fee:     num(obrec, FK.labor),
+        desc:    rawHtml(obrec, FK.laborDesc)
+      };
       removedRows.push(obrow);
     }
 
