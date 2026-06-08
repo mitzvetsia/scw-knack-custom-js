@@ -374,8 +374,13 @@
       var noteHtml = (row && row.surveyNotes)
         ? '<div class="scw-bid-review-v2__cell-survey-note" title="' +
             escapeHtml(row.surveyNotes) + '">' +
-            '<span class="scw-bid-review-v2__cell-survey-note-label">Survey Note</span> ' +
-            escapeHtml(row.surveyNotes) + '</div>'
+            '<span class="scw-bid-review-v2__cell-survey-note-icon">' +
+              SURVEY_NOTES_SVG + '</span>' +
+            '<div class="scw-bid-review-v2__cell-survey-note-body">' +
+              '<span class="scw-bid-review-v2__cell-survey-note-label">Survey Note</span>' +
+              '<span class="scw-bid-review-v2__cell-survey-note-text">' +
+                escapeHtml(row.surveyNotes) + '</span>' +
+            '</div></div>'
         : '';
       var actions  = '';
       if (row) {
