@@ -312,36 +312,33 @@
 
     if (!cell) {
       td.classList.add('scw-bid-review-v2__cell--empty');
-      // A bid RECORD exists for this row but isn't a cell on this package
-      // — it's unlinked from the bid (surveyNoBid) or was removed. Show
-      // its details inside the cut-out (the record DOES exist).
-      var hasBidRecord = row && row.detail && row.detail.side === 'BID';
-      if (hasBidRecord) {
-        td.classList.add('scw-bid-review-v2__cell--no-bid-cutout');
-        var badge = row.removed ? 'REMOVED' : (row.surveyNoBid ? 'NOT ON BID' : '');
-        var badgeCls = 'scw-bid-review-v2__no-bid-badge' +
-          (row.removed ? ' scw-bid-review-v2__no-bid-badge--removed' : '');
-        // Reinstate only for surveyNoBid (record exists, just unlinked);
-        // removed items are read-only.
-        var actions = (row.surveyNoBid && !row.removed) ?
-          ('<div class="scw-bid-review-v2__cell-actions">' +
-            '<button type="button" class="scw-bid-review__cell-action ' +
-              'scw-bid-review__cell-action--add scw-bid-review-v2__cell-action" ' +
-              crAttrs('cell_add_to_bid', row.id, pkgId, sowId) + '>+ Reinstate</button>' +
-          '</div>') : '';
-        td.innerHTML =
-          (badge ? '<span class="' + badgeCls + '">' + badge + '</span>' : '') +
-          detailBlockHtml(row.detail) + actions;
-      } else {
-        // No bid record on this package at all → a truly blank cell.
-        // Offer "+ Add to bid" unless the row was intentionally removed.
-        td.innerHTML = '<span class="scw-bid-review-v2__cell-empty-mark">—</span>' +
-          ((row && !row.removed) ? '<div class="scw-bid-review-v2__cell-actions">' +
-            '<button type="button" class="scw-bid-review__cell-action ' +
-              'scw-bid-review__cell-action--add scw-bid-review-v2__cell-action" ' +
-              crAttrs('cell_add_to_bid', row.id, pkgId, sowId) + '>+ Add to bid</button>' +
-          '</div>' : '');
+      // Assumptions aren't "on a bid" in the priced sense — leave blank.
+      if (isAssumption) {
+        td.innerHTML = '<span class="scw-bid-review-v2__cell-empty-mark">—</span>';
+        appendPendingCard(td, pendingItem, row, pkg, sowId);
+        return td;
       }
+      // Any real line-item row with no bid cell here is "not on this bid"
+      // → blue diagonal hash. If a bid record exists elsewhere (unlinked
+      // surveyNoBid, or removed) show its details inside the hash.
+      td.classList.add('scw-bid-review-v2__cell--no-bid-cutout');
+      var hasBidRecord = row && row.detail && row.detail.side === 'BID';
+      var badge    = (row && row.removed) ? 'REMOVED' : 'Removed from bid';
+      var badgeCls = 'scw-bid-review-v2__no-bid-badge' +
+        ((row && row.removed) ? ' scw-bid-review-v2__no-bid-badge--removed' : '');
+      var detail   = hasBidRecord ? detailBlockHtml(row.detail) : '';
+      var actions  = '';
+      if (row && !row.removed) {
+        var addLabel = row.surveyNoBid ? '+ Reinstate' : '+ Add to bid';
+        actions =
+          '<div class="scw-bid-review-v2__cell-actions">' +
+            '<button type="button" class="scw-bid-review__cell-action ' +
+              'scw-bid-review__cell-action--add scw-bid-review-v2__cell-action" ' +
+              crAttrs('cell_add_to_bid', row.id, pkgId, sowId) + '>' + addLabel + '</button>' +
+          '</div>';
+      }
+      td.innerHTML =
+        '<span class="' + badgeCls + '">' + badge + '</span>' + detail + actions;
       appendPendingCard(td, pendingItem, row, pkg, sowId);
       return td;
     }
