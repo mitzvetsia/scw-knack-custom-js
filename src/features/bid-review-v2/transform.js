@@ -219,6 +219,8 @@
       sowProduct:    connectionLabel(meta, FK.sowProduct) || raw(meta, FK.sowProduct),
       sowLaborDesc:  rawHtml(meta, FK.sowLaborDesc),
       sowFee:        num(meta, FK.sowFee),
+      // Per-item survey note lives on the bid record (field_2412), v1 parity.
+      surveyNotes:   raw(meta, FK.notes),
       cellsByPackage: cellsByPackage
     };
   }
