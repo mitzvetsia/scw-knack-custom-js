@@ -204,6 +204,9 @@
         textarea.className = 'scw-svbv-modal__textarea';
         textarea.placeholder = opts.inputPlaceholder ||
           'Type a survey note for this item…';
+        // Prefill with any existing note so the user edits in place
+        // rather than starting blank.
+        if (opts.inputValue) textarea.value = opts.inputValue;
         body.appendChild(textarea);
       }
       modal.appendChild(body);
@@ -218,7 +221,9 @@
       okBtn.type = 'button';
       okBtn.className = 'scw-svbv-btn scw-svbv-btn--ok';
       okBtn.textContent = opts.okLabel || 'OK';
-      if (opts.withInput) okBtn.disabled = true;
+      // Require text for input modals — but a prefilled note already
+      // satisfies that, so only disable when empty.
+      if (opts.withInput) okBtn.disabled = !(textarea.value && textarea.value.trim());
       foot.appendChild(cancelBtn);
       foot.appendChild(okBtn);
       modal.appendChild(foot);
@@ -721,24 +726,26 @@
   function promptBidRemovalNote(viewId, recordId, beforeIds) {
     if (_bidGateModalOpen) return;
     _bidGateModalOpen = true;
+    var existing = readNoteText(viewId, recordId);
     showModal({
       kind: 'warn',
       title: 'Survey note required',
       html:
         '<p>You\'re <strong>removing this item from the bid</strong>.</p>' +
-        '<p>Capture a survey note explaining why — it\'s appended to any ' +
-        'existing note on the item.</p>',
+        '<p>Add to the survey note explaining why' +
+        (existing ? ' — the existing note is shown below; edit or add to it.' : '.') +
+        '</p>',
       inputPlaceholder: 'e.g. Item not needed per customer; duplicate; etc.',
+      inputValue: existing,
       withInput: true,
       okLabel: 'Save with note',
       cancelLabel: 'Cancel — restore bid'
     }).then(function (r) {
       _bidGateModalOpen = false;
       if (r.ok) {
-        // Append to any existing note rather than overwriting it.
-        var existing = readNoteText(viewId, recordId);
-        var combined = existing ? (existing + ' - ' + r.value) : r.value;
-        var body = {}; body[NOTES] = combined;
+        // The textarea was prefilled with the existing note, so its
+        // value IS the full note — write it verbatim (no re-append).
+        var body = {}; body[NOTES] = r.value;
         putRecord(viewId, recordId, body);
       } else {
         // Re-attach the bid the user just removed, then refresh so the
