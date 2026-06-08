@@ -164,9 +164,10 @@
       return td;
     }
 
-    // On-bid but no longer on THIS SOW → blue dashed cut-out so it reads
-    // as detached from the SOW (the bid columns stay normal).
-    if (row && row.offSow) td.classList.add('scw-bid-review-v2__sow-cell--off-sow');
+    // On-bid-but-not-on-this-SOW (offSow) OR fully removed → blue dashed
+    // cut-out so it reads as "not actually on this SOW". Content still
+    // renders inside the cut-out so the reviewer sees what it was.
+    if (row && (row.offSow || row.removed)) td.classList.add('scw-bid-review-v2__sow-cell--off-sow');
 
     if (!sowItemData) {
       td.classList.add('scw-bid-review-v2__sow-cell--empty');

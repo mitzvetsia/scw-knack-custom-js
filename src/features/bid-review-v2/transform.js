@@ -497,11 +497,15 @@
       if (bsi) bidItemIds[bsi] = true;
     }
     var removedRows = [];
+    var removedSeen = Object.create(null);   // dedupe by SOW-item id / rec id
+
+    // Source A — view_3921 survey items off ALL SOWs and not on a bid.
     for (var rmi = 0; rmi < sowItemList.length; rmi++) {
       var rrec = sowItemList[rmi];
       if (!rrec || !rrec.id) continue;
       if (connectionAll(rrec, SFK.sow).length) continue;   // still on a SOW
       if (bidItemIds[rrec.id]) continue;                   // still on a bid
+      removedSeen[rrec.id] = true;
       removedRows.push({
         id:               rrec.id,
         sowItem:          rrec.id,
@@ -521,6 +525,46 @@
         sowItemData:      sowItemIndex[rrec.id]   || null,
         sowFullRecord:    sowFullByItem[rrec.id]  || null
       });
+    }
+
+    // Source B — leftover view_3680 bid-side records with NO bid package
+    // AND no SOW connection (buildRowsForSow drops these). Their related
+    // SOW line item dedupes against Source A.
+    for (var obi = 0; obi < records.length; obi++) {
+      var obrec = records[obi];
+      if (!obrec || !obrec.id) continue;
+      if (connectionAll(obrec, FK.bidPackage).length) continue; // still on a bid
+      if (connectionAll(obrec, FK.sow).length) continue;        // still on a SOW
+      var obsi = connectionId(obrec, FK.relatedSowItem);
+      var okey = obsi || ('rec::' + obrec.id);
+      if (removedSeen[okey] || (obsi && removedSeen[obsi])) continue;
+      removedSeen[okey] = true;
+      var obrow = buildRow(obrec, [obrec]);   // empty cells (no package)
+      obrow.removed     = true;
+      obrow.noBid       = true;
+      obrow.surveyNoBid = false;
+      obrow.offSow      = false;
+      var obIdx = obsi ? (sowItemIndex[obsi] || null) : null;
+      obrow.sowItemData   = obIdx;
+      obrow.sowFullRecord = obsi ? (sowFullByItem[obsi] || null) : null;
+      removedRows.push(obrow);
+    }
+
+    if (ns.CONFIG.debug) {
+      var _emptySow = 0;
+      for (var ds = 0; ds < sowItemList.length; ds++) {
+        if (sowItemList[ds] && !connectionAll(sowItemList[ds], SFK.sow).length) _emptySow++;
+      }
+      try {
+        console.log('[scw-br-v2] removed-items scan', {
+          sowItems: sowItemList.length,
+          sowItemsWithEmptySowConn: _emptySow,
+          bidRecords: records.length,
+          onBidRefs: Object.keys(bidItemIds).length,
+          removedRows: removedRows.length,
+          SFK_sow: SFK.sow, FK_sow: FK.sow
+        });
+      } catch (e) {}
     }
 
     var sowGrids = [];
