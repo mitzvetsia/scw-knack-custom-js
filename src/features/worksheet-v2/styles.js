@@ -221,14 +221,19 @@
     '  white-space: nowrap !important;',
     '  flex: 0 0 auto !important;',
     '}',
-    /* Promoted bracket card — subtle amber left accent so it reads
-       as a child of the line item above without screaming. */
+    /* Promoted bracket (accessory) card — reads as a child of the line
+       item above. A calm slate grouping rail (not amber, which looks like
+       a warning) + a faint tint so a run of sibling accessories reads as
+       one sub-block. The product name indents slightly for a tree feel
+       while every other column stays aligned with the parent. */
     '.scw-ws-v2-card--promoted-bracket {',
-    '  box-shadow: inset 3px 0 0 #f59e0b !important;',
+    '  box-shadow: inset 3px 0 0 #94a3b8 !important;',
+    '  background: #f8fafc !important;',
     '}',
     '.scw-ws-v2-card--promoted-bracket .scw-ws-v2-cell--product .scw-ws-v2-product-name {',
     '  font-style: italic !important;',
     '  color: #475569 !important;',
+    '  padding-left: 14px !important;',
     '}',
     '.scw-ws-v2-cell--product:hover {',
     '  border-color: #93c5fd !important;',
@@ -932,20 +937,24 @@
     '.scw-ws-v2-mh-del:hover {',
     '  background: #fee2e2 !important; color: #b91c1c !important;',
     '}',
-    /* Attached-to caption above the row for promoted accessories.
-       Muted slate-blue so it reads as metadata, not a warning. */
+    /* Attached-to caption above the row for promoted accessories. Tight,
+       muted metadata line that hugs the row — "↳ <parent>" with the tick
+       carrying the connection and the parent name kept compact. */
     '.scw-ws-v2-attached-caption {',
-    '  display: block !important;',
-    '  padding: 4px 14px 0 44px !important;', /* match row padding-left */
-    '  font: 500 11px/1.2 system-ui, -apple-system, sans-serif !important;',
+    '  display: flex !important; align-items: baseline !important; gap: 5px !important;',
+    '  padding: 5px 14px 1px 44px !important;', /* match row padding-left */
+    '  font: 500 10.5px/1.2 system-ui, -apple-system, sans-serif !important;',
     '  color: #64748b !important;',
     '  white-space: nowrap !important;',
     '  overflow: hidden !important;',
-    '  text-overflow: ellipsis !important;',
+    '}',
+    '.scw-ws-v2-attached-caption .scw-ws-v2-attached-tick {',
+    '  color: #94a3b8 !important; font-size: 12px !important; flex: 0 0 auto !important;',
     '}',
     '.scw-ws-v2-attached-caption .scw-ws-v2-attached-name {',
-    '  color: #1d4ed8 !important;',
+    '  color: #475569 !important;',
     '  font-weight: 600 !important;',
+    '  overflow: hidden !important; text-overflow: ellipsis !important; min-width: 0 !important;',
     '}',
     /* Stepper baseline tweak — keep buttons on the chip\'s midline. */
     '.scw-ws-v2-mh-stepper {',

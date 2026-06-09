@@ -1049,7 +1049,8 @@
       attachedCaption =
         '<div class="scw-ws-v2-attached-caption" ' +
           'title="Attached to ' + escapeHtml(parentRefLabel) + '">' +
-          '↳ attached to <span class="scw-ws-v2-attached-name">' +
+          '<span class="scw-ws-v2-attached-tick" aria-hidden="true">↳</span>' +
+          '<span class="scw-ws-v2-attached-name">' +
             escapeHtml(parentRefLabel) +
           '</span>' +
         '</div>';
