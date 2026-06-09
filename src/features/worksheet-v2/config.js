@@ -116,6 +116,79 @@
         buckets: {}
       }
 
+      // ── Deploy / Install Line Items (view_3915) ─────────────────────
+      // DIFFERENT object from the SOW line item — install + QA records on
+      // the deploy scene. independentFields:true means this `fields` map is
+      // used AS-IS (no SOW fallback), so any omitted logical name resolves
+      // undefined and its feature no-ops here (intended for the money
+      // columns this object doesn't have). Keep enabled:false until the
+      // render-side money-column suppression + QA surface are ported and
+      // the existing v1 worksheet on this view is turned off.
+      ,{
+        enabled:          false,
+        sourceViewKey:    'view_3915',
+        mountAfterSelector: '#view_3915',   // TODO confirm anchor; disable v1 here on enable
+        label:            'Install Line Items',
+        independentFields: true,            // different object — no DEFAULT_FIELDS fallback
+        mdfSourceViewKey: '',               // TODO: empty-L1 seed source (analogue of view_3577)
+        mdfLabelField:    '',               // TODO
+        hideMoneyColumns: true,             // no subBid/fee/hrs/mat/installFee on this object
+        fields: {
+          // identity / grouping
+          product:        'field_2846',     // CORE_product (connection — for picker/edit)
+          productName:    'field_2790',     // PRODUCT STORED_name (display text)
+          displayLabel:   'field_2802',     // LABEL_DISPLAY (E-003)
+          labelAlt:       'field_2801',     // LABEL_set label by bucket (tiebreaker)
+          dropPrefix:     'field_2823',     // REL_CONFIG_pre-fix
+          dropNumber:     'field_2798',     // LABEL_drop number
+          dropLength:     'field_2804',
+          conduit:        'field_2803',
+          bucket:         'field_2822',     // REL_CONFIG_proposal bucket (L2)
+          sortOrder:      'field_2218',     // same key as SOW
+          mdfIdf:         'field_2818',     // L1 grouping (MDF/IDF location)
+          // qty
+          qty:            'field_2789',
+          // text
+          laborDesc:      'field_2809',
+          scwNotes:       'field_2808',     // INPUT_scw external notes (direct-edit textarea)
+          // flags
+          existCabling:   'field_2807',
+          exterior:       'field_2805',
+          plenum:         'field_2806',
+          mapConn:        'field_2795',
+          requireSubBid:  'field_2796',
+          // connections
+          connectedDevices: 'field_2820',   // multi — on the switch/NVR
+          connectedDevice:  'field_2821',   // single — on the cam ("Connected To")
+          accessories:      'field_2852',   // accessories array on the parent
+          children:         'field_2852',   // same forward array (no separate mirror here)
+          parent:           'field_2853',   // accessory → parent line item
+          // photos (shared DOC_photos object — identical keys to SOW)
+          photoImage:     'field_771',
+          photoType:      'field_2445',
+          photoRequired:  'field_2446',
+          photoCompleted: 'field_2447',
+          photoNotes:     'field_114',
+          // product catalog (shared object — identical keys)
+          productCompat:    'field_2236',
+          productCompatAlt: 'field_2205',
+          productBucket:    'field_133',
+          // install / QA group (new — no SOW analogue; port v1 QA surface)
+          installStatus:    'field_2825',
+          qaStatus:         'field_2859',
+          qaClientSignoff:  'field_2860',
+          qaNotes:          'field_2861',
+          qaPassed:         'field_2830',
+          qaHistory:        'field_2865',
+          qaCompletedBy:    'field_2862',
+          qaCompletedDate:  'field_2863'
+        },
+        buckets: {
+          // shared proposal-bucket object; only the extra one this view shows
+          otherEquip: '5df12ce036f91b0015404d78'   // "Other Equipment"
+        }
+      }
+
       // ── TEMPLATE (not yet enabled) — sales build-SOW page ───────────
       // Deploy target derived from view_3450. Fill in only the fields that
       // DIFFER from DEFAULT_FIELDS, the mount anchor, and the mdf source.
