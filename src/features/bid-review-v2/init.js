@@ -738,6 +738,7 @@
     wireRowExpand();
     wirePanelClose();
     wireHeaderActions();
+    if (ns.columnCollapse && typeof ns.columnCollapse.wire === 'function') ns.columnCollapse.wire();
     hookV1Rerender();
     if (ns.data && ns.render) {
       ns.data.subscribe(function (snapshot) {

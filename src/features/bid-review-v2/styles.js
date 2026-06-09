@@ -99,6 +99,37 @@
     '  color: rgba(255,255,255,0.8);',
     '  font-variant-numeric: tabular-nums;',
     '}',
+    /* ── Collapsible bid columns (v1 parity) ────────────────── */
+    '.scw-bid-review-v2__head-cell--title { position: relative; }',
+    '.scw-bid-review-v2__pkg-collapse-btn {',
+    '  position: absolute; top: 4px; right: 4px; z-index: 1;',
+    '  width: 18px; height: 18px; line-height: 16px; padding: 0;',
+    '  border: 1px solid #cbd5e1; border-radius: 4px;',
+    '  background: #fff; color: #64748b; font-size: 12px; cursor: pointer;',
+    '}',
+    '.scw-bid-review-v2__pkg-collapse-btn:hover { background: #f1f5f9; color: #0f172a; }',
+    /* Expand handle — hidden until the column is collapsed. */
+    '.scw-bid-review-v2__pkg-expand { display: none; }',
+    /* Collapsed column: shrink every cell to a thin strip + hide content. */
+    '.scw-bid-review-v2__pkg-col--collapsed {',
+    '  width: 32px !important; min-width: 32px !important; max-width: 32px !important;',
+    '  padding-left: 0 !important; padding-right: 0 !important;',
+    '  overflow: hidden; position: relative; background: #f8fafc !important;',
+    '}',
+    '.scw-bid-review-v2__pkg-col--collapsed > * { display: none !important; }',
+    '.scw-bid-review-v2__head-cell--title.scw-bid-review-v2__pkg-col--collapsed .scw-bid-review-v2__pkg-expand {',
+    '  display: flex !important; flex-direction: column; align-items: center; gap: 6px;',
+    '  width: 100%; min-height: 70px; padding: 8px 0; border: none; cursor: pointer;',
+    '  background: transparent; color: #07467c; font-weight: 700; font-size: 11px;',
+    '}',
+    '.scw-bid-review-v2__head-cell--title.scw-bid-review-v2__pkg-col--collapsed .scw-bid-review-v2__pkg-expand:hover {',
+    '  background: #eef2f7;',
+    '}',
+    '.scw-bid-review-v2__pkg-expand-icon { font-size: 14px; }',
+    '.scw-bid-review-v2__pkg-expand-label {',
+    '  writing-mode: vertical-rl; transform: rotate(180deg);',
+    '  letter-spacing: 0.5px; white-space: nowrap;',
+    '}',
     /* ── Table + thead ─────────────────────────────────────── */
     /* table-layout:fixed + width:100% makes the bid columns divide the
        available width equally instead of each forcing a min-width (which

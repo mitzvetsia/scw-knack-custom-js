@@ -360,8 +360,9 @@
    */
   function buildBidCell(cell, row, pkg, sowId, isAssumption) {
     var td = document.createElement('td');
-    td.className = 'scw-bid-review-v2__cell';
+    td.className = 'scw-bid-review-v2__cell scw-bid-review-v2__pkg-col';
     var pkgId = pkg && pkg.id;
+    if (pkgId) td.setAttribute('data-pkg-id', pkgId);
     var pendingItem = row ? findPendingItem(row.id, pkgId) : null;
 
     if (!cell) {
@@ -842,12 +843,27 @@
 
   function pkgTh(pkg, bandCls, inner) {
     return '<th class="scw-bid-review-v2__th scw-bid-review-v2__head--pkg ' +
-        bandCls + '" data-pkg-id="' + escapeHtml(pkg.id) + '">' + inner + '</th>';
+        'scw-bid-review-v2__pkg-col ' + bandCls + '" data-pkg-id="' +
+        escapeHtml(pkg.id) + '">' + inner + '</th>';
   }
 
-  function pkgTitleCell(pkg) {
+  function pkgTitleCell(pkg, sowId) {
+    var pair = escapeHtml((sowId || '') + '::' + (pkg.id || ''));
+    var label = escapeHtml(pkg.bidName || 'Bid');
+    // Collapse handle (»), an expand handle («) shown only while collapsed,
+    // and the title. Wired by column-collapse.js via the data-* attrs.
+    var controls =
+      '<button type="button" class="scw-bid-review-v2__pkg-collapse-btn" ' +
+        'data-scw-br-v2-colcollapse="' + pair + '" title="Collapse this bid column" ' +
+        'aria-label="Collapse bid column">&raquo;</button>' +
+      '<button type="button" class="scw-bid-review-v2__pkg-expand" ' +
+        'data-scw-br-v2-colexpand="' + pair + '" title="Expand ' + label + '" ' +
+        'aria-label="Expand bid column">' +
+        '<span class="scw-bid-review-v2__pkg-expand-icon">&laquo;</span>' +
+        '<span class="scw-bid-review-v2__pkg-expand-label">' + label + '</span>' +
+      '</button>';
     return pkgTh(pkg, 'scw-bid-review-v2__head-cell--title',
-      '<div class="scw-bid-review-v2__head-title">Subcontractor Bid</div>');
+      controls + '<div class="scw-bid-review-v2__head-title">Subcontractor Bid</div>');
   }
 
   function pkgTotalsCell(pkg) {
@@ -1019,7 +1035,7 @@
       '<th class="scw-bid-review-v2__th scw-bid-review-v2__th--photos" rowspan="4">Photos</th>' +
       sowTh('scw-bid-review-v2__head-cell--title',
         '<div class="scw-bid-review-v2__head-title">SCW SOW</div>');
-    for (var p1 = 0; p1 < pkgs.length; p1++) r1Html += pkgTitleCell(pkgs[p1]);
+    for (var p1 = 0; p1 < pkgs.length; p1++) r1Html += pkgTitleCell(pkgs[p1], grid.sowId);
     r1.innerHTML = r1Html;
     thead.appendChild(r1);
 
@@ -1077,6 +1093,14 @@
     }
     table.appendChild(tbody);
     section.appendChild(table);
+
+    // Re-assert persisted bid-column collapse state (thead + tbody were
+    // just rebuilt). Cells already carry the column class + data-pkg-id.
+    if (ns.columnCollapse && typeof ns.columnCollapse.applyToSection === 'function') {
+      var pkgIds = [];
+      for (var pc = 0; pc < pkgs.length; pc++) if (pkgs[pc] && pkgs[pc].id) pkgIds.push(pkgs[pc].id);
+      ns.columnCollapse.applyToSection(section, grid.sowId, pkgIds);
+    }
     return section;
   }
 
