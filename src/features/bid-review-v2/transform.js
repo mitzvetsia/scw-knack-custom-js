@@ -190,6 +190,7 @@
       id:           meta.id,
       sowItem:      connectionId(meta, FK.relatedSowItem),
       parentId:     connectionId(meta, 'field_2464'),
+      requireSubBidSow: raw(meta, 'field_2479'),
       displayLabel: raw(meta, FK.displayLabel),
       productName:  raw(meta, FK.productName),
       sortOrder:    num(meta, FK.sortOrder),
@@ -237,10 +238,13 @@
   // Order rows so each accessory follows its parent. Top-level rows sort
   // by sortOrder then displayLabel; an accessory whose parent isn't in
   // this group is treated as top-level so it never disappears.
-  // True when a row's Require Sub Bid is explicitly No — these items are
-  // children only (never their own grid row). Empty/unknown → not hidden.
+  // Require Sub Bid (field_2479, the SOW line-item flag — NOT field_2478,
+  // which is the bid record's flag) explicitly No/false. Mirrors the v2
+  // worksheet's isRequireSubBidNoOrFalse: a row with a field_2464 parent +
+  // this flag No is a child-only accessory, hidden from the grid (shown only
+  // under its parent), regardless of proposal bucket.
   function isRequireSubBidNo(row) {
-    var v = row && row.requireSubBid;
+    var v = row && row.requireSubBidSow;
     if (v === false) return true;
     if (v == null) return false;
     var s = v.toString().replace(/<[^>]*>/g, '').trim().toLowerCase();
@@ -369,6 +373,7 @@
           id:               rec.id,
           sowItem:          rec.id,                 // it IS a SOW item
           parentId:         connectionId(rec, 'field_2464'),
+          requireSubBidSow: raw(rec, 'field_2479'),
           displayLabel:     raw(rec, SFK.displayLabel) || connectionLabel(rec, SFK.product),
           productName:      raw(rec, SFK.productName),
           sortOrder:        num(rec, SFK.sortOrder),
@@ -604,6 +609,7 @@
         id:               rrec.id,
         sowItem:          rrec.id,
         parentId:         connectionId(rrec, 'field_2464'),
+        requireSubBidSow: raw(rrec, 'field_2479'),
         displayLabel:     raw(rrec, SFK.displayLabel) || connectionLabel(rrec, SFK.product),
         productName:      raw(rrec, SFK.productName),
         sortOrder:        num(rrec, SFK.sortOrder),
@@ -793,15 +799,18 @@
         packages[pi].pdfFilename = info.pdfFilename || '';
       }
 
-      // v2 worksheet rule: a SOW item whose Require Sub Bid (field_2478) is
-      // No is an accessory that shows ONLY as a child (in its parent's
-      // embedded card / accessory list), never as its own grid row. Hide
-      // those from the displayed rows; their parent still shows and carries
-      // the wrong-accessory rollup chip.
+      // v2 worksheet rule: a SOW item that has a field_2464 parent AND whose
+      // Require Sub Bid (field_2479) is No/false is a child-only accessory —
+      // shown only under its parent (embedded card), never as its own grid
+      // row. Hide only when the parent is loaded here (otherwise it would
+      // vanish with nowhere to show), mirroring collectAttachedAccessoryIds.
       var displayRows = [];
       for (var fr = 0; fr < rows.length; fr++) {
-        if (isRequireSubBidNo(rows[fr])) continue;
-        displayRows.push(rows[fr]);
+        var frow = rows[fr];
+        var childOnly = isRequireSubBidNo(frow) && frow.parentId &&
+                        !!sowItemIndex[frow.parentId];
+        if (childOnly) continue;
+        displayRows.push(frow);
       }
       var groups = groupRows(displayRows);
       if (otherSowRows.length) {
