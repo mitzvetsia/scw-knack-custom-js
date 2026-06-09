@@ -771,6 +771,18 @@
     e.dataTransfer.setData('text/plain', card.getAttribute('data-photo-id'));
 
     var strip = getStrip(card);
+    // TEMP diagnostic — strip found + how many valid (empty + required)
+    // drop targets exist in it.
+    try {
+      var dbgT = strip ? strip.querySelectorAll(
+        '.' + CARD_CLS + '[data-photo-required="true"][data-photo-has-image="false"]') : [];
+      var dbgAll = strip ? strip.querySelectorAll('.' + CARD_CLS) : [];
+      console.log('[SCW photo-drag] handleDragStart', {
+        stripFound: !!strip,
+        cardsInStrip: dbgAll.length,
+        emptyRequiredTargets: dbgT.length
+      });
+    } catch (x) {}
     if (strip) highlightTargets(strip, card.getAttribute('data-photo-id'));
   }
 
