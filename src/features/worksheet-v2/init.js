@@ -57,6 +57,7 @@
    * source view isn't on this scene, or the panel is already mounted.
    */
   function tryMount(vcfg) {
+    if (!vcfg || vcfg.enabled === false) return;   // per-view kill switch
     if (document.getElementById('scw-ws-v2-' + vcfg.sourceViewKey)) return;
     var anchor = document.querySelector(vcfg.mountAfterSelector);
     if (!anchor) return; // source view not on this scene
@@ -78,6 +79,7 @@
     if (!ns.data) return;
     var views = ns.CONFIG.views || [];
     views.forEach(function (vcfg) {
+      if (!vcfg || vcfg.enabled === false) return;   // per-view kill switch
       // Background polling — keep v2 in sync with records added via
       // API / other tabs / Make scenarios. 2-min default, 15-sec
       // burst for 5 minutes after a known local change.
