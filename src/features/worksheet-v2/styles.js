@@ -800,6 +800,28 @@
     '  border-radius: 3px !important;',
     '}',
 
+    /* Disconnected call-out — flag the Connected Device field when the
+       cam/reader has no connected device. Rose to match the disconnected
+       chip palette. Icon sits inline before the label. */
+    '.scw-ws-v2-detail-field--warn .scw-ws-v2-detail-label {',
+    '  color: #be123c !important; font-weight: 700 !important;',
+    '  display: inline-flex !important; align-items: center !important; gap: 5px !important;',
+    '}',
+    '.scw-ws-v2-detail-warn-ic {',
+    '  display: inline-flex !important; align-items: center !important;',
+    '  color: #be123c !important; flex: 0 0 auto !important;',
+    '}',
+    '.scw-ws-v2-detail-warn-ic svg { width: 13px !important; height: 13px !important; }',
+    '.scw-ws-v2-detail-field--warn .scw-ws-v2-conn-btn {',
+    '  border-color: #be123c !important; background: #fff1f2 !important;',
+    '}',
+    '.scw-ws-v2-detail-field--warn .scw-ws-v2-conn-btn-val {',
+    '  color: #9f1239 !important;',
+    '}',
+    '.scw-ws-v2-detail-field--warn .scw-ws-v2-conn-btn:hover {',
+    '  border-color: #9f1239 !important; background: #ffe4e6 !important;',
+    '}',
+
     /* Accessories widget — chip list with edit links + add */
     '.scw-ws-v2-mh-list {',
     '  display: flex !important; flex-wrap: wrap !important; gap: 4px !important;',

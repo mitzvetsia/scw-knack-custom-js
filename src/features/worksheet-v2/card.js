@@ -161,6 +161,17 @@
       && ns.warnings.isAccessoryMismatch(accessoryId));
   }
 
+  /** True when this record carries the given issue type, per the warnings
+   *  cache analyzed earlier this render (e.g. 'disconnected'). */
+  function hasIssue(rec, type) {
+    if (!rec || !rec.id || !ns.warnings ||
+        typeof ns.warnings.getIssuesFor !== 'function') return false;
+    try {
+      var issues = ns.warnings.getIssuesFor(rec.id) || [];
+      return issues.indexOf(type) !== -1;
+    } catch (e) { return false; }
+  }
+
   /** Quantity (field_1964) input — non-editable when field_2230 is yes.
    *  Locked rendering keeps the value visible on a white background per
    *  CLAUDE.md's "locked fields" rule (no opacity dimming). */
@@ -579,7 +590,7 @@
    * styled cell. Click handler in init.js reads the data-* attrs and
    * opens the picker modal.
    */
-  function detailConnection(rec, viewKey, fieldKey, label) {
+  function detailConnection(rec, viewKey, fieldKey, label, warn) {
     // Special-case the Parent connection: the line-item object\'s auto
     // identifier is "<recordId> (<mdfLabel>)", which reads like garbage.
     // readParentRef does a proper product/drop lookup — reuse it.
@@ -589,8 +600,19 @@
     } else {
       val = readField(rec, fieldKey) || '(none)';
     }
-    return '<div class="scw-ws-v2-detail-field scw-ws-v2-detail-field--conn">' +
-      '<div class="scw-ws-v2-detail-label">' + escapeHtml(label) + '</div>' +
+    // When warn is set (e.g. a disconnected cam/reader's Connected Device
+    // field), prepend the issue icon to the label and flag the wrapper so
+    // CSS can call out the offending field.
+    var labelHtml = escapeHtml(label);
+    if (warn) {
+      var warnIc = (ns.warnings && ns.warnings.ICONS && ns.warnings.ICONS.disconnected) || '';
+      labelHtml = '<span class="scw-ws-v2-detail-warn-ic" ' +
+        'title="No connected device — this cam/reader is disconnected">' +
+        warnIc + '</span>' + labelHtml;
+    }
+    return '<div class="scw-ws-v2-detail-field scw-ws-v2-detail-field--conn' +
+        (warn ? ' scw-ws-v2-detail-field--warn' : '') + '">' +
+      '<div class="scw-ws-v2-detail-label">' + labelHtml + '</div>' +
       '<button type="button" class="scw-ws-v2-conn-btn" ' +
         'data-scw-ws-v2-conn="' + escapeHtml(fieldKey) + '" ' +
         'data-scw-ws-v2-record="' + escapeHtml(rec.id) + '" ' +
@@ -865,7 +887,8 @@
         '</div>' +
         '<div class="scw-ws-v2-detail-zone scw-ws-v2-detail-zone--connections">' +
           detailMountingHardware(rec, viewKey) +
-          detailConnection(rec,       viewKey, 'field_2197', 'Connected Device') +
+          detailConnection(rec,       viewKey, 'field_2197', 'Connected Device',
+                           hasIssue(rec, 'disconnected')) +
           detailConnection(rec,       viewKey, 'field_1946', 'MDF / IDF') +
         '</div>' +
       '</div>' +
