@@ -300,7 +300,10 @@
   /** Issue-chip strip rendered into the summary head. Reads from
    *  ns.warnings cache (analyzed once per render in render.js). Empty
    *  string when there are no flagged records in the given set. */
-  function fmtIssueChips(recordIds) {
+  // asSpan=true renders non-interactive <span> chips (used inside the L1
+  // header button, where a nested <button> would be invalid + fight the
+  // accordion toggle). The grand summary keeps clickable button chips.
+  function fmtIssueChips(recordIds, asSpan) {
     if (!ns.warnings || typeof ns.warnings.getCountsForRecords !== 'function') return '';
     if (!recordIds.length) return '';
     var counts;
@@ -314,16 +317,21 @@
       var k = types[t];
       var n = counts[k] || 0;
       if (!n) continue;
-      parts.push(
-        '<button type="button" class="scw-ws-v2-warn-chip" ' +
-          'data-scw-ws-v2-warn-chip="' + k + '" ' +
-          'title="Click to highlight the ' + n + ' affected row' +
-          (n === 1 ? '' : 's') + '">' +
-          (icons[k] || WARN_SVG) +
-          '<span class="scw-ws-v2-warn-chip-n">' + n + '</span>' +
-          '<span class="scw-ws-v2-warn-chip-l">' + esc(labels[k] || k) + '</span>' +
-        '</button>'
-      );
+      var inner =
+        (icons[k] || WARN_SVG) +
+        '<span class="scw-ws-v2-warn-chip-n">' + n + '</span>' +
+        '<span class="scw-ws-v2-warn-chip-l">' + esc(labels[k] || k) + '</span>';
+      if (asSpan) {
+        parts.push('<span class="scw-ws-v2-warn-chip scw-ws-v2-warn-chip--static">' +
+          inner + '</span>');
+      } else {
+        parts.push(
+          '<button type="button" class="scw-ws-v2-warn-chip" ' +
+            'data-scw-ws-v2-warn-chip="' + k + '" ' +
+            'title="Click to highlight the ' + n + ' affected row' +
+            (n === 1 ? '' : 's') + '">' + inner + '</button>'
+        );
+      }
     }
     return parts.length
       ? '<span class="scw-ws-v2-warn-chips">' + parts.join('') + '</span>'
@@ -364,7 +372,7 @@
         '<tbody>' + buildSectionsRows(agg) + '</tbody>' +
       '</table>';
 
-    var chips = fmtIssueChips(collectRecordIds(l1));
+    // Issue chips now live in the MDF/IDF header bar (render.js), not here.
     var wrap = document.createElement('div');
     wrap.className = 'scw-ws-v2-summary';
     wrap.innerHTML =
@@ -373,7 +381,6 @@
         '<span class="scw-ws-v2-summary-chev">' + CHEV_SVG + '</span>' +
         '<span class="scw-ws-v2-summary-title">Summary</span>' +
         '<span class="scw-ws-v2-summary-stats">' + esc(fmtSummaryStat(agg.totals)) + '</span>' +
-        chips +
       '</button>' +
       '<div class="scw-ws-v2-summary-body">' + tableHtml + '</div>';
     return wrap;
@@ -420,9 +427,16 @@
     return wrap;
   }
 
+  // Issue-count chips for one L1's records — rendered into the MDF/IDF
+  // header bar by render.js (instead of the summary head).
+  function issueChipsForL1(l1) {
+    return fmtIssueChips(collectRecordIds(l1), true);
+  }
+
   ns.summary = {
     buildL1Summary:    buildL1Summary,
-    buildGrandSummary: buildGrandSummary
+    buildGrandSummary: buildGrandSummary,
+    issueChipsForL1:   issueChipsForL1
   };
 })();
 /*** END WORKSHEET V2 — SUMMARY ***********************************************/

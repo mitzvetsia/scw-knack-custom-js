@@ -111,7 +111,7 @@
     '    64px                  /* +Mat    */',
     '    72px                  /* fee     */',
     '    52px                  /* sow     */',
-    '    68px                  /* warning (up to 3 icon chips) */',
+    '    28px                  /* warning (stacked icon chips) */',
     '    28px                  /* kebab */ !important;',
     '  gap: 6px !important;',
     '  align-items: center !important;',
@@ -124,7 +124,7 @@
     '  display: grid !important;',
     '  grid-template-columns:',
     '    20px 64px minmax(160px, 1.4fr) minmax(160px, 1.6fr)',
-    '    72px 78px 64px 64px 72px 52px 68px 28px !important;',
+    '    72px 78px 64px 64px 72px 52px 28px 28px !important;',
     '  gap: 6px !important;',
     '  align-items: center !important;',
     '  padding: 8px 10px 4px 44px !important;', /* match row padding-left */
@@ -241,9 +241,9 @@
        badge. Icon-only amber pills; label is the tooltip. */
     '.scw-ws-v2-cell--warn {',
     '  display: flex !important;',
-    '  flex-wrap: wrap !important;',
+    '  flex-direction: column !important;',
     '  align-items: center !important;',
-    '  justify-content: flex-end !important;',
+    '  justify-content: center !important;',
     '  gap: 3px !important;',
     '  padding: 0 !important;',
     '}',
@@ -1951,6 +1951,21 @@
     '}',
     '.scw-ws-v2-warn-chip svg { flex: 0 0 auto !important; }',
     '.scw-ws-v2-warn-chip-n { font-weight: 700 !important; font-variant-numeric: tabular-nums !important; }',
+    /* Issue chips rendered inside the MDF/IDF (L1) header bar. Sit between
+       the label and the record count, with a solid amber pill so they read
+       on the dark-blue header. Non-interactive (--static). */
+    '.scw-ws-v2-l1-head .scw-ws-v2-warn-chips {',
+    '  order: 0 !important; margin-left: 0 !important; gap: 4px !important;',
+    '}',
+    '.scw-ws-v2-l1-head .scw-ws-v2-warn-chip {',
+    '  background: #fde68a !important; color: #7c2d12 !important;',
+    '  border-color: #f59e0b !important; padding: 1px 8px !important;',
+    '  font-size: 10.5px !important;',
+    '}',
+    '.scw-ws-v2-warn-chip--static { cursor: default !important; }',
+    '.scw-ws-v2-l1-head .scw-ws-v2-warn-chip:hover {',
+    '  background: #fde68a !important; border-color: #f59e0b !important;',
+    '}',
     /* Card-flash animation triggered when a warning chip is clicked
        — amber pulse on the matching cards so the user sees them at
        a glance after scrolling. */

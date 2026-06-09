@@ -89,9 +89,15 @@
     head.setAttribute('data-scw-ws-v2-view', sourceViewKey);
     head.setAttribute('aria-expanded', l1.isOpen ? 'true' : 'false');
 
+    // Aggregate issue chips for this MDF/IDF group, rendered inline in the
+    // header bar. Read from the warnings cache analyzed earlier this render.
+    var issueChips = (ns.summary && typeof ns.summary.issueChipsForL1 === 'function')
+      ? (ns.summary.issueChipsForL1(l1) || '') : '';
+
     head.innerHTML =
       '<span class="scw-ws-v2-l1-chevron">' + L1_CHEVRON_SVG + '</span>' +
       '<span class="scw-ws-v2-l1-label">' + escapeHtml(l1.label) + '</span>' +
+      issueChips +
       '<span class="scw-ws-v2-l1-count">' + l1.recordCount + '</span>';
 
     return head;
