@@ -75,9 +75,10 @@
   function buildBracketMaps() {
     var byParent = Object.create(null);
     var byAccessory = Object.create(null);
-    var dbg = { cells: 0, spans: 0, noHits: 0 };
+    var dbg = { cells: 0, spans: 0, noHits: 0, crWarn: 0 };
     var view = document.getElementById(SOW_VIEW);
     if (view) {
+      // Source 1 — raw per-accessory spans in the parent's field_2244 cell.
       var cells = view.querySelectorAll(
         'td.field_2244, td[data-field-key="field_2244"]');
       dbg.cells = cells.length;
@@ -95,6 +96,20 @@
             dbg.noHits++;
           }
         }
+      }
+      // Source 2 — connected-records.js already computes the mismatch on
+      // view_3921 and tags the offending accessory item .scw-cr-item-warn
+      // (accessory id on the inner .scw-cr-remove[data-record-id]). This is
+      // the most reliable signal since device-worksheet relocates/replaces
+      // the raw field_2244 cell into its mounting-hardware widget.
+      var warns = view.querySelectorAll('.scw-cr-item-warn');
+      dbg.crWarn = warns.length;
+      for (var w2 = 0; w2 < warns.length; w2++) {
+        var rem = warns[w2].querySelector('.scw-cr-remove[data-record-id]');
+        var aId = rem ? (rem.getAttribute('data-record-id') || '').trim() : '';
+        var pId = ownerRecordId(warns[w2]);
+        if (aId) byAccessory[aId] = true;
+        if (pId) byParent[pId] = true;
       }
     }
     // TEMP diagnostic (remove once confirmed).
