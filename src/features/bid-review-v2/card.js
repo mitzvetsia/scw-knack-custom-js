@@ -847,9 +847,9 @@
         escapeHtml(pkg.id) + '">' + inner + '</th>';
   }
 
-  function pkgTitleCell(pkg, sowId) {
+  function pkgTitleCell(pkg, sowId, idx) {
     var pair = escapeHtml((sowId || '') + '::' + (pkg.id || ''));
-    var label = escapeHtml(pkg.bidName || 'Bid');
+    var label = 'Bid ' + ((idx || 0) + 1);
     // Collapse handle (»), an expand handle («) shown only while collapsed,
     // and the title. Wired by column-collapse.js via the data-* attrs.
     var controls =
@@ -1035,7 +1035,7 @@
       '<th class="scw-bid-review-v2__th scw-bid-review-v2__th--photos" rowspan="4">Photos</th>' +
       sowTh('scw-bid-review-v2__head-cell--title',
         '<div class="scw-bid-review-v2__head-title">SCW SOW</div>');
-    for (var p1 = 0; p1 < pkgs.length; p1++) r1Html += pkgTitleCell(pkgs[p1], grid.sowId);
+    for (var p1 = 0; p1 < pkgs.length; p1++) r1Html += pkgTitleCell(pkgs[p1], grid.sowId, p1);
     r1.innerHTML = r1Html;
     thead.appendChild(r1);
 
