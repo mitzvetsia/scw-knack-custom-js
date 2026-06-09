@@ -217,8 +217,17 @@
       var openAttrs = href
         ? ' href="' + escapeHtml(href) + '"'
         : ' href="#" data-no-nav="1"';
+      // Metadata for the in-place photo viewer (lightbox). Carries the
+      // full-size url + identity so the delegated click handler can build
+      // the viewer without re-scraping the source view.
+      var reqState = p.required ? (p.completed ? 'done' : 'missing') : '';
+      var dataAttrs =
+        ' data-scw-ws-v2-photo-url="'  + escapeHtml(p.imgUrl || '') + '"' +
+        ' data-scw-ws-v2-photo-id="'   + escapeHtml(p.id)          + '"' +
+        ' data-scw-ws-v2-photo-type="' + escapeHtml(p.type || '')  + '"' +
+        ' data-scw-ws-v2-photo-req="'  + reqState + '"';
       html +=
-        '<a class="' + cls + '"' + openAttrs +
+        '<a class="' + cls + '"' + openAttrs + dataAttrs +
             ' title="' + escapeHtml((p.type || 'Photo') + (p.required ? ' (Required)' : '')) + '">' +
           thumb + typeHtml + reqHtml +
         '</a>';
@@ -237,9 +246,163 @@
     return strip;
   }
 
+  /* ── In-place photo viewer (ported from bid-review-v2's photo viewer) ──
+   * Clicking a thumbnail in the inline strip opens a fullscreen lightbox
+   * with a large stage, prev/next + a thumbnail strip to flip between the
+   * row's photos, "Open ↗" (full size, new tab), and an "Edit" deep-link
+   * to Knack's edit page so that capability isn't lost. Esc / backdrop /
+   * ✕ dismiss; ← / → navigate. */
+  function captionFor(item) {
+    var bits = [];
+    if (item.type) bits.push(item.type);
+    if (item.req === 'missing') bits.push('Required — not completed');
+    else if (item.req === 'done') bits.push('Required ✓');
+    return bits.join(' · ');
+  }
+
+  function openLightbox(items, startIdx) {
+    if (!items || !items.length) return;
+    var idx = (startIdx >= 0 && startIdx < items.length) ? startIdx : 0;
+
+    var overlay = document.createElement('div');
+    overlay.className = 'scw-ws-v2-lightbox';
+    overlay.innerHTML =
+      '<div class="scw-ws-v2-lightbox-bar">' +
+        '<span class="scw-ws-v2-lightbox-caption"></span>' +
+        '<span class="scw-ws-v2-lightbox-actions">' +
+          '<a class="scw-ws-v2-lightbox-open" target="_blank" rel="noopener">Open ↗</a>' +
+          '<a class="scw-ws-v2-lightbox-edit">Edit</a>' +
+          '<button type="button" class="scw-ws-v2-lightbox-close" aria-label="Close">✕</button>' +
+        '</span>' +
+      '</div>' +
+      '<div class="scw-ws-v2-lightbox-main">' +
+        '<button type="button" class="scw-ws-v2-lightbox-nav scw-ws-v2-lightbox-nav--prev" aria-label="Previous">‹</button>' +
+        '<div class="scw-ws-v2-lightbox-stage"><img alt=""></div>' +
+        '<button type="button" class="scw-ws-v2-lightbox-nav scw-ws-v2-lightbox-nav--next" aria-label="Next">›</button>' +
+      '</div>' +
+      '<div class="scw-ws-v2-lightbox-strip"></div>';
+
+    var stageImg = overlay.querySelector('.scw-ws-v2-lightbox-stage img');
+    var caption  = overlay.querySelector('.scw-ws-v2-lightbox-caption');
+    var openLink = overlay.querySelector('.scw-ws-v2-lightbox-open');
+    var editLink = overlay.querySelector('.scw-ws-v2-lightbox-edit');
+    var strip    = overlay.querySelector('.scw-ws-v2-lightbox-strip');
+    var prevBtn  = overlay.querySelector('.scw-ws-v2-lightbox-nav--prev');
+    var nextBtn  = overlay.querySelector('.scw-ws-v2-lightbox-nav--next');
+    var multi    = items.length > 1;
+
+    if (!multi) {
+      prevBtn.style.display = 'none';
+      nextBtn.style.display = 'none';
+      strip.style.display = 'none';
+    } else {
+      for (var i = 0; i < items.length; i++) {
+        (function (j) {
+          var btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'scw-ws-v2-lightbox-thumb';
+          var t = document.createElement('img');
+          t.src = items[j].url; t.alt = ''; t.loading = 'lazy';
+          btn.appendChild(t);
+          btn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            idx = j; render();
+          });
+          strip.appendChild(btn);
+        })(i);
+      }
+    }
+
+    function render() {
+      var item = items[idx];
+      stageImg.src = item.url;
+      caption.textContent = captionFor(item);
+      openLink.href = item.url;
+      if (item.editHref && item.editHref !== '#') {
+        editLink.href = item.editHref;
+        editLink.style.display = '';
+      } else {
+        editLink.style.display = 'none';
+      }
+      if (multi) {
+        var thumbs = strip.children;
+        for (var i = 0; i < thumbs.length; i++) {
+          thumbs[i].classList.toggle('scw-ws-v2-lightbox-thumb--active', i === idx);
+        }
+      }
+    }
+
+    function go(delta) {
+      idx = (idx + delta + items.length) % items.length;
+      render();
+    }
+    function dismiss() {
+      if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+      document.removeEventListener('keydown', onKey);
+    }
+    function onKey(e) {
+      if (e.key === 'Escape') dismiss();
+      else if (e.key === 'ArrowLeft' && multi)  go(-1);
+      else if (e.key === 'ArrowRight' && multi) go(1);
+    }
+
+    prevBtn.addEventListener('click', function (e) { e.stopPropagation(); go(-1); });
+    nextBtn.addEventListener('click', function (e) { e.stopPropagation(); go(1); });
+    overlay.querySelector('.scw-ws-v2-lightbox-close')
+      .addEventListener('click', function (e) { e.stopPropagation(); dismiss(); });
+    // Clicking the stage image zooms-to-fit toggle is overkill — clicking
+    // anywhere on the backdrop (but not the bar/strip/nav/img) dismisses.
+    overlay.addEventListener('click', function (e) {
+      if (e.target === overlay || e.target.classList.contains('scw-ws-v2-lightbox-main') ||
+          e.target.classList.contains('scw-ws-v2-lightbox-stage')) {
+        dismiss();
+      }
+    });
+    // Don't let the Edit link's hash navigation be swallowed; allow default.
+    editLink.addEventListener('click', function () { dismiss(); });
+
+    document.addEventListener('keydown', onKey);
+    document.body.appendChild(overlay);
+    render();
+  }
+
+  // Delegated: intercept thumbnail clicks → open the viewer instead of
+  // navigating to Knack's edit page. Placeholder cards (no image) and the
+  // "+ Add" pill fall through to their default hash navigation. Bound once.
+  if (!document.documentElement.hasAttribute('data-scw-ws-v2-photo-viewer-bound')) {
+    document.documentElement.setAttribute('data-scw-ws-v2-photo-viewer-bound', '1');
+    document.addEventListener('click', function (e) {
+      var card = e.target.closest && e.target.closest('a.scw-ws-v2-photo-card');
+      if (!card) return;
+      // No image to view → let it navigate to the edit page as before.
+      if (!card.getAttribute('data-scw-ws-v2-photo-url')) return;
+      var stripEl = card.closest('.scw-ws-v2-photos-strip');
+      if (!stripEl) return;
+      var anchors = stripEl.querySelectorAll('a.scw-ws-v2-photo-card');
+      var items = [], clickedIdx = 0;
+      for (var i = 0; i < anchors.length; i++) {
+        var url = anchors[i].getAttribute('data-scw-ws-v2-photo-url') || '';
+        if (!url) continue;   // skip placeholders in the viewer
+        if (anchors[i] === card) clickedIdx = items.length;
+        items.push({
+          url:      url,
+          id:       anchors[i].getAttribute('data-scw-ws-v2-photo-id')   || '',
+          type:     anchors[i].getAttribute('data-scw-ws-v2-photo-type') || '',
+          req:      anchors[i].getAttribute('data-scw-ws-v2-photo-req')  || '',
+          editHref: anchors[i].getAttribute('href') || ''
+        });
+      }
+      if (!items.length) return;
+      e.preventDefault();
+      e.stopPropagation();
+      openLightbox(items, clickedIdx);
+    });
+  }
+
   ns.photos = {
     buildStrip:           buildStrip,
-    extractPhotoRecords:  extractPhotoRecords
+    extractPhotoRecords:  extractPhotoRecords,
+    openLightbox:         openLightbox
   };
 })();
 /*** END WORKSHEET V2 — PHOTOS ************************************************/
