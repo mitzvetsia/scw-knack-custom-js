@@ -1175,8 +1175,19 @@
       var row = el('div', 'scw-bid-cr-card__row');
       row.appendChild(el('span', 'scw-bid-cr-card__label', d.label + ':'));
 
-      var from = hasValue(c[d.key]) ? (d.currency ? fmtCurrency(c[d.key]) : String(c[d.key])) : '\u2014';
-      var to   = d.currency ? fmtCurrency(r[d.key]) : String(r[d.key]);
+      // Clean text values for display: strip any HTML markup (rich-text /
+      // connection-value spans leak raw <span data-kn=\u2026> otherwise) and
+      // hide a bare 24-hex record id (shows as garbage in the diff).
+      function cleanVal(v) {
+        var s = String(v == null ? '' : v).replace(/<[^>]*>/g, ' ')
+          .replace(/\s+/g, ' ').trim();
+        if (/^[0-9a-f]{24}$/i.test(s)) return '\u2014';
+        return s;
+      }
+      var from = hasValue(c[d.key])
+        ? (d.currency ? fmtCurrency(c[d.key]) : cleanVal(c[d.key]))
+        : '\u2014';
+      var to   = d.currency ? fmtCurrency(r[d.key]) : cleanVal(r[d.key]);
 
       row.appendChild(el('span', 'scw-bid-cr-card__from', from));
       row.appendChild(el('span', 'scw-bid-cr-card__arrow', '\u2192'));
