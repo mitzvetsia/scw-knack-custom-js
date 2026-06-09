@@ -80,6 +80,9 @@
     }
     body.innerHTML = '';
     body.appendChild(frag);
+
+    // Ensure the toolbar is present (idempotent — survives body rebuilds).
+    if (ns.toolbar && typeof ns.toolbar.mount === 'function') ns.toolbar.mount();
   }
 
   // Resume deferred render when focus leaves the panel.

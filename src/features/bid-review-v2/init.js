@@ -65,6 +65,7 @@
       ns.render.renderSnapshot(ns.data.readAll());
       mountBulk();
     }
+    if (ns.toolbar && typeof ns.toolbar.mount === 'function') ns.toolbar.mount();
   }
 
   // Wire the shared worksheet-v2 bulk module to the comparison grid. The
