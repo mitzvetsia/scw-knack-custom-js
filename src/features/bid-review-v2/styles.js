@@ -699,6 +699,18 @@
     '  background: #f4f8fc; border-right: 2px solid #cbd5e1;',
     '  position: relative;',
     '}',
+    /* Accessory child rows — indented with a corner marker so they read as
+       belonging to the item directly above them. */
+    '.scw-bid-review-v2__row--accessory .scw-bid-review-v2__sow-cell {',
+    '  padding-left: 44px !important;',
+    '}',
+    '.scw-bid-review-v2__row--accessory .scw-bid-review-v2__sow-cell::before {',
+    '  content: "\\21b3"; position: absolute; left: 20px; top: 18px;',
+    '  color: #94a3b8; font-size: 15px; line-height: 1;',
+    '}',
+    '.scw-bid-review-v2__row--accessory .scw-bid-review-v2__row-label-cell {',
+    '  background: #eef3f9;',
+    '}',
     /* ── Photos column (v1 parity) ─────────────────────────── */
     '.scw-bid-review-v2__photos-cell {',
     '  padding: 8px 6px !important; vertical-align: top;',

@@ -234,23 +234,48 @@
   /** Read the parent line item\'s label from the back-mirror
    *  (field_2464_raw[0].identifier). Returns '' when the bracket
    *  doesn\'t have a resolved parent. */
+  // Locate a parent line-item record by id across every SOW-item view
+  // that might be loaded. The Build-SOW page loads view_3962; the bid
+  // review comparison grid (scene_1155) loads view_3921. Hardcoding
+  // view_3962 broke the lookup on scene_1155 — fall back through all
+  // candidates so the parent's real product label resolves either place.
+  function findParentRecord(parentId) {
+    if (!parentId) return null;
+    var candidates = ['view_3962', 'view_3921'];
+    try {
+      var views = (ns.CONFIG && ns.CONFIG.views) || [];
+      for (var i = 0; i < views.length; i++) {
+        if (views[i] && views[i].sourceViewKey &&
+            candidates.indexOf(views[i].sourceViewKey) === -1) {
+          candidates.push(views[i].sourceViewKey);
+        }
+      }
+    } catch (e) { /* ignore */ }
+    for (var c = 0; c < candidates.length; c++) {
+      try {
+        var v = window.Knack && Knack.views && Knack.views[candidates[c]];
+        var prec = v && v.model && v.model.data &&
+                   typeof v.model.data.get === 'function' &&
+                   v.model.data.get(parentId);
+        if (prec) return prec.attributes || prec;
+      } catch (e2) { /* try next */ }
+    }
+    return null;
+  }
+
   function readParentRef(rec) {
     var raw = rec && rec['field_2464_raw'];
     if (!Array.isArray(raw) || !raw.length || !raw[0]) return '';
     var parentId = raw[0].id || '';
 
-    // Prefer a real product/drop label looked up from view_3962\'s
+    // Prefer a real product/drop label looked up from the SOW-item view
     // model — Knack\'s auto-built identifier on the line-item object
     // is "<recordId> (<mdfLabel>)" because the object has no proper
     // identifier field, which reads like garbage in the UI.
     if (parentId) {
       try {
-        var v = window.Knack && Knack.views && Knack.views.view_3962;
-        var prec = v && v.model && v.model.data &&
-                   typeof v.model.data.get === 'function' &&
-                   v.model.data.get(parentId);
-        if (prec) {
-          var pa   = prec.attributes || prec;
+        var pa = findParentRecord(parentId);
+        if (pa) {
           var drop = (pa.field_1950 || '').toString().replace(/<[^>]*>/g, '').trim();
           var prod = (pa.field_1949 || '').toString().replace(/<[^>]*>/g, '').trim();
           // Knack synthesizes a "<24-hex> (<mdf>)" string for line-item

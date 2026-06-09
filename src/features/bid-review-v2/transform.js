@@ -189,6 +189,7 @@
     return {
       id:           meta.id,
       sowItem:      connectionId(meta, FK.relatedSowItem),
+      parentId:     connectionId(meta, 'field_2464'),
       displayLabel: raw(meta, FK.displayLabel),
       productName:  raw(meta, FK.productName),
       sortOrder:    num(meta, FK.sortOrder),
@@ -225,12 +226,57 @@
     };
   }
 
-  // ── grouping (L1 = MDF/IDF, L2 = proposal bucket) ──────────
+  // ── grouping (L1 = MDF/IDF; no L2 sub-headers) ─────────────
   //
-  // Copy-pruned from v1's groupRows(). When no row has an mdfIdf value,
-  // returns a single "__all__" group so the renderer can stay uniform.
-  // Otherwise: L1 by MDF/IDF label, then L2 by proposalBucket if any
-  // row in the L1 has one. "Unassigned" L1 always sorts last.
+  // L1 by MDF/IDF label only — proposal-bucket sub-headers were removed
+  // so each MDF/IDF group is one flat list. Within the list, accessory
+  // child rows (field_2464 parent) are woven in DIRECTLY beneath their
+  // parent item; everything else keeps sort-order / label order. When no
+  // row has an mdfIdf value, returns a single "__all__" group.
+
+  // Order rows so each accessory follows its parent. Top-level rows sort
+  // by sortOrder then displayLabel; an accessory whose parent isn't in
+  // this group is treated as top-level so it never disappears.
+  function weaveAccessories(rows) {
+    var byId = Object.create(null);
+    for (var i = 0; i < rows.length; i++) {
+      if (rows[i] && rows[i].id) byId[rows[i].id] = rows[i];
+    }
+    function cmp(a, b) {
+      var sa = a.sortOrder || 0, sb = b.sortOrder || 0;
+      if (sa !== sb) return sa - sb;
+      return (a.displayLabel || '').localeCompare(b.displayLabel || '');
+    }
+    var childrenByParent = Object.create(null);
+    var topLevel = [];
+    for (var j = 0; j < rows.length; j++) {
+      var r = rows[j];
+      var pid = r.parentId;
+      if (pid && byId[pid] && pid !== r.id) {
+        (childrenByParent[pid] = childrenByParent[pid] || []).push(r);
+        r.isAccessory = true;   // card.js indents these
+      } else {
+        topLevel.push(r);
+      }
+    }
+    topLevel.sort(cmp);
+    for (var k in childrenByParent) childrenByParent[k].sort(cmp);
+    var out = [];
+    var seen = Object.create(null);
+    function emit(row) {
+      if (seen[row.id]) return;
+      seen[row.id] = true;
+      out.push(row);
+      var kids = childrenByParent[row.id];
+      if (kids) for (var c = 0; c < kids.length; c++) emit(kids[c]);
+    }
+    for (var t = 0; t < topLevel.length; t++) emit(topLevel[t]);
+    // Safety net: append any row not yet emitted (e.g. a parent cycle).
+    for (var m = 0; m < rows.length; m++) {
+      if (rows[m] && !seen[rows[m].id]) out.push(rows[m]);
+    }
+    return out;
+  }
 
   function groupRows(rows) {
     var hasMdf = false;
@@ -238,7 +284,8 @@
       if (rows[i].mdfIdf) { hasMdf = true; break; }
     }
     if (!hasMdf) {
-      return [{ key: '__all__', label: '', level: 0, rows: rows, subgroups: [] }];
+      return [{ key: '__all__', label: '', level: 0,
+                rows: weaveAccessories(rows), subgroups: [] }];
     }
 
     var mdfMap = Object.create(null);
@@ -263,51 +310,10 @@
       for (var fi = 0; fi < mdfRows.length; fi++) {
         if (mdfRows[fi].mdfIdfId) { mdfIdfId = mdfRows[fi].mdfIdfId; break; }
       }
-
-      var hasBucket = false;
-      for (var bi = 0; bi < mdfRows.length; bi++) {
-        if (mdfRows[bi].proposalBucket) { hasBucket = true; break; }
-      }
-
-      if (hasBucket) {
-        var bucketMap = Object.create(null);
-        var bucketOrder = [];
-        for (var ri = 0; ri < mdfRows.length; ri++) {
-          var row = mdfRows[ri];
-          var bkt = row.proposalBucket || 'Other';
-          if (!bucketMap[bkt]) {
-            bucketMap[bkt] = { rows: [], minSort: row.sortOrder };
-            bucketOrder.push(bkt);
-          }
-          bucketMap[bkt].rows.push(row);
-          if (row.sortOrder < bucketMap[bkt].minSort) {
-            bucketMap[bkt].minSort = row.sortOrder;
-          }
-        }
-        bucketOrder.sort(function (a, b) {
-          return bucketMap[a].minSort - bucketMap[b].minSort;
-        });
-        var subs = [];
-        for (var si = 0; si < bucketOrder.length; si++) {
-          var bKey = bucketOrder[si];
-          var bRows = bucketMap[bKey].rows.slice().sort(function (a, b) {
-            return (a.displayLabel || '').localeCompare(b.displayLabel || '');
-          });
-          subs.push({ key: mdfKey + '::' + bKey, label: bKey, level: 2, rows: bRows });
-        }
-        groups.push({
-          key: mdfKey, label: mdfKey, mdfIdfId: mdfIdfId,
-          level: 1, rows: [], subgroups: subs
-        });
-      } else {
-        var flat = mdfRows.slice().sort(function (a, b) {
-          return (a.displayLabel || '').localeCompare(b.displayLabel || '');
-        });
-        groups.push({
-          key: mdfKey, label: mdfKey, mdfIdfId: mdfIdfId,
-          level: 1, rows: flat, subgroups: []
-        });
-      }
+      groups.push({
+        key: mdfKey, label: mdfKey, mdfIdfId: mdfIdfId,
+        level: 1, rows: weaveAccessories(mdfRows), subgroups: []
+      });
     }
     return groups;
   }
@@ -335,6 +341,7 @@
         bySow[sowId].push({
           id:               rec.id,
           sowItem:          rec.id,                 // it IS a SOW item
+          parentId:         connectionId(rec, 'field_2464'),
           displayLabel:     raw(rec, SFK.displayLabel) || connectionLabel(rec, SFK.product),
           productName:      raw(rec, SFK.productName),
           sortOrder:        num(rec, SFK.sortOrder),
@@ -569,6 +576,7 @@
       removedRows.push({
         id:               rrec.id,
         sowItem:          rrec.id,
+        parentId:         connectionId(rrec, 'field_2464'),
         displayLabel:     raw(rrec, SFK.displayLabel) || connectionLabel(rrec, SFK.product),
         productName:      raw(rrec, SFK.productName),
         sortOrder:        num(rrec, SFK.sortOrder),

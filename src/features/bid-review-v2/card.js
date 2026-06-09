@@ -502,6 +502,7 @@
     if (row.surveyNoBid) tr.classList.add('scw-bid-review-v2__row--survey-no-bid');
     if (row.offSow)      tr.classList.add('scw-bid-review-v2__row--off-sow');
     if (row.removed)     tr.classList.add('scw-bid-review-v2__row--removed');
+    if (row.isAccessory) tr.classList.add('scw-bid-review-v2__row--accessory');
     if (row.sowItem) tr.classList.add('scw-bid-review-v2__row--expandable');
     tr.setAttribute('data-row-id', row.id);
     if (row.sowItem) tr.setAttribute('data-sow-item-id', row.sowItem);
