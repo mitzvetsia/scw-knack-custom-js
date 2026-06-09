@@ -149,6 +149,30 @@
     document.addEventListener('mouseout',  function (e) { hoverField(e, false); });
   }
 
+  // ── Revise dropdown (v1 parity) ──────────────────────────────────
+  // The menu is positioned FIXED at the trigger's coordinates so the SOW
+  // card's overflow:hidden can't clip it (v1's grid has no such clip).
+  function closeReviseMenus() {
+    var open = document.querySelectorAll('.scw-bid-review-v2__overflow--open');
+    for (var i = 0; i < open.length; i++) {
+      open[i].classList.remove('scw-bid-review-v2__overflow--open');
+      var m = open[i].querySelector('.scw-bid-review-v2__overflow-menu');
+      if (m) { m.style.cssText = ''; }
+    }
+  }
+  function openReviseMenu(ov, trigger) {
+    var menu = ov.querySelector('.scw-bid-review-v2__overflow-menu');
+    if (!menu) return;
+    ov.classList.add('scw-bid-review-v2__overflow--open');
+    var r = trigger.getBoundingClientRect();
+    var width = 160;
+    var left = Math.min(r.left, window.innerWidth - width - 8);
+    menu.style.cssText =
+      'display:block;position:fixed;z-index:99999;' +
+      'top:' + (r.bottom + 2) + 'px;left:' + Math.max(8, left) + 'px;' +
+      'width:' + width + 'px;';
+  }
+
   // Delegated clicks for everything that routes into v1's handlers:
   //   • header action buttons (Update SOW / Create SOW / Reopen Bid)
   //   • header CR controls (Submit Change Request / Clear All)
@@ -164,25 +188,21 @@
       if (!v1 || !e.target.closest) return;
 
       // Revise dropdown trigger — toggle its menu open/closed (v1 parity).
-      // The trigger carries no data-action so it never dispatches a CR.
+      // The trigger carries no data-action so it never dispatches a CR. The
+      // menu is positioned FIXED at the trigger so the SOW card's
+      // overflow:hidden can't clip it.
       var ovTrigger = e.target.closest('.scw-bid-review-v2__overflow-trigger');
       if (ovTrigger) {
         e.preventDefault(); e.stopPropagation();
-        var ov = ovTrigger.closest('.scw-bid-review__overflow');
-        var open = document.querySelectorAll('.scw-bid-review__overflow--open');
-        for (var oi = 0; oi < open.length; oi++) {
-          if (open[oi] !== ov) open[oi].classList.remove('scw-bid-review__overflow--open');
-        }
-        if (ov) ov.classList.toggle('scw-bid-review__overflow--open');
+        var ov = ovTrigger.closest('.scw-bid-review-v2__overflow');
+        var wasOpen = ov && ov.classList.contains('scw-bid-review-v2__overflow--open');
+        closeReviseMenus();
+        if (ov && !wasOpen) openReviseMenu(ov, ovTrigger);
         return;
       }
       // Any other click closes open Revise menus before proceeding. A menu
-      // item is still in the DOM (just visually hidden), so its dispatch
-      // below still resolves via closest().
-      var openMenus = document.querySelectorAll('.scw-bid-review__overflow--open');
-      for (var om = 0; om < openMenus.length; om++) {
-        openMenus[om].classList.remove('scw-bid-review__overflow--open');
-      }
+      // item is still in the DOM, so its dispatch below still resolves.
+      closeReviseMenus();
 
       // Header buttons — package_* go to dispatchHeaderAction, cr_* fall
       // through to dispatchCRAction.
@@ -224,6 +244,10 @@
         v1.dispatchMetricChange(input);
       }
     }, true);
+
+    // A fixed-positioned Revise menu doesn't follow scroll/resize — close it.
+    window.addEventListener('scroll', closeReviseMenus, true);
+    window.addEventListener('resize', closeReviseMenus);
   }
 
   // Delegated click on an expandable data row — toggle an expand <tr>

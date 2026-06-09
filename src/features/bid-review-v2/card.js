@@ -305,20 +305,25 @@
     // overflow* classes (v1 CSS is on the same scene); the menu items also
     // carry the v2 cell-action class so v2's delegated click dispatches
     // them, and the trigger toggle is wired in init.js.
-    // When the bid mismatches the SOW, offer v1's two CR paths as inline
-    // buttons (a popover gets clipped by the SOW card's overflow:hidden):
-    // "Revise" (free-form CR / cell_request_change) and "Match SOW"
-    // (prefilled from SOW / cell_request_change_from_sow). dispatchCRAction
-    // handles both. No mismatch → single Revise.
+    // When the bid mismatches the SOW, the Revise button opens a dropdown
+    // (v1 parity): "Edit bid values" (cell_request_change) + "Match SOW
+    // values" (cell_request_change_from_sow). The menu is positioned fixed
+    // by init.js on open so the SOW card's overflow:hidden can't clip it.
+    // No mismatch → single plain Revise button.
     var revise;
     if (diffs && diffs.any) {
       revise =
-        '<button type="button" class="scw-bid-review__cell-action ' +
-          'scw-bid-review__cell-action--revise scw-bid-review-v2__cell-action" ' +
-          crAttrs('cell_request_change', row.id, pkgId, sowId) + '>Revise</button>' +
-        '<button type="button" class="scw-bid-review__cell-action ' +
-          'scw-bid-review__cell-action--match scw-bid-review-v2__cell-action" ' +
-          crAttrs('cell_request_change_from_sow', row.id, pkgId, sowId) + '>Match SOW</button>';
+        '<div class="scw-bid-review-v2__overflow">' +
+          '<button type="button" class="scw-bid-review__cell-action ' +
+            'scw-bid-review__cell-action--revise scw-bid-review-v2__cell-action ' +
+            'scw-bid-review-v2__overflow-trigger">Revise ▾</button>' +
+          '<div class="scw-bid-review-v2__overflow-menu">' +
+            '<button type="button" class="scw-bid-review-v2__overflow-item scw-bid-review-v2__cell-action" ' +
+              crAttrs('cell_request_change', row.id, pkgId, sowId) + '>Edit bid values</button>' +
+            '<button type="button" class="scw-bid-review-v2__overflow-item scw-bid-review-v2__cell-action" ' +
+              crAttrs('cell_request_change_from_sow', row.id, pkgId, sowId) + '>Match SOW values</button>' +
+          '</div>' +
+        '</div>';
     } else {
       revise =
         '<button type="button" class="scw-bid-review__cell-action ' +
