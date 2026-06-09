@@ -851,6 +851,33 @@
     document.addEventListener('dragenter', handleDragEnter);
     document.addEventListener('dragleave', handleDragLeave);
     document.addEventListener('drop',      handleDrop);
+
+    // TEMP diagnostic — remove once drag is resolved. Logs what happens
+    // when you press + try to drag a photo card so we can see whether the
+    // gesture is blocked (mousedown prevented / user-drag) or dragstart
+    // simply never fires.
+    document.addEventListener('mousedown', function (e) {
+      var card = e.target.closest && e.target.closest('.' + CARD_CLS);
+      if (!card) return;
+      var img = card.querySelector('img');
+      var cs  = card.ownerDocument.defaultView.getComputedStyle(card);
+      var is  = img ? card.ownerDocument.defaultView.getComputedStyle(img) : null;
+      console.log('[SCW photo-drag] mousedown on photo card', {
+        cardDraggable: card.getAttribute('draggable'),
+        imgDraggable:  img && img.getAttribute('draggable'),
+        hasImage:      card.getAttribute('data-photo-has-image'),
+        cardUserDrag:  cs.getPropertyValue('-webkit-user-drag'),
+        imgUserDrag:   is && is.getPropertyValue('-webkit-user-drag'),
+        cardUserSelect: cs.getPropertyValue('user-select')
+      });
+      setTimeout(function () {
+        console.log('[SCW photo-drag] mousedown defaultPrevented?', e.defaultPrevented);
+      }, 0);
+    }, true);
+    document.addEventListener('dragstart', function (e) {
+      var card = e.target.closest && e.target.closest('.' + CARD_CLS);
+      if (card) console.log('[SCW photo-drag] dragstart FIRED', { from: e.target.tagName });
+    }, true);
   }
 
   /** Show a confirmation overlay on the target card before dispatching. */
