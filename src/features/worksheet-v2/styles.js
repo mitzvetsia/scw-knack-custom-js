@@ -882,6 +882,13 @@
     '  white-space: nowrap !important;',
     '}',
     '.scw-ws-v2-mh-warn svg { width: 10px !important; height: 10px !important; flex: 0 0 auto !important; }',
+    /* Icon-only variant — round badge, no text/letter-spacing padding. */
+    '.scw-ws-v2-mh-warn--icon {',
+    '  gap: 0 !important;',
+    '  padding: 3px !important;',
+    '  border-radius: 50% !important;',
+    '}',
+    '.scw-ws-v2-mh-warn--icon svg { width: 12px !important; height: 12px !important; }',
     /* Thin divider between the chip label and the inline stepper. */
     '.scw-ws-v2-mh-chip-wrap .scw-ws-v2-mh-stepper {',
     '  border-left: 1px solid rgba(7, 70, 124, 0.2) !important;',

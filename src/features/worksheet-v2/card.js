@@ -789,10 +789,9 @@
         // accessory chip; the parent card's warning chip rolls these up.
         var accWrong = isBracketWrong(chip.id);
         var warnMark = accWrong
-          ? '<span class="scw-ws-v2-mh-warn" ' +
+          ? '<span class="scw-ws-v2-mh-warn scw-ws-v2-mh-warn--icon" ' +
               'title="Wrong accessory — does not match this product">' +
               ((ns.warnings && ns.warnings.ICONS && ns.warnings.ICONS.bracket) || '') +
-              '<span class="scw-ws-v2-mh-warn-l">wrong accessory</span>' +
             '</span>'
           : '';
         var canMulti = accRec ? !isQtyLocked(accRec) : false;
