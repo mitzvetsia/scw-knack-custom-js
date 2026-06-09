@@ -596,7 +596,8 @@
        Icon-only pills in the SOW cell. One per issue type the SOW item
        has; label lives in the title tooltip. */
     '.scw-bid-review-v2__warn-chips {',
-    '  display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px;',
+    '  position: absolute; top: 8px; right: 10px; z-index: 1;',
+    '  display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px;',
     '}',
     '.scw-bid-review-v2__warn-chip {',
     '  display: inline-flex; align-items: center; justify-content: center;',
@@ -683,6 +684,7 @@
     '.scw-bid-review-v2__sow-cell {',
     '  padding: 20px 22px !important;',
     '  background: #f4f8fc; border-right: 2px solid #cbd5e1;',
+    '  position: relative;',
     '}',
     /* ── Photos column (v1 parity) ─────────────────────────── */
     '.scw-bid-review-v2__photos-cell {',
@@ -723,6 +725,11 @@
     '  font-weight: 600; font-size: 13px; color: #0f172a;',
     '  margin-bottom: 10px; line-height: 1.35;',
     '  overflow-wrap: anywhere; word-break: break-word;',
+    '}',
+    /* When warning chips are pinned top-right, keep the product name clear
+       of them so a long name never slides under the chip cluster. */
+    '.scw-bid-review-v2__sow-cell:has(.scw-bid-review-v2__warn-chips) .scw-bid-review-v2__sow-product {',
+    '  padding-right: 56px;',
     '}',
     /* Per-line-item survey note (field_2412) — bold amber callout inside the
        no-bid cut-out cell. Solid background + left accent bar + icon so it
