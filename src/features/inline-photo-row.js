@@ -743,15 +743,15 @@
     return el || card.parentElement;
   }
 
-  /** Highlight valid drop targets in the same strip. A target is ANY other
-   *  photo card (drag one photo over another to reassign it) — empty
-   *  required slots included. */
+  /** Highlight all valid empty-required targets in the same strip. */
   function highlightTargets(strip, sourceId) {
     if (!strip) return;
     var cards = strip.querySelectorAll('.' + CARD_CLS);
     for (var i = 0; i < cards.length; i++) {
       var c = cards[i];
       if (c.getAttribute('data-photo-id') === sourceId) continue;
+      if (c.getAttribute('data-photo-has-image') === 'true') continue;
+      if (c.getAttribute('data-photo-required') !== 'true') continue;
       c.classList.add(DROP_OK_CLS);
     }
   }
