@@ -422,6 +422,11 @@
     var ACCESSORIES_FIELD        = config.ACCESSORIES_FIELD        || null;
     var ACCESSORIES_VIEW_ID      = config.ACCESSORIES_VIEW_ID      || null;
     var ACCESSORIES_PARENT_FIELD = config.ACCESSORIES_PARENT_FIELD || null;
+    // Optional: when the parent's SOW connection (SOW_FIELD, e.g.
+    // field_2154) is edited, cascade the SOW to its children so they stay
+    // on the parent's SOW (see the SOW-cascade handler below for the exact
+    // accessory-vs-connected-device rules).
+    var SOW_FIELD                = config.SOW_FIELD                || null;
     var SETTLE_MS         = (config.SETTLE_MS       != null) ? config.SETTLE_MS       : 400;
     var EVENT_NS          = config.EVENT_NS         || '.scwSilentRegroup';
     var PUBLIC_API_NAME   = config.PUBLIC_API_NAME  || null;
@@ -1507,6 +1512,150 @@
       }
     });
 
+  // ======================================================================
+  // SOW cascade: parent's SOW (SOW_FIELD, e.g. field_2154) edited → keep
+  // its children on the parent's SOW.
+  // ----------------------------------------------------------------------
+  //   • Accessories (ACCESSORIES_PARENT_FIELD children): ALWAYS set to the
+  //     parent's exact SOW set — an accessory's SOW must mirror its parent.
+  //   • Connected devices (CONNECTIONS_FIELD children): only touched when
+  //     the child is on a SOW the parent does NOT also include; then the
+  //     child is re-aligned to the parent's exact SOW set. A child whose
+  //     SOWs are a subset of the parent's is left alone (no spurious PUT).
+  // Fires only on a genuine SOW_FIELD edit (the v2 picker reports the edited
+  // field key; native inline edits supply none → fall back to a cache diff).
+  // ======================================================================
+  var lastSowSeen = {};
+  function serializeSow(attrs) {
+    var raw = attrs && attrs[SOW_FIELD + '_raw'];
+    if (!Array.isArray(raw)) return '';
+    return raw.map(function (r) { return r && r.id; }).filter(Boolean).sort().join(',');
+  }
+  function sowIdsFromAttrs(attrs) {
+    var raw = attrs && attrs[SOW_FIELD + '_raw'];
+    var out = [];
+    if (Array.isArray(raw)) {
+      for (var i = 0; i < raw.length; i++) if (raw[i] && raw[i].id) out.push(raw[i].id);
+    } else if (raw && raw.id) {
+      out.push(raw.id);
+    }
+    return out;
+  }
+  function primeSowCache() {
+    if (!SOW_FIELD) return;
+    var records = getModelRecords();
+    for (var i = 0; i < records.length; i++) {
+      var attrs = records[i] && (records[i].attributes || records[i]);
+      if (attrs && attrs.id) lastSowSeen[attrs.id] = serializeSow(attrs);
+    }
+  }
+  if (SOW_FIELD) {
+    $(document).on('knack-view-render.' + VIEW_ID + EVENT_NS + '-sowprime',
+      function () { primeSowCache(); });
+  }
+
+  /** PUT SOW_FIELD = sowIds on an accessory record (lives on
+   *  ACCESSORIES_VIEW_ID, not VIEW_ID). Best-effort, mirrors
+   *  fireAccessoryPut. */
+  function fireAccessorySowPut(accessoryId, sowIds, onDone) {
+    if (!ACCESSORIES_VIEW_ID || !accessoryId) {
+      if (typeof onDone === 'function') onDone();
+      return;
+    }
+    if (!window.SCW || typeof window.SCW.knackRecordUrl !== 'function') {
+      if (typeof onDone === 'function') onDone(new Error('knackRecordUrl unavailable'));
+      return;
+    }
+    var body = {};
+    body[SOW_FIELD] = sowIds || [];
+    log('  PUT(accessory SOW) → ' + accessoryId + ' SOW=' + JSON.stringify(sowIds));
+    cascadeBegin();
+    knackPutKeepalive(
+      window.SCW.knackRecordUrl(ACCESSORIES_VIEW_ID, accessoryId),
+      body,
+      function (err) {
+        cascadeEnd();
+        if (err) console.warn(LOG_PREFIX, 'accessory SOW PUT failed ' + accessoryId, err);
+        else log('  PUT(accessory SOW) ok ' + accessoryId);
+        if (typeof onDone === 'function') onDone(err);
+      }
+    );
+  }
+
+  $(document).on('knack-cell-update.' + VIEW_ID + EVENT_NS + '-sow',
+    function (event, view, record, editedFieldKey) {
+      try {
+        if (!SOW_FIELD) return;
+        if (!record || !record.id) return;
+        if (ownPuts[record.id]) return;
+        // Only react to a genuine SOW_FIELD edit. Re-prime the cache on
+        // other-field edits so a later real SOW edit still diffs correctly.
+        if (editedFieldKey && editedFieldKey !== SOW_FIELD) {
+          lastSowSeen[record.id] = serializeSow(record);
+          return;
+        }
+        var prev = lastSowSeen[record.id] || '';
+        var curr = serializeSow(record);
+        if (prev === curr) return;
+        lastSowSeen[record.id] = curr;
+
+        var parentSowIds = sowIdsFromAttrs(record);
+        // Parent SOW cleared entirely → leave children alone (don't orphan
+        // everything on an accidental clear), mirroring the MDF-clear guard.
+        if (!parentSowIds.length) {
+          log('sow-cascade: parent ' + record.id + ' SOW cleared — leaving children alone');
+          return;
+        }
+        var parentSowSet = {};
+        for (var p = 0; p < parentSowIds.length; p++) parentSowSet[parentSowIds[p]] = true;
+
+        var parentSowDisplay = record[SOW_FIELD];
+        var parentSowRaw = record[SOW_FIELD + '_raw'] || [];
+
+        // 1) Accessories — ALWAYS exact-match the parent's SOW.
+        var accIds = findAccessoryIdsForParent(record.id);
+        for (var a = 0; a < accIds.length; a++) {
+          fireAccessorySowPut(accIds[a], parentSowIds);
+        }
+
+        // 2) Connected devices — only when the child sits on a SOW the
+        //    parent does NOT also include; then re-align to the parent's
+        //    exact SOW set.
+        var childIds = findRowsPointingTo(record.id);
+        var realigned = 0;
+        for (var c = 0; c < childIds.length; c++) {
+          var childId = childIds[c];
+          if (childId === record.id) continue;
+          var childSowIds = sowIdsFromAttrs(getModelAttrs(childId));
+          var hasForeignSow = false;
+          for (var s = 0; s < childSowIds.length; s++) {
+            if (!parentSowSet[childSowIds[s]]) { hasForeignSow = true; break; }
+          }
+          if (!hasForeignSow) continue;   // child SOWs ⊆ parent's → leave alone
+          var body = {};
+          body[SOW_FIELD] = parentSowIds;
+          // Patch the local model so the v2 tree rebuild on scw-cascade-idle
+          // reflects the new SOW without waiting for the PUT to land.
+          syncModelChild(childId, (function () {
+            var pp = {};
+            pp[SOW_FIELD] = parentSowDisplay;
+            pp[SOW_FIELD + '_raw'] = parentSowRaw;
+            return pp;
+          })());
+          log('sow-cascade: connected device ' + childId +
+              ' on a SOW the parent lacks → re-aligning to ' + JSON.stringify(parentSowIds));
+          firePut(childId, body);
+          realigned++;
+        }
+
+        log('sow-cascade done for parent ' + record.id + ': ' + accIds.length +
+            ' accessory PUT(s), ' + realigned + '/' + childIds.length +
+            ' connected device(s) re-aligned');
+      } catch (e) {
+        console.warn(LOG_PREFIX, 'sow-cascade handler threw', e);
+      }
+    });
+
   // Re-renders during the edit cycle reset the settle timer rather than
   // aborting, so Knack's native post-edit re-render doesn't kill us.
   // After the initial regroup has run, the MutationObserver watchdog is
@@ -1633,6 +1782,7 @@
     ACCESSORIES_FIELD:        'field_1958',
     ACCESSORIES_VIEW_ID:      'view_3887',
     ACCESSORIES_PARENT_FIELD: 'field_2464',
+    SOW_FIELD:                'field_2154',
     PUBLIC_API_NAME:     'silentRegroupView3586'
   });
 
@@ -1649,6 +1799,7 @@
     ACCESSORIES_FIELD:        'field_1958',
     ACCESSORIES_VIEW_ID:      'view_3888',
     ACCESSORIES_PARENT_FIELD: 'field_2464',
+    SOW_FIELD:                'field_2154',
     PUBLIC_API_NAME:     'silentRegroupView3610'
   });
 
@@ -1674,6 +1825,7 @@
     ACCESSORIES_FIELD:        'field_1958',
     ACCESSORIES_VIEW_ID:      'view_3888',
     ACCESSORIES_PARENT_FIELD: 'field_2464',
+    SOW_FIELD:                'field_2154',
     MODEL_ONLY:          true,
     PUBLIC_API_NAME:     'silentRegroupView3962'
   });
@@ -1697,6 +1849,7 @@
     ACCESSORIES_FIELD:        'field_1958',
     ACCESSORIES_VIEW_ID:      'view_3927',
     ACCESSORIES_PARENT_FIELD: 'field_2464',
+    SOW_FIELD:                'field_2154',
     PUBLIC_API_NAME:     'silentRegroupView3921'
   });
 
