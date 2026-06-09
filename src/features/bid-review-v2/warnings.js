@@ -75,35 +75,29 @@
   function buildBracketMaps() {
     var byParent = Object.create(null);
     var byAccessory = Object.create(null);
-    var dbg = { cells: 0, spans: 0, noHits: 0, crWarn: 0 };
     var view = document.getElementById(SOW_VIEW);
     if (view) {
       // Source 1 — raw per-accessory spans in the parent's field_2244 cell.
       var cells = view.querySelectorAll(
         'td.field_2244, td[data-field-key="field_2244"]');
-      dbg.cells = cells.length;
       for (var c = 0; c < cells.length; c++) {
         var spans = cells[c].querySelectorAll('span[id][data-kn="connection-value"]');
         if (!spans.length) continue;
         var parentId = ownerRecordId(cells[c]);
         for (var s = 0; s < spans.length; s++) {
-          dbg.spans++;
           var accId = (spans[s].id || '').trim();
           var v = (spans[s].textContent || '').trim().toLowerCase();
           if (accId && (v === 'no' || v === 'false')) {
             byAccessory[accId] = true;
             if (parentId) byParent[parentId] = true;
-            dbg.noHits++;
           }
         }
       }
       // Source 2 — connected-records.js already computes the mismatch on
       // view_3921 and tags the offending accessory item .scw-cr-item-warn
       // (accessory id on the inner .scw-cr-remove[data-record-id]). This is
-      // the most reliable signal since device-worksheet relocates/replaces
-      // the raw field_2244 cell into its mounting-hardware widget.
+      // the authoritative, parent-derived signal.
       var warns = view.querySelectorAll('.scw-cr-item-warn');
-      dbg.crWarn = warns.length;
       for (var w2 = 0; w2 < warns.length; w2++) {
         var rem = warns[w2].querySelector('.scw-cr-remove[data-record-id]');
         var aId = rem ? (rem.getAttribute('data-record-id') || '').trim() : '';
@@ -112,12 +106,6 @@
         if (pId) byParent[pId] = true;
       }
     }
-    // TEMP diagnostic (remove once confirmed).
-    try {
-      console.log('[scw-br-v2] bracket scan view_3921', dbg,
-        'parents=' + Object.keys(byParent).length,
-        'accessories=' + Object.keys(byAccessory).length);
-    } catch (e) {}
     return { byParent: byParent, byAccessory: byAccessory };
   }
 

@@ -126,74 +126,67 @@
     return s === 'no' || s === 'false' || s === '0';
   }
 
-  /** Wrong-accessory detection. field_2244 ("accessory match check") lives
-   *  on the ACCESSORY record (No/false = wrong). Accessories are hidden from
-   *  the v2 tree, so the analyzed record set doesn't include them — we read
-   *  the FULL model (ns.data.readRecords) and, as a fallback, the accessory's
-   *  own plain field_2244 cell in the source-view DOM (NOT the parent's
-   *  per-accessory array cell). An accessory that is explicitly No is rolled
-   *  up to its parent(s) via field_2464. Returns:
-   *    { byAccessory: { accId: true }, byParent: { parentId: true } } */
+  /** Wrong-accessory detection. The authoritative per-accessory match
+   *  warning is what connected-records.js computes from the PARENT row's
+   *  field_2244 array (one Yes/No span per attached accessory) — it renders
+   *  the flagged item as .scw-cr-item-warn (accessory id on the inner
+   *  .scw-cr-remove). The accessory's OWN field_2244 record value under-flags
+   *  (Knack computes the match on the parent side), so we read the parent
+   *  signal instead, matching the bid comparison exactly. Sources, unioned:
+   *    1. .scw-cr-item-warn anywhere in the document (connected-records runs
+   *       on view_3610/3313/3921/3586 — scan document-wide).
+   *    2. Raw per-accessory field_2244 spans (No/False) on the source view,
+   *       for views connected-records doesn't process (e.g. view_3962).
+   *  Returns { byAccessory: { accId: true }, byParent: { parentId: true } } */
+  function ownerRecordId(el) {
+    var node = el;
+    while (node && node.getAttribute) {
+      var id = node.getAttribute('data-record-id') ||
+               node.getAttribute('data-scw-ws-v2-record') ||
+               node.getAttribute('id') || '';
+      if (/^[a-f0-9]{24}$/i.test(id)) return id;
+      node = node.parentNode;
+    }
+    return '';
+  }
+
   function buildBracketMaps(viewKey) {
     var byAccessory = Object.create(null);
     var byParent = Object.create(null);
 
-    var recs = [];
-    try {
-      if (ns.data && typeof ns.data.readRecords === 'function') {
-        recs = ns.data.readRecords(viewKey) || [];
-      }
-    } catch (e) { recs = []; }
+    // (1) connected-records' computed warnings (the correct, parent-derived
+    //     signal). Document-wide so it works regardless of which SOW-item
+    //     view connected-records rendered into.
+    var warns = document.querySelectorAll('.scw-cr-item-warn');
+    for (var w = 0; w < warns.length; w++) {
+      var rem = warns[w].querySelector('.scw-cr-remove[data-record-id]');
+      var aId = rem ? (rem.getAttribute('data-record-id') || '').trim() : '';
+      if (!aId) continue;
+      byAccessory[aId] = true;
+      var pId = ownerRecordId(warns[w]);
+      if (pId) byParent[pId] = true;
+    }
 
-    // DOM fallback: each record's OWN boolean field_2244 = the cell with no
-    // per-accessory connection-value spans.
-    var domVal = Object.create(null);
+    // (2) Raw per-accessory field_2244 spans on the source view (covers
+    //     views connected-records doesn't process, e.g. view_3962).
     var view = document.getElementById(viewKey) ||
                document.getElementById('view_3962');
     if (view) {
-      var rows = view.querySelectorAll('tbody tr[id]');
-      for (var i = 0; i < rows.length; i++) {
-        var rid = (rows[i].getAttribute('id') || '').trim();
-        if (!rid) continue;
-        var cells = rows[i].querySelectorAll(
-          'td.field_2244, td[data-field-key="field_2244"]');
-        for (var c = 0; c < cells.length; c++) {
-          if (cells[c].querySelector('span[id][data-kn="connection-value"]')) continue;
-          domVal[rid] = (cells[c].textContent || '').trim().toLowerCase();
-          break;
+      var cells = view.querySelectorAll(
+        'td.field_2244, td[data-field-key="field_2244"]');
+      for (var c = 0; c < cells.length; c++) {
+        var spans = cells[c].querySelectorAll('span[id][data-kn="connection-value"]');
+        if (!spans.length) continue;
+        var parentId = ownerRecordId(cells[c]);
+        for (var s = 0; s < spans.length; s++) {
+          var accId = (spans[s].id || '').trim();
+          var v = (spans[s].textContent || '').trim().toLowerCase();
+          if (accId && (v === 'no' || v === 'false')) {
+            byAccessory[accId] = true;
+            if (parentId) byParent[parentId] = true;
+          }
         }
       }
-    }
-
-    var dbgAcc = 0, dbgWrong = 0, dbgModelField = 0, dbgSample = null;
-    for (var k = 0; k < recs.length; k++) {
-      var rec = recs[k];
-      if (!rec || !rec.id) continue;
-      var par = rec.field_2464_raw;
-      if (!Array.isArray(par) || !par.length) continue;   // not an accessory
-      dbgAcc++;
-      if (rec.field_2244_raw != null || rec.field_2244 != null) dbgModelField++;
-      if (!dbgSample) dbgSample = { id: rec.id, raw: rec.field_2244_raw,
-                                    fmt: rec.field_2244, ownDom: domVal[rec.id] };
-      var dv = domVal[rec.id];
-      var wrong = isExplicitNoVal(rec.field_2244_raw, rec.field_2244) ||
-        (dv === 'no' || dv === 'false' || dv === '0');
-      if (!wrong) continue;
-      dbgWrong++;
-      byAccessory[rec.id] = true;
-      for (var p = 0; p < par.length; p++) {
-        if (par[p] && par[p].id) byParent[par[p].id] = true;
-      }
-    }
-
-    // TEMP diagnostic for the comparison grid (view_3921) only — confirms
-    // the v2 own-field detection sees brackets + their field_2244 there.
-    if (viewKey === 'view_3921') {
-      try {
-        console.log('[scw-ws-v2] bracket scan view_3921',
-          { accessories: dbgAcc, withModelField: dbgModelField,
-            flagged: dbgWrong, totalRecords: recs.length, sample: dbgSample });
-      } catch (e) {}
     }
     return { byAccessory: byAccessory, byParent: byParent };
   }
