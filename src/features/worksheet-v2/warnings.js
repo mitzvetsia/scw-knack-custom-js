@@ -114,25 +114,25 @@
     return true;
   }
 
-  /** Explicit No only — field is set to No / false / 0. Empty/unset does
-   *  NOT count (an unconfirmed accessory is not yet "wrong"). */
-  function isExplicitNo(rec, fieldKey) {
+  /** Accessory match check (field_2244): mismatched accessories store Yes
+   *  for a confirmed match and BLANK for a mismatch — there is no explicit
+   *  "No". So a warning fires when the value is NOT Yes (mirrors v1's
+   *  connected-records `if (!isYes)`). */
+  function isMismatch(rec, fieldKey) {
     var raw = rec && rec[fieldKey + '_raw'];
-    if (raw === false || raw === 'No' || raw === 'no' || raw === 0) return true;
     if (raw === true || raw === 'Yes' || raw === 'yes' || raw === 1) return false;
     var s = (rec && rec[fieldKey] || '').toString().trim().toLowerCase();
-    return s === 'no' || s === 'false' || s === '0';
+    return !(s === 'yes' || s === 'true' || s === '1');
   }
 
-  /** Build a Set of parent ids whose attached accessories are explicitly
-   *  flagged as NOT matching (field_2244 = No). Empty/unconfirmed is not
-   *  flagged. One pass through the full record list. */
+  /** Build a Set of parent ids whose attached accessories don't match
+   *  (field_2244 != Yes). One pass through the full record list. */
   function buildBracketParentSet(records) {
     var flagged = Object.create(null);
     for (var i = 0; i < records.length; i++) {
       var r = records[i];
       if (!r) continue;
-      if (!isExplicitNo(r, 'field_2244')) continue;
+      if (!isMismatch(r, 'field_2244')) continue;
       var raw = r.field_2464_raw;
       if (!Array.isArray(raw)) continue;
       for (var j = 0; j < raw.length; j++) {

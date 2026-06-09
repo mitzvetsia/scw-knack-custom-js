@@ -152,17 +152,19 @@
     return s === 'yes' || s === 'true' || s === '1';
   }
 
-  /** Wrong-accessory flag: field_2244 ("accessory match check") is
-   *  explicitly No. Empty/unset is NOT flagged (unconfirmed != wrong).
-   *  Mirrors warnings.js's isExplicitNo so the per-accessory marker matches
-   *  the parent's rolled-up count. */
+  /** Wrong-accessory flag: field_2244 ("accessory match check") is anything
+   *  other than Yes. Mismatches store BLANK (not an explicit "No"), so we
+   *  flag not-Yes — mirrors v1's connected-records + warnings.js isMismatch.
+   *  Only meaningful for records that actually carry the field. */
   function isBracketWrong(rec) {
     if (!rec) return false;
+    // Only flag when the field is present on this record; a record with no
+    // field_2244 at all isn't an accessory we can judge.
+    if (!('field_2244_raw' in rec) && !('field_2244' in rec)) return false;
     var raw = rec['field_2244_raw'];
-    if (raw === false || raw === 'No' || raw === 'no' || raw === 0) return true;
     if (raw === true || raw === 'Yes' || raw === 'yes' || raw === 1) return false;
     var s = (rec['field_2244'] || '').toString().trim().toLowerCase();
-    return s === 'no' || s === 'false' || s === '0';
+    return !(s === 'yes' || s === 'true' || s === '1');
   }
 
   /** Quantity (field_1964) input — non-editable when field_2230 is yes.
