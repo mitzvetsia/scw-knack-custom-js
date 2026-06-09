@@ -49,8 +49,8 @@
         // side-by-side during the parallel build. Once Phase 5
         // retires v1, swap this to mount where view_3610 used to be.
         mountAfterSelector: '#view_3610',
-        // Display label for the WIP banner.
-        label: 'SOW Line Items (v2 preview)',
+        // Display label for the banner.
+        label: 'SOW Line Items',
         // Source of MDF/IDF records for empty-group seeding. v2
         // shows an L1 block for every MDF/IDF on this view even
         // when no SOW line items are assigned to it (so users can

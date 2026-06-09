@@ -23,8 +23,9 @@
     '  margin: 24px 0 !important;',
     '  padding: 0 !important;',
     '  background: var(--scw-surface-base, #fff) !important;',
-    '  border: 2px dashed #c084fc !important;',
+    '  border: 1px solid #e5e7eb !important;',
     '  border-radius: 8px !important;',
+    '  box-shadow: 0 1px 2px rgba(15, 23, 42, 0.04) !important;',
     '  overflow: hidden !important;',
     '  font: 13px/1.4 system-ui, -apple-system, sans-serif !important;',
     '  color: var(--scw-text-default, #1f2937) !important;',
@@ -34,24 +35,27 @@
     '}',
     '.scw-ws-v2 * { box-sizing: border-box; }',
 
-    /* ── WIP banner ─────────────────────────────────────────── */
+    /* ── Header banner ──────────────────────────────────────── */
     '.scw-ws-v2-banner {',
-    '  display: flex !important; align-items: center !important; gap: 10px !important;',
-    '  padding: 8px 14px !important;',
-    '  background: #faf5ff !important;',
-    '  border-bottom: 1px solid #e9d5ff !important;',
-    '  font-weight: 600 !important; color: #6b21a8 !important;',
+    '  display: flex !important; align-items: center !important; gap: 12px !important;',
+    '  padding: 9px 14px !important;',
+    '  background: #f9fafb !important;',
+    '  border-bottom: 1px solid #e5e7eb !important;',
+    '  font-weight: 600 !important; color: #1f2937 !important;',
     '}',
-    '.scw-ws-v2-banner .scw-ws-v2-pill {',
-    '  display: inline-block !important;',
-    '  padding: 2px 8px !important;',
-    '  background: #6b21a8 !important; color: #fff !important;',
-    '  border-radius: 4px !important;',
-    '  font-size: 10px !important; font-weight: 700 !important; letter-spacing: 0.04em !important;',
-    '  text-transform: uppercase !important;',
+    '.scw-ws-v2-banner .scw-ws-v2-banner-title {',
+    '  font-weight: 700 !important; font-size: 14px !important; color: #111827 !important;',
+    '}',
+    /* Aggregate issue chips sit on the right, just before the record count. */
+    '.scw-ws-v2-banner .scw-ws-v2-banner-chips {',
+    '  margin-left: auto !important;',
+    '  display: inline-flex !important; align-items: center !important; gap: 6px !important;',
+    '}',
+    '.scw-ws-v2-banner .scw-ws-v2-banner-chips:empty { margin-left: auto !important; }',
+    '.scw-ws-v2-banner .scw-ws-v2-banner-chips .scw-ws-v2-warn-chips {',
+    '  margin-left: 0 !important;',
     '}',
     '.scw-ws-v2-banner .scw-ws-v2-count {',
-    '  margin-left: auto !important;',
     '  font-weight: 500 !important; color: #4b5563 !important;',
     '  font-variant-numeric: tabular-nums !important;',
     '}',
@@ -1972,14 +1976,15 @@
     '.scw-ws-v2-warn-chip svg { flex: 0 0 auto !important; }',
     '.scw-ws-v2-warn-chip-n { font-weight: 700 !important; font-variant-numeric: tabular-nums !important; }',
     /* Issue chips rendered inside the MDF/IDF (L1) header bar. Sit between
-       the label and the record count. Non-interactive (--static). */
+       the label and the record count. Clickable (role=button) — highlight
+       the affected rows in that group. */
     '.scw-ws-v2-l1-head .scw-ws-v2-warn-chips {',
     '  order: 0 !important; margin-left: 0 !important; gap: 4px !important;',
     '}',
     '.scw-ws-v2-l1-head .scw-ws-v2-warn-chip {',
     '  padding: 1px 8px !important; font-size: 10.5px !important;',
+    '  cursor: pointer !important;',
     '}',
-    '.scw-ws-v2-warn-chip--static { cursor: default !important; }',
     /* ── Per-issue-type colour coding (fast scanning) ─────────────
        Applies to the column chips (warn-chit) AND the aggregate chips
        (warn-chip). Solid pills so they read on the dark L1 header too. */

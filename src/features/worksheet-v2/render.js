@@ -212,11 +212,13 @@
 
     var body  = container.querySelector('.scw-ws-v2-body');
     var count = container.querySelector('.scw-ws-v2-count');
+    var bannerChips = container.querySelector('.scw-ws-v2-banner-chips');
     if (!body) return;
 
     if (count) {
       count.textContent = records.length + ' record' + (records.length === 1 ? '' : 's');
     }
+    if (bannerChips) bannerChips.innerHTML = '';
 
     if (hasFocusInPanel(container)) {
       pending[sourceViewKey] = records;
@@ -289,6 +291,14 @@
 
     body.innerHTML = '';
     body.appendChild(frag);
+
+    // Whole-grid aggregate issue chips now live in the banner (always
+    // visible, independent of the collapsible summary panel).
+    if (bannerChips) {
+      bannerChips.innerHTML =
+        (ns.summary && typeof ns.summary.grandIssueChips === 'function')
+          ? (ns.summary.grandIssueChips(tree) || '') : '';
+    }
 
     // Reapply card-level open state ONLY — do NOT force the containing L1
     // open. Section open/closed is governed purely by the accordion state,

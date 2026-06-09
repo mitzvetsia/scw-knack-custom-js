@@ -322,8 +322,16 @@
         '<span class="scw-ws-v2-warn-chip-n">' + n + '</span>' +
         '<span class="scw-ws-v2-warn-chip-l">' + esc(labels[k] || k) + '</span>';
       if (asSpan) {
-        parts.push('<span class="scw-ws-v2-warn-chip scw-ws-v2-warn-chip--static" ' +
-          'data-issue-type="' + k + '">' + inner + '</span>');
+        // Rendered inside the L1 (MDF/IDF) header button, so it can't be a
+        // nested <button> — use a span with role=button. init.js's delegated
+        // handler catches data-scw-ws-v2-warn-chip and highlights the
+        // matching rows scoped to this L1 (and stops the accordion toggle).
+        parts.push('<span class="scw-ws-v2-warn-chip" ' +
+          'data-issue-type="' + k + '" ' +
+          'data-scw-ws-v2-warn-chip="' + k + '" ' +
+          'role="button" tabindex="0" ' +
+          'title="Click to highlight the ' + n + ' affected row' +
+          (n === 1 ? '' : 's') + ' in this group">' + inner + '</span>');
       } else {
         parts.push(
           '<button type="button" class="scw-ws-v2-warn-chip" ' +
@@ -408,10 +416,8 @@
         '<tbody>' + buildSectionsRows(agg, { alwaysSubtotal: true }) + '</tbody>' +
       '</table>';
 
-    var allIds = [];
-    for (var ri = 0; ri < all.length; ri++) if (all[ri] && all[ri].id) allIds.push(all[ri].id);
-    var grandChips = fmtIssueChips(allIds);
-
+    // Aggregate issue chips no longer live in the summary head — they're
+    // rendered up in the panel banner (render.js → grandIssueChips).
     var wrap = document.createElement('div');
     wrap.className = 'scw-ws-v2-grand-summary';
     wrap.innerHTML =
@@ -422,7 +428,6 @@
         '<span class="scw-ws-v2-summary-stats">' +
           all.length + ' line items · ' + esc(fmtSummaryStat(agg.totals)) +
         '</span>' +
-        grandChips +
       '</button>' +
       '<div class="scw-ws-v2-summary-body">' + tableHtml + '</div>';
     return wrap;
@@ -434,10 +439,20 @@
     return fmtIssueChips(collectRecordIds(l1), true);
   }
 
+  // Whole-grid aggregate issue chips (clickable buttons) for the banner.
+  function grandIssueChips(tree) {
+    var all = [];
+    for (var i = 0; i < tree.length; i++) all = all.concat(collectRecords(tree[i]));
+    var allIds = [];
+    for (var ri = 0; ri < all.length; ri++) if (all[ri] && all[ri].id) allIds.push(all[ri].id);
+    return fmtIssueChips(allIds);
+  }
+
   ns.summary = {
     buildL1Summary:    buildL1Summary,
     buildGrandSummary: buildGrandSummary,
-    issueChipsForL1:   issueChipsForL1
+    issueChipsForL1:   issueChipsForL1,
+    grandIssueChips:   grandIssueChips
   };
 })();
 /*** END WORKSHEET V2 — SUMMARY ***********************************************/

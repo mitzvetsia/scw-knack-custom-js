@@ -38,8 +38,8 @@
     var banner = document.createElement('div');
     banner.className = 'scw-ws-v2-banner';
     banner.innerHTML =
-      '<span class="scw-ws-v2-pill">v2 preview</span>' +
-      '<span>' + vcfg.label + '</span>' +
+      '<span class="scw-ws-v2-banner-title">' + vcfg.label + '</span>' +
+      '<span class="scw-ws-v2-banner-chips"></span>' +
       '<span class="scw-ws-v2-count">0 records</span>';
     panel.appendChild(banner);
 
@@ -133,7 +133,10 @@
                  e.target.closest('[data-scw-ws-v2-warn-chip]');
       if (chip) {
         e.preventDefault();
-        e.stopPropagation();
+        // stopImmediatePropagation (not just stopPropagation) so the
+        // separate document-level L1-toggle listener doesn't ALSO fire
+        // for chips that live inside the L1 header button.
+        e.stopImmediatePropagation();
         highlightIssueType(chip);
         return;
       }
