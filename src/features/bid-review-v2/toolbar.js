@@ -43,7 +43,8 @@
     bar.innerHTML =
       '<div class="scw-ws-v2-toolbar-group" role="group" aria-label="View mode">' +
         btn('expand',  'Expand all',   'Open every SOW section + group') +
-        btn('summary', 'Summary only', 'Collapse every group to its header') +
+        // "Summary only" temporarily deprecated — per-L1 summary panels
+        // aren't enabled on the comparison grid yet. Re-add once they are.
       '</div>' +
       '<div class="scw-ws-v2-toolbar-spacer"></div>' +
       '<div class="scw-ws-v2-toolbar-group scw-ws-v2-toolbar-group--cta">' +
