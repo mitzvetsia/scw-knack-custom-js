@@ -225,9 +225,17 @@
         ' data-scw-ws-v2-photo-url="'  + escapeHtml(p.imgUrl || '') + '"' +
         ' data-scw-ws-v2-photo-id="'   + escapeHtml(p.id)          + '"' +
         ' data-scw-ws-v2-photo-type="' + escapeHtml(p.type || '')  + '"' +
-        ' data-scw-ws-v2-photo-req="'  + reqState + '"';
+        ' data-scw-ws-v2-photo-req="'  + reqState + '"' +
+        // v1-parity drag attrs: filled cards are drag sources, required +
+        // image-less cards are drop targets (drag-to-fill-required-slot).
+        ' data-photo-id="'         + escapeHtml(p.id) + '"' +
+        ' data-photo-has-image="'  + (p.imgUrl ? 'true' : 'false') + '"' +
+        ' data-photo-required="'   + (p.required ? 'true' : 'false') + '"' +
+        ' data-photo-type="'       + escapeHtml(p.type || '') + '"' +
+        ' data-photo-notes="'      + escapeHtml(p.notes || '') + '"';
+      var draggableAttr = p.imgUrl ? ' draggable="true"' : '';
       html +=
-        '<a class="' + cls + '"' + openAttrs + dataAttrs +
+        '<a class="' + cls + '"' + openAttrs + dataAttrs + draggableAttr +
             ' title="' + escapeHtml((p.type || 'Photo') + (p.required ? ' (Required)' : '')) + '">' +
           thumb + typeHtml + reqHtml +
         '</a>';
@@ -396,6 +404,154 @@
       e.preventDefault();
       e.stopPropagation();
       openLightbox(items, clickedIdx);
+    });
+  }
+
+  /* ── Drag-to-fill-required-slot (v1 parity) ───────────────────────
+   * Drag a filled photo card onto an empty REQUIRED slot in the same
+   * strip → confirm → dispatch the same payload v1 uses (window.SCW.
+   * onPhotoDrop, else SCW.CONFIG.MAKE_PHOTO_MOVE_WEBHOOK). Delegated on
+   * document so it survives re-renders + the bid-review expand panel. */
+  var CARD_SEL = 'a.scw-ws-v2-photo-card';
+  var dragSrc = null;
+
+  function cardOf(e) { return (e.target && e.target.closest) ? e.target.closest(CARD_SEL) : null; }
+  function stripOf(card) {
+    var el = card && card.parentElement;
+    while (el && !el.classList.contains('scw-ws-v2-photos-strip')) el = el.parentElement;
+    return el;
+  }
+  function isFilled(card)   { return card && card.getAttribute('data-photo-has-image') === 'true'; }
+  function isReqEmpty(card) {
+    return card && card.getAttribute('data-photo-has-image') !== 'true' &&
+           card.getAttribute('data-photo-required') === 'true';
+  }
+  function clearDragState() {
+    var all = document.querySelectorAll(
+      '.scw-ws-v2-photo-drop-ok, .scw-ws-v2-photo-drop-hover, .scw-ws-v2-photo-drag-src');
+    for (var i = 0; i < all.length; i++) {
+      all[i].classList.remove('scw-ws-v2-photo-drop-ok',
+        'scw-ws-v2-photo-drop-hover', 'scw-ws-v2-photo-drag-src');
+    }
+  }
+
+  function getSurveyRequestId() {
+    var hash = window.location.hash || '';
+    var m = hash.match(/[a-f0-9]{24}/);
+    return m ? m[0] : '';
+  }
+  function getViewKeyFor(card) {
+    var host = card.closest('[data-scw-ws-v2-view]') ||
+               (card.closest('.scw-ws-v2-card') &&
+                card.closest('.scw-ws-v2-card').querySelector('[data-scw-ws-v2-view]'));
+    return host ? host.getAttribute('data-scw-ws-v2-view') : '';
+  }
+
+  function dispatchPhotoMove(detail, viewKey) {
+    function refresh() {
+      if (viewKey && ns.data && typeof ns.data.refetchAndNotify === 'function') {
+        setTimeout(function () { ns.data.refetchAndNotify(viewKey); }, 1500);
+      }
+    }
+    if (window.SCW && typeof window.SCW.onPhotoDrop === 'function') {
+      window.SCW.onPhotoDrop(detail, { setPending: function(){}, setSuccess: refresh, setError: function(){} });
+      return;
+    }
+    var url = (window.SCW && window.SCW.CONFIG && window.SCW.CONFIG.MAKE_PHOTO_MOVE_WEBHOOK) || '';
+    if (!url) { console.warn('[scw-ws-v2] No MAKE_PHOTO_MOVE_WEBHOOK / onPhotoDrop'); return; }
+    fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                 body: JSON.stringify(detail) })
+      .then(function () { refresh(); })
+      .catch(function () { refresh(); });   // Make webhooks often CORS-block the response
+  }
+
+  function confirmMove(targetCard, detail, viewKey) {
+    var existing = targetCard.querySelector('.scw-ws-v2-photo-confirm');
+    if (existing) return;
+    var ov = document.createElement('div');
+    ov.className = 'scw-ws-v2-photo-confirm';
+    ov.innerHTML =
+      '<div class="scw-ws-v2-photo-confirm-text">Use this photo for<br><b>' +
+        escapeHtml(detail.targetPhotoType || 'this slot') + '</b>?</div>' +
+      '<div class="scw-ws-v2-photo-confirm-btns">' +
+        '<button type="button" class="scw-ws-v2-photo-confirm-no">Cancel</button>' +
+        '<button type="button" class="scw-ws-v2-photo-confirm-yes">Confirm</button>' +
+      '</div>';
+    ov.addEventListener('click', function (e) { e.stopPropagation(); e.preventDefault(); });
+    ov.querySelector('.scw-ws-v2-photo-confirm-no').addEventListener('click', function () {
+      ov.parentNode && ov.parentNode.removeChild(ov);
+    });
+    ov.querySelector('.scw-ws-v2-photo-confirm-yes').addEventListener('click', function () {
+      ov.parentNode && ov.parentNode.removeChild(ov);
+      targetCard.classList.add('scw-ws-v2-photo-card--pending');
+      dispatchPhotoMove(detail, viewKey);
+    });
+    targetCard.appendChild(ov);
+  }
+
+  if (!document.documentElement.hasAttribute('data-scw-ws-v2-photo-drag-bound')) {
+    document.documentElement.setAttribute('data-scw-ws-v2-photo-drag-bound', '1');
+
+    document.addEventListener('dragstart', function (e) {
+      var card = cardOf(e);
+      if (!isFilled(card)) return;
+      dragSrc = card;
+      card.classList.add('scw-ws-v2-photo-drag-src');
+      try { e.dataTransfer.effectAllowed = 'copy';
+            e.dataTransfer.setData('text/plain', card.getAttribute('data-photo-id') || ''); } catch (x) {}
+      var strip = stripOf(card);
+      if (strip) {
+        var cards = strip.querySelectorAll(CARD_SEL);
+        for (var i = 0; i < cards.length; i++) {
+          if (cards[i] !== card && isReqEmpty(cards[i])) {
+            cards[i].classList.add('scw-ws-v2-photo-drop-ok');
+          }
+        }
+      }
+    }, true);
+
+    document.addEventListener('dragend', function () {
+      clearDragState();
+      dragSrc = null;
+    }, true);
+
+    document.addEventListener('dragover', function (e) {
+      if (!dragSrc) return;
+      var card = cardOf(e);
+      if (!card || !card.classList.contains('scw-ws-v2-photo-drop-ok')) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'copy';
+    });
+    document.addEventListener('dragenter', function (e) {
+      if (!dragSrc) return;
+      var card = cardOf(e);
+      if (!card || !card.classList.contains('scw-ws-v2-photo-drop-ok')) return;
+      e.preventDefault();
+      card.classList.add('scw-ws-v2-photo-drop-hover');
+    });
+    document.addEventListener('dragleave', function (e) {
+      var card = cardOf(e);
+      if (!card || card.contains(e.relatedTarget)) return;
+      card.classList.remove('scw-ws-v2-photo-drop-hover');
+    });
+    document.addEventListener('drop', function (e) {
+      var targetCard = cardOf(e);
+      if (!targetCard || !targetCard.classList.contains('scw-ws-v2-photo-drop-ok') || !dragSrc) return;
+      e.preventDefault();
+      var detail = {
+        sourceRecordId:  dragSrc.getAttribute('data-photo-id'),
+        sourcePhotoType: dragSrc.getAttribute('data-photo-type') || '',
+        sourceRequired:  dragSrc.getAttribute('data-photo-required') === 'true',
+        sourceNotes:     dragSrc.getAttribute('data-photo-notes') || '',
+        targetRecordId:  targetCard.getAttribute('data-photo-id'),
+        targetPhotoType: targetCard.getAttribute('data-photo-type') || 'this slot',
+        targetRequired:  targetCard.getAttribute('data-photo-required') === 'true',
+        targetNotes:     targetCard.getAttribute('data-photo-notes') || '',
+        surveyRequestId: getSurveyRequestId()
+      };
+      var viewKey = getViewKeyFor(targetCard);
+      clearDragState();
+      confirmMove(targetCard, detail, viewKey);
     });
   }
 
