@@ -157,15 +157,36 @@
     return out;
   }
 
-  // Resolved field map for a view. Falls back to defaults when the view
-  // isn't registered (so callers that don't know their view still work).
+  // Resolved field map for a view.
+  //   - default: merge the view's `fields` OVER DEFAULT_FIELDS (same-object
+  //     deployments override only what differs).
+  //   - `independentFields: true`: use the view's `fields` map AS-IS with NO
+  //     default fallback. Use this for a DIFFERENT object whose keys all
+  //     differ — it prevents the silent-fallback bug where a forgotten key
+  //     inherits the SOW object's (wrong/absent) field.
+  // Falls back to defaults when the view isn't registered, so callers that
+  // don't know their view still work.
   function fields(sourceViewKey) {
     var key = sourceViewKey || '__default';
     if (_fieldCache[key]) return _fieldCache[key];
     var cfg = viewCfg(sourceViewKey);
-    var map = merge(DEFAULT_FIELDS, cfg && cfg.fields);
+    var map;
+    if (cfg && cfg.independentFields) {
+      map = merge(cfg.fields, null);   // copy; no default inheritance
+    } else {
+      map = merge(DEFAULT_FIELDS, cfg && cfg.fields);
+    }
     _fieldCache[key] = map;
     return map;
+  }
+
+  // Debug aid — list logical names the pipeline expects that are missing
+  // from a view's resolved map (catches forgotten keys on a new object).
+  function missingFields(sourceViewKey) {
+    var resolved = fields(sourceViewKey);
+    var out = [];
+    for (var name in DEFAULT_FIELDS) if (!resolved[name]) out.push(name);
+    return out;
   }
 
   function buckets(sourceViewKey) {
@@ -182,10 +203,11 @@
   }
 
   SCW.worksheetV2.cfg = {
-    viewCfg: viewCfg,
-    fields:  fields,
-    buckets: buckets,
-    bucket:  bucket
+    viewCfg:       viewCfg,
+    fields:        fields,
+    buckets:       buckets,
+    bucket:        bucket,
+    missingFields: missingFields
   };
 })();
 /*** END WORKSHEET V2 — CONFIG ************************************************/
