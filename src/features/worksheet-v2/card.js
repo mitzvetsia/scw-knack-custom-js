@@ -152,18 +152,17 @@
     return s === 'yes' || s === 'true' || s === '1';
   }
 
-  /** Wrong-bracket flag for an accessory record: field_2244 ("accessory
-   *  match check") is anything other than Yes (No / empty / false). Mirrors
-   *  warnings.js's isNoOrUnset so the per-accessory marker matches the
-   *  parent's rolled-up "wrong bracket" warning count. */
+  /** Wrong-accessory flag: field_2244 ("accessory match check") is
+   *  explicitly No. Empty/unset is NOT flagged (unconfirmed != wrong).
+   *  Mirrors warnings.js's isExplicitNo so the per-accessory marker matches
+   *  the parent's rolled-up count. */
   function isBracketWrong(rec) {
     if (!rec) return false;
     var raw = rec['field_2244_raw'];
-    if (raw === true || raw === 'Yes' || raw === 'yes' || raw === 1) return false;
     if (raw === false || raw === 'No' || raw === 'no' || raw === 0) return true;
+    if (raw === true || raw === 'Yes' || raw === 'yes' || raw === 1) return false;
     var s = (rec['field_2244'] || '').toString().trim().toLowerCase();
-    if (s === 'yes' || s === 'true' || s === '1') return false;
-    return true;
+    return s === 'no' || s === 'false' || s === '0';
   }
 
   /** Quantity (field_1964) input — non-editable when field_2230 is yes.

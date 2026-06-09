@@ -251,20 +251,17 @@
     '  display: inline-flex !important;',
     '  align-items: center !important;',
     '  justify-content: center !important;',
-    '  width: 20px !important; height: 20px !important;',
+    '  width: 22px !important; height: 22px !important;',
     '  padding: 0 !important;',
     '  border-radius: 6px !important;',
     '  background: #fffbeb !important;',
-    '  border: 1px solid #fde68a !important;',
+    '  border: 1.5px solid #fde68a !important;',
     '  color: #b45309 !important;',
     '  cursor: pointer !important;',
     '  flex: 0 0 auto !important;',
     '}',
-    '.scw-ws-v2-warn-chit:hover {',
-    '  background: #fef3c7 !important; border-color: #fcd34d !important;',
-    '}',
     '.scw-ws-v2-warn-chit svg {',
-    '  width: 12px !important; height: 12px !important; flex: 0 0 auto !important;',
+    '  width: 14px !important; height: 14px !important; flex: 0 0 auto !important;',
     '}',
 
     /* Discontinued-product flag — amber (warning palette; red is reserved
@@ -1975,19 +1972,31 @@
     '.scw-ws-v2-warn-chip svg { flex: 0 0 auto !important; }',
     '.scw-ws-v2-warn-chip-n { font-weight: 700 !important; font-variant-numeric: tabular-nums !important; }',
     /* Issue chips rendered inside the MDF/IDF (L1) header bar. Sit between
-       the label and the record count, with a solid amber pill so they read
-       on the dark-blue header. Non-interactive (--static). */
+       the label and the record count. Non-interactive (--static). */
     '.scw-ws-v2-l1-head .scw-ws-v2-warn-chips {',
     '  order: 0 !important; margin-left: 0 !important; gap: 4px !important;',
     '}',
     '.scw-ws-v2-l1-head .scw-ws-v2-warn-chip {',
-    '  background: #fde68a !important; color: #7c2d12 !important;',
-    '  border-color: #f59e0b !important; padding: 1px 8px !important;',
-    '  font-size: 10.5px !important;',
+    '  padding: 1px 8px !important; font-size: 10.5px !important;',
     '}',
     '.scw-ws-v2-warn-chip--static { cursor: default !important; }',
-    '.scw-ws-v2-l1-head .scw-ws-v2-warn-chip:hover {',
-    '  background: #fde68a !important; border-color: #f59e0b !important;',
+    /* ── Per-issue-type colour coding (fast scanning) ─────────────
+       Applies to the column chips (warn-chit) AND the aggregate chips
+       (warn-chip). Solid pills so they read on the dark L1 header too. */
+    '.scw-ws-v2-warn-chit[data-issue-type="photos"],',
+    '.scw-ws-v2-warn-chip[data-issue-type="photos"] {',
+    '  color: #4338ca !important; background: #eef2ff !important;',
+    '  border-color: #c7d2fe !important;',
+    '}',
+    '.scw-ws-v2-warn-chit[data-issue-type="disconnected"],',
+    '.scw-ws-v2-warn-chip[data-issue-type="disconnected"] {',
+    '  color: #be123c !important; background: #fff1f2 !important;',
+    '  border-color: #fecdd3 !important;',
+    '}',
+    '.scw-ws-v2-warn-chit[data-issue-type="bracket"],',
+    '.scw-ws-v2-warn-chip[data-issue-type="bracket"] {',
+    '  color: #b45309 !important; background: #fffbeb !important;',
+    '  border-color: #fcd34d !important;',
     '}',
     /* Card-flash animation triggered when a warning chip is clicked
        — amber pulse on the matching cards so the user sees them at

@@ -322,11 +322,12 @@
         '<span class="scw-ws-v2-warn-chip-n">' + n + '</span>' +
         '<span class="scw-ws-v2-warn-chip-l">' + esc(labels[k] || k) + '</span>';
       if (asSpan) {
-        parts.push('<span class="scw-ws-v2-warn-chip scw-ws-v2-warn-chip--static">' +
-          inner + '</span>');
+        parts.push('<span class="scw-ws-v2-warn-chip scw-ws-v2-warn-chip--static" ' +
+          'data-issue-type="' + k + '">' + inner + '</span>');
       } else {
         parts.push(
           '<button type="button" class="scw-ws-v2-warn-chip" ' +
+            'data-issue-type="' + k + '" ' +
             'data-scw-ws-v2-warn-chip="' + k + '" ' +
             'title="Click to highlight the ' + n + ' affected row' +
             (n === 1 ? '' : 's') + '">' + inner + '</button>'

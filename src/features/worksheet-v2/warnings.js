@@ -40,30 +40,29 @@
   // Per-issue-type inline SVG. Picked to match v1\'s vocabulary —
   // photos → camera, disconnected → broken link, bracket → cube. All
   // currentColor so the amber chip palette tints them automatically.
+  // Bold, high-contrast glyphs (solid fills where it helps) so they read
+  // at a glance in the small chips. Each issue type is also colour-coded in
+  // CSS (see [data-issue-type]) for fast scanning.
   var ICONS = {
+    // Camera — solid body so the silhouette pops.
     photos:
-      '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" ' +
-      'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
-      'stroke-linejoin="round">' +
-      '<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>' +
-      '<circle cx="12" cy="13" r="4"/></svg>',
+      '<svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor">' +
+      '<path d="M9 3 7.2 5H4a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-3.2L15 3H9zm3 5a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9zm0 2a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z"/></svg>',
+    // Unplugged — a plug pulled out of a socket. Bold strokes.
     disconnected:
-      '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" ' +
-      'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+      '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" ' +
+      'stroke="currentColor" stroke-width="2.4" stroke-linecap="round" ' +
       'stroke-linejoin="round">' +
-      // Broken-link icon: two link halves with a slash through the gap.
+      '<line x1="2" y1="22" x2="22" y2="2"/>' +
       '<path d="M9 17H7a5 5 0 0 1 0-10h2"/>' +
-      '<path d="M15 7h2a5 5 0 0 1 4.54 7.13"/>' +
-      '<line x1="8" y1="12" x2="13" y2="12"/>' +
-      '<line x1="2" y1="22" x2="22" y2="2"/></svg>',
+      '<path d="M15 7h2a5 5 0 0 1 4 7.5"/></svg>',
+    // Not-equal (≠) — clear "doesn\'t match".
     bracket:
-      '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" ' +
-      'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+      '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" ' +
+      'stroke="currentColor" stroke-width="2.6" stroke-linecap="round" ' +
       'stroke-linejoin="round">' +
-      // Mismatch / "not equal" — two offset arrows with a slash, reads as
-      // "this doesn\'t match" at small sizes.
-      '<line x1="4" y1="9" x2="20" y2="9"/>' +
-      '<line x1="4" y1="15" x2="20" y2="15"/>' +
+      '<line x1="5" y1="9" x2="19" y2="9"/>' +
+      '<line x1="5" y1="15" x2="19" y2="15"/>' +
       '<line x1="17" y1="4" x2="7" y2="20"/></svg>'
   };
 
@@ -115,15 +114,25 @@
     return true;
   }
 
-  /** Build a Set of parent ids whose attached accessories have
-   *  field_2244 ≠ Yes (i.e., the accessory match check is No or
-   *  hasn\'t been confirmed). One pass through the full record list. */
+  /** Explicit No only — field is set to No / false / 0. Empty/unset does
+   *  NOT count (an unconfirmed accessory is not yet "wrong"). */
+  function isExplicitNo(rec, fieldKey) {
+    var raw = rec && rec[fieldKey + '_raw'];
+    if (raw === false || raw === 'No' || raw === 'no' || raw === 0) return true;
+    if (raw === true || raw === 'Yes' || raw === 'yes' || raw === 1) return false;
+    var s = (rec && rec[fieldKey] || '').toString().trim().toLowerCase();
+    return s === 'no' || s === 'false' || s === '0';
+  }
+
+  /** Build a Set of parent ids whose attached accessories are explicitly
+   *  flagged as NOT matching (field_2244 = No). Empty/unconfirmed is not
+   *  flagged. One pass through the full record list. */
   function buildBracketParentSet(records) {
     var flagged = Object.create(null);
     for (var i = 0; i < records.length; i++) {
       var r = records[i];
       if (!r) continue;
-      if (!isNoOrUnset(r, 'field_2244')) continue;
+      if (!isExplicitNo(r, 'field_2244')) continue;
       var raw = r.field_2464_raw;
       if (!Array.isArray(raw)) continue;
       for (var j = 0; j < raw.length; j++) {
