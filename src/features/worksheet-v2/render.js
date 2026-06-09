@@ -73,6 +73,66 @@
     return container.contains(a);
   }
 
+  // Read-only cells whose value is computed server-side. When focus is
+  // still inside the panel a full re-render is deferred (it would yank
+  // focus from the field the user just tabbed into) — but the user still
+  // expects committing a value (Enter / Tab) to surface the recomputed
+  // LABEL (field_1950) + Install Fee (field_2028) + extended stack totals.
+  // patchDerivedCells updates ONLY those read-only cells in place from the
+  // freshly-fetched records, leaving every editable input (and focus /
+  // caret) untouched. The full deferred render still runs once focus
+  // leaves the panel.
+  //
+  // STACK_TOTALS maps an editable input's field key → the field key of the
+  // read-only "extended total" rendered beside it (see card.js stackCell).
+  var STACK_TOTALS = {
+    'field_2150': 'field_2151', // Sub Bid → Sub Bid total
+    'field_1973': 'field_1997', // +Hrs   → Hrs total
+    'field_1974': 'field_2146'  // +Mat   → Mat total
+  };
+
+  function readDerived(rec, key) {
+    var v = rec[key];
+    if (v == null) {
+      var raw = rec[key + '_raw'];
+      if (raw && typeof raw === 'object' && raw.identifier) return raw.identifier;
+      return '';
+    }
+    return String(v).replace(/<[^>]*>/g, '').trim();
+  }
+
+  function setCellText(card, selector, text) {
+    var el = card.querySelector(selector);
+    if (el && el.textContent !== text) el.textContent = text;
+  }
+
+  function patchDerivedCells(container, records) {
+    if (!records || !records.length) return;
+    for (var i = 0; i < records.length; i++) {
+      var rec = records[i];
+      if (!rec || !rec.id) continue;
+      var card = container.querySelector(
+        '.scw-ws-v2-card[data-scw-ws-v2-record="' +
+        String(rec.id).replace(/"/g, '\\"') + '"]'
+      );
+      if (!card) continue;
+
+      setCellText(card, '.scw-ws-v2-cell--label', readDerived(rec, 'field_1950'));
+      setCellText(card, '.scw-ws-v2-cell--fee',   readDerived(rec, 'field_2028'));
+
+      for (var inField in STACK_TOTALS) {
+        var input = card.querySelector('[data-scw-ws-v2-field="' + inField + '"]');
+        if (!input) continue;
+        var cell = input.closest ? input.closest('.scw-ws-v2-cell--stack') : null;
+        var total = cell ? cell.querySelector('.scw-ws-v2-stack-total') : null;
+        if (total) {
+          var t = readDerived(rec, STACK_TOTALS[inField]);
+          if (total.textContent !== t) total.textContent = t;
+        }
+      }
+    }
+  }
+
   // ── Chevron used in L1 headers ──
   var L1_CHEVRON_SVG =
     '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" ' +
@@ -221,7 +281,12 @@
     if (bannerChips) bannerChips.innerHTML = '';
 
     if (hasFocusInPanel(container)) {
+      // Defer the full rebuild (it would steal focus from the field the
+      // user just tabbed into), but patch the read-only derived cells in
+      // place so the committed value's recomputed label / fee / totals
+      // show immediately.
       pending[sourceViewKey] = records;
+      patchDerivedCells(container, records);
       return;
     }
     delete pending[sourceViewKey];
