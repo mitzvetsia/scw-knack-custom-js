@@ -745,13 +745,26 @@
     '  background: #fff;',
     '}',
     '.scw-bid-review-v2__cell:last-child { border-right: none; }',
-    /* Revise dropdown — render the menu IN-FLOW (not absolute) so the SOW
-       card\'s overflow:hidden can\'t clip it. Higher specificity than v1\'s
-       absolute rule wins. */
+    /* Revise dropdown — fully self-contained (don\'t depend on v1\'s CSS),
+       rendered IN-FLOW (not absolute) so the SOW card\'s overflow:hidden
+       can\'t clip it. */
     '.scw-bid-review-v2__overflow { position: static; width: 100%; }',
     '.scw-bid-review-v2__overflow .scw-bid-review__overflow-menu {',
-    '  position: static; margin-top: 4px; min-width: 0; width: 100%;',
-    '  box-shadow: 0 1px 2px rgba(15,23,42,0.08); box-sizing: border-box;',
+    '  display: none; position: static; margin-top: 4px; width: 100%;',
+    '  min-width: 0; box-sizing: border-box; padding: 4px 0;',
+    '  background: #fff; border: 1px solid #e2e8f0; border-radius: 6px;',
+    '  box-shadow: 0 1px 2px rgba(15,23,42,0.08);',
+    '}',
+    '.scw-bid-review-v2__overflow.scw-bid-review__overflow--open .scw-bid-review__overflow-menu {',
+    '  display: block;',
+    '}',
+    '.scw-bid-review-v2__overflow .scw-bid-review__overflow-item {',
+    '  display: block; width: 100%; text-align: left; padding: 7px 12px;',
+    '  border: none; background: none; cursor: pointer; white-space: nowrap;',
+    '  font: 600 12px/1.3 system-ui, sans-serif; color: #334155;',
+    '}',
+    '.scw-bid-review-v2__overflow .scw-bid-review__overflow-item:hover {',
+    '  background: #eff6ff; color: #1d4ed8;',
     '}',
     '.scw-bid-review-v2__cell--empty {',
     '  background: #fafafa; text-align: center; color: #cbd5e1;',
