@@ -266,6 +266,15 @@
     return !!(accessoryId && lastAccMismatch[accessoryId]);
   }
 
+  /** Merge externally-computed accessory-mismatch ids into the current map.
+   *  Used by bid-review-v2 (scene_1155): it detects wrong brackets from the
+   *  view_3921 SOW-items records and feeds the offending ids here so the
+   *  embedded worksheet card's per-accessory chit lights up there too. */
+  function mergeAccessoryMismatch(map) {
+    if (!map) return;
+    for (var id in map) { if (map[id]) lastAccMismatch[id] = true; }
+  }
+
   ns.warnings = {
     TYPES:               TYPES,
     LABELS:              LABELS,
@@ -273,7 +282,8 @@
     analyze:             analyze,
     getIssuesFor:        getIssuesFor,
     getCountsForRecords: getCountsForRecords,
-    isAccessoryMismatch: isAccessoryMismatch
+    isAccessoryMismatch: isAccessoryMismatch,
+    mergeAccessoryMismatch: mergeAccessoryMismatch
   };
 })();
 /*** END WORKSHEET V2 — WARNINGS **********************************************/
