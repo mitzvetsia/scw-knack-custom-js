@@ -114,39 +114,64 @@
     return true;
   }
 
-  /** Accessory match check (field_2244) is rendered on the PARENT's row as
-   *  per-accessory connection-value spans (id = accessory record id, text =
-   *  that accessory's Yes/No) — NOT as a usable boolean on the accessory's
-   *  own model record. So we read it from the live view DOM, exactly like
-   *  v1's connected-records. An accessory is WRONG when its value is
-   *  explicitly No / false. Returns:
-   *    { byAccessory: { accId: true }, byParent: { parentId: true } }
-   *  byParent is the rollup (a parent with any No accessory). */
+  function isExplicitNoVal(raw, str) {
+    if (raw === false || raw === 'No' || raw === 'no' || raw === 0) return true;
+    if (raw === true || raw === 'Yes' || raw === 'yes' || raw === 1) return false;
+    var s = (str == null ? '' : str).toString().trim().toLowerCase();
+    return s === 'no' || s === 'false' || s === '0';
+  }
+
+  /** Wrong-accessory detection. field_2244 ("accessory match check") lives
+   *  on the ACCESSORY record (No/false = wrong). Accessories are hidden from
+   *  the v2 tree, so the analyzed record set doesn't include them — we read
+   *  the FULL model (ns.data.readRecords) and, as a fallback, the accessory's
+   *  own plain field_2244 cell in the source-view DOM (NOT the parent's
+   *  per-accessory array cell). An accessory that is explicitly No is rolled
+   *  up to its parent(s) via field_2464. Returns:
+   *    { byAccessory: { accId: true }, byParent: { parentId: true } } */
   function buildBracketMaps(viewKey) {
     var byAccessory = Object.create(null);
     var byParent = Object.create(null);
+
+    var recs = [];
+    try {
+      if (ns.data && typeof ns.data.readRecords === 'function') {
+        recs = ns.data.readRecords(viewKey) || [];
+      }
+    } catch (e) { recs = []; }
+
+    // DOM fallback: each record's OWN boolean field_2244 = the cell with no
+    // per-accessory connection-value spans.
+    var domVal = Object.create(null);
     var view = document.getElementById(viewKey) ||
                document.getElementById('view_3962');
-    if (!view) return { byAccessory: byAccessory, byParent: byParent };
-    var rows = view.querySelectorAll('tbody tr[id]');
-    for (var i = 0; i < rows.length; i++) {
-      var parentId = (rows[i].getAttribute('id') || '').trim();
-      // field_2244 can render twice on a row (the record's own boolean AND
-      // the per-accessory connection array). We only want the array — the
-      // cell whose spans carry per-accessory ids. Scan every matching cell.
-      var cells = rows[i].querySelectorAll(
-        'td.field_2244, td[data-field-key="field_2244"]');
-      for (var c = 0; c < cells.length; c++) {
-        var spans = cells[c].querySelectorAll('span[id][data-kn="connection-value"]');
-        for (var s = 0; s < spans.length; s++) {
-          var accId = (spans[s].getAttribute('id') || '').trim();
-          if (!accId) continue;
-          var v = (spans[s].textContent || '').trim().toLowerCase();
-          if (v === 'no' || v === 'false' || v === '0') {
-            byAccessory[accId] = true;
-            if (parentId) byParent[parentId] = true;
-          }
+    if (view) {
+      var rows = view.querySelectorAll('tbody tr[id]');
+      for (var i = 0; i < rows.length; i++) {
+        var rid = (rows[i].getAttribute('id') || '').trim();
+        if (!rid) continue;
+        var cells = rows[i].querySelectorAll(
+          'td.field_2244, td[data-field-key="field_2244"]');
+        for (var c = 0; c < cells.length; c++) {
+          if (cells[c].querySelector('span[id][data-kn="connection-value"]')) continue;
+          domVal[rid] = (cells[c].textContent || '').trim().toLowerCase();
+          break;
         }
+      }
+    }
+
+    for (var k = 0; k < recs.length; k++) {
+      var rec = recs[k];
+      if (!rec || !rec.id) continue;
+      var par = rec.field_2464_raw;
+      if (!Array.isArray(par) || !par.length) continue;   // not an accessory
+      var dv = domVal[rec.id];
+      var wrong = isExplicitNoVal(rec.field_2244_raw, rec.field_2244) ||
+        (dv === 'no' || dv === 'false' || dv === '0');
+      if (!wrong) continue;
+      byAccessory[rec.id] = true;
+      for (var p = 0; p < par.length; p++) {
+        if (par[p] && par[p].id) byParent[par[p].id] = true;
       }
     }
     return { byAccessory: byAccessory, byParent: byParent };
