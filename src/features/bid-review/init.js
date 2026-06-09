@@ -148,8 +148,12 @@
     var ids = Object.keys(_expandedSowItems);
     for (var i = 0; i < ids.length; i++) {
       var sowItemId = ids[i];
+      // Key can be a sow-item id (regular rows) or a bid record id
+      // (bid-only rows), so match either attribute or bid-only rows
+      // never reopen after a full refresh.
       var tr = document.querySelector(
-        '.scw-bid-review__row[data-sow-item-id="' + sowItemId + '"]'
+        '.scw-bid-review__row[data-sow-item-id="' + sowItemId + '"], ' +
+        '.scw-bid-review__row[data-row-id="' + sowItemId + '"]'
       );
       if (tr && tr.getAttribute('aria-expanded') !== 'true') {
         toggleRowExpand(tr);
@@ -847,10 +851,25 @@
   function applyPendingRefresh() {
     var ids = Object.keys(_pendingPatchIds);
     _pendingPatchIds = Object.create(null);
-    var fullRefresh = _needsFullRefresh;
+    // Read + clear the flag, but DON'T let it force the full path on its
+    // own when we know which record(s) changed (see below).
     _needsFullRefresh = false;
 
-    if (fullRefresh || !ids.length || !_state) {
+    // Prefer the in-place single-row patch whenever we have edited
+    // record id(s). patchRows() rebuilds just those rows (so derived grid
+    // cells — Install Fee, Sub Bid totals — reflect the edit) and
+    // recomputes every SOW header total from the FRESH full model, all
+    // WITHOUT wiping the table. A full refreshSilently() tears out every
+    // expanded panel and rebuilds+reopens them, which is what was
+    // collapsing open line items the moment an edit completed: a
+    // device-worksheet re-render fires knack-view-render.view_3921 with no
+    // recordId, coalesces into this debounce window, and used to force the
+    // disruptive full path. patchRows() self-detects structural changes
+    // (row add/remove, MDF/IDF regroup) and falls back to refreshSilently()
+    // when an in-place patch isn't valid, so dropping the flag-gate here is
+    // safe — we only ever skip the wipe when the change really was a plain
+    // in-place edit. Pure no-recordId events (ids empty) still full-refresh.
+    if (!ids.length || !_state) {
       refreshSilently();
       return;
     }
@@ -932,7 +951,8 @@
       // it. _expandedSowItems is unchanged across the patch.
       Object.keys(oldExpanded).forEach(function (sid) {
         var tr = document.querySelector(
-          '.scw-bid-review__row--expandable[data-sow-item-id="' + sid + '"]'
+          '.scw-bid-review__row--expandable[data-sow-item-id="' + sid + '"], ' +
+          '.scw-bid-review__row--expandable[data-row-id="' + sid + '"]'
         );
         if (tr && tr.getAttribute('aria-expanded') !== 'true') {
           // Trigger expand by clicking through toggleRowExpand
