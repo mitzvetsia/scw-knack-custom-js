@@ -97,15 +97,22 @@
     return false;
   }
 
+  // Active source view for the current analyze() pass — lets the helpers
+  // below resolve field keys / bucket ids through the per-view config.
+  var curView = '';
+  function F() { return (ns.cfg && ns.cfg.fields(curView)) || {}; }
+
   function isCamReader(rec) {
-    var CAM = (ns.card && ns.card.CAM_READER_BUCKET) || '6481e5ba38f283002898113c';
+    var CAM = (ns.cfg && ns.cfg.bucket('camReader', curView)) ||
+              (ns.card && ns.card.CAM_READER_BUCKET) || '6481e5ba38f283002898113c';
     var bid = (ns.card && ns.card.bucketIdOf && ns.card.bucketIdOf(rec)) || '';
     return bid === CAM;
   }
 
   function isDisconnected(rec) {
     if (!isCamReader(rec)) return false;
-    var raw = rec && rec.field_2197_raw;
+    var key = F().connectedDevice || 'field_2197';
+    var raw = rec && rec[key + '_raw'];
     return !Array.isArray(raw) || raw.length === 0;
   }
 
@@ -172,8 +179,9 @@
     var view = document.getElementById(viewKey) ||
                document.getElementById('view_3962');
     if (view) {
+      var BF = ((ns.cfg && ns.cfg.fields(viewKey).accessoryMatch)) || 'field_2244';
       var cells = view.querySelectorAll(
-        'td.field_2244, td[data-field-key="field_2244"]');
+        'td.' + BF + ', td[data-field-key="' + BF + '"]');
       for (var c = 0; c < cells.length; c++) {
         var spans = cells[c].querySelectorAll('span[id][data-kn="connection-value"]');
         if (!spans.length) continue;
@@ -196,6 +204,7 @@
   var lastAccMismatch = Object.create(null);
 
   function analyze(records, viewKey) {
+    curView = viewKey || '';
     var byRecord = Object.create(null);
     var bracket = buildBracketMaps(viewKey);
     lastAccMismatch = bracket.byAccessory;

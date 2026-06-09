@@ -61,12 +61,13 @@
     var v = window.Knack && Knack.views && Knack.views[viewKey];
     if (!v || !v.model || !v.model.data) return [];
     var models = v.model.data.models || [];
+    var SOWK = ((ns.cfg && ns.cfg.fields(viewKey).sow) || 'field_2154') + '_raw';
     var seen = Object.create(null);
     var list = [];
     for (var i = 0; i < models.length; i++) {
       var attrs = models[i] && models[i].attributes;
       if (!attrs) continue;
-      var raw = attrs.field_2154_raw;
+      var raw = attrs[SOWK];
       if (!Array.isArray(raw)) continue;
       for (var j = 0; j < raw.length; j++) {
         var s = raw[j];
@@ -130,10 +131,11 @@
       if (active[a] === BLANK) blankActive = true;
       else activeSet[active[a]] = true;
     }
+    var SOWK = ((ns.cfg && ns.cfg.fields(viewKey).sow) || 'field_2154') + '_raw';
     var out = [];
     for (var i = 0; i < records.length; i++) {
       var r = records[i];
-      var raw = r && r.field_2154_raw;
+      var raw = r && r[SOWK];
       if (!Array.isArray(raw) || raw.length === 0) {
         if (blankActive) out.push(r);
         continue;

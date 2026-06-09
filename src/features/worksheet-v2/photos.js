@@ -61,7 +61,16 @@
       return map[rid];
     }
 
-    var imgCells = findAllCellsByFieldKey(tr, 'field_771');
+    // Per-view field map — photo sub-record keys (image/type/required/
+    // completed/notes) can differ per deployment.
+    var F = (ns.cfg && ns.cfg.fields(sourceViewKey)) || {};
+    var FK_IMG  = F.photoImage     || 'field_771';
+    var FK_TYPE = F.photoType      || 'field_2445';
+    var FK_REQ  = F.photoRequired  || 'field_2446';
+    var FK_COMP = F.photoCompleted || 'field_2447';
+    var FK_NOTE = F.photoNotes     || 'field_114';
+
+    var imgCells = findAllCellsByFieldKey(tr, FK_IMG);
     for (var ic = 0; ic < imgCells.length; ic++) {
       var imgSpans = imgCells[ic].querySelectorAll('span[id][data-kn="connection-value"]');
       for (var i = 0; i < imgSpans.length; i++) {
@@ -76,7 +85,7 @@
       }
     }
 
-    var typeCell = findCellByFieldKey(tr, 'field_2445');
+    var typeCell = findCellByFieldKey(tr, FK_TYPE);
     if (typeCell) {
       var outerSpans = typeCell.querySelectorAll('span[id][data-kn="connection-value"]');
       for (var j = 0; j < outerSpans.length; j++) {
@@ -87,7 +96,7 @@
       }
     }
 
-    var reqCell = findCellByFieldKey(tr, 'field_2446');
+    var reqCell = findCellByFieldKey(tr, FK_REQ);
     if (reqCell) {
       var reqSpans = reqCell.querySelectorAll('span[id][data-kn="connection-value"]');
       for (var r = 0; r < reqSpans.length; r++) {
@@ -98,7 +107,7 @@
       }
     }
 
-    var compCell = findCellByFieldKey(tr, 'field_2447');
+    var compCell = findCellByFieldKey(tr, FK_COMP);
     if (compCell) {
       var compSpans = compCell.querySelectorAll('span[id][data-kn="connection-value"]');
       for (var c = 0; c < compSpans.length; c++) {
@@ -109,7 +118,7 @@
       }
     }
 
-    var notesCell = findCellByFieldKey(tr, 'field_114');
+    var notesCell = findCellByFieldKey(tr, FK_NOTE);
     if (notesCell) {
       var notesSpans = notesCell.querySelectorAll('span[id][data-kn="connection-value"]');
       for (var n = 0; n < notesSpans.length; n++) {

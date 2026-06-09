@@ -71,10 +71,15 @@
       if (input.classList.contains(SAV_CLS)) input.classList.remove(SAV_CLS);
     }, FLASH_MS);
 
-    // Fields that influence the read-only Fee (field_2028) — when the
-    // user edits any of them, refetch the affected record after save
-    // so the row\'s Fee cell shows Knack\'s recomputed value.
-    var FEE_DEPS = { 'field_2150': 1, 'field_1973': 1, 'field_1974': 1, 'field_1964': 1 };
+    // Fields that influence the read-only Fee — when the user edits any of
+    // them, refetch the affected record after save so the Fee cell shows
+    // Knack\'s recomputed value. Resolved per-view from config.
+    var EF = (ns.cfg && ns.cfg.fields(viewKey)) || {};
+    var FEE_DEPS = {};
+    FEE_DEPS[EF.subBid || 'field_2150'] = 1;
+    FEE_DEPS[EF.addHrs || 'field_1973'] = 1;
+    FEE_DEPS[EF.addMat || 'field_1974'] = 1;
+    FEE_DEPS[EF.qty    || 'field_1964'] = 1;
 
     savePut(viewKey, recordId, fieldKey, newValue)
       .then(function (resp) {
