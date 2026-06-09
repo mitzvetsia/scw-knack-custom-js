@@ -114,37 +114,53 @@
     return true;
   }
 
-  /** Accessory match check (field_2244): mismatched accessories store Yes
-   *  for a confirmed match and BLANK for a mismatch — there is no explicit
-   *  "No". So a warning fires when the value is NOT Yes (mirrors v1's
-   *  connected-records `if (!isYes)`). */
-  function isMismatch(rec, fieldKey) {
-    var raw = rec && rec[fieldKey + '_raw'];
-    if (raw === true || raw === 'Yes' || raw === 'yes' || raw === 1) return false;
-    var s = (rec && rec[fieldKey] || '').toString().trim().toLowerCase();
-    return !(s === 'yes' || s === 'true' || s === '1');
-  }
-
-  /** Build a Set of parent ids whose attached accessories don't match
-   *  (field_2244 != Yes). One pass through the full record list. */
-  function buildBracketParentSet(records) {
-    var flagged = Object.create(null);
-    for (var i = 0; i < records.length; i++) {
-      var r = records[i];
-      if (!r) continue;
-      if (!isMismatch(r, 'field_2244')) continue;
-      var raw = r.field_2464_raw;
-      if (!Array.isArray(raw)) continue;
-      for (var j = 0; j < raw.length; j++) {
-        if (raw[j] && raw[j].id) flagged[raw[j].id] = true;
+  /** Accessory match check (field_2244) is rendered on the PARENT's row as
+   *  per-accessory connection-value spans (id = accessory record id, text =
+   *  that accessory's Yes/No) — NOT as a usable boolean on the accessory's
+   *  own model record. So we read it from the live view DOM, exactly like
+   *  v1's connected-records. An accessory is WRONG when its value is
+   *  explicitly No / false. Returns:
+   *    { byAccessory: { accId: true }, byParent: { parentId: true } }
+   *  byParent is the rollup (a parent with any No accessory). */
+  function buildBracketMaps(viewKey) {
+    var byAccessory = Object.create(null);
+    var byParent = Object.create(null);
+    var view = document.getElementById(viewKey) ||
+               document.getElementById('view_3962');
+    if (!view) return { byAccessory: byAccessory, byParent: byParent };
+    var rows = view.querySelectorAll('tbody tr[id]');
+    for (var i = 0; i < rows.length; i++) {
+      var parentId = (rows[i].getAttribute('id') || '').trim();
+      // field_2244 can render twice on a row (the record's own boolean AND
+      // the per-accessory connection array). We only want the array — the
+      // cell whose spans carry per-accessory ids. Scan every matching cell.
+      var cells = rows[i].querySelectorAll(
+        'td.field_2244, td[data-field-key="field_2244"]');
+      for (var c = 0; c < cells.length; c++) {
+        var spans = cells[c].querySelectorAll('span[id][data-kn="connection-value"]');
+        for (var s = 0; s < spans.length; s++) {
+          var accId = (spans[s].getAttribute('id') || '').trim();
+          if (!accId) continue;
+          var v = (spans[s].textContent || '').trim().toLowerCase();
+          if (v === 'no' || v === 'false' || v === '0') {
+            byAccessory[accId] = true;
+            if (parentId) byParent[parentId] = true;
+          }
+        }
       }
     }
-    return flagged;
+    return { byAccessory: byAccessory, byParent: byParent };
   }
+
+  // Latest accessory→mismatch map, so card.js can mark the specific
+  // offending accessory chip without re-scanning the DOM.
+  var lastAccMismatch = Object.create(null);
 
   function analyze(records, viewKey) {
     var byRecord = Object.create(null);
-    var bracketParents = buildBracketParentSet(records);
+    var bracket = buildBracketMaps(viewKey);
+    lastAccMismatch = bracket.byAccessory;
+    var bracketParents = bracket.byParent;
 
     for (var i = 0; i < records.length; i++) {
       var rec = records[i];
@@ -186,13 +202,20 @@
     return counts;
   }
 
+  /** True when this accessory record id is flagged (field_2244 = No) by the
+   *  most recent analyze() DOM scan. Used by card.js for the per-chip mark. */
+  function isAccessoryMismatch(accessoryId) {
+    return !!(accessoryId && lastAccMismatch[accessoryId]);
+  }
+
   ns.warnings = {
     TYPES:               TYPES,
     LABELS:              LABELS,
     ICONS:               ICONS,
     analyze:             analyze,
     getIssuesFor:        getIssuesFor,
-    getCountsForRecords: getCountsForRecords
+    getCountsForRecords: getCountsForRecords,
+    isAccessoryMismatch: isAccessoryMismatch
   };
 })();
 /*** END WORKSHEET V2 — WARNINGS **********************************************/

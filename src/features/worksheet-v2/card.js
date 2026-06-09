@@ -152,19 +152,13 @@
     return s === 'yes' || s === 'true' || s === '1';
   }
 
-  /** Wrong-accessory flag: field_2244 ("accessory match check") is anything
-   *  other than Yes. Mismatches store BLANK (not an explicit "No"), so we
-   *  flag not-Yes — mirrors v1's connected-records + warnings.js isMismatch.
-   *  Only meaningful for records that actually carry the field. */
-  function isBracketWrong(rec) {
-    if (!rec) return false;
-    // Only flag when the field is present on this record; a record with no
-    // field_2244 at all isn't an accessory we can judge.
-    if (!('field_2244_raw' in rec) && !('field_2244' in rec)) return false;
-    var raw = rec['field_2244_raw'];
-    if (raw === true || raw === 'Yes' || raw === 'yes' || raw === 1) return false;
-    var s = (rec['field_2244'] || '').toString().trim().toLowerCase();
-    return !(s === 'yes' || s === 'true' || s === '1');
+  /** Wrong-accessory flag for an accessory id. field_2244 ("accessory match
+   *  check") is only reliable as the per-accessory connection-value spans on
+   *  the parent's row — warnings.js scrapes those (explicit No / false) into
+   *  a map. We just look the accessory up there. */
+  function isBracketWrong(accessoryId) {
+    return !!(ns.warnings && typeof ns.warnings.isAccessoryMismatch === 'function'
+      && ns.warnings.isAccessoryMismatch(accessoryId));
   }
 
   /** Quantity (field_1964) input — non-editable when field_2230 is yes.
@@ -790,10 +784,10 @@
         // Locked (field_2230 = Yes) means single-qty only and we omit
         // the stepper entirely (qty is implicit = 1).
         var accRec  = accAttrsById[chip.id] || null;
-        // Wrong-bracket flag lives on the accessory itself (field_2244 ≠
-        // Yes). The parent card's warning chip rolls these up; here we
-        // surface it on the specific accessory chip in the detail panel.
-        var accWrong = isBracketWrong(accRec);
+        // Wrong-accessory flag — sourced from the parent's field_2244
+        // per-accessory spans (see warnings.js). Surface it on the specific
+        // accessory chip; the parent card's warning chip rolls these up.
+        var accWrong = isBracketWrong(chip.id);
         var warnMark = accWrong
           ? '<span class="scw-ws-v2-mh-warn" ' +
               'title="Wrong accessory — does not match this product">' +
