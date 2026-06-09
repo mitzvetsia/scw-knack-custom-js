@@ -71,15 +71,21 @@
       if (input.classList.contains(SAV_CLS)) input.classList.remove(SAV_CLS);
     }, FLASH_MS);
 
-    // Fields that influence the read-only Fee — when the user edits any of
-    // them, refetch the affected record after save so the Fee cell shows
-    // Knack\'s recomputed value. Resolved per-view from config.
+    // Fields that feed a server-side formula — after saving any of them we
+    // refetch the record so the dependent read-only cells refresh:
+    //   - Fee / install fee (field_2028/2151) recompute from sub bid, +Hrs,
+    //     +Mat, qty.
+    //   - The drop LABEL (field_1950, e.g. "E-001") recomputes from the drop
+    //     prefix + drop number.
+    // Resolved per-view from config.
     var EF = (ns.cfg && ns.cfg.fields(viewKey)) || {};
-    var FEE_DEPS = {};
-    FEE_DEPS[EF.subBid || 'field_2150'] = 1;
-    FEE_DEPS[EF.addHrs || 'field_1973'] = 1;
-    FEE_DEPS[EF.addMat || 'field_1974'] = 1;
-    FEE_DEPS[EF.qty    || 'field_1964'] = 1;
+    var RECALC_DEPS = {};
+    RECALC_DEPS[EF.subBid     || 'field_2150'] = 1;
+    RECALC_DEPS[EF.addHrs     || 'field_1973'] = 1;
+    RECALC_DEPS[EF.addMat     || 'field_1974'] = 1;
+    RECALC_DEPS[EF.qty        || 'field_1964'] = 1;
+    RECALC_DEPS[EF.dropPrefix || 'field_2240'] = 1;
+    RECALC_DEPS[EF.dropNumber || 'field_1951'] = 1;
 
     savePut(viewKey, recordId, fieldKey, newValue)
       .then(function (resp) {
@@ -98,7 +104,7 @@
         // surfaces Knack\'s recomputed Fee + extended totals
         // consistently. refetchAndNotify handles the fetch+notify
         // pair atomically.
-        if (FEE_DEPS[fieldKey]) {
+        if (RECALC_DEPS[fieldKey]) {
           if (ns.data && typeof ns.data.refetchAndNotify === 'function') {
             ns.data.refetchAndNotify(viewKey);
             return;
