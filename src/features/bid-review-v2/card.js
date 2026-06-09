@@ -605,6 +605,22 @@
     return ids;
   }
 
+  // Every SOW item id across an entire SOW grid (all groups).
+  function collectSowItemIds(grid) {
+    var ids = [];
+    var groups = (grid && grid.groups) || [];
+    for (var g = 0; g < groups.length; g++) {
+      var gi = collectGroupSowIds(groups[g]);
+      for (var k = 0; k < gi.length; k++) ids.push(gi[k]);
+    }
+    if (!ids.length && grid && grid.rows) {
+      for (var r = 0; r < grid.rows.length; r++) {
+        if (grid.rows[r] && grid.rows[r].sowItem) ids.push(grid.rows[r].sowItem);
+      }
+    }
+    return ids;
+  }
+
   function buildL1HeaderRow(group, colspan) {
     var tr = document.createElement('tr');
     tr.className = 'scw-bid-review-v2__group-header';
@@ -994,13 +1010,21 @@
     header.setAttribute('role', 'button');
     header.setAttribute('tabindex', '0');
     header.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+    // Aggregate issue chips across every SOW item in this SOW.
+    var sowWarn = (ns.warnings && typeof ns.warnings.summaryChipsHtml === 'function')
+      ? ns.warnings.summaryChipsHtml(collectSowItemIds(grid)) : '';
     header.innerHTML =
       SOW_CARET +
       '<span class="scw-bid-review-v2__sow-name">' + escapeHtml(grid.sowName) + '</span>' +
+      sowWarn +
       '<span class="scw-bid-review-v2__sow-meta">' +
         grid.rows.length + ' line item' + (grid.rows.length === 1 ? '' : 's') +
         ' × ' + grid.packages.length + ' bid' + (grid.packages.length === 1 ? '' : 's') +
-      '</span>';
+      '</span>' +
+      // Per-SOW expand/collapse-all of the MDF/IDF groups within this SOW.
+      '<button type="button" class="scw-bid-review-v2__sow-groups-toggle" ' +
+        'data-scw-br-v2-sow-groups title="Expand or collapse all groups in this SOW">' +
+        'Collapse all</button>';
     section.appendChild(header);
 
     var table = document.createElement('table');

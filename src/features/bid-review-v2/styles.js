@@ -99,6 +99,20 @@
     '  color: rgba(255,255,255,0.8);',
     '  font-variant-numeric: tabular-nums;',
     '}',
+    /* Aggregate warning chips in the SOW header — sit after the name, left
+       of the right-aligned meta. */
+    '.scw-bid-review-v2__sow-header .scw-bid-review-v2__warn-chips--sum {',
+    '  margin-left: 0 !important; flex: 0 0 auto;',
+    '}',
+    /* Per-SOW expand/collapse-all of the inner groups. */
+    '.scw-bid-review-v2__sow-groups-toggle {',
+    '  flex: 0 0 auto; margin-left: 10px;',
+    '  padding: 3px 10px; border-radius: 5px;',
+    '  background: rgba(255,255,255,0.14); color: #fff;',
+    '  border: 1px solid rgba(255,255,255,0.3); cursor: pointer;',
+    '  font: 600 11px/1 system-ui, -apple-system, sans-serif;',
+    '}',
+    '.scw-bid-review-v2__sow-groups-toggle:hover { background: rgba(255,255,255,0.26); }',
     /* ── Collapsible bid columns (v1 parity) ────────────────── */
     '.scw-bid-review-v2__head-cell--title { position: relative; }',
     '.scw-bid-review-v2__pkg-collapse-btn {',

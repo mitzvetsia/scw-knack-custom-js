@@ -116,6 +116,35 @@
       sowHead.click();
     });
 
+    // Per-SOW "Expand all / Collapse all" — folds/unfolds every MDF/IDF
+    // group within ONE SOW. The button's own label is the state so it always
+    // says what the next click will do.
+    document.addEventListener('click', function (e) {
+      var tgl = e.target.closest && e.target.closest('[data-scw-br-v2-sow-groups]');
+      if (!tgl) return;
+      e.preventDefault();
+      e.stopPropagation();
+      var section = tgl.closest('.scw-bid-review-v2__sow');
+      if (!section) return;
+      var collapse = (tgl.textContent || '').trim().toLowerCase().indexOf('collapse') === 0;
+      var heads = section.querySelectorAll('.scw-bid-review-v2__group-header');
+      for (var h = 0; h < heads.length; h++) {
+        var hd = heads[h];
+        hd.classList.toggle('scw-bid-review-v2__group-header--collapsed', collapse);
+        hd.setAttribute('aria-expanded', collapse ? 'false' : 'true');
+        var n = hd.nextElementSibling;
+        while (n && !n.classList.contains('scw-bid-review-v2__group-header')) {
+          if (n.classList.contains('scw-bid-review-v2__row') ||
+              n.classList.contains('scw-bid-review-v2__subgroup-header')) {
+            n.classList.toggle('scw-bid-review-v2__row--hidden', collapse);
+            n.classList.toggle('scw-bid-review-v2__subgroup-header--hidden', collapse);
+          }
+          n = n.nextElementSibling;
+        }
+      }
+      tgl.textContent = collapse ? 'Expand all' : 'Collapse all';
+    });
+
     document.addEventListener('click', function (e) {
       var head = e.target.closest && e.target.closest('.scw-bid-review-v2__group-header');
       if (!head) return;

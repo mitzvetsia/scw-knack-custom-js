@@ -309,27 +309,35 @@
     return out;
   }
 
-  function groupRows(rows) {
-    var hasMdf = false;
-    for (var i = 0; i < rows.length; i++) {
-      if (rows[i].mdfIdf) { hasMdf = true; break; }
-    }
-    if (!hasMdf) {
-      return [{ key: '__all__', label: '', level: 0,
-                rows: weaveAccessories(rows), subgroups: [] }];
-    }
+  // No-MDF rows are routed to a synthetic L1 by proposal-bucket text, just
+  // like the device worksheet (groups.js): "service" → Project Wide
+  // Services, "assumption" → Project Wide Assumptions, else Unassigned.
+  function syntheticL1ForBucket(bucketLabel) {
+    var lc = String(bucketLabel || '').toLowerCase();
+    if (lc.indexOf('service') !== -1)    return 'Project Wide Services';
+    if (lc.indexOf('assumption') !== -1) return 'Project Wide Assumptions';
+    return 'Unassigned';
+  }
+  // Sort rank: real MDF/IDF first (alpha), then the synthetic groups last.
+  function l1Rank(label) {
+    if (label === 'Project Wide Services')    return 1;
+    if (label === 'Project Wide Assumptions') return 2;
+    if (label === 'Unassigned')               return 3;
+    return 0;
+  }
 
+  function groupRows(rows) {
     var mdfMap = Object.create(null);
     var mdfOrder = [];
     for (var j = 0; j < rows.length; j++) {
       var r = rows[j];
-      var mdf = r.mdfIdf || 'Unassigned';
+      var mdf = r.mdfIdf || syntheticL1ForBucket(r.proposalBucket);
       if (!mdfMap[mdf]) { mdfMap[mdf] = []; mdfOrder.push(mdf); }
       mdfMap[mdf].push(r);
     }
     mdfOrder.sort(function (a, b) {
-      if (a === 'Unassigned') return 1;
-      if (b === 'Unassigned') return -1;
+      var ra = l1Rank(a), rb = l1Rank(b);
+      if (ra !== rb) return ra - rb;
       return a.localeCompare(b);
     });
 
