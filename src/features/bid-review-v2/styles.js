@@ -614,6 +614,19 @@
     '.scw-bid-review-v2__warn-chip[data-issue-type="bracket"] {',
     '  color: #b45309; background: #fffbeb; border-color: #fcd34d;',
     '}',
+    /* Aggregate (summary) chips in the MDF/IDF group header — icon + count
+       + label, auto-width pill. Sits between the title and the row count. */
+    '.scw-bid-review-v2__warn-chips--sum {',
+    '  display: inline-flex; align-items: center; gap: 6px;',
+    '  margin-left: auto; flex: 0 0 auto;',
+    '}',
+    '.scw-bid-review-v2__warn-chip--sum {',
+    '  width: auto; height: auto; border-radius: 999px;',
+    '  padding: 2px 9px; gap: 5px;',
+    '  font: 600 11px/1.3 system-ui, -apple-system, sans-serif;',
+    '  white-space: nowrap;',
+    '}',
+    '.scw-bid-review-v2__warn-chip-n { font-weight: 700; font-variant-numeric: tabular-nums; }',
     /* Line-item label cell (E-001, etc) */
     /* Caret gutter on the left; checkbox / label / totals stack with a
        clean gap so nothing is crammed together. */

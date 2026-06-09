@@ -580,6 +580,20 @@
     return tr;
   }
 
+  // Every SOW item id under an MDF/IDF group (direct rows + subgroup rows).
+  function collectGroupSowIds(group) {
+    var ids = [];
+    function add(rows) {
+      for (var i = 0; rows && i < rows.length; i++) {
+        if (rows[i] && rows[i].sowItem) ids.push(rows[i].sowItem);
+      }
+    }
+    add(group && group.rows);
+    var subs = (group && group.subgroups) || [];
+    for (var s = 0; s < subs.length; s++) add(subs[s].rows);
+    return ids;
+  }
+
   function buildL1HeaderRow(group, colspan) {
     var tr = document.createElement('tr');
     tr.className = 'scw-bid-review-v2__group-header';
@@ -595,10 +609,15 @@
     var rowCount =
       (group.rows ? group.rows.length : 0) +
       (group.subgroups || []).reduce(function (a, s) { return a + s.rows.length; }, 0);
+    // Aggregate issue chips across every SOW item in this MDF/IDF group.
+    var sowIds = collectGroupSowIds(group);
+    var summaryChips = (ns.warnings && typeof ns.warnings.summaryChipsHtml === 'function')
+      ? ns.warnings.summaryChipsHtml(sowIds) : '';
     td.innerHTML =
       '<div class="scw-bid-review-v2__grp-inner">' +
         '<span class="scw-bid-review-v2__grp-chevron">' + GROUP_CHEVRON_SVG + '</span>' +
         '<span class="scw-bid-review-v2__grp-title">' + escapeHtml(group.label) + '</span>' +
+        summaryChips +
         '<span class="scw-bid-review-v2__grp-count">' + rowCount + '</span>' +
       '</div>';
     tr.appendChild(td);
