@@ -59,7 +59,7 @@
     addToSowWebhook:     v1 && v1.addToSowWebhook,
 
     sceneKey:    v1 && v1.sceneKey,
-    debug:       true,
+    debug:       false,
     eventNs:     '.scwBidReviewV2',
     cssId:       'scw-bid-review-v2-css',
     mountId:     'scw-bid-review-v2',
