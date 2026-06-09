@@ -538,12 +538,20 @@
       return false;
     }
 
-    // Shared require-sub-bid drop test — applied to both matched rows and
-    // the "other items" rows so informational (No) items never appear.
+    // Shared drop test — applied to both matched rows and the "other items"
+    // rows. Mirrors the device-worksheet child-only rule: a Require-Sub-Bid
+    // = No row is hidden ONLY when it's a genuine child-only accessory, i.e.
+    // it has a field_2464 parent AND that parent is loaded here (so it still
+    // shows nested under the parent). A No-flag row with NO loaded parent —
+    // e.g. a standalone "unassigned" line item — must stay visible; dropping
+    // it on the flag alone made such items (e.g. a Door Position Switch)
+    // silently vanish from the grid.
     function keepRow(row) {
       var sowFlag = row.sowFullRecord ? raw(row.sowFullRecord, FK.requireSubBid) : '';
       var flag = sowFlag || row.requireSubBid || '';
-      return !/^no$/i.test(String(flag).trim());
+      if (!/^no$/i.test(String(flag).trim())) return true;   // not a No item → keep
+      var hasLoadedParent = row.parentId && !!sowItemIndex[row.parentId];
+      return !hasLoadedParent;   // No-flag: drop only when shown under a loaded parent
     }
 
     // ── "Removed" items — no longer on ANY SOW and not on any bid ──
