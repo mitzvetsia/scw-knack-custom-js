@@ -179,6 +179,34 @@
         if (par[p] && par[p].id) byParent[par[p].id] = true;
       }
     }
+
+    // Parent-row scan: each PARENT line item's field_2244 cell renders one
+    // connection-value span per attached accessory (id = accessory record
+    // id, text = Yes/No). This is the ONLY source on scenes where accessory
+    // child records aren't in the view model (e.g. view_3921 on scene_1155),
+    // and it pinpoints the offending accessory id for the per-chip mark.
+    if (view) {
+      var prows = view.querySelectorAll('tbody tr[id]');
+      for (var pr = 0; pr < prows.length; pr++) {
+        var parentId = (prows[pr].getAttribute('id') || '').trim();
+        if (!parentId) continue;
+        var pcells = prows[pr].querySelectorAll(
+          'td.field_2244, td[data-field-key="field_2244"]');
+        for (var pc = 0; pc < pcells.length; pc++) {
+          var aspans = pcells[pc].querySelectorAll(
+            'span[id][data-kn="connection-value"]');
+          for (var as = 0; as < aspans.length; as++) {
+            var accId = (aspans[as].id || '').trim();
+            if (!accId) continue;
+            var av = (aspans[as].textContent || '').trim().toLowerCase();
+            if (av === 'no' || av === 'false') {
+              byAccessory[accId] = true;
+              byParent[parentId] = true;
+            }
+          }
+        }
+      }
+    }
     return { byAccessory: byAccessory, byParent: byParent };
   }
 

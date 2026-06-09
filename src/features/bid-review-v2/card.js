@@ -250,8 +250,17 @@
     // Computed from the SOW item only — never the bid side.
     var warnHtml = (ns.warnings && row && row.sowItem)
       ? ns.warnings.chipsHtml(row.sowItem) : '';
+    // Accessory rows get an "attached to <parent>" line so the relationship
+    // is explicit even when scrolled away from the parent.
+    var attachHtml = (row && row.isAccessory && row.parentLabel)
+      ? '<div class="scw-bid-review-v2__sow-attached" title="Attached to ' +
+          escapeHtml(row.parentLabel) + '">↳ attached to ' +
+          '<span class="scw-bid-review-v2__sow-attached-name">' +
+            escapeHtml(row.parentLabel) + '</span></div>'
+      : '';
     td.innerHTML =
       warnHtml +
+      attachHtml +
       (sowItemData.productName ?
         '<div class="scw-bid-review-v2__sow-product" data-scw-sow-field="product" title="' +
           escapeHtml(sowItemData.productName) + '">' +

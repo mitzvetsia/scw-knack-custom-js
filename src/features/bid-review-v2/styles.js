@@ -699,18 +699,22 @@
     '  background: #f4f8fc; border-right: 2px solid #cbd5e1;',
     '  position: relative;',
     '}',
-    /* Accessory child rows — indented with a corner marker so they read as
-       belonging to the item directly above them. */
+    /* Accessory child rows — indented + slate grouping rail so they read as
+       belonging to the parent item directly above them. */
     '.scw-bid-review-v2__row--accessory .scw-bid-review-v2__sow-cell {',
-    '  padding-left: 44px !important;',
-    '}',
-    '.scw-bid-review-v2__row--accessory .scw-bid-review-v2__sow-cell::before {',
-    '  content: "\\21b3"; position: absolute; left: 20px; top: 18px;',
-    '  color: #94a3b8; font-size: 15px; line-height: 1;',
+    '  padding-left: 34px !important;',
+    '  box-shadow: inset 3px 0 0 #94a3b8;',
     '}',
     '.scw-bid-review-v2__row--accessory .scw-bid-review-v2__row-label-cell {',
     '  background: #eef3f9;',
     '}',
+    /* "attached to <parent>" line at the top of an accessory SOW cell. */
+    '.scw-bid-review-v2__sow-attached {',
+    '  font: 500 11px/1.3 system-ui, -apple-system, sans-serif;',
+    '  color: #64748b; margin-bottom: 6px;',
+    '  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;',
+    '}',
+    '.scw-bid-review-v2__sow-attached-name { color: #475569; font-weight: 600; }',
     /* ── Photos column (v1 parity) ─────────────────────────── */
     '.scw-bid-review-v2__photos-cell {',
     '  padding: 8px 6px !important; vertical-align: top;',

@@ -238,42 +238,59 @@
   // by sortOrder then displayLabel; an accessory whose parent isn't in
   // this group is treated as top-level so it never disappears.
   function weaveAccessories(rows) {
-    var byId = Object.create(null);
+    // field_2464 (parentId) points at the parent SOW LINE ITEM id. Bid-
+    // backed rows key on the bid-record id (row.id) with the SOW-item id in
+    // row.sowItem, so match the parent by sowItem first, then id.
+    var bySow = Object.create(null), byId = Object.create(null);
     for (var i = 0; i < rows.length; i++) {
-      if (rows[i] && rows[i].id) byId[rows[i].id] = rows[i];
+      var rr = rows[i];
+      if (!rr) continue;
+      if (rr.sowItem) bySow[rr.sowItem] = rr;
+      if (rr.id) byId[rr.id] = rr;
+    }
+    function keyOf(r) { return r.sowItem || r.id; }
+    function parentOf(r) {
+      var pid = r.parentId;
+      if (!pid) return null;
+      var p = bySow[pid] || byId[pid] || null;
+      return (p && p !== r) ? p : null;
     }
     function cmp(a, b) {
       var sa = a.sortOrder || 0, sb = b.sortOrder || 0;
       if (sa !== sb) return sa - sb;
       return (a.displayLabel || '').localeCompare(b.displayLabel || '');
     }
-    var childrenByParent = Object.create(null);
+    var childrenByKey = Object.create(null);
     var topLevel = [];
     for (var j = 0; j < rows.length; j++) {
       var r = rows[j];
-      var pid = r.parentId;
-      if (pid && byId[pid] && pid !== r.id) {
-        (childrenByParent[pid] = childrenByParent[pid] || []).push(r);
+      var p = parentOf(r);
+      if (p) {
+        var pk = keyOf(p);
+        (childrenByKey[pk] = childrenByKey[pk] || []).push(r);
         r.isAccessory = true;   // card.js indents these
+        r.parentLabel = (p.sowItemData && p.sowItemData.productName) ||
+                        p.productName || p.displayLabel || '';
       } else {
         topLevel.push(r);
       }
     }
     topLevel.sort(cmp);
-    for (var k in childrenByParent) childrenByParent[k].sort(cmp);
+    for (var k in childrenByKey) childrenByKey[k].sort(cmp);
     var out = [];
     var seen = Object.create(null);
     function emit(row) {
-      if (seen[row.id]) return;
-      seen[row.id] = true;
+      var rk = keyOf(row);
+      if (seen[rk]) return;
+      seen[rk] = true;
       out.push(row);
-      var kids = childrenByParent[row.id];
+      var kids = childrenByKey[rk];
       if (kids) for (var c = 0; c < kids.length; c++) emit(kids[c]);
     }
     for (var t = 0; t < topLevel.length; t++) emit(topLevel[t]);
     // Safety net: append any row not yet emitted (e.g. a parent cycle).
     for (var m = 0; m < rows.length; m++) {
-      if (rows[m] && !seen[rows[m].id]) out.push(rows[m]);
+      if (rows[m] && !seen[keyOf(rows[m])]) out.push(rows[m]);
     }
     return out;
   }
