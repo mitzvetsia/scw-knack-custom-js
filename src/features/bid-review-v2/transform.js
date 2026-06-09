@@ -813,6 +813,7 @@
         displayRows.push(frow);
       }
       var groups = groupRows(displayRows);
+      // "Belong to another SOW" stays at the BOTTOM.
       if (otherSowRows.length) {
         groups.push({
           key:           '__other_sow_items__',
@@ -824,8 +825,13 @@
           otherBidItems: true
         });
       }
+      // Pin the two "needs attention" groups to the TOP, in order:
+      //   1. Removed — no longer on any SOW or bid (very top)
+      //   2. Added to these bids — no SOW item yet (directly below)
+      // Unshift bid-only first, then removed, so removed lands at index 0
+      // and bid-only at index 1. Neither touches SOW/bid-column totals.
       if (bidOnlyRows.length) {
-        groups.push({
+        groups.unshift({
           key:           '__bid_only_items__',
           label:         'Added to these bids — no SOW item yet',
           mdfIdfId:      '',
@@ -835,9 +841,6 @@
           bidOnlyItems:  true
         });
       }
-      // Removed items pinned to the TOP, default-collapsed. Same set on
-      // every SOW grid (they belong to no SOW). Not added to allRows, so
-      // they never touch SOW or bid-column totals.
       if (removedRows.length) {
         groups.unshift({
           key:             '__removed_items__',
