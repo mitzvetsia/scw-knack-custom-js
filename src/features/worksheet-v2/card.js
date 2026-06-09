@@ -268,30 +268,21 @@
 
   function productCell(rec, viewKey, value) {
     var discontinued = isDiscontinued(rec);
-    var warns = warnChips(rec);
-    // The grid cell is a wrapper div so the product (an editable button)
-    // and the warning chips can stack — the button can't nest the chip
-    // buttons. The product button keeps the conn attrs so picker clicks
-    // still resolve via closest(data-scw-ws-v2-conn).
-    var cellCls = 'scw-ws-v2-cell scw-ws-v2-cell--product scw-ws-v2-cell--prodwrap' +
-      (discontinued ? ' scw-ws-v2-cell--discontinued' : '') +
-      (warns ? ' scw-ws-v2-cell--has-warn' : '');
+    var cls = 'scw-ws-v2-cell scw-ws-v2-cell--product scw-ws-v2-cell--editable-conn' +
+      (discontinued ? ' scw-ws-v2-cell--discontinued' : '');
     var title = discontinued
       ? value + ' — DISCONTINUED product. Click to replace.'
       : value + ' — click to change product';
-    return '<div class="' + cellCls + '">' +
-      '<button type="button" ' +
-        'class="scw-ws-v2-prod-btn scw-ws-v2-cell--editable-conn" ' +
-        'data-scw-ws-v2-conn="field_1949" ' +
-        'data-scw-ws-v2-record="' + escapeHtml(rec.id) + '" ' +
-        'data-scw-ws-v2-view="' + escapeHtml(viewKey) + '" ' +
-        'data-scw-ws-v2-conn-label="Product" ' +
-        'title="' + escapeHtml(title) + '">' +
-        (discontinued ? discontinuedBadge() : '') +
-        '<span class="scw-ws-v2-product-name">' + escapeHtml(value) + '</span>' +
-      '</button>' +
-      warns +
-    '</div>';
+    return '<button type="button" ' +
+      'class="' + cls + '" ' +
+      'data-scw-ws-v2-conn="field_1949" ' +
+      'data-scw-ws-v2-record="' + escapeHtml(rec.id) + '" ' +
+      'data-scw-ws-v2-view="' + escapeHtml(viewKey) + '" ' +
+      'data-scw-ws-v2-conn-label="Product" ' +
+      'title="' + escapeHtml(title) + '">' +
+      (discontinued ? discontinuedBadge() : '') +
+      '<span class="scw-ws-v2-product-name">' + escapeHtml(value) + '</span>' +
+    '</button>';
   }
 
   // SOW cell — connection field_2154 (multi-connection to Scopes of
@@ -367,21 +358,15 @@
     '</button>';
   }
 
-  /** Warning column cell. Warnings now render as separate chips beneath
-   *  the product name (see warnChips / productCell), so this column is kept
-   *  blank purely to preserve the row grid alignment. To revert placement,
-   *  move the warnChips(rec) call from productCell back into here. */
+  /** Warning column cell — separate icon chips (one per issue type), not a
+   *  single stacked badge. Icon-only to fit the narrow column; the label is
+   *  the tooltip. Each chip opens the record panel on click. */
   function warnCell(rec) {
-    return '<span class="scw-ws-v2-cell scw-ws-v2-cell--warn scw-ws-v2-cell--blank"></span>';
-  }
-
-  /** Separate warning chips — one chip per issue type (icon + label),
-   *  instead of a single stacked-icon badge. Each chip opens the record
-   *  panel on click. Returns '' when the record has no issues. */
-  function warnChips(rec) {
     var issues = (ns.warnings && typeof ns.warnings.getIssuesFor === 'function')
       ? ns.warnings.getIssuesFor(rec.id) : [];
-    if (!issues || !issues.length) return '';
+    if (!issues || !issues.length) {
+      return '<span class="scw-ws-v2-cell scw-ws-v2-cell--warn scw-ws-v2-cell--blank"></span>';
+    }
     var labels = (ns.warnings && ns.warnings.LABELS) || {};
     var icons  = (ns.warnings && ns.warnings.ICONS)  || {};
     var chips = issues.map(function (k) {
@@ -390,10 +375,9 @@
         'data-scw-ws-v2-expand="' + escapeHtml(rec.id) + '" ' +
         'title="' + escapeHtml(labels[k] || k) + '">' +
         (icons[k] || '') +
-        '<span class="scw-ws-v2-warn-chit-l">' + escapeHtml(labels[k] || k) + '</span>' +
       '</button>';
     }).join('');
-    return '<span class="scw-ws-v2-prod-warnings">' + chips + '</span>';
+    return '<span class="scw-ws-v2-cell scw-ws-v2-cell--warn">' + chips + '</span>';
   }
 
   // ── Row builders (one per bucket category) ─────────────────
