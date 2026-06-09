@@ -152,6 +152,20 @@
     return s === 'yes' || s === 'true' || s === '1';
   }
 
+  /** Wrong-bracket flag for an accessory record: field_2244 ("accessory
+   *  match check") is anything other than Yes (No / empty / false). Mirrors
+   *  warnings.js's isNoOrUnset so the per-accessory marker matches the
+   *  parent's rolled-up "wrong bracket" warning count. */
+  function isBracketWrong(rec) {
+    if (!rec) return false;
+    var raw = rec['field_2244_raw'];
+    if (raw === true || raw === 'Yes' || raw === 'yes' || raw === 1) return false;
+    if (raw === false || raw === 'No' || raw === 'no' || raw === 0) return true;
+    var s = (rec['field_2244'] || '').toString().trim().toLowerCase();
+    if (s === 'yes' || s === 'true' || s === '1') return false;
+    return true;
+  }
+
   /** Quantity (field_1964) input — non-editable when field_2230 is yes.
    *  Locked rendering keeps the value visible on a white background per
    *  CLAUDE.md's "locked fields" rule (no opacity dimming). */
@@ -775,6 +789,17 @@
         // Locked (field_2230 = Yes) means single-qty only and we omit
         // the stepper entirely (qty is implicit = 1).
         var accRec  = accAttrsById[chip.id] || null;
+        // Wrong-bracket flag lives on the accessory itself (field_2244 ≠
+        // Yes). The parent card's warning chip rolls these up; here we
+        // surface it on the specific accessory chip in the detail panel.
+        var accWrong = isBracketWrong(accRec);
+        var warnMark = accWrong
+          ? '<span class="scw-ws-v2-mh-warn" ' +
+              'title="Wrong bracket — accessory not confirmed for this product">' +
+              ((ns.warnings && ns.warnings.ICONS && ns.warnings.ICONS.bracket) || '') +
+              '<span class="scw-ws-v2-mh-warn-l">wrong bracket</span>' +
+            '</span>'
+          : '';
         var canMulti = accRec ? !isQtyLocked(accRec) : false;
         var curQty  = accRec ? (parseFloat(readNum(accRec, 'field_1964')) || 1) : 1;
         var stepperHtml = canMulti
@@ -801,19 +826,21 @@
           : '';
         // No href → render as non-link span so we never silently bounce
         // the user back to the home page on click.
+        var wrapCls = 'scw-ws-v2-mh-chip-wrap' +
+          (accWrong ? ' scw-ws-v2-mh-chip-wrap--warn' : '');
         if (editHref) {
-          chipsHtml += '<span class="scw-ws-v2-mh-chip-wrap">' +
+          chipsHtml += '<span class="' + wrapCls + '">' +
             '<a class="scw-ws-v2-mh-chip" href="' + escapeHtml(editHref) + '"' +
               ' title="Edit ' + escapeHtml(chip.label) + '">' +
               escapeHtml(chip.label) +
-            '</a>' + stepperHtml + delX +
+            '</a>' + warnMark + stepperHtml + delX +
           '</span>';
         } else {
-          chipsHtml += '<span class="scw-ws-v2-mh-chip-wrap">' +
+          chipsHtml += '<span class="' + wrapCls + '">' +
             '<span class="scw-ws-v2-mh-chip scw-ws-v2-mh-chip--inert"' +
               ' title="' + escapeHtml(chip.label) + '">' +
               escapeHtml(chip.label) +
-            '</span>' + stepperHtml + delX +
+            '</span>' + warnMark + stepperHtml + delX +
           '</span>';
         }
       }
