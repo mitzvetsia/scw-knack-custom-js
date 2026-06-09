@@ -136,6 +136,10 @@
       '  border: 1px solid #ddd;',
       '  box-shadow: 0 1px 4px rgba(0,0,0,.08);',
       '  cursor: pointer;',
+      /* Knack/KTL core CSS sets `img { -webkit-user-drag: none }`, which
+         kills the drag the moment you grab a photo. Re-enable it so the
+         image is a drag source again (the card stays draggable too). */
+      '  -webkit-user-drag: element !important;',
       '  transition: transform 120ms ease, box-shadow 120ms ease;',
       '}',
       '.' + IMG_CLS + ':hover {',
@@ -1251,6 +1255,9 @@
 
             var imgEl = document.createElement('img');
             imgEl.className = IMG_CLS;
+            // Explicit drag source — the attribute also overrides Knack's
+            // `-webkit-user-drag: none` on images in browsers that honor it.
+            imgEl.setAttribute('draggable', 'true');
             imgEl.src = photo.imgUrl;
             imgEl.alt = labelText
               ? (photo.type || 'Photo') + ' for ' + labelText

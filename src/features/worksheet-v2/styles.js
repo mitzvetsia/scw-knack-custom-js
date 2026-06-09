@@ -1535,6 +1535,8 @@
     '  border: 1px solid #ddd !important;',
     '  box-shadow: 0 1px 4px rgba(0,0,0,0.08) !important;',
     '  cursor: pointer !important;',
+    /* Re-enable image drag (Knack/KTL sets img -webkit-user-drag: none). */
+    '  -webkit-user-drag: element !important;',
     '  transition: transform 120ms ease, box-shadow 120ms ease !important;',
     '}',
     '.scw-ws-v2-photo-img:hover {',

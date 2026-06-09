@@ -203,7 +203,7 @@
         (p.required ? ' scw-ws-v2-photo-card--required' : '') +
         (missing   ? ' scw-ws-v2-photo-card--missing'  : '');
       var thumb = p.imgUrl
-        ? '<img class="scw-ws-v2-photo-img" src="' + escapeHtml(p.imgUrl) + '" alt="">'
+        ? '<img class="scw-ws-v2-photo-img" draggable="true" src="' + escapeHtml(p.imgUrl) + '" alt="">'
         : '<div class="scw-ws-v2-photo-img scw-ws-v2-photo-img--placeholder">No image</div>';
       var typeHtml = p.type
         ? '<div class="scw-ws-v2-photo-type">' + escapeHtml(p.type) + '</div>'
