@@ -165,47 +165,35 @@
       }
     }
 
+    var dbgAcc = 0, dbgWrong = 0, dbgModelField = 0, dbgSample = null;
     for (var k = 0; k < recs.length; k++) {
       var rec = recs[k];
       if (!rec || !rec.id) continue;
       var par = rec.field_2464_raw;
       if (!Array.isArray(par) || !par.length) continue;   // not an accessory
+      dbgAcc++;
+      if (rec.field_2244_raw != null || rec.field_2244 != null) dbgModelField++;
+      if (!dbgSample) dbgSample = { id: rec.id, raw: rec.field_2244_raw,
+                                    fmt: rec.field_2244, ownDom: domVal[rec.id] };
       var dv = domVal[rec.id];
       var wrong = isExplicitNoVal(rec.field_2244_raw, rec.field_2244) ||
         (dv === 'no' || dv === 'false' || dv === '0');
       if (!wrong) continue;
+      dbgWrong++;
       byAccessory[rec.id] = true;
       for (var p = 0; p < par.length; p++) {
         if (par[p] && par[p].id) byParent[par[p].id] = true;
       }
     }
 
-    // Parent-row scan: each PARENT line item's field_2244 cell renders one
-    // connection-value span per attached accessory (id = accessory record
-    // id, text = Yes/No). This is the ONLY source on scenes where accessory
-    // child records aren't in the view model (e.g. view_3921 on scene_1155),
-    // and it pinpoints the offending accessory id for the per-chip mark.
-    if (view) {
-      var prows = view.querySelectorAll('tbody tr[id]');
-      for (var pr = 0; pr < prows.length; pr++) {
-        var parentId = (prows[pr].getAttribute('id') || '').trim();
-        if (!parentId) continue;
-        var pcells = prows[pr].querySelectorAll(
-          'td.field_2244, td[data-field-key="field_2244"]');
-        for (var pc = 0; pc < pcells.length; pc++) {
-          var aspans = pcells[pc].querySelectorAll(
-            'span[id][data-kn="connection-value"]');
-          for (var as = 0; as < aspans.length; as++) {
-            var accId = (aspans[as].id || '').trim();
-            if (!accId) continue;
-            var av = (aspans[as].textContent || '').trim().toLowerCase();
-            if (av === 'no' || av === 'false') {
-              byAccessory[accId] = true;
-              byParent[parentId] = true;
-            }
-          }
-        }
-      }
+    // TEMP diagnostic for the comparison grid (view_3921) only — confirms
+    // the v2 own-field detection sees brackets + their field_2244 there.
+    if (viewKey === 'view_3921') {
+      try {
+        console.log('[scw-ws-v2] bracket scan view_3921',
+          { accessories: dbgAcc, withModelField: dbgModelField,
+            flagged: dbgWrong, totalRecords: recs.length, sample: dbgSample });
+      } catch (e) {}
     }
     return { byAccessory: byAccessory, byParent: byParent };
   }
