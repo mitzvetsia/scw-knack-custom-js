@@ -422,10 +422,9 @@
     return el;
   }
   function isFilled(card)   { return card && card.getAttribute('data-photo-has-image') === 'true'; }
-  function isReqEmpty(card) {
-    return card && card.getAttribute('data-photo-has-image') !== 'true' &&
-           card.getAttribute('data-photo-required') === 'true';
-  }
+  // Any OTHER photo card is a valid drop target (drag a photo over another
+  // to reassign it) — it doesn't have to be an empty required slot.
+  function isDropTarget(card) { return !!(card && card.getAttribute('data-photo-id')); }
   function clearDragState() {
     var all = document.querySelectorAll(
       '.scw-ws-v2-photo-drop-ok, .scw-ws-v2-photo-drop-hover, .scw-ws-v2-photo-drag-src');
@@ -503,7 +502,7 @@
       if (strip) {
         var cards = strip.querySelectorAll(CARD_SEL);
         for (var i = 0; i < cards.length; i++) {
-          if (cards[i] !== card && isReqEmpty(cards[i])) {
+          if (cards[i] !== card && isDropTarget(cards[i])) {
             cards[i].classList.add('scw-ws-v2-photo-drop-ok');
           }
         }

@@ -734,21 +734,24 @@
     return (e.target && e.target.closest) ? e.target.closest('.' + CARD_CLS) : null;
   }
 
-  /** Find the parent strip element for a card. */
+  /** Find the parent strip element for a card. Falls back to the card's
+   *  immediate parent so target-scoping still works if the strip wrapper
+   *  class isn't found (e.g. a moved/re-wrapped card). */
   function getStrip(card) {
     var el = card.parentElement;
     while (el && !el.classList.contains(STRIP_CLS)) el = el.parentElement;
-    return el;
+    return el || card.parentElement;
   }
 
-  /** Highlight all valid empty-required targets in the same strip. */
+  /** Highlight valid drop targets in the same strip. A target is ANY other
+   *  photo card (drag one photo over another to reassign it) — empty
+   *  required slots included. */
   function highlightTargets(strip, sourceId) {
+    if (!strip) return;
     var cards = strip.querySelectorAll('.' + CARD_CLS);
     for (var i = 0; i < cards.length; i++) {
       var c = cards[i];
       if (c.getAttribute('data-photo-id') === sourceId) continue;
-      if (c.getAttribute('data-photo-has-image') === 'true') continue;
-      if (c.getAttribute('data-photo-required') !== 'true') continue;
       c.classList.add(DROP_OK_CLS);
     }
   }
@@ -771,18 +774,6 @@
     e.dataTransfer.setData('text/plain', card.getAttribute('data-photo-id'));
 
     var strip = getStrip(card);
-    // TEMP diagnostic — strip found + how many valid (empty + required)
-    // drop targets exist in it.
-    try {
-      var dbgT = strip ? strip.querySelectorAll(
-        '.' + CARD_CLS + '[data-photo-required="true"][data-photo-has-image="false"]') : [];
-      var dbgAll = strip ? strip.querySelectorAll('.' + CARD_CLS) : [];
-      console.log('[SCW photo-drag] handleDragStart', {
-        stripFound: !!strip,
-        cardsInStrip: dbgAll.length,
-        emptyRequiredTargets: dbgT.length
-      });
-    } catch (x) {}
     if (strip) highlightTargets(strip, card.getAttribute('data-photo-id'));
   }
 
@@ -863,33 +854,6 @@
     document.addEventListener('dragenter', handleDragEnter);
     document.addEventListener('dragleave', handleDragLeave);
     document.addEventListener('drop',      handleDrop);
-
-    // TEMP diagnostic — remove once drag is resolved. Logs what happens
-    // when you press + try to drag a photo card so we can see whether the
-    // gesture is blocked (mousedown prevented / user-drag) or dragstart
-    // simply never fires.
-    document.addEventListener('mousedown', function (e) {
-      var card = e.target.closest && e.target.closest('.' + CARD_CLS);
-      if (!card) return;
-      var img = card.querySelector('img');
-      var cs  = card.ownerDocument.defaultView.getComputedStyle(card);
-      var is  = img ? card.ownerDocument.defaultView.getComputedStyle(img) : null;
-      console.log('[SCW photo-drag] mousedown on photo card', {
-        cardDraggable: card.getAttribute('draggable'),
-        imgDraggable:  img && img.getAttribute('draggable'),
-        hasImage:      card.getAttribute('data-photo-has-image'),
-        cardUserDrag:  cs.getPropertyValue('-webkit-user-drag'),
-        imgUserDrag:   is && is.getPropertyValue('-webkit-user-drag'),
-        cardUserSelect: cs.getPropertyValue('user-select')
-      });
-      setTimeout(function () {
-        console.log('[SCW photo-drag] mousedown defaultPrevented?', e.defaultPrevented);
-      }, 0);
-    }, true);
-    document.addEventListener('dragstart', function (e) {
-      var card = e.target.closest && e.target.closest('.' + CARD_CLS);
-      if (card) console.log('[SCW photo-drag] dragstart FIRED', { from: e.target.tagName });
-    }, true);
   }
 
   /** Show a confirmation overlay on the target card before dispatching. */
