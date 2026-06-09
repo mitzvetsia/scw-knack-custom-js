@@ -34,7 +34,7 @@
   var LABELS = {
     photos:       'photos',
     disconnected: 'disconnected',
-    bracket:      'wrong bracket'
+    bracket:      'wrong accessory'
   };
 
   // Per-issue-type inline SVG. Picked to match v1\'s vocabulary —
@@ -60,10 +60,11 @@
       '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" ' +
       'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
       'stroke-linejoin="round">' +
-      // Cube / bracket box.
-      '<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>' +
-      '<polyline points="3.27 6.96 12 12.01 20.73 6.96"/>' +
-      '<line x1="12" y1="22.08" x2="12" y2="12"/></svg>'
+      // Mismatch / "not equal" — two offset arrows with a slash, reads as
+      // "this doesn\'t match" at small sizes.
+      '<line x1="4" y1="9" x2="20" y2="9"/>' +
+      '<line x1="4" y1="15" x2="20" y2="15"/>' +
+      '<line x1="17" y1="4" x2="7" y2="20"/></svg>'
   };
 
   // Per-view cache of the last analyze() result. analyze() is cheap

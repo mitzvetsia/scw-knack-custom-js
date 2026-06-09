@@ -795,9 +795,9 @@
         var accWrong = isBracketWrong(accRec);
         var warnMark = accWrong
           ? '<span class="scw-ws-v2-mh-warn" ' +
-              'title="Wrong bracket — accessory not confirmed for this product">' +
+              'title="Wrong accessory — does not match this product">' +
               ((ns.warnings && ns.warnings.ICONS && ns.warnings.ICONS.bracket) || '') +
-              '<span class="scw-ws-v2-mh-warn-l">wrong bracket</span>' +
+              '<span class="scw-ws-v2-mh-warn-l">wrong accessory</span>' +
             '</span>'
           : '';
         var canMulti = accRec ? !isQtyLocked(accRec) : false;
