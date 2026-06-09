@@ -725,6 +725,11 @@
 
   var dragSourceCard = null;
 
+  /** Resolve the photo card from a delegated drag event. */
+  function cardFromEvent(e) {
+    return (e.target && e.target.closest) ? e.target.closest('.' + CARD_CLS) : null;
+  }
+
   /** Find the parent strip element for a card. */
   function getStrip(card) {
     var el = card.parentElement;
@@ -753,13 +758,16 @@
   }
 
   function handleDragStart(e) {
-    dragSourceCard = e.currentTarget;
-    dragSourceCard.classList.add(DRAG_SRC_CLS);
+    var card = cardFromEvent(e);
+    // Only photo cards that actually carry an image are drag sources.
+    if (!card || card.getAttribute('data-photo-has-image') !== 'true') return;
+    dragSourceCard = card;
+    card.classList.add(DRAG_SRC_CLS);
     e.dataTransfer.effectAllowed = 'copy';
-    e.dataTransfer.setData('text/plain', dragSourceCard.getAttribute('data-photo-id'));
+    e.dataTransfer.setData('text/plain', card.getAttribute('data-photo-id'));
 
-    var strip = getStrip(dragSourceCard);
-    if (strip) highlightTargets(strip, dragSourceCard.getAttribute('data-photo-id'));
+    var strip = getStrip(card);
+    if (strip) highlightTargets(strip, card.getAttribute('data-photo-id'));
   }
 
   function handleDragEnd() {
@@ -769,30 +777,33 @@
   }
 
   function handleDragOver(e) {
-    var card = e.currentTarget;
-    if (!card.classList.contains(DROP_OK_CLS)) return;
+    if (!dragSourceCard) return;
+    var card = cardFromEvent(e);
+    if (!card || !card.classList.contains(DROP_OK_CLS)) return;
     e.preventDefault();
     e.dataTransfer.dropEffect = 'copy';
   }
 
   function handleDragEnter(e) {
-    var card = e.currentTarget;
-    if (!card.classList.contains(DROP_OK_CLS)) return;
+    if (!dragSourceCard) return;
+    var card = cardFromEvent(e);
+    if (!card || !card.classList.contains(DROP_OK_CLS)) return;
     e.preventDefault();
     card.classList.add(DROP_HOVER_CLS);
   }
 
   function handleDragLeave(e) {
-    var card = e.currentTarget;
+    var card = cardFromEvent(e);
+    if (!card) return;
     // Only remove hover if actually leaving the card (not entering a child)
     if (card.contains(e.relatedTarget)) return;
     card.classList.remove(DROP_HOVER_CLS);
   }
 
   function handleDrop(e) {
+    var targetCard = cardFromEvent(e);
+    if (!targetCard || !targetCard.classList.contains(DROP_OK_CLS)) return;
     e.preventDefault();
-    var targetCard = e.currentTarget;
-    if (!targetCard.classList.contains(DROP_OK_CLS)) return;
     if (!dragSourceCard) return;
 
     var sourceId = dragSourceCard.getAttribute('data-photo-id');
@@ -822,6 +833,20 @@
 
     // Show confirmation overlay on the target card
     showConfirmation(targetCard, detail);
+  }
+
+  // Delegated drag wiring — bound once on document so it works regardless
+  // of where a photo card lives (e.g. a wsTr moved into the bid-review
+  // expand panel) or how often the strip is rebuilt. Cards still opt in as
+  // drag sources via draggable="true" (set in buildStrip).
+  if (!document.documentElement.hasAttribute('data-scw-photo-drag-bound')) {
+    document.documentElement.setAttribute('data-scw-photo-drag-bound', '1');
+    document.addEventListener('dragstart', handleDragStart, true);
+    document.addEventListener('dragend',   handleDragEnd,   true);
+    document.addEventListener('dragover',  handleDragOver);
+    document.addEventListener('dragenter', handleDragEnter);
+    document.addEventListener('dragleave', handleDragLeave);
+    document.addEventListener('drop',      handleDrop);
   }
 
   /** Show a confirmation overlay on the target card before dispatching. */
@@ -1220,10 +1245,9 @@
           card.setAttribute('data-photo-notes', photo.notes || '');
 
           if (photo.imgUrl) {
-            // Photo with image — draggable source
+            // Photo with image — draggable source (drag handlers are
+            // delegated on document; the card just opts in via draggable).
             card.setAttribute('draggable', 'true');
-            card.addEventListener('dragstart', handleDragStart);
-            card.addEventListener('dragend', handleDragEnd);
 
             var imgEl = document.createElement('img');
             imgEl.className = IMG_CLS;
@@ -1274,11 +1298,9 @@
               card.appendChild(helper);
             }
 
-            // Drop target events
-            card.addEventListener('dragover', handleDragOver);
-            card.addEventListener('dragenter', handleDragEnter);
-            card.addEventListener('dragleave', handleDragLeave);
-            card.addEventListener('drop', handleDrop);
+            // Drop-target events are delegated on document (see the
+            // one-time binding near the drag handlers) so a moved /
+            // re-rendered card still accepts drops.
           }
 
           // Photo type label beneath
