@@ -48,22 +48,27 @@
     photos:
       '<svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor">' +
       '<path d="M9 3 7.2 5H4a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-3.2L15 3H9zm3 5a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9zm0 2a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z"/></svg>',
-    // Unplugged — a plug pulled out of a socket. Bold strokes.
+    // Broken chain (Lucide "unlink") — two link halves pulled apart with
+    // snap ticks. Universal "connection severed" glyph; reads clearly small.
     disconnected:
       '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" ' +
-      'stroke="currentColor" stroke-width="2.4" stroke-linecap="round" ' +
+      'stroke="currentColor" stroke-width="2.2" stroke-linecap="round" ' +
       'stroke-linejoin="round">' +
-      '<line x1="2" y1="22" x2="22" y2="2"/>' +
-      '<path d="M9 17H7a5 5 0 0 1 0-10h2"/>' +
-      '<path d="M15 7h2a5 5 0 0 1 4 7.5"/></svg>',
-    // Not-equal (≠) — clear "doesn\'t match".
+      '<path d="m18.84 12.25 1.72-1.71a5 5 0 0 0-.12-7.07 5 5 0 0 0-6.95 0l-1.72 1.71"/>' +
+      '<path d="m5.17 11.75-1.71 1.71a5 5 0 0 0 .12 7.07 5 5 0 0 0 6.95 0l1.71-1.71"/>' +
+      '<line x1="8" y1="2" x2="8" y2="5"/>' +
+      '<line x1="2" y1="8" x2="5" y2="8"/>' +
+      '<line x1="16" y1="19" x2="16" y2="22"/>' +
+      '<line x1="19" y1="16" x2="22" y2="16"/></svg>',
+    // Exclamation in a diamond — strong "alert / problem" for a mismatched
+    // accessory. Bold rotated-square outline + bang reads at chip size.
     bracket:
       '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" ' +
-      'stroke="currentColor" stroke-width="2.6" stroke-linecap="round" ' +
+      'stroke="currentColor" stroke-width="2.2" stroke-linecap="round" ' +
       'stroke-linejoin="round">' +
-      '<line x1="5" y1="9" x2="19" y2="9"/>' +
-      '<line x1="5" y1="15" x2="19" y2="15"/>' +
-      '<line x1="17" y1="4" x2="7" y2="20"/></svg>'
+      '<path d="M12 2 22 12 12 22 2 12Z"/>' +
+      '<line x1="12" y1="8" x2="12" y2="13"/>' +
+      '<line x1="12" y1="16.5" x2="12.01" y2="16.5"/></svg>'
   };
 
   // Per-view cache of the last analyze() result. analyze() is cheap
