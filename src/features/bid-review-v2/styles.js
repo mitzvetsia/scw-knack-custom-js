@@ -745,6 +745,14 @@
     '  background: #fff;',
     '}',
     '.scw-bid-review-v2__cell:last-child { border-right: none; }',
+    /* Revise dropdown — render the menu IN-FLOW (not absolute) so the SOW
+       card\'s overflow:hidden can\'t clip it. Higher specificity than v1\'s
+       absolute rule wins. */
+    '.scw-bid-review-v2__overflow { position: static; width: 100%; }',
+    '.scw-bid-review-v2__overflow .scw-bid-review__overflow-menu {',
+    '  position: static; margin-top: 4px; min-width: 0; width: 100%;',
+    '  box-shadow: 0 1px 2px rgba(15,23,42,0.08); box-sizing: border-box;',
+    '}',
     '.scw-bid-review-v2__cell--empty {',
     '  background: #fafafa; text-align: center; color: #cbd5e1;',
     '}',
