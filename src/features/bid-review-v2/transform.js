@@ -833,7 +833,7 @@
       if (bidOnlyRows.length) {
         groups.unshift({
           key:           '__bid_only_items__',
-          label:         'Added to these bids — no SOW item yet',
+          label:         'On Bid — not on SOW',
           mdfIdfId:      '',
           level:         1,
           rows:          bidOnlyRows,
