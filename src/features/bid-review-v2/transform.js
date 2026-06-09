@@ -237,6 +237,16 @@
   // Order rows so each accessory follows its parent. Top-level rows sort
   // by sortOrder then displayLabel; an accessory whose parent isn't in
   // this group is treated as top-level so it never disappears.
+  // True when a row's Require Sub Bid is explicitly No — these items are
+  // children only (never their own grid row). Empty/unknown → not hidden.
+  function isRequireSubBidNo(row) {
+    var v = row && row.requireSubBid;
+    if (v === false) return true;
+    if (v == null) return false;
+    var s = v.toString().replace(/<[^>]*>/g, '').trim().toLowerCase();
+    return s === 'no' || s === 'false';
+  }
+
   function weaveAccessories(rows) {
     // field_2464 (parentId) points at the parent SOW LINE ITEM id. Bid-
     // backed rows key on the bid-record id (row.id) with the SOW-item id in
@@ -783,7 +793,17 @@
         packages[pi].pdfFilename = info.pdfFilename || '';
       }
 
-      var groups = groupRows(rows);
+      // v2 worksheet rule: a SOW item whose Require Sub Bid (field_2478) is
+      // No is an accessory that shows ONLY as a child (in its parent's
+      // embedded card / accessory list), never as its own grid row. Hide
+      // those from the displayed rows; their parent still shows and carries
+      // the wrong-accessory rollup chip.
+      var displayRows = [];
+      for (var fr = 0; fr < rows.length; fr++) {
+        if (isRequireSubBidNo(rows[fr])) continue;
+        displayRows.push(rows[fr]);
+      }
+      var groups = groupRows(displayRows);
       if (otherSowRows.length) {
         groups.push({
           key:           '__other_sow_items__',

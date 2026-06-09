@@ -47,24 +47,98 @@
     return (w && typeof w.analyze === 'function') ? w : null;
   }
 
-  // Thin pass-through to the v2 device-worksheet analyzer pointed at the
-  // SOW items view. All three issue types — including wrong-accessory
-  // (bracket) — come straight from worksheet-v2's detection, so the
-  // comparison grid behaves exactly like the v2 Build-SOW grid.
+  // Wrong-accessory maps for the current render.
+  var bracketByParent    = Object.create(null);
+  var bracketByAccessory = Object.create(null);
+
+  // Walk up from a node to the owning SOW line-item record id (24-hex).
+  function ownerRecordId(el) {
+    var node = el;
+    while (node && node.getAttribute) {
+      var id = node.getAttribute('data-record-id') ||
+               node.getAttribute('data-scw-ws-v2-record') ||
+               node.getAttribute('id') || '';
+      if (/^[a-f0-9]{24}$/i.test(id)) return id;
+      node = node.parentNode;
+    }
+    return '';
+  }
+
+  /** Wrong-accessory detection for the comparison grid. The mounting-bracket
+   *  RECORDS are filtered out of view_3921, so they're not rows/model records
+   *  we can read directly (the v2 own-field approach finds nothing). Instead
+   *  the field_2244 cell on each PARENT line item renders one connection-value
+   *  span per attached accessory (span id = accessory id, text = Yes/No) — the
+   *  same representation v1 reads. Scan the WHOLE view element (the cell may be
+   *  relocated into a worksheet card by device-worksheet), flag any No/False
+   *  accessory span, and roll up to the owning parent record. */
+  function buildBracketMaps() {
+    var byParent = Object.create(null);
+    var byAccessory = Object.create(null);
+    var dbg = { cells: 0, spans: 0, noHits: 0 };
+    var view = document.getElementById(SOW_VIEW);
+    if (view) {
+      var cells = view.querySelectorAll(
+        'td.field_2244, td[data-field-key="field_2244"]');
+      dbg.cells = cells.length;
+      for (var c = 0; c < cells.length; c++) {
+        var spans = cells[c].querySelectorAll('span[id][data-kn="connection-value"]');
+        if (!spans.length) continue;
+        var parentId = ownerRecordId(cells[c]);
+        for (var s = 0; s < spans.length; s++) {
+          dbg.spans++;
+          var accId = (spans[s].id || '').trim();
+          var v = (spans[s].textContent || '').trim().toLowerCase();
+          if (accId && (v === 'no' || v === 'false')) {
+            byAccessory[accId] = true;
+            if (parentId) byParent[parentId] = true;
+            dbg.noHits++;
+          }
+        }
+      }
+    }
+    // TEMP diagnostic (remove once confirmed).
+    try {
+      console.log('[scw-br-v2] bracket scan view_3921', dbg,
+        'parents=' + Object.keys(byParent).length,
+        'accessories=' + Object.keys(byAccessory).length);
+    } catch (e) {}
+    return { byParent: byParent, byAccessory: byAccessory };
+  }
+
   function analyze(sowItems) {
     var w = wv2();
-    if (!w) return;
-    try { w.analyze(sowItems || [], SOW_VIEW); }
-    catch (e) {
-      if (ns.CONFIG && ns.CONFIG.debug) console.warn('[scw-br-v2] warnings analyze failed', e);
+    if (w) {
+      try { w.analyze(sowItems || [], SOW_VIEW); }
+      catch (e) {
+        if (ns.CONFIG && ns.CONFIG.debug) console.warn('[scw-br-v2] warnings analyze failed', e);
+      }
+    }
+    var maps = buildBracketMaps();
+    bracketByParent    = maps.byParent;
+    bracketByAccessory = maps.byAccessory;
+    // Feed the offending bracket ids to worksheet-v2 so the embedded card's
+    // per-accessory chit (isAccessoryMismatch) lights up on this scene too.
+    if (w && typeof w.mergeAccessoryMismatch === 'function') {
+      try { w.mergeAccessoryMismatch(bracketByAccessory); } catch (e2) { /* ignore */ }
     }
   }
 
   function issuesFor(sowItemId) {
+    if (!sowItemId) return [];
+    var out = [];
     var w = wv2();
-    if (!w || !sowItemId || typeof w.getIssuesFor !== 'function') return [];
-    try { return w.getIssuesFor(SOW_VIEW, sowItemId) || []; }
-    catch (e) { return []; }
+    if (w && typeof w.getIssuesFor === 'function') {
+      var base = [];
+      try { base = w.getIssuesFor(SOW_VIEW, sowItemId) || []; } catch (e) { base = []; }
+      for (var i = 0; i < base.length; i++) {
+        // Bracket comes from the parent-span scan above (brackets are
+        // filtered out of view_3921, so the analyzer can't see them).
+        if (base[i] !== 'bracket' && out.indexOf(base[i]) === -1) out.push(base[i]);
+      }
+    }
+    if (bracketByParent[sowItemId] && out.indexOf('bracket') === -1) out.push('bracket');
+    return out;
   }
 
   /** Per-cell chips — icon-only, one per issue type the SOW item has. */
