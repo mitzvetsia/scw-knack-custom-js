@@ -70,43 +70,81 @@
     return s === 'no' || s === 'false' || s === '0';
   }
 
-  /** v1-parity detection: walk the SOW ITEMS grid (view_3921) records and
-   *  flag every mounting-bracket item whose own field_2244 is No / False.
-   *  Each flagged bracket marks itself (byAccessory) and rolls up to its
-   *  parent line item(s) via field_2464 (byParent). Reads the model value
-   *  first; falls back to the bracket's own row cell in the DOM. */
+  /** v1-parity detection. field_2244 ("accessory match check") shows up in
+   *  TWO shapes on the SOW items grid, and we union both:
+   *    (1) On the PARENT row, field_2244 renders one connection-value span
+   *        per attached accessory (span id = accessory record id, text =
+   *        Yes/No) — this is exactly what v1's connected-records.js reads.
+   *    (2) On the bracket's OWN record/row, field_2244 is its own Yes/No.
+   *  A NO / FALSE in either flags the bracket (byAccessory) and rolls up to
+   *  its parent line item(s) (byParent). */
   function buildLocalBracket(sowItems) {
     var byParent = Object.create(null);
     var byAccessory = Object.create(null);
-    if (!sowItems || !sowItems.length) return { byParent: byParent, byAccessory: byAccessory };
+    var dbg = { parentRowsWithSpans: 0, spanNoHits: 0, ownNoHits: 0,
+                bracketRecords: 0, hasModelField: 0 };
 
-    // DOM fallback: each bracket row's OWN field_2244 cell value.
-    var domVal = Object.create(null);
+    // (1) DOM scan — every row's field_2244 cell. Per-accessory spans on a
+    //     parent row pinpoint the wrong child + parent directly.
+    var ownDom = Object.create(null);   // rowId → plain field_2244 text
     var view = document.getElementById(SOW_VIEW);
     if (view) {
       var rows = view.querySelectorAll('tbody tr[id]');
       for (var r = 0; r < rows.length; r++) {
         var rid = (rows[r].getAttribute('id') || '').trim();
         if (!rid) continue;
-        var cell = rows[r].querySelector(
+        var cells = rows[r].querySelectorAll(
           'td.' + BRACKET_FIELD + ', td[data-field-key="' + BRACKET_FIELD + '"]');
-        if (cell) domVal[rid] = (cell.textContent || '').trim().toLowerCase();
+        for (var c = 0; c < cells.length; c++) {
+          var spans = cells[c].querySelectorAll('span[id][data-kn="connection-value"]');
+          if (spans.length) {
+            dbg.parentRowsWithSpans++;
+            for (var s = 0; s < spans.length; s++) {
+              var accId = (spans[s].id || '').trim();
+              var sv = (spans[s].textContent || '').trim().toLowerCase();
+              if (accId && (sv === 'no' || sv === 'false')) {
+                byAccessory[accId] = true;
+                byParent[rid] = true;   // this row IS the parent
+                dbg.spanNoHits++;
+              }
+            }
+          } else {
+            ownDom[rid] = (cells[c].textContent || '').trim().toLowerCase();
+          }
+        }
       }
     }
 
-    for (var i = 0; i < sowItems.length; i++) {
+    // (2) Model + own-cell scan — bracket records (field_2464 parent) whose
+    //     OWN field_2244 is No/false.
+    for (var i = 0; sowItems && i < sowItems.length; i++) {
       var rec = sowItems[i];
       if (!rec || !rec.id || !isBracketRecord(rec)) continue;
-      var dv = domVal[rec.id];
+      dbg.bracketRecords++;
+      if (rec[BRACKET_FIELD + '_raw'] != null || rec[BRACKET_FIELD] != null) dbg.hasModelField++;
+      if (!dbg.sample) {
+        dbg.sample = { id: rec.id, raw: rec[BRACKET_FIELD + '_raw'],
+                       fmt: rec[BRACKET_FIELD], ownDom: ownDom[rec.id] };
+      }
+      var dv = ownDom[rec.id];
       var wrong = isMismatchVal(rec[BRACKET_FIELD + '_raw'], rec[BRACKET_FIELD]) ||
         (dv === 'no' || dv === 'false' || dv === '0');
       if (!wrong) continue;
+      dbg.ownNoHits++;
       byAccessory[rec.id] = true;
       var par = rec.field_2464_raw;
       for (var p = 0; p < par.length; p++) {
         if (par[p] && par[p].id) byParent[par[p].id] = true;
       }
     }
+
+    // TEMP diagnostic (remove once confirmed): surfaces what field_2244
+    // looks like on view_3921 so we can see why nothing flags.
+    try {
+      console.log('[scw-br-v2] bracket scan', dbg,
+        'byParent=' + Object.keys(byParent).length,
+        'byAccessory=' + Object.keys(byAccessory).length);
+    } catch (e) {}
     return { byParent: byParent, byAccessory: byAccessory };
   }
 
