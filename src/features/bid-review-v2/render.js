@@ -50,6 +50,14 @@
     }
     var state = ns.transform.buildState(bidRecords, sowItems, bidPackages);
 
+    // Analyze SOW-item issues once per render (missing photos, disconnected
+    // cam/reader, wrong accessory). Computed from the SOW items only — bid
+    // records are never analyzed. card.js reads chips per SOW item id.
+    if (ns.warnings && typeof ns.warnings.analyze === 'function') {
+      try { ns.warnings.analyze(sowItems); }
+      catch (e) { /* fail soft — chips just won't render */ }
+    }
+
     if (count) {
       count.textContent = state.sowGrids.length + ' SOW' +
         (state.sowGrids.length === 1 ? '' : 's') + ' / ' +

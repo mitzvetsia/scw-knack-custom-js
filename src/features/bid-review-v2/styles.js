@@ -592,6 +592,27 @@
     '  max-width: 95%; max-height: 95%; object-fit: contain;',
     '  border-radius: 6px; box-shadow: 0 8px 40px rgba(0,0,0,0.5);',
     '}',
+    /* ── SOW-item warning chips (mirror worksheet-v2 colour coding) ──
+       Icon-only pills in the SOW cell. One per issue type the SOW item
+       has; label lives in the title tooltip. */
+    '.scw-bid-review-v2__warn-chips {',
+    '  display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 6px;',
+    '}',
+    '.scw-bid-review-v2__warn-chip {',
+    '  display: inline-flex; align-items: center; justify-content: center;',
+    '  width: 22px; height: 22px; border-radius: 50%;',
+    '  border: 1px solid transparent; flex: 0 0 auto;',
+    '}',
+    '.scw-bid-review-v2__warn-chip svg { width: 13px; height: 13px; }',
+    '.scw-bid-review-v2__warn-chip[data-issue-type="photos"] {',
+    '  color: #4338ca; background: #eef2ff; border-color: #c7d2fe;',
+    '}',
+    '.scw-bid-review-v2__warn-chip[data-issue-type="disconnected"] {',
+    '  color: #be123c; background: #fff1f2; border-color: #fecdd3;',
+    '}',
+    '.scw-bid-review-v2__warn-chip[data-issue-type="bracket"] {',
+    '  color: #b45309; background: #fffbeb; border-color: #fcd34d;',
+    '}',
     /* Line-item label cell (E-001, etc) */
     /* Caret gutter on the left; checkbox / label / totals stack with a
        clean gap so nothing is crammed together. */

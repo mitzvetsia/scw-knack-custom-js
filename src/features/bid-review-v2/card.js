@@ -246,7 +246,12 @@
     }
     var qtyTxt  = sowItemData.qty ? String(sowItemData.qty) : '—';
     var feeTxt  = sowItemData.fee ? fmtMoney(sowItemData.fee) : '—';
+    // SOW-item issue chips (missing photos / disconnected / wrong accessory).
+    // Computed from the SOW item only — never the bid side.
+    var warnHtml = (ns.warnings && row && row.sowItem)
+      ? ns.warnings.chipsHtml(row.sowItem) : '';
     td.innerHTML =
+      warnHtml +
       (sowItemData.productName ?
         '<div class="scw-bid-review-v2__sow-product" data-scw-sow-field="product" title="' +
           escapeHtml(sowItemData.productName) + '">' +
