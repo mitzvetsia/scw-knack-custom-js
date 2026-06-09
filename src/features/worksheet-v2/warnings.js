@@ -32,7 +32,7 @@
 
   var TYPES  = ['photos', 'disconnected', 'bracket'];
   var LABELS = {
-    photos:       'photos',
+    photos:       'missing photos',
     disconnected: 'disconnected',
     bracket:      'wrong accessory'
   };
