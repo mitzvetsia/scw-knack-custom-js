@@ -755,6 +755,9 @@
        (display + coordinates set inline) so the SOW card\'s overflow:hidden
        can\'t clip it. Default state is hidden. */
     '.scw-bid-review-v2__overflow { position: relative; display: inline-block; }',
+    '.scw-bid-review-v2__overflow-dots {',
+    '  font-size: 13px; line-height: 1; font-weight: 700; margin-right: 1px;',
+    '}',
     '.scw-bid-review-v2__overflow-menu {',
     '  display: none; box-sizing: border-box; padding: 4px 0;',
     '  background: #fff; border: 1px solid #e2e8f0; border-radius: 6px;',

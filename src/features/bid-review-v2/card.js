@@ -316,7 +316,8 @@
         '<div class="scw-bid-review-v2__overflow">' +
           '<button type="button" class="scw-bid-review__cell-action ' +
             'scw-bid-review__cell-action--revise scw-bid-review-v2__cell-action ' +
-            'scw-bid-review-v2__overflow-trigger">Revise ▾</button>' +
+            'scw-bid-review-v2__overflow-trigger">' +
+            '<span class="scw-bid-review-v2__overflow-dots">⋮</span> Revise</button>' +
           '<div class="scw-bid-review-v2__overflow-menu">' +
             '<button type="button" class="scw-bid-review-v2__overflow-item scw-bid-review-v2__cell-action" ' +
               crAttrs('cell_request_change', row.id, pkgId, sowId) + '>Edit bid values</button>' +
