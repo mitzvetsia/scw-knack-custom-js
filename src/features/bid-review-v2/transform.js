@@ -538,20 +538,38 @@
       return false;
     }
 
-    // Shared drop test — applied to both matched rows and the "other items"
-    // rows. Mirrors the device-worksheet child-only rule: a Require-Sub-Bid
-    // = No row is hidden ONLY when it's a genuine child-only accessory, i.e.
-    // it has a field_2464 parent AND that parent is loaded here (so it still
-    // shows nested under the parent). A No-flag row with NO loaded parent —
-    // e.g. a standalone "unassigned" line item — must stay visible; dropping
-    // it on the flag alone made such items (e.g. a Door Position Switch)
-    // silently vanish from the grid.
+    // Shared child-only test — applied to both matched rows and the "other
+    // items" rows, AND to the displayRows grouping filter below. Mirrors the
+    // device-worksheet rule: a row is a child-only accessory (hidden from the
+    // grid, shown nested under its parent) ONLY when it has a field_2464
+    // parent AND that parent is loaded here. A No-flag row with NO loaded
+    // parent — e.g. a standalone "unassigned" line item — must stay visible.
+    //
+    // CRITICAL: read BOTH the flag (field_2479) and the parent (field_2464)
+    // off the SOW LINE ITEM (sowFullRecord, view_3921) — never off the bid
+    // record. A bid record's own field_2464 can point at a parent even when
+    // the line item is standalone, so keying off row.parentId (which is the
+    // bid record's parent for matched rows) silently dropped standalone
+    // No-items (e.g. a Door Position Switch) from the grid.
+    function sowSideParentId(row) {
+      if (row.sowFullRecord) return connectionId(row.sowFullRecord, 'field_2464') || '';
+      return row.parentId || '';   // no SOW record loaded → fall back to bid side
+    }
+    function sowSideRequireSubBidNo(row) {
+      var flag = row.sowFullRecord
+        ? raw(row.sowFullRecord, 'field_2479')
+        : row.requireSubBidSow;
+      if (flag === false) return true;
+      if (flag == null) return false;
+      return /^(no|false)$/i.test(String(flag).replace(/<[^>]*>/g, '').trim());
+    }
+    function isChildOnlyAccessory(row) {
+      if (!sowSideRequireSubBidNo(row)) return false;
+      var pid = sowSideParentId(row);
+      return !!(pid && sowItemIndex[pid]);
+    }
     function keepRow(row) {
-      var sowFlag = row.sowFullRecord ? raw(row.sowFullRecord, FK.requireSubBid) : '';
-      var flag = sowFlag || row.requireSubBid || '';
-      if (!/^no$/i.test(String(flag).trim())) return true;   // not a No item → keep
-      var hasLoadedParent = row.parentId && !!sowItemIndex[row.parentId];
-      return !hasLoadedParent;   // No-flag: drop only when shown under a loaded parent
+      return !isChildOnlyAccessory(row);
     }
 
     // ── "Removed" items — no longer on ANY SOW and not on any bid ──
@@ -823,9 +841,10 @@
       var displayRows = [];
       for (var fr = 0; fr < rows.length; fr++) {
         var frow = rows[fr];
-        var childOnly = isRequireSubBidNo(frow) && frow.parentId &&
-                        !!sowItemIndex[frow.parentId];
-        if (childOnly) continue;
+        // Same SOW-side child-only rule as keepRow — read parent/flag off the
+        // SOW line item, not the bid record, so standalone No-items (e.g. a
+        // Door Position Switch with no parent) stay in the grid.
+        if (isChildOnlyAccessory(frow)) continue;
         displayRows.push(frow);
       }
       var groups = groupRows(displayRows);
