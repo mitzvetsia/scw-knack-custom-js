@@ -814,11 +814,16 @@
       var otherSowRows = [], bidOnlyRows = [];
       for (var orw = 0; orw < builtOther.length; orw++) {
         var orr = builtOther[orw];
-        if (!keepRow(orr)) continue;
         var oid  = orr.sowItem;
         var oIdx = oid ? (sowItemIndex[oid] || null) : null;
         orr.sowItemData   = oIdx;
         orr.sowFullRecord = oid ? (sowFullByItem[oid] || null) : null;
+        // keepRow must run AFTER sowFullRecord is attached so its child-only
+        // test reads the SOW line item (not the bid record, whose field_2464
+        // is often empty). Otherwise a child-only accessory that the matched
+        // loop already dropped gets re-collected here and shown as a bogus
+        // "On Bid — not on SOW" row instead of nesting under its parent.
+        if (!keepRow(orr)) continue;
         // Not on THIS SOW → excluded from SOW totals, still in bid total.
         orr.offSow       = true;
         orr.otherBidItem = true;
