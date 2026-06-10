@@ -178,11 +178,30 @@
        except Product / Custom Disc % / SCW Notes. JS sets pointer-events;
        here we just drop the "edit" affordance + hover cue. */
     '.scw-ws-v2-locked-ctl { cursor: default !important; }',
-    '.scw-ws-v2-card--locked .scw-ws-v2-conn-btn { background: #fff !important; }',
-    '.scw-ws-v2-card--locked .scw-ws-v2-locked-ctl .scw-ws-v2-conn-btn-edit {',
-    '  display: none !important;',
-    '}',
     '.scw-ws-v2-card--locked .scw-ws-v2-conn-btn-edit { display: none !important; }',
+    /* Locked inputs (readOnly, non-whitelisted) read as plain text — no box,
+       no border — so the field clearly looks non-editable. The whitelisted
+       Product / Custom Disc % / SCW Notes stay as real inputs (keep box). */
+    '.scw-ws-v2-card--locked .scw-ws-v2-input[readonly] {',
+    '  background: transparent !important;',
+    '  border: none !important;',
+    '  box-shadow: none !important;',
+    '  border-radius: 0 !important;',
+    '  padding-left: 0 !important;',
+    '  color: var(--scw-text-default, #1f2937) !important;',
+    '  font-weight: 600 !important;',
+    '  cursor: default !important;',
+    '  resize: none !important;',
+    '}',
+    /* Locked connection pickers (MDF/IDF, Connected, Parent): static value,
+       no button chrome. */
+    '.scw-ws-v2-card--locked .scw-ws-v2-conn-btn {',
+    '  background: transparent !important;',
+    '  border: none !important;',
+    '  box-shadow: none !important;',
+    '  padding-left: 0 !important;',
+    '  cursor: default !important;',
+    '}',
     /* Stacked pricing rows read as label + value on one line (label left,
        value right) so the column is compact like v1. */
     '.scw-ws-v2-sales-detail-col--left .scw-ws-v2-detail-field {',

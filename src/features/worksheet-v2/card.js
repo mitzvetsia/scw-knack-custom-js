@@ -273,8 +273,8 @@
       el.readOnly = true;
       el.tabIndex = -1;
       el.style.pointerEvents = 'none';
-      el.style.background = '#fff';
-      el.style.cursor = 'default';
+      // Appearance handled by CSS ([readonly] in a locked card → plain
+      // text, no box) so locked fields visibly read as non-editable.
     }
     // Editable connection cells/buttons (product field_1949 is whitelisted).
     var conns = card.querySelectorAll('[data-scw-ws-v2-conn]');
