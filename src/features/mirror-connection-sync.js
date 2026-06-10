@@ -1783,6 +1783,12 @@
     ACCESSORIES_VIEW_ID:      'view_3887',
     ACCESSORIES_PARENT_FIELD: 'field_2464',
     SOW_FIELD:                'field_2154',
+    // view_3586 is now driven by worksheet-v2 (custom card UI, no v1
+    // .scw-ws-row triplets to scrape). Diff connected-device changes off
+    // the Backbone model, not the DOM, and route through PUT-only +
+    // scw-cascade-idle refetch — same as the view_3962 deployment — so the
+    // field_1957 → field_2197 reciprocal cascade fires reliably.
+    MODEL_ONLY:          true,
     PUBLIC_API_NAME:     'silentRegroupView3586'
   });
 

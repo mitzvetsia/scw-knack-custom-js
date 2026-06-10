@@ -170,6 +170,10 @@
     '  padding-right: 28px !important;',
     '  border-right: 1px solid #e2e8f0 !important;',
     '}',
+    '.scw-ws-v2-sales-detail-divider {',
+    '  border-top: 1px solid #cbd5e1 !important;',
+    '  margin: 5px 0 3px !important;',
+    '}',
     /* Stacked pricing rows read as label + value on one line (label left,
        value right) so the column is compact like v1. */
     '.scw-ws-v2-sales-detail-col--left .scw-ws-v2-detail-field {',

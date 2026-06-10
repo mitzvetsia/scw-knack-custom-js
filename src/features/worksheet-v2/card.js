@@ -1080,6 +1080,8 @@
     if (isCam) {
       left += detailReadOnly(rec,          'field_2240', 'Drop Prefix');
       left += detailField(rec,    viewKey, 'field_1951', 'Label #', 'number');
+      // Visual break between the drop/identity fields and the money fields.
+      left += '<div class="scw-ws-v2-sales-detail-divider"></div>';
     }
     left += detailReadOnly(rec,            'field_1960', 'Retail Price');
     if (!isCam) {
@@ -1090,7 +1092,6 @@
     left += detailField(rec,      viewKey, 'field_2261', 'Custom Disc %', 'number');
     left += detailReadOnly(rec,            'field_2303', 'Applied Discount');
     left += detailReadOnly(rec,            'field_2269', 'Total');
-    if (isCam) left += detailField(rec, viewKey, 'field_1965', 'Drop Length', 'number');
 
     var right = detailMountingHardware(rec, viewKey);
     if (isCam) {
