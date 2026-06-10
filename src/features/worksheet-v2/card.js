@@ -550,7 +550,8 @@
       '<div class="scw-ws-v2-cell scw-ws-v2-cell--chips">' +
         chip(rec, viewKey, 'field_2461', 'Existing', 'Existing cabling') +
         chip(rec, viewKey, 'field_1984', 'Exterior', 'Exterior') +
-        chip(rec, viewKey, 'field_1983', 'Plenum',   'Plenum') +
+        (isSalesMoney(viewKey) ? '' :
+          chip(rec, viewKey, 'field_1983', 'Plenum',   'Plenum')) +
       '</div>';
 
     return '<div class="scw-ws-v2-row scw-ws-v2-row--cam">' +
@@ -581,7 +582,9 @@
     var installFee  = readField(rec, 'field_2028');
     var sow         = readField(rec, 'field_2154');
 
-    var qtyInput = qtyCell(rec, viewKey, qty);
+    // Sales mirrors v1 by putting Qty in the detail panel, so the row's
+    // qty slot stays blank there.
+    var qtyInput = isSalesMoney(viewKey) ? null : qtyCell(rec, viewKey, qty);
     var noQty = (qtyInput === null);
     var rowCls = 'scw-ws-v2-row scw-ws-v2-row--default' + (noQty ? ' scw-ws-v2-row--no-qty' : '');
     var qtySlot = noQty
@@ -617,7 +620,7 @@
     var installFee  = readField(rec, 'field_2028');
     var sow         = readField(rec, 'field_2154');
 
-    var qtyInput = qtyCell(rec, viewKey, qty);
+    var qtyInput = isSalesMoney(viewKey) ? null : qtyCell(rec, viewKey, qty);
     var noQty = (qtyInput === null);
     var rowCls = 'scw-ws-v2-row scw-ws-v2-row--services' + (noQty ? ' scw-ws-v2-row--no-qty' : '');
     var qtySlot = noQty
@@ -1063,6 +1066,58 @@
     '</div>';
   }
 
+  /**
+   * Sales detail — mirrors the v1 worksheet card: a LEFT column with the
+   * pricing/identity fields stacked vertically (Retail Price, Qty / Drop
+   * fields, Custom Disc %, Applied Discount, Total) and a RIGHT column with
+   * Mounting Hardware, the relevant connection, MDF/IDF and Labor Desc.
+   * Read-only fields render as plain text; only real inputs get the box.
+   */
+  function buildDetail_sales(rec, viewKey, cat) {
+    var isCam = (cat === 'cam');
+
+    var left = '';
+    if (isCam) {
+      left += detailReadOnly(rec,          'field_2240', 'Drop Prefix');
+      left += detailField(rec,    viewKey, 'field_1951', 'Label #', 'number');
+    }
+    left += detailReadOnly(rec,            'field_1960', 'Retail Price');
+    if (!isCam) {
+      left += isQtyLocked(rec)
+        ? detailReadOnly(rec,              'field_1964', 'Qty')
+        : detailField(rec,        viewKey, 'field_1964', 'Qty', 'number');
+    }
+    left += detailField(rec,      viewKey, 'field_2261', 'Custom Disc %', 'number');
+    left += detailReadOnly(rec,            'field_2303', 'Applied Discount');
+    left += detailReadOnly(rec,            'field_2269', 'Total');
+    if (isCam) left += detailField(rec, viewKey, 'field_1965', 'Drop Length', 'number');
+
+    var right = detailMountingHardware(rec, viewKey);
+    if (isCam) {
+      right += detailConnection(rec, viewKey, 'field_2197', 'Connected Device',
+                                hasIssue(rec, 'disconnected'));
+    } else if (cat === 'default') {
+      if (isMapConnectionsRow(rec)) {
+        right += detailConnection(rec, viewKey, 'field_1957', 'Connected Devices');
+      } else if (readParentRef(rec) || bucketIdOf(rec) !== NETWORKING_BUCKET) {
+        right += detailConnection(rec, viewKey, 'field_2464', 'Parent');
+      }
+    }
+    right += detailConnection(rec, viewKey, 'field_1946', 'MDF / IDF');
+    right += detailTextArea(rec,   viewKey, 'field_2020', 'Labor Desc');
+
+    return '<div class="scw-ws-v2-detail">' +
+      '<div class="scw-ws-v2-sales-detail">' +
+        '<div class="scw-ws-v2-sales-detail-col scw-ws-v2-sales-detail-col--left">' +
+          left +
+        '</div>' +
+        '<div class="scw-ws-v2-sales-detail-col scw-ws-v2-sales-detail-col--right">' +
+          right +
+        '</div>' +
+      '</div>' +
+    '</div>';
+  }
+
   // ── Public entry point ─────────────────────────────────────
 
   function buildCard(rec, sourceViewKey) {
@@ -1103,18 +1158,19 @@
     }
 
     var row, det;
+    var sales = isSalesMoney(sourceViewKey);
     if (cat === 'cam') {
       row = buildRow_cam(rec, sourceViewKey);
-      det = buildDetail_cam(rec, sourceViewKey);
+      det = sales ? buildDetail_sales(rec, sourceViewKey, cat) : buildDetail_cam(rec, sourceViewKey);
     } else if (cat === 'services') {
       row = buildRow_services(rec, sourceViewKey);
-      det = buildDetail_services(rec, sourceViewKey);
+      det = sales ? buildDetail_sales(rec, sourceViewKey, cat) : buildDetail_services(rec, sourceViewKey);
     } else if (cat === 'assumptions') {
       row = buildRow_assumptions(rec, sourceViewKey);
       det = buildDetail_assumptions(rec, sourceViewKey);
     } else {
       row = buildRow_default(rec, sourceViewKey);
-      det = buildDetail_default(rec, sourceViewKey);
+      det = sales ? buildDetail_sales(rec, sourceViewKey, cat) : buildDetail_default(rec, sourceViewKey);
     }
 
     // Attached-to caption — small slate-gray line above the main row
