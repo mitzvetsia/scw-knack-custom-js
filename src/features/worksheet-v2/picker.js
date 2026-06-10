@@ -428,9 +428,19 @@
                   // apart from a connection edit (field_2197/field_1957).
                   // Native Knack inline edits don't supply this, so the
                   // mirror falls back to its cache-diff path there.
+                  //
+                  // 5th arg: the AUTHORITATIVE ids the user just chose
+                  // (the exact PUT body). field_1957 and field_2197 are
+                  // SEPARATE Knack fields kept aligned only by the cascade
+                  // — so the cascade MUST know precisely what was selected.
+                  // Relying on the Backbone model is unsafe: a refetch can
+                  // race ahead of the server commit and repopulate the old
+                  // value, making the cascade clear connections that are
+                  // actually still selected. Passing the chosen ids removes
+                  // that ambiguity entirely.
                   $(document).trigger(
                     'knack-cell-update.' + putKey,
-                    [view, rec.attributes || rec, opts.fieldKey]
+                    [view, rec.attributes || rec, opts.fieldKey, (body[opts.fieldKey] || [])]
                   );
                 }
               }

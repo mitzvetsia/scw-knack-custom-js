@@ -1005,7 +1005,7 @@
     setTimeout(function () { mutSuppressed = false; }, 0);
   }
 
-  function applyDeterministicRegroup(R, onComplete) {
+  function applyDeterministicRegroup(R, onComplete, authoritativeChildIds) {
     function done() {
       if (typeof onComplete === 'function') {
         try { onComplete(); } catch (e) { /* swallow */ }
@@ -1045,12 +1045,24 @@
     var modelAttrsR   = getModelAttrs(R.id);
     var modelChildIds = modelAttrsR
       ? extractChildIds(modelAttrsR[TRIGGER_FIELD + '_raw'] || []) : [];
-    // Prefer the snapshot when it has values; otherwise trust the model. This
-    // guards the destructive case: an empty snapshot must NOT clear everything
-    // if the model still shows children.
-    var newChildIds = snapChildIds.length ? snapChildIds : modelChildIds;
-    log('  ' + TRIGGER_FIELD + '_raw snapshot=' + snapChildIds.length +
-        ' model=' + modelChildIds.length + ' → using ' + newChildIds.length);
+    var newChildIds;
+    if (Array.isArray(authoritativeChildIds)) {
+      // AUTHORITATIVE: the v2 picker handed us the exact ids the user
+      // chose (the PUT body). field_1957 / field_2197 are SEPARATE Knack
+      // fields kept aligned only by THIS cascade — so when we know the
+      // selection precisely we must use it verbatim and never second-guess
+      // it against a model/snapshot a refetch could have made stale. This
+      // is what stops legitimately-selected devices from being cleared.
+      newChildIds = extractChildIds(authoritativeChildIds);
+      log('  ' + TRIGGER_FIELD + ' authoritative children = ' + newChildIds.length);
+    } else {
+      // Native edit (no picker): prefer the snapshot when it has values;
+      // otherwise trust the model. An empty snapshot must NOT clear
+      // everything if the model still shows children.
+      newChildIds = snapChildIds.length ? snapChildIds : modelChildIds;
+      log('  ' + TRIGGER_FIELD + '_raw snapshot=' + snapChildIds.length +
+          ' model=' + modelChildIds.length + ' → using ' + newChildIds.length);
+    }
     var newChildSet = {};
     newChildIds.forEach(function (id) { newChildSet[id] = true; });
 
@@ -1238,6 +1250,7 @@
   // ======================================================================
 
   var pendingRecord = null;
+  var pendingChildIds = null;   // authoritative ids from the v2 picker (5th arg)
   var settleTimer = null;
 
   function armSettle() {
@@ -1248,14 +1261,17 @@
   function onSettled() {
     settleTimer = null;
     var R = pendingRecord;
+    var authoritativeIds = pendingChildIds;
     pendingRecord = null;
+    pendingChildIds = null;
     if (!R) return;
-    log('settled — applying deterministic regroup for R=' + R.id);
-    try { applyDeterministicRegroup(R); }
+    log('settled — applying deterministic regroup for R=' + R.id +
+        (authoritativeIds ? ' (authoritative children supplied)' : ''));
+    try { applyDeterministicRegroup(R, null, authoritativeIds); }
     catch (e) { console.warn(LOG_PREFIX, 'applyDeterministicRegroup threw', e); }
   }
 
-  $(document).on('knack-cell-update.' + VIEW_ID + EVENT_NS, function (event, view, record, editedFieldKey) {
+  $(document).on('knack-cell-update.' + VIEW_ID + EVENT_NS, function (event, view, record, editedFieldKey, triggerIds) {
     try {
       if (!record || !record.id) return;
       // Re-entrancy: ignore echoes from our own background PUTs.
@@ -1280,6 +1296,11 @@
       // If a later edit arrives before we've settled, the newest record wins —
       // Knack always provides the full record snapshot, so we don't lose data.
       pendingRecord = record;
+      // 5th arg (v2 picker only): the exact ids the user chose for the
+      // trigger field. Authoritative — bypasses the snapshot/model read so
+      // a refetch race can't make the cascade clear still-selected children.
+      pendingChildIds = (editedFieldKey === TRIGGER_FIELD && Array.isArray(triggerIds))
+        ? triggerIds : null;
       armSettle();
     } catch (e) {
       console.warn(LOG_PREFIX, 'knack-cell-update handler threw', e);

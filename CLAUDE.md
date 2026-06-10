@@ -202,6 +202,37 @@ if (cell) {
 - **DOM scraping**: more reliable for rich-text fields (`field.innerHTML`) and JSON fields (`field.textContent`). Always try DOM first when the view is on the same scene (even `display:none` views have their elements in the DOM).
 - When scraping, `td.field_XXXX` selects the cell (field key is a CSS class on the `<td>`), then navigate into the `<span class="col-N">` wrapper to reach the actual content.
 
+### ⚠️ `field_1957` ↔ `field_2197` are SEPARATE fields kept aligned by the cascade
+
+On the SOW Line Item object, **Connected Devices** (`field_1957`, the
+multi-connection on an NVR/switch pointing at its cameras/readers) and
+**Connected To** (`field_2197`, the single-connection on a camera/reader
+pointing back at its NVR/switch) are **two independent Knack fields, NOT
+the two halves of one reciprocal Knack connection.** Knack does **not**
+auto-sync them. They are kept consistent **only** by the cascade code in
+`src/features/mirror-connection-sync.js` (the forward cascade: edit
+`field_1957` on the parent → it writes `field_2197` on each added child and
+clears it on each removed child; plus the inverse `-recip` handler for
+direct `field_2197` edits).
+
+Consequences you must respect:
+- **Never assume writing one side updates the other.** If you write
+  `field_1957` you must let (or make) the cascade write `field_2197`, and
+  vice-versa — otherwise the two fields drift out of alignment.
+- **The cascade's read of "what is currently selected" must be
+  authoritative.** It diffs the parent's chosen children against the set of
+  children currently pointing back, then adds/removes `field_2197`
+  accordingly. If that read is stale (e.g. a `model.fetch()` racing ahead of
+  a not-yet-committed PUT repopulates the old value), the diff over-removes
+  and **clears connections that are still selected.** This is why the v2
+  picker passes the exact chosen ids through the `knack-cell-update`
+  dispatch as a 5th arg (`triggerIds`) — the cascade uses them verbatim
+  instead of re-deriving from the Backbone model. Preserve that contract;
+  don't "simplify" the cascade back to reading the model snapshot.
+- The same field pair + cascade applies on every view that renders this
+  object: `view_3505`/`view_3586`/`view_3610`/`view_3921`/`view_3962`
+  (each has its own `createMirror()` instance).
+
 ### Data Saving Patterns
 
 Features use Knack's internal APIs for saving data, in order of preference:
