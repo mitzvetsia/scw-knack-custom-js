@@ -63,7 +63,8 @@
   //   { sections: [{label, products, subtotal}], totals }
   // where sections are ordered: cam/reader first, then "default"
   // (networking / headend / everything else).
-  function aggregate(records) {
+  function aggregate(records, moneyField) {
+    moneyField = moneyField || 'field_2150';
     var bucketCategoryOf = (ns.card && ns.card.bucketCategoryOf) ||
                            function () { return 'default'; };
 
@@ -132,7 +133,7 @@
         }
       }
 
-      var bid = readNum(r, 'field_2150');
+      var bid = readNum(r, moneyField);
       if (bid > 0) {
         p.subBidSum         += bid;
         grp.subtotal.subBidSum += bid;
@@ -227,7 +228,7 @@
     '</tr>';
   }
 
-  function tableHeaderRow() {
+  function tableHeaderRow(moneyLabel) {
     return '<thead><tr>' +
       '<th class="scw-ws-v2-summary-prod">Product</th>' +
       '<th class="scw-ws-v2-summary-num" title="Existing cabling">Exist Cab</th>' +
@@ -236,7 +237,7 @@
       '<th class="scw-ws-v2-summary-num">Int</th>' +
       '<th class="scw-ws-v2-summary-num">Plen</th>' +
       '<th class="scw-ws-v2-summary-num">Qty</th>' +
-      '<th class="scw-ws-v2-summary-money">Sub Bid</th>' +
+      '<th class="scw-ws-v2-summary-money">' + esc(moneyLabel || 'Sub Bid') + '</th>' +
     '</tr></thead>';
   }
 
@@ -364,9 +365,10 @@
     return bits.join(' · ');
   }
 
-  function buildL1Summary(l1) {
+  function buildL1Summary(l1, opts) {
+    opts = opts || {};
     var recs = collectRecords(l1);
-    var agg = aggregate(recs);
+    var agg = aggregate(recs, opts.moneyField);
     if (!agg.sections.length) {
       var wrapEmpty = document.createElement('div');
       wrapEmpty.className = 'scw-ws-v2-summary scw-ws-v2-summary--empty';
@@ -377,7 +379,7 @@
 
     var tableHtml =
       '<table class="scw-ws-v2-summary-table">' +
-        tableHeaderRow() +
+        tableHeaderRow(opts.moneyLabel) +
         '<tbody>' + buildSectionsRows(agg) + '</tbody>' +
       '</table>';
 
@@ -396,12 +398,13 @@
   }
 
   /** Grand summary — aggregates EVERY record across every L1. */
-  function buildGrandSummary(tree) {
+  function buildGrandSummary(tree, opts) {
+    opts = opts || {};
     var all = [];
     for (var i = 0; i < tree.length; i++) {
       all = all.concat(collectRecords(tree[i]));
     }
-    var agg = aggregate(all);
+    var agg = aggregate(all, opts.moneyField);
     if (!agg.sections.length) {
       var wrapEmpty = document.createElement('div');
       wrapEmpty.className = 'scw-ws-v2-grand-summary scw-ws-v2-grand-summary--empty';
@@ -412,7 +415,7 @@
 
     var tableHtml =
       '<table class="scw-ws-v2-summary-table">' +
-        tableHeaderRow() +
+        tableHeaderRow(opts.moneyLabel) +
         '<tbody>' + buildSectionsRows(agg, { alwaysSubtotal: true }) + '</tbody>' +
       '</table>';
 

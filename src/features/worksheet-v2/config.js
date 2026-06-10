@@ -202,8 +202,8 @@
         sourceViewKey:    'view_3586',
         mountAfterSelector: '#view_3586',
         label:            'Scope of Work Line Items',
-        mdfSourceViewKey: '',            // no empty-L1 seed source on this page yet
-        mdfLabelField:    '',
+        mdfSourceViewKey: 'view_3602',   // MDF/IDF locations on the sales SOW page
+        mdfLabelField:    'field_1642',
         moneyMode:        'sales',
         hideSow:          true,          // no SOW column / pills / sort on this page
         fields: {

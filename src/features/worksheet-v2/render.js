@@ -196,11 +196,23 @@
     var body = document.createElement('div');
     body.className = 'scw-ws-v2-l1-body';
 
+    // Sales money model? (moneyMode:'sales') — drives the summary money
+    // column (Total vs Sub Bid) and the column-header labels below.
+    var salesMoney = false;
+    try {
+      var _vcSales = ns.cfg && typeof ns.cfg.viewCfg === 'function' &&
+                     ns.cfg.viewCfg(sourceViewKey);
+      salesMoney = !!(_vcSales && _vcSales.moneyMode === 'sales');
+    } catch (e) { /* default to build-SOW */ }
+    var summaryMoneyOpts = salesMoney
+      ? { moneyField: 'field_2269', moneyLabel: 'Total' }
+      : null;
+
     // Per-L1 summary block — sits at the top of the body, always
     // rendered; CSS controls its visibility per toolbar mode.
     if (ns.summary && typeof ns.summary.buildL1Summary === 'function') {
       try {
-        var sumEl = ns.summary.buildL1Summary(l1);
+        var sumEl = ns.summary.buildL1Summary(l1, summaryMoneyOpts);
         if (sumEl) body.appendChild(sumEl);
       } catch (sumErr) {
         console.warn('[scw-ws-v2] summary build failed for L1', l1 && l1.id, sumErr);
@@ -213,13 +225,6 @@
       // every card row. Uses the same grid template as the row so
       // headers line up with their columns. Cam-row-shaped (with
       // "Drop" slot) since the cam template is the superset.
-      var salesMoney = false;
-      try {
-        var _vc = ns.cfg && typeof ns.cfg.viewCfg === 'function' &&
-                  ns.cfg.viewCfg(sourceViewKey);
-        salesMoney = !!(_vc && _vc.moneyMode === 'sales');
-      } catch (e) { /* default to build-SOW headers */ }
-
       var hdr = document.createElement('div');
       hdr.className = 'scw-ws-v2-col-header' + (salesMoney ? ' scw-ws-v2-col-header--sales' : '');
       hdr.innerHTML =
@@ -347,9 +352,18 @@
     var frag = document.createDocumentFragment();
     // Whole-grid summary at the top — aggregates every L1\'s records
     // into one table. Visible in default mode AND summary-only mode.
+    var _grandSales = false;
+    try {
+      var _vcGrand = ns.cfg && typeof ns.cfg.viewCfg === 'function' &&
+                     ns.cfg.viewCfg(sourceViewKey);
+      _grandSales = !!(_vcGrand && _vcGrand.moneyMode === 'sales');
+    } catch (e) { /* default */ }
+    var grandMoneyOpts = _grandSales
+      ? { moneyField: 'field_2269', moneyLabel: 'Total' }
+      : null;
     if (ns.summary && typeof ns.summary.buildGrandSummary === 'function') {
       try {
-        var grand = ns.summary.buildGrandSummary(tree);
+        var grand = ns.summary.buildGrandSummary(tree, grandMoneyOpts);
         if (grand) frag.appendChild(grand);
       } catch (gErr) {
         console.warn('[scw-ws-v2] grand summary failed', gErr);
