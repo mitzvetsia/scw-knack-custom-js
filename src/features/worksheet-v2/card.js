@@ -491,6 +491,44 @@
 
   // ── Row builders (one per bucket category) ─────────────────
 
+  /** The wide "fill" cell in the summary row. Build-SOW shows the editable
+   *  Labor Description here; the sales view mirrors v1 by showing SCW Notes
+   *  (field_1953) instead — Labor Desc moves down into the detail panel. */
+  function rowFillCell(rec, viewKey, descLabel) {
+    var sales = isSalesMoney(viewKey);
+    var field = sales ? 'field_1953' : 'field_2020';
+    var label = sales ? 'SCW Notes' : (descLabel || 'Labor description');
+    return '<div class="scw-ws-v2-cell scw-ws-v2-cell--labor-desc">' +
+      textArea(rec, viewKey, field, readField(rec, field), label) +
+    '</div>';
+  }
+
+  /** Multi-line editable detail field (e.g. Labor Desc in the sales detail). */
+  function detailTextArea(rec, viewKey, fieldKey, label) {
+    return '<div class="scw-ws-v2-detail-field scw-ws-v2-detail-field--notes">' +
+      '<div class="scw-ws-v2-detail-label">' + escapeHtml(label) + '</div>' +
+      '<textarea class="scw-ws-v2-input scw-ws-v2-input--textarea" rows="2" ' +
+        'aria-label="' + escapeHtml(label) + '"' + attrsFor(rec, viewKey, fieldKey) + '>' +
+        escapeHtml(readField(rec, fieldKey)) +
+      '</textarea>' +
+    '</div>';
+  }
+
+  /** Notes row beneath the detail zones. Sales (v1 parity): editable Labor
+   *  Desc only — SCW Notes is in the summary row, Survey Notes isn't shown.
+   *  Build-SOW: editable SCW Notes + read-only Survey Notes. */
+  function detailNotesSection(rec, viewKey) {
+    if (isSalesMoney(viewKey)) {
+      return '<div class="scw-ws-v2-detail-notes">' +
+        detailTextArea(rec, viewKey, 'field_2020', 'Labor Desc') +
+      '</div>';
+    }
+    return '<div class="scw-ws-v2-detail-notes">' +
+      detailField(rec, viewKey, 'field_1953', 'SCW Notes', 'text') +
+      detailReadOnly(rec, 'field_2412', 'Survey Notes') +
+    '</div>';
+  }
+
   function buildRow_cam(rec, viewKey) {
     var label       = readField(rec, 'field_1950');
     var product     = readField(rec, 'field_1949') || '(unnamed)';
@@ -519,9 +557,7 @@
       chevronCell(rec) +
       ro(label,   'scw-ws-v2-cell--label',   label) +
       productCell(rec, viewKey, product) +
-      '<div class="scw-ws-v2-cell scw-ws-v2-cell--labor-desc">' +
-        textArea(rec, viewKey, 'field_2020', laborDesc, 'Labor description') +
-      '</div>' +
+      rowFillCell(rec, viewKey, 'Labor description') +
       chips +
       moneyCells(rec, viewKey) +
       sowSlot(rec, viewKey) +
@@ -557,9 +593,7 @@
       // Empty label slot keeps product / labor desc aligned with cam rows.
       labelCellOrBlank(rec) +
       productCell(rec, viewKey, product) +
-      '<div class="scw-ws-v2-cell scw-ws-v2-cell--labor-desc">' +
-        textArea(rec, viewKey, 'field_2020', laborDesc, 'Labor description') +
-      '</div>' +
+      rowFillCell(rec, viewKey, 'Labor description') +
       qtySlot +
       moneyCells(rec, viewKey) +
       sowSlot(rec, viewKey) +
@@ -596,9 +630,7 @@
       // Tag occupies the product slot; label slot is empty.
       labelCellOrBlank(rec) +
       ro('Service', 'scw-ws-v2-cell--tag') +
-      '<div class="scw-ws-v2-cell scw-ws-v2-cell--labor-desc">' +
-        textArea(rec, viewKey, 'field_2020', laborDesc, 'Service description') +
-      '</div>' +
+      rowFillCell(rec, viewKey, 'Service description') +
       qtySlot +
       moneyCells(rec, viewKey) +
       sowSlot(rec, viewKey) +
@@ -970,10 +1002,7 @@
           detailConnection(rec,       viewKey, 'field_1946', 'MDF / IDF') +
         '</div>' +
       '</div>' +
-      '<div class="scw-ws-v2-detail-notes">' +
-        detailField(rec,    viewKey, 'field_1953', 'SCW Notes',   'text') +
-        detailReadOnly(rec,          'field_2412', 'Survey Notes') +
-      '</div>' +
+      detailNotesSection(rec, viewKey) +
     '</div>';
   }
 
@@ -1005,10 +1034,7 @@
           detailConnection(rec,       viewKey, 'field_1946', 'MDF / IDF') +
         '</div>' +
       '</div>' +
-      '<div class="scw-ws-v2-detail-notes">' +
-        detailField(rec,    viewKey, 'field_1953', 'SCW Notes', 'text') +
-        detailReadOnly(rec,          'field_2412', 'Survey Notes') +
-      '</div>' +
+      detailNotesSection(rec, viewKey) +
     '</div>';
   }
 
@@ -1020,10 +1046,7 @@
           detailConnection(rec, viewKey, 'field_1946', 'MDF / IDF') +
         '</div>' +
       '</div>' +
-      '<div class="scw-ws-v2-detail-notes">' +
-        detailField(rec,    viewKey, 'field_1953', 'SCW Notes', 'text') +
-        detailReadOnly(rec,          'field_2412', 'Survey Notes') +
-      '</div>' +
+      detailNotesSection(rec, viewKey) +
     '</div>';
   }
 
