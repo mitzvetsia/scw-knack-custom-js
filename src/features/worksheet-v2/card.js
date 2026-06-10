@@ -618,7 +618,7 @@
   function detailNotesSection(rec, viewKey) {
     if (isSalesMoney(viewKey)) {
       return '<div class="scw-ws-v2-detail-notes">' +
-        detailTextArea(rec, viewKey, 'field_2020', 'Labor Desc') +
+        detailReadOnly(rec, 'field_2020', 'Labor Desc') +
       '</div>';
     }
     return '<div class="scw-ws-v2-detail-notes">' +
@@ -1203,7 +1203,7 @@
       }
     }
     right += detailConnection(rec, viewKey, 'field_1946', 'MDF / IDF');
-    right += detailTextArea(rec,   viewKey, 'field_2020', 'Labor Desc');
+    right += detailReadOnly(rec, 'field_2020', 'Labor Desc');
 
     return '<div class="scw-ws-v2-detail">' +
       '<div class="scw-ws-v2-sales-detail">' +

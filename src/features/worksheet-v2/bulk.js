@@ -106,7 +106,6 @@
   var SALES_FIELDS = {
     cam: [
       { key: 'field_1949', label: 'Product',           kind: 'conn-single', candSource: 'products' },
-      { key: 'field_2020', label: 'Labor description', kind: 'text' },
       { key: 'field_2240', label: 'Drop prefix',       kind: 'conn-single', candSource: 'dropPrefix' },
       { key: 'field_1951', label: 'Label #',           kind: 'number' },
       { key: 'field_2261', label: 'Custom Disc %',     kind: 'number' },
@@ -118,7 +117,6 @@
     ],
     'default': [
       { key: 'field_1949', label: 'Product',           kind: 'conn-single', candSource: 'products' },
-      { key: 'field_2020', label: 'Labor description', kind: 'text' },
       { key: 'field_1964', label: 'Qty',               kind: 'number' },
       { key: 'field_2261', label: 'Custom Disc %',     kind: 'number' },
       { key: 'field_1953', label: 'SCW Notes',         kind: 'text' },
@@ -126,7 +124,6 @@
       { key: 'field_1957', label: 'Connected Devices', kind: 'conn-multi',  candSource: 'devices' }
     ],
     services: [
-      { key: 'field_2020', label: 'Service description', kind: 'text' },
       { key: 'field_1964', label: 'Qty',                 kind: 'number' },
       { key: 'field_2261', label: 'Custom Disc %',       kind: 'number' },
       { key: 'field_1953', label: 'SCW Notes',           kind: 'text' },
@@ -138,6 +135,21 @@
       { key: 'field_1946', label: 'MDF / IDF',       kind: 'conn-single', candSource: 'mdf' }
     ]
   };
+
+  /** True when every selected record shares the same proposal bucket. */
+  function allSameBucket(ids, sourceViewKey) {
+    if (!ns.card || typeof ns.card.bucketIdOf !== 'function') return true;
+    var idx = attrsIndex(sourceViewKey);
+    var first = null;
+    for (var i = 0; i < ids.length; i++) {
+      var a = idx[ids[i]];
+      if (!a) continue;
+      var b = ns.card.bucketIdOf(a);
+      if (first === null) { first = b; continue; }
+      if (b !== first) return false;
+    }
+    return true;
+  }
 
   function isSalesView(sourceViewKey) {
     try {
@@ -1093,6 +1105,12 @@
     var sales = isSalesView(sourceViewKey);
     var fieldSet = sales ? SALES_FIELDS : FIELDS;
     var fields = locked ? LOCKED_BULK_FIELDS.slice() : intersectFields(categories, fieldSet);
+    // Product candidates vary by proposal bucket — don't offer Product
+    // when the selection spans multiple buckets.
+    var mixedBuckets = !allSameBucket(ids, sourceViewKey);
+    if (mixedBuckets && !locked) {
+      fields = fields.filter(function (f) { return f.key !== 'field_1949'; });
+    }
     var subHtml = locked
       ? 'Some selected rows are locked — only <b>Product</b>, <b>SCW Notes</b> &amp; <b>Custom Disc %</b> can be bulk-edited.'
       : (categories.length === 1
