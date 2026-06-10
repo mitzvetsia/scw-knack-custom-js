@@ -29,6 +29,9 @@
   var ns = window.SCW && window.SCW.worksheetV2;
   if (!ns) return;
 
+  // ── Module-level view key (set in mount()) ────────────────────
+  var _sourceViewKey = '';
+
   // ── Selection state ───────────────────────────────────────────
   var selectedIds = Object.create(null); // { recordId: true }
   function selSize() { var n = 0; for (var k in selectedIds) n++; return n; }
@@ -95,15 +98,64 @@
     ]
   };
 
-  function intersectFields(categories) {
+  // ── Sales-deployment field registry ─────────────────────────
+  // Sales views (moneyMode:'sales') swap out the build-SOW money
+  // columns (Sub Bid / +Hrs / +Mat) for a read-only Total; hide SOW
+  // and Plenum; and add Custom Disc % (field_2261). This parallel
+  // registry is used instead of FIELDS when the source view is sales.
+  var SALES_FIELDS = {
+    cam: [
+      { key: 'field_1949', label: 'Product',           kind: 'conn-single', candSource: 'products' },
+      { key: 'field_2020', label: 'Labor description', kind: 'text' },
+      { key: 'field_2240', label: 'Drop prefix',       kind: 'conn-single', candSource: 'dropPrefix' },
+      { key: 'field_1951', label: 'Label #',           kind: 'number' },
+      { key: 'field_2261', label: 'Custom Disc %',     kind: 'number' },
+      { key: 'field_2461', label: 'Existing cabling',  kind: 'bool' },
+      { key: 'field_1984', label: 'Exterior',          kind: 'bool' },
+      { key: 'field_1953', label: 'SCW Notes',         kind: 'text' },
+      { key: 'field_1946', label: 'MDF / IDF',         kind: 'conn-single', candSource: 'mdf' },
+      { key: 'field_2197', label: 'Connected Device',  kind: 'conn-single', candSource: 'devices' }
+    ],
+    'default': [
+      { key: 'field_1949', label: 'Product',           kind: 'conn-single', candSource: 'products' },
+      { key: 'field_2020', label: 'Labor description', kind: 'text' },
+      { key: 'field_1964', label: 'Qty',               kind: 'number' },
+      { key: 'field_2261', label: 'Custom Disc %',     kind: 'number' },
+      { key: 'field_1953', label: 'SCW Notes',         kind: 'text' },
+      { key: 'field_1946', label: 'MDF / IDF',         kind: 'conn-single', candSource: 'mdf' },
+      { key: 'field_1957', label: 'Connected Devices', kind: 'conn-multi',  candSource: 'devices' }
+    ],
+    services: [
+      { key: 'field_2020', label: 'Service description', kind: 'text' },
+      { key: 'field_1964', label: 'Qty',                 kind: 'number' },
+      { key: 'field_2261', label: 'Custom Disc %',       kind: 'number' },
+      { key: 'field_1953', label: 'SCW Notes',           kind: 'text' },
+      { key: 'field_1946', label: 'MDF / IDF',           kind: 'conn-single', candSource: 'mdf' }
+    ],
+    assumptions: [
+      { key: 'field_2020', label: 'Assumption text', kind: 'text' },
+      { key: 'field_1953', label: 'SCW Notes',       kind: 'text' },
+      { key: 'field_1946', label: 'MDF / IDF',       kind: 'conn-single', candSource: 'mdf' }
+    ]
+  };
+
+  function isSalesView(sourceViewKey) {
+    try {
+      var vc = ns.cfg && typeof ns.cfg.viewCfg === 'function' && ns.cfg.viewCfg(sourceViewKey);
+      return !!(vc && vc.moneyMode === 'sales');
+    } catch (e) { return false; }
+  }
+
+  function intersectFields(categories, fieldSet) {
+    fieldSet = fieldSet || FIELDS;
     if (!categories.length) return [];
-    var seed = FIELDS[categories[0]] || [];
+    var seed = fieldSet[categories[0]] || [];
     var result = [];
     for (var i = 0; i < seed.length; i++) {
       var f = seed[i];
       var keepAll = true;
       for (var c = 1; c < categories.length; c++) {
-        var list = FIELDS[categories[c]] || [];
+        var list = fieldSet[categories[c]] || [];
         var found = false;
         for (var j = 0; j < list.length; j++) {
           if (list[j].key === f.key) { found = true; break; }
@@ -255,9 +307,20 @@
     var addAccBtn = toolbar.querySelector('.scw-ws-v2-bulk-add-acc');
     if (addAccBtn) addAccBtn.disabled = (n === 0);
     var delBtn = toolbar.querySelector('.scw-ws-v2-bulk-delete');
-    delBtn.disabled = (n === 0);
     var delLabel = delBtn.querySelector('.scw-ws-v2-bulk-delete-label');
-    if (delLabel) delLabel.textContent = n > 0 ? ('Delete (' + n + ')') : 'Delete';
+    if (n === 0) {
+      delBtn.disabled = true;
+      delBtn.title = '';
+      if (delLabel) delLabel.textContent = 'Delete';
+    } else {
+      var part = partitionDeletable(selList(), _sourceViewKey);
+      var nDel = part.deletable.length;
+      delBtn.disabled = (nDel === 0);
+      delBtn.title = nDel === 0
+        ? 'All selected items are linked to survey line items and cannot be deleted here'
+        : '';
+      if (delLabel) delLabel.textContent = nDel > 0 ? ('Delete (' + nDel + ')') : 'Delete';
+    }
     var raBtn = toolbar.querySelector('.scw-ws-v2-bulk-remove-acc');
     if (raBtn) raBtn.disabled = (n === 0);
   }
@@ -1016,7 +1079,9 @@
     // mirroring the per-card lock so we never bulk-write a locked field.
     var locked = selectionHasLocked(ids, sourceViewKey);
     var categories = recordCategories(ids, sourceViewKey);
-    var fields = locked ? LOCKED_BULK_FIELDS.slice() : intersectFields(categories);
+    var sales = isSalesView(sourceViewKey);
+    var fieldSet = sales ? SALES_FIELDS : FIELDS;
+    var fields = locked ? LOCKED_BULK_FIELDS.slice() : intersectFields(categories, fieldSet);
     var subHtml = locked
       ? 'Some selected rows are locked — only <b>Product</b>, <b>SCW Notes</b> &amp; <b>Custom Disc %</b> can be bulk-edited.'
       : (categories.length === 1
@@ -1297,6 +1362,7 @@
 
   // ── Public entry point ───────────────────────────────────────
   function mount(sourceViewKey) {
+    _sourceViewKey = sourceViewKey;
     ensureToolbar(sourceViewKey);
     wireGlobalDelegates(sourceViewKey);
     // After each re-render, sync visible boxes to current state.
