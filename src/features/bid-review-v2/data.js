@@ -68,6 +68,49 @@
     });
   }
 
+  /**
+   * Refetch every source view's Backbone model from the server, then
+   * notify once they've all settled. Used by the cascade-idle handler:
+   * mirror-connection-sync's PUTs (e.g. the SOW cascade) land server-side
+   * but never fire a knack-view-render, so Knack's local models — and thus
+   * this grid — stay stale until something forces a re-read. A model.fetch
+   * pulls the fresh records back, then notify() rebuilds the grid.
+   */
+  function refetchAll() {
+    var keys = (ns.CONFIG && ns.CONFIG.sourceViewKeys) || [];
+    var pending = 0;
+    var settled = false;
+    function finish() {
+      if (settled) return;
+      settled = true;
+      notify();
+    }
+    function oneDone() { if (--pending <= 0) finish(); }
+    for (var i = 0; i < keys.length; i++) {
+      var v = Knack.views[keys[i]];
+      if (!v || !v.model || typeof v.model.fetch !== 'function') continue;
+      var p;
+      try { p = v.model.fetch(); } catch (e) { p = null; }
+      if (p && typeof p.always === 'function') { pending++; p.always(oneDone); }
+      else if (p && typeof p.then === 'function') { pending++; p.then(oneDone, oneDone); }
+    }
+    // No fetch returned a thenable → still re-read after a short beat.
+    if (pending === 0) setTimeout(finish, 400);
+  }
+
+  // Coalesce rapid cascade-idle bursts into a single refetch.
+  var _refetchTimer = null;
+  function refetchDebounced() {
+    if (_refetchTimer) clearTimeout(_refetchTimer);
+    _refetchTimer = setTimeout(function () {
+      _refetchTimer = null;
+      // Only fetch when the grid is actually mounted on this scene —
+      // avoids pointless network churn on pages without the v2 grid.
+      if (!ns.CONFIG || !document.getElementById(ns.CONFIG.mountId)) return;
+      refetchAll();
+    }, 250);
+  }
+
   function attachListeners() {
     if (!ns.CONFIG || !ns.CONFIG.enabled) return;
     var keys = ns.CONFIG.sourceViewKeys || [];
@@ -80,6 +123,16 @@
         .off('knack-cell-update.' + key + nsEvt)
         .on('knack-cell-update.' + key + nsEvt, notifyDebounced);
     });
+
+    // mirror-connection-sync emits scw-cascade-idle once all its PUTs
+    // settle (the SOW cascade, accessory regroups, reciprocal writes,
+    // etc.). Those mutate records this grid reads but fire no Knack
+    // render, so refetch the source views and rebuild. Guard against
+    // duplicate binding across re-inits.
+    if (!document.documentElement.hasAttribute('data-scw-br-v2-cascade-bound')) {
+      document.documentElement.setAttribute('data-scw-br-v2-cascade-bound', '1');
+      document.addEventListener('scw-cascade-idle', refetchDebounced);
+    }
   }
 
   ns.data = {
@@ -88,6 +141,7 @@
     subscribe:       subscribe,
     notify:          notify,
     notifyDebounced: notifyDebounced,
+    refetchAll:      refetchAll,
     attachListeners: attachListeners
   };
 })();
