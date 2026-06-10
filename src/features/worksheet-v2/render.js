@@ -213,6 +213,13 @@
       // every card row. Uses the same grid template as the row so
       // headers line up with their columns. Cam-row-shaped (with
       // "Drop" slot) since the cam template is the superset.
+      var salesMoney = false;
+      try {
+        var _vc = ns.cfg && typeof ns.cfg.viewCfg === 'function' &&
+                  ns.cfg.viewCfg(sourceViewKey);
+        salesMoney = !!(_vc && _vc.moneyMode === 'sales');
+      } catch (e) { /* default to build-SOW headers */ }
+
       var hdr = document.createElement('div');
       hdr.className = 'scw-ws-v2-col-header';
       hdr.innerHTML =
@@ -221,10 +228,9 @@
         '<span>Product</span>' +
         '<span>Description</span>' +
         '<span>Qty</span>' +
-        '<span>Sub Bid</span>' +
-        '<span>+Hrs</span>' +
-        '<span>+Mat</span>' +
-        '<span>Fee</span>' +
+        (salesMoney
+          ? '<span class="scw-ws-v2-col-header-total">Total</span>'
+          : '<span>Sub Bid</span><span>+Hrs</span><span>+Mat</span><span>Fee</span>') +
         '<span>SOW</span>' +
         '<span></span>' + /* warning slot */
         '<span></span>';   /* trash slot */

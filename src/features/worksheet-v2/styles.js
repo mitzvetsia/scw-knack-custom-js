@@ -122,6 +122,28 @@
     '  padding: 4px 10px !important;',
     '  min-height: 40px !important;',
     '}',
+    /* Sales money model (moneyMode:"sales", e.g. view_3586): a single
+       read-only Total replaces the Sub Bid / +Hrs / +Mat / Fee stacks and
+       spans all four money tracks so SOW still lands in its column. */
+    '.scw-ws-v2-cell--sales-total {',
+    '  grid-column: span 4 !important;',
+    '  text-align: right !important;',
+    '  font: 600 13px/1.2 system-ui, -apple-system, sans-serif !important;',
+    '  color: #0f172a !important;',
+    '  padding-right: 8px !important;',
+    '  white-space: nowrap !important;',
+    '}',
+    '.scw-ws-v2-col-header-total {',
+    '  grid-column: span 4 !important;',
+    '  text-align: right !important;',
+    '  padding-right: 8px !important;',
+    '}',
+    /* Sales pricing detail zone — Retail / Discount % / Applied / Total. */
+    '.scw-ws-v2-detail-zone--pricing {',
+    '  display: grid !important;',
+    '  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)) !important;',
+    '  gap: 10px !important;',
+    '}',
     /* Column-header strip rendered once per L1 body. Same template so
        labels sit over the input they describe. */
     '.scw-ws-v2-col-header {',

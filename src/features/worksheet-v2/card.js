@@ -223,6 +223,45 @@
     '</div>';
   }
 
+  /** True when the deployment uses the sales money model (moneyMode:'sales'
+   *  in config) — summary shows a single read-only Total instead of the
+   *  build-SOW Sub Bid / +Hrs / +Mat / Fee stacks. */
+  function isSalesMoney(viewKey) {
+    try {
+      var vc = ns.cfg && typeof ns.cfg.viewCfg === 'function' && ns.cfg.viewCfg(viewKey);
+      return !!(vc && vc.moneyMode === 'sales');
+    } catch (e) { return false; }
+  }
+
+  /** Money region of the summary row. Build-SOW: three editable stacks +
+   *  read-only install fee. Sales: a single read-only Total (field_2269)
+   *  that spans the four money tracks via CSS (.scw-ws-v2-cell--sales-total).
+   *  Retail / Discount % / Applied Discount move to the detail panel. */
+  function moneyCells(rec, viewKey) {
+    if (isSalesMoney(viewKey)) {
+      var total = readField(rec, 'field_2269') || '$0.00';
+      return '<div class="scw-ws-v2-cell scw-ws-v2-cell--sales-total" title="Line total">' +
+        escapeHtml(total) +
+      '</div>';
+    }
+    return stackCell(rec, viewKey, 'field_2150', readNum(rec, 'field_2150'), readField(rec, 'field_2151'), 'Sub Bid') +
+           stackCell(rec, viewKey, 'field_1973', readNum(rec, 'field_1973'), readField(rec, 'field_1997'), '+Hrs') +
+           stackCell(rec, viewKey, 'field_1974', readNum(rec, 'field_1974'), readField(rec, 'field_2146'), '+Mat') +
+           ro(readField(rec, 'field_2028'), 'scw-ws-v2-cell--fee', 'Install fee');
+  }
+
+  /** Sales-only detail zone — Retail Price (ro), Discount % (editable),
+   *  Applied Discount (ro), Total (ro). Empty string for non-sales views. */
+  function salesPricingDetail(rec, viewKey) {
+    if (!isSalesMoney(viewKey)) return '';
+    return '<div class="scw-ws-v2-detail-zone scw-ws-v2-detail-zone--pricing">' +
+      detailReadOnly(rec,          'field_1960', 'Retail Price') +
+      detailField(rec,    viewKey, 'field_2261', 'Discount %', 'number') +
+      detailReadOnly(rec,          'field_2303', 'Applied Discount') +
+      detailReadOnly(rec,          'field_2269', 'Total') +
+    '</div>';
+  }
+
   /**
    * Editable product cell — renders the product name in the row's
    * product slot but as a clickable button. Reuses the connection-
@@ -459,10 +498,7 @@
         textArea(rec, viewKey, 'field_2020', laborDesc, 'Labor description') +
       '</div>' +
       chips +
-      stackCell(rec, viewKey, 'field_2150', subBid,  subBidTotal, 'Sub Bid') +
-      stackCell(rec, viewKey, 'field_1973', plusHrs, hrsTotal,    '+Hrs') +
-      stackCell(rec, viewKey, 'field_1974', plusMat, matTotal,    '+Mat') +
-      ro(installFee, 'scw-ws-v2-cell--fee', 'Install fee') +
+      moneyCells(rec, viewKey) +
       sowCell(rec, viewKey, sow) +
       warnCell(rec) +
       kebabCell(rec) +
@@ -500,10 +536,7 @@
         textArea(rec, viewKey, 'field_2020', laborDesc, 'Labor description') +
       '</div>' +
       qtySlot +
-      stackCell(rec, viewKey, 'field_2150', subBid,  subBidTotal, 'Sub Bid') +
-      stackCell(rec, viewKey, 'field_1973', plusHrs, hrsTotal,    '+Hrs') +
-      stackCell(rec, viewKey, 'field_1974', plusMat, matTotal,    '+Mat') +
-      ro(installFee, 'scw-ws-v2-cell--fee', 'Install fee') +
+      moneyCells(rec, viewKey) +
       sowCell(rec, viewKey, sow) +
       warnCell(rec) +
       kebabCell(rec) +
@@ -542,10 +575,7 @@
         textArea(rec, viewKey, 'field_2020', laborDesc, 'Service description') +
       '</div>' +
       qtySlot +
-      stackCell(rec, viewKey, 'field_2150', subBid,  subBidTotal, 'Sub Bid') +
-      stackCell(rec, viewKey, 'field_1973', plusHrs, hrsTotal,    '+Hrs') +
-      stackCell(rec, viewKey, 'field_1974', plusMat, matTotal,    '+Mat') +
-      ro(installFee, 'scw-ws-v2-cell--fee', 'Install fee') +
+      moneyCells(rec, viewKey) +
       sowCell(rec, viewKey, sow) +
       warnCell(rec) +
       kebabCell(rec) +
@@ -904,6 +934,7 @@
   function buildDetail_cam(rec, viewKey) {
     return '<div class="scw-ws-v2-detail">' +
       '<div class="scw-ws-v2-detail-zones">' +
+        salesPricingDetail(rec, viewKey) +
         '<div class="scw-ws-v2-detail-zone scw-ws-v2-detail-zone--identity">' +
           detailReadOnly(rec,          'field_2240', 'Prefix') +
           detailField(rec,    viewKey, 'field_1951', 'Drop #',  'number') +
@@ -944,6 +975,7 @@
     var showParent = hasParent || (bid !== NETWORKING_BUCKET);
     return '<div class="scw-ws-v2-detail">' +
       '<div class="scw-ws-v2-detail-zones">' +
+        salesPricingDetail(rec, viewKey) +
         '<div class="scw-ws-v2-detail-zone scw-ws-v2-detail-zone--connections">' +
           (showParent ? detailConnection(rec, viewKey, 'field_2464', 'Parent') : '') +
           detailMountingHardware(rec, viewKey) +
@@ -961,6 +993,7 @@
   function buildDetail_services(rec, viewKey) {
     return '<div class="scw-ws-v2-detail">' +
       '<div class="scw-ws-v2-detail-zones">' +
+        salesPricingDetail(rec, viewKey) +
         '<div class="scw-ws-v2-detail-zone scw-ws-v2-detail-zone--connections">' +
           detailConnection(rec, viewKey, 'field_1946', 'MDF / IDF') +
         '</div>' +
@@ -994,6 +1027,7 @@
 
     var cat = bucketCategoryOf(rec);
     card.classList.add('scw-ws-v2-card--' + cat);
+    if (isSalesMoney(sourceViewKey)) card.classList.add('scw-ws-v2-card--sales');
     var bid = bucketIdOf(rec);
     if (bid) card.setAttribute('data-scw-ws-v2-bucket', bid);
     // Promoted-bracket marker: the bracket has a parent (field_2464

@@ -189,6 +189,35 @@
         }
       }
 
+      // ── Sales scope-of-work-details page (view_3586) ────────────────
+      // SAME object as view_3962 (SOW line items), so it inherits
+      // DEFAULT_FIELDS — only the sales pricing fields are added. The
+      // sales card swaps the build-SOW money columns (Sub Bid / +Hrs /
+      // +Mat / Fee) for a single read-only Total (field_2269), with
+      // Retail Price / Discount % / Applied Discount in the detail panel
+      // (moneyMode:'sales', handled in card.js + render.js). Mounts in
+      // PARALLEL below v1 for now; flip to hiding v1 once verified.
+      ,{
+        enabled:          true,
+        sourceViewKey:    'view_3586',
+        mountAfterSelector: '#view_3586',
+        label:            'Scope of Work Line Items',
+        mdfSourceViewKey: '',            // no empty-L1 seed source on this page yet
+        mdfLabelField:    '',
+        moneyMode:        'sales',
+        fields: {
+          retailPrice:     'field_1960', // PRODUCT STORED_price (read-only)
+          lineDiscPct:     'field_2261', // INPUT line discount % (editable)
+          lineDiscAmt:     'field_2262', // INPUT line discount $
+          lineDiscReason:  'field_2263', // discount reason notes
+          appliedDiscount: 'field_2303', // CALC extended discount (read-only)
+          total:           'field_2269'  // CALC line total (read-only summary)
+        },
+        buckets: {
+          otherEquip: '5df12ce036f91b0015404d78'   // "Other Equipment"
+        }
+      }
+
       // ── TEMPLATE (not yet enabled) — sales build-SOW page ───────────
       // Deploy target derived from view_3450. Fill in only the fields that
       // DIFFER from DEFAULT_FIELDS, the mount anchor, and the mdf source.
