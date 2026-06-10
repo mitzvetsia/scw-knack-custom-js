@@ -317,7 +317,21 @@
     // summaries reflect only the visible (filtered) subset. The
     // pill strip itself still mounts off the unfiltered model so
     // every SOW remains selectable.
-    var effectiveRecords = (ns.sowFilter && typeof ns.sowFilter.filterRecords === 'function')
+    //
+    // Guard on hideSow: when SOW is suppressed on this view (e.g. the
+    // sales view_3586), the pill strip never mounts — so its stale-id
+    // pruning never runs. A leftover localStorage filter from before
+    // hideSow was set would then silently drop EVERY record (none match
+    // the stale SOW ids), leaving all groups empty. Skip the filter
+    // entirely when SOW is hidden.
+    var _vcHideSow = false;
+    try {
+      var _vcS = ns.cfg && typeof ns.cfg.viewCfg === 'function' &&
+                 ns.cfg.viewCfg(sourceViewKey);
+      _vcHideSow = !!(_vcS && _vcS.hideSow);
+    } catch (e) { /* default: filter applies */ }
+    var effectiveRecords = (!_vcHideSow && ns.sowFilter &&
+        typeof ns.sowFilter.filterRecords === 'function')
       ? ns.sowFilter.filterRecords(sourceViewKey, records)
       : records;
     // Detect issues once per render — cards + summary chips read from
