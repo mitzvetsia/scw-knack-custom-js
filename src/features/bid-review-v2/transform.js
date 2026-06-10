@@ -116,17 +116,30 @@
     return list;
   }
 
-  function groupBySow(records) {
+  function groupBySow(records, sowIdsByItem) {
     var buckets = Object.create(null);
     for (var i = 0; i < records.length; i++) {
       var rec = records[i];
+      // A bid record belongs to a SOW grid when EITHER its own field_2154
+      // lists the SOW OR its related SOW line item (field_2404 → view_3921's
+      // field_2154) is on the SOW. The line item's membership is
+      // authoritative — without it, a record whose bid-side field_2154 has
+      // drifted gets dropped from its SOW's matched rows and exiled into the
+      // "belong to another SOW" block (naming the very SOW being viewed).
+      var sowSet = Object.create(null);
       var conns = connectionAll(rec, FK.sow);
-      if (!conns.length) continue;
       for (var c = 0; c < conns.length; c++) {
-        var sowId = conns[c].id;
-        if (!sowId) continue;
-        if (!buckets[sowId]) buckets[sowId] = [];
-        buckets[sowId].push(rec);
+        if (conns[c] && conns[c].id) sowSet[conns[c].id] = true;
+      }
+      if (sowIdsByItem) {
+        var siId = connectionId(rec, FK.relatedSowItem);
+        if (siId && sowIdsByItem[siId]) {
+          for (var sk in sowIdsByItem[siId]) sowSet[sk] = true;
+        }
+      }
+      for (var sid in sowSet) {
+        if (!buckets[sid]) buckets[sid] = [];
+        buckets[sid].push(rec);
       }
     }
     return buckets;
@@ -453,7 +466,23 @@
     var sows = extractSows(records);
     var sowNameById = Object.create(null);
     for (var sni = 0; sni < sows.length; sni++) sowNameById[sows[sni].id] = sows[sni].name;
-    var buckets = groupBySow(records);
+    // SOW line item → its OWN SOW membership (field_2154). Built before
+    // groupBySow so a matched bid record buckets into the SOW(s) its line
+    // item belongs to, even when the bid record's own field_2154 has drifted.
+    var _SFK = ns.CONFIG.sowItemFieldKeys || {};
+    var sowIdsByItem = Object.create(null);
+    var _siList = sowItems || [];
+    for (var _q = 0; _q < _siList.length; _q++) {
+      var _sq = _siList[_q];
+      if (!_sq || !_sq.id) continue;
+      var _qc = connectionAll(_sq, _SFK.sow);
+      var _qm = Object.create(null);
+      for (var _qj = 0; _qj < _qc.length; _qj++) {
+        if (_qc[_qj] && _qc[_qj].id) _qm[_qc[_qj].id] = true;
+      }
+      sowIdsByItem[_sq.id] = _qm;
+    }
+    var buckets = groupBySow(records, sowIdsByItem);
     var pkgInfo = buildPkgInfoMap(bidPackages);
 
     // Index SOW items by id for fast per-row lookup. The row carries a
@@ -793,11 +822,17 @@
         // Not on THIS SOW → excluded from SOW totals, still in bid total.
         orr.offSow       = true;
         orr.otherBidItem = true;
-        var onSomeSow = !!(oIdx && oIdx.sowIds && Object.keys(oIdx.sowIds).length);
-        if (onSomeSow) {
+        // SOW(s) this item belongs to OTHER than the one being viewed. An item
+        // on the current SOW must never be classed "belong to another SOW"
+        // (that produced an "on 1229" row inside the 1229 grid) — with the
+        // groupBySow fix it's already a matched row, but guard here too.
+        var otherSowIds = (oIdx && oIdx.sowIds)
+          ? Object.keys(oIdx.sowIds).filter(function (id) { return id !== sow.id; })
+          : [];
+        if (otherSowIds.length) {
           orr.otherKind = 'other-sow';
           // Names of the OTHER SOW(s) this item belongs to, for display.
-          orr.otherSowNames = Object.keys(oIdx.sowIds)
+          orr.otherSowNames = otherSowIds
             .map(function (id) { return sowNameById[id] || ''; })
             .filter(Boolean);
           otherSowRows.push(orr);
