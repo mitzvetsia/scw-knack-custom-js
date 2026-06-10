@@ -262,6 +262,31 @@
     '</div>';
   }
 
+  /** True when the view hides the SOW column entirely (config hideSow). */
+  function hideSow(viewKey) {
+    try {
+      var vc = ns.cfg && typeof ns.cfg.viewCfg === 'function' && ns.cfg.viewCfg(viewKey);
+      return !!(vc && vc.hideSow);
+    } catch (e) { return false; }
+  }
+
+  /** SOW summary cell — omitted entirely when the view hides SOW. */
+  function sowSlot(rec, viewKey) {
+    if (hideSow(viewKey)) return '';
+    return sowCell(rec, viewKey, readField(rec, 'field_2154'));
+  }
+
+  /** Blank money cells for no-money rows (assumptions). Matches the active
+   *  money model's track count so the grid stays aligned: one blank Total
+   *  in sales mode, three blank stacks + fee otherwise. */
+  function moneyCellsBlank(viewKey) {
+    if (isSalesMoney(viewKey)) return empty('scw-ws-v2-cell--sales-total');
+    return empty('scw-ws-v2-cell--stack') +
+           empty('scw-ws-v2-cell--stack') +
+           empty('scw-ws-v2-cell--stack') +
+           empty('scw-ws-v2-cell--fee');
+  }
+
   /**
    * Editable product cell — renders the product name in the row's
    * product slot but as a clickable button. Reuses the connection-
@@ -499,7 +524,7 @@
       '</div>' +
       chips +
       moneyCells(rec, viewKey) +
-      sowCell(rec, viewKey, sow) +
+      sowSlot(rec, viewKey) +
       warnCell(rec) +
       kebabCell(rec) +
     '</div>';
@@ -537,7 +562,7 @@
       '</div>' +
       qtySlot +
       moneyCells(rec, viewKey) +
-      sowCell(rec, viewKey, sow) +
+      sowSlot(rec, viewKey) +
       warnCell(rec) +
       kebabCell(rec) +
     '</div>';
@@ -576,7 +601,7 @@
       '</div>' +
       qtySlot +
       moneyCells(rec, viewKey) +
-      sowCell(rec, viewKey, sow) +
+      sowSlot(rec, viewKey) +
       warnCell(rec) +
       kebabCell(rec) +
     '</div>';
@@ -605,11 +630,8 @@
         textArea(rec, viewKey, 'field_2020', laborDesc, 'Assumption text') +
       '</div>' +
       empty('scw-ws-v2-cell--num') +
-      empty('scw-ws-v2-cell--stack') +
-      empty('scw-ws-v2-cell--stack') +
-      empty('scw-ws-v2-cell--stack') +
-      empty('scw-ws-v2-cell--fee') +
-      sowCell(rec, viewKey, sow) +
+      moneyCellsBlank(viewKey) +
+      sowSlot(rec, viewKey) +
       warnCell(rec) +
       kebabCell(rec) +
     '</div>';

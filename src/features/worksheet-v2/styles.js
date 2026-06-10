@@ -122,21 +122,35 @@
     '  padding: 4px 10px !important;',
     '  min-height: 40px !important;',
     '}',
-    /* Sales money model (moneyMode:"sales", e.g. view_3586): a single
-       read-only Total replaces the Sub Bid / +Hrs / +Mat / Fee stacks and
-       spans all four money tracks so SOW still lands in its column. */
+    /* Sales money model (moneyMode:"sales", e.g. view_3586): no Sub Bid /
+       +Hrs / +Mat / Fee stacks and no SOW column — a single read-only Total
+       and a wider Description. Sales rows + the matching column header get a
+       dedicated 8-track grid so nothing is squished. */
+    '.scw-ws-v2-card--sales .scw-ws-v2-row--default,',
+    '.scw-ws-v2-card--sales .scw-ws-v2-row--cam,',
+    '.scw-ws-v2-card--sales .scw-ws-v2-row--services,',
+    '.scw-ws-v2-card--sales .scw-ws-v2-row--assumptions,',
+    '.scw-ws-v2-col-header--sales {',
+    '  grid-template-columns:',
+    '    20px                  /* chevron */',
+    '    64px                  /* label */',
+    '    minmax(150px, 1.3fr)  /* product */',
+    '    minmax(240px, 2.4fr)  /* description (wider) */',
+    '    72px                  /* qty / chips */',
+    '    92px                  /* Total */',
+    '    28px                  /* warning */',
+    '    28px                  /* trash */ !important;',
+    '}',
     '.scw-ws-v2-cell--sales-total {',
-    '  grid-column: span 4 !important;',
     '  text-align: right !important;',
-    '  font: 600 13px/1.2 system-ui, -apple-system, sans-serif !important;',
+    '  font: 600 12.5px/1.2 system-ui, -apple-system, sans-serif !important;',
     '  color: #0f172a !important;',
-    '  padding-right: 8px !important;',
+    '  padding-right: 6px !important;',
     '  white-space: nowrap !important;',
     '}',
     '.scw-ws-v2-col-header-total {',
-    '  grid-column: span 4 !important;',
     '  text-align: right !important;',
-    '  padding-right: 8px !important;',
+    '  padding-right: 6px !important;',
     '}',
     /* Sales pricing detail zone — Retail / Discount % / Applied / Total. */
     '.scw-ws-v2-detail-zone--pricing {',

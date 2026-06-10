@@ -98,7 +98,10 @@
         if (ns.nativeFilter && typeof ns.nativeFilter.mount === 'function') {
           ns.nativeFilter.mount(key);
         }
-        if (ns.sowFilter && typeof ns.sowFilter.mount === 'function') {
+        var _vcSow = (ns.cfg && typeof ns.cfg.viewCfg === 'function')
+          ? ns.cfg.viewCfg(key) : null;
+        if (ns.sowFilter && typeof ns.sowFilter.mount === 'function' &&
+            !(_vcSow && _vcSow.hideSow)) {
           ns.sowFilter.mount(key);
         }
         // After every re-render, sync the bulk-select checkboxes to

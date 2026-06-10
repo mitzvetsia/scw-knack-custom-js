@@ -205,6 +205,7 @@
         mdfSourceViewKey: '',            // no empty-L1 seed source on this page yet
         mdfLabelField:    '',
         moneyMode:        'sales',
+        hideSow:          true,          // no SOW column / pills / sort on this page
         fields: {
           retailPrice:     'field_1960', // PRODUCT STORED_price (read-only)
           lineDiscPct:     'field_2261', // INPUT line discount % (editable)

@@ -100,7 +100,16 @@
     var dd = document.createElement('div');
     dd.className = 'scw-ws-v2-sort';
 
-    var menuItems = PRESETS.map(function (p) {
+    var hideSowCfg = false;
+    try {
+      var _vc = ns.cfg && typeof ns.cfg.viewCfg === 'function' && ns.cfg.viewCfg(viewKey);
+      hideSowCfg = !!(_vc && _vc.hideSow);
+    } catch (e) { /* keep all presets */ }
+    var presets = hideSowCfg
+      ? PRESETS.filter(function (p) { return p.id !== 'sow'; })
+      : PRESETS;
+
+    var menuItems = presets.map(function (p) {
       var active = sel.presetId === p.id;
       var glyph = '';
       if (isBidirectional(p)) {

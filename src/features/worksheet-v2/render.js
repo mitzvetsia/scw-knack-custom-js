@@ -221,7 +221,7 @@
       } catch (e) { /* default to build-SOW headers */ }
 
       var hdr = document.createElement('div');
-      hdr.className = 'scw-ws-v2-col-header';
+      hdr.className = 'scw-ws-v2-col-header' + (salesMoney ? ' scw-ws-v2-col-header--sales' : '');
       hdr.innerHTML =
         '<span></span>' + /* chevron slot */
         '<span>Drop</span>' +
@@ -230,8 +230,7 @@
         '<span>Qty</span>' +
         (salesMoney
           ? '<span class="scw-ws-v2-col-header-total">Total</span>'
-          : '<span>Sub Bid</span><span>+Hrs</span><span>+Mat</span><span>Fee</span>') +
-        '<span>SOW</span>' +
+          : '<span>Sub Bid</span><span>+Hrs</span><span>+Mat</span><span>Fee</span><span>SOW</span>') +
         '<span></span>' + /* warning slot */
         '<span></span>';   /* trash slot */
       body.appendChild(hdr);
