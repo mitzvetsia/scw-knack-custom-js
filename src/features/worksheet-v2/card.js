@@ -233,6 +233,70 @@
     } catch (e) { return false; }
   }
 
+  /** Count on field_2586 ("associated survey line items"). >0 means this is
+   *  an existing, survey-derived line item (vs a brand-new sales addition). */
+  function surveyAssocCount(rec) {
+    var raw = rec && rec['field_2586_raw'];
+    if (typeof raw === 'number') return raw;
+    var v = parseFloat(String((rec && rec['field_2586']) || '')
+      .replace(/[^0-9.\-]/g, ''));
+    return isNaN(v) ? 0 : v;
+  }
+
+  /** Sales lock rule (mirrors v1 sales-change-request/lockNewItemFields):
+   *  existing survey-derived items (field_2586 >= 1) are read-only on
+   *  everything EXCEPT Product (field_1949), Custom Disc % (field_2261), and
+   *  SCW Notes (field_1953). Brand-new sales items (field_2586 = 0) stay
+   *  fully editable. Only applies on the sales deployment. */
+  function isCrLocked(rec, viewKey) {
+    return isSalesMoney(viewKey) && surveyAssocCount(rec) >= 1;
+  }
+
+  // Fields that stay editable even on a locked (existing) sales row.
+  var LOCK_WHITELIST = { field_1949: 1, field_2261: 1, field_1953: 1 };
+
+  /** Post-build pass: neutralize every editable control in a locked card
+   *  except the whitelisted three. Read-only inputs (keep readable, white
+   *  bg, no pointer/keyboard), non-interactive chips / connection pickers /
+   *  accessory buttons, and hide the per-row delete. */
+  function lockCardFields(card) {
+    var i, el, f;
+    var inputs = card.querySelectorAll(
+      'input[data-scw-ws-v2-field], textarea[data-scw-ws-v2-field]'
+    );
+    for (i = 0; i < inputs.length; i++) {
+      el = inputs[i];
+      f = el.getAttribute('data-scw-ws-v2-field');
+      if (LOCK_WHITELIST[f]) continue;
+      el.readOnly = true;
+      el.tabIndex = -1;
+      el.style.pointerEvents = 'none';
+      el.style.background = '#fff';
+      el.style.cursor = 'default';
+    }
+    // Editable connection cells/buttons (product field_1949 is whitelisted).
+    var conns = card.querySelectorAll('[data-scw-ws-v2-conn]');
+    for (i = 0; i < conns.length; i++) {
+      el = conns[i];
+      f = el.getAttribute('data-scw-ws-v2-conn');
+      if (LOCK_WHITELIST[f]) continue;
+      el.style.pointerEvents = 'none';
+      el.classList.add('scw-ws-v2-locked-ctl');
+    }
+    // Boolean chips (cabling), accessory add/remove/qty, and the per-row
+    // trash button.
+    var ctls = card.querySelectorAll(
+      '[data-scw-ws-v2-chip], .scw-ws-v2-mh-add, .scw-ws-v2-mh-del, ' +
+      '.scw-ws-v2-mh-step, .scw-ws-v2-mh-chip'
+    );
+    for (i = 0; i < ctls.length; i++) {
+      ctls[i].style.pointerEvents = 'none';
+      ctls[i].classList.add('scw-ws-v2-locked-ctl');
+    }
+    var trash = card.querySelectorAll('.scw-ws-v2-trash');
+    for (i = 0; i < trash.length; i++) trash[i].style.display = 'none';
+  }
+
   /** Money region of the summary row. Build-SOW: three editable stacks +
    *  read-only install fee. Sales: a single read-only Total (field_2269)
    *  that spans the four money tracks via CSS (.scw-ws-v2-cell--sales-total).
@@ -1193,6 +1257,12 @@
     }
 
     card.innerHTML = attachedCaption + row + det;
+    // Sales lock: existing survey-derived items (field_2586 >= 1) are
+    // read-only except Product / Custom Disc % / SCW Notes (v1 parity).
+    if (isCrLocked(rec, sourceViewKey)) {
+      card.classList.add('scw-ws-v2-card--locked');
+      lockCardFields(card);
+    }
     // Leading bulk-select checkbox — absolutely positioned INSIDE the
     // row so it vertically centers with the row\'s actual height
     // (multi-line labor desc rows are taller than single-line ones).

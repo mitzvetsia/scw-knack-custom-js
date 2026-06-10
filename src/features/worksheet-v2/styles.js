@@ -174,6 +174,15 @@
     '  border-top: 1px solid #cbd5e1 !important;',
     '  margin: 5px 0 3px !important;',
     '}',
+    /* Locked (existing survey-derived) sales rows — controls read as static
+       except Product / Custom Disc % / SCW Notes. JS sets pointer-events;
+       here we just drop the "edit" affordance + hover cue. */
+    '.scw-ws-v2-locked-ctl { cursor: default !important; }',
+    '.scw-ws-v2-card--locked .scw-ws-v2-conn-btn { background: #fff !important; }',
+    '.scw-ws-v2-card--locked .scw-ws-v2-locked-ctl .scw-ws-v2-conn-btn-edit {',
+    '  display: none !important;',
+    '}',
+    '.scw-ws-v2-card--locked .scw-ws-v2-conn-btn-edit { display: none !important; }',
     /* Stacked pricing rows read as label + value on one line (label left,
        value right) so the column is compact like v1. */
     '.scw-ws-v2-sales-detail-col--left .scw-ws-v2-detail-field {',
