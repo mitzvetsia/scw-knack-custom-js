@@ -1113,13 +1113,14 @@
     '}',
 
     '.scw-ws-v2-detail-field--ro .scw-ws-v2-display {',
-    '  padding: 5px 8px !important;',
-    '  font-size: 12px !important;',
+    '  padding: 4px 0 2px !important;',
+    '  font-size: 13px !important;',
     '  color: var(--scw-text-default, #1f2937) !important;',
-    '  background: #fff !important;',
-    '  border: 1px solid var(--scw-border-subtle, #e2e8f0) !important;',
-    '  border-radius: 4px !important;',
-    '  min-height: 26px !important;',
+    '  background: transparent !important;',
+    '  border: none !important;',
+    '  border-radius: 0 !important;',
+    '  min-height: 20px !important;',
+    '  font-weight: 600 !important;',
     '}',
 
     /* ── Chevron ────────────────────────────────────────────── */

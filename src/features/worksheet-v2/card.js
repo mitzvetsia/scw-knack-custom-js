@@ -256,7 +256,7 @@
     if (!isSalesMoney(viewKey)) return '';
     return '<div class="scw-ws-v2-detail-zone scw-ws-v2-detail-zone--pricing">' +
       detailReadOnly(rec,          'field_1960', 'Retail Price') +
-      detailField(rec,    viewKey, 'field_2261', 'Discount %', 'number') +
+      detailField(rec,    viewKey, 'field_2261', 'Custom Disc %', 'number') +
       detailReadOnly(rec,          'field_2303', 'Applied Discount') +
       detailReadOnly(rec,          'field_2269', 'Total') +
     '</div>';
@@ -947,7 +947,7 @@
         'title="Add accessory">+ Add</a>';
 
     return '<div class="scw-ws-v2-detail-field scw-ws-v2-detail-field--mh">' +
-      '<div class="scw-ws-v2-detail-label">Accessories</div>' +
+      '<div class="scw-ws-v2-detail-label">Mounting Hardware</div>' +
       '<div class="scw-ws-v2-mh-list">' + chipsHtml + '</div>' +
       (addHtml ? '<div class="scw-ws-v2-mh-addrow">' + addHtml + '</div>' : '') +
     '</div>';
