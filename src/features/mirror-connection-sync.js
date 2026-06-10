@@ -397,38 +397,6 @@
   window.SCW.mirrorConn.isCascadeInFlight = function () { return _cascadeInFlight > 0; };
 
   // ======================================================================
-  // Object-scoped record URL resolver.
-  // ----------------------------------------------------------------------
-  // A view-scoped PUT (/pages/<scene>/views/<view>/records/<id>) only
-  // applies fields that are EDITABLE INPUTS on that view. The reciprocal
-  // CONNECTIONS_FIELD (field_2197, "Connected To") is a read-only DISPLAY
-  // column on some views (e.g. view_3586) but not an editable input there —
-  // so a view-scoped PUT silently drops it, the reciprocal never persists,
-  // and the child stays "disconnected" even though the parent's
-  // TRIGGER_FIELD (field_1957, editable) saved fine. (On view_3962 the
-  // field IS editable, which is why the same cascade code worked there.)
-  //
-  // Object-scoped writes (/objects/<objectKey>/records/<id>) skip the
-  // view-level inline-edit allow-list and update the field regardless, so
-  // the reciprocal/group cascade is reliable on every view. Falls back to
-  // the view-scoped URL when the object key can't be resolved.
-  function objectKeyForView(viewId) {
-    try {
-      var v = window.Knack && Knack.views && Knack.views[viewId];
-      var src = v && v.model && v.model.view && v.model.view.source;
-      if (src && src.object) return src.object;
-    } catch (e) { /* fall through */ }
-    return null;
-  }
-  function recordPutUrl(viewId, recordId) {
-    var objKey = objectKeyForView(viewId);
-    if (objKey && window.Knack && Knack.api_url) {
-      return Knack.api_url + '/v1/objects/' + objKey + '/records/' + recordId;
-    }
-    return window.SCW.knackRecordUrl(viewId, recordId);
-  }
-
-  // ======================================================================
   // FACTORY — one instance per view that needs the silent-regroup pattern.
   // All state below (ownPuts, pendingPlan, settleTimer, mutObserver, …)
   // is closure-scoped per call, so instances never share state.
@@ -827,7 +795,7 @@
     log('  PUT(accessory) → ' + accessoryId + ' MDF=' + mdfId);
     cascadeBegin();
     knackPutKeepalive(
-      recordPutUrl(ACCESSORIES_VIEW_ID, accessoryId),
+      window.SCW.knackRecordUrl(ACCESSORIES_VIEW_ID, accessoryId),
       body,
       function (err) {
         cascadeEnd();
@@ -847,7 +815,7 @@
       if (typeof onDone === 'function') onDone(new Error('knackRecordUrl unavailable'));
       return;
     }
-    var url = recordPutUrl(VIEW_ID, recordId);
+    var url = window.SCW.knackRecordUrl(VIEW_ID, recordId);
     log('  PUT → ' + recordId + ' body=' + JSON.stringify(body));
     ownPuts[recordId] = true;
     cascadeBegin();
@@ -1680,7 +1648,7 @@
     log('  PUT(accessory SOW) → ' + accessoryId + ' SOW=' + JSON.stringify(sowIds));
     cascadeBegin();
     knackPutKeepalive(
-      recordPutUrl(ACCESSORIES_VIEW_ID, accessoryId),
+      window.SCW.knackRecordUrl(ACCESSORIES_VIEW_ID, accessoryId),
       body,
       function (err) {
         cascadeEnd();
