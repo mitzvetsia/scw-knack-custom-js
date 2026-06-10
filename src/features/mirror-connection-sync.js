@@ -1251,6 +1251,7 @@
 
   var pendingRecord = null;
   var pendingChildIds = null;   // authoritative ids from the v2 picker (5th arg)
+  var pendingChildIdsFor = null; // record id the authoritative ids belong to
   var settleTimer = null;
 
   function armSettle() {
@@ -1264,6 +1265,7 @@
     var authoritativeIds = pendingChildIds;
     pendingRecord = null;
     pendingChildIds = null;
+    pendingChildIdsFor = null;
     if (!R) return;
     log('settled — applying deterministic regroup for R=' + R.id +
         (authoritativeIds ? ' (authoritative children supplied)' : ''));
@@ -1299,8 +1301,25 @@
       // 5th arg (v2 picker only): the exact ids the user chose for the
       // trigger field. Authoritative — bypasses the snapshot/model read so
       // a refetch race can't make the cascade clear still-selected children.
-      pendingChildIds = (editedFieldKey === TRIGGER_FIELD && Array.isArray(triggerIds))
-        ? triggerIds : null;
+      //
+      // STICKINESS: only OVERWRITE the authoritative ids when this event
+      // actually supplies them for this record. On scenes where OTHER modules
+      // also listen to knack-cell-update.<view> (e.g. sales-change-request on
+      // view_3586), a second, non-authoritative cell-update for the same
+      // record can land inside the settle window — if we let it null out the
+      // ids, the cascade falls back to a possibly-stale model read and
+      // over-removes (clearing EVERY former child instead of the de-selected
+      // one). Keep the picker's ids unless a newer authoritative set arrives,
+      // or the edited record changes.
+      if (editedFieldKey === TRIGGER_FIELD && Array.isArray(triggerIds)) {
+        pendingChildIds   = triggerIds;
+        pendingChildIdsFor = record.id;
+      } else if (pendingChildIdsFor !== record.id) {
+        // A different record (or a native edit with no prior authoritative
+        // ids) — drop any stale authoritative set so it can't be misapplied.
+        pendingChildIds   = null;
+        pendingChildIdsFor = null;
+      }
       armSettle();
     } catch (e) {
       console.warn(LOG_PREFIX, 'knack-cell-update handler threw', e);
