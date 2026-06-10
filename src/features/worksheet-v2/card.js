@@ -152,6 +152,26 @@
     return s === 'yes' || s === 'true' || s === '1';
   }
 
+  /** Wrong-accessory flag for an accessory id. field_2244 ("accessory match
+   *  check") is only reliable as the per-accessory connection-value spans on
+   *  the parent's row — warnings.js scrapes those (explicit No / false) into
+   *  a map. We just look the accessory up there. */
+  function isBracketWrong(accessoryId) {
+    return !!(ns.warnings && typeof ns.warnings.isAccessoryMismatch === 'function'
+      && ns.warnings.isAccessoryMismatch(accessoryId));
+  }
+
+  /** True when this record carries the given issue type, per the warnings
+   *  cache analyzed earlier this render (e.g. 'disconnected'). */
+  function hasIssue(rec, type) {
+    if (!rec || !rec.id || !ns.warnings ||
+        typeof ns.warnings.getIssuesFor !== 'function') return false;
+    try {
+      var issues = ns.warnings.getIssuesFor(rec.id) || [];
+      return issues.indexOf(type) !== -1;
+    } catch (e) { return false; }
+  }
+
   /** Quantity (field_1964) input — non-editable when field_2230 is yes.
    *  Locked rendering keeps the value visible on a white background per
    *  CLAUDE.md's "locked fields" rule (no opacity dimming). */
@@ -203,6 +223,136 @@
     '</div>';
   }
 
+  /** True when the deployment uses the sales money model (moneyMode:'sales'
+   *  in config) — summary shows a single read-only Total instead of the
+   *  build-SOW Sub Bid / +Hrs / +Mat / Fee stacks. */
+  function isSalesMoney(viewKey) {
+    try {
+      var vc = ns.cfg && typeof ns.cfg.viewCfg === 'function' && ns.cfg.viewCfg(viewKey);
+      return !!(vc && vc.moneyMode === 'sales');
+    } catch (e) { return false; }
+  }
+
+  /** Count on field_2586 ("associated survey line items"). >0 means a survey
+   *  line-item record has been created for this SOW line item (i.e. it's an
+   *  existing/committed item), vs a brand-new sales addition (0). */
+  function surveyAssocCount(rec) {
+    var raw = rec && rec['field_2586_raw'];
+    if (typeof raw === 'number') return raw;
+    var v = parseFloat(String((rec && rec['field_2586']) || '')
+      .replace(/[^0-9.\-]/g, ''));
+    return isNaN(v) ? 0 : v;
+  }
+
+  /** Sales lock rule (mirrors v1 sales-change-request/lockNewItemFields):
+   *  items that have a survey line-item record created for them
+   *  (field_2586 >= 1) are read-only on
+   *  everything EXCEPT Product (field_1949), Custom Disc % (field_2261), and
+   *  SCW Notes (field_1953). Brand-new sales items (field_2586 = 0) stay
+   *  fully editable. Only applies on the sales deployment. */
+  function isCrLocked(rec, viewKey) {
+    return isSalesMoney(viewKey) && surveyAssocCount(rec) >= 1;
+  }
+
+  // Fields that stay editable even on a locked (existing) sales row.
+  var LOCK_WHITELIST = { field_1949: 1, field_2261: 1, field_1953: 1 };
+
+  /** Post-build pass: neutralize every editable control in a locked card
+   *  except the whitelisted three. Read-only inputs (keep readable, white
+   *  bg, no pointer/keyboard), non-interactive chips / connection pickers /
+   *  accessory buttons, and hide the per-row delete. */
+  function lockCardFields(card) {
+    var i, el, f;
+    var inputs = card.querySelectorAll(
+      'input[data-scw-ws-v2-field], textarea[data-scw-ws-v2-field]'
+    );
+    for (i = 0; i < inputs.length; i++) {
+      el = inputs[i];
+      f = el.getAttribute('data-scw-ws-v2-field');
+      if (LOCK_WHITELIST[f]) continue;
+      el.readOnly = true;
+      el.tabIndex = -1;
+      el.style.pointerEvents = 'none';
+      // Appearance handled by CSS ([readonly] in a locked card → plain
+      // text, no box) so locked fields visibly read as non-editable.
+    }
+    // Editable connection cells/buttons (product field_1949 is whitelisted).
+    var conns = card.querySelectorAll('[data-scw-ws-v2-conn]');
+    for (i = 0; i < conns.length; i++) {
+      el = conns[i];
+      f = el.getAttribute('data-scw-ws-v2-conn');
+      if (LOCK_WHITELIST[f]) continue;
+      el.style.pointerEvents = 'none';
+      el.classList.add('scw-ws-v2-locked-ctl');
+    }
+    // Boolean chips (cabling), accessory add/remove/qty, and the per-row
+    // trash button.
+    var ctls = card.querySelectorAll(
+      '[data-scw-ws-v2-chip], .scw-ws-v2-mh-add, .scw-ws-v2-mh-del, ' +
+      '.scw-ws-v2-mh-step, .scw-ws-v2-mh-chip'
+    );
+    for (i = 0; i < ctls.length; i++) {
+      ctls[i].style.pointerEvents = 'none';
+      ctls[i].classList.add('scw-ws-v2-locked-ctl');
+    }
+    var trash = card.querySelectorAll('.scw-ws-v2-trash');
+    for (i = 0; i < trash.length; i++) trash[i].style.display = 'none';
+  }
+
+  /** Money region of the summary row. Build-SOW: three editable stacks +
+   *  read-only install fee. Sales: a single read-only Total (field_2269)
+   *  that spans the four money tracks via CSS (.scw-ws-v2-cell--sales-total).
+   *  Retail / Discount % / Applied Discount move to the detail panel. */
+  function moneyCells(rec, viewKey) {
+    if (isSalesMoney(viewKey)) {
+      var total = readField(rec, 'field_2269') || '$0.00';
+      return '<div class="scw-ws-v2-cell scw-ws-v2-cell--sales-total" title="Line total">' +
+        escapeHtml(total) +
+      '</div>';
+    }
+    return stackCell(rec, viewKey, 'field_2150', readNum(rec, 'field_2150'), readField(rec, 'field_2151'), 'Sub Bid') +
+           stackCell(rec, viewKey, 'field_1973', readNum(rec, 'field_1973'), readField(rec, 'field_1997'), '+Hrs') +
+           stackCell(rec, viewKey, 'field_1974', readNum(rec, 'field_1974'), readField(rec, 'field_2146'), '+Mat') +
+           ro(readField(rec, 'field_2028'), 'scw-ws-v2-cell--fee', 'Install fee');
+  }
+
+  /** Sales-only detail zone — Retail Price (ro), Discount % (editable),
+   *  Applied Discount (ro), Total (ro). Empty string for non-sales views. */
+  function salesPricingDetail(rec, viewKey) {
+    if (!isSalesMoney(viewKey)) return '';
+    return '<div class="scw-ws-v2-detail-zone scw-ws-v2-detail-zone--pricing">' +
+      detailReadOnly(rec,          'field_1960', 'Retail Price') +
+      detailField(rec,    viewKey, 'field_2261', 'Custom Disc %', 'number') +
+      detailReadOnly(rec,          'field_2303', 'Applied Discount') +
+      detailReadOnly(rec,          'field_2269', 'Total') +
+    '</div>';
+  }
+
+  /** True when the view hides the SOW column entirely (config hideSow). */
+  function hideSow(viewKey) {
+    try {
+      var vc = ns.cfg && typeof ns.cfg.viewCfg === 'function' && ns.cfg.viewCfg(viewKey);
+      return !!(vc && vc.hideSow);
+    } catch (e) { return false; }
+  }
+
+  /** SOW summary cell — omitted entirely when the view hides SOW. */
+  function sowSlot(rec, viewKey) {
+    if (hideSow(viewKey)) return '';
+    return sowCell(rec, viewKey, readField(rec, 'field_2154'));
+  }
+
+  /** Blank money cells for no-money rows (assumptions). Matches the active
+   *  money model's track count so the grid stays aligned: one blank Total
+   *  in sales mode, three blank stacks + fee otherwise. */
+  function moneyCellsBlank(viewKey) {
+    if (isSalesMoney(viewKey)) return empty('scw-ws-v2-cell--sales-total');
+    return empty('scw-ws-v2-cell--stack') +
+           empty('scw-ws-v2-cell--stack') +
+           empty('scw-ws-v2-cell--stack') +
+           empty('scw-ws-v2-cell--fee');
+  }
+
   /**
    * Editable product cell — renders the product name in the row's
    * product slot but as a clickable button. Reuses the connection-
@@ -214,23 +364,48 @@
   /** Read the parent line item\'s label from the back-mirror
    *  (field_2464_raw[0].identifier). Returns '' when the bracket
    *  doesn\'t have a resolved parent. */
+  // Locate a parent line-item record by id across every SOW-item view
+  // that might be loaded. The Build-SOW page loads view_3962; the bid
+  // review comparison grid (scene_1155) loads view_3921. Hardcoding
+  // view_3962 broke the lookup on scene_1155 — fall back through all
+  // candidates so the parent's real product label resolves either place.
+  function findParentRecord(parentId) {
+    if (!parentId) return null;
+    var candidates = ['view_3962', 'view_3921'];
+    try {
+      var views = (ns.CONFIG && ns.CONFIG.views) || [];
+      for (var i = 0; i < views.length; i++) {
+        if (views[i] && views[i].sourceViewKey &&
+            candidates.indexOf(views[i].sourceViewKey) === -1) {
+          candidates.push(views[i].sourceViewKey);
+        }
+      }
+    } catch (e) { /* ignore */ }
+    for (var c = 0; c < candidates.length; c++) {
+      try {
+        var v = window.Knack && Knack.views && Knack.views[candidates[c]];
+        var prec = v && v.model && v.model.data &&
+                   typeof v.model.data.get === 'function' &&
+                   v.model.data.get(parentId);
+        if (prec) return prec.attributes || prec;
+      } catch (e2) { /* try next */ }
+    }
+    return null;
+  }
+
   function readParentRef(rec) {
     var raw = rec && rec['field_2464_raw'];
     if (!Array.isArray(raw) || !raw.length || !raw[0]) return '';
     var parentId = raw[0].id || '';
 
-    // Prefer a real product/drop label looked up from view_3962\'s
+    // Prefer a real product/drop label looked up from the SOW-item view
     // model — Knack\'s auto-built identifier on the line-item object
     // is "<recordId> (<mdfLabel>)" because the object has no proper
     // identifier field, which reads like garbage in the UI.
     if (parentId) {
       try {
-        var v = window.Knack && Knack.views && Knack.views.view_3962;
-        var prec = v && v.model && v.model.data &&
-                   typeof v.model.data.get === 'function' &&
-                   v.model.data.get(parentId);
-        if (prec) {
-          var pa   = prec.attributes || prec;
+        var pa = findParentRecord(parentId);
+        if (pa) {
           var drop = (pa.field_1950 || '').toString().replace(/<[^>]*>/g, '').trim();
           var prod = (pa.field_1949 || '').toString().replace(/<[^>]*>/g, '').trim();
           // Knack synthesizes a "<24-hex> (<mdf>)" string for line-item
@@ -358,9 +533,9 @@
     '</button>';
   }
 
-  /** Warning-badge cell — sits in its own grid column to the LEFT
-   *  of the trash icon. Always emits a cell so the row grid stays
-   *  aligned; the cell is empty when the record has no issues. */
+  /** Warning column cell — separate icon chips (one per issue type), not a
+   *  single stacked badge. Icon-only to fit the narrow column; the label is
+   *  the tooltip. Each chip opens the record panel on click. */
   function warnCell(rec) {
     var issues = (ns.warnings && typeof ns.warnings.getIssuesFor === 'function')
       ? ns.warnings.getIssuesFor(rec.id) : [];
@@ -369,19 +544,56 @@
     }
     var labels = (ns.warnings && ns.warnings.LABELS) || {};
     var icons  = (ns.warnings && ns.warnings.ICONS)  || {};
-    var human = issues.map(function (k) { return labels[k] || k; }).join(', ');
-    var iconStack = issues.map(function (k) {
-      return '<span class="scw-ws-v2-warn-badge-icon" data-issue-type="' + k + '">' +
-        (icons[k] || '') + '</span>';
+    var chips = issues.map(function (k) {
+      return '<button type="button" class="scw-ws-v2-warn-chit" ' +
+        'data-issue-type="' + k + '" ' +
+        'data-scw-ws-v2-expand="' + escapeHtml(rec.id) + '" ' +
+        'title="' + escapeHtml(labels[k] || k) + '">' +
+        (icons[k] || '') +
+      '</button>';
     }).join('');
-    return '<button type="button" class="scw-ws-v2-cell scw-ws-v2-cell--warn scw-ws-v2-warn-badge" ' +
-      'data-scw-ws-v2-expand="' + escapeHtml(rec.id) + '" ' +
-      'title="Issues: ' + escapeHtml(human) + '">' +
-      iconStack +
-    '</button>';
+    return '<span class="scw-ws-v2-cell scw-ws-v2-cell--warn">' + chips + '</span>';
   }
 
   // ── Row builders (one per bucket category) ─────────────────
+
+  /** The wide "fill" cell in the summary row. Build-SOW shows the editable
+   *  Labor Description here; the sales view mirrors v1 by showing SCW Notes
+   *  (field_1953) instead — Labor Desc moves down into the detail panel. */
+  function rowFillCell(rec, viewKey, descLabel) {
+    var sales = isSalesMoney(viewKey);
+    var field = sales ? 'field_1953' : 'field_2020';
+    var label = sales ? 'SCW Notes' : (descLabel || 'Labor description');
+    return '<div class="scw-ws-v2-cell scw-ws-v2-cell--labor-desc">' +
+      textArea(rec, viewKey, field, readField(rec, field), label) +
+    '</div>';
+  }
+
+  /** Multi-line editable detail field (e.g. Labor Desc in the sales detail). */
+  function detailTextArea(rec, viewKey, fieldKey, label) {
+    return '<div class="scw-ws-v2-detail-field scw-ws-v2-detail-field--notes">' +
+      '<div class="scw-ws-v2-detail-label">' + escapeHtml(label) + '</div>' +
+      '<textarea class="scw-ws-v2-input scw-ws-v2-input--textarea" rows="2" ' +
+        'aria-label="' + escapeHtml(label) + '"' + attrsFor(rec, viewKey, fieldKey) + '>' +
+        escapeHtml(readField(rec, fieldKey)) +
+      '</textarea>' +
+    '</div>';
+  }
+
+  /** Notes row beneath the detail zones. Sales (v1 parity): editable Labor
+   *  Desc only — SCW Notes is in the summary row, Survey Notes isn't shown.
+   *  Build-SOW: editable SCW Notes + read-only Survey Notes. */
+  function detailNotesSection(rec, viewKey) {
+    if (isSalesMoney(viewKey)) {
+      return '<div class="scw-ws-v2-detail-notes">' +
+        detailTextArea(rec, viewKey, 'field_2020', 'Labor Desc') +
+      '</div>';
+    }
+    return '<div class="scw-ws-v2-detail-notes">' +
+      detailField(rec, viewKey, 'field_1953', 'SCW Notes', 'text') +
+      detailReadOnly(rec, 'field_2412', 'Survey Notes') +
+    '</div>';
+  }
 
   function buildRow_cam(rec, viewKey) {
     var label       = readField(rec, 'field_1950');
@@ -404,22 +616,18 @@
       '<div class="scw-ws-v2-cell scw-ws-v2-cell--chips">' +
         chip(rec, viewKey, 'field_2461', 'Existing', 'Existing cabling') +
         chip(rec, viewKey, 'field_1984', 'Exterior', 'Exterior') +
-        chip(rec, viewKey, 'field_1983', 'Plenum',   'Plenum') +
+        (isSalesMoney(viewKey) ? '' :
+          chip(rec, viewKey, 'field_1983', 'Plenum',   'Plenum')) +
       '</div>';
 
     return '<div class="scw-ws-v2-row scw-ws-v2-row--cam">' +
       chevronCell(rec) +
       ro(label,   'scw-ws-v2-cell--label',   label) +
       productCell(rec, viewKey, product) +
-      '<div class="scw-ws-v2-cell scw-ws-v2-cell--labor-desc">' +
-        textArea(rec, viewKey, 'field_2020', laborDesc, 'Labor description') +
-      '</div>' +
+      rowFillCell(rec, viewKey, 'Labor description') +
       chips +
-      stackCell(rec, viewKey, 'field_2150', subBid,  subBidTotal, 'Sub Bid') +
-      stackCell(rec, viewKey, 'field_1973', plusHrs, hrsTotal,    '+Hrs') +
-      stackCell(rec, viewKey, 'field_1974', plusMat, matTotal,    '+Mat') +
-      ro(installFee, 'scw-ws-v2-cell--fee', 'Install fee') +
-      sowCell(rec, viewKey, sow) +
+      moneyCells(rec, viewKey) +
+      sowSlot(rec, viewKey) +
       warnCell(rec) +
       kebabCell(rec) +
     '</div>';
@@ -440,7 +648,9 @@
     var installFee  = readField(rec, 'field_2028');
     var sow         = readField(rec, 'field_2154');
 
-    var qtyInput = qtyCell(rec, viewKey, qty);
+    // Sales mirrors v1 by putting Qty in the detail panel, so the row's
+    // qty slot stays blank there.
+    var qtyInput = isSalesMoney(viewKey) ? null : qtyCell(rec, viewKey, qty);
     var noQty = (qtyInput === null);
     var rowCls = 'scw-ws-v2-row scw-ws-v2-row--default' + (noQty ? ' scw-ws-v2-row--no-qty' : '');
     var qtySlot = noQty
@@ -452,15 +662,10 @@
       // Empty label slot keeps product / labor desc aligned with cam rows.
       labelCellOrBlank(rec) +
       productCell(rec, viewKey, product) +
-      '<div class="scw-ws-v2-cell scw-ws-v2-cell--labor-desc">' +
-        textArea(rec, viewKey, 'field_2020', laborDesc, 'Labor description') +
-      '</div>' +
+      rowFillCell(rec, viewKey, 'Labor description') +
       qtySlot +
-      stackCell(rec, viewKey, 'field_2150', subBid,  subBidTotal, 'Sub Bid') +
-      stackCell(rec, viewKey, 'field_1973', plusHrs, hrsTotal,    '+Hrs') +
-      stackCell(rec, viewKey, 'field_1974', plusMat, matTotal,    '+Mat') +
-      ro(installFee, 'scw-ws-v2-cell--fee', 'Install fee') +
-      sowCell(rec, viewKey, sow) +
+      moneyCells(rec, viewKey) +
+      sowSlot(rec, viewKey) +
       warnCell(rec) +
       kebabCell(rec) +
     '</div>';
@@ -481,7 +686,7 @@
     var installFee  = readField(rec, 'field_2028');
     var sow         = readField(rec, 'field_2154');
 
-    var qtyInput = qtyCell(rec, viewKey, qty);
+    var qtyInput = isSalesMoney(viewKey) ? null : qtyCell(rec, viewKey, qty);
     var noQty = (qtyInput === null);
     var rowCls = 'scw-ws-v2-row scw-ws-v2-row--services' + (noQty ? ' scw-ws-v2-row--no-qty' : '');
     var qtySlot = noQty
@@ -494,15 +699,10 @@
       // Tag occupies the product slot; label slot is empty.
       labelCellOrBlank(rec) +
       ro('Service', 'scw-ws-v2-cell--tag') +
-      '<div class="scw-ws-v2-cell scw-ws-v2-cell--labor-desc">' +
-        textArea(rec, viewKey, 'field_2020', laborDesc, 'Service description') +
-      '</div>' +
+      rowFillCell(rec, viewKey, 'Service description') +
       qtySlot +
-      stackCell(rec, viewKey, 'field_2150', subBid,  subBidTotal, 'Sub Bid') +
-      stackCell(rec, viewKey, 'field_1973', plusHrs, hrsTotal,    '+Hrs') +
-      stackCell(rec, viewKey, 'field_1974', plusMat, matTotal,    '+Mat') +
-      ro(installFee, 'scw-ws-v2-cell--fee', 'Install fee') +
-      sowCell(rec, viewKey, sow) +
+      moneyCells(rec, viewKey) +
+      sowSlot(rec, viewKey) +
       warnCell(rec) +
       kebabCell(rec) +
     '</div>';
@@ -531,11 +731,8 @@
         textArea(rec, viewKey, 'field_2020', laborDesc, 'Assumption text') +
       '</div>' +
       empty('scw-ws-v2-cell--num') +
-      empty('scw-ws-v2-cell--stack') +
-      empty('scw-ws-v2-cell--stack') +
-      empty('scw-ws-v2-cell--stack') +
-      empty('scw-ws-v2-cell--fee') +
-      sowCell(rec, viewKey, sow) +
+      moneyCellsBlank(viewKey) +
+      sowSlot(rec, viewKey) +
       warnCell(rec) +
       kebabCell(rec) +
     '</div>';
@@ -571,7 +768,7 @@
    * styled cell. Click handler in init.js reads the data-* attrs and
    * opens the picker modal.
    */
-  function detailConnection(rec, viewKey, fieldKey, label) {
+  function detailConnection(rec, viewKey, fieldKey, label, warn) {
     // Special-case the Parent connection: the line-item object\'s auto
     // identifier is "<recordId> (<mdfLabel>)", which reads like garbage.
     // readParentRef does a proper product/drop lookup — reuse it.
@@ -581,8 +778,19 @@
     } else {
       val = readField(rec, fieldKey) || '(none)';
     }
-    return '<div class="scw-ws-v2-detail-field scw-ws-v2-detail-field--conn">' +
-      '<div class="scw-ws-v2-detail-label">' + escapeHtml(label) + '</div>' +
+    // When warn is set (e.g. a disconnected cam/reader's Connected Device
+    // field), prepend the issue icon to the label and flag the wrapper so
+    // CSS can call out the offending field.
+    var labelHtml = escapeHtml(label);
+    if (warn) {
+      var warnIc = (ns.warnings && ns.warnings.ICONS && ns.warnings.ICONS.disconnected) || '';
+      labelHtml = '<span class="scw-ws-v2-detail-warn-ic" ' +
+        'title="No connected device — this cam/reader is disconnected">' +
+        warnIc + '</span>' + labelHtml;
+    }
+    return '<div class="scw-ws-v2-detail-field scw-ws-v2-detail-field--conn' +
+        (warn ? ' scw-ws-v2-detail-field--warn' : '') + '">' +
+      '<div class="scw-ws-v2-detail-label">' + labelHtml + '</div>' +
       '<button type="button" class="scw-ws-v2-conn-btn" ' +
         'data-scw-ws-v2-conn="' + escapeHtml(fieldKey) + '" ' +
         'data-scw-ws-v2-record="' + escapeHtml(rec.id) + '" ' +
@@ -776,6 +984,16 @@
         // Locked (field_2230 = Yes) means single-qty only and we omit
         // the stepper entirely (qty is implicit = 1).
         var accRec  = accAttrsById[chip.id] || null;
+        // Wrong-accessory flag — sourced from the parent's field_2244
+        // per-accessory spans (see warnings.js). Surface it on the specific
+        // accessory chip; the parent card's warning chip rolls these up.
+        var accWrong = isBracketWrong(chip.id);
+        var warnMark = accWrong
+          ? '<span class="scw-ws-v2-mh-warn scw-ws-v2-mh-warn--icon" ' +
+              'title="Wrong accessory — does not match this product">' +
+              ((ns.warnings && ns.warnings.ICONS && ns.warnings.ICONS.bracket) || '') +
+            '</span>'
+          : '';
         var canMulti = accRec ? !isQtyLocked(accRec) : false;
         var curQty  = accRec ? (parseFloat(readNum(accRec, 'field_1964')) || 1) : 1;
         var stepperHtml = canMulti
@@ -802,19 +1020,21 @@
           : '';
         // No href → render as non-link span so we never silently bounce
         // the user back to the home page on click.
+        var wrapCls = 'scw-ws-v2-mh-chip-wrap' +
+          (accWrong ? ' scw-ws-v2-mh-chip-wrap--warn' : '');
         if (editHref) {
-          chipsHtml += '<span class="scw-ws-v2-mh-chip-wrap">' +
+          chipsHtml += '<span class="' + wrapCls + '">' +
             '<a class="scw-ws-v2-mh-chip" href="' + escapeHtml(editHref) + '"' +
               ' title="Edit ' + escapeHtml(chip.label) + '">' +
               escapeHtml(chip.label) +
-            '</a>' + stepperHtml + delX +
+            '</a>' + warnMark + stepperHtml + delX +
           '</span>';
         } else {
-          chipsHtml += '<span class="scw-ws-v2-mh-chip-wrap">' +
+          chipsHtml += '<span class="' + wrapCls + '">' +
             '<span class="scw-ws-v2-mh-chip scw-ws-v2-mh-chip--inert"' +
               ' title="' + escapeHtml(chip.label) + '">' +
               escapeHtml(chip.label) +
-            '</span>' + stepperHtml + delX +
+            '</span>' + warnMark + stepperHtml + delX +
           '</span>';
         }
       }
@@ -828,7 +1048,7 @@
         'title="Add accessory">+ Add</a>';
 
     return '<div class="scw-ws-v2-detail-field scw-ws-v2-detail-field--mh">' +
-      '<div class="scw-ws-v2-detail-label">Accessories</div>' +
+      '<div class="scw-ws-v2-detail-label">Mounting Hardware</div>' +
       '<div class="scw-ws-v2-mh-list">' + chipsHtml + '</div>' +
       (addHtml ? '<div class="scw-ws-v2-mh-addrow">' + addHtml + '</div>' : '') +
     '</div>';
@@ -837,6 +1057,7 @@
   function buildDetail_cam(rec, viewKey) {
     return '<div class="scw-ws-v2-detail">' +
       '<div class="scw-ws-v2-detail-zones">' +
+        salesPricingDetail(rec, viewKey) +
         '<div class="scw-ws-v2-detail-zone scw-ws-v2-detail-zone--identity">' +
           detailReadOnly(rec,          'field_2240', 'Prefix') +
           detailField(rec,    viewKey, 'field_1951', 'Drop #',  'number') +
@@ -845,14 +1066,12 @@
         '</div>' +
         '<div class="scw-ws-v2-detail-zone scw-ws-v2-detail-zone--connections">' +
           detailMountingHardware(rec, viewKey) +
-          detailConnection(rec,       viewKey, 'field_2197', 'Connected Device') +
+          detailConnection(rec,       viewKey, 'field_2197', 'Connected Device',
+                           hasIssue(rec, 'disconnected')) +
           detailConnection(rec,       viewKey, 'field_1946', 'MDF / IDF') +
         '</div>' +
       '</div>' +
-      '<div class="scw-ws-v2-detail-notes">' +
-        detailField(rec,    viewKey, 'field_1953', 'SCW Notes',   'text') +
-        detailReadOnly(rec,          'field_2412', 'Survey Notes') +
-      '</div>' +
+      detailNotesSection(rec, viewKey) +
     '</div>';
   }
 
@@ -876,6 +1095,7 @@
     var showParent = hasParent || (bid !== NETWORKING_BUCKET);
     return '<div class="scw-ws-v2-detail">' +
       '<div class="scw-ws-v2-detail-zones">' +
+        salesPricingDetail(rec, viewKey) +
         '<div class="scw-ws-v2-detail-zone scw-ws-v2-detail-zone--connections">' +
           (showParent ? detailConnection(rec, viewKey, 'field_2464', 'Parent') : '') +
           detailMountingHardware(rec, viewKey) +
@@ -883,24 +1103,19 @@
           detailConnection(rec,       viewKey, 'field_1946', 'MDF / IDF') +
         '</div>' +
       '</div>' +
-      '<div class="scw-ws-v2-detail-notes">' +
-        detailField(rec,    viewKey, 'field_1953', 'SCW Notes', 'text') +
-        detailReadOnly(rec,          'field_2412', 'Survey Notes') +
-      '</div>' +
+      detailNotesSection(rec, viewKey) +
     '</div>';
   }
 
   function buildDetail_services(rec, viewKey) {
     return '<div class="scw-ws-v2-detail">' +
       '<div class="scw-ws-v2-detail-zones">' +
+        salesPricingDetail(rec, viewKey) +
         '<div class="scw-ws-v2-detail-zone scw-ws-v2-detail-zone--connections">' +
           detailConnection(rec, viewKey, 'field_1946', 'MDF / IDF') +
         '</div>' +
       '</div>' +
-      '<div class="scw-ws-v2-detail-notes">' +
-        detailField(rec,    viewKey, 'field_1953', 'SCW Notes', 'text') +
-        detailReadOnly(rec,          'field_2412', 'Survey Notes') +
-      '</div>' +
+      detailNotesSection(rec, viewKey) +
     '</div>';
   }
 
@@ -917,6 +1132,59 @@
     '</div>';
   }
 
+  /**
+   * Sales detail — mirrors the v1 worksheet card: a LEFT column with the
+   * pricing/identity fields stacked vertically (Retail Price, Qty / Drop
+   * fields, Custom Disc %, Applied Discount, Total) and a RIGHT column with
+   * Mounting Hardware, the relevant connection, MDF/IDF and Labor Desc.
+   * Read-only fields render as plain text; only real inputs get the box.
+   */
+  function buildDetail_sales(rec, viewKey, cat) {
+    var isCam = (cat === 'cam');
+
+    var left = '';
+    if (isCam) {
+      left += detailReadOnly(rec,          'field_2240', 'Drop Prefix');
+      left += detailField(rec,    viewKey, 'field_1951', 'Label #', 'number');
+      // Visual break between the drop/identity fields and the money fields.
+      left += '<div class="scw-ws-v2-sales-detail-divider"></div>';
+    }
+    left += detailReadOnly(rec,            'field_1960', 'Retail Price');
+    if (!isCam) {
+      left += isQtyLocked(rec)
+        ? detailReadOnly(rec,              'field_1964', 'Qty')
+        : detailField(rec,        viewKey, 'field_1964', 'Qty', 'number');
+    }
+    left += detailField(rec,      viewKey, 'field_2261', 'Custom Disc %', 'number');
+    left += detailReadOnly(rec,            'field_2303', 'Applied Discount');
+    left += detailReadOnly(rec,            'field_2269', 'Total');
+
+    var right = detailMountingHardware(rec, viewKey);
+    if (isCam) {
+      right += detailConnection(rec, viewKey, 'field_2197', 'Connected Device',
+                                hasIssue(rec, 'disconnected'));
+    } else if (cat === 'default') {
+      if (isMapConnectionsRow(rec)) {
+        right += detailConnection(rec, viewKey, 'field_1957', 'Connected Devices');
+      } else if (readParentRef(rec) || bucketIdOf(rec) !== NETWORKING_BUCKET) {
+        right += detailConnection(rec, viewKey, 'field_2464', 'Parent');
+      }
+    }
+    right += detailConnection(rec, viewKey, 'field_1946', 'MDF / IDF');
+    right += detailTextArea(rec,   viewKey, 'field_2020', 'Labor Desc');
+
+    return '<div class="scw-ws-v2-detail">' +
+      '<div class="scw-ws-v2-sales-detail">' +
+        '<div class="scw-ws-v2-sales-detail-col scw-ws-v2-sales-detail-col--left">' +
+          left +
+        '</div>' +
+        '<div class="scw-ws-v2-sales-detail-col scw-ws-v2-sales-detail-col--right">' +
+          right +
+        '</div>' +
+      '</div>' +
+    '</div>';
+  }
+
   // ── Public entry point ─────────────────────────────────────
 
   function buildCard(rec, sourceViewKey) {
@@ -926,6 +1194,7 @@
 
     var cat = bucketCategoryOf(rec);
     card.classList.add('scw-ws-v2-card--' + cat);
+    if (isSalesMoney(sourceViewKey)) card.classList.add('scw-ws-v2-card--sales');
     var bid = bucketIdOf(rec);
     if (bid) card.setAttribute('data-scw-ws-v2-bucket', bid);
     // Promoted-bracket marker: the bracket has a parent (field_2464
@@ -956,18 +1225,19 @@
     }
 
     var row, det;
+    var sales = isSalesMoney(sourceViewKey);
     if (cat === 'cam') {
       row = buildRow_cam(rec, sourceViewKey);
-      det = buildDetail_cam(rec, sourceViewKey);
+      det = sales ? buildDetail_sales(rec, sourceViewKey, cat) : buildDetail_cam(rec, sourceViewKey);
     } else if (cat === 'services') {
       row = buildRow_services(rec, sourceViewKey);
-      det = buildDetail_services(rec, sourceViewKey);
+      det = sales ? buildDetail_sales(rec, sourceViewKey, cat) : buildDetail_services(rec, sourceViewKey);
     } else if (cat === 'assumptions') {
       row = buildRow_assumptions(rec, sourceViewKey);
       det = buildDetail_assumptions(rec, sourceViewKey);
     } else {
       row = buildRow_default(rec, sourceViewKey);
-      det = buildDetail_default(rec, sourceViewKey);
+      det = sales ? buildDetail_sales(rec, sourceViewKey, cat) : buildDetail_default(rec, sourceViewKey);
     }
 
     // Attached-to caption — small slate-gray line above the main row
@@ -981,13 +1251,20 @@
       attachedCaption =
         '<div class="scw-ws-v2-attached-caption" ' +
           'title="Attached to ' + escapeHtml(parentRefLabel) + '">' +
-          '↳ attached to <span class="scw-ws-v2-attached-name">' +
+          '<span class="scw-ws-v2-attached-tick" aria-hidden="true">↳</span>' +
+          '<span class="scw-ws-v2-attached-name">' +
             escapeHtml(parentRefLabel) +
           '</span>' +
         '</div>';
     }
 
     card.innerHTML = attachedCaption + row + det;
+    // Sales lock: existing survey-derived items (field_2586 >= 1) are
+    // read-only except Product / Custom Disc % / SCW Notes (v1 parity).
+    if (isCrLocked(rec, sourceViewKey)) {
+      card.classList.add('scw-ws-v2-card--locked');
+      lockCardFields(card);
+    }
     // Leading bulk-select checkbox — absolutely positioned INSIDE the
     // row so it vertically centers with the row\'s actual height
     // (multi-line labor desc rows are taller than single-line ones).

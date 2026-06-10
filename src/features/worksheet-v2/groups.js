@@ -26,10 +26,18 @@
   var ns = window.SCW.worksheetV2;
   if (!ns) return;
 
+  // These field keys are RESOLVED PER PASS from the per-view config at the
+  // top of buildGroupTree (the literals here are the view_3962 defaults /
+  // fallbacks). Reassigning module `var`s is safe — buildGroupTree is
+  // synchronous and every helper below reads them during that call.
   var FIELD_MDF_IDF = 'field_1946';
   var FIELD_BUCKET  = 'field_2219';
   var FIELD_SORT    = 'field_2218';
   var FIELD_LABEL   = 'field_2365'; // tiebreaker — display label (E-001, etc.)
+  // Resolved field map for the current pass (for inline keys like children
+  // / dropPrefix / dropNumber). Defaults until buildGroupTree sets it.
+  var GF = {};
+  function gk(name, dflt) { return GF[name] || dflt; }
 
   // Mounting hardware accessories live on the same SOW Line Items
   // object. A parent line item's field_1958 ("Mounting Hardware") is a
@@ -50,7 +58,7 @@
   var SYNTHETIC_ORPHAN_BRACKETS_LABEL = 'Orphaned Accessories';
 
   function bucketIdOf(rec) {
-    var raw = rec && rec['field_2219_raw'];
+    var raw = rec && rec[FIELD_BUCKET + '_raw'];
     if (Array.isArray(raw) && raw.length && raw[0]) return raw[0].id || '';
     if (raw && typeof raw === 'object' && raw.id) return raw.id;
     return '';

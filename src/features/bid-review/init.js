@@ -148,8 +148,12 @@
     var ids = Object.keys(_expandedSowItems);
     for (var i = 0; i < ids.length; i++) {
       var sowItemId = ids[i];
+      // Key can be a sow-item id (regular rows) or a bid record id
+      // (bid-only rows), so match either attribute or bid-only rows
+      // never reopen after a full refresh.
       var tr = document.querySelector(
-        '.scw-bid-review__row[data-sow-item-id="' + sowItemId + '"]'
+        '.scw-bid-review__row[data-sow-item-id="' + sowItemId + '"], ' +
+        '.scw-bid-review__row[data-row-id="' + sowItemId + '"]'
       );
       if (tr && tr.getAttribute('aria-expanded') !== 'true') {
         toggleRowExpand(tr);
@@ -847,10 +851,25 @@
   function applyPendingRefresh() {
     var ids = Object.keys(_pendingPatchIds);
     _pendingPatchIds = Object.create(null);
-    var fullRefresh = _needsFullRefresh;
+    // Read + clear the flag, but DON'T let it force the full path on its
+    // own when we know which record(s) changed (see below).
     _needsFullRefresh = false;
 
-    if (fullRefresh || !ids.length || !_state) {
+    // Prefer the in-place single-row patch whenever we have edited
+    // record id(s). patchRows() rebuilds just those rows (so derived grid
+    // cells — Install Fee, Sub Bid totals — reflect the edit) and
+    // recomputes every SOW header total from the FRESH full model, all
+    // WITHOUT wiping the table. A full refreshSilently() tears out every
+    // expanded panel and rebuilds+reopens them, which is what was
+    // collapsing open line items the moment an edit completed: a
+    // device-worksheet re-render fires knack-view-render.view_3921 with no
+    // recordId, coalesces into this debounce window, and used to force the
+    // disruptive full path. patchRows() self-detects structural changes
+    // (row add/remove, MDF/IDF regroup) and falls back to refreshSilently()
+    // when an in-place patch isn't valid, so dropping the flag-gate here is
+    // safe — we only ever skip the wipe when the change really was a plain
+    // in-place edit. Pure no-recordId events (ids empty) still full-refresh.
+    if (!ids.length || !_state) {
       refreshSilently();
       return;
     }
@@ -932,7 +951,8 @@
       // it. _expandedSowItems is unchanged across the patch.
       Object.keys(oldExpanded).forEach(function (sid) {
         var tr = document.querySelector(
-          '.scw-bid-review__row--expandable[data-sow-item-id="' + sid + '"]'
+          '.scw-bid-review__row--expandable[data-sow-item-id="' + sid + '"], ' +
+          '.scw-bid-review__row--expandable[data-row-id="' + sid + '"]'
         );
         if (tr && tr.getAttribute('aria-expanded') !== 'true') {
           // Trigger expand by clicking through toggleRowExpand
@@ -3084,6 +3104,84 @@
 
   ns.refresh = function refresh() {
     runPipeline();
+  };
+
+  // Public dispatcher so v2's header buttons can reuse v1's action
+  // handlers verbatim. `button` must carry data-action / data-package-id /
+  // data-sow-id; v1 looks the SOW grid up in its own _state (which is live
+  // because v2 renders on the same scene). Returns true if dispatched.
+  ns.dispatchHeaderAction = function dispatchHeaderAction(button) {
+    if (!button) return false;
+    var action = button.getAttribute('data-action');
+    if (!action) return false;
+    if (button.classList.contains('scw-bid-review__btn--busy')) return false;
+    if (action === 'package_copy_to_sow') {
+      handlePackageAction(button, action);
+    } else if (action === 'package_create_sow') {
+      handleCreateNewSowForPackage(button);
+    } else if (action === 'package_reopen_bid') {
+      handleReopenBid(button);
+    } else {
+      return false;
+    }
+    return true;
+  };
+
+  // Public dispatcher for change-request actions so v2 can drive v1's CR
+  // flow (modals + pending state + submit) verbatim. `button` carries the
+  // same data-action / data-row-id / data-package-id / data-sow-id (and
+  // data-pkg-id for cr_submit) attrs v1's own click handler reads. v1's
+  // _state is live (same scene), so row lookups by id resolve. Returns
+  // true if dispatched.
+  ns.dispatchCRAction = function dispatchCRAction(button) {
+    if (!button) return false;
+    var action = button.getAttribute('data-action');
+    if (!action) return false;
+    if (action === 'cell_request_change')          { handleChangeRequest(button); return true; }
+    if (action === 'cell_request_change_from_sow')  { handleChangeRequest(button, { sourceFromSow: true }); return true; }
+    if (action === 'cell_remove_from_bid')          { handleRemoveFromBid(button); return true; }
+    if (action === 'cell_add_to_bid')               { handleAddToBid(button); return true; }
+    if (action === 'cr_submit') {
+      var pkgId = button.getAttribute('data-pkg-id');
+      if (ns.changeRequests && ns.changeRequests.submitForPackage) {
+        ns.changeRequests.submitForPackage(pkgId);
+      }
+      return true;
+    }
+    if (action === 'cr_clear_all') {
+      if (ns.changeRequests && ns.changeRequests.clear &&
+          window.confirm('Clear all pending change requests?')) {
+        ns.changeRequests.clear();
+      }
+      return true;
+    }
+    // Row-level actions (e.g. row_add_to_sow) — v2's cell buttons route
+    // here too, and v1 binds clicks to its own grid mount so it never
+    // sees v2's buttons. Hand them to the shared row-action handler.
+    if (action.indexOf('row_') === 0) { handleRowAction(button, action); return true; }
+    return false;
+  };
+
+  // Public change dispatcher for the SOW metric inputs v2 renders via
+  // buildSowStatusBar (exposed from render.js). Mirrors v1's mount change
+  // listener.
+  // Expose the API-loaded MDF/IDF location records (view_3822) so v2 can
+  // resolve survey notes (field_2457) by record id or display label
+  // (field_1642) without relying on the DOM-rendered columns.
+  ns.getMdfIdfRecords = function getMdfIdfRecords() { return _mdfIdfRecords || []; };
+
+  ns.dispatchMetricChange = function dispatchMetricChange(input) {
+    if (!input) return false;
+    if (input.matches('.scw-bid-review__sow-metric-input[data-action="sow_survey_costs"]')) {
+      handleSurveyCostsSave(input); return true;
+    }
+    if (input.matches('.scw-bid-review__sow-name-input[data-action="sow_name_update"]')) {
+      handleSowNameSave(input); return true;
+    }
+    if (input.matches('input[data-action="proposal_exp_update"]')) {
+      handleProposalExpSave(input); return true;
+    }
+    return false;
   };
 
   // Photo thumb click handler in render.js calls this to open the

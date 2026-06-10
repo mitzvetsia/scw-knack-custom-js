@@ -42,11 +42,21 @@
     // SOW items live on the second source view (view_3921). They feed
     // the SOW column on the left side of the comparison grid.
     var sowItems = (snapshot && sourceKeys[1] && snapshot[sourceKeys[1]]) || [];
+    // Bid package records (view_3573) carry status / friendly name / PDF.
+    var bidPackages = (snapshot && sourceKeys[2] && snapshot[sourceKeys[2]]) || [];
     if (!ns.transform || typeof ns.transform.buildState !== 'function') {
       body.innerHTML = '<div class="scw-bid-review-v2-empty">transform.js not loaded.</div>';
       return;
     }
-    var state = ns.transform.buildState(bidRecords, sowItems);
+    var state = ns.transform.buildState(bidRecords, sowItems, bidPackages);
+
+    // Analyze SOW-item issues once per render (missing photos, disconnected
+    // cam/reader, wrong accessory). Computed from the SOW items only — bid
+    // records are never analyzed. card.js reads chips per SOW item id.
+    if (ns.warnings && typeof ns.warnings.analyze === 'function') {
+      try { ns.warnings.analyze(sowItems); }
+      catch (e) { /* fail soft — chips just won't render */ }
+    }
 
     if (count) {
       count.textContent = state.sowGrids.length + ' SOW' +
@@ -70,6 +80,9 @@
     }
     body.innerHTML = '';
     body.appendChild(frag);
+
+    // Ensure the toolbar is present (idempotent — survives body rebuilds).
+    if (ns.toolbar && typeof ns.toolbar.mount === 'function') ns.toolbar.mount();
   }
 
   // Resume deferred render when focus leaves the panel.

@@ -780,7 +780,41 @@
     if (rm.salesRevisionRequestId) item.salesRevisionRequestId = rm.salesRevisionRequestId;
   }
 
+  // Keep the stored CR payload clean: text fields can arrive carrying
+  // rich-text / connection-value <span data-kn=…> markup (e.g. when a
+  // value is prefilled from a SOW field), and a connection prefill can put
+  // a bare 24-hex record id into a display-only text field. Both pollute
+  // the card AND the JSON/HTML payload submitted to Make/Knack, so we strip
+  // them before the item is stored. Id arrays (…Ids) are left untouched.
+  function stripMarkup(v) {
+    return String(v == null ? '' : v).replace(/<[^>]*>/g, ' ')
+      .replace(/\s+/g, ' ').trim();
+  }
+  function sanitizeValueBag(bag) {
+    if (!bag || typeof bag !== 'object') return;
+    for (var k in bag) {
+      if (!Object.prototype.hasOwnProperty.call(bag, k)) continue;
+      var v = bag[k];
+      if (typeof v !== 'string') continue;   // skip id arrays / numbers
+      if (/Ids$/.test(k)) continue;          // never touch raw id lists
+      var cleaned = stripMarkup(v);
+      if (k === 'productName' && /^[0-9a-f]{24}$/i.test(cleaned)) cleaned = '';
+      bag[k] = cleaned;
+    }
+  }
+  function sanitizeItemValues(item) {
+    if (!item) return item;
+    sanitizeValueBag(item.requested);
+    sanitizeValueBag(item.current);
+    if (typeof item.productName === 'string') {
+      item.productName = stripMarkup(item.productName);
+      if (/^[0-9a-f]{24}$/i.test(item.productName)) item.productName = '';
+    }
+    return item;
+  }
+
   function addPendingItem(pkgId, pkgName, sowId, sowName, item, surveyId) {
+    sanitizeItemValues(item);
     if (!_pending[pkgId]) _pending[pkgId] = { pkgName: pkgName, sowId: sowId, sowName: sowName, surveyId: surveyId || '', items: [] };
     if (surveyId && !_pending[pkgId].surveyId) _pending[pkgId].surveyId = surveyId;
     var items = _pending[pkgId].items;
@@ -1175,8 +1209,19 @@
       var row = el('div', 'scw-bid-cr-card__row');
       row.appendChild(el('span', 'scw-bid-cr-card__label', d.label + ':'));
 
-      var from = hasValue(c[d.key]) ? (d.currency ? fmtCurrency(c[d.key]) : String(c[d.key])) : '\u2014';
-      var to   = d.currency ? fmtCurrency(r[d.key]) : String(r[d.key]);
+      // Clean text values for display: strip any HTML markup (rich-text /
+      // connection-value spans leak raw <span data-kn=\u2026> otherwise) and
+      // hide a bare 24-hex record id (shows as garbage in the diff).
+      function cleanVal(v) {
+        var s = String(v == null ? '' : v).replace(/<[^>]*>/g, ' ')
+          .replace(/\s+/g, ' ').trim();
+        if (/^[0-9a-f]{24}$/i.test(s)) return '\u2014';
+        return s;
+      }
+      var from = hasValue(c[d.key])
+        ? (d.currency ? fmtCurrency(c[d.key]) : cleanVal(c[d.key]))
+        : '\u2014';
+      var to   = d.currency ? fmtCurrency(r[d.key]) : cleanVal(r[d.key]);
 
       row.appendChild(el('span', 'scw-bid-cr-card__from', from));
       row.appendChild(el('span', 'scw-bid-cr-card__arrow', '\u2192'));

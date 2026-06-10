@@ -879,6 +879,16 @@
     if (e.button !== undefined && e.button !== 0) return;      // left-click only
     if (!e.target || !e.target.closest) return;
 
+    // HARD SEPARATION from the v2 worksheet: never fire inside a v2
+    // container (#scw-ws-v2-*, class .scw-ws-v2). The v2 worksheet has its
+    // own picker + cascade (mirror with authoritative ids); the v1
+    // connection-picker must only ever drive v1 worksheet cells. This keeps
+    // the two flows fully independent on views where both render in parallel
+    // (e.g. view_3586 during the sales-team v1 → v2 transition) so a v2 edit
+    // can't be double-handled by this v1 path. v1 cells are never inside
+    // .scw-ws-v2, so this is a no-op for the sales team's current flow.
+    if (e.target.closest('.scw-ws-v2')) return;
+
     // Different views use different TARGET fields. Try each configured
     // target class and stop at the first td that's also inside its
     // matching view (so a stray td.field_1957 inside view_3505 — which
@@ -1186,10 +1196,17 @@
         // mirror-internal accessory cascade for added).
         try {
           if (mirrorApi && typeof mirrorApi.applyDeterministicRegroup === 'function') {
+            // Pass the user's chosen ids (selectedIds) as the AUTHORITATIVE
+            // 3rd arg. Without it the mirror re-derives "what is selected"
+            // from R[field_1957_raw] / the Backbone model — which, on scenes
+            // with extra knack-cell-update listeners + refetches (e.g.
+            // view_3586), can be stale/empty at settle time, making the diff
+            // treat EVERY current child as removed and clear them all. The
+            // modal already knows the exact selection, so hand it over.
             mirrorApi.applyDeterministicRegroup(R, function () {
               SCW.debug && SCW.debug('[scw-cp] stage 1 (mirror) done');
               stageDone();
-            });
+            }, selectedIds);
           } else {
             console.warn('[scw-cp] silent-regroup mirror for ' + viewId +
                          ' unavailable — children will not regroup');

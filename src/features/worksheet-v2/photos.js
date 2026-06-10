@@ -61,7 +61,16 @@
       return map[rid];
     }
 
-    var imgCells = findAllCellsByFieldKey(tr, 'field_771');
+    // Per-view field map — photo sub-record keys (image/type/required/
+    // completed/notes) can differ per deployment.
+    var F = (ns.cfg && ns.cfg.fields(sourceViewKey)) || {};
+    var FK_IMG  = F.photoImage     || 'field_771';
+    var FK_TYPE = F.photoType      || 'field_2445';
+    var FK_REQ  = F.photoRequired  || 'field_2446';
+    var FK_COMP = F.photoCompleted || 'field_2447';
+    var FK_NOTE = F.photoNotes     || 'field_114';
+
+    var imgCells = findAllCellsByFieldKey(tr, FK_IMG);
     for (var ic = 0; ic < imgCells.length; ic++) {
       var imgSpans = imgCells[ic].querySelectorAll('span[id][data-kn="connection-value"]');
       for (var i = 0; i < imgSpans.length; i++) {
@@ -76,7 +85,7 @@
       }
     }
 
-    var typeCell = findCellByFieldKey(tr, 'field_2445');
+    var typeCell = findCellByFieldKey(tr, FK_TYPE);
     if (typeCell) {
       var outerSpans = typeCell.querySelectorAll('span[id][data-kn="connection-value"]');
       for (var j = 0; j < outerSpans.length; j++) {
@@ -87,7 +96,7 @@
       }
     }
 
-    var reqCell = findCellByFieldKey(tr, 'field_2446');
+    var reqCell = findCellByFieldKey(tr, FK_REQ);
     if (reqCell) {
       var reqSpans = reqCell.querySelectorAll('span[id][data-kn="connection-value"]');
       for (var r = 0; r < reqSpans.length; r++) {
@@ -98,7 +107,7 @@
       }
     }
 
-    var compCell = findCellByFieldKey(tr, 'field_2447');
+    var compCell = findCellByFieldKey(tr, FK_COMP);
     if (compCell) {
       var compSpans = compCell.querySelectorAll('span[id][data-kn="connection-value"]');
       for (var c = 0; c < compSpans.length; c++) {
@@ -109,7 +118,7 @@
       }
     }
 
-    var notesCell = findCellByFieldKey(tr, 'field_114');
+    var notesCell = findCellByFieldKey(tr, FK_NOTE);
     if (notesCell) {
       var notesSpans = notesCell.querySelectorAll('span[id][data-kn="connection-value"]');
       for (var n = 0; n < notesSpans.length; n++) {
@@ -203,7 +212,7 @@
         (p.required ? ' scw-ws-v2-photo-card--required' : '') +
         (missing   ? ' scw-ws-v2-photo-card--missing'  : '');
       var thumb = p.imgUrl
-        ? '<img class="scw-ws-v2-photo-img" src="' + escapeHtml(p.imgUrl) + '" alt="">'
+        ? '<img class="scw-ws-v2-photo-img" draggable="true" src="' + escapeHtml(p.imgUrl) + '" alt="">'
         : '<div class="scw-ws-v2-photo-img scw-ws-v2-photo-img--placeholder">No image</div>';
       var typeHtml = p.type
         ? '<div class="scw-ws-v2-photo-type">' + escapeHtml(p.type) + '</div>'
@@ -217,8 +226,25 @@
       var openAttrs = href
         ? ' href="' + escapeHtml(href) + '"'
         : ' href="#" data-no-nav="1"';
+      // Metadata for the in-place photo viewer (lightbox). Carries the
+      // full-size url + identity so the delegated click handler can build
+      // the viewer without re-scraping the source view.
+      var reqState = p.required ? (p.completed ? 'done' : 'missing') : '';
+      var dataAttrs =
+        ' data-scw-ws-v2-photo-url="'  + escapeHtml(p.imgUrl || '') + '"' +
+        ' data-scw-ws-v2-photo-id="'   + escapeHtml(p.id)          + '"' +
+        ' data-scw-ws-v2-photo-type="' + escapeHtml(p.type || '')  + '"' +
+        ' data-scw-ws-v2-photo-req="'  + reqState + '"' +
+        // v1-parity drag attrs: filled cards are drag sources, required +
+        // image-less cards are drop targets (drag-to-fill-required-slot).
+        ' data-photo-id="'         + escapeHtml(p.id) + '"' +
+        ' data-photo-has-image="'  + (p.imgUrl ? 'true' : 'false') + '"' +
+        ' data-photo-required="'   + (p.required ? 'true' : 'false') + '"' +
+        ' data-photo-type="'       + escapeHtml(p.type || '') + '"' +
+        ' data-photo-notes="'      + escapeHtml(p.notes || '') + '"';
+      var draggableAttr = p.imgUrl ? ' draggable="true"' : '';
       html +=
-        '<a class="' + cls + '"' + openAttrs +
+        '<a class="' + cls + '"' + openAttrs + dataAttrs + draggableAttr +
             ' title="' + escapeHtml((p.type || 'Photo') + (p.required ? ' (Required)' : '')) + '">' +
           thumb + typeHtml + reqHtml +
         '</a>';
@@ -237,9 +263,311 @@
     return strip;
   }
 
+  /* ── In-place photo viewer (ported from bid-review-v2's photo viewer) ──
+   * Clicking a thumbnail in the inline strip opens a fullscreen lightbox
+   * with a large stage, prev/next + a thumbnail strip to flip between the
+   * row's photos, "Open ↗" (full size, new tab), and an "Edit" deep-link
+   * to Knack's edit page so that capability isn't lost. Esc / backdrop /
+   * ✕ dismiss; ← / → navigate. */
+  function captionFor(item) {
+    var bits = [];
+    if (item.type) bits.push(item.type);
+    if (item.req === 'missing') bits.push('Required — not completed');
+    else if (item.req === 'done') bits.push('Required ✓');
+    return bits.join(' · ');
+  }
+
+  function openLightbox(items, startIdx) {
+    if (!items || !items.length) return;
+    var idx = (startIdx >= 0 && startIdx < items.length) ? startIdx : 0;
+
+    var overlay = document.createElement('div');
+    overlay.className = 'scw-ws-v2-lightbox';
+    overlay.innerHTML =
+      '<div class="scw-ws-v2-lightbox-bar">' +
+        '<span class="scw-ws-v2-lightbox-caption"></span>' +
+        '<span class="scw-ws-v2-lightbox-actions">' +
+          '<a class="scw-ws-v2-lightbox-open" target="_blank" rel="noopener">Open ↗</a>' +
+          '<a class="scw-ws-v2-lightbox-edit">Edit</a>' +
+          '<button type="button" class="scw-ws-v2-lightbox-close" aria-label="Close">✕</button>' +
+        '</span>' +
+      '</div>' +
+      '<div class="scw-ws-v2-lightbox-main">' +
+        '<button type="button" class="scw-ws-v2-lightbox-nav scw-ws-v2-lightbox-nav--prev" aria-label="Previous">‹</button>' +
+        '<div class="scw-ws-v2-lightbox-stage"><img alt=""></div>' +
+        '<button type="button" class="scw-ws-v2-lightbox-nav scw-ws-v2-lightbox-nav--next" aria-label="Next">›</button>' +
+      '</div>' +
+      '<div class="scw-ws-v2-lightbox-strip"></div>';
+
+    var stageImg = overlay.querySelector('.scw-ws-v2-lightbox-stage img');
+    var caption  = overlay.querySelector('.scw-ws-v2-lightbox-caption');
+    var openLink = overlay.querySelector('.scw-ws-v2-lightbox-open');
+    var editLink = overlay.querySelector('.scw-ws-v2-lightbox-edit');
+    var strip    = overlay.querySelector('.scw-ws-v2-lightbox-strip');
+    var prevBtn  = overlay.querySelector('.scw-ws-v2-lightbox-nav--prev');
+    var nextBtn  = overlay.querySelector('.scw-ws-v2-lightbox-nav--next');
+    var multi    = items.length > 1;
+
+    if (!multi) {
+      prevBtn.style.display = 'none';
+      nextBtn.style.display = 'none';
+      strip.style.display = 'none';
+    } else {
+      for (var i = 0; i < items.length; i++) {
+        (function (j) {
+          var btn = document.createElement('button');
+          btn.type = 'button';
+          btn.className = 'scw-ws-v2-lightbox-thumb';
+          var t = document.createElement('img');
+          t.src = items[j].url; t.alt = ''; t.loading = 'lazy';
+          btn.appendChild(t);
+          btn.addEventListener('click', function (e) {
+            e.stopPropagation();
+            idx = j; render();
+          });
+          strip.appendChild(btn);
+        })(i);
+      }
+    }
+
+    function render() {
+      var item = items[idx];
+      stageImg.src = item.url;
+      caption.textContent = captionFor(item);
+      openLink.href = item.url;
+      if (item.editHref && item.editHref !== '#') {
+        editLink.href = item.editHref;
+        editLink.style.display = '';
+      } else {
+        editLink.style.display = 'none';
+      }
+      if (multi) {
+        var thumbs = strip.children;
+        for (var i = 0; i < thumbs.length; i++) {
+          thumbs[i].classList.toggle('scw-ws-v2-lightbox-thumb--active', i === idx);
+        }
+      }
+    }
+
+    function go(delta) {
+      idx = (idx + delta + items.length) % items.length;
+      render();
+    }
+    function dismiss() {
+      if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+      document.removeEventListener('keydown', onKey);
+    }
+    function onKey(e) {
+      if (e.key === 'Escape') dismiss();
+      else if (e.key === 'ArrowLeft' && multi)  go(-1);
+      else if (e.key === 'ArrowRight' && multi) go(1);
+    }
+
+    prevBtn.addEventListener('click', function (e) { e.stopPropagation(); go(-1); });
+    nextBtn.addEventListener('click', function (e) { e.stopPropagation(); go(1); });
+    overlay.querySelector('.scw-ws-v2-lightbox-close')
+      .addEventListener('click', function (e) { e.stopPropagation(); dismiss(); });
+    // Clicking the stage image zooms-to-fit toggle is overkill — clicking
+    // anywhere on the backdrop (but not the bar/strip/nav/img) dismisses.
+    overlay.addEventListener('click', function (e) {
+      if (e.target === overlay || e.target.classList.contains('scw-ws-v2-lightbox-main') ||
+          e.target.classList.contains('scw-ws-v2-lightbox-stage')) {
+        dismiss();
+      }
+    });
+    // Don't let the Edit link's hash navigation be swallowed; allow default.
+    editLink.addEventListener('click', function () { dismiss(); });
+
+    document.addEventListener('keydown', onKey);
+    document.body.appendChild(overlay);
+    render();
+  }
+
+  // Delegated: intercept thumbnail clicks → open the viewer instead of
+  // navigating to Knack's edit page. Placeholder cards (no image) and the
+  // "+ Add" pill fall through to their default hash navigation. Bound once.
+  if (!document.documentElement.hasAttribute('data-scw-ws-v2-photo-viewer-bound')) {
+    document.documentElement.setAttribute('data-scw-ws-v2-photo-viewer-bound', '1');
+    document.addEventListener('click', function (e) {
+      var card = e.target.closest && e.target.closest('a.scw-ws-v2-photo-card');
+      if (!card) return;
+      // No image to view → let it navigate to the edit page as before.
+      if (!card.getAttribute('data-scw-ws-v2-photo-url')) return;
+      var stripEl = card.closest('.scw-ws-v2-photos-strip');
+      if (!stripEl) return;
+      var anchors = stripEl.querySelectorAll('a.scw-ws-v2-photo-card');
+      var items = [], clickedIdx = 0;
+      for (var i = 0; i < anchors.length; i++) {
+        var url = anchors[i].getAttribute('data-scw-ws-v2-photo-url') || '';
+        if (!url) continue;   // skip placeholders in the viewer
+        if (anchors[i] === card) clickedIdx = items.length;
+        items.push({
+          url:      url,
+          id:       anchors[i].getAttribute('data-scw-ws-v2-photo-id')   || '',
+          type:     anchors[i].getAttribute('data-scw-ws-v2-photo-type') || '',
+          req:      anchors[i].getAttribute('data-scw-ws-v2-photo-req')  || '',
+          editHref: anchors[i].getAttribute('href') || ''
+        });
+      }
+      if (!items.length) return;
+      e.preventDefault();
+      e.stopPropagation();
+      openLightbox(items, clickedIdx);
+    });
+  }
+
+  /* ── Drag-to-fill-required-slot (v1 parity) ───────────────────────
+   * Drag a filled photo card onto an empty REQUIRED slot in the same
+   * strip → confirm → dispatch the same payload v1 uses (window.SCW.
+   * onPhotoDrop, else SCW.CONFIG.MAKE_PHOTO_MOVE_WEBHOOK). Delegated on
+   * document so it survives re-renders + the bid-review expand panel. */
+  var CARD_SEL = 'a.scw-ws-v2-photo-card';
+  var dragSrc = null;
+
+  function cardOf(e) { return (e.target && e.target.closest) ? e.target.closest(CARD_SEL) : null; }
+  function stripOf(card) {
+    var el = card && card.parentElement;
+    while (el && !el.classList.contains('scw-ws-v2-photos-strip')) el = el.parentElement;
+    return el;
+  }
+  function isFilled(card)   { return card && card.getAttribute('data-photo-has-image') === 'true'; }
+  function isReqEmpty(card) {
+    return card && card.getAttribute('data-photo-has-image') !== 'true' &&
+           card.getAttribute('data-photo-required') === 'true';
+  }
+  function clearDragState() {
+    var all = document.querySelectorAll(
+      '.scw-ws-v2-photo-drop-ok, .scw-ws-v2-photo-drop-hover, .scw-ws-v2-photo-drag-src');
+    for (var i = 0; i < all.length; i++) {
+      all[i].classList.remove('scw-ws-v2-photo-drop-ok',
+        'scw-ws-v2-photo-drop-hover', 'scw-ws-v2-photo-drag-src');
+    }
+  }
+
+  function getSurveyRequestId() {
+    var hash = window.location.hash || '';
+    var m = hash.match(/[a-f0-9]{24}/);
+    return m ? m[0] : '';
+  }
+  function getViewKeyFor(card) {
+    var host = card.closest('[data-scw-ws-v2-view]') ||
+               (card.closest('.scw-ws-v2-card') &&
+                card.closest('.scw-ws-v2-card').querySelector('[data-scw-ws-v2-view]'));
+    return host ? host.getAttribute('data-scw-ws-v2-view') : '';
+  }
+
+  function dispatchPhotoMove(detail, viewKey) {
+    function refresh() {
+      if (viewKey && ns.data && typeof ns.data.refetchAndNotify === 'function') {
+        setTimeout(function () { ns.data.refetchAndNotify(viewKey); }, 1500);
+      }
+    }
+    if (window.SCW && typeof window.SCW.onPhotoDrop === 'function') {
+      window.SCW.onPhotoDrop(detail, { setPending: function(){}, setSuccess: refresh, setError: function(){} });
+      return;
+    }
+    var url = (window.SCW && window.SCW.CONFIG && window.SCW.CONFIG.MAKE_PHOTO_MOVE_WEBHOOK) || '';
+    if (!url) { console.warn('[scw-ws-v2] No MAKE_PHOTO_MOVE_WEBHOOK / onPhotoDrop'); return; }
+    fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' },
+                 body: JSON.stringify(detail) })
+      .then(function () { refresh(); })
+      .catch(function () { refresh(); });   // Make webhooks often CORS-block the response
+  }
+
+  function confirmMove(targetCard, detail, viewKey) {
+    var existing = targetCard.querySelector('.scw-ws-v2-photo-confirm');
+    if (existing) return;
+    var ov = document.createElement('div');
+    ov.className = 'scw-ws-v2-photo-confirm';
+    ov.innerHTML =
+      '<div class="scw-ws-v2-photo-confirm-text">Use this photo for<br><b>' +
+        escapeHtml(detail.targetPhotoType || 'this slot') + '</b>?</div>' +
+      '<div class="scw-ws-v2-photo-confirm-btns">' +
+        '<button type="button" class="scw-ws-v2-photo-confirm-no">Cancel</button>' +
+        '<button type="button" class="scw-ws-v2-photo-confirm-yes">Confirm</button>' +
+      '</div>';
+    ov.addEventListener('click', function (e) { e.stopPropagation(); e.preventDefault(); });
+    ov.querySelector('.scw-ws-v2-photo-confirm-no').addEventListener('click', function () {
+      ov.parentNode && ov.parentNode.removeChild(ov);
+    });
+    ov.querySelector('.scw-ws-v2-photo-confirm-yes').addEventListener('click', function () {
+      ov.parentNode && ov.parentNode.removeChild(ov);
+      targetCard.classList.add('scw-ws-v2-photo-card--pending');
+      dispatchPhotoMove(detail, viewKey);
+    });
+    targetCard.appendChild(ov);
+  }
+
+  if (!document.documentElement.hasAttribute('data-scw-ws-v2-photo-drag-bound')) {
+    document.documentElement.setAttribute('data-scw-ws-v2-photo-drag-bound', '1');
+
+    document.addEventListener('dragstart', function (e) {
+      var card = cardOf(e);
+      if (!isFilled(card)) return;
+      dragSrc = card;
+      card.classList.add('scw-ws-v2-photo-drag-src');
+      try { e.dataTransfer.effectAllowed = 'copy';
+            e.dataTransfer.setData('text/plain', card.getAttribute('data-photo-id') || ''); } catch (x) {}
+      var strip = stripOf(card);
+      if (strip) {
+        var cards = strip.querySelectorAll(CARD_SEL);
+        for (var i = 0; i < cards.length; i++) {
+          if (cards[i] !== card && isReqEmpty(cards[i])) {
+            cards[i].classList.add('scw-ws-v2-photo-drop-ok');
+          }
+        }
+      }
+    }, true);
+
+    document.addEventListener('dragend', function () {
+      clearDragState();
+      dragSrc = null;
+    }, true);
+
+    document.addEventListener('dragover', function (e) {
+      if (!dragSrc) return;
+      var card = cardOf(e);
+      if (!card || !card.classList.contains('scw-ws-v2-photo-drop-ok')) return;
+      e.preventDefault();
+      e.dataTransfer.dropEffect = 'copy';
+    });
+    document.addEventListener('dragenter', function (e) {
+      if (!dragSrc) return;
+      var card = cardOf(e);
+      if (!card || !card.classList.contains('scw-ws-v2-photo-drop-ok')) return;
+      e.preventDefault();
+      card.classList.add('scw-ws-v2-photo-drop-hover');
+    });
+    document.addEventListener('dragleave', function (e) {
+      var card = cardOf(e);
+      if (!card || card.contains(e.relatedTarget)) return;
+      card.classList.remove('scw-ws-v2-photo-drop-hover');
+    });
+    document.addEventListener('drop', function (e) {
+      var targetCard = cardOf(e);
+      if (!targetCard || !targetCard.classList.contains('scw-ws-v2-photo-drop-ok') || !dragSrc) return;
+      e.preventDefault();
+      var detail = {
+        sourceRecordId:  dragSrc.getAttribute('data-photo-id'),
+        sourcePhotoType: dragSrc.getAttribute('data-photo-type') || '',
+        sourceRequired:  dragSrc.getAttribute('data-photo-required') === 'true',
+        sourceNotes:     dragSrc.getAttribute('data-photo-notes') || '',
+        targetRecordId:  targetCard.getAttribute('data-photo-id'),
+        targetPhotoType: targetCard.getAttribute('data-photo-type') || 'this slot',
+        targetRequired:  targetCard.getAttribute('data-photo-required') === 'true',
+        targetNotes:     targetCard.getAttribute('data-photo-notes') || '',
+        surveyRequestId: getSurveyRequestId()
+      };
+      var viewKey = getViewKeyFor(targetCard);
+      clearDragState();
+      confirmMove(targetCard, detail, viewKey);
+    });
+  }
+
   ns.photos = {
     buildStrip:           buildStrip,
-    extractPhotoRecords:  extractPhotoRecords
+    extractPhotoRecords:  extractPhotoRecords,
+    openLightbox:         openLightbox
   };
 })();
 /*** END WORKSHEET V2 — PHOTOS ************************************************/

@@ -2254,9 +2254,25 @@
     surveyInput.setAttribute('data-action', 'sow_survey_costs');
     surveyInput.setAttribute('data-sow-id', sowId);
     surveyInput.setAttribute('data-field', CFG.surveyCostsField || '');
-    surveyInput.value = readRowFieldText(tr, CFG.surveyCostsField);
     surveyInput.placeholder = '$0.00';
+    // Survey-costs gate: BLANK (never entered) is flagged red and blocks
+    // the Preview pill (gated in opsReview.buildPillForRow); an explicit
+    // $0 is a valid answer and clears the gate. Show a real 0 as "$0.00"
+    // so it reads as answered, not blank.
+    var surveyRawTxt = String(readRowFieldText(tr, CFG.surveyCostsField) || '').trim();
+    var surveyBlank  = surveyRawTxt === '';
+    if (surveyBlank) {
+      surveyInput.value = '';
+    } else {
+      var surveyNum = parseFloat(surveyRawTxt.replace(/[$,]/g, ''));
+      surveyInput.value = isFinite(surveyNum) ? ('$' + surveyNum.toFixed(2)) : surveyRawTxt;
+    }
     surveyWrap.appendChild(surveyInput);
+    if (surveyBlank) {
+      surveyWrap.classList.add('scw-bid-review__sow-metric--missing');
+      surveyWrap.appendChild(el('span', 'scw-bid-review__sow-metric-warn',
+        'Enter survey costs (enter $0 if none) to enable Preview Proposal.'));
+    }
     metrics.appendChild(surveyWrap);
 
     var marginWrap = el('div', 'scw-bid-review__sow-metric');
@@ -2633,6 +2649,13 @@
   // it into the DOM to avoid a full grid rebuild.
   ns.buildDataRow = buildDataRow;
   ns.scrapeRowPhotoUrls = scrapeRowPhotoUrls;
+
+  // Public so v2 can build the SOW column header (name / proposal / docs /
+  // survey costs / margin / margin-low warning / preview pill) from v1's
+  // exact renderer. Takes any object with { sowId, sowName }.
+  ns.buildSowStatusBar = function (sowGridLike) {
+    return buildSowStatusBar(sowGridLike);
+  };
 
   ns.renderMatrix = function renderMatrix(state) {
     var mount = getOrCreateMount();

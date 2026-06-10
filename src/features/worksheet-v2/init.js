@@ -38,8 +38,8 @@
     var banner = document.createElement('div');
     banner.className = 'scw-ws-v2-banner';
     banner.innerHTML =
-      '<span class="scw-ws-v2-pill">v2 preview</span>' +
-      '<span>' + vcfg.label + '</span>' +
+      '<span class="scw-ws-v2-banner-title">' + vcfg.label + '</span>' +
+      '<span class="scw-ws-v2-banner-chips"></span>' +
       '<span class="scw-ws-v2-count">0 records</span>';
     panel.appendChild(banner);
 
@@ -57,6 +57,7 @@
    * source view isn't on this scene, or the panel is already mounted.
    */
   function tryMount(vcfg) {
+    if (!vcfg || vcfg.enabled === false) return;   // per-view kill switch
     if (document.getElementById('scw-ws-v2-' + vcfg.sourceViewKey)) return;
     var anchor = document.querySelector(vcfg.mountAfterSelector);
     if (!anchor) return; // source view not on this scene
@@ -78,6 +79,7 @@
     if (!ns.data) return;
     var views = ns.CONFIG.views || [];
     views.forEach(function (vcfg) {
+      if (!vcfg || vcfg.enabled === false) return;   // per-view kill switch
       // Background polling — keep v2 in sync with records added via
       // API / other tabs / Make scenarios. 2-min default, 15-sec
       // burst for 5 minutes after a known local change.
@@ -96,7 +98,10 @@
         if (ns.nativeFilter && typeof ns.nativeFilter.mount === 'function') {
           ns.nativeFilter.mount(key);
         }
-        if (ns.sowFilter && typeof ns.sowFilter.mount === 'function') {
+        var _vcSow = (ns.cfg && typeof ns.cfg.viewCfg === 'function')
+          ? ns.cfg.viewCfg(key) : null;
+        if (ns.sowFilter && typeof ns.sowFilter.mount === 'function' &&
+            !(_vcSow && _vcSow.hideSow)) {
           ns.sowFilter.mount(key);
         }
         // After every re-render, sync the bulk-select checkboxes to
@@ -133,7 +138,10 @@
                  e.target.closest('[data-scw-ws-v2-warn-chip]');
       if (chip) {
         e.preventDefault();
-        e.stopPropagation();
+        // stopImmediatePropagation (not just stopPropagation) so the
+        // separate document-level L1-toggle listener doesn't ALSO fire
+        // for chips that live inside the L1 header button.
+        e.stopImmediatePropagation();
         highlightIssueType(chip);
         return;
       }
@@ -242,6 +250,42 @@
   // label; if one matches, we click() it (Knack handles the
   // navigation, preserving SPA / parent-id wiring). If nothing
   // matches we surface an alert instead of going home.
+  // Resolve the "#{base}/add-accessory-line-item/{parentId}" base path.
+  //
+  // The base is the FULL route prefix up to and including the SOW id —
+  // and it must preserve every breadcrumb scene in the current hash,
+  // because Knack hash routing needs the whole ancestor chain to resolve
+  // the child scene. The earlier per-slug patterns hard-required
+  // `team-calendar/project-dashboard` to be adjacent, which broke for any
+  // user who drilled in through an intermediate scene (e.g.
+  //   team-calendar/edit-client/{clientId}/project-dashboard/{pid}/build-sow/{sid}
+  // ) — that `edit-client/{id}/` crumb is exactly what produced the
+  // "Could not detect SOW context" alert for some users but not others.
+  //
+  // So: greedily capture from the start of the hash through the terminal
+  // SOW scene slug + 24-hex id, whatever crumbs sit in between. If the
+  // hash has no trailing SOW id (e.g. some comparison-grid routes), fall
+  // back to recovering it from the grid section the link lives in
+  // (bid-review-v2 stamps data-sow-id) and appending it to the slug base.
+  var SOW_SLUG = '(?:build-(?:sow|quote)|review-bids|deploy|scope-of-work-details|scope-of-work)';
+  function resolveAddAccessoryBase(link) {
+    // Drop the leading '#' and any trailing ?query (Knack appends
+    // per-page params after the route).
+    var hash = (window.location.hash || '').replace(/^#/, '').replace(/\/?\?.*$/, '');
+
+    var anchored = hash.match(new RegExp('^(.*\\/' + SOW_SLUG + '\\/[a-f0-9]{24})'));
+    if (anchored) return anchored[1];
+
+    var sowId = '';
+    var sec = link && link.closest && link.closest('[data-sow-id]');
+    if (sec) sowId = sec.getAttribute('data-sow-id') || '';
+    if (sowId) {
+      var slugBase = hash.match(new RegExp('^(.*\\/' + SOW_SLUG + ')(?:\\/|$)'));
+      if (slugBase) return slugBase[1] + '/' + sowId;
+    }
+    return '';
+  }
+
   if (!document.documentElement.hasAttribute('data-scw-ws-v2-addacc-bound')) {
     document.documentElement.setAttribute('data-scw-ws-v2-addacc-bound', '1');
     document.addEventListener('click', function (e) {
@@ -253,23 +297,15 @@
       var parentId = link.getAttribute('data-scw-ws-v2-add-accessory') || '';
       if (!parentId) return;
       // Build the URL deterministically from the same base path the
-      // chip edit links use. buildSowBasePath() matches against the
-      // current hash; if it returns nothing we surface an alert
+      // chip edit links use. resolveAddAccessoryBase() matches against
+      // the current hash; if it returns nothing we surface an alert
       // rather than silently bouncing to home.
-      var hash = window.location.hash || '';
-      var patterns = [
-        /(team-calendar\/project-dashboard\/[a-f0-9]{24}\/build-(?:sow|quote)\/[a-f0-9]{24})/,
-        /(team-calendar\/project-dashboard\/[a-f0-9]{24}\/review-bids\/[a-f0-9]{24})/,
-        /(team-calendar\/project-dashboard\/[a-f0-9]{24}\/deploy\/[a-f0-9]{24})/,
-        /(sales-portal\/company-details\/[a-f0-9]{24}\/scope-of-work-details\/[a-f0-9]{24})/,
-        /(proposals\/scope-of-work\/[a-f0-9]{24})/
-      ];
-      var base = '';
-      for (var p = 0; p < patterns.length; p++) {
-        var m = hash.match(patterns[p]);
-        if (m) { base = m[1]; break; }
-      }
+      var base = resolveAddAccessoryBase(link);
       if (!base) {
+        if (window.console) {
+          console.warn('[scw-ws-v2] add-accessory: no SOW base from hash',
+            window.location.hash);
+        }
         alert('Could not detect SOW context from the URL.');
         return;
       }
@@ -570,6 +606,20 @@
         return;
       }
     });
+  }
+
+  // Return the Backbone records of the first present+populated view in
+  // the list. Lets a picker source from its build-SOW-scene view OR a
+  // bid-review-scene equivalent, whichever is actually on the page.
+  function firstViewRecords(viewKeys) {
+    for (var i = 0; i < viewKeys.length; i++) {
+      var v = (typeof Knack !== 'undefined' && Knack.views &&
+               Knack.views[viewKeys[i]]) || null;
+      if (!v || !v.model) continue;
+      var recs = (v.model.data && v.model.data.models) || v.model.models || null;
+      if (recs && recs.length) return recs;
+    }
+    return null;
   }
 
   // Connection-cell click — opens the picker modal scoped to the
@@ -943,20 +993,11 @@
       // The MODEL_ONLY cascade in mirror-connection-sync handles
       // accessory re-grouping when this changes.
       if (fieldKey === 'field_1946') {
-        var MDF_SOURCE_VIEW = 'view_3577';
-        var mdfView = (typeof Knack !== 'undefined' && Knack.views &&
-                       Knack.views[MDF_SOURCE_VIEW]) || null;
-        // Knack exposes models inconsistently across view types:
-        // some at view.model.data.models (Backbone collection), some
-        // at view.model.models, some only after fetch. Probe both
-        // shapes before bailing.
-        var mdfRecords = null;
-        if (mdfView && mdfView.model) {
-          mdfRecords = (mdfView.model.data && mdfView.model.data.models) ||
-                       mdfView.model.models || null;
-        }
+        // view_3577 on the build-SOW scene; view_3822 (MDF/IDF locations)
+        // on the bid-review scene. Same MDF/IDF object (field_1642 label).
+        var mdfRecords = firstViewRecords(['view_3577', 'view_3822']);
         if (!mdfRecords || !mdfRecords.length) {
-          console.warn('[scw-ws-v2] view_3577 model empty/missing — MDF picker can\'t open');
+          console.warn('[scw-ws-v2] view_3577/view_3822 model empty/missing — MDF picker can\'t open');
           return;
         }
         var mdfCandidates = [];
@@ -1005,16 +1046,15 @@
       // read-only; v2 adds an editable picker. Multi-connection: a
       // single line item can belong to multiple SOWs.
       if (fieldKey === 'field_2154') {
-        var SOW_SOURCE_VIEW = 'view_3325';
-        var sowView = (typeof Knack !== 'undefined' && Knack.views &&
-                       Knack.views[SOW_SOURCE_VIEW]) || null;
-        if (!sowView || !sowView.model || !sowView.model.data ||
-            !sowView.model.data.models) {
-          console.warn('[scw-ws-v2] view_3325 model missing — SOW picker can\'t open');
+        // view_3325 on the build-SOW scene; view_3918 (Scopes of Work) on
+        // the bid-review scene. Same SOW object (field_2122 SW-####,
+        // field_2126 name).
+        var sowRecords = firstViewRecords(['view_3325', 'view_3918']);
+        if (!sowRecords || !sowRecords.length) {
+          console.warn('[scw-ws-v2] view_3325/view_3918 model missing — SOW picker can\'t open');
           return;
         }
         var sowCandidates = [];
-        var sowRecords = sowView.model.data.models;
         for (var sm = 0; sm < sowRecords.length; sm++) {
           var sm_attrs = sowRecords[sm].attributes || {};
           if (!sm_attrs.id) continue;

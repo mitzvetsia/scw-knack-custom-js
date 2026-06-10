@@ -73,6 +73,66 @@
     return container.contains(a);
   }
 
+  // Read-only cells whose value is computed server-side. When focus is
+  // still inside the panel a full re-render is deferred (it would yank
+  // focus from the field the user just tabbed into) — but the user still
+  // expects committing a value (Enter / Tab) to surface the recomputed
+  // LABEL (field_1950) + Install Fee (field_2028) + extended stack totals.
+  // patchDerivedCells updates ONLY those read-only cells in place from the
+  // freshly-fetched records, leaving every editable input (and focus /
+  // caret) untouched. The full deferred render still runs once focus
+  // leaves the panel.
+  //
+  // STACK_TOTALS maps an editable input's field key → the field key of the
+  // read-only "extended total" rendered beside it (see card.js stackCell).
+  var STACK_TOTALS = {
+    'field_2150': 'field_2151', // Sub Bid → Sub Bid total
+    'field_1973': 'field_1997', // +Hrs   → Hrs total
+    'field_1974': 'field_2146'  // +Mat   → Mat total
+  };
+
+  function readDerived(rec, key) {
+    var v = rec[key];
+    if (v == null) {
+      var raw = rec[key + '_raw'];
+      if (raw && typeof raw === 'object' && raw.identifier) return raw.identifier;
+      return '';
+    }
+    return String(v).replace(/<[^>]*>/g, '').trim();
+  }
+
+  function setCellText(card, selector, text) {
+    var el = card.querySelector(selector);
+    if (el && el.textContent !== text) el.textContent = text;
+  }
+
+  function patchDerivedCells(container, records) {
+    if (!records || !records.length) return;
+    for (var i = 0; i < records.length; i++) {
+      var rec = records[i];
+      if (!rec || !rec.id) continue;
+      var card = container.querySelector(
+        '.scw-ws-v2-card[data-scw-ws-v2-record="' +
+        String(rec.id).replace(/"/g, '\\"') + '"]'
+      );
+      if (!card) continue;
+
+      setCellText(card, '.scw-ws-v2-cell--label', readDerived(rec, 'field_1950'));
+      setCellText(card, '.scw-ws-v2-cell--fee',   readDerived(rec, 'field_2028'));
+
+      for (var inField in STACK_TOTALS) {
+        var input = card.querySelector('[data-scw-ws-v2-field="' + inField + '"]');
+        if (!input) continue;
+        var cell = input.closest ? input.closest('.scw-ws-v2-cell--stack') : null;
+        var total = cell ? cell.querySelector('.scw-ws-v2-stack-total') : null;
+        if (total) {
+          var t = readDerived(rec, STACK_TOTALS[inField]);
+          if (total.textContent !== t) total.textContent = t;
+        }
+      }
+    }
+  }
+
   // ── Chevron used in L1 headers ──
   var L1_CHEVRON_SVG =
     '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" ' +
@@ -89,9 +149,15 @@
     head.setAttribute('data-scw-ws-v2-view', sourceViewKey);
     head.setAttribute('aria-expanded', l1.isOpen ? 'true' : 'false');
 
+    // Aggregate issue chips for this MDF/IDF group, rendered inline in the
+    // header bar. Read from the warnings cache analyzed earlier this render.
+    var issueChips = (ns.summary && typeof ns.summary.issueChipsForL1 === 'function')
+      ? (ns.summary.issueChipsForL1(l1) || '') : '';
+
     head.innerHTML =
       '<span class="scw-ws-v2-l1-chevron">' + L1_CHEVRON_SVG + '</span>' +
       '<span class="scw-ws-v2-l1-label">' + escapeHtml(l1.label) + '</span>' +
+      issueChips +
       '<span class="scw-ws-v2-l1-count">' + l1.recordCount + '</span>';
 
     return head;
@@ -130,11 +196,23 @@
     var body = document.createElement('div');
     body.className = 'scw-ws-v2-l1-body';
 
+    // Sales money model? (moneyMode:'sales') — drives the summary money
+    // column (Total vs Sub Bid) and the column-header labels below.
+    var salesMoney = false;
+    try {
+      var _vcSales = ns.cfg && typeof ns.cfg.viewCfg === 'function' &&
+                     ns.cfg.viewCfg(sourceViewKey);
+      salesMoney = !!(_vcSales && _vcSales.moneyMode === 'sales');
+    } catch (e) { /* default to build-SOW */ }
+    var summaryMoneyOpts = salesMoney
+      ? { moneyField: 'field_2269', moneyLabel: 'Total' }
+      : null;
+
     // Per-L1 summary block — sits at the top of the body, always
     // rendered; CSS controls its visibility per toolbar mode.
     if (ns.summary && typeof ns.summary.buildL1Summary === 'function') {
       try {
-        var sumEl = ns.summary.buildL1Summary(l1);
+        var sumEl = ns.summary.buildL1Summary(l1, summaryMoneyOpts);
         if (sumEl) body.appendChild(sumEl);
       } catch (sumErr) {
         console.warn('[scw-ws-v2] summary build failed for L1', l1 && l1.id, sumErr);
@@ -148,18 +226,16 @@
       // headers line up with their columns. Cam-row-shaped (with
       // "Drop" slot) since the cam template is the superset.
       var hdr = document.createElement('div');
-      hdr.className = 'scw-ws-v2-col-header';
+      hdr.className = 'scw-ws-v2-col-header' + (salesMoney ? ' scw-ws-v2-col-header--sales' : '');
       hdr.innerHTML =
         '<span></span>' + /* chevron slot */
         '<span>Drop</span>' +
         '<span>Product</span>' +
         '<span>Description</span>' +
         '<span>Qty</span>' +
-        '<span>Sub Bid</span>' +
-        '<span>+Hrs</span>' +
-        '<span>+Mat</span>' +
-        '<span>Fee</span>' +
-        '<span>SOW</span>' +
+        (salesMoney
+          ? '<span class="scw-ws-v2-col-header-total">Total</span>'
+          : '<span>Sub Bid</span><span>+Hrs</span><span>+Mat</span><span>Fee</span><span>SOW</span>') +
         '<span></span>' + /* warning slot */
         '<span></span>';   /* trash slot */
       body.appendChild(hdr);
@@ -206,14 +282,21 @@
 
     var body  = container.querySelector('.scw-ws-v2-body');
     var count = container.querySelector('.scw-ws-v2-count');
+    var bannerChips = container.querySelector('.scw-ws-v2-banner-chips');
     if (!body) return;
 
     if (count) {
       count.textContent = records.length + ' record' + (records.length === 1 ? '' : 's');
     }
+    if (bannerChips) bannerChips.innerHTML = '';
 
     if (hasFocusInPanel(container)) {
+      // Defer the full rebuild (it would steal focus from the field the
+      // user just tabbed into), but patch the read-only derived cells in
+      // place so the committed value's recomputed label / fee / totals
+      // show immediately.
       pending[sourceViewKey] = records;
+      patchDerivedCells(container, records);
       return;
     }
     delete pending[sourceViewKey];
@@ -234,7 +317,21 @@
     // summaries reflect only the visible (filtered) subset. The
     // pill strip itself still mounts off the unfiltered model so
     // every SOW remains selectable.
-    var effectiveRecords = (ns.sowFilter && typeof ns.sowFilter.filterRecords === 'function')
+    //
+    // Guard on hideSow: when SOW is suppressed on this view (e.g. the
+    // sales view_3586), the pill strip never mounts — so its stale-id
+    // pruning never runs. A leftover localStorage filter from before
+    // hideSow was set would then silently drop EVERY record (none match
+    // the stale SOW ids), leaving all groups empty. Skip the filter
+    // entirely when SOW is hidden.
+    var _vcHideSow = false;
+    try {
+      var _vcS = ns.cfg && typeof ns.cfg.viewCfg === 'function' &&
+                 ns.cfg.viewCfg(sourceViewKey);
+      _vcHideSow = !!(_vcS && _vcS.hideSow);
+    } catch (e) { /* default: filter applies */ }
+    var effectiveRecords = (!_vcHideSow && ns.sowFilter &&
+        typeof ns.sowFilter.filterRecords === 'function')
       ? ns.sowFilter.filterRecords(sourceViewKey, records)
       : records;
     // Detect issues once per render — cards + summary chips read from
@@ -269,9 +366,18 @@
     var frag = document.createDocumentFragment();
     // Whole-grid summary at the top — aggregates every L1\'s records
     // into one table. Visible in default mode AND summary-only mode.
+    var _grandSales = false;
+    try {
+      var _vcGrand = ns.cfg && typeof ns.cfg.viewCfg === 'function' &&
+                     ns.cfg.viewCfg(sourceViewKey);
+      _grandSales = !!(_vcGrand && _vcGrand.moneyMode === 'sales');
+    } catch (e) { /* default */ }
+    var grandMoneyOpts = _grandSales
+      ? { moneyField: 'field_2269', moneyLabel: 'Total' }
+      : null;
     if (ns.summary && typeof ns.summary.buildGrandSummary === 'function') {
       try {
-        var grand = ns.summary.buildGrandSummary(tree);
+        var grand = ns.summary.buildGrandSummary(tree, grandMoneyOpts);
         if (grand) frag.appendChild(grand);
       } catch (gErr) {
         console.warn('[scw-ws-v2] grand summary failed', gErr);
@@ -284,30 +390,25 @@
     body.innerHTML = '';
     body.appendChild(frag);
 
-    // Reapply card-level open state. If the cascade moved a record to
-    // a different MDF/IDF, the card lives in a new L1 — open that L1
-    // too so the card is actually visible after the rebuild.
+    // Whole-grid aggregate issue chips now live in the banner (always
+    // visible, independent of the collapsible summary panel).
+    if (bannerChips) {
+      bannerChips.innerHTML =
+        (ns.summary && typeof ns.summary.grandIssueChips === 'function')
+          ? (ns.summary.grandIssueChips(tree) || '') : '';
+    }
+
+    // Reapply card-level open state ONLY — do NOT force the containing L1
+    // open. Section open/closed is governed purely by the accordion state,
+    // independent of whether a line item inside is expanded, so closing an
+    // MDF/IDF section always closes it (and the exclusive accordion isn't
+    // overridden by a lingering open card). The card keeps its expanded
+    // class, so it reappears expanded whenever its section is reopened.
     Object.keys(openIds).forEach(function (rid) {
       var card = body.querySelector(
         '.scw-ws-v2-card[data-scw-ws-v2-record="' + rid.replace(/"/g, '\\"') + '"]'
       );
-      if (!card) return;
-      card.classList.add('scw-ws-v2-card--open');
-      var l1Block = card.closest('.scw-ws-v2-l1');
-      if (l1Block && !l1Block.classList.contains('scw-ws-v2-l1--open')) {
-        l1Block.classList.add('scw-ws-v2-l1--open');
-        var l1Head = l1Block.querySelector('.scw-ws-v2-l1-head');
-        if (l1Head) {
-          l1Head.classList.add('scw-ws-v2-l1-head--open');
-          l1Head.setAttribute('aria-expanded', 'true');
-        }
-        // Persist the change so a follow-up re-render doesn't snap it
-        // back closed via the saved collapse state.
-        var l1Id = l1Block.getAttribute('data-scw-ws-v2-l1');
-        if (l1Id && ns.state && typeof ns.state.setOpenExclusive === 'function') {
-          ns.state.setOpenExclusive(sourceViewKey, l1Id);
-        }
-      }
+      if (card) card.classList.add('scw-ws-v2-card--open');
     });
   }
 

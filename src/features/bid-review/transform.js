@@ -1058,24 +1058,15 @@
         pkgs[pcnt].noOnSowItems   = (onSow === 0);
       }
 
-      // Matched rows render in their MDF/IDF groups; "other" items go in a
-      // dedicated bottom group so the matched grid stays as-is.
-      var groups  = groupRows(rows);
-      if (otherRows.length) {
-        groups.push({
-          key:       '__other_bid_items__',
-          label:     'Other items on these bids (not on this SOW)',
-          mdfIdfId:  '',
-          level:     1,
-          rows:      otherRows,
-          subgroups: [],
-          otherBidItems: true,
-        });
-      }
-
-      // sowGrid.rows includes the other items so bid column totals count
-      // them (header-total logic skips offSow rows for the SOW total).
+      // Bid-only items (on these bids but not on THIS SOW) now render
+      // INSIDE the MDF/IDF group their bid record's field_2375 matches,
+      // rather than being pulled out into a separate bottom group. They
+      // keep their offSow flag (SOW column cut out, excluded from SOW
+      // totals) but sit in context alongside the matched rows. sowGrid.rows
+      // still includes them so bid column totals count them (the header
+      // total logic skips offSow rows for the SOW total).
       var allRows = otherRows.length ? rows.concat(otherRows) : rows;
+      var groups  = groupRows(allRows);
       var elig    = computeEligibility(rows, pkgs);
 
       sowGrids.push({

@@ -422,6 +422,11 @@
     var ACCESSORIES_FIELD        = config.ACCESSORIES_FIELD        || null;
     var ACCESSORIES_VIEW_ID      = config.ACCESSORIES_VIEW_ID      || null;
     var ACCESSORIES_PARENT_FIELD = config.ACCESSORIES_PARENT_FIELD || null;
+    // Optional: when the parent's SOW connection (SOW_FIELD, e.g.
+    // field_2154) is edited, cascade the SOW to its children so they stay
+    // on the parent's SOW (see the SOW-cascade handler below for the exact
+    // accessory-vs-connected-device rules).
+    var SOW_FIELD                = config.SOW_FIELD                || null;
     var SETTLE_MS         = (config.SETTLE_MS       != null) ? config.SETTLE_MS       : 400;
     var EVENT_NS          = config.EVENT_NS         || '.scwSilentRegroup';
     var PUBLIC_API_NAME   = config.PUBLIC_API_NAME  || null;
@@ -1000,7 +1005,7 @@
     setTimeout(function () { mutSuppressed = false; }, 0);
   }
 
-  function applyDeterministicRegroup(R, onComplete) {
+  function applyDeterministicRegroup(R, onComplete, authoritativeChildIds) {
     function done() {
       if (typeof onComplete === 'function') {
         try { onComplete(); } catch (e) { /* swallow */ }
@@ -1014,13 +1019,49 @@
     log('applyDeterministicRegroup: start R=' + R.id);
 
     // --- 1. New children from the event record --------------------------
-    var newChildrenRaw = R[TRIGGER_FIELD + '_raw'] || [];
-    log('  R.' + TRIGGER_FIELD + '_raw =', newChildrenRaw);
-    var newChildIds = [];
-    for (var i = 0; i < newChildrenRaw.length; i++) {
-      var entry = newChildrenRaw[i];
-      var id = entry && entry.id;
-      if (id && HEX24.test(id)) newChildIds.push(id);
+    // Read the trigger value from BOTH the event snapshot (R) AND the live
+    // Backbone model, then use whichever is non-empty. The v2 picker patches
+    // the model via syncKnackModel (which writes to `m.get(id)`) but dispatches
+    // the cell-update with `m.data.get(id).attributes` — and these can be
+    // DIFFERENT record instances in Knack's view model. When they diverge, the
+    // dispatched R carries a STALE / empty field_1957_raw, so newChildIds came
+    // back empty and EVERY current child was treated as "removed" — exactly the
+    // "downstream connection just gets cleared, never re-pointed" bug. Falling
+    // back to the model's canonical attrs makes the read instance-agnostic.
+    function extractChildIds(rawArr) {
+      var out = [];
+      if (!Array.isArray(rawArr)) return out;
+      for (var k = 0; k < rawArr.length; k++) {
+        var e = rawArr[k];
+        // Accept a bare id string or a {id} object (the v2 picker stores the
+        // raw PUT body — sometimes bare strings — when the response has no
+        // _raw companion).
+        var eid = (typeof e === 'string') ? e : (e && e.id);
+        if (eid && HEX24.test(eid) && out.indexOf(eid) === -1) out.push(eid);
+      }
+      return out;
+    }
+    var snapChildIds  = extractChildIds(R[TRIGGER_FIELD + '_raw'] || []);
+    var modelAttrsR   = getModelAttrs(R.id);
+    var modelChildIds = modelAttrsR
+      ? extractChildIds(modelAttrsR[TRIGGER_FIELD + '_raw'] || []) : [];
+    var newChildIds;
+    if (Array.isArray(authoritativeChildIds)) {
+      // AUTHORITATIVE: the v2 picker handed us the exact ids the user
+      // chose (the PUT body). field_1957 / field_2197 are SEPARATE Knack
+      // fields kept aligned only by THIS cascade — so when we know the
+      // selection precisely we must use it verbatim and never second-guess
+      // it against a model/snapshot a refetch could have made stale. This
+      // is what stops legitimately-selected devices from being cleared.
+      newChildIds = extractChildIds(authoritativeChildIds);
+      log('  ' + TRIGGER_FIELD + ' authoritative children = ' + newChildIds.length);
+    } else {
+      // Native edit (no picker): prefer the snapshot when it has values;
+      // otherwise trust the model. An empty snapshot must NOT clear
+      // everything if the model still shows children.
+      newChildIds = snapChildIds.length ? snapChildIds : modelChildIds;
+      log('  ' + TRIGGER_FIELD + '_raw snapshot=' + snapChildIds.length +
+          ' model=' + modelChildIds.length + ' → using ' + newChildIds.length);
     }
     var newChildSet = {};
     newChildIds.forEach(function (id) { newChildSet[id] = true; });
@@ -1209,6 +1250,8 @@
   // ======================================================================
 
   var pendingRecord = null;
+  var pendingChildIds = null;   // authoritative ids from the v2 picker (5th arg)
+  var pendingChildIdsFor = null; // record id the authoritative ids belong to
   var settleTimer = null;
 
   function armSettle() {
@@ -1219,14 +1262,18 @@
   function onSettled() {
     settleTimer = null;
     var R = pendingRecord;
+    var authoritativeIds = pendingChildIds;
     pendingRecord = null;
+    pendingChildIds = null;
+    pendingChildIdsFor = null;
     if (!R) return;
-    log('settled — applying deterministic regroup for R=' + R.id);
-    try { applyDeterministicRegroup(R); }
+    log('settled — applying deterministic regroup for R=' + R.id +
+        (authoritativeIds ? ' (authoritative children supplied)' : ''));
+    try { applyDeterministicRegroup(R, null, authoritativeIds); }
     catch (e) { console.warn(LOG_PREFIX, 'applyDeterministicRegroup threw', e); }
   }
 
-  $(document).on('knack-cell-update.' + VIEW_ID + EVENT_NS, function (event, view, record) {
+  $(document).on('knack-cell-update.' + VIEW_ID + EVENT_NS, function (event, view, record, editedFieldKey, triggerIds) {
     try {
       if (!record || !record.id) return;
       // Re-entrancy: ignore echoes from our own background PUTs.
@@ -1234,10 +1281,45 @@
         log('ignoring cell-update echo for own PUT ' + record.id);
         return;
       }
+      // The forward cascade (parent TRIGGER_FIELD → children CONNECTIONS_FIELD)
+      // must ONLY run when the trigger field itself was edited. The v2 picker
+      // reports the edited field key as a 4th arg; if it's some OTHER field
+      // (e.g. a direct field_2197 edit, an MDF move, or a chip toggle), running
+      // the forward regroup off this record reads its (empty) field_1957 and
+      // would treat every current child as "removed" — silently clearing their
+      // reciprocal. Native Knack inline edits supply no key → fall through and
+      // let the cache-diff machinery below decide (v1 DOM-mode behavior).
+      if (editedFieldKey && editedFieldKey !== TRIGGER_FIELD) {
+        log('cell-update for ' + editedFieldKey + ' (not ' + TRIGGER_FIELD +
+            ') — skipping forward cascade');
+        return;
+      }
       log('knack-cell-update received', { recordId: record.id });
       // If a later edit arrives before we've settled, the newest record wins —
       // Knack always provides the full record snapshot, so we don't lose data.
       pendingRecord = record;
+      // 5th arg (v2 picker only): the exact ids the user chose for the
+      // trigger field. Authoritative — bypasses the snapshot/model read so
+      // a refetch race can't make the cascade clear still-selected children.
+      //
+      // STICKINESS: only OVERWRITE the authoritative ids when this event
+      // actually supplies them for this record. On scenes where OTHER modules
+      // also listen to knack-cell-update.<view> (e.g. sales-change-request on
+      // view_3586), a second, non-authoritative cell-update for the same
+      // record can land inside the settle window — if we let it null out the
+      // ids, the cascade falls back to a possibly-stale model read and
+      // over-removes (clearing EVERY former child instead of the de-selected
+      // one). Keep the picker's ids unless a newer authoritative set arrives,
+      // or the edited record changes.
+      if (editedFieldKey === TRIGGER_FIELD && Array.isArray(triggerIds)) {
+        pendingChildIds   = triggerIds;
+        pendingChildIdsFor = record.id;
+      } else if (pendingChildIdsFor !== record.id) {
+        // A different record (or a native edit with no prior authoritative
+        // ids) — drop any stale authoritative set so it can't be misapplied.
+        pendingChildIds   = null;
+        pendingChildIdsFor = null;
+      }
       armSettle();
     } catch (e) {
       console.warn(LOG_PREFIX, 'knack-cell-update handler threw', e);
@@ -1304,26 +1386,112 @@
   $(document).on('knack-view-render.' + VIEW_ID + EVENT_NS + '-mdfprime',
     function () { primeMdfCache(); });
 
+  /**
+   * After a device's MDF/IDF (GROUPING_FIELD) is moved via the v2
+   * picker, drop any cross-MDF peer connection it can no longer
+   * physically have. A camera/reader points at its NVR/headend via
+   * CONNECTIONS_FIELD (field_2197); the NVR lists its devices in
+   * TRIGGER_FIELD (field_1957). An NVR only serves devices in its own
+   * MDF/IDF, so once the device lands in a DIFFERENT location than its
+   * peer, the link is stale — clear BOTH sides of the mirror.
+   *
+   * The peer's group is read from the freshly-synced Backbone model
+   * (the v2 picker patches the model BEFORE dispatching the
+   * knack-cell-update that drives this handler), so the "what MDF/IDF
+   * does this belong in" comparison reflects the settled post-move
+   * state, not a mid-edit snapshot — this is the timing fix.
+   *
+   * Guard rails:
+   *   - Only acts when the peer's MDF is KNOWN and DIFFERENT. An
+   *     unknown peer MDF (peer not loaded in the model) leaves the
+   *     connection untouched rather than guessing.
+   *   - The moving-NVR case is a no-op here: an NVR has no
+   *     CONNECTIONS_FIELD value (it's the parent side), so peerId is
+   *     empty. Children that should follow a moved NVR are handled by
+   *     the forward field_1957 cascade, not this disconnect.
+   */
+  function maybeClearCrossMdfConnection(record, currMdf) {
+    var connRaw = record[CONNECTIONS_FIELD + '_raw'];
+    var peerId  = (Array.isArray(connRaw) && connRaw[0] && connRaw[0].id)
+      ? connRaw[0].id : '';
+    if (!peerId) return;
+
+    var peerAttrs = getModelAttrs(peerId);
+    var peerMdf   = peerAttrs ? serializeMdf(peerAttrs) : '';
+    // Only disconnect when the peer is positively in a DIFFERENT, known MDF.
+    if (!peerMdf || peerMdf === currMdf) return;
+
+    log('mdf-direct-edit: ' + record.id + ' left peer ' + peerId +
+        ' (peer MDF ' + peerMdf + ' != new ' + currMdf + ') — clearing connection');
+
+    // Child side: clear CONNECTIONS_FIELD on the moved record. Patch the
+    // local model + reciprocal cache so the -recip handler reads this as
+    // a no-op (empty) rather than a fresh re-parent.
+    var childBody = {};
+    childBody[CONNECTIONS_FIELD] = [];
+    lastReciprocalSeen[record.id] = '';
+    syncModelChild(record.id, (function () {
+      var p = {};
+      p[CONNECTIONS_FIELD] = '';
+      p[CONNECTIONS_FIELD + '_raw'] = [];
+      return p;
+    })());
+    firePut(record.id, childBody);
+
+    // Parent side: drop the moved record from the peer's TRIGGER_FIELD
+    // list (these are mirrored fields, not reciprocal halves of one
+    // Knack connection, so both must be written).
+    var peerRaw = peerAttrs[TRIGGER_FIELD + '_raw'];
+    if (!Array.isArray(peerRaw) || !peerRaw.length) return;
+    var remainingRaw = [];
+    var remainingIds = [];
+    for (var i = 0; i < peerRaw.length; i++) {
+      if (peerRaw[i] && peerRaw[i].id && peerRaw[i].id !== record.id) {
+        remainingRaw.push(peerRaw[i]);
+        remainingIds.push(peerRaw[i].id);
+      }
+    }
+    if (remainingIds.length === peerRaw.length) return; // record wasn't listed
+    var peerBody = {};
+    peerBody[TRIGGER_FIELD] = remainingIds;
+    syncModelChild(peerId, (function () {
+      var p = {};
+      p[TRIGGER_FIELD + '_raw'] = remainingRaw;
+      return p;
+    })());
+    firePut(peerId, peerBody);
+  }
+
   // MODEL_ONLY: when a child's GROUPING_FIELD (field_1946) is edited
-  // directly via the v2 MDF picker, cascade the new group id down to
-  // its mounting-hardware accessories so they regroup alongside the
-  // parent. In v1 DOM mode this fires through the forward cascade
-  // path (when field_1957 changes); the direct field_1946 edit is a
-  // v2-only entry point so we scope the handler to MODEL_ONLY.
+  // directly via the v2 MDF picker, (1) drop any peer connection the
+  // device can no longer physically have now that it's left its peer's
+  // MDF/IDF, and (2) cascade the new group id down to its
+  // mounting-hardware accessories so they regroup alongside the parent.
+  // In v1 DOM mode this fires through the forward cascade path (when
+  // field_1957 changes); the direct field_1946 edit is a v2-only entry
+  // point so we scope the handler to MODEL_ONLY.
   $(document).on('knack-cell-update.' + VIEW_ID + EVENT_NS + '-mdf',
-    function (event, view, record) {
+    function (event, view, record, editedFieldKey) {
       try {
         if (!MODEL_ONLY) return;
-        if (!ACCESSORIES_VIEW_ID) return;
         if (!record || !record.id) return;
         if (ownPuts[record.id]) return;
+        // When the v2 picker tells us which field was edited, only run
+        // the MDF-move logic for an actual GROUPING_FIELD edit. (Native
+        // inline edits supply no key → fall back to the cache diff.)
+        if (editedFieldKey && editedFieldKey !== GROUPING_FIELD) return;
 
         var prevMdf = lastMdfSeen[record.id] || '';
         var currMdf = serializeMdf(record);
         if (prevMdf === currMdf) return;
         lastMdfSeen[record.id] = currMdf;
-        if (!currMdf) return; // disconnect — leave accessories alone
+        if (!currMdf) return; // MDF cleared entirely — leave links alone
 
+        // Always allow the move; clear a now-cross-MDF peer connection.
+        maybeClearCrossMdfConnection(record, currMdf);
+
+        // Cascade the new group down to mounting-hardware accessories.
+        if (!ACCESSORIES_VIEW_ID) return;
         var accIds = findAccessoryIdsForParent(record.id);
         if (!accIds.length) return;
 
@@ -1338,11 +1506,22 @@
     });
 
   $(document).on('knack-cell-update.' + VIEW_ID + EVENT_NS + '-recip',
-    function (event, view, record) {
+    function (event, view, record, editedFieldKey) {
       try {
         if (!ACCESSORIES_VIEW_ID) return;
         if (!record || !record.id) return;
         if (ownPuts[record.id]) return;
+        // The inverse cascade ("connection changed → pull child to the
+        // new parent's MDF") must NOT fire when the user only moved the
+        // MDF/IDF. The v2 picker reports the edited field; if it's not
+        // the connection field, bail — otherwise the MDF move snaps the
+        // device straight back to its parent's group. Re-prime the cache
+        // so a later real connection edit still diffs correctly. (Native
+        // inline edits supply no key → keep the cache-diff behavior.)
+        if (editedFieldKey && editedFieldKey !== CONNECTIONS_FIELD) {
+          lastReciprocalSeen[record.id] = serializeReciprocal(record);
+          return;
+        }
 
         var prev = lastReciprocalSeen[record.id] || '';
         var curr = serializeReciprocal(record);
@@ -1407,6 +1586,150 @@
         }
       } catch (e) {
         console.warn(LOG_PREFIX, 'inverse cascade handler threw', e);
+      }
+    });
+
+  // ======================================================================
+  // SOW cascade: parent's SOW (SOW_FIELD, e.g. field_2154) edited → keep
+  // its children on the parent's SOW.
+  // ----------------------------------------------------------------------
+  //   • Accessories (ACCESSORIES_PARENT_FIELD children): ALWAYS set to the
+  //     parent's exact SOW set — an accessory's SOW must mirror its parent.
+  //   • Connected devices (CONNECTIONS_FIELD children): only touched when
+  //     the child is on a SOW the parent does NOT also include; then the
+  //     child is re-aligned to the parent's exact SOW set. A child whose
+  //     SOWs are a subset of the parent's is left alone (no spurious PUT).
+  // Fires only on a genuine SOW_FIELD edit (the v2 picker reports the edited
+  // field key; native inline edits supply none → fall back to a cache diff).
+  // ======================================================================
+  var lastSowSeen = {};
+  function serializeSow(attrs) {
+    var raw = attrs && attrs[SOW_FIELD + '_raw'];
+    if (!Array.isArray(raw)) return '';
+    return raw.map(function (r) { return r && r.id; }).filter(Boolean).sort().join(',');
+  }
+  function sowIdsFromAttrs(attrs) {
+    var raw = attrs && attrs[SOW_FIELD + '_raw'];
+    var out = [];
+    if (Array.isArray(raw)) {
+      for (var i = 0; i < raw.length; i++) if (raw[i] && raw[i].id) out.push(raw[i].id);
+    } else if (raw && raw.id) {
+      out.push(raw.id);
+    }
+    return out;
+  }
+  function primeSowCache() {
+    if (!SOW_FIELD) return;
+    var records = getModelRecords();
+    for (var i = 0; i < records.length; i++) {
+      var attrs = records[i] && (records[i].attributes || records[i]);
+      if (attrs && attrs.id) lastSowSeen[attrs.id] = serializeSow(attrs);
+    }
+  }
+  if (SOW_FIELD) {
+    $(document).on('knack-view-render.' + VIEW_ID + EVENT_NS + '-sowprime',
+      function () { primeSowCache(); });
+  }
+
+  /** PUT SOW_FIELD = sowIds on an accessory record (lives on
+   *  ACCESSORIES_VIEW_ID, not VIEW_ID). Best-effort, mirrors
+   *  fireAccessoryPut. */
+  function fireAccessorySowPut(accessoryId, sowIds, onDone) {
+    if (!ACCESSORIES_VIEW_ID || !accessoryId) {
+      if (typeof onDone === 'function') onDone();
+      return;
+    }
+    if (!window.SCW || typeof window.SCW.knackRecordUrl !== 'function') {
+      if (typeof onDone === 'function') onDone(new Error('knackRecordUrl unavailable'));
+      return;
+    }
+    var body = {};
+    body[SOW_FIELD] = sowIds || [];
+    log('  PUT(accessory SOW) → ' + accessoryId + ' SOW=' + JSON.stringify(sowIds));
+    cascadeBegin();
+    knackPutKeepalive(
+      window.SCW.knackRecordUrl(ACCESSORIES_VIEW_ID, accessoryId),
+      body,
+      function (err) {
+        cascadeEnd();
+        if (err) console.warn(LOG_PREFIX, 'accessory SOW PUT failed ' + accessoryId, err);
+        else log('  PUT(accessory SOW) ok ' + accessoryId);
+        if (typeof onDone === 'function') onDone(err);
+      }
+    );
+  }
+
+  $(document).on('knack-cell-update.' + VIEW_ID + EVENT_NS + '-sow',
+    function (event, view, record, editedFieldKey) {
+      try {
+        if (!SOW_FIELD) return;
+        if (!record || !record.id) return;
+        if (ownPuts[record.id]) return;
+        // Only react to a genuine SOW_FIELD edit. Re-prime the cache on
+        // other-field edits so a later real SOW edit still diffs correctly.
+        if (editedFieldKey && editedFieldKey !== SOW_FIELD) {
+          lastSowSeen[record.id] = serializeSow(record);
+          return;
+        }
+        var prev = lastSowSeen[record.id] || '';
+        var curr = serializeSow(record);
+        if (prev === curr) return;
+        lastSowSeen[record.id] = curr;
+
+        var parentSowIds = sowIdsFromAttrs(record);
+        // Parent SOW cleared entirely → leave children alone (don't orphan
+        // everything on an accidental clear), mirroring the MDF-clear guard.
+        if (!parentSowIds.length) {
+          log('sow-cascade: parent ' + record.id + ' SOW cleared — leaving children alone');
+          return;
+        }
+        var parentSowSet = {};
+        for (var p = 0; p < parentSowIds.length; p++) parentSowSet[parentSowIds[p]] = true;
+
+        var parentSowDisplay = record[SOW_FIELD];
+        var parentSowRaw = record[SOW_FIELD + '_raw'] || [];
+
+        // 1) Accessories — ALWAYS exact-match the parent's SOW.
+        var accIds = findAccessoryIdsForParent(record.id);
+        for (var a = 0; a < accIds.length; a++) {
+          fireAccessorySowPut(accIds[a], parentSowIds);
+        }
+
+        // 2) Connected devices — only when the child sits on a SOW the
+        //    parent does NOT also include; then re-align to the parent's
+        //    exact SOW set.
+        var childIds = findRowsPointingTo(record.id);
+        var realigned = 0;
+        for (var c = 0; c < childIds.length; c++) {
+          var childId = childIds[c];
+          if (childId === record.id) continue;
+          var childSowIds = sowIdsFromAttrs(getModelAttrs(childId));
+          var hasForeignSow = false;
+          for (var s = 0; s < childSowIds.length; s++) {
+            if (!parentSowSet[childSowIds[s]]) { hasForeignSow = true; break; }
+          }
+          if (!hasForeignSow) continue;   // child SOWs ⊆ parent's → leave alone
+          var body = {};
+          body[SOW_FIELD] = parentSowIds;
+          // Patch the local model so the v2 tree rebuild on scw-cascade-idle
+          // reflects the new SOW without waiting for the PUT to land.
+          syncModelChild(childId, (function () {
+            var pp = {};
+            pp[SOW_FIELD] = parentSowDisplay;
+            pp[SOW_FIELD + '_raw'] = parentSowRaw;
+            return pp;
+          })());
+          log('sow-cascade: connected device ' + childId +
+              ' on a SOW the parent lacks → re-aligning to ' + JSON.stringify(parentSowIds));
+          firePut(childId, body);
+          realigned++;
+        }
+
+        log('sow-cascade done for parent ' + record.id + ': ' + accIds.length +
+            ' accessory PUT(s), ' + realigned + '/' + childIds.length +
+            ' connected device(s) re-aligned');
+      } catch (e) {
+        console.warn(LOG_PREFIX, 'sow-cascade handler threw', e);
       }
     });
 
@@ -1536,6 +1859,13 @@
     ACCESSORIES_FIELD:        'field_1958',
     ACCESSORIES_VIEW_ID:      'view_3887',
     ACCESSORIES_PARENT_FIELD: 'field_2464',
+    SOW_FIELD:                'field_2154',
+    // view_3586 is now driven by worksheet-v2 (custom card UI, no v1
+    // .scw-ws-row triplets to scrape). Diff connected-device changes off
+    // the Backbone model, not the DOM, and route through PUT-only +
+    // scw-cascade-idle refetch — same as the view_3962 deployment — so the
+    // field_1957 → field_2197 reciprocal cascade fires reliably.
+    MODEL_ONLY:          true,
     PUBLIC_API_NAME:     'silentRegroupView3586'
   });
 
@@ -1552,6 +1882,7 @@
     ACCESSORIES_FIELD:        'field_1958',
     ACCESSORIES_VIEW_ID:      'view_3888',
     ACCESSORIES_PARENT_FIELD: 'field_2464',
+    SOW_FIELD:                'field_2154',
     PUBLIC_API_NAME:     'silentRegroupView3610'
   });
 
@@ -1577,6 +1908,7 @@
     ACCESSORIES_FIELD:        'field_1958',
     ACCESSORIES_VIEW_ID:      'view_3888',
     ACCESSORIES_PARENT_FIELD: 'field_2464',
+    SOW_FIELD:                'field_2154',
     MODEL_ONLY:          true,
     PUBLIC_API_NAME:     'silentRegroupView3962'
   });
@@ -1600,6 +1932,7 @@
     ACCESSORIES_FIELD:        'field_1958',
     ACCESSORIES_VIEW_ID:      'view_3927',
     ACCESSORIES_PARENT_FIELD: 'field_2464',
+    SOW_FIELD:                'field_2154',
     PUBLIC_API_NAME:     'silentRegroupView3921'
   });
 

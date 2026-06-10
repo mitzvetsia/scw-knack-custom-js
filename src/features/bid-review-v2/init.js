@@ -61,7 +61,24 @@
     }
 
     // Initial paint — v1 may have already loaded the records.
-    if (ns.data && ns.render) ns.render.renderSnapshot(ns.data.readAll());
+    if (ns.data && ns.render) {
+      ns.render.renderSnapshot(ns.data.readAll());
+      mountBulk();
+    }
+    if (ns.toolbar && typeof ns.toolbar.mount === 'function') ns.toolbar.mount();
+  }
+
+  // Wire the shared worksheet-v2 bulk module to the comparison grid. The
+  // grid rows carry data-scw-ws-v2-select checkboxes keyed on the SOW
+  // line-item id; bulk reads/writes those records via the SOW source
+  // view (view_3921). Idempotent — mount re-syncs checkbox state after
+  // each grid re-render.
+  function mountBulk() {
+    var bulk = window.SCW && SCW.worksheetV2 && SCW.worksheetV2.bulk;
+    var sowView = (ns.CONFIG.sourceViewKeys || [])[1];
+    if (bulk && typeof bulk.mount === 'function' && sowView) {
+      bulk.mount(sowView);
+    }
   }
 
   // Delegated click handler for L1 group header rows — toggles the
@@ -70,6 +87,63 @@
   function wireGroupCollapse() {
     if (document.documentElement.hasAttribute('data-scw-br-v2-collapse-bound')) return;
     document.documentElement.setAttribute('data-scw-br-v2-collapse-bound', '1');
+
+    // SOW-section collapse: clicking the SOW header folds the whole
+    // section (header stays, table hides). State persists per SOW.
+    function sowCollapseKey(sowId) {
+      var m = (document.body.id || '').match(/scene_\d+/);
+      return 'scw:br-v2:sow-collapse:' + (m ? m[0] : 'default') + ':' + sowId;
+    }
+    document.addEventListener('click', function (e) {
+      var sowHead = e.target.closest && e.target.closest('.scw-bid-review-v2__sow-header');
+      if (!sowHead) return;
+      if (e.target.closest('input, button, select, textarea, a')) return;
+      var section = sowHead.closest('.scw-bid-review-v2__sow');
+      if (!section) return;
+      var collapsed = section.classList.toggle('scw-bid-review-v2__sow--collapsed');
+      sowHead.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+      try {
+        if (collapsed) localStorage.setItem(sowCollapseKey(section.getAttribute('data-sow-id')), '1');
+        else localStorage.removeItem(sowCollapseKey(section.getAttribute('data-sow-id')));
+      } catch (err) { /* ignore */ }
+    });
+    // Keyboard toggle for the SOW header (Enter / Space).
+    document.addEventListener('keydown', function (e) {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      var sowHead = e.target.closest && e.target.closest('.scw-bid-review-v2__sow-header');
+      if (!sowHead || e.target !== sowHead) return;
+      e.preventDefault();
+      sowHead.click();
+    });
+
+    // Per-SOW "Expand all / Collapse all" — folds/unfolds every MDF/IDF
+    // group within ONE SOW. The button's own label is the state so it always
+    // says what the next click will do.
+    document.addEventListener('click', function (e) {
+      var tgl = e.target.closest && e.target.closest('[data-scw-br-v2-sow-groups]');
+      if (!tgl) return;
+      e.preventDefault();
+      e.stopPropagation();
+      var section = tgl.closest('.scw-bid-review-v2__sow');
+      if (!section) return;
+      var collapse = (tgl.textContent || '').trim().toLowerCase().indexOf('collapse') === 0;
+      var heads = section.querySelectorAll('.scw-bid-review-v2__group-header');
+      for (var h = 0; h < heads.length; h++) {
+        var hd = heads[h];
+        hd.classList.toggle('scw-bid-review-v2__group-header--collapsed', collapse);
+        hd.setAttribute('aria-expanded', collapse ? 'false' : 'true');
+        var n = hd.nextElementSibling;
+        while (n && !n.classList.contains('scw-bid-review-v2__group-header')) {
+          if (n.classList.contains('scw-bid-review-v2__row') ||
+              n.classList.contains('scw-bid-review-v2__subgroup-header')) {
+            n.classList.toggle('scw-bid-review-v2__row--hidden', collapse);
+            n.classList.toggle('scw-bid-review-v2__subgroup-header--hidden', collapse);
+          }
+          n = n.nextElementSibling;
+        }
+      }
+      tgl.textContent = collapse ? 'Expand all' : 'Collapse all';
+    });
 
     document.addEventListener('click', function (e) {
       var head = e.target.closest && e.target.closest('.scw-bid-review-v2__group-header');
@@ -88,6 +162,122 @@
         n = n.nextElementSibling;
       }
     });
+
+    // Diff hover-link: hovering a differing field in a bid cell
+    // temporarily highlights the matching field in this row's SOW cell.
+    function hoverField(e, on) {
+      var f = e.target.closest && e.target.closest('[data-scw-diff-field]');
+      if (!f) return;
+      var tr = f.closest('tr');
+      if (!tr) return;
+      var type = f.getAttribute('data-scw-diff-field');
+      var target = tr.querySelector(
+        '.scw-bid-review-v2__sow-cell [data-scw-sow-field="' + type + '"]');
+      if (target) target.classList.toggle('scw-bid-review-v2__sow-field-hl', on);
+    }
+    document.addEventListener('mouseover', function (e) { hoverField(e, true); });
+    document.addEventListener('mouseout',  function (e) { hoverField(e, false); });
+  }
+
+  // ── Revise dropdown (v1 parity) ──────────────────────────────────
+  // The menu is positioned FIXED at the trigger's coordinates so the SOW
+  // card's overflow:hidden can't clip it (v1's grid has no such clip).
+  function closeReviseMenus() {
+    var open = document.querySelectorAll('.scw-bid-review-v2__overflow--open');
+    for (var i = 0; i < open.length; i++) {
+      open[i].classList.remove('scw-bid-review-v2__overflow--open');
+      var m = open[i].querySelector('.scw-bid-review-v2__overflow-menu');
+      if (m) { m.style.cssText = ''; }
+    }
+  }
+  function openReviseMenu(ov, trigger) {
+    var menu = ov.querySelector('.scw-bid-review-v2__overflow-menu');
+    if (!menu) return;
+    ov.classList.add('scw-bid-review-v2__overflow--open');
+    var r = trigger.getBoundingClientRect();
+    var width = 160;
+    var left = Math.min(r.left, window.innerWidth - width - 8);
+    menu.style.cssText =
+      'display:block;position:fixed;z-index:99999;' +
+      'top:' + (r.bottom + 2) + 'px;left:' + Math.max(8, left) + 'px;' +
+      'width:' + width + 'px;';
+  }
+
+  // Delegated clicks for everything that routes into v1's handlers:
+  //   • header action buttons (Update SOW / Create SOW / Reopen Bid)
+  //   • header CR controls (Submit Change Request / Clear All)
+  //   • cell CR buttons (Revise / Remove / + Add to bid)
+  //   • pending CR summary cards (click to edit)
+  // v1 renders on the same scene so its _state + CR pending are live.
+  function wireHeaderActions() {
+    if (document.documentElement.hasAttribute('data-scw-br-v2-actions-bound')) return;
+    document.documentElement.setAttribute('data-scw-br-v2-actions-bound', '1');
+
+    document.addEventListener('click', function (e) {
+      var v1 = window.SCW.bidReview;
+      if (!v1 || !e.target.closest) return;
+
+      // Revise dropdown trigger — toggle its menu open/closed (v1 parity).
+      // The trigger carries no data-action so it never dispatches a CR. The
+      // menu is positioned FIXED at the trigger so the SOW card's
+      // overflow:hidden can't clip it.
+      var ovTrigger = e.target.closest('.scw-bid-review-v2__overflow-trigger');
+      if (ovTrigger) {
+        e.preventDefault(); e.stopPropagation();
+        var ov = ovTrigger.closest('.scw-bid-review-v2__overflow');
+        var wasOpen = ov && ov.classList.contains('scw-bid-review-v2__overflow--open');
+        closeReviseMenus();
+        if (ov && !wasOpen) openReviseMenu(ov, ovTrigger);
+        return;
+      }
+      // Any other click closes open Revise menus before proceeding. A menu
+      // item is still in the DOM, so its dispatch below still resolves.
+      closeReviseMenus();
+
+      // Header buttons — package_* go to dispatchHeaderAction, cr_* fall
+      // through to dispatchCRAction.
+      var headBtn = e.target.closest('.scw-bid-review-v2__head-btn[data-action]');
+      if (headBtn) {
+        e.preventDefault(); e.stopPropagation();
+        var handled = v1.dispatchHeaderAction && v1.dispatchHeaderAction(headBtn);
+        if (!handled && v1.dispatchCRAction) v1.dispatchCRAction(headBtn);
+        return;
+      }
+
+      // Cell CR buttons (Revise / Remove / + Add to bid).
+      var cellBtn = e.target.closest('.scw-bid-review-v2__cell-action[data-action]');
+      if (cellBtn) {
+        e.preventDefault(); e.stopPropagation();
+        if (v1.dispatchCRAction) v1.dispatchCRAction(cellBtn);
+        return;
+      }
+
+      // Pending CR card — click re-opens the edit modal.
+      var crCard = e.target.closest('.scw-bid-cr-card[data-action]');
+      if (crCard) {
+        e.preventDefault(); e.stopPropagation();
+        if (v1.dispatchCRAction) v1.dispatchCRAction(crCard);
+        return;
+      }
+    });
+
+    // SOW metric inputs (survey costs / SOW name / proposal expiration)
+    // live inside the v1 status bar v2 injects into the SOW header cell —
+    // route their change events to v1's save handlers. Capture phase to
+    // match v1's own listener.
+    document.addEventListener('change', function (e) {
+      var input = e.target;
+      if (!input || !input.matches) return;
+      if (!input.closest('.scw-bid-review-v2__head--sow')) return;
+      var v1 = window.SCW.bidReview;
+      if (v1 && typeof v1.dispatchMetricChange === 'function') {
+        v1.dispatchMetricChange(input);
+      }
+    }, true);
+
+    // A fixed-positioned Revise menu doesn't follow scroll/resize — close it.
+    window.addEventListener('scroll', closeReviseMenus, true);
+    window.addEventListener('resize', closeReviseMenus);
   }
 
   // Delegated click on an expandable data row — toggle an expand <tr>
@@ -107,6 +297,25 @@
       // Don't intercept clicks on the L1 group header (handled separately).
       if (e.target.closest('.scw-bid-review-v2__group-header')) return;
       toggleRowExpand(row);
+    });
+  }
+
+  // The data row is hidden while expanded, so collapse is driven from
+  // the panel header / × button instead of a click on the row.
+  function wirePanelClose() {
+    if (document.documentElement.hasAttribute('data-scw-br-v2-panelclose-bound')) return;
+    document.documentElement.setAttribute('data-scw-br-v2-panelclose-bound', '1');
+    document.addEventListener('click', function (e) {
+      var hdr = e.target.closest && e.target.closest('.scw-bid-review-v2__panel-header');
+      if (!hdr) return;
+      // Don't collapse when the click is the bulk-select checkbox.
+      if (e.target.closest('input, .scw-br-v2-rowselect')) return;
+      var expandRow = hdr.closest('.scw-bid-review-v2__expand-row');
+      if (!expandRow) return;
+      var dataRow = expandRow.previousElementSibling;
+      if (dataRow && dataRow.classList.contains('scw-bid-review-v2__row')) {
+        toggleRowExpand(dataRow);
+      }
     });
   }
 
@@ -134,13 +343,248 @@
     var td = document.createElement('td');
     td.colSpan = row.children.length;
     td.className = 'scw-bid-review-v2__expand-cell';
+
+    // Panel layout. The data row is hidden while open (CSS keyed on
+    // aria-expanded) so the SOW/bid data isn't shown twice — a compact
+    // header built from the leftmost column stands in for it (v1 parity).
+    //   header
+    //   [photo viewer | worksheet-v2 SOW editor]   ← top flex
+    //   bid details strip                          ← full-width, below
+    // Bids live on their own full-width row so they never compete with
+    // the (wide) worksheet editor for horizontal space.
+    var panel = document.createElement('div');
+    panel.className = 'scw-bid-review-v2__panel';
+    panel.appendChild(buildExpandHeader(row));
+
+    var flex = document.createElement('div');
+    flex.className = 'scw-bid-review-v2__expand-flex';
+    var photoCol = document.createElement('div');
+    photoCol.className = 'scw-bid-review-v2__panel-col--photo';
+    var cardCol = document.createElement('div');
+    cardCol.className = 'scw-bid-review-v2__panel-col--card';
+    flex.appendChild(photoCol);
+    flex.appendChild(cardCol);
+    flex.appendChild(buildBidDetailsColumn(row));
+    panel.appendChild(flex);
+    td.appendChild(panel);
+
     expand.appendChild(td);
     row.parentNode.insertBefore(expand, row.nextSibling);
     row.classList.add('scw-bid-review-v2__row--open');
     row.setAttribute('aria-expanded', 'true');
 
-    mountWorksheetV2Card(td, sowRec);
+    mountWorksheetV2Card(cardCol, sowRec);
+
+    // Auto-mount the photo viewer when the row has photos, so expanding
+    // (by clicking the SOW cell, the row, or a thumb) always surfaces
+    // them — matching v1. aria-expanded is already 'true' above, so
+    // openWithPhoto won't recurse back into toggleRowExpand.
+    var scrape = window.SCW && SCW.bidReview && SCW.bidReview.scrapeRowPhotoUrls;
+    if (typeof scrape === 'function') {
+      var rowId = row.getAttribute('data-row-id');
+      var urls = scrape(sowItemId || null, rowId || null);
+      if (urls && urls.length) openWithPhoto(row, urls, 0);
+    }
   }
+
+  // Compact header for the expand panel, built from the (now-hidden)
+  // data row's leftmost columns — the line label + SOW product name —
+  // plus a close affordance. Replaces re-showing the full SOW/bid data.
+  function buildExpandHeader(rowTr) {
+    var header = document.createElement('div');
+    header.className = 'scw-bid-review-v2__panel-header';
+    header.setAttribute('title', 'Click to close');
+
+    // Open caret — kept on the LEFT so it doesn't jump position vs. the
+    // closed grid-row caret. Points down (open); the whole header bar is
+    // the click target to close.
+    var caret = document.createElement('span');
+    caret.className = 'scw-bid-review-v2__panel-caret';
+    caret.setAttribute('aria-hidden', 'true');
+    caret.innerHTML =
+      '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" ' +
+      'stroke="currentColor" stroke-width="3" stroke-linecap="round" ' +
+      'stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>';
+    header.appendChild(caret);
+
+    // Bulk-select checkbox — the grid-row checkbox is hidden while the row
+    // is expanded, so surface one here keyed on the same SOW item id.
+    var sowItemId = rowTr.getAttribute('data-sow-item-id');
+    if (sowItemId) {
+      var cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.className = 'scw-br-v2-rowselect scw-br-v2-rowselect--header';
+      cb.setAttribute('data-scw-ws-v2-select', sowItemId);
+      cb.setAttribute('aria-label', 'Select line item');
+      header.appendChild(cb);
+    }
+
+    var title = document.createElement('div');
+    title.className = 'scw-bid-review-v2__panel-title';
+    function readText(sel) {
+      var el = rowTr.querySelector(sel);
+      return el ? (el.textContent || '').trim() : '';
+    }
+    function chip(cls, text) {
+      var s = document.createElement('span');
+      s.className = 'scw-bid-review-v2__panel-title-' + cls;
+      s.textContent = text;
+      return s;
+    }
+    var label   = readText('.scw-bid-review-v2__row-label');
+    var product = readText('.scw-bid-review-v2__sow-product');
+    if (label)   title.appendChild(chip('label', label));
+    if (product) title.appendChild(chip('product', product));
+    header.appendChild(title);
+    return header;
+  }
+
+  // Right-side column of the expand panel. Rebuilds each bid-package
+  // cell from the (still-visible) data row as a labelled compact card,
+  // so the SOW editor and the bids read side-by-side for comparison.
+  // Cells: 0 = line label, 1 = photos, 2 = SOW, 3+ = bid packages.
+  function buildBidDetailsColumn(rowTr) {
+    var col = document.createElement('div');
+    col.className = 'scw-bid-review-v2__panel-col--bid';
+
+    var labels = [];
+    var table = rowTr.closest('table');
+    if (table) {
+      var ths = table.querySelectorAll('thead th');
+      for (var t = 0; t < ths.length; t++) {
+        labels.push((ths[t].textContent || '').replace(/\s+/g, ' ').trim());
+      }
+    }
+
+    var cells = rowTr.children;
+    for (var i = 3; i < cells.length; i++) {
+      var card = document.createElement('div');
+      card.className = 'scw-bid-review-v2__bid-card';
+      var lbl = document.createElement('div');
+      lbl.className = 'scw-bid-review-v2__bid-card-label';
+      lbl.textContent = labels[i] || ('Bid ' + (i - 2));
+      card.appendChild(lbl);
+      var body = document.createElement('div');
+      body.className = 'scw-bid-review-v2__bid-card-body';
+      // Clone the cell's children (not the <td> itself) so the original
+      // row keeps its cells intact for re-renders.
+      var clone = cells[i].cloneNode(true);
+      while (clone.firstChild) body.appendChild(clone.firstChild);
+      card.appendChild(body);
+      col.appendChild(card);
+    }
+    return col;
+  }
+
+  // ── Photo viewer (ported from v1's init.js, v2-scoped classes) ──
+  // Open the row's expand panel AND mount a side-by-side photo viewer
+  // in the panel's left column. Thumbnail strip lets the reviewer flip
+  // between photos without leaving the editor.
+  function openWithPhoto(rowTr, urls, activeIdx) {
+    if (!rowTr || !urls || !urls.length) return;
+    if (activeIdx == null || activeIdx < 0 || activeIdx >= urls.length) activeIdx = 0;
+
+    if (rowTr.getAttribute('aria-expanded') !== 'true') {
+      toggleRowExpand(rowTr);
+    }
+    var expandTr = rowTr.nextElementSibling;
+    if (!expandTr || !expandTr.classList.contains('scw-bid-review-v2__expand-row')) return;
+    var photoCol = expandTr.querySelector('.scw-bid-review-v2__panel-col--photo');
+    if (!photoCol) return;
+
+    var existing = photoCol.querySelector('.scw-bid-review-v2__photo-viewer');
+    if (existing) { updatePhotoViewer(existing, urls, activeIdx); return; }
+
+    photoCol.classList.add('scw-bid-review-v2__panel-col--photo-active');
+    photoCol.appendChild(buildPhotoViewer(urls, activeIdx));
+  }
+
+  function buildPhotoViewer(urls, activeIdx) {
+    var wrap = document.createElement('div');
+    wrap.className = 'scw-bid-review-v2__photo-viewer';
+
+    var stage = document.createElement('div');
+    stage.className = 'scw-bid-review-v2__photo-viewer-stage';
+    stage.setAttribute('title', 'Click photo to zoom');
+
+    var openLink = document.createElement('a');
+    openLink.className = 'scw-bid-review-v2__photo-viewer-open';
+    openLink.target = '_blank';
+    openLink.rel = 'noopener';
+    openLink.title = 'Open full size in a new tab';
+    openLink.textContent = 'Open ↗';
+    openLink.addEventListener('click', function (e) { e.stopPropagation(); });
+    stage.appendChild(openLink);
+
+    var img = document.createElement('img');
+    img.alt = '';
+    stage.appendChild(img);
+
+    stage.addEventListener('click', function (e) {
+      if (e.target.closest('.scw-bid-review-v2__photo-viewer-open')) return;
+      openLightbox(img.src);
+    });
+    wrap.appendChild(stage);
+
+    var strip = document.createElement('div');
+    strip.className = 'scw-bid-review-v2__photo-viewer-strip';
+    wrap.appendChild(strip);
+
+    updatePhotoViewer(wrap, urls, activeIdx);
+    return wrap;
+  }
+
+  function openLightbox(url) {
+    if (!url) return;
+    var overlay = document.createElement('div');
+    overlay.className = 'scw-bid-review-v2__lightbox';
+    var img = document.createElement('img');
+    img.src = url;
+    img.alt = '';
+    overlay.appendChild(img);
+
+    function dismiss() {
+      overlay.parentNode && overlay.parentNode.removeChild(overlay);
+      document.removeEventListener('keydown', onKey);
+    }
+    function onKey(e) { if (e.key === 'Escape') dismiss(); }
+
+    overlay.addEventListener('click', dismiss);
+    document.addEventListener('keydown', onKey);
+    document.body.appendChild(overlay);
+  }
+
+  function updatePhotoViewer(viewer, urls, activeIdx) {
+    var stageImg = viewer.querySelector('.scw-bid-review-v2__photo-viewer-stage img');
+    var openLink = viewer.querySelector('.scw-bid-review-v2__photo-viewer-open');
+    var strip    = viewer.querySelector('.scw-bid-review-v2__photo-viewer-strip');
+    if (stageImg) stageImg.src = urls[activeIdx];
+    if (openLink) openLink.href = urls[activeIdx];
+
+    if (!strip) return;
+    strip.innerHTML = '';
+    if (urls.length < 2) { strip.style.display = 'none'; return; }
+    strip.style.display = '';
+    for (var i = 0; i < urls.length; i++) {
+      (function (idx) {
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'scw-bid-review-v2__photo-viewer-thumb' +
+          (idx === activeIdx ? ' scw-bid-review-v2__photo-viewer-thumb--active' : '');
+        btn.addEventListener('click', function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          updatePhotoViewer(viewer, urls, idx);
+        });
+        var img = document.createElement('img');
+        img.src = urls[idx]; img.alt = ''; img.loading = 'lazy';
+        btn.appendChild(img);
+        strip.appendChild(btn);
+      })(i);
+    }
+  }
+
+  ns.openWithPhoto = openWithPhoto;
 
   // Find the full Backbone-style attributes hash for a SOW item id.
   // Prefer the live model so we always see the freshest values; fall
@@ -182,6 +626,137 @@
     }
     card.classList.add('scw-ws-v2-card--open');
     hostTd.appendChild(card);
+    decorateNarrowEditor(card);
+  }
+
+  // The narrow reflow hides the grid-aligned column-header strip, so the
+  // summary-row inputs lose their labels. Re-attach a small label above
+  // each labelled cell from the input's aria-label / placeholder (or the
+  // cell title for read-only cells). Scoped to the summary row — the
+  // detail panel carries its own labels.
+  function decorateNarrowEditor(card) {
+    var rows = card.querySelectorAll('.scw-ws-v2-row');
+    for (var r = 0; r < rows.length; r++) {
+      var cells = rows[r].querySelectorAll(
+        '.scw-ws-v2-cell--num, .scw-ws-v2-cell--stack, ' +
+        '.scw-ws-v2-cell--fee, .scw-ws-v2-cell--labor-desc');
+      for (var i = 0; i < cells.length; i++) {
+        var cell = cells[i];
+        if (cell.getAttribute('data-scw-flabel')) continue;
+        var input = cell.querySelector('input, textarea');
+        var text = '';
+        if (input) {
+          text = input.getAttribute('aria-label') ||
+                 input.getAttribute('placeholder') || '';
+        }
+        if (!text) text = cell.getAttribute('title') || '';
+        if (!text) continue;
+        cell.setAttribute('data-scw-flabel', '1');
+        var lab = document.createElement('span');
+        lab.className = 'scw-br-v2-flabel';
+        lab.textContent = text;
+        cell.insertBefore(lab, cell.firstChild);
+      }
+    }
+    relocateSowField(card);
+    removeSurveyNotes(card);
+    lineBreakConnectedDevices(card);
+    makeScwNotesTextarea(card);
+  }
+
+  // Connected Devices (field_1957) is multi-value; show each on its own
+  // line instead of comma-joined.
+  function lineBreakConnectedDevices(card) {
+    var vals = card.querySelectorAll(
+      '[data-scw-ws-v2-conn="field_1957"] .scw-ws-v2-conn-btn-val');
+    for (var i = 0; i < vals.length; i++) {
+      var elv = vals[i];
+      var txt = (elv.textContent || '').trim();
+      if (!txt || txt === '(none)') continue;
+      var parts = txt.split(/\s*,\s*/);
+      if (parts.length < 2) continue;
+      elv.textContent = '';
+      for (var p = 0; p < parts.length; p++) {
+        if (p) elv.appendChild(document.createElement('br'));
+        elv.appendChild(document.createTextNode(parts[p]));
+      }
+    }
+  }
+
+  // SCW Notes (field_1953) should read like the labor description: a
+  // full-width, wrapping textarea rather than a single-line input. Swap
+  // the input for a textarea, carrying its value + data-* attrs so the
+  // edit/save path keeps working.
+  function makeScwNotesTextarea(card) {
+    var inp = card.querySelector('input[data-scw-ws-v2-field="field_1953"]');
+    if (!inp || inp.tagName === 'TEXTAREA') return;
+    var ta = document.createElement('textarea');
+    ta.className = 'scw-ws-v2-input scw-ws-v2-input--textarea';
+    ta.value = inp.value;
+    for (var i = 0; i < inp.attributes.length; i++) {
+      var a = inp.attributes[i];
+      if (a.name === 'type' || a.name === 'class' || a.name === 'value') continue;
+      ta.setAttribute(a.name, a.value);
+    }
+    inp.parentNode.replaceChild(ta, inp);
+  }
+
+  function findDetailFieldByLabel(card, labelText) {
+    var fields = card.querySelectorAll('.scw-ws-v2-detail-field');
+    for (var i = 0; i < fields.length; i++) {
+      var l = fields[i].querySelector('.scw-ws-v2-detail-label');
+      if (l && (l.textContent || '').trim().toLowerCase() === labelText.toLowerCase()) {
+        return fields[i];
+      }
+    }
+    return null;
+  }
+
+  // Move the SOW connection out of the inline summary row into the detail
+  // panel, above MDF / IDF. Inline it looked cramped — and broke down with
+  // multiple connected SOWs. Labelled simply "SOW".
+  function relocateSowField(card) {
+    var sowCell = card.querySelector('.scw-ws-v2-cell--sow');
+    if (!sowCell || sowCell.closest('.scw-br-v2-sow-field')) return;
+    var mdf  = findDetailFieldByLabel(card, 'MDF / IDF');
+    var zone = mdf ? mdf.parentNode
+                   : card.querySelector('.scw-ws-v2-detail-zone--connections');
+    if (!zone) return;
+    var field = document.createElement('div');
+    field.className =
+      'scw-ws-v2-detail-field scw-ws-v2-detail-field--conn scw-br-v2-sow-field';
+    var lab = document.createElement('div');
+    lab.className = 'scw-ws-v2-detail-label';
+    lab.textContent = 'SOW';
+    field.appendChild(lab);
+    field.appendChild(sowCell);
+    if (mdf) zone.insertBefore(field, mdf);
+    else zone.appendChild(field);
+  }
+
+  // Survey Notes belong on the bid, not in this SOW editor — drop them.
+  function removeSurveyNotes(card) {
+    var sn = findDetailFieldByLabel(card, 'Survey Notes');
+    if (sn && sn.parentNode) sn.parentNode.removeChild(sn);
+  }
+
+  // v1's change-request module re-renders the grid via SCW.bidReview.rerender
+  // after any pending-CR mutation (add / edit / remove / submit / clear).
+  // Wrap it so v2 re-renders too — v2 reads the same _pending state, so a
+  // fresh notify() repaints cell cards + header Submit counts. Idempotent.
+  function hookV1Rerender() {
+    var v1 = window.SCW.bidReview;
+    if (!v1 || v1._scwV2RerenderHooked) return;
+    var orig = v1.rerender;
+    v1.rerender = function () {
+      if (typeof orig === 'function') {
+        try { orig.apply(v1, arguments); } catch (e) { /* ignore */ }
+      }
+      if (ns.data && typeof ns.data.notify === 'function') {
+        try { ns.data.notify(); } catch (e) { /* ignore */ }
+      }
+    };
+    v1._scwV2RerenderHooked = true;
   }
 
   function init() {
@@ -190,9 +765,14 @@
     if (ns.edit && typeof ns.edit.wire === 'function') ns.edit.wire();
     wireGroupCollapse();
     wireRowExpand();
+    wirePanelClose();
+    wireHeaderActions();
+    if (ns.columnCollapse && typeof ns.columnCollapse.wire === 'function') ns.columnCollapse.wire();
+    hookV1Rerender();
     if (ns.data && ns.render) {
       ns.data.subscribe(function (snapshot) {
         ns.render.renderSnapshot(snapshot);
+        mountBulk();
       });
     }
 

@@ -32,38 +32,43 @@
 
   var TYPES  = ['photos', 'disconnected', 'bracket'];
   var LABELS = {
-    photos:       'photos',
+    photos:       'missing photos',
     disconnected: 'disconnected',
-    bracket:      'wrong bracket'
+    bracket:      'wrong accessory'
   };
 
   // Per-issue-type inline SVG. Picked to match v1\'s vocabulary —
   // photos → camera, disconnected → broken link, bracket → cube. All
   // currentColor so the amber chip palette tints them automatically.
+  // Bold, high-contrast glyphs (solid fills where it helps) so they read
+  // at a glance in the small chips. Each issue type is also colour-coded in
+  // CSS (see [data-issue-type]) for fast scanning.
   var ICONS = {
+    // Camera — solid body so the silhouette pops.
     photos:
-      '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" ' +
-      'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
-      'stroke-linejoin="round">' +
-      '<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>' +
-      '<circle cx="12" cy="13" r="4"/></svg>',
+      '<svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor">' +
+      '<path d="M9 3 7.2 5H4a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-3.2L15 3H9zm3 5a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9zm0 2a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z"/></svg>',
+    // Broken chain (Lucide "unlink") — two link halves pulled apart with
+    // snap ticks. Universal "connection severed" glyph; reads clearly small.
     disconnected:
-      '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" ' +
-      'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+      '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" ' +
+      'stroke="currentColor" stroke-width="2.2" stroke-linecap="round" ' +
       'stroke-linejoin="round">' +
-      // Broken-link icon: two link halves with a slash through the gap.
-      '<path d="M9 17H7a5 5 0 0 1 0-10h2"/>' +
-      '<path d="M15 7h2a5 5 0 0 1 4.54 7.13"/>' +
-      '<line x1="8" y1="12" x2="13" y2="12"/>' +
-      '<line x1="2" y1="22" x2="22" y2="2"/></svg>',
+      '<path d="m18.84 12.25 1.72-1.71a5 5 0 0 0-.12-7.07 5 5 0 0 0-6.95 0l-1.72 1.71"/>' +
+      '<path d="m5.17 11.75-1.71 1.71a5 5 0 0 0 .12 7.07 5 5 0 0 0 6.95 0l1.71-1.71"/>' +
+      '<line x1="8" y1="2" x2="8" y2="5"/>' +
+      '<line x1="2" y1="8" x2="5" y2="8"/>' +
+      '<line x1="16" y1="19" x2="16" y2="22"/>' +
+      '<line x1="19" y1="16" x2="22" y2="16"/></svg>',
+    // Exclamation in a diamond — strong "alert / problem" for a mismatched
+    // accessory. Bold rotated-square outline + bang reads at chip size.
     bracket:
-      '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" ' +
-      'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+      '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" ' +
+      'stroke="currentColor" stroke-width="2.2" stroke-linecap="round" ' +
       'stroke-linejoin="round">' +
-      // Cube / bracket box.
-      '<path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/>' +
-      '<polyline points="3.27 6.96 12 12.01 20.73 6.96"/>' +
-      '<line x1="12" y1="22.08" x2="12" y2="12"/></svg>'
+      '<path d="M12 2 22 12 12 22 2 12Z"/>' +
+      '<line x1="12" y1="8" x2="12" y2="13"/>' +
+      '<line x1="12" y1="16.5" x2="12.01" y2="16.5"/></svg>'
   };
 
   // Per-view cache of the last analyze() result. analyze() is cheap
@@ -92,15 +97,22 @@
     return false;
   }
 
+  // Active source view for the current analyze() pass — lets the helpers
+  // below resolve field keys / bucket ids through the per-view config.
+  var curView = '';
+  function F() { return (ns.cfg && ns.cfg.fields(curView)) || {}; }
+
   function isCamReader(rec) {
-    var CAM = (ns.card && ns.card.CAM_READER_BUCKET) || '6481e5ba38f283002898113c';
+    var CAM = (ns.cfg && ns.cfg.bucket('camReader', curView)) ||
+              (ns.card && ns.card.CAM_READER_BUCKET) || '6481e5ba38f283002898113c';
     var bid = (ns.card && ns.card.bucketIdOf && ns.card.bucketIdOf(rec)) || '';
     return bid === CAM;
   }
 
   function isDisconnected(rec) {
     if (!isCamReader(rec)) return false;
-    var raw = rec && rec.field_2197_raw;
+    var key = F().connectedDevice || 'field_2197';
+    var raw = rec && rec[key + '_raw'];
     return !Array.isArray(raw) || raw.length === 0;
   }
 
@@ -114,27 +126,89 @@
     return true;
   }
 
-  /** Build a Set of parent ids whose attached accessories have
-   *  field_2244 ≠ Yes (i.e., the accessory match check is No or
-   *  hasn\'t been confirmed). One pass through the full record list. */
-  function buildBracketParentSet(records) {
-    var flagged = Object.create(null);
-    for (var i = 0; i < records.length; i++) {
-      var r = records[i];
-      if (!r) continue;
-      if (!isNoOrUnset(r, 'field_2244')) continue;
-      var raw = r.field_2464_raw;
-      if (!Array.isArray(raw)) continue;
-      for (var j = 0; j < raw.length; j++) {
-        if (raw[j] && raw[j].id) flagged[raw[j].id] = true;
-      }
-    }
-    return flagged;
+  function isExplicitNoVal(raw, str) {
+    if (raw === false || raw === 'No' || raw === 'no' || raw === 0) return true;
+    if (raw === true || raw === 'Yes' || raw === 'yes' || raw === 1) return false;
+    var s = (str == null ? '' : str).toString().trim().toLowerCase();
+    return s === 'no' || s === 'false' || s === '0';
   }
 
+  /** Wrong-accessory detection. The authoritative per-accessory match
+   *  warning is what connected-records.js computes from the PARENT row's
+   *  field_2244 array (one Yes/No span per attached accessory) — it renders
+   *  the flagged item as .scw-cr-item-warn (accessory id on the inner
+   *  .scw-cr-remove). The accessory's OWN field_2244 record value under-flags
+   *  (Knack computes the match on the parent side), so we read the parent
+   *  signal instead, matching the bid comparison exactly. Sources, unioned:
+   *    1. .scw-cr-item-warn anywhere in the document (connected-records runs
+   *       on view_3610/3313/3921/3586 — scan document-wide).
+   *    2. Raw per-accessory field_2244 spans (No/False) on the source view,
+   *       for views connected-records doesn't process (e.g. view_3962).
+   *  Returns { byAccessory: { accId: true }, byParent: { parentId: true } } */
+  function ownerRecordId(el) {
+    var node = el;
+    while (node && node.getAttribute) {
+      var id = node.getAttribute('data-record-id') ||
+               node.getAttribute('data-scw-ws-v2-record') ||
+               node.getAttribute('id') || '';
+      if (/^[a-f0-9]{24}$/i.test(id)) return id;
+      node = node.parentNode;
+    }
+    return '';
+  }
+
+  function buildBracketMaps(viewKey) {
+    var byAccessory = Object.create(null);
+    var byParent = Object.create(null);
+
+    // (1) connected-records' computed warnings (the correct, parent-derived
+    //     signal). Document-wide so it works regardless of which SOW-item
+    //     view connected-records rendered into.
+    var warns = document.querySelectorAll('.scw-cr-item-warn');
+    for (var w = 0; w < warns.length; w++) {
+      var rem = warns[w].querySelector('.scw-cr-remove[data-record-id]');
+      var aId = rem ? (rem.getAttribute('data-record-id') || '').trim() : '';
+      if (!aId) continue;
+      byAccessory[aId] = true;
+      var pId = ownerRecordId(warns[w]);
+      if (pId) byParent[pId] = true;
+    }
+
+    // (2) Raw per-accessory field_2244 spans on the source view (covers
+    //     views connected-records doesn't process, e.g. view_3962).
+    var view = document.getElementById(viewKey) ||
+               document.getElementById('view_3962');
+    if (view) {
+      var BF = ((ns.cfg && ns.cfg.fields(viewKey).accessoryMatch)) || 'field_2244';
+      var cells = view.querySelectorAll(
+        'td.' + BF + ', td[data-field-key="' + BF + '"]');
+      for (var c = 0; c < cells.length; c++) {
+        var spans = cells[c].querySelectorAll('span[id][data-kn="connection-value"]');
+        if (!spans.length) continue;
+        var parentId = ownerRecordId(cells[c]);
+        for (var s = 0; s < spans.length; s++) {
+          var accId = (spans[s].id || '').trim();
+          var v = (spans[s].textContent || '').trim().toLowerCase();
+          if (accId && (v === 'no' || v === 'false')) {
+            byAccessory[accId] = true;
+            if (parentId) byParent[parentId] = true;
+          }
+        }
+      }
+    }
+    return { byAccessory: byAccessory, byParent: byParent };
+  }
+
+  // Latest accessory→mismatch map, so card.js can mark the specific
+  // offending accessory chip without re-scanning the DOM.
+  var lastAccMismatch = Object.create(null);
+
   function analyze(records, viewKey) {
+    curView = viewKey || '';
     var byRecord = Object.create(null);
-    var bracketParents = buildBracketParentSet(records);
+    var bracket = buildBracketMaps(viewKey);
+    lastAccMismatch = bracket.byAccessory;
+    var bracketParents = bracket.byParent;
 
     for (var i = 0; i < records.length; i++) {
       var rec = records[i];
@@ -176,13 +250,30 @@
     return counts;
   }
 
+  /** True when this accessory record id is flagged (field_2244 = No) by the
+   *  most recent analyze() DOM scan. Used by card.js for the per-chip mark. */
+  function isAccessoryMismatch(accessoryId) {
+    return !!(accessoryId && lastAccMismatch[accessoryId]);
+  }
+
+  /** Merge externally-computed accessory-mismatch ids into the current map.
+   *  Used by bid-review-v2 (scene_1155): it detects wrong brackets from the
+   *  view_3921 SOW-items records and feeds the offending ids here so the
+   *  embedded worksheet card's per-accessory chit lights up there too. */
+  function mergeAccessoryMismatch(map) {
+    if (!map) return;
+    for (var id in map) { if (map[id]) lastAccMismatch[id] = true; }
+  }
+
   ns.warnings = {
     TYPES:               TYPES,
     LABELS:              LABELS,
     ICONS:               ICONS,
     analyze:             analyze,
     getIssuesFor:        getIssuesFor,
-    getCountsForRecords: getCountsForRecords
+    getCountsForRecords: getCountsForRecords,
+    isAccessoryMismatch: isAccessoryMismatch,
+    mergeAccessoryMismatch: mergeAccessoryMismatch
   };
 })();
 /*** END WORKSHEET V2 — WARNINGS **********************************************/

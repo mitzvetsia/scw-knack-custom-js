@@ -139,6 +139,7 @@
       '  padding: 6px 18px;',
       '  font-size: 13px; color: #1f2937;',
       '  cursor: pointer;',
+      '  user-select: none; -webkit-user-select: none;',
       '  transition: background-color 80ms ease;',
       '}',
       '.scw-ws-v2-picker-item:hover { background: #f1f5f9; }',
@@ -201,6 +202,16 @@
       ? opts.itemLabel
       : function (r) { return (r.identifier || r.id) || ''; };
 
+    // Sort each group's items by their display label (natural/numeric
+    // ascending) so e.g. Connected Devices read E-001, E-002, … E-010
+    // rather than in raw record order.
+    groups.forEach(function (g) {
+      g.items.sort(function (a, b) {
+        return String(itemLabel(a)).localeCompare(String(itemLabel(b)),
+          undefined, { numeric: true, sensitivity: 'base' });
+      });
+    });
+
     // Build modal scaffold
     var overlay = document.createElement('div');
     overlay.className = 'scw-ws-v2-picker-overlay';
@@ -258,6 +269,48 @@
               escapeHtml(rec.id) + '"' + (isChecked ? ' checked' : '') + '>' +
             '<span class="scw-ws-v2-picker-item-name">' + escapeHtml(labelText) + '</span>';
           bd.appendChild(row);
+        });
+      });
+    }
+
+    // Multi/checkbox-mode behaviors. Checkboxes that share a `name` do NOT
+    // get radio-style exclusivity (only radios do), so the "Clear all
+    // selections" row needs its mutual-exclusivity wired in JS.
+    if (multi && candidates.length) {
+      var optBoxes = Array.prototype.slice.call(bd.querySelectorAll(
+        '.scw-ws-v2-picker-item:not(.scw-ws-v2-picker-item--none) input[type="checkbox"]'));
+      var noneBox = bd.querySelector(
+        '.scw-ws-v2-picker-item--none input[type="checkbox"]');
+      var lastIdx = null;
+
+      // "Clear all selections" — checking it unchecks every option.
+      if (noneBox) {
+        noneBox.addEventListener('change', function () {
+          if (noneBox.checked) {
+            optBoxes.forEach(function (b) { b.checked = false; });
+            lastIdx = null;
+          }
+        });
+      }
+
+      // Suppress the browser's native shift-click text selection.
+      bd.addEventListener('mousedown', function (e) {
+        if (e.shiftKey) e.preventDefault();
+      });
+
+      optBoxes.forEach(function (box, idx) {
+        box.addEventListener('click', function (e) {
+          // Shift-click range select — click one option, then shift-click
+          // another to set every option between them to the second's state
+          // (Gmail / file-manager idiom).
+          if (e.shiftKey && lastIdx !== null && lastIdx !== idx) {
+            var lo = Math.min(lastIdx, idx), hi = Math.max(lastIdx, idx);
+            var state = box.checked; // the just-clicked box's new state
+            for (var k = lo; k <= hi; k++) optBoxes[k].checked = state;
+          }
+          // Selecting any option clears the "Clear all" sentinel.
+          if (box.checked && noneBox) noneBox.checked = false;
+          lastIdx = idx;
         });
       });
     }
@@ -352,8 +405,17 @@
             //      a real inline edit.
             try {
               if (typeof SCW.syncKnackModel === 'function') {
+                // Pass the value as {id} objects, not bare id strings. When
+                // the PUT response has no _raw companion, syncKnackModel
+                // stores this value as field_X_raw — and mirror-connection-
+                // sync's cascades read entry.id off each _raw element. An
+                // array of bare strings made them see "no children" and clear
+                // the reciprocal (Connected To) instead of re-pointing it.
+                var rawObjs = (body[opts.fieldKey] || []).map(function (v) {
+                  return (v && typeof v === 'object') ? v : { id: v };
+                });
                 SCW.syncKnackModel(putKey, opts.recordId, resp,
-                  opts.fieldKey, body[opts.fieldKey]);
+                  opts.fieldKey, rawObjs);
               }
               var view = Knack.views[putKey];
               if (view && view.model && view.model.data) {
@@ -361,9 +423,24 @@
                   ? view.model.data.get(opts.recordId)
                   : null;
                 if (rec) {
+                  // Pass the edited field key as a 4th arg so mirror-
+                  // connection-sync can tell an MDF/IDF move (field_1946)
+                  // apart from a connection edit (field_2197/field_1957).
+                  // Native Knack inline edits don't supply this, so the
+                  // mirror falls back to its cache-diff path there.
+                  //
+                  // 5th arg: the AUTHORITATIVE ids the user just chose
+                  // (the exact PUT body). field_1957 and field_2197 are
+                  // SEPARATE Knack fields kept aligned only by the cascade
+                  // — so the cascade MUST know precisely what was selected.
+                  // Relying on the Backbone model is unsafe: a refetch can
+                  // race ahead of the server commit and repopulate the old
+                  // value, making the cascade clear connections that are
+                  // actually still selected. Passing the chosen ids removes
+                  // that ambiguity entirely.
                   $(document).trigger(
                     'knack-cell-update.' + putKey,
-                    [view, rec.attributes || rec]
+                    [view, rec.attributes || rec, opts.fieldKey, (body[opts.fieldKey] || [])]
                   );
                 }
               }

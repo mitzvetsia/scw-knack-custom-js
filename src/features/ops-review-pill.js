@@ -304,6 +304,21 @@
          to <body> and positions it via fixed coords on hover. CSS pseudo
          tooltips were getting clipped by Knack's .kn-table-wrapper /
          accordion overflow chain; living on body bypasses all of that. */
+      /* Survey-costs gate. A BLANK survey-costs field blocks the Preview
+         pill and flags the field red; an explicit $0 is a valid answer
+         and clears the gate. */
+      '.scw-ops-pill--gated {' +
+      '  background: #e5e7eb !important; color: #9ca3af !important;' +
+      '  border-color: #d1d5db !important; cursor: not-allowed !important;' +
+      '  box-shadow: none !important; pointer-events: auto;' +
+      '}' +
+      '.scw-ops-pill--gated .scw-ops-arrow { opacity: 0.5; }' +
+      '#' + VIEW_ID + ' td.scw-ops-survey-missing,' +
+      '#' + VIEW_ID + ' td.scw-ops-survey-missing.cell-edit {' +
+      '  background: #fef2f2 !important;' +
+      '  box-shadow: inset 0 0 0 2px #dc2626 !important;' +
+      '}' +
+
       '.scw-ops-floating-tip {' +
       '  position: fixed; display: none;' +
       '  background: #1f2937; color: #fff;' +
@@ -380,6 +395,70 @@
     return isNaN(n) ? 0 : n;
   }
   function readNote(tr) { return readText(tr, NOTE_FIELD); }
+
+  // ── Survey-costs gate ──────────────────────────────────────────
+  // Survey costs (field_2750) must be answered before a proposal can be
+  // previewed. BLANK (never entered) blocks the Preview pill; an explicit
+  // $0 is a valid answer ("no survey costs") and clears the gate. Zero and
+  // blank are distinguishable because a real 0 reads as "0" while an empty
+  // field reads as "".
+  function surveyCostsBlank(tr) {
+    if (!tr) return false;
+    var raw = String(readText(tr, SURVEY_COSTS_FIELD) || '').trim();
+    return raw === '';
+  }
+
+  var SURVEY_GATE_TIP =
+    'Enter survey costs first (enter $0 if there were none) to preview the proposal.';
+
+  // Block + restyle a Preview pill when survey costs are missing. Shared by
+  // renderCell (view_3325) and buildPillForRow (bid-review v1 + v2). The
+  // gate is class-based so it can be toggled live (see applySurveyGate)
+  // without a re-render; a delegated click handler (below) blocks navigation
+  // on any .scw-ops-pill--gated.
+  function applySurveyGate(pill, blank) {
+    if (!pill) return pill;
+    if (blank) {
+      pill.classList.add('scw-ops-pill--gated');
+      // Stash + strip href so the link can't be followed (keyboard, etc.).
+      var href = pill.getAttribute('href');
+      if (href != null) {
+        pill.setAttribute('data-scw-gated-href', href);
+        pill.removeAttribute('href');
+      }
+      pill.setAttribute('aria-disabled', 'true');
+      pill.setAttribute('data-scw-tip', SURVEY_GATE_TIP);
+      pill.setAttribute('title', SURVEY_GATE_TIP);
+    } else {
+      pill.classList.remove('scw-ops-pill--gated');
+      var stashed = pill.getAttribute('data-scw-gated-href');
+      if (stashed != null) {
+        pill.setAttribute('href', stashed);
+        pill.removeAttribute('data-scw-gated-href');
+      }
+      pill.removeAttribute('aria-disabled');
+      // Only clear the tip/title if it's the gate's (don't clobber notes).
+      if (pill.getAttribute('data-scw-tip') === SURVEY_GATE_TIP) {
+        pill.removeAttribute('data-scw-tip');
+      }
+      if (pill.getAttribute('title') === SURVEY_GATE_TIP) {
+        pill.removeAttribute('title');
+      }
+    }
+    return pill;
+  }
+
+  function gatePillForSurvey(pill, tr) {
+    return applySurveyGate(pill, surveyCostsBlank(tr));
+  }
+
+  // Flag the survey-costs cell red in view_3325 when blank.
+  function markSurveyCostCell(tr) {
+    if (!tr) return;
+    var td = tr.querySelector('td.' + SURVEY_COSTS_FIELD +
+      ', td[data-field-key="' + SURVEY_COSTS_FIELD + '"]');
+    if (td) td.classList.toggle('scw-ops-survey-missing', surveyCostsBlank(tr));
+  }
 
   // Returns the margin as a percent (0-100). Knack percent fields can
   // be stored as a fraction (0.095) or as a percent (9.5) depending on
@@ -642,6 +721,11 @@
     arrow.textContent = '›';
     pill.appendChild(arrow);
 
+    // Gate the Preview pill + flag the survey-costs cell when survey
+    // costs are blank ($0 is a valid answer and clears the gate).
+    gatePillForSurvey(pill, tr);
+    markSurveyCostCell(tr);
+
     hostTd.appendChild(pill);
 
     // Margin warning — fires whenever field_2749 < 10%. Sits between
@@ -733,6 +817,34 @@
       e.stopPropagation();
     }
   }, true);
+
+  // Block navigation on any gated Preview pill (survey costs missing),
+  // anywhere it's rendered — view_3325 cell OR the bid-review status bar.
+  document.addEventListener('click', function (e) {
+    var gated = e.target.closest && e.target.closest('.scw-ops-pill--gated');
+    if (gated) { e.preventDefault(); e.stopPropagation(); }
+  }, true);
+
+  // Live gate for the bid-review status-bar survey-costs input (v1 + v2).
+  // Toggle the Preview pill + the red field flag as the user types, so the
+  // gate clears the instant a value (incl. $0) is entered — no waiting for
+  // a grid re-render. The pill lives in the same SOW header (thead) as the
+  // input; there's exactly one .scw-ops-pill per SOW header.
+  function liveSurveyGate(e) {
+    var input = e.target;
+    if (!input || !input.classList ||
+        !input.classList.contains('scw-bid-review__sow-metric-input') ||
+        input.getAttribute('data-action') !== 'sow_survey_costs') return;
+    var blank = String(input.value == null ? '' : input.value).trim() === '';
+    var head = input.closest('thead') ||
+               input.closest('.scw-bid-review__sow-section') || document;
+    var pill = head.querySelector('.scw-ops-pill');
+    if (pill) applySurveyGate(pill, blank);
+    var wrap = input.closest('.scw-bid-review__sow-metric');
+    if (wrap) wrap.classList.toggle('scw-bid-review__sow-metric--missing', blank);
+  }
+  document.addEventListener('input', liveSurveyGate, true);
+  document.addEventListener('change', liveSurveyGate, true);
 
   // ── Floating tooltip ────────────────────────────────────
   // Single tooltip element on <body>, positioned with fixed coords on
@@ -905,6 +1017,9 @@
     arrow.className = 'scw-ops-arrow';
     arrow.textContent = '›';
     pill.appendChild(arrow);
+
+    // Block when survey costs are blank (bid-review v1 + v2 reuse this).
+    gatePillForSurvey(pill, tr);
 
     return pill;
   }
@@ -1141,6 +1256,8 @@
   SCW.opsReview.autoRevertValidation       = autoRevertValidation;
   SCW.opsReview.buildBlockForRow           = buildBlockForRow;
   SCW.opsReview.buildPillForRow            = buildPillForRow;
+  SCW.opsReview.surveyCostsBlank           = surveyCostsBlank;
+  SCW.opsReview.applySurveyGate            = applySurveyGate;
   SCW.opsReview.buildMarginWarningForRow   = buildMarginWarningForRow;
   SCW.opsReview.buildProposalBlockForRow   = buildProposalBlockForRow;
 })();

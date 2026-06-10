@@ -139,12 +139,23 @@
     if (toolbar) return toolbar;
     toolbar = document.createElement('div');
     toolbar.className = 'scw-ws-v2-bulk-toolbar';
-    // Destructive action on the LEFT per CLAUDE.md\'s button-order
-    // rule (destructive first, primary action last).
+    // Order: Edit · Add accessories · Remove accessories · Delete · Clear.
+    // Standardized sentence-case labels; all share the v2-preview purple
+    // except Delete (pale red) and Clear (ghost purple).
     toolbar.innerHTML =
       '<span class="scw-ws-v2-bulk-count">0 selected</span>' +
       '<button type="button" class="scw-ws-v2-bulk-edit" disabled>Edit selected</button>' +
-      '<button type="button" class="scw-ws-v2-bulk-clear">Clear</button>' +
+      '<button type="button" class="scw-ws-v2-bulk-add-acc" disabled>Add accessories</button>' +
+      '<button type="button" class="scw-ws-v2-bulk-remove-acc" disabled>' +
+        '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" ' +
+          'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+          'stroke-linejoin="round">' +
+          '<polyline points="3 6 5 6 21 6"></polyline>' +
+          '<path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>' +
+          '<path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"></path>' +
+        '</svg>' +
+        '<span class="scw-ws-v2-bulk-remove-acc-label">Remove accessories</span>' +
+      '</button>' +
       '<button type="button" class="scw-ws-v2-bulk-delete" disabled>' +
         '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" ' +
           'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
@@ -155,13 +166,29 @@
           '<path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"></path>' +
         '</svg>' +
         '<span class="scw-ws-v2-bulk-delete-label">Delete</span>' +
-      '</button>';
+      '</button>' +
+      '<button type="button" class="scw-ws-v2-bulk-clear">Clear</button>';
     document.body.appendChild(toolbar);
 
+    toolbar.querySelector('.scw-ws-v2-bulk-add-acc').addEventListener('click', function () {
+      var ids = selList();
+      if (!ids.length) return;
+      // Reuse the toolbar module's add-accessory modal (it reads the live
+      // selection itself). Lives there so we don't duplicate the
+      // compatibility-filter + webhook logic.
+      if (ns.toolbar && typeof ns.toolbar.openAddAccessories === 'function') {
+        ns.toolbar.openAddAccessories(sourceViewKey);
+      }
+    });
     toolbar.querySelector('.scw-ws-v2-bulk-clear').addEventListener('click', function () {
       clearAll();
       syncDomFromState();
       refreshToolbar();
+    });
+    toolbar.querySelector('.scw-ws-v2-bulk-remove-acc').addEventListener('click', function () {
+      var ids = selList();
+      if (!ids.length) return;
+      openRemoveAccessoriesConfirm(ids, sourceViewKey);
     });
     toolbar.querySelector('.scw-ws-v2-bulk-edit').addEventListener('click', function () {
       var ids = selList();
@@ -182,10 +209,14 @@
     toolbar.classList.toggle('scw-ws-v2-bulk-toolbar--active', n > 0);
     toolbar.querySelector('.scw-ws-v2-bulk-count').textContent = n + ' selected';
     toolbar.querySelector('.scw-ws-v2-bulk-edit').disabled   = (n === 0);
+    var addAccBtn = toolbar.querySelector('.scw-ws-v2-bulk-add-acc');
+    if (addAccBtn) addAccBtn.disabled = (n === 0);
     var delBtn = toolbar.querySelector('.scw-ws-v2-bulk-delete');
     delBtn.disabled = (n === 0);
     var delLabel = delBtn.querySelector('.scw-ws-v2-bulk-delete-label');
-    if (delLabel) delLabel.textContent = n > 0 ? ('Delete ' + n) : 'Delete';
+    if (delLabel) delLabel.textContent = n > 0 ? ('Delete (' + n + ')') : 'Delete';
+    var raBtn = toolbar.querySelector('.scw-ws-v2-bulk-remove-acc');
+    if (raBtn) raBtn.disabled = (n === 0);
   }
 
   // ── DOM sync (when re-renders happen) ────────────────────────
@@ -194,7 +225,11 @@
     for (var i = 0; i < boxes.length; i++) {
       var id = boxes[i].getAttribute('data-scw-ws-v2-select');
       boxes[i].checked = isSelected(id);
-      boxes[i].closest('.scw-ws-v2-card').classList.toggle('scw-ws-v2-card--selected', isSelected(id));
+      // Checkboxes live inside a card on the worksheet page, but in a
+      // plain grid cell on the bid-review comparison grid — guard the
+      // card lookup so the latter doesn't throw.
+      var selCard = boxes[i].closest('.scw-ws-v2-card');
+      if (selCard) selCard.classList.toggle('scw-ws-v2-card--selected', isSelected(id));
     }
     // L1 select-all reflects child state.
     var heads = document.querySelectorAll('[data-scw-ws-v2-l1-select]');
@@ -477,6 +512,160 @@
     });
   }
 
+  /** Display label for an accessory record — prefer the product
+   *  connection (field_1949) identifier, then the drop label, then a
+   *  generic fallback. */
+  function accessoryName(rec) {
+    var raw = rec && rec.field_1949_raw;
+    if (Array.isArray(raw) && raw.length && raw[0] && raw[0].identifier) {
+      return String(raw[0].identifier).replace(/<[^>]*>/g, '').trim() || 'Accessory';
+    }
+    var v = rec && rec.field_1949;
+    if (v != null && String(v).replace(/<[^>]*>/g, '').trim() !== '') {
+      return String(v).replace(/<[^>]*>/g, '').trim();
+    }
+    var drop = rec && rec.field_1950;
+    if (drop != null && String(drop).replace(/<[^>]*>/g, '').trim() !== '') {
+      return String(drop).replace(/<[^>]*>/g, '').trim();
+    }
+    return 'Accessory';
+  }
+
+  /** Like collectAccessoryIds, but grouped by accessory product name →
+   *  [{ name, ids: [...] }, ...] sorted by name. Lets the remove modal
+   *  offer "delete THIS type across all selected parents". */
+  function collectAccessoriesGrouped(parentIds, sourceViewKey) {
+    var parentSet = Object.create(null);
+    for (var p = 0; p < parentIds.length; p++) parentSet[parentIds[p]] = true;
+
+    var v = window.Knack && Knack.views && Knack.views[sourceViewKey];
+    if (!v || !v.model || !v.model.data) return [];
+    var models = v.model.data.models || [];
+    var groups = Object.create(null);
+    var order  = [];
+    var seen   = Object.create(null);
+    for (var i = 0; i < models.length; i++) {
+      var r = models[i] && models[i].attributes;
+      if (!r || !r.id || parentSet[r.id]) continue;
+      var raw = r.field_2464_raw;
+      if (!Array.isArray(raw)) continue;
+      var isChild = false;
+      for (var j = 0; j < raw.length; j++) {
+        if (raw[j] && parentSet[raw[j].id]) { isChild = true; break; }
+      }
+      if (!isChild || seen[r.id]) continue;
+      seen[r.id] = true;
+      var name = accessoryName(r);
+      var key  = name.toLowerCase();
+      if (!groups[key]) { groups[key] = { name: name, ids: [] }; order.push(key); }
+      groups[key].ids.push(r.id);
+    }
+    var out = order.map(function (k) { return groups[k]; });
+    out.sort(function (a, b) {
+      return String(a.name).localeCompare(String(b.name), undefined,
+        { numeric: true, sensitivity: 'base' });
+    });
+    return out;
+  }
+
+  /** Bulk REMOVE accessories — lets the user pick WHICH accessory types to
+   *  delete across the selected parent rows (grouped by product name, one
+   *  checkbox per type), leaving the parents intact. Symmetric with the
+   *  bulk "+ Add accessories" action. Reuses the capped/retry delete queue. */
+  function openRemoveAccessoriesConfirm(parentIds, sourceViewKey) {
+    var groups = collectAccessoriesGrouped(parentIds, sourceViewKey);
+    var accIds = [];
+    for (var gi = 0; gi < groups.length; gi++) accIds = accIds.concat(groups[gi].ids);
+
+    var overlay = document.createElement('div');
+    overlay.className = 'scw-ws-v2-bulk-overlay';
+
+    if (!accIds.length) {
+      // Nothing to remove — short informational modal, no destructive CTA.
+      overlay.innerHTML =
+        '<div class="scw-ws-v2-bulk-modal scw-ws-v2-bulk-modal--confirm">' +
+          '<div class="scw-ws-v2-bulk-modal-head">' +
+            '<div class="scw-ws-v2-bulk-modal-title">No accessories to remove</div>' +
+            '<div class="scw-ws-v2-bulk-modal-sub">The ' + parentIds.length +
+              ' selected line item' + (parentIds.length === 1 ? '' : 's') +
+              ' have no attached accessories (mounting hardware, etc.).</div>' +
+          '</div>' +
+          '<div class="scw-ws-v2-bulk-modal-actions">' +
+            '<button type="button" class="scw-ws-v2-bulk-modal-cancel">Close</button>' +
+          '</div>' +
+        '</div>';
+      document.body.appendChild(overlay);
+      var closeInfo = function () { overlay.parentNode && overlay.parentNode.removeChild(overlay); };
+      overlay.querySelector('.scw-ws-v2-bulk-modal-cancel').addEventListener('click', closeInfo);
+      overlay.addEventListener('click', function (e) { if (e.target === overlay) closeInfo(); });
+      return;
+    }
+
+    var rowsHtml = groups.map(function (g, idx) {
+      return '<label class="scw-ws-v2-bulk-acc-row">' +
+        '<input type="checkbox" class="scw-ws-v2-bulk-acc-cb" data-acc-idx="' + idx + '">' +
+        '<span class="scw-ws-v2-bulk-acc-name">' + escapeHtml(g.name) + '</span>' +
+        '<span class="scw-ws-v2-bulk-acc-count">× ' + g.ids.length + '</span>' +
+      '</label>';
+    }).join('');
+
+    overlay.innerHTML =
+      '<div class="scw-ws-v2-bulk-modal scw-ws-v2-bulk-modal--confirm">' +
+        '<div class="scw-ws-v2-bulk-modal-head">' +
+          '<div class="scw-ws-v2-bulk-modal-title">Remove accessories</div>' +
+          '<div class="scw-ws-v2-bulk-modal-sub">Select the accessory types to delete from the ' +
+            parentIds.length + ' selected line item' + (parentIds.length === 1 ? '' : 's') +
+            '. The line item' + (parentIds.length === 1 ? '' : 's') +
+            ' themselves are kept. This cannot be undone.</div>' +
+        '</div>' +
+        '<div class="scw-ws-v2-bulk-acc-list">' + rowsHtml + '</div>' +
+        '<div class="scw-ws-v2-bulk-modal-status"></div>' +
+        '<div class="scw-ws-v2-bulk-modal-actions">' +
+          '<button type="button" class="scw-ws-v2-bulk-modal-cancel">Cancel</button>' +
+          '<button type="button" class="scw-ws-v2-bulk-modal-confirm-delete" disabled>' +
+            'Remove 0 accessories</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(overlay);
+
+    var status    = overlay.querySelector('.scw-ws-v2-bulk-modal-status');
+    var cancelBtn = overlay.querySelector('.scw-ws-v2-bulk-modal-cancel');
+    var confirmBtn = overlay.querySelector('.scw-ws-v2-bulk-modal-confirm-delete');
+    var cbs = overlay.querySelectorAll('.scw-ws-v2-bulk-acc-cb');
+
+    function close() { overlay.parentNode && overlay.parentNode.removeChild(overlay); }
+    cancelBtn.addEventListener('click', close);
+    overlay.addEventListener('click', function (e) { if (e.target === overlay) close(); });
+
+    // Recompute the chosen accessory ids + button label as types toggle.
+    function chosenIds() {
+      var ids = [];
+      for (var i = 0; i < cbs.length; i++) {
+        if (cbs[i].checked) {
+          var g = groups[parseInt(cbs[i].getAttribute('data-acc-idx'), 10)];
+          if (g) ids = ids.concat(g.ids);
+        }
+      }
+      return ids;
+    }
+    function refresh() {
+      var n = chosenIds().length;
+      confirmBtn.disabled = (n === 0);
+      confirmBtn.textContent = 'Remove ' + n + ' accessor' + (n === 1 ? 'y' : 'ies');
+    }
+    for (var ci = 0; ci < cbs.length; ci++) {
+      cbs[ci].addEventListener('change', refresh);
+    }
+
+    confirmBtn.addEventListener('click', function () {
+      var ids = chosenIds();
+      if (!ids.length) return;
+      // Reuse runBulkDelete with NO parents — accessories only.
+      runBulkDelete([], ids, sourceViewKey, overlay, status,
+        confirmBtn, cancelBtn, close);
+    });
+  }
+
   /** Bulk delete — accessories first, then parents. Both go through
    *  the existing MAKE_DELETE_RECORD_WEBHOOK (no API keys, no auto-
    *  confirm modal serialization), capped at MAX_CONCURRENT in flight
@@ -599,6 +788,16 @@
       }
       return list;
     }
+    // First view in the list that yields records — lets connection
+    // candidates source from the build-SOW-scene view OR its bid-review
+    // equivalent, whichever is on the page.
+    function fromFirstView(vks) {
+      for (var i = 0; i < vks.length; i++) {
+        var a = fromViewAttrs(vks[i]);
+        if (a && a.length) return a;
+      }
+      return [];
+    }
 
     if (field.candSource === 'mdf') {
       var cfgViews = (ns.CONFIG && ns.CONFIG.views) || [];
@@ -611,7 +810,7 @@
           break;
         }
       }
-      var mdfAttrs = fromViewAttrs(mdfViewKey);
+      var mdfAttrs = fromFirstView([mdfViewKey, 'view_3822']);
       var mdfCands = mdfAttrs.map(function (a) {
         return { id: a.id, identifier: stripHtml(a[labelField] || a.identifier) };
       }).filter(function (c) { return c.identifier; });
@@ -619,7 +818,7 @@
     }
 
     if (field.candSource === 'sows') {
-      var sowAttrs = fromViewAttrs('view_3325');
+      var sowAttrs = fromFirstView(['view_3325', 'view_3918']);
       var sowCands = [];
       for (var s = 0; s < sowAttrs.length; s++) {
         var a = sowAttrs[s];

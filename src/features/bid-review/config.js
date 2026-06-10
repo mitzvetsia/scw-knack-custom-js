@@ -173,7 +173,7 @@
     toastDuration:     4000,    // ms before toast auto-dismiss
 
     // ── Debug ─────────────────────────────────────────────────
-    debug:   true,
+    debug:   false,
     eventNs: '.scwBidReview',
     cssId:   'scw-bid-review-css',
   };

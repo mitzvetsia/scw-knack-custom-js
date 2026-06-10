@@ -63,7 +63,8 @@
   //   { sections: [{label, products, subtotal}], totals }
   // where sections are ordered: cam/reader first, then "default"
   // (networking / headend / everything else).
-  function aggregate(records) {
+  function aggregate(records, moneyField) {
+    moneyField = moneyField || 'field_2150';
     var bucketCategoryOf = (ns.card && ns.card.bucketCategoryOf) ||
                            function () { return 'default'; };
 
@@ -132,7 +133,7 @@
         }
       }
 
-      var bid = readNum(r, 'field_2150');
+      var bid = readNum(r, moneyField);
       if (bid > 0) {
         p.subBidSum         += bid;
         grp.subtotal.subBidSum += bid;
@@ -227,7 +228,7 @@
     '</tr>';
   }
 
-  function tableHeaderRow() {
+  function tableHeaderRow(moneyLabel) {
     return '<thead><tr>' +
       '<th class="scw-ws-v2-summary-prod">Product</th>' +
       '<th class="scw-ws-v2-summary-num" title="Existing cabling">Exist Cab</th>' +
@@ -236,7 +237,7 @@
       '<th class="scw-ws-v2-summary-num">Int</th>' +
       '<th class="scw-ws-v2-summary-num">Plen</th>' +
       '<th class="scw-ws-v2-summary-num">Qty</th>' +
-      '<th class="scw-ws-v2-summary-money">Sub Bid</th>' +
+      '<th class="scw-ws-v2-summary-money">' + esc(moneyLabel || 'Sub Bid') + '</th>' +
     '</tr></thead>';
   }
 
@@ -300,13 +301,10 @@
   /** Issue-chip strip rendered into the summary head. Reads from
    *  ns.warnings cache (analyzed once per render in render.js). Empty
    *  string when there are no flagged records in the given set. */
-  function fmtIssueChips(recordIds) {
-    // Disabled — the per-card warning badge already surfaces this
-    // info on each row; the summary-head chips never landed cleanly
-    // on the right edge across all browsers. Re-enable once we have
-    // a reliable layout.
-    return '';
-    /* eslint-disable */
+  // asSpan=true renders non-interactive <span> chips (used inside the L1
+  // header button, where a nested <button> would be invalid + fight the
+  // accordion toggle). The grand summary keeps clickable button chips.
+  function fmtIssueChips(recordIds, asSpan) {
     if (!ns.warnings || typeof ns.warnings.getCountsForRecords !== 'function') return '';
     if (!recordIds.length) return '';
     var counts;
@@ -320,16 +318,30 @@
       var k = types[t];
       var n = counts[k] || 0;
       if (!n) continue;
-      parts.push(
-        '<button type="button" class="scw-ws-v2-warn-chip" ' +
+      var inner =
+        (icons[k] || WARN_SVG) +
+        '<span class="scw-ws-v2-warn-chip-n">' + n + '</span>' +
+        '<span class="scw-ws-v2-warn-chip-l">' + esc(labels[k] || k) + '</span>';
+      if (asSpan) {
+        // Rendered inside the L1 (MDF/IDF) header button, so it can't be a
+        // nested <button> — use a span with role=button. init.js's delegated
+        // handler catches data-scw-ws-v2-warn-chip and highlights the
+        // matching rows scoped to this L1 (and stops the accordion toggle).
+        parts.push('<span class="scw-ws-v2-warn-chip" ' +
+          'data-issue-type="' + k + '" ' +
           'data-scw-ws-v2-warn-chip="' + k + '" ' +
+          'role="button" tabindex="0" ' +
           'title="Click to highlight the ' + n + ' affected row' +
-          (n === 1 ? '' : 's') + '">' +
-          (icons[k] || WARN_SVG) +
-          '<span class="scw-ws-v2-warn-chip-n">' + n + '</span>' +
-          '<span class="scw-ws-v2-warn-chip-l">' + esc(labels[k] || k) + '</span>' +
-        '</button>'
-      );
+          (n === 1 ? '' : 's') + ' in this group">' + inner + '</span>');
+      } else {
+        parts.push(
+          '<button type="button" class="scw-ws-v2-warn-chip" ' +
+            'data-issue-type="' + k + '" ' +
+            'data-scw-ws-v2-warn-chip="' + k + '" ' +
+            'title="Click to highlight the ' + n + ' affected row' +
+            (n === 1 ? '' : 's') + '">' + inner + '</button>'
+        );
+      }
     }
     return parts.length
       ? '<span class="scw-ws-v2-warn-chips">' + parts.join('') + '</span>'
@@ -353,9 +365,10 @@
     return bits.join(' · ');
   }
 
-  function buildL1Summary(l1) {
+  function buildL1Summary(l1, opts) {
+    opts = opts || {};
     var recs = collectRecords(l1);
-    var agg = aggregate(recs);
+    var agg = aggregate(recs, opts.moneyField);
     if (!agg.sections.length) {
       var wrapEmpty = document.createElement('div');
       wrapEmpty.className = 'scw-ws-v2-summary scw-ws-v2-summary--empty';
@@ -366,11 +379,11 @@
 
     var tableHtml =
       '<table class="scw-ws-v2-summary-table">' +
-        tableHeaderRow() +
+        tableHeaderRow(opts.moneyLabel) +
         '<tbody>' + buildSectionsRows(agg) + '</tbody>' +
       '</table>';
 
-    var chips = fmtIssueChips(collectRecordIds(l1));
+    // Issue chips now live in the MDF/IDF header bar (render.js), not here.
     var wrap = document.createElement('div');
     wrap.className = 'scw-ws-v2-summary';
     wrap.innerHTML =
@@ -379,19 +392,19 @@
         '<span class="scw-ws-v2-summary-chev">' + CHEV_SVG + '</span>' +
         '<span class="scw-ws-v2-summary-title">Summary</span>' +
         '<span class="scw-ws-v2-summary-stats">' + esc(fmtSummaryStat(agg.totals)) + '</span>' +
-        chips +
       '</button>' +
       '<div class="scw-ws-v2-summary-body">' + tableHtml + '</div>';
     return wrap;
   }
 
   /** Grand summary — aggregates EVERY record across every L1. */
-  function buildGrandSummary(tree) {
+  function buildGrandSummary(tree, opts) {
+    opts = opts || {};
     var all = [];
     for (var i = 0; i < tree.length; i++) {
       all = all.concat(collectRecords(tree[i]));
     }
-    var agg = aggregate(all);
+    var agg = aggregate(all, opts.moneyField);
     if (!agg.sections.length) {
       var wrapEmpty = document.createElement('div');
       wrapEmpty.className = 'scw-ws-v2-grand-summary scw-ws-v2-grand-summary--empty';
@@ -402,14 +415,12 @@
 
     var tableHtml =
       '<table class="scw-ws-v2-summary-table">' +
-        tableHeaderRow() +
+        tableHeaderRow(opts.moneyLabel) +
         '<tbody>' + buildSectionsRows(agg, { alwaysSubtotal: true }) + '</tbody>' +
       '</table>';
 
-    var allIds = [];
-    for (var ri = 0; ri < all.length; ri++) if (all[ri] && all[ri].id) allIds.push(all[ri].id);
-    var grandChips = fmtIssueChips(allIds);
-
+    // Aggregate issue chips no longer live in the summary head — they're
+    // rendered up in the panel banner (render.js → grandIssueChips).
     var wrap = document.createElement('div');
     wrap.className = 'scw-ws-v2-grand-summary';
     wrap.innerHTML =
@@ -420,15 +431,31 @@
         '<span class="scw-ws-v2-summary-stats">' +
           all.length + ' line items · ' + esc(fmtSummaryStat(agg.totals)) +
         '</span>' +
-        grandChips +
       '</button>' +
       '<div class="scw-ws-v2-summary-body">' + tableHtml + '</div>';
     return wrap;
   }
 
+  // Issue-count chips for one L1's records — rendered into the MDF/IDF
+  // header bar by render.js (instead of the summary head).
+  function issueChipsForL1(l1) {
+    return fmtIssueChips(collectRecordIds(l1), true);
+  }
+
+  // Whole-grid aggregate issue chips (clickable buttons) for the banner.
+  function grandIssueChips(tree) {
+    var all = [];
+    for (var i = 0; i < tree.length; i++) all = all.concat(collectRecords(tree[i]));
+    var allIds = [];
+    for (var ri = 0; ri < all.length; ri++) if (all[ri] && all[ri].id) allIds.push(all[ri].id);
+    return fmtIssueChips(allIds);
+  }
+
   ns.summary = {
     buildL1Summary:    buildL1Summary,
-    buildGrandSummary: buildGrandSummary
+    buildGrandSummary: buildGrandSummary,
+    issueChipsForL1:   issueChipsForL1,
+    grandIssueChips:   grandIssueChips
   };
 })();
 /*** END WORKSHEET V2 — SUMMARY ***********************************************/
