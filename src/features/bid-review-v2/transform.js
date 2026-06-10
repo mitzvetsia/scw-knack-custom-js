@@ -496,6 +496,7 @@
         displayLabel: raw(s, SFK.displayLabel),
         surveyNotes: raw(s, SFK.notes),
         mdfIdf:      connectionLabel(s, SFK.mdfIdf),
+        mdfIdfId:    connectionId(s, SFK.mdfIdf),
         proposalBucket: connectionLabel(s, SFK.proposalBucket)
       };
     }
@@ -730,6 +731,22 @@
         var sidx = sid ? (sowItemIndex[sid] || null) : null;
         rows[r].sowItemData   = sidx;
         rows[r].sowFullRecord = sid ? (sowFullByItem[sid] || null) : null;
+        // Group by the SOW LINE ITEM's own MDF/IDF (field_1946) — the value
+        // the worksheet edits and the authoritative location — rather than the
+        // bid record's copied field_2375 that buildRow read. Clearing/moving
+        // MDF in the worksheet now regroups the row here (a no-MDF item drops
+        // into the synthetic "Unassigned" L1 instead of being stranded under
+        // the bid's stale MDF). Only when the SOW item is loaded; otherwise
+        // keep the bid-side value.
+        if (sidx) {
+          rows[r].mdfIdf   = sidx.mdfIdf || '';
+          rows[r].mdfIdfId = sidx.mdfIdfId || '';
+          // Synthetic L1 routing (Project Wide Services/Assumptions vs
+          // Unassigned) keys off the proposal bucket — also take it from the
+          // SOW line item so a no-MDF item lands in the bucket the worksheet
+          // shows, not the bid record's copy.
+          rows[r].proposalBucket = sidx.proposalBucket || '';
+        }
         if (sidx && sidx.sowIds && !sidx.sowIds[sow.id]) rows[r].offSow = true;
       }
       // Drop informational line items the bidder isn't pricing
