@@ -1186,10 +1186,17 @@
         // mirror-internal accessory cascade for added).
         try {
           if (mirrorApi && typeof mirrorApi.applyDeterministicRegroup === 'function') {
+            // Pass the user's chosen ids (selectedIds) as the AUTHORITATIVE
+            // 3rd arg. Without it the mirror re-derives "what is selected"
+            // from R[field_1957_raw] / the Backbone model — which, on scenes
+            // with extra knack-cell-update listeners + refetches (e.g.
+            // view_3586), can be stale/empty at settle time, making the diff
+            // treat EVERY current child as removed and clear them all. The
+            // modal already knows the exact selection, so hand it over.
             mirrorApi.applyDeterministicRegroup(R, function () {
               SCW.debug && SCW.debug('[scw-cp] stage 1 (mirror) done');
               stageDone();
-            });
+            }, selectedIds);
           } else {
             console.warn('[scw-cp] silent-regroup mirror for ' + viewId +
                          ' unavailable — children will not regroup');
