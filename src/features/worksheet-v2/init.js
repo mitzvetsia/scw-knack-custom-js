@@ -1041,6 +1041,54 @@
         return;
       }
 
+      // Drop Prefix picker (field_2240) — single-select from the Drop
+      // Prefix catalog loaded by the Builder snippet
+      // (window.SCW.dropPrefixOptions; see CLAUDE.md "Out-of-bundle Knack
+      // Builder snippets"). Each entry is { id: <24-hex>, identifier: '<label>' }.
+      // Changing the prefix recomputes the drop LABEL (field_1950, e.g.
+      // "E-001") server-side, so refetch on save.
+      if (fieldKey === 'field_2240') {
+        var dpRaw = (window.SCW && window.SCW.dropPrefixOptions) || [];
+        if (!dpRaw.length) {
+          console.warn('[scw-ws-v2] SCW.dropPrefixOptions missing/empty — Builder snippet not loaded? Drop Prefix picker can\'t open');
+          return;
+        }
+        var dpCandidates = [];
+        for (var dpi = 0; dpi < dpRaw.length; dpi++) {
+          var dpr = dpRaw[dpi];
+          if (dpr && dpr.id && dpr.identifier) {
+            dpCandidates.push({ id: dpr.id, identifier: dpr.identifier });
+          }
+        }
+        dpCandidates.sort(function (a, b) {
+          return String(a.identifier).localeCompare(String(b.identifier), undefined,
+            { numeric: true, sensitivity: 'base' });
+        });
+
+        ns.picker.open({
+          sourceViewKey: viewKey,
+          putViewKey:    viewKey,
+          recordId:      recordId,
+          fieldKey:      'field_2240',
+          label:         label || 'Drop Prefix',
+          selectedIds:   sel,
+          candidates:    dpCandidates,
+          itemLabel:     function (rec) { return rec.identifier || rec.id; },
+          multi:         false,
+          onSaved:       function () {
+            // The drop LABEL (field_1950, "E-001") recomputes from prefix +
+            // drop number server-side — refetch so the card summary label
+            // and this cell reflect the new prefix.
+            if (ns.data && typeof ns.data.refetchAndNotify === 'function') {
+              ns.data.refetchAndNotify(viewKey);
+            } else if (ns.data && typeof ns.data.notify === 'function') {
+              ns.data.notify(viewKey);
+            }
+          }
+        });
+        return;
+      }
+
       // SOW picker (field_2154) — candidates come from the Scopes of
       // Work grid (view_3325) on the same scene. v1 left this field
       // read-only; v2 adds an editable picker. Multi-connection: a

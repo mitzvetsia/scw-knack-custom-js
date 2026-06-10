@@ -1059,7 +1059,7 @@
       '<div class="scw-ws-v2-detail-zones">' +
         salesPricingDetail(rec, viewKey) +
         '<div class="scw-ws-v2-detail-zone scw-ws-v2-detail-zone--identity">' +
-          detailReadOnly(rec,          'field_2240', 'Prefix') +
+          detailConnection(rec,        viewKey, 'field_2240', 'Prefix') +
           detailField(rec,    viewKey, 'field_1951', 'Drop #',  'number') +
           detailField(rec,    viewKey, 'field_1965', 'Length',  'number') +
           detailField(rec,    viewKey, 'field_2035', 'Conduit', 'number') +
@@ -1144,7 +1144,7 @@
 
     var left = '';
     if (isCam) {
-      left += detailReadOnly(rec,          'field_2240', 'Drop Prefix');
+      left += detailConnection(rec,    viewKey, 'field_2240', 'Drop Prefix');
       left += detailField(rec,    viewKey, 'field_1951', 'Label #', 'number');
       // Visual break between the drop/identity fields and the money fields.
       left += '<div class="scw-ws-v2-sales-detail-divider"></div>';

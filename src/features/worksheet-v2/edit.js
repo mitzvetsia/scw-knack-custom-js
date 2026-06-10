@@ -77,6 +77,9 @@
     //     +Mat, qty.
     //   - The drop LABEL (field_1950, e.g. "E-001") recomputes from the drop
     //     prefix + drop number.
+    //   - Sales: the Custom Disc % (field_2261) / Disc $ (field_2262) feed the
+    //     Applied Discount (field_2303) and line Total (field_2269) CALCs, so
+    //     editing the discount has to refetch for those to update on the card.
     // Resolved per-view from config.
     var EF = (ns.cfg && ns.cfg.fields(viewKey)) || {};
     var RECALC_DEPS = {};
@@ -86,6 +89,9 @@
     RECALC_DEPS[EF.qty        || 'field_1964'] = 1;
     RECALC_DEPS[EF.dropPrefix || 'field_2240'] = 1;
     RECALC_DEPS[EF.dropNumber || 'field_1951'] = 1;
+    // Sales-only discount inputs (absent on the build view → no fallback).
+    if (EF.lineDiscPct) RECALC_DEPS[EF.lineDiscPct] = 1;
+    if (EF.lineDiscAmt) RECALC_DEPS[EF.lineDiscAmt] = 1;
 
     savePut(viewKey, recordId, fieldKey, newValue)
       .then(function (resp) {
