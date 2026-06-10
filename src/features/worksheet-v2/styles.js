@@ -1128,6 +1128,14 @@
     '.scw-ws-v2-trash:hover, .scw-ws-v2-kebab:hover {',
     '  background: #fee2e2 !important; color: #b91c1c !important;',
     '}',
+    /* Survey-derived rows: delete is blocked (v1 parity). Hide the trash but
+       keep its box so the grid column stays aligned, and make it inert. */
+    '.scw-ws-v2-trash--blocked {',
+    '  visibility: hidden !important;',
+    '  pointer-events: none !important;',
+    '  cursor: default !important;',
+    '}',
+    '.scw-ws-v2-card:hover .scw-ws-v2-trash--blocked { color: #cbd5e1 !important; }',
     /* Global popover menu rendered once and positioned on each open */
     '.scw-ws-v2-kebab-menu {',
     '  position: fixed !important;',

@@ -521,11 +521,42 @@
     '<path d="M10 11v6"></path><path d="M14 11v6"></path>' +
     '<path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"></path></svg>';
 
+  /** v1 parity (device-worksheet `hideDeleteWhenCountGtZero` on view_3586):
+   *  a SOW line item that has associated SURVEY line items (field_2586 > 0)
+   *  is survey-derived and must NOT be deletable from the worksheet — it has
+   *  to be removed from the survey instead. Returns true when delete is
+   *  blocked for this record. */
+  // Surfaces where the survey-link delete block applies. v1 configures
+  // hideDeleteWhenCountGtZero ONLY on the sales view (view_3586); we extend it
+  // to the bid-review comparison grid (view_3921), which shows the same
+  // survey-derived items. The internal build-SOW grid (view_3962) is left
+  // alone, matching v1 (view_3610 has no block).
+  var DELETE_BLOCK_VIEWS = { view_3586: 1, view_3921: 1 };
+
+  function isDeleteBlocked(rec, viewKey) {
+    if (!DELETE_BLOCK_VIEWS[viewKey]) return false;
+    var f = (ns.cfg && ns.cfg.fields(viewKey)) || {};
+    var key = f.surveyItemCount || 'field_2586';
+    var raw = rec[key + '_raw'];
+    var n = (typeof raw === 'number') ? raw : parseFloat(readNum(rec, key));
+    return !isNaN(n) && n > 0;
+  }
+
   /** Direct-action delete button — was a kebab menu, now a single
    *  trash icon. Click → auto-confirmed native delete + accessory
    *  cascade (handled in init.js). data-scw-ws-v2-kebab kept as the
-   *  attribute name so the existing handler binds without rename. */
+   *  attribute name so the existing handler binds without rename.
+   *  Survey-derived rows render a hidden, non-interactive placeholder
+   *  (no data-scw-ws-v2-kebab → the delete handler never matches it),
+   *  mirroring v1's hide-delete behavior. */
   function kebabCell(rec, viewKey) {
+    if (isDeleteBlocked(rec, viewKey)) {
+      return '<span class="scw-ws-v2-cell scw-ws-v2-trash scw-ws-v2-trash--blocked" ' +
+        'aria-hidden="true" ' +
+        'title="Linked to survey line items — remove it from the survey, not here.">' +
+        TRASH_SVG +
+      '</span>';
+    }
     return '<button type="button" class="scw-ws-v2-cell scw-ws-v2-trash" ' +
       'data-scw-ws-v2-kebab="' + escapeHtml(rec.id) + '" ' +
       'data-scw-ws-v2-view="' + escapeHtml(viewKey || '') + '" ' +

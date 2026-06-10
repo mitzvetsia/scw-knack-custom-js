@@ -65,6 +65,7 @@
     discontinued:   'field_2912',   // product discontinued
     accAllowMultiQty:'field_2230',  // accessory allows multiple qty
     accessoryMatch: 'field_2244',   // accessory match check (No/false = wrong)
+    surveyItemCount:'field_2586',   // # associated survey line items; >0 → delete blocked (v1 parity)
     // connections
     connectedDevice:  'field_2197', // cam/reader Connected Device
     connectedDevices: 'field_1957', // Connected Devices (multi)

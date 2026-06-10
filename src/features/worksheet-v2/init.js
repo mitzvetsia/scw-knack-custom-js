@@ -546,6 +546,31 @@
           //    tree but still exist in the source view's model.
           var allRecs = (viewId && ns.data && typeof ns.data.readRecords === 'function')
             ? ns.data.readRecords(viewId) : [];
+
+          // v1-parity safety net: never delete a survey-derived SOW item
+          // (field_2586 = # associated survey line items > 0) on the surfaces
+          // where the block applies (sales view_3586 + bid-review view_3921;
+          // see card.js DELETE_BLOCK_VIEWS). The card hides the trash for these
+          // (kebabCell → isDeleteBlocked), but guard here too in case a stale
+          // render left a clickable button behind.
+          var selfRec = null;
+          if (viewId === 'view_3586' || viewId === 'view_3921') {
+            for (var qi = 0; qi < allRecs.length; qi++) {
+              if (allRecs[qi] && allRecs[qi].id === rowId) { selfRec = allRecs[qi]; break; }
+            }
+          }
+          if (selfRec) {
+            var scRaw = selfRec['field_2586_raw'];
+            var scN = (typeof scRaw === 'number') ? scRaw
+              : parseFloat(String(selfRec['field_2586'] == null ? '' : selfRec['field_2586'])
+                  .replace(/[^0-9.\-]/g, ''));
+            if (!isNaN(scN) && scN > 0) {
+              console.warn('[scw-ws-v2] delete blocked — ' + rowId +
+                ' has ' + scN + ' associated survey item(s) (field_2586)');
+              return;
+            }
+          }
+
           var accIds = [];
           for (var ri = 0; ri < allRecs.length; ri++) {
             var r = allRecs[ri];
