@@ -1076,25 +1076,6 @@
     var added = newChildIds.filter(function (id) { return !currentChildSet[id]; });
     var removed = currentChildIds.filter(function (id) { return !newChildSet[id]; });
 
-    // TEMP DIAGNOSTIC (unconditional) — remove once the cascade is verified.
-    // Tells us, per edit, whether the cascade got the authoritative selection
-    // and exactly what it will add/remove. If `authoritative` is false on a
-    // v2 picker edit, the picker isn't passing triggerIds (or an old bundle is
-    // live); if `removed` contains a still-selected id, the diff input is wrong.
-    try {
-      console.warn(LOG_PREFIX + ' CASCADE DIAG', JSON.stringify({
-        R: R.id,
-        authoritative: Array.isArray(authoritativeChildIds),
-        authoritativeIds: Array.isArray(authoritativeChildIds) ? authoritativeChildIds : null,
-        snapshot: snapChildIds,
-        model: modelChildIds,
-        newChildIds: newChildIds,
-        currentChildIds: currentChildIds,
-        added: added,
-        removed: removed
-      }));
-    } catch (e) { /* ignore */ }
-
     log('  diff: new=' + newChildIds.length +
         ' cur=' + currentChildIds.length +
         ' added=' + JSON.stringify(added) +
