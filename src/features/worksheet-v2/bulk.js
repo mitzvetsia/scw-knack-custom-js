@@ -168,13 +168,11 @@
   }
 
   function recordCategories(ids, sourceViewKey) {
+    var idx = attrsIndex(sourceViewKey);
     var seen = {};
-    var v = Knack.views[sourceViewKey];
-    if (!v || !v.model || !v.model.data) return [];
     for (var i = 0; i < ids.length; i++) {
-      var rec = v.model.data.get && v.model.data.get(ids[i]);
-      if (!rec) continue;
-      var attrs = rec.attributes || rec;
+      var attrs = idx[ids[i]];
+      if (!attrs) continue;
       var cat = ns.card && ns.card.bucketCategoryOf
         ? ns.card.bucketCategoryOf(attrs)
         : 'default';
@@ -197,12 +195,25 @@
     { key: 'field_2261', label: 'Custom Disc %', kind: 'number' }
   ];
 
+  /** Build an id→attributes index from the source view's loaded records.
+   *  Uses ns.data.readRecords (the .models read path that render.js draws
+   *  from) rather than Backbone Collection.get(), which on Knack's model
+   *  can return nothing even when .models is fully populated — that was
+   *  making the bulk-edit modal think a selected record had no bucket and
+   *  therefore "no fields in common" even with a single row selected. */
+  function attrsIndex(sourceViewKey) {
+    var idx = Object.create(null);
+    var recs = (ns.data && typeof ns.data.readRecords === 'function')
+      ? ns.data.readRecords(sourceViewKey) : [];
+    for (var i = 0; i < recs.length; i++) {
+      if (recs[i] && recs[i].id) idx[recs[i].id] = recs[i];
+    }
+    return idx;
+  }
+
   /** Look up a selected record's attributes from the source view model. */
   function attrsOf(id, sourceViewKey) {
-    var v = Knack.views[sourceViewKey];
-    var data = v && v.model && v.model.data;
-    var rec = data && data.get && data.get(id);
-    return rec ? (rec.attributes || rec) : null;
+    return attrsIndex(sourceViewKey)[id] || null;
   }
 
   /** True if ANY selected id is a locked sales row. */
