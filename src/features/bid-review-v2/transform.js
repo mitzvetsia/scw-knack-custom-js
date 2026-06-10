@@ -904,7 +904,15 @@
         if (isChildOnlyAccessory(frow)) continue;
         displayRows.push(frow);
       }
-      var groups = groupRows(displayRows);
+      // Bid-only items (on these bids, no SOW item yet) render INSIDE the
+      // MDF/IDF group their bid record's field_2375 matches — or a synthetic
+      // Unassigned / Project Wide group when they have no location — rather
+      // than being pulled out into a separate "On Bid — not on SOW" block.
+      // They keep offSow/needsSow so the SOW cell still cuts out and offers
+      // "+ Add to SOW"; they just sit in context with the matched rows.
+      var groups = groupRows(bidOnlyRows.length
+        ? displayRows.concat(bidOnlyRows)
+        : displayRows);
       // "Belong to another SOW" stays at the BOTTOM.
       if (otherSowRows.length) {
         groups.push({
@@ -917,22 +925,8 @@
           otherBidItems: true
         });
       }
-      // Pin the two "needs attention" groups to the TOP, in order:
-      //   1. Removed — no longer on any SOW or bid (very top)
-      //   2. Added to these bids — no SOW item yet (directly below)
-      // Unshift bid-only first, then removed, so removed lands at index 0
-      // and bid-only at index 1. Neither touches SOW/bid-column totals.
-      if (bidOnlyRows.length) {
-        groups.unshift({
-          key:           '__bid_only_items__',
-          label:         'On Bid — not on SOW',
-          mdfIdfId:      '',
-          level:         1,
-          rows:          bidOnlyRows,
-          subgroups:     [],
-          bidOnlyItems:  true
-        });
-      }
+      // "Removed — no longer on any SOW or bid" stays pinned to the very top.
+      // (Bid-only items are now interleaved into their MDF/IDF groups above.)
       if (removedRows.length) {
         groups.unshift({
           key:             '__removed_items__',
