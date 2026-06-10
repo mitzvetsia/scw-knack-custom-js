@@ -233,8 +233,9 @@
     } catch (e) { return false; }
   }
 
-  /** Count on field_2586 ("associated survey line items"). >0 means this is
-   *  an existing, survey-derived line item (vs a brand-new sales addition). */
+  /** Count on field_2586 ("associated survey line items"). >0 means a survey
+   *  line-item record has been created for this SOW line item (i.e. it's an
+   *  existing/committed item), vs a brand-new sales addition (0). */
   function surveyAssocCount(rec) {
     var raw = rec && rec['field_2586_raw'];
     if (typeof raw === 'number') return raw;
@@ -244,7 +245,8 @@
   }
 
   /** Sales lock rule (mirrors v1 sales-change-request/lockNewItemFields):
-   *  existing survey-derived items (field_2586 >= 1) are read-only on
+   *  items that have a survey line-item record created for them
+   *  (field_2586 >= 1) are read-only on
    *  everything EXCEPT Product (field_1949), Custom Disc % (field_2261), and
    *  SCW Notes (field_1953). Brand-new sales items (field_2586 = 0) stay
    *  fully editable. Only applies on the sales deployment. */

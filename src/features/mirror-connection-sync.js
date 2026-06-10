@@ -1024,7 +1024,13 @@
     var newChildIds = [];
     for (var i = 0; i < newChildrenRaw.length; i++) {
       var entry = newChildrenRaw[i];
-      var id = entry && entry.id;
+      // The v2 picker patches the model with the raw PUT body (an array of
+      // bare id strings) whenever the PUT response carries no _raw
+      // companion. Accept either a string id or a {id} object — otherwise
+      // newChildIds came back empty and EVERY current child was treated as
+      // "removed", clearing their Connected To (field_2197) instead of
+      // re-pointing it at the parent.
+      var id = (typeof entry === 'string') ? entry : (entry && entry.id);
       if (id && HEX24.test(id)) newChildIds.push(id);
     }
     var newChildSet = {};

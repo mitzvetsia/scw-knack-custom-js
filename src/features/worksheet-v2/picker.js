@@ -405,8 +405,17 @@
             //      a real inline edit.
             try {
               if (typeof SCW.syncKnackModel === 'function') {
+                // Pass the value as {id} objects, not bare id strings. When
+                // the PUT response has no _raw companion, syncKnackModel
+                // stores this value as field_X_raw — and mirror-connection-
+                // sync's cascades read entry.id off each _raw element. An
+                // array of bare strings made them see "no children" and clear
+                // the reciprocal (Connected To) instead of re-pointing it.
+                var rawObjs = (body[opts.fieldKey] || []).map(function (v) {
+                  return (v && typeof v === 'object') ? v : { id: v };
+                });
                 SCW.syncKnackModel(putKey, opts.recordId, resp,
-                  opts.fieldKey, body[opts.fieldKey]);
+                  opts.fieldKey, rawObjs);
               }
               var view = Knack.views[putKey];
               if (view && view.model && view.model.data) {
