@@ -1019,20 +1019,38 @@
     log('applyDeterministicRegroup: start R=' + R.id);
 
     // --- 1. New children from the event record --------------------------
-    var newChildrenRaw = R[TRIGGER_FIELD + '_raw'] || [];
-    log('  R.' + TRIGGER_FIELD + '_raw =', newChildrenRaw);
-    var newChildIds = [];
-    for (var i = 0; i < newChildrenRaw.length; i++) {
-      var entry = newChildrenRaw[i];
-      // The v2 picker patches the model with the raw PUT body (an array of
-      // bare id strings) whenever the PUT response carries no _raw
-      // companion. Accept either a string id or a {id} object — otherwise
-      // newChildIds came back empty and EVERY current child was treated as
-      // "removed", clearing their Connected To (field_2197) instead of
-      // re-pointing it at the parent.
-      var id = (typeof entry === 'string') ? entry : (entry && entry.id);
-      if (id && HEX24.test(id)) newChildIds.push(id);
+    // Read the trigger value from BOTH the event snapshot (R) AND the live
+    // Backbone model, then use whichever is non-empty. The v2 picker patches
+    // the model via syncKnackModel (which writes to `m.get(id)`) but dispatches
+    // the cell-update with `m.data.get(id).attributes` — and these can be
+    // DIFFERENT record instances in Knack's view model. When they diverge, the
+    // dispatched R carries a STALE / empty field_1957_raw, so newChildIds came
+    // back empty and EVERY current child was treated as "removed" — exactly the
+    // "downstream connection just gets cleared, never re-pointed" bug. Falling
+    // back to the model's canonical attrs makes the read instance-agnostic.
+    function extractChildIds(rawArr) {
+      var out = [];
+      if (!Array.isArray(rawArr)) return out;
+      for (var k = 0; k < rawArr.length; k++) {
+        var e = rawArr[k];
+        // Accept a bare id string or a {id} object (the v2 picker stores the
+        // raw PUT body — sometimes bare strings — when the response has no
+        // _raw companion).
+        var eid = (typeof e === 'string') ? e : (e && e.id);
+        if (eid && HEX24.test(eid) && out.indexOf(eid) === -1) out.push(eid);
+      }
+      return out;
     }
+    var snapChildIds  = extractChildIds(R[TRIGGER_FIELD + '_raw'] || []);
+    var modelAttrsR   = getModelAttrs(R.id);
+    var modelChildIds = modelAttrsR
+      ? extractChildIds(modelAttrsR[TRIGGER_FIELD + '_raw'] || []) : [];
+    // Prefer the snapshot when it has values; otherwise trust the model. This
+    // guards the destructive case: an empty snapshot must NOT clear everything
+    // if the model still shows children.
+    var newChildIds = snapChildIds.length ? snapChildIds : modelChildIds;
+    log('  ' + TRIGGER_FIELD + '_raw snapshot=' + snapChildIds.length +
+        ' model=' + modelChildIds.length + ' → using ' + newChildIds.length);
     var newChildSet = {};
     newChildIds.forEach(function (id) { newChildSet[id] = true; });
 
@@ -1237,12 +1255,25 @@
     catch (e) { console.warn(LOG_PREFIX, 'applyDeterministicRegroup threw', e); }
   }
 
-  $(document).on('knack-cell-update.' + VIEW_ID + EVENT_NS, function (event, view, record) {
+  $(document).on('knack-cell-update.' + VIEW_ID + EVENT_NS, function (event, view, record, editedFieldKey) {
     try {
       if (!record || !record.id) return;
       // Re-entrancy: ignore echoes from our own background PUTs.
       if (ownPuts[record.id]) {
         log('ignoring cell-update echo for own PUT ' + record.id);
+        return;
+      }
+      // The forward cascade (parent TRIGGER_FIELD → children CONNECTIONS_FIELD)
+      // must ONLY run when the trigger field itself was edited. The v2 picker
+      // reports the edited field key as a 4th arg; if it's some OTHER field
+      // (e.g. a direct field_2197 edit, an MDF move, or a chip toggle), running
+      // the forward regroup off this record reads its (empty) field_1957 and
+      // would treat every current child as "removed" — silently clearing their
+      // reciprocal. Native Knack inline edits supply no key → fall through and
+      // let the cache-diff machinery below decide (v1 DOM-mode behavior).
+      if (editedFieldKey && editedFieldKey !== TRIGGER_FIELD) {
+        log('cell-update for ' + editedFieldKey + ' (not ' + TRIGGER_FIELD +
+            ') — skipping forward cascade');
         return;
       }
       log('knack-cell-update received', { recordId: record.id });
