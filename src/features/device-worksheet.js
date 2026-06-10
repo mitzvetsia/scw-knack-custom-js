@@ -116,14 +116,14 @@
           mounting:         { key: 'field_2463', type: 'readOnly' },
           connections:      { key: 'field_2381', type: 'nativeEdit' },
           scwNotes:         { key: 'field_2418', type: 'readOnly' },
-          surveyNotes:      { key: 'field_2412', type: 'directEdit', notes: true },
+          surveyNotes:      { key: 'field_2412', type: 'directEdit', summary: true, label: 'Survey Notes', group: 'fill', multiline: true },
           exteriorChit:     { key: 'field_2372', type: 'toggleChit', summary: true, feeTrigger: true, chitLabel: 'Exterior' },
           plenumChit:       { key: 'field_2371', type: 'toggleChit', summary: true, feeTrigger: true, chitLabel: 'Plenum' },
           mountingHeight:   { key: 'field_2455', type: 'singleChip', options: ["Under 16'", "16' - 24'", "Over 24'"] },
           dropLength:       { key: 'field_2367', type: 'directEdit' },
           conduitFeet:      { key: 'field_2368', type: 'directEdit' }
         },
-        summaryLayout: ['laborDescription', 'existingCabling', 'exteriorChit', 'plenumChit', 'labor', 'bid'],
+        summaryLayout: ['surveyNotes', 'laborDescription', 'existingCabling', 'exteriorChit', 'plenumChit', 'labor', 'bid'],
         // Sort presets — exposed in the worksheet toolbar's "Sort ▾"
         // dropdown. First preset = "Default", rule:null means "use
         // viewCfg.rowSort or device-worksheet's hardcoded default".
@@ -136,7 +136,7 @@
         ],
         detailLayout: {
           left:  ['mounting', 'scwNotes'],
-          right: ['connections', 'mountingHeight', 'dropLength', 'conduitFeet', 'surveyNotes']
+          right: ['connections', 'mountingHeight', 'dropLength', 'conduitFeet']
         },
         bucketField: 'field_2366',
         // ── Override: used for all NON-camera/reader rows ──
@@ -155,12 +155,12 @@
             mounting:         { key: 'field_2463', type: 'readOnly' },
             connections:      { key: 'field_2380', type: 'nativeEdit' },
             scwNotes:         { key: 'field_2418', type: 'readOnly' },
-            surveyNotes:      { key: 'field_2412', type: 'directEdit', notes: true }
+            surveyNotes:      { key: 'field_2412', type: 'directEdit', summary: true, label: 'Survey Notes', group: 'fill', multiline: true }
           },
-          summaryLayout: ['laborDescription', 'quantity', 'labor', 'extended', 'bid'],
+          summaryLayout: ['surveyNotes', 'laborDescription', 'quantity', 'labor', 'extended', 'bid'],
           detailLayout: {
             left:  ['mounting', 'scwNotes'],
-            right: ['connections', 'surveyNotes']
+            right: ['connections']
           }
         },
         bucketRules: {
