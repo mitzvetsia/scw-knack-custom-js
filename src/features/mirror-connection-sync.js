@@ -1075,11 +1075,16 @@
     // --- 3. Diff ---------------------------------------------------------
     var added = newChildIds.filter(function (id) { return !currentChildSet[id]; });
     var removed = currentChildIds.filter(function (id) { return !newChildSet[id]; });
+    // KEPT = still-selected children (in both new and current). These are
+    // NEITHER added NOR removed, so the diff never PUTs them — but a removal
+    // can knock their CONNECTIONS_FIELD out from under them (see fireKeptRepairs).
+    var kept = newChildIds.filter(function (id) { return currentChildSet[id]; });
 
     log('  diff: new=' + newChildIds.length +
         ' cur=' + currentChildIds.length +
         ' added=' + JSON.stringify(added) +
-        ' removed=' + JSON.stringify(removed));
+        ' removed=' + JSON.stringify(removed) +
+        ' kept=' + kept.length);
 
     if (!added.length && !removed.length) {
       log('  no changes — done');
@@ -1149,10 +1154,58 @@
 
     var totalPuts = added.length + removed.length + accessoryPuts.length;
     var putsRemaining = totalPuts;
+
+    // Batch guard: hold one extra cascade-in-flight token for the whole
+    // operation so the counter can't bottom out (and fire scw-cascade-idle /
+    // hide the toast) BETWEEN phase 1 and the kept-children repair pass. Without
+    // it, the last phase-1 PUT's cascadeEnd would emit scw-cascade-idle early,
+    // data.js would refetch the still-cleared state, and the cards would flash
+    // "disconnected" before the repair lands. Released in finishWithFetch.
+    var batchGuardHeld = false;
+    if (totalPuts > 0) { batchGuardHeld = true; cascadeBegin(); }
+
     function onPutFinished() {
       putsRemaining--;
       if (putsRemaining > 0) return;
-      log('all ' + totalPuts + ' PUTs settled — firing real refresh (model.fetch)');
+      // Phase 1 (add/remove/accessory) done. Before the final fetch, fire a
+      // repair pass over the KEPT children, then resync from the server.
+      fireKeptRepairs(finishWithFetch);
+    }
+
+    // ── Repair pass — re-assert CONNECTIONS_FIELD on still-connected children.
+    // ----------------------------------------------------------------------
+    // The add/remove diff NEVER touches a kept child (it's in both the new and
+    // current sets). That's normally fine — but CONNECTIONS_FIELD (field_2197)
+    // and TRIGGER_FIELD (field_1957) are SEPARATE Knack fields, and clearing the
+    // removed child's CONNECTIONS_FIELD ([] PUT) trips a server-side reciprocal
+    // recompute (Knack connection rule / Make webhook) that can knock the kept
+    // siblings' CONNECTIONS_FIELD out too — so a "remove one" reads back as
+    // "ALL former members disconnected". An ADD fires no [] clear, so it never
+    // triggers this and never needs repair — which is why adding always worked.
+    //
+    // This mirrors the v1 connection-picker's Stage-2 repair PUTs
+    // (fireRepairPuts), which is exactly why the v1 edit path never exhibited
+    // the bug. We fire it ONLY after a removal (kept children are only at risk
+    // then) and ONLY after Phase 1 settles, so the re-assert lands AFTER the
+    // removal-triggered recompute and wins. Scoped to MODEL_ONLY so the v1
+    // DOM-mode views (already covered by the picker's own Stage 2) don't
+    // double-write.
+    function fireKeptRepairs(onAllDone) {
+      if (!(MODEL_ONLY && removed.length && kept.length)) { onAllDone(); return; }
+      log('  repair: re-asserting ' + CONNECTIONS_FIELD + ' on ' + kept.length +
+          ' kept child(ren) after removal of ' + removed.length);
+      var remaining = kept.length;
+      function tick() { remaining--; if (remaining <= 0) onAllDone(); }
+      for (var i = 0; i < kept.length; i++) {
+        var body = {};
+        if (rGroupId) body[GROUPING_FIELD] = [rGroupId];
+        body[CONNECTIONS_FIELD] = [R.id];
+        firePut(kept[i], body, tick);
+      }
+    }
+
+    function finishWithFetch() {
+      log('all PUTs settled — firing real refresh (model.fetch)');
       // Clear plan + watchdog FIRST so the incoming render isn't fought
       // by our replay machinery.
       pendingPlan = null;
@@ -1172,6 +1225,11 @@
       } catch (e) {
         console.warn(LOG_PREFIX, 'final model.fetch threw', e);
       }
+      // Release the batch guard LAST — this is the cascadeEnd that takes the
+      // in-flight counter to 0, firing scw-cascade-idle (→ data.js refetch)
+      // once, now that the repair pass has landed and the model.fetch above is
+      // already dispatched.
+      if (batchGuardHeld) { batchGuardHeld = false; cascadeEnd(); }
       // Signal upstream waiters (e.g. the connection picker keeping
       // its modal open until everything settled). Fired AFTER model.
       // fetch is dispatched so any "save complete" UI we trigger
