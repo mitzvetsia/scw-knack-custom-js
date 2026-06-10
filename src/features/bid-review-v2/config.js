@@ -30,8 +30,11 @@
   SCW.bidReviewV2.CONFIG = {
     enabled:    true,
     // When true, v1's grid is hidden via CSS so v2 takes its slot.
-    // Leave false during the parallel build.
-    replaceV1:  false,
+    // Non-destructive: v1 still mounts + loads data (v2 reads nothing
+    // from v1's DOM, but the source views it scrapes stay live); only
+    // #bid-review-matrix is display:none'd. Flip back to false to
+    // restore the v1 grid.
+    replaceV1:  true,
 
     // Anchor for the v2 mount point. Insert v2 AFTER v1's grid root
     // (#bid-review-matrix lives inside v1's mount). Falls back to the
