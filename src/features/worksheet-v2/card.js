@@ -525,9 +525,10 @@
    *  trash icon. Click → auto-confirmed native delete + accessory
    *  cascade (handled in init.js). data-scw-ws-v2-kebab kept as the
    *  attribute name so the existing handler binds without rename. */
-  function kebabCell(rec) {
+  function kebabCell(rec, viewKey) {
     return '<button type="button" class="scw-ws-v2-cell scw-ws-v2-trash" ' +
       'data-scw-ws-v2-kebab="' + escapeHtml(rec.id) + '" ' +
+      'data-scw-ws-v2-view="' + escapeHtml(viewKey || '') + '" ' +
       'aria-label="Delete line item" title="Delete line item">' +
       TRASH_SVG +
     '</button>';
@@ -629,7 +630,7 @@
       moneyCells(rec, viewKey) +
       sowSlot(rec, viewKey) +
       warnCell(rec) +
-      kebabCell(rec) +
+      kebabCell(rec, viewKey) +
     '</div>';
   }
 
@@ -667,7 +668,7 @@
       moneyCells(rec, viewKey) +
       sowSlot(rec, viewKey) +
       warnCell(rec) +
-      kebabCell(rec) +
+      kebabCell(rec, viewKey) +
     '</div>';
   }
 
@@ -704,7 +705,7 @@
       moneyCells(rec, viewKey) +
       sowSlot(rec, viewKey) +
       warnCell(rec) +
-      kebabCell(rec) +
+      kebabCell(rec, viewKey) +
     '</div>';
   }
 
@@ -734,7 +735,7 @@
       moneyCellsBlank(viewKey) +
       sowSlot(rec, viewKey) +
       warnCell(rec) +
-      kebabCell(rec) +
+      kebabCell(rec, viewKey) +
     '</div>';
   }
 

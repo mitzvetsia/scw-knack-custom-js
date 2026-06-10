@@ -525,10 +525,16 @@
         e.preventDefault();
         e.stopPropagation();
         var rowId  = kebab.getAttribute('data-scw-ws-v2-kebab');
-        var container = kebab.closest('[id^="scw-ws-v2-"]');
-        var viewId = container
-          ? container.id.replace(/^scw-ws-v2-/, '')
-          : null;
+        // Prefer the view stamped on the button. The card can be embedded
+        // OUTSIDE a #scw-ws-v2-<view> container — e.g. the bid-review-v2
+        // comparison grid mounts it in .scw-bid-review-v2__panel-col--card —
+        // where the container-id derivation returns null and the delete
+        // silently no-ops.
+        var viewId = kebab.getAttribute('data-scw-ws-v2-view') || null;
+        if (!viewId) {
+          var container = kebab.closest('[id^="scw-ws-v2-"]');
+          viewId = container ? container.id.replace(/^scw-ws-v2-/, '') : null;
+        }
         // Trash icon = direct delete (two-click via Knack\'s native
         // confirm modal which we auto-accept). Same cascade logic
         // that the old kebab menu fired — moved inline here.
@@ -588,7 +594,30 @@
             );
           }
           if (!link) {
-            console.warn('[scw-ws-v2] kn-link-delete not found for ' + rowId);
+            // No native delete route on this view (e.g. view_3921 on the
+            // bid-review comparison grid has none — Knack's own link there
+            // just routes home and deletes nothing). Delete the record
+            // directly via the view-scoped REST endpoint — the same proven
+            // path the v1 bid-review uses — then refetch so the grid (which
+            // listens on knack-view-render.<view>) drops the row.
+            if (viewId && window.SCW && typeof SCW.knackAjax === 'function' &&
+                typeof SCW.knackRecordUrl === 'function') {
+              SCW.knackAjax({
+                url:  SCW.knackRecordUrl(viewId, rowId),
+                type: 'DELETE',
+                success: function () {
+                  if (ns.data && typeof ns.data.refetchAndNotify === 'function') {
+                    ns.data.refetchAndNotify(viewId);
+                  }
+                },
+                error: function (xhr) {
+                  console.warn('[scw-ws-v2] direct DELETE failed for ' + rowId,
+                    xhr && xhr.status, xhr && xhr.responseText);
+                }
+              });
+            } else {
+              console.warn('[scw-ws-v2] kn-link-delete not found and no viewId/knackAjax for ' + rowId);
+            }
             return;
           }
           autoConfirmKnackDelete();
