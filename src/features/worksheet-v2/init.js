@@ -690,6 +690,36 @@
         }
       }
 
+      // Connected Devices (field_1957) hardening — pre-select the TRUE set.
+      // ------------------------------------------------------------------
+      // field_1957 (parent → children) and field_2197 (child → parent) are
+      // SEPARATE Knack fields kept aligned only by the cascade, so the
+      // parent's field_1957 on the model can read STALE — missing children
+      // that ARE connected (their field_2197 still points here). If the
+      // picker pre-checks only that stale forward list, a resubmit sends a
+      // SUBSET and the cascade dutifully clears the omitted children's
+      // field_2197 — the "1/2 downstream connections, and it alternates"
+      // bug. Union in every child whose field_2197 points back at this
+      // parent so the modal pre-selects the real current set and a resubmit
+      // can't drop a still-connected device.
+      if (fieldKey === 'field_1957') {
+        var _selSet = {};
+        for (var su = 0; su < sel.length; su++) _selSet[sel[su]] = true;
+        for (var rr = 0; rr < records.length; rr++) {
+          var rrec = records[rr];
+          if (!rrec || !rrec.id || rrec.id === recordId || _selSet[rrec.id]) continue;
+          var rback = rrec['field_2197_raw'];
+          if (!Array.isArray(rback)) continue;
+          for (var rb = 0; rb < rback.length; rb++) {
+            if (rback[rb] && rback[rb].id === recordId) {
+              sel.push(rrec.id);
+              _selSet[rrec.id] = true;
+              break;
+            }
+          }
+        }
+      }
+
       // ── Candidate set ──
       // field_1957: cameras/readers on this SOW whose reciprocal
       // (field_2197) is empty OR points to THIS record. Mirrors v1's

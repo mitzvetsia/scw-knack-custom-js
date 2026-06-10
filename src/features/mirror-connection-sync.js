@@ -1204,6 +1204,64 @@
       }
     }
 
+    function settleDone() {
+      // Release the batch guard LAST — this cascadeEnd takes the in-flight
+      // counter to 0, firing scw-cascade-idle (→ data.js refetch) once, now
+      // that every PUT (incl. the verify pass) has landed.
+      if (batchGuardHeld) { batchGuardHeld = false; cascadeEnd(); }
+      // Signal upstream waiters (e.g. the connection picker keeping its modal
+      // open until everything settled).
+      done();
+    }
+
+    // ── Post-fetch verify pass (safety net) ──────────────────────────────
+    // After the refetch, confirm every authoritatively-selected child REALLY
+    // points back at R via CONNECTIONS_FIELD. Re-assert any that don't —
+    // catches a child PUT that failed/raced or that a server-side reciprocal
+    // recompute cleared after the fact (the "only 1/2 downstream connected,
+    // and which one flips" report). Reads the freshly-fetched model so it
+    // reflects real server state; runs at most once (its own re-PUTs don't
+    // re-enter). MODEL_ONLY-scoped: the DOM views' child models are
+    // unreliable (findRowsPointingTo scrapes the DOM there for that reason).
+    function verifyForwardChildren(onDone) {
+      if (!MODEL_ONLY || !newChildIds || !newChildIds.length) { onDone(); return; }
+      var missing = [];
+      for (var i = 0; i < newChildIds.length; i++) {
+        var cid = newChildIds[i];
+        var attrs = getModelAttrs(cid);
+        var raw = attrs && attrs[CONNECTIONS_FIELD + '_raw'];
+        var ok = false;
+        if (Array.isArray(raw)) {
+          for (var j = 0; j < raw.length; j++) {
+            if (raw[j] && raw[j].id === R.id) { ok = true; break; }
+          }
+        }
+        if (!ok) missing.push(cid);
+      }
+      if (!missing.length) { onDone(); return; }
+      log('  verify: ' + missing.length + ' selected child(ren) NOT pointing back post-fetch — re-asserting', missing);
+      var remaining = missing.length;
+      function tick() {
+        remaining--;
+        if (remaining > 0) return;
+        // One more refetch so the repaired connections render.
+        try {
+          var v2 = Knack.views && Knack.views[VIEW_ID];
+          if (v2 && v2.model && typeof v2.model.fetch === 'function') {
+            var p2 = v2.model.fetch();
+            if (p2 && typeof p2.always === 'function') { p2.always(onDone); return; }
+          }
+        } catch (e) { /* ignore */ }
+        onDone();
+      }
+      for (var k = 0; k < missing.length; k++) {
+        var body = {};
+        if (rGroupId) body[GROUPING_FIELD] = [rGroupId];
+        body[CONNECTIONS_FIELD] = [R.id];
+        firePut(missing[k], body, tick);
+      }
+    }
+
     function finishWithFetch() {
       log('all PUTs settled — firing real refresh (model.fetch)');
       // Clear plan + watchdog FIRST so the incoming render isn't fought
@@ -1217,24 +1275,19 @@
           window.SCW.deviceWorksheet.captureState();
         }
       } catch (e) { /* best-effort */ }
-      try {
-        var v = Knack.views && Knack.views[VIEW_ID];
-        if (v && v.model && typeof v.model.fetch === 'function') {
-          v.model.fetch();
-        }
-      } catch (e) {
-        console.warn(LOG_PREFIX, 'final model.fetch threw', e);
-      }
-      // Release the batch guard LAST — this is the cascadeEnd that takes the
-      // in-flight counter to 0, firing scw-cascade-idle (→ data.js refetch)
-      // once, now that the repair pass has landed and the model.fetch above is
-      // already dispatched.
-      if (batchGuardHeld) { batchGuardHeld = false; cascadeEnd(); }
-      // Signal upstream waiters (e.g. the connection picker keeping
-      // its modal open until everything settled). Fired AFTER model.
-      // fetch is dispatched so any "save complete" UI we trigger
-      // happens once the view is on its way to fresh data.
-      done();
+
+      var v = Knack.views && Knack.views[VIEW_ID];
+      if (!v || !v.model || typeof v.model.fetch !== 'function') { settleDone(); return; }
+
+      var p;
+      try { p = v.model.fetch(); }
+      catch (e) { console.warn(LOG_PREFIX, 'final model.fetch threw', e); settleDone(); return; }
+
+      // After the fetch lands, run the verify-and-repair pass, THEN settle.
+      function afterFetch() { verifyForwardChildren(settleDone); }
+      if (p && typeof p.always === 'function') p.always(afterFetch);
+      else if (p && typeof p.then === 'function') p.then(afterFetch, afterFetch);
+      else setTimeout(afterFetch, 600);
     }
 
     // MODEL_ONLY OR no destHeader: skip DOM moves, just fire PUTs and
