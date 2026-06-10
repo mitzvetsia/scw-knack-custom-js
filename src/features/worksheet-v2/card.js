@@ -1355,7 +1355,15 @@
     ASSUMPTIONS_BUCKET:  ASSUMPTIONS_BUCKET,
     NETWORKING_BUCKET:   NETWORKING_BUCKET,
     bucketCategoryOf:    bucketCategoryOf,
-    labelLineItem:       labelLineItem
+    labelLineItem:       labelLineItem,
+    // Lock rule (sales survey-associated rows) + the fields that stay
+    // editable on a locked row — consumed by the bulk-edit modal so it
+    // offers the same whitelist (Product / SCW Notes / Custom Disc %).
+    isCrLocked:          isCrLocked,
+    LOCK_WHITELIST:      LOCK_WHITELIST,
+    // Survey-link delete block — consumed by bulk delete to drop records
+    // that aren't deletable.
+    isDeleteBlocked:     isDeleteBlocked
   };
 })();
 /*** END WORKSHEET V2 — CARD **************************************************/

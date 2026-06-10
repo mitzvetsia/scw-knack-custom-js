@@ -133,6 +133,49 @@
     return out;
   }
 
+  // ── Lock + delete-block helpers (shared with the per-card rules) ──
+  // When ANY selected row is a LOCKED sales row (card.js isCrLocked: sales
+  // deployment + survey-associated), the bulk-edit modal is restricted to the
+  // same whitelist the per-card lock keeps editable — Product, SCW Notes,
+  // Custom Disc %. field_2261 isn't in the per-bucket FIELDS registry (it's a
+  // sales-only field), so the locked set is defined explicitly here.
+  var LOCKED_BULK_FIELDS = [
+    { key: 'field_1949', label: 'Product',       kind: 'conn-single', candSource: 'products' },
+    { key: 'field_1953', label: 'SCW Notes',     kind: 'text' },
+    { key: 'field_2261', label: 'Custom Disc %', kind: 'number' }
+  ];
+
+  /** Look up a selected record's attributes from the source view model. */
+  function attrsOf(id, sourceViewKey) {
+    var v = Knack.views[sourceViewKey];
+    var data = v && v.model && v.model.data;
+    var rec = data && data.get && data.get(id);
+    return rec ? (rec.attributes || rec) : null;
+  }
+
+  /** True if ANY selected id is a locked sales row. */
+  function selectionHasLocked(ids, sourceViewKey) {
+    if (!(ns.card && typeof ns.card.isCrLocked === 'function')) return false;
+    for (var i = 0; i < ids.length; i++) {
+      var a = attrsOf(ids[i], sourceViewKey);
+      if (a && ns.card.isCrLocked(a, sourceViewKey)) return true;
+    }
+    return false;
+  }
+
+  /** Split ids into { deletable, blocked } using the same survey-link delete
+   *  block the per-row trash uses (card.js isDeleteBlocked). */
+  function partitionDeletable(ids, sourceViewKey) {
+    var deletable = [], blocked = [];
+    var canCheck = ns.card && typeof ns.card.isDeleteBlocked === 'function';
+    for (var i = 0; i < ids.length; i++) {
+      var a = canCheck ? attrsOf(ids[i], sourceViewKey) : null;
+      if (a && ns.card.isDeleteBlocked(a, sourceViewKey)) blocked.push(ids[i]);
+      else deletable.push(ids[i]);
+    }
+    return { deletable: deletable, blocked: blocked };
+  }
+
   // ── Toolbar ──────────────────────────────────────────────────
   var toolbar; // DOM element, lazily created
   function ensureToolbar(sourceViewKey) {
@@ -470,12 +513,51 @@
   /** Standalone "are you sure" modal for the toolbar Delete button.
    *  Surfaces the parent + accessory counts so users see the
    *  cascade scope before confirming. */
+  /** Small informational modal (title + message + Close), no destructive
+   *  CTA. Used when a bulk action has nothing valid to act on. */
+  function openBulkInfoModal(title, msg) {
+    var overlay = document.createElement('div');
+    overlay.className = 'scw-ws-v2-bulk-overlay';
+    overlay.innerHTML =
+      '<div class="scw-ws-v2-bulk-modal scw-ws-v2-bulk-modal--confirm">' +
+        '<div class="scw-ws-v2-bulk-modal-head">' +
+          '<div class="scw-ws-v2-bulk-modal-title">' + escapeHtml(title) + '</div>' +
+          '<div class="scw-ws-v2-bulk-modal-sub">' + escapeHtml(msg) + '</div>' +
+        '</div>' +
+        '<div class="scw-ws-v2-bulk-modal-actions">' +
+          '<button type="button" class="scw-ws-v2-bulk-modal-cancel">Close</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(overlay);
+    var close = function () { overlay.parentNode && overlay.parentNode.removeChild(overlay); };
+    overlay.querySelector('.scw-ws-v2-bulk-modal-cancel').addEventListener('click', close);
+    overlay.addEventListener('click', function (e) { if (e.target === overlay) close(); });
+  }
+
   function openBulkDeleteConfirm(parentIds, sourceViewKey) {
+    // Never delete a record whose delete is blocked (survey-linked, on the
+    // surfaces where the block applies). Drop those from the batch up front.
+    var part = partitionDeletable(parentIds, sourceViewKey);
+    var blockedCount = part.blocked.length;
+    parentIds = part.deletable;
+
+    // Everything selected is non-deletable → informational modal, no CTA.
+    if (!parentIds.length) {
+      openBulkInfoModal('Can’t delete these line items',
+        (blockedCount === 1 ? 'This line item is' : 'These ' + blockedCount + ' line items are') +
+        ' linked to survey line items, so they can only be removed from the survey — not here.');
+      return;
+    }
+
     var accIds = collectAccessoryIds(parentIds, sourceViewKey);
     var subline = accIds.length
       ? 'Also deletes ' + accIds.length + ' attached accessor' +
         (accIds.length === 1 ? 'y' : 'ies') + ' (mounting hardware, etc.).'
       : 'These line items have no attached accessories.';
+    if (blockedCount) {
+      subline += ' ' + blockedCount + ' survey-linked item' +
+        (blockedCount === 1 ? '' : 's') + ' will be skipped.';
+    }
 
     var overlay = document.createElement('div');
     overlay.className = 'scw-ws-v2-bulk-overlay';
@@ -929,8 +1011,17 @@
   }
 
   function openBulkModal(ids, sourceViewKey) {
+    // If any selected row is locked (survey-associated sales item), only the
+    // lock whitelist (Product / SCW Notes / Custom Disc %) is bulk-editable —
+    // mirroring the per-card lock so we never bulk-write a locked field.
+    var locked = selectionHasLocked(ids, sourceViewKey);
     var categories = recordCategories(ids, sourceViewKey);
-    var fields = intersectFields(categories);
+    var fields = locked ? LOCKED_BULK_FIELDS.slice() : intersectFields(categories);
+    var subHtml = locked
+      ? 'Some selected rows are locked — only <b>Product</b>, <b>SCW Notes</b> &amp; <b>Custom Disc %</b> can be bulk-edited.'
+      : (categories.length === 1
+          ? 'All rows in <b>' + escapeHtml(categories[0]) + '</b> category'
+          : 'Mixed buckets — showing fields common to all');
 
     var overlay = document.createElement('div');
     overlay.className = 'scw-ws-v2-bulk-overlay';
@@ -938,11 +1029,7 @@
       '<div class="scw-ws-v2-bulk-modal" role="dialog" aria-modal="true">' +
         '<div class="scw-ws-v2-bulk-modal-head">' +
           '<div class="scw-ws-v2-bulk-modal-title">Edit ' + ids.length + ' selected</div>' +
-          '<div class="scw-ws-v2-bulk-modal-sub">' +
-            (categories.length === 1
-              ? 'All rows in <b>' + escapeHtml(categories[0]) + '</b> category'
-              : 'Mixed buckets — showing fields common to all') +
-          '</div>' +
+          '<div class="scw-ws-v2-bulk-modal-sub">' + subHtml + '</div>' +
         '</div>' +
         '<div class="scw-ws-v2-bulk-modal-body"></div>' +
         '<div class="scw-ws-v2-bulk-modal-status"></div>' +
