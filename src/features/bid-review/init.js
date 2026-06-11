@@ -2394,7 +2394,9 @@
   function handleCopyToSow(button, pkgId, grid) {
     var payload = ns.buildCopyToSowPayload(pkgId, grid);
 
-    var total = payload.updates.length + payload.creates.length + payload.removals.length;
+    var disc = (payload.disconnectBids || []).length;
+    var total = payload.updates.length + payload.creates.length +
+                payload.removals.length + disc;
     if (total === 0) {
       ns.renderToast('Nothing to update \u2014 SOW already matches this bid', 'info');
       return;
@@ -2413,7 +2415,10 @@
         payload.creates  = selected.creates  || [];
         payload.removals = selected.removals || [];
 
-        var total2 = payload.updates.length + payload.creates.length + payload.removals.length;
+        // Duplicate-bid disconnects are always applied (not deselectable).
+        var disc2 = (payload.disconnectBids || []).length;
+        var total2 = payload.updates.length + payload.creates.length +
+                     payload.removals.length + disc2;
         if (total2 === 0) {
           ns.renderToast('Nothing to update \u2014 SOW already matches this bid', 'info');
           return;
@@ -2423,6 +2428,7 @@
         if (payload.updates.length)  summary.push(payload.updates.length  + ' update(s)');
         if (payload.creates.length)  summary.push(payload.creates.length  + ' new item(s)');
         if (payload.removals.length) summary.push(payload.removals.length + ' disconnected from SOW');
+        if (disc2) summary.push(disc2 + ' duplicate bid item(s) disconnected');
 
         showCopyToast('Updating ' + grid.sowName + ' to match ' + pkgName + ': ' + summary.join(', ') + '\u2026');
         startCopyPoll();

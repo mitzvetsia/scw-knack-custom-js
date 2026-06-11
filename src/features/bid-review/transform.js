@@ -276,9 +276,21 @@
         if (!pkgId) continue;
 
         if (cellsByPackage[pkgId]) {
+          // Two bid line items on the SAME bid both map to this SOW item.
+          // Keep the first; record the rest on it so "Update SOW to match
+          // Bid" can DISCONNECT the extras from the SOW item (clear their
+          // REL_sow-line-item / field_2404) — otherwise every duplicate
+          // keeps pointing at the one SOW item.
+          var keepCell = cellsByPackage[pkgId];
+          if (!keepCell.dupes) keepCell.dupes = [];
+          keepCell.dupes.push({
+            id:          rec.id,
+            productName: raw(rec, FK.productName),
+            _rawRecord:  rec
+          });
           if (CFG.debug) {
             console.warn('[BidReview] Duplicate cell row=' + rowKey +
-                         ' pkg=' + pkgId + ' — keeping first');
+                         ' pkg=' + pkgId + ' — keeping first, dupe=' + rec.id);
           }
           continue;
         }
