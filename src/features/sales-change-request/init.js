@@ -73,17 +73,48 @@
     return false;
   }
 
+  // ── API fallback for the add-mode flag ────────────────
+  // The sales-portal scope-of-work-details scene doesn't render any of
+  // the addModeViews (view_3491/view_3827 live on other scenes), so
+  // the sync model/DOM reads can't ever activate the module there.
+  // Read field_2706 straight off the SOW record via CFG.draftView
+  // (view_3841) — the same view-based endpoint the draft persistence
+  // already GETs/PUTs on this page. Cached per SOW id.
+  var _apiFlagCache = {};
+  ns._apiAddModeVal = '';   // change-detection's checkAddMode reads this
+
+  function readAddModeFlagFromApi() {
+    ns.detectSowRecordId();
+    var sowId = S.sowRecordId();
+    if (!sowId) return $.Deferred().resolve('').promise();
+    if (_apiFlagCache[sowId] != null) {
+      return $.Deferred().resolve(_apiFlagCache[sowId]).promise();
+    }
+    return SCW.knackAjax({
+      url:  SCW.knackRecordUrl(CFG.draftView, sowId),
+      type: 'GET'
+    }).then(function (resp) {
+      var raw = resp && (resp[CFG.addModeField + '_raw'] != null
+        ? resp[CFG.addModeField + '_raw']
+        : resp[CFG.addModeField]);
+      var val = raw == null ? '' : String(raw).replace(/<[^>]*>/g, '').trim();
+      _apiFlagCache[sowId] = val;
+      ns._apiAddModeVal = val;
+      if (CFG.debug) {
+        SCW.debug('[SalesCR] API flag read via ' + CFG.draftView + ': ' +
+          CFG.addModeField + ' = ' + (val || '(absent — expose the field on ' +
+          CFG.draftView + ' in Builder)'));
+      }
+      return val;
+    }, function () {
+      if (CFG.debug) SCW.debug('[SalesCR] API flag read failed (' + CFG.draftView + ')');
+      return '';
+    });
+  }
+
   var _rehydrated = false;
 
-  SCW.onViewRender(CFG.worksheetView, function () {
-    _activeScene = Knack.router.current_scene_key || '';
-
-    // Only activate if field_2706 = Yes
-    if (!isModuleActive()) {
-      S.setOnPage(false);
-      return;
-    }
-
+  function activateModule() {
     S.setOnPage(true);
     ns.injectStyles();
     ns.buildBaseline();
@@ -95,13 +126,60 @@
       ns.rehydrateFromKnack();
     }
 
-    // Inject UI after device-worksheet transform (uses 150ms)
+    // Inject UI after the worksheet transform settles. ns.refresh (not
+    // the local refresh) so the worksheet-v2 adapter's wrap runs too.
     setTimeout(function () {
       ns.checkAddMode();
       ns.detectAddRecords();
-      refresh();
+      (ns.refresh || refresh)();
     }, CFG.uiDelay);
+  }
+
+  SCW.onViewRender(CFG.worksheetView, function () {
+    _activeScene = Knack.router.current_scene_key || '';
+
+    // Only activate if field_2706 = Yes
+    if (isModuleActive()) {
+      activateModule();
+      return;
+    }
+    // Sync reads found nothing — the flag views may simply not be on
+    // this scene. Ask the server before declaring the module inactive.
+    readAddModeFlagFromApi().then(function (val) {
+      if (/^yes$/i.test(val || '')) {
+        activateModule();
+      } else {
+        S.setOnPage(false);
+        if (CFG.debug) {
+          SCW.debug('[SalesCR] inactive — API ' + CFG.addModeField + ' = ' +
+            (val || '(none)'));
+        }
+      }
+    });
   }, CFG.eventNs);
+
+  // Console helper: SCW.salesCR.debugActivation() — prints everything
+  // the activation gate looks at so a dark module is diagnosable.
+  ns.debugActivation = function () {
+    var views = CFG.addModeViews || [CFG.proposalView];
+    for (var i = 0; i < views.length; i++) {
+      var vid = views[i];
+      var hasModel = !!(Knack.views && Knack.views[vid] && Knack.views[vid].model &&
+                        Knack.views[vid].model.attributes);
+      console.log('[SalesCR]', vid,
+        '| inDom:', !!document.getElementById(vid),
+        '| hasModel:', hasModel,
+        '| flagRead:', readAddModeFlag(vid) || '(empty)');
+    }
+    console.log('[SalesCR] sowId:', S.sowRecordId() || '(none)',
+      '| onPage:', S.onPage(),
+      '| addMode:', S.isAddMode(),
+      '| apiFlag:', ns._apiAddModeVal || '(not read)',
+      '| pending:', Object.keys(S.pending()).length);
+    readAddModeFlagFromApi().then(function (v) {
+      console.log('[SalesCR] fresh API flag:', v || '(absent)');
+    });
+  };
 
   // ── Cell update → auto-create CR ──────────────────────
   // Device-worksheet uses direct AJAX PUT (not model.updateRecord),

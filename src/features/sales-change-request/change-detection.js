@@ -280,6 +280,12 @@
       if (val) observed = val;
       if (/^yes$/i.test(val)) { active = true; break; }
     }
+    // Final fallback: the API read init.js performed against the SOW
+    // record (scenes where no addMode view renders at all).
+    if (!active && ns._apiAddModeVal && /^yes$/i.test(ns._apiAddModeVal)) {
+      active = true;
+      observed = ns._apiAddModeVal;
+    }
     S.setAddMode(active);
     if (CFG.debug) SCW.debug('[SalesCR] Add mode:', S.isAddMode(), '(' + observed + ')');
   }
