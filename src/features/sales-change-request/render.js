@@ -498,5 +498,8 @@
 
   ns.renderUI        = renderUI;
   ns.renderActionBar = renderActionBar;
+  // Shared with render-v2.js (the worksheet-v2 adapter) so pending-CR
+  // cards look identical on both surfaces.
+  ns._buildPendingCard = buildCard;
 
 })();
