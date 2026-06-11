@@ -43,6 +43,15 @@
     // + envelope.
     MAX_FILE_BYTES: 3.5 * 1024 * 1024,
 
+    // Proactive downscale target. Raster images larger than this get
+    // re-encoded to a smaller JPEG BEFORE upload even though they're under
+    // the hard MAX_FILE_BYTES cap. Survey/documentation photos don't need
+    // full phone-camera resolution, and a ~1.2 MB payload uploads (and
+    // Make-decodes) far faster than a 2.7 MB one — which is why a
+    // sub-cap file could still take "way too long." Raise this toward
+    // MAX_FILE_BYTES to favor image quality over upload speed.
+    PREFERRED_MAX_BYTES: 1.2 * 1024 * 1024,
+
     // Throttle between consecutive successful uploads (ms). Make limits
     // operations per minute at the org level — each upload triggers a
     // scenario that does multiple Knack API calls, so back-to-back
@@ -362,20 +371,30 @@
     });
   }
 
-  /** Try the ladder until the JPEG fits the cap. Resolves Blob or null. */
-  function downscaleImage(file) {
+  /** Walk the ladder until a JPEG fits targetBytes. Resolves Blob or null.
+   *  If no step reaches the target, the smallest version produced is
+   *  accepted as long as it clears the hard MAX_FILE_BYTES cap. */
+  function downscaleImage(file, targetBytes) {
+    targetBytes = targetBytes || CONFIG.MAX_FILE_BYTES;
     return loadBitmap(file).then(function (src) {
       var sw = src.width  || src.naturalWidth;
       var sh = src.height || src.naturalHeight;
       if (!sw || !sh) throw new Error('no dimensions');
+      var smallest = null;   // best (smallest) blob produced so far
       function attempt(i) {
-        if (i >= DOWNSCALE_LADDER.length) return Promise.resolve(null);
+        if (i >= DOWNSCALE_LADDER.length) {
+          // None hit the preferred target — accept the smallest version we
+          // produced as long as it clears the hard cap; else give up.
+          if (smallest && smallest.size <= CONFIG.MAX_FILE_BYTES) return Promise.resolve(smallest);
+          return Promise.resolve(null);
+        }
         var step  = DOWNSCALE_LADDER[i];
         var scale = Math.min(1, step.edge / Math.max(sw, sh));
         var w = Math.max(1, Math.round(sw * scale));
         var h = Math.max(1, Math.round(sh * scale));
         return canvasToJpeg(src, w, h, step.quality).then(function (blob) {
-          if (blob.size <= CONFIG.MAX_FILE_BYTES) return blob;
+          if (!smallest || blob.size < smallest.size) smallest = blob;
+          if (blob.size <= targetBytes) return blob;
           return attempt(i + 1);
         });
       }
@@ -389,18 +408,33 @@
   /** Resolve what to queue for a picked file: pass-through when it fits,
    *  auto-resize oversized raster images, null blob → too-big row. */
   function prepareFile(f) {
-    if (f.size <= CONFIG.MAX_FILE_BYTES) {
+    // Small enough already — ship as-is.
+    if (f.size <= CONFIG.PREFERRED_MAX_BYTES) {
       return Promise.resolve({ blob: f, converted: false, triedResize: false });
     }
     var t = (f.type || '').toLowerCase();
     var isRaster = t.indexOf('image/') === 0 &&
                    t !== 'image/svg+xml' && t !== 'image/gif';
     if (!isRaster) {
+      // Can't canvas-resize a PDF / SVG / GIF. Ship it if it's under the
+      // hard cap; otherwise it's genuinely too big.
+      if (f.size <= CONFIG.MAX_FILE_BYTES) {
+        return Promise.resolve({ blob: f, converted: false, triedResize: false });
+      }
       return Promise.resolve({ blob: null, converted: false, triedResize: false });
     }
-    return downscaleImage(f).then(function (blob) {
-      if (!blob) return { blob: null, converted: false, triedResize: true };
-      console.info('[bulk-upload] auto-resized', f.name,
+    // Raster image over the preferred size — downscale toward it so the
+    // upload payload stays small (and fast). Falls back to the original
+    // (when under the hard cap) if the resize can't run (decode error /
+    // unsupported format like HEIC).
+    return downscaleImage(f, CONFIG.PREFERRED_MAX_BYTES).then(function (blob) {
+      if (!blob) {
+        if (f.size <= CONFIG.MAX_FILE_BYTES) {
+          return { blob: f, converted: false, triedResize: true };
+        }
+        return { blob: null, converted: false, triedResize: true };
+      }
+      console.info('[bulk-upload] resized', f.name,
         fmtBytes(f.size), '→', fmtBytes(blob.size));
       return { blob: blob, converted: true, triedResize: true };
     });
