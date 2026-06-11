@@ -212,7 +212,17 @@
    *  from) rather than Backbone Collection.get(), which on Knack's model
    *  can return nothing even when .models is fully populated — that was
    *  making the bulk-edit modal think a selected record had no bucket and
-   *  therefore "no fields in common" even with a single row selected. */
+   *  therefore "no fields in common" even with a single row selected.
+   *
+   *  DOM FALLBACK: the model read ALSO comes back empty intermittently —
+   *  mid-refetch, a failed/429 model.fetch, an over-filtered collection,
+   *  or a stale source view key — which silently blanked the modal ("no
+   *  shared fields") until a hard refresh. Every rendered v2 card carries
+   *  its bucket id (data-scw-ws-v2-bucket) + lock state (--locked class),
+   *  which is exactly what recordCategories / isCrLocked / isDeleteBlocked
+   *  need. So synthesize attrs from the cards for any id the model didn't
+   *  supply. Queried document-wide so a wrong _sourceViewKey can't defeat
+   *  it. Full model attrs always win; DOM only fills gaps. */
   function attrsIndex(sourceViewKey) {
     var idx = Object.create(null);
     var recs = (ns.data && typeof ns.data.readRecords === 'function')
@@ -220,6 +230,23 @@
     for (var i = 0; i < recs.length; i++) {
       if (recs[i] && recs[i].id) idx[recs[i].id] = recs[i];
     }
+    try {
+      var cards = document.querySelectorAll('.scw-ws-v2-card[data-scw-ws-v2-record]');
+      for (var c = 0; c < cards.length; c++) {
+        var card = cards[c];
+        var rid  = card.getAttribute('data-scw-ws-v2-record');
+        if (!rid || idx[rid]) continue;   // model attrs (richer) win
+        var bucketId = card.getAttribute('data-scw-ws-v2-bucket') || '';
+        idx[rid] = {
+          id:             rid,
+          field_2219_raw: bucketId ? [{ id: bucketId }] : [],
+          // --locked ⇔ survey-associated (field_2586 >= 1); enough for
+          // isCrLocked / isDeleteBlocked which only test "> 0".
+          field_2586:     card.classList.contains('scw-ws-v2-card--locked') ? 1 : 0,
+          _scwDomFallback: true
+        };
+      }
+    } catch (e) { /* best effort */ }
     return idx;
   }
 
@@ -1113,6 +1140,21 @@
     var sales = isSalesView(sourceViewKey);
     var fieldSet = sales ? SALES_FIELDS : FIELDS;
     var fields = locked ? LOCKED_BULK_FIELDS.slice() : intersectFields(categories, fieldSet);
+    // Diagnostic: if a selection yields no categories the modal will read
+    // "no shared fields". Log exactly why (selection size, how many ids
+    // resolved, the view key + record counts) so the intermittent blank
+    // is traceable instead of a mystery.
+    if (!categories.length || !fields.length) {
+      var _idx = attrsIndex(sourceViewKey);
+      var _resolved = 0; for (var _i = 0; _i < ids.length; _i++) if (_idx[ids[_i]]) _resolved++;
+      console.warn('[scw-ws-v2] bulk: no shared fields', {
+        selected: ids.length, resolvedAttrs: _resolved,
+        sourceViewKey: sourceViewKey, _sourceViewKey: _sourceViewKey,
+        categories: categories, locked: locked, sales: sales,
+        modelRecords: (ns.data && ns.data.readRecords ? ns.data.readRecords(sourceViewKey).length : 'n/a'),
+        domCards: document.querySelectorAll('.scw-ws-v2-card[data-scw-ws-v2-record]').length
+      });
+    }
     // Product candidates vary by proposal bucket — don't offer Product
     // when the selection spans multiple buckets.
     var mixedBuckets = !allSameBucket(ids, sourceViewKey);
