@@ -135,6 +135,52 @@
     }
   }
 
+  /** Report each source view's loaded record count vs. its page cap.
+   *  v2 diffs against whatever is in the on-scene Backbone model, so a
+   *  capped source view (loaded === rows_per_page) silently produces
+   *  phantom "Removed / Not surveyed" rows. Run SCW.bidReviewV2.debugSources()
+   *  from the console; also warns automatically on each render when a
+   *  source view looks truncated. */
+  function sourceStats() {
+    var keys = (ns.CONFIG && ns.CONFIG.sourceViewKeys) || [];
+    var out = [];
+    for (var i = 0; i < keys.length; i++) {
+      var k = keys[i];
+      var v = Knack.views && Knack.views[k];
+      var loaded = (v && v.model && v.model.data && v.model.data.models)
+        ? v.model.data.models.length : 0;
+      var cap = (v && v.model && v.model.view && v.model.view.rows_per_page) || null;
+      var total = null;
+      try {
+        // Knack stamps the server total on the collection after a fetch.
+        total = (v && v.model && v.model.data &&
+          (v.model.data.total_records != null ? v.model.data.total_records
+            : (v.model.data.pagination_meta && v.model.data.pagination_meta.total_records)));
+      } catch (e) { /* ignore */ }
+      var capped = (cap != null && loaded >= cap) ||
+                   (total != null && loaded < total);
+      out.push({ view: k, loaded: loaded, perPage: cap, total: total, truncated: !!capped });
+    }
+    return out;
+  }
+
+  function warnIfTruncated() {
+    var stats = sourceStats();
+    for (var i = 0; i < stats.length; i++) {
+      if (stats[i].truncated) {
+        console.warn('[scw-br-v2] SOURCE VIEW TRUNCATED — diff will be wrong ' +
+          '(phantom Removed/Not-surveyed rows):', stats[i],
+          '→ add ' + stats[i].view + ' to change-record-limit.js VIEW_IDS');
+      }
+    }
+  }
+
+  ns.debugSources = function () {
+    var stats = sourceStats();
+    console.table(stats);
+    return stats;
+  };
+
   ns.data = {
     readRecords:     readRecords,
     readAll:         readAll,
@@ -142,7 +188,8 @@
     notify:          notify,
     notifyDebounced: notifyDebounced,
     refetchAll:      refetchAll,
-    attachListeners: attachListeners
+    attachListeners: attachListeners,
+    warnIfTruncated: warnIfTruncated
   };
 })();
 /*** END BID REVIEW V2 — DATA *************************************************/

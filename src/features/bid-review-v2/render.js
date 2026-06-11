@@ -48,6 +48,9 @@
       body.innerHTML = '<div class="scw-bid-review-v2-empty">transform.js not loaded.</div>';
       return;
     }
+    // Loud console warning if any source view is page-capped — the diff
+    // silently produces phantom Removed/Not-surveyed rows on partial data.
+    if (ns.data && typeof ns.data.warnIfTruncated === 'function') ns.data.warnIfTruncated();
     var state = ns.transform.buildState(bidRecords, sowItems, bidPackages);
 
     // Analyze SOW-item issues once per render (missing photos, disconnected
