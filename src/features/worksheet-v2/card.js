@@ -1296,6 +1296,28 @@
     if (isCrLocked(rec, sourceViewKey)) {
       card.classList.add('scw-ws-v2-card--locked');
       lockCardFields(card);
+      // Tell the user WHY the row is locked — small slate badge in the
+      // summary row, just before the warn slot. Informational (not a
+      // warning), so neutral colors per the amber-is-for-warnings rule.
+      var lockRowEl = card.querySelector('.scw-ws-v2-row');
+      if (lockRowEl) {
+        var lockBadge = document.createElement('span');
+        lockBadge.className = 'scw-ws-v2-lock-badge';
+        lockBadge.title = 'This item is locked because it has already been ' +
+          'submitted for survey. Product, Custom Disc % and SCW Notes ' +
+          'remain editable.';
+        lockBadge.innerHTML =
+          '<svg viewBox="0 0 24 24" width="11" height="11" fill="none" ' +
+            'stroke="currentColor" stroke-width="2.2" stroke-linecap="round" ' +
+            'stroke-linejoin="round" aria-hidden="true">' +
+            '<rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>' +
+            '<path d="M7 11V7a5 5 0 0 1 10 0v4"/>' +
+          '</svg>' +
+          '<span class="scw-ws-v2-lock-badge-label">Submitted for survey</span>';
+        var warnSlot = lockRowEl.querySelector('.scw-ws-v2-cell--warn');
+        if (warnSlot) lockRowEl.insertBefore(lockBadge, warnSlot);
+        else lockRowEl.appendChild(lockBadge);
+      }
     }
     // Leading bulk-select checkbox — absolutely positioned INSIDE the
     // row so it vertically centers with the row\'s actual height

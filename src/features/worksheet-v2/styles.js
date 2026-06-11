@@ -178,6 +178,28 @@
        except Product / Custom Disc % / SCW Notes. JS sets pointer-events;
        here we just drop the "edit" affordance + hover cue. */
     '.scw-ws-v2-locked-ctl { cursor: default !important; }',
+    /* "Why is this locked?" badge in the summary row. Neutral slate pill
+       (informational, not a warning — amber stays reserved for warnings).
+       Tooltip on the badge carries the full explanation. */
+    '.scw-ws-v2-lock-badge {',
+    '  display: inline-flex !important;',
+    '  align-items: center !important;',
+    '  gap: 4px !important;',
+    '  flex: 0 0 auto !important;',
+    '  padding: 3px 8px !important;',
+    '  border-radius: 999px !important;',
+    '  background: #f1f5f9 !important;',
+    '  border: 1px solid #cbd5e1 !important;',
+    '  color: #475569 !important;',
+    '  font: 600 10.5px/1 system-ui, -apple-system, sans-serif !important;',
+    '  white-space: nowrap !important;',
+    '  cursor: help !important;',
+    '  align-self: center !important;',
+    '}',
+    /* Tight rows: drop the text on narrow viewports, keep the lock icon. */
+    '@media (max-width: 1280px) {',
+    '  .scw-ws-v2-lock-badge-label { display: none !important; }',
+    '}',
     '.scw-ws-v2-card--locked .scw-ws-v2-conn-btn-edit { display: none !important; }',
     /* Locked inputs (readOnly, non-whitelisted) read as plain text — no box,
        no border — so the field clearly looks non-editable. The whitelisted
