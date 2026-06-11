@@ -499,20 +499,19 @@
             return '<div>' + esc(l) + '</div>';
           }).join('') +
         '</div>' +
-        '<label class="scw-ws-v2-mb-label">Accessory product</label>' +
+        // No free-text path — accessories must come from the catalog.
+        // When there\'s nothing to pick, say why and keep submit disabled.
         (hasList
-          ? '<select class="scw-ws-v2-mb-input"></select>'
-          : '<input class="scw-ws-v2-mb-input" type="text" placeholder="Type the accessory product name">') +
-        (!hasList
-          ? '<div class="scw-ws-v2-mb-note">' + (noCompatible
-              ? 'No accessories in the catalog list the selected product(s) as ' +
-                'compatible — using free text.'
+          ? '<label class="scw-ws-v2-mb-label">Accessory product</label>' +
+            '<select class="scw-ws-v2-mb-input"></select>'
+          : '<div class="scw-ws-v2-mb-note">' + (noCompatible
+              ? 'No compatible accessory products found for the selected ' +
+                'product(s). Yell at Install Ops if this isn\'t expected.'
               : (unresolvedSelection
-                ? 'Couldn\'t read the selected rows\' products to filter the ' +
-                  'catalog — using free text.'
-                : 'window.SCW.mountingBoxProducts not loaded — using free text. ' +
-                  'Wire the Builder snippet for the dropdown.')) + '</div>'
-          : '') +
+                ? 'Couldn\'t read the selected rows\' products — refresh the ' +
+                  'page and try again.'
+                : 'Accessory catalog hasn\'t loaded yet — refresh the page ' +
+                  'and try again.')) + '</div>') +
         '<div class="scw-ws-v2-mb-status"></div>' +
         '<div class="scw-ws-v2-mb-actions">' +
           '<button type="button" class="scw-ws-v2-mb-cancel">Cancel</button>' +
@@ -593,21 +592,19 @@
     var cancel  = overlay.querySelector('.scw-ws-v2-mb-cancel');
     var submit  = overlay.querySelector('.scw-ws-v2-mb-submit');
 
+    // Nothing pickable → the modal is informational only.
+    if (!hasList) submit.disabled = true;
+
     function close() { overlay.parentNode && overlay.parentNode.removeChild(overlay); }
     cancel.addEventListener('click', close);
     overlay.addEventListener('click', function (e) { if (e.target === overlay) close(); });
 
     submit.addEventListener('click', function () {
-      var productId, productName;
-      if (hasList) {
-        productId = picker.value;
-        var opt2 = picker.options[picker.selectedIndex];
-        productName = opt2 ? (opt2.dataset.name || opt2.textContent) : '';
-        if (!productId) { status.textContent = 'Pick an accessory product first.'; return; }
-      } else {
-        productName = (picker.value || '').trim();
-        if (!productName) { status.textContent = 'Type a product name first.'; return; }
-      }
+      if (!hasList) return;
+      var productId = picker.value;
+      var opt2 = picker.options[picker.selectedIndex];
+      var productName = opt2 ? (opt2.dataset.name || opt2.textContent) : '';
+      if (!productId) { status.textContent = 'Pick an accessory product first.'; return; }
 
       var url = (window.SCW && SCW.CONFIG && SCW.CONFIG.MAKE_BULK_ADD_MOUNTING_BOX_WEBHOOK) || '';
       if (!url || /PLACEHOLDER/.test(url)) {
