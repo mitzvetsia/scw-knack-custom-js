@@ -902,6 +902,19 @@
     '  background: #fafafa; text-align: center; color: #cbd5e1;',
     '}',
     '.scw-bid-review-v2__cell-empty-mark { font-size: 18px; line-height: 1; }',
+    /* Duplicate-bid banner: 2+ bid line items on this bid map to one SOW
+       item. Amber, sits at the top of the cell above the shown item. */
+    '.scw-bid-review-v2__dupe-bid {',
+    '  display: flex; align-items: center; gap: 5px;',
+    '  margin: 0 0 6px; padding: 4px 7px;',
+    '  background: #fffbeb; border: 1px solid #fde68a; border-radius: 6px;',
+    '  color: #b45309; cursor: help;',
+    '  font: 700 10.5px/1.2 system-ui, -apple-system, sans-serif;',
+    '}',
+    '.scw-bid-review-v2__dupe-bid svg { flex: 0 0 auto; }',
+    '.scw-bid-review-v2__dupe-bid-text { white-space: nowrap; }',
+    /* Cell carrying a dupe reads as a mismatch too (amber left edge). */
+    '.scw-bid-review-v2__cell--dupe-bid { box-shadow: inset 3px 0 0 #f59e0b; }',
     /* ── Bid-vs-SOW mismatch states (v1 parity) ───────────────── */
     /* On-bid-but-not-on-this-SOW: blue dashed cut-out on the SOW cell. */
     '.scw-bid-review-v2__sow-cell--off-sow {',

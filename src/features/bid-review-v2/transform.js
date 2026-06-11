@@ -184,7 +184,26 @@
       var pkgs = connectionAll(rec, FK.bidPackage);
       for (var p = 0; p < pkgs.length; p++) {
         var pid = pkgs[p].id;
-        if (!pid || cellsByPackage[pid]) continue;
+        if (!pid) continue;
+        if (cellsByPackage[pid]) {
+          // COLLISION: another bid record on the SAME package already
+          // filled this cell — i.e. two bid line items on one bid both
+          // map to this SOW item. We used to silently drop the second
+          // (the user never saw it). Instead, record it on the kept
+          // cell so the UI can flag the duplication. (Can happen via the
+          // "create variant" path mis-linking the new bid item.)
+          var keep = cellsByPackage[pid];
+          if (!keep.dupes) keep.dupes = [];
+          keep.dupes.push({
+            id:        rec.id,
+            productName: raw(rec, FK.productName),
+            qty:       num(rec, FK.qty),
+            rate:      num(rec, FK.rate),
+            labor:     num(rec, FK.labor),
+            laborDesc: rawHtml(rec, FK.laborDesc)
+          });
+          continue;
+        }
         cellsByPackage[pid] = {
           id:           rec.id,
           productName:  raw(rec, FK.productName),

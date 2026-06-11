@@ -66,6 +66,14 @@
     'stroke="currentColor" stroke-width="2.5" stroke-linecap="round" ' +
     'stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>';
 
+  // Amber warning triangle (matches the worksheet warning iconography).
+  var WARN_TRI_SVG =
+    '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" ' +
+    'stroke="currentColor" stroke-width="2.2" stroke-linecap="round" ' +
+    'stroke-linejoin="round"><path d="M12 2 22 12 12 22 2 12Z"></path>' +
+    '<line x1="12" y1="8" x2="12" y2="13"></line>' +
+    '<line x1="12" y1="16.5" x2="12.01" y2="16.5"></line></svg>';
+
   function fmtMoney(n) {
     if (n == null || isNaN(n)) return '';
     return '$' + Number(n).toLocaleString(undefined, {
@@ -353,6 +361,29 @@
     '</div>';
   }
 
+  // Amber warning banner when 2+ bid line items on THIS bid map to the
+  // same SOW item. Only the first is shown in the grid cell; the cell's
+  // `dupes` array (built in transform) lists the others. Lists each
+  // duplicate's product + sub-bid so the reviewer can spot/fix it.
+  function dupeBidBannerHtml(cell) {
+    if (!cell || !cell.dupes || !cell.dupes.length) return '';
+    var n = cell.dupes.length + 1;   // include the displayed one
+    var lines = cell.dupes.map(function (d) {
+      var prod = ns.transform.stripHtml(d.productName || '') || '(no product)';
+      var fee  = d.labor ? fmtMoney(d.labor) : (d.rate ? fmtMoney(d.rate) : '—');
+      return '• ' + prod + ' — ' + fee;
+    });
+    var tip = n + ' bid line items on this bid map to the same SOW item. ' +
+      'Only the first is shown here. The others:\n' + lines.join('\n') +
+      '\n\nThis usually means a duplicate/variant bid item was linked to the ' +
+      'same SOW line item — review and remove the extra.';
+    return '<div class="scw-bid-review-v2__dupe-bid" title="' + escapeHtml(tip) + '">' +
+        WARN_TRI_SVG +
+        '<span class="scw-bid-review-v2__dupe-bid-text">' + n +
+          ' bid items map here</span>' +
+      '</div>';
+  }
+
   /**
    * One bid cell — the (row × package) intersection. Pure HTML factory
    * for content; CR buttons + pending card are appended after. Events
@@ -447,6 +478,7 @@
     var diffs = ns.transform.getMismatches(row, cell);
     var DIFF = ' scw-bid-review-v2__field-diff';
     if (diffs && diffs.any) td.classList.add('scw-bid-review-v2__cell--mismatch');
+    if (cell.dupes && cell.dupes.length) td.classList.add('scw-bid-review-v2__cell--dupe-bid');
     var prodDiff = (diffs && diffs.product) ? DIFF : '';
     var descDiff = (diffs && diffs.laborDesc) ? DIFF : '';
     var feeOnExt = (diffs && diffs.fee && showExt) ? DIFF : '';
@@ -459,6 +491,7 @@
     var descHover = (diffs && diffs.laborDesc) ? ' data-scw-diff-field="desc"' : '';
 
     td.innerHTML =
+      dupeBidBannerHtml(cell) +
       (cell.productName ?
         '<div class="scw-bid-review-v2__cell-product' + prodDiff + '"' + prodHover + ' title="' +
           escapeHtml(cell.productName) + '">' +
