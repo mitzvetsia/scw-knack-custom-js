@@ -56,6 +56,18 @@
     MAX_RETRIES_PER_FILE: 4,
     RETRY_BACKOFF_MS:     [3000, 8000, 20000, 45000],
 
+    // Post-close grid refresh delay (ms). The Make scenario acks the upload
+    // INSTANTLY (Webhook Response fires early) and does the actual Knack
+    // file write ASYNCHRONOUSLY, so the photos land a few seconds after the
+    // modal closes. We re-fetch the configured grid view(s) once, this many
+    // ms after close, so they appear without a manual refresh. The new
+    // record ids aren't known until after Make's async work, so we re-fetch
+    // the whole view rather than specific records. Override per VIEWS entry
+    // with `refreshDelayMs`. Bump it if Make's async write runs longer than
+    // this; the refetch is harmless if it lands after the photos already
+    // did (slow-Make case), so erring a little long is safe.
+    DEFAULT_REFRESH_DELAY_MS: 9000,
+
     // Each entry hooks the new uploader onto a menu link by text. The
     // matching FORM_CONFIGS entries in jotform-embed-sow-photos.js are
     // disabled so both modals don't open on the same click.
@@ -577,20 +589,50 @@
   function closeModal() {
     var el = document.getElementById(MODAL_ID + '-backdrop');
     if (el) el.remove();
-    // Auto-refresh on close intentionally disabled — was visibly
-    // refreshing rows one-at-a-time after the modal closed, which the
-    // user found disruptive. Manual refresh paths still exist:
-    //   - reloadOnClose: true   on a CONFIG.VIEWS entry to do a full
-    //                           window.location.reload() instead
-    //   - SCW.bulkUpload.refreshSingleRecord(viewId, recordId) from
-    //                           the console to trigger refresh ad-hoc
     if (_state && _state.successCount > 0) {
       var viewCfg = _state.viewCfg || {};
       if (viewCfg.reloadOnClose) {
         setTimeout(function () { window.location.reload(); }, 50);
+      } else {
+        // Make acks the upload instantly and writes the file ASYNCHRONOUSLY,
+        // so the photos land a few seconds AFTER the modal closes. Re-fetch
+        // the configured grid view(s) once, on a fixed delay, so the new
+        // photos show up without a manual refresh. We refetch the WHOLE view
+        // (one render) rather than specific records — the new record ids
+        // aren't known until after Make's async work (the array-only-known-
+        // after case). Harmless if Make was synchronous: the refetch just
+        // lands after the photos already did.
+        var delayViews = {};
+        (viewCfg.refreshRecordInViews || []).forEach(function (v) { delayViews[v] = true; });
+        (viewCfg.refreshViews || []).forEach(function (v) { delayViews[v] = true; });
+        if (_state.refreshViewIds) {
+          Object.keys(_state.refreshViewIds).forEach(function (v) { delayViews[v] = true; });
+        }
+        var vids = Object.keys(delayViews);
+        if (vids.length) {
+          scheduleDelayedRefresh(vids, viewCfg.refreshDelayMs || CONFIG.DEFAULT_REFRESH_DELAY_MS);
+        }
       }
     }
     _state = null;
+  }
+
+  // Full re-fetch of each named view's model, once, after `delay` ms — so
+  // the grid picks up photos Make wrote asynchronously after its instant
+  // ack. A single render per view (not the disruptive one-row-at-a-time
+  // pass that the old close-refresh did). Best-effort and silent.
+  function scheduleDelayedRefresh(viewIds, delay) {
+    setTimeout(function () {
+      viewIds.forEach(function (vid) {
+        try {
+          var v = window.Knack && Knack.views && Knack.views[vid];
+          if (v && v.model && typeof v.model.fetch === 'function') {
+            v.model.fetch();
+            if (window.SCW && SCW.DEBUG) console.log('[bulk-upload] delayed refresh →', vid);
+          }
+        } catch (e) { /* best-effort */ }
+      });
+    }, delay);
   }
 
   // Refresh a single record's row in a configured grid view.
