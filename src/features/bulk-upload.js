@@ -751,6 +751,13 @@
     }
     if (uploadBtn) {
       uploadBtn.disabled = _state.uploading || (stats.queued === 0 && stats.failed === 0);
+      // The "everything I added is over the size cap" case reads as
+      // "the upload silently does nothing" — say so on the button.
+      uploadBtn.title = (!_state.uploading && stats.queued === 0 &&
+                         stats.failed === 0 && stats.tooBig > 0)
+        ? 'All files exceed the ' + fmtBytes(CONFIG.MAX_FILE_BYTES) +
+          ' per-file limit — nothing to upload'
+        : '';
     }
 
     // Wire row-level action buttons
@@ -844,6 +851,13 @@
     _state.rows.forEach(function (r) {
       if (r.status === 'failed') { r.status = 'queued'; r.error = null; }
     });
+    // Always-on breadcrumb — uploads are rare and these lines turn
+    // "the webhook doesn't seem to fire" reports into hard data.
+    console.info('[bulk-upload] starting batch', {
+      recordId:  _state.recordId,
+      linkField: _state.viewCfg && _state.viewCfg.linkField,
+      queued:    countByStatus(_state.rows).queued
+    });
     _state.uploading = true;
     setButtonsDisabled(true);
     processNext(webhook);
@@ -927,6 +941,8 @@
         batchId:     row.batchId,
         triggeredBy: getCurrentUser()
       };
+      console.info('[bulk-upload] POST', row.filename,
+        '(' + fmtBytes(row.sizeBytes) + ') →', row.linkField, row.recordId);
       return fetch(webhook, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -935,6 +951,8 @@
         return resp.text().then(function (txt) {
           var body = null;
           try { body = JSON.parse(txt); } catch (e) { /* tolerate */ }
+          console.info('[bulk-upload] response', row.filename, 'HTTP', resp.status,
+            body || (txt && txt.slice(0, 120)) || '(empty body)');
           return { ok: resp.ok, status: resp.status, headers: resp.headers, body: body, raw: txt };
         });
       });
@@ -987,6 +1005,9 @@
       var status = err && err.httpStatus;
       var body   = err && err.responseBody;
       var msg    = (err && err.message) || String(err);
+      console.warn('[bulk-upload] upload failed:', row.filename,
+        'status=', status || '(network/CORS — request may not have left the browser)',
+        'msg=', msg);
 
       if (isRateLimitError(status, body, msg) && row.retryCount < CONFIG.MAX_RETRIES_PER_FILE) {
         // Back off and re-queue. Prefer Retry-After header when present.
