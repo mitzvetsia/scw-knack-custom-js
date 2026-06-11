@@ -339,14 +339,26 @@
     return 0;
   }
 
-  function groupRows(rows) {
+  // groupRows builds the L1 (MDF/IDF) tree. `removedRows` (optional) are
+  // bucketed by the SAME MDF/IDF key and attached to their location's L1
+  // as a default-collapsed "Removed" subgroup — so a removed item shows
+  // under the location it was removed from, not in one consolidated pile.
+  // A location that has ONLY removed items still gets its L1 (with just
+  // the removed subgroup inside).
+  function groupRows(rows, removedRows) {
+    removedRows = removedRows || [];
     var mdfMap = Object.create(null);
+    var removedMap = Object.create(null);
     var mdfOrder = [];
+    function keyOf(r) { return r.mdfIdf || syntheticL1ForBucket(r.proposalBucket); }
+    function ensure(k) {
+      if (!mdfMap[k]) { mdfMap[k] = []; removedMap[k] = []; mdfOrder.push(k); }
+    }
     for (var j = 0; j < rows.length; j++) {
-      var r = rows[j];
-      var mdf = r.mdfIdf || syntheticL1ForBucket(r.proposalBucket);
-      if (!mdfMap[mdf]) { mdfMap[mdf] = []; mdfOrder.push(mdf); }
-      mdfMap[mdf].push(r);
+      var r = rows[j]; var k = keyOf(r); ensure(k); mdfMap[k].push(r);
+    }
+    for (var rm = 0; rm < removedRows.length; rm++) {
+      var rr = removedRows[rm]; var rk = keyOf(rr); ensure(rk); removedMap[rk].push(rr);
     }
     mdfOrder.sort(function (a, b) {
       var ra = l1Rank(a), rb = l1Rank(b);
@@ -358,13 +370,29 @@
     for (var gi = 0; gi < mdfOrder.length; gi++) {
       var mdfKey = mdfOrder[gi];
       var mdfRows = mdfMap[mdfKey];
+      var rmRows  = removedMap[mdfKey];
       var mdfIdfId = '';
       for (var fi = 0; fi < mdfRows.length; fi++) {
         if (mdfRows[fi].mdfIdfId) { mdfIdfId = mdfRows[fi].mdfIdfId; break; }
       }
+      if (!mdfIdfId) {
+        for (var fr = 0; fr < rmRows.length; fr++) {
+          if (rmRows[fr].mdfIdfId) { mdfIdfId = rmRows[fr].mdfIdfId; break; }
+        }
+      }
+      var subgroups = [];
+      if (rmRows.length) {
+        subgroups.push({
+          key:              mdfKey + '::removed',
+          label:            'Removed — no longer on any SOW or bid',
+          rows:             rmRows,
+          removedItems:     true,
+          defaultCollapsed: true
+        });
+      }
       groups.push({
         key: mdfKey, label: mdfKey, mdfIdfId: mdfIdfId,
-        level: 1, rows: weaveAccessories(mdfRows), subgroups: []
+        level: 1, rows: weaveAccessories(mdfRows), subgroups: subgroups
       });
     }
     return groups;
@@ -910,9 +938,13 @@
       // than being pulled out into a separate "On Bid — not on SOW" block.
       // They keep offSow/needsSow so the SOW cell still cuts out and offers
       // "+ Add to SOW"; they just sit in context with the matched rows.
-      var groups = groupRows(bidOnlyRows.length
-        ? displayRows.concat(bidOnlyRows)
-        : displayRows);
+      // Removed rows are bucketed into their MDF/IDF L1 as a collapsed
+      // "Removed" subgroup (groupRows handles it) — no longer a single
+      // pile pinned to the top.
+      var groups = groupRows(
+        bidOnlyRows.length ? displayRows.concat(bidOnlyRows) : displayRows,
+        removedRows
+      );
       // "Belong to another SOW" stays at the BOTTOM.
       if (otherSowRows.length) {
         groups.push({
@@ -923,20 +955,6 @@
           rows:          otherSowRows,
           subgroups:     [],
           otherBidItems: true
-        });
-      }
-      // "Removed — no longer on any SOW or bid" stays pinned to the very top.
-      // (Bid-only items are now interleaved into their MDF/IDF groups above.)
-      if (removedRows.length) {
-        groups.unshift({
-          key:             '__removed_items__',
-          label:           'Removed — no longer on any SOW or bid',
-          mdfIdfId:        '',
-          level:           1,
-          rows:            removedRows,
-          subgroups:       [],
-          removedItems:    true,
-          defaultCollapsed: true
         });
       }
 

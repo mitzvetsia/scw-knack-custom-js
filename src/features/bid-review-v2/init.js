@@ -134,15 +134,42 @@
         hd.setAttribute('aria-expanded', collapse ? 'false' : 'true');
         var n = hd.nextElementSibling;
         while (n && !n.classList.contains('scw-bid-review-v2__group-header')) {
-          if (n.classList.contains('scw-bid-review-v2__row') ||
-              n.classList.contains('scw-bid-review-v2__subgroup-header')) {
+          if (n.classList.contains('scw-bid-review-v2__subgroup-header')) {
+            // Expand-all opens subgroups too; collapse-all folds them.
+            // Keep the subgroup's own --collapsed flag in sync so a later
+            // per-L1 toggle restores the right state.
+            n.classList.toggle('scw-bid-review-v2__subgroup-header--collapsed', collapse);
             n.classList.toggle('scw-bid-review-v2__row--hidden', collapse);
             n.classList.toggle('scw-bid-review-v2__subgroup-header--hidden', collapse);
+            n.setAttribute('aria-expanded', collapse ? 'false' : 'true');
+          } else if (n.classList.contains('scw-bid-review-v2__row') ||
+                     n.classList.contains('scw-bid-review-v2__expand-row')) {
+            n.classList.toggle('scw-bid-review-v2__row--hidden', collapse);
           }
           n = n.nextElementSibling;
         }
       }
       tgl.textContent = collapse ? 'Expand all' : 'Collapse all';
+    });
+
+    // Per-subgroup toggle (e.g. the "Removed" subgroup inside an L1).
+    // Folds only its own rows, independent of the parent L1.
+    document.addEventListener('click', function (e) {
+      var sub = e.target.closest && e.target.closest('.scw-bid-review-v2__subgroup-header');
+      if (!sub) return;
+      if (e.target.closest('input, button, select, textarea, a')) return;
+      var collapsed = sub.classList.toggle('scw-bid-review-v2__subgroup-header--collapsed');
+      sub.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+      var n = sub.nextElementSibling;
+      while (n &&
+             !n.classList.contains('scw-bid-review-v2__subgroup-header') &&
+             !n.classList.contains('scw-bid-review-v2__group-header')) {
+        if (n.classList.contains('scw-bid-review-v2__row') ||
+            n.classList.contains('scw-bid-review-v2__expand-row')) {
+          n.classList.toggle('scw-bid-review-v2__row--hidden', collapsed);
+        }
+        n = n.nextElementSibling;
+      }
     });
 
     document.addEventListener('click', function (e) {
@@ -153,11 +180,20 @@
       var collapsed = head.classList.toggle('scw-bid-review-v2__group-header--collapsed');
       head.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
       var n = head.nextElementSibling;
+      // Track whether the rows we're walking sit inside a collapsed
+      // subgroup — expanding the L1 must NOT reveal rows the user has
+      // folded at the subgroup level.
+      var subCollapsed = false;
       while (n && !n.classList.contains('scw-bid-review-v2__group-header')) {
-        if (n.classList.contains('scw-bid-review-v2__row') ||
-            n.classList.contains('scw-bid-review-v2__subgroup-header')) {
+        if (n.classList.contains('scw-bid-review-v2__subgroup-header')) {
           n.classList.toggle('scw-bid-review-v2__row--hidden', collapsed);
           n.classList.toggle('scw-bid-review-v2__subgroup-header--hidden', collapsed);
+          subCollapsed = n.classList.contains('scw-bid-review-v2__subgroup-header--collapsed');
+        } else if (n.classList.contains('scw-bid-review-v2__row') ||
+                   n.classList.contains('scw-bid-review-v2__expand-row')) {
+          var inSub = n.classList.contains('scw-bid-review-v2__row--in-subgroup');
+          n.classList.toggle('scw-bid-review-v2__row--hidden',
+            collapsed || (inSub && subCollapsed));
         }
         n = n.nextElementSibling;
       }

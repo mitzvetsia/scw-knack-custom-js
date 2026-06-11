@@ -654,10 +654,18 @@
   function buildL2HeaderRow(sub, colspan) {
     var tr = document.createElement('tr');
     tr.className = 'scw-bid-review-v2__subgroup-header';
+    if (sub.removedItems)     tr.className += ' scw-bid-review-v2__subgroup-header--removed';
+    if (sub.defaultCollapsed) tr.className += ' scw-bid-review-v2__subgroup-header--collapsed';
+    // Collapsible: the chevron + click handler (init.js) fold this
+    // subgroup independently of its parent L1.
+    tr.setAttribute('role', 'button');
+    tr.setAttribute('aria-expanded', sub.defaultCollapsed ? 'false' : 'true');
+    tr.setAttribute('data-subgroup-key', sub.key || '');
     var td = document.createElement('td');
     td.colSpan = colspan;
     td.innerHTML =
       '<div class="scw-bid-review-v2__subgrp-inner">' +
+        '<span class="scw-bid-review-v2__subgrp-chevron">' + GROUP_CHEVRON_SVG + '</span>' +
         '<span class="scw-bid-review-v2__subgrp-title">' + escapeHtml(sub.label) + '</span>' +
         '<span class="scw-bid-review-v2__subgrp-count">' + sub.rows.length + '</span>' +
       '</div>';
@@ -832,13 +840,20 @@
     for (var i = 0; i < group.rows.length; i++) {
       addRow(buildBidRow(group.rows[i], packages, sowId));
     }
-    // Subgroups (L2 — proposal bucket).
+    // Subgroups (e.g. the per-location "Removed" subgroup). The header
+    // follows the L1's hide state; its rows are additionally hidden when
+    // the subgroup is default-collapsed, and tagged --in-subgroup so the
+    // collapse handlers in init.js can fold them independently.
     var subs = group.subgroups || [];
     for (var s = 0; s < subs.length; s++) {
       var sub = subs[s];
       addRow(buildL2HeaderRow(sub, colspan));
+      var subHidden = hide || !!sub.defaultCollapsed;
       for (var sr = 0; sr < sub.rows.length; sr++) {
-        addRow(buildBidRow(sub.rows[sr], packages, sowId));
+        var subRow = buildBidRow(sub.rows[sr], packages, sowId);
+        subRow.classList.add('scw-bid-review-v2__row--in-subgroup');
+        if (subHidden) subRow.classList.add('scw-bid-review-v2__row--hidden');
+        tbody.appendChild(subRow);
       }
     }
   }
