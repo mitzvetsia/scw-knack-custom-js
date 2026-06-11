@@ -126,11 +126,16 @@
        +Hrs / +Mat / Fee stacks and no SOW column — a single read-only Total
        and a wider Description. Sales rows + the matching column header get a
        dedicated 8-track grid so nothing is squished. */
+    /* NOTE the doubled class on the header selector: the base
+       .scw-ws-v2-col-header rule below declares the 12-track build-SOW
+       template with !important and appears LATER in this sheet — equal
+       specificity would let it win and squish the sales header into the
+       first 8 narrow tracks (mis-aligning every label). */
     '.scw-ws-v2-card--sales .scw-ws-v2-row--default,',
     '.scw-ws-v2-card--sales .scw-ws-v2-row--cam,',
     '.scw-ws-v2-card--sales .scw-ws-v2-row--services,',
     '.scw-ws-v2-card--sales .scw-ws-v2-row--assumptions,',
-    '.scw-ws-v2-col-header--sales {',
+    '.scw-ws-v2-col-header.scw-ws-v2-col-header--sales {',
     '  grid-template-columns:',
     '    20px                  /* chevron */',
     '    64px                  /* label */',
