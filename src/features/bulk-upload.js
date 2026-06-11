@@ -427,6 +427,7 @@
     // upload payload stays small (and fast). Falls back to the original
     // (when under the hard cap) if the resize can't run (decode error /
     // unsupported format like HEIC).
+    var _tResize = Date.now();
     return downscaleImage(f, CONFIG.PREFERRED_MAX_BYTES).then(function (blob) {
       if (!blob) {
         if (f.size <= CONFIG.MAX_FILE_BYTES) {
@@ -435,7 +436,8 @@
         return { blob: null, converted: false, triedResize: true };
       }
       console.info('[bulk-upload] resized', f.name,
-        fmtBytes(f.size), '→', fmtBytes(blob.size));
+        fmtBytes(f.size), '→', fmtBytes(blob.size),
+        '(' + (Date.now() - _tResize) + 'ms)');
       return { blob: blob, converted: true, triedResize: true };
     });
   }
@@ -1094,10 +1096,15 @@
   function uploadOne(row, webhook) {
     row.status = 'uploading'; row.error = null;
     row.retryCount = row.retryCount || 0;
+    // Timing breakdown so we can see exactly where an upload spends its
+    // time: client-side base64 encode vs the server (Make) round-trip.
+    var _tEncodeStart = 0, _tEncode = 0, _tFetchStart = 0, _tFetch = 0;
     return dbPut(row).then(function () {
       renderRows();
+      _tEncodeStart = Date.now();
       return readAsBase64(row.blob);
     }).then(function (b64) {
+      _tEncode = Date.now() - _tEncodeStart;
       var payload = {
         recordId:    row.recordId,
         linkField:   row.linkField,
@@ -1121,18 +1128,21 @@
         throw sizeErr;
       }
       console.info('[bulk-upload] POST', row.filename,
-        '(' + fmtBytes(row.sizeBytes) + ' raw, ' + fmtBytes(bodyStr.length) + ' encoded) →',
-        row.linkField, row.recordId);
+        '(' + fmtBytes(row.sizeBytes) + ' raw, ' + fmtBytes(bodyStr.length) + ' encoded, ' +
+        'encode ' + _tEncode + 'ms) →', row.linkField, row.recordId);
+      _tFetchStart = Date.now();
       return fetch(webhook, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    bodyStr
       }).then(function (resp) {
+        _tFetch = Date.now() - _tFetchStart;
         return resp.text().then(function (txt) {
           var body = null;
           try { body = JSON.parse(txt); } catch (e) { /* tolerate */ }
-          console.info('[bulk-upload] response', row.filename, 'HTTP', resp.status,
-            body || (txt && txt.slice(0, 120)) || '(empty body)');
+          console.info('[bulk-upload] TIMING', row.filename,
+            '— encode ' + _tEncode + 'ms · server round-trip ' + _tFetch + 'ms · body ' +
+            fmtBytes(bodyStr.length) + ' · HTTP ' + resp.status);
           return { ok: resp.ok, status: resp.status, headers: resp.headers, body: body, raw: txt };
         });
       });
