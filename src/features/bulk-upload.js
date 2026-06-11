@@ -1032,7 +1032,10 @@
   // a "this will never succeed" type?
   function isRateLimitError(httpStatus, body, errMsg) {
     if (httpStatus === 429) return true;
-    if (httpStatus >= 500 && httpStatus < 600) return true;     // 5xx
+    // 5xx is deliberately NOT auto-retried: Make returns 500 ("Scenario
+    // failed to complete") when a module errors AFTER the Knack upload
+    // step has already run — observed live — so retrying duplicates the
+    // photo. 429 means the run never executed, so retrying that is safe.
     var blob = ((body && body.error) || errMsg || '').toLowerCase();
     // NOTE: status-less fetch failures are handled BEFORE this in
     // uploadOne's catch — with Make webhooks they overwhelmingly mean
@@ -1191,9 +1194,14 @@
           });
       }
 
-      // Permanent failure — mark and move on
+      // Permanent failure — mark and move on. A 5xx from Make usually
+      // means a module errored AFTER the upload step already ran, so
+      // warn the user before they hammer Retry into duplicates.
       row.status = 'failed';
-      row.error  = msg + (status ? ' (HTTP ' + status + ')' : '');
+      row.error  = msg + (status ? ' (HTTP ' + status + ')' : '') +
+        (status >= 500
+          ? ' — the photo may still have uploaded; check before retrying'
+          : '');
       return dbPut(row).then(renderRows).catch(function () { renderRows(); });
     });
   }
