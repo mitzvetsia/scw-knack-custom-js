@@ -2683,6 +2683,19 @@
     var cell = row.cellsByPackage[pkgId];
     if (!cell) return;
 
+    // v2 stacked-duplicate override: when two bid line items on one bid
+    // map to the same SOW item, the grid collapses them into one row, so
+    // cellsByPackage[pkgId] is only the FIRST. The v2 Remove button on a
+    // stacked duplicate carries data-bid-record-id for the SPECIFIC bid
+    // record the user clicked — act on that record, not the kept one.
+    var overrideBid = button.getAttribute('data-bid-record-id');
+    if (overrideBid && overrideBid !== cell.id) {
+      cell = {
+        id:          overrideBid,
+        productName: button.getAttribute('data-bid-product') || cell.productName
+      };
+    }
+
     ns.changeRequests.openRemove({
       rowId:        rowId,
       pkgId:        pkgId,

@@ -361,27 +361,43 @@
     '</div>';
   }
 
-  // Amber warning banner when 2+ bid line items on THIS bid map to the
-  // same SOW item. Only the first is shown in the grid cell; the cell's
-  // `dupes` array (built in transform) lists the others. Lists each
-  // duplicate's product + sub-bid so the reviewer can spot/fix it.
-  function dupeBidBannerHtml(cell) {
-    if (!cell || !cell.dupes || !cell.dupes.length) return '';
-    var n = cell.dupes.length + 1;   // include the displayed one
-    var lines = cell.dupes.map(function (d) {
-      var prod = ns.transform.stripHtml(d.productName || '') || '(no product)';
-      var fee  = d.labor ? fmtMoney(d.labor) : (d.rate ? fmtMoney(d.rate) : '—');
-      return '• ' + prod + ' — ' + fee;
-    });
-    var tip = n + ' bid line items on this bid map to the same SOW item. ' +
-      'Only the first is shown here. The others:\n' + lines.join('\n') +
-      '\n\nThis usually means a duplicate/variant bid item was linked to the ' +
-      'same SOW line item — review and remove the extra.';
-    return '<div class="scw-bid-review-v2__dupe-bid" title="' + escapeHtml(tip) + '">' +
-        WARN_TRI_SVG +
-        '<span class="scw-bid-review-v2__dupe-bid-text">' + n +
-          ' bid items map here</span>' +
-      '</div>';
+  // One stacked DUPLICATE bid item — a second (third, …) bid line item
+  // on the SAME bid that maps to the same SOW item as the primary cell.
+  // Rendered beneath the primary inside the bid cell, full values shown
+  // (they may differ), tagged, with a Remove that targets THIS bid
+  // record (data-bid-record-id override consumed by v1 handleRemoveFromBid).
+  function stackedDupeHtml(d, row, pkgId, sowId) {
+    var descTxt = ns.transform.stripHtml(d.laborDesc || '');
+    var qtyTxt  = d.qty  ? String(d.qty) : '—';
+    var rateTxt = d.rate ? fmtMoney(d.rate) : '—';
+    var extTxt  = d.labor ? fmtMoney(d.labor) : '—';
+    var showExt = (Number(d.qty) || 0) > 1;
+    return '<div class="scw-bid-review-v2__bid-item scw-bid-review-v2__bid-item--dupe">' +
+      '<div class="scw-bid-review-v2__bid-dupe-tag" title="A second bid line item ' +
+        'on this bid is linked to the same SOW item. Usually the extra should be ' +
+        'removed or re-mapped to its own SOW item.">' +
+        WARN_TRI_SVG + '<span>2nd bid item → same SOW item</span></div>' +
+      (d.productName ?
+        '<div class="scw-bid-review-v2__cell-product" title="' + escapeHtml(d.productName) + '">' +
+          escapeHtml(d.productName) + '</div>' : '') +
+      '<div class="scw-bid-review-v2__cell-numbers">' +
+        '<span class="scw-bid-review-v2__cell-num"><label>Qty</label>' + escapeHtml(qtyTxt) + '</span>' +
+        '<span class="scw-bid-review-v2__cell-num"><label>Sub Bid</label>' + escapeHtml(rateTxt) + '</span>' +
+        (showExt ? '<span class="scw-bid-review-v2__cell-num"><label>Ext</label>' +
+          escapeHtml(extTxt) + '</span>' : '') +
+      '</div>' +
+      (descTxt ?
+        '<div class="scw-bid-review-v2__cell-desc" title="' + escapeHtml(descTxt) + '">' +
+          escapeHtml(descTxt) + '</div>' : '') +
+      '<div class="scw-bid-review-v2__cell-actions">' +
+        '<button type="button" class="scw-bid-review__cell-action ' +
+          'scw-bid-review__cell-action--remove scw-bid-review-v2__cell-action" ' +
+          crAttrs('cell_remove_from_bid', row.id, pkgId, sowId) +
+          ' data-bid-record-id="' + escapeHtml(d.id) + '"' +
+          ' data-bid-product="' + escapeHtml(ns.transform.stripHtml(d.productName || '')) +
+          '">Remove</button>' +
+      '</div>' +
+    '</div>';
   }
 
   /**
@@ -490,8 +506,7 @@
     var feeHover  = (diffs && diffs.fee)       ? ' data-scw-diff-field="fee"' : '';
     var descHover = (diffs && diffs.laborDesc) ? ' data-scw-diff-field="desc"' : '';
 
-    td.innerHTML =
-      dupeBidBannerHtml(cell) +
+    var primaryHtml =
       (cell.productName ?
         '<div class="scw-bid-review-v2__cell-product' + prodDiff + '"' + prodHover + ' title="' +
           escapeHtml(cell.productName) + '">' +
@@ -511,6 +526,21 @@
           escapeHtml(descTxt) + '">' + escapeHtml(descTxt) +
         '</div>' : '') +
       cellActionStack(row, pkgId, sowId, diffs);
+
+    // When 2+ bid line items on THIS bid map to the same SOW item, show
+    // each stacked (they may differ in product / price / desc). The SOW
+    // cell to the left is a single <td>, so it naturally spans the full
+    // height of the stacked bid items. Each duplicate carries its own
+    // Remove targeting that specific bid record (data-bid-record-id).
+    if (cell.dupes && cell.dupes.length) {
+      var blocks = ['<div class="scw-bid-review-v2__bid-item">' + primaryHtml + '</div>'];
+      for (var di = 0; di < cell.dupes.length; di++) {
+        blocks.push(stackedDupeHtml(cell.dupes[di], row, pkgId, sowId));
+      }
+      td.innerHTML = '<div class="scw-bid-review-v2__bid-stack">' + blocks.join('') + '</div>';
+    } else {
+      td.innerHTML = primaryHtml;
+    }
     appendPendingCard(td, pendingItem, row, pkg, sowId);
     return td;
   }
