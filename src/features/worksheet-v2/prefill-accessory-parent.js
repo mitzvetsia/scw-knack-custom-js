@@ -97,42 +97,61 @@
 
     // Group by proposal bucket (field_133-derived bucketName), same
     // shape as the toolbar\'s + Add Accessories modal.
-    var grouped = Object.create(null);
-    for (var i = 0; i < filtered.length; i++) {
-      var p = filtered[i];
-      var key   = p.bucketId   || '__other';
-      var label = p.bucketName || 'Other';
-      if (!grouped[key]) grouped[key] = { label: label, items: [] };
-      grouped[key].items.push(p);
+    // Rebuild the select. Keep Knack\'s "Select" placeholder. When the
+    // catalog carries bucket metadata, emit one <optgroup> per bucket;
+    // when it doesn\'t (snippet without bucket fields), render a flat
+    // alphabetical list — no pointless "Other" heading.
+    var anyBucket = false;
+    for (var abi = 0; abi < filtered.length; abi++) {
+      if (filtered[abi] && filtered[abi].bucketId) { anyBucket = true; break; }
     }
-    var groupList = Object.keys(grouped).map(function (k) { return grouped[k]; });
-    groupList.sort(function (a, b) {
-      if (a.label === 'Other' && b.label !== 'Other') return 1;
-      if (b.label === 'Other' && a.label !== 'Other') return -1;
-      return a.label.localeCompare(b.label, undefined,
-        { numeric: true, sensitivity: 'base' });
-    });
-
-    // Rebuild the select. Keep Knack\'s "Select" placeholder, then
-    // emit one <optgroup> per bucket with its products sorted by name.
     var prev = $select.val();
     $select.empty();
     $select.append('<option value="">Select</option>');
-    groupList.forEach(function (g) {
-      g.items.sort(function (a, b) {
+    if (!anyBucket) {
+      var flat = filtered.slice().sort(function (a, b) {
         return String(a.name).localeCompare(String(b.name), undefined,
           { numeric: true, sensitivity: 'base' });
       });
-      var $og = jQuery('<optgroup></optgroup>').attr('label', g.label);
-      g.items.forEach(function (p) {
-        $og.append(
+      flat.forEach(function (p) {
+        $select.append(
           jQuery('<option></option>')
             .attr('value', p.id)
             .text(p.name || '(unnamed)')
         );
       });
-      $select.append($og);
-    });
+    } else {
+      var grouped = Object.create(null);
+      for (var i = 0; i < filtered.length; i++) {
+        var p = filtered[i];
+        var key   = p.bucketId   || '__other';
+        var label = p.bucketName || 'Other';
+        if (!grouped[key]) grouped[key] = { label: label, items: [] };
+        grouped[key].items.push(p);
+      }
+      var groupList = Object.keys(grouped).map(function (k) { return grouped[k]; });
+      groupList.sort(function (a, b) {
+        if (a.label === 'Other' && b.label !== 'Other') return 1;
+        if (b.label === 'Other' && a.label !== 'Other') return -1;
+        return a.label.localeCompare(b.label, undefined,
+          { numeric: true, sensitivity: 'base' });
+      });
+      groupList.forEach(function (g) {
+        g.items.sort(function (a, b) {
+          return String(a.name).localeCompare(String(b.name), undefined,
+            { numeric: true, sensitivity: 'base' });
+        });
+        var $og = jQuery('<optgroup></optgroup>').attr('label', g.label);
+        g.items.forEach(function (p) {
+          $og.append(
+            jQuery('<option></option>')
+              .attr('value', p.id)
+              .text(p.name || '(unnamed)')
+          );
+        });
+        $select.append($og);
+      });
+    }
     if (prev) $select.val(prev);
     // Refresh Chosen so the new options render with groups.
     $select.trigger('chosen:updated');

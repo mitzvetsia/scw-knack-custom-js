@@ -480,7 +480,26 @@
       // carry a bucket (e.g. catalog rows pre-dating the snippet\'s
       // bucket field) land in a single "Other" group at the bottom so
       // they\'re still pickable. Each group sorts its products by
-      // name alphabetically.
+      // name alphabetically. If NO entry carries bucket metadata (the
+      // snippet doesn\'t emit it), skip optgroups entirely and render
+      // a flat alphabetical list — no pointless "Other" heading.
+      var anyBucket = false;
+      for (var bi = 0; bi < products.length; bi++) {
+        if (products[bi] && products[bi].bucketId) { anyBucket = true; break; }
+      }
+      if (!anyBucket) {
+        var flat = products.slice().sort(function (a, b) {
+          return String(a.name).localeCompare(String(b.name), undefined,
+            { numeric: true, sensitivity: 'base' });
+        });
+        flat.forEach(function (p) {
+          var opt = document.createElement('option');
+          opt.value = p.id;
+          opt.textContent = p.name;
+          opt.dataset.name = p.name;
+          selEl.appendChild(opt);
+        });
+      } else {
       var grouped = Object.create(null);
       for (var pi = 0; pi < products.length; pi++) {
         var p = products[pi];
@@ -513,6 +532,7 @@
         });
         selEl.appendChild(og);
       });
+      }
     }
 
     var picker  = overlay.querySelector('.scw-ws-v2-mb-input');
