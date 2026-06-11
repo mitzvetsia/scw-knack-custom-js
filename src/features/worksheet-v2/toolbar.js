@@ -365,8 +365,14 @@
     bu.open(cfgForUpload, recordId);
   }
 
-  function openMountingBoxModal(viewKey) {
-    var sel = selectedIdsAndLabels(viewKey);
+  /** Add-accessory modal. `presetSel` ({ids, labels}) lets a per-item
+   *  "+ Add" open the modal scoped to one row without checkbox
+   *  selection — used on sales scenes that have no Knack add-accessory
+   *  child page. Without it, selection comes from the checked boxes. */
+  function openMountingBoxModal(viewKey, presetSel) {
+    var sel = (presetSel && presetSel.ids && presetSel.ids.length)
+      ? presetSel
+      : selectedIdsAndLabels(viewKey);
     if (!sel.ids.length) {
       alert('Select one or more rows first — an accessory will be added to each selected row.');
       return;
@@ -375,11 +381,9 @@
     // compatibility lists (field_2236 OR field_2205 on the product
     // object) contain the line item\'s product. Walks each selected
     // record and collects the set of "selectionProductIds" from
-    // view_3962\'s model; an accessory must list EVERY one of those
-    // ids to be eligible (intersection — safer than union for bulk).
-    // Falls back to the unfiltered list when:
-    //   - the snippet hasn\'t exposed the compatibility arrays yet
-    //   - none of the selected records have a product
+    // the source view\'s model; an accessory must list EVERY one of
+    // those ids to be eligible (intersection — safer than union for
+    // bulk). Mirrors the Knack-side query on the native form.
     var selectionProductIds = (function () {
       var v = window.Knack && Knack.views && Knack.views[viewKey];
       var models = (v && v.model && v.model.data && v.model.data.models) || [];
@@ -408,17 +412,19 @@
 
     var rawProducts = (window.SCW && SCW.mountingBoxProducts) || [];
     var products = rawProducts;
+    var noCompatible = false;
     if (selectionProductIds.length && rawProducts.length) {
-      var filtered = rawProducts.filter(function (p) {
+      products = rawProducts.filter(function (p) {
         if (!p) return false;
-        // Treat an EMPTY compat array the same as a missing one. The
-        // catalog loader always sets these to [] (never null), so a bare
-        // Array.isArray() check would treat "no compat data" as "compat
-        // list that matches nothing" and wrongly drop the product.
+        // The catalog spans EVERY enabled product (the Builder snippet
+        // doesn\'t bucket-filter), so "no compat list" means "not an
+        // accessory" — exclude it. Only products whose field_2236 OR
+        // field_2205 list names the selected product(s) are accessories
+        // for this selection. This is the same rule the Knack-side
+        // query applies to the native add-accessory form.
         var a = (Array.isArray(p.compatibleProducts)    && p.compatibleProducts.length)    ? p.compatibleProducts    : null;
         var b = (Array.isArray(p.compatibleProductsAlt) && p.compatibleProductsAlt.length) ? p.compatibleProductsAlt : null;
-        // No compat list at all → universally applicable, include it.
-        if (!a && !b) return true;
+        if (!a && !b) return false;
         for (var i = 0; i < selectionProductIds.length; i++) {
           var pid = selectionProductIds[i];
           var hit = (a && a.indexOf(pid) !== -1) || (b && b.indexOf(pid) !== -1);
@@ -426,9 +432,7 @@
         }
         return true;
       });
-      // Don't dead-end: if the compatibility filter removes everything,
-      // fall back to the full catalog instead of dropping to free text.
-      products = filtered.length ? filtered : rawProducts;
+      noCompatible = rawProducts.length > 0 && products.length === 0;
     }
     var hasList  = products && products.length > 0;
 
@@ -438,20 +442,23 @@
       '<div class="scw-ws-v2-mb-modal">' +
         '<div class="scw-ws-v2-mb-title">Add accessory to ' +
           sel.ids.length + ' row' + (sel.ids.length === 1 ? '' : 's') + '</div>' +
-        '<div class="scw-ws-v2-mb-sub">One mounting-box line item will be created per ' +
+        '<div class="scw-ws-v2-mb-sub">One accessory line item will be created per ' +
           'selected row, connected back to the parent.</div>' +
         '<div class="scw-ws-v2-mb-rowlist">' +
           sel.labels.map(function (l) {
             return '<div>' + esc(l) + '</div>';
           }).join('') +
         '</div>' +
-        '<label class="scw-ws-v2-mb-label">Mounting box product</label>' +
+        '<label class="scw-ws-v2-mb-label">Accessory product</label>' +
         (hasList
           ? '<select class="scw-ws-v2-mb-input"></select>'
           : '<input class="scw-ws-v2-mb-input" type="text" placeholder="Type the accessory product name">') +
         (!hasList
-          ? '<div class="scw-ws-v2-mb-note">window.SCW.mountingBoxProducts not loaded — ' +
-            'using free text. Wire the Builder snippet for the dropdown.</div>'
+          ? '<div class="scw-ws-v2-mb-note">' + (noCompatible
+              ? 'No accessories in the catalog list the selected product(s) as ' +
+                'compatible — using free text.'
+              : 'window.SCW.mountingBoxProducts not loaded — using free text. ' +
+                'Wire the Builder snippet for the dropdown.') + '</div>'
           : '') +
         '<div class="scw-ws-v2-mb-status"></div>' +
         '<div class="scw-ws-v2-mb-actions">' +

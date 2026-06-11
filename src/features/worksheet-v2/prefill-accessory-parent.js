@@ -29,33 +29,39 @@
     return matches && matches.length ? matches[matches.length - 1] : '';
   }
 
-  function lookupLabel(parentId) {
+  /** Find a record's attributes in view_3962's model. Iterates .models
+   *  directly — Backbone Collection.get() is unreliable on Knack's
+   *  model and can return nothing even when .models is populated
+   *  (same fix as worksheet-v2/bulk.js attrsIndex). */
+  function findRecordAttrs(parentId) {
     try {
       var v = window.Knack && Knack.views && Knack.views[SOURCE_VIEW];
-      if (!v || !v.model || !v.model.data || typeof v.model.data.get !== 'function') return '';
-      var rec = v.model.data.get(parentId);
-      if (!rec) return '';
-      var attrs = rec.attributes || rec;
-      var product = (attrs.field_1949 || '').toString().replace(/<[^>]*>/g, '').trim();
-      var drop    = (attrs.field_1950 || '').toString().replace(/<[^>]*>/g, '').trim();
-      if (product && drop) return drop + ' — ' + product;
-      return product || drop || '';
-    } catch (e) { return ''; }
+      var models = (v && v.model && v.model.data && v.model.data.models) || [];
+      for (var i = 0; i < models.length; i++) {
+        var attrs = models[i] && models[i].attributes;
+        if (attrs && attrs.id === parentId) return attrs;
+      }
+    } catch (e) { /* fall through */ }
+    return null;
+  }
+
+  function lookupLabel(parentId) {
+    var attrs = findRecordAttrs(parentId);
+    if (!attrs) return '';
+    var product = (attrs.field_1949 || '').toString().replace(/<[^>]*>/g, '').trim();
+    var drop    = (attrs.field_1950 || '').toString().replace(/<[^>]*>/g, '').trim();
+    if (product && drop) return drop + ' — ' + product;
+    return product || drop || '';
   }
 
   /** Read the parent\'s field_1949 (product) id from view_3962. */
   function lookupParentProductId(parentId) {
-    try {
-      var v = window.Knack && Knack.views && Knack.views[SOURCE_VIEW];
-      if (!v || !v.model || !v.model.data || typeof v.model.data.get !== 'function') return '';
-      var rec = v.model.data.get(parentId);
-      if (!rec) return '';
-      var attrs = rec.attributes || rec;
-      var raw = attrs.field_1949_raw;
-      if (Array.isArray(raw) && raw.length && raw[0]) return raw[0].id || '';
-      if (raw && raw.id) return raw.id;
-      return '';
-    } catch (e) { return ''; }
+    var attrs = findRecordAttrs(parentId);
+    if (!attrs) return '';
+    var raw = attrs.field_1949_raw;
+    if (Array.isArray(raw) && raw.length && raw[0]) return raw[0].id || '';
+    if (raw && raw.id) return raw.id;
+    return '';
   }
 
   /** Build the bucket-grouped, compatibility-filtered option set for
@@ -63,23 +69,31 @@
    *  place. We rely on Chosen\'s native <optgroup> rendering — Knack\'s
    *  form submit just reads the selected value as before. */
   function rewriteProductPicker(parentProductId) {
+    // Without the parent\'s product id we can\'t compatibility-filter.
+    // The catalog spans EVERY enabled product, so rewriting here would
+    // REPLACE Knack\'s own query-filtered options with the full catalog
+    // — leave the native picker untouched instead.
+    if (!parentProductId) return;
     var $select = window.jQuery && jQuery('#' + ADD_ACCESSORY_VIEW + '-' + PRODUCT_FIELD);
     if (!$select || !$select.length) return;
     var catalog = (window.SCW && window.SCW.mountingBoxProducts) || [];
     if (!catalog.length) return; // snippet hasn\'t loaded yet — leave Knack\'s default
 
-    // Compatibility gate: an accessory is eligible if its
+    // Compatibility gate: an accessory is eligible only when its
     // field_2236 OR field_2205 list contains the parent\'s product id.
-    // Entries with neither field exposed pass through (old catalog data).
+    // No compat list = not an accessory (the catalog is the whole
+    // enabled product list, not just accessories) — exclude it.
     var filtered = catalog.filter(function (p) {
       if (!p) return false;
-      if (!parentProductId) return true;
-      var a = Array.isArray(p.compatibleProducts)    ? p.compatibleProducts    : null;
-      var b = Array.isArray(p.compatibleProductsAlt) ? p.compatibleProductsAlt : null;
-      if (!a && !b) return true;
+      var a = (Array.isArray(p.compatibleProducts)    && p.compatibleProducts.length)    ? p.compatibleProducts    : null;
+      var b = (Array.isArray(p.compatibleProductsAlt) && p.compatibleProductsAlt.length) ? p.compatibleProductsAlt : null;
+      if (!a && !b) return false;
       return (a && a.indexOf(parentProductId) !== -1) ||
              (b && b.indexOf(parentProductId) !== -1);
     });
+    // Nothing compatible → keep Knack\'s own (query-filtered) options
+    // rather than emptying the picker.
+    if (!filtered.length) return;
 
     // Group by proposal bucket (field_133-derived bucketName), same
     // shape as the toolbar\'s + Add Accessories modal.
@@ -181,13 +195,14 @@
     if (!catalog.length) return; // catalog still loading — retry on next event
 
     // Same filter + grouping as rewriteProductPicker, but built into
-    // an inline node we own.
+    // an inline node we own. Require a compat hit — no compat list
+    // means "not an accessory", not "universal".
     var filtered = catalog.filter(function (p) {
       if (!p) return false;
-      if (!parentProductId) return true;
-      var a = Array.isArray(p.compatibleProducts)    ? p.compatibleProducts    : null;
-      var b = Array.isArray(p.compatibleProductsAlt) ? p.compatibleProductsAlt : null;
-      if (!a && !b) return true;
+      if (!parentProductId) return false;
+      var a = (Array.isArray(p.compatibleProducts)    && p.compatibleProducts.length)    ? p.compatibleProducts    : null;
+      var b = (Array.isArray(p.compatibleProductsAlt) && p.compatibleProductsAlt.length) ? p.compatibleProductsAlt : null;
+      if (!a && !b) return false;
       return (a && a.indexOf(parentProductId) !== -1) ||
              (b && b.indexOf(parentProductId) !== -1);
     });

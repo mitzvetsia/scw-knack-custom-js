@@ -296,6 +296,30 @@
       e.stopPropagation();
       var parentId = link.getAttribute('data-scw-ws-v2-add-accessory') || '';
       if (!parentId) return;
+      // Sales scenes have no add-accessory child page in Builder, so
+      // navigating to the add-accessory-line-item slug dead-ends there.
+      // Route the per-item add through the custom accessory modal
+      // instead — it posts the same Make webhook the bulk add uses,
+      // scoped to this one row.
+      var v2Container = link.closest('[id^="scw-ws-v2-view_"]');
+      var v2ViewKey = v2Container ? v2Container.id.replace(/^scw-ws-v2-/, '') : '';
+      var v2Cfg = (v2ViewKey && ns.cfg && typeof ns.cfg.viewCfg === 'function')
+        ? ns.cfg.viewCfg(v2ViewKey) : null;
+      if (v2Cfg && v2Cfg.moneyMode === 'sales' &&
+          ns.toolbar && typeof ns.toolbar.openAddAccessories === 'function') {
+        var addCard = link.closest('.scw-ws-v2-card');
+        var addLabelEl = addCard && addCard.querySelector('.scw-ws-v2-cell--label');
+        var addLabel = addLabelEl ? (addLabelEl.textContent || '').trim() : '';
+        if (!addLabel) {
+          var addProdEl = addCard && addCard.querySelector('.scw-ws-v2-product-name');
+          addLabel = addProdEl ? (addProdEl.textContent || '').trim() : '';
+        }
+        ns.toolbar.openAddAccessories(v2ViewKey, {
+          ids:    [parentId],
+          labels: [addLabel || parentId]
+        });
+        return;
+      }
       // Build the URL deterministically from the same base path the
       // chip edit links use. resolveAddAccessoryBase() matches against
       // the current hash; if it returns nothing we surface an alert
