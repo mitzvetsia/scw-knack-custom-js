@@ -275,6 +275,7 @@
       el.style.pointerEvents = 'none';
       // Appearance handled by CSS ([readonly] in a locked card → plain
       // text, no box) so locked fields visibly read as non-editable.
+      setLockTooltip(el);
     }
     // Editable connection cells/buttons (product field_1949 is whitelisted).
     var conns = card.querySelectorAll('[data-scw-ws-v2-conn]');
@@ -284,6 +285,7 @@
       if (LOCK_WHITELIST[f]) continue;
       el.style.pointerEvents = 'none';
       el.classList.add('scw-ws-v2-locked-ctl');
+      setLockTooltip(el);
     }
     // Boolean chips (cabling), accessory add/remove/qty, and the per-row
     // trash button.
@@ -294,6 +296,7 @@
     for (i = 0; i < ctls.length; i++) {
       ctls[i].style.pointerEvents = 'none';
       ctls[i].classList.add('scw-ws-v2-locked-ctl');
+      setLockTooltip(ctls[i]);
     }
     var trash = card.querySelectorAll('.scw-ws-v2-trash');
     for (i = 0; i < trash.length; i++) {
@@ -314,6 +317,20 @@
   // Shared copy + glyph for the survey-lock messaging.
   var LOCKED_MSG = 'This item is locked because it has already been ' +
     'submitted for survey. Product, Custom Disc % and SCW Notes remain editable.';
+  var LOCK_HOVER_MSG = 'Fields are locked because this item has been part of a survey.';
+
+  /** Hover tooltip for a locked control. The control itself has
+   *  pointer-events:none (it can't receive hover, so a title on it never
+   *  shows) — the title must go on the nearest still-hoverable wrapper. */
+  function setLockTooltip(el) {
+    try {
+      var wrap = el.closest(
+        '.scw-ws-v2-detail-field, .scw-ws-v2-cell, .scw-ws-v2-mh-chip-wrap, ' +
+        '.scw-ws-v2-mh-addrow'
+      ) || el.parentElement;
+      if (wrap) wrap.title = LOCK_HOVER_MSG;
+    } catch (e) { /* tooltip is best-effort */ }
+  }
   var LOCK_SVG_SM =
     '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" ' +
       'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
