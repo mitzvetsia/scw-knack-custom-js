@@ -2725,6 +2725,8 @@
     var sowId = button.getAttribute('data-sow-id');
     if (!bidId) return;
 
+    var FKsow = (CFG.fieldKeys && CFG.fieldKeys.relatedSowItem) || 'field_2404';
+
     var raw = null;
     try {
       var v = Knack.views && Knack.views[CFG.viewKey];   // view_3680 (bids)
@@ -2739,18 +2741,67 @@
       return;
     }
 
+    // The SOW item this bid was SHARING (for Make context).
+    var prevSowItemId = '';
+    try {
+      var rc = raw[FKsow + '_raw'];
+      if (Array.isArray(rc) && rc[0]) prevSowItemId = rc[0].id || '';
+      else if (rc && rc.id) prevSowItemId = rc.id;
+    } catch (e2) { /* ignore */ }
+
+    // sourceRecord Make receives — SOW connection CLEARED so the bid
+    // auto-sync treats it as unconnected (won't update the shared SOW
+    // item) and the NEW SOW item becomes this bid item's source of truth.
+    var sourceRecord = $.extend({}, raw);
+    sourceRecord[FKsow] = '';
+    sourceRecord[FKsow + '_raw'] = [];
+
     setBusy(button, true);
-    ns.submitAction({
-      actionType:   'row_add_to_sow',
-      reviewRowId:  bidId,
-      sowId:        sowId,
-      sourceRecord: raw
-    }).done(function () {
-      refreshSilently();
-      if (ns.renderToast) ns.renderToast('New SOW line item requested', 'success');
-    }).always(function () {
-      setBusy(button, false);
-    });
+
+    function fireWebhook() {
+      ns.submitAction({
+        actionType:           'row_add_to_sow',
+        reviewRowId:          bidId,
+        sowId:                sowId,
+        sourceRecord:         sourceRecord,
+        // Signal this is the duplicate-split path: field_2404 has been
+        // cleared on the bid record; create a fresh SOW item and point
+        // this bid record's REL_sow-line-item at it (NOT the old one).
+        clearedSowConnection: true,
+        previousSowItemId:    prevSowItemId
+      }).done(function () {
+        refreshSilently();
+        if (ns.renderToast) ns.renderToast('New SOW line item requested', 'success');
+      }).always(function () {
+        setBusy(button, false);
+      });
+    }
+
+    // Clear field_2404 on the bid record NOW (view-based PUT) so the
+    // disconnect is persisted before the auto-sync can read the stale
+    // connection. If the PUT fails (e.g. field not editable on this
+    // view), still fire the webhook — the cleared payload + flag let
+    // Make do the clear server-side.
+    try {
+      var body = {};
+      body[FKsow] = [];   // empty connection = cleared
+      SCW.knackAjax({
+        url:  SCW.knackRecordUrl(CFG.viewKey, bidId),
+        type: 'PUT',
+        data: JSON.stringify(body),
+        success: function (resp) {
+          try {
+            if (typeof SCW.syncKnackModel === 'function') {
+              SCW.syncKnackModel(CFG.viewKey, bidId, resp, FKsow, '');
+            }
+          } catch (e3) { /* ignore */ }
+          fireWebhook();
+        },
+        error: function () { fireWebhook(); }
+      });
+    } catch (e4) {
+      fireWebhook();
+    }
   }
 
   // ── disconnect from SOW (per-row, on SOW detail cell) ──────
