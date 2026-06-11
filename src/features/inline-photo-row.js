@@ -743,7 +743,15 @@
     return el || card.parentElement;
   }
 
-  /** Highlight all valid empty-required targets in the same strip. */
+  /** Highlight valid drop targets in the same strip: any OTHER photo card
+   *  that is still EMPTY (no image yet) — required or not. The drag gesture
+   *  itself works on every row (confirmed via probe: dragstart fires, cards
+   *  are draggable); the original empty-AND-required rule meant that once a
+   *  row's required slots were filled there were no targets left to light
+   *  up, so the photo lifted but had nowhere to go and snapped back — which
+   *  reads as "can't pick it up." Lighting up every open slot lets you keep
+   *  assigning photos to the remaining type slots. (Filled slots stay
+   *  excluded so a drop can never silently overwrite an existing photo.) */
   function highlightTargets(strip, sourceId) {
     if (!strip) return;
     var cards = strip.querySelectorAll('.' + CARD_CLS);
@@ -751,7 +759,6 @@
       var c = cards[i];
       if (c.getAttribute('data-photo-id') === sourceId) continue;
       if (c.getAttribute('data-photo-has-image') === 'true') continue;
-      if (c.getAttribute('data-photo-required') !== 'true') continue;
       c.classList.add(DROP_OK_CLS);
     }
   }
@@ -1300,13 +1307,13 @@
               buildDropUI(card).setPending();
             }
 
-            // Drop helper text (hidden until drag starts)
-            if (photo.required && !photo.completed) {
-              var helper = document.createElement('div');
-              helper.className = 'scw-drop-helper';
-              helper.textContent = 'Drop to use for ' + (photo.type || 'this slot');
-              card.appendChild(helper);
-            }
+            // Drop helper text (hidden until this card becomes a drag
+            // target). Added for every empty slot now — any open slot is a
+            // valid target, not just required ones.
+            var helper = document.createElement('div');
+            helper.className = 'scw-drop-helper';
+            helper.textContent = 'Drop to use for ' + (photo.type || 'this slot');
+            card.appendChild(helper);
 
             // Drop-target events are delegated on document (see the
             // one-time binding near the drag handlers) so a moved /
