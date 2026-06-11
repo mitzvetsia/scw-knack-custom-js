@@ -1055,11 +1055,15 @@
       return;
     }
     uploadOne(row, webhook).then(function () {
-      // Throttle between uploads — gives Make headroom against per-minute
-      // operations limits. Skipped after a failure since that file's
-      // already paused itself with a retry delay.
+      // Throttle BETWEEN uploads — gives Make headroom against per-minute
+      // operations limits. Only needed when another file is still queued;
+      // applying it after the last file just makes a single-photo upload
+      // sit ~1.5s longer before the modal confirms/closes. Also skipped
+      // after a failure since that file already paused itself with a
+      // retry delay.
       if (!_state) return;
-      var delay = row.status === 'done' ? CONFIG.UPLOAD_DELAY_MS : 0;
+      var moreQueued = _state.rows.some(function (r) { return r.status === 'queued'; });
+      var delay = (moreQueued && row.status === 'done') ? CONFIG.UPLOAD_DELAY_MS : 0;
       setTimeout(function () { processNext(webhook); }, delay);
     });
   }
