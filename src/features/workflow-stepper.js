@@ -106,7 +106,11 @@
       label: 'Review Site Survey Report',
       // Route to the new survey-report-page (the old view_3862 menu
       // pointed at the deprecated site-survey-report-deprecated route).
+      // This step fully replaces that menu view, so hide it — but
+      // DON'T source the href from it (hideMenuView, not menuView),
+      // otherwise resolveHref could fall back to the deprecated route.
       hrefTemplate: '#survey-report-page/site-survey-report/{sowId}/',
+      hideMenuView: 'view_3862',
       insertAfter: 'view_3853',
       activeIcon: 'eye',
       newTab: true,
@@ -379,6 +383,17 @@
 
       /* ── Hide original menu view ── */
       '.scw-step-menu-hidden { display: none !important; }';
+
+    // Hide any view a step fully replaces but doesn't source its href
+    // from (step.hideMenuView). CSS-based + view-id selector so there's
+    // no render-timing flash when the orphaned menu view repaints — a
+    // JS-only hide would have to chase every re-render of that view.
+    var deadViews = STEPS
+      .filter(function (s) { return s.hideMenuView; })
+      .map(function (s) { return '#' + s.hideMenuView; });
+    if (deadViews.length) {
+      style.textContent += '\n' + deadViews.join(',') + ' { display: none !important; }';
+    }
 
     document.head.appendChild(style);
   }
