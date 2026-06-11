@@ -1,10 +1,9 @@
-# Backlog Prompts (lower-priority captures)
+# High-Priority Backlog Prompts
 
-A running list of "things we noticed we need to work on," captured as **ready-to-run
-prompts** for a fresh Claude Code session. This is the lower-priority inbox; the
-curated, higher-priority backlog lives in `CLAUDE.md → High-Priority TODOs (Known
-Issues)`. When an item here becomes a priority, graduate it into that section (and
-mark it **Promoted** here).
+The **higher-priority** TODO queue: things we've noticed and decided to work on
+soon, each captured as a **ready-to-run prompt** for a fresh Claude Code session.
+The lower-priority backlog (documented known issues and deferred follow-ups) lives
+in `CLAUDE.md → Lower-Priority TODOs (Known Issues)`.
 
 ## How to use
 
@@ -14,8 +13,8 @@ mark it **Promoted** here).
   has CLAUDE.md but nothing else.
 - **Running one**: copy the fenced prompt block into a new Claude Code session
   verbatim. Update the entry's status afterward.
-- **Statuses**: `Captured` → `Promoted` (moved to CLAUDE.md High-Priority TODOs)
-  or `Done` (link the commit/PR).
+- **Statuses**: `Captured` → `Done` (link the commit/PR) or `Deferred` (demoted to
+  the CLAUDE.md lower-priority section).
 
 ## Entry template
 

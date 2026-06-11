@@ -493,13 +493,14 @@ This is a **copy-paste-and-modify codebase, not a design space.** Every feature 
 - **KTL (Knack Toolkit Library)** is loaded alongside this bundle. Some features interact with KTL's keyword system (`ktlKeywords`), accordion state, and hide/show buttons.
 - **`save.sh` excludes dist/** — use it for source-only commits during development. Only `release.sh` includes the built bundle.
 
-## High-Priority TODOs (Known Issues)
+## Lower-Priority TODOs (Known Issues)
 
-This is the **higher-priority** backlog — curated, investigated issues that are
-next in line for real work. Lower-priority observations captured during day-to-day
-work live in `docs/backlog-prompts.md` as ready-to-run prompts; items graduate
-from there to here when they become a priority. (Source comments referencing
-"Known Issue #N" point at the numbered items in this section.)
+This is the **lower-priority** backlog — known issues and deferred follow-ups that
+are documented but not next in line. The **higher-priority** queue lives in
+`docs/backlog-prompts.md`: items we've decided to work on soon, each captured as a
+ready-to-run prompt for a fresh session. If an item here gets prioritized, add a
+prompt entry for it there. (Source comments referencing "Known Issue #N" point at
+the numbered items in this section.)
 
 ### 1. Bid comparison grid does not refresh after change request submission
 - **Location**: `src/features/bid-review/change-requests.js` → `submitChangeRequest()`
