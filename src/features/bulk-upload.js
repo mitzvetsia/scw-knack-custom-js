@@ -49,18 +49,12 @@
     // uploads can blow through small plan quotas. 1500ms = ~40 files/min.
     UPLOAD_DELAY_MS: 1500,
 
-    // Per-file retry on rate-limit / server-error responses. Each retry
-    // waits longer; if all retries fail the file is marked 'failed' and
-    // the user gets a Retry button. Non-rate-limit errors (4xx other
-    // than 429) fail immediately — no point hammering.
-    MAX_RETRIES_PER_FILE: 4,
-    RETRY_BACKOFF_MS:     [3000, 8000, 20000, 45000],
-
-    // Post-close grid refresh delay (ms). The Make scenario acks the upload
-    // INSTANTLY (Webhook Response fires early) and does the actual Knack
-    // file write ASYNCHRONOUSLY, so the photos land a few seconds after the
-    // modal closes. We re-fetch the configured grid view(s) once, this many
-    // ms after close, so they appear without a manual refresh. The new
+    // Post-close grid refresh delay (ms). Uploads are fire-and-forget: the
+    // client marks each photo done the moment it's SENT and never waits on
+    // Make's response, so Make does the actual Knack file write a few
+    // seconds AFTER the modal closes. We re-fetch the configured grid
+    // view(s) once, this many ms after close, so they appear without a
+    // manual refresh. The new
     // record ids aren't known until after Make's async work, so we re-fetch
     // the whole view rather than specific records. Override per VIEWS entry
     // with `refreshDelayMs`. Bump it if Make's async write runs longer than
@@ -1090,47 +1084,12 @@
     });
   }
 
-  // Heuristic: is this error a "back off and try again" type, or
-  // a "this will never succeed" type?
-  function isRateLimitError(httpStatus, body, errMsg) {
-    if (httpStatus === 429) return true;
-    // 5xx is deliberately NOT auto-retried: Make returns 500 ("Scenario
-    // failed to complete") when a module errors AFTER the Knack upload
-    // step has already run — observed live — so retrying duplicates the
-    // photo. 429 means the run never executed, so retrying that is safe.
-    var blob = ((body && body.error) || errMsg || '').toLowerCase();
-    // NOTE: status-less fetch failures are handled BEFORE this in
-    // uploadOne's catch — with Make webhooks they overwhelmingly mean
-    // "delivered but the response was CORS-opaque", and retrying re-runs
-    // the scenario and DUPLICATES the upload (observed live).
-    return /rate.?limit|too many|throttl|quota|operations limit|operation limit/.test(blob);
-  }
-
-  // Parse a Retry-After header value (either seconds or HTTP-date).
-  // Returns delay in ms, or null if header missing/unparseable.
-  function parseRetryAfter(headers) {
-    if (!headers || !headers.get) return null;
-    var v = headers.get('Retry-After');
-    if (!v) return null;
-    var s = parseInt(v, 10);
-    if (!isNaN(s) && s >= 0) return s * 1000;
-    var t = Date.parse(v);
-    if (!isNaN(t)) return Math.max(0, t - Date.now());
-    return null;
-  }
-
   function uploadOne(row, webhook) {
     row.status = 'uploading'; row.error = null;
-    row.retryCount = row.retryCount || 0;
-    // Timing breakdown so we can see exactly where an upload spends its
-    // time: client-side base64 encode vs the server (Make) round-trip.
-    var _tEncodeStart = 0, _tEncode = 0, _tFetchStart = 0, _tFetch = 0;
     return dbPut(row).then(function () {
       renderRows();
-      _tEncodeStart = Date.now();
       return readAsBase64(row.blob);
     }).then(function (b64) {
-      _tEncode = Date.now() - _tEncodeStart;
       var payload = {
         recordId:    row.recordId,
         linkField:   row.linkField,
@@ -1144,72 +1103,35 @@
         triggeredBy: getCurrentUser()
       };
       var bodyStr = JSON.stringify(payload);
-      // Hard stop before fetch: Make drops connections on bodies over
-      // 5 MB (no HTTP response → "Failed to fetch"). Fail with a real
-      // explanation instead.
+      // Client-side hard stop: Make silently drops connections on bodies
+      // over ~5 MB. Fail BEFORE sending (this never touches the network) so
+      // the user can resize instead of getting a false "done".
       if (bodyStr.length > 4.9 * 1024 * 1024) {
-        var sizeErr = new Error('Encoded payload (' + fmtBytes(bodyStr.length) +
-          ') exceeds the webhook\'s 5 MB body limit — resize the image and retry');
-        sizeErr.httpStatus = 413;
-        throw sizeErr;
+        row.status = 'failed';
+        row.error  = 'Too large to send (' + fmtBytes(bodyStr.length) +
+          ' encoded · 5 MB limit) — resize and retry';
+        return dbPut(row).then(renderRows).catch(function () { renderRows(); });
       }
-      console.info('[bulk-upload] POST', row.filename,
-        '(' + fmtBytes(row.sizeBytes) + ' raw, ' + fmtBytes(bodyStr.length) + ' encoded, ' +
-        'encode ' + _tEncode + 'ms) →', row.linkField, row.recordId);
-      _tFetchStart = Date.now();
-      return fetch(webhook, {
+      console.info('[bulk-upload] POST (optimistic)', row.filename,
+        '(' + fmtBytes(row.sizeBytes) + ' raw, ' + fmtBytes(bodyStr.length) + ' encoded) →',
+        row.linkField, row.recordId);
+      // OPTIMISTIC SEND: fire the request and immediately mark the row done.
+      // We do NOT wait on or read Make's response — that round-trip is what
+      // made uploads feel slow, and reading it brought CORS/retry/duplicate
+      // headaches. The request keeps running in the background (closing the
+      // modal doesn't cut it; only navigating away from the page would).
+      // Make does its Knack write on its own schedule; the delayed grid
+      // refresh on modal close surfaces the new photos. No Make change
+      // needed — the existing scenario's response is simply ignored.
+      fetch(webhook, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
         body:    bodyStr
-      }).then(function (resp) {
-        _tFetch = Date.now() - _tFetchStart;
-        return resp.text().then(function (txt) {
-          var body = null;
-          try { body = JSON.parse(txt); } catch (e) { /* tolerate */ }
-          console.info('[bulk-upload] TIMING', row.filename,
-            '— encode ' + _tEncode + 'ms · server round-trip ' + _tFetch + 'ms · body ' +
-            fmtBytes(bodyStr.length) + ' · HTTP ' + resp.status);
-          return { ok: resp.ok, status: resp.status, headers: resp.headers, body: body, raw: txt };
-        });
+      }).catch(function (err) {
+        // Already reported done to the user — just log the background error.
+        console.warn('[bulk-upload] background send error (already marked done):',
+          row.filename, (err && err.message) || err);
       });
-    }).then(function (r) {
-      // Explicit failure response, even with HTTP 200 (Make often wraps).
-      if (r.body && r.body.success === false) {
-        var msg = r.body.error || 'Make scenario reported failure';
-        var simulated = isRateLimitError(0, r.body, msg) ? 429 : 0;
-        var err = new Error(msg);
-        err.httpStatus = simulated;
-        err.responseBody = r.body;
-        throw err;
-      }
-      if (!r.ok) {
-        var err2 = new Error('HTTP ' + r.status + (r.raw ? ' — ' + r.raw.slice(0, 120) : ''));
-        err2.httpStatus = r.status;
-        err2.responseBody = r.body;
-        err2.retryAfter = parseRetryAfter(r.headers);
-        throw err2;
-      }
-      // Capture any view-refresh hints the scenario returned so we can
-      // refresh them when the modal closes.
-      if (_state && r.body && Array.isArray(r.body.refresh)) {
-        r.body.refresh.forEach(function (v) {
-          if (typeof v === 'string' && /^view_\d+/.test(v)) {
-            _state.refreshViewIds[v] = true;
-          }
-        });
-      }
-      // Capture any per-record refresh hints — record ids that should
-      // be re-fetched in the configured refreshRecordInViews. Use this
-      // when photos got connected to records other than the upload's
-      // own recordId (e.g. survey line items rather than the survey).
-      if (_state && r.body && Array.isArray(r.body.refreshRecords)) {
-        r.body.refreshRecords.forEach(function (id) {
-          if (typeof id === 'string' && /^[a-f0-9]{24}$/i.test(id)) {
-            _state.refreshRecordIds[id] = true;
-          }
-        });
-      }
-      // Success — drop the blob from IDB, keep a transient in-memory marker.
       return dbDelete(row.id).then(function () {
         row.status = 'done';
         row.blob = null;
@@ -1218,60 +1140,12 @@
         renderRows();
       });
     }).catch(function (err) {
-      var status = err && err.httpStatus;
-      var body   = err && err.responseBody;
-      var msg    = (err && err.message) || String(err);
-
-      // Status-less rejection = the browser couldn't READ the response.
-      // For Make webhooks that overwhelmingly means the request WAS
-      // delivered and the scenario ran, but the response carried no
-      // CORS headers (the same status-0-as-success convention used by
-      // every other Make call in this bundle). Retrying re-runs the
-      // scenario and duplicates the upload — observed live. Treat as
-      // delivered. The residual risk (a genuine network drop marked
-      // done) is the lesser evil vs. systematic duplicates; Make-side
-      // idempotency on uploadId is the real cure.
-      var corsOpaque = (status == null || status === 0) &&
-                       /failed to fetch|networkerror|load failed/i.test(msg);
-      if (corsOpaque) {
-        console.info('[bulk-upload] response unreadable (CORS-opaque) for',
-          row.filename, '— treating as delivered, NOT retrying (duplicate risk)');
-        return dbDelete(row.id).then(function () {
-          row.status = 'done';
-          row.blob = null;
-          row.error = null;
-          if (_state) _state.successCount++;
-          renderRows();
-        });
-      }
-
-      console.warn('[bulk-upload] upload failed:', row.filename,
-        'status=', status || '(none)', 'msg=', msg);
-
-      if (isRateLimitError(status, body, msg) && row.retryCount < CONFIG.MAX_RETRIES_PER_FILE) {
-        // Back off and re-queue. Prefer Retry-After header when present.
-        row.retryCount++;
-        var delay = err.retryAfter ||
-                    CONFIG.RETRY_BACKOFF_MS[row.retryCount - 1] ||
-                    CONFIG.RETRY_BACKOFF_MS[CONFIG.RETRY_BACKOFF_MS.length - 1];
-        row.status = 'queued';
-        row.error  = 'Rate limited — retry ' + row.retryCount + '/' +
-                     CONFIG.MAX_RETRIES_PER_FILE + ' in ' + Math.round(delay / 1000) + 's';
-        return dbPut(row)
-          .then(renderRows)
-          .then(function () {
-            return new Promise(function (resolve) { setTimeout(resolve, delay); });
-          });
-      }
-
-      // Permanent failure — mark and move on. A 5xx from Make usually
-      // means a module errored AFTER the upload step already ran, so
-      // warn the user before they hammer Retry into duplicates.
+      // Only PRE-SEND client errors reach here (e.g. base64 read / IDB) —
+      // these never touched the network, so marking failed is safe.
+      var msg = (err && err.message) || String(err);
+      console.warn('[bulk-upload] pre-send failure:', row.filename, msg);
       row.status = 'failed';
-      row.error  = msg + (status ? ' (HTTP ' + status + ')' : '') +
-        (status >= 500
-          ? ' — the photo may still have uploaded; check before retrying'
-          : '');
+      row.error  = msg;
       return dbPut(row).then(renderRows).catch(function () { renderRows(); });
     });
   }
