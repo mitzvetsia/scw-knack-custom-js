@@ -119,6 +119,28 @@
     });
   }
 
+  /** True when any loaded worksheet record is survey-derived
+   *  (field_2586 >= 1). Those rows are LOCKED by the per-card rule —
+   *  the only way to change them is a change request — so the CR
+   *  surface must be active whenever they exist, regardless of the
+   *  SOW-level field_2706 flag (observed reading "No" on SOWs whose
+   *  line items are clearly survey-derived). */
+  function worksheetHasSurveyItems() {
+    try {
+      var v = Knack.views && Knack.views[CFG.worksheetView];
+      var models = (v && v.model && v.model.data && v.model.data.models) || [];
+      for (var i = 0; i < models.length; i++) {
+        var a = models[i] && models[i].attributes;
+        if (!a) continue;
+        var raw = a[CFG.addCountField + '_raw'];
+        var n = (typeof raw === 'number') ? raw
+          : parseFloat(String(a[CFG.addCountField] || '').replace(/[^0-9.\-]/g, ''));
+        if (!isNaN(n) && n >= 1) return true;
+      }
+    } catch (e) { /* fall through */ }
+    return false;
+  }
+
   var _rehydrated = false;
 
   function activateModule() {
@@ -145,8 +167,19 @@
   SCW.onViewRender(CFG.worksheetView, function () {
     _activeScene = Knack.router.current_scene_key || '';
 
-    // Only activate if field_2706 = Yes
+    // Activate if field_2706 = Yes on a flag view…
     if (isModuleActive()) {
+      activateModule();
+      return;
+    }
+    // …or if the worksheet carries survey-locked rows — the lock and
+    // the CR surface are one policy; locked rows without CR affordances
+    // are a dead end for the user.
+    if (worksheetHasSurveyItems()) {
+      if (CFG.debug) {
+        console.info('[SalesCR] ACTIVE — survey-derived (locked) rows present on ' +
+          CFG.worksheetView);
+      }
       activateModule();
       return;
     }
@@ -190,6 +223,7 @@
       '| onPage:', S.onPage(),
       '| addMode:', S.isAddMode(),
       '| apiFlag:', ns._apiAddModeVal || '(not read)',
+      '| surveyItems:', worksheetHasSurveyItems(),
       '| pending:', Object.keys(S.pending()).length,
       '| v2 container:', !!document.getElementById('scw-ws-v2-' + CFG.worksheetView));
     readAddModeFlagFromApi().then(function (v) {
