@@ -315,6 +315,97 @@
     });
   }
 
+  // ── CLIENT-SIDE IMAGE DOWNSCALE ───────────────────────────────────────
+  // Oversized images are re-encoded as progressively smaller JPEGs until
+  // they fit MAX_FILE_BYTES, so 8–12 MB phone photos upload instead of
+  // bouncing off the size cap. Non-images, SVG/GIF (vector / animation
+  // would be destroyed), and formats canvas can't decode (e.g. HEIC on
+  // Chrome) fall through to the normal too-big rejection.
+  var DOWNSCALE_LADDER = [
+    { edge: 2400, quality: 0.85 },
+    { edge: 2000, quality: 0.80 },
+    { edge: 1600, quality: 0.75 },
+    { edge: 1280, quality: 0.70 }
+  ];
+
+  function loadViaImg(file) {
+    return new Promise(function (resolve, reject) {
+      var url = URL.createObjectURL(file);
+      var img = new Image();
+      img.onload  = function () { URL.revokeObjectURL(url); resolve(img); };
+      img.onerror = function () { URL.revokeObjectURL(url); reject(new Error('decode failed')); };
+      img.src = url;
+    });
+  }
+
+  function loadBitmap(file) {
+    if (window.createImageBitmap) {
+      // imageOrientation:'from-image' bakes EXIF rotation into the
+      // bitmap so portrait phone photos don't come out sideways.
+      try {
+        return createImageBitmap(file, { imageOrientation: 'from-image' })
+          .catch(function () { return loadViaImg(file); });
+      } catch (e) { /* older signature — fall through */ }
+    }
+    return loadViaImg(file);
+  }
+
+  function canvasToJpeg(source, w, h, q) {
+    return new Promise(function (resolve, reject) {
+      var c = document.createElement('canvas');
+      c.width = w; c.height = h;
+      c.getContext('2d').drawImage(source, 0, 0, w, h);
+      c.toBlob(function (b) {
+        if (b) resolve(b);
+        else reject(new Error('canvas.toBlob returned null'));
+      }, 'image/jpeg', q);
+    });
+  }
+
+  /** Try the ladder until the JPEG fits the cap. Resolves Blob or null. */
+  function downscaleImage(file) {
+    return loadBitmap(file).then(function (src) {
+      var sw = src.width  || src.naturalWidth;
+      var sh = src.height || src.naturalHeight;
+      if (!sw || !sh) throw new Error('no dimensions');
+      function attempt(i) {
+        if (i >= DOWNSCALE_LADDER.length) return Promise.resolve(null);
+        var step  = DOWNSCALE_LADDER[i];
+        var scale = Math.min(1, step.edge / Math.max(sw, sh));
+        var w = Math.max(1, Math.round(sw * scale));
+        var h = Math.max(1, Math.round(sh * scale));
+        return canvasToJpeg(src, w, h, step.quality).then(function (blob) {
+          if (blob.size <= CONFIG.MAX_FILE_BYTES) return blob;
+          return attempt(i + 1);
+        });
+      }
+      return attempt(0).then(function (blob) {
+        if (src.close) { try { src.close(); } catch (e) {} }
+        return blob;
+      });
+    }).catch(function () { return null; });
+  }
+
+  /** Resolve what to queue for a picked file: pass-through when it fits,
+   *  auto-resize oversized raster images, null blob → too-big row. */
+  function prepareFile(f) {
+    if (f.size <= CONFIG.MAX_FILE_BYTES) {
+      return Promise.resolve({ blob: f, converted: false, triedResize: false });
+    }
+    var t = (f.type || '').toLowerCase();
+    var isRaster = t.indexOf('image/') === 0 &&
+                   t !== 'image/svg+xml' && t !== 'image/gif';
+    if (!isRaster) {
+      return Promise.resolve({ blob: null, converted: false, triedResize: false });
+    }
+    return downscaleImage(f).then(function (blob) {
+      if (!blob) return { blob: null, converted: false, triedResize: true };
+      console.info('[bulk-upload] auto-resized', f.name,
+        fmtBytes(f.size), '→', fmtBytes(blob.size));
+      return { blob: blob, converted: true, triedResize: true };
+    });
+  }
+
   // ── STYLES ────────────────────────────────────────────────────────────
   function injectStyles() {
     if (document.getElementById(STYLE_ID)) return;
@@ -445,7 +536,8 @@
           '<div class="scw-bu-drop" tabindex="0">' +
             '<div><strong>Drop files here</strong> or click to choose</div>' +
             '<span class="scw-bu-drop-hint">Any type · max ' +
-              fmtBytes(CONFIG.MAX_FILE_BYTES) + ' per file</span>' +
+              fmtBytes(CONFIG.MAX_FILE_BYTES) +
+              ' per file · larger images are resized automatically</span>' +
             '<input type="file" multiple style="display:none">' +
           '</div>' +
           '<div class="scw-bu-info">' +
@@ -675,26 +767,49 @@
   function addFiles(files) {
     if (!_state || !files.length) return;
     var puts = files.map(function (f) {
-      var tooBig = f.size > CONFIG.MAX_FILE_BYTES;
-      var row = {
-        id:        uuid(),
-        recordId:  _state.recordId,
-        linkField: _state.viewCfg.linkField,
-        filename:  f.name,
+      // prepareFile pass-throughs compliant files, canvas-resizes
+      // oversized raster images, and returns blob:null when nothing
+      // uploadable could be produced.
+      return prepareFile(f).then(function (prep) {
+        if (!_state) return;
+        var blob   = prep.blob;
+        var tooBig = !blob;
+        var filename = f.name;
         // File.type can be empty for some extensions on some OSes; fall back
         // to a generic binary MIME so downstream code always has something.
-        mimeType:  f.type || 'application/octet-stream',
-        extension: getExtension(f.name),
-        sizeBytes: f.size,
-        blob:      f,
-        status:    tooBig ? 'too-big' : 'queued',
-        error:     tooBig ? ('File exceeds ' + fmtBytes(CONFIG.MAX_FILE_BYTES) + ' limit') : null,
-        addedAt:   Date.now(),
-        batchId:   _state.batchId,
-        uploadId:  uuid()
-      };
-      return dbPut(row).then(function () {
-        if (_state) _state.rows.push(row);
+        var mime = f.type || 'application/octet-stream';
+        var ext  = getExtension(f.name);
+        if (blob && prep.converted) {
+          // Re-encoded as JPEG — rename so the payload metadata matches
+          // the actual bytes. Auto-match labels (E-001 etc.) survive
+          // since only the extension changes.
+          mime = 'image/jpeg';
+          ext  = 'jpg';
+          filename = f.name.replace(/\.[^.]+$/, '') + '.jpg';
+        }
+        var row = {
+          id:        uuid(),
+          recordId:  _state.recordId,
+          linkField: _state.viewCfg.linkField,
+          filename:  filename,
+          mimeType:  mime,
+          extension: ext,
+          sizeBytes: blob ? blob.size : f.size,
+          // Surfaced in the size column so resizes are visible.
+          origSizeBytes: prep.converted ? f.size : null,
+          blob:      blob || f,
+          status:    tooBig ? 'too-big' : 'queued',
+          error:     tooBig
+            ? ('File exceeds ' + fmtBytes(CONFIG.MAX_FILE_BYTES) + ' limit' +
+               (prep.triedResize ? ' — auto-resize failed (unsupported image format?)' : ''))
+            : null,
+          addedAt:   Date.now(),
+          batchId:   _state.batchId,
+          uploadId:  uuid()
+        };
+        return dbPut(row).then(function () {
+          if (_state) _state.rows.push(row);
+        });
       });
     });
     Promise.all(puts).then(renderRows).catch(function (err) {
@@ -828,7 +943,13 @@
           '</div>' +
           errLine +
         '</div>' +
-        '<div class="scw-bu-size">' + fmtBytes(row.sizeBytes) + '</div>' +
+        '<div class="scw-bu-size"' +
+          (row.origSizeBytes
+            ? ' title="Auto-resized from ' + escapeHtml(fmtBytes(row.origSizeBytes)) + '"'
+            : '') + '>' +
+          fmtBytes(row.sizeBytes) +
+          (row.origSizeBytes ? ' <span style="color:#0369a1">(resized)</span>' : '') +
+        '</div>' +
         '<div class="scw-bu-status is-' + row.status + '">' +
           (labels[row.status] || row.status) +
         '</div>' +
