@@ -1104,21 +1104,32 @@
           : '';
         // No href → render as non-link span so we never silently bounce
         // the user back to the home page on click.
+        // Mid-delete state survives the source-view re-renders that fire
+        // on every poll fetch (init.js polls until the record is gone) by
+        // reading a shared pending-delete registry. When set, dim the chip
+        // and swap the × + qty stepper for a spinner so the user sees
+        // "deleting…" the whole time the delete is settling.
+        var pendingDel = !!(ns.pendingDeletes && ns.pendingDeletes[chip.id]);
+        var tail = pendingDel
+          ? '<span class="scw-ws-v2-mh-spin" title="Deleting…"></span>'
+          : (stepperHtml + delX);
         var wrapCls = 'scw-ws-v2-mh-chip-wrap' +
-          (accWrong ? ' scw-ws-v2-mh-chip-wrap--warn' : '');
+          (accWrong ? ' scw-ws-v2-mh-chip-wrap--warn' : '') +
+          (pendingDel ? ' scw-ws-v2-mh-chip-wrap--deleting' : '');
+        var wrapTitle = pendingDel ? ' title="Deleting…"' : '';
         if (editHref) {
-          chipsHtml += '<span class="' + wrapCls + '">' +
+          chipsHtml += '<span class="' + wrapCls + '"' + wrapTitle + '>' +
             '<a class="scw-ws-v2-mh-chip" href="' + escapeHtml(editHref) + '"' +
               ' title="Edit ' + escapeHtml(chip.label) + '">' +
               escapeHtml(chip.label) +
-            '</a>' + warnMark + stepperHtml + delX +
+            '</a>' + warnMark + tail +
           '</span>';
         } else {
-          chipsHtml += '<span class="' + wrapCls + '">' +
+          chipsHtml += '<span class="' + wrapCls + '"' + wrapTitle + '>' +
             '<span class="scw-ws-v2-mh-chip scw-ws-v2-mh-chip--inert"' +
               ' title="' + escapeHtml(chip.label) + '">' +
               escapeHtml(chip.label) +
-            '</span>' + warnMark + stepperHtml + delX +
+            '</span>' + warnMark + tail +
           '</span>';
         }
       }

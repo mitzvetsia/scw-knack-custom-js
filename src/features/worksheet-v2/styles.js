@@ -1056,6 +1056,27 @@
     '.scw-ws-v2-mh-del:hover {',
     '  background: #fee2e2 !important; color: #b91c1c !important;',
     '}',
+    /* Mid-delete chip state — dim + strike the label and swap the ×/qty
+       stepper for a spinner while the delete settles. Re-applied on every
+       source-view re-render via card.js + ns.pendingDeletes so it can\'t
+       flicker back to normal until the record is actually gone. Reuses the
+       existing scw-ws-v2-spin keyframe defined further down. */
+    '.scw-ws-v2-mh-chip-wrap--deleting {',
+    '  opacity: 0.6 !important;',
+    '  pointer-events: none !important;',
+    '}',
+    '.scw-ws-v2-mh-chip-wrap--deleting .scw-ws-v2-mh-chip {',
+    '  color: #94a3b8 !important; text-decoration: line-through !important;',
+    '}',
+    '.scw-ws-v2-mh-spin {',
+    '  display: inline-block !important;',
+    '  width: 11px !important; height: 11px !important;',
+    '  margin-left: 4px !important; flex: 0 0 auto !important;',
+    '  border: 2px solid #cbd5e1 !important;',
+    '  border-top-color: #07467c !important;',
+    '  border-radius: 50% !important;',
+    '  animation: scw-ws-v2-spin 700ms linear infinite !important;',
+    '}',
     /* Attached-to caption above the row for promoted accessories. Tight,
        muted metadata line that hugs the row — "↳ <parent>" with the tick
        carrying the connection and the parent name kept compact. */

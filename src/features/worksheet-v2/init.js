@@ -424,8 +424,18 @@
       var chipId = btn.getAttribute('data-scw-ws-v2-mh-del');
       if (!chipId) return;
 
-      // Same selector idiom as the kebab handler — attribute form so
-      // 24-hex IDs starting with a digit don't blow up the selector.
+      var wrap = btn.closest('.scw-ws-v2-mh-chip-wrap');
+      var v3962Container = btn.closest('[id^="scw-ws-v2-"]');
+      var v3962ViewKey = v3962Container
+        ? v3962Container.id.replace(/^scw-ws-v2-/, '')
+        : 'view_3962';
+
+      // PREFERRED path: click Knack's native FE delete button on the
+      // record's row (auto-confirming the modal). Same attribute-selector
+      // idiom as the kebab handler so 24-hex IDs starting with a digit
+      // don't blow up the selector. The Make webhook below is only a
+      // FALLBACK, used when that row (and so its kn-link-delete) isn't in
+      // the DOM — mainly freshly-created accessories whose <tr> lags.
       var srcView = document.getElementById('view_3962');
       var link = srcView && srcView.querySelector(
         'tr[id="' + chipId + '"] a.kn-link-delete'
@@ -436,31 +446,25 @@
           'tr[id="' + chipId + '"] a.kn-link-delete'
         );
       }
-      // Optimistic hide so the row updates instantly. v2 picks up the
-      // actual removal once Knack re-renders after the delete settles.
-      var wrap = btn.closest('.scw-ws-v2-mh-chip-wrap');
-      if (wrap) wrap.style.display = 'none';
 
-      var v3962Container = btn.closest('[id^="scw-ws-v2-"]');
-      var v3962ViewKey = v3962Container
-        ? v3962Container.id.replace(/^scw-ws-v2-/, '')
-        : 'view_3962';
+      // Show "Deleting…" feedback. Register the id so the in-progress
+      // visual survives the source-view re-renders that fire on each poll
+      // fetch (card.js reads ns.pendingDeletes), and stamp the live wrap
+      // now so feedback is instant.
+      ns.pendingDeletes = ns.pendingDeletes || {};
+      ns.pendingDeletes[chipId] = true;
+      markChipDeleting(wrap);
 
       if (link) {
         autoConfirmKnackDelete();
         link.click();
       } else {
-        // Freshly-created accessory records don\'t always have a
-        // <tr> rendered with kn-link-delete in either source view
-        // (view_3962 / view_3610) — the source view\'s DOM lags the
-        // model. Fall back to the same Make webhook the kebab
-        // handler uses, so the delete still goes through.
         var webhookUrl = (window.SCW && SCW.CONFIG && SCW.CONFIG.MAKE_DELETE_RECORD_WEBHOOK) || '';
         if (!webhookUrl) {
           console.warn('[scw-ws-v2] kn-link-delete missing AND ' +
             'MAKE_DELETE_RECORD_WEBHOOK not configured; cannot ' +
             'delete accessory ' + chipId);
-          if (wrap) wrap.style.display = '';
+          clearChipDeleting(chipId, v3962ViewKey, wrap);
           return;
         }
         fetch(webhookUrl, {
@@ -470,21 +474,30 @@
         }).catch(function (err) {
           console.warn('[scw-ws-v2] accessory delete webhook failed for ' +
             chipId, err);
-          if (wrap) wrap.style.display = '';
+          clearChipDeleting(chipId, v3962ViewKey, wrap);
         });
       }
 
-      // Knack's delete sometimes doesn't fire knack-view-render on
-      // view_3962, so the model stays populated with the deleted
-      // bracket until a manual refresh. Explicitly refetch view_3962
-      // a beat after the delete confirms — by then Knack's PUT/DELETE
-      // has settled server-side and the fresh fetch returns the new
-      // state without the bracket.
-      setTimeout(function () {
-        if (ns.data && typeof ns.data.refetchAndNotify === 'function') {
-          ns.data.refetchAndNotify(v3962ViewKey);
+      // Poll the source view until the record actually drops out of the
+      // model, THEN re-render so the chip vanishes the moment the delete
+      // really lands. Both the FE-link path and the async Make webhook
+      // settle on their own schedule, so the old single fixed-delay
+      // refetch raced the deletion and usually fired too early — leaving
+      // the chip until a manual refresh. Times out at ~30s and restores
+      // the chip if the delete never confirms.
+      pollUntilRecordGone(v3962ViewKey, chipId, function onGone() {
+        if (ns.pendingDeletes) delete ns.pendingDeletes[chipId];
+        if (ns.data && typeof ns.data.notify === 'function') {
+          ns.data.notify(v3962ViewKey);
         }
-      }, 1500);
+      }, function onTimeout() {
+        console.warn('[scw-ws-v2] accessory delete not confirmed within ' +
+          'timeout for ' + chipId + ' — restoring chip');
+        if (ns.pendingDeletes) delete ns.pendingDeletes[chipId];
+        if (ns.data && typeof ns.data.notify === 'function') {
+          ns.data.notify(v3962ViewKey);
+        }
+      });
     });
   }
 
@@ -532,6 +545,93 @@
     setTimeout(function () {
       if (!done) { done = true; obs.disconnect(); }
     }, 1500);
+  }
+
+  // ── Accessory chip delete: in-progress feedback + poll-until-gone ──
+
+  // Stamp the "deleting…" visual onto a chip wrap directly (instant
+  // feedback before any re-render). The shared ns.pendingDeletes
+  // registry — read by card.js — re-applies this on every intervening
+  // source-view re-render so the state can't flicker back while the
+  // delete is still settling.
+  function markChipDeleting(wrap) {
+    if (!wrap) return;
+    wrap.classList.add('scw-ws-v2-mh-chip-wrap--deleting');
+    wrap.setAttribute('title', 'Deleting…');
+    var del = wrap.querySelector('.scw-ws-v2-mh-del');
+    if (del) del.style.display = 'none';
+    var step = wrap.querySelector('.scw-ws-v2-mh-stepper');
+    if (step) step.style.display = 'none';
+    if (!wrap.querySelector('.scw-ws-v2-mh-spin')) {
+      var spin = document.createElement('span');
+      spin.className = 'scw-ws-v2-mh-spin';
+      wrap.appendChild(spin);
+    }
+  }
+
+  // Undo markChipDeleting (used on dispatch failure / timeout). Clears
+  // the registry entry AND restores the live wrap in case no re-render
+  // is coming to rebuild it.
+  function clearChipDeleting(chipId, viewKey, wrap) {
+    if (chipId && ns.pendingDeletes) delete ns.pendingDeletes[chipId];
+    if (wrap) {
+      wrap.classList.remove('scw-ws-v2-mh-chip-wrap--deleting');
+      wrap.removeAttribute('title');
+      var spin = wrap.querySelector('.scw-ws-v2-mh-spin');
+      if (spin && spin.parentNode) spin.parentNode.removeChild(spin);
+      var del = wrap.querySelector('.scw-ws-v2-mh-del');
+      if (del) del.style.display = '';
+      var step = wrap.querySelector('.scw-ws-v2-mh-stepper');
+      if (step) step.style.display = '';
+    }
+  }
+
+  // Refetch a source view's model on an interval until `recordId` is no
+  // longer present, then call onGone(). Calls v.model.fetch() directly
+  // (not refetchAndNotify) so the poll itself drives the visible
+  // re-render only once — when the record is confirmed gone — rather
+  // than flashing stale data each cycle. Gives up after ~30s and calls
+  // onTimeout().
+  function pollUntilRecordGone(viewKey, recordId, onGone, onTimeout) {
+    var MAX_ATTEMPTS = 20;       // 20 * 1500ms ≈ 30s ceiling
+    var INTERVAL_MS  = 1500;
+    var FIRST_MS     = 700;      // FE-link deletes often land sub-second
+    var attempts = 0;
+
+    function gone() {
+      try {
+        var recs = (ns.data && typeof ns.data.readRecords === 'function')
+          ? ns.data.readRecords(viewKey) : [];
+        for (var i = 0; i < recs.length; i++) {
+          if (recs[i] && recs[i].id === recordId) return false;
+        }
+        return true;
+      } catch (e) { return false; }
+    }
+
+    function settle() {
+      if (gone()) { if (typeof onGone === 'function') onGone(); return; }
+      if (attempts >= MAX_ATTEMPTS) {
+        if (typeof onTimeout === 'function') onTimeout();
+        return;
+      }
+      setTimeout(step, INTERVAL_MS);
+    }
+
+    function step() {
+      attempts++;
+      var v = (typeof Knack !== 'undefined' && Knack.views) ? Knack.views[viewKey] : null;
+      if (v && v.model && typeof v.model.fetch === 'function') {
+        var p = v.model.fetch();
+        if (p && typeof p.always === 'function') p.always(settle);
+        else if (p && typeof p.then === 'function') p.then(settle, settle);
+        else setTimeout(settle, 400);
+      } else {
+        setTimeout(settle, INTERVAL_MS);
+      }
+    }
+
+    setTimeout(step, FIRST_MS);
   }
 
   // Kebab menu — two-click delete with no confirm prompt.
