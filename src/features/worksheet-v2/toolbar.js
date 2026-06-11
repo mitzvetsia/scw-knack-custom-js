@@ -384,15 +384,17 @@
     // the source view\'s model; an accessory must list EVERY one of
     // those ids to be eligible (intersection — safer than union for
     // bulk). Mirrors the Knack-side query on the native form.
-    var selectionProductIds = (function () {
-      var byId = Object.create(null);
+    // id → attributes index across the v2 source views. Feeds both the
+    // compatibility filter and the row labels below.
+    var byId = (function () {
+      var idx = Object.create(null);
       function absorb(vk) {
         try {
           var v = vk && window.Knack && Knack.views && Knack.views[vk];
           var models = (v && v.model && v.model.data && v.model.data.models) || [];
           for (var i = 0; i < models.length; i++) {
             var a = models[i] && models[i].attributes;
-            if (a && a.id && !byId[a.id]) byId[a.id] = a;
+            if (a && a.id && !idx[a.id]) idx[a.id] = a;
           }
         } catch (e) { /* view not on scene */ }
       }
@@ -402,13 +404,32 @@
       // view so the lookup still resolves.
       var missing = false;
       for (var m = 0; m < sel.ids.length; m++) {
-        if (!byId[sel.ids[m]]) { missing = true; break; }
+        if (!idx[sel.ids[m]]) { missing = true; break; }
       }
       if (missing && ns.CONFIG && Array.isArray(ns.CONFIG.views)) {
         for (var vi = 0; vi < ns.CONFIG.views.length; vi++) {
           absorb(ns.CONFIG.views[vi].sourceViewKey);
         }
       }
+      return idx;
+    })();
+
+    // Display labels from the model, not the DOM — on the bid-review
+    // comparison grid the checkboxes don\'t sit inside .scw-ws-v2-card,
+    // so the DOM scrape falls back to raw record ids. labelLineItem
+    // gives cam/reader rows "DROP-LABEL · PRODUCT" and everything else
+    // the product name (same format as the parent picker + chips).
+    var labels = sel.labels.slice();
+    if (ns.card && typeof ns.card.labelLineItem === 'function') {
+      for (var li = 0; li < sel.ids.length; li++) {
+        var lAttrs = byId[sel.ids[li]];
+        if (!lAttrs) continue;
+        var nice = ns.card.labelLineItem(lAttrs);
+        if (nice) labels[li] = nice;
+      }
+    }
+
+    var selectionProductIds = (function () {
       var seen = Object.create(null);
       for (var k = 0; k < sel.ids.length; k++) {
         var attrs = byId[sel.ids[k]];
@@ -474,7 +495,7 @@
         '<div class="scw-ws-v2-mb-sub">One accessory line item will be created per ' +
           'selected row, connected back to the parent.</div>' +
         '<div class="scw-ws-v2-mb-rowlist">' +
-          sel.labels.map(function (l) {
+          labels.map(function (l) {
             return '<div>' + esc(l) + '</div>';
           }).join('') +
         '</div>' +
@@ -603,7 +624,7 @@
         productId:       productId || '',
         productName:     productName,
         parentRecordIds: sel.ids,
-        parentLabels:    sel.labels,
+        parentLabels:    labels,
         sourceViewId:    viewKey,
         triggeredBy:     getTriggeredBy()
       };
