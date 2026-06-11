@@ -385,12 +385,29 @@
     // those ids to be eligible (intersection — safer than union for
     // bulk). Mirrors the Knack-side query on the native form.
     var selectionProductIds = (function () {
-      var v = window.Knack && Knack.views && Knack.views[viewKey];
-      var models = (v && v.model && v.model.data && v.model.data.models) || [];
       var byId = Object.create(null);
-      for (var i = 0; i < models.length; i++) {
-        var a = models[i] && models[i].attributes;
-        if (a && a.id) byId[a.id] = a;
+      function absorb(vk) {
+        try {
+          var v = vk && window.Knack && Knack.views && Knack.views[vk];
+          var models = (v && v.model && v.model.data && v.model.data.models) || [];
+          for (var i = 0; i < models.length; i++) {
+            var a = models[i] && models[i].attributes;
+            if (a && a.id && !byId[a.id]) byId[a.id] = a;
+          }
+        } catch (e) { /* view not on scene */ }
+      }
+      absorb(viewKey);
+      // If any selected id isn\'t in viewKey\'s model (e.g. a stale view
+      // key after SPA navigation), sweep every configured v2 source
+      // view so the lookup still resolves.
+      var missing = false;
+      for (var m = 0; m < sel.ids.length; m++) {
+        if (!byId[sel.ids[m]]) { missing = true; break; }
+      }
+      if (missing && ns.CONFIG && Array.isArray(ns.CONFIG.views)) {
+        for (var vi = 0; vi < ns.CONFIG.views.length; vi++) {
+          absorb(ns.CONFIG.views[vi].sourceViewKey);
+        }
       }
       var seen = Object.create(null);
       for (var k = 0; k < sel.ids.length; k++) {
@@ -413,6 +430,18 @@
     var rawProducts = (window.SCW && SCW.mountingBoxProducts) || [];
     var products = rawProducts;
     var noCompatible = false;
+    var unresolvedSelection = false;
+    if (rawProducts.length && !selectionProductIds.length) {
+      // Couldn\'t read a product off ANY selected row. NEVER fall back
+      // to the unfiltered catalog (it\'s every enabled product) — drop
+      // to free text and say why.
+      products = [];
+      unresolvedSelection = true;
+      if (window.console) {
+        console.warn('[scw-ws-v2] add-accessory: could not resolve products for selection',
+          sel.ids, 'viewKey=', viewKey);
+      }
+    }
     if (selectionProductIds.length && rawProducts.length) {
       products = rawProducts.filter(function (p) {
         if (!p) return false;
@@ -457,8 +486,11 @@
           ? '<div class="scw-ws-v2-mb-note">' + (noCompatible
               ? 'No accessories in the catalog list the selected product(s) as ' +
                 'compatible — using free text.'
-              : 'window.SCW.mountingBoxProducts not loaded — using free text. ' +
-                'Wire the Builder snippet for the dropdown.') + '</div>'
+              : (unresolvedSelection
+                ? 'Couldn\'t read the selected rows\' products to filter the ' +
+                  'catalog — using free text.'
+                : 'window.SCW.mountingBoxProducts not loaded — using free text. ' +
+                  'Wire the Builder snippet for the dropdown.')) + '</div>'
           : '') +
         '<div class="scw-ws-v2-mb-status"></div>' +
         '<div class="scw-ws-v2-mb-actions">' +

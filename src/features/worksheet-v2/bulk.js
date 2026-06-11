@@ -288,6 +288,14 @@
       '<button type="button" class="scw-ws-v2-bulk-clear">Clear</button>';
     document.body.appendChild(toolbar);
 
+    // NOTE: handlers must read the LIVE _sourceViewKey (set on every
+    // mount), not the closure param — the toolbar is a body-level
+    // singleton that survives Knack's SPA scene swaps, so the key it
+    // was created with goes stale the moment the user navigates to a
+    // page whose v2 mount uses a different source view. A stale key
+    // makes every record lookup miss (wrong view's model) — bulk edit
+    // sees "no fields in common" and the accessory modal loses its
+    // compatibility filter.
     toolbar.querySelector('.scw-ws-v2-bulk-add-acc').addEventListener('click', function () {
       var ids = selList();
       if (!ids.length) return;
@@ -295,7 +303,7 @@
       // selection itself). Lives there so we don't duplicate the
       // compatibility-filter + webhook logic.
       if (ns.toolbar && typeof ns.toolbar.openAddAccessories === 'function') {
-        ns.toolbar.openAddAccessories(sourceViewKey);
+        ns.toolbar.openAddAccessories(_sourceViewKey || sourceViewKey);
       }
     });
     toolbar.querySelector('.scw-ws-v2-bulk-clear').addEventListener('click', function () {
@@ -306,17 +314,17 @@
     toolbar.querySelector('.scw-ws-v2-bulk-remove-acc').addEventListener('click', function () {
       var ids = selList();
       if (!ids.length) return;
-      openRemoveAccessoriesConfirm(ids, sourceViewKey);
+      openRemoveAccessoriesConfirm(ids, _sourceViewKey || sourceViewKey);
     });
     toolbar.querySelector('.scw-ws-v2-bulk-edit').addEventListener('click', function () {
       var ids = selList();
       if (!ids.length) return;
-      openBulkModal(ids, sourceViewKey);
+      openBulkModal(ids, _sourceViewKey || sourceViewKey);
     });
     toolbar.querySelector('.scw-ws-v2-bulk-delete').addEventListener('click', function () {
       var ids = selList();
       if (!ids.length) return;
-      openBulkDeleteConfirm(ids, sourceViewKey);
+      openBulkDeleteConfirm(ids, _sourceViewKey || sourceViewKey);
     });
     return toolbar;
   }
