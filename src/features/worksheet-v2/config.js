@@ -208,6 +208,10 @@
         mdfLabelField:    'field_1642',
         moneyMode:        'sales',
         hideSow:          true,          // no SOW column / pills / sort on this page
+        // "+ Add to SOW" toolbar button clicks the add link inside this
+        // Knack menu view (same link v1 used). Without it the button
+        // falls back to a page-wide link-text scan.
+        addSowMenuView:   'view_3450',
         fields: {
           retailPrice:     'field_1960', // PRODUCT STORED_price (read-only)
           lineDiscPct:     'field_2261', // INPUT line discount % (editable)
