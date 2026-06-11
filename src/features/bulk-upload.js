@@ -34,7 +34,14 @@
 
   // ── CONFIG ────────────────────────────────────────────────────────────
   var CONFIG = {
-    MAX_FILE_BYTES: 5 * 1024 * 1024,    // 5 MB raw — Make webhook body limit
+    // Make's webhook limit is 5 MB of REQUEST BODY — and we ship the
+    // file base64-encoded (+~37%) inside a JSON envelope. A "5 MB" raw
+    // file therefore produces a ~6 MB body, which Make answers by
+    // dropping the connection → the browser reports "Failed to fetch"
+    // and the row fails with no HTTP status. Cap raw size so the
+    // encoded body stays safely under the limit: 3.5 MB × 4/3 ≈ 4.7 MB
+    // + envelope.
+    MAX_FILE_BYTES: 3.5 * 1024 * 1024,
 
     // Throttle between consecutive successful uploads (ms). Make limits
     // operations per minute at the org level — each upload triggers a
@@ -906,6 +913,11 @@
     if (httpStatus === 429) return true;
     if (httpStatus >= 500 && httpStatus < 600) return true;     // 5xx
     var blob = ((body && body.error) || errMsg || '').toLowerCase();
+    // Status-less fetch() failures ("Failed to fetch" / "NetworkError")
+    // are transient network blips worth retrying — oversized bodies,
+    // the other historical cause, are now blocked before fetch by the
+    // encoded-size guard in uploadOne.
+    if (!httpStatus && /failed to fetch|networkerror|load failed/.test(blob)) return true;
     return /rate.?limit|too many|throttl|quota|operations limit|operation limit/.test(blob);
   }
 
@@ -941,12 +953,23 @@
         batchId:     row.batchId,
         triggeredBy: getCurrentUser()
       };
+      var bodyStr = JSON.stringify(payload);
+      // Hard stop before fetch: Make drops connections on bodies over
+      // 5 MB (no HTTP response → "Failed to fetch"). Fail with a real
+      // explanation instead.
+      if (bodyStr.length > 4.9 * 1024 * 1024) {
+        var sizeErr = new Error('Encoded payload (' + fmtBytes(bodyStr.length) +
+          ') exceeds the webhook\'s 5 MB body limit — resize the image and retry');
+        sizeErr.httpStatus = 413;
+        throw sizeErr;
+      }
       console.info('[bulk-upload] POST', row.filename,
-        '(' + fmtBytes(row.sizeBytes) + ') →', row.linkField, row.recordId);
+        '(' + fmtBytes(row.sizeBytes) + ' raw, ' + fmtBytes(bodyStr.length) + ' encoded) →',
+        row.linkField, row.recordId);
       return fetch(webhook, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify(payload)
+        body:    bodyStr
       }).then(function (resp) {
         return resp.text().then(function (txt) {
           var body = null;
