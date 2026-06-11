@@ -94,6 +94,11 @@
     // page. Not a data source — purely an unwanted nav button the user
     // doesn't want surfaced. Hidden via the same mechanism for simplicity.
     'view_3966',
+    // 'view_4001' — Add-to-SOW menu link on the review-bids page. The
+    // comparison grid's "+ Add to SOW" toolbar button clicks this view's
+    // (hidden) link programmatically — see bid-review-v2/toolbar.js
+    // handleAddSow. The link opens the view_4002 multi-add form.
+    'view_4001',
   ];
 
   // Views that must NEVER be hidden as collateral damage from the

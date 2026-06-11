@@ -44,7 +44,23 @@
   }
 
   // ── + Add to SOW — reuse Knack's own "Add to Scope" link ──────
+  // view_4001 is the dedicated add-to-SOW menu view on scene_1155
+  // (hidden by hide-data-source-views.js); its link opens the
+  // view_4002 multi-add form. Clicking the hidden anchor still
+  // navigates — Knack hash links don't need the element visible.
+  var ADD_SOW_MENU_VIEW = 'view_4001';
+
   function handleAddSow() {
+    var menuLink = document.querySelector(
+      '#' + ADD_SOW_MENU_VIEW + ' a.kn-link-page, ' +
+      '#' + ADD_SOW_MENU_VIEW + ' a.kn-link, ' +
+      '#' + ADD_SOW_MENU_VIEW + ' a[href]'
+    );
+    if (menuLink) {
+      menuLink.click();
+      return;
+    }
+    // Fallback: text-match any add link on the page (pre-view_4001 behavior).
     var candidates = [
       'Add to Scope', 'Add Line Item', 'Add SOW Line Item',
       'Add Scope of Work Line Item', 'Add Bid Item', 'Add Survey Item'
