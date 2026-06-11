@@ -2710,8 +2710,50 @@
     });
   }
 
+  // ── create a NEW SOW line item from a (duplicate) bid record ──────
+  // For the "keep both" case where two bid line items on one bid map to
+  // the SAME SOW item: split one off onto its own new SOW line item.
+  // The bid record isn't its own grid row (the grid collapses dupes), so
+  // pull the FULL raw record straight from the bid view (view_3680) model
+  // by id and ship it through the existing Add-to-SOW webhook — Make
+  // builds the new SOW item from sourceRecord. (Re-pointing the bid
+  // record's REL_sow-line-item at the new SOW item is the Make scenario's
+  // job — the bid auto-sync may need a tweak for this path.)
+  function handleCreateSowFromBid(button) {
+    var bidId = button.getAttribute('data-bid-record-id') ||
+                button.getAttribute('data-row-id');
+    var sowId = button.getAttribute('data-sow-id');
+    if (!bidId) return;
+
+    var raw = null;
+    try {
+      var v = Knack.views && Knack.views[CFG.viewKey];   // view_3680 (bids)
+      var models = (v && v.model && v.model.data && v.model.data.models) || [];
+      for (var i = 0; i < models.length; i++) {
+        var a = models[i] && models[i].attributes;
+        if (a && a.id === bidId) { raw = a; break; }
+      }
+    } catch (e) { /* fall through */ }
+    if (!raw) {
+      if (ns.renderToast) ns.renderToast('Could not find the bid record to copy', 'error');
+      return;
+    }
+
+    setBusy(button, true);
+    ns.submitAction({
+      actionType:   'row_add_to_sow',
+      reviewRowId:  bidId,
+      sowId:        sowId,
+      sourceRecord: raw
+    }).done(function () {
+      refreshSilently();
+      if (ns.renderToast) ns.renderToast('New SOW line item requested', 'success');
+    }).always(function () {
+      setBusy(button, false);
+    });
+  }
+
   // ── disconnect from SOW (per-row, on SOW detail cell) ──────
-  //
   // Removes this SOW's id from the SOW Line Item's field_2154
   // connection (the SOW connection is multi-value — a single line
   // item can be on 1+ SOWs). The line item itself is NOT deleted; if
@@ -3154,6 +3196,7 @@
     if (action === 'cell_request_change_from_sow')  { handleChangeRequest(button, { sourceFromSow: true }); return true; }
     if (action === 'cell_remove_from_bid')          { handleRemoveFromBid(button); return true; }
     if (action === 'cell_add_to_bid')               { handleAddToBid(button); return true; }
+    if (action === 'cell_create_sow_from_bid')      { handleCreateSowFromBid(button); return true; }
     if (action === 'cr_submit') {
       var pkgId = button.getAttribute('data-pkg-id');
       if (ns.changeRequests && ns.changeRequests.submitForPackage) {

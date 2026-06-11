@@ -390,6 +390,14 @@
         '<div class="scw-bid-review-v2__cell-desc" title="' + escapeHtml(descTxt) + '">' +
           escapeHtml(descTxt) + '</div>' : '') +
       '<div class="scw-bid-review-v2__cell-actions">' +
+        // Keep both → split this duplicate onto its OWN new SOW line item.
+        '<button type="button" class="scw-bid-review__cell-action ' +
+          'scw-bid-review__cell-action--add scw-bid-review-v2__cell-action" ' +
+          'data-action="cell_create_sow_from_bid" ' +
+          'data-bid-record-id="' + escapeHtml(d.id) + '" ' +
+          'data-sow-id="' + escapeHtml(sowId || '') + '" ' +
+          'title="Keep both — create a separate SOW line item for this bid item">' +
+          '+ New SOW item</button>' +
         '<button type="button" class="scw-bid-review__cell-action ' +
           'scw-bid-review__cell-action--remove scw-bid-review-v2__cell-action" ' +
           crAttrs('cell_remove_from_bid', row.id, pkgId, sowId) +
