@@ -178,28 +178,24 @@
        except Product / Custom Disc % / SCW Notes. JS sets pointer-events;
        here we just drop the "edit" affordance + hover cue. */
     '.scw-ws-v2-locked-ctl { cursor: default !important; }',
-    /* "Why is this locked?" badge in the summary row. Neutral slate pill
-       (informational, not a warning — amber stays reserved for warnings).
-       Tooltip on the badge carries the full explanation. */
-    '.scw-ws-v2-lock-badge {',
-    '  display: inline-flex !important;',
-    '  align-items: center !important;',
-    '  gap: 4px !important;',
-    '  flex: 0 0 auto !important;',
-    '  padding: 3px 8px !important;',
-    '  border-radius: 999px !important;',
-    '  background: #f1f5f9 !important;',
-    '  border: 1px solid #cbd5e1 !important;',
-    '  color: #475569 !important;',
-    '  font: 600 10.5px/1 system-ui, -apple-system, sans-serif !important;',
-    '  white-space: nowrap !important;',
+    /* Lock indicator reusing the trash slot on a locked row — icon-only,
+       so it occupies the same width the delete button would and never
+       shifts the row\'s columns. Slate (informational, not a warning).
+       The full sentence lives in the detail-panel banner below. */
+    '.scw-ws-v2-lock-cell {',
+    '  color: #94a3b8 !important;',
     '  cursor: help !important;',
-    '  align-self: center !important;',
+    '  pointer-events: auto !important;',
     '}',
-    /* Tight rows: drop the text on narrow viewports, keep the lock icon. */
-    '@media (max-width: 1280px) {',
-    '  .scw-ws-v2-lock-badge-label { display: none !important; }',
+    /* Full-width locked explanation inside the expanded detail panel. */
+    '.scw-ws-v2-locked-note {',
+    '  display: flex; align-items: center; gap: 7px;',
+    '  margin: 0 0 10px; padding: 7px 11px;',
+    '  background: #f1f5f9; border: 1px solid #e2e8f0;',
+    '  border-radius: 8px; color: #475569;',
+    '  font: 500 12px/1.4 system-ui, -apple-system, sans-serif;',
     '}',
+    '.scw-ws-v2-locked-note svg { flex: 0 0 auto; color: #64748b; }',
     '.scw-ws-v2-card--locked .scw-ws-v2-conn-btn-edit { display: none !important; }',
     /* Locked inputs (readOnly, non-whitelisted) read as plain text — no box,
        no border — so the field clearly looks non-editable. The whitelisted

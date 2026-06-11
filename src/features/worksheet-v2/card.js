@@ -296,7 +296,42 @@
       ctls[i].classList.add('scw-ws-v2-locked-ctl');
     }
     var trash = card.querySelectorAll('.scw-ws-v2-trash');
-    for (i = 0; i < trash.length; i++) trash[i].style.display = 'none';
+    for (i = 0; i < trash.length; i++) {
+      // Reuse the trash slot (same width as an unlocked row's delete
+      // button, so locked rows keep identical column alignment) for a
+      // lock indicator instead of hiding it and collapsing the slot.
+      el = trash[i];
+      el.innerHTML = LOCK_SVG_SM;
+      el.className = 'scw-ws-v2-cell scw-ws-v2-trash scw-ws-v2-lock-cell';
+      el.setAttribute('aria-hidden', 'false');
+      el.setAttribute('aria-label', 'Locked — submitted for survey');
+      el.title = LOCKED_MSG;
+      el.style.display = '';
+      el.style.pointerEvents = '';
+    }
+  }
+
+  // Shared copy + glyph for the survey-lock messaging.
+  var LOCKED_MSG = 'This item is locked because it has already been ' +
+    'submitted for survey. Product, Custom Disc % and SCW Notes remain editable.';
+  var LOCK_SVG_SM =
+    '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" ' +
+      'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+      'stroke-linejoin="round" aria-hidden="true">' +
+      '<rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>' +
+      '<path d="M7 11V7a5 5 0 0 1 10 0v4"/>' +
+    '</svg>';
+
+  /** Prepend a full-width informational banner to the locked card's detail
+   *  panel — the row-level lock icon is icon-only (tooltip), so the readable
+   *  sentence lives here where there's horizontal room. */
+  function addLockedNote(card) {
+    var detail = card.querySelector('.scw-ws-v2-detail');
+    if (!detail || detail.querySelector('.scw-ws-v2-locked-note')) return;
+    var note = document.createElement('div');
+    note.className = 'scw-ws-v2-locked-note';
+    note.innerHTML = LOCK_SVG_SM + '<span>' + escapeHtml(LOCKED_MSG) + '</span>';
+    detail.insertBefore(note, detail.firstChild);
   }
 
   /** Money region of the summary row. Build-SOW: three editable stacks +
@@ -1296,28 +1331,7 @@
     if (isCrLocked(rec, sourceViewKey)) {
       card.classList.add('scw-ws-v2-card--locked');
       lockCardFields(card);
-      // Tell the user WHY the row is locked — small slate badge in the
-      // summary row, just before the warn slot. Informational (not a
-      // warning), so neutral colors per the amber-is-for-warnings rule.
-      var lockRowEl = card.querySelector('.scw-ws-v2-row');
-      if (lockRowEl) {
-        var lockBadge = document.createElement('span');
-        lockBadge.className = 'scw-ws-v2-lock-badge';
-        lockBadge.title = 'This item is locked because it has already been ' +
-          'submitted for survey. Product, Custom Disc % and SCW Notes ' +
-          'remain editable.';
-        lockBadge.innerHTML =
-          '<svg viewBox="0 0 24 24" width="11" height="11" fill="none" ' +
-            'stroke="currentColor" stroke-width="2.2" stroke-linecap="round" ' +
-            'stroke-linejoin="round" aria-hidden="true">' +
-            '<rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>' +
-            '<path d="M7 11V7a5 5 0 0 1 10 0v4"/>' +
-          '</svg>' +
-          '<span class="scw-ws-v2-lock-badge-label">Submitted for survey</span>';
-        var warnSlot = lockRowEl.querySelector('.scw-ws-v2-cell--warn');
-        if (warnSlot) lockRowEl.insertBefore(lockBadge, warnSlot);
-        else lockRowEl.appendChild(lockBadge);
-      }
+      addLockedNote(card);
     }
     // Leading bulk-select checkbox — absolutely positioned INSIDE the
     // row so it vertically centers with the row\'s actual height
