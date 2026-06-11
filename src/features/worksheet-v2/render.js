@@ -237,7 +237,7 @@
           ? '<span class="scw-ws-v2-col-header-total">Total</span>'
           : '<span>Sub Bid</span><span>+Hrs</span><span>+Mat</span><span>Fee</span><span>SOW</span>') +
         '<span></span>' + /* warning slot */
-        '<span></span>';   /* trash slot */
+        (salesMoney ? '<span>CR</span>' : '<span></span>');   /* trash / CR slot */
       body.appendChild(hdr);
 
       for (var i = 0; i < l1.l2.length; i++) {

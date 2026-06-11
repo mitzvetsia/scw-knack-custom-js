@@ -58,6 +58,18 @@
       '.' + P + '-v2-act--add    { border-color: #86efac; background: #f0fdf4; color: #15803d; }' +
       '.' + P + '-v2-act--remove { border-color: #fca5a5; background: #fef2f2; color: #b91c1c; }' +
       '.' + P + '-v2-act--note   { border-color: #93c5fd; background: #eff6ff; color: #1d4ed8; }' +
+      /* CR hamburger menu occupying the lock cell (kebab "CR" column)
+         on locked rows. Replaces the lock icon; reads as interactive. */
+      '.' + P + '-v2-lockmenu {' +
+      '  cursor: pointer !important; color: #64748b !important;' +
+      '  border-radius: 6px; transition: background .12s, color .12s;' +
+      '}' +
+      '.' + P + '-v2-lockmenu:hover { background: #e2e8f0 !important; color: #1e293b !important; }' +
+      '.' + P + '-v2-lockmenu i.fa { font-size: 13px; line-height: 1; }' +
+      '.' + P + '-v2-lockmenu--revise,' +
+      '.' + P + '-v2-lockmenu--note   { color: #1d4ed8 !important; }' +
+      '.' + P + '-v2-lockmenu--add    { color: #15803d !important; }' +
+      '.' + P + '-v2-lockmenu--remove { color: #b91c1c !important; }' +
       /* Revision badge chip — same slot. */
       '.' + P + '-v2-rev {' +
       '  display: inline-flex; align-items: center; justify-content: center;' +
@@ -211,46 +223,75 @@
       for (var o = 0; o < olds.length; o++) olds[o].remove();
 
       var warnSlot = card.querySelector('.scw-ws-v2-cell--warn');
+      var state = rowActionState(recordId);
+      var addOnly = isAddOnly(recordId);
 
-      // 1. CR action chip in the warn-slot.
-      if (warnSlot) {
-        var state = rowActionState(recordId);
-        var addOnly = isAddOnly(recordId);
+      // Icon + tooltip for a CR trigger given its pending state.
+      function crIconHtml(st) {
+        if (st) {
+          var ic = st.action === 'add'    ? 'fa-plus'
+                 : st.action === 'remove' ? 'fa-minus-circle'
+                 : st.action === 'note'   ? 'fa-comment'
+                 :                          'fa-pencil';
+          return '<i class="fa ' + ic + '"></i>';
+        }
+        return '<i class="fa fa-bars"></i>';   // hamburger = open CR menu
+      }
+      function crTitle(st, locked) {
+        if (st) {
+          return st.action === 'remove' ? 'Removal requested — click to edit'
+               : st.action === 'add'    ? 'Add request pending — click to edit'
+               : st.action === 'note'   ? 'Note pending — click to edit'
+               :                          'Change pending — click to edit';
+        }
+        return locked
+          ? 'Locked (submitted for survey) — open change-request menu'
+          : 'Change request actions';
+      }
+      // Bind a CR trigger element to open the popover (or jump straight
+      // to the revise-note editor when a revise CR already exists).
+      // onclick (not addEventListener) so re-injection on a salesCR-only
+      // refresh — where the lock cell persists — never stacks handlers.
+      function bindCrTrigger(anchor, rid, st, ao) {
+        anchor.onclick = function (e) {
+          e.stopPropagation();
+          e.preventDefault();
+          closePopover();
+          if (st && st.action === 'revise') { ns.openEditReviseNote(rid); return; }
+          var pop = buildPopover(rid, ao);
+          positionPopover(pop, anchor);
+          document.body.appendChild(pop);
+          _openPopover = pop;
+          _popoverAnchor = anchor;
+        };
+      }
+
+      // 1. CR trigger. On locked rows the CR hamburger REPLACES the lock
+      //    icon in the kebab ("CR") column — the lock state still reads
+      //    from the greyed fields + detail banner. On non-locked
+      //    (directly editable) rows the kebab holds the real delete
+      //    button, so we only surface a CR chip in the warn slot when
+      //    there's something pending or it's an add-mode row.
+      var lockCell = card.querySelector('.scw-ws-v2-lock-cell');
+      if (lockCell) {
+        lockCell.classList.remove(
+          P + '-v2-lockmenu--revise', P + '-v2-lockmenu--add',
+          P + '-v2-lockmenu--remove', P + '-v2-lockmenu--note'
+        );
+        lockCell.classList.add(P + '-v2-lockmenu');
+        if (state) lockCell.classList.add(P + '-v2-lockmenu--' + state.action);
+        lockCell.innerHTML = crIconHtml(state);
+        lockCell.title = crTitle(state, true);
+        lockCell.setAttribute('role', 'button');
+        lockCell.setAttribute('aria-label', 'Change request menu');
+        bindCrTrigger(lockCell, recordId, state, addOnly);
+      } else if (warnSlot && (state || addOnly)) {
         var btn = H.el('button', P + '-v2-act');
         btn.type = 'button';
-        if (state) {
-          var iconCls = state.action === 'add'    ? 'fa-plus'
-                      : state.action === 'remove' ? 'fa-minus-circle'
-                      : state.action === 'note'   ? 'fa-comment'
-                      :                             'fa-pencil';
-          btn.innerHTML = '<i class="fa ' + iconCls + '" style="font-size:11px;"></i>';
-          btn.classList.add(P + '-v2-act--' + state.action);
-          btn.title = state.action === 'remove' ? 'Removal requested — click to edit'
-                    : state.action === 'add'    ? 'Add request pending — click to edit'
-                    : state.action === 'note'   ? 'Note pending — click to edit'
-                    :                             'Change pending — click to edit';
-        } else {
-          btn.innerHTML = '<i class="fa ' + (addOnly ? 'fa-plus' : 'fa-ellipsis-v') +
-            '" style="font-size:11px;"></i>';
-          btn.title = addOnly ? 'Add this item to the change request'
-                              : 'Change request actions';
-        }
-        (function (rid, st, ao, anchor) {
-          anchor.addEventListener('click', function (e) {
-            e.stopPropagation();
-            e.preventDefault();
-            closePopover();
-            if (st && st.action === 'revise') {
-              ns.openEditReviseNote(rid);
-              return;
-            }
-            var pop = buildPopover(rid, ao);
-            positionPopover(pop, anchor);
-            document.body.appendChild(pop);
-            _openPopover = pop;
-            _popoverAnchor = anchor;
-          });
-        })(recordId, state, addOnly, btn);
+        btn.innerHTML = crIconHtml(state);
+        if (state) btn.classList.add(P + '-v2-act--' + state.action);
+        btn.title = crTitle(state, false);
+        bindCrTrigger(btn, recordId, state, addOnly);
         warnSlot.appendChild(btn);
         warnSlot.classList.remove('scw-ws-v2-cell--blank');
       }
