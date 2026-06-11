@@ -381,6 +381,17 @@
     SCW.onViewRender(CFG.worksheetView, function () {
       setTimeout(scheduleRenderV2, CFG.uiDelay + 200);
     }, CFG.eventNs + 'V2');
+
+    // 4. Late activation: when the module turns on via an addMode view
+    //    rendering AFTER the worksheet (init.js's onAddModeViewRender
+    //    re-check, which calls its LOCAL refresh — not the wrapped
+    //    ns.refresh), nothing v2-side repaints. Listen to those views
+    //    too, delayed past init's own 300ms re-check.
+    (CFG.addModeViews || [CFG.proposalView]).forEach(function (vid) {
+      SCW.onViewRender(vid, function () {
+        setTimeout(scheduleRenderV2, 600);
+      }, CFG.eventNs + 'V2');
+    });
   }
 
   if (CFG.debug) SCW.debug('[SalesCR] worksheet-v2 adapter loaded');

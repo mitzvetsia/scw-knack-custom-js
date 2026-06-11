@@ -33,6 +33,22 @@
   // Check if the sales CR module should be active. Returns true if
   // field_2706 = "Yes" on ANY of the configured addModeViews.
   function readAddModeFlag(viewId) {
+    // Model first \u2014 mirrors workflow-stepper's readField on the same
+    // views: a details view's model carries the field even when its
+    // DOM lags a re-render, omits the field, or the view is hidden by
+    // hide-data-source-views. The DOM-only read silently returned ''
+    // here, which deactivated the whole module (v1 UI and the v2
+    // adapter both gate on S.onPage()).
+    try {
+      var v = Knack && Knack.views && Knack.views[viewId];
+      var attrs = v && v.model && v.model.attributes;
+      if (attrs && Object.prototype.hasOwnProperty.call(attrs, CFG.addModeField)) {
+        var raw = attrs[CFG.addModeField];
+        if (raw != null && String(raw).length) {
+          return String(raw).replace(/<[^>]*>/g, '').replace(/\u00a0/g, ' ').trim();
+        }
+      }
+    } catch (e) { /* fall through to DOM */ }
     var $pv = $('#' + viewId);
     if (!$pv.length) return '';
     // Grid cell shape (data-field-key on td)
@@ -48,6 +64,11 @@
     var views = CFG.addModeViews || [CFG.proposalView];
     for (var i = 0; i < views.length; i++) {
       if (/^yes$/i.test(readAddModeFlag(views[i]))) return true;
+    }
+    if (CFG.debug) {
+      var seen = {};
+      for (var d = 0; d < views.length; d++) seen[views[d]] = readAddModeFlag(views[d]) || '(empty)';
+      SCW.debug('[SalesCR] inactive \u2014 ' + CFG.addModeField + ' reads:', seen);
     }
     return false;
   }
