@@ -1034,11 +1034,10 @@
     if (httpStatus === 429) return true;
     if (httpStatus >= 500 && httpStatus < 600) return true;     // 5xx
     var blob = ((body && body.error) || errMsg || '').toLowerCase();
-    // Status-less fetch() failures ("Failed to fetch" / "NetworkError")
-    // are transient network blips worth retrying — oversized bodies,
-    // the other historical cause, are now blocked before fetch by the
-    // encoded-size guard in uploadOne.
-    if (!httpStatus && /failed to fetch|networkerror|load failed/.test(blob)) return true;
+    // NOTE: status-less fetch failures are handled BEFORE this in
+    // uploadOne's catch — with Make webhooks they overwhelmingly mean
+    // "delivered but the response was CORS-opaque", and retrying re-runs
+    // the scenario and DUPLICATES the upload (observed live).
     return /rate.?limit|too many|throttl|quota|operations limit|operation limit/.test(blob);
   }
 
@@ -1149,9 +1148,32 @@
       var status = err && err.httpStatus;
       var body   = err && err.responseBody;
       var msg    = (err && err.message) || String(err);
+
+      // Status-less rejection = the browser couldn't READ the response.
+      // For Make webhooks that overwhelmingly means the request WAS
+      // delivered and the scenario ran, but the response carried no
+      // CORS headers (the same status-0-as-success convention used by
+      // every other Make call in this bundle). Retrying re-runs the
+      // scenario and duplicates the upload — observed live. Treat as
+      // delivered. The residual risk (a genuine network drop marked
+      // done) is the lesser evil vs. systematic duplicates; Make-side
+      // idempotency on uploadId is the real cure.
+      var corsOpaque = (status == null || status === 0) &&
+                       /failed to fetch|networkerror|load failed/i.test(msg);
+      if (corsOpaque) {
+        console.info('[bulk-upload] response unreadable (CORS-opaque) for',
+          row.filename, '— treating as delivered, NOT retrying (duplicate risk)');
+        return dbDelete(row.id).then(function () {
+          row.status = 'done';
+          row.blob = null;
+          row.error = null;
+          if (_state) _state.successCount++;
+          renderRows();
+        });
+      }
+
       console.warn('[bulk-upload] upload failed:', row.filename,
-        'status=', status || '(network/CORS — request may not have left the browser)',
-        'msg=', msg);
+        'status=', status || '(none)', 'msg=', msg);
 
       if (isRateLimitError(status, body, msg) && row.retryCount < CONFIG.MAX_RETRIES_PER_FILE) {
         // Back off and re-queue. Prefer Retry-After header when present.
