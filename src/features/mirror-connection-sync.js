@@ -1191,9 +1191,24 @@
     // DOM-mode views (already covered by the picker's own Stage 2) don't
     // double-write.
     function fireKeptRepairs(onAllDone) {
-      if (!(MODEL_ONLY && removed.length && kept.length)) { onAllDone(); return; }
+      // Re-assert CONNECTIONS_FIELD = [R] on every KEPT child — one the diff
+      // judged already-connected, so it fired NO add PUT. This now runs on
+      // EVERY edit with kept children, not just after a removal.
+      //
+      // The old `removed.length` guard assumed kept children are only at risk
+      // when a sibling's []-clear trips a server-side recompute. But they're
+      // ALSO at risk whenever the model MISJUDGED them as connected: a prior
+      // partial cascade can leave field_1957 (parent) and field_2197 (child)
+      // diverged, so the child reads as "currently pointing at R" in the model
+      // while the server actually has it blank. The diff then files it under
+      // `kept`, no add PUT fires, and it silently stays disconnected — exactly
+      // the "only SOME downstream connect" bug. field_2197=[R] is idempotent
+      // when already correct, so re-asserting unconditionally is safe and
+      // closes that gap. MODEL_ONLY-scoped (v1 DOM views are covered by the
+      // picker's own Stage-2 repair).
+      if (!(MODEL_ONLY && kept.length)) { onAllDone(); return; }
       log('  repair: re-asserting ' + CONNECTIONS_FIELD + ' on ' + kept.length +
-          ' kept child(ren) after removal of ' + removed.length);
+          ' kept child(ren)' + (removed.length ? ' after removal of ' + removed.length : ''));
       var remaining = kept.length;
       function tick() { remaining--; if (remaining <= 0) onAllDone(); }
       for (var i = 0; i < kept.length; i++) {
@@ -1223,43 +1238,87 @@
     // reflects real server state; runs at most once (its own re-PUTs don't
     // re-enter). MODEL_ONLY-scoped: the DOM views' child models are
     // unreliable (findRowsPointingTo scrapes the DOM there for that reason).
+    // CONVERGING verify-and-repair. After each model.fetch we re-read the
+    // freshly-fetched (server-truth) model and re-assert CONNECTIONS_FIELD=[R]
+    // on any authoritatively-selected child that STILL doesn't point back,
+    // then refetch and re-check — up to MAX_VERIFY_PASSES times.
+    //
+    // A single-shot verify (the prior behaviour) leaves two ways for a child
+    // to stay disconnected: (a) its re-assert PUT lost a rate-limit race and
+    // there was no second attempt, or (b) a late server-side recompute landed
+    // just AFTER the one re-check and re-blanked it. Looping with a growing
+    // settle delay catches both: each pass re-PUTs whatever the latest fetch
+    // still shows blank, so the writes converge on "every selected child points
+    // back". In MODEL_ONLY the read reflects server state (we never optimistically
+    // patch children's field_2197), so a blank read is real — and even if a PUT
+    // lands but the read lags, the next pass simply re-PUTs (idempotent). If we
+    // exhaust the passes we log loudly with the exact ids so a live repro is
+    // conclusive rather than silent.
+    var MAX_VERIFY_PASSES = 4;
     function verifyForwardChildren(onDone) {
       if (!MODEL_ONLY || !newChildIds || !newChildIds.length) { onDone(); return; }
-      var missing = [];
-      for (var i = 0; i < newChildIds.length; i++) {
-        var cid = newChildIds[i];
-        var attrs = getModelAttrs(cid);
-        var raw = attrs && attrs[CONNECTIONS_FIELD + '_raw'];
-        var ok = false;
-        if (Array.isArray(raw)) {
-          for (var j = 0; j < raw.length; j++) {
-            if (raw[j] && raw[j].id === R.id) { ok = true; break; }
+
+      function collectMissing() {
+        var miss = [];
+        for (var i = 0; i < newChildIds.length; i++) {
+          var cid = newChildIds[i];
+          var attrs = getModelAttrs(cid);
+          var raw = attrs && attrs[CONNECTIONS_FIELD + '_raw'];
+          var ok = false;
+          if (Array.isArray(raw)) {
+            for (var j = 0; j < raw.length; j++) {
+              if (raw[j] && raw[j].id === R.id) { ok = true; break; }
+            }
           }
+          if (!ok) miss.push(cid);
         }
-        if (!ok) missing.push(cid);
+        return miss;
       }
-      if (!missing.length) { onDone(); return; }
-      log('  verify: ' + missing.length + ' selected child(ren) NOT pointing back post-fetch — re-asserting', missing);
-      var remaining = missing.length;
-      function tick() {
-        remaining--;
-        if (remaining > 0) return;
-        // One more refetch so the repaired connections render.
+
+      function refetchThen(cb) {
         try {
           var v2 = Knack.views && Knack.views[VIEW_ID];
           if (v2 && v2.model && typeof v2.model.fetch === 'function') {
             var p2 = v2.model.fetch();
-            if (p2 && typeof p2.always === 'function') { p2.always(onDone); return; }
+            if (p2 && typeof p2.always === 'function') { p2.always(cb); return; }
+            if (p2 && typeof p2.then === 'function') { p2.then(cb, cb); return; }
           }
         } catch (e) { /* ignore */ }
-        onDone();
+        setTimeout(cb, 400);
       }
-      for (var k = 0; k < missing.length; k++) {
-        var body = {};
-        if (rGroupId) body[GROUPING_FIELD] = [rGroupId];
-        body[CONNECTIONS_FIELD] = [R.id];
-        firePut(missing[k], body, tick);
+
+      function pass(n) {
+        var missing = collectMissing();
+        if (!missing.length) { onDone(); return; }
+        if (n >= MAX_VERIFY_PASSES) {
+          // Exhausted — surface exactly which children never took the write so
+          // a live repro pinpoints the residual instead of failing silently.
+          console.warn(LOG_PREFIX, 'verify GAVE UP after ' + n + ' pass(es) — ' +
+            missing.length + ' selected child(ren) still NOT pointing at parent ' +
+            R.id + ':', missing.slice());
+          onDone();
+          return;
+        }
+        log('  verify pass ' + (n + 1) + '/' + MAX_VERIFY_PASSES + ': ' +
+            missing.length + ' child(ren) not pointing back — re-asserting', missing);
+        var remaining = missing.length;
+        function tick() {
+          remaining--;
+          if (remaining > 0) return;
+          // Let any late server-side recompute settle (growing delay), then
+          // refetch + re-check on the next pass.
+          setTimeout(function () {
+            refetchThen(function () { pass(n + 1); });
+          }, 250 + n * 250);
+        }
+        for (var k = 0; k < missing.length; k++) {
+          var body = {};
+          if (rGroupId) body[GROUPING_FIELD] = [rGroupId];
+          body[CONNECTIONS_FIELD] = [R.id];
+          firePut(missing[k], body, tick);
+        }
       }
+      pass(0);
     }
 
     function finishWithFetch() {
