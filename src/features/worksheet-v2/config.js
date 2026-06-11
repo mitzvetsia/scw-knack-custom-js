@@ -196,8 +196,9 @@
       // sales card swaps the build-SOW money columns (Sub Bid / +Hrs /
       // +Mat / Fee) for a single read-only Total (field_2269), with
       // Retail Price / Discount % / Applied Discount in the detail panel
-      // (moneyMode:'sales', handled in card.js + render.js). Mounts in
-      // PARALLEL below v1 for now; flip to hiding v1 once verified.
+      // (moneyMode:'sales', handled in card.js + render.js). v1 is
+      // hidden on this view (styles.js cutover CSS + device-worksheet
+      // V2_TAKEOVER bail) — v2 is the primary surface.
       ,{
         enabled:          true,
         sourceViewKey:    'view_3586',

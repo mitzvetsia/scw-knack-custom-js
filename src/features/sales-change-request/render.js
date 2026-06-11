@@ -345,6 +345,14 @@
     }
     var $accBody = $view.closest('.scw-ktl-accordion__body');
     var container = $accBody.length ? $accBody[0] : $view[0].parentNode;
+    // worksheet-v2 cutover: when the v2 mount exists the bar lives at
+    // the bottom of the v2 container — v1's table area is hidden, so
+    // mounting there makes the bar (and its expanded changes panel)
+    // vanish. This must live HERE, not just in the render-v2 adapter:
+    // the count-click handler calls the LOCAL renderActionBar, which
+    // re-parents the bar on every toggle.
+    var v2c = document.getElementById('scw-ws-v2-' + CFG.worksheetView);
+    if (v2c) container = v2c;
 
     if (!bar) {
       bar = H.el('div');
