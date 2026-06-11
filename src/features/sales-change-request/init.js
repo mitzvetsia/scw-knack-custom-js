@@ -68,7 +68,7 @@
     if (CFG.debug) {
       var seen = {};
       for (var d = 0; d < views.length; d++) seen[views[d]] = readAddModeFlag(views[d]) || '(empty)';
-      SCW.debug('[SalesCR] inactive \u2014 ' + CFG.addModeField + ' reads:', seen);
+      console.info('[SalesCR] sync flag reads came up empty:', seen);
     }
     return false;
   }
@@ -100,14 +100,21 @@
       var val = raw == null ? '' : String(raw).replace(/<[^>]*>/g, '').trim();
       _apiFlagCache[sowId] = val;
       ns._apiAddModeVal = val;
+      // console.info, NOT SCW.debug — SCW.debug is gated on the global
+      // SCW.DEBUG flag (default false), which made every activation
+      // diagnostic in this module invisible in production.
       if (CFG.debug) {
-        SCW.debug('[SalesCR] API flag read via ' + CFG.draftView + ': ' +
+        console.info('[SalesCR] API flag read via ' + CFG.draftView + ': ' +
           CFG.addModeField + ' = ' + (val || '(absent — expose the field on ' +
           CFG.draftView + ' in Builder)'));
       }
       return val;
-    }, function () {
-      if (CFG.debug) SCW.debug('[SalesCR] API flag read failed (' + CFG.draftView + ')');
+    }, function (xhr) {
+      if (CFG.debug) {
+        console.info('[SalesCR] API flag read FAILED via ' + CFG.draftView +
+          ' (HTTP ' + (xhr && xhr.status) + ') — is ' + CFG.draftView +
+          ' a view on this scene?');
+      }
       return '';
     });
   }
@@ -147,12 +154,13 @@
     // this scene. Ask the server before declaring the module inactive.
     readAddModeFlagFromApi().then(function (val) {
       if (/^yes$/i.test(val || '')) {
+        if (CFG.debug) console.info('[SalesCR] ACTIVE via API flag');
         activateModule();
       } else {
         S.setOnPage(false);
         if (CFG.debug) {
-          SCW.debug('[SalesCR] inactive — API ' + CFG.addModeField + ' = ' +
-            (val || '(none)'));
+          console.info('[SalesCR] INACTIVE — API ' + CFG.addModeField + ' = ' +
+            (val || '(none)') + '. Run SCW.salesCR.debugActivation() for detail.');
         }
       }
     });
@@ -160,7 +168,14 @@
 
   // Console helper: SCW.salesCR.debugActivation() — prints everything
   // the activation gate looks at so a dark module is diagnosable.
+  // BUILD_MARK identifies which bundle revision is actually loaded —
+  // if debugActivation itself is undefined, the loader SHA predates
+  // the CR-v2 work entirely.
+  ns.BUILD_MARK = 'salescr-v2-api-fallback-2';
   ns.debugActivation = function () {
+    console.log('[SalesCR] build:', ns.BUILD_MARK,
+      '| v2 adapter loaded:', typeof ns._buildPendingCard === 'function',
+      '| scene:', (Knack.router && Knack.router.current_scene_key) || '?');
     var views = CFG.addModeViews || [CFG.proposalView];
     for (var i = 0; i < views.length; i++) {
       var vid = views[i];
@@ -175,7 +190,8 @@
       '| onPage:', S.onPage(),
       '| addMode:', S.isAddMode(),
       '| apiFlag:', ns._apiAddModeVal || '(not read)',
-      '| pending:', Object.keys(S.pending()).length);
+      '| pending:', Object.keys(S.pending()).length,
+      '| v2 container:', !!document.getElementById('scw-ws-v2-' + CFG.worksheetView));
     readAddModeFlagFromApi().then(function (v) {
       console.log('[SalesCR] fresh API flag:', v || '(absent)');
     });
