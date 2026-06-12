@@ -185,6 +185,13 @@
   // is on the page (see the delegated handler below).
   var PHOTO_DELETE_VIEWS = { view_3962: 1, view_3921: 1 };
 
+  // Per-surface DOC_photos grid used for the REST-DELETE fallback when the
+  // photo's row isn't in the DOM (paginated grid). view_3584 is the
+  // delete-enabled photos grid on the build-SOW scene. The review-bids
+  // scene's photos grid is unconfirmed — native-link path still works
+  // there when the row is present.
+  var PHOTO_GRID_FALLBACK_VIEWS = { view_3962: 'view_3584', view_3921: '' };
+
   var PHOTO_TRASH_SVG =
     '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" ' +
     'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
@@ -427,30 +434,57 @@
       var viewKey = btn.getAttribute('data-scw-ws-v2-photo-view') || '';
       if (!photoId) return;
 
-      // The photo record's row in the photos source grid. Photo ids are
-      // 24-hex and unique, so a page-wide row lookup is unambiguous.
+      function refetchSoon() {
+        setTimeout(function () {
+          if (viewKey && ns.data && typeof ns.data.refetchAndNotify === 'function') {
+            ns.data.refetchAndNotify(viewKey);
+          }
+        }, 1500);
+      }
+      function dropCard() {
+        var card = btn.closest('.scw-ws-v2-photo-card');
+        if (card && card.parentNode) card.parentNode.removeChild(card);
+      }
+
+      // Path 1 — the photo record's row in the photos source grid, if the
+      // grid is on the page AND the row is on its current pagination page.
+      // Photo ids are 24-hex and unique, so a page-wide lookup is safe.
       var link = document.querySelector(
         'tr[id="' + photoId + '"] a.kn-link-delete'
       );
-      if (!link) {
-        console.warn('[scw-ws-v2] photo delete: no kn-link-delete row for ' +
-          photoId + ' — is the DOC_photos grid (with Delete enabled) on this page?');
+      if (link) {
+        dropCard();
+        if (typeof ns.autoConfirmKnackDelete === 'function') ns.autoConfirmKnackDelete();
+        link.click();
+        refetchSoon();
         return;
       }
 
-      // Optimistic: drop the card immediately; the post-delete refetch
-      // reconciles (and resurrects it if the server delete failed).
-      var card = btn.closest('.scw-ws-v2-photo-card');
-      if (card && card.parentNode) card.parentNode.removeChild(card);
+      // Path 2 — view-scoped REST DELETE through the photos grid. Covers
+      // the common case where the grid is paginated and the photo's row
+      // isn't in the DOM. Works for any delete-enabled view on the
+      // CURRENT scene (knackRecordUrl is pages/<current scene>/views/…).
+      var gridKey = PHOTO_GRID_FALLBACK_VIEWS[viewKey] || '';
+      if (gridKey && window.SCW && typeof SCW.knackAjax === 'function' &&
+          typeof SCW.knackRecordUrl === 'function') {
+        dropCard();
+        SCW.knackAjax({
+          url:  SCW.knackRecordUrl(gridKey, photoId),
+          type: 'DELETE',
+          success: function () { refetchSoon(); },
+          error: function (xhr) {
+            console.warn('[scw-ws-v2] photo delete: REST DELETE via ' + gridKey +
+              ' failed for ' + photoId, xhr && xhr.status, xhr && xhr.responseText);
+            // Resurrect the strip from the model so the card returns.
+            refetchSoon();
+          }
+        });
+        return;
+      }
 
-      if (typeof ns.autoConfirmKnackDelete === 'function') ns.autoConfirmKnackDelete();
-      link.click();
-
-      setTimeout(function () {
-        if (viewKey && ns.data && typeof ns.data.refetchAndNotify === 'function') {
-          ns.data.refetchAndNotify(viewKey);
-        }
-      }, 1500);
+      console.warn('[scw-ws-v2] photo delete: no kn-link-delete row for ' +
+        photoId + ' and no fallback grid configured for ' + viewKey +
+        ' — is the DOC_photos grid (with Delete enabled) on this page?');
     }, true);
   }
 
