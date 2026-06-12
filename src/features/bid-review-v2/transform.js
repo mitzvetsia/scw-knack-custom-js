@@ -1028,12 +1028,45 @@
     var spBase   = baseProduct(sowProd);
     var cpBase   = baseProduct(cell.productName);
     var productDiff = (spBase && cpBase) ? (spBase !== cpBase) : false;
+    // Connection topology diff. SOW item: field_1957 (connDevice) / field_2197
+    // (connTo). Bid record: field_2380 / field_2381. The two sides reference
+    // DIFFERENT record sets (SOW items vs bid items) for the same physical
+    // devices, so compare by normalized label, not id. Anchor on the SOW side
+    // having a value (the reference): a bid that dropped a connection the SOW
+    // expects counts as a diff; a row with no SOW-side topology is never flagged.
+    function connSet(v) {
+      var set = Object.create(null);
+      if (Array.isArray(v)) {
+        for (var i = 0; i < v.length; i++) {
+          var l = norm((v[i] && (v[i].identifier || v[i].name)) || '');
+          if (l) set[l] = true;
+        }
+      } else {
+        var s = norm(v || '');
+        if (s) set[s] = true;
+      }
+      return set;
+    }
+    function sameSet(a, b) {
+      var ka = Object.keys(a);
+      if (ka.length !== Object.keys(b).length) return false;
+      for (var i = 0; i < ka.length; i++) if (!b[ka[i]]) return false;
+      return true;
+    }
+    var sd    = row.sowItemData || {};
+    var sowCD = sd.connDevice || [];
+    var sowCT = sd.connTo || '';
+    var connDeviceDiff = (Array.isArray(sowCD) && sowCD.length)
+      ? !sameSet(connSet(sowCD), connSet(cell.connDevice || [])) : false;
+    var connToDiff = norm(sowCT) ? (norm(sowCT) !== norm(cell.connTo || '')) : false;
     var m = {
-      product:   productDiff,
-      laborDesc: norm(row.sowLaborDesc) !== norm(cell.laborDesc),
-      fee:       Math.abs((Number(row.sowFee) || 0) - (Number(cell.labor) || 0)) > 0.001
+      product:    productDiff,
+      laborDesc:  norm(row.sowLaborDesc) !== norm(cell.laborDesc),
+      fee:        Math.abs((Number(row.sowFee) || 0) - (Number(cell.labor) || 0)) > 0.001,
+      connDevice: connDeviceDiff,
+      connTo:     connToDiff
     };
-    m.any = m.product || m.laborDesc || m.fee;
+    m.any = m.product || m.laborDesc || m.fee || m.connDevice || m.connTo;
     return m;
   }
 

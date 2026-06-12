@@ -205,7 +205,17 @@
   // cameras/readers), a camera/reader populates connTo (its NVR/switch) — so
   // rendering whichever is present shows the appropriate field per device.
   // Returns '' when neither is set, so rows without topology stay uncluttered.
-  function connLineHtml(connDevice, connTo) {
+  function connLineHtml(connDevice, connTo, opts) {
+    opts = opts || {};
+    var DIFF = ' scw-bid-review-v2__field-diff';
+    // SOW side is the hover TARGET (data-scw-sow-field) under the soft cell
+    // tint; the bid side carries the hard per-field highlight + hover SOURCE
+    // (data-scw-diff-field), but only on a line that actually differs — the
+    // same pattern product / fee / desc use.
+    function lineAttrs(isDiff) {
+      if (opts.side === 'sow') return { cls: '', hook: ' data-scw-sow-field="conn"' };
+      return { cls: isDiff ? DIFF : '', hook: isDiff ? ' data-scw-diff-field="conn"' : '' };
+    }
     var html = '';
     if (Array.isArray(connDevice) && connDevice.length) {
       var names = [];
@@ -215,15 +225,19 @@
         if (lbl) names.push(lbl);
       }
       if (names.length) {
+        var a = lineAttrs(!!opts.deviceDiff);
         var joined = names.join(', ');
-        html += '<div class="scw-bid-review-v2__cell-conn" title="Connected devices: ' +
-          escapeHtml(joined) + '"><label>Connected</label>' + escapeHtml(joined) + '</div>';
+        html += '<div class="scw-bid-review-v2__cell-conn' + a.cls + '"' + a.hook +
+          ' title="Connected devices: ' + escapeHtml(joined) + '">' +
+          '<label>Connected</label>' + escapeHtml(joined) + '</div>';
       }
     }
     var to = ns.transform.stripHtml(connTo || '').trim();
     if (to && !/^\(none\)$/i.test(to)) {
-      html += '<div class="scw-bid-review-v2__cell-conn" title="Connected to: ' +
-        escapeHtml(to) + '"><label>Connected&nbsp;to</label>' + escapeHtml(to) + '</div>';
+      var a2 = lineAttrs(!!opts.toDiff);
+      html += '<div class="scw-bid-review-v2__cell-conn' + a2.cls + '"' + a2.hook +
+        ' title="Connected to: ' + escapeHtml(to) + '">' +
+        '<label>Connected&nbsp;to</label>' + escapeHtml(to) + '</div>';
     }
     return html;
   }
@@ -313,7 +327,7 @@
         '<div class="scw-bid-review-v2__sow-desc" data-scw-sow-field="desc" title="' +
           escapeHtml(descTxt) + '">' + escapeHtml(descTxt) +
         '</div>' : '') +
-      connLineHtml(sowItemData.connDevice, sowItemData.connTo) +
+      connLineHtml(sowItemData.connDevice, sowItemData.connTo, { side: 'sow' }) +
       // "belongs to another SOW" rows note which SOW(s) the item is on.
       ((row && row.otherKind === 'other-sow' && row.otherSowNames && row.otherSowNames.length) ?
         '<div class="scw-bid-review-v2__sow-elsewhere">on ' +
@@ -563,7 +577,8 @@
         '<div class="scw-bid-review-v2__cell-desc' + descDiff + '"' + descHover + ' title="' +
           escapeHtml(descTxt) + '">' + escapeHtml(descTxt) +
         '</div>' : '') +
-      connLineHtml(cell.connDevice, cell.connTo) +
+      connLineHtml(cell.connDevice, cell.connTo,
+        { side: 'bid', deviceDiff: diffs && diffs.connDevice, toDiff: diffs && diffs.connTo }) +
       cellActionStack(row, pkgId, sowId, diffs);
 
     // When 2+ bid line items on THIS bid map to the same SOW item, show
