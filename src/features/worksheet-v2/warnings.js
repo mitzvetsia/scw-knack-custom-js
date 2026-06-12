@@ -44,10 +44,17 @@
   // at a glance in the small chips. Each issue type is also colour-coded in
   // CSS (see [data-issue-type]) for fast scanning.
   var ICONS = {
-    // Camera — solid body so the silhouette pops.
+    // Camera with a slash (Lucide "camera-off") — reads "no photo / missing"
+    // rather than a plain camera, which looked like a photo was present.
+    // Stroke style to match the disconnected + bracket glyphs.
     photos:
-      '<svg viewBox="0 0 24 24" width="13" height="13" fill="currentColor">' +
-      '<path d="M9 3 7.2 5H4a2 2 0 0 0-2 2v11a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2h-3.2L15 3H9zm3 5a4.5 4.5 0 1 1 0 9 4.5 4.5 0 0 1 0-9zm0 2a2.5 2.5 0 1 0 0 5 2.5 2.5 0 0 0 0-5z"/></svg>',
+      '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" ' +
+      'stroke="currentColor" stroke-width="2.2" stroke-linecap="round" ' +
+      'stroke-linejoin="round">' +
+      '<line x1="2" y1="2" x2="22" y2="22"/>' +
+      '<path d="M7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h12"/>' +
+      '<path d="M9.5 4h5L17 7h3a2 2 0 0 1 2 2v7.5"/>' +
+      '<path d="M14.121 15.121A3 3 0 1 1 9.88 10.88"/></svg>',
     // Broken chain (Lucide "unlink") — two link halves pulled apart with
     // snap ticks. Universal "connection severed" glyph; reads clearly small.
     disconnected:
