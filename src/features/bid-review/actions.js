@@ -88,6 +88,24 @@
           var label = describeAction(payload);
           ns.renderToast(label + ' — sent successfully', 'success');
         }
+
+        // Add to SOW: Make creates the new SOW line item server-side (async),
+        // so the comparison grid won't show it until the SOW-item source view
+        // (view_3921) is re-read. Re-fetch + rebuild a beat after the webhook
+        // returns — and once more, since Make can respond before the record is
+        // committed. Prefers the v2 grid's own data layer (re-fetches every
+        // source view + rebuilds); falls back to v1's refresh.
+        if (payload.actionType === 'row_add_to_sow') {
+          var doSowRefresh = function () {
+            try {
+              var v2d = window.SCW.bidReviewV2 && window.SCW.bidReviewV2.data;
+              if (v2d && typeof v2d.refetchAll === 'function') { v2d.refetchAll(); return; }
+            } catch (e) {}
+            try { if (typeof ns.refresh === 'function') ns.refresh(); } catch (e) {}
+          };
+          setTimeout(doSowRefresh, 1500);
+          setTimeout(doSowRefresh, 4500);
+        }
         deferred.resolve(resp);
       },
       error: function (xhr) {
