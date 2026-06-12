@@ -709,77 +709,110 @@
             }
           }
           var webhookUrl = (window.SCW && SCW.CONFIG && SCW.CONFIG.MAKE_DELETE_RECORD_WEBHOOK) || '';
-          if (accIds.length && webhookUrl) {
-            for (var ai = 0; ai < accIds.length; ai++) {
-              (function (accId) {
-                fetch(webhookUrl, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ recordId: accId })
-                }).catch(function (err) {
-                  console.warn('[scw-ws-v2] accessory delete webhook failed for ' +
-                    accId, err);
-                });
-              })(accIds[ai]);
+
+          // Delete the parent line item itself. Defined here but invoked
+          // only AFTER the accessory cascade settles (below), so a parent
+          // delete that re-renders or navigates the view can't cancel the
+          // in-flight child deletes — backlog #1's "navigating right after
+          // the parent delete cancels in-flight child deletes" failure.
+          function deleteParent() {
+            // Delete the parent through Knack's native delete link.
+            //    Auto-confirm the modal so it stays a two-click flow.
+            // Knack record IDs are 24-char hex strings — many start with
+            // a digit, which CSS doesn't allow as the first char of an
+            // ID selector. Use the attribute selector form instead.
+            var srcView = viewId ? document.getElementById(viewId) : null;
+            var link = srcView && srcView.querySelector(
+              'tr[id="' + rowId + '"] a.kn-link-delete'
+            );
+            if (!link) {
+              var v3610 = document.getElementById('view_3610');
+              link = v3610 && v3610.querySelector(
+                'tr[id="' + rowId + '"] a.kn-link-delete'
+              );
             }
+            if (!link) {
+              // No native delete route on this view (e.g. view_3921 on the
+              // bid-review comparison grid has none — Knack's own link there
+              // just routes home and deletes nothing). Delete the record
+              // directly via the view-scoped REST endpoint — the same proven
+              // path the v1 bid-review uses — then refetch so the grid (which
+              // listens on knack-view-render.<view>) drops the row.
+              if (viewId && window.SCW && typeof SCW.knackAjax === 'function' &&
+                  typeof SCW.knackRecordUrl === 'function') {
+                SCW.knackAjax({
+                  url:  SCW.knackRecordUrl(viewId, rowId),
+                  type: 'DELETE',
+                  success: function () {
+                    if (ns.data && typeof ns.data.refetchAndNotify === 'function') {
+                      ns.data.refetchAndNotify(viewId);
+                    }
+                  },
+                  error: function (xhr) {
+                    console.warn('[scw-ws-v2] direct DELETE failed for ' + rowId,
+                      xhr && xhr.status, xhr && xhr.responseText);
+                  }
+                });
+              } else {
+                console.warn('[scw-ws-v2] kn-link-delete not found and no viewId/knackAjax for ' + rowId);
+              }
+              return;
+            }
+            autoConfirmKnackDelete();
+            link.click();
+
+            // Refetch the source view a beat after the delete so the
+            // row stays gone even if Knack didn't fire a fresh
+            // view-render. Mirrors the chip × delete handler below.
+            setTimeout(function () {
+              if (viewId && ns.data && typeof ns.data.refetchAndNotify === 'function') {
+                ns.data.refetchAndNotify(viewId);
+              }
+            }, 1500);
+          }
+
+          // 2. Cascade-delete the accessories FIRST, through the bulk
+          //    module's concurrency-capped + retry/backoff queue
+          //    (ns.bulk.queuedDelete — the repo-mandated pattern). A bare
+          //    fetch-per-child silently loses writes to Knack's ~10 req/s
+          //    429s and gets cancelled when the parent delete navigates
+          //    (backlog #1). Delete the parent once the children settle.
+          if (accIds.length && webhookUrl && ns.bulk &&
+              typeof ns.bulk.queuedDelete === 'function') {
+            ns.bulk.queuedDelete(accIds, webhookUrl).then(function (results) {
+              var failed = 0;
+              for (var fr = 0; fr < results.length; fr++) {
+                if (!results[fr].ok) failed++;
+              }
+              if (failed) {
+                console.warn('[scw-ws-v2] ' + failed + ' of ' + accIds.length +
+                  ' accessory delete(s) failed for parent ' + rowId);
+              }
+              deleteParent();
+            });
           } else if (accIds.length && !webhookUrl) {
             console.warn('[scw-ws-v2] ' + accIds.length +
               ' accessories not deleted — MAKE_DELETE_RECORD_WEBHOOK missing');
-          }
-
-          // 2. Delete the parent through Knack's native delete link.
-          //    Auto-confirm the modal so it stays a two-click flow.
-          // Knack record IDs are 24-char hex strings — many start with
-          // a digit, which CSS doesn't allow as the first char of an
-          // ID selector. Use the attribute selector form instead.
-          var srcView = viewId ? document.getElementById(viewId) : null;
-          var link = srcView && srcView.querySelector(
-            'tr[id="' + rowId + '"] a.kn-link-delete'
-          );
-          if (!link) {
-            var v3610 = document.getElementById('view_3610');
-            link = v3610 && v3610.querySelector(
-              'tr[id="' + rowId + '"] a.kn-link-delete'
-            );
-          }
-          if (!link) {
-            // No native delete route on this view (e.g. view_3921 on the
-            // bid-review comparison grid has none — Knack's own link there
-            // just routes home and deletes nothing). Delete the record
-            // directly via the view-scoped REST endpoint — the same proven
-            // path the v1 bid-review uses — then refetch so the grid (which
-            // listens on knack-view-render.<view>) drops the row.
-            if (viewId && window.SCW && typeof SCW.knackAjax === 'function' &&
-                typeof SCW.knackRecordUrl === 'function') {
-              SCW.knackAjax({
-                url:  SCW.knackRecordUrl(viewId, rowId),
-                type: 'DELETE',
-                success: function () {
-                  if (ns.data && typeof ns.data.refetchAndNotify === 'function') {
-                    ns.data.refetchAndNotify(viewId);
-                  }
-                },
-                error: function (xhr) {
-                  console.warn('[scw-ws-v2] direct DELETE failed for ' + rowId,
-                    xhr && xhr.status, xhr && xhr.responseText);
-                }
-              });
-            } else {
-              console.warn('[scw-ws-v2] kn-link-delete not found and no viewId/knackAjax for ' + rowId);
+            deleteParent();
+          } else if (accIds.length && webhookUrl) {
+            // ns.bulk.queuedDelete unavailable (shouldn't happen — bulk.js is
+            // bundled before init.js). Degrade to keepalive fire-and-forget so
+            // the accessory deletes are never skipped entirely, then delete
+            // the parent.
+            for (var ax = 0; ax < accIds.length; ax++) {
+              (function (accId) {
+                fetch(webhookUrl, {
+                  method: 'POST', keepalive: true,
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ recordId: accId })
+                }).catch(function () {});
+              })(accIds[ax]);
             }
-            return;
+            deleteParent();
+          } else {
+            // No accessories — just delete the parent.
+            deleteParent();
           }
-          autoConfirmKnackDelete();
-          link.click();
-
-          // Refetch the source view a beat after the delete so the
-          // row stays gone even if Knack didn't fire a fresh
-          // view-render. Mirrors the chip × delete handler below.
-          setTimeout(function () {
-            if (viewId && ns.data && typeof ns.data.refetchAndNotify === 'function') {
-              ns.data.refetchAndNotify(viewId);
-            }
-          }, 1500);
         }
         return;
       }

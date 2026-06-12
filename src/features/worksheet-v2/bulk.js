@@ -1449,10 +1449,27 @@
     refreshToolbar();
   }
 
+  /** Concurrency-capped + retry/backoff delete queue, exposed so the
+   *  per-row trash + accessory-chip × handlers in init.js converge onto
+   *  the same proven path instead of hand-rolling fire-and-forget fetches
+   *  (which silently lose writes to Knack's ~10 req/s 429s — backlog #1).
+   *  ids: record ids to delete via MAKE_DELETE_RECORD_WEBHOOK. Resolves to
+   *  an array of settle-shaped results ({ ok, recordId, status }); a
+   *  failure never rejects the batch. */
+  function queuedDelete(ids, webhookUrl, onProgress) {
+    if (!ids || !ids.length) {
+      var d = $.Deferred(); d.resolve([]); return d.promise();
+    }
+    return runJobQueue(ids, function (id) {
+      return doDeleteWithRetry(id, webhookUrl);
+    }, onProgress);
+  }
+
   ns.bulk = {
     mount:           mount,
     syncDomFromState: syncDomFromState,
-    refreshToolbar:  refreshToolbar
+    refreshToolbar:  refreshToolbar,
+    queuedDelete:    queuedDelete
   };
 })();
 /*** END WORKSHEET V2 — BULK EDIT *********************************************/

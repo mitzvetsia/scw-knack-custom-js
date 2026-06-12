@@ -8,7 +8,8 @@ the context. Newest at the bottom unless priority dictates otherwise.
 
 ## 1. V2 deletion — converge every delete path onto the bulk-delete pattern
 
-**Status:** audited (read-only), not yet fixed. Audit date 2026-06-11.
+**Status:** audited 2026-06-11. **Finding #1 (per-row trash accessory cascade) fixed
+2026-06-12** — see below; remaining findings still open.
 
 **Context / why:** Deletion in the V2 views (`worksheet-v2` on `view_3962`
 build-SOW + `view_3586` sales; `bid-review-v2` "Reconcile Bids" on `view_3921`)
@@ -22,7 +23,7 @@ it and never adopted it. The task is to make them converge on the bulk pattern.
 
 | # | Pathway | Mechanism | Concurrency + retry | UI refresh | Views | Verdict |
 |---|---------|-----------|---------------------|-----------|-------|---------|
-| 1 | Per-row trash (`.scw-ws-v2-trash` / `data-scw-ws-v2-kebab`) | accessory cascade → webhook per child; parent → native `kn-link-delete` or REST `DELETE` fallback | ❌ naive fire-and-forget (`worksheet-v2/init.js:712-724`) | fixed 1500 ms refetch | 3962/3586/3921 | leaky |
+| 1 | Per-row trash (`.scw-ws-v2-trash` / `data-scw-ws-v2-kebab`) | accessory cascade → webhook per child; parent → native `kn-link-delete` or REST `DELETE` fallback | ✅ now via `ns.bulk.queuedDelete` (cap 4 + retry/backoff), accessories-first then parent | fixed 1500 ms refetch | 3962/3586/3921 | **fixed** (was leaky) |
 | 2 | Accessory chip `×` (`.scw-ws-v2-mh-del`) | native link or webhook fallback | ❌ single shot, no retry | poll-until-gone ~30 s + optimistic spinner | 3962/3586/3921 | partial |
 | 3 | Bulk delete (toolbar + checkboxes) | webhook per record, accessories-first | ✅ cap 4 + 4 retries + backoff + settle (`worksheet-v2/bulk.js:502-602`) | `refetchAndNotify` + progress UI | 3962/3586 | **gold standard** |
 | 4 | bid-review-v2 (Reconcile) | reuses the bulk module on `view_3921` (`bid-review-v2/init.js:76-82`) | ✅ inherits #3 | inherits #3 | 3921 | OK — no per-row delete on the grid |
@@ -30,12 +31,14 @@ it and never adopted it. The task is to make them converge on the bulk pattern.
 
 **Findings, prioritized:**
 
-1. **🔴 Per-row trash accessory cascade loses writes** (`worksheet-v2/init.js:712-724`).
-   A device with N accessories fires N un-queued `fetch()`es; any 429 is silently
-   dropped → orphaned accessory records. It's a bare `fetch` (no `keepalive`), so
-   navigating right after the parent delete cancels in-flight child deletes too.
-   **Fix:** route it through `bulk.js`'s `doDeleteWithRetry` / `runJobQueue`
-   (`worksheet-v2/bulk.js:502-602`). Small, mechanical, clearly correct. **Do this first.**
+1. **✅ DONE (2026-06-12) — 🔴 Per-row trash accessory cascade loses writes** (`worksheet-v2/init.js`).
+   A device with N accessories fired N un-queued `fetch()`es; any 429 was silently
+   dropped → orphaned accessory records. It was a bare `fetch` (no `keepalive`), so
+   navigating right after the parent delete cancelled in-flight child deletes too.
+   **Fixed:** accessories now cascade through `bulk.js`'s queue via the new
+   `ns.bulk.queuedDelete` (concurrency cap 4 + retry/backoff + settle), and the
+   parent delete is sequenced to fire only AFTER the child queue resolves — so a
+   parent-delete re-render can no longer cancel in-flight child deletes.
 2. **🟠 Inconsistent connection cleanup before delete.** v1 `connected-records.js`
    clears the child's `field_2464` (parent back-pointer) *before* deleting; the v2
    chip handler doesn't — it trusts Make. Dangling-pointer risk if the webhook lags/fails.
@@ -51,7 +54,7 @@ it and never adopted it. The task is to make them converge on the bulk pattern.
    bypasses `window.confirm`). Confirm-and-remove, or document why it stays for any
    lingering v1 surface.
 
-**Suggested order:** (1) converge per-row accessory cascade onto the bulk queue →
+**Suggested order:** (1) ✅ converge per-row accessory cascade onto the bulk queue (done 2026-06-12) →
 (2) add the pre-delete `field_2464` clear to the chip + per-row handlers →
 (3) unify the post-delete refresh on `refetchAndNotify` with a poll fallback →
 (4) tackle reciprocal cleanup as part of TODO #12 → (5) retire `delete-intercept.js`.
