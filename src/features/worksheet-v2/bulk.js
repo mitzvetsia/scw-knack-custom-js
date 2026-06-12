@@ -94,7 +94,8 @@
     assumptions: [
       { key: 'field_2020', label: 'Assumption text', kind: 'text' },
       { key: 'field_1953', label: 'SCW Notes',       kind: 'text' },
-      { key: 'field_1946', label: 'MDF / IDF',       kind: 'conn-single', candSource: 'mdf' }
+      { key: 'field_1946', label: 'MDF / IDF',       kind: 'conn-single', candSource: 'mdf' },
+      { key: 'field_2154', label: 'SOW',             kind: 'conn-multi',  candSource: 'sows' }
     ]
   };
 
