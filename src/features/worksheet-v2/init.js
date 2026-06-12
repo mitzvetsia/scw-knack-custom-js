@@ -1015,26 +1015,20 @@
       // line item on the source view. Single-select. Used by
       // promoted accessories to re-parent themselves.
       if (fieldKey === 'field_2464') {
-        // Parent candidates are constrained to Cam/Reader and
-        // Networking/Headend records — those are the only buckets that
-        // make sense as "primary" line items something else attaches
-        // to. We also drop records that are themselves accessories
-        // (they can\'t be parents) and the record being edited itself.
-        var CAM        = (ns.card && ns.card.CAM_READER_BUCKET) || '6481e5ba38f283002898113c';
-        var NETWORKING = (ns.card && ns.card.NETWORKING_BUCKET) || '647953bb54b4e1002931ed97';
-        function _bucketIdOf(r) {
-          var raw = r && r.field_2219_raw;
-          if (Array.isArray(raw) && raw.length && raw[0]) return raw[0].id || '';
-          return '';
-        }
+        // Parent candidates are EVERY primary line item on the source view —
+        // all buckets (cameras, readers, NVRs/switches, enclosures, services,
+        // assumptions, …), not just Cam/Reader + Networking/Headend. They're
+        // grouped by MDF/IDF in the picker (groupBy below) so the full list
+        // stays scannable. We drop only (a) the record being edited and
+        // (b) records that are themselves accessories (they already have a
+        // parent via field_2464, so making them a parent would nest
+        // accessories).
         var parentCands = [];
         for (var pc = 0; pc < records.length; pc++) {
           var r = records[pc];
           if (!r || !r.id || r.id === recordId) continue;
           var ownParentRaw = r.field_2464_raw;
           if (Array.isArray(ownParentRaw) && ownParentRaw.length) continue;
-          var b = _bucketIdOf(r);
-          if (b !== CAM && b !== NETWORKING) continue;
           parentCands.push(r);
         }
         // Route writes through v2's source view (view_3962). v1's
@@ -1049,6 +1043,17 @@
           selectedIds:   sel,
           candidates:    parentCands,
           multi:         false,
+          // Group the options by their MDF/IDF location (field_1946) so the
+          // full line-item list is scannable. Records with no MDF/IDF sink to
+          // a "No MDF / IDF" group at the bottom (picker sorts '__unknown' last).
+          groupBy: function (r) {
+            var raw = r && r.field_1946_raw;
+            if (Array.isArray(raw) && raw.length && raw[0] && raw[0].id) {
+              var lbl = String(raw[0].identifier || '').replace(/<[^>]*>/g, '').trim();
+              return { id: raw[0].id, label: lbl || 'MDF / IDF' };
+            }
+            return { id: '__unknown', label: 'No MDF / IDF' };
+          },
           itemLabel: function (r) {
             // Share the same product/drop resolver the card display
             // uses — it strips Knack\'s "<recordId> (<mdfLabel>)"
