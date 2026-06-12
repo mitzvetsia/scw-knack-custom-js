@@ -1769,6 +1769,14 @@
     '}',
     '.scw-ws-v2-photo-add svg { display: block !important; }',
 
+    /* While an auto-confirmed delete is settling, keep Knack's confirm
+       dialog invisible so it can't blink on screen for a frame before the
+       auto-confirm clicks Yes (init.js autoConfirmKnackDelete). */
+    'html[data-scw-suppress-kn-modal] .kn-modal-bg,',
+    'html[data-scw-suppress-kn-modal] .kn-modal {',
+    '  opacity: 0 !important; pointer-events: none !important;',
+    '}',
+
     /* ── Photo delete (OPS surfaces only — see photos.js PHOTO_DELETE_VIEWS).
        Small trash overlay, top-right of the thumb, revealed on hover. ── */
     '.scw-ws-v2-photo-del {',

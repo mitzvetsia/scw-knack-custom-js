@@ -507,6 +507,13 @@
   // if nothing appears) so we don't intercept unrelated modals.
   function autoConfirmKnackDelete() {
     var done = false;
+    // Hide Knack's confirm dialog for the auto-confirm window so it can't
+    // blink on screen for a frame before we click Yes (styles.js rule on
+    // [data-scw-suppress-kn-modal]). Cleared when clicked or on timeout.
+    document.documentElement.setAttribute('data-scw-suppress-kn-modal', '1');
+    function unsuppress() {
+      document.documentElement.removeAttribute('data-scw-suppress-kn-modal');
+    }
     var obs = new MutationObserver(function () {
       if (done) return;
       // Knack renders a confirm dialog inside .kn-modal-bg with a
@@ -536,6 +543,7 @@
           done = true;
           btn.click();
           obs.disconnect();
+          unsuppress();
           return;
         }
       }
@@ -544,6 +552,7 @@
     // Safety: drop the observer after 1.5s no matter what.
     setTimeout(function () {
       if (!done) { done = true; obs.disconnect(); }
+      unsuppress();
     }, 1500);
   }
   // Shared with photos.js (photo-card trash → native delete in the

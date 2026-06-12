@@ -192,6 +192,20 @@
   // there when the row is present.
   var PHOTO_GRID_FALLBACK_VIEWS = { view_3962: 'view_3584', view_3921: '' };
 
+  // Photo-delete settling registry. Between the optimistic card removal and
+  // the authoritative refetch, Knack re-renders rebuild the strip from the
+  // STALE source row (the photo connection is still on it) — without this
+  // the deleted card resurrects for a beat and then vanishes again ("weird
+  // flashing"). buildStrip skips any photo here; entries expire after 20s
+  // so a silently-failed delete can't hide a real photo forever.
+  var pendingPhotoDeletes = Object.create(null);
+  function isPhotoDeletePending(id) {
+    var ts = pendingPhotoDeletes[id];
+    if (!ts) return false;
+    if (Date.now() - ts > 20000) { delete pendingPhotoDeletes[id]; return false; }
+    return true;
+  }
+
   var PHOTO_TRASH_SVG =
     '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" ' +
     'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
@@ -230,6 +244,9 @@
 
     for (var i = 0; i < photos.length; i++) {
       var p = photos[i];
+      // Mid-delete photo — keep it out of rebuilds until the refetch
+      // confirms it's gone (see pendingPhotoDeletes).
+      if (p.id && isPhotoDeletePending(p.id)) continue;
       var href = editPhotoHref(p.id);
       var missing = p.required && !p.completed;
       var cls = 'scw-ws-v2-photo-card' +
@@ -453,6 +470,7 @@
         'tr[id="' + photoId + '"] a.kn-link-delete'
       );
       if (link) {
+        pendingPhotoDeletes[photoId] = Date.now();
         dropCard();
         if (typeof ns.autoConfirmKnackDelete === 'function') ns.autoConfirmKnackDelete();
         link.click();
@@ -467,6 +485,7 @@
       var gridKey = PHOTO_GRID_FALLBACK_VIEWS[viewKey] || '';
       if (gridKey && window.SCW && typeof SCW.knackAjax === 'function' &&
           typeof SCW.knackRecordUrl === 'function') {
+        pendingPhotoDeletes[photoId] = Date.now();
         dropCard();
         SCW.knackAjax({
           url:  SCW.knackRecordUrl(gridKey, photoId),
@@ -475,7 +494,8 @@
           error: function (xhr) {
             console.warn('[scw-ws-v2] photo delete: REST DELETE via ' + gridKey +
               ' failed for ' + photoId, xhr && xhr.status, xhr && xhr.responseText);
-            // Resurrect the strip from the model so the card returns.
+            // Let the card come back — the delete didn't land.
+            delete pendingPhotoDeletes[photoId];
             refetchSoon();
           }
         });
