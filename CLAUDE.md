@@ -293,6 +293,31 @@ $('#view_XXXX-field_YYYY').val(newValue).trigger('change');
 
 The `change` event is the key — without it, Knack reads stale/empty data from its internal model on form submit, even though the UI looks correct.
 
+### Picker conventions — record pickers ALWAYS group by MDF/IDF + canonical sort
+
+**Any custom picker that serves SOW line-item RECORDS MUST group its options by
+MDF/IDF and sort them in the SAME order as the worksheet devices.** This is a
+hard UI/UX consistency rule — wherever a user picks a record (parent, connected
+devices, connected to, …) they should see the same grouping and order as the
+grid. Don't hand-roll a per-picker `groupBy`/sort.
+
+This is already the **default** in `worksheet-v2/picker.js` (`ns.picker.open`):
+- **Grouping**: with no `groupBy`, the picker groups by `field_1946` (MDF/IDF)
+  via the canonical `groupByMdfIdf`. No-MDF records sink to a "No MDF / IDF"
+  group at the bottom.
+- **Sort**: every group's items use the canonical comparator — `field_2218`
+  (proposal-bucket sortOrder) asc → display label (natural/numeric) → record id.
+  Identical to the worksheet's default device order (`worksheet-v2/groups.js`).
+
+So **a new record picker needs to do nothing** — call `ns.picker.open` *without*
+a `groupBy` and it gets the canonical grouping + sort for free. If you need the
+grouping fn explicitly, it's exported as `ns.picker.groupByMdfIdf`.
+
+**Non-record pickers** (products, MDF/IDF locations, prefixes, SOWs — candidates
+with no `field_1946`) collapse to a single flat list automatically, or opt out
+explicitly with `groupBy: false`. The canonical sort still applies (it falls
+back to label when `field_2218` is absent), so those lists stay alphabetical.
+
 ### Warning Icons in Card Headers
 
 All warnings in device-worksheet card headers use the same pattern:

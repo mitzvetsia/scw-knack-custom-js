@@ -41,11 +41,69 @@
     if (onKey) document.removeEventListener('keydown', onKey);
   }
 
-  /** Group candidates via opts.groupBy → [{ id, label, items: [...] }, ...]. */
+  // ── Canonical record-picker grouping + sort (UI/UX directive) ─────
+  // Any picker serving SOW line-item records groups by MDF/IDF and sorts in
+  // the SAME order as the worksheet devices, for a consistent UI/UX. This is
+  // the picker DEFAULT: open() with no `groupBy` uses groupByMdfIdf, and every
+  // group's items are sorted by the canonical comparator below. Non-record
+  // pickers (products, MDF/IDF locations, prefixes, SOWs) carry no field_1946,
+  // so they collapse to a single flat list automatically — or opt out
+  // explicitly with `groupBy: false`. (See CLAUDE.md "Picker conventions".)
+  var MDF_IDF_FIELD = 'field_1946';
+  var SORT_FIELD    = 'field_2218';
+
+  // field_2218 (proposal-bucket sortOrder) can arrive as a plain number, a
+  // connection-via-formula [{identifier}], or HTML-wrapped text. Mirror
+  // groups.js readNumber so the picker order matches the worksheet exactly.
+  function readSortNumber(rec, fieldKey) {
+    var raw = rec[fieldKey + '_raw'];
+    if (typeof raw === 'number') return raw;
+    if (Array.isArray(raw) && raw.length && raw[0]) {
+      var ident = raw[0].identifier;
+      if (typeof ident === 'number') return ident;
+      if (typeof ident === 'string') { var ni = parseFloat(ident); if (isFinite(ni)) return ni; }
+    }
+    var s = rec[fieldKey];
+    if (s == null) return null;
+    s = String(s).replace(/<[^>]*>/g, ' ');
+    var n = parseFloat(s.replace(/[^0-9.\-]/g, ''));
+    return isFinite(n) ? n : null;
+  }
+
+  // Canonical groupBy: MDF/IDF location (field_1946). No-MDF records sink to a
+  // "No MDF / IDF" group (id '__unknown' → sorted last).
+  function groupByMdfIdf(rec) {
+    var raw = rec && rec[MDF_IDF_FIELD + '_raw'];
+    if (Array.isArray(raw) && raw.length && raw[0] && raw[0].id) {
+      var lbl = String(raw[0].identifier || '').replace(/<[^>]*>/g, '').trim();
+      return { id: raw[0].id, label: lbl || 'MDF / IDF' };
+    }
+    return { id: '__unknown', label: 'No MDF / IDF' };
+  }
+
+  // Canonical item comparator — field_2218 (sortOrder) asc, blanks last, then
+  // display label (natural/numeric), then record id. itemLabel is the
+  // picker's resolved label fn.
+  function canonicalItemSort(itemLabel) {
+    return function (a, b) {
+      var sa = readSortNumber(a, SORT_FIELD); if (sa == null) sa = Infinity;
+      var sb = readSortNumber(b, SORT_FIELD); if (sb == null) sb = Infinity;
+      if (sa !== sb) return sa - sb;
+      var c = String(itemLabel(a)).localeCompare(String(itemLabel(b)),
+        undefined, { numeric: true, sensitivity: 'base' });
+      if (c) return c;
+      return String(a.id || '').localeCompare(String(b.id || ''));
+    };
+  }
+
+  /** Group candidates via opts.groupBy → [{ id, label, items: [...] }, ...].
+   *  Default (undefined) = canonical MDF/IDF grouping; `false`/`null` opts out
+   *  to a flat list. */
   function groupCandidates(candidates, groupBy) {
-    if (typeof groupBy !== 'function') {
+    if (groupBy === false || groupBy === null) {
       return [{ id: '__all', label: '', items: candidates.slice() }];
     }
+    if (typeof groupBy !== 'function') groupBy = groupByMdfIdf;
     var groups = Object.create(null);
     var order = [];
     for (var i = 0; i < candidates.length; i++) {
@@ -55,6 +113,12 @@
         order.push(g.id);
       }
       groups[g.id].items.push(candidates[i]);
+    }
+    // A candidate set with no MDF/IDF anywhere collapses to one '__unknown'
+    // group — render it FLAT (no lone "No MDF / IDF" header) so non-record
+    // pickers look ungrouped.
+    if (order.length === 1 && order[0] === '__unknown') {
+      return [{ id: '__all', label: '', items: groups['__unknown'].items }];
     }
     // Sort groups: by label natural-asc; unknowns sink to bottom.
     order.sort(function (a, b) {
@@ -202,15 +266,12 @@
       ? opts.itemLabel
       : function (r) { return (r.identifier || r.id) || ''; };
 
-    // Sort each group's items by their display label (natural/numeric
-    // ascending) so e.g. Connected Devices read E-001, E-002, … E-010
-    // rather than in raw record order.
-    groups.forEach(function (g) {
-      g.items.sort(function (a, b) {
-        return String(itemLabel(a)).localeCompare(String(itemLabel(b)),
-          undefined, { numeric: true, sensitivity: 'base' });
-      });
-    });
+    // Canonical item order — same as the worksheet devices: field_2218
+    // (sortOrder) asc, then display label (natural/numeric), then id. Keeps
+    // every picker's list consistent with the grid (e.g. E-001…E-010 within a
+    // bucket, buckets in sortOrder).
+    var itemCmp = canonicalItemSort(itemLabel);
+    groups.forEach(function (g) { g.items.sort(itemCmp); });
 
     // Build modal scaffold
     var overlay = document.createElement('div');
@@ -469,7 +530,10 @@
   }
 
   ns.picker = {
-    open: open
+    open:          open,
+    // Canonical MDF/IDF groupBy — exported so callers can pass it explicitly,
+    // though open() already uses it by default for record pickers.
+    groupByMdfIdf: groupByMdfIdf
   };
 })();
 /*** END WORKSHEET V2 — PICKER ************************************************/

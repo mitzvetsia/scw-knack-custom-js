@@ -1043,17 +1043,8 @@
           selectedIds:   sel,
           candidates:    parentCands,
           multi:         false,
-          // Group the options by their MDF/IDF location (field_1946) so the
-          // full line-item list is scannable. Records with no MDF/IDF sink to
-          // a "No MDF / IDF" group at the bottom (picker sorts '__unknown' last).
-          groupBy: function (r) {
-            var raw = r && r.field_1946_raw;
-            if (Array.isArray(raw) && raw.length && raw[0] && raw[0].id) {
-              var lbl = String(raw[0].identifier || '').replace(/<[^>]*>/g, '').trim();
-              return { id: raw[0].id, label: lbl || 'MDF / IDF' };
-            }
-            return { id: '__unknown', label: 'No MDF / IDF' };
-          },
+          // Grouped by MDF/IDF + canonically sorted by the picker default
+          // (see CLAUDE.md "Picker conventions").
           itemLabel: function (r) {
             // Share the same product/drop resolver the card display
             // uses — it strips Knack\'s "<recordId> (<mdfLabel>)"
@@ -1423,14 +1414,6 @@
         candidates.push(r);
       }
 
-      // Group by MDF/IDF (matches v1 connection-picker)
-      function groupBy(rec) {
-        var raw = rec['field_1946_raw'];
-        if (Array.isArray(raw) && raw.length && raw[0]) {
-          return { id: raw[0].id, label: raw[0].identifier || '' };
-        }
-        return { id: '__unknown', label: 'Unassigned' };
-      }
 
       function itemLabel(rec) {
         var lbl  = (rec.field_1950 || '').toString().replace(/<[^>]*>/g, '').trim();
@@ -1456,7 +1439,7 @@
         label:         label,
         selectedIds:   sel,
         candidates:    candidates,
-        groupBy:       groupBy,
+        // Grouped by MDF/IDF + canonically sorted by the picker default.
         itemLabel:     itemLabel,
         multi:         isMulti,
         onSaved:       function () {
