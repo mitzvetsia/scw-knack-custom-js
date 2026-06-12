@@ -414,6 +414,89 @@
     });
   }
 
+  // Mounting-hardware chip UNLINK — clears the accessory's parent
+  // (field_2464) WITHOUT deleting the record: the accessory detaches from
+  // this parent and becomes a standalone line item. Also repairs the old
+  // parent's forward list (field_2207, derived from the live field_2464
+  // back-pointers) so the denormalized pair doesn't drift server-side.
+  // SOW/MDF are deliberately left untouched on unlink.
+  if (!document.documentElement.hasAttribute('data-scw-ws-v2-mhunlink-bound')) {
+    document.documentElement.setAttribute('data-scw-ws-v2-mhunlink-bound', '1');
+    document.addEventListener('click', function (e) {
+      var btn = e.target && e.target.closest && e.target.closest('[data-scw-ws-v2-mh-unlink]');
+      if (!btn) return;
+      e.preventDefault();
+      e.stopPropagation();
+      var accId    = btn.getAttribute('data-scw-ws-v2-mh-unlink');
+      var parentId = btn.getAttribute('data-scw-ws-v2-mh-uparent') || '';
+      if (!accId) return;
+
+      var container = btn.closest('[id^="scw-ws-v2-"]');
+      var viewKey = container ? container.id.replace(/^scw-ws-v2-/, '') : 'view_3962';
+
+      // Optimistic: patch the local model's back-pointer (chips are
+      // back-pointer-sourced, so the chip won't resurrect on rebuilds)
+      // and drop the chip from the DOM immediately.
+      try {
+        var sv  = Knack.views && Knack.views[viewKey];
+        var rec = sv && sv.model && sv.model.data &&
+                  sv.model.data.get && sv.model.data.get(accId);
+        if (rec) rec.set({ field_2464_raw: [], field_2464: '' }, { silent: true });
+      } catch (ePatch) { /* best-effort */ }
+      var wrap = btn.closest('.scw-ws-v2-mh-chip-wrap');
+      if (wrap && wrap.parentNode) wrap.parentNode.removeChild(wrap);
+
+      function refetchSoon() {
+        setTimeout(function () {
+          if (ns.data && typeof ns.data.refetchAndNotify === 'function') {
+            ns.data.refetchAndNotify(viewKey);
+          }
+        }, 800);
+      }
+
+      SCW.knackAjax({
+        url:  SCW.knackRecordUrl(viewKey, accId),
+        type: 'PUT',
+        data: JSON.stringify({ field_2464: [] }),
+        success: function () {
+          // Repair the old parent's forward list: every record still
+          // pointing at it via field_2464, minus the one just unlinked.
+          if (parentId && typeof SCW.knackRecordUrl === 'function') {
+            var ids = [];
+            try {
+              var sv2 = Knack.views && Knack.views[viewKey];
+              var rs = (sv2 && sv2.model && sv2.model.data &&
+                        typeof sv2.model.data.toJSON === 'function')
+                          ? sv2.model.data.toJSON() : [];
+              for (var i = 0; i < rs.length; i++) {
+                var r = rs[i];
+                if (!r || !r.id || r.id === accId) continue;
+                var raw = r.field_2464_raw;
+                if (Array.isArray(raw) && raw.length && raw[0] &&
+                    raw[0].id === parentId) ids.push(r.id);
+              }
+            } catch (eScan) { /* swallow */ }
+            SCW.knackAjax({
+              url:  SCW.knackRecordUrl(viewKey, parentId),
+              type: 'PUT',
+              data: JSON.stringify({ field_2207: ids }),
+              success: refetchSoon,
+              error:   function () { refetchSoon(); }
+            });
+          } else {
+            refetchSoon();
+          }
+        },
+        error: function (xhr) {
+          console.warn('[scw-ws-v2] unlink PUT failed for ' + accId,
+            xhr && xhr.status, xhr && xhr.responseText);
+          // Refetch restores the chip — the unlink didn't land.
+          refetchSoon();
+        }
+      });
+    });
+  }
+
   if (!document.documentElement.hasAttribute('data-scw-ws-v2-mhdel-bound')) {
     document.documentElement.setAttribute('data-scw-ws-v2-mhdel-bound', '1');
     document.addEventListener('click', function (e) {
@@ -1138,6 +1221,57 @@
               if (pending > 0) return;
               if (ns.data && typeof ns.data.refetchAndNotify === 'function') {
                 ns.data.refetchAndNotify(viewKey);
+              }
+            }
+
+            // Inherit the new parent's SOW + MDF/IDF. An accessory rides
+            // with its parent, so a re-parent mirrors the parent's
+            // field_2154 (SOW array) and field_1946 (MDF/IDF) onto the
+            // accessory — exactly, including blanks. Skipped on clear
+            // (no new parent). Local raws are patched too so the card
+            // regroups under the right MDF group and the SOW cell
+            // updates before the refetch lands.
+            if (newParentId) {
+              try {
+                var pv    = Knack.views && Knack.views[viewKey];
+                var pRec  = pv && pv.model && pv.model.data &&
+                            pv.model.data.get && pv.model.data.get(newParentId);
+                var pAttrs = pRec && (pRec.attributes ||
+                  (typeof pRec.toJSON === 'function' ? pRec.toJSON() : null));
+                if (pAttrs) {
+                  var pSowRaw = Array.isArray(pAttrs.field_2154_raw) ? pAttrs.field_2154_raw : [];
+                  var pMdfRaw = Array.isArray(pAttrs.field_1946_raw) ? pAttrs.field_1946_raw : [];
+                  var sowIds = [], si;
+                  for (si = 0; si < pSowRaw.length; si++) {
+                    if (pSowRaw[si] && pSowRaw[si].id) sowIds.push(pSowRaw[si].id);
+                  }
+                  var mdfIds = [];
+                  for (si = 0; si < pMdfRaw.length; si++) {
+                    if (pMdfRaw[si] && pMdfRaw[si].id) mdfIds.push(pMdfRaw[si].id);
+                  }
+                  if (srcRec) {
+                    try {
+                      srcRec.set({
+                        field_2154_raw: pSowRaw.slice(),
+                        field_1946_raw: pMdfRaw.slice()
+                      }, { silent: true });
+                    } catch (eSet) { /* best-effort */ }
+                  }
+                  pending++;
+                  SCW.knackAjax({
+                    url:  SCW.knackRecordUrl(viewKey, recordId),
+                    type: 'PUT',
+                    data: JSON.stringify({ field_2154: sowIds, field_1946: mdfIds }),
+                    success: function () { pending--; done(); },
+                    error: function (xhr) {
+                      console.warn('[scw-ws-v2] parent SOW/MDF inherit PUT failed for ' +
+                        recordId, xhr && xhr.status, xhr && xhr.responseText);
+                      pending--; done();
+                    }
+                  });
+                }
+              } catch (eInh) {
+                console.warn('[scw-ws-v2] parent SOW/MDF inherit threw', eInh);
               }
             }
 

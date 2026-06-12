@@ -291,7 +291,7 @@
     // trash button.
     var ctls = card.querySelectorAll(
       '[data-scw-ws-v2-chip], .scw-ws-v2-mh-add, .scw-ws-v2-mh-del, ' +
-      '.scw-ws-v2-mh-step, .scw-ws-v2-mh-chip'
+      '.scw-ws-v2-mh-unlink, .scw-ws-v2-mh-step, .scw-ws-v2-mh-chip'
     );
     for (i = 0; i < ctls.length; i++) {
       ctls[i].style.pointerEvents = 'none';
@@ -572,6 +572,20 @@
     '<path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>' +
     '<path d="M10 11v6"></path><path d="M14 11v6"></path>' +
     '<path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"></path></svg>';
+
+  // Broken-chain "unlink" glyph (Lucide unlink) — accessory chip action that
+  // detaches the accessory from its parent (clears field_2464) WITHOUT
+  // deleting the record.
+  var UNLINK_SVG =
+    '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" ' +
+    'stroke="currentColor" stroke-width="2.2" stroke-linecap="round" ' +
+    'stroke-linejoin="round">' +
+    '<path d="m18.84 12.25 1.72-1.71a5 5 0 0 0-.12-7.07 5 5 0 0 0-6.95 0l-1.72 1.71"/>' +
+    '<path d="m5.17 11.75-1.71 1.71a5 5 0 0 0 .12 7.07 5 5 0 0 0 6.95 0l1.71-1.71"/>' +
+    '<line x1="8" y1="2" x2="8" y2="5"/>' +
+    '<line x1="2" y1="8" x2="5" y2="8"/>' +
+    '<line x1="16" y1="19" x2="16" y2="22"/>' +
+    '<line x1="19" y1="16" x2="22" y2="16"/></svg>';
 
   /** v1 parity (device-worksheet `hideDeleteWhenCountGtZero` on view_3586):
    *  a SOW line item that has associated SURVEY line items (field_2586 > 0)
@@ -1035,6 +1049,16 @@
         // parentId, since the click handler reaches into v1's widget
         // to drive its existing delete flow (confirm modal + Make
         // webhook).
+        // Unlink — clears the accessory's field_2464 so it detaches from
+        // this parent but keeps the line item (it becomes a standalone row).
+        var unlinkX = (chip.id && parentId)
+          ? '<button type="button" class="scw-ws-v2-mh-unlink" ' +
+              'data-scw-ws-v2-mh-unlink="' + escapeHtml(chip.id) + '" ' +
+              'data-scw-ws-v2-mh-uparent="' + escapeHtml(parentId) + '" ' +
+              'title="Unlink ' + escapeHtml(chip.label) +
+              ' from this parent (keeps the line item)">' +
+              UNLINK_SVG + '</button>'
+          : '';
         var delX = (chip.id && parentId)
           ? '<button type="button" class="scw-ws-v2-mh-del" ' +
               'data-scw-ws-v2-mh-del="' + escapeHtml(chip.id) + '" ' +
@@ -1052,7 +1076,7 @@
         var pendingDel = !!(ns.pendingDeletes && ns.pendingDeletes[chip.id]);
         var tail = pendingDel
           ? '<span class="scw-ws-v2-mh-spin" title="Deleting…"></span>'
-          : (stepperHtml + delX);
+          : (stepperHtml + unlinkX + delX);
         var wrapCls = 'scw-ws-v2-mh-chip-wrap' +
           (accWrong ? ' scw-ws-v2-mh-chip-wrap--warn' : '') +
           (pendingDel ? ' scw-ws-v2-mh-chip-wrap--deleting' : '');

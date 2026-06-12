@@ -1060,6 +1060,23 @@
     '.scw-ws-v2-mh-del:hover {',
     '  background: #fee2e2 !important; color: #b91c1c !important;',
     '}',
+    /* Unlink (clear parent, keep record) — same chrome as the trash but with
+       an amber hover so it reads as "detach", not "destroy". */
+    '.scw-ws-v2-mh-unlink {',
+    '  display: inline-flex; align-items: center; justify-content: center;',
+    '  width: 16px !important; height: 16px !important;',
+    '  padding: 0 !important;',
+    '  background: transparent !important;',
+    '  border: 0 !important;',
+    '  color: #94a3b8 !important;',
+    '  cursor: pointer !important;',
+    '  border-radius: 8px !important;',
+    '  transition: background 100ms ease, color 100ms ease !important;',
+    '}',
+    '.scw-ws-v2-mh-unlink svg { width: 12px !important; height: 12px !important; display: block; }',
+    '.scw-ws-v2-mh-unlink:hover {',
+    '  background: #fef3c7 !important; color: #b45309 !important;',
+    '}',
     /* Mid-delete chip state — dim + strike the label and swap the ×/qty
        stepper for a spinner while the delete settles. Re-applied on every
        source-view re-render via card.js + ns.pendingDeletes so it can\'t
