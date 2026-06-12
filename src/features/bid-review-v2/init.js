@@ -84,6 +84,105 @@
   // Delegated click handler for L1 group header rows — toggles the
   // --collapsed modifier on the <tr> and hides all sibling rows that
   // belong to the same group until the next group header.
+
+  // ── Group/subgroup collapse state — persisted + re-applied ─────────
+  // The grid rebuilds body.innerHTML on every data tick (refetches fire
+  // after deletes, add-to-SOW, cascades…), so DOM-only collapse state
+  // evaporated on each rebuild and closed groups kept reopening. Persist
+  // per scene → { '<sowId>::<l1Id>': 'closed'|'open',
+  //               '<sowId>::sub::<subKey>': 'closed'|'open' } and re-apply
+  // after every render (render.js calls ns.applyGroupCollapse).
+  function grpStateKey() {
+    var m = (document.body.id || '').match(/scene_\d+/);
+    return 'scw:br-v2:grp-collapse:' + (m ? m[0] : 'default');
+  }
+  function loadGrpState() {
+    try { return JSON.parse(localStorage.getItem(grpStateKey()) || '{}'); }
+    catch (e) { return {}; }
+  }
+  function saveGrpState(s) {
+    try { localStorage.setItem(grpStateKey(), JSON.stringify(s)); }
+    catch (e) { /* quota / private mode — silent */ }
+  }
+  function rememberL1(sowId, l1Id, collapsed) {
+    if (!sowId || !l1Id) return;
+    var s = loadGrpState();
+    s[sowId + '::' + l1Id] = collapsed ? 'closed' : 'open';
+    saveGrpState(s);
+  }
+  function rememberSub(sowId, subKey, collapsed) {
+    if (!sowId || !subKey) return;
+    var s = loadGrpState();
+    s[sowId + '::sub::' + subKey] = collapsed ? 'closed' : 'open';
+    saveGrpState(s);
+  }
+  function sowIdOf(el) {
+    var sec = el && el.closest && el.closest('.scw-bid-review-v2__sow');
+    return (sec && sec.getAttribute('data-sow-id')) || '';
+  }
+
+  // The collapse walkers — single source of truth, used by the click
+  // handlers AND the post-render re-apply.
+  function setL1Collapsed(head, collapsed) {
+    head.classList.toggle('scw-bid-review-v2__group-header--collapsed', collapsed);
+    head.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+    var n = head.nextElementSibling;
+    // Track whether the rows we're walking sit inside a collapsed
+    // subgroup — expanding the L1 must NOT reveal rows the user has
+    // folded at the subgroup level.
+    var subCollapsed = false;
+    while (n && !n.classList.contains('scw-bid-review-v2__group-header')) {
+      if (n.classList.contains('scw-bid-review-v2__subgroup-header')) {
+        n.classList.toggle('scw-bid-review-v2__row--hidden', collapsed);
+        n.classList.toggle('scw-bid-review-v2__subgroup-header--hidden', collapsed);
+        subCollapsed = n.classList.contains('scw-bid-review-v2__subgroup-header--collapsed');
+      } else if (n.classList.contains('scw-bid-review-v2__row') ||
+                 n.classList.contains('scw-bid-review-v2__expand-row')) {
+        var inSub = n.classList.contains('scw-bid-review-v2__row--in-subgroup');
+        n.classList.toggle('scw-bid-review-v2__row--hidden',
+          collapsed || (inSub && subCollapsed));
+      }
+      n = n.nextElementSibling;
+    }
+  }
+  function setSubCollapsed(sub, collapsed) {
+    sub.classList.toggle('scw-bid-review-v2__subgroup-header--collapsed', collapsed);
+    sub.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
+    var n = sub.nextElementSibling;
+    while (n &&
+           !n.classList.contains('scw-bid-review-v2__subgroup-header') &&
+           !n.classList.contains('scw-bid-review-v2__group-header')) {
+      if (n.classList.contains('scw-bid-review-v2__row') ||
+          n.classList.contains('scw-bid-review-v2__expand-row')) {
+        n.classList.toggle('scw-bid-review-v2__row--hidden', collapsed);
+      }
+      n = n.nextElementSibling;
+    }
+  }
+
+  /** Re-apply persisted group/subgroup collapse state to a freshly built
+   *  grid. Subgroups first, then L1s — the L1 walker reads each subgroup's
+   *  own --collapsed flag so an open L1 keeps user-folded subgroups folded. */
+  function applyGroupCollapse(root) {
+    var s = loadGrpState();
+    if (!Object.keys(s).length) return;
+    var sections = (root || document).querySelectorAll('.scw-bid-review-v2__sow');
+    for (var i = 0; i < sections.length; i++) {
+      var sowId = sections[i].getAttribute('data-sow-id') || '';
+      var subs = sections[i].querySelectorAll('.scw-bid-review-v2__subgroup-header');
+      for (var b = 0; b < subs.length; b++) {
+        var sk = s[sowId + '::sub::' + (subs[b].getAttribute('data-subgroup-key') || '')];
+        if (sk) setSubCollapsed(subs[b], sk === 'closed');
+      }
+      var heads = sections[i].querySelectorAll('.scw-bid-review-v2__group-header');
+      for (var h = 0; h < heads.length; h++) {
+        var gk = s[sowId + '::' + (heads[h].getAttribute('data-l1-id') || '')];
+        if (gk) setL1Collapsed(heads[h], gk === 'closed');
+      }
+    }
+  }
+  ns.applyGroupCollapse = applyGroupCollapse;
+
   function wireGroupCollapse() {
     if (document.documentElement.hasAttribute('data-scw-br-v2-collapse-bound')) return;
     document.documentElement.setAttribute('data-scw-br-v2-collapse-bound', '1');
@@ -127,27 +226,21 @@
       var section = tgl.closest('.scw-bid-review-v2__sow');
       if (!section) return;
       var collapse = (tgl.textContent || '').trim().toLowerCase().indexOf('collapse') === 0;
+      var sowId = section.getAttribute('data-sow-id') || '';
+      // Expand-all opens subgroups too; collapse-all folds them. Set the
+      // subgroups' own --collapsed flags FIRST so the L1 walker (which reads
+      // them when expanding) reveals the right rows — then persist both
+      // levels so the choice survives rebuilds.
+      var subs = section.querySelectorAll('.scw-bid-review-v2__subgroup-header');
+      for (var sb = 0; sb < subs.length; sb++) {
+        subs[sb].classList.toggle('scw-bid-review-v2__subgroup-header--collapsed', collapse);
+        subs[sb].setAttribute('aria-expanded', collapse ? 'false' : 'true');
+        rememberSub(sowId, subs[sb].getAttribute('data-subgroup-key') || '', collapse);
+      }
       var heads = section.querySelectorAll('.scw-bid-review-v2__group-header');
       for (var h = 0; h < heads.length; h++) {
-        var hd = heads[h];
-        hd.classList.toggle('scw-bid-review-v2__group-header--collapsed', collapse);
-        hd.setAttribute('aria-expanded', collapse ? 'false' : 'true');
-        var n = hd.nextElementSibling;
-        while (n && !n.classList.contains('scw-bid-review-v2__group-header')) {
-          if (n.classList.contains('scw-bid-review-v2__subgroup-header')) {
-            // Expand-all opens subgroups too; collapse-all folds them.
-            // Keep the subgroup's own --collapsed flag in sync so a later
-            // per-L1 toggle restores the right state.
-            n.classList.toggle('scw-bid-review-v2__subgroup-header--collapsed', collapse);
-            n.classList.toggle('scw-bid-review-v2__row--hidden', collapse);
-            n.classList.toggle('scw-bid-review-v2__subgroup-header--hidden', collapse);
-            n.setAttribute('aria-expanded', collapse ? 'false' : 'true');
-          } else if (n.classList.contains('scw-bid-review-v2__row') ||
-                     n.classList.contains('scw-bid-review-v2__expand-row')) {
-            n.classList.toggle('scw-bid-review-v2__row--hidden', collapse);
-          }
-          n = n.nextElementSibling;
-        }
+        setL1Collapsed(heads[h], collapse);
+        rememberL1(sowId, heads[h].getAttribute('data-l1-id') || '', collapse);
       }
       tgl.textContent = collapse ? 'Expand all' : 'Collapse all';
     });
@@ -158,18 +251,9 @@
       var sub = e.target.closest && e.target.closest('.scw-bid-review-v2__subgroup-header');
       if (!sub) return;
       if (e.target.closest('input, button, select, textarea, a')) return;
-      var collapsed = sub.classList.toggle('scw-bid-review-v2__subgroup-header--collapsed');
-      sub.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
-      var n = sub.nextElementSibling;
-      while (n &&
-             !n.classList.contains('scw-bid-review-v2__subgroup-header') &&
-             !n.classList.contains('scw-bid-review-v2__group-header')) {
-        if (n.classList.contains('scw-bid-review-v2__row') ||
-            n.classList.contains('scw-bid-review-v2__expand-row')) {
-          n.classList.toggle('scw-bid-review-v2__row--hidden', collapsed);
-        }
-        n = n.nextElementSibling;
-      }
+      var collapsed = !sub.classList.contains('scw-bid-review-v2__subgroup-header--collapsed');
+      setSubCollapsed(sub, collapsed);
+      rememberSub(sowIdOf(sub), sub.getAttribute('data-subgroup-key') || '', collapsed);
     });
 
     document.addEventListener('click', function (e) {
@@ -177,26 +261,9 @@
       if (!head) return;
       // Don't intercept clicks on inputs / buttons inside the header.
       if (e.target.closest('input, button, select, textarea, a')) return;
-      var collapsed = head.classList.toggle('scw-bid-review-v2__group-header--collapsed');
-      head.setAttribute('aria-expanded', collapsed ? 'false' : 'true');
-      var n = head.nextElementSibling;
-      // Track whether the rows we're walking sit inside a collapsed
-      // subgroup — expanding the L1 must NOT reveal rows the user has
-      // folded at the subgroup level.
-      var subCollapsed = false;
-      while (n && !n.classList.contains('scw-bid-review-v2__group-header')) {
-        if (n.classList.contains('scw-bid-review-v2__subgroup-header')) {
-          n.classList.toggle('scw-bid-review-v2__row--hidden', collapsed);
-          n.classList.toggle('scw-bid-review-v2__subgroup-header--hidden', collapsed);
-          subCollapsed = n.classList.contains('scw-bid-review-v2__subgroup-header--collapsed');
-        } else if (n.classList.contains('scw-bid-review-v2__row') ||
-                   n.classList.contains('scw-bid-review-v2__expand-row')) {
-          var inSub = n.classList.contains('scw-bid-review-v2__row--in-subgroup');
-          n.classList.toggle('scw-bid-review-v2__row--hidden',
-            collapsed || (inSub && subCollapsed));
-        }
-        n = n.nextElementSibling;
-      }
+      var collapsed = !head.classList.contains('scw-bid-review-v2__group-header--collapsed');
+      setL1Collapsed(head, collapsed);
+      rememberL1(sowIdOf(head), head.getAttribute('data-l1-id') || '', collapsed);
     });
 
     // Diff hover-link: hovering a differing field in a bid cell

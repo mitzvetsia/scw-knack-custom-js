@@ -84,6 +84,13 @@
     body.innerHTML = '';
     body.appendChild(frag);
 
+    // Re-apply persisted MDF/IDF group + subgroup collapse state — the
+    // rebuild just reset every group to its default, which re-opened
+    // anything the user had closed (init.js applyGroupCollapse).
+    if (typeof ns.applyGroupCollapse === 'function') {
+      try { ns.applyGroupCollapse(body); } catch (e) { /* fail soft */ }
+    }
+
     // Ensure the toolbar is present (idempotent — survives body rebuilds).
     if (ns.toolbar && typeof ns.toolbar.mount === 'function') ns.toolbar.mount();
   }
