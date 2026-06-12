@@ -1049,6 +1049,28 @@
       if (resolved && !HEX_24.test(resolved)) ch.label = resolved;
     }
 
+    // Back-pointer pass — also include any accessory whose OWN field_2464
+    // ("my parent") points at this record, even when the parent's forward
+    // connection (field_2207 / field_1958) never got the reciprocal entry.
+    // field_2464 (child→parent) and field_2207/1958 (parent→children) are a
+    // denormalized pair that can drift; sourcing from the child side too
+    // means a stale parent list can't silently hide an accessory (e.g. a
+    // second same-product bracket added directly on the child). De-duped by
+    // id against the forward-list chips already collected.
+    var mhHaveId = Object.create(null);
+    for (var hi = 0; hi < chips.length; hi++) { if (chips[hi]) mhHaveId[chips[hi].id] = true; }
+    for (var aid in accAttrsById) {
+      if (!Object.prototype.hasOwnProperty.call(accAttrsById, aid)) continue;
+      if (mhHaveId[aid]) continue;
+      var arec = accAttrsById[aid];
+      var praw = arec && arec['field_2464_raw'];
+      var ppid = (Array.isArray(praw) && praw[0] && praw[0].id) ? praw[0].id : '';
+      if (ppid !== parentId) continue;
+      var albl = labelLineItem(arec);
+      chips.push({ id: aid, label: (albl && !HEX_24.test(albl)) ? albl : aid, href: '' });
+      mhHaveId[aid] = true;
+    }
+
     // ── Render ──
     var chipsHtml = '';
     if (chips.length === 0) {
