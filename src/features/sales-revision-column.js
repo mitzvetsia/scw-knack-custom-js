@@ -1014,7 +1014,7 @@
       data: JSON.stringify(knackData),
       success: function () {
         SCW.debug('[SalesRevCol] Updated record', revId, 'to Rejected');
-        afterReject(btn);
+        afterReject(btn, revId);
       },
       error: function () {
         console.warn('[SalesRevCol] Failed to update record', revId);
@@ -1071,7 +1071,7 @@
       data: JSON.stringify(knackData),
       success: function () {
         SCW.debug('[SalesRevCol] Updated record', revId, 'to Accepted');
-        afterAccept(btn);
+        afterAccept(btn, revId);
       },
       error: function () {
         console.warn('[SalesRevCol] Failed to update record', revId);
@@ -1084,9 +1084,42 @@
     fireResponseWebhook('accept', revId, revReqId, updatedJson, acceptNotes);
   }
 
-  function afterAccept(btn) {
+  // Optimistically drop an actioned (accepted/rejected) revision from the
+  // in-memory source AND the DOM, so the card disappears immediately on the
+  // V2 grid. injectIntoV2() rebuilds from _revisionData and does NOT re-filter
+  // by status (that only happens in loadRevisions), and a bare model.fetch()
+  // doesn't reliably re-render view_3842 (Known Issue #2) — so without this the
+  // card lingers until a manual refresh. The 1.5s fetch below still runs as the
+  // authoritative reconcile.
+  function dropRevisionFromData(revId) {
+    if (!revId) return;
+    for (var i = _revisionData.length - 1; i >= 0; i--) {
+      if (_revisionData[i] && _revisionData[i].id === revId) _revisionData.splice(i, 1);
+    }
+    try {
+      // Remove the actioned card from both grids (V1 column + V2 SOW cell).
+      // Every action button on the card carries data-rev-id, so one query
+      // catches the card regardless of which button was clicked.
+      var btns = document.querySelectorAll('[data-rev-id="' + revId + '"]');
+      for (var b = 0; b < btns.length; b++) {
+        var item = btns[b].closest('.' + P + '-item');
+        if (item && item.parentNode) item.parentNode.removeChild(item);
+      }
+      // Drop any V2 block left with only its "Sales Revisions" label — its
+      // last card just went away.
+      var blocks = document.querySelectorAll('.' + V2_BLOCK_CLASS);
+      for (var k = 0; k < blocks.length; k++) {
+        if (!blocks[k].querySelector('.' + P + '-item') && blocks[k].parentNode) {
+          blocks[k].parentNode.removeChild(blocks[k]);
+        }
+      }
+    } catch (e) { /* best-effort UI prune */ }
+  }
+
+  function afterAccept(btn, revId) {
     btn.textContent = 'Accepted ✓';
     btn.style.opacity = '0.6';
+    dropRevisionFromData(revId);
     setTimeout(function () {
       if (Knack.views[CFG.revisionView] && Knack.views[CFG.revisionView].model) {
         Knack.views[CFG.revisionView].model.fetch();
@@ -1094,9 +1127,10 @@
     }, 1500);
   }
 
-  function afterReject(btn) {
+  function afterReject(btn, revId) {
     btn.textContent = 'Rejected \u2713';
     btn.style.opacity = '0.6';
+    dropRevisionFromData(revId);
     // Refresh revision data view — its view-render event triggers
     // loadRevisions() + injectColumn(), and scw-bid-review-rendered
     // re-injects the column after any grid rebuild.
