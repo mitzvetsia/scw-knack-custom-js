@@ -938,138 +938,56 @@
   function detailMountingHardware(rec, viewKey) {
     var parentId = rec.id;
 
-    // Source: view_3962's native td.field_1958 cell. Knack renders it
-    // as an outer span.col-N wrapping one <a data-kn="connection-link">
-    // per chip, each with an inner <span data-kn="connection-value"
-    // id="<recordId>">label</span>. This is the authoritative source —
-    // the v2 source view itself — and it's always present, unlike
-    // v1's .scw-cr-list widget which lives in view_3610 and renders
-    // asynchronously.
-    var chips    = [];
-    var addHref  = '';
+    // SINGLE authoritative source for the accessory chips: each accessory's
+    // OWN field_2464 ("my parent"). An accessory asserts exactly one parent;
+    // the parent's forward connection (field_2207 / field_1958) is just a
+    // denormalized aggregate of that, and the two drift. Reading ONLY the
+    // child side means a stale forward list can neither HIDE an accessory
+    // (a missing reciprocal — the "two UPS, one shown" bug) nor surface a
+    // GHOST one (a leftover entry for an accessory that has since
+    // re-parented). The accessory records are SOW line items already loaded
+    // in this view, so it's an in-memory scan — no extra fetch, no DOM scrape.
+    var chips   = [];
+    var addHref = '';
+    var HEX_24  = /^[a-f0-9]{24}(\s|\b|$)/i;
 
-    // Prefer the Backbone model over the DOM scrape. The parent\'s
-    // td.field_1958 cell in view_3962 doesn\'t re-render on its own
-    // when we optimistically patch the parent\'s field_2207/_1958 from
-    // a re-parent action — so a DOM-first scrape returns stale chips
-    // and the user sees the old child list until the next refetch.
-    // The model is patched synchronously in init.js\'s parent-picker
-    // onSaved (and refetched after the server PUT settles), so it\'s
-    // always at least as fresh as the DOM and usually fresher.
-    //
-    // Source priority: field_2207_raw (the real "my children" array)
-    // first, falling back to field_1958_raw for records the back-end
-    // surfaces only under the legacy key.
-    var modelRaw = rec['field_2207_raw'];
-    if (!Array.isArray(modelRaw) || modelRaw.length === 0) {
-      modelRaw = rec['field_1958_raw'];
-    }
-    if (Array.isArray(modelRaw) && modelRaw.length) {
-      for (var mri = 0; mri < modelRaw.length; mri++) {
-        var ma = modelRaw[mri];
-        if (!ma || !ma.id) continue;
-        var mlbl = ma.identifier
-          ? String(ma.identifier).replace(/<[^>]*>/g, '').trim()
-          : '';
-        chips.push({ id: ma.id, label: mlbl || ma.id, href: '' });
-      }
-    }
-
-    // Final fallback: DOM scrape from the source view, for the case
-    // where the model has nothing (e.g. first paint before subscribers
-    // re-emit) — Knack\'s native td.field_1958 markup gives us labels
-    // AND clickable hrefs.
-    if (chips.length === 0) {
-      try {
-        var srcView = document.getElementById(viewKey) ||
-                      document.getElementById('view_3962');
-        var tr      = srcView && srcView.querySelector(
-          'tr[id="' + parentId + '"]'
-        );
-        var td      = tr && tr.querySelector('td.field_1958');
-        if (td) {
-          var anchors = td.querySelectorAll('a[data-kn="connection-link"]');
-          if (anchors.length) {
-            for (var ai = 0; ai < anchors.length; ai++) {
-              var inner = anchors[ai].querySelector('span[data-kn="connection-value"][id]');
-              if (!inner) continue;
-              var id    = (inner.getAttribute('id') || '').trim();
-              var label = (inner.textContent || '').trim();
-              var href  = anchors[ai].getAttribute('href') || '';
-              if (id) chips.push({ id: id, label: label || id, href: href });
-            }
-          } else {
-            var bareSpans = td.querySelectorAll('span[data-kn="connection-value"][id]');
-            for (var bi = 0; bi < bareSpans.length; bi++) {
-              var bid    = (bareSpans[bi].getAttribute('id') || '').trim();
-              var blabel = (bareSpans[bi].textContent || '').trim();
-              if (bid) chips.push({ id: bid, label: blabel || bid, href: '' });
-            }
-          }
-        }
-      } catch (e) { /* swallow */ }
-    }
-    // addHref fallback: the `add-accessory-line-item` slug differs
-    // between Knack scenes — and with v1 disabled, v1\'s scw-cr-add
-    // anchors aren\'t in the DOM anymore. So we resolve the live
-    // route lazily AT CLICK TIME (see init.js \'data-scw-ws-v2-add-
-    // accessory\' handler) by searching the whole page for any Knack
-    // menu/details link whose text matches a known add-accessory
-    // label. Rendering a placeholder href here means we never put a
-    // home-bouncing URL into the chip.
-    addHref = addHref || '__resolve-on-click__';
-
-    // Build a quick lookup of source-view records so we can read each
-    // bracket\'s own attrs (qty + multi-allowed flag) inline, AND so
-    // we can enrich chip labels when the parent\'s field_2207_raw
-    // entry came back without an identifier (freshly-created
-    // accessory records where the back-end hasn\'t resolved the
-    // synthetic identifier yet — without enrichment we\'d render the
-    // 24-char record id as the chip label).
+    // accAttrsById doubles as the per-chip attrs lookup the render below
+    // uses for the qty stepper.
     var accAttrsById = Object.create(null);
+    var allRecs = [];
     try {
-      var allRecs = (ns.data && typeof ns.data.readRecords === 'function')
+      allRecs = (ns.data && typeof ns.data.readRecords === 'function')
         ? ns.data.readRecords(viewKey) : [];
-      for (var ai = 0; ai < allRecs.length; ai++) {
-        if (allRecs[ai] && allRecs[ai].id) accAttrsById[allRecs[ai].id] = allRecs[ai];
-      }
-    } catch (e) { /* model not ready — chips render without stepper */ }
-
-    // Label enrichment pass — replace any chip whose label is a bare
-    // 24-hex record id with the resolved product / drop label from the
-    // accessory\'s own record. Mirrors readParentRef\'s rejection of
-    // Knack\'s "<recordId> (<mdfLabel>)" synthetic identifier pattern.
-    var HEX_24 = /^[a-f0-9]{24}(\s|\b|$)/i;
-    for (var ci = 0; ci < chips.length; ci++) {
-      var ch = chips[ci];
-      if (ch.label && !HEX_24.test(ch.label)) continue;
-      var src = accAttrsById[ch.id];
-      if (!src) continue;
-      var resolved = labelLineItem(src);
-      if (resolved && !HEX_24.test(resolved)) ch.label = resolved;
+    } catch (e) { allRecs = []; }
+    for (var ri = 0; ri < allRecs.length; ri++) {
+      if (allRecs[ri] && allRecs[ri].id) accAttrsById[allRecs[ri].id] = allRecs[ri];
     }
 
-    // Back-pointer pass — also include any accessory whose OWN field_2464
-    // ("my parent") points at this record, even when the parent's forward
-    // connection (field_2207 / field_1958) never got the reciprocal entry.
-    // field_2464 (child→parent) and field_2207/1958 (parent→children) are a
-    // denormalized pair that can drift; sourcing from the child side too
-    // means a stale parent list can't silently hide an accessory (e.g. a
-    // second same-product bracket added directly on the child). De-duped by
-    // id against the forward-list chips already collected.
-    var mhHaveId = Object.create(null);
-    for (var hi = 0; hi < chips.length; hi++) { if (chips[hi]) mhHaveId[chips[hi].id] = true; }
-    for (var aid in accAttrsById) {
-      if (!Object.prototype.hasOwnProperty.call(accAttrsById, aid)) continue;
-      if (mhHaveId[aid]) continue;
-      var arec = accAttrsById[aid];
-      var praw = arec && arec['field_2464_raw'];
+    for (var ai = 0; ai < allRecs.length; ai++) {
+      var arec = allRecs[ai];
+      if (!arec || !arec.id) continue;
+      var praw = arec['field_2464_raw'];
       var ppid = (Array.isArray(praw) && praw[0] && praw[0].id) ? praw[0].id : '';
       if (ppid !== parentId) continue;
-      var albl = labelLineItem(arec);
-      chips.push({ id: aid, label: (albl && !HEX_24.test(albl)) ? albl : aid, href: '' });
-      mhHaveId[aid] = true;
+      // Label = the accessory's connection identifier (its field_1950 display
+      // label, e.g. "… (MDF)"), matching how Knack lists it under a parent;
+      // fall back to labelLineItem's "drop · product" composite only when
+      // that identifier is missing/unresolved (freshly-created records).
+      var aA   = arec.attributes || arec;
+      var albl = (aA.field_1950 || '').toString().replace(/<[^>]*>/g, '').trim();
+      if (!albl && Array.isArray(aA.field_1950_raw) && aA.field_1950_raw[0]) {
+        albl = (aA.field_1950_raw[0].identifier || aA.field_1950_raw[0].name || '')
+          .toString().replace(/<[^>]*>/g, '').trim();
+      }
+      if (!albl || HEX_24.test(albl)) albl = labelLineItem(arec);
+      chips.push({ id: arec.id, label: (albl && !HEX_24.test(albl)) ? albl : arec.id, href: '' });
     }
+
+    // addHref fallback: the `add-accessory-line-item` slug differs between
+    // Knack scenes, so resolve the live route lazily AT CLICK TIME (see
+    // init.js 'data-scw-ws-v2-add-accessory'). A placeholder here means we
+    // never put a home-bouncing URL into the "+ Add" pill.
+    addHref = addHref || '__resolve-on-click__';
 
     // ── Render ──
     var chipsHtml = '';
