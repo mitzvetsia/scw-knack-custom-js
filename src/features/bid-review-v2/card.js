@@ -242,6 +242,22 @@
     return html;
   }
 
+  // Survey-note block (field_2412) for a bid cell — icon + label + text.
+  // Used in BOTH populated cells (v1 parity: render.js appended cell.notes
+  // after the values) and the no-bid cutout cells.
+  function surveyNoteHtml(txt) {
+    if (!txt) return '';
+    return '<div class="scw-bid-review-v2__cell-survey-note" title="' +
+        escapeHtml(txt) + '">' +
+        '<span class="scw-bid-review-v2__cell-survey-note-icon">' +
+          SURVEY_NOTES_SVG + '</span>' +
+        '<div class="scw-bid-review-v2__cell-survey-note-body">' +
+          '<span class="scw-bid-review-v2__cell-survey-note-label">Survey Note</span>' +
+          '<span class="scw-bid-review-v2__cell-survey-note-text">' +
+            escapeHtml(txt) + '</span>' +
+        '</div></div>';
+  }
+
   function buildSowCell(row, isAssumption, sowId) {
     var sowItemData = row && row.sowItemData;
     var diff = aggregateMismatch(row);
@@ -497,17 +513,7 @@
       // didn't mirror it — without this fallback the note silently vanishes.
       var surveyNoteTxt = (row && row.surveyNotes) ||
         (row && row.sowItemData && row.sowItemData.surveyNotes) || '';
-      var noteHtml = surveyNoteTxt
-        ? '<div class="scw-bid-review-v2__cell-survey-note" title="' +
-            escapeHtml(surveyNoteTxt) + '">' +
-            '<span class="scw-bid-review-v2__cell-survey-note-icon">' +
-              SURVEY_NOTES_SVG + '</span>' +
-            '<div class="scw-bid-review-v2__cell-survey-note-body">' +
-              '<span class="scw-bid-review-v2__cell-survey-note-label">Survey Note</span>' +
-              '<span class="scw-bid-review-v2__cell-survey-note-text">' +
-                escapeHtml(surveyNoteTxt) + '</span>' +
-            '</div></div>'
-        : '';
+      var noteHtml = surveyNoteHtml(surveyNoteTxt);
       var actions  = '';
       if (row) {
         var addLabel = hasBidRecord ? '+ Reinstate' : '+ Add to bid';
@@ -585,6 +591,9 @@
         '</div>' : '') +
       connLineHtml(cell.connDevice, cell.connTo,
         { side: 'bid', deviceDiff: diffs && diffs.connDevice, toDiff: diffs && diffs.connTo }) +
+      // Survey note (field_2412) on the bid record — v1 parity: populated
+      // cells render the sub's note too, not just the no-bid cutouts.
+      surveyNoteHtml(cell.notes) +
       cellActionStack(row, pkgId, sowId, diffs);
 
     // When 2+ bid line items on THIS bid map to the same SOW item, show
