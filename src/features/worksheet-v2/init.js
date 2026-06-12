@@ -546,6 +546,9 @@
       if (!done) { done = true; obs.disconnect(); }
     }, 1500);
   }
+  // Shared with photos.js (photo-card trash → native delete in the
+  // photos grid needs the same auto-confirm).
+  ns.autoConfirmKnackDelete = autoConfirmKnackDelete;
 
   // ── Accessory chip delete: in-progress feedback + poll-until-gone ──
 

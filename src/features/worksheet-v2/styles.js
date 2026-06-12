@@ -1769,6 +1769,22 @@
     '}',
     '.scw-ws-v2-photo-add svg { display: block !important; }',
 
+    /* ── Photo delete (OPS surfaces only — see photos.js PHOTO_DELETE_VIEWS).
+       Small trash overlay, top-right of the thumb, revealed on hover. ── */
+    '.scw-ws-v2-photo-del {',
+    '  position: absolute; top: 3px; right: 3px; z-index: 3;',
+    '  display: inline-flex; align-items: center; justify-content: center;',
+    '  width: 20px; height: 20px; padding: 0;',
+    '  border: 0; border-radius: 50%;',
+    '  background: rgba(255,255,255,0.92); color: #64748b;',
+    '  box-shadow: 0 1px 3px rgba(2,6,23,0.35);',
+    '  cursor: pointer; opacity: 0;',
+    '  transition: opacity 100ms ease, background 100ms ease, color 100ms ease;',
+    '}',
+    '.scw-ws-v2-photo-card:hover .scw-ws-v2-photo-del { opacity: 1; }',
+    '.scw-ws-v2-photo-del:hover { background: #fee2e2; color: #b91c1c; }',
+    '.scw-ws-v2-photo-del svg { display: block; }',
+
     /* ── Photo drag-to-fill-required-slot (v1 parity) ────────── */
     '.scw-ws-v2-photo-card { position: relative !important; }',
     '.scw-ws-v2-photo-card[draggable="true"] { cursor: grab; }',
