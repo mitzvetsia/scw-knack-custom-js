@@ -491,15 +491,21 @@
       var detail   = (row && row.detail && row.detail.side === 'BID')
         ? detailBlockHtml(row.detail) : '';
       // Survey note (field_2412) — v1 renders it inside the no-bid cell.
-      var noteHtml = (row && row.surveyNotes)
+      // Prefer the bid record's copy (row.surveyNotes), but fall back to the
+      // SOW line item's own field_2412 (row.sowItemData.surveyNotes): the note
+      // lives on the line item, and the bid-side copy is empty whenever Make
+      // didn't mirror it — without this fallback the note silently vanishes.
+      var surveyNoteTxt = (row && row.surveyNotes) ||
+        (row && row.sowItemData && row.sowItemData.surveyNotes) || '';
+      var noteHtml = surveyNoteTxt
         ? '<div class="scw-bid-review-v2__cell-survey-note" title="' +
-            escapeHtml(row.surveyNotes) + '">' +
+            escapeHtml(surveyNoteTxt) + '">' +
             '<span class="scw-bid-review-v2__cell-survey-note-icon">' +
               SURVEY_NOTES_SVG + '</span>' +
             '<div class="scw-bid-review-v2__cell-survey-note-body">' +
               '<span class="scw-bid-review-v2__cell-survey-note-label">Survey Note</span>' +
               '<span class="scw-bid-review-v2__cell-survey-note-text">' +
-                escapeHtml(row.surveyNotes) + '</span>' +
+                escapeHtml(surveyNoteTxt) + '</span>' +
             '</div></div>'
         : '';
       var actions  = '';
