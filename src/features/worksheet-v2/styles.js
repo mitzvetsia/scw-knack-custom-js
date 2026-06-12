@@ -1048,11 +1048,12 @@
     '  background: transparent !important;',
     '  border: 0 !important;',
     '  color: #94a3b8 !important;',
-    '  font: 700 14px/1 system-ui, sans-serif !important;',
     '  cursor: pointer !important;',
     '  border-radius: 8px !important;',
     '  transition: background 100ms ease, color 100ms ease !important;',
     '}',
+    /* Trash-can glyph (matches the per-row trash) — sized down for the chip. */
+    '.scw-ws-v2-mh-del svg { width: 12px !important; height: 12px !important; display: block; }',
     '.scw-ws-v2-mh-del:hover {',
     '  background: #fee2e2 !important; color: #b91c1c !important;',
     '}',

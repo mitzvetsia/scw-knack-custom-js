@@ -1040,7 +1040,7 @@
               'data-scw-ws-v2-mh-del="' + escapeHtml(chip.id) + '" ' +
               'data-scw-ws-v2-mh-parent="' + escapeHtml(parentId) + '" ' +
               'title="Delete ' + escapeHtml(chip.label) + '">' +
-              '&times;</button>'
+              TRASH_SVG + '</button>'
           : '';
         // No href → render as non-link span so we never silently bounce
         // the user back to the home page on click.
