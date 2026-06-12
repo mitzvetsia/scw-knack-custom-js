@@ -63,7 +63,10 @@
     /* ── Body / card list ───────────────────────────────────── */
     '.scw-ws-v2-body {',
     '  padding: 0 !important;',
-    '  max-height: 680px !important;',
+    /* Grow the scroll body to the screen: viewport height minus the chrome
+       above it (toolbar + banner + SOW pills + page header), with the old
+       680px as the FLOOR so short laptops never get less than before. */
+    '  max-height: max(680px, calc(100vh - 180px)) !important;',
     '  overflow: auto !important;',
     '  display: block !important;',
     '  width: 100% !important;',
