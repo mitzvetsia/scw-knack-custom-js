@@ -84,7 +84,18 @@
                                      '[data-scw-ws-v2-mode="collapse"]');
     if (toggleBtn) {
       toggleBtn.setAttribute('data-scw-ws-v2-mode', allOpen ? 'collapse' : 'expand');
-      toggleBtn.textContent = allOpen ? 'Collapse all' : 'Expand all';
+      toggleBtn.textContent = allOpen ? 'Collapse MDF/IDFs' : 'Expand MDF/IDFs';
+    }
+
+    // Line-items toggle label reflects the LIVE card state — same honesty
+    // rule as the MDF/IDF toggle: if every card's detail panel is open, the
+    // next click closes them all, else it opens them all.
+    var rowsBtn = bar.querySelector('[data-scw-ws-v2-rows-toggle]');
+    if (rowsBtn) {
+      var cards = container.querySelectorAll('.scw-ws-v2-card');
+      var openCards = container.querySelectorAll('.scw-ws-v2-card--open');
+      var allCardsOpen = cards.length > 0 && openCards.length === cards.length;
+      rowsBtn.textContent = allCardsOpen ? 'Collapse line items' : 'Expand line items';
     }
 
     var summaryBtn = bar.querySelector('[data-scw-ws-v2-mode="summary"]');
@@ -106,9 +117,15 @@
     bar.className = 'scw-ws-v2-toolbar';
     bar.innerHTML =
       '<div class="scw-ws-v2-toolbar-group" role="group" aria-label="View mode">' +
-        // Single Expand⇄Collapse toggle. Label flips depending on the
-        // current state (handled in applyState below).
-        btn('expand',   'Expand all',       'Open every group + show all rows') +
+        // Single Expand⇄Collapse toggle for the MDF/IDF groups. Label flips
+        // depending on the current state (handled in applyState below).
+        btn('expand',   'Expand MDF/IDFs',  'Open or close every MDF/IDF group') +
+        // Expand⇄Collapse every line item's detail panel. Pure card-class
+        // toggle — deliberately does NOT touch the MDF/IDF group state.
+        '<button type="button" class="scw-ws-v2-toolbar-btn" ' +
+          'data-scw-ws-v2-rows-toggle ' +
+          'title="Open or close every line item’s detail panel (leaves MDF/IDF groups alone)">' +
+          'Expand line items</button>' +
         btn('summary',  'Summary only',     'Open every group + show only the L1 summary') +
       '</div>' +
       '<div class="scw-ws-v2-toolbar-group">' +
@@ -703,6 +720,20 @@
         if (t.hasAttribute('data-scw-ws-v2-mode')) {
           var requested = t.getAttribute('data-scw-ws-v2-mode');
           handleModeClick(requested, viewKey, container);
+        } else if (t.hasAttribute('data-scw-ws-v2-rows-toggle')) {
+          // Expand/collapse every line item's detail panel. Same pure
+          // class toggle as the per-card chevron (init.js expand handler)
+          // — deliberately does NOT touch ns.state / the MDF/IDF groups,
+          // and no rerender so the group accordion stays exactly as-is.
+          // Cards inside closed groups get the class too: they'll show
+          // expanded when their group is opened later.
+          var allCards = container.querySelectorAll('.scw-ws-v2-card');
+          var openNow  = container.querySelectorAll('.scw-ws-v2-card--open');
+          var openAll  = !(allCards.length > 0 && openNow.length === allCards.length);
+          for (var ci = 0; ci < allCards.length; ci++) {
+            allCards[ci].classList.toggle('scw-ws-v2-card--open', openAll);
+          }
+          applyState(container, viewKey);
         } else if (t.hasAttribute('data-scw-ws-v2-photos-toggle')) {
           var nextShown = !loadPhotosShown(viewKey);
           savePhotosShown(viewKey, nextShown);
