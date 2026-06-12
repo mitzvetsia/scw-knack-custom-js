@@ -214,7 +214,11 @@
           notes:        raw(rec, FK.notes),
           existCabling: bool(rec, FK.bidExistCabling),
           plenum:       bool(rec, FK.plenum),
-          exterior:     bool(rec, FK.exterior)
+          exterior:     bool(rec, FK.exterior),
+          // Bid-side connection topology (mirror of the SOW side):
+          // field_2380 Connected Devices, field_2381 Connected To.
+          connDevice:   connectionAll(rec, FK.bidConnDevice),
+          connTo:       connectionLabel(rec, FK.bidConnTo)
         };
       }
     }
@@ -573,7 +577,13 @@
         surveyNotes: raw(s, SFK.notes),
         mdfIdf:      connectionLabel(s, SFK.mdfIdf),
         mdfIdfId:    connectionId(s, SFK.mdfIdf),
-        proposalBucket: connectionLabel(s, SFK.proposalBucket)
+        proposalBucket: connectionLabel(s, SFK.proposalBucket),
+        // Connection topology for the comparison cells. An NVR/switch has
+        // connDevice (field_1957) populated (its cameras); a camera/reader
+        // has connTo (field_2197) populated (its NVR) — the cell renders
+        // whichever is present, so each device shows the appropriate field.
+        connDevice:     connectionAll(s, SFK.connDevice),
+        connTo:         connectionLabel(s, SFK.connTo)
       };
     }
 

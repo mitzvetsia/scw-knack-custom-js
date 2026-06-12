@@ -199,6 +199,35 @@
     return html;
   }
 
+  // Connection-topology line for a comparison cell. `connDevice` is the
+  // multi-value "Connected Devices" array ({id, identifier}); `connTo` is the
+  // single "Connected To" label. An NVR/switch populates connDevice (its
+  // cameras/readers), a camera/reader populates connTo (its NVR/switch) — so
+  // rendering whichever is present shows the appropriate field per device.
+  // Returns '' when neither is set, so rows without topology stay uncluttered.
+  function connLineHtml(connDevice, connTo) {
+    var html = '';
+    if (Array.isArray(connDevice) && connDevice.length) {
+      var names = [];
+      for (var i = 0; i < connDevice.length; i++) {
+        var c = connDevice[i];
+        var lbl = ns.transform.stripHtml((c && (c.identifier || c.name)) || '').trim();
+        if (lbl) names.push(lbl);
+      }
+      if (names.length) {
+        var joined = names.join(', ');
+        html += '<div class="scw-bid-review-v2__cell-conn" title="Connected devices: ' +
+          escapeHtml(joined) + '"><label>Connected</label>' + escapeHtml(joined) + '</div>';
+      }
+    }
+    var to = ns.transform.stripHtml(connTo || '').trim();
+    if (to && !/^\(none\)$/i.test(to)) {
+      html += '<div class="scw-bid-review-v2__cell-conn" title="Connected to: ' +
+        escapeHtml(to) + '"><label>Connected&nbsp;to</label>' + escapeHtml(to) + '</div>';
+    }
+    return html;
+  }
+
   function buildSowCell(row, isAssumption, sowId) {
     var sowItemData = row && row.sowItemData;
     var diff = aggregateMismatch(row);
@@ -284,6 +313,7 @@
         '<div class="scw-bid-review-v2__sow-desc" data-scw-sow-field="desc" title="' +
           escapeHtml(descTxt) + '">' + escapeHtml(descTxt) +
         '</div>' : '') +
+      connLineHtml(sowItemData.connDevice, sowItemData.connTo) +
       // "belongs to another SOW" rows note which SOW(s) the item is on.
       ((row && row.otherKind === 'other-sow' && row.otherSowNames && row.otherSowNames.length) ?
         '<div class="scw-bid-review-v2__sow-elsewhere">on ' +
@@ -533,6 +563,7 @@
         '<div class="scw-bid-review-v2__cell-desc' + descDiff + '"' + descHover + ' title="' +
           escapeHtml(descTxt) + '">' + escapeHtml(descTxt) +
         '</div>' : '') +
+      connLineHtml(cell.connDevice, cell.connTo) +
       cellActionStack(row, pkgId, sowId, diffs);
 
     // When 2+ bid line items on THIS bid map to the same SOW item, show

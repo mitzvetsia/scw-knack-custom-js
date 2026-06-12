@@ -1024,6 +1024,16 @@
     '  color: #475569; font-size: 12px; line-height: 1.45;',
     '  overflow-wrap: anywhere; word-break: break-word;',
     '}',
+    /* Connection topology line (Connected Devices / Connected To). */
+    '.scw-bid-review-v2__cell-conn {',
+    '  margin-top: 6px; font-size: 11.5px; line-height: 1.4;',
+    '  color: #475569; overflow-wrap: anywhere; word-break: break-word;',
+    '}',
+    '.scw-bid-review-v2__cell-conn label {',
+    '  display: inline-block; margin-right: 5px;',
+    '  color: #64748b; font-size: 10px; font-weight: 700;',
+    '  text-transform: uppercase; letter-spacing: .03em;',
+    '}',
     /* ── Inputs ────────────────────────────────────────────── */
     '.scw-bid-review-v2-input {',
     '  border: 1px solid #cbd5e1; border-radius: 4px;',
