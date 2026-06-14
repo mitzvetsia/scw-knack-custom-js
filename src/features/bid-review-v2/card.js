@@ -135,7 +135,9 @@
     }
     function valChip(v, label, name, isDiff) {
       var s = String(v == null ? '' : v).replace(/<[^>]*>/g, '').trim();
-      if (!s) return '';
+      // Hide blank AND zero — "Conduit 0" / "Drop 0" is noise, not a value.
+      var n = parseFloat(s.replace(/[$,\s]/g, ''));
+      if (!s || n === 0) return '';
       return '<span class="scw-bid-review-v2__cabling-val' + (!isSow && isDiff ? DIFF : '') +
         '"' + hook(name, isDiff) + '><label>' + escapeHtml(label) + '</label>' +
         escapeHtml(s) + '</span>';
@@ -694,9 +696,12 @@
     // WORDS via markWordDiff below, so they don't carry the whole-field pill.
     var feeOnExt = (diffs && diffs.fee && showExt) ? DIFF : '';
     var feeOnBid = (diffs && diffs.fee && !showExt) ? DIFF : '';
-    // SOW counterparts for word-level diffing of the text fields.
+    // SOW counterparts for word-level diffing of the text fields. Desc basis
+    // is the DISPLAYED SOW desc (sowItemData / field_2020) so the underlines
+    // match the SOW column shown alongside, not the bid-snapshot field_2019.
     var sowProd  = (row.sowItemData && row.sowItemData.productName) || row.sowProduct || '';
-    var sowDesc  = ns.transform.stripHtml(row.sowLaborDesc || '');
+    var sowDesc  = ns.transform.stripHtml(
+      (row.sowItemData && row.sowItemData.laborDesc) || row.sowLaborDesc || '');
     var prodInner = (diffs && diffs.product)
       ? markWordDiff(cell.productName, sowProd) : escapeHtml(cell.productName);
     var descInner = (diffs && diffs.laborDesc)

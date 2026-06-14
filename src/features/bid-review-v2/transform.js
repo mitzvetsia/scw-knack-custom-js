@@ -1068,19 +1068,40 @@
     var connDeviceDiff = (Array.isArray(sowCD) && sowCD.length)
       ? !sameSet(connSet(sowCD), connSet(cell.connDevice || [])) : false;
     var connToDiff = norm(sowCT) ? (norm(sowCT) !== norm(cell.connTo || '')) : false;
-    // Cabling attributes (cam/reader). Text fields (conduit / drop length)
-    // compare normalized — '' vs '' never flags, so non-cam rows stay quiet.
-    // Booleans (plenum / exterior / existing) flag only on a true≠false delta.
+    // Word-sequence compare for free text — strips tags/punctuation/case down
+    // to the same [a-z0-9] tokens the card's markWordDiff highlights, so a
+    // field flags as "different" ONLY when there's an actual word to underline
+    // (no more cells tinted with nothing visible). Labor-desc basis is the
+    // DISPLAYED SOW desc (field_2020, sowItemData) so the flag + underlines
+    // match the SOW column the reviewer sees, not the bid-snapshot field_2019.
+    function wseq(v) {
+      var w = String(v == null ? '' : v).replace(/<[^>]*>/g, ' ')
+        .toLowerCase().match(/[a-z0-9]+/g);
+      return w ? w.join(' ') : '';
+    }
+    // Numeric cabling value (conduit / drop length in feet). '' / non-numeric
+    // → null. Treats 0 and blank as "no value".
+    function cnum(v) {
+      var s = String(v == null ? '' : v).replace(/[$,\s]/g, '');
+      if (s === '') return null;
+      var n = parseFloat(s);
+      return (isNaN(n) || n === 0) ? null : n;
+    }
+    var sowDesc = (row.sowItemData && row.sowItemData.laborDesc) || row.sowLaborDesc;
+    var bConduit = cnum(cell.conduit), bDrop = cnum(cell.dropLength);
+    // Cabling diffs anchor on the BID carrying a meaningful (non-zero) value,
+    // so a bid that simply didn't capture conduit/drop doesn't flag every row
+    // against a spec that has one. Booleans flag on any true≠false delta.
     var m = {
       product:    productDiff,
-      laborDesc:  norm(row.sowLaborDesc) !== norm(cell.laborDesc),
+      laborDesc:  wseq(sowDesc) !== wseq(cell.laborDesc),
       // Anchor qty on the SOW side carrying a value (mirrors the conn anchors)
       // so a blank-spec line item doesn't flag every bid that priced qty 1.
       qty:        (Number(sd.qty) || 0) > 0
                     ? ((Number(sd.qty) || 0) !== (Number(cell.qty) || 0)) : false,
       fee:        Math.abs((Number(row.sowFee) || 0) - (Number(cell.labor) || 0)) > 0.001,
-      conduit:    norm(sd.conduit) !== norm(cell.conduit),
-      dropLength: norm(sd.dropLength) !== norm(cell.dropLength),
+      conduit:    bConduit != null ? (bConduit !== (cnum(sd.conduit) || 0)) : false,
+      dropLength: bDrop != null ? (bDrop !== (cnum(sd.dropLength) || 0)) : false,
       plenum:     !!sd.plenum !== !!cell.plenum,
       exterior:   !!sd.exterior !== !!cell.exterior,
       existing:   !!sd.existCabling !== !!cell.existCabling,
