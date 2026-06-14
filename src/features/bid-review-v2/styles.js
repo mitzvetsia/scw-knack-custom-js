@@ -325,6 +325,17 @@
     '  background: #fed7aa; border-radius: 3px; padding: 0 4px;',
     '  box-decoration-break: clone; -webkit-box-decoration-break: clone;',
     '}',
+    /* Word-level diff on text fields (product / labor desc): underline ONLY
+       the words that differ from the SOW value, instead of the whole-field
+       amber pill. Amber to match the diff theme. */
+    '.scw-bid-review-v2__tok-diff {',
+    '  text-decoration: underline;',
+    '  text-decoration-color: #ea580c;',
+    '  text-decoration-thickness: 2px;',
+    '  text-underline-offset: 2px;',
+    '  background: #ffedd5;',
+    '  border-radius: 2px;',
+    '}',
     /* SOW cell: soft whole-cell tint when any field differs from a bid —
        no per-field hard highlight here (that lives on the bid columns). */
     '.scw-bid-review-v2__sow-cell--has-diff {',

@@ -33,6 +33,37 @@
     });
   }
 
+  // Word-level diff for text fields (product name / labor desc). Returns
+  // escaped HTML of `text` with only the WORDS that don't appear in the
+  // SOW counterpart (`against`) wrapped in <u class="…tok-diff"> — so the
+  // reviewer sees exactly which terms changed instead of the whole value
+  // lighting up. Comparison is a lowercased multiset (repeated words match
+  // by count); whitespace/punctuation never highlights. Falls back to a
+  // plain escape when `against` is blank (nothing meaningful to compare).
+  function markWordDiff(text, against) {
+    var t = String(text == null ? '' : text);
+    if (!t) return '';
+    var a = String(against == null ? '' : against);
+    if (!a.trim()) return escapeHtml(t);
+    var pool = Object.create(null);
+    var aw = a.toLowerCase().match(/[a-z0-9]+/gi) || [];
+    for (var i = 0; i < aw.length; i++) pool[aw[i]] = (pool[aw[i]] || 0) + 1;
+    // Split into word vs. non-word runs, preserving everything verbatim.
+    var parts = t.match(/[A-Za-z0-9]+|[^A-Za-z0-9]+/g) || [];
+    var out = '';
+    for (var j = 0; j < parts.length; j++) {
+      var p = parts[j];
+      if (/^[A-Za-z0-9]+$/.test(p)) {
+        var k = p.toLowerCase();
+        if (pool[k] > 0) { pool[k]--; out += escapeHtml(p); }
+        else { out += '<u class="scw-bid-review-v2__tok-diff">' + escapeHtml(p) + '</u>'; }
+      } else {
+        out += escapeHtml(p);
+      }
+    }
+    return out;
+  }
+
   // Cam/reader detection — mirrors v1's showCabling(). Only these
   // buckets get the displayLabel column (E-001, E-002, …) and the
   // cabling/plenum/exterior chips (Phase 2).
@@ -559,10 +590,18 @@
     var DIFF = ' scw-bid-review-v2__field-diff';
     if (diffs && diffs.any) td.classList.add('scw-bid-review-v2__cell--mismatch');
     if (cell.dupes && cell.dupes.length) td.classList.add('scw-bid-review-v2__cell--dupe-bid');
-    var prodDiff = (diffs && diffs.product) ? DIFF : '';
-    var descDiff = (diffs && diffs.laborDesc) ? DIFF : '';
+    // Numeric fields (fee) still flag the whole value — there's no sub-token
+    // to pinpoint. Text fields (product / desc) underline only the differing
+    // WORDS via markWordDiff below, so they don't carry the whole-field pill.
     var feeOnExt = (diffs && diffs.fee && showExt) ? DIFF : '';
     var feeOnBid = (diffs && diffs.fee && !showExt) ? DIFF : '';
+    // SOW counterparts for word-level diffing of the text fields.
+    var sowProd  = (row.sowItemData && row.sowItemData.productName) || row.sowProduct || '';
+    var sowDesc  = ns.transform.stripHtml(row.sowLaborDesc || '');
+    var prodInner = (diffs && diffs.product)
+      ? markWordDiff(cell.productName, sowProd) : escapeHtml(cell.productName);
+    var descInner = (diffs && diffs.laborDesc)
+      ? markWordDiff(descTxt, sowDesc) : escapeHtml(descTxt);
     // Hover hooks: hovering a differing field highlights its SOW-cell
     // counterpart (init.js wires the mouseover). Only the actually-
     // differing field carries the hook.
@@ -572,9 +611,9 @@
 
     var primaryHtml =
       (cell.productName ?
-        '<div class="scw-bid-review-v2__cell-product' + prodDiff + '"' + prodHover + ' title="' +
+        '<div class="scw-bid-review-v2__cell-product"' + prodHover + ' title="' +
           escapeHtml(cell.productName) + '">' +
-          escapeHtml(cell.productName) +
+          prodInner +
         '</div>' : '') +
       '<div class="scw-bid-review-v2__cell-numbers">' +
         '<span class="scw-bid-review-v2__cell-num"><label>Qty</label>' +
@@ -586,8 +625,8 @@
             '><label>Ext</label>' + escapeHtml(extTxt) + '</span>' : '') +
       '</div>' +
       (descTxt ?
-        '<div class="scw-bid-review-v2__cell-desc' + descDiff + '"' + descHover + ' title="' +
-          escapeHtml(descTxt) + '">' + escapeHtml(descTxt) +
+        '<div class="scw-bid-review-v2__cell-desc"' + descHover + ' title="' +
+          escapeHtml(descTxt) + '">' + descInner +
         '</div>' : '') +
       connLineHtml(cell.connDevice, cell.connTo,
         { side: 'bid', deviceDiff: diffs && diffs.connDevice, toDiff: diffs && diffs.connTo }) +
