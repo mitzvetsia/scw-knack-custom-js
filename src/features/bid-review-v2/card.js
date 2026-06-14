@@ -66,6 +66,14 @@
     'stroke="currentColor" stroke-width="2.5" stroke-linecap="round" ' +
     'stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>';
 
+  // Amber warning triangle (matches the worksheet warning iconography).
+  var WARN_TRI_SVG =
+    '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" ' +
+    'stroke="currentColor" stroke-width="2.2" stroke-linecap="round" ' +
+    'stroke-linejoin="round"><path d="M12 2 22 12 12 22 2 12Z"></path>' +
+    '<line x1="12" y1="8" x2="12" y2="13"></line>' +
+    '<line x1="12" y1="16.5" x2="12.01" y2="16.5"></line></svg>';
+
   function fmtMoney(n) {
     if (n == null || isNaN(n)) return '';
     return '$' + Number(n).toLocaleString(undefined, {
@@ -191,6 +199,65 @@
     return html;
   }
 
+  // Connection-topology line for a comparison cell. `connDevice` is the
+  // multi-value "Connected Devices" array ({id, identifier}); `connTo` is the
+  // single "Connected To" label. An NVR/switch populates connDevice (its
+  // cameras/readers), a camera/reader populates connTo (its NVR/switch) — so
+  // rendering whichever is present shows the appropriate field per device.
+  // Returns '' when neither is set, so rows without topology stay uncluttered.
+  function connLineHtml(connDevice, connTo, opts) {
+    opts = opts || {};
+    var DIFF = ' scw-bid-review-v2__field-diff';
+    // SOW side is the hover TARGET (data-scw-sow-field) under the soft cell
+    // tint; the bid side carries the hard per-field highlight + hover SOURCE
+    // (data-scw-diff-field), but only on a line that actually differs — the
+    // same pattern product / fee / desc use.
+    function lineAttrs(isDiff) {
+      if (opts.side === 'sow') return { cls: '', hook: ' data-scw-sow-field="conn"' };
+      return { cls: isDiff ? DIFF : '', hook: isDiff ? ' data-scw-diff-field="conn"' : '' };
+    }
+    var html = '';
+    if (Array.isArray(connDevice) && connDevice.length) {
+      var names = [];
+      for (var i = 0; i < connDevice.length; i++) {
+        var c = connDevice[i];
+        var lbl = ns.transform.stripHtml((c && (c.identifier || c.name)) || '').trim();
+        if (lbl) names.push(lbl);
+      }
+      if (names.length) {
+        var a = lineAttrs(!!opts.deviceDiff);
+        var joined = names.join(', ');
+        html += '<div class="scw-bid-review-v2__cell-conn' + a.cls + '"' + a.hook +
+          ' title="Connected devices: ' + escapeHtml(joined) + '">' +
+          '<label>Connected</label>' + escapeHtml(joined) + '</div>';
+      }
+    }
+    var to = ns.transform.stripHtml(connTo || '').trim();
+    if (to && !/^\(none\)$/i.test(to)) {
+      var a2 = lineAttrs(!!opts.toDiff);
+      html += '<div class="scw-bid-review-v2__cell-conn' + a2.cls + '"' + a2.hook +
+        ' title="Connected to: ' + escapeHtml(to) + '">' +
+        '<label>Connected&nbsp;to</label>' + escapeHtml(to) + '</div>';
+    }
+    return html;
+  }
+
+  // Survey-note block (field_2412) for a bid cell — icon + label + text.
+  // Used in BOTH populated cells (v1 parity: render.js appended cell.notes
+  // after the values) and the no-bid cutout cells.
+  function surveyNoteHtml(txt) {
+    if (!txt) return '';
+    return '<div class="scw-bid-review-v2__cell-survey-note" title="' +
+        escapeHtml(txt) + '">' +
+        '<span class="scw-bid-review-v2__cell-survey-note-icon">' +
+          SURVEY_NOTES_SVG + '</span>' +
+        '<div class="scw-bid-review-v2__cell-survey-note-body">' +
+          '<span class="scw-bid-review-v2__cell-survey-note-label">Survey Note</span>' +
+          '<span class="scw-bid-review-v2__cell-survey-note-text">' +
+            escapeHtml(txt) + '</span>' +
+        '</div></div>';
+  }
+
   function buildSowCell(row, isAssumption, sowId) {
     var sowItemData = row && row.sowItemData;
     var diff = aggregateMismatch(row);
@@ -276,6 +343,7 @@
         '<div class="scw-bid-review-v2__sow-desc" data-scw-sow-field="desc" title="' +
           escapeHtml(descTxt) + '">' + escapeHtml(descTxt) +
         '</div>' : '') +
+      connLineHtml(sowItemData.connDevice, sowItemData.connTo, { side: 'sow' }) +
       // "belongs to another SOW" rows note which SOW(s) the item is on.
       ((row && row.otherKind === 'other-sow' && row.otherSowNames && row.otherSowNames.length) ?
         '<div class="scw-bid-review-v2__sow-elsewhere">on ' +
@@ -353,6 +421,53 @@
     '</div>';
   }
 
+  // One stacked DUPLICATE bid item — a second (third, …) bid line item
+  // on the SAME bid that maps to the same SOW item as the primary cell.
+  // Rendered beneath the primary inside the bid cell, full values shown
+  // (they may differ), tagged, with a Remove that targets THIS bid
+  // record (data-bid-record-id override consumed by v1 handleRemoveFromBid).
+  function stackedDupeHtml(d, row, pkgId, sowId) {
+    var descTxt = ns.transform.stripHtml(d.laborDesc || '');
+    var qtyTxt  = d.qty  ? String(d.qty) : '—';
+    var rateTxt = d.rate ? fmtMoney(d.rate) : '—';
+    var extTxt  = d.labor ? fmtMoney(d.labor) : '—';
+    var showExt = (Number(d.qty) || 0) > 1;
+    return '<div class="scw-bid-review-v2__bid-item scw-bid-review-v2__bid-item--dupe">' +
+      '<div class="scw-bid-review-v2__bid-dupe-tag" title="A second bid line item ' +
+        'on this bid is linked to the same SOW item. Usually the extra should be ' +
+        'removed or re-mapped to its own SOW item.">' +
+        WARN_TRI_SVG + '<span>2nd bid item → same SOW item</span></div>' +
+      (d.productName ?
+        '<div class="scw-bid-review-v2__cell-product" title="' + escapeHtml(d.productName) + '">' +
+          escapeHtml(d.productName) + '</div>' : '') +
+      '<div class="scw-bid-review-v2__cell-numbers">' +
+        '<span class="scw-bid-review-v2__cell-num"><label>Qty</label>' + escapeHtml(qtyTxt) + '</span>' +
+        '<span class="scw-bid-review-v2__cell-num"><label>Sub Bid</label>' + escapeHtml(rateTxt) + '</span>' +
+        (showExt ? '<span class="scw-bid-review-v2__cell-num"><label>Ext</label>' +
+          escapeHtml(extTxt) + '</span>' : '') +
+      '</div>' +
+      (descTxt ?
+        '<div class="scw-bid-review-v2__cell-desc" title="' + escapeHtml(descTxt) + '">' +
+          escapeHtml(descTxt) + '</div>' : '') +
+      '<div class="scw-bid-review-v2__cell-actions">' +
+        // Keep both → split this duplicate onto its OWN new SOW line item.
+        '<button type="button" class="scw-bid-review__cell-action ' +
+          'scw-bid-review__cell-action--add scw-bid-review-v2__cell-action" ' +
+          'data-action="cell_create_sow_from_bid" ' +
+          'data-bid-record-id="' + escapeHtml(d.id) + '" ' +
+          'data-sow-id="' + escapeHtml(sowId || '') + '" ' +
+          'title="Keep both — create a separate SOW line item for this bid item">' +
+          '+ New SOW item</button>' +
+        '<button type="button" class="scw-bid-review__cell-action ' +
+          'scw-bid-review__cell-action--remove scw-bid-review-v2__cell-action" ' +
+          crAttrs('cell_remove_from_bid', row.id, pkgId, sowId) +
+          ' data-bid-record-id="' + escapeHtml(d.id) + '"' +
+          ' data-bid-product="' + escapeHtml(ns.transform.stripHtml(d.productName || '')) +
+          '">Remove</button>' +
+      '</div>' +
+    '</div>';
+  }
+
   /**
    * One bid cell — the (row × package) intersection. Pure HTML factory
    * for content; CR buttons + pending card are appended after. Events
@@ -392,17 +507,13 @@
       var detail   = (row && row.detail && row.detail.side === 'BID')
         ? detailBlockHtml(row.detail) : '';
       // Survey note (field_2412) — v1 renders it inside the no-bid cell.
-      var noteHtml = (row && row.surveyNotes)
-        ? '<div class="scw-bid-review-v2__cell-survey-note" title="' +
-            escapeHtml(row.surveyNotes) + '">' +
-            '<span class="scw-bid-review-v2__cell-survey-note-icon">' +
-              SURVEY_NOTES_SVG + '</span>' +
-            '<div class="scw-bid-review-v2__cell-survey-note-body">' +
-              '<span class="scw-bid-review-v2__cell-survey-note-label">Survey Note</span>' +
-              '<span class="scw-bid-review-v2__cell-survey-note-text">' +
-                escapeHtml(row.surveyNotes) + '</span>' +
-            '</div></div>'
-        : '';
+      // Prefer the bid record's copy (row.surveyNotes), but fall back to the
+      // SOW line item's own field_2412 (row.sowItemData.surveyNotes): the note
+      // lives on the line item, and the bid-side copy is empty whenever Make
+      // didn't mirror it — without this fallback the note silently vanishes.
+      var surveyNoteTxt = (row && row.surveyNotes) ||
+        (row && row.sowItemData && row.sowItemData.surveyNotes) || '';
+      var noteHtml = surveyNoteHtml(surveyNoteTxt);
       var actions  = '';
       if (row) {
         var addLabel = hasBidRecord ? '+ Reinstate' : '+ Add to bid';
@@ -447,6 +558,7 @@
     var diffs = ns.transform.getMismatches(row, cell);
     var DIFF = ' scw-bid-review-v2__field-diff';
     if (diffs && diffs.any) td.classList.add('scw-bid-review-v2__cell--mismatch');
+    if (cell.dupes && cell.dupes.length) td.classList.add('scw-bid-review-v2__cell--dupe-bid');
     var prodDiff = (diffs && diffs.product) ? DIFF : '';
     var descDiff = (diffs && diffs.laborDesc) ? DIFF : '';
     var feeOnExt = (diffs && diffs.fee && showExt) ? DIFF : '';
@@ -458,7 +570,7 @@
     var feeHover  = (diffs && diffs.fee)       ? ' data-scw-diff-field="fee"' : '';
     var descHover = (diffs && diffs.laborDesc) ? ' data-scw-diff-field="desc"' : '';
 
-    td.innerHTML =
+    var primaryHtml =
       (cell.productName ?
         '<div class="scw-bid-review-v2__cell-product' + prodDiff + '"' + prodHover + ' title="' +
           escapeHtml(cell.productName) + '">' +
@@ -477,7 +589,27 @@
         '<div class="scw-bid-review-v2__cell-desc' + descDiff + '"' + descHover + ' title="' +
           escapeHtml(descTxt) + '">' + escapeHtml(descTxt) +
         '</div>' : '') +
+      connLineHtml(cell.connDevice, cell.connTo,
+        { side: 'bid', deviceDiff: diffs && diffs.connDevice, toDiff: diffs && diffs.connTo }) +
+      // Survey note (field_2412) on the bid record — v1 parity: populated
+      // cells render the sub's note too, not just the no-bid cutouts.
+      surveyNoteHtml(cell.notes) +
       cellActionStack(row, pkgId, sowId, diffs);
+
+    // When 2+ bid line items on THIS bid map to the same SOW item, show
+    // each stacked (they may differ in product / price / desc). The SOW
+    // cell to the left is a single <td>, so it naturally spans the full
+    // height of the stacked bid items. Each duplicate carries its own
+    // Remove targeting that specific bid record (data-bid-record-id).
+    if (cell.dupes && cell.dupes.length) {
+      var blocks = ['<div class="scw-bid-review-v2__bid-item">' + primaryHtml + '</div>'];
+      for (var di = 0; di < cell.dupes.length; di++) {
+        blocks.push(stackedDupeHtml(cell.dupes[di], row, pkgId, sowId));
+      }
+      td.innerHTML = '<div class="scw-bid-review-v2__bid-stack">' + blocks.join('') + '</div>';
+    } else {
+      td.innerHTML = primaryHtml;
+    }
     appendPendingCard(td, pendingItem, row, pkg, sowId);
     return td;
   }
@@ -654,10 +786,18 @@
   function buildL2HeaderRow(sub, colspan) {
     var tr = document.createElement('tr');
     tr.className = 'scw-bid-review-v2__subgroup-header';
+    if (sub.removedItems)     tr.className += ' scw-bid-review-v2__subgroup-header--removed';
+    if (sub.defaultCollapsed) tr.className += ' scw-bid-review-v2__subgroup-header--collapsed';
+    // Collapsible: the chevron + click handler (init.js) fold this
+    // subgroup independently of its parent L1.
+    tr.setAttribute('role', 'button');
+    tr.setAttribute('aria-expanded', sub.defaultCollapsed ? 'false' : 'true');
+    tr.setAttribute('data-subgroup-key', sub.key || '');
     var td = document.createElement('td');
     td.colSpan = colspan;
     td.innerHTML =
       '<div class="scw-bid-review-v2__subgrp-inner">' +
+        '<span class="scw-bid-review-v2__subgrp-chevron">' + GROUP_CHEVRON_SVG + '</span>' +
         '<span class="scw-bid-review-v2__subgrp-title">' + escapeHtml(sub.label) + '</span>' +
         '<span class="scw-bid-review-v2__subgrp-count">' + sub.rows.length + '</span>' +
       '</div>';
@@ -832,13 +972,20 @@
     for (var i = 0; i < group.rows.length; i++) {
       addRow(buildBidRow(group.rows[i], packages, sowId));
     }
-    // Subgroups (L2 — proposal bucket).
+    // Subgroups (e.g. the per-location "Removed" subgroup). The header
+    // follows the L1's hide state; its rows are additionally hidden when
+    // the subgroup is default-collapsed, and tagged --in-subgroup so the
+    // collapse handlers in init.js can fold them independently.
     var subs = group.subgroups || [];
     for (var s = 0; s < subs.length; s++) {
       var sub = subs[s];
       addRow(buildL2HeaderRow(sub, colspan));
+      var subHidden = hide || !!sub.defaultCollapsed;
       for (var sr = 0; sr < sub.rows.length; sr++) {
-        addRow(buildBidRow(sub.rows[sr], packages, sowId));
+        var subRow = buildBidRow(sub.rows[sr], packages, sowId);
+        subRow.classList.add('scw-bid-review-v2__row--in-subgroup');
+        if (subHidden) subRow.classList.add('scw-bid-review-v2__row--hidden');
+        tbody.appendChild(subRow);
       }
     }
   }

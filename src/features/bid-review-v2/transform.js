@@ -184,7 +184,26 @@
       var pkgs = connectionAll(rec, FK.bidPackage);
       for (var p = 0; p < pkgs.length; p++) {
         var pid = pkgs[p].id;
-        if (!pid || cellsByPackage[pid]) continue;
+        if (!pid) continue;
+        if (cellsByPackage[pid]) {
+          // COLLISION: another bid record on the SAME package already
+          // filled this cell — i.e. two bid line items on one bid both
+          // map to this SOW item. We used to silently drop the second
+          // (the user never saw it). Instead, record it on the kept
+          // cell so the UI can flag the duplication. (Can happen via the
+          // "create variant" path mis-linking the new bid item.)
+          var keep = cellsByPackage[pid];
+          if (!keep.dupes) keep.dupes = [];
+          keep.dupes.push({
+            id:        rec.id,
+            productName: raw(rec, FK.productName),
+            qty:       num(rec, FK.qty),
+            rate:      num(rec, FK.rate),
+            labor:     num(rec, FK.labor),
+            laborDesc: rawHtml(rec, FK.laborDesc)
+          });
+          continue;
+        }
         cellsByPackage[pid] = {
           id:           rec.id,
           productName:  raw(rec, FK.productName),
@@ -195,7 +214,11 @@
           notes:        raw(rec, FK.notes),
           existCabling: bool(rec, FK.bidExistCabling),
           plenum:       bool(rec, FK.plenum),
-          exterior:     bool(rec, FK.exterior)
+          exterior:     bool(rec, FK.exterior),
+          // Bid-side connection topology (mirror of the SOW side):
+          // field_2380 Connected Devices, field_2381 Connected To.
+          connDevice:   connectionAll(rec, FK.bidConnDevice),
+          connTo:       connectionLabel(rec, FK.bidConnTo)
         };
       }
     }
@@ -339,14 +362,26 @@
     return 0;
   }
 
-  function groupRows(rows) {
+  // groupRows builds the L1 (MDF/IDF) tree. `removedRows` (optional) are
+  // bucketed by the SAME MDF/IDF key and attached to their location's L1
+  // as a default-collapsed "Removed" subgroup — so a removed item shows
+  // under the location it was removed from, not in one consolidated pile.
+  // A location that has ONLY removed items still gets its L1 (with just
+  // the removed subgroup inside).
+  function groupRows(rows, removedRows) {
+    removedRows = removedRows || [];
     var mdfMap = Object.create(null);
+    var removedMap = Object.create(null);
     var mdfOrder = [];
+    function keyOf(r) { return r.mdfIdf || syntheticL1ForBucket(r.proposalBucket); }
+    function ensure(k) {
+      if (!mdfMap[k]) { mdfMap[k] = []; removedMap[k] = []; mdfOrder.push(k); }
+    }
     for (var j = 0; j < rows.length; j++) {
-      var r = rows[j];
-      var mdf = r.mdfIdf || syntheticL1ForBucket(r.proposalBucket);
-      if (!mdfMap[mdf]) { mdfMap[mdf] = []; mdfOrder.push(mdf); }
-      mdfMap[mdf].push(r);
+      var r = rows[j]; var k = keyOf(r); ensure(k); mdfMap[k].push(r);
+    }
+    for (var rm = 0; rm < removedRows.length; rm++) {
+      var rr = removedRows[rm]; var rk = keyOf(rr); ensure(rk); removedMap[rk].push(rr);
     }
     mdfOrder.sort(function (a, b) {
       var ra = l1Rank(a), rb = l1Rank(b);
@@ -358,13 +393,29 @@
     for (var gi = 0; gi < mdfOrder.length; gi++) {
       var mdfKey = mdfOrder[gi];
       var mdfRows = mdfMap[mdfKey];
+      var rmRows  = removedMap[mdfKey];
       var mdfIdfId = '';
       for (var fi = 0; fi < mdfRows.length; fi++) {
         if (mdfRows[fi].mdfIdfId) { mdfIdfId = mdfRows[fi].mdfIdfId; break; }
       }
+      if (!mdfIdfId) {
+        for (var fr = 0; fr < rmRows.length; fr++) {
+          if (rmRows[fr].mdfIdfId) { mdfIdfId = rmRows[fr].mdfIdfId; break; }
+        }
+      }
+      var subgroups = [];
+      if (rmRows.length) {
+        subgroups.push({
+          key:              mdfKey + '::removed',
+          label:            'Removed — no longer on any SOW or bid',
+          rows:             rmRows,
+          removedItems:     true,
+          defaultCollapsed: true
+        });
+      }
       groups.push({
         key: mdfKey, label: mdfKey, mdfIdfId: mdfIdfId,
-        level: 1, rows: weaveAccessories(mdfRows), subgroups: []
+        level: 1, rows: weaveAccessories(mdfRows), subgroups: subgroups
       });
     }
     return groups;
@@ -526,7 +577,13 @@
         surveyNotes: raw(s, SFK.notes),
         mdfIdf:      connectionLabel(s, SFK.mdfIdf),
         mdfIdfId:    connectionId(s, SFK.mdfIdf),
-        proposalBucket: connectionLabel(s, SFK.proposalBucket)
+        proposalBucket: connectionLabel(s, SFK.proposalBucket),
+        // Connection topology for the comparison cells. An NVR/switch has
+        // connDevice (field_1957) populated (its cameras); a camera/reader
+        // has connTo (field_2197) populated (its NVR) — the cell renders
+        // whichever is present, so each device shows the appropriate field.
+        connDevice:     connectionAll(s, SFK.connDevice),
+        connTo:         connectionLabel(s, SFK.connTo)
       };
     }
 
@@ -910,9 +967,13 @@
       // than being pulled out into a separate "On Bid — not on SOW" block.
       // They keep offSow/needsSow so the SOW cell still cuts out and offers
       // "+ Add to SOW"; they just sit in context with the matched rows.
-      var groups = groupRows(bidOnlyRows.length
-        ? displayRows.concat(bidOnlyRows)
-        : displayRows);
+      // Removed rows are bucketed into their MDF/IDF L1 as a collapsed
+      // "Removed" subgroup (groupRows handles it) — no longer a single
+      // pile pinned to the top.
+      var groups = groupRows(
+        bidOnlyRows.length ? displayRows.concat(bidOnlyRows) : displayRows,
+        removedRows
+      );
       // "Belong to another SOW" stays at the BOTTOM.
       if (otherSowRows.length) {
         groups.push({
@@ -923,20 +984,6 @@
           rows:          otherSowRows,
           subgroups:     [],
           otherBidItems: true
-        });
-      }
-      // "Removed — no longer on any SOW or bid" stays pinned to the very top.
-      // (Bid-only items are now interleaved into their MDF/IDF groups above.)
-      if (removedRows.length) {
-        groups.unshift({
-          key:             '__removed_items__',
-          label:           'Removed — no longer on any SOW or bid',
-          mdfIdfId:        '',
-          level:           1,
-          rows:            removedRows,
-          subgroups:       [],
-          removedItems:    true,
-          defaultCollapsed: true
         });
       }
 
@@ -981,12 +1028,45 @@
     var spBase   = baseProduct(sowProd);
     var cpBase   = baseProduct(cell.productName);
     var productDiff = (spBase && cpBase) ? (spBase !== cpBase) : false;
+    // Connection topology diff. SOW item: field_1957 (connDevice) / field_2197
+    // (connTo). Bid record: field_2380 / field_2381. The two sides reference
+    // DIFFERENT record sets (SOW items vs bid items) for the same physical
+    // devices, so compare by normalized label, not id. Anchor on the SOW side
+    // having a value (the reference): a bid that dropped a connection the SOW
+    // expects counts as a diff; a row with no SOW-side topology is never flagged.
+    function connSet(v) {
+      var set = Object.create(null);
+      if (Array.isArray(v)) {
+        for (var i = 0; i < v.length; i++) {
+          var l = norm((v[i] && (v[i].identifier || v[i].name)) || '');
+          if (l) set[l] = true;
+        }
+      } else {
+        var s = norm(v || '');
+        if (s) set[s] = true;
+      }
+      return set;
+    }
+    function sameSet(a, b) {
+      var ka = Object.keys(a);
+      if (ka.length !== Object.keys(b).length) return false;
+      for (var i = 0; i < ka.length; i++) if (!b[ka[i]]) return false;
+      return true;
+    }
+    var sd    = row.sowItemData || {};
+    var sowCD = sd.connDevice || [];
+    var sowCT = sd.connTo || '';
+    var connDeviceDiff = (Array.isArray(sowCD) && sowCD.length)
+      ? !sameSet(connSet(sowCD), connSet(cell.connDevice || [])) : false;
+    var connToDiff = norm(sowCT) ? (norm(sowCT) !== norm(cell.connTo || '')) : false;
     var m = {
-      product:   productDiff,
-      laborDesc: norm(row.sowLaborDesc) !== norm(cell.laborDesc),
-      fee:       Math.abs((Number(row.sowFee) || 0) - (Number(cell.labor) || 0)) > 0.001
+      product:    productDiff,
+      laborDesc:  norm(row.sowLaborDesc) !== norm(cell.laborDesc),
+      fee:        Math.abs((Number(row.sowFee) || 0) - (Number(cell.labor) || 0)) > 0.001,
+      connDevice: connDeviceDiff,
+      connTo:     connToDiff
     };
-    m.any = m.product || m.laborDesc || m.fee;
+    m.any = m.product || m.laborDesc || m.fee || m.connDevice || m.connTo;
     return m;
   }
 

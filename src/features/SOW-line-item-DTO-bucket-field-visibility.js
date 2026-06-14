@@ -6,7 +6,9 @@
   // ======================
   // CONFIG
   // ======================
-  const VIEW_IDS = ['view_3329']; // add more views
+  // view_4002 — Add-to-SOW form on the bid comparison page (scene_1155),
+  // opened via view_4001's menu link. Identical DTO fields to view_3329.
+  const VIEW_IDS = ['view_3329', 'view_4002']; // add more views
   const BUCKET_FIELD_KEY = 'field_2223';
   const EVENT_NS = '.scwBucketRules';
   const CSS_ID = 'scw-bucket-visibility-css';

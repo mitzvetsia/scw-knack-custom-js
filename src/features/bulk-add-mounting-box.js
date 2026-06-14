@@ -12,9 +12,8 @@
  * MDF/IDF, field_2154 = sowId). Mirrors the per-row "add mounting
  * hardware" flow but batched.
  *
- * Product picker: hardcoded MOUNTING_BOX_PRODUCTS list at the top — edit
- * that constant when the product catalog changes. (Future enhancement:
- * fetch the bucket=Mounting Hardware filter from Knack at runtime.)
+ * Product picker: window.SCW.mountingBoxProducts (Builder snippet) — the
+ * accessory catalog shared with worksheet-v2's add-accessory modal.
  ******************************************************************************/
 (function () {
   'use strict';
@@ -36,12 +35,13 @@
     'view_3921'
   ];
 
-  // Product catalog comes from window.SCW.mountingBoxProducts — populated
-  // by an out-of-bundle snippet (mirrors how filter-products-by-bucket.js
-  // consumes window.SCW.productBucketMap). The snippet fetches every
-  // Enabled product whose Proposal Bucket = "Mounting Hardware" and
-  // sets the global. See the bulk-add-mounting-box feature notes for
-  // the snippet to drop into Knack Builder's JS settings.
+  // Accessory catalog comes from window.SCW.mountingBoxProducts —
+  // populated by an out-of-bundle snippet (mirrors how
+  // filter-products-by-bucket.js consumes window.SCW.productBucketMap).
+  // The snippet fetches EVERY Enabled product (not just mounting
+  // hardware) with its compatibility lists (field_2236/field_2205) —
+  // consumers must compatibility-filter; "no compat list" means "not
+  // an accessory".
   //
   // If the global is missing (snippet hasn't loaded yet, or wasn't
   // wired up at all), the modal falls back to a free-text input so

@@ -29,6 +29,9 @@
   var ns = window.SCW && window.SCW.worksheetV2;
   if (!ns) return;
 
+  // ── Module-level view key (set in mount()) ────────────────────
+  var _sourceViewKey = '';
+
   // ── Selection state ───────────────────────────────────────────
   var selectedIds = Object.create(null); // { recordId: true }
   function selSize() { var n = 0; for (var k in selectedIds) n++; return n; }
@@ -91,19 +94,81 @@
     assumptions: [
       { key: 'field_2020', label: 'Assumption text', kind: 'text' },
       { key: 'field_1953', label: 'SCW Notes',       kind: 'text' },
+      { key: 'field_1946', label: 'MDF / IDF',       kind: 'conn-single', candSource: 'mdf' },
+      { key: 'field_2154', label: 'SOW',             kind: 'conn-multi',  candSource: 'sows' }
+    ]
+  };
+
+  // ── Sales-deployment field registry ─────────────────────────
+  // Sales views (moneyMode:'sales') swap out the build-SOW money
+  // columns (Sub Bid / +Hrs / +Mat) for a read-only Total; hide SOW
+  // and Plenum; and add Custom Disc % (field_2261). This parallel
+  // registry is used instead of FIELDS when the source view is sales.
+  var SALES_FIELDS = {
+    cam: [
+      { key: 'field_1949', label: 'Product',           kind: 'conn-single', candSource: 'products' },
+      { key: 'field_2240', label: 'Drop prefix',       kind: 'conn-single', candSource: 'dropPrefix' },
+      { key: 'field_1951', label: 'Label #',           kind: 'number' },
+      { key: 'field_2261', label: 'Custom Disc %',     kind: 'number' },
+      { key: 'field_2461', label: 'Existing cabling',  kind: 'bool' },
+      { key: 'field_1984', label: 'Exterior',          kind: 'bool' },
+      { key: 'field_1953', label: 'SCW Notes',         kind: 'text' },
+      { key: 'field_1946', label: 'MDF / IDF',         kind: 'conn-single', candSource: 'mdf' },
+      { key: 'field_2197', label: 'Connected Device',  kind: 'conn-single', candSource: 'devices' }
+    ],
+    'default': [
+      { key: 'field_1949', label: 'Product',           kind: 'conn-single', candSource: 'products' },
+      { key: 'field_1964', label: 'Qty',               kind: 'number' },
+      { key: 'field_2261', label: 'Custom Disc %',     kind: 'number' },
+      { key: 'field_1953', label: 'SCW Notes',         kind: 'text' },
+      { key: 'field_1946', label: 'MDF / IDF',         kind: 'conn-single', candSource: 'mdf' },
+      { key: 'field_1957', label: 'Connected Devices', kind: 'conn-multi',  candSource: 'devices' }
+    ],
+    services: [
+      { key: 'field_1964', label: 'Qty',                 kind: 'number' },
+      { key: 'field_2261', label: 'Custom Disc %',       kind: 'number' },
+      { key: 'field_1953', label: 'SCW Notes',           kind: 'text' },
+      { key: 'field_1946', label: 'MDF / IDF',           kind: 'conn-single', candSource: 'mdf' }
+    ],
+    assumptions: [
+      { key: 'field_2020', label: 'Assumption text', kind: 'text' },
+      { key: 'field_1953', label: 'SCW Notes',       kind: 'text' },
       { key: 'field_1946', label: 'MDF / IDF',       kind: 'conn-single', candSource: 'mdf' }
     ]
   };
 
-  function intersectFields(categories) {
+  /** True when every selected record shares the same proposal bucket. */
+  function allSameBucket(ids, sourceViewKey) {
+    if (!ns.card || typeof ns.card.bucketIdOf !== 'function') return true;
+    var idx = attrsIndex(sourceViewKey);
+    var first = null;
+    for (var i = 0; i < ids.length; i++) {
+      var a = idx[ids[i]];
+      if (!a) continue;
+      var b = ns.card.bucketIdOf(a);
+      if (first === null) { first = b; continue; }
+      if (b !== first) return false;
+    }
+    return true;
+  }
+
+  function isSalesView(sourceViewKey) {
+    try {
+      var vc = ns.cfg && typeof ns.cfg.viewCfg === 'function' && ns.cfg.viewCfg(sourceViewKey);
+      return !!(vc && vc.moneyMode === 'sales');
+    } catch (e) { return false; }
+  }
+
+  function intersectFields(categories, fieldSet) {
+    fieldSet = fieldSet || FIELDS;
     if (!categories.length) return [];
-    var seed = FIELDS[categories[0]] || [];
+    var seed = fieldSet[categories[0]] || [];
     var result = [];
     for (var i = 0; i < seed.length; i++) {
       var f = seed[i];
       var keepAll = true;
       for (var c = 1; c < categories.length; c++) {
-        var list = FIELDS[categories[c]] || [];
+        var list = fieldSet[categories[c]] || [];
         var found = false;
         for (var j = 0; j < list.length; j++) {
           if (list[j].key === f.key) { found = true; break; }
@@ -116,13 +181,11 @@
   }
 
   function recordCategories(ids, sourceViewKey) {
+    var idx = attrsIndex(sourceViewKey);
     var seen = {};
-    var v = Knack.views[sourceViewKey];
-    if (!v || !v.model || !v.model.data) return [];
     for (var i = 0; i < ids.length; i++) {
-      var rec = v.model.data.get && v.model.data.get(ids[i]);
-      if (!rec) continue;
-      var attrs = rec.attributes || rec;
+      var attrs = idx[ids[i]];
+      if (!attrs) continue;
       var cat = ns.card && ns.card.bucketCategoryOf
         ? ns.card.bucketCategoryOf(attrs)
         : 'default';
@@ -131,6 +194,89 @@
     var out = [];
     for (var k in seen) out.push(k);
     return out;
+  }
+
+  // ── Lock + delete-block helpers (shared with the per-card rules) ──
+  // When ANY selected row is a LOCKED sales row (card.js isCrLocked: sales
+  // deployment + survey-associated), the bulk-edit modal is restricted to the
+  // same whitelist the per-card lock keeps editable — Product, SCW Notes,
+  // Custom Disc %. field_2261 isn't in the per-bucket FIELDS registry (it's a
+  // sales-only field), so the locked set is defined explicitly here.
+  var LOCKED_BULK_FIELDS = [
+    { key: 'field_1949', label: 'Product',       kind: 'conn-single', candSource: 'products' },
+    { key: 'field_1953', label: 'SCW Notes',     kind: 'text' },
+    { key: 'field_2261', label: 'Custom Disc %', kind: 'number' }
+  ];
+
+  /** Build an id→attributes index from the source view's loaded records.
+   *  Uses ns.data.readRecords (the .models read path that render.js draws
+   *  from) rather than Backbone Collection.get(), which on Knack's model
+   *  can return nothing even when .models is fully populated — that was
+   *  making the bulk-edit modal think a selected record had no bucket and
+   *  therefore "no fields in common" even with a single row selected.
+   *
+   *  DOM FALLBACK: the model read ALSO comes back empty intermittently —
+   *  mid-refetch, a failed/429 model.fetch, an over-filtered collection,
+   *  or a stale source view key — which silently blanked the modal ("no
+   *  shared fields") until a hard refresh. Every rendered v2 card carries
+   *  its bucket id (data-scw-ws-v2-bucket) + lock state (--locked class),
+   *  which is exactly what recordCategories / isCrLocked / isDeleteBlocked
+   *  need. So synthesize attrs from the cards for any id the model didn't
+   *  supply. Queried document-wide so a wrong _sourceViewKey can't defeat
+   *  it. Full model attrs always win; DOM only fills gaps. */
+  function attrsIndex(sourceViewKey) {
+    var idx = Object.create(null);
+    var recs = (ns.data && typeof ns.data.readRecords === 'function')
+      ? ns.data.readRecords(sourceViewKey) : [];
+    for (var i = 0; i < recs.length; i++) {
+      if (recs[i] && recs[i].id) idx[recs[i].id] = recs[i];
+    }
+    try {
+      var cards = document.querySelectorAll('.scw-ws-v2-card[data-scw-ws-v2-record]');
+      for (var c = 0; c < cards.length; c++) {
+        var card = cards[c];
+        var rid  = card.getAttribute('data-scw-ws-v2-record');
+        if (!rid || idx[rid]) continue;   // model attrs (richer) win
+        var bucketId = card.getAttribute('data-scw-ws-v2-bucket') || '';
+        idx[rid] = {
+          id:             rid,
+          field_2219_raw: bucketId ? [{ id: bucketId }] : [],
+          // --locked ⇔ survey-associated (field_2586 >= 1); enough for
+          // isCrLocked / isDeleteBlocked which only test "> 0".
+          field_2586:     card.classList.contains('scw-ws-v2-card--locked') ? 1 : 0,
+          _scwDomFallback: true
+        };
+      }
+    } catch (e) { /* best effort */ }
+    return idx;
+  }
+
+  /** Look up a selected record's attributes from the source view model. */
+  function attrsOf(id, sourceViewKey) {
+    return attrsIndex(sourceViewKey)[id] || null;
+  }
+
+  /** True if ANY selected id is a locked sales row. */
+  function selectionHasLocked(ids, sourceViewKey) {
+    if (!(ns.card && typeof ns.card.isCrLocked === 'function')) return false;
+    for (var i = 0; i < ids.length; i++) {
+      var a = attrsOf(ids[i], sourceViewKey);
+      if (a && ns.card.isCrLocked(a, sourceViewKey)) return true;
+    }
+    return false;
+  }
+
+  /** Split ids into { deletable, blocked } using the same survey-link delete
+   *  block the per-row trash uses (card.js isDeleteBlocked). */
+  function partitionDeletable(ids, sourceViewKey) {
+    var deletable = [], blocked = [];
+    var canCheck = ns.card && typeof ns.card.isDeleteBlocked === 'function';
+    for (var i = 0; i < ids.length; i++) {
+      var a = canCheck ? attrsOf(ids[i], sourceViewKey) : null;
+      if (a && ns.card.isDeleteBlocked(a, sourceViewKey)) blocked.push(ids[i]);
+      else deletable.push(ids[i]);
+    }
+    return { deletable: deletable, blocked: blocked };
   }
 
   // ── Toolbar ──────────────────────────────────────────────────
@@ -170,6 +316,14 @@
       '<button type="button" class="scw-ws-v2-bulk-clear">Clear</button>';
     document.body.appendChild(toolbar);
 
+    // NOTE: handlers must read the LIVE _sourceViewKey (set on every
+    // mount), not the closure param — the toolbar is a body-level
+    // singleton that survives Knack's SPA scene swaps, so the key it
+    // was created with goes stale the moment the user navigates to a
+    // page whose v2 mount uses a different source view. A stale key
+    // makes every record lookup miss (wrong view's model) — bulk edit
+    // sees "no fields in common" and the accessory modal loses its
+    // compatibility filter.
     toolbar.querySelector('.scw-ws-v2-bulk-add-acc').addEventListener('click', function () {
       var ids = selList();
       if (!ids.length) return;
@@ -177,7 +331,7 @@
       // selection itself). Lives there so we don't duplicate the
       // compatibility-filter + webhook logic.
       if (ns.toolbar && typeof ns.toolbar.openAddAccessories === 'function') {
-        ns.toolbar.openAddAccessories(sourceViewKey);
+        ns.toolbar.openAddAccessories(_sourceViewKey || sourceViewKey);
       }
     });
     toolbar.querySelector('.scw-ws-v2-bulk-clear').addEventListener('click', function () {
@@ -188,17 +342,17 @@
     toolbar.querySelector('.scw-ws-v2-bulk-remove-acc').addEventListener('click', function () {
       var ids = selList();
       if (!ids.length) return;
-      openRemoveAccessoriesConfirm(ids, sourceViewKey);
+      openRemoveAccessoriesConfirm(ids, _sourceViewKey || sourceViewKey);
     });
     toolbar.querySelector('.scw-ws-v2-bulk-edit').addEventListener('click', function () {
       var ids = selList();
       if (!ids.length) return;
-      openBulkModal(ids, sourceViewKey);
+      openBulkModal(ids, _sourceViewKey || sourceViewKey);
     });
     toolbar.querySelector('.scw-ws-v2-bulk-delete').addEventListener('click', function () {
       var ids = selList();
       if (!ids.length) return;
-      openBulkDeleteConfirm(ids, sourceViewKey);
+      openBulkDeleteConfirm(ids, _sourceViewKey || sourceViewKey);
     });
     return toolbar;
   }
@@ -212,9 +366,20 @@
     var addAccBtn = toolbar.querySelector('.scw-ws-v2-bulk-add-acc');
     if (addAccBtn) addAccBtn.disabled = (n === 0);
     var delBtn = toolbar.querySelector('.scw-ws-v2-bulk-delete');
-    delBtn.disabled = (n === 0);
     var delLabel = delBtn.querySelector('.scw-ws-v2-bulk-delete-label');
-    if (delLabel) delLabel.textContent = n > 0 ? ('Delete (' + n + ')') : 'Delete';
+    if (n === 0) {
+      delBtn.disabled = true;
+      delBtn.title = '';
+      if (delLabel) delLabel.textContent = 'Delete';
+    } else {
+      var part = partitionDeletable(selList(), _sourceViewKey);
+      var nDel = part.deletable.length;
+      delBtn.disabled = (nDel === 0);
+      delBtn.title = nDel === 0
+        ? 'All selected items are linked to survey line items and cannot be deleted here'
+        : '';
+      if (delLabel) delLabel.textContent = nDel > 0 ? ('Delete (' + nDel + ')') : 'Delete';
+    }
     var raBtn = toolbar.querySelector('.scw-ws-v2-bulk-remove-acc');
     if (raBtn) raBtn.disabled = (n === 0);
   }
@@ -470,12 +635,51 @@
   /** Standalone "are you sure" modal for the toolbar Delete button.
    *  Surfaces the parent + accessory counts so users see the
    *  cascade scope before confirming. */
+  /** Small informational modal (title + message + Close), no destructive
+   *  CTA. Used when a bulk action has nothing valid to act on. */
+  function openBulkInfoModal(title, msg) {
+    var overlay = document.createElement('div');
+    overlay.className = 'scw-ws-v2-bulk-overlay';
+    overlay.innerHTML =
+      '<div class="scw-ws-v2-bulk-modal scw-ws-v2-bulk-modal--confirm">' +
+        '<div class="scw-ws-v2-bulk-modal-head">' +
+          '<div class="scw-ws-v2-bulk-modal-title">' + escapeHtml(title) + '</div>' +
+          '<div class="scw-ws-v2-bulk-modal-sub">' + escapeHtml(msg) + '</div>' +
+        '</div>' +
+        '<div class="scw-ws-v2-bulk-modal-actions">' +
+          '<button type="button" class="scw-ws-v2-bulk-modal-cancel">Close</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(overlay);
+    var close = function () { overlay.parentNode && overlay.parentNode.removeChild(overlay); };
+    overlay.querySelector('.scw-ws-v2-bulk-modal-cancel').addEventListener('click', close);
+    overlay.addEventListener('click', function (e) { if (e.target === overlay) close(); });
+  }
+
   function openBulkDeleteConfirm(parentIds, sourceViewKey) {
+    // Never delete a record whose delete is blocked (survey-linked, on the
+    // surfaces where the block applies). Drop those from the batch up front.
+    var part = partitionDeletable(parentIds, sourceViewKey);
+    var blockedCount = part.blocked.length;
+    parentIds = part.deletable;
+
+    // Everything selected is non-deletable → informational modal, no CTA.
+    if (!parentIds.length) {
+      openBulkInfoModal('Can’t delete these line items',
+        (blockedCount === 1 ? 'This line item is' : 'These ' + blockedCount + ' line items are') +
+        ' linked to survey line items, so they can only be removed from the survey — not here.');
+      return;
+    }
+
     var accIds = collectAccessoryIds(parentIds, sourceViewKey);
     var subline = accIds.length
       ? 'Also deletes ' + accIds.length + ' attached accessor' +
         (accIds.length === 1 ? 'y' : 'ies') + ' (mounting hardware, etc.).'
       : 'These line items have no attached accessories.';
+    if (blockedCount) {
+      subline += ' ' + blockedCount + ' survey-linked item' +
+        (blockedCount === 1 ? '' : 's') + ' will be skipped.';
+    }
 
     var overlay = document.createElement('div');
     overlay.className = 'scw-ws-v2-bulk-overlay';
@@ -929,8 +1133,40 @@
   }
 
   function openBulkModal(ids, sourceViewKey) {
+    // If any selected row is locked (survey-associated sales item), only the
+    // lock whitelist (Product / SCW Notes / Custom Disc %) is bulk-editable —
+    // mirroring the per-card lock so we never bulk-write a locked field.
+    var locked = selectionHasLocked(ids, sourceViewKey);
     var categories = recordCategories(ids, sourceViewKey);
-    var fields = intersectFields(categories);
+    var sales = isSalesView(sourceViewKey);
+    var fieldSet = sales ? SALES_FIELDS : FIELDS;
+    var fields = locked ? LOCKED_BULK_FIELDS.slice() : intersectFields(categories, fieldSet);
+    // Diagnostic: if a selection yields no categories the modal will read
+    // "no shared fields". Log exactly why (selection size, how many ids
+    // resolved, the view key + record counts) so the intermittent blank
+    // is traceable instead of a mystery.
+    if (!categories.length || !fields.length) {
+      var _idx = attrsIndex(sourceViewKey);
+      var _resolved = 0; for (var _i = 0; _i < ids.length; _i++) if (_idx[ids[_i]]) _resolved++;
+      console.warn('[scw-ws-v2] bulk: no shared fields', {
+        selected: ids.length, resolvedAttrs: _resolved,
+        sourceViewKey: sourceViewKey, _sourceViewKey: _sourceViewKey,
+        categories: categories, locked: locked, sales: sales,
+        modelRecords: (ns.data && ns.data.readRecords ? ns.data.readRecords(sourceViewKey).length : 'n/a'),
+        domCards: document.querySelectorAll('.scw-ws-v2-card[data-scw-ws-v2-record]').length
+      });
+    }
+    // Product candidates vary by proposal bucket — don't offer Product
+    // when the selection spans multiple buckets.
+    var mixedBuckets = !allSameBucket(ids, sourceViewKey);
+    if (mixedBuckets && !locked) {
+      fields = fields.filter(function (f) { return f.key !== 'field_1949'; });
+    }
+    var subHtml = locked
+      ? 'Some selected rows are locked — only <b>Product</b>, <b>SCW Notes</b> &amp; <b>Custom Disc %</b> can be bulk-edited.'
+      : (categories.length === 1
+          ? 'All rows in <b>' + escapeHtml(categories[0]) + '</b> category'
+          : 'Mixed buckets — showing fields common to all');
 
     var overlay = document.createElement('div');
     overlay.className = 'scw-ws-v2-bulk-overlay';
@@ -938,11 +1174,7 @@
       '<div class="scw-ws-v2-bulk-modal" role="dialog" aria-modal="true">' +
         '<div class="scw-ws-v2-bulk-modal-head">' +
           '<div class="scw-ws-v2-bulk-modal-title">Edit ' + ids.length + ' selected</div>' +
-          '<div class="scw-ws-v2-bulk-modal-sub">' +
-            (categories.length === 1
-              ? 'All rows in <b>' + escapeHtml(categories[0]) + '</b> category'
-              : 'Mixed buckets — showing fields common to all') +
-          '</div>' +
+          '<div class="scw-ws-v2-bulk-modal-sub">' + subHtml + '</div>' +
         '</div>' +
         '<div class="scw-ws-v2-bulk-modal-body"></div>' +
         '<div class="scw-ws-v2-bulk-modal-status"></div>' +
@@ -1210,6 +1442,7 @@
 
   // ── Public entry point ───────────────────────────────────────
   function mount(sourceViewKey) {
+    _sourceViewKey = sourceViewKey;
     ensureToolbar(sourceViewKey);
     wireGlobalDelegates(sourceViewKey);
     // After each re-render, sync visible boxes to current state.
@@ -1217,10 +1450,27 @@
     refreshToolbar();
   }
 
+  /** Concurrency-capped + retry/backoff delete queue, exposed so the
+   *  per-row trash + accessory-chip × handlers in init.js converge onto
+   *  the same proven path instead of hand-rolling fire-and-forget fetches
+   *  (which silently lose writes to Knack's ~10 req/s 429s — backlog #1).
+   *  ids: record ids to delete via MAKE_DELETE_RECORD_WEBHOOK. Resolves to
+   *  an array of settle-shaped results ({ ok, recordId, status }); a
+   *  failure never rejects the batch. */
+  function queuedDelete(ids, webhookUrl, onProgress) {
+    if (!ids || !ids.length) {
+      var d = $.Deferred(); d.resolve([]); return d.promise();
+    }
+    return runJobQueue(ids, function (id) {
+      return doDeleteWithRetry(id, webhookUrl);
+    }, onProgress);
+  }
+
   ns.bulk = {
     mount:           mount,
     syncDomFromState: syncDomFromState,
-    refreshToolbar:  refreshToolbar
+    refreshToolbar:  refreshToolbar,
+    queuedDelete:    queuedDelete
   };
 })();
 /*** END WORKSHEET V2 — BULK EDIT *********************************************/

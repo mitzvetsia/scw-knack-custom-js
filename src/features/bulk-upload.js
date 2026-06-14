@@ -34,7 +34,14 @@
 
   // ── CONFIG ────────────────────────────────────────────────────────────
   var CONFIG = {
-    MAX_FILE_BYTES: 5 * 1024 * 1024,    // 5 MB raw — Make webhook body limit
+    // Make's webhook limit is 5 MB of REQUEST BODY — and we ship the
+    // file base64-encoded (+~37%) inside a JSON envelope. A "5 MB" raw
+    // file therefore produces a ~6 MB body, which Make answers by
+    // dropping the connection → the browser reports "Failed to fetch"
+    // and the row fails with no HTTP status. Cap raw size so the
+    // encoded body stays safely under the limit: 3.5 MB × 4/3 ≈ 4.7 MB
+    // + envelope.
+    MAX_FILE_BYTES: 3.5 * 1024 * 1024,
 
     // Throttle between consecutive successful uploads (ms). Make limits
     // operations per minute at the org level — each upload triggers a
@@ -42,12 +49,18 @@
     // uploads can blow through small plan quotas. 1500ms = ~40 files/min.
     UPLOAD_DELAY_MS: 1500,
 
-    // Per-file retry on rate-limit / server-error responses. Each retry
-    // waits longer; if all retries fail the file is marked 'failed' and
-    // the user gets a Retry button. Non-rate-limit errors (4xx other
-    // than 429) fail immediately — no point hammering.
-    MAX_RETRIES_PER_FILE: 4,
-    RETRY_BACKOFF_MS:     [3000, 8000, 20000, 45000],
+    // Post-close grid refresh delay (ms). Uploads are fire-and-forget: the
+    // client marks each photo done the moment it's SENT and never waits on
+    // Make's response, so Make does the actual Knack file write a few
+    // seconds AFTER the modal closes. We re-fetch the configured grid
+    // view(s) once, this many ms after close, so they appear without a
+    // manual refresh. The new
+    // record ids aren't known until after Make's async work, so we re-fetch
+    // the whole view rather than specific records. Override per VIEWS entry
+    // with `refreshDelayMs`. Bump it if Make's async write runs longer than
+    // this; the refetch is harmless if it lands after the photos already
+    // did (slow-Make case), so erring a little long is safe.
+    DEFAULT_REFRESH_DELAY_MS: 9000,
 
     // Each entry hooks the new uploader onto a menu link by text. The
     // matching FORM_CONFIGS entries in jotform-embed-sow-photos.js are
@@ -308,6 +321,113 @@
     });
   }
 
+  // ── CLIENT-SIDE IMAGE DOWNSCALE ───────────────────────────────────────
+  // Oversized images are re-encoded as progressively smaller JPEGs until
+  // they fit MAX_FILE_BYTES, so 8–12 MB phone photos upload instead of
+  // bouncing off the size cap. Non-images, SVG/GIF (vector / animation
+  // would be destroyed), and formats canvas can't decode (e.g. HEIC on
+  // Chrome) fall through to the normal too-big rejection.
+  var DOWNSCALE_LADDER = [
+    { edge: 2400, quality: 0.85 },
+    { edge: 2000, quality: 0.80 },
+    { edge: 1600, quality: 0.75 },
+    { edge: 1280, quality: 0.70 }
+  ];
+
+  function loadViaImg(file) {
+    return new Promise(function (resolve, reject) {
+      var url = URL.createObjectURL(file);
+      var img = new Image();
+      img.onload  = function () { URL.revokeObjectURL(url); resolve(img); };
+      img.onerror = function () { URL.revokeObjectURL(url); reject(new Error('decode failed')); };
+      img.src = url;
+    });
+  }
+
+  function loadBitmap(file) {
+    if (window.createImageBitmap) {
+      // imageOrientation:'from-image' bakes EXIF rotation into the
+      // bitmap so portrait phone photos don't come out sideways.
+      try {
+        return createImageBitmap(file, { imageOrientation: 'from-image' })
+          .catch(function () { return loadViaImg(file); });
+      } catch (e) { /* older signature — fall through */ }
+    }
+    return loadViaImg(file);
+  }
+
+  function canvasToJpeg(source, w, h, q) {
+    return new Promise(function (resolve, reject) {
+      var c = document.createElement('canvas');
+      c.width = w; c.height = h;
+      c.getContext('2d').drawImage(source, 0, 0, w, h);
+      c.toBlob(function (b) {
+        if (b) resolve(b);
+        else reject(new Error('canvas.toBlob returned null'));
+      }, 'image/jpeg', q);
+    });
+  }
+
+  /** Walk the ladder until a JPEG fits targetBytes. Resolves Blob or null.
+   *  If no step reaches the target, the smallest version produced is
+   *  accepted as long as it clears the hard MAX_FILE_BYTES cap. */
+  function downscaleImage(file, targetBytes) {
+    targetBytes = targetBytes || CONFIG.MAX_FILE_BYTES;
+    return loadBitmap(file).then(function (src) {
+      var sw = src.width  || src.naturalWidth;
+      var sh = src.height || src.naturalHeight;
+      if (!sw || !sh) throw new Error('no dimensions');
+      var smallest = null;   // best (smallest) blob produced so far
+      function attempt(i) {
+        if (i >= DOWNSCALE_LADDER.length) {
+          // None hit the preferred target — accept the smallest version we
+          // produced as long as it clears the hard cap; else give up.
+          if (smallest && smallest.size <= CONFIG.MAX_FILE_BYTES) return Promise.resolve(smallest);
+          return Promise.resolve(null);
+        }
+        var step  = DOWNSCALE_LADDER[i];
+        var scale = Math.min(1, step.edge / Math.max(sw, sh));
+        var w = Math.max(1, Math.round(sw * scale));
+        var h = Math.max(1, Math.round(sh * scale));
+        return canvasToJpeg(src, w, h, step.quality).then(function (blob) {
+          if (!smallest || blob.size < smallest.size) smallest = blob;
+          if (blob.size <= targetBytes) return blob;
+          return attempt(i + 1);
+        });
+      }
+      return attempt(0).then(function (blob) {
+        if (src.close) { try { src.close(); } catch (e) {} }
+        return blob;
+      });
+    }).catch(function () { return null; });
+  }
+
+  /** Resolve what to queue for a picked file: pass-through when it fits,
+   *  auto-resize oversized raster images, null blob → too-big row. */
+  function prepareFile(f) {
+    // Full-resolution uploads under the hard cap — a sub-cap file ships
+    // exactly as-is. Only genuinely oversized raster images get downscaled,
+    // and only enough to clear MAX_FILE_BYTES so they upload at all instead
+    // of bouncing off Make's 5 MB body limit.
+    if (f.size <= CONFIG.MAX_FILE_BYTES) {
+      return Promise.resolve({ blob: f, converted: false, triedResize: false });
+    }
+    var t = (f.type || '').toLowerCase();
+    var isRaster = t.indexOf('image/') === 0 &&
+                   t !== 'image/svg+xml' && t !== 'image/gif';
+    if (!isRaster) {
+      return Promise.resolve({ blob: null, converted: false, triedResize: false });
+    }
+    var _tResize = Date.now();
+    return downscaleImage(f, CONFIG.MAX_FILE_BYTES).then(function (blob) {
+      if (!blob) return { blob: null, converted: false, triedResize: true };
+      console.info('[bulk-upload] auto-resized', f.name,
+        fmtBytes(f.size), '→', fmtBytes(blob.size),
+        '(' + (Date.now() - _tResize) + 'ms)');
+      return { blob: blob, converted: true, triedResize: true };
+    });
+  }
+
   // ── STYLES ────────────────────────────────────────────────────────────
   function injectStyles() {
     if (document.getElementById(STYLE_ID)) return;
@@ -438,7 +558,8 @@
           '<div class="scw-bu-drop" tabindex="0">' +
             '<div><strong>Drop files here</strong> or click to choose</div>' +
             '<span class="scw-bu-drop-hint">Any type · max ' +
-              fmtBytes(CONFIG.MAX_FILE_BYTES) + ' per file</span>' +
+              fmtBytes(CONFIG.MAX_FILE_BYTES) +
+              ' per file · larger images are resized automatically</span>' +
             '<input type="file" multiple style="display:none">' +
           '</div>' +
           '<div class="scw-bu-info">' +
@@ -462,20 +583,50 @@
   function closeModal() {
     var el = document.getElementById(MODAL_ID + '-backdrop');
     if (el) el.remove();
-    // Auto-refresh on close intentionally disabled — was visibly
-    // refreshing rows one-at-a-time after the modal closed, which the
-    // user found disruptive. Manual refresh paths still exist:
-    //   - reloadOnClose: true   on a CONFIG.VIEWS entry to do a full
-    //                           window.location.reload() instead
-    //   - SCW.bulkUpload.refreshSingleRecord(viewId, recordId) from
-    //                           the console to trigger refresh ad-hoc
     if (_state && _state.successCount > 0) {
       var viewCfg = _state.viewCfg || {};
       if (viewCfg.reloadOnClose) {
         setTimeout(function () { window.location.reload(); }, 50);
+      } else {
+        // Make acks the upload instantly and writes the file ASYNCHRONOUSLY,
+        // so the photos land a few seconds AFTER the modal closes. Re-fetch
+        // the configured grid view(s) once, on a fixed delay, so the new
+        // photos show up without a manual refresh. We refetch the WHOLE view
+        // (one render) rather than specific records — the new record ids
+        // aren't known until after Make's async work (the array-only-known-
+        // after case). Harmless if Make was synchronous: the refetch just
+        // lands after the photos already did.
+        var delayViews = {};
+        (viewCfg.refreshRecordInViews || []).forEach(function (v) { delayViews[v] = true; });
+        (viewCfg.refreshViews || []).forEach(function (v) { delayViews[v] = true; });
+        if (_state.refreshViewIds) {
+          Object.keys(_state.refreshViewIds).forEach(function (v) { delayViews[v] = true; });
+        }
+        var vids = Object.keys(delayViews);
+        if (vids.length) {
+          scheduleDelayedRefresh(vids, viewCfg.refreshDelayMs || CONFIG.DEFAULT_REFRESH_DELAY_MS);
+        }
       }
     }
     _state = null;
+  }
+
+  // Full re-fetch of each named view's model, once, after `delay` ms — so
+  // the grid picks up photos Make wrote asynchronously after its instant
+  // ack. A single render per view (not the disruptive one-row-at-a-time
+  // pass that the old close-refresh did). Best-effort and silent.
+  function scheduleDelayedRefresh(viewIds, delay) {
+    setTimeout(function () {
+      viewIds.forEach(function (vid) {
+        try {
+          var v = window.Knack && Knack.views && Knack.views[vid];
+          if (v && v.model && typeof v.model.fetch === 'function') {
+            v.model.fetch();
+            if (window.SCW && SCW.DEBUG) console.log('[bulk-upload] delayed refresh →', vid);
+          }
+        } catch (e) { /* best-effort */ }
+      });
+    }, delay);
   }
 
   // Refresh a single record's row in a configured grid view.
@@ -668,26 +819,49 @@
   function addFiles(files) {
     if (!_state || !files.length) return;
     var puts = files.map(function (f) {
-      var tooBig = f.size > CONFIG.MAX_FILE_BYTES;
-      var row = {
-        id:        uuid(),
-        recordId:  _state.recordId,
-        linkField: _state.viewCfg.linkField,
-        filename:  f.name,
+      // prepareFile pass-throughs compliant files, canvas-resizes
+      // oversized raster images, and returns blob:null when nothing
+      // uploadable could be produced.
+      return prepareFile(f).then(function (prep) {
+        if (!_state) return;
+        var blob   = prep.blob;
+        var tooBig = !blob;
+        var filename = f.name;
         // File.type can be empty for some extensions on some OSes; fall back
         // to a generic binary MIME so downstream code always has something.
-        mimeType:  f.type || 'application/octet-stream',
-        extension: getExtension(f.name),
-        sizeBytes: f.size,
-        blob:      f,
-        status:    tooBig ? 'too-big' : 'queued',
-        error:     tooBig ? ('File exceeds ' + fmtBytes(CONFIG.MAX_FILE_BYTES) + ' limit') : null,
-        addedAt:   Date.now(),
-        batchId:   _state.batchId,
-        uploadId:  uuid()
-      };
-      return dbPut(row).then(function () {
-        if (_state) _state.rows.push(row);
+        var mime = f.type || 'application/octet-stream';
+        var ext  = getExtension(f.name);
+        if (blob && prep.converted) {
+          // Re-encoded as JPEG — rename so the payload metadata matches
+          // the actual bytes. Auto-match labels (E-001 etc.) survive
+          // since only the extension changes.
+          mime = 'image/jpeg';
+          ext  = 'jpg';
+          filename = f.name.replace(/\.[^.]+$/, '') + '.jpg';
+        }
+        var row = {
+          id:        uuid(),
+          recordId:  _state.recordId,
+          linkField: _state.viewCfg.linkField,
+          filename:  filename,
+          mimeType:  mime,
+          extension: ext,
+          sizeBytes: blob ? blob.size : f.size,
+          // Surfaced in the size column so resizes are visible.
+          origSizeBytes: prep.converted ? f.size : null,
+          blob:      blob || f,
+          status:    tooBig ? 'too-big' : 'queued',
+          error:     tooBig
+            ? ('File exceeds ' + fmtBytes(CONFIG.MAX_FILE_BYTES) + ' limit' +
+               (prep.triedResize ? ' — auto-resize failed (unsupported image format?)' : ''))
+            : null,
+          addedAt:   Date.now(),
+          batchId:   _state.batchId,
+          uploadId:  uuid()
+        };
+        return dbPut(row).then(function () {
+          if (_state) _state.rows.push(row);
+        });
       });
     });
     Promise.all(puts).then(renderRows).catch(function (err) {
@@ -751,6 +925,13 @@
     }
     if (uploadBtn) {
       uploadBtn.disabled = _state.uploading || (stats.queued === 0 && stats.failed === 0);
+      // The "everything I added is over the size cap" case reads as
+      // "the upload silently does nothing" — say so on the button.
+      uploadBtn.title = (!_state.uploading && stats.queued === 0 &&
+                         stats.failed === 0 && stats.tooBig > 0)
+        ? 'All files exceed the ' + fmtBytes(CONFIG.MAX_FILE_BYTES) +
+          ' per-file limit — nothing to upload'
+        : '';
     }
 
     // Wire row-level action buttons
@@ -814,7 +995,13 @@
           '</div>' +
           errLine +
         '</div>' +
-        '<div class="scw-bu-size">' + fmtBytes(row.sizeBytes) + '</div>' +
+        '<div class="scw-bu-size"' +
+          (row.origSizeBytes
+            ? ' title="Auto-resized from ' + escapeHtml(fmtBytes(row.origSizeBytes)) + '"'
+            : '') + '>' +
+          fmtBytes(row.sizeBytes) +
+          (row.origSizeBytes ? ' <span style="color:#0369a1">(resized)</span>' : '') +
+        '</div>' +
         '<div class="scw-bu-status is-' + row.status + '">' +
           (labels[row.status] || row.status) +
         '</div>' +
@@ -843,6 +1030,13 @@
     // Re-queue any rows the user wants retried
     _state.rows.forEach(function (r) {
       if (r.status === 'failed') { r.status = 'queued'; r.error = null; }
+    });
+    // Always-on breadcrumb — uploads are rare and these lines turn
+    // "the webhook doesn't seem to fire" reports into hard data.
+    console.info('[bulk-upload] starting batch', {
+      recordId:  _state.recordId,
+      linkField: _state.viewCfg && _state.viewCfg.linkField,
+      queued:    countByStatus(_state.rows).queued
     });
     _state.uploading = true;
     setButtonsDisabled(true);
@@ -877,40 +1071,21 @@
       return;
     }
     uploadOne(row, webhook).then(function () {
-      // Throttle between uploads — gives Make headroom against per-minute
-      // operations limits. Skipped after a failure since that file's
-      // already paused itself with a retry delay.
+      // Throttle BETWEEN uploads — gives Make headroom against per-minute
+      // operations limits. Only needed when another file is still queued;
+      // applying it after the last file just makes a single-photo upload
+      // sit ~1.5s longer before the modal confirms/closes. Also skipped
+      // after a failure since that file already paused itself with a
+      // retry delay.
       if (!_state) return;
-      var delay = row.status === 'done' ? CONFIG.UPLOAD_DELAY_MS : 0;
+      var moreQueued = _state.rows.some(function (r) { return r.status === 'queued'; });
+      var delay = (moreQueued && row.status === 'done') ? CONFIG.UPLOAD_DELAY_MS : 0;
       setTimeout(function () { processNext(webhook); }, delay);
     });
   }
 
-  // Heuristic: is this error a "back off and try again" type, or
-  // a "this will never succeed" type?
-  function isRateLimitError(httpStatus, body, errMsg) {
-    if (httpStatus === 429) return true;
-    if (httpStatus >= 500 && httpStatus < 600) return true;     // 5xx
-    var blob = ((body && body.error) || errMsg || '').toLowerCase();
-    return /rate.?limit|too many|throttl|quota|operations limit|operation limit/.test(blob);
-  }
-
-  // Parse a Retry-After header value (either seconds or HTTP-date).
-  // Returns delay in ms, or null if header missing/unparseable.
-  function parseRetryAfter(headers) {
-    if (!headers || !headers.get) return null;
-    var v = headers.get('Retry-After');
-    if (!v) return null;
-    var s = parseInt(v, 10);
-    if (!isNaN(s) && s >= 0) return s * 1000;
-    var t = Date.parse(v);
-    if (!isNaN(t)) return Math.max(0, t - Date.now());
-    return null;
-  }
-
   function uploadOne(row, webhook) {
     row.status = 'uploading'; row.error = null;
-    row.retryCount = row.retryCount || 0;
     return dbPut(row).then(function () {
       renderRows();
       return readAsBase64(row.blob);
@@ -927,55 +1102,36 @@
         batchId:     row.batchId,
         triggeredBy: getCurrentUser()
       };
-      return fetch(webhook, {
+      var bodyStr = JSON.stringify(payload);
+      // Client-side hard stop: Make silently drops connections on bodies
+      // over ~5 MB. Fail BEFORE sending (this never touches the network) so
+      // the user can resize instead of getting a false "done".
+      if (bodyStr.length > 4.9 * 1024 * 1024) {
+        row.status = 'failed';
+        row.error  = 'Too large to send (' + fmtBytes(bodyStr.length) +
+          ' encoded · 5 MB limit) — resize and retry';
+        return dbPut(row).then(renderRows).catch(function () { renderRows(); });
+      }
+      console.info('[bulk-upload] POST (optimistic)', row.filename,
+        '(' + fmtBytes(row.sizeBytes) + ' raw, ' + fmtBytes(bodyStr.length) + ' encoded) →',
+        row.linkField, row.recordId);
+      // OPTIMISTIC SEND: fire the request and immediately mark the row done.
+      // We do NOT wait on or read Make's response — that round-trip is what
+      // made uploads feel slow, and reading it brought CORS/retry/duplicate
+      // headaches. The request keeps running in the background (closing the
+      // modal doesn't cut it; only navigating away from the page would).
+      // Make does its Knack write on its own schedule; the delayed grid
+      // refresh on modal close surfaces the new photos. No Make change
+      // needed — the existing scenario's response is simply ignored.
+      fetch(webhook, {
         method:  'POST',
         headers: { 'Content-Type': 'application/json' },
-        body:    JSON.stringify(payload)
-      }).then(function (resp) {
-        return resp.text().then(function (txt) {
-          var body = null;
-          try { body = JSON.parse(txt); } catch (e) { /* tolerate */ }
-          return { ok: resp.ok, status: resp.status, headers: resp.headers, body: body, raw: txt };
-        });
+        body:    bodyStr
+      }).catch(function (err) {
+        // Already reported done to the user — just log the background error.
+        console.warn('[bulk-upload] background send error (already marked done):',
+          row.filename, (err && err.message) || err);
       });
-    }).then(function (r) {
-      // Explicit failure response, even with HTTP 200 (Make often wraps).
-      if (r.body && r.body.success === false) {
-        var msg = r.body.error || 'Make scenario reported failure';
-        var simulated = isRateLimitError(0, r.body, msg) ? 429 : 0;
-        var err = new Error(msg);
-        err.httpStatus = simulated;
-        err.responseBody = r.body;
-        throw err;
-      }
-      if (!r.ok) {
-        var err2 = new Error('HTTP ' + r.status + (r.raw ? ' — ' + r.raw.slice(0, 120) : ''));
-        err2.httpStatus = r.status;
-        err2.responseBody = r.body;
-        err2.retryAfter = parseRetryAfter(r.headers);
-        throw err2;
-      }
-      // Capture any view-refresh hints the scenario returned so we can
-      // refresh them when the modal closes.
-      if (_state && r.body && Array.isArray(r.body.refresh)) {
-        r.body.refresh.forEach(function (v) {
-          if (typeof v === 'string' && /^view_\d+/.test(v)) {
-            _state.refreshViewIds[v] = true;
-          }
-        });
-      }
-      // Capture any per-record refresh hints — record ids that should
-      // be re-fetched in the configured refreshRecordInViews. Use this
-      // when photos got connected to records other than the upload's
-      // own recordId (e.g. survey line items rather than the survey).
-      if (_state && r.body && Array.isArray(r.body.refreshRecords)) {
-        r.body.refreshRecords.forEach(function (id) {
-          if (typeof id === 'string' && /^[a-f0-9]{24}$/i.test(id)) {
-            _state.refreshRecordIds[id] = true;
-          }
-        });
-      }
-      // Success — drop the blob from IDB, keep a transient in-memory marker.
       return dbDelete(row.id).then(function () {
         row.status = 'done';
         row.blob = null;
@@ -984,29 +1140,12 @@
         renderRows();
       });
     }).catch(function (err) {
-      var status = err && err.httpStatus;
-      var body   = err && err.responseBody;
-      var msg    = (err && err.message) || String(err);
-
-      if (isRateLimitError(status, body, msg) && row.retryCount < CONFIG.MAX_RETRIES_PER_FILE) {
-        // Back off and re-queue. Prefer Retry-After header when present.
-        row.retryCount++;
-        var delay = err.retryAfter ||
-                    CONFIG.RETRY_BACKOFF_MS[row.retryCount - 1] ||
-                    CONFIG.RETRY_BACKOFF_MS[CONFIG.RETRY_BACKOFF_MS.length - 1];
-        row.status = 'queued';
-        row.error  = 'Rate limited — retry ' + row.retryCount + '/' +
-                     CONFIG.MAX_RETRIES_PER_FILE + ' in ' + Math.round(delay / 1000) + 's';
-        return dbPut(row)
-          .then(renderRows)
-          .then(function () {
-            return new Promise(function (resolve) { setTimeout(resolve, delay); });
-          });
-      }
-
-      // Permanent failure — mark and move on
+      // Only PRE-SEND client errors reach here (e.g. base64 read / IDB) —
+      // these never touched the network, so marking failed is safe.
+      var msg = (err && err.message) || String(err);
+      console.warn('[bulk-upload] pre-send failure:', row.filename, msg);
       row.status = 'failed';
-      row.error  = msg + (status ? ' (HTTP ' + status + ')' : '');
+      row.error  = msg;
       return dbPut(row).then(renderRows).catch(function () { renderRows(); });
     });
   }

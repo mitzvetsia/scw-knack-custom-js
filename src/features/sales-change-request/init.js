@@ -33,6 +33,22 @@
   // Check if the sales CR module should be active. Returns true if
   // field_2706 = "Yes" on ANY of the configured addModeViews.
   function readAddModeFlag(viewId) {
+    // Model first \u2014 mirrors workflow-stepper's readField on the same
+    // views: a details view's model carries the field even when its
+    // DOM lags a re-render, omits the field, or the view is hidden by
+    // hide-data-source-views. The DOM-only read silently returned ''
+    // here, which deactivated the whole module (v1 UI and the v2
+    // adapter both gate on S.onPage()).
+    try {
+      var v = Knack && Knack.views && Knack.views[viewId];
+      var attrs = v && v.model && v.model.attributes;
+      if (attrs && Object.prototype.hasOwnProperty.call(attrs, CFG.addModeField)) {
+        var raw = attrs[CFG.addModeField];
+        if (raw != null && String(raw).length) {
+          return String(raw).replace(/<[^>]*>/g, '').replace(/\u00a0/g, ' ').trim();
+        }
+      }
+    } catch (e) { /* fall through to DOM */ }
     var $pv = $('#' + viewId);
     if (!$pv.length) return '';
     // Grid cell shape (data-field-key on td)
@@ -49,20 +65,85 @@
     for (var i = 0; i < views.length; i++) {
       if (/^yes$/i.test(readAddModeFlag(views[i]))) return true;
     }
+    if (CFG.debug) {
+      var seen = {};
+      for (var d = 0; d < views.length; d++) seen[views[d]] = readAddModeFlag(views[d]) || '(empty)';
+      console.info('[SalesCR] sync flag reads came up empty:', seen);
+    }
+    return false;
+  }
+
+  // ── API fallback for the add-mode flag ────────────────
+  // The sales-portal scope-of-work-details scene doesn't render any of
+  // the addModeViews (view_3491/view_3827 live on other scenes), so
+  // the sync model/DOM reads can't ever activate the module there.
+  // Read field_2706 straight off the SOW record via CFG.draftView
+  // (view_3841) — the same view-based endpoint the draft persistence
+  // already GETs/PUTs on this page. Cached per SOW id.
+  var _apiFlagCache = {};
+  ns._apiAddModeVal = '';   // change-detection's checkAddMode reads this
+
+  function readAddModeFlagFromApi() {
+    ns.detectSowRecordId();
+    var sowId = S.sowRecordId();
+    if (!sowId) return $.Deferred().resolve('').promise();
+    if (_apiFlagCache[sowId] != null) {
+      return $.Deferred().resolve(_apiFlagCache[sowId]).promise();
+    }
+    return SCW.knackAjax({
+      url:  SCW.knackRecordUrl(CFG.draftView, sowId),
+      type: 'GET'
+    }).then(function (resp) {
+      var raw = resp && (resp[CFG.addModeField + '_raw'] != null
+        ? resp[CFG.addModeField + '_raw']
+        : resp[CFG.addModeField]);
+      var val = raw == null ? '' : String(raw).replace(/<[^>]*>/g, '').trim();
+      _apiFlagCache[sowId] = val;
+      ns._apiAddModeVal = val;
+      // console.info, NOT SCW.debug — SCW.debug is gated on the global
+      // SCW.DEBUG flag (default false), which made every activation
+      // diagnostic in this module invisible in production.
+      if (CFG.debug) {
+        console.info('[SalesCR] API flag read via ' + CFG.draftView + ': ' +
+          CFG.addModeField + ' = ' + (val || '(absent — expose the field on ' +
+          CFG.draftView + ' in Builder)'));
+      }
+      return val;
+    }, function (xhr) {
+      if (CFG.debug) {
+        console.info('[SalesCR] API flag read FAILED via ' + CFG.draftView +
+          ' (HTTP ' + (xhr && xhr.status) + ') — is ' + CFG.draftView +
+          ' a view on this scene?');
+      }
+      return '';
+    });
+  }
+
+  /** True when any loaded worksheet record is survey-derived
+   *  (field_2586 >= 1). Those rows are LOCKED by the per-card rule —
+   *  the only way to change them is a change request — so the CR
+   *  surface must be active whenever they exist, regardless of the
+   *  SOW-level field_2706 flag (observed reading "No" on SOWs whose
+   *  line items are clearly survey-derived). */
+  function worksheetHasSurveyItems() {
+    try {
+      var v = Knack.views && Knack.views[CFG.worksheetView];
+      var models = (v && v.model && v.model.data && v.model.data.models) || [];
+      for (var i = 0; i < models.length; i++) {
+        var a = models[i] && models[i].attributes;
+        if (!a) continue;
+        var raw = a[CFG.addCountField + '_raw'];
+        var n = (typeof raw === 'number') ? raw
+          : parseFloat(String(a[CFG.addCountField] || '').replace(/[^0-9.\-]/g, ''));
+        if (!isNaN(n) && n >= 1) return true;
+      }
+    } catch (e) { /* fall through */ }
     return false;
   }
 
   var _rehydrated = false;
 
-  SCW.onViewRender(CFG.worksheetView, function () {
-    _activeScene = Knack.router.current_scene_key || '';
-
-    // Only activate if field_2706 = Yes
-    if (!isModuleActive()) {
-      S.setOnPage(false);
-      return;
-    }
-
+  function activateModule() {
     S.setOnPage(true);
     ns.injectStyles();
     ns.buildBaseline();
@@ -74,13 +155,81 @@
       ns.rehydrateFromKnack();
     }
 
-    // Inject UI after device-worksheet transform (uses 150ms)
+    // Inject UI after the worksheet transform settles. ns.refresh (not
+    // the local refresh) so the worksheet-v2 adapter's wrap runs too.
     setTimeout(function () {
       ns.checkAddMode();
       ns.detectAddRecords();
-      refresh();
+      (ns.refresh || refresh)();
     }, CFG.uiDelay);
+  }
+
+  SCW.onViewRender(CFG.worksheetView, function () {
+    _activeScene = Knack.router.current_scene_key || '';
+
+    // Activate if field_2706 = Yes on a flag view…
+    if (isModuleActive()) {
+      activateModule();
+      return;
+    }
+    // …or if the worksheet carries survey-locked rows — the lock and
+    // the CR surface are one policy; locked rows without CR affordances
+    // are a dead end for the user.
+    if (worksheetHasSurveyItems()) {
+      if (CFG.debug) {
+        console.info('[SalesCR] ACTIVE — survey-derived (locked) rows present on ' +
+          CFG.worksheetView);
+      }
+      activateModule();
+      return;
+    }
+    // Sync reads found nothing — the flag views may simply not be on
+    // this scene. Ask the server before declaring the module inactive.
+    readAddModeFlagFromApi().then(function (val) {
+      if (/^yes$/i.test(val || '')) {
+        if (CFG.debug) console.info('[SalesCR] ACTIVE via API flag');
+        activateModule();
+      } else {
+        S.setOnPage(false);
+        if (CFG.debug) {
+          console.info('[SalesCR] INACTIVE — API ' + CFG.addModeField + ' = ' +
+            (val || '(none)') + '. Run SCW.salesCR.debugActivation() for detail.');
+        }
+      }
+    });
   }, CFG.eventNs);
+
+  // Console helper: SCW.salesCR.debugActivation() — prints everything
+  // the activation gate looks at so a dark module is diagnosable.
+  // BUILD_MARK identifies which bundle revision is actually loaded —
+  // if debugActivation itself is undefined, the loader SHA predates
+  // the CR-v2 work entirely.
+  ns.BUILD_MARK = 'salescr-v2-api-fallback-2';
+  ns.debugActivation = function () {
+    console.log('[SalesCR] build:', ns.BUILD_MARK,
+      '| v2 adapter loaded:', typeof ns._buildPendingCard === 'function',
+      '| scene:', (Knack.router && Knack.router.current_scene_key) || '?');
+    var views = CFG.addModeViews || [CFG.proposalView];
+    for (var i = 0; i < views.length; i++) {
+      var vid = views[i];
+      var hasModel = !!(Knack.views && Knack.views[vid] && Knack.views[vid].model &&
+                        Knack.views[vid].model.attributes);
+      console.log('[SalesCR]', vid,
+        '| inDom:', !!document.getElementById(vid),
+        '| hasModel:', hasModel,
+        '| flagRead:', readAddModeFlag(vid) || '(empty)');
+    }
+    console.log('[SalesCR] sowId:', S.sowRecordId() || '(none)',
+      '| onPage:', S.onPage(),
+      '| addMode:', S.isAddMode(),
+      '| apiFlag:', ns._apiAddModeVal || '(not read)',
+      '| surveyItems:', worksheetHasSurveyItems(),
+      '| pending:', Object.keys(S.pending()).length,
+      '| v2 container:', !!document.getElementById('scw-ws-v2-' + CFG.worksheetView));
+    readAddModeFlagFromApi().then(function (v) {
+      console.log('[SalesCR] fresh API flag:', v || '(absent)');
+    });
+  };
 
   // ── Cell update → auto-create CR ──────────────────────
   // Device-worksheet uses direct AJAX PUT (not model.updateRecord),

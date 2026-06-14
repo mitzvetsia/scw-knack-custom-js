@@ -1,16 +1,22 @@
 /*** SALES REVISION COLUMN — BID COMPARISON GRID ***/
 /**
- * Injects a "Sales Revisions" column into the bid comparison grid
- * (scene_1155) between the Line Item and SOW Detail columns.
+ * Surfaces Sales-submitted revisions on the bid comparison grid
+ * (scene_1155). Two render targets share all the load + action logic:
+ *   - V1 grid: a dedicated "Sales Revisions" COLUMN injected into
+ *     #bid-review-matrix (injectColumn).
+ *   - V2 grid (SCW.bidReviewV2 "Reconcile Bids"): revision cards
+ *     injected INLINE into each row's SOW cell (injectIntoV2), since
+ *     the V2 table has no shared header to hang a column on and is
+ *     rebuilt wholesale on every data tick.
  *
  * Reads revision line items from view_3842 (hidden), joins to grid
  * rows via field_2708 (connection to SOW line item) matched to
- * data-sow-item-id on grid rows.
+ * data-sow-item-id on grid rows (BOTH grids stamp that attribute).
  *
- * Each item gets action buttons matching the CR column style.
+ * Each item gets Accept / Reject / Forward action buttons.
  *
- * Reads:  SCW.bidReview (grid state), Knack DOM (view_3842)
- * Writes: nothing — purely additive DOM injection
+ * Reads:  SCW.bidReview + SCW.bidReviewV2 (grid state), Knack DOM (view_3842)
+ * Writes: revision status PUTs + Ops-response webhook (on Accept/Reject/Forward)
  */
 (function () {
   'use strict';
@@ -184,6 +190,18 @@
       '  background: #f8fafc; border-top: 1px solid #e2e8f0;',
       '}',
       '.scw-sr-popover__foot .scw-sr-popover__spacer { flex: 1; }',
+
+      // ── V2 grid: inline revision block inside the SOW cell ──────
+      '.scw-sr-v2-block {',
+      '  margin-top: 8px; padding-top: 8px;',
+      '  border-top: 1px dashed #93c5fd;',
+      '  display: flex; flex-direction: column; gap: 6px;',
+      '}',
+      '.scw-sr-v2-block-label {',
+      '  font: 700 10px/1.1 system-ui, -apple-system, sans-serif;',
+      '  letter-spacing: 0.05em; text-transform: uppercase;',
+      '  color: #0c4a6e;',
+      '}',
     ].join('\n');
 
     var s = document.createElement('style');
@@ -996,7 +1014,7 @@
       data: JSON.stringify(knackData),
       success: function () {
         SCW.debug('[SalesRevCol] Updated record', revId, 'to Rejected');
-        afterReject(btn);
+        afterReject(btn, revId);
       },
       error: function () {
         console.warn('[SalesRevCol] Failed to update record', revId);
@@ -1053,7 +1071,7 @@
       data: JSON.stringify(knackData),
       success: function () {
         SCW.debug('[SalesRevCol] Updated record', revId, 'to Accepted');
-        afterAccept(btn);
+        afterAccept(btn, revId);
       },
       error: function () {
         console.warn('[SalesRevCol] Failed to update record', revId);
@@ -1066,9 +1084,42 @@
     fireResponseWebhook('accept', revId, revReqId, updatedJson, acceptNotes);
   }
 
-  function afterAccept(btn) {
+  // Optimistically drop an actioned (accepted/rejected) revision from the
+  // in-memory source AND the DOM, so the card disappears immediately on the
+  // V2 grid. injectIntoV2() rebuilds from _revisionData and does NOT re-filter
+  // by status (that only happens in loadRevisions), and a bare model.fetch()
+  // doesn't reliably re-render view_3842 (Known Issue #2) — so without this the
+  // card lingers until a manual refresh. The 1.5s fetch below still runs as the
+  // authoritative reconcile.
+  function dropRevisionFromData(revId) {
+    if (!revId) return;
+    for (var i = _revisionData.length - 1; i >= 0; i--) {
+      if (_revisionData[i] && _revisionData[i].id === revId) _revisionData.splice(i, 1);
+    }
+    try {
+      // Remove the actioned card from both grids (V1 column + V2 SOW cell).
+      // Every action button on the card carries data-rev-id, so one query
+      // catches the card regardless of which button was clicked.
+      var btns = document.querySelectorAll('[data-rev-id="' + revId + '"]');
+      for (var b = 0; b < btns.length; b++) {
+        var item = btns[b].closest('.' + P + '-item');
+        if (item && item.parentNode) item.parentNode.removeChild(item);
+      }
+      // Drop any V2 block left with only its "Sales Revisions" label — its
+      // last card just went away.
+      var blocks = document.querySelectorAll('.' + V2_BLOCK_CLASS);
+      for (var k = 0; k < blocks.length; k++) {
+        if (!blocks[k].querySelector('.' + P + '-item') && blocks[k].parentNode) {
+          blocks[k].parentNode.removeChild(blocks[k]);
+        }
+      }
+    } catch (e) { /* best-effort UI prune */ }
+  }
+
+  function afterAccept(btn, revId) {
     btn.textContent = 'Accepted ✓';
     btn.style.opacity = '0.6';
+    dropRevisionFromData(revId);
     setTimeout(function () {
       if (Knack.views[CFG.revisionView] && Knack.views[CFG.revisionView].model) {
         Knack.views[CFG.revisionView].model.fetch();
@@ -1076,9 +1127,10 @@
     }, 1500);
   }
 
-  function afterReject(btn) {
+  function afterReject(btn, revId) {
     btn.textContent = 'Rejected \u2713';
     btn.style.opacity = '0.6';
+    dropRevisionFromData(revId);
     // Refresh revision data view — its view-render event triggers
     // loadRevisions() + injectColumn(), and scw-bid-review-rendered
     // re-injects the column after any grid rebuild.
@@ -1471,13 +1523,290 @@
   }
 
   // ═══════════════════════════════════════════════════════════
+  //  V2 GRID SUPPORT — inline revision cards in the SOW cell
+  // ───────────────────────────────────────────────────────────
+  //  The column-injection above targets #bid-review-matrix and the
+  //  V1 header/row DOM. The V2 "Reconcile Bids" grid (SCW.bidReviewV2)
+  //  is a different table — no shared 3-row header, rebuilt wholesale
+  //  on every data tick — so revisions surface INLINE inside each
+  //  row's SOW cell rather than a dedicated column. The revision load
+  //  (view_3842), the Accept / Reject / Forward handlers, and the
+  //  detail popover are all reused as-is; only card assembly +
+  //  placement differ.
+  // ═══════════════════════════════════════════════════════════
+
+  var V2_BLOCK_CLASS = 'scw-sr-v2-block';
+  var _v2Suppress = false;
+  var _v2Observer = null;
+  var _v2InjectTimer = null;
+
+  function getV2Mount() {
+    var ns2 = window.SCW && window.SCW.bidReviewV2;
+    if (!ns2 || !ns2.CONFIG || !ns2.CONFIG.mountId) return null;
+    return document.getElementById(ns2.CONFIG.mountId);
+  }
+
+  /** Bid packages in scope for a V2 row — read the package-column
+   *  headers of the table the row lives in (each TH carries
+   *  data-pkg-id + the package name). */
+  function getV2Packages(rowEl) {
+    var pkgs = [];
+    var seen = {};
+    var scope = (rowEl && rowEl.closest('table')) || getV2Mount();
+    if (!scope) return pkgs;
+    var ths = scope.querySelectorAll('th.scw-bid-review-v2__pkg-col[data-pkg-id]');
+    for (var i = 0; i < ths.length; i++) {
+      var id = ths[i].getAttribute('data-pkg-id') || '';
+      if (!id || seen[id]) continue;
+      seen[id] = true;
+      var name = (ths[i].textContent || '').replace(/\s+/g, ' ').trim();
+      pkgs.push({ id: id, name: name || id });
+    }
+    return pkgs;
+  }
+
+  /** Is this V2 row on at least one bid? Gates revise → Forward vs Add. */
+  function isRowOnBidV2(tr) {
+    var cells = tr.querySelectorAll('.scw-bid-review-v2__pkg-col');
+    for (var i = 0; i < cells.length; i++) {
+      var c = cells[i];
+      if (c.classList.contains('scw-bid-review-v2__cell--empty')) continue;
+      if (c.classList.contains('scw-bid-review-v2__cell--no-bid-cutout')) continue;
+      if (c.querySelector('.scw-bid-review-v2__no-bid-badge, .scw-bid-review-v2__survey-no-bid-badge')) continue;
+      return true;
+    }
+    return false;
+  }
+
+  /** Build the inline revision item (card + Ops actions) for the V2
+   *  grid. Mirrors the V1 column card but stands alone; reuses the
+   *  shared handlers + popover so behaviour is identical. */
+  function buildRevisionItemV2(rev, packages, isOnBid) {
+    var json = rev.json || {};
+    var action = json.action || '';
+    var item = document.createElement('div');
+    item.className = P + '-item';
+
+    var cardMod = action === 'remove' ? '--removal'
+                : action === 'add'    ? '--add'
+                :                       '';
+    var card = document.createElement('div');
+    card.className = 'scw-bid-cr-card' + (cardMod ? ' scw-bid-cr-card' + cardMod : '');
+
+    var header = document.createElement('div');
+    header.className = 'scw-bid-cr-card__header';
+    header.textContent = action === 'remove' ? 'Sales: Remove'
+                       : action === 'add'    ? 'Sales: Add'
+                       :                       'Sales: Revise';
+    card.appendChild(header);
+
+    var cardProduct = json.productName || '';
+    var jr = json.requested || {};
+    if (jr.field_1949) cardProduct = jr.field_1949;
+    if (json.displayLabel || cardProduct) {
+      var label = document.createElement('div');
+      label.className = 'scw-bid-cr-card__item-label';
+      label.textContent = json.displayLabel
+        ? (json.displayLabel + (cardProduct && cardProduct !== json.displayLabel ? ' (' + cardProduct + ')' : ''))
+        : cardProduct;
+      card.appendChild(label);
+    }
+
+    if (json.fields && json.fields.length) {
+      var fByKey = {};
+      for (var fbi = 0; fbi < json.fields.length; fbi++) fByKey[json.fields[fbi].field] = json.fields[fbi];
+      for (var di = 0; di < CARD_DISPLAY.length; di++) {
+        var f = fByKey[CARD_DISPLAY[di]];
+        if (!f) continue;
+        var fval = f.to != null ? String(f.to) : '';
+        if (!fval || fval === ' ') continue;
+        if (f.field === 'field_1964' && (parseFloat(fval) <= 1 || isNaN(parseFloat(fval)))) continue;
+        var crow = document.createElement('div');
+        crow.className = 'scw-bid-cr-card__row';
+        var labelSpan = document.createElement('span');
+        labelSpan.className = 'scw-bid-cr-card__label';
+        labelSpan.textContent = f.label + ':';
+        crow.appendChild(labelSpan);
+        if (action === 'revise' && f.from != null && String(f.from) !== '') {
+          var fromSpan = document.createElement('span');
+          fromSpan.className = 'scw-bid-cr-card__from';
+          fromSpan.textContent = String(f.from);
+          crow.appendChild(fromSpan);
+          var arrow = document.createElement('span');
+          arrow.className = 'scw-bid-cr-card__arrow';
+          arrow.textContent = '→';
+          crow.appendChild(arrow);
+        }
+        var toSpan = document.createElement('span');
+        toSpan.className = 'scw-bid-cr-card__to';
+        toSpan.textContent = String(f.to);
+        crow.appendChild(toSpan);
+        card.appendChild(crow);
+      }
+    } else if (action === 'remove') {
+      var removeRow = document.createElement('div');
+      removeRow.className = 'scw-bid-cr-card__row';
+      removeRow.textContent = 'Requesting removal';
+      card.appendChild(removeRow);
+    }
+
+    if (json.changeNotes) {
+      var notes = document.createElement('div');
+      notes.className = 'scw-bid-cr-card__notes';
+      notes.textContent = '“' + json.changeNotes + '”';
+      card.appendChild(notes);
+    }
+
+    card.style.cursor = 'pointer';
+    card.title = 'Click for full revision detail';
+    (function (capturedRev) {
+      card.addEventListener('click', function (ev) {
+        if (ev.target.closest('button, a, input, select, textarea')) return;
+        ev.preventDefault();
+        ev.stopPropagation();
+        openRevisionPopover(capturedRev, card);
+      });
+    })(rev);
+    item.appendChild(card);
+
+    // Ops actions — identical handlers to the V1 column.
+    var actions = document.createElement('div');
+    actions.className = 'scw-bid-review__action-menus';
+    var revJsonStr = JSON.stringify(rev.json || {});
+
+    var rejectBtn = document.createElement('button');
+    rejectBtn.className = 'scw-bid-review__overflow-trigger scw-bid-review__overflow-trigger--reject';
+    rejectBtn.textContent = 'Reject';
+    rejectBtn.setAttribute('data-rev-id', rev.id);
+    rejectBtn.setAttribute('data-rev-request-id', rev.parentRequestId || '');
+    rejectBtn.setAttribute('data-rev-json', revJsonStr);
+    rejectBtn.addEventListener('click', handleRejectClick);
+    actions.appendChild(rejectBtn);
+
+    var acceptBtn = document.createElement('button');
+    acceptBtn.className = 'scw-bid-review__overflow-trigger scw-bid-review__overflow-trigger--accept';
+    acceptBtn.textContent = 'Accept';
+    acceptBtn.setAttribute('data-rev-id', rev.id);
+    acceptBtn.setAttribute('data-rev-request-id', rev.parentRequestId || '');
+    acceptBtn.setAttribute('data-rev-json', revJsonStr);
+    acceptBtn.addEventListener('click', handleAcceptClick);
+    actions.appendChild(acceptBtn);
+
+    if (action !== 'revise' || isOnBid) {
+      var crChoices = [];
+      for (var cp = 0; cp < packages.length; cp++) {
+        crChoices.push({ label: packages[cp].name, attrs: {
+          'data-sr-action': 'create-bid-cr',
+          'data-rev-id': rev.id,
+          'data-rev-request-id': rev.parentRequestId || '',
+          'data-sow-item-id': rev.sowItemId,
+          'data-pkg-id': packages[cp].id,
+          'data-pkg-name': packages[cp].name,
+          'data-rev-json': revJsonStr
+        } });
+      }
+      if (crChoices.length) {
+        var crMod = action === 'add' ? 'create' : action === 'remove' ? 'remove' : 'revise';
+        actions.appendChild(buildSROverflow('Forward for bid revision →', crMod, crChoices));
+      }
+    }
+    if (!isOnBid && action === 'revise') {
+      var addChoices = [];
+      for (var addp = 0; addp < packages.length; addp++) {
+        addChoices.push({ label: packages[addp].name, attrs: {
+          'data-sr-action': 'create-bid-cr',
+          'data-rev-id': rev.id,
+          'data-rev-request-id': rev.parentRequestId || '',
+          'data-sow-item-id': rev.sowItemId,
+          'data-pkg-id': packages[addp].id,
+          'data-pkg-name': packages[addp].name,
+          'data-rev-json': JSON.stringify($.extend({}, rev.json || {}, { action: 'add' }))
+        } });
+      }
+      if (addChoices.length) {
+        actions.appendChild(buildSROverflow('Forward for bid revision →', 'create', addChoices));
+      }
+    }
+
+    item.appendChild(actions);
+    return item;
+  }
+
+  /** Inject revision cards inline into each V2 row's SOW cell. The V2
+   *  grid rebuilds body.innerHTML on every render, so this re-runs on
+   *  each rebuild (via the MutationObserver below) — idempotent: it
+   *  drops any prior block before re-adding. */
+  function injectIntoV2() {
+    var mount = getV2Mount();
+    if (!mount || !_revisionData.length) return;
+    var bySow = revisionsBySowItem();
+    if (!Object.keys(bySow).length) return;
+    injectStyles();
+
+    _v2Suppress = true;
+    try {
+      var rows = mount.querySelectorAll('tr.scw-bid-review-v2__row[data-sow-item-id]');
+      for (var i = 0; i < rows.length; i++) {
+        var tr = rows[i];
+        var sowCell = tr.querySelector('.scw-bid-review-v2__sow-cell');
+        if (!sowCell) continue;
+        var prev = sowCell.querySelector('.' + V2_BLOCK_CLASS);
+        if (prev && prev.parentNode) prev.parentNode.removeChild(prev);
+
+        var sowItemId = tr.getAttribute('data-sow-item-id') || '';
+        var revs = sowItemId ? (bySow[sowItemId] || []) : [];
+        if (!revs.length) continue;
+
+        var block = document.createElement('div');
+        block.className = V2_BLOCK_CLASS;
+        var lbl = document.createElement('div');
+        lbl.className = 'scw-sr-v2-block-label';
+        lbl.textContent = 'Sales Revisions';
+        block.appendChild(lbl);
+
+        var packages = getV2Packages(tr);
+        var onBid = isRowOnBidV2(tr);
+        for (var r = 0; r < revs.length; r++) {
+          block.appendChild(buildRevisionItemV2(revs[r], packages, onBid));
+        }
+        sowCell.appendChild(block);
+      }
+    } catch (e) {
+      console.warn('[SalesRevCol] injectIntoV2 threw', e);
+    }
+    setTimeout(function () { _v2Suppress = false; }, 0);
+  }
+
+  function injectIntoV2Debounced() {
+    if (_v2InjectTimer) clearTimeout(_v2InjectTimer);
+    _v2InjectTimer = setTimeout(injectIntoV2, 60);
+  }
+
+  /** Watch the V2 grid body so revisions re-inject after every rebuild.
+   *  render.js wipes body.innerHTML on each data tick AND on the
+   *  focusout-resume path (which bypasses the data subscriber), so a
+   *  MutationObserver is the only reliable "after render" hook. Our own
+   *  writes are gated by _v2Suppress so they don't retrigger it. */
+  function observeV2Grid() {
+    var mount = getV2Mount();
+    if (!mount || _v2Observer) return;
+    _v2Observer = new MutationObserver(function () {
+      if (_v2Suppress) return;
+      injectIntoV2Debounced();
+    });
+    _v2Observer.observe(mount, { childList: true, subtree: true });
+  }
+
+  // ═══════════════════════════════════════════════════════════
   //  EVENT BINDINGS
   // ═══════════════════════════════════════════════════════════
 
   SCW.onViewRender(CFG.revisionView, function () {
     setTimeout(function () {
       loadRevisions();
-      injectColumn();
+      injectColumn();    // V1 grid (#bid-review-matrix)
+      observeV2Grid();   // V2 grid — attach the re-inject watchdog once
+      injectIntoV2();    // V2 grid — inline SOW-cell cards
     }, 300);
   }, CFG.eventNs);
 
@@ -1487,7 +1816,8 @@
 
   $(document).on('knack-scene-render.scene_1155' + CFG.eventNs, function () {
     setTimeout(function () {
-      if (_revisionData.length) injectColumn();
+      observeV2Grid();
+      if (_revisionData.length) { injectColumn(); injectIntoV2(); }
     }, 1000);
   });
 

@@ -275,6 +275,7 @@
       el.style.pointerEvents = 'none';
       // Appearance handled by CSS ([readonly] in a locked card → plain
       // text, no box) so locked fields visibly read as non-editable.
+      setLockTooltip(el);
     }
     // Editable connection cells/buttons (product field_1949 is whitelisted).
     var conns = card.querySelectorAll('[data-scw-ws-v2-conn]');
@@ -284,19 +285,70 @@
       if (LOCK_WHITELIST[f]) continue;
       el.style.pointerEvents = 'none';
       el.classList.add('scw-ws-v2-locked-ctl');
+      setLockTooltip(el);
     }
     // Boolean chips (cabling), accessory add/remove/qty, and the per-row
     // trash button.
     var ctls = card.querySelectorAll(
       '[data-scw-ws-v2-chip], .scw-ws-v2-mh-add, .scw-ws-v2-mh-del, ' +
-      '.scw-ws-v2-mh-step, .scw-ws-v2-mh-chip'
+      '.scw-ws-v2-mh-unlink, .scw-ws-v2-mh-step, .scw-ws-v2-mh-chip'
     );
     for (i = 0; i < ctls.length; i++) {
       ctls[i].style.pointerEvents = 'none';
       ctls[i].classList.add('scw-ws-v2-locked-ctl');
+      setLockTooltip(ctls[i]);
     }
     var trash = card.querySelectorAll('.scw-ws-v2-trash');
-    for (i = 0; i < trash.length; i++) trash[i].style.display = 'none';
+    for (i = 0; i < trash.length; i++) {
+      // Reuse the trash slot (same width as an unlocked row's delete
+      // button, so locked rows keep identical column alignment) for a
+      // lock indicator instead of hiding it and collapsing the slot.
+      el = trash[i];
+      el.innerHTML = LOCK_SVG_SM;
+      el.className = 'scw-ws-v2-cell scw-ws-v2-trash scw-ws-v2-lock-cell';
+      el.setAttribute('aria-hidden', 'false');
+      el.setAttribute('aria-label', 'Locked — submitted for survey');
+      el.title = LOCKED_MSG;
+      el.style.display = '';
+      el.style.pointerEvents = '';
+    }
+  }
+
+  // Shared copy + glyph for the survey-lock messaging.
+  var LOCKED_MSG = 'This item is locked because it has already been ' +
+    'submitted for survey. Product, Custom Disc % and SCW Notes remain editable.';
+  var LOCK_HOVER_MSG = 'Fields are locked because this item has been part of a survey.';
+
+  /** Hover tooltip for a locked control. The control itself has
+   *  pointer-events:none (it can't receive hover, so a title on it never
+   *  shows) — the title must go on the nearest still-hoverable wrapper. */
+  function setLockTooltip(el) {
+    try {
+      var wrap = el.closest(
+        '.scw-ws-v2-detail-field, .scw-ws-v2-cell, .scw-ws-v2-mh-chip-wrap, ' +
+        '.scw-ws-v2-mh-addrow'
+      ) || el.parentElement;
+      if (wrap) wrap.title = LOCK_HOVER_MSG;
+    } catch (e) { /* tooltip is best-effort */ }
+  }
+  var LOCK_SVG_SM =
+    '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" ' +
+      'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+      'stroke-linejoin="round" aria-hidden="true">' +
+      '<rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>' +
+      '<path d="M7 11V7a5 5 0 0 1 10 0v4"/>' +
+    '</svg>';
+
+  /** Prepend a full-width informational banner to the locked card's detail
+   *  panel — the row-level lock icon is icon-only (tooltip), so the readable
+   *  sentence lives here where there's horizontal room. */
+  function addLockedNote(card) {
+    var detail = card.querySelector('.scw-ws-v2-detail');
+    if (!detail || detail.querySelector('.scw-ws-v2-locked-note')) return;
+    var note = document.createElement('div');
+    note.className = 'scw-ws-v2-locked-note';
+    note.innerHTML = LOCK_SVG_SM + '<span>' + escapeHtml(LOCKED_MSG) + '</span>';
+    detail.insertBefore(note, detail.firstChild);
   }
 
   /** Money region of the summary row. Build-SOW: three editable stacks +
@@ -521,13 +573,59 @@
     '<path d="M10 11v6"></path><path d="M14 11v6"></path>' +
     '<path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"></path></svg>';
 
+  // Broken-chain "unlink" glyph (Lucide unlink) — accessory chip action that
+  // detaches the accessory from its parent (clears field_2464) WITHOUT
+  // deleting the record.
+  var UNLINK_SVG =
+    '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" ' +
+    'stroke="currentColor" stroke-width="2.2" stroke-linecap="round" ' +
+    'stroke-linejoin="round">' +
+    '<path d="m18.84 12.25 1.72-1.71a5 5 0 0 0-.12-7.07 5 5 0 0 0-6.95 0l-1.72 1.71"/>' +
+    '<path d="m5.17 11.75-1.71 1.71a5 5 0 0 0 .12 7.07 5 5 0 0 0 6.95 0l1.71-1.71"/>' +
+    '<line x1="8" y1="2" x2="8" y2="5"/>' +
+    '<line x1="2" y1="8" x2="5" y2="8"/>' +
+    '<line x1="16" y1="19" x2="16" y2="22"/>' +
+    '<line x1="19" y1="16" x2="22" y2="16"/></svg>';
+
+  /** v1 parity (device-worksheet `hideDeleteWhenCountGtZero` on view_3586):
+   *  a SOW line item that has associated SURVEY line items (field_2586 > 0)
+   *  is survey-derived and must NOT be deletable from the worksheet — it has
+   *  to be removed from the survey instead. Returns true when delete is
+   *  blocked for this record. */
+  // Surfaces where the survey-link delete block applies. v1 configures
+  // hideDeleteWhenCountGtZero ONLY on the sales view (view_3586); we extend it
+  // to the bid-review comparison grid (view_3921), which shows the same
+  // survey-derived items. The internal build-SOW grid (view_3962) is left
+  // alone, matching v1 (view_3610 has no block).
+  var DELETE_BLOCK_VIEWS = { view_3586: 1, view_3921: 1 };
+
+  function isDeleteBlocked(rec, viewKey) {
+    if (!DELETE_BLOCK_VIEWS[viewKey]) return false;
+    var f = (ns.cfg && ns.cfg.fields(viewKey)) || {};
+    var key = f.surveyItemCount || 'field_2586';
+    var raw = rec[key + '_raw'];
+    var n = (typeof raw === 'number') ? raw : parseFloat(readNum(rec, key));
+    return !isNaN(n) && n > 0;
+  }
+
   /** Direct-action delete button — was a kebab menu, now a single
    *  trash icon. Click → auto-confirmed native delete + accessory
    *  cascade (handled in init.js). data-scw-ws-v2-kebab kept as the
-   *  attribute name so the existing handler binds without rename. */
-  function kebabCell(rec) {
+   *  attribute name so the existing handler binds without rename.
+   *  Survey-derived rows render a hidden, non-interactive placeholder
+   *  (no data-scw-ws-v2-kebab → the delete handler never matches it),
+   *  mirroring v1's hide-delete behavior. */
+  function kebabCell(rec, viewKey) {
+    if (isDeleteBlocked(rec, viewKey)) {
+      return '<span class="scw-ws-v2-cell scw-ws-v2-trash scw-ws-v2-trash--blocked" ' +
+        'aria-hidden="true" ' +
+        'title="Linked to survey line items — remove it from the survey, not here.">' +
+        TRASH_SVG +
+      '</span>';
+    }
     return '<button type="button" class="scw-ws-v2-cell scw-ws-v2-trash" ' +
       'data-scw-ws-v2-kebab="' + escapeHtml(rec.id) + '" ' +
+      'data-scw-ws-v2-view="' + escapeHtml(viewKey || '') + '" ' +
       'aria-label="Delete line item" title="Delete line item">' +
       TRASH_SVG +
     '</button>';
@@ -586,7 +684,7 @@
   function detailNotesSection(rec, viewKey) {
     if (isSalesMoney(viewKey)) {
       return '<div class="scw-ws-v2-detail-notes">' +
-        detailTextArea(rec, viewKey, 'field_2020', 'Labor Desc') +
+        detailReadOnly(rec, 'field_2020', 'Labor Desc') +
       '</div>';
     }
     return '<div class="scw-ws-v2-detail-notes">' +
@@ -629,7 +727,7 @@
       moneyCells(rec, viewKey) +
       sowSlot(rec, viewKey) +
       warnCell(rec) +
-      kebabCell(rec) +
+      kebabCell(rec, viewKey) +
     '</div>';
   }
 
@@ -667,7 +765,7 @@
       moneyCells(rec, viewKey) +
       sowSlot(rec, viewKey) +
       warnCell(rec) +
-      kebabCell(rec) +
+      kebabCell(rec, viewKey) +
     '</div>';
   }
 
@@ -704,7 +802,7 @@
       moneyCells(rec, viewKey) +
       sowSlot(rec, viewKey) +
       warnCell(rec) +
-      kebabCell(rec) +
+      kebabCell(rec, viewKey) +
     '</div>';
   }
 
@@ -734,7 +832,7 @@
       moneyCellsBlank(viewKey) +
       sowSlot(rec, viewKey) +
       warnCell(rec) +
-      kebabCell(rec) +
+      kebabCell(rec, viewKey) +
     '</div>';
   }
 
@@ -854,116 +952,56 @@
   function detailMountingHardware(rec, viewKey) {
     var parentId = rec.id;
 
-    // Source: view_3962's native td.field_1958 cell. Knack renders it
-    // as an outer span.col-N wrapping one <a data-kn="connection-link">
-    // per chip, each with an inner <span data-kn="connection-value"
-    // id="<recordId>">label</span>. This is the authoritative source —
-    // the v2 source view itself — and it's always present, unlike
-    // v1's .scw-cr-list widget which lives in view_3610 and renders
-    // asynchronously.
-    var chips    = [];
-    var addHref  = '';
+    // SINGLE authoritative source for the accessory chips: each accessory's
+    // OWN field_2464 ("my parent"). An accessory asserts exactly one parent;
+    // the parent's forward connection (field_2207 / field_1958) is just a
+    // denormalized aggregate of that, and the two drift. Reading ONLY the
+    // child side means a stale forward list can neither HIDE an accessory
+    // (a missing reciprocal — the "two UPS, one shown" bug) nor surface a
+    // GHOST one (a leftover entry for an accessory that has since
+    // re-parented). The accessory records are SOW line items already loaded
+    // in this view, so it's an in-memory scan — no extra fetch, no DOM scrape.
+    var chips   = [];
+    var addHref = '';
+    var HEX_24  = /^[a-f0-9]{24}(\s|\b|$)/i;
 
-    // Prefer the Backbone model over the DOM scrape. The parent\'s
-    // td.field_1958 cell in view_3962 doesn\'t re-render on its own
-    // when we optimistically patch the parent\'s field_2207/_1958 from
-    // a re-parent action — so a DOM-first scrape returns stale chips
-    // and the user sees the old child list until the next refetch.
-    // The model is patched synchronously in init.js\'s parent-picker
-    // onSaved (and refetched after the server PUT settles), so it\'s
-    // always at least as fresh as the DOM and usually fresher.
-    //
-    // Source priority: field_2207_raw (the real "my children" array)
-    // first, falling back to field_1958_raw for records the back-end
-    // surfaces only under the legacy key.
-    var modelRaw = rec['field_2207_raw'];
-    if (!Array.isArray(modelRaw) || modelRaw.length === 0) {
-      modelRaw = rec['field_1958_raw'];
-    }
-    if (Array.isArray(modelRaw) && modelRaw.length) {
-      for (var mri = 0; mri < modelRaw.length; mri++) {
-        var ma = modelRaw[mri];
-        if (!ma || !ma.id) continue;
-        var mlbl = ma.identifier
-          ? String(ma.identifier).replace(/<[^>]*>/g, '').trim()
-          : '';
-        chips.push({ id: ma.id, label: mlbl || ma.id, href: '' });
-      }
-    }
-
-    // Final fallback: DOM scrape from the source view, for the case
-    // where the model has nothing (e.g. first paint before subscribers
-    // re-emit) — Knack\'s native td.field_1958 markup gives us labels
-    // AND clickable hrefs.
-    if (chips.length === 0) {
-      try {
-        var srcView = document.getElementById(viewKey) ||
-                      document.getElementById('view_3962');
-        var tr      = srcView && srcView.querySelector(
-          'tr[id="' + parentId + '"]'
-        );
-        var td      = tr && tr.querySelector('td.field_1958');
-        if (td) {
-          var anchors = td.querySelectorAll('a[data-kn="connection-link"]');
-          if (anchors.length) {
-            for (var ai = 0; ai < anchors.length; ai++) {
-              var inner = anchors[ai].querySelector('span[data-kn="connection-value"][id]');
-              if (!inner) continue;
-              var id    = (inner.getAttribute('id') || '').trim();
-              var label = (inner.textContent || '').trim();
-              var href  = anchors[ai].getAttribute('href') || '';
-              if (id) chips.push({ id: id, label: label || id, href: href });
-            }
-          } else {
-            var bareSpans = td.querySelectorAll('span[data-kn="connection-value"][id]');
-            for (var bi = 0; bi < bareSpans.length; bi++) {
-              var bid    = (bareSpans[bi].getAttribute('id') || '').trim();
-              var blabel = (bareSpans[bi].textContent || '').trim();
-              if (bid) chips.push({ id: bid, label: blabel || bid, href: '' });
-            }
-          }
-        }
-      } catch (e) { /* swallow */ }
-    }
-    // addHref fallback: the `add-accessory-line-item` slug differs
-    // between Knack scenes — and with v1 disabled, v1\'s scw-cr-add
-    // anchors aren\'t in the DOM anymore. So we resolve the live
-    // route lazily AT CLICK TIME (see init.js \'data-scw-ws-v2-add-
-    // accessory\' handler) by searching the whole page for any Knack
-    // menu/details link whose text matches a known add-accessory
-    // label. Rendering a placeholder href here means we never put a
-    // home-bouncing URL into the chip.
-    addHref = addHref || '__resolve-on-click__';
-
-    // Build a quick lookup of source-view records so we can read each
-    // bracket\'s own attrs (qty + multi-allowed flag) inline, AND so
-    // we can enrich chip labels when the parent\'s field_2207_raw
-    // entry came back without an identifier (freshly-created
-    // accessory records where the back-end hasn\'t resolved the
-    // synthetic identifier yet — without enrichment we\'d render the
-    // 24-char record id as the chip label).
+    // accAttrsById doubles as the per-chip attrs lookup the render below
+    // uses for the qty stepper.
     var accAttrsById = Object.create(null);
+    var allRecs = [];
     try {
-      var allRecs = (ns.data && typeof ns.data.readRecords === 'function')
+      allRecs = (ns.data && typeof ns.data.readRecords === 'function')
         ? ns.data.readRecords(viewKey) : [];
-      for (var ai = 0; ai < allRecs.length; ai++) {
-        if (allRecs[ai] && allRecs[ai].id) accAttrsById[allRecs[ai].id] = allRecs[ai];
-      }
-    } catch (e) { /* model not ready — chips render without stepper */ }
-
-    // Label enrichment pass — replace any chip whose label is a bare
-    // 24-hex record id with the resolved product / drop label from the
-    // accessory\'s own record. Mirrors readParentRef\'s rejection of
-    // Knack\'s "<recordId> (<mdfLabel>)" synthetic identifier pattern.
-    var HEX_24 = /^[a-f0-9]{24}(\s|\b|$)/i;
-    for (var ci = 0; ci < chips.length; ci++) {
-      var ch = chips[ci];
-      if (ch.label && !HEX_24.test(ch.label)) continue;
-      var src = accAttrsById[ch.id];
-      if (!src) continue;
-      var resolved = labelLineItem(src);
-      if (resolved && !HEX_24.test(resolved)) ch.label = resolved;
+    } catch (e) { allRecs = []; }
+    for (var ri = 0; ri < allRecs.length; ri++) {
+      if (allRecs[ri] && allRecs[ri].id) accAttrsById[allRecs[ri].id] = allRecs[ri];
     }
+
+    for (var ai = 0; ai < allRecs.length; ai++) {
+      var arec = allRecs[ai];
+      if (!arec || !arec.id) continue;
+      var praw = arec['field_2464_raw'];
+      var ppid = (Array.isArray(praw) && praw[0] && praw[0].id) ? praw[0].id : '';
+      if (ppid !== parentId) continue;
+      // Label = the accessory's connection identifier (its field_1950 display
+      // label, e.g. "… (MDF)"), matching how Knack lists it under a parent;
+      // fall back to labelLineItem's "drop · product" composite only when
+      // that identifier is missing/unresolved (freshly-created records).
+      var aA   = arec.attributes || arec;
+      var albl = (aA.field_1950 || '').toString().replace(/<[^>]*>/g, '').trim();
+      if (!albl && Array.isArray(aA.field_1950_raw) && aA.field_1950_raw[0]) {
+        albl = (aA.field_1950_raw[0].identifier || aA.field_1950_raw[0].name || '')
+          .toString().replace(/<[^>]*>/g, '').trim();
+      }
+      if (!albl || HEX_24.test(albl)) albl = labelLineItem(arec);
+      chips.push({ id: arec.id, label: (albl && !HEX_24.test(albl)) ? albl : arec.id, href: '' });
+    }
+
+    // addHref fallback: the `add-accessory-line-item` slug differs between
+    // Knack scenes, so resolve the live route lazily AT CLICK TIME (see
+    // init.js 'data-scw-ws-v2-add-accessory'). A placeholder here means we
+    // never put a home-bouncing URL into the "+ Add" pill.
+    addHref = addHref || '__resolve-on-click__';
 
     // ── Render ──
     var chipsHtml = '';
@@ -1011,30 +1049,51 @@
         // parentId, since the click handler reaches into v1's widget
         // to drive its existing delete flow (confirm modal + Make
         // webhook).
+        // Unlink — clears the accessory's field_2464 so it detaches from
+        // this parent but keeps the line item (it becomes a standalone row).
+        var unlinkX = (chip.id && parentId)
+          ? '<button type="button" class="scw-ws-v2-mh-unlink" ' +
+              'data-scw-ws-v2-mh-unlink="' + escapeHtml(chip.id) + '" ' +
+              'data-scw-ws-v2-mh-uparent="' + escapeHtml(parentId) + '" ' +
+              'title="Unlink ' + escapeHtml(chip.label) +
+              ' from this parent (keeps the line item)">' +
+              UNLINK_SVG + '</button>'
+          : '';
         var delX = (chip.id && parentId)
           ? '<button type="button" class="scw-ws-v2-mh-del" ' +
               'data-scw-ws-v2-mh-del="' + escapeHtml(chip.id) + '" ' +
               'data-scw-ws-v2-mh-parent="' + escapeHtml(parentId) + '" ' +
               'title="Delete ' + escapeHtml(chip.label) + '">' +
-              '&times;</button>'
+              TRASH_SVG + '</button>'
           : '';
         // No href → render as non-link span so we never silently bounce
         // the user back to the home page on click.
+        // Mid-delete state survives the source-view re-renders that fire
+        // on every poll fetch (init.js polls until the record is gone) by
+        // reading a shared pending-delete registry. When set, dim the chip
+        // and swap the × + qty stepper for a spinner so the user sees
+        // "deleting…" the whole time the delete is settling.
+        var pendingDel = !!(ns.pendingDeletes && ns.pendingDeletes[chip.id]);
+        var tail = pendingDel
+          ? '<span class="scw-ws-v2-mh-spin" title="Deleting…"></span>'
+          : (stepperHtml + unlinkX + delX);
         var wrapCls = 'scw-ws-v2-mh-chip-wrap' +
-          (accWrong ? ' scw-ws-v2-mh-chip-wrap--warn' : '');
+          (accWrong ? ' scw-ws-v2-mh-chip-wrap--warn' : '') +
+          (pendingDel ? ' scw-ws-v2-mh-chip-wrap--deleting' : '');
+        var wrapTitle = pendingDel ? ' title="Deleting…"' : '';
         if (editHref) {
-          chipsHtml += '<span class="' + wrapCls + '">' +
+          chipsHtml += '<span class="' + wrapCls + '"' + wrapTitle + '>' +
             '<a class="scw-ws-v2-mh-chip" href="' + escapeHtml(editHref) + '"' +
               ' title="Edit ' + escapeHtml(chip.label) + '">' +
               escapeHtml(chip.label) +
-            '</a>' + warnMark + stepperHtml + delX +
+            '</a>' + warnMark + tail +
           '</span>';
         } else {
-          chipsHtml += '<span class="' + wrapCls + '">' +
+          chipsHtml += '<span class="' + wrapCls + '"' + wrapTitle + '>' +
             '<span class="scw-ws-v2-mh-chip scw-ws-v2-mh-chip--inert"' +
               ' title="' + escapeHtml(chip.label) + '">' +
               escapeHtml(chip.label) +
-            '</span>' + warnMark + stepperHtml + delX +
+            '</span>' + warnMark + tail +
           '</span>';
         }
       }
@@ -1059,7 +1118,7 @@
       '<div class="scw-ws-v2-detail-zones">' +
         salesPricingDetail(rec, viewKey) +
         '<div class="scw-ws-v2-detail-zone scw-ws-v2-detail-zone--identity">' +
-          detailReadOnly(rec,          'field_2240', 'Prefix') +
+          detailConnection(rec,        viewKey, 'field_2240', 'Prefix') +
           detailField(rec,    viewKey, 'field_1951', 'Drop #',  'number') +
           detailField(rec,    viewKey, 'field_1965', 'Length',  'number') +
           detailField(rec,    viewKey, 'field_2035', 'Conduit', 'number') +
@@ -1144,7 +1203,7 @@
 
     var left = '';
     if (isCam) {
-      left += detailReadOnly(rec,          'field_2240', 'Drop Prefix');
+      left += detailConnection(rec,    viewKey, 'field_2240', 'Drop Prefix');
       left += detailField(rec,    viewKey, 'field_1951', 'Label #', 'number');
       // Visual break between the drop/identity fields and the money fields.
       left += '<div class="scw-ws-v2-sales-detail-divider"></div>';
@@ -1171,7 +1230,7 @@
       }
     }
     right += detailConnection(rec, viewKey, 'field_1946', 'MDF / IDF');
-    right += detailTextArea(rec,   viewKey, 'field_2020', 'Labor Desc');
+    right += detailReadOnly(rec, 'field_2020', 'Labor Desc');
 
     return '<div class="scw-ws-v2-detail">' +
       '<div class="scw-ws-v2-sales-detail">' +
@@ -1264,6 +1323,7 @@
     if (isCrLocked(rec, sourceViewKey)) {
       card.classList.add('scw-ws-v2-card--locked');
       lockCardFields(card);
+      addLockedNote(card);
     }
     // Leading bulk-select checkbox — absolutely positioned INSIDE the
     // row so it vertically centers with the row\'s actual height
@@ -1323,7 +1383,15 @@
     ASSUMPTIONS_BUCKET:  ASSUMPTIONS_BUCKET,
     NETWORKING_BUCKET:   NETWORKING_BUCKET,
     bucketCategoryOf:    bucketCategoryOf,
-    labelLineItem:       labelLineItem
+    labelLineItem:       labelLineItem,
+    // Lock rule (sales survey-associated rows) + the fields that stay
+    // editable on a locked row — consumed by the bulk-edit modal so it
+    // offers the same whitelist (Product / SCW Notes / Custom Disc %).
+    isCrLocked:          isCrLocked,
+    LOCK_WHITELIST:      LOCK_WHITELIST,
+    // Survey-link delete block — consumed by bulk delete to drop records
+    // that aren't deletable.
+    isDeleteBlocked:     isDeleteBlocked
   };
 })();
 /*** END WORKSHEET V2 — CARD **************************************************/

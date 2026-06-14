@@ -177,6 +177,44 @@
   /** Public API: build a strip element for one record. Returns null
    *  if there are no photos AND we can\'t build an add link (no usable
    *  base path) — saves visual noise on routes we don\'t support. */
+  // Photo delete is enabled ONLY on the OPS surfaces — the build-SOW
+  // worksheet (view_3962) and the bid-comparison grid (view_3921, whose
+  // expand-panel cards build with that source key). Sales (view_3586) and
+  // every other surface stay delete-free. The delete itself rides the
+  // native kn-link-delete on the photo's row in whatever DOC_photos grid
+  // is on the page (see the delegated handler below).
+  var PHOTO_DELETE_VIEWS = { view_3962: 1, view_3921: 1 };
+
+  // Per-surface DOC_photos grid used for the REST-DELETE fallback when the
+  // photo's row isn't in the DOM (paginated grid). view_3584 is the
+  // delete-enabled photos grid on the build-SOW scene. The review-bids
+  // scene's photos grid is unconfirmed — native-link path still works
+  // there when the row is present.
+  var PHOTO_GRID_FALLBACK_VIEWS = { view_3962: 'view_3584', view_3921: '' };
+
+  // Photo-delete settling registry. Between the optimistic card removal and
+  // the authoritative refetch, Knack re-renders rebuild the strip from the
+  // STALE source row (the photo connection is still on it) — without this
+  // the deleted card resurrects for a beat and then vanishes again ("weird
+  // flashing"). buildStrip skips any photo here; entries expire after 20s
+  // so a silently-failed delete can't hide a real photo forever.
+  var pendingPhotoDeletes = Object.create(null);
+  function isPhotoDeletePending(id) {
+    var ts = pendingPhotoDeletes[id];
+    if (!ts) return false;
+    if (Date.now() - ts > 20000) { delete pendingPhotoDeletes[id]; return false; }
+    return true;
+  }
+
+  var PHOTO_TRASH_SVG =
+    '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" ' +
+    'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+    'stroke-linejoin="round">' +
+    '<polyline points="3 6 5 6 21 6"></polyline>' +
+    '<path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>' +
+    '<path d="M10 11v6"></path><path d="M14 11v6"></path>' +
+    '<path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"></path></svg>';
+
   function buildStrip(rec, sourceViewKey) {
     var photos = extractPhotoRecords(sourceViewKey, rec.id);
     var addHref = addPhotoHref(rec.id);
@@ -206,6 +244,9 @@
 
     for (var i = 0; i < photos.length; i++) {
       var p = photos[i];
+      // Mid-delete photo — keep it out of rebuilds until the refetch
+      // confirms it's gone (see pendingPhotoDeletes).
+      if (p.id && isPhotoDeletePending(p.id)) continue;
       var href = editPhotoHref(p.id);
       var missing = p.required && !p.completed;
       var cls = 'scw-ws-v2-photo-card' +
@@ -243,10 +284,18 @@
         ' data-photo-type="'       + escapeHtml(p.type || '') + '"' +
         ' data-photo-notes="'      + escapeHtml(p.notes || '') + '"';
       var draggableAttr = p.imgUrl ? ' draggable="true"' : '';
+      // OPS-only photo delete (see PHOTO_DELETE_VIEWS). Only on cards that
+      // hold a real photo record; placeholders have nothing to delete.
+      var delBtn = (PHOTO_DELETE_VIEWS[sourceViewKey] && p.id)
+        ? '<button type="button" class="scw-ws-v2-photo-del" ' +
+            'data-scw-ws-v2-photo-del="' + escapeHtml(p.id) + '" ' +
+            'data-scw-ws-v2-photo-view="' + escapeHtml(sourceViewKey) + '" ' +
+            'title="Delete photo">' + PHOTO_TRASH_SVG + '</button>'
+        : '';
       html +=
         '<a class="' + cls + '"' + openAttrs + dataAttrs + draggableAttr +
             ' title="' + escapeHtml((p.type || 'Photo') + (p.required ? ' (Required)' : '')) + '">' +
-          thumb + typeHtml + reqHtml +
+          thumb + typeHtml + reqHtml + delBtn +
         '</a>';
     }
 
@@ -381,6 +430,82 @@
     document.addEventListener('keydown', onKey);
     document.body.appendChild(overlay);
     render();
+  }
+
+  // Delegated photo-delete (OPS surfaces only — the trash button renders
+  // solely on PHOTO_DELETE_VIEWS strips). CAPTURE phase so the lightbox
+  // open / edit-page navigation on the wrapping <a> never fires. The
+  // delete rides the native kn-link-delete on the photo's own row in
+  // whatever DOC_photos grid is on the page — same auto-confirmed
+  // two-click-to-one-click pattern as the per-row line-item trash.
+  if (!document.documentElement.hasAttribute('data-scw-ws-v2-photo-del-bound')) {
+    document.documentElement.setAttribute('data-scw-ws-v2-photo-del-bound', '1');
+    document.addEventListener('click', function (e) {
+      var btn = e.target && e.target.closest &&
+                e.target.closest('[data-scw-ws-v2-photo-del]');
+      if (!btn) return;
+      e.preventDefault();
+      e.stopPropagation();
+
+      var photoId = btn.getAttribute('data-scw-ws-v2-photo-del');
+      var viewKey = btn.getAttribute('data-scw-ws-v2-photo-view') || '';
+      if (!photoId) return;
+
+      function refetchSoon() {
+        setTimeout(function () {
+          if (viewKey && ns.data && typeof ns.data.refetchAndNotify === 'function') {
+            ns.data.refetchAndNotify(viewKey);
+          }
+        }, 1500);
+      }
+      function dropCard() {
+        var card = btn.closest('.scw-ws-v2-photo-card');
+        if (card && card.parentNode) card.parentNode.removeChild(card);
+      }
+
+      // Path 1 — the photo record's row in the photos source grid, if the
+      // grid is on the page AND the row is on its current pagination page.
+      // Photo ids are 24-hex and unique, so a page-wide lookup is safe.
+      var link = document.querySelector(
+        'tr[id="' + photoId + '"] a.kn-link-delete'
+      );
+      if (link) {
+        pendingPhotoDeletes[photoId] = Date.now();
+        dropCard();
+        if (typeof ns.autoConfirmKnackDelete === 'function') ns.autoConfirmKnackDelete();
+        link.click();
+        refetchSoon();
+        return;
+      }
+
+      // Path 2 — view-scoped REST DELETE through the photos grid. Covers
+      // the common case where the grid is paginated and the photo's row
+      // isn't in the DOM. Works for any delete-enabled view on the
+      // CURRENT scene (knackRecordUrl is pages/<current scene>/views/…).
+      var gridKey = PHOTO_GRID_FALLBACK_VIEWS[viewKey] || '';
+      if (gridKey && window.SCW && typeof SCW.knackAjax === 'function' &&
+          typeof SCW.knackRecordUrl === 'function') {
+        pendingPhotoDeletes[photoId] = Date.now();
+        dropCard();
+        SCW.knackAjax({
+          url:  SCW.knackRecordUrl(gridKey, photoId),
+          type: 'DELETE',
+          success: function () { refetchSoon(); },
+          error: function (xhr) {
+            console.warn('[scw-ws-v2] photo delete: REST DELETE via ' + gridKey +
+              ' failed for ' + photoId, xhr && xhr.status, xhr && xhr.responseText);
+            // Let the card come back — the delete didn't land.
+            delete pendingPhotoDeletes[photoId];
+            refetchSoon();
+          }
+        });
+        return;
+      }
+
+      console.warn('[scw-ws-v2] photo delete: no kn-link-delete row for ' +
+        photoId + ' and no fallback grid configured for ' + viewKey +
+        ' — is the DOC_photos grid (with Delete enabled) on this page?');
+    }, true);
   }
 
   // Delegated: intercept thumbnail clicks → open the viewer instead of

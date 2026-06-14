@@ -296,6 +296,30 @@
       e.stopPropagation();
       var parentId = link.getAttribute('data-scw-ws-v2-add-accessory') || '';
       if (!parentId) return;
+      // Sales scenes have no add-accessory child page in Builder, so
+      // navigating to the add-accessory-line-item slug dead-ends there.
+      // Route the per-item add through the custom accessory modal
+      // instead — it posts the same Make webhook the bulk add uses,
+      // scoped to this one row.
+      var v2Container = link.closest('[id^="scw-ws-v2-view_"]');
+      var v2ViewKey = v2Container ? v2Container.id.replace(/^scw-ws-v2-/, '') : '';
+      var v2Cfg = (v2ViewKey && ns.cfg && typeof ns.cfg.viewCfg === 'function')
+        ? ns.cfg.viewCfg(v2ViewKey) : null;
+      if (v2Cfg && v2Cfg.moneyMode === 'sales' &&
+          ns.toolbar && typeof ns.toolbar.openAddAccessories === 'function') {
+        var addCard = link.closest('.scw-ws-v2-card');
+        var addLabelEl = addCard && addCard.querySelector('.scw-ws-v2-cell--label');
+        var addLabel = addLabelEl ? (addLabelEl.textContent || '').trim() : '';
+        if (!addLabel) {
+          var addProdEl = addCard && addCard.querySelector('.scw-ws-v2-product-name');
+          addLabel = addProdEl ? (addProdEl.textContent || '').trim() : '';
+        }
+        ns.toolbar.openAddAccessories(v2ViewKey, {
+          ids:    [parentId],
+          labels: [addLabel || parentId]
+        });
+        return;
+      }
       // Build the URL deterministically from the same base path the
       // chip edit links use. resolveAddAccessoryBase() matches against
       // the current hash; if it returns nothing we surface an alert
@@ -390,6 +414,89 @@
     });
   }
 
+  // Mounting-hardware chip UNLINK — clears the accessory's parent
+  // (field_2464) WITHOUT deleting the record: the accessory detaches from
+  // this parent and becomes a standalone line item. Also repairs the old
+  // parent's forward list (field_2207, derived from the live field_2464
+  // back-pointers) so the denormalized pair doesn't drift server-side.
+  // SOW/MDF are deliberately left untouched on unlink.
+  if (!document.documentElement.hasAttribute('data-scw-ws-v2-mhunlink-bound')) {
+    document.documentElement.setAttribute('data-scw-ws-v2-mhunlink-bound', '1');
+    document.addEventListener('click', function (e) {
+      var btn = e.target && e.target.closest && e.target.closest('[data-scw-ws-v2-mh-unlink]');
+      if (!btn) return;
+      e.preventDefault();
+      e.stopPropagation();
+      var accId    = btn.getAttribute('data-scw-ws-v2-mh-unlink');
+      var parentId = btn.getAttribute('data-scw-ws-v2-mh-uparent') || '';
+      if (!accId) return;
+
+      var container = btn.closest('[id^="scw-ws-v2-"]');
+      var viewKey = container ? container.id.replace(/^scw-ws-v2-/, '') : 'view_3962';
+
+      // Optimistic: patch the local model's back-pointer (chips are
+      // back-pointer-sourced, so the chip won't resurrect on rebuilds)
+      // and drop the chip from the DOM immediately.
+      try {
+        var sv  = Knack.views && Knack.views[viewKey];
+        var rec = sv && sv.model && sv.model.data &&
+                  sv.model.data.get && sv.model.data.get(accId);
+        if (rec) rec.set({ field_2464_raw: [], field_2464: '' }, { silent: true });
+      } catch (ePatch) { /* best-effort */ }
+      var wrap = btn.closest('.scw-ws-v2-mh-chip-wrap');
+      if (wrap && wrap.parentNode) wrap.parentNode.removeChild(wrap);
+
+      function refetchSoon() {
+        setTimeout(function () {
+          if (ns.data && typeof ns.data.refetchAndNotify === 'function') {
+            ns.data.refetchAndNotify(viewKey);
+          }
+        }, 800);
+      }
+
+      SCW.knackAjax({
+        url:  SCW.knackRecordUrl(viewKey, accId),
+        type: 'PUT',
+        data: JSON.stringify({ field_2464: [] }),
+        success: function () {
+          // Repair the old parent's forward list: every record still
+          // pointing at it via field_2464, minus the one just unlinked.
+          if (parentId && typeof SCW.knackRecordUrl === 'function') {
+            var ids = [];
+            try {
+              var sv2 = Knack.views && Knack.views[viewKey];
+              var rs = (sv2 && sv2.model && sv2.model.data &&
+                        typeof sv2.model.data.toJSON === 'function')
+                          ? sv2.model.data.toJSON() : [];
+              for (var i = 0; i < rs.length; i++) {
+                var r = rs[i];
+                if (!r || !r.id || r.id === accId) continue;
+                var raw = r.field_2464_raw;
+                if (Array.isArray(raw) && raw.length && raw[0] &&
+                    raw[0].id === parentId) ids.push(r.id);
+              }
+            } catch (eScan) { /* swallow */ }
+            SCW.knackAjax({
+              url:  SCW.knackRecordUrl(viewKey, parentId),
+              type: 'PUT',
+              data: JSON.stringify({ field_2207: ids }),
+              success: refetchSoon,
+              error:   function () { refetchSoon(); }
+            });
+          } else {
+            refetchSoon();
+          }
+        },
+        error: function (xhr) {
+          console.warn('[scw-ws-v2] unlink PUT failed for ' + accId,
+            xhr && xhr.status, xhr && xhr.responseText);
+          // Refetch restores the chip — the unlink didn't land.
+          refetchSoon();
+        }
+      });
+    });
+  }
+
   if (!document.documentElement.hasAttribute('data-scw-ws-v2-mhdel-bound')) {
     document.documentElement.setAttribute('data-scw-ws-v2-mhdel-bound', '1');
     document.addEventListener('click', function (e) {
@@ -400,8 +507,18 @@
       var chipId = btn.getAttribute('data-scw-ws-v2-mh-del');
       if (!chipId) return;
 
-      // Same selector idiom as the kebab handler — attribute form so
-      // 24-hex IDs starting with a digit don't blow up the selector.
+      var wrap = btn.closest('.scw-ws-v2-mh-chip-wrap');
+      var v3962Container = btn.closest('[id^="scw-ws-v2-"]');
+      var v3962ViewKey = v3962Container
+        ? v3962Container.id.replace(/^scw-ws-v2-/, '')
+        : 'view_3962';
+
+      // PREFERRED path: click Knack's native FE delete button on the
+      // record's row (auto-confirming the modal). Same attribute-selector
+      // idiom as the kebab handler so 24-hex IDs starting with a digit
+      // don't blow up the selector. The Make webhook below is only a
+      // FALLBACK, used when that row (and so its kn-link-delete) isn't in
+      // the DOM — mainly freshly-created accessories whose <tr> lags.
       var srcView = document.getElementById('view_3962');
       var link = srcView && srcView.querySelector(
         'tr[id="' + chipId + '"] a.kn-link-delete'
@@ -412,31 +529,25 @@
           'tr[id="' + chipId + '"] a.kn-link-delete'
         );
       }
-      // Optimistic hide so the row updates instantly. v2 picks up the
-      // actual removal once Knack re-renders after the delete settles.
-      var wrap = btn.closest('.scw-ws-v2-mh-chip-wrap');
-      if (wrap) wrap.style.display = 'none';
 
-      var v3962Container = btn.closest('[id^="scw-ws-v2-"]');
-      var v3962ViewKey = v3962Container
-        ? v3962Container.id.replace(/^scw-ws-v2-/, '')
-        : 'view_3962';
+      // Show "Deleting…" feedback. Register the id so the in-progress
+      // visual survives the source-view re-renders that fire on each poll
+      // fetch (card.js reads ns.pendingDeletes), and stamp the live wrap
+      // now so feedback is instant.
+      ns.pendingDeletes = ns.pendingDeletes || {};
+      ns.pendingDeletes[chipId] = true;
+      markChipDeleting(wrap);
 
       if (link) {
         autoConfirmKnackDelete();
         link.click();
       } else {
-        // Freshly-created accessory records don\'t always have a
-        // <tr> rendered with kn-link-delete in either source view
-        // (view_3962 / view_3610) — the source view\'s DOM lags the
-        // model. Fall back to the same Make webhook the kebab
-        // handler uses, so the delete still goes through.
         var webhookUrl = (window.SCW && SCW.CONFIG && SCW.CONFIG.MAKE_DELETE_RECORD_WEBHOOK) || '';
         if (!webhookUrl) {
           console.warn('[scw-ws-v2] kn-link-delete missing AND ' +
             'MAKE_DELETE_RECORD_WEBHOOK not configured; cannot ' +
             'delete accessory ' + chipId);
-          if (wrap) wrap.style.display = '';
+          clearChipDeleting(chipId, v3962ViewKey, wrap);
           return;
         }
         fetch(webhookUrl, {
@@ -446,21 +557,30 @@
         }).catch(function (err) {
           console.warn('[scw-ws-v2] accessory delete webhook failed for ' +
             chipId, err);
-          if (wrap) wrap.style.display = '';
+          clearChipDeleting(chipId, v3962ViewKey, wrap);
         });
       }
 
-      // Knack's delete sometimes doesn't fire knack-view-render on
-      // view_3962, so the model stays populated with the deleted
-      // bracket until a manual refresh. Explicitly refetch view_3962
-      // a beat after the delete confirms — by then Knack's PUT/DELETE
-      // has settled server-side and the fresh fetch returns the new
-      // state without the bracket.
-      setTimeout(function () {
-        if (ns.data && typeof ns.data.refetchAndNotify === 'function') {
-          ns.data.refetchAndNotify(v3962ViewKey);
+      // Poll the source view until the record actually drops out of the
+      // model, THEN re-render so the chip vanishes the moment the delete
+      // really lands. Both the FE-link path and the async Make webhook
+      // settle on their own schedule, so the old single fixed-delay
+      // refetch raced the deletion and usually fired too early — leaving
+      // the chip until a manual refresh. Times out at ~30s and restores
+      // the chip if the delete never confirms.
+      pollUntilRecordGone(v3962ViewKey, chipId, function onGone() {
+        if (ns.pendingDeletes) delete ns.pendingDeletes[chipId];
+        if (ns.data && typeof ns.data.notify === 'function') {
+          ns.data.notify(v3962ViewKey);
         }
-      }, 1500);
+      }, function onTimeout() {
+        console.warn('[scw-ws-v2] accessory delete not confirmed within ' +
+          'timeout for ' + chipId + ' — restoring chip');
+        if (ns.pendingDeletes) delete ns.pendingDeletes[chipId];
+        if (ns.data && typeof ns.data.notify === 'function') {
+          ns.data.notify(v3962ViewKey);
+        }
+      });
     });
   }
 
@@ -470,6 +590,13 @@
   // if nothing appears) so we don't intercept unrelated modals.
   function autoConfirmKnackDelete() {
     var done = false;
+    // Hide Knack's confirm dialog for the auto-confirm window so it can't
+    // blink on screen for a frame before we click Yes (styles.js rule on
+    // [data-scw-suppress-kn-modal]). Cleared when clicked or on timeout.
+    document.documentElement.setAttribute('data-scw-suppress-kn-modal', '1');
+    function unsuppress() {
+      document.documentElement.removeAttribute('data-scw-suppress-kn-modal');
+    }
     var obs = new MutationObserver(function () {
       if (done) return;
       // Knack renders a confirm dialog inside .kn-modal-bg with a
@@ -499,6 +626,7 @@
           done = true;
           btn.click();
           obs.disconnect();
+          unsuppress();
           return;
         }
       }
@@ -507,7 +635,98 @@
     // Safety: drop the observer after 1.5s no matter what.
     setTimeout(function () {
       if (!done) { done = true; obs.disconnect(); }
+      unsuppress();
     }, 1500);
+  }
+  // Shared with photos.js (photo-card trash → native delete in the
+  // photos grid needs the same auto-confirm).
+  ns.autoConfirmKnackDelete = autoConfirmKnackDelete;
+
+  // ── Accessory chip delete: in-progress feedback + poll-until-gone ──
+
+  // Stamp the "deleting…" visual onto a chip wrap directly (instant
+  // feedback before any re-render). The shared ns.pendingDeletes
+  // registry — read by card.js — re-applies this on every intervening
+  // source-view re-render so the state can't flicker back while the
+  // delete is still settling.
+  function markChipDeleting(wrap) {
+    if (!wrap) return;
+    wrap.classList.add('scw-ws-v2-mh-chip-wrap--deleting');
+    wrap.setAttribute('title', 'Deleting…');
+    var del = wrap.querySelector('.scw-ws-v2-mh-del');
+    if (del) del.style.display = 'none';
+    var step = wrap.querySelector('.scw-ws-v2-mh-stepper');
+    if (step) step.style.display = 'none';
+    if (!wrap.querySelector('.scw-ws-v2-mh-spin')) {
+      var spin = document.createElement('span');
+      spin.className = 'scw-ws-v2-mh-spin';
+      wrap.appendChild(spin);
+    }
+  }
+
+  // Undo markChipDeleting (used on dispatch failure / timeout). Clears
+  // the registry entry AND restores the live wrap in case no re-render
+  // is coming to rebuild it.
+  function clearChipDeleting(chipId, viewKey, wrap) {
+    if (chipId && ns.pendingDeletes) delete ns.pendingDeletes[chipId];
+    if (wrap) {
+      wrap.classList.remove('scw-ws-v2-mh-chip-wrap--deleting');
+      wrap.removeAttribute('title');
+      var spin = wrap.querySelector('.scw-ws-v2-mh-spin');
+      if (spin && spin.parentNode) spin.parentNode.removeChild(spin);
+      var del = wrap.querySelector('.scw-ws-v2-mh-del');
+      if (del) del.style.display = '';
+      var step = wrap.querySelector('.scw-ws-v2-mh-stepper');
+      if (step) step.style.display = '';
+    }
+  }
+
+  // Refetch a source view's model on an interval until `recordId` is no
+  // longer present, then call onGone(). Calls v.model.fetch() directly
+  // (not refetchAndNotify) so the poll itself drives the visible
+  // re-render only once — when the record is confirmed gone — rather
+  // than flashing stale data each cycle. Gives up after ~30s and calls
+  // onTimeout().
+  function pollUntilRecordGone(viewKey, recordId, onGone, onTimeout) {
+    var MAX_ATTEMPTS = 20;       // 20 * 1500ms ≈ 30s ceiling
+    var INTERVAL_MS  = 1500;
+    var FIRST_MS     = 700;      // FE-link deletes often land sub-second
+    var attempts = 0;
+
+    function gone() {
+      try {
+        var recs = (ns.data && typeof ns.data.readRecords === 'function')
+          ? ns.data.readRecords(viewKey) : [];
+        for (var i = 0; i < recs.length; i++) {
+          if (recs[i] && recs[i].id === recordId) return false;
+        }
+        return true;
+      } catch (e) { return false; }
+    }
+
+    function settle() {
+      if (gone()) { if (typeof onGone === 'function') onGone(); return; }
+      if (attempts >= MAX_ATTEMPTS) {
+        if (typeof onTimeout === 'function') onTimeout();
+        return;
+      }
+      setTimeout(step, INTERVAL_MS);
+    }
+
+    function step() {
+      attempts++;
+      var v = (typeof Knack !== 'undefined' && Knack.views) ? Knack.views[viewKey] : null;
+      if (v && v.model && typeof v.model.fetch === 'function') {
+        var p = v.model.fetch();
+        if (p && typeof p.always === 'function') p.always(settle);
+        else if (p && typeof p.then === 'function') p.then(settle, settle);
+        else setTimeout(settle, 400);
+      } else {
+        setTimeout(settle, INTERVAL_MS);
+      }
+    }
+
+    setTimeout(step, FIRST_MS);
   }
 
   // Kebab menu — two-click delete with no confirm prompt.
@@ -525,10 +744,16 @@
         e.preventDefault();
         e.stopPropagation();
         var rowId  = kebab.getAttribute('data-scw-ws-v2-kebab');
-        var container = kebab.closest('[id^="scw-ws-v2-"]');
-        var viewId = container
-          ? container.id.replace(/^scw-ws-v2-/, '')
-          : null;
+        // Prefer the view stamped on the button. The card can be embedded
+        // OUTSIDE a #scw-ws-v2-<view> container — e.g. the bid-review-v2
+        // comparison grid mounts it in .scw-bid-review-v2__panel-col--card —
+        // where the container-id derivation returns null and the delete
+        // silently no-ops.
+        var viewId = kebab.getAttribute('data-scw-ws-v2-view') || null;
+        if (!viewId) {
+          var container = kebab.closest('[id^="scw-ws-v2-"]');
+          viewId = container ? container.id.replace(/^scw-ws-v2-/, '') : null;
+        }
         // Trash icon = direct delete (two-click via Knack\'s native
         // confirm modal which we auto-accept). Same cascade logic
         // that the old kebab menu fired — moved inline here.
@@ -540,6 +765,31 @@
           //    tree but still exist in the source view's model.
           var allRecs = (viewId && ns.data && typeof ns.data.readRecords === 'function')
             ? ns.data.readRecords(viewId) : [];
+
+          // v1-parity safety net: never delete a survey-derived SOW item
+          // (field_2586 = # associated survey line items > 0) on the surfaces
+          // where the block applies (sales view_3586 + bid-review view_3921;
+          // see card.js DELETE_BLOCK_VIEWS). The card hides the trash for these
+          // (kebabCell → isDeleteBlocked), but guard here too in case a stale
+          // render left a clickable button behind.
+          var selfRec = null;
+          if (viewId === 'view_3586' || viewId === 'view_3921') {
+            for (var qi = 0; qi < allRecs.length; qi++) {
+              if (allRecs[qi] && allRecs[qi].id === rowId) { selfRec = allRecs[qi]; break; }
+            }
+          }
+          if (selfRec) {
+            var scRaw = selfRec['field_2586_raw'];
+            var scN = (typeof scRaw === 'number') ? scRaw
+              : parseFloat(String(selfRec['field_2586'] == null ? '' : selfRec['field_2586'])
+                  .replace(/[^0-9.\-]/g, ''));
+            if (!isNaN(scN) && scN > 0) {
+              console.warn('[scw-ws-v2] delete blocked — ' + rowId +
+                ' has ' + scN + ' associated survey item(s) (field_2586)');
+              return;
+            }
+          }
+
           var accIds = [];
           for (var ri = 0; ri < allRecs.length; ri++) {
             var r = allRecs[ri];
@@ -554,54 +804,110 @@
             }
           }
           var webhookUrl = (window.SCW && SCW.CONFIG && SCW.CONFIG.MAKE_DELETE_RECORD_WEBHOOK) || '';
-          if (accIds.length && webhookUrl) {
-            for (var ai = 0; ai < accIds.length; ai++) {
-              (function (accId) {
-                fetch(webhookUrl, {
-                  method: 'POST',
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ recordId: accId })
-                }).catch(function (err) {
-                  console.warn('[scw-ws-v2] accessory delete webhook failed for ' +
-                    accId, err);
-                });
-              })(accIds[ai]);
+
+          // Delete the parent line item itself. Defined here but invoked
+          // only AFTER the accessory cascade settles (below), so a parent
+          // delete that re-renders or navigates the view can't cancel the
+          // in-flight child deletes — backlog #1's "navigating right after
+          // the parent delete cancels in-flight child deletes" failure.
+          function deleteParent() {
+            // Delete the parent through Knack's native delete link.
+            //    Auto-confirm the modal so it stays a two-click flow.
+            // Knack record IDs are 24-char hex strings — many start with
+            // a digit, which CSS doesn't allow as the first char of an
+            // ID selector. Use the attribute selector form instead.
+            var srcView = viewId ? document.getElementById(viewId) : null;
+            var link = srcView && srcView.querySelector(
+              'tr[id="' + rowId + '"] a.kn-link-delete'
+            );
+            if (!link) {
+              var v3610 = document.getElementById('view_3610');
+              link = v3610 && v3610.querySelector(
+                'tr[id="' + rowId + '"] a.kn-link-delete'
+              );
             }
+            if (!link) {
+              // No native delete route on this view (e.g. view_3921 on the
+              // bid-review comparison grid has none — Knack's own link there
+              // just routes home and deletes nothing). Delete the record
+              // directly via the view-scoped REST endpoint — the same proven
+              // path the v1 bid-review uses — then refetch so the grid (which
+              // listens on knack-view-render.<view>) drops the row.
+              if (viewId && window.SCW && typeof SCW.knackAjax === 'function' &&
+                  typeof SCW.knackRecordUrl === 'function') {
+                SCW.knackAjax({
+                  url:  SCW.knackRecordUrl(viewId, rowId),
+                  type: 'DELETE',
+                  success: function () {
+                    if (ns.data && typeof ns.data.refetchAndNotify === 'function') {
+                      ns.data.refetchAndNotify(viewId);
+                    }
+                  },
+                  error: function (xhr) {
+                    console.warn('[scw-ws-v2] direct DELETE failed for ' + rowId,
+                      xhr && xhr.status, xhr && xhr.responseText);
+                  }
+                });
+              } else {
+                console.warn('[scw-ws-v2] kn-link-delete not found and no viewId/knackAjax for ' + rowId);
+              }
+              return;
+            }
+            autoConfirmKnackDelete();
+            link.click();
+
+            // Refetch the source view a beat after the delete so the
+            // row stays gone even if Knack didn't fire a fresh
+            // view-render. Mirrors the chip × delete handler below.
+            setTimeout(function () {
+              if (viewId && ns.data && typeof ns.data.refetchAndNotify === 'function') {
+                ns.data.refetchAndNotify(viewId);
+              }
+            }, 1500);
+          }
+
+          // 2. Cascade-delete the accessories FIRST, through the bulk
+          //    module's concurrency-capped + retry/backoff queue
+          //    (ns.bulk.queuedDelete — the repo-mandated pattern). A bare
+          //    fetch-per-child silently loses writes to Knack's ~10 req/s
+          //    429s and gets cancelled when the parent delete navigates
+          //    (backlog #1). Delete the parent once the children settle.
+          if (accIds.length && webhookUrl && ns.bulk &&
+              typeof ns.bulk.queuedDelete === 'function') {
+            ns.bulk.queuedDelete(accIds, webhookUrl).then(function (results) {
+              var failed = 0;
+              for (var fr = 0; fr < results.length; fr++) {
+                if (!results[fr].ok) failed++;
+              }
+              if (failed) {
+                console.warn('[scw-ws-v2] ' + failed + ' of ' + accIds.length +
+                  ' accessory delete(s) failed for parent ' + rowId);
+              }
+              deleteParent();
+            });
           } else if (accIds.length && !webhookUrl) {
             console.warn('[scw-ws-v2] ' + accIds.length +
               ' accessories not deleted — MAKE_DELETE_RECORD_WEBHOOK missing');
-          }
-
-          // 2. Delete the parent through Knack's native delete link.
-          //    Auto-confirm the modal so it stays a two-click flow.
-          // Knack record IDs are 24-char hex strings — many start with
-          // a digit, which CSS doesn't allow as the first char of an
-          // ID selector. Use the attribute selector form instead.
-          var srcView = viewId ? document.getElementById(viewId) : null;
-          var link = srcView && srcView.querySelector(
-            'tr[id="' + rowId + '"] a.kn-link-delete'
-          );
-          if (!link) {
-            var v3610 = document.getElementById('view_3610');
-            link = v3610 && v3610.querySelector(
-              'tr[id="' + rowId + '"] a.kn-link-delete'
-            );
-          }
-          if (!link) {
-            console.warn('[scw-ws-v2] kn-link-delete not found for ' + rowId);
-            return;
-          }
-          autoConfirmKnackDelete();
-          link.click();
-
-          // Refetch the source view a beat after the delete so the
-          // row stays gone even if Knack didn't fire a fresh
-          // view-render. Mirrors the chip × delete handler below.
-          setTimeout(function () {
-            if (viewId && ns.data && typeof ns.data.refetchAndNotify === 'function') {
-              ns.data.refetchAndNotify(viewId);
+            deleteParent();
+          } else if (accIds.length && webhookUrl) {
+            // ns.bulk.queuedDelete unavailable (shouldn't happen — bulk.js is
+            // bundled before init.js). Degrade to keepalive fire-and-forget so
+            // the accessory deletes are never skipped entirely, then delete
+            // the parent.
+            for (var ax = 0; ax < accIds.length; ax++) {
+              (function (accId) {
+                fetch(webhookUrl, {
+                  method: 'POST', keepalive: true,
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ recordId: accId })
+                }).catch(function () {});
+              })(accIds[ax]);
             }
-          }, 1500);
+            deleteParent();
+          } else {
+            // No accessories — just delete the parent.
+            deleteParent();
+          }
         }
         return;
       }
@@ -657,6 +963,36 @@
         if (Array.isArray(rawSel)) {
           for (var s = 0; s < rawSel.length; s++) {
             if (rawSel[s] && rawSel[s].id) sel.push(rawSel[s].id);
+          }
+        }
+      }
+
+      // Connected Devices (field_1957) hardening — pre-select the TRUE set.
+      // ------------------------------------------------------------------
+      // field_1957 (parent → children) and field_2197 (child → parent) are
+      // SEPARATE Knack fields kept aligned only by the cascade, so the
+      // parent's field_1957 on the model can read STALE — missing children
+      // that ARE connected (their field_2197 still points here). If the
+      // picker pre-checks only that stale forward list, a resubmit sends a
+      // SUBSET and the cascade dutifully clears the omitted children's
+      // field_2197 — the "1/2 downstream connections, and it alternates"
+      // bug. Union in every child whose field_2197 points back at this
+      // parent so the modal pre-selects the real current set and a resubmit
+      // can't drop a still-connected device.
+      if (fieldKey === 'field_1957') {
+        var _selSet = {};
+        for (var su = 0; su < sel.length; su++) _selSet[sel[su]] = true;
+        for (var rr = 0; rr < records.length; rr++) {
+          var rrec = records[rr];
+          if (!rrec || !rrec.id || rrec.id === recordId || _selSet[rrec.id]) continue;
+          var rback = rrec['field_2197_raw'];
+          if (!Array.isArray(rback)) continue;
+          for (var rb = 0; rb < rback.length; rb++) {
+            if (rback[rb] && rback[rb].id === recordId) {
+              sel.push(rrec.id);
+              _selSet[rrec.id] = true;
+              break;
+            }
           }
         }
       }
@@ -774,26 +1110,20 @@
       // line item on the source view. Single-select. Used by
       // promoted accessories to re-parent themselves.
       if (fieldKey === 'field_2464') {
-        // Parent candidates are constrained to Cam/Reader and
-        // Networking/Headend records — those are the only buckets that
-        // make sense as "primary" line items something else attaches
-        // to. We also drop records that are themselves accessories
-        // (they can\'t be parents) and the record being edited itself.
-        var CAM        = (ns.card && ns.card.CAM_READER_BUCKET) || '6481e5ba38f283002898113c';
-        var NETWORKING = (ns.card && ns.card.NETWORKING_BUCKET) || '647953bb54b4e1002931ed97';
-        function _bucketIdOf(r) {
-          var raw = r && r.field_2219_raw;
-          if (Array.isArray(raw) && raw.length && raw[0]) return raw[0].id || '';
-          return '';
-        }
+        // Parent candidates are EVERY primary line item on the source view —
+        // all buckets (cameras, readers, NVRs/switches, enclosures, services,
+        // assumptions, …), not just Cam/Reader + Networking/Headend. They're
+        // grouped by MDF/IDF in the picker (groupBy below) so the full list
+        // stays scannable. We drop only (a) the record being edited and
+        // (b) records that are themselves accessories (they already have a
+        // parent via field_2464, so making them a parent would nest
+        // accessories).
         var parentCands = [];
         for (var pc = 0; pc < records.length; pc++) {
           var r = records[pc];
           if (!r || !r.id || r.id === recordId) continue;
           var ownParentRaw = r.field_2464_raw;
           if (Array.isArray(ownParentRaw) && ownParentRaw.length) continue;
-          var b = _bucketIdOf(r);
-          if (b !== CAM && b !== NETWORKING) continue;
           parentCands.push(r);
         }
         // Route writes through v2's source view (view_3962). v1's
@@ -808,6 +1138,8 @@
           selectedIds:   sel,
           candidates:    parentCands,
           multi:         false,
+          // Grouped by MDF/IDF + canonically sorted by the picker default
+          // (see CLAUDE.md "Picker conventions").
           itemLabel: function (r) {
             // Share the same product/drop resolver the card display
             // uses — it strips Knack\'s "<recordId> (<mdfLabel>)"
@@ -889,6 +1221,57 @@
               if (pending > 0) return;
               if (ns.data && typeof ns.data.refetchAndNotify === 'function') {
                 ns.data.refetchAndNotify(viewKey);
+              }
+            }
+
+            // Inherit the new parent's SOW + MDF/IDF. An accessory rides
+            // with its parent, so a re-parent mirrors the parent's
+            // field_2154 (SOW array) and field_1946 (MDF/IDF) onto the
+            // accessory — exactly, including blanks. Skipped on clear
+            // (no new parent). Local raws are patched too so the card
+            // regroups under the right MDF group and the SOW cell
+            // updates before the refetch lands.
+            if (newParentId) {
+              try {
+                var pv    = Knack.views && Knack.views[viewKey];
+                var pRec  = pv && pv.model && pv.model.data &&
+                            pv.model.data.get && pv.model.data.get(newParentId);
+                var pAttrs = pRec && (pRec.attributes ||
+                  (typeof pRec.toJSON === 'function' ? pRec.toJSON() : null));
+                if (pAttrs) {
+                  var pSowRaw = Array.isArray(pAttrs.field_2154_raw) ? pAttrs.field_2154_raw : [];
+                  var pMdfRaw = Array.isArray(pAttrs.field_1946_raw) ? pAttrs.field_1946_raw : [];
+                  var sowIds = [], si;
+                  for (si = 0; si < pSowRaw.length; si++) {
+                    if (pSowRaw[si] && pSowRaw[si].id) sowIds.push(pSowRaw[si].id);
+                  }
+                  var mdfIds = [];
+                  for (si = 0; si < pMdfRaw.length; si++) {
+                    if (pMdfRaw[si] && pMdfRaw[si].id) mdfIds.push(pMdfRaw[si].id);
+                  }
+                  if (srcRec) {
+                    try {
+                      srcRec.set({
+                        field_2154_raw: pSowRaw.slice(),
+                        field_1946_raw: pMdfRaw.slice()
+                      }, { silent: true });
+                    } catch (eSet) { /* best-effort */ }
+                  }
+                  pending++;
+                  SCW.knackAjax({
+                    url:  SCW.knackRecordUrl(viewKey, recordId),
+                    type: 'PUT',
+                    data: JSON.stringify({ field_2154: sowIds, field_1946: mdfIds }),
+                    success: function () { pending--; done(); },
+                    error: function (xhr) {
+                      console.warn('[scw-ws-v2] parent SOW/MDF inherit PUT failed for ' +
+                        recordId, xhr && xhr.status, xhr && xhr.responseText);
+                      pending--; done();
+                    }
+                  });
+                }
+              } catch (eInh) {
+                console.warn('[scw-ws-v2] parent SOW/MDF inherit threw', eInh);
               }
             }
 
@@ -1041,6 +1424,54 @@
         return;
       }
 
+      // Drop Prefix picker (field_2240) — single-select from the Drop
+      // Prefix catalog loaded by the Builder snippet
+      // (window.SCW.dropPrefixOptions; see CLAUDE.md "Out-of-bundle Knack
+      // Builder snippets"). Each entry is { id: <24-hex>, identifier: '<label>' }.
+      // Changing the prefix recomputes the drop LABEL (field_1950, e.g.
+      // "E-001") server-side, so refetch on save.
+      if (fieldKey === 'field_2240') {
+        var dpRaw = (window.SCW && window.SCW.dropPrefixOptions) || [];
+        if (!dpRaw.length) {
+          console.warn('[scw-ws-v2] SCW.dropPrefixOptions missing/empty — Builder snippet not loaded? Drop Prefix picker can\'t open');
+          return;
+        }
+        var dpCandidates = [];
+        for (var dpi = 0; dpi < dpRaw.length; dpi++) {
+          var dpr = dpRaw[dpi];
+          if (dpr && dpr.id && dpr.identifier) {
+            dpCandidates.push({ id: dpr.id, identifier: dpr.identifier });
+          }
+        }
+        dpCandidates.sort(function (a, b) {
+          return String(a.identifier).localeCompare(String(b.identifier), undefined,
+            { numeric: true, sensitivity: 'base' });
+        });
+
+        ns.picker.open({
+          sourceViewKey: viewKey,
+          putViewKey:    viewKey,
+          recordId:      recordId,
+          fieldKey:      'field_2240',
+          label:         label || 'Drop Prefix',
+          selectedIds:   sel,
+          candidates:    dpCandidates,
+          itemLabel:     function (rec) { return rec.identifier || rec.id; },
+          multi:         false,
+          onSaved:       function () {
+            // The drop LABEL (field_1950, "E-001") recomputes from prefix +
+            // drop number server-side — refetch so the card summary label
+            // and this cell reflect the new prefix.
+            if (ns.data && typeof ns.data.refetchAndNotify === 'function') {
+              ns.data.refetchAndNotify(viewKey);
+            } else if (ns.data && typeof ns.data.notify === 'function') {
+              ns.data.notify(viewKey);
+            }
+          }
+        });
+        return;
+      }
+
       // SOW picker (field_2154) — candidates come from the Scopes of
       // Work grid (view_3325) on the same scene. v1 left this field
       // read-only; v2 adds an editable picker. Multi-connection: a
@@ -1129,14 +1560,6 @@
         candidates.push(r);
       }
 
-      // Group by MDF/IDF (matches v1 connection-picker)
-      function groupBy(rec) {
-        var raw = rec['field_1946_raw'];
-        if (Array.isArray(raw) && raw.length && raw[0]) {
-          return { id: raw[0].id, label: raw[0].identifier || '' };
-        }
-        return { id: '__unknown', label: 'Unassigned' };
-      }
 
       function itemLabel(rec) {
         var lbl  = (rec.field_1950 || '').toString().replace(/<[^>]*>/g, '').trim();
@@ -1162,7 +1585,7 @@
         label:         label,
         selectedIds:   sel,
         candidates:    candidates,
-        groupBy:       groupBy,
+        // Grouped by MDF/IDF + canonically sorted by the picker default.
         itemLabel:     itemLabel,
         multi:         isMulti,
         onSaved:       function () {

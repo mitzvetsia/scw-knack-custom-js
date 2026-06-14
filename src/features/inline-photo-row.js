@@ -135,11 +135,12 @@
       '  border-radius: 6px;',
       '  border: 1px solid #ddd;',
       '  box-shadow: 0 1px 4px rgba(0,0,0,.08);',
-      '  cursor: pointer;',
-      /* Knack/KTL core CSS sets `img { -webkit-user-drag: none }`, which
-         kills the drag the moment you grab a photo. Re-enable it so the
-         image is a drag source again (the card stays draggable too). */
-      '  -webkit-user-drag: element !important;',
+      '  cursor: grab;',
+      /* This is a POINTER-based drag (see inline-photo-row.js), so native
+         dragging only gets in the way — turn it OFF on the image and kill
+         selection so a press-drag never selects the photo instead. */
+      '  -webkit-user-drag: none !important;',
+      '  user-select: none; -webkit-user-select: none;',
       '  transition: transform 120ms ease, box-shadow 120ms ease;',
       '}',
       '.' + IMG_CLS + ':hover {',
@@ -273,6 +274,30 @@
       '  opacity: 0.45;',
       '  transform: scale(0.95);',
       '  transition: opacity 150ms ease, transform 150ms ease;',
+      '}',
+
+      /* Floating clone that follows the cursor during a pointer drag. */
+      '.scw-photo-drag-clone {',
+      '  position: fixed;',
+      '  z-index: 99999;',
+      '  pointer-events: none;',
+      '  transform: translate(-50%, -50%);',
+      '  opacity: 0.9;',
+      '  width: 120px; height: 120px;',
+      '  border-radius: 8px;',
+      '  border: 2px solid #16a34a;',
+      '  box-shadow: 0 8px 24px rgba(0,0,0,0.35);',
+      '  overflow: hidden;',
+      '  background: #fff;',
+      '}',
+      '.scw-photo-drag-clone img {',
+      '  width: 100%; height: 100%; object-fit: cover; display: block;',
+      '}',
+      /* While a pointer drag is in progress, force the grabbing cursor and
+         kill text selection page-wide. */
+      'body.scw-photo-dragging, body.scw-photo-dragging * {',
+      '  cursor: grabbing !important;',
+      '  user-select: none !important; -webkit-user-select: none !important;',
       '}',
 
       /* Valid drop target highlight (pulsing green dashed border) */
@@ -727,9 +752,25 @@
 
   // ── Drag-and-drop handlers ─────────────────────────────────────
 
-  var dragSourceCard = null;
+  // We deliberately DO NOT use native HTML5 drag-and-drop here. Inside
+  // Knack/KTL the native gesture proved unreliable across browsers and
+  // re-renders — repeatedly we'd see `dragstart` fire yet the drag never
+  // visibly engage (no ghost, no droppable targets), and drops silently
+  // failed. This is a pointer-based drag we fully control: a floating
+  // clone follows the cursor and we hit-test the slot underneath with
+  // document.elementFromPoint. It depends on NONE of the native drag
+  // machinery (draggable attr, -webkit-user-drag, dataTransfer, the
+  // browser ghost image), so Knack can't interfere with it.
 
-  /** Resolve the photo card from a delegated drag event. */
+  var dragSourceCard = null;   // card actively being dragged
+  var pendingSource  = null;   // mousedown candidate (promotes to source past threshold)
+  var pendingX = 0, pendingY = 0;
+  var dragClone = null;        // floating ghost element that follows the cursor
+  var dragHoverCard = null;    // current DROP_OK card under the cursor
+  var justDragged = false;     // guards the click handler right after a drop
+  var DRAG_THRESHOLD = 5;      // px of movement before a press becomes a drag
+
+  /** Resolve the photo card from an event. */
   function cardFromEvent(e) {
     return (e.target && e.target.closest) ? e.target.closest('.' + CARD_CLS) : null;
   }
@@ -743,7 +784,15 @@
     return el || card.parentElement;
   }
 
-  /** Highlight all valid empty-required targets in the same strip. */
+  /** Highlight valid drop targets in the same strip: any OTHER photo card
+   *  that is still EMPTY (no image yet) — required or not. The drag gesture
+   *  itself works on every row (confirmed via probe: dragstart fires, cards
+   *  are draggable); the original empty-AND-required rule meant that once a
+   *  row's required slots were filled there were no targets left to light
+   *  up, so the photo lifted but had nowhere to go and snapped back — which
+   *  reads as "can't pick it up." Lighting up every open slot lets you keep
+   *  assigning photos to the remaining type slots. (Filled slots stay
+   *  excluded so a drop can never silently overwrite an existing photo.) */
   function highlightTargets(strip, sourceId) {
     if (!strip) return;
     var cards = strip.querySelectorAll('.' + CARD_CLS);
@@ -751,7 +800,6 @@
       var c = cards[i];
       if (c.getAttribute('data-photo-id') === sourceId) continue;
       if (c.getAttribute('data-photo-has-image') === 'true') continue;
-      if (c.getAttribute('data-photo-required') !== 'true') continue;
       c.classList.add(DROP_OK_CLS);
     }
   }
@@ -764,96 +812,127 @@
     }
   }
 
-  function handleDragStart(e) {
-    var card = cardFromEvent(e);
-    // Only photo cards that actually carry an image are drag sources.
-    if (!card || card.getAttribute('data-photo-has-image') !== 'true') return;
+  /** Build the floating ghost that follows the cursor during a drag. */
+  function makeClone(card) {
+    var clone = document.createElement('div');
+    clone.className = 'scw-photo-drag-clone';
+    var img = card.querySelector('img');
+    if (img) {
+      var ci = document.createElement('img');
+      ci.src = img.src;
+      clone.appendChild(ci);
+    }
+    document.body.appendChild(clone);
+    return clone;
+  }
+
+  function positionClone(x, y) {
+    if (dragClone) { dragClone.style.left = x + 'px'; dragClone.style.top = y + 'px'; }
+  }
+
+  /** The DROP_OK card under the cursor (clone temporarily hidden so it
+   *  doesn't shadow elementFromPoint). Returns null if none. */
+  function targetUnder(x, y) {
+    var prev = dragClone ? dragClone.style.display : null;
+    if (dragClone) dragClone.style.display = 'none';
+    var el = document.elementFromPoint(x, y);
+    if (dragClone) dragClone.style.display = prev || '';
+    var card = (el && el.closest) ? el.closest('.' + CARD_CLS) : null;
+    return (card && card.classList.contains(DROP_OK_CLS)) ? card : null;
+  }
+
+  function startDrag(card, x, y) {
     dragSourceCard = card;
     card.classList.add(DRAG_SRC_CLS);
-    e.dataTransfer.effectAllowed = 'copy';
-    e.dataTransfer.setData('text/plain', card.getAttribute('data-photo-id'));
-
+    dragClone = makeClone(card);
+    positionClone(x, y);
     var strip = getStrip(card);
     if (strip) highlightTargets(strip, card.getAttribute('data-photo-id'));
+    document.body.classList.add('scw-photo-dragging');
   }
 
-  function handleDragEnd() {
-    if (dragSourceCard) dragSourceCard.classList.remove(DRAG_SRC_CLS);
+  /** Tear down the drag. If dropTarget is a valid slot, fire the confirm. */
+  function endDrag(dropTarget) {
+    if (dragClone && dragClone.parentNode) dragClone.parentNode.removeChild(dragClone);
+    dragClone = null;
+    if (dragHoverCard) { dragHoverCard.classList.remove(DROP_HOVER_CLS); dragHoverCard = null; }
+    var src = dragSourceCard;
+    if (src) src.classList.remove(DRAG_SRC_CLS);
     clearHighlights();
+    document.body.classList.remove('scw-photo-dragging');
     dragSourceCard = null;
+
+    if (dropTarget && src) {
+      var detail = {
+        sourceRecordId:  src.getAttribute('data-photo-id'),
+        sourcePhotoType: src.getAttribute('data-photo-type') || '',
+        sourceRequired:  src.getAttribute('data-photo-required') === 'true',
+        sourceNotes:     src.getAttribute('data-photo-notes') || '',
+        targetRecordId:  dropTarget.getAttribute('data-photo-id'),
+        targetPhotoType: dropTarget.getAttribute('data-photo-type') || 'this slot',
+        targetRequired:  dropTarget.getAttribute('data-photo-required') === 'true',
+        targetNotes:     dropTarget.getAttribute('data-photo-notes') || '',
+        surveyRequestId: getSurveyRequestId()
+      };
+      showConfirmation(dropTarget, detail);
+    }
   }
 
-  function handleDragOver(e) {
-    if (!dragSourceCard) return;
+  function onPhotoMouseDown(e) {
+    if (e.button !== 0) return;                       // left button only
     var card = cardFromEvent(e);
-    if (!card || !card.classList.contains(DROP_OK_CLS)) return;
-    e.preventDefault();
-    e.dataTransfer.dropEffect = 'copy';
+    if (!card || card.getAttribute('data-photo-has-image') !== 'true') return;
+    pendingSource = card;
+    pendingX = e.clientX;
+    pendingY = e.clientY;
   }
 
-  function handleDragEnter(e) {
-    if (!dragSourceCard) return;
-    var card = cardFromEvent(e);
-    if (!card || !card.classList.contains(DROP_OK_CLS)) return;
-    e.preventDefault();
-    card.classList.add(DROP_HOVER_CLS);
+  function onPhotoMouseMove(e) {
+    if (dragSourceCard) {
+      positionClone(e.clientX, e.clientY);
+      var t = targetUnder(e.clientX, e.clientY);
+      if (t !== dragHoverCard) {
+        if (dragHoverCard) dragHoverCard.classList.remove(DROP_HOVER_CLS);
+        dragHoverCard = t;
+        if (dragHoverCard) dragHoverCard.classList.add(DROP_HOVER_CLS);
+      }
+      e.preventDefault();                             // suppress text selection
+      return;
+    }
+    if (pendingSource) {
+      var dx = e.clientX - pendingX, dy = e.clientY - pendingY;
+      if (dx * dx + dy * dy >= DRAG_THRESHOLD * DRAG_THRESHOLD) {
+        startDrag(pendingSource, e.clientX, e.clientY);
+        pendingSource = null;
+      }
+    }
   }
 
-  function handleDragLeave(e) {
-    var card = cardFromEvent(e);
-    if (!card) return;
-    // Only remove hover if actually leaving the card (not entering a child)
-    if (card.contains(e.relatedTarget)) return;
-    card.classList.remove(DROP_HOVER_CLS);
+  function onPhotoMouseUp(e) {
+    if (dragSourceCard) {
+      var t = targetUnder(e.clientX, e.clientY);
+      // Block the click that follows a drag so we don't navigate to edit.
+      justDragged = true;
+      setTimeout(function () { justDragged = false; }, 0);
+      endDrag(t);
+      e.preventDefault();
+    }
+    pendingSource = null;
   }
 
-  function handleDrop(e) {
-    var targetCard = cardFromEvent(e);
-    if (!targetCard || !targetCard.classList.contains(DROP_OK_CLS)) return;
-    e.preventDefault();
-    if (!dragSourceCard) return;
-
-    var sourceId = dragSourceCard.getAttribute('data-photo-id');
-    var sourceType = dragSourceCard.getAttribute('data-photo-type') || '';
-    var targetId = targetCard.getAttribute('data-photo-id');
-    var targetType = targetCard.getAttribute('data-photo-type') || 'this slot';
-
-    clearHighlights();
-    if (dragSourceCard) dragSourceCard.classList.remove(DRAG_SRC_CLS);
-
-    // Build metadata payload — no mutation assumptions
-    var sourceRequired = dragSourceCard.getAttribute('data-photo-required') === 'true';
-    var sourceNotes = dragSourceCard.getAttribute('data-photo-notes') || '';
-    var targetRequired = targetCard.getAttribute('data-photo-required') === 'true';
-    var targetNotes = targetCard.getAttribute('data-photo-notes') || '';
-    var detail = {
-      sourceRecordId: sourceId,
-      sourcePhotoType: sourceType,
-      sourceRequired: sourceRequired,
-      sourceNotes: sourceNotes,
-      targetRecordId: targetId,
-      targetPhotoType: targetType,
-      targetRequired: targetRequired,
-      targetNotes: targetNotes,
-      surveyRequestId: getSurveyRequestId()
-    };
-
-    // Show confirmation overlay on the target card
-    showConfirmation(targetCard, detail);
+  function onPhotoKeyDown(e) {
+    if (e.key === 'Escape' && dragSourceCard) endDrag(null);
   }
 
-  // Delegated drag wiring — bound once on document so it works regardless
-  // of where a photo card lives (e.g. a wsTr moved into the bid-review
-  // expand panel) or how often the strip is rebuilt. Cards still opt in as
-  // drag sources via draggable="true" (set in buildStrip).
+  // Pointer wiring — bound once on document so it works regardless of where
+  // a photo card lives (e.g. a wsTr moved into the bid-review expand panel)
+  // or how often the strip is rebuilt.
   if (!document.documentElement.hasAttribute('data-scw-photo-drag-bound')) {
     document.documentElement.setAttribute('data-scw-photo-drag-bound', '1');
-    document.addEventListener('dragstart', handleDragStart, true);
-    document.addEventListener('dragend',   handleDragEnd,   true);
-    document.addEventListener('dragover',  handleDragOver);
-    document.addEventListener('dragenter', handleDragEnter);
-    document.addEventListener('dragleave', handleDragLeave);
-    document.addEventListener('drop',      handleDrop);
+    document.addEventListener('mousedown', onPhotoMouseDown, true);
+    document.addEventListener('mousemove', onPhotoMouseMove, true);
+    document.addEventListener('mouseup',   onPhotoMouseUp,   true);
+    document.addEventListener('keydown',   onPhotoKeyDown,   true);
   }
 
   /** Show a confirmation overlay on the target card before dispatching. */
@@ -1252,15 +1331,16 @@
           card.setAttribute('data-photo-notes', photo.notes || '');
 
           if (photo.imgUrl) {
-            // Photo with image — draggable source (drag handlers are
-            // delegated on document; the card just opts in via draggable).
-            card.setAttribute('draggable', 'true');
+            // Photo with image — a POINTER-drag source (the pointer engine
+            // above tracks mousedown/move/up on .scw-inline-photo-card). We
+            // explicitly DISABLE native dragging on both the card and the
+            // image so the browser's flaky native drag can't hijack the
+            // pointer gesture mid-drag.
+            card.setAttribute('draggable', 'false');
 
             var imgEl = document.createElement('img');
             imgEl.className = IMG_CLS;
-            // Explicit drag source — the attribute also overrides Knack's
-            // `-webkit-user-drag: none` on images in browsers that honor it.
-            imgEl.setAttribute('draggable', 'true');
+            imgEl.setAttribute('draggable', 'false');
             imgEl.src = photo.imgUrl;
             imgEl.alt = labelText
               ? (photo.type || 'Photo') + ' for ' + labelText
@@ -1300,13 +1380,13 @@
               buildDropUI(card).setPending();
             }
 
-            // Drop helper text (hidden until drag starts)
-            if (photo.required && !photo.completed) {
-              var helper = document.createElement('div');
-              helper.className = 'scw-drop-helper';
-              helper.textContent = 'Drop to use for ' + (photo.type || 'this slot');
-              card.appendChild(helper);
-            }
+            // Drop helper text (hidden until this card becomes a drag
+            // target). Added for every empty slot now — any open slot is a
+            // valid target, not just required ones.
+            var helper = document.createElement('div');
+            helper.className = 'scw-drop-helper';
+            helper.textContent = 'Drop to use for ' + (photo.type || 'this slot');
+            card.appendChild(helper);
 
             // Drop-target events are delegated on document (see the
             // one-time binding near the drag handlers) so a moved /
@@ -1386,6 +1466,9 @@
   for (var tv = 0; tv < TARGET_VIEWS.length; tv++) TARGET_VIEW_SET[TARGET_VIEWS[tv]] = true;
 
   document.addEventListener('click', function (e) {
+    // A pointer drag ends with a click on the source card — swallow it so
+    // dropping a photo doesn't also navigate to its edit page.
+    if (justDragged) { justDragged = false; return; }
     var target = e.target && e.target.closest && e.target.closest('[data-scw-photo-action]');
     if (!target) return;
     var viewEl = target.closest('.kn-view');

@@ -160,6 +160,7 @@
       displayLabel:    'field_1950',   // display label
       existCabling:    'field_2461',   // existing cabling (same as SOW side)
       connDevice:      'field_1957',   // Connected Devices (SOW side)
+      connTo:          'field_2197',   // Connected To (SOW side — camera/reader)
       mapConn:         'field_2231',   // FLAG_map camera or reader connections (SOW side)
       plenum:          'field_1983',   // BOOL_plenum (SOW side)
       exterior:        'field_1984',   // BOOL_exterior (SOW side)

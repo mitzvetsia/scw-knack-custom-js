@@ -65,6 +65,7 @@
     discontinued:   'field_2912',   // product discontinued
     accAllowMultiQty:'field_2230',  // accessory allows multiple qty
     accessoryMatch: 'field_2244',   // accessory match check (No/false = wrong)
+    surveyItemCount:'field_2586',   // # associated survey line items; >0 → delete blocked (v1 parity)
     // connections
     connectedDevice:  'field_2197', // cam/reader Connected Device
     connectedDevices: 'field_1957', // Connected Devices (multi)
@@ -195,8 +196,9 @@
       // sales card swaps the build-SOW money columns (Sub Bid / +Hrs /
       // +Mat / Fee) for a single read-only Total (field_2269), with
       // Retail Price / Discount % / Applied Discount in the detail panel
-      // (moneyMode:'sales', handled in card.js + render.js). Mounts in
-      // PARALLEL below v1 for now; flip to hiding v1 once verified.
+      // (moneyMode:'sales', handled in card.js + render.js). v1 is
+      // hidden on this view (styles.js cutover CSS + device-worksheet
+      // V2_TAKEOVER bail) — v2 is the primary surface.
       ,{
         enabled:          true,
         sourceViewKey:    'view_3586',
@@ -206,6 +208,10 @@
         mdfLabelField:    'field_1642',
         moneyMode:        'sales',
         hideSow:          true,          // no SOW column / pills / sort on this page
+        // "+ Add to SOW" toolbar button clicks the add link inside this
+        // Knack menu view (same link v1 used). Without it the button
+        // falls back to a page-wide link-text scan.
+        addSowMenuView:   'view_3450',
         fields: {
           retailPrice:     'field_1960', // PRODUCT STORED_price (read-only)
           lineDiscPct:     'field_2261', // INPUT line discount % (editable)

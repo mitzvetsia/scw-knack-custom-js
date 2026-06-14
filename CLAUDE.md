@@ -293,6 +293,31 @@ $('#view_XXXX-field_YYYY').val(newValue).trigger('change');
 
 The `change` event is the key — without it, Knack reads stale/empty data from its internal model on form submit, even though the UI looks correct.
 
+### Picker conventions — record pickers ALWAYS group by MDF/IDF + canonical sort
+
+**Any custom picker that serves SOW line-item RECORDS MUST group its options by
+MDF/IDF and sort them in the SAME order as the worksheet devices.** This is a
+hard UI/UX consistency rule — wherever a user picks a record (parent, connected
+devices, connected to, …) they should see the same grouping and order as the
+grid. Don't hand-roll a per-picker `groupBy`/sort.
+
+This is already the **default** in `worksheet-v2/picker.js` (`ns.picker.open`):
+- **Grouping**: with no `groupBy`, the picker groups by `field_1946` (MDF/IDF)
+  via the canonical `groupByMdfIdf`. No-MDF records sink to a "No MDF / IDF"
+  group at the bottom.
+- **Sort**: every group's items use the canonical comparator — `field_2218`
+  (proposal-bucket sortOrder) asc → display label (natural/numeric) → record id.
+  Identical to the worksheet's default device order (`worksheet-v2/groups.js`).
+
+So **a new record picker needs to do nothing** — call `ns.picker.open` *without*
+a `groupBy` and it gets the canonical grouping + sort for free. If you need the
+grouping fn explicitly, it's exported as `ns.picker.groupByMdfIdf`.
+
+**Non-record pickers** (products, MDF/IDF locations, prefixes, SOWs — candidates
+with no `field_1946`) collapse to a single flat list automatically, or opt out
+explicitly with `groupBy: false`. The canonical sort still applies (it falls
+back to label when `field_2218` is absent), so those lists stay alphabetical.
+
 ### Warning Icons in Card Headers
 
 All warnings in device-worksheet card headers use the same pattern:
@@ -605,3 +630,36 @@ This is a **copy-paste-and-modify codebase, not a design space.** Every feature 
   - `field_2439` — **Subcontractor-visible** (Yes/No). Filter out records where this is No when the loader runs inside a subcontractor scene.
 - **How to scope**: cheapest path is to detect the scene class on `document.body` (e.g. `scene_1140` = sales build SOW vs. subcontractor scenes have their own ids) and union the right filter into the snippet's `filters=` query before the fetch. Internal/PM scenes get the unfiltered list.
 - **Why deferred**: we don't have the sales / subcontractor scene ids fully sorted yet, and the filter is dead weight on internal pages. Land the scene-id mapping in the same pass.
+
+### 12. De-fragilize the `field_1957` ↔ `field_2197` cascade — canonical side + read-only mirror + reconcile sweep (HIGH PRIORITY)
+- **Why this exists**: the Connected Devices (`field_1957`, parent NVR/switch → children) ↔ Connected To (`field_2197`, child → parent) cascade has been a recurring, *intermittent* source of "only SOME downstream devices get the reciprocal write" bugs (see git history: `e3cf88d`, `4b34e4e`, `50acdaa`, `9e89a6f`, `7c36e7c`, `2b9a816`, and the converging-verify fix `82d132d`). Each fix patched a different **symptom** (stale forward list, refetch race, remove-knocks-out-siblings, rate-limit tail) but never the **root**: it's a *denormalized bidirectional* relationship maintained **client-side over a rate-limited API with no transaction and no self-healing**, so dropped writes accumulate drift and the next edit's diff starts from a wrong baseline. The pile of defensive layers (pre-union + authoritative-ids + kept-repair + converging verify + concurrency queue) is the smell — five hopeful mechanisms instead of one correct one.
+- **Locked constraints (decided 2026-06-11)**:
+  - **The two-field split is a hard Knack limitation** — they MUST stay two separate fields. Collapsing into one auto-synced Knack connection is OFF the table, so the cascade has to exist.
+  - **No Make.** Server-side cascade via a Make scenario is rejected (too slow). The cascade stays **client-side**.
+- **Chosen direction**: **make `field_1957` (Connected Devices) the single canonical/editable side, and make `field_2197` (Connected To) strictly DERIVED + READ-ONLY.** This kills the bidirectional ambiguity (which copy is truth *this millisecond*) that's the actual root of the fragility — every edit flows one way (parent's `field_1957`), and `field_2197` is only ever computed from it.
+- **Plan**:
+  1. **Make `field_2197` non-editable in every UI surface.** In worksheet-v2, the cam/reader cards render it editable via `detailConnection(rec, viewKey, 'field_2197', 'Connected Device', …)` (`worksheet-v2/card.js` ~lines 1164/1259) → the generic `[data-scw-ws-v2-conn]` click handler (`worksheet-v2/init.js:809`) opens the picker. Render it as a plain read-only display value instead (drop the `data-scw-ws-v2-conn` hook so the handler skips it). Follow the repo's read-only convention: fully readable, **white background**, `pointer-events:none`, no graying/opacity. Audit v1 surfaces too (`device-worksheet.js`, `connection-picker.js`) for any inline `field_2197` edit and lock them the same way.
+  2. **Retire the inverse cascade.** Once `field_2197` is only ever written BY the cascade (guarded by `ownPuts`), the `-recip` handler in `mirror-connection-sync.js` (the "user edited a child's `field_2197` directly → move child + accessories to new parent's MDF" path) is dead — its only trigger was a user edit. Remove it (and re-home the MDF/accessory follow-on it did into the forward `field_1957` add-child path, which already sets the child's `GROUPING_FIELD`). Keep the `field_1946` MDF-move handler (`-mdf` / `maybeClearCrossMdfConnection`) — that's orthogonal.
+  3. **Add a client-side reconcile SWEEP (the self-healing piece that's missing today).** On `knack-view-render` of the MODEL_ONLY views, derive the correct `field_2197` for every child from the forward `field_1957_raw` map (truth = `field_1957`), diff against each child's actual `field_2197`, and queue idempotent repair PUTs for any mismatch through the existing `knackPutKeepalive` queue. This makes accumulated drift **self-correct on load** instead of compounding. Guards: skip while `SCW.mirrorConn.isCascadeInFlight()`, debounce, suppress own PUTs via `ownPuts`, and `console.warn` (don't auto-"fix") the genuinely-ambiguous case of one child claimed by two parents' `field_1957` (since `field_2197` is single-connection — that's an inconsistency in the canonical side itself).
+  4. **Then collapse the defensive layers into ONE op.** With a single editable side + the sweep, fold pre-union / kept-repair / converging-verify into one `reconcile(parentId, selectedIds)` that the picker calls and the sweep reuses. **Keep the concurrency-capped + retry queue** — that one is legitimately necessary (Knack's ~10 req/s silent-429 limit). Retire the rest.
+- **Interim state**: the converging-verify + unconditional kept-repair fix (`82d132d`) is the current safety net and **stays until this lands** — it makes the existing path converge, but it's still symptomatic. Don't remove it before steps 1–3 are in.
+- **Sibling to copy from**: `mirror-connection-sync.js` (`knackPutKeepalive` queue, `findRowsPointingTo`, `getModelRecords`) for the sweep; `worksheet-v2/card.js` read-only field rendering + the repo's locked-field convention (white bg / `pointer-events:none`) for step 1.
+- **Progress (2026-06-12)**: applied the same "the child's back-pointer is authoritative" principle to the *accessory* denormalized pair (`field_2464` child→parent ↔ `field_1958`/`field_2207` parent→children). worksheet-v2 mounting-hardware chips now read **only** each accessory's own `field_2464` (`worksheet-v2/card.js` `detailMountingHardware`), so a stale parent forward-list can neither hide an accessory (the "two same-product accessories, one shown" bug) nor ghost a re-parented one. The canonical-side steps 1–4 for `field_1957`/`field_2197` are **not** done yet. Backlog #1 finding #3 (clear the `field_1957`↔`field_2197` reciprocal on device delete) folds into this item.
+
+### 13. Proposal PDF too large — Make reads `html` (raw Site Maps) instead of `htmlPdf` (resized)
+- **Symptom**: published proposal PDFs are ~5× too big (observed 7.5 MB). The large images embed as full-size lossless PNG (`FlateDecode`) instead of resized JPEG (`DCTDecode`).
+- **Root cause (NOT a code regression, NOT insufficient downsampling)**: `buildPublishPayload` (`proposal-pdf-export.js:3957`) intentionally ships two HTML variants — `html` (snapshot-safe: **raw full-size** Site Map URLs, because the weserv proxy URL is stripped by Knack's `field_2680` rich-text sanitizer) and `htmlPdf` (the **resized** variant: weserv 2000px JPEG). The code comment states it outright: *"Make's PDF step should read `htmlPdf`. Until the Make scenario is pointed at `htmlPdf`, the PDF uses the raw (larger) images."* The May-25 snapshot/PDF split landed `htmlPdf`, but the Make scenario was never repointed.
+- **Fix (Make-side, not code)**: point the HTML→PDF generation module's HTML input at the payload's **`htmlPdf`** field instead of **`html`**. Leave the `field_2680` web-page write reading `html`. Expected drop: ~7.5 MB → ~1.4 MB.
+- **Optional code lever**: tighten `proxyResize: { w: 2000, q: 80 }` (`proposal-pdf-export.js:134`) if still too big after repointing.
+- **Confirmed 2026-06-12** by image-decoding a May-25 PDF (all DCTDecode/JPEG, 1.6 MB) vs a Jun-11 PDF (FlateDecode/PNG at 2400px wide — the proxy caps at 2000px, so the 2400px proves the proxy was bypassed = raw original embedded).
+
+### 14. Warning: hardware with a DEFAULT accessory but NO accessory child record
+- **Goal**: surface a warning (worksheet-v2 cards + bid-review-v2 comparison chips) when a line item's **product is configured with a default accessory** (default mounting hardware) but the line item has **zero accessory child records** (no record whose `field_2464` points back at it). Today the only accessory warning is "wrong accessory" (`bracket`, from the parent's `field_2244` match-check spans) — a device that should have a mount but has NONE attached is silent.
+- **Why deferred (2026-06-12)**: the "product → default accessory" config is **not client-side today**. The loaded views carry the line item's actual accessories (`field_2464` back-pointers) but nothing that says what the product *should* have by default — so detection needs a new data source first. Flagged as too complex to troubleshoot alongside the current work; parking it here.
+- **Detection shape**: per device row → resolve its product (`field_1949`/`field_2627`) → look up "does this product have default accessory config?" → if yes and no loaded record's `field_2464` points at the row, flag it.
+- **Data-source options for the product → default-accessory map**:
+  - Extend the Builder snippet pattern (`window.SCW.productBucketMap` in CLAUDE.md "Out-of-bundle Knack Builder snippets") with a `productDefaultAccessoryMap` — same paginated objects-API fetch, exposing product id → default-accessory product id(s). Cheapest, but adds cold-load weight.
+  - Or a hidden Knack view exposing the Products grid with the default-accessory connection column, scraped like other MODEL_ONLY views.
+  - `worksheet-v2/prefill-accessory-parent.js` and `bulk-add-mounting-box.js` are the closest existing consumers of accessory-default behavior — check what they key off before inventing a new source.
+- **Where to wire it**: `worksheet-v2/warnings.js` — add a 4th TYPE (e.g. `noAccessory`) alongside `photos`/`disconnected`/`bracket`; the analyzer already walks the loaded records, and bid-review-v2's chips (`bid-review-v2/warnings.js`) reuse the same TYPES/ICONS, so both surfaces light up from one implementation. Follow the per-type color convention (photos=indigo, disconnected=rose, bracket=amber — pick a distinct 4th).
+- **Watch out**: only flag buckets where a default accessory is meaningful (cam/reader primarily); services/assumptions/accessory rows themselves must be exempt. And a product with default accessory config but the user *deliberately* removed the mount may need an opt-out, or the warning becomes noise — consider counting it only when the row has NEVER had an accessory vs. has one deleted (probably not distinguishable client-side; accept the noise or keep it informational-severity).

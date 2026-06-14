@@ -63,7 +63,10 @@
     /* ── Body / card list ───────────────────────────────────── */
     '.scw-ws-v2-body {',
     '  padding: 0 !important;',
-    '  max-height: 680px !important;',
+    /* Grow the scroll body to the screen: viewport height minus the chrome
+       above it (toolbar + banner + SOW pills + page header), with the old
+       680px as the FLOOR so short laptops never get less than before. */
+    '  max-height: max(680px, calc(100vh - 180px)) !important;',
     '  overflow: auto !important;',
     '  display: block !important;',
     '  width: 100% !important;',
@@ -126,11 +129,16 @@
        +Hrs / +Mat / Fee stacks and no SOW column — a single read-only Total
        and a wider Description. Sales rows + the matching column header get a
        dedicated 8-track grid so nothing is squished. */
+    /* NOTE the doubled class on the header selector: the base
+       .scw-ws-v2-col-header rule below declares the 12-track build-SOW
+       template with !important and appears LATER in this sheet — equal
+       specificity would let it win and squish the sales header into the
+       first 8 narrow tracks (mis-aligning every label). */
     '.scw-ws-v2-card--sales .scw-ws-v2-row--default,',
     '.scw-ws-v2-card--sales .scw-ws-v2-row--cam,',
     '.scw-ws-v2-card--sales .scw-ws-v2-row--services,',
     '.scw-ws-v2-card--sales .scw-ws-v2-row--assumptions,',
-    '.scw-ws-v2-col-header--sales {',
+    '.scw-ws-v2-col-header.scw-ws-v2-col-header--sales {',
     '  grid-template-columns:',
     '    20px                  /* chevron */',
     '    64px                  /* label */',
@@ -178,6 +186,24 @@
        except Product / Custom Disc % / SCW Notes. JS sets pointer-events;
        here we just drop the "edit" affordance + hover cue. */
     '.scw-ws-v2-locked-ctl { cursor: default !important; }',
+    /* Lock indicator reusing the trash slot on a locked row — icon-only,
+       so it occupies the same width the delete button would and never
+       shifts the row\'s columns. Slate (informational, not a warning).
+       The full sentence lives in the detail-panel banner below. */
+    '.scw-ws-v2-lock-cell {',
+    '  color: #94a3b8 !important;',
+    '  cursor: help !important;',
+    '  pointer-events: auto !important;',
+    '}',
+    /* Full-width locked explanation inside the expanded detail panel. */
+    '.scw-ws-v2-locked-note {',
+    '  display: flex; align-items: center; gap: 7px;',
+    '  margin: 0 0 10px; padding: 7px 11px;',
+    '  background: #f1f5f9; border: 1px solid #e2e8f0;',
+    '  border-radius: 8px; color: #475569;',
+    '  font: 500 12px/1.4 system-ui, -apple-system, sans-serif;',
+    '}',
+    '.scw-ws-v2-locked-note svg { flex: 0 0 auto; color: #64748b; }',
     '.scw-ws-v2-card--locked .scw-ws-v2-conn-btn-edit { display: none !important; }',
     /* Locked inputs (readOnly, non-whitelisted) read as plain text — no box,
        no border — so the field clearly looks non-editable. The whitelisted
@@ -1025,13 +1051,52 @@
     '  background: transparent !important;',
     '  border: 0 !important;',
     '  color: #94a3b8 !important;',
-    '  font: 700 14px/1 system-ui, sans-serif !important;',
     '  cursor: pointer !important;',
     '  border-radius: 8px !important;',
     '  transition: background 100ms ease, color 100ms ease !important;',
     '}',
+    /* Trash-can glyph (matches the per-row trash) — sized down for the chip. */
+    '.scw-ws-v2-mh-del svg { width: 12px !important; height: 12px !important; display: block; }',
     '.scw-ws-v2-mh-del:hover {',
     '  background: #fee2e2 !important; color: #b91c1c !important;',
+    '}',
+    /* Unlink (clear parent, keep record) — same chrome as the trash but with
+       an amber hover so it reads as "detach", not "destroy". */
+    '.scw-ws-v2-mh-unlink {',
+    '  display: inline-flex; align-items: center; justify-content: center;',
+    '  width: 16px !important; height: 16px !important;',
+    '  padding: 0 !important;',
+    '  background: transparent !important;',
+    '  border: 0 !important;',
+    '  color: #94a3b8 !important;',
+    '  cursor: pointer !important;',
+    '  border-radius: 8px !important;',
+    '  transition: background 100ms ease, color 100ms ease !important;',
+    '}',
+    '.scw-ws-v2-mh-unlink svg { width: 12px !important; height: 12px !important; display: block; }',
+    '.scw-ws-v2-mh-unlink:hover {',
+    '  background: #fef3c7 !important; color: #b45309 !important;',
+    '}',
+    /* Mid-delete chip state — dim + strike the label and swap the ×/qty
+       stepper for a spinner while the delete settles. Re-applied on every
+       source-view re-render via card.js + ns.pendingDeletes so it can\'t
+       flicker back to normal until the record is actually gone. Reuses the
+       existing scw-ws-v2-spin keyframe defined further down. */
+    '.scw-ws-v2-mh-chip-wrap--deleting {',
+    '  opacity: 0.6 !important;',
+    '  pointer-events: none !important;',
+    '}',
+    '.scw-ws-v2-mh-chip-wrap--deleting .scw-ws-v2-mh-chip {',
+    '  color: #94a3b8 !important; text-decoration: line-through !important;',
+    '}',
+    '.scw-ws-v2-mh-spin {',
+    '  display: inline-block !important;',
+    '  width: 11px !important; height: 11px !important;',
+    '  margin-left: 4px !important; flex: 0 0 auto !important;',
+    '  border: 2px solid #cbd5e1 !important;',
+    '  border-top-color: #07467c !important;',
+    '  border-radius: 50% !important;',
+    '  animation: scw-ws-v2-spin 700ms linear infinite !important;',
     '}',
     /* Attached-to caption above the row for promoted accessories. Tight,
        muted metadata line that hugs the row — "↳ <parent>" with the tick
@@ -1077,6 +1142,13 @@
        isn\'t injected (cleaner failure mode than visible v1). */
     '.scw-ktl-accordion:has(#view_3610) { display: none !important; }',
     '#view_3610 { display: none !important; }',
+    /* Same cutover for the sales page: hide v1\'s view_3586 table +
+       accordion shell now that v2 is the primary surface there. The
+       view keeps loading (v2\'s data source + hoisted native filters);
+       only its rendered area is hidden. Reverse by removing these two
+       rules + the view_3586 entry in device-worksheet\'s V2 kill-switch. */
+    '.scw-ktl-accordion:has(#view_3586) { display: none !important; }',
+    '#view_3586 { display: none !important; }',
 
     '.scw-ws-v2-mh-step {',
     '  width: 16px !important; height: 18px !important;',
@@ -1128,6 +1200,14 @@
     '.scw-ws-v2-trash:hover, .scw-ws-v2-kebab:hover {',
     '  background: #fee2e2 !important; color: #b91c1c !important;',
     '}',
+    /* Survey-derived rows: delete is blocked (v1 parity). Hide the trash but
+       keep its box so the grid column stays aligned, and make it inert. */
+    '.scw-ws-v2-trash--blocked {',
+    '  visibility: hidden !important;',
+    '  pointer-events: none !important;',
+    '  cursor: default !important;',
+    '}',
+    '.scw-ws-v2-card:hover .scw-ws-v2-trash--blocked { color: #cbd5e1 !important; }',
     /* Global popover menu rendered once and positioned on each open */
     '.scw-ws-v2-kebab-menu {',
     '  position: fixed !important;',
@@ -1708,6 +1788,30 @@
     '  min-height: 56px !important; height: 56px !important; width: 56px !important;',
     '}',
     '.scw-ws-v2-photo-add svg { display: block !important; }',
+
+    /* While an auto-confirmed delete is settling, keep Knack's confirm
+       dialog invisible so it can't blink on screen for a frame before the
+       auto-confirm clicks Yes (init.js autoConfirmKnackDelete). */
+    'html[data-scw-suppress-kn-modal] .kn-modal-bg,',
+    'html[data-scw-suppress-kn-modal] .kn-modal {',
+    '  opacity: 0 !important; pointer-events: none !important;',
+    '}',
+
+    /* ── Photo delete (OPS surfaces only — see photos.js PHOTO_DELETE_VIEWS).
+       Small trash overlay, top-right of the thumb, revealed on hover. ── */
+    '.scw-ws-v2-photo-del {',
+    '  position: absolute; top: 3px; right: 3px; z-index: 3;',
+    '  display: inline-flex; align-items: center; justify-content: center;',
+    '  width: 20px; height: 20px; padding: 0;',
+    '  border: 0; border-radius: 50%;',
+    '  background: rgba(255,255,255,0.92); color: #64748b;',
+    '  box-shadow: 0 1px 3px rgba(2,6,23,0.35);',
+    '  cursor: pointer; opacity: 0;',
+    '  transition: opacity 100ms ease, background 100ms ease, color 100ms ease;',
+    '}',
+    '.scw-ws-v2-photo-card:hover .scw-ws-v2-photo-del { opacity: 1; }',
+    '.scw-ws-v2-photo-del:hover { background: #fee2e2; color: #b91c1c; }',
+    '.scw-ws-v2-photo-del svg { display: block; }',
 
     /* ── Photo drag-to-fill-required-slot (v1 parity) ────────── */
     '.scw-ws-v2-photo-card { position: relative !important; }',

@@ -1075,11 +1075,16 @@
     // --- 3. Diff ---------------------------------------------------------
     var added = newChildIds.filter(function (id) { return !currentChildSet[id]; });
     var removed = currentChildIds.filter(function (id) { return !newChildSet[id]; });
+    // KEPT = still-selected children (in both new and current). These are
+    // NEITHER added NOR removed, so the diff never PUTs them — but a removal
+    // can knock their CONNECTIONS_FIELD out from under them (see fireKeptRepairs).
+    var kept = newChildIds.filter(function (id) { return currentChildSet[id]; });
 
     log('  diff: new=' + newChildIds.length +
         ' cur=' + currentChildIds.length +
         ' added=' + JSON.stringify(added) +
-        ' removed=' + JSON.stringify(removed));
+        ' removed=' + JSON.stringify(removed) +
+        ' kept=' + kept.length);
 
     if (!added.length && !removed.length) {
       log('  no changes — done');
@@ -1149,10 +1154,175 @@
 
     var totalPuts = added.length + removed.length + accessoryPuts.length;
     var putsRemaining = totalPuts;
+
+    // Batch guard: hold one extra cascade-in-flight token for the whole
+    // operation so the counter can't bottom out (and fire scw-cascade-idle /
+    // hide the toast) BETWEEN phase 1 and the kept-children repair pass. Without
+    // it, the last phase-1 PUT's cascadeEnd would emit scw-cascade-idle early,
+    // data.js would refetch the still-cleared state, and the cards would flash
+    // "disconnected" before the repair lands. Released in finishWithFetch.
+    var batchGuardHeld = false;
+    if (totalPuts > 0) { batchGuardHeld = true; cascadeBegin(); }
+
     function onPutFinished() {
       putsRemaining--;
       if (putsRemaining > 0) return;
-      log('all ' + totalPuts + ' PUTs settled — firing real refresh (model.fetch)');
+      // Phase 1 (add/remove/accessory) done. Before the final fetch, fire a
+      // repair pass over the KEPT children, then resync from the server.
+      fireKeptRepairs(finishWithFetch);
+    }
+
+    // ── Repair pass — re-assert CONNECTIONS_FIELD on still-connected children.
+    // ----------------------------------------------------------------------
+    // The add/remove diff NEVER touches a kept child (it's in both the new and
+    // current sets). That's normally fine — but CONNECTIONS_FIELD (field_2197)
+    // and TRIGGER_FIELD (field_1957) are SEPARATE Knack fields, and clearing the
+    // removed child's CONNECTIONS_FIELD ([] PUT) trips a server-side reciprocal
+    // recompute (Knack connection rule / Make webhook) that can knock the kept
+    // siblings' CONNECTIONS_FIELD out too — so a "remove one" reads back as
+    // "ALL former members disconnected". An ADD fires no [] clear, so it never
+    // triggers this and never needs repair — which is why adding always worked.
+    //
+    // This mirrors the v1 connection-picker's Stage-2 repair PUTs
+    // (fireRepairPuts), which is exactly why the v1 edit path never exhibited
+    // the bug. We fire it ONLY after a removal (kept children are only at risk
+    // then) and ONLY after Phase 1 settles, so the re-assert lands AFTER the
+    // removal-triggered recompute and wins. Scoped to MODEL_ONLY so the v1
+    // DOM-mode views (already covered by the picker's own Stage 2) don't
+    // double-write.
+    function fireKeptRepairs(onAllDone) {
+      // Re-assert CONNECTIONS_FIELD = [R] on every KEPT child — one the diff
+      // judged already-connected, so it fired NO add PUT. This now runs on
+      // EVERY edit with kept children, not just after a removal.
+      //
+      // The old `removed.length` guard assumed kept children are only at risk
+      // when a sibling's []-clear trips a server-side recompute. But they're
+      // ALSO at risk whenever the model MISJUDGED them as connected: a prior
+      // partial cascade can leave field_1957 (parent) and field_2197 (child)
+      // diverged, so the child reads as "currently pointing at R" in the model
+      // while the server actually has it blank. The diff then files it under
+      // `kept`, no add PUT fires, and it silently stays disconnected — exactly
+      // the "only SOME downstream connect" bug. field_2197=[R] is idempotent
+      // when already correct, so re-asserting unconditionally is safe and
+      // closes that gap. MODEL_ONLY-scoped (v1 DOM views are covered by the
+      // picker's own Stage-2 repair).
+      if (!(MODEL_ONLY && kept.length)) { onAllDone(); return; }
+      log('  repair: re-asserting ' + CONNECTIONS_FIELD + ' on ' + kept.length +
+          ' kept child(ren)' + (removed.length ? ' after removal of ' + removed.length : ''));
+      var remaining = kept.length;
+      function tick() { remaining--; if (remaining <= 0) onAllDone(); }
+      for (var i = 0; i < kept.length; i++) {
+        var body = {};
+        if (rGroupId) body[GROUPING_FIELD] = [rGroupId];
+        body[CONNECTIONS_FIELD] = [R.id];
+        firePut(kept[i], body, tick);
+      }
+    }
+
+    function settleDone() {
+      // Release the batch guard LAST — this cascadeEnd takes the in-flight
+      // counter to 0, firing scw-cascade-idle (→ data.js refetch) once, now
+      // that every PUT (incl. the verify pass) has landed.
+      if (batchGuardHeld) { batchGuardHeld = false; cascadeEnd(); }
+      // Signal upstream waiters (e.g. the connection picker keeping its modal
+      // open until everything settled).
+      done();
+    }
+
+    // ── Post-fetch verify pass (safety net) ──────────────────────────────
+    // After the refetch, confirm every authoritatively-selected child REALLY
+    // points back at R via CONNECTIONS_FIELD. Re-assert any that don't —
+    // catches a child PUT that failed/raced or that a server-side reciprocal
+    // recompute cleared after the fact (the "only 1/2 downstream connected,
+    // and which one flips" report). Reads the freshly-fetched model so it
+    // reflects real server state; runs at most once (its own re-PUTs don't
+    // re-enter). MODEL_ONLY-scoped: the DOM views' child models are
+    // unreliable (findRowsPointingTo scrapes the DOM there for that reason).
+    // CONVERGING verify-and-repair. After each model.fetch we re-read the
+    // freshly-fetched (server-truth) model and re-assert CONNECTIONS_FIELD=[R]
+    // on any authoritatively-selected child that STILL doesn't point back,
+    // then refetch and re-check — up to MAX_VERIFY_PASSES times.
+    //
+    // A single-shot verify (the prior behaviour) leaves two ways for a child
+    // to stay disconnected: (a) its re-assert PUT lost a rate-limit race and
+    // there was no second attempt, or (b) a late server-side recompute landed
+    // just AFTER the one re-check and re-blanked it. Looping with a growing
+    // settle delay catches both: each pass re-PUTs whatever the latest fetch
+    // still shows blank, so the writes converge on "every selected child points
+    // back". In MODEL_ONLY the read reflects server state (we never optimistically
+    // patch children's field_2197), so a blank read is real — and even if a PUT
+    // lands but the read lags, the next pass simply re-PUTs (idempotent). If we
+    // exhaust the passes we log loudly with the exact ids so a live repro is
+    // conclusive rather than silent.
+    var MAX_VERIFY_PASSES = 4;
+    function verifyForwardChildren(onDone) {
+      if (!MODEL_ONLY || !newChildIds || !newChildIds.length) { onDone(); return; }
+
+      function collectMissing() {
+        var miss = [];
+        for (var i = 0; i < newChildIds.length; i++) {
+          var cid = newChildIds[i];
+          var attrs = getModelAttrs(cid);
+          var raw = attrs && attrs[CONNECTIONS_FIELD + '_raw'];
+          var ok = false;
+          if (Array.isArray(raw)) {
+            for (var j = 0; j < raw.length; j++) {
+              if (raw[j] && raw[j].id === R.id) { ok = true; break; }
+            }
+          }
+          if (!ok) miss.push(cid);
+        }
+        return miss;
+      }
+
+      function refetchThen(cb) {
+        try {
+          var v2 = Knack.views && Knack.views[VIEW_ID];
+          if (v2 && v2.model && typeof v2.model.fetch === 'function') {
+            var p2 = v2.model.fetch();
+            if (p2 && typeof p2.always === 'function') { p2.always(cb); return; }
+            if (p2 && typeof p2.then === 'function') { p2.then(cb, cb); return; }
+          }
+        } catch (e) { /* ignore */ }
+        setTimeout(cb, 400);
+      }
+
+      function pass(n) {
+        var missing = collectMissing();
+        if (!missing.length) { onDone(); return; }
+        if (n >= MAX_VERIFY_PASSES) {
+          // Exhausted — surface exactly which children never took the write so
+          // a live repro pinpoints the residual instead of failing silently.
+          console.warn(LOG_PREFIX, 'verify GAVE UP after ' + n + ' pass(es) — ' +
+            missing.length + ' selected child(ren) still NOT pointing at parent ' +
+            R.id + ':', missing.slice());
+          onDone();
+          return;
+        }
+        log('  verify pass ' + (n + 1) + '/' + MAX_VERIFY_PASSES + ': ' +
+            missing.length + ' child(ren) not pointing back — re-asserting', missing);
+        var remaining = missing.length;
+        function tick() {
+          remaining--;
+          if (remaining > 0) return;
+          // Let any late server-side recompute settle (growing delay), then
+          // refetch + re-check on the next pass.
+          setTimeout(function () {
+            refetchThen(function () { pass(n + 1); });
+          }, 250 + n * 250);
+        }
+        for (var k = 0; k < missing.length; k++) {
+          var body = {};
+          if (rGroupId) body[GROUPING_FIELD] = [rGroupId];
+          body[CONNECTIONS_FIELD] = [R.id];
+          firePut(missing[k], body, tick);
+        }
+      }
+      pass(0);
+    }
+
+    function finishWithFetch() {
+      log('all PUTs settled — firing real refresh (model.fetch)');
       // Clear plan + watchdog FIRST so the incoming render isn't fought
       // by our replay machinery.
       pendingPlan = null;
@@ -1164,19 +1334,19 @@
           window.SCW.deviceWorksheet.captureState();
         }
       } catch (e) { /* best-effort */ }
-      try {
-        var v = Knack.views && Knack.views[VIEW_ID];
-        if (v && v.model && typeof v.model.fetch === 'function') {
-          v.model.fetch();
-        }
-      } catch (e) {
-        console.warn(LOG_PREFIX, 'final model.fetch threw', e);
-      }
-      // Signal upstream waiters (e.g. the connection picker keeping
-      // its modal open until everything settled). Fired AFTER model.
-      // fetch is dispatched so any "save complete" UI we trigger
-      // happens once the view is on its way to fresh data.
-      done();
+
+      var v = Knack.views && Knack.views[VIEW_ID];
+      if (!v || !v.model || typeof v.model.fetch !== 'function') { settleDone(); return; }
+
+      var p;
+      try { p = v.model.fetch(); }
+      catch (e) { console.warn(LOG_PREFIX, 'final model.fetch threw', e); settleDone(); return; }
+
+      // After the fetch lands, run the verify-and-repair pass, THEN settle.
+      function afterFetch() { verifyForwardChildren(settleDone); }
+      if (p && typeof p.always === 'function') p.always(afterFetch);
+      else if (p && typeof p.then === 'function') p.then(afterFetch, afterFetch);
+      else setTimeout(afterFetch, 600);
     }
 
     // MODEL_ONLY OR no destHeader: skip DOM moves, just fire PUTs and

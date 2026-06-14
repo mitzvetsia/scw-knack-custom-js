@@ -88,6 +88,24 @@
           var label = describeAction(payload);
           ns.renderToast(label + ' — sent successfully', 'success');
         }
+
+        // Add to SOW: Make creates the new SOW line item server-side (async),
+        // so the comparison grid won't show it until the SOW-item source view
+        // (view_3921) is re-read. Re-fetch + rebuild a beat after the webhook
+        // returns — and once more, since Make can respond before the record is
+        // committed. Prefers the v2 grid's own data layer (re-fetches every
+        // source view + rebuilds); falls back to v1's refresh.
+        if (payload.actionType === 'row_add_to_sow') {
+          var doSowRefresh = function () {
+            try {
+              var v2d = window.SCW.bidReviewV2 && window.SCW.bidReviewV2.data;
+              if (v2d && typeof v2d.refetchAll === 'function') { v2d.refetchAll(); return; }
+            } catch (e) {}
+            try { if (typeof ns.refresh === 'function') ns.refresh(); } catch (e) {}
+          };
+          setTimeout(doSowRefresh, 1500);
+          setTimeout(doSowRefresh, 4500);
+        }
         deferred.resolve(resp);
       },
       error: function (xhr) {
@@ -116,11 +134,31 @@
     var updates  = [];
     var creates  = [];
     var removals = [];
+    // Duplicate bid items: when 2+ bid line items on this bid map to the
+    // SAME SOW item, only ONE should keep the SOW connection. The extras
+    // are disconnected (REL_sow-line-item / field_2404 cleared) so they
+    // don't all keep pointing at the one SOW item that's being updated.
+    var disconnectBids = [];
+    var sowFK = (CFG.fieldKeys && CFG.fieldKeys.relatedSowItem) || 'field_2404';
     var rows     = sowGrid.rows;
 
     for (var i = 0; i < rows.length; i++) {
       var row  = rows[i];
       var cell = row.cellsByPackage[pkgId] || null;
+
+      // Disconnect any duplicate bid records sharing this SOW item.
+      if (cell && cell.dupes && cell.dupes.length && row.sowItem) {
+        for (var d = 0; d < cell.dupes.length; d++) {
+          disconnectBids.push({
+            bidRecordId:  cell.dupes[d].id,
+            sowItemId:    row.sowItem,        // the SOW item to disconnect FROM
+            field:        sowFK,              // field to clear on the bid record
+            keptBidId:    cell.id,            // the duplicate we're keeping
+            productName:  cell.dupes[d].productName,
+            bidRecord:    cell.dupes[d]._rawRecord || null
+          });
+        }
+      }
 
       if (row.sowItem && cell) {
         // Matched: update SOW item with bid values
@@ -217,6 +255,10 @@
       updates:    updates,
       creates:    creates,
       removals:   removals,
+      // Extra bid items (beyond the first) that share a SOW item with the
+      // kept bid — Make clears each one's field_2404 so only the kept bid
+      // stays connected. Always applied (not user-deselectable).
+      disconnectBids: disconnectBids,
     };
   };
 

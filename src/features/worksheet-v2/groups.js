@@ -367,9 +367,9 @@
 
       // Sort records within each L2 — matches v1's view_3610 default
       // rowSort: field_2218 (sortOrder, numeric) → field_2240 (drop
-      // prefix, text) → field_1951 (drop number, numeric). The same
-      // three-key sort device-worksheet.js applies after Knack's own
-      // server-side ordering.
+      // prefix, text) → field_1951 (drop number, numeric) → field_2269
+      // (equipment value, DESC — pricier gear floats up among rows the
+      // drop keys can't split, e.g. headend equipment with no drops).
       function compareDefault(a, b) {
         var sa = readNumber(a, FIELD_SORT);
         var sb = readNumber(b, FIELD_SORT);
@@ -385,6 +385,12 @@
         if (na != null && nb != null && na !== nb) return na - nb;
         if (na != null && nb == null) return -1;
         if (na == null && nb != null) return 1;
+        // Equipment value (CALC_LI_EQUIPMENT extended price net).
+        var ea = readNumber(a, 'field_2269');
+        var eb = readNumber(b, 'field_2269');
+        if (ea != null && eb != null && ea !== eb) return eb - ea;
+        if (ea != null && eb == null) return -1;
+        if (ea == null && eb != null) return 1;
         var la = readPlain(a, FIELD_LABEL);
         var lb = readPlain(b, FIELD_LABEL);
         return la.localeCompare(lb, undefined, { numeric: true, sensitivity: 'base' });
@@ -427,8 +433,57 @@
         return compareDefault(a, b);
       }
 
+      /** Re-thread a sorted list so CHILD records (field_2464 → parent)
+       *  sit directly beneath their parent whenever the parent is in
+       *  the same list. This outranks every sort key — visible
+       *  accessories/children always travel with their parent. Children
+       *  of the same parent keep their comparator order; children whose
+       *  parent isn't in this list keep their own sorted slot. Cycle-
+       *  safe: anything not emitted by the parent walk is appended in
+       *  sorted order at the end. */
+      function threadChildrenUnderParents(sorted) {
+        var present = Object.create(null);
+        for (var pi = 0; pi < sorted.length; pi++) present[sorted[pi].id] = true;
+
+        var childrenOf = Object.create(null);
+        var isChild    = Object.create(null);
+        var anyThreads = false;
+        for (var ci = 0; ci < sorted.length; ci++) {
+          var rec = sorted[ci];
+          var raw = rec[ACCESSORY_PARENT_FIELD + '_raw'];
+          var pid = (Array.isArray(raw) && raw.length && raw[0]) ? raw[0].id
+                  : (raw && raw.id) || '';
+          if (pid && pid !== rec.id && present[pid]) {
+            (childrenOf[pid] = childrenOf[pid] || []).push(rec);
+            isChild[rec.id] = true;
+            anyThreads = true;
+          }
+        }
+        if (!anyThreads) return sorted;
+
+        var out = [];
+        var emitted = Object.create(null);
+        function emit(r) {
+          if (emitted[r.id]) return;
+          emitted[r.id] = true;
+          out.push(r);
+          var kids = childrenOf[r.id];
+          if (kids) for (var ki = 0; ki < kids.length; ki++) emit(kids[ki]);
+        }
+        for (var oi = 0; oi < sorted.length; oi++) {
+          if (isChild[sorted[oi].id]) continue;
+          emit(sorted[oi]);
+        }
+        // Cycle leftovers (mutual parent refs) — append in sorted order.
+        for (var li = 0; li < sorted.length; li++) {
+          if (!emitted[sorted[li].id]) emit(sorted[li]);
+        }
+        return out;
+      }
+
       l2List.forEach(function (l2) {
         l2.records.sort(compareWithPreset);
+        l2.records = threadChildrenUnderParents(l2.records);
       });
 
       l1.l2 = l2List;

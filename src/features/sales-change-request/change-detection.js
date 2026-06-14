@@ -251,6 +251,18 @@
   // ═══════════════════════════════════════════════════════════
 
   function readAddModeFlagFrom(viewId) {
+    // Model first (same fix as init.js readAddModeFlag) \u2014 the details
+    // view's DOM can lag or omit the field while the model has it.
+    try {
+      var v = Knack && Knack.views && Knack.views[viewId];
+      var attrs = v && v.model && v.model.attributes;
+      if (attrs && Object.prototype.hasOwnProperty.call(attrs, CFG.addModeField)) {
+        var raw = attrs[CFG.addModeField];
+        if (raw != null && String(raw).length) {
+          return H.stripHtml(String(raw)).replace(/\u00a0/g, ' ').trim();
+        }
+      }
+    } catch (e) { /* fall through to DOM */ }
     var $pv = $('#' + viewId);
     if (!$pv.length) return '';
     var $cell = $pv.find('[data-field-key="' + CFG.addModeField + '"]');
@@ -267,6 +279,12 @@
       var val = readAddModeFlagFrom(views[i]);
       if (val) observed = val;
       if (/^yes$/i.test(val)) { active = true; break; }
+    }
+    // Final fallback: the API read init.js performed against the SOW
+    // record (scenes where no addMode view renders at all).
+    if (!active && ns._apiAddModeVal && /^yes$/i.test(ns._apiAddModeVal)) {
+      active = true;
+      observed = ns._apiAddModeVal;
     }
     S.setAddMode(active);
     if (CFG.debug) SCW.debug('[SalesCR] Add mode:', S.isAddMode(), '(' + observed + ')');

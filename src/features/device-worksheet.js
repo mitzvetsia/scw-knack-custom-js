@@ -90,6 +90,13 @@
           conduitFeet:      { key: 'field_2368', type: 'directEdit' }
         },
         summaryLayout: ['laborDescription', 'existingCabling', 'labor', 'bid'],
+        // Same BID-object keys as view_3505 (see that entry's note).
+        rowSort: [
+          { field: 'field_2218', order: 'asc',  type: 'number' },
+          { field: 'field_2361', order: 'asc',  type: 'text'   },
+          { field: 'field_2362', order: 'asc',  type: 'number' },
+          { field: 'field_2382', order: 'desc', type: 'number' }
+        ],
         detailLayout: {
           left:  ['mounting', 'scwNotes'],
           right: ['connections', 'exterior', 'mountingHeight', 'dropLength', 'conduitFeet', 'surveyNotes']
@@ -124,6 +131,16 @@
           conduitFeet:      { key: 'field_2368', type: 'directEdit' }
         },
         summaryLayout: ['surveyNotes', 'laborDescription', 'existingCabling', 'exteriorChit', 'plenumChit', 'labor', 'bid'],
+        // BID-object sort keys (this object's drop prefix/number are
+        // field_2361/field_2362 — the hardcoded SOW defaults 2240/1951
+        // never matched here). Equipment value = field_2382 (product
+        // price), DESC. Inert per-key when the column isn't exposed.
+        rowSort: [
+          { field: 'field_2218', order: 'asc',  type: 'number' },
+          { field: 'field_2361', order: 'asc',  type: 'text'   },
+          { field: 'field_2362', order: 'asc',  type: 'number' },
+          { field: 'field_2382', order: 'desc', type: 'number' }
+        ],
         // Sort presets — exposed in the worksheet toolbar's "Sort ▾"
         // dropdown. First preset = "Default", rule:null means "use
         // viewCfg.rowSort or device-worksheet's hardcoded default".
@@ -430,6 +447,9 @@
           subBidLock:       { key: 'field_2634', type: 'singleChip', options: ['Yes', 'No'], segmented: true, label: 'Lock Record' }
         },
         // TODO(field_1968/field_2462): 'mountCableBoth' and 'laborCategory' removed from layout.
+        // Children (field_2464 → parent) sort directly beneath their
+        // parent row, overriding the rowSort keys.
+        threadParentField: 'field_2464',
         summaryLayout: ['laborDescription', 'existingCabling',
                          'laborVariables', 'subBid', 'plusHrs', 'plusMat', 'installFee', 'sow'],
         detailLayout: {
@@ -6420,18 +6440,23 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   function transformView(viewCfg) {
     if (!viewCfg || viewCfg.disabled) return;
     // V2 cutover kill-switch (Known Issue: v1→v2 migration). When v2 is
-    // enabled AND has a CONFIG entry for view_3962 (its source view),
-    // we treat view_3610 as superseded and bail out of v1\'s
-    // transformView entirely — no card builds, no group-collapse, no
-    // photo strips, no DOM thrash. Reversible: flip
+    // enabled AND has a CONFIG entry for the superseding source view,
+    // bail out of v1\'s transformView entirely — no card builds, no
+    // group-collapse, no photo strips, no DOM thrash on a hidden
+    // table. Keyed per v1 view: view_3610 is superseded by the
+    // view_3962-sourced v2 mount; view_3586 (sales) by its own
+    // view_3586-sourced v2 mount. Reversible: flip
     // SCW.worksheetV2.CONFIG.enabled = false or comment out this block.
-    if (viewCfg.viewId === 'view_3610' &&
+    var V2_TAKEOVER = { view_3610: 'view_3962', view_3586: 'view_3586' };
+    var v2SourceKey = V2_TAKEOVER[viewCfg.viewId];
+    if (v2SourceKey &&
         window.SCW && window.SCW.worksheetV2 &&
         window.SCW.worksheetV2.CONFIG &&
         window.SCW.worksheetV2.CONFIG.enabled !== false) {
       var v2Views = (window.SCW.worksheetV2.CONFIG.views || []);
       for (var v2i = 0; v2i < v2Views.length; v2i++) {
-        if (v2Views[v2i] && v2Views[v2i].sourceViewKey === 'view_3962') {
+        if (v2Views[v2i] && v2Views[v2i].sourceViewKey === v2SourceKey &&
+            v2Views[v2i].enabled !== false) {
           return;
         }
       }
@@ -6786,7 +6811,11 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       rowSortRules = _wsSortRules || viewCfg.rowSort || [
         { field: 'field_2218', order: 'asc',  type: 'number' },
         { field: 'field_2240', order: 'asc',  type: 'text'   },
-        { field: 'field_1951', order: 'asc',  type: 'number' }
+        { field: 'field_1951', order: 'asc',  type: 'number' },
+        // Equipment value (CALC_LI_EQUIPMENT extended net) — pricier
+        // gear floats up among rows the drop keys can't split. Inert on
+        // views that don't expose the column (reads null → tie).
+        { field: 'field_2269', order: 'desc', type: 'number' }
       ];
     }
 
@@ -6821,6 +6850,60 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       }
       return 0;
     });
+
+    // ── Parent/child threading (viewCfg.threadParentField) ──────
+    // Mirrors worksheet-v2's threadChildrenUnderParents: any row whose
+    // parent-connection cell points at another VISIBLE row is pulled
+    // out of its sorted slot and placed directly beneath that parent.
+    // Outranks every sort rule. Children of one parent keep comparator
+    // order; rows whose parent isn't on this view keep their own slot;
+    // cycle-safe (leftovers append in sorted order).
+    if (viewCfg.threadParentField) {
+      (function () {
+        var pf = viewCfg.threadParentField;
+        var presentById = Object.create(null);
+        var ti, eid;
+        for (ti = 0; ti < eligible.length; ti++) {
+          eid = eligible[ti].tr && eligible[ti].tr.id;
+          if (eid) presentById[eid] = true;
+        }
+        var childrenOf = Object.create(null);
+        var isChild    = Object.create(null);
+        var anyThreads = false;
+        for (ti = 0; ti < eligible.length; ti++) {
+          var ttr = eligible[ti].tr;
+          if (!ttr || !ttr.id) continue;
+          var pcell = ttr.querySelector('td.' + pf);
+          var pspan = pcell && pcell.querySelector('span[data-kn="connection-value"]');
+          var pid   = pspan ? (pspan.className || '').trim() : '';
+          if (/^[a-f0-9]{24}$/.test(pid) && pid !== ttr.id && presentById[pid]) {
+            (childrenOf[pid] = childrenOf[pid] || []).push(eligible[ti]);
+            isChild[ttr.id] = true;
+            anyThreads = true;
+          }
+        }
+        if (!anyThreads) return;
+        var out = [];
+        var emitted = Object.create(null);
+        function emit(entry) {
+          var id2 = entry.tr.id;
+          if (emitted[id2]) return;
+          emitted[id2] = true;
+          out.push(entry);
+          var kids = childrenOf[id2];
+          if (kids) for (var ki = 0; ki < kids.length; ki++) emit(kids[ki]);
+        }
+        for (ti = 0; ti < eligible.length; ti++) {
+          eid = eligible[ti].tr && eligible[ti].tr.id;
+          if (eid && isChild[eid]) continue;
+          emit(eligible[ti]);
+        }
+        for (ti = 0; ti < eligible.length; ti++) {
+          if (!emitted[eligible[ti].tr.id]) emit(eligible[ti]);
+        }
+        eligible = out;
+      })();
+    }
 
     // ── PHASE 2: BUILD — construct cards from collected data ──
     //

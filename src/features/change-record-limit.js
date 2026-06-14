@@ -12,7 +12,14 @@
     'view_3962',
     // All WORKSHEET_CONFIG views from device-worksheet.js
     'view_3313', 'view_3450', 'view_3505', 'view_3512', 'view_3575',
-    'view_3596', 'view_3997', 'view_3602', 'view_3608', 'view_3800', 'view_3915'
+    'view_3596', 'view_3997', 'view_3602', 'view_3608', 'view_3800', 'view_3915',
+    // bid-review-v2 SOURCE views. v2 reads these straight off their
+    // on-scene Backbone models (Knack.views[k].model.data.models), so a
+    // page cap means v2's diff runs on PARTIAL data — e.g. a SOW item
+    // whose bid record sits on an unloaded page gets misclassified as
+    // "Removed / Not surveyed". v1 loads its own copy via API, but that
+    // doesn't bump these on-scene models, so force them here.
+    'view_3680', 'view_3921', 'view_3573', 'view_3822', 'view_3818'
   ];
   const LIMIT_VALUE = '1000';
   const LIMIT_NUM = 1000;
@@ -34,8 +41,8 @@
     'view_3596', 'view_3997', 'view_3602', 'view_3608', 'view_3800', 'view_3915',
     // import-unique-items-btn.js
     'view_3913',
-    // bid-review (CFG.viewKey, sowItemsViewKey, bidPackagesViewKey, docFilesViewKey)
-    'view_3680', 'view_3921', 'view_3573'
+    // bid-review source/compare views (now also in VIEW_IDS above)
+    'view_3680', 'view_3921', 'view_3573', 'view_3822', 'view_3818'
   ];
 
   (function injectHidePaginationCss() {

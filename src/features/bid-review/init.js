@@ -2394,7 +2394,9 @@
   function handleCopyToSow(button, pkgId, grid) {
     var payload = ns.buildCopyToSowPayload(pkgId, grid);
 
-    var total = payload.updates.length + payload.creates.length + payload.removals.length;
+    var disc = (payload.disconnectBids || []).length;
+    var total = payload.updates.length + payload.creates.length +
+                payload.removals.length + disc;
     if (total === 0) {
       ns.renderToast('Nothing to update \u2014 SOW already matches this bid', 'info');
       return;
@@ -2413,7 +2415,10 @@
         payload.creates  = selected.creates  || [];
         payload.removals = selected.removals || [];
 
-        var total2 = payload.updates.length + payload.creates.length + payload.removals.length;
+        // Duplicate-bid disconnects are always applied (not deselectable).
+        var disc2 = (payload.disconnectBids || []).length;
+        var total2 = payload.updates.length + payload.creates.length +
+                     payload.removals.length + disc2;
         if (total2 === 0) {
           ns.renderToast('Nothing to update \u2014 SOW already matches this bid', 'info');
           return;
@@ -2423,6 +2428,7 @@
         if (payload.updates.length)  summary.push(payload.updates.length  + ' update(s)');
         if (payload.creates.length)  summary.push(payload.creates.length  + ' new item(s)');
         if (payload.removals.length) summary.push(payload.removals.length + ' disconnected from SOW');
+        if (disc2) summary.push(disc2 + ' duplicate bid item(s) disconnected');
 
         showCopyToast('Updating ' + grid.sowName + ' to match ' + pkgName + ': ' + summary.join(', ') + '\u2026');
         startCopyPoll();
@@ -2683,6 +2689,19 @@
     var cell = row.cellsByPackage[pkgId];
     if (!cell) return;
 
+    // v2 stacked-duplicate override: when two bid line items on one bid
+    // map to the same SOW item, the grid collapses them into one row, so
+    // cellsByPackage[pkgId] is only the FIRST. The v2 Remove button on a
+    // stacked duplicate carries data-bid-record-id for the SPECIFIC bid
+    // record the user clicked — act on that record, not the kept one.
+    var overrideBid = button.getAttribute('data-bid-record-id');
+    if (overrideBid && overrideBid !== cell.id) {
+      cell = {
+        id:          overrideBid,
+        productName: button.getAttribute('data-bid-product') || cell.productName
+      };
+    }
+
     ns.changeRequests.openRemove({
       rowId:        rowId,
       pkgId:        pkgId,
@@ -2697,8 +2716,101 @@
     });
   }
 
+  // ── create a NEW SOW line item from a (duplicate) bid record ──────
+  // For the "keep both" case where two bid line items on one bid map to
+  // the SAME SOW item: split one off onto its own new SOW line item.
+  // The bid record isn't its own grid row (the grid collapses dupes), so
+  // pull the FULL raw record straight from the bid view (view_3680) model
+  // by id and ship it through the existing Add-to-SOW webhook — Make
+  // builds the new SOW item from sourceRecord. (Re-pointing the bid
+  // record's REL_sow-line-item at the new SOW item is the Make scenario's
+  // job — the bid auto-sync may need a tweak for this path.)
+  function handleCreateSowFromBid(button) {
+    var bidId = button.getAttribute('data-bid-record-id') ||
+                button.getAttribute('data-row-id');
+    var sowId = button.getAttribute('data-sow-id');
+    if (!bidId) return;
+
+    var FKsow = (CFG.fieldKeys && CFG.fieldKeys.relatedSowItem) || 'field_2404';
+
+    var raw = null;
+    try {
+      var v = Knack.views && Knack.views[CFG.viewKey];   // view_3680 (bids)
+      var models = (v && v.model && v.model.data && v.model.data.models) || [];
+      for (var i = 0; i < models.length; i++) {
+        var a = models[i] && models[i].attributes;
+        if (a && a.id === bidId) { raw = a; break; }
+      }
+    } catch (e) { /* fall through */ }
+    if (!raw) {
+      if (ns.renderToast) ns.renderToast('Could not find the bid record to copy', 'error');
+      return;
+    }
+
+    // The SOW item this bid was SHARING (for Make context).
+    var prevSowItemId = '';
+    try {
+      var rc = raw[FKsow + '_raw'];
+      if (Array.isArray(rc) && rc[0]) prevSowItemId = rc[0].id || '';
+      else if (rc && rc.id) prevSowItemId = rc.id;
+    } catch (e2) { /* ignore */ }
+
+    // sourceRecord Make receives — SOW connection CLEARED so the bid
+    // auto-sync treats it as unconnected (won't update the shared SOW
+    // item) and the NEW SOW item becomes this bid item's source of truth.
+    var sourceRecord = $.extend({}, raw);
+    sourceRecord[FKsow] = '';
+    sourceRecord[FKsow + '_raw'] = [];
+
+    setBusy(button, true);
+
+    function fireWebhook() {
+      ns.submitAction({
+        actionType:           'row_add_to_sow',
+        reviewRowId:          bidId,
+        sowId:                sowId,
+        sourceRecord:         sourceRecord,
+        // Signal this is the duplicate-split path: field_2404 has been
+        // cleared on the bid record; create a fresh SOW item and point
+        // this bid record's REL_sow-line-item at it (NOT the old one).
+        clearedSowConnection: true,
+        previousSowItemId:    prevSowItemId
+      }).done(function () {
+        refreshSilently();
+        if (ns.renderToast) ns.renderToast('New SOW line item requested', 'success');
+      }).always(function () {
+        setBusy(button, false);
+      });
+    }
+
+    // Clear field_2404 on the bid record NOW (view-based PUT) so the
+    // disconnect is persisted before the auto-sync can read the stale
+    // connection. If the PUT fails (e.g. field not editable on this
+    // view), still fire the webhook — the cleared payload + flag let
+    // Make do the clear server-side.
+    try {
+      var body = {};
+      body[FKsow] = [];   // empty connection = cleared
+      SCW.knackAjax({
+        url:  SCW.knackRecordUrl(CFG.viewKey, bidId),
+        type: 'PUT',
+        data: JSON.stringify(body),
+        success: function (resp) {
+          try {
+            if (typeof SCW.syncKnackModel === 'function') {
+              SCW.syncKnackModel(CFG.viewKey, bidId, resp, FKsow, '');
+            }
+          } catch (e3) { /* ignore */ }
+          fireWebhook();
+        },
+        error: function () { fireWebhook(); }
+      });
+    } catch (e4) {
+      fireWebhook();
+    }
+  }
+
   // ── disconnect from SOW (per-row, on SOW detail cell) ──────
-  //
   // Removes this SOW's id from the SOW Line Item's field_2154
   // connection (the SOW connection is multi-value — a single line
   // item can be on 1+ SOWs). The line item itself is NOT deleted; if
@@ -3141,6 +3253,7 @@
     if (action === 'cell_request_change_from_sow')  { handleChangeRequest(button, { sourceFromSow: true }); return true; }
     if (action === 'cell_remove_from_bid')          { handleRemoveFromBid(button); return true; }
     if (action === 'cell_add_to_bid')               { handleAddToBid(button); return true; }
+    if (action === 'cell_create_sow_from_bid')      { handleCreateSowFromBid(button); return true; }
     if (action === 'cr_submit') {
       var pkgId = button.getAttribute('data-pkg-id');
       if (ns.changeRequests && ns.changeRequests.submitForPackage) {
