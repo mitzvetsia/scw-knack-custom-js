@@ -34,34 +34,132 @@
   }
 
   // Word-level diff for text fields (product name / labor desc). Returns
-  // escaped HTML of `text` with only the WORDS that don't appear in the
-  // SOW counterpart (`against`) wrapped in <u class="…tok-diff"> — so the
-  // reviewer sees exactly which terms changed instead of the whole value
-  // lighting up. Comparison is a lowercased multiset (repeated words match
-  // by count); whitespace/punctuation never highlights. Falls back to a
-  // plain escape when `against` is blank (nothing meaningful to compare).
+  // escaped HTML of `text` with only the WORDS that differ from the SOW
+  // counterpart (`against`) wrapped in <u class="…tok-diff"> — the reviewer
+  // sees exactly which terms changed instead of the whole value lighting up.
+  //
+  // Uses a TRUE positional diff: an LCS (longest common subsequence) over the
+  // lowercased word sequences. Words that fall on the LCS are unchanged;
+  // everything else (inserted / replaced) is underlined. Order matters, so a
+  // reordered phrase highlights what actually moved — unlike a bag-of-words
+  // compare. Whitespace/punctuation is preserved verbatim and never marked.
+  // Pathologically long inputs (>600 words a side) fall back to a multiset
+  // compare to bound the O(n·m) table.
+  function isWordTok(p) { return /^[A-Za-z0-9]+$/.test(p); }
+  function tokenizeParts(s) {
+    return String(s).match(/[A-Za-z0-9]+|[^A-Za-z0-9]+/g) || [];
+  }
+  // Returns a boolean[] over `a` marking which words are part of the LCS
+  // with `b` (true = unchanged / keep, false = differs / underline).
+  function lcsKeep(a, b) {
+    var n = a.length, mm = b.length;
+    var dp = [];
+    for (var i = 0; i <= n; i++) {
+      var rowArr = new Array(mm + 1);
+      for (var j = 0; j <= mm; j++) rowArr[j] = 0;
+      dp.push(rowArr);
+    }
+    for (i = 1; i <= n; i++) {
+      for (j = 1; j <= mm; j++) {
+        if (a[i - 1] === b[j - 1]) dp[i][j] = dp[i - 1][j - 1] + 1;
+        else dp[i][j] = dp[i - 1][j] >= dp[i][j - 1] ? dp[i - 1][j] : dp[i][j - 1];
+      }
+    }
+    var keep = new Array(n);
+    for (i = 0; i < n; i++) keep[i] = false;
+    i = n; j = mm;
+    while (i > 0 && j > 0) {
+      if (a[i - 1] === b[j - 1]) { keep[i - 1] = true; i--; j--; }
+      else if (dp[i - 1][j] >= dp[i][j - 1]) i--;
+      else j--;
+    }
+    return keep;
+  }
+  function multisetKeep(a, b) {
+    var pool = Object.create(null);
+    for (var i = 0; i < b.length; i++) pool[b[i]] = (pool[b[i]] || 0) + 1;
+    var keep = new Array(a.length);
+    for (var k = 0; k < a.length; k++) {
+      if (pool[a[k]] > 0) { pool[a[k]]--; keep[k] = true; } else keep[k] = false;
+    }
+    return keep;
+  }
   function markWordDiff(text, against) {
     var t = String(text == null ? '' : text);
     if (!t) return '';
     var a = String(against == null ? '' : against);
     if (!a.trim()) return escapeHtml(t);
-    var pool = Object.create(null);
-    var aw = a.toLowerCase().match(/[a-z0-9]+/gi) || [];
-    for (var i = 0; i < aw.length; i++) pool[aw[i]] = (pool[aw[i]] || 0) + 1;
-    // Split into word vs. non-word runs, preserving everything verbatim.
-    var parts = t.match(/[A-Za-z0-9]+|[^A-Za-z0-9]+/g) || [];
+    var parts = tokenizeParts(t);
+    var aWords = [], aIdx = [];
+    for (var i = 0; i < parts.length; i++) {
+      if (isWordTok(parts[i])) { aWords.push(parts[i].toLowerCase()); aIdx.push(i); }
+    }
+    var bParts = tokenizeParts(a), bWords = [];
+    for (var k = 0; k < bParts.length; k++) {
+      if (isWordTok(bParts[k])) bWords.push(bParts[k].toLowerCase());
+    }
+    var keepWord = (aWords.length > 600 || bWords.length > 600)
+      ? multisetKeep(aWords, bWords) : lcsKeep(aWords, bWords);
+    var keepPart = Object.create(null);
+    for (var w = 0; w < aIdx.length; w++) keepPart[aIdx[w]] = keepWord[w];
     var out = '';
     for (var j = 0; j < parts.length; j++) {
       var p = parts[j];
-      if (/^[A-Za-z0-9]+$/.test(p)) {
-        var k = p.toLowerCase();
-        if (pool[k] > 0) { pool[k]--; out += escapeHtml(p); }
-        else { out += '<u class="scw-bid-review-v2__tok-diff">' + escapeHtml(p) + '</u>'; }
+      if (isWordTok(p) && keepPart[j] !== true) {
+        out += '<u class="scw-bid-review-v2__tok-diff">' + escapeHtml(p) + '</u>';
       } else {
         out += escapeHtml(p);
       }
     }
     return out;
+  }
+
+  // Cabling attributes (cam/reader) for a comparison cell: conduit + drop
+  // length values, plenum / exterior / existing-cabling booleans. Rendered on
+  // BOTH the SOW and bid sides so a reviewer can eyeball spec vs. bid.
+  //   opts.side  'sow' | 'bid'
+  //   opts.diffs per-field mismatch flags (bid side only) — a differing field
+  //              gets the amber pill + the data-scw-diff-field hover hook;
+  //              the SOW side carries the matching data-scw-sow-field target.
+  // A boolean the bid DROPPED (false here, true on the SOW) still renders on
+  // the bid side as a struck-through "off" chip so the removal is visible.
+  function cablingLineHtml(data, opts) {
+    if (!data) return '';
+    opts = opts || {};
+    var diffs = opts.diffs || {};
+    var isSow = opts.side === 'sow';
+    var DIFF = ' scw-bid-review-v2__field-diff';
+    function hook(name, isDiff) {
+      if (isSow) return ' data-scw-sow-field="' + name + '"';
+      return isDiff ? ' data-scw-diff-field="' + name + '"' : '';
+    }
+    function valChip(v, label, name, isDiff) {
+      var s = String(v == null ? '' : v).replace(/<[^>]*>/g, '').trim();
+      if (!s) return '';
+      return '<span class="scw-bid-review-v2__cabling-val' + (!isSow && isDiff ? DIFF : '') +
+        '"' + hook(name, isDiff) + '><label>' + escapeHtml(label) + '</label>' +
+        escapeHtml(s) + '</span>';
+    }
+    function boolChip(on, label, name, isDiff) {
+      if (on) {
+        return '<span class="scw-bid-review-v2__cabling-chip' + (!isSow && isDiff ? DIFF : '') +
+          '"' + hook(name, isDiff) + '>' + escapeHtml(label) + '</span>';
+      }
+      // false but differing on the bid side → show it struck so "dropped" reads.
+      if (!isSow && isDiff) {
+        return '<span class="scw-bid-review-v2__cabling-chip scw-bid-review-v2__cabling-chip--off' +
+          DIFF + '"' + hook(name, isDiff) + '>' + escapeHtml(label) + '</span>';
+      }
+      return '';
+    }
+    var inner =
+      valChip(data.conduit,    'Conduit', 'conduit',    diffs.conduit) +
+      valChip(data.dropLength, 'Drop',    'dropLength', diffs.dropLength) +
+      boolChip(data.plenum,    'Plenum',   'plenum',   diffs.plenum) +
+      boolChip(data.exterior,  'Exterior', 'exterior', diffs.exterior) +
+      boolChip(data.existCabling, 'Existing cabling', 'existing', diffs.existing);
+    if (!inner) return '';
+    return '<div class="scw-bid-review-v2__cabling">' + inner + '</div>';
   }
 
   // Cam/reader detection — mirrors v1's showCabling(). Only these
@@ -365,7 +463,7 @@
           escapeHtml(sowItemData.productName) +
         '</div>' : '') +
       '<div class="scw-bid-review-v2__sow-numbers">' +
-        '<span class="scw-bid-review-v2__sow-num"><label>Qty</label>' +
+        '<span class="scw-bid-review-v2__sow-num" data-scw-sow-field="qty"><label>Qty</label>' +
           escapeHtml(qtyTxt) + '</span>' +
         '<span class="scw-bid-review-v2__sow-num" data-scw-sow-field="fee"><label>Sub Bid</label>' +
           escapeHtml(feeTxt) + '</span>' +
@@ -375,6 +473,7 @@
           escapeHtml(descTxt) + '">' + escapeHtml(descTxt) +
         '</div>' : '') +
       connLineHtml(sowItemData.connDevice, sowItemData.connTo, { side: 'sow' }) +
+      cablingLineHtml(sowItemData, { side: 'sow' }) +
       // "belongs to another SOW" rows note which SOW(s) the item is on.
       ((row && row.otherKind === 'other-sow' && row.otherSowNames && row.otherSowNames.length) ?
         '<div class="scw-bid-review-v2__sow-elsewhere">on ' +
@@ -608,6 +707,8 @@
     var prodHover = (diffs && diffs.product)   ? ' data-scw-diff-field="product"' : '';
     var feeHover  = (diffs && diffs.fee)       ? ' data-scw-diff-field="fee"' : '';
     var descHover = (diffs && diffs.laborDesc) ? ' data-scw-diff-field="desc"' : '';
+    var qtyDiff   = (diffs && diffs.qty) ? DIFF : '';
+    var qtyHover  = (diffs && diffs.qty) ? ' data-scw-diff-field="qty"' : '';
 
     var primaryHtml =
       (cell.productName ?
@@ -616,8 +717,8 @@
           prodInner +
         '</div>' : '') +
       '<div class="scw-bid-review-v2__cell-numbers">' +
-        '<span class="scw-bid-review-v2__cell-num"><label>Qty</label>' +
-          escapeHtml(qtyTxt) + '</span>' +
+        '<span class="scw-bid-review-v2__cell-num' + qtyDiff + '"' + qtyHover +
+          '><label>Qty</label>' + escapeHtml(qtyTxt) + '</span>' +
         '<span class="scw-bid-review-v2__cell-num' + feeOnBid + '"' + (showExt ? '' : feeHover) +
           '><label>Sub Bid</label>' + escapeHtml(rateTxt) + '</span>' +
         (showExt ?
@@ -630,6 +731,7 @@
         '</div>' : '') +
       connLineHtml(cell.connDevice, cell.connTo,
         { side: 'bid', deviceDiff: diffs && diffs.connDevice, toDiff: diffs && diffs.connTo }) +
+      cablingLineHtml(cell, { side: 'bid', diffs: diffs }) +
       // Survey note (field_2412) on the bid record — v1 parity: populated
       // cells render the sub's note too, not just the no-bid cutouts.
       surveyNoteHtml(cell.notes) +

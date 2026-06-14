@@ -336,6 +336,27 @@
     '  background: #ffedd5;',
     '  border-radius: 2px;',
     '}',
+    /* Cabling attribute strip (conduit / drop / plenum / exterior / existing)
+       on both SOW + bid comparison cells. */
+    '.scw-bid-review-v2__cabling {',
+    '  display: flex; flex-wrap: wrap; gap: 4px; align-items: center;',
+    '  margin-top: 4px;',
+    '}',
+    '.scw-bid-review-v2__cabling-chip {',
+    '  display: inline-block; padding: 1px 7px; border-radius: 9px;',
+    '  font-size: 10px; font-weight: 700; line-height: 1.5;',
+    '  background: #e0e7ff; color: #3730a3; white-space: nowrap;',
+    '}',
+    '.scw-bid-review-v2__cabling-chip--off {',
+    '  background: #fef2f2; color: #b91c1c; text-decoration: line-through;',
+    '}',
+    '.scw-bid-review-v2__cabling-val {',
+    '  display: inline-block; font-size: 10px; color: #475569; white-space: nowrap;',
+    '}',
+    '.scw-bid-review-v2__cabling-val label {',
+    '  margin: 0 3px 0 0; font-size: 9px; font-weight: 700;',
+    '  text-transform: uppercase; letter-spacing: .03em; color: #94a3b8;',
+    '}',
     /* SOW cell: soft whole-cell tint when any field differs from a bid —
        no per-field hard highlight here (that lives on the bid columns). */
     '.scw-bid-review-v2__sow-cell--has-diff {',

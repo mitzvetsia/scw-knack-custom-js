@@ -215,6 +215,8 @@
           existCabling: bool(rec, FK.bidExistCabling),
           plenum:       bool(rec, FK.plenum),
           exterior:     bool(rec, FK.exterior),
+          conduit:      raw(rec, FK.conduit),
+          dropLength:   raw(rec, FK.dropLength),
           // Bid-side connection topology (mirror of the SOW side):
           // field_2380 Connected Devices, field_2381 Connected To.
           connDevice:   connectionAll(rec, FK.bidConnDevice),
@@ -583,7 +585,14 @@
         // has connTo (field_2197) populated (its NVR) — the cell renders
         // whichever is present, so each device shows the appropriate field.
         connDevice:     connectionAll(s, SFK.connDevice),
-        connTo:         connectionLabel(s, SFK.connTo)
+        connTo:         connectionLabel(s, SFK.connTo),
+        // Cabling attributes for the comparison cells (cam/reader). Diffed
+        // against the bid record's own cabling fields in getMismatches.
+        existCabling:   bool(s, SFK.existCabling),
+        plenum:         bool(s, SFK.plenum),
+        exterior:       bool(s, SFK.exterior),
+        conduit:        raw(s, SFK.conduit),
+        dropLength:     raw(s, SFK.dropLength)
       };
     }
 
@@ -1059,14 +1068,28 @@
     var connDeviceDiff = (Array.isArray(sowCD) && sowCD.length)
       ? !sameSet(connSet(sowCD), connSet(cell.connDevice || [])) : false;
     var connToDiff = norm(sowCT) ? (norm(sowCT) !== norm(cell.connTo || '')) : false;
+    // Cabling attributes (cam/reader). Text fields (conduit / drop length)
+    // compare normalized — '' vs '' never flags, so non-cam rows stay quiet.
+    // Booleans (plenum / exterior / existing) flag only on a true≠false delta.
     var m = {
       product:    productDiff,
       laborDesc:  norm(row.sowLaborDesc) !== norm(cell.laborDesc),
+      // Anchor qty on the SOW side carrying a value (mirrors the conn anchors)
+      // so a blank-spec line item doesn't flag every bid that priced qty 1.
+      qty:        (Number(sd.qty) || 0) > 0
+                    ? ((Number(sd.qty) || 0) !== (Number(cell.qty) || 0)) : false,
       fee:        Math.abs((Number(row.sowFee) || 0) - (Number(cell.labor) || 0)) > 0.001,
+      conduit:    norm(sd.conduit) !== norm(cell.conduit),
+      dropLength: norm(sd.dropLength) !== norm(cell.dropLength),
+      plenum:     !!sd.plenum !== !!cell.plenum,
+      exterior:   !!sd.exterior !== !!cell.exterior,
+      existing:   !!sd.existCabling !== !!cell.existCabling,
       connDevice: connDeviceDiff,
       connTo:     connToDiff
     };
-    m.any = m.product || m.laborDesc || m.fee || m.connDevice || m.connTo;
+    m.any = m.product || m.laborDesc || m.qty || m.fee || m.conduit ||
+            m.dropLength || m.plenum || m.exterior || m.existing ||
+            m.connDevice || m.connTo;
     return m;
   }
 
