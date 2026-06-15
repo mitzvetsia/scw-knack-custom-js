@@ -541,12 +541,6 @@
    * @param {HTMLElement} itemEl - The .scw-cr-item element (for UI state)
    */
   function deleteRecord(recordId, recordName, itemEl) {
-    var webhookUrl = (window.SCW && window.SCW.CONFIG && window.SCW.CONFIG.MAKE_DELETE_RECORD_WEBHOOK) || '';
-    if (!webhookUrl) {
-      console.error('[SCW] No MAKE_DELETE_RECORD_WEBHOOK configured');
-      return;
-    }
-
     var cfg = findCfgForItem(itemEl);
     var parentField = cfg ? cfg.parentConnectionField : null;
 
@@ -576,23 +570,27 @@
       disconnectPromise = Promise.resolve();
     }
 
-    // Step 2: After disconnect, send the delete webhook
+    // Step 2: After disconnect, delete the record FRONT-END via the
+    // view-scoped REST DELETE (session-authed, CORS-safe) — no Make webhook.
     disconnectPromise.then(function () {
-      SCW.debug('[SCW][CR-DELETE] Sending webhook POST…');
-      return fetch(webhookUrl, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ recordId: recordId, recordName: recordName })
+      SCW.debug('[SCW][CR-DELETE] Front-end DELETE via', viewId);
+      return new Promise(function (resolve, reject) {
+        if (!viewId || !(window.SCW && typeof SCW.knackAjax === 'function' &&
+            typeof SCW.knackRecordUrl === 'function')) {
+          reject(new Error('FE delete unavailable (no view / knackAjax)'));
+          return;
+        }
+        SCW.knackAjax({
+          url:  SCW.knackRecordUrl(viewId, recordId),
+          type: 'DELETE',
+          success: function () { resolve(); },
+          error:   function (xhr) {
+            reject(new Error('DELETE returned ' + (xhr && xhr.status)));
+          }
+        });
       });
     })
-    .then(function (resp) {
-      SCW.debug('[SCW][CR-DELETE] Webhook response status:', resp.status);
-      if (!resp.ok) throw new Error('Webhook returned ' + resp.status);
-      return resp.json().catch(function () { return {}; });
-    })
-    .then(function (body) {
-      SCW.debug('[SCW][CR-DELETE] Webhook response body:', body);
-
+    .then(function () {
       // Remove the item from the DOM
       itemEl.remove();
 
