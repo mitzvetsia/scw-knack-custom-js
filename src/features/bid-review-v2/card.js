@@ -135,9 +135,9 @@
     }
     function valChip(v, label, name, isDiff) {
       var s = String(v == null ? '' : v).replace(/<[^>]*>/g, '').trim();
-      // Hide blank AND zero — "Conduit 0" / "Drop 0" is noise, not a value.
-      var n = parseFloat(s.replace(/[$,\s]/g, ''));
-      if (!s || n === 0) return '';
+      // Hide only blank — "0" is a real value (0 ft of conduit/drop) and should
+      // show so the SOW spec reads explicitly. Truly empty fields stay hidden.
+      if (!s) return '';
       return '<span class="scw-bid-review-v2__cabling-val' + (!isSow && isDiff ? DIFF : '') +
         '"' + hook(name, isDiff) + '><label>' + escapeHtml(label) + '</label>' +
         escapeHtml(s) + '</span>';

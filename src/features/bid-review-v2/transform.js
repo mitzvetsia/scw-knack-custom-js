@@ -1079,19 +1079,19 @@
         .toLowerCase().match(/[a-z0-9]+/g);
       return w ? w.join(' ') : '';
     }
-    // Numeric cabling value (conduit / drop length in feet). '' / non-numeric
-    // → null. Treats 0 and blank as "no value".
+    // Numeric cabling value (conduit / drop length in feet). Blank / non-numeric
+    // → null; an explicit 0 stays 0 (a real "0 ft" spec, shown + comparable).
     function cnum(v) {
       var s = String(v == null ? '' : v).replace(/[$,\s]/g, '');
       if (s === '') return null;
       var n = parseFloat(s);
-      return (isNaN(n) || n === 0) ? null : n;
+      return isNaN(n) ? null : n;
     }
     var sowDesc = (row.sowItemData && row.sowItemData.laborDesc) || row.sowLaborDesc;
     var bConduit = cnum(cell.conduit), bDrop = cnum(cell.dropLength);
-    // Cabling diffs anchor on the BID carrying a meaningful (non-zero) value,
-    // so a bid that simply didn't capture conduit/drop doesn't flag every row
-    // against a spec that has one. Booleans flag on any true≠false delta.
+    // Cabling diffs anchor on the BID carrying a value (incl. 0), so a bid that
+    // simply didn't capture conduit/drop (blank) doesn't flag every row against
+    // a spec that has one. Booleans flag on any true≠false delta.
     var m = {
       product:    productDiff,
       laborDesc:  wseq(sowDesc) !== wseq(cell.laborDesc),
