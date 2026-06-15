@@ -105,8 +105,15 @@
           ns.sowFilter.mount(key);
         }
         // After every re-render, sync the bulk-select checkboxes to
-        // current selection state + refresh the floating toolbar.
-        if (ns.bulk && typeof ns.bulk.mount === 'function') {
+        // current selection state + refresh the floating toolbar. GUARD on the
+        // panel actually being mounted on THIS scene: bulk is a singleton, and
+        // the background poll fires notify() for EVERY configured view on every
+        // scene — without this guard the sales view's poll (view_3586) calls
+        // bulk.mount('view_3586') on the bid-review scene, clobbering
+        // _sourceViewKey to a SALES view so the bulk modal serves SALES fields
+        // (Custom Disc %, Label #) on the bid comparison grid.
+        if (ns.bulk && typeof ns.bulk.mount === 'function' &&
+            document.getElementById('scw-ws-v2-' + key)) {
           ns.bulk.mount(key);
         }
       });

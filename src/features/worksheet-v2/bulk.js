@@ -350,10 +350,21 @@
         if (sowCell) {
           if (sowCell.classList.contains('scw-bid-review-v2__sow-cell--assumption')) {
             bId = ASSUM;
-          } else if (sowCell.querySelector(
-              '[data-scw-sow-field="dropLength"],[data-scw-sow-field="exterior"],' +
-              '[data-scw-sow-field="existing"]')) {
-            bId = CAM;   // those cabling chips only render for cam/reader rows
+          } else {
+            // Cam/reader = a CHILD device: it has a drop length and/or is
+            // "Connected to" a single parent. NVRs/switches are PARENTS
+            // ("Connected devices: …") and can also carry an Exterior/Existing
+            // chip, so those chips are NOT reliable cam signals — only the
+            // drop + child-connection are.
+            var hasDrop = !!sowCell.querySelector('[data-scw-sow-field="dropLength"]');
+            var connTo = false;
+            var conns = sowCell.querySelectorAll('.scw-bid-review-v2__cell-conn[title]');
+            for (var k = 0; k < conns.length; k++) {
+              if (/^connected to:/i.test((conns[k].getAttribute('title') || '').trim())) {
+                connTo = true; break;
+              }
+            }
+            if (hasDrop || connTo) bId = CAM;
           }
         }
         idx[rid2] = {
