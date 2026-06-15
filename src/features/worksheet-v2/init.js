@@ -515,10 +515,19 @@
       if (!chipId) return;
 
       var wrap = btn.closest('.scw-ws-v2-mh-chip-wrap');
+      // Resolve the view to DELETE the accessory through. The main worksheet
+      // wraps cards in #scw-ws-v2-<sourceView>, so the container resolves there
+      // (build-SOW unchanged). The bid-review comparison grid mounts the card
+      // OUTSIDE that container, so fall back to the source view stamped on the
+      // card's own editable elements (data-scw-ws-v2-view = view_3921) instead
+      // of the old blind 'view_3962' default — which isn't on that scene and
+      // made the REST DELETE 403.
       var v3962Container = btn.closest('[id^="scw-ws-v2-"]');
+      var cardEl = btn.closest('.scw-ws-v2-card');
+      var viewNode = cardEl && cardEl.querySelector('[data-scw-ws-v2-view]');
       var v3962ViewKey = v3962Container
         ? v3962Container.id.replace(/^scw-ws-v2-/, '')
-        : 'view_3962';
+        : ((viewNode && viewNode.getAttribute('data-scw-ws-v2-view')) || 'view_3962');
 
       // PREFERRED path: click Knack's native FE delete button on the
       // record's row (auto-confirming the modal). Same attribute-selector
