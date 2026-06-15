@@ -640,102 +640,6 @@
   // Open the row's expand panel AND mount a side-by-side photo viewer
   // in the panel's left column. Thumbnail strip lets the reviewer flip
   // between photos without leaving the editor.
-
-  // Build the SOW base path from the URL (review-bids / build-sow / sales /
-  // deploy) so we can deep-link to Knack's edit-photo page — same shape
-  // inline-photo-row.js / worksheet-v2 photos use.
-  function buildSowBasePath() {
-    var hash = window.location.hash || '';
-    var patterns = [
-      /(team-calendar\/project-dashboard\/[a-f0-9]{24}\/review-bids\/[a-f0-9]{24})/,
-      /(team-calendar\/project-dashboard\/[a-f0-9]{24}\/build-(?:sow|quote)\/[a-f0-9]{24})/,
-      /(team-calendar\/project-dashboard\/[a-f0-9]{24}\/deploy\/[a-f0-9]{24})/,
-      /(sales-portal\/company-details\/[a-f0-9]{24}\/scope-of-work-details\/[a-f0-9]{24})/,
-      /(proposals\/scope-of-work\/[a-f0-9]{24})/
-    ];
-    for (var i = 0; i < patterns.length; i++) {
-      var m = hash.match(patterns[i]);
-      if (m) return m[1];
-    }
-    return '';
-  }
-  function editPhotoHref(photoId) {
-    if (!photoId) return '';
-    var base = buildSowBasePath();
-    if (!base) return '';
-    var slug = (base.indexOf('scope-of-work-details') !== -1) ? 'edit-doc-photo2' : 'edit-photo';
-    return '#' + base + '/' + slug + '/' + photoId + '/';
-  }
-  // url → photo-record-id map for a row's SOW-side photos, read off the
-  // device-worksheet's inline photo cards (they carry data-photo-id). Lets the
-  // viewer offer an Edit deep-link; bid-only photos with no SOW card just
-  // won't get an id (Edit hidden for those).
-  function sowPhotoIdByUrl(sowItemId) {
-    var map = Object.create(null);
-    if (!sowItemId) return map;
-    var wsTr = document.querySelector('tr.scw-ws-row[id="' + sowItemId + '"]');
-    if (!wsTr) return map;
-    var cards = wsTr.querySelectorAll('.scw-inline-photo-card[data-photo-id]');
-    for (var i = 0; i < cards.length; i++) {
-      var img = cards[i].querySelector('img');
-      var url = img ? (img.getAttribute('src') || img.getAttribute('data-kn-img-gallery') || '') : '';
-      var id  = cards[i].getAttribute('data-photo-id') || '';
-      if (url && id) map[url] = id;
-    }
-    return map;
-  }
-  // url → photo-record-id map for a row's BID-side photos. The DOM
-  // connection-value spans carry the connected DOC_photos RECORD id, which is
-  // what the edit-photo page resolves. The model's field_771_raw[].id can be
-  // the image ASSET id instead (edit page opens blank with that) — so read the
-  // DOM span FIRST and only fall back to the model id when the row isn't in
-  // the DOM.
-  function bidPhotoIdByUrl(bidRecordId) {
-    var map = Object.create(null);
-    if (!bidRecordId) return map;
-    var tr = document.querySelector('#view_3680 tr[id="' + bidRecordId + '"]');
-    if (tr) {
-      var spans = tr.querySelectorAll('td[data-field-key="field_771"] span[id][data-kn="connection-value"]');
-      for (var s = 0; s < spans.length; s++) {
-        var im = spans[s].querySelector('img[data-kn-img-gallery]') || spans[s].querySelector('img');
-        var u = im ? (im.getAttribute('data-kn-img-gallery') || im.getAttribute('src') || '') : '';
-        var id = (spans[s].id || '').trim();
-        if (u && id) map[u] = id;
-      }
-    }
-    if (!Object.keys(map).length) {
-      try {
-        var v = window.Knack && Knack.views && Knack.views.view_3680;
-        var rec = v && v.model && v.model.data && typeof v.model.data.get === 'function' &&
-                  v.model.data.get(bidRecordId);
-        if (rec) {
-          var raw = (rec.attributes || rec).field_771_raw;
-          if (Array.isArray(raw)) {
-            for (var i = 0; i < raw.length; i++) {
-              var r = raw[i]; if (!r) continue;
-              var u2 = r.url || r.thumb_url || r.image || (r.original && r.original.url) || '';
-              if (u2 && r.id) map[u2] = r.id;
-            }
-          }
-        }
-      } catch (e) { /* ignore */ }
-    }
-    return map;
-  }
-  // Turn a url list into photo records { url, id } using the SOW-card id map
-  // first, then the bid-record id map (so bid-only photos still get an id).
-  function photosWithIds(rowTr, urls) {
-    var sowItemId = rowTr && rowTr.getAttribute('data-sow-item-id');
-    var bidRecId  = rowTr && rowTr.getAttribute('data-row-id');
-    var sowMap = sowPhotoIdByUrl(sowItemId);
-    var bidMap = bidPhotoIdByUrl(bidRecId);
-    var out = [];
-    for (var i = 0; i < urls.length; i++) {
-      out.push({ url: urls[i], id: sowMap[urls[i]] || bidMap[urls[i]] || '' });
-    }
-    return out;
-  }
-
   function openWithPhoto(rowTr, urls, activeIdx) {
     if (!rowTr || !urls || !urls.length) return;
     if (activeIdx == null || activeIdx < 0 || activeIdx >= urls.length) activeIdx = 0;
@@ -748,33 +652,20 @@
     var photoCol = expandTr.querySelector('.scw-bid-review-v2__panel-col--photo');
     if (!photoCol) return;
 
-    var photos = photosWithIds(rowTr, urls);
     var existing = photoCol.querySelector('.scw-bid-review-v2__photo-viewer');
-    if (existing) { updatePhotoViewer(existing, photos, activeIdx); return; }
+    if (existing) { updatePhotoViewer(existing, urls, activeIdx); return; }
 
     photoCol.classList.add('scw-bid-review-v2__panel-col--photo-active');
-    photoCol.appendChild(buildPhotoViewer(photos, activeIdx));
+    photoCol.appendChild(buildPhotoViewer(urls, activeIdx));
   }
 
-  function buildPhotoViewer(photos, activeIdx) {
+  function buildPhotoViewer(urls, activeIdx) {
     var wrap = document.createElement('div');
     wrap.className = 'scw-bid-review-v2__photo-viewer';
 
     var stage = document.createElement('div');
     stage.className = 'scw-bid-review-v2__photo-viewer-stage';
     stage.setAttribute('title', 'Click photo to zoom');
-
-    var actions = document.createElement('div');
-    actions.className = 'scw-bid-review-v2__photo-viewer-actions';
-
-    // Edit → deep-link to Knack's edit-photo page for the active photo
-    // (mirrors the device worksheet). Hidden when the photo has no id.
-    var editLink = document.createElement('a');
-    editLink.className = 'scw-bid-review-v2__photo-viewer-edit';
-    editLink.title = 'Edit this photo';
-    editLink.textContent = 'Edit';
-    editLink.addEventListener('click', function (e) { e.stopPropagation(); });
-    actions.appendChild(editLink);
 
     var openLink = document.createElement('a');
     openLink.className = 'scw-bid-review-v2__photo-viewer-open';
@@ -783,15 +674,14 @@
     openLink.title = 'Open full size in a new tab';
     openLink.textContent = 'Open ↗';
     openLink.addEventListener('click', function (e) { e.stopPropagation(); });
-    actions.appendChild(openLink);
-    stage.appendChild(actions);
+    stage.appendChild(openLink);
 
     var img = document.createElement('img');
     img.alt = '';
     stage.appendChild(img);
 
     stage.addEventListener('click', function (e) {
-      if (e.target.closest('.scw-bid-review-v2__photo-viewer-actions')) return;
+      if (e.target.closest('.scw-bid-review-v2__photo-viewer-open')) return;
       openLightbox(img.src);
     });
     wrap.appendChild(stage);
@@ -800,7 +690,7 @@
     strip.className = 'scw-bid-review-v2__photo-viewer-strip';
     wrap.appendChild(strip);
 
-    updatePhotoViewer(wrap, photos, activeIdx);
+    updatePhotoViewer(wrap, urls, activeIdx);
     return wrap;
   }
 
@@ -824,25 +714,18 @@
     document.body.appendChild(overlay);
   }
 
-  function updatePhotoViewer(viewer, photos, activeIdx) {
+  function updatePhotoViewer(viewer, urls, activeIdx) {
     var stageImg = viewer.querySelector('.scw-bid-review-v2__photo-viewer-stage img');
     var openLink = viewer.querySelector('.scw-bid-review-v2__photo-viewer-open');
-    var editLink = viewer.querySelector('.scw-bid-review-v2__photo-viewer-edit');
     var strip    = viewer.querySelector('.scw-bid-review-v2__photo-viewer-strip');
-    var active   = photos[activeIdx] || { url: '', id: '' };
-    if (stageImg) stageImg.src = active.url;
-    if (openLink) openLink.href = active.url;
-    if (editLink) {
-      var href = editPhotoHref(active.id);
-      if (href) { editLink.href = href; editLink.style.display = ''; }
-      else { editLink.removeAttribute('href'); editLink.style.display = 'none'; }
-    }
+    if (stageImg) stageImg.src = urls[activeIdx];
+    if (openLink) openLink.href = urls[activeIdx];
 
     if (!strip) return;
     strip.innerHTML = '';
-    if (photos.length < 2) { strip.style.display = 'none'; return; }
+    if (urls.length < 2) { strip.style.display = 'none'; return; }
     strip.style.display = '';
-    for (var i = 0; i < photos.length; i++) {
+    for (var i = 0; i < urls.length; i++) {
       (function (idx) {
         var btn = document.createElement('button');
         btn.type = 'button';
@@ -851,10 +734,10 @@
         btn.addEventListener('click', function (e) {
           e.preventDefault();
           e.stopPropagation();
-          updatePhotoViewer(viewer, photos, idx);
+          updatePhotoViewer(viewer, urls, idx);
         });
         var img = document.createElement('img');
-        img.src = photos[idx].url; img.alt = ''; img.loading = 'lazy';
+        img.src = urls[idx]; img.alt = ''; img.loading = 'lazy';
         btn.appendChild(img);
         strip.appendChild(btn);
       })(i);
