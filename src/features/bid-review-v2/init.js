@@ -306,6 +306,36 @@
       'width:' + width + 'px;';
   }
 
+  // Unique SOW line-item ids of the currently-checked grid rows. Selection
+  // is the worksheet-v2 row checkboxes the comparison grid reuses.
+  function getSelectedSowItemIds() {
+    var nodes = document.querySelectorAll('.scw-br-v2-rowselect:checked');
+    var seen = Object.create(null), out = [];
+    for (var i = 0; i < nodes.length; i++) {
+      var id = nodes[i].getAttribute('data-scw-ws-v2-select');
+      if (id && !seen[id]) { seen[id] = true; out.push(id); }
+    }
+    return out;
+  }
+
+  // Open the bulk-CR modal for one bid column against the selected rows.
+  // Requires a selection (per design) — nudge the user if none.
+  function openBulkCr(button) {
+    var v1 = window.SCW.bidReview;
+    var ids = getSelectedSowItemIds();
+    if (!ids.length) {
+      if (v1 && v1.renderToast) v1.renderToast('Select one or more line items first', 'info');
+      else alert('Select one or more line items first.');
+      return;
+    }
+    if (!ns.bulkCr || typeof ns.bulkCr.open !== 'function') return;
+    ns.bulkCr.open({
+      pkgId:      button.getAttribute('data-pkg-id') || button.getAttribute('data-package-id'),
+      pkgName:    button.getAttribute('data-pkg-name') || '',
+      sowItemIds: ids
+    });
+  }
+
   // Delegated clicks for everything that routes into v1's handlers:
   //   • header action buttons (Update SOW / Create SOW / Reopen Bid)
   //   • header CR controls (Submit Change Request / Clear All)
@@ -336,6 +366,14 @@
       // Any other click closes open Revise menus before proceeding. A menu
       // item is still in the DOM, so its dispatch below still resolves.
       closeReviseMenus();
+
+      // Bulk Change Request on the selected line items (one bid column).
+      var bulkCrBtn = e.target.closest('[data-action="cr_bulk_selected"]');
+      if (bulkCrBtn) {
+        e.preventDefault(); e.stopPropagation();
+        openBulkCr(bulkCrBtn);
+        return;
+      }
 
       // Header buttons — package_* go to dispatchHeaderAction, cr_* fall
       // through to dispatchCRAction.

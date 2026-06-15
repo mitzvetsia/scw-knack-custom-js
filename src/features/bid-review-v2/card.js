@@ -1233,6 +1233,13 @@
     if (isSubmitted) {
       actions =
         '<div class="scw-bid-review-v2__head-actions">' +
+          '<button type="button" class="scw-bid-review__btn scw-bid-review-v2__head-btn ' +
+            'scw-bid-review-v2__head-btn--cr-bulk" data-action="cr_bulk_selected" ' +
+            'data-pkg-id="' + escapeHtml(pkg.id) + '" data-package-id="' + escapeHtml(pkg.id) + '" ' +
+            'data-pkg-name="' + escapeHtml(pkg.label || '') + '" ' +
+            'data-sow-id="' + escapeHtml(sowId || '') + '" ' +
+            'title="Request the same change on all selected line items for this bid">' +
+            'Request Change on Selected</button>' +
           headBtn('Reopen Bid', 'reopen', 'package_reopen_bid', pkg.id, sowId) +
           headBtn('+ Create new SOW', 'create', 'package_create_sow', pkg.id, sowId) +
           headBtn('← Update SOW to match Bid', 'adopt', 'package_copy_to_sow', pkg.id, sowId) +
