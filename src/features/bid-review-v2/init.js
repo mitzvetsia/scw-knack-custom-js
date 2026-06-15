@@ -684,12 +684,53 @@
     }
     return map;
   }
-  // Turn a url list into photo records { url, id } using the SOW-card id map.
+  // url → photo-record-id map for a row's BID-side photos, read off the bid
+  // record (view_3680) field_771_raw — covers photos that are only associated
+  // with the bid line item (no SOW connection yet), so those get an Edit link
+  // too. Model first, then the bid grid DOM (spans carry the record id).
+  function bidPhotoIdByUrl(bidRecordId) {
+    var map = Object.create(null);
+    if (!bidRecordId) return map;
+    try {
+      var v = window.Knack && Knack.views && Knack.views.view_3680;
+      var rec = v && v.model && v.model.data && typeof v.model.data.get === 'function' &&
+                v.model.data.get(bidRecordId);
+      if (rec) {
+        var raw = (rec.attributes || rec).field_771_raw;
+        if (Array.isArray(raw)) {
+          for (var i = 0; i < raw.length; i++) {
+            var r = raw[i]; if (!r) continue;
+            var u = r.url || r.thumb_url || r.image || (r.original && r.original.url) || '';
+            if (u && r.id) map[u] = r.id;
+          }
+        }
+      }
+    } catch (e) { /* ignore */ }
+    if (!Object.keys(map).length) {
+      var tr = document.querySelector('#view_3680 tr[id="' + bidRecordId + '"]');
+      if (tr) {
+        var spans = tr.querySelectorAll('td[data-field-key="field_771"] span[id][data-kn="connection-value"]');
+        for (var s = 0; s < spans.length; s++) {
+          var im = spans[s].querySelector('img[data-kn-img-gallery]') || spans[s].querySelector('img');
+          var u2 = im ? (im.getAttribute('data-kn-img-gallery') || im.getAttribute('src') || '') : '';
+          var id2 = (spans[s].id || '').trim();
+          if (u2 && id2) map[u2] = id2;
+        }
+      }
+    }
+    return map;
+  }
+  // Turn a url list into photo records { url, id } using the SOW-card id map
+  // first, then the bid-record id map (so bid-only photos still get an id).
   function photosWithIds(rowTr, urls) {
     var sowItemId = rowTr && rowTr.getAttribute('data-sow-item-id');
-    var idByUrl = sowPhotoIdByUrl(sowItemId);
+    var bidRecId  = rowTr && rowTr.getAttribute('data-row-id');
+    var sowMap = sowPhotoIdByUrl(sowItemId);
+    var bidMap = bidPhotoIdByUrl(bidRecId);
     var out = [];
-    for (var i = 0; i < urls.length; i++) out.push({ url: urls[i], id: idByUrl[urls[i]] || '' });
+    for (var i = 0; i < urls.length; i++) {
+      out.push({ url: urls[i], id: sowMap[urls[i]] || bidMap[urls[i]] || '' });
+    }
     return out;
   }
 
