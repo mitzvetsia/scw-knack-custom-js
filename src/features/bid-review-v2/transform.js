@@ -499,6 +499,19 @@
         if (bidName) info.bidName = bidName;
       }
 
+      // REL_SOW on the bid package (field_2387). Gates which SOW grids this bid
+      // appears on: a bid tied to a sibling SOW must NOT show on other SOWs'
+      // grids (v1 parity) — without this, a bid for SOW-A leaks onto SOW-B's
+      // grid and dumps all its SOW-A items into "belong to another SOW".
+      if (FK.bidSow) {
+        var bidSowIds = [];
+        var bsConns = connectionAll(rec, FK.bidSow);
+        for (var bsi = 0; bsi < bsConns.length; bsi++) {
+          if (bsConns[bsi] && bsConns[bsi].id) bidSowIds.push(bsConns[bsi].id);
+        }
+        info.bidSowIds = bidSowIds;
+      }
+
       var rawPdf = rec[FK.bidPdf + '_raw'] || rec[FK.bidPdf];
       if (rawPdf) {
         if (typeof rawPdf === 'object' && rawPdf.url) {
@@ -794,6 +807,13 @@
       var packages = [];
       for (var ap = 0; ap < allPackages.length; ap++) {
         if (!packageTouchesSow(allPackages[ap].id, sow.id)) continue;
+        // Sibling-SOW gate (v1 parity): a bid whose REL_SOW (field_2387) is set
+        // to OTHER SOW(s) and NOT this one is a bid for a different SOW — exclude
+        // it so its items don't get dumped into this grid's "belong to another
+        // SOW" block. Empty bidSow = unrestricted (shows on every SOW it touches).
+        var _pkInfo = pkgInfo[allPackages[ap].id];
+        var _bidSowIds = (_pkInfo && _pkInfo.bidSowIds) || [];
+        if (_bidSowIds.length && _bidSowIds.indexOf(sow.id) === -1) continue;
         var pc = {};
         for (var pk in allPackages[ap]) {
           if (Object.prototype.hasOwnProperty.call(allPackages[ap], pk)) pc[pk] = allPackages[ap][pk];
