@@ -359,6 +359,18 @@
       var crCard = e.target.closest('.scw-bid-cr-card[data-action]');
       if (crCard) {
         e.preventDefault(); e.stopPropagation();
+        // The "×" dismiss lives INSIDE the card; the card carries data-action
+        // so a click anywhere on it would re-open the editor. Intercept the
+        // dismiss and REMOVE the pending item instead of opening it.
+        if (e.target.closest('.scw-bid-cr-card__dismiss')) {
+          var dPkg = crCard.getAttribute('data-package-id');
+          var dRow = crCard.getAttribute('data-row-id');
+          var crApi = v1.changeRequests;
+          if (crApi && typeof crApi.dismissPendingItem === 'function' && dPkg && dRow) {
+            crApi.dismissPendingItem(dPkg, dRow);
+          }
+          return;
+        }
         if (v1.dispatchCRAction) v1.dispatchCRAction(crCard);
         return;
       }
