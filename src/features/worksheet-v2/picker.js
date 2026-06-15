@@ -70,6 +70,20 @@
     return isFinite(n) ? n : null;
   }
 
+  // Comma-joined SOW labels (SW-####) for a candidate record, read from its
+  // SOW connection (field_2154). Empty string for non-record candidates
+  // (products / MDF / prefixes) that carry no SOW. Shown under the item label.
+  function sowLabelsOf(rec) {
+    var raw = rec && rec.field_2154_raw;
+    if (!Array.isArray(raw) || !raw.length) return '';
+    var names = [];
+    for (var i = 0; i < raw.length; i++) {
+      var lbl = raw[i] && (raw[i].identifier || raw[i].id);
+      if (lbl) names.push(String(lbl).replace(/<[^>]*>/g, '').trim());
+    }
+    return names.join(', ');
+  }
+
   // Canonical groupBy: MDF/IDF location (field_1946). No-MDF records sink to a
   // "No MDF / IDF" group (id '__unknown' → sorted last).
   function groupByMdfIdf(rec) {
@@ -212,7 +226,12 @@
       '  min-width: 60px;',
       '  font-variant-numeric: tabular-nums;',
       '}',
-      '.scw-ws-v2-picker-item-name { flex: 1 1 auto; }',
+      '.scw-ws-v2-picker-item-text { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; gap: 1px; }',
+      '.scw-ws-v2-picker-item-name { }',
+      '.scw-ws-v2-picker-item-sow {',
+      '  font-size: 11px; font-weight: 600; color: #64748b; line-height: 1.2;',
+      '}',
+      '.scw-ws-v2-picker-item-sow b { font-weight: 700; color: #475569; }',
       '.scw-ws-v2-picker-item input[type=checkbox],',
       '.scw-ws-v2-picker-item input[type=radio] {',
       '  width: 16px; height: 16px; cursor: pointer;',
@@ -325,10 +344,21 @@
           row.className = 'scw-ws-v2-picker-item';
           var labelText = itemLabel(rec) || rec.id;
           var isChecked = selected.indexOf(rec.id) !== -1;
+          // Show each record's SOW(s) (field_2154) beneath its label so the
+          // user can tell which SOW a candidate belongs to — items on the
+          // same MDF/IDF can live on different SOWs. Only rendered for record
+          // candidates that actually carry a SOW connection.
+          var sowText = sowLabelsOf(rec);
+          var sowHtml = sowText
+            ? '<span class="scw-ws-v2-picker-item-sow"><b>SOW:</b> ' + escapeHtml(sowText) + '</span>'
+            : '';
           row.innerHTML =
             '<input type="' + inputType + '" name="' + inputName + '" value="' +
               escapeHtml(rec.id) + '"' + (isChecked ? ' checked' : '') + '>' +
-            '<span class="scw-ws-v2-picker-item-name">' + escapeHtml(labelText) + '</span>';
+            '<span class="scw-ws-v2-picker-item-text">' +
+              '<span class="scw-ws-v2-picker-item-name">' + escapeHtml(labelText) + '</span>' +
+              sowHtml +
+            '</span>';
           bd.appendChild(row);
         });
       });
