@@ -26,6 +26,38 @@
     });
   }
 
+  // ── Card reconciliation (keyed reuse) ──────────────────────────────────
+  // The dominant cost of a re-render is rebuilding EVERY card's DOM. But a
+  // single-field edit only changes ONE record, so we keep the existing DOM
+  // node for any record whose data is byte-identical and rebuild only the
+  // ones that actually changed. The group tree, summaries, warnings and chips
+  // still recompute every render (cheap, data-only / small DOM) — so grouping,
+  // totals and order stay correct; we just skip N-1 buildCard() DOM builds.
+  //
+  // Signature = a cheap hash of the record's attributes. Identical record →
+  // identical card, so a matching signature means the cached node is reusable.
+  function hashStr(s) {
+    var h = 5381, i = s.length;
+    while (i) { h = (h * 33) ^ s.charCodeAt(--i); }
+    return (h >>> 0).toString(36);
+  }
+  function cardSig(rec) {
+    try { var s = JSON.stringify(rec); return s.length.toString(36) + '.' + hashStr(s); }
+    catch (e) { return 'x' + Math.random().toString(36).slice(2); }
+  }
+  // Index the cards currently in `body` by record id, so the rebuild can pluck
+  // and reuse unchanged ones. (Reusing a node detaches it from the old DOM;
+  // body.innerHTML = '' then clears whatever wasn't reused.)
+  function indexExistingCards(body) {
+    var map = Object.create(null);
+    var nodes = body.querySelectorAll('.scw-ws-v2-card[data-scw-ws-v2-record]');
+    for (var i = 0; i < nodes.length; i++) {
+      var id = nodes[i].getAttribute('data-scw-ws-v2-record');
+      if (id) map[id] = nodes[i];
+    }
+    return map;
+  }
+
   // Defer renders while the user is mid-edit so typing isn't blown
   // away by a sibling-triggered re-notify.
   var pending = Object.create(null);
@@ -172,7 +204,7 @@
     return sub;
   }
 
-  function buildL1Block(l1, sourceViewKey) {
+  function buildL1Block(l1, sourceViewKey, cardFn) {
     var block = document.createElement('section');
     block.className = 'scw-ws-v2-l1' +
       (l1.isOpen ? ' scw-ws-v2-l1--open' : '') +
@@ -257,7 +289,9 @@
           // placeholder + log to console so the issue is debuggable
           // without killing the rest of the data.
           try {
-            body.appendChild(ns.card.buildCard(l2.records[j], sourceViewKey));
+            body.appendChild(
+              cardFn ? cardFn(l2.records[j], sourceViewKey)
+                     : ns.card.buildCard(l2.records[j], sourceViewKey));
           } catch (cardErr) {
             console.warn('[scw-ws-v2] buildCard threw for record', {
               recordId: l2.records[j] && l2.records[j].id,
@@ -365,6 +399,26 @@
       if (rid) openIds[rid] = true;
     }
 
+    // Keyed card factory: reuse an unchanged record's existing DOM node
+    // (matched by id + signature), else build a fresh card. This is what
+    // turns a one-field edit from "rebuild every card" into "rebuild one".
+    var existingCards = indexExistingCards(body);
+    function makeCard(record, viewKey) {
+      var id  = record && record.id;
+      var sig = cardSig(record);
+      var ex  = id && existingCards[id];
+      if (ex && ex.getAttribute('data-scw-sig') === sig) {
+        // A DOM node lives in one place only — drop it from the index so if the
+        // same record somehow appears twice in the tree the second gets a fresh
+        // build instead of stealing (and thus removing) the first.
+        delete existingCards[id];
+        return ex; // unchanged — reuse node verbatim (keeps open state, focus-safe)
+      }
+      var card = ns.card.buildCard(record, viewKey);
+      if (card && card.setAttribute) card.setAttribute('data-scw-sig', sig);
+      return card;
+    }
+
     var frag = document.createDocumentFragment();
     // Whole-grid summary at the top — aggregates every L1\'s records
     // into one table. Visible in default mode AND summary-only mode.
@@ -386,7 +440,7 @@
       }
     }
     for (var i = 0; i < tree.length; i++) {
-      frag.appendChild(buildL1Block(tree[i], sourceViewKey));
+      frag.appendChild(buildL1Block(tree[i], sourceViewKey, makeCard));
     }
 
     body.innerHTML = '';
