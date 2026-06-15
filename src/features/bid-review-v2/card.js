@@ -1191,7 +1191,7 @@
       '</div>' + delta);
   }
 
-  function pkgDetailsCell(pkg) {
+  function pkgDetailsCell(pkg, sowId) {
     // Bid Name (field_2636) FIRST, with a label above it — mirrors the
     // "SOW Name" label/value at the top of the SOW details band so the two
     // columns' details line up vertically. Always rendered (placeholder
@@ -1214,57 +1214,82 @@
           escapeHtml(pkg.bidStatus.toLowerCase().replace(/\s+/g, '-')) + '">' +
           escapeHtml(pkg.bidStatus) + '</span>'
       : '';
+    // Reopen Bid lives WITH the status (it's a bid-state action), directly
+    // under the badge — separated from the SOW / CR action groups below.
+    var isSubmitted = /^submitted$/i.test(String(pkg.bidStatus || '').trim());
+    var reopenBtn = isSubmitted
+      ? '<button type="button" class="scw-bid-review__btn scw-bid-review__btn--reopen ' +
+          'scw-bid-review-v2__head-btn scw-bid-review-v2__head-btn--reopen-inline" ' +
+          'data-action="package_reopen_bid" ' +
+          'data-package-id="' + escapeHtml(pkg.id) + '" ' +
+          'data-sow-id="' + escapeHtml(sowId || '') + '">Reopen Bid</button>'
+      : '';
     return pkgTh(pkg, 'scw-bid-review-v2__head-cell--details',
       nameBlock +
       '<div class="scw-bid-review-v2__head-subtitle">' +
         '<span class="scw-bid-review-v2__head-pkg-label">' + escapeHtml(pkg.label) + '</span>' +
         pdfLink +
       '</div>' +
-      (statusBadge ? '<div class="scw-bid-review-v2__head-statusline">' + statusBadge + '</div>' : ''));
+      ((statusBadge || reopenBtn)
+        ? '<div class="scw-bid-review-v2__head-statusline">' + statusBadge + reopenBtn + '</div>'
+        : ''));
   }
 
   function pkgActionsCell(pkg, sowId) {
-    // Action buttons (Submitted bids only) — reuse v1's handlers via
-    // SCW.bidReview.dispatchHeaderAction. Buttons carry the same data-*
-    // attrs + .scw-bid-review__btn class v1's setBusy/CSS expect. Order:
-    // destructive/secondary first, primary (adopt) last per house style.
+    // Actions are grouped into two clearly-labelled categories so they don't
+    // read as one undifferentiated stack:
+    //   • SOW  — Create new SOW / Update SOW to match Bid
+    //   • Change Requests — Request Change on Selected + Submit / Clear
+    // (Reopen Bid — a BID-state action — moved up under the status badge.)
+    // Reuse v1's handlers via SCW.bidReview.dispatchHeaderAction; buttons keep
+    // the v1 data-* attrs + .scw-bid-review__btn classes v1's setBusy expects.
     var isSubmitted = /^submitted$/i.test(String(pkg.bidStatus || '').trim());
-    var actions = '';
+
+    var sowGroup = '';
     if (isSubmitted) {
-      actions =
-        '<div class="scw-bid-review-v2__head-actions">' +
-          '<button type="button" class="scw-bid-review__btn scw-bid-review-v2__head-btn ' +
-            'scw-bid-review-v2__head-btn--cr-bulk" data-action="cr_bulk_selected" ' +
-            'data-pkg-id="' + escapeHtml(pkg.id) + '" data-package-id="' + escapeHtml(pkg.id) + '" ' +
-            'data-pkg-name="' + escapeHtml(pkg.label || '') + '" ' +
-            'data-sow-id="' + escapeHtml(sowId || '') + '" ' +
-            'title="Request the same change on all selected line items for this bid">' +
-            'Request Change on Selected</button>' +
-          headBtn('Reopen Bid', 'reopen', 'package_reopen_bid', pkg.id, sowId) +
+      sowGroup =
+        '<div class="scw-bid-review-v2__head-group scw-bid-review-v2__head-group--sow">' +
+          '<div class="scw-bid-review-v2__head-group-label">SOW</div>' +
           headBtn('+ Create new SOW', 'create', 'package_create_sow', pkg.id, sowId) +
           headBtn('← Update SOW to match Bid', 'adopt', 'package_copy_to_sow', pkg.id, sowId) +
         '</div>';
     }
 
     // Pending change-request controls — Submit (N) + Clear All, shown when
-    // this package has pending CRs. Route through dispatchCRAction.
+    // this package has pending CRs.
     var api = crApi();
     var pending = (api && api.getPending) ? (api.getPending() || {}) : {};
     var bucket = pending[pkg.id];
     var crCount = (bucket && bucket.items) ? bucket.items.length : 0;
-    var crBtns = '';
-    if (crCount) {
-      crBtns =
-        '<div class="scw-bid-review-v2__head-cr-actions">' +
-          '<button type="button" class="scw-bid-review__btn scw-bid-review-v2__head-btn ' +
-            'scw-bid-review-v2__head-btn--cr-clear" data-action="cr_clear_all">Clear All</button>' +
-          '<button type="button" class="scw-bid-review__btn scw-bid-review-v2__head-btn ' +
+
+    var crGroup = '';
+    if (isSubmitted || crCount) {
+      var bulkBtn = isSubmitted
+        ? '<button type="button" class="scw-bid-review__btn scw-bid-review-v2__head-btn ' +
+            'scw-bid-review-v2__head-btn--cr-bulk" data-action="cr_bulk_selected" ' +
+            'data-pkg-id="' + escapeHtml(pkg.id) + '" data-package-id="' + escapeHtml(pkg.id) + '" ' +
+            'data-pkg-name="' + escapeHtml(pkg.label || '') + '" ' +
+            'data-sow-id="' + escapeHtml(sowId || '') + '" ' +
+            'title="Request the same change on all selected line items for this bid">' +
+            'Request Change on Selected</button>'
+        : '';
+      var pendingBtns = crCount
+        ? '<button type="button" class="scw-bid-review__btn scw-bid-review-v2__head-btn ' +
             'scw-bid-review-v2__head-btn--cr-submit" data-action="cr_submit" ' +
             'data-pkg-id="' + escapeHtml(pkg.id) + '">Submit Change Request (' + crCount + ')</button>' +
+          '<button type="button" class="scw-bid-review__btn scw-bid-review-v2__head-btn ' +
+            'scw-bid-review-v2__head-btn--cr-clear" data-action="cr_clear_all">Clear All</button>'
+        : '';
+      crGroup =
+        '<div class="scw-bid-review-v2__head-group scw-bid-review-v2__head-group--cr">' +
+          '<div class="scw-bid-review-v2__head-group-label">Change Requests' +
+            (crCount ? ' <span class="scw-bid-review-v2__head-group-count">' + crCount + '</span>' : '') +
+          '</div>' +
+          bulkBtn + pendingBtns +
         '</div>';
     }
 
-    return pkgTh(pkg, 'scw-bid-review-v2__head-cell--actions', actions + crBtns);
+    return pkgTh(pkg, 'scw-bid-review-v2__head-cell--actions', sowGroup + crGroup);
   }
 
   // A header action button — v1-compatible classes + data attrs so
@@ -1375,7 +1400,7 @@
     // Band 3 — details (SOW name/proposal/docs/survey/margin ‖ bid label/PDF/status).
     var r3 = makeRow('details',
       sowTh('scw-bid-review-v2__head-cell--details scw-bid-review-v2__head--sow-details', ''),
-      pkgDetailsCell);
+      function (pkg) { return pkgDetailsCell(pkg, grid.sowId); });
     thead.appendChild(r3);
 
     // Band 4 — actions (both columns' buttons at the bottom).
