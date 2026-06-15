@@ -71,6 +71,17 @@
       if (input.classList.contains(SAV_CLS)) input.classList.remove(SAV_CLS);
     }, FLASH_MS);
 
+    // Optimistically patch the local model NOW, before the PUT resolves, so a
+    // re-render in the meantime (e.g. closing a bid-review expand panel that
+    // hosts this card, or a sibling edit) reflects the typed value instead of
+    // reverting to the stale model. Success re-patches with the server resp;
+    // error reverts (below).
+    try {
+      if (typeof SCW.syncKnackModel === 'function') {
+        SCW.syncKnackModel(viewKey, recordId, {}, fieldKey, newValue);
+      }
+    } catch (e) { /* ignore */ }
+
     // Fields that feed a server-side formula — after saving any of them we
     // refetch the record so the dependent read-only cells refresh:
     //   - Fee / install fee (field_2028/2151) recompute from sub bid, +Hrs,
@@ -120,9 +131,16 @@
       })
       .catch(function (xhr) {
         console.warn('[scw-ws-v2] save failed', { recordId: recordId, fieldKey: fieldKey, xhr: xhr });
+        // Revert the optimistic model patch + the input.
+        try {
+          if (typeof SCW.syncKnackModel === 'function') {
+            SCW.syncKnackModel(viewKey, recordId, {}, fieldKey, prevValue);
+          }
+        } catch (e) { /* ignore */ }
         input.classList.add(ERR_CLS);
         input.value = prevValue;
         input._scwWsV2Prev = prevValue;
+        if (ns.data && typeof ns.data.notify === 'function') ns.data.notify(viewKey);
       });
   }
 

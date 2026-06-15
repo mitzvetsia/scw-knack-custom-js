@@ -477,6 +477,13 @@
     var isOpen = next && next.classList &&
       next.classList.contains('scw-bid-review-v2__expand-row');
     if (isOpen) {
+      // Commit any in-progress edit inside the panel BEFORE removing it —
+      // otherwise tearing down the inputs drops a typed-but-uncommitted value
+      // (edit.js commits on blur, so force the blur first).
+      var active = document.activeElement;
+      if (active && next.contains(active) && typeof active.blur === 'function') {
+        active.blur();
+      }
       next.parentNode.removeChild(next);
       row.setAttribute('aria-expanded', 'false');
       row.classList.remove('scw-bid-review-v2__row--open');
