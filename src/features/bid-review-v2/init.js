@@ -684,39 +684,41 @@
     }
     return map;
   }
-  // url → photo-record-id map for a row's BID-side photos, read off the bid
-  // record (view_3680) field_771_raw — covers photos that are only associated
-  // with the bid line item (no SOW connection yet), so those get an Edit link
-  // too. Model first, then the bid grid DOM (spans carry the record id).
+  // url → photo-record-id map for a row's BID-side photos. The DOM
+  // connection-value spans carry the connected DOC_photos RECORD id, which is
+  // what the edit-photo page resolves. The model's field_771_raw[].id can be
+  // the image ASSET id instead (edit page opens blank with that) — so read the
+  // DOM span FIRST and only fall back to the model id when the row isn't in
+  // the DOM.
   function bidPhotoIdByUrl(bidRecordId) {
     var map = Object.create(null);
     if (!bidRecordId) return map;
-    try {
-      var v = window.Knack && Knack.views && Knack.views.view_3680;
-      var rec = v && v.model && v.model.data && typeof v.model.data.get === 'function' &&
-                v.model.data.get(bidRecordId);
-      if (rec) {
-        var raw = (rec.attributes || rec).field_771_raw;
-        if (Array.isArray(raw)) {
-          for (var i = 0; i < raw.length; i++) {
-            var r = raw[i]; if (!r) continue;
-            var u = r.url || r.thumb_url || r.image || (r.original && r.original.url) || '';
-            if (u && r.id) map[u] = r.id;
+    var tr = document.querySelector('#view_3680 tr[id="' + bidRecordId + '"]');
+    if (tr) {
+      var spans = tr.querySelectorAll('td[data-field-key="field_771"] span[id][data-kn="connection-value"]');
+      for (var s = 0; s < spans.length; s++) {
+        var im = spans[s].querySelector('img[data-kn-img-gallery]') || spans[s].querySelector('img');
+        var u = im ? (im.getAttribute('data-kn-img-gallery') || im.getAttribute('src') || '') : '';
+        var id = (spans[s].id || '').trim();
+        if (u && id) map[u] = id;
+      }
+    }
+    if (!Object.keys(map).length) {
+      try {
+        var v = window.Knack && Knack.views && Knack.views.view_3680;
+        var rec = v && v.model && v.model.data && typeof v.model.data.get === 'function' &&
+                  v.model.data.get(bidRecordId);
+        if (rec) {
+          var raw = (rec.attributes || rec).field_771_raw;
+          if (Array.isArray(raw)) {
+            for (var i = 0; i < raw.length; i++) {
+              var r = raw[i]; if (!r) continue;
+              var u2 = r.url || r.thumb_url || r.image || (r.original && r.original.url) || '';
+              if (u2 && r.id) map[u2] = r.id;
+            }
           }
         }
-      }
-    } catch (e) { /* ignore */ }
-    if (!Object.keys(map).length) {
-      var tr = document.querySelector('#view_3680 tr[id="' + bidRecordId + '"]');
-      if (tr) {
-        var spans = tr.querySelectorAll('td[data-field-key="field_771"] span[id][data-kn="connection-value"]');
-        for (var s = 0; s < spans.length; s++) {
-          var im = spans[s].querySelector('img[data-kn-img-gallery]') || spans[s].querySelector('img');
-          var u2 = im ? (im.getAttribute('data-kn-img-gallery') || im.getAttribute('src') || '') : '';
-          var id2 = (spans[s].id || '').trim();
-          if (u2 && id2) map[u2] = id2;
-        }
-      }
+      } catch (e) { /* ignore */ }
     }
     return map;
   }
