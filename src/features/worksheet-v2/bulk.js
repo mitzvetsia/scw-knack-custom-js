@@ -1199,7 +1199,7 @@
     var rowState = {};
 
     fields.forEach(function (f) {
-      rowState[f.key] = { apply: false, value: null };
+      rowState[f.key] = { apply: false, value: null, mode: 'replace' };
       var row = document.createElement('div');
       row.className = 'scw-ws-v2-bulk-row';
       row.setAttribute('data-scw-ws-v2-bulk-field', f.key);
@@ -1251,7 +1251,22 @@
           '<button type="button" class="scw-ws-v2-bulk-conn-btn">' +
             '<span class="scw-ws-v2-bulk-conn-val">(choose)</span>' +
             '<span class="scw-ws-v2-bulk-conn-edit">pick</span>' +
-          '</button>';
+          '</button>' +
+          // Multi-connection fields (SOW, Connected Devices) can ADD the picked
+          // records to each row's existing selection instead of replacing it.
+          (f.kind === 'conn-multi'
+            ? '<label class="scw-ws-v2-bulk-conn-mode" title="Add the picked ' +
+                'records to each row\'s existing selection instead of replacing it.">' +
+                '<input type="checkbox" class="scw-ws-v2-bulk-conn-add">' +
+                '<span>Add to existing (don\'t replace)</span>' +
+              '</label>'
+            : '');
+        var addToggle = slot.querySelector('.scw-ws-v2-bulk-conn-add');
+        if (addToggle) {
+          addToggle.addEventListener('change', function (e) {
+            rowState[f.key].mode = e.target.checked ? 'add' : 'replace';
+          });
+        }
         slot.querySelector('button').addEventListener('click', function () {
           var resolved = getSourceCandidatesForConn(f, sourceViewKey, ids);
           var cands = resolved.candidates;
@@ -1357,29 +1372,58 @@
       // off the page, so any writeViewKey override would 404. Kept as
       // a generic group-by route in case a future field needs a custom
       // routing target.
-      var groups = Object.create(null);
-      var applied = 0;
       var fieldByKey = Object.create(null);
       for (var fi = 0; fi < fields.length; fi++) fieldByKey[fields[fi].key] = fields[fi];
-      Object.keys(rowState).forEach(function (k) {
-        if (!rowState[k].apply) return;
-        var f = fieldByKey[k];
-        var route = (f && f.writeViewKey) || sourceViewKey;
-        if (!groups[route]) groups[route] = {};
-        groups[route][k] = rowState[k].value;
-        applied++;
-      });
-      if (!applied) {
+      var appliedKeys = Object.keys(rowState).filter(function (k) { return rowState[k].apply; });
+      if (!appliedKeys.length) {
         status.textContent = 'Tick at least one field to apply.';
         return;
       }
 
-      var jobs = [];
-      Object.keys(groups).forEach(function (routeViewKey) {
-        ids.forEach(function (rid) {
-          jobs.push({ viewKey: routeViewKey, recordId: rid, body: groups[routeViewKey] });
+      // Read a record's CURRENT connection ids for a field from the loaded
+      // model — used to UNION rather than overwrite in "add to existing" mode.
+      function currentConnIds(recordId, fieldKey) {
+        try {
+          var sv = window.Knack && Knack.views && Knack.views[sourceViewKey];
+          var models = (sv && sv.model && sv.model.data && sv.model.data.models) || [];
+          for (var i = 0; i < models.length; i++) {
+            var a = models[i] && models[i].attributes;
+            if (!a || a.id !== recordId) continue;
+            var raw = a[fieldKey + '_raw'];
+            var out = [];
+            if (Array.isArray(raw)) {
+              for (var r = 0; r < raw.length; r++) if (raw[r] && raw[r].id) out.push(raw[r].id);
+            } else if (raw && raw.id) { out.push(raw.id); }
+            return out;
+          }
+        } catch (e) { /* fall through */ }
+        return [];
+      }
+
+      // Build a body PER (record, route). Override fields share one value
+      // across rows; a conn-multi field in "add" mode is per-record — its
+      // value is the union of the picked ids with THAT row's existing
+      // selection, so nothing already connected is dropped.
+      var jobsByKey = Object.create(null);
+      ids.forEach(function (rid) {
+        appliedKeys.forEach(function (k) {
+          var f = fieldByKey[k];
+          var route = (f && f.writeViewKey) || sourceViewKey;
+          var val = rowState[k].value;
+          if (f && f.kind === 'conn-multi' && rowState[k].mode === 'add') {
+            var chosen = Array.isArray(val) ? val : (val ? [val] : []);
+            var merged = currentConnIds(rid, k).slice();
+            for (var c = 0; c < chosen.length; c++) {
+              if (merged.indexOf(chosen[c]) === -1) merged.push(chosen[c]);
+            }
+            val = merged;
+          }
+          var jobKey = route + '|' + rid;
+          if (!jobsByKey[jobKey]) jobsByKey[jobKey] = { viewKey: route, recordId: rid, body: {} };
+          jobsByKey[jobKey].body[k] = val;
         });
       });
+      var jobs = Object.keys(jobsByKey).map(function (jobKey) { return jobsByKey[jobKey]; });
 
       saveBtn.disabled   = true;
       cancelBtn.disabled = true;
