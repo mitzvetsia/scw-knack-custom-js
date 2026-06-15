@@ -12,13 +12,11 @@
   var VIEW_ID       = 'view_3820';
   var WORKSHEET_ID  = 'view_3505';
   var REVISIONS_ID  = 'view_3823';
-  // Sub-side revision response webhook (Accept All / Reject All from
-  // the revision requests grid). Matches the per-card modal flow's
-  // revisionResponseWebhook so every Accept/Reject surface in the sub
-  // portal funnels into the same Make scenario. The previous
-  // 0cobxwo9… URL pointed at a deleted scenario and was silently
-  // no-op'ing because xhr.status === 0 is treated as success below.
-  var WEBHOOK       = 'https://hook.us1.make.com/t6hczsjuia9l21d1u9ghfohmifw0r43f';
+  // Revision response webhook (Accept All / Reject All from the revision
+  // requests grid). Sends the same `revision_response` payload shape that
+  // bid-revision-inject.js's Accept All / Reject All emits, so both surfaces
+  // funnel into the one Make scenario.
+  var WEBHOOK       = 'https://hook.us1.make.com/0cobxwo9q6ycek787agapekg7gtahmt5';
   var CSS_ID        = 'scw-rev-accept-reject-css';
   var EVENT_NS      = '.scwRevAcceptReject';
   var POLL_MS       = 5000;
@@ -158,11 +156,21 @@
     btn.disabled = true;
     btn.textContent = label + 'ing\u2026';
 
+    // Match bid-revision-inject.js's fireRevisionAction payload shape. The
+    // view_3820 row id is the revision REQUEST id \u2192 revisionRequestId; this is
+    // the whole-request "All" action, so items isn't enumerated (the scenario
+    // resolves the request's items by id).
     var payload = {
-      action: action,
-      recordId: recordId,
-      timestamp: new Date().toISOString(),
+      actionType:  'revision_response',
+      action:      action,
+      timestamp:   new Date().toISOString(),
+      totalItems:  1,
+      revisionRequests: [{ revisionRequestId: recordId, items: [] }],
     };
+    try {
+      var u = Knack.getUserAttributes();
+      if (u) payload.user = { id: u.id || '', name: u.name || '', email: u.email || '' };
+    } catch (ex) { /* user attrs unavailable */ }
 
     $.ajax({
       url: WEBHOOK,
