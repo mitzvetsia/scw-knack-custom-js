@@ -215,7 +215,10 @@
   // live in the cam set, so they naturally appear for cam/reader rows only.
   function visibleBulkFieldsFor(attrs, fieldSet) {
     var cat = (ns.card && ns.card.bucketCategoryOf) ? ns.card.bucketCategoryOf(attrs) : 'default';
-    var base = fieldSet[cat] || [];
+    // Fall back to the base FIELDS set (then 'default') if this fieldSet has no
+    // entry for the category — e.g. SALES_FIELDS has no 'assumptions', which
+    // would otherwise leave the row with ZERO editable fields ("no options").
+    var base = fieldSet[cat] || FIELDS[cat] || fieldSet['default'] || FIELDS['default'] || [];
     var out = [];
     for (var i = 0; i < base.length; i++) {
       var f = base[i];
@@ -226,20 +229,33 @@
     return out;
   }
 
-  // UNION of every selected row's visible bulk fields (dedup by key, first-seen
-  // order). Replaces the old intersection so cabling / connection fields surface
-  // whenever ANY selected row supports them; save-time gating (rowVisibleMap)
-  // keeps each write scoped to the rows that actually expose the field.
-  function unionVisibleFields(ids, sourceViewKey, fieldSet) {
+  // INTERSECTION of every selected row's visible bulk fields — only offer a
+  // field that EVERY selected line item actually exposes (so a mixed selection
+  // narrows to the common editable set). Unlike the old intersectFields (which
+  // intersected static bucket lists), this intersects each row's per-row
+  // VISIBLE set, so the conditional rules (qty only when >1 allowed, Connected
+  // Devices only when the row maps connections) are honored: a field that's
+  // conditionally hidden on one selected row drops from the bulk list too.
+  // Order seeds from the first resolved row.
+  function intersectVisibleFields(ids, sourceViewKey, fieldSet) {
     var idx = attrsIndex(sourceViewKey);
-    var seen = Object.create(null), out = [];
+    var rowSets = [];
     for (var i = 0; i < ids.length; i++) {
       var attrs = idx[ids[i]];
       if (!attrs) continue;
       var vis = visibleBulkFieldsFor(attrs, fieldSet);
-      for (var j = 0; j < vis.length; j++) {
-        if (!seen[vis[j].key]) { seen[vis[j].key] = true; out.push(vis[j]); }
+      var keys = Object.create(null);
+      for (var j = 0; j < vis.length; j++) keys[vis[j].key] = true;
+      rowSets.push({ fields: vis, keys: keys });
+    }
+    if (!rowSets.length) return [];
+    var seed = rowSets[0].fields, out = [];
+    for (var s = 0; s < seed.length; s++) {
+      var f = seed[s], inAll = true;
+      for (var r = 1; r < rowSets.length; r++) {
+        if (!rowSets[r].keys[f.key]) { inAll = false; break; }
       }
+      if (inAll) out.push(f);
     }
     return out;
   }
@@ -1269,7 +1285,7 @@
     var categories = recordCategories(ids, sourceViewKey);
     var sales = isSalesView(sourceViewKey);
     var fieldSet = sales ? SALES_FIELDS : FIELDS;
-    var fields = locked ? LOCKED_BULK_FIELDS.slice() : unionVisibleFields(ids, sourceViewKey, fieldSet);
+    var fields = locked ? LOCKED_BULK_FIELDS.slice() : intersectVisibleFields(ids, sourceViewKey, fieldSet);
     // Per-row visible-field map for save-time gating (null when locked → the
     // whitelist applies to every selected row uniformly).
     var rowVisible = locked ? null : rowVisibleMap(ids, sourceViewKey, fieldSet);
