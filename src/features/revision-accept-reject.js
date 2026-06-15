@@ -217,24 +217,47 @@
       var wrapper = document.createElement('span');
       wrapper.className = 'scw-rev-actions';
 
+      // Identity carried on the buttons (NOT via addEventListener): KTL
+      // re-renders / clones these table cells, and cloneNode drops
+      // addEventListener handlers — so per-button listeners silently stop
+      // firing. The click is handled by ONE delegated listener (below) that
+      // reads these data-* attrs, which survive cloning.
       var rejectBtn = document.createElement('button');
       rejectBtn.className = 'scw-rev-actions__btn scw-rev-actions__btn--reject';
       rejectBtn.textContent = 'Reject All';
-      rejectBtn.addEventListener('click', (function (rid, pname) {
-        return function () { sendAction('reject', rid, pname, this); };
-      })(recordId, pkgName));
+      rejectBtn.type = 'button';
+      rejectBtn.setAttribute('data-rev-action', 'reject');
+      rejectBtn.setAttribute('data-rev-id', recordId);
+      rejectBtn.setAttribute('data-rev-pkg', pkgName);
       wrapper.appendChild(rejectBtn);
 
       var acceptBtn = document.createElement('button');
       acceptBtn.className = 'scw-rev-actions__btn scw-rev-actions__btn--accept';
       acceptBtn.textContent = 'Accept All';
-      acceptBtn.addEventListener('click', (function (rid, pname) {
-        return function () { sendAction('accept', rid, pname, this); };
-      })(recordId, pkgName));
+      acceptBtn.type = 'button';
+      acceptBtn.setAttribute('data-rev-action', 'accept');
+      acceptBtn.setAttribute('data-rev-id', recordId);
+      acceptBtn.setAttribute('data-rev-pkg', pkgName);
       wrapper.appendChild(acceptBtn);
 
       actionTd.appendChild(wrapper);
     }
+  }
+
+  // Single delegated click handler — survives KTL cell re-renders/clones that
+  // strip per-element listeners. Bound once.
+  if (!document.documentElement.hasAttribute('data-scw-rev-actions-bound')) {
+    document.documentElement.setAttribute('data-scw-rev-actions-bound', '1');
+    document.addEventListener('click', function (e) {
+      var btn = e.target && e.target.closest &&
+                e.target.closest('.scw-rev-actions__btn[data-rev-action]');
+      if (!btn || btn.disabled) return;
+      e.preventDefault();
+      e.stopPropagation();
+      sendAction(btn.getAttribute('data-rev-action'),
+                 btn.getAttribute('data-rev-id'),
+                 btn.getAttribute('data-rev-pkg') || '', btn);
+    });
   }
 
   $(document)
