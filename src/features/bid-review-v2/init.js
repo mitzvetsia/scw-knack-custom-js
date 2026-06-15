@@ -487,6 +487,8 @@
       next.parentNode.removeChild(next);
       row.setAttribute('aria-expanded', 'false');
       row.classList.remove('scw-bid-review-v2__row--open');
+      var closedId = row.getAttribute('data-sow-item-id');
+      if (closedId && ns.state) ns.state.setRowExpanded(closedId, false);
       return;
     }
     var sowItemId = row.getAttribute('data-sow-item-id');
@@ -532,6 +534,9 @@
     row.parentNode.insertBefore(expand, row.nextSibling);
     row.classList.add('scw-bid-review-v2__row--open');
     row.setAttribute('aria-expanded', 'true');
+    // Remember this row is open so a post-edit/-delete grid rebuild can
+    // re-open it (render.js → reopenExpandedRows) instead of collapsing it.
+    if (ns.state) ns.state.setRowExpanded(sowItemId, true);
 
     mountWorksheetV2Card(cardCol, sowRec);
 
@@ -745,6 +750,32 @@
   }
 
   ns.openWithPhoto = openWithPhoto;
+
+  // After a grid rebuild (render.js), re-open the row panels the user had
+  // expanded so an edit/delete-driven refetch doesn't collapse them. The
+  // rebuilt rows come back collapsed; re-running toggleRowExpand on each
+  // tracked-open row rebuilds its panel from the FRESH model (so e.g. a just-
+  // deleted accessory is already gone from the re-mounted worksheet card).
+  function reopenExpandedRows(scope) {
+    if (!ns.state || typeof ns.state.isRowExpanded !== 'function') return;
+    var root = scope || (ns.CONFIG && document.getElementById(ns.CONFIG.mountId));
+    if (!root) return;
+    var rows = root.querySelectorAll('.scw-bid-review-v2__row[data-sow-item-id]');
+    for (var i = 0; i < rows.length; i++) {
+      var row = rows[i];
+      var rid = row.getAttribute('data-sow-item-id');
+      if (!rid || !ns.state.isRowExpanded(rid)) continue;
+      // Skip rows hidden by a collapsed MDF/IDF group — don't surface a
+      // detached panel; the state stays set so it re-opens if the group opens.
+      if (row.offsetParent === null) continue;
+      // Already open (panel survived) — leave it.
+      var nx = row.nextElementSibling;
+      if (nx && nx.classList &&
+          nx.classList.contains('scw-bid-review-v2__expand-row')) continue;
+      toggleRowExpand(row);
+    }
+  }
+  ns.reopenExpandedRows = reopenExpandedRows;
 
   // Find the full Backbone-style attributes hash for a SOW item id.
   // Prefer the live model so we always see the freshest values; fall

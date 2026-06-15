@@ -91,6 +91,13 @@
       try { ns.applyGroupCollapse(body); } catch (e) { /* fail soft */ }
     }
 
+    // Re-open any row panels the user had expanded — the rebuild reset every
+    // row to collapsed, which otherwise closed the line item after an inline
+    // edit or accessory delete refetch.
+    if (typeof ns.reopenExpandedRows === 'function') {
+      try { ns.reopenExpandedRows(body); } catch (e) { /* fail soft */ }
+    }
+
     // Ensure the toolbar is present (idempotent — survives body rebuilds).
     if (ns.toolbar && typeof ns.toolbar.mount === 'function') ns.toolbar.mount();
   }
