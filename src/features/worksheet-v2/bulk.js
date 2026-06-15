@@ -196,6 +196,71 @@
     return out;
   }
 
+  // Qty is editable only when the line item allows MORE than quantity 1 —
+  // i.e. field_2230 ("single qty") is NOT yes. Mirrors card.js isQtyLocked /
+  // qtyCell so the bulk panel matches what the worksheet card shows per row.
+  function qtyAllowsMulti(attrs) {
+    var raw = attrs && attrs['field_2230_raw'];
+    if (raw === true || raw === 'Yes' || raw === 'yes' || raw === 1) return false;
+    var s = (attrs && attrs['field_2230'] || '').toString().trim().toLowerCase();
+    return !(s === 'yes' || s === 'true' || s === '1');
+  }
+
+  // Per-row bulk-editable fields: the row's bucket field list, filtered by the
+  // SAME conditional visibility rules the worksheet card applies, so the bulk
+  // panel only offers a field where that row actually exposes it:
+  //   • Qty (field_1964)        — only when the row allows qty > 1.
+  //   • Connected Devices (1957) — only when the row maps connections (NVR/switch).
+  // Cabling (existing/exterior/plenum/drop/conduit) + Connected Device (2197)
+  // live in the cam set, so they naturally appear for cam/reader rows only.
+  function visibleBulkFieldsFor(attrs, fieldSet) {
+    var cat = (ns.card && ns.card.bucketCategoryOf) ? ns.card.bucketCategoryOf(attrs) : 'default';
+    var base = fieldSet[cat] || [];
+    var out = [];
+    for (var i = 0; i < base.length; i++) {
+      var f = base[i];
+      if (f.key === 'field_1964' && !qtyAllowsMulti(attrs)) continue;
+      if (f.key === 'field_1957' && !isMapConnectionsRow(attrs)) continue;
+      out.push(f);
+    }
+    return out;
+  }
+
+  // UNION of every selected row's visible bulk fields (dedup by key, first-seen
+  // order). Replaces the old intersection so cabling / connection fields surface
+  // whenever ANY selected row supports them; save-time gating (rowVisibleMap)
+  // keeps each write scoped to the rows that actually expose the field.
+  function unionVisibleFields(ids, sourceViewKey, fieldSet) {
+    var idx = attrsIndex(sourceViewKey);
+    var seen = Object.create(null), out = [];
+    for (var i = 0; i < ids.length; i++) {
+      var attrs = idx[ids[i]];
+      if (!attrs) continue;
+      var vis = visibleBulkFieldsFor(attrs, fieldSet);
+      for (var j = 0; j < vis.length; j++) {
+        if (!seen[vis[j].key]) { seen[vis[j].key] = true; out.push(vis[j]); }
+      }
+    }
+    return out;
+  }
+
+  // recordId → { fieldKey: true } of its visible bulk fields. Save uses this to
+  // only write a field to the rows that expose it (a cabling value isn't pushed
+  // to a non-cam row that happened to be in the same selection).
+  function rowVisibleMap(ids, sourceViewKey, fieldSet) {
+    var idx = attrsIndex(sourceViewKey);
+    var map = Object.create(null);
+    for (var i = 0; i < ids.length; i++) {
+      var attrs = idx[ids[i]];
+      if (!attrs) continue;
+      var set = Object.create(null);
+      var vis = visibleBulkFieldsFor(attrs, fieldSet);
+      for (var j = 0; j < vis.length; j++) set[vis[j].key] = true;
+      map[ids[i]] = set;
+    }
+    return map;
+  }
+
   // ── Lock + delete-block helpers (shared with the per-card rules) ──
   // When ANY selected row is a LOCKED sales row (card.js isCrLocked: sales
   // deployment + survey-associated), the bulk-edit modal is restricted to the
@@ -1204,7 +1269,10 @@
     var categories = recordCategories(ids, sourceViewKey);
     var sales = isSalesView(sourceViewKey);
     var fieldSet = sales ? SALES_FIELDS : FIELDS;
-    var fields = locked ? LOCKED_BULK_FIELDS.slice() : intersectFields(categories, fieldSet);
+    var fields = locked ? LOCKED_BULK_FIELDS.slice() : unionVisibleFields(ids, sourceViewKey, fieldSet);
+    // Per-row visible-field map for save-time gating (null when locked → the
+    // whitelist applies to every selected row uniformly).
+    var rowVisible = locked ? null : rowVisibleMap(ids, sourceViewKey, fieldSet);
     // Diagnostic: if a selection yields no categories the modal will read
     // "no shared fields". Log exactly why (selection size, how many ids
     // resolved, the view key + record counts) so the intermittent blank
@@ -1471,6 +1539,9 @@
       var jobsByKey = Object.create(null);
       ids.forEach(function (rid) {
         appliedKeys.forEach(function (k) {
+          // Only write a field to rows that actually expose it (qty to multi-qty
+          // rows, cabling to cam rows, Connected Devices to mapping rows, …).
+          if (rowVisible && rowVisible[rid] && !rowVisible[rid][k]) return;
           var f = fieldByKey[k];
           var route = (f && f.writeViewKey) || sourceViewKey;
           var val = rowState[k].value;
