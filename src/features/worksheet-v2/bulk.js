@@ -664,34 +664,32 @@
     }
     return d.promise();
   }
-  /** POST to MAKE_DELETE_RECORD_WEBHOOK with { recordId } — same
-   *  contract the per-row trash + chip × handlers use. Retried on
-   *  transient errors. Resolves to a settle-shaped result so partial
-   *  failures don\'t reject the whole batch. */
-  function doDeleteWithRetry(recordId, webhookUrl, attempt) {
+
+  /** CANONICAL front-end record delete (NO Make webhook). View-scoped REST
+   *  DELETE via SCW.knackAjax + SCW.knackRecordUrl — the user's session token
+   *  authorizes it and it's CORS-safe, so it works for any record on a view
+   *  with Delete enabled (the same proven path the per-row line-item delete +
+   *  v1 bid-review use). Retried on transient errors (429 / 5xx / 408 /
+   *  network-0); settle-shaped so a partial failure never rejects the batch.
+   *  This is THE deletion primitive — replaces doDeleteWithRetry (Make). */
+  function deleteRecordFE(viewKey, recordId, attempt) {
     attempt = attempt || 1;
     var d = $.Deferred();
+    if (!viewKey || !(window.SCW && typeof SCW.knackAjax === 'function' &&
+        typeof SCW.knackRecordUrl === 'function')) {
+      d.resolve({ ok: false, recordId: recordId, status: -1 });
+      return d.promise();
+    }
     try {
-      $.ajax({
-        url:  webhookUrl,
-        type: 'POST',
-        contentType: 'application/json',
-        data: JSON.stringify({ recordId: recordId }),
-        crossDomain: true,
-        timeout: 60000,
+      SCW.knackAjax({
+        url:  SCW.knackRecordUrl(viewKey, recordId),
+        type: 'DELETE',
         success: function () { d.resolve({ ok: true, recordId: recordId, status: 200 }); },
         error: function (xhr) {
-          // Make webhooks often CORS-block the response (status 0)
-          // even when the scenario ran fine — treat as success.
-          if (xhr && xhr.status === 0) {
-            d.resolve({ ok: true, recordId: recordId, status: 0 });
-            return;
-          }
           if (attempt < MAX_ATTEMPTS && isRetryable(xhr)) {
             var wait = BASE_BACKOFF * Math.pow(2, attempt - 1) + Math.random() * 250;
             setTimeout(function () {
-              doDeleteWithRetry(recordId, webhookUrl, attempt + 1)
-                .then(function (r) { d.resolve(r); });
+              deleteRecordFE(viewKey, recordId, attempt + 1).then(function (r) { d.resolve(r); });
             }, wait);
           } else {
             d.resolve({ ok: false, recordId: recordId, status: xhr && xhr.status });
@@ -1061,17 +1059,11 @@
     });
   }
 
-  /** Bulk delete — accessories first, then parents. Both go through
-   *  the existing MAKE_DELETE_RECORD_WEBHOOK (no API keys, no auto-
-   *  confirm modal serialization), capped at MAX_CONCURRENT in flight
-   *  with retry-on-transient-error. */
+  /** Bulk delete — accessories first, then parents. Front-end only: each
+   *  record is removed with the view-scoped REST DELETE (deleteRecordFE),
+   *  capped at MAX_CONCURRENT in flight with retry-on-transient-error. No
+   *  Make webhook. */
   function runBulkDelete(parentIds, accIds, sourceViewKey, overlay, status, confirmBtn, cancelBtn, close) {
-    var webhookUrl = (window.SCW && SCW.CONFIG && SCW.CONFIG.MAKE_DELETE_RECORD_WEBHOOK) || '';
-    if (!webhookUrl || /PLACEHOLDER/.test(webhookUrl)) {
-      status.innerHTML = '<div class="scw-ws-v2-bulk-fail">' +
-        'Delete webhook URL not configured (MAKE_DELETE_RECORD_WEBHOOK).</div>';
-      return;
-    }
     var totalN  = parentIds.length + accIds.length;
 
     confirmBtn.disabled = true;
@@ -1092,7 +1084,7 @@
     // mid-cascade.
     var jobs = accIds.concat(parentIds);
     runJobQueue(jobs, function (id) {
-      return doDeleteWithRetry(id, webhookUrl);
+      return deleteRecordFE(sourceViewKey, id);
     }, function (done, total) {
       var pct = Math.round((done / total) * 100);
       if (bar) bar.style.width = pct + '%';
@@ -1719,27 +1711,29 @@
     refreshToolbar();
   }
 
-  /** Concurrency-capped + retry/backoff delete queue, exposed so the
-   *  per-row trash + accessory-chip × handlers in init.js converge onto
-   *  the same proven path instead of hand-rolling fire-and-forget fetches
-   *  (which silently lose writes to Knack's ~10 req/s 429s — backlog #1).
-   *  ids: record ids to delete via MAKE_DELETE_RECORD_WEBHOOK. Resolves to
-   *  an array of settle-shaped results ({ ok, recordId, status }); a
-   *  failure never rejects the batch. */
-  function queuedDelete(ids, webhookUrl, onProgress) {
+  /** Concurrency-capped + retry/backoff FRONT-END delete queue, exposed so the
+   *  per-row trash + accessory-chip × handlers in init.js converge onto the
+   *  same proven path instead of hand-rolling fire-and-forget fetches (which
+   *  silently lose writes to Knack's ~10 req/s 429s — backlog #1).
+   *  viewKey: the view to DELETE through; ids: record ids. Resolves to an array
+   *  of settle-shaped results ({ ok, recordId, status }); a failure never
+   *  rejects the batch. No Make webhook — view-scoped REST DELETE only. */
+  function queuedDeleteFE(viewKey, ids, onProgress) {
     if (!ids || !ids.length) {
       var d = $.Deferred(); d.resolve([]); return d.promise();
     }
     return runJobQueue(ids, function (id) {
-      return doDeleteWithRetry(id, webhookUrl);
+      return deleteRecordFE(viewKey, id);
     }, onProgress);
   }
 
   ns.bulk = {
-    mount:           mount,
+    mount:            mount,
     syncDomFromState: syncDomFromState,
-    refreshToolbar:  refreshToolbar,
-    queuedDelete:    queuedDelete
+    refreshToolbar:   refreshToolbar,
+    // FE-only delete primitives — callers must pass the view to DELETE through.
+    deleteRecordFE:   deleteRecordFE,
+    queuedDeleteFE:   queuedDeleteFE
   };
 })();
 /*** END WORKSHEET V2 — BULK EDIT *********************************************/
