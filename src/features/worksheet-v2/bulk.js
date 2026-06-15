@@ -329,6 +329,41 @@
         };
       }
     } catch (e) { /* best effort */ }
+
+    // Bid-comparison grid fallback: that grid (bid-review-v2) renders its OWN
+    // rows (.scw-bid-review-v2__row[data-sow-item-id]) and has NO worksheet
+    // cards, so the card fallback above finds nothing — and view_3921's model
+    // read often comes back empty on that scene, which left the modal with zero
+    // resolved attrs ("no fields editable across all selected rows" no matter
+    // what). Synthesize attrs from the bid rows, inferring the bucket from the
+    // SOW cell (cam-only cabling chips → cam; assumption class → assumptions)
+    // so cabling/qty/connection visibility still resolves correctly.
+    try {
+      var CAM = (ns.card && ns.card.CAM_READER_BUCKET) || '';
+      var ASSUM = (ns.card && ns.card.ASSUMPTIONS_BUCKET) || '';
+      var brRows = document.querySelectorAll('.scw-bid-review-v2__row[data-sow-item-id]');
+      for (var b = 0; b < brRows.length; b++) {
+        var rid2 = brRows[b].getAttribute('data-sow-item-id');
+        if (!rid2 || idx[rid2]) continue;   // model attrs (richer) win
+        var sowCell = brRows[b].querySelector('.scw-bid-review-v2__sow-cell');
+        var bId = '';
+        if (sowCell) {
+          if (sowCell.classList.contains('scw-bid-review-v2__sow-cell--assumption')) {
+            bId = ASSUM;
+          } else if (sowCell.querySelector(
+              '[data-scw-sow-field="dropLength"],[data-scw-sow-field="exterior"],' +
+              '[data-scw-sow-field="existing"]')) {
+            bId = CAM;   // those cabling chips only render for cam/reader rows
+          }
+        }
+        idx[rid2] = {
+          id:             rid2,
+          field_2219_raw: bId ? [{ id: bId }] : [],
+          field_2586:     0,
+          _scwDomFallback: true
+        };
+      }
+    } catch (e) { /* best effort */ }
     return idx;
   }
 
