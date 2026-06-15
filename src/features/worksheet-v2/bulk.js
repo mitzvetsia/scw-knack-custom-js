@@ -632,6 +632,70 @@
     return accIds;
   }
 
+  /** Map each given parent id → its accessory line-item ids (field_2464
+   *  back-mirror), read from the source view\'s model. Like collectAccessoryIds
+   *  but keyed per-parent, so each accessory can be matched to ITS parent\'s
+   *  resulting value (needed for "accessory SOW must equal parent SOW" when
+   *  parents end up with different values, e.g. add-mode unions). */
+  function accessoriesByParent(parentIds, sourceViewKey) {
+    var parentSet = Object.create(null);
+    for (var p = 0; p < parentIds.length; p++) parentSet[parentIds[p]] = true;
+    var map = Object.create(null);
+    var v = window.Knack && Knack.views && Knack.views[sourceViewKey];
+    var models = (v && v.model && v.model.data && v.model.data.models) || [];
+    for (var i = 0; i < models.length; i++) {
+      var r = models[i] && models[i].attributes;
+      if (!r || !r.id || parentSet[r.id]) continue;
+      var raw = r.field_2464_raw;
+      if (!Array.isArray(raw)) continue;
+      for (var j = 0; j < raw.length; j++) {
+        var pid = raw[j] && raw[j].id;
+        if (pid && parentSet[pid]) { (map[pid] = map[pid] || []).push(r.id); break; }
+      }
+    }
+    return map;
+  }
+
+  /** Fire the Connected Devices (field_1957) → Connected To (field_2197)
+   *  reciprocal cascade for every bulk job that wrote field_1957. The bulk
+   *  save PUTs directly (SCW.knackAjax), which — unlike Knack\'s inline edit —
+   *  does NOT fire knack-cell-update, so mirror-connection-sync never runs.
+   *  We replicate the v2 picker\'s contract (worksheet-v2/picker.js): patch
+   *  the local model, then dispatch knack-cell-update.<view> with the
+   *  AUTHORITATIVE chosen ids as the 5th arg so the cascade can\'t mis-read a
+   *  racing refetch. Skipped for records whose PUT failed (the field_1957
+   *  write didn\'t land — cascading it would write reciprocals for a value
+   *  that isn\'t there). */
+  function fireConnectedDevicesCascades(jobList, failedRecSet) {
+    var TRIGGER = 'field_1957';
+    for (var i = 0; i < jobList.length; i++) {
+      var job = jobList[i];
+      if (!job || !job.body || !(TRIGGER in job.body)) continue;
+      if (failedRecSet && failedRecSet[job.recordId]) continue;
+      try {
+        var idsVal = job.body[TRIGGER];
+        var arr = Array.isArray(idsVal) ? idsVal : (idsVal ? [idsVal] : []);
+        var rawObjs = arr.map(function (v) {
+          return (v && typeof v === 'object') ? v : { id: v };
+        });
+        if (typeof SCW.syncKnackModel === 'function') {
+          SCW.syncKnackModel(job.viewKey, job.recordId, {}, TRIGGER, rawObjs);
+        }
+        var view = window.Knack && Knack.views && Knack.views[job.viewKey];
+        if (view && view.model && view.model.data) {
+          var rec = (typeof view.model.data.get === 'function')
+            ? view.model.data.get(job.recordId) : null;
+          if (rec) {
+            $(document).trigger('knack-cell-update.' + job.viewKey,
+              [view, rec.attributes || rec, TRIGGER, arr]);
+          }
+        }
+      } catch (e) {
+        console.warn('[scw-ws-v2-bulk] connected-devices cascade trigger failed', e);
+      }
+    }
+  }
+
   /** Standalone "are you sure" modal for the toolbar Delete button.
    *  Surfaces the parent + accessory counts so users see the
    *  cascade scope before confirming. */
@@ -1423,6 +1487,28 @@
           jobsByKey[jobKey].body[k] = val;
         });
       });
+
+      // Accessory SOW must ALWAYS match its parent's SOW. When the bulk edit
+      // touches the SOW field (field_2154), propagate each parent's RESULTING
+      // SOW value down to its accessory children (field_2464 back-mirror) so
+      // they don't get left behind on the old SOW. Uses the parent's final
+      // value (post replace/add), and overrides any value the accessory may
+      // have gotten from being selected directly — the match invariant wins.
+      var SOW_FIELD = 'field_2154';
+      if (appliedKeys.indexOf(SOW_FIELD) !== -1) {
+        var accMap = accessoriesByParent(ids, sourceViewKey);
+        ids.forEach(function (rid) {
+          var parentJob = jobsByKey[sourceViewKey + '|' + rid];
+          if (!parentJob || !(SOW_FIELD in parentJob.body)) return;
+          var parentVal = parentJob.body[SOW_FIELD];
+          (accMap[rid] || []).forEach(function (accId) {
+            var jk = sourceViewKey + '|' + accId;
+            if (!jobsByKey[jk]) jobsByKey[jk] = { viewKey: sourceViewKey, recordId: accId, body: {} };
+            jobsByKey[jk].body[SOW_FIELD] = parentVal;
+          });
+        });
+      }
+
       var jobs = Object.keys(jobsByKey).map(function (jobKey) { return jobsByKey[jobKey]; });
 
       saveBtn.disabled   = true;
@@ -1444,10 +1530,16 @@
         if (bar) bar.style.width = pct + '%';
         if (label) label.textContent = 'Saving ' + done + ' of ' + total + '… (' + pct + '%)';
       }).then(function (results) {
-        var ok = 0, fail = 0;
+        var ok = 0, fail = 0, failedRec = Object.create(null);
         for (var r = 0; r < results.length; r++) {
-          if (results[r].ok) ok++; else fail++;
+          if (results[r].ok) ok++;
+          else { fail++; if (results[r].recordId) failedRec[results[r].recordId] = true; }
         }
+        // Run the reciprocal cascade for any Connected Devices (field_1957)
+        // writes that landed — bulk PUTs don't fire knack-cell-update, so
+        // without this the field_2197 back-pointers drift on bulk edits.
+        try { fireConnectedDevicesCascades(jobs, failedRec); }
+        catch (e) { console.warn('[scw-ws-v2-bulk] cascade dispatch threw', e); }
         overlay.classList.remove('scw-ws-v2-bulk-overlay--saving');
         if (fail === 0) {
           status.innerHTML =
