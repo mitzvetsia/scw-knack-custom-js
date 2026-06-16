@@ -571,7 +571,11 @@
     toolbar.querySelector('.scw-ws-v2-bulk-edit').disabled   = (n === 0);
     var addAccBtn = toolbar.querySelector('.scw-ws-v2-bulk-add-acc');
     if (addAccBtn) {
-      addAccBtn.style.display = noAcc ? 'none' : '';
+      // Use setProperty w/ !important — the toolbar's CSS sets the buttons'
+      // display with !important, which would otherwise beat a plain inline
+      // display:none and leave the button visible on noAccessories views.
+      if (noAcc) addAccBtn.style.setProperty('display', 'none', 'important');
+      else       addAccBtn.style.removeProperty('display');
       addAccBtn.disabled = (n === 0);
     }
     var delBtn = toolbar.querySelector('.scw-ws-v2-bulk-delete');
@@ -591,7 +595,8 @@
     }
     var raBtn = toolbar.querySelector('.scw-ws-v2-bulk-remove-acc');
     if (raBtn) {
-      raBtn.style.display = noAcc ? 'none' : '';
+      if (noAcc) raBtn.style.setProperty('display', 'none', 'important');
+      else       raBtn.style.removeProperty('display');
       raBtn.disabled = (n === 0);
     }
   }
