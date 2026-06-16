@@ -553,14 +553,27 @@
     return toolbar;
   }
 
+  /** Does the active view's object lack an accessory relationship? (config
+   *  noAccessories — survey). Hides the bulk Add/Remove accessories buttons. */
+  function viewHasNoAccessories(sourceViewKey) {
+    try {
+      var vc = ns.cfg && typeof ns.cfg.viewCfg === 'function' && ns.cfg.viewCfg(sourceViewKey);
+      return !!(vc && vc.noAccessories);
+    } catch (e) { return false; }
+  }
+
   function refreshToolbar() {
     if (!toolbar) return;
     var n = selSize();
+    var noAcc = viewHasNoAccessories(_sourceViewKey);
     toolbar.classList.toggle('scw-ws-v2-bulk-toolbar--active', n > 0);
     toolbar.querySelector('.scw-ws-v2-bulk-count').textContent = n + ' selected';
     toolbar.querySelector('.scw-ws-v2-bulk-edit').disabled   = (n === 0);
     var addAccBtn = toolbar.querySelector('.scw-ws-v2-bulk-add-acc');
-    if (addAccBtn) addAccBtn.disabled = (n === 0);
+    if (addAccBtn) {
+      addAccBtn.style.display = noAcc ? 'none' : '';
+      addAccBtn.disabled = (n === 0);
+    }
     var delBtn = toolbar.querySelector('.scw-ws-v2-bulk-delete');
     var delLabel = delBtn.querySelector('.scw-ws-v2-bulk-delete-label');
     if (n === 0) {
@@ -577,7 +590,10 @@
       if (delLabel) delLabel.textContent = nDel > 0 ? ('Delete (' + nDel + ')') : 'Delete';
     }
     var raBtn = toolbar.querySelector('.scw-ws-v2-bulk-remove-acc');
-    if (raBtn) raBtn.disabled = (n === 0);
+    if (raBtn) {
+      raBtn.style.display = noAcc ? 'none' : '';
+      raBtn.disabled = (n === 0);
+    }
   }
 
   // ── DOM sync (when re-renders happen) ────────────────────────

@@ -267,6 +267,9 @@
         independentFields: true,            // Survey object — no SOW fallback
         moneyMode:         'survey',
         hideSow:           true,            // survey groups by Bid, not SOW
+        noAccessories:     true,            // Survey Line Items have no accessory
+                                            // relationship yet (CLAUDE.md #16) — hide
+                                            // the bulk Add/Remove accessories buttons
         mdfSourceViewKey:  'view_3617',     // MDF/IDF locations grid on the survey scene
         mdfLabelField:     'field_1642',    // MDF/IDF full label
         fields: {

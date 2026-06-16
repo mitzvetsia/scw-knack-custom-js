@@ -514,6 +514,10 @@
       if (!noteAlreadySet(item.viewId, item.recordId)) {
         body[NOTES] = note;
       }
+      // Bypass the gate for this replay (it carries the note + still empties
+      // the bid). Cleared on complete — prefilter + send both run synchronously
+      // within this $.ajax call, so the flag is live for both.
+      _replayBypass[item.recordId] = true;
       $.ajax({
         url:  item.url,
         type: item.method,
@@ -523,7 +527,8 @@
         success: function () { /* server has the right state now */ },
         error:   function (xhr) {
           console.warn('[scw-survey-bid-validate] replay failed', xhr);
-        }
+        },
+        complete: function () { delete _replayBypass[item.recordId]; }
       });
     } catch (e) {
       console.warn('[scw-survey-bid-validate] replay threw', e);
@@ -597,14 +602,23 @@
    *  i.e. the incoming value is an empty array and the record currently has
    *  at least one bid. Removing one bid while others remain (a multi-bid
    *  array merely shrinking) is intentionally NOT gated. */
+  // Records whose next gated PUT is a REPLAY from this gate (already carries
+  // the survey note) — must bypass shouldGate, else the replay re-empties the
+  // bid while the model still shows the old bids and the modal loops forever.
+  // Set before firing the replay, cleared when it settles. NOT consumed on
+  // read because BOTH the ajaxPrefilter and the XHR.send hook call shouldGate
+  // for the same request.
+  var _replayBypass = Object.create(null);
+
   function shouldGate(method, url, body) {
     if (!isWriteMethod(method)) return null;
     var viewId = gateViewForUrl(url);
     if (!viewId) return null;
+    var recordId = recordIdFromUrl(url);
+    if (recordId && _replayBypass[recordId]) return null; // replay — don't re-gate
     var incoming = parseBidConnFromBody(body);
     if (incoming === undefined) return null; // field_2415 not in body
     if (normalizeBidIds(incoming).length !== 0) return null; // not emptied
-    var recordId = recordIdFromUrl(url);
     if (!recordId) return null;
     if (!currentBidIds(viewId, recordId).length) return null; // already empty
     return { viewId: viewId, recordId: recordId };
