@@ -25,6 +25,7 @@
           number: 'field_2362',
           field2409: 'field_2409',
           product: 'field_2365',  // product / item name — shown above the labor desc
+          subBidRequired: 'field_2478',  // "sub bid required" (No = present but not bid)
           l2Sort: 'field_2218',
           l2Selector: 'field_2228',
           conduit: 'field_2368',  // per-row conduit feet — summed into the L3 drop header
@@ -413,6 +414,14 @@ tr.scw-level-total-row.scw-subtotal .scw-level-total-label { white-space: nowrap
 
 /* Product name(s) shown above the labor description on an L3 header. */
 .scw-l3-product { font-weight: 800 !important; color: #07467c; line-height: 1.3; }
+/* "Included" tag — item present but not separately bid (sub bid required = No). */
+.scw-l3-included {
+  display: inline-block; padding: 1px 8px; border-radius: 10px;
+  background: #dcfce7; color: #166534; font-weight: 700; font-size: 11px;
+  letter-spacing: 0.02em; white-space: nowrap; vertical-align: middle;
+}
+/* Hide the raw field_2478 ("sub bid required") column — read for the tag. */
+th.field_2478, td.field_2478 { display: none !important; }
 
 /* Hide the raw field_2409 column (data lives in data rows for injection) */
 th.field_2409, td.field_2409 { display: none !important; }
@@ -1163,28 +1172,53 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   // as a bold line ABOVE the labor description. Skipped for cameras ('drop',
   // already listed by the concat feature) and Mounting Hardware (its own
   // concat); Services/Assumptions return before this runs.
+  // True when "sub bid required" (field_2478) on a row is explicitly No —
+  // i.e. the item will be PRESENT but the sub isn't bidding it separately.
+  function rowIsIncluded(ctx, row) {
+    if (!ctx.keys.subBidRequired) return false;
+    const cell = row.querySelector(`td.${ctx.keys.subBidRequired}`);
+    if (!cell) return false;
+    return norm(cell.textContent || '').toLowerCase() === 'no';
+  }
+
+  // Returns true when EVERY row in the group is "included" (no sub bid
+  // required), so the caller can swap the price columns for an "Included" tag.
   function injectProductNamesIntoLevel3Header(ctx, { $groupRow, $rowsToSum, runId }) {
-    if (!ctx.keys.product) return;
-    if ($groupRow.data('scwProdNamesRunId') === runId) return;
+    if (!ctx.keys.product) return false;
+    if ($groupRow.data('scwProdNamesRunId') === runId) {
+      return Boolean($groupRow.data('scwProdNamesAllIncluded'));
+    }
     $groupRow.data('scwProdNamesRunId', runId);
 
     const labelCell = $groupRow[0].querySelector('td:first-child');
-    if (!labelCell) return;
+    if (!labelCell) return false;
 
-    // Distinct product names in row order, with a count when repeated.
-    const counts = new Map();
+    // Distinct product names in row order: count + whether ALL its rows are
+    // "included" (sub bid not required).
+    const info = new Map();
+    let rowCount = 0, includedCount = 0;
     $rowsToSum.each(function () {
       const cell = this.querySelector(`td.${ctx.keys.product}`);
       if (!cell) return;
       const name = norm(cell.textContent || '');
       if (!name) return;
-      counts.set(name, (counts.get(name) || 0) + 1);
+      rowCount++;
+      const inc = rowIsIncluded(ctx, this);
+      if (inc) includedCount++;
+      const cur = info.get(name) || { count: 0, allIncluded: true };
+      cur.count++;
+      cur.allIncluded = cur.allIncluded && inc;
+      info.set(name, cur);
     });
-    if (!counts.size) return;
+    if (!info.size) return false;
 
     const parts = [];
-    counts.forEach((count, name) => {
-      parts.push(escapeHtml(name) + (count > 1 ? ` (×${count})` : ''));
+    info.forEach((meta, name) => {
+      const qty = meta.count > 1 ? ` (×${meta.count})` : '';
+      const tag = meta.allIncluded
+        ? ' <span class="scw-l3-included">Included</span>'
+        : '';
+      parts.push(escapeHtml(name) + qty + tag);
     });
 
     // Idempotent: strip any prior injection (+ its trailing <br>) first.
@@ -1200,6 +1234,10 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     wrap.innerHTML = parts.join('<br>');
     labelCell.insertBefore(document.createElement('br'), labelCell.firstChild);
     labelCell.insertBefore(wrap, labelCell.firstChild);
+
+    const allIncluded = rowCount > 0 && includedCount === rowCount;
+    $groupRow.data('scwProdNamesAllIncluded', allIncluded);
+    return allIncluded;
   }
 
   // ============================================================
@@ -1779,8 +1817,10 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
         // Show the product name(s) above the labor description — except for
         // cameras ('drop', listed by concat) and Mounting Hardware (own concat).
+        // Returns true when the whole group is "included" (no sub bid required).
+        let allIncluded = false;
         if (!isMounting && sectionContext.key !== 'drop') {
-          injectProductNamesIntoLevel3Header(ctx, { $groupRow, $rowsToSum, runId });
+          allIncluded = injectProductNamesIntoLevel3Header(ctx, { $groupRow, $rowsToSum, runId });
         }
 
         const qty = totals[qtyKey];
@@ -1788,8 +1828,15 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         const rateAvg = avgField(caches, $rowsToSum, rateKey);
 
         $groupRow.find(`td.${qtyKey}`).html(`<strong>${Math.round(qty)}</strong>`);
-        $groupRow.find(`td.${rateKey}`).html(`<strong>${escapeHtml(formatMoney(rateAvg))}</strong>`);
-        $groupRow.find(`td.${laborKey}`).html(`<strong>${escapeHtml(formatMoney(labor))}</strong>`);
+        if (allIncluded) {
+          // No sub bid required for any item in this group — communicate that
+          // the items will be present rather than showing a $0 price.
+          $groupRow.find(`td.${rateKey}`).html('<span class="scw-l3-included">Included</span>');
+          $groupRow.find(`td.${laborKey}`).html('<span class="scw-l3-included">Included</span>');
+        } else {
+          $groupRow.find(`td.${rateKey}`).html(`<strong>${escapeHtml(formatMoney(rateAvg))}</strong>`);
+          $groupRow.find(`td.${laborKey}`).html(`<strong>${escapeHtml(formatMoney(labor))}</strong>`);
+        }
 
         if (sectionContext.hideQtyCostColumns) $groupRow.addClass('scw-hide-qty-cost');
 
