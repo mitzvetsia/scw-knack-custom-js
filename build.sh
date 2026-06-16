@@ -182,6 +182,7 @@ cat \
   src/features/worksheet-v2/native-filter.js \
   src/features/worksheet-v2/bulk.js \
   src/features/worksheet-v2/prefill-accessory-parent.js \
+  src/features/worksheet-v2/change-requests.js \
   src/features/worksheet-v2/poll.js \
   src/features/worksheet-v2/init.js \
   src/features/survey-report-photo-lightbox.js \
