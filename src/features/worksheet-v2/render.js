@@ -231,10 +231,12 @@
     // Sales money model? (moneyMode:'sales') — drives the summary money
     // column (Total vs Sub Bid) and the column-header labels below.
     var salesMoney = false;
+    var surveyMoney = false;
     try {
       var _vcSales = ns.cfg && typeof ns.cfg.viewCfg === 'function' &&
                      ns.cfg.viewCfg(sourceViewKey);
-      salesMoney = !!(_vcSales && _vcSales.moneyMode === 'sales');
+      salesMoney  = !!(_vcSales && _vcSales.moneyMode === 'sales');
+      surveyMoney = !!(_vcSales && _vcSales.moneyMode === 'survey');
     } catch (e) { /* default to build-SOW */ }
     var summaryMoneyOpts = salesMoney
       ? { moneyField: 'field_2269', moneyLabel: 'Total' }
@@ -242,7 +244,10 @@
 
     // Per-L1 summary block — sits at the top of the body, always
     // rendered; CSS controls its visibility per toolbar mode.
-    if (ns.summary && typeof ns.summary.buildL1Summary === 'function') {
+    // Skipped for the survey preview: summary.js reads SOW money keys
+    // hardcoded, so it would render blank totals on the survey object.
+    // (Folds into Known Issue #15 — generalize summary.js through cfg.)
+    if (!surveyMoney && ns.summary && typeof ns.summary.buildL1Summary === 'function') {
       try {
         var sumEl = ns.summary.buildL1Summary(l1, summaryMoneyOpts);
         if (sumEl) body.appendChild(sumEl);
@@ -258,20 +263,37 @@
       // headers line up with their columns. Cam-row-shaped (with
       // "Drop" slot) since the cam template is the superset.
       var hdr = document.createElement('div');
-      hdr.className = 'scw-ws-v2-col-header' + (salesMoney ? ' scw-ws-v2-col-header--sales' : '');
-      hdr.innerHTML =
-        '<span></span>' + /* chevron slot */
-        '<span>Drop</span>' +
-        '<span>Product</span>' +
-        // Sales rows put SCW Notes (field_1953) in this fill column, not
-        // a labor description — so label it accordingly there.
-        (salesMoney ? '<span>SCW Notes</span>' : '<span>Description</span>') +
-        '<span>Qty</span>' +
-        (salesMoney
-          ? '<span class="scw-ws-v2-col-header-total">Total</span>'
-          : '<span>Sub Bid</span><span>+Hrs</span><span>+Mat</span><span>Fee</span><span>SOW</span>') +
-        '<span></span>' + /* warning slot */
-        (salesMoney ? '<span>CR</span>' : '<span></span>');   /* trash / CR slot */
+      hdr.className = 'scw-ws-v2-col-header' +
+        (salesMoney  ? ' scw-ws-v2-col-header--sales'  : '') +
+        (surveyMoney ? ' scw-ws-v2-col-header--survey' : '');
+      if (surveyMoney) {
+        // Survey 8-track header: chevron · Drop · Product · Description ·
+        // Qty/Chips · Labor (money) · warn · trash. Money = Labor input
+        // with Ext below (see card.js surveyMoneyCell).
+        hdr.innerHTML =
+          '<span></span>' +
+          '<span>Drop</span>' +
+          '<span>Product</span>' +
+          '<span>Description</span>' +
+          '<span>Qty</span>' +
+          '<span class="scw-ws-v2-col-header-total">Labor</span>' +
+          '<span></span>' +
+          '<span></span>';
+      } else {
+        hdr.innerHTML =
+          '<span></span>' + /* chevron slot */
+          '<span>Drop</span>' +
+          '<span>Product</span>' +
+          // Sales rows put SCW Notes (field_1953) in this fill column, not
+          // a labor description — so label it accordingly there.
+          (salesMoney ? '<span>SCW Notes</span>' : '<span>Description</span>') +
+          '<span>Qty</span>' +
+          (salesMoney
+            ? '<span class="scw-ws-v2-col-header-total">Total</span>'
+            : '<span>Sub Bid</span><span>+Hrs</span><span>+Mat</span><span>Fee</span><span>SOW</span>') +
+          '<span></span>' + /* warning slot */
+          (salesMoney ? '<span>CR</span>' : '<span></span>');   /* trash / CR slot */
+      }
       body.appendChild(hdr);
 
       for (var i = 0; i < l1.l2.length; i++) {
@@ -380,7 +402,13 @@
     var sortPreset = (ns.sort && typeof ns.sort.getActivePreset === 'function')
       ? ns.sort.getActivePreset(sourceViewKey)
       : null;
-    var tree = ns.groups.buildGroupTree(effectiveRecords, seedGroups, { sortPreset: sortPreset });
+    var tree = ns.groups.buildGroupTree(effectiveRecords, seedGroups, {
+      sortPreset: sortPreset,
+      // Per-view field map so L1 (MDF/IDF) / L2 (bucket) / sort resolve for
+      // non-SOW objects (survey view_3505 groups by field_2375 / field_2366).
+      fields: (ns.cfg && typeof ns.cfg.fields === 'function')
+        ? ns.cfg.fields(sourceViewKey) : null
+    });
     if (ns.state && typeof ns.state.applyOpenState === 'function') {
       ns.state.applyOpenState(sourceViewKey, tree);
     } else {
@@ -423,15 +451,19 @@
     // Whole-grid summary at the top — aggregates every L1\'s records
     // into one table. Visible in default mode AND summary-only mode.
     var _grandSales = false;
+    var _grandSurvey = false;
     try {
       var _vcGrand = ns.cfg && typeof ns.cfg.viewCfg === 'function' &&
                      ns.cfg.viewCfg(sourceViewKey);
-      _grandSales = !!(_vcGrand && _vcGrand.moneyMode === 'sales');
+      _grandSales  = !!(_vcGrand && _vcGrand.moneyMode === 'sales');
+      _grandSurvey = !!(_vcGrand && _vcGrand.moneyMode === 'survey');
     } catch (e) { /* default */ }
     var grandMoneyOpts = _grandSales
       ? { moneyField: 'field_2269', moneyLabel: 'Total' }
       : null;
-    if (ns.summary && typeof ns.summary.buildGrandSummary === 'function') {
+    // Survey: skip the grand summary too — summary.js reads SOW money keys
+    // (folds into Known Issue #15). The per-card worksheet is the surface.
+    if (!_grandSurvey && ns.summary && typeof ns.summary.buildGrandSummary === 'function') {
       try {
         var grand = ns.summary.buildGrandSummary(tree, grandMoneyOpts);
         if (grand) frag.appendChild(grand);

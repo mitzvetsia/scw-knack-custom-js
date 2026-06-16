@@ -110,15 +110,29 @@
     '</span>';
   }
 
-  function bucketIdOf(rec) {
-    var raw = rec['field_2219_raw'];
+  // Resolve the proposal-bucket field key for a view. Default field_2219
+  // (SOW); the survey object (view_3505) overrides bucket→field_2366. Callers
+  // that pass no viewKey keep the SOW default — behavior-preserving for the
+  // existing deployments (and for the cross-module callers in warnings/bulk/
+  // summary that classify SOW records).
+  function bucketFieldOf(viewKey) {
+    try {
+      var f = viewKey && ns.cfg && typeof ns.cfg.fields === 'function'
+        ? ns.cfg.fields(viewKey) : null;
+      if (f && f.bucket) return f.bucket;
+    } catch (e) { /* fall through */ }
+    return 'field_2219';
+  }
+
+  function bucketIdOf(rec, viewKey) {
+    var raw = rec[bucketFieldOf(viewKey) + '_raw'];
     if (Array.isArray(raw) && raw.length && raw[0]) return raw[0].id || '';
     if (raw && typeof raw === 'object' && raw.id) return raw.id;
     return '';
   }
 
-  function bucketCategoryOf(rec) {
-    var id = bucketIdOf(rec);
+  function bucketCategoryOf(rec, viewKey) {
+    var id = bucketIdOf(rec, viewKey);
     if (id === CAM_READER_BUCKET)  return 'cam';
     if (id === SERVICES_BUCKET)    return 'services';
     if (id === ASSUMPTIONS_BUCKET) return 'assumptions';
@@ -231,6 +245,25 @@
       var vc = ns.cfg && typeof ns.cfg.viewCfg === 'function' && ns.cfg.viewCfg(viewKey);
       return !!(vc && vc.moneyMode === 'sales');
     } catch (e) { return false; }
+  }
+
+  /** True when the deployment uses the survey money model (moneyMode:'survey',
+   *  view_3505). Survey has no Sub Bid/+Hrs/+Mat — the money region is a
+   *  single Labor (editable) cell with the CALC Ext below it; Qty lives in
+   *  the qty/chips slot. Drives the survey card path (buildCard dispatch). */
+  function isSurveyMoney(viewKey) {
+    try {
+      var vc = ns.cfg && typeof ns.cfg.viewCfg === 'function' && ns.cfg.viewCfg(viewKey);
+      return !!(vc && vc.moneyMode === 'survey');
+    } catch (e) { return false; }
+  }
+
+  /** Resolved field map for a view (logical name → field key). Survey reads
+   *  go through this so the survey builders carry no hardcoded survey keys. */
+  function fieldsFor(viewKey) {
+    try {
+      return (ns.cfg && typeof ns.cfg.fields === 'function' && ns.cfg.fields(viewKey)) || {};
+    } catch (e) { return {}; }
   }
 
   /** Count on field_2586 ("associated survey line items"). >0 means a survey
@@ -1244,6 +1277,129 @@
     '</div>';
   }
 
+  // ── Survey card path (moneyMode:'survey', view_3505) ───────────
+  // The Survey Line Item object has its own keys (resolved via fieldsFor) and
+  // a simpler money model: a single editable Labor cell with the CALC Ext
+  // below it; Qty in the qty/chips slot; Bid membership + connections shown
+  // READ-ONLY in the detail (the connection picker is SOW-specific; product
+  // edit + connection edit are a clean fast-follow). NO accessory/parent UI —
+  // Survey Line Items have no accessory relationship yet (CLAUDE.md #16).
+  // Cabling chips + the inline inputs save through the same generic
+  // chip/edit handlers the SOW card uses (init.js / edit.js are view-generic).
+
+  function surveyMoneyCell(rec, viewKey, F) {
+    if (!F.labor) return empty('scw-ws-v2-cell--stack scw-ws-v2-cell--survey-money');
+    var ext = readField(rec, F.extended || 'field_2401');
+    return '<div class="scw-ws-v2-cell scw-ws-v2-cell--stack scw-ws-v2-cell--survey-money scw-ws-v2-cell--currency">' +
+      '<span class="scw-ws-v2-currency-glyph">$</span>' +
+      numInput(rec, viewKey, F.labor, readNum(rec, F.labor), 'Labor') +
+      '<div class="scw-ws-v2-stack-total" title="Extended">' + escapeHtml(ext || '') + '</div>' +
+    '</div>';
+  }
+
+  function surveyProductCell(rec, F) {
+    // Read-only for the preview — survey product (field_2627) picker not wired.
+    var name = readField(rec, F.productName || 'field_2379') ||
+               readField(rec, F.product || 'field_2627') || '(unnamed)';
+    return '<div class="scw-ws-v2-cell scw-ws-v2-cell--product scw-ws-v2-cell--ro" ' +
+      'title="' + escapeHtml(name) + '">' +
+      '<span class="scw-ws-v2-product-name">' + escapeHtml(name) + '</span>' +
+    '</div>';
+  }
+
+  function surveyChips(rec, viewKey, F) {
+    return '<div class="scw-ws-v2-cell scw-ws-v2-cell--chips">' +
+      chip(rec, viewKey, F.existCabling || 'field_2370', 'Existing', 'Existing cabling') +
+      chip(rec, viewKey, F.exterior     || 'field_2372', 'Exterior', 'Exterior') +
+      chip(rec, viewKey, F.plenum       || 'field_2371', 'Plenum',   'Plenum') +
+    '</div>';
+  }
+
+  function buildRow_survey(rec, viewKey, cat) {
+    var F     = fieldsFor(viewKey);
+    var isCam = (cat === 'cam');
+    var label = readField(rec, F.displayLabel || 'field_2365');
+
+    // Slot 5 (qty/chips): cam → cabling chips; assumptions → blank;
+    // else → editable Qty.
+    var slot5;
+    if (isCam) {
+      slot5 = surveyChips(rec, viewKey, F);
+    } else if (cat === 'assumptions') {
+      slot5 = empty('scw-ws-v2-cell--num');
+    } else {
+      slot5 = '<div class="scw-ws-v2-cell scw-ws-v2-cell--num">' +
+        numInput(rec, viewKey, F.qty || 'field_2399', readNum(rec, F.qty || 'field_2399'), 'Qty') +
+      '</div>';
+    }
+
+    var fillField = F.laborDesc || 'field_2409';
+    var fill = '<div class="scw-ws-v2-cell scw-ws-v2-cell--labor-desc">' +
+      textArea(rec, viewKey, fillField, readField(rec, fillField),
+               isCam ? 'Labor description' : 'Description') +
+    '</div>';
+
+    var money = (cat === 'assumptions')
+      ? empty('scw-ws-v2-cell--stack scw-ws-v2-cell--survey-money')
+      : surveyMoneyCell(rec, viewKey, F);
+
+    var productSlot;
+    if (cat === 'services')          productSlot = ro('Service', 'scw-ws-v2-cell--tag');
+    else if (cat === 'assumptions')  productSlot = empty('scw-ws-v2-cell--product');
+    else                             productSlot = surveyProductCell(rec, F);
+
+    var labelSlot = isCam
+      ? ro(label, 'scw-ws-v2-cell--label', label)
+      : empty('scw-ws-v2-cell--label');
+
+    return '<div class="scw-ws-v2-row scw-ws-v2-row--' + cat + '">' +
+      chevronCell(rec) +
+      labelSlot +
+      productSlot +
+      fill +
+      slot5 +
+      money +
+      warnCell(rec) +
+      kebabCell(rec, viewKey) +
+    '</div>';
+  }
+
+  function buildDetail_survey(rec, viewKey, cat) {
+    var F     = fieldsFor(viewKey);
+    var isCam = (cat === 'cam');
+
+    // Connections READ-ONLY (SOW-specific picker not wired for survey).
+    // Connected To (single) on cam/reader; Connected Devices (multi) on
+    // networking/default. Assumptions/services show neither.
+    var rightZone = '';
+    if (cat === 'cam') {
+      rightZone += detailReadOnly(rec, F.connectedDevice || 'field_2381', 'Connected To');
+      rightZone += detailReadOnly(rec, F.mountingHeight  || 'field_2455', 'Mounting Height');
+      rightZone += detailField(rec, viewKey, F.dropLength || 'field_2367', 'Drop Length', 'number');
+      rightZone += detailField(rec, viewKey, F.conduit    || 'field_2368', 'Conduit',     'number');
+    } else if (cat === 'default') {
+      rightZone += detailReadOnly(rec, F.connectedDevices || 'field_2380', 'Connected Devices');
+    }
+
+    var leftZone = detailReadOnly(rec, F.mounting || 'field_2463', 'Mounting Hardware');
+    if (readField(rec, F.bid || 'field_2415')) {
+      leftZone += detailReadOnly(rec, F.bid || 'field_2415', 'Bid');
+    }
+
+    return '<div class="scw-ws-v2-detail">' +
+      '<div class="scw-ws-v2-detail-zones">' +
+        '<div class="scw-ws-v2-detail-zone scw-ws-v2-detail-zone--identity">' + leftZone + '</div>' +
+        (rightZone
+          ? '<div class="scw-ws-v2-detail-zone scw-ws-v2-detail-zone--connections">' + rightZone + '</div>'
+          : '') +
+      '</div>' +
+      '<div class="scw-ws-v2-detail-notes">' +
+        detailTextArea(rec, viewKey, F.scwNotes    || 'field_2418', 'SCW Notes') +
+        detailTextArea(rec, viewKey, F.surveyNotes || 'field_2412', 'Survey Notes') +
+      '</div>' +
+    '</div>';
+  }
+
   // ── Public entry point ─────────────────────────────────────
 
   function buildCard(rec, sourceViewKey) {
@@ -1251,10 +1407,11 @@
     card.className = 'scw-ws-v2-card';
     card.setAttribute('data-scw-ws-v2-record', rec.id);
 
-    var cat = bucketCategoryOf(rec);
+    var cat = bucketCategoryOf(rec, sourceViewKey);
     card.classList.add('scw-ws-v2-card--' + cat);
-    if (isSalesMoney(sourceViewKey)) card.classList.add('scw-ws-v2-card--sales');
-    var bid = bucketIdOf(rec);
+    if (isSalesMoney(sourceViewKey))  card.classList.add('scw-ws-v2-card--sales');
+    if (isSurveyMoney(sourceViewKey)) card.classList.add('scw-ws-v2-card--survey');
+    var bid = bucketIdOf(rec, sourceViewKey);
     if (bid) card.setAttribute('data-scw-ws-v2-bucket', bid);
     // Promoted-bracket marker: the bracket has a parent (field_2464
     // resolves) but is showing as its own row because Require Sub
@@ -1284,8 +1441,14 @@
     }
 
     var row, det;
-    var sales = isSalesMoney(sourceViewKey);
-    if (cat === 'cam') {
+    var sales  = isSalesMoney(sourceViewKey);
+    var survey = isSurveyMoney(sourceViewKey);
+    // Survey object (view_3505) takes a dedicated row/detail path for every
+    // bucket category — its keys + money model differ from the SOW object.
+    if (survey) {
+      row = buildRow_survey(rec, sourceViewKey, cat);
+      det = buildDetail_survey(rec, sourceViewKey, cat);
+    } else if (cat === 'cam') {
       row = buildRow_cam(rec, sourceViewKey);
       det = sales ? buildDetail_sales(rec, sourceViewKey, cat) : buildDetail_cam(rec, sourceViewKey);
     } else if (cat === 'services') {

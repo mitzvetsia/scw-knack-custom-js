@@ -103,6 +103,10 @@
     // Sales-only discount inputs (absent on the build view → no fallback).
     if (EF.lineDiscPct) RECALC_DEPS[EF.lineDiscPct] = 1;
     if (EF.lineDiscAmt) RECALC_DEPS[EF.lineDiscAmt] = 1;
+    // Survey (view_3505): editing Labor (field_2400) recomputes the CALC
+    // Ext (field_2401); refetch so the Ext total under the Labor input
+    // refreshes. No `labor` logical key on the SOW object → no-op there.
+    if (EF.labor) RECALC_DEPS[EF.labor] = 1;
 
     savePut(viewKey, recordId, fieldKey, newValue)
       .then(function (resp) {

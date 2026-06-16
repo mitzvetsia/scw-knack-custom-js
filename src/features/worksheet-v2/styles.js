@@ -160,6 +160,34 @@
     '  text-align: right !important;',
     '  padding-right: 6px !important;',
     '}',
+    /* Survey money model (moneyMode:"survey", view_3505): no Sub Bid / +Hrs /
+       +Mat / Fee / SOW — a single Labor (editable) cell with the CALC Ext
+       below it, Qty/chips in slot 5. Same 8-track grid as sales so nothing
+       squishes; doubled header class for the same specificity reason noted
+       on the sales rule above. */
+    '.scw-ws-v2-card--survey .scw-ws-v2-row--default,',
+    '.scw-ws-v2-card--survey .scw-ws-v2-row--cam,',
+    '.scw-ws-v2-card--survey .scw-ws-v2-row--services,',
+    '.scw-ws-v2-card--survey .scw-ws-v2-row--assumptions,',
+    '.scw-ws-v2-col-header.scw-ws-v2-col-header--survey {',
+    '  grid-template-columns:',
+    '    20px                  /* chevron */',
+    '    64px                  /* label */',
+    '    minmax(150px, 1.3fr)  /* product */',
+    '    minmax(240px, 2.4fr)  /* description */',
+    '    72px                  /* qty / chips */',
+    '    92px                  /* Labor (Ext below) */',
+    '    28px                  /* warning */',
+    '    28px                  /* trash */ !important;',
+    '}',
+    /* Survey money cell — right-aligned Labor input + Ext total, reusing the
+       --stack / --currency styling. */
+    '.scw-ws-v2-cell--survey-money { justify-self: stretch !important; }',
+    /* Survey product is read-only in the preview (picker not wired) — drop the
+       button affordance/cursor so it reads as static text. */
+    '.scw-ws-v2-card--survey .scw-ws-v2-cell--product.scw-ws-v2-cell--ro {',
+    '  cursor: default !important;',
+    '}',
     /* Sales detail — v1-style two columns: pricing/identity stacked on the
        left, connections + Labor Desc stacked on the right. */
     '.scw-ws-v2-sales-detail {',

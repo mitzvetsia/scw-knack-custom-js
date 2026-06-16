@@ -252,12 +252,14 @@
       //    to the survey object (see CLAUDE.md), it maps into these same
       //    logical slots — config-only at that point.
       ,{
-        // enabled:false until the survey card path lands in card.js
-        // (moneyMode:'survey' branch + survey row/detail builders +
-        // bucket resolution via field_2366). card.js currently hardcodes
-        // SOW keys, so flipping this true now would render broken cards.
-        // Field map below is reviewable as-is. Flip true with the card path.
-        enabled:           false,
+        // Survey card path lives in card.js (moneyMode:'survey' branch +
+        // buildRow_survey/buildDetail_survey + bucket resolution via
+        // field_2366; groups.js resolves L1/L2/sort per-view). Gated to
+        // @getscw.com (internalOnly) so it previews beneath the live v1
+        // worksheet. Editable: labor/qty/desc/drop/conduit/notes + cabling
+        // chips (generic edit/chip handlers). Read-only for now: product +
+        // connections (SOW-specific picker) — fast-follow.
+        enabled:           true,
         internalOnly:      true,            // @getscw.com gate (init.js)
         sourceViewKey:     'view_3505',
         mountAfterSelector: '#view_3505',
