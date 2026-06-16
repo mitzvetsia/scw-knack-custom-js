@@ -609,15 +609,26 @@
 
     /* v1 dynamic-cell-colors parity (survey worksheet) — empty/zero highlight
        on the Bid, Labor ("sub bid"), Qty and Labor Description cells. Same
-       palette as v1: danger = pale red, warning = pale yellow. The tinted
-       inputs/buttons go transparent so the cell colour shows through. */
+       palette as v1: danger = pale red, warning = pale yellow. */
     '.scw-ws-v2-cell--danger  { background-color: #f8d7da !important; }',
     '.scw-ws-v2-cell--warning { background-color: #fff3cd !important; }',
+    /* Inputs inside a tinted DIV cell (Labor / Qty / Labor Desc) go
+       transparent so the cell colour shows through. */
     '.scw-ws-v2-cell--danger .scw-ws-v2-input,',
-    '.scw-ws-v2-cell--warning .scw-ws-v2-input,',
-    '.scw-ws-v2-cell--danger.scw-ws-v2-cell--survey-bid,',
-    '.scw-ws-v2-cell--warning.scw-ws-v2-cell--survey-bid {',
+    '.scw-ws-v2-cell--warning .scw-ws-v2-input {',
     '  background-color: transparent !important;',
+    '}',
+    /* The Bid cell IS the button — its boxed white background
+       (.scw-ws-v2-cell--editable-conn.scw-ws-v2-cell--sow, specificity 0,2,0)
+       would hide the warn tint, so tint the button directly at higher
+       specificity (0,3,0) and keep it through hover. */
+    '.scw-ws-v2-cell--editable-conn.scw-ws-v2-cell--survey-bid.scw-ws-v2-cell--danger,',
+    '.scw-ws-v2-cell--editable-conn.scw-ws-v2-cell--survey-bid.scw-ws-v2-cell--danger:hover {',
+    '  background-color: #f8d7da !important;',
+    '}',
+    '.scw-ws-v2-cell--editable-conn.scw-ws-v2-cell--survey-bid.scw-ws-v2-cell--warning,',
+    '.scw-ws-v2-cell--editable-conn.scw-ws-v2-cell--survey-bid.scw-ws-v2-cell--warning:hover {',
+    '  background-color: #fff3cd !important;',
     '}',
 
     '.scw-ws-v2-input--notes {',
