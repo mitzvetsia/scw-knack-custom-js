@@ -1379,10 +1379,11 @@
     else if (cat === 'assumptions')  productSlot = empty('scw-ws-v2-cell--product');
     else                             productSlot = surveyProductCell(rec, F);
 
-    // Single fill cell — Labor Description. Survey Notes + SCW Notes are
-    // stacked together in the detail panel (cleaner than crowding the
-    // summary row, and keeps the two notes fields adjacent).
-    var laborDescCell = surveyFill(rec, viewKey, F.laborDesc || 'field_2409',
+    // Two fill cells: Survey Notes (LEFT) then Labor Description. SCW Notes
+    // lives in the detail panel (first/leftmost field).
+    var surveyNotesCell = surveyFill(rec, viewKey, F.surveyNotes || 'field_2412',
+      'Survey notes', 'scw-ws-v2-cell--survey-notes');
+    var laborDescCell   = surveyFill(rec, viewKey, F.laborDesc || 'field_2409',
       isCam ? 'Labor description' : 'Description');
 
     // Slot 5 (qty/chips): cam → cabling chips; assumptions → blank;
@@ -1418,6 +1419,7 @@
       chevronCell(rec) +
       labelSlot +
       productSlot +
+      surveyNotesCell +
       laborDescCell +
       slot5 +
       laborCell +
@@ -1434,8 +1436,11 @@
     // Survey detail = one flex-wrap row; each field is sized to its expected
     // value width (numbers narrow, the connection medium, the mounting-
     // hardware list wide). Connections render READ-ONLY (SOW-specific picker
-    // not wired). Order mirrors v1 detailLayout.
-    var items = '';
+    // not wired). SCW Notes is the first/leftmost field — a clear multi-line
+    // paragraph. Order otherwise mirrors v1 detailLayout.
+    var items = sdItem(
+      detailTextArea(rec, viewKey, F.scwNotes || 'field_2418', 'SCW Notes'),
+      'scw-ws-v2-sd--paragraph');
     if (cat === 'cam') {
       items += sdItem(detailReadOnly(rec, F.connectedDevice || 'field_2381', 'Connected To'),
         'scw-ws-v2-sd--conn');
@@ -1453,17 +1458,8 @@
     items += sdItem(detailReadOnly(rec, F.mounting || 'field_2463', 'Mounting Hardware'),
       'scw-ws-v2-sd--wide');
 
-    // Notes stack — Survey Notes on top, SCW Notes directly under it. Both
-    // editable; kept together in their own section below the info fields.
-    var notes =
-      '<div class="scw-ws-v2-survey-notes-stack">' +
-        detailTextArea(rec, viewKey, F.surveyNotes || 'field_2412', 'Survey Notes') +
-        detailTextArea(rec, viewKey, F.scwNotes    || 'field_2418', 'SCW Notes') +
-      '</div>';
-
     return '<div class="scw-ws-v2-detail">' +
       '<div class="scw-ws-v2-survey-detail">' + items + '</div>' +
-      notes +
     '</div>';
   }
 

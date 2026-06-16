@@ -173,14 +173,24 @@
     '  grid-template-columns:',
     '    20px                  /* chevron */',
     '    64px                  /* label / drop */',
-    '    minmax(150px, 1.2fr)  /* product */',
-    '    minmax(220px, 2fr)    /* labor description */',
+    '    minmax(140px, 1.1fr)  /* product */',
+    '    minmax(150px, 1.3fr)  /* survey notes */',
+    '    minmax(150px, 1.3fr)  /* labor description */',
     '    72px                  /* qty / chips */',
     '    74px                  /* Labor */',
     '    60px                  /* Ext */',
     '    52px                  /* Bid */',
     '    28px                  /* warning */',
     '    28px                  /* trash */ !important;',
+    '}',
+    /* Top-align the two header fill cells (Survey Notes + Description) so an
+       empty/short Survey Notes lines up with a multi-line Description instead
+       of floating to the vertical center of the row. */
+    '.scw-ws-v2-card--survey .scw-ws-v2-cell--survey-notes,',
+    '.scw-ws-v2-card--survey .scw-ws-v2-row--cam > .scw-ws-v2-cell--labor-desc,',
+    '.scw-ws-v2-card--survey .scw-ws-v2-row--default > .scw-ws-v2-cell--labor-desc,',
+    '.scw-ws-v2-card--survey .scw-ws-v2-row--services > .scw-ws-v2-cell--labor-desc {',
+    '  align-self: start !important;',
     '}',
     /* Survey money cells — right-aligned figures. */
     '.scw-ws-v2-cell--survey-ext, .scw-ws-v2-cell--survey-bid {',
@@ -195,23 +205,23 @@
     '.scw-ws-v2-card--survey .scw-ws-v2-cell--product.scw-ws-v2-cell--ro {',
     '  cursor: default !important;',
     '}',
-    /* Survey assumptions: assumption text (labor-desc, now col 4) spans the
-       middle; Labor/Ext blanks hidden so they don\'t overlap. Bid stays at
-       col 8. Overrides the base 3/10 assumptions span. */
+    /* Survey assumptions: assumption text (labor-desc, col 5) spans the
+       middle; Survey Notes + Labor/Ext blanks hidden so they don\'t overlap.
+       Bid stays at col 9. Overrides the base 3/10 assumptions span. */
     '.scw-ws-v2-card--survey .scw-ws-v2-row--assumptions > .scw-ws-v2-cell--labor-desc {',
-    '  grid-column: 4 / 8 !important;',
+    '  grid-column: 4 / 9 !important;',
     '}',
+    '.scw-ws-v2-card--survey .scw-ws-v2-row--assumptions > .scw-ws-v2-cell--survey-notes,',
     '.scw-ws-v2-card--survey .scw-ws-v2-row--assumptions > .scw-ws-v2-cell--survey-labor,',
     '.scw-ws-v2-card--survey .scw-ws-v2-row--assumptions > .scw-ws-v2-cell--survey-ext {',
     '  display: none !important;',
     '}',
-    /* Notes stack in the survey detail — Survey Notes above SCW Notes, each
-       full-width up to a readable max so they read as a clear pair. */
-    '.scw-ws-v2-survey-notes-stack {',
-    '  display: flex !important; flex-direction: column !important;',
-    '  gap: 8px !important; margin-top: 10px !important; max-width: 560px !important;',
+    /* SCW Notes — first/leftmost detail field, shown as a clear multi-line
+       paragraph (wider than the info fields, taller min-height). */
+    '.scw-ws-v2-sd--paragraph { flex: 1 1 280px !important; min-width: 220px !important; max-width: 420px !important; }',
+    '.scw-ws-v2-sd--paragraph .scw-ws-v2-input--textarea {',
+    '  width: 100% !important; min-height: 60px !important;',
     '}',
-    '.scw-ws-v2-survey-notes-stack .scw-ws-v2-input--textarea { width: 100% !important; }',
     /* Mounting-Height single-select chips (editable; radiochip handler). */
     '.scw-ws-v2-radiochips {',
     '  display: inline-flex !important; flex-wrap: wrap !important; gap: 4px !important;',

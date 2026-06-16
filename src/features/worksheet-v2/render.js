@@ -267,13 +267,14 @@
         (salesMoney  ? ' scw-ws-v2-col-header--sales'  : '') +
         (surveyMoney ? ' scw-ws-v2-col-header--survey' : '');
       if (surveyMoney) {
-        // Survey 10-track header: chevron · Drop · Product · Description ·
-        // Qty/Chips · Labor · Ext · Bid · warn · trash. (Survey + SCW Notes
-        // live in the detail panel, not the summary row.)
+        // Survey 11-track header: chevron · Drop · Product · Survey Notes ·
+        // Description · Qty/Chips · Labor · Ext · Bid · warn · trash.
+        // (SCW Notes lives in the detail panel.)
         hdr.innerHTML =
           '<span></span>' +
           '<span>Drop</span>' +
           '<span>Product</span>' +
+          '<span>Survey Notes</span>' +
           '<span>Description</span>' +
           '<span>Qty</span>' +
           '<span class="scw-ws-v2-col-header-total">Labor</span>' +
