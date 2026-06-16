@@ -3275,11 +3275,14 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
       if ($costCell.length) $costCell.html(TBD);
     });
 
-    // Installation Total → TBD
+    // Installation Total AND Grand Total → TBD. The grand total sums in
+    // install labor (grandTotal = equipment + installation − discount), so
+    // while labor is unreleased it can't show a real number — it reads "TBD",
+    // not the equipment-only figure.
     $view.find('tr.scw-project-totals').each(function () {
       var $tr = $(this);
       var label = ($tr.find('.scw-l1-labelcell').text() || '').trim().toLowerCase();
-      if (label.indexOf('installation') !== -1) {
+      if (label.indexOf('installation') !== -1 || label.indexOf('grand total') !== -1) {
         $tr.find('.scw-l1-valuecell').html('<strong>' + TBD + '</strong>');
       }
     });

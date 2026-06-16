@@ -780,7 +780,12 @@
       if (!Array.isArray(lines)) return;
       for (var i = 0; i < lines.length; i++) {
         var line = lines[i];
-        if (line && line.label && /installation/i.test(String(line.label))) {
+        if (!line || !line.label) continue;
+        var lbl = String(line.label);
+        // Install-labor subtotal AND the grand total both render "TBD". The
+        // grand total sums in install labor, so while the bid is unreleased it
+        // shows "TBD" rather than the equipment-only figure.
+        if (/installation/i.test(lbl) || /grand\s*total/i.test(lbl)) {
           line.value = TBD;
         }
       }
