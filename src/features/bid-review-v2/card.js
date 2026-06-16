@@ -362,6 +362,13 @@
           ' title="Connected devices: ' + escapeHtml(joined) + '">' +
           '<label>Connected</label>' + escapeHtml(joined) + '</div>';
       }
+    } else if (opts.side === 'bid' && opts.deviceDiff) {
+      // Bid has NO connected devices but the SOW does — surface the gap so the
+      // dropped connection reads as a difference, not just an amber cell tint.
+      var am = lineAttrs(true);
+      html += '<div class="scw-bid-review-v2__cell-conn' + am.cls + '"' + am.hook +
+        ' title="No connected devices on this bid (SOW expects connected devices)">' +
+        '<label>Connected</label><em style="opacity:.6">(none)</em></div>';
     }
     var to = ns.transform.stripHtml(connTo || '').trim();
     if (to && !/^\(none\)$/i.test(to)) {
@@ -369,6 +376,12 @@
       html += '<div class="scw-bid-review-v2__cell-conn' + a2.cls + '"' + a2.hook +
         ' title="Connected to: ' + escapeHtml(to) + '">' +
         '<label>Connected&nbsp;to</label>' + escapeHtml(to) + '</div>';
+    } else if (opts.side === 'bid' && opts.toDiff) {
+      // Bid not connected but the SOW expects a connection — show the gap.
+      var a2m = lineAttrs(true);
+      html += '<div class="scw-bid-review-v2__cell-conn' + a2m.cls + '"' + a2m.hook +
+        ' title="Not connected on this bid (SOW expects a connection)">' +
+        '<label>Connected&nbsp;to</label><em style="opacity:.6">(none)</em></div>';
     }
     return html;
   }
