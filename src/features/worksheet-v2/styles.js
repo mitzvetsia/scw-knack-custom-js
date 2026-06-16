@@ -205,6 +205,15 @@
     '  white-space: nowrap !important;',
     '}',
     '.scw-ws-v2-cell--survey-bid { color: #64748b !important; }',
+    /* Editable bid cell — it\'s a <button>; reset chrome, keep it clickable. */
+    'button.scw-ws-v2-cell--survey-bid {',
+    '  border: 1px solid transparent !important; background: transparent !important;',
+    '  cursor: pointer !important; padding: 2px 4px !important; border-radius: 4px !important;',
+    '  line-height: 1.25 !important;',
+    '}',
+    'button.scw-ws-v2-cell--survey-bid:hover {',
+    '  border-color: #cbd5e1 !important; background: #f8fafc !important; color: #07467c !important;',
+    '}',
     /* Survey product is read-only in the preview (picker not wired) — drop the
        button affordance/cursor so it reads as static text. */
     '.scw-ws-v2-card--survey .scw-ws-v2-cell--product.scw-ws-v2-cell--ro {',

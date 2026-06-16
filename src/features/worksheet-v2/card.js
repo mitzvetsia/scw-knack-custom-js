@@ -1308,8 +1308,9 @@
   }
 
   /** Bid cell — a line item can belong to multiple bids (field_2415). Render
-   *  each bid label on its OWN line (v1 shows them stacked, not comma-joined). */
-  function surveyBidCell(rec, fieldKey) {
+   *  each bid label on its OWN line (v1 stacks them, not comma-joined). Now an
+   *  editable picker button (data-scw-ws-v2-conn) — click opens the bid picker. */
+  function surveyBidCell(rec, viewKey, fieldKey) {
     var raw = rec[fieldKey + '_raw'];
     var parts = [];
     if (Array.isArray(raw)) {
@@ -1323,10 +1324,18 @@
       var s = readField(rec, fieldKey);
       if (s) parts = s.split(/\s*,\s*/);
     }
-    var title = parts.length ? ('Bid ' + parts.join(', ')) : 'Bid';
-    return '<div class="scw-ws-v2-cell scw-ws-v2-cell--survey-bid" title="' + escapeHtml(title) + '">' +
-      parts.map(escapeHtml).join('<br>') +
-    '</div>';
+    var title = parts.length ? ('Bid ' + parts.join(', ') + ' — click to change') : 'Set bid';
+    var inner = parts.length
+      ? parts.map(escapeHtml).join('<br>')
+      : '<span class="scw-ws-v2-sow-value">&mdash;</span>';
+    return '<button type="button" ' +
+      'class="scw-ws-v2-cell scw-ws-v2-cell--survey-bid scw-ws-v2-cell--editable-conn" ' +
+      'data-scw-ws-v2-conn="' + escapeHtml(fieldKey) + '" ' +
+      'data-scw-ws-v2-record="' + escapeHtml(rec.id) + '" ' +
+      'data-scw-ws-v2-view="' + escapeHtml(viewKey) + '" ' +
+      'data-scw-ws-v2-conn-label="Bid" ' +
+      'title="' + escapeHtml(title) + '">' + inner +
+    '</button>';
   }
 
   /** A survey detail-panel item wrapper carrying a width-hint class so the
@@ -1413,7 +1422,7 @@
     var extCell = (isCam || cat === 'assumptions')
       ? empty('scw-ws-v2-cell--survey-ext')
       : ro(readField(rec, F.extended || 'field_2401'), 'scw-ws-v2-cell--survey-ext', 'Extended');
-    var bidCell = surveyBidCell(rec, F.bid || 'field_2415');
+    var bidCell = surveyBidCell(rec, viewKey, F.bid || 'field_2415');
 
     return '<div class="scw-ws-v2-row scw-ws-v2-row--' + cat + '">' +
       chevronCell(rec) +
@@ -1442,8 +1451,10 @@
       detailTextArea(rec, viewKey, F.scwNotes || 'field_2418', 'SCW Notes'),
       'scw-ws-v2-sd--paragraph');
     if (cat === 'cam') {
-      items += sdItem(detailReadOnly(rec, F.connectedDevice || 'field_2381', 'Connected To'),
-        'scw-ws-v2-sd--conn');
+      // Connected To (field_2381, single) — editable; cascade writes the
+      // parent's field_2380. Picker candidates resolved in init.js.
+      items += sdItem(detailConnection(rec, viewKey, F.connectedDevice || 'field_2381',
+        'Connected To', hasIssue(rec, 'disconnected')), 'scw-ws-v2-sd--conn');
       items += sdItem(singleChipField(rec, viewKey, F.mountingHeight || 'field_2455',
         'Mounting Height', ["Under 16'", "16' - 24'", "Over 24'"]), 'scw-ws-v2-sd--chips');
       items += sdItem(detailField(rec, viewKey, F.dropLength || 'field_2367', 'Drop Length', 'number'),
@@ -1451,9 +1462,14 @@
       items += sdItem(detailField(rec, viewKey, F.conduit || 'field_2368', 'Conduit', 'number'),
         'scw-ws-v2-sd--num');
     } else if (cat === 'default') {
-      items += sdItem(detailReadOnly(rec, F.connectedDevices || 'field_2380', 'Connected Devices'),
-        'scw-ws-v2-sd--conn');
+      // Connected Devices (field_2380, multi, NVR/switch side) — editable.
+      items += sdItem(detailConnection(rec, viewKey, F.connectedDevices || 'field_2380',
+        'Connected Devices'), 'scw-ws-v2-sd--conn');
     }
+
+    // MDF / IDF (field_2375) — editable on every bucket (re-home a line item).
+    items += sdItem(detailConnection(rec, viewKey, F.mdfIdf || 'field_2375', 'MDF / IDF'),
+      'scw-ws-v2-sd--conn');
 
     items += sdItem(detailReadOnly(rec, F.mounting || 'field_2463', 'Mounting Hardware'),
       'scw-ws-v2-sd--wide');

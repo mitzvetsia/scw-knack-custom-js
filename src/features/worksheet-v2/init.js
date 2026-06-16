@@ -971,6 +971,116 @@
         }
       }
 
+      // ── Survey object pickers (view_3505) ───────────────────────────
+      // Bid (field_2415) · MDF/IDF (field_2375) · Connected Devices
+      // (field_2380) · Connected To (field_2381). Candidates are collected
+      // from the loaded survey records — self-contained, no external
+      // locations/bids view needed (so only values already in use on this
+      // survey appear; brand-new ones aren't pickable here yet). Connected
+      // Devices/To PUT through view_3505 so mirror-connection-sync's
+      // field_2380↔field_2381 cascade fires (createMirror VIEW_ID view_3505).
+      var _vcfgSurvey = (ns.cfg && typeof ns.cfg.viewCfg === 'function')
+        ? ns.cfg.viewCfg(viewKey) : null;
+      if (_vcfgSurvey && _vcfgSurvey.moneyMode === 'survey') {
+        var SF = (ns.cfg && ns.cfg.fields(viewKey)) || {};
+
+        // Unique {id, name} from a connection field across all loaded records.
+        var collectConnValues = function (fieldK) {
+          var seen = Object.create(null), out = [];
+          for (var i = 0; i < records.length; i++) {
+            var raw = records[i] && records[i][fieldK + '_raw'];
+            if (!Array.isArray(raw)) continue;
+            for (var j = 0; j < raw.length; j++) {
+              var v = raw[j];
+              if (v && v.id && !seen[v.id]) {
+                seen[v.id] = true;
+                out.push({ id: v.id, name: (v.identifier != null ? String(v.identifier) : v.id) });
+              }
+            }
+          }
+          out.sort(function (a, b) {
+            return String(a.name).localeCompare(String(b.name), undefined,
+              { numeric: true, sensitivity: 'base' });
+          });
+          return out;
+        };
+        var surveyRefetch = function () {
+          if (ns.data && typeof ns.data.refetchAndNotify === 'function') ns.data.refetchAndNotify(viewKey);
+          else if (ns.data && typeof ns.data.notify === 'function') ns.data.notify(viewKey);
+        };
+
+        // Bid (multi) — model on SOW field_2154.
+        if (fieldKey === (SF.bid || 'field_2415')) {
+          ns.picker.open({
+            sourceViewKey: viewKey, putViewKey: viewKey, recordId: recordId,
+            fieldKey: fieldKey, label: 'Bid', selectedIds: sel,
+            candidates: collectConnValues(fieldKey), groupBy: false,
+            itemLabel: function (r) { return r.name || r.id; },
+            multi: true, onSaved: surveyRefetch
+          });
+          return;
+        }
+
+        // MDF / IDF (single).
+        if (fieldKey === (SF.mdfIdf || 'field_2375')) {
+          ns.picker.open({
+            sourceViewKey: viewKey, putViewKey: viewKey, recordId: recordId,
+            fieldKey: fieldKey, label: 'MDF / IDF', selectedIds: sel,
+            candidates: collectConnValues(fieldKey), groupBy: false,
+            itemLabel: function (r) { return r.name || r.id; },
+            multi: false, onSaved: surveyRefetch
+          });
+          return;
+        }
+
+        // Connected Devices (multi, NVR side) / Connected To (single, cam side).
+        var _CD = SF.connectedDevices || 'field_2380';
+        var _CT = SF.connectedDevice  || 'field_2381';
+        if (fieldKey === _CD || fieldKey === _CT) {
+          var _camBucket = ns.card && ns.card.CAM_READER_BUCKET;
+          var _isCD = (fieldKey === _CD);
+          var connCands = [];
+          for (var ci = 0; ci < records.length; ci++) {
+            var crec = records[ci];
+            if (!crec || !crec.id || crec.id === recordId) continue;
+            var cbid = (ns.card && typeof ns.card.bucketIdOf === 'function')
+              ? ns.card.bucketIdOf(crec, viewKey) : '';
+            if (_isCD) {
+              if (cbid !== _camBucket) continue;            // devices → connect cam/readers
+            } else {
+              if (cbid === _camBucket) continue;            // cam → connect to non-cam network gear
+              var ccat = (ns.card && typeof ns.card.bucketCategoryOf === 'function')
+                ? ns.card.bucketCategoryOf(crec, viewKey) : 'default';
+              if (ccat === 'assumptions' || ccat === 'services') continue;
+            }
+            connCands.push(crec);
+          }
+          var _lblF  = SF.displayLabel || 'field_2365';
+          var _prodF = SF.productName  || 'field_2379';
+          var _mdfF  = SF.mdfIdf       || 'field_2375';
+          ns.picker.open({
+            sourceViewKey: viewKey, putViewKey: viewKey, recordId: recordId,
+            fieldKey: fieldKey, label: label, selectedIds: sel,
+            candidates: connCands,
+            groupBy: function (r) {
+              var raw = r[_mdfF + '_raw'];
+              if (Array.isArray(raw) && raw[0] && raw[0].id) {
+                return { id: raw[0].id, label: String(raw[0].identifier || '').replace(/<[^>]*>/g, '').trim() || 'MDF / IDF' };
+              }
+              return { id: '__unknown', label: 'No MDF / IDF' };
+            },
+            itemLabel: function (r) {
+              var lbl  = (r[_lblF]  || '').toString().replace(/<[^>]*>/g, '').trim();
+              var prod = (r[_prodF] || '').toString().replace(/<[^>]*>/g, '').trim();
+              if (lbl && prod) return lbl + ' · ' + prod;
+              return lbl || prod || r.id;
+            },
+            multi: _isCD, onSaved: surveyRefetch
+          });
+          return;
+        }
+      }
+
       // Connected Devices (field_1957) hardening — pre-select the TRUE set.
       // ------------------------------------------------------------------
       // field_1957 (parent → children) and field_2197 (child → parent) are
