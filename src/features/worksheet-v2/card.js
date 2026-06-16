@@ -1500,8 +1500,13 @@
         'scw-ws-v2-sd--num');
     } else if (cat === 'default') {
       // Connected Devices (field_2380, multi, NVR/switch side) — editable.
-      items += sdItem(detailConnection(rec, viewKey, F.connectedDevices || 'field_2380',
-        'Connected Devices'), 'scw-ws-v2-sd--conn');
+      // ONLY shown when this record's "map camera/reader connections" flag
+      // (field_2374 / mapConn) is Yes — devices that don't map readers have
+      // no Connected Devices to manage.
+      if (readBool(rec, F.mapConn || 'field_2374') === 'Yes') {
+        items += sdItem(detailConnection(rec, viewKey, F.connectedDevices || 'field_2380',
+          'Connected Devices'), 'scw-ws-v2-sd--conn');
+      }
     }
 
     // MDF / IDF (field_2375) — editable on every bucket (re-home a line item).
