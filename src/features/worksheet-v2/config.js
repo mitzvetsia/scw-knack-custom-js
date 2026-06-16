@@ -225,6 +225,98 @@
         }
       }
 
+      // ── Subcontractor SURVEY device worksheet (view_3505) ───────────
+      // DIFFERENT object from the SOW line item (Survey Line Item), so
+      // independentFields:true — this `fields` map is used AS-IS, no
+      // DEFAULT_FIELDS fallback. Mirrors the v1 device-worksheet config
+      // (device-worksheet.js view_3505 block) field-for-field.
+      //
+      // ⚠️ internalOnly:true — gated to @getscw.com staff via
+      //    SCW.isInternalUser() in init.js. This is a PREVIEW running
+      //    beneath the live v1 worksheet; subcontractors never see it.
+      //
+      // ⚠️ moneyMode:'survey' — the survey object has no Sub Bid/+Hrs/+Mat
+      //    stacks. Money model is Labor (field_2400) · Ext (field_2401) ·
+      //    Qty (field_2399), and the line's bid membership is a connection
+      //    (field_2415). card.js branches on this (see isSurveyMoney).
+      //
+      // ⚠️ PARENT/CHILD: Survey Line Items have NO accessory parent/child
+      //    denormalization yet (no analogue of the SOW's field_1957↔2197
+      //    cascade or field_2464 accessory→parent). connectedDevices
+      //    (field_2380, on NVR/switch) and connectedDevice (field_2381,
+      //    "Connected To" on a cam/reader) exist as PLAIN Knack
+      //    connections — they are NOT backed by mirror-connection-sync.
+      //    `accessories`/`children`/`parent`/`accessoryMatch` are
+      //    intentionally UNMAPPED here and the survey card path renders no
+      //    mounting-hardware/accessory UI. When that relationship is added
+      //    to the survey object (see CLAUDE.md), it maps into these same
+      //    logical slots — config-only at that point.
+      ,{
+        // enabled:false until the survey card path lands in card.js
+        // (moneyMode:'survey' branch + survey row/detail builders +
+        // bucket resolution via field_2366). card.js currently hardcodes
+        // SOW keys, so flipping this true now would render broken cards.
+        // Field map below is reviewable as-is. Flip true with the card path.
+        enabled:           false,
+        internalOnly:      true,            // @getscw.com gate (init.js)
+        sourceViewKey:     'view_3505',
+        mountAfterSelector: '#view_3505',
+        label:             'Survey Line Items (v2 preview)',
+        independentFields: true,            // Survey object — no SOW fallback
+        moneyMode:         'survey',
+        hideSow:           true,            // survey groups by Bid, not SOW
+        mdfSourceViewKey:  '',              // TODO: empty-L1 seed source (MDF/IDF on the survey scene)
+        mdfLabelField:     '',              // TODO
+        fields: {
+          // identity / grouping
+          product:        'field_2627',     // REL_product (editable)
+          productName:    'field_2379',     // STORED product name (display)
+          displayLabel:   'field_2365',     // label (E-001 …)
+          labelAlt:       'field_2365',     // same — survey line item label
+          bucket:         'field_2366',     // proposal bucket (L2) — NOT SOW's 2219
+          sortOrder:      'field_2218',     // CONFIG_sort order (shared key)
+          mdfIdf:         'field_2375',     // MDF/IDF location (L1 grouping + move)
+          bid:            'field_2415',     // REL_bid — survey grouping connection
+          // money / qty (moneyMode:'survey')
+          qty:            'field_2399',
+          labor:          'field_2400',     // Labor rate
+          extended:       'field_2401',     // CALC sub-bid extended (Ext)
+          // text
+          laborDesc:      'field_2409',
+          scwNotes:       'field_2418',
+          surveyNotes:    'field_2412',
+          // booleans / flags
+          existCabling:   'field_2370',
+          exterior:       'field_2372',
+          plenum:         'field_2371',
+          mapConn:        'field_2374',     // FLAG_map camera/reader connections
+          requireSubBid:  'field_2478',     // FLAG_require sub bid
+          qtyOne:         'field_2373',     // FLAG_limit to quantity one
+          locked:         'field_2551',     // FLAG_locked
+          warningCount:   'field_2454',     // SYS_incomplete photos
+          // connections (plain — NO mirror-sync cascade; see note above)
+          connectedDevices: 'field_2380',   // on NVR/switch (multi)
+          connectedDevice:  'field_2381',   // "Connected To" on cam/reader (single)
+          // detail
+          dropLength:     'field_2367',
+          conduit:        'field_2368',
+          mountingHeight: 'field_2455',     // survey single-chip (Under 16' / 16'-24' / Over 24')
+          mounting:       'field_2463',     // INPUT_mounting hardware list (read-only display)
+          sowLineItem:    'field_2404',     // REL_sow line item (source of truth) — gates lock/delete
+          // photos (shared DOC_photos object — identical keys to SOW)
+          photoImage:     'field_771',
+          photoType:      'field_2445',
+          photoRequired:  'field_2446',
+          photoCompleted: 'field_2447',
+          photoNotes:     'field_114'
+        },
+        buckets: {
+          // survey shows the same buckets; only the extra ones beyond
+          // DEFAULT_BUCKETS need listing.
+          otherEquip: '5df12ce036f91b0015404d78'   // "Other Equipment"
+        }
+      }
+
       // ── TEMPLATE (not yet enabled) — sales build-SOW page ───────────
       // Deploy target derived from view_3450. Fill in only the fields that
       // DIFFER from DEFAULT_FIELDS, the mount anchor, and the mdf source.

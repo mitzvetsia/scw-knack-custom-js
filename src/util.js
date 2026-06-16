@@ -190,6 +190,43 @@ window.SCW = window.SCW || {};
   };
 })(window.SCW);
 
+// ── Logged-in user / internal-staff gate ─────────────────────
+// Knack exposes the current user client-side via Knack.getUserAttributes()
+// → { id, name, email, ... }. SCW.isInternalUser() returns true when that
+// email is on the @getscw.com domain (case-insensitive, tolerates trailing
+// whitespace, and matches sub-domains like @mail.getscw.com).
+//
+// ⚠️ This is a UI/preview gate, NOT a security boundary — it runs in the
+// browser and a technical user can flip it. Use it only to show/hide
+// preview surfaces; gate sensitive DATA at the Knack object/view permission
+// level. Fails safe: returns false when the session/email isn't populated
+// yet (e.g. a very early render), and onViewRender re-fires so a gated
+// feature resolves on the next pass.
+//
+// Optional allowlist: pass an array of explicit lowercase emails to also
+// admit (e.g. a contractor or test account) — SCW.isInternalUser(['x@y.com']).
+(function (namespace) {
+  var INTERNAL_DOMAIN_RE = /@([a-z0-9-]+\.)*getscw\.com\s*$/i;
+  namespace.getUserEmail = function getUserEmail() {
+    try {
+      var u = (typeof Knack !== 'undefined' && Knack.getUserAttributes)
+        ? Knack.getUserAttributes() : null;
+      return (u && typeof u === 'object' && u.email) ? String(u.email) : '';
+    } catch (e) { return ''; }
+  };
+  namespace.isInternalUser = function isInternalUser(allowlist) {
+    var email = namespace.getUserEmail().trim().toLowerCase();
+    if (!email) return false;
+    if (INTERNAL_DOMAIN_RE.test(email)) return true;
+    if (allowlist && allowlist.length) {
+      for (var i = 0; i < allowlist.length; i++) {
+        if (String(allowlist[i]).trim().toLowerCase() === email) return true;
+      }
+    }
+    return false;
+  };
+})(window.SCW);
+
 // ── Authenticated Knack AJAX wrapper ─────────────────────────
 // Detects 401 "Invalid token" responses and shows a non-intrusive
 // toast prompting the user to log out and back in. We *don't* treat

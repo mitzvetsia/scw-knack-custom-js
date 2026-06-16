@@ -56,8 +56,19 @@
    * Try to mount the v2 panel for one source view. No-op if the
    * source view isn't on this scene, or the panel is already mounted.
    */
+  // Internal-staff gate: a view flagged internalOnly mounts only for
+  // @getscw.com users (SCW.isInternalUser). Fails safe to "not internal"
+  // when the helper/session isn't ready — onViewRender re-fires, so a
+  // staff member's panel resolves on the next render once the email
+  // attribute populates.
+  function gatedOut(vcfg) {
+    if (!vcfg || !vcfg.internalOnly) return false;
+    return !(window.SCW && typeof SCW.isInternalUser === 'function' && SCW.isInternalUser());
+  }
+
   function tryMount(vcfg) {
     if (!vcfg || vcfg.enabled === false) return;   // per-view kill switch
+    if (gatedOut(vcfg)) return;                     // internal-only preview gate
     if (document.getElementById('scw-ws-v2-' + vcfg.sourceViewKey)) return;
     var anchor = document.querySelector(vcfg.mountAfterSelector);
     if (!anchor) return; // source view not on this scene
@@ -80,6 +91,7 @@
     var views = ns.CONFIG.views || [];
     views.forEach(function (vcfg) {
       if (!vcfg || vcfg.enabled === false) return;   // per-view kill switch
+      if (gatedOut(vcfg)) return;                     // internal-only preview gate
       // Background polling — keep v2 in sync with records added via
       // API / other tabs / Make scenarios. 2-min default, 15-sec
       // burst for 5 minutes after a known local change.
