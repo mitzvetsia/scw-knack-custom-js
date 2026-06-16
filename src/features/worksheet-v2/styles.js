@@ -183,14 +183,19 @@
     '    28px                  /* warning */',
     '    28px                  /* trash */ !important;',
     '}',
-    /* Top-align the two header fill cells (Survey Notes + Description) so an
-       empty/short Survey Notes lines up with a multi-line Description instead
-       of floating to the vertical center of the row. */
+    /* Stretch the two header fill cells (Survey Notes + Description) to the
+       full row height so a short/empty Survey Notes is AT LEAST as tall as
+       the (content-sized) Description and their tops line up. The Description
+       textarea keeps field-sizing:content and drives the row height; the
+       Survey Notes textarea fills the stretched cell. */
     '.scw-ws-v2-card--survey .scw-ws-v2-cell--survey-notes,',
     '.scw-ws-v2-card--survey .scw-ws-v2-row--cam > .scw-ws-v2-cell--labor-desc,',
     '.scw-ws-v2-card--survey .scw-ws-v2-row--default > .scw-ws-v2-cell--labor-desc,',
     '.scw-ws-v2-card--survey .scw-ws-v2-row--services > .scw-ws-v2-cell--labor-desc {',
-    '  align-self: start !important;',
+    '  align-self: stretch !important;',
+    '}',
+    '.scw-ws-v2-card--survey .scw-ws-v2-cell--survey-notes .scw-ws-v2-input--textarea {',
+    '  height: 100% !important; field-sizing: fixed;',
     '}',
     /* Survey money cells — right-aligned figures. */
     '.scw-ws-v2-cell--survey-ext, .scw-ws-v2-cell--survey-bid {',
