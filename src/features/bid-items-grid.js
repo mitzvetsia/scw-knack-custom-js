@@ -1185,6 +1185,13 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     return norm(cell.textContent || '').toLowerCase() === 'no';
   }
 
+  // Rows that count toward money totals — no-sub-bid items never contribute a
+  // labor/cost amount, so they're dropped from every sum/average.
+  function filterBillable(ctx, $rows) {
+    if (!ctx.keys.subBidRequired) return $rows;
+    return $rows.filter((i, el) => !rowIsIncluded(ctx, el));
+  }
+
   // Lists the NON-included product name(s) above the labor description, and
   // returns true when EVERY product row in the group is "included" (no sub bid
   // required) — those items are pulled into the "Other Associated Equipment"
@@ -1514,8 +1521,10 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     const qtyKey = ctx.keys.qty;
     const laborKey = ctx.keys.labor;
 
-    const grandQty = sumField(caches, $allDataRows, qtyKey);
-    const grandTotal = sumField(caches, $allDataRows, laborKey);
+    // No-sub-bid items contribute no labor — exclude them from the grand total.
+    const $billableRows = filterBillable(ctx, $allDataRows);
+    const grandQty = sumField(caches, $billableRows, qtyKey);
+    const grandTotal = sumField(caches, $billableRows, laborKey);
 
     const meta = computeColumnMeta(ctx);
     const cols = Math.max(meta.colCount || 0, 1);
@@ -1792,9 +1801,13 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       const $rowsToSum = $groupBlock.filter('tr[id]');
       if (!$rowsToSum.length) return;
 
+      // Billable subset — no-sub-bid items never add a labor amount, so all
+      // money math (group totals, rate avg, subtotals) runs over this set.
+      const $billable = filterBillable(ctx, $rowsToSum);
+
       const totals = sumFields(
         caches,
-        $rowsToSum,
+        $billable,
         [qtyKey, laborKey].filter(Boolean)
       );
 
@@ -1886,7 +1899,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
         const qty = totals[qtyKey];
         const labor = totals[laborKey];
-        const rateAvg = avgField(caches, $rowsToSum, rateKey);
+        const rateAvg = avgField(caches, $billable, rateKey);
 
         $groupRow.find(`td.${qtyKey}`).html(`<strong>${Math.round(qty)}</strong>`);
         $groupRow.find(`td.${rateKey}`).html(`<strong>${escapeHtml(formatMoney(rateAvg))}</strong>`);
@@ -1924,7 +1937,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
           hideQtyCostColumns: effectiveLevel === 2 ? sectionContext.hideQtyCostColumns : false,
           $groupBlock,
           $cellsTemplate,
-          $rowsToSum,
+          $rowsToSum: $billable,
           totals,
         });
       }
