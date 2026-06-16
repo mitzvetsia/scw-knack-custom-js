@@ -270,6 +270,10 @@
         noAccessories:     true,            // Survey Line Items have no accessory
                                             // relationship yet (CLAUDE.md #16) — hide
                                             // the bulk Add/Remove accessories buttons
+        // When a bulk edit CLEARS this connection, require a note ONCE and
+        // write it into every clearing row's PUT (so the rows carry the note
+        // and survey-bid-validate's bid-gate doesn't re-prompt). Logical names.
+        clearNote:         { conn: 'bid', note: 'surveyNotes' },
         mdfSourceViewKey:  'view_3617',     // MDF/IDF locations grid on the survey scene
         mdfLabelField:     'field_1642',    // MDF/IDF full label
         fields: {

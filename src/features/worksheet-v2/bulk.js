@@ -1426,6 +1426,75 @@
     return { candidates: [], groupBy: null, itemLabel: null };
   }
 
+  /** One-shot note prompt (textarea). cb(noteText) on save, cb(null) on cancel. */
+  function promptNote(count, cb) {
+    var ov = document.createElement('div');
+    ov.className = 'scw-ws-v2-bulk-overlay';
+    ov.innerHTML =
+      '<div class="scw-ws-v2-bulk-modal scw-ws-v2-bulk-modal--confirm">' +
+        '<div class="scw-ws-v2-bulk-modal-head">' +
+          '<div class="scw-ws-v2-bulk-modal-title">Survey note required</div>' +
+          '<div class="scw-ws-v2-bulk-modal-sub">You’re removing ' + count +
+            ' item' + (count === 1 ? '' : 's') + ' from the bid. Capture a survey note ' +
+            'explaining why — it’ll be saved on each item (existing notes are kept).</div>' +
+        '</div>' +
+        '<div style="padding:0 18px 6px;">' +
+          '<textarea class="scw-ws-v2-bulk-note" rows="3" placeholder="e.g. Item not needed per customer; duplicate of E-014; etc." ' +
+            'style="width:100%;box-sizing:border-box;font:inherit;padding:8px;border:1px solid #cbd5e1;border-radius:6px;resize:vertical;"></textarea>' +
+        '</div>' +
+        '<div class="scw-ws-v2-bulk-modal-actions">' +
+          '<button type="button" class="scw-ws-v2-bulk-modal-cancel">Cancel</button>' +
+          '<button type="button" class="scw-ws-v2-bulk-modal-confirm-delete" disabled>Save with note</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(ov);
+    var ta  = ov.querySelector('.scw-ws-v2-bulk-note');
+    var okB = ov.querySelector('.scw-ws-v2-bulk-modal-confirm-delete');
+    var caB = ov.querySelector('.scw-ws-v2-bulk-modal-cancel');
+    function close() { ov.parentNode && ov.parentNode.removeChild(ov); }
+    ta.addEventListener('input', function () { okB.disabled = !ta.value.trim(); });
+    caB.addEventListener('click', function () { close(); cb(null); });
+    okB.addEventListener('click', function () {
+      var v = ta.value.trim(); if (!v) return; close(); cb(v);
+    });
+    ov.addEventListener('click', function (e) { if (e.target === ov) { close(); cb(null); } });
+    setTimeout(function () { ta.focus(); }, 30);
+  }
+
+  /** Config-driven clear-note gate: if the view declares `clearNote:{conn,note}`
+   *  (logical names) and this bulk batch CLEARS that connection on ≥1 row,
+   *  prompt ONCE and write the note into every clearing row's PUT (preserving
+   *  existing notes). The note in the body makes survey-bid-validate's bid-gate
+   *  skip these PUTs, so there's no second prompt and no loop. cb(true) to
+   *  proceed, cb(false) if the user cancels. */
+  function maybePromptClearNote(jobs, sourceViewKey, cb) {
+    var vc = (ns.cfg && typeof ns.cfg.viewCfg === 'function') ? ns.cfg.viewCfg(sourceViewKey) : null;
+    var spec = vc && vc.clearNote;
+    if (!spec) return cb(true);
+    var F = (ns.cfg && ns.cfg.fields(sourceViewKey)) || {};
+    var connKey = F[spec.conn] || spec.conn;
+    var noteKey = F[spec.note] || spec.note;
+    var clearing = jobs.filter(function (j) {
+      if (!j.body || !(connKey in j.body)) return false;
+      var v = j.body[connKey];
+      return Array.isArray(v) ? (v.length === 0) : (!v || v === '');
+    });
+    if (!clearing.length) return cb(true);
+    promptNote(clearing.length, function (note) {
+      if (note == null) return cb(false);   // cancelled
+      var idx = attrsIndex(sourceViewKey);
+      clearing.forEach(function (j) {
+        var a = idx[j.recordId];
+        var existingRaw = a ? a[noteKey] : '';
+        var existing = (existingRaw != null) ? String(existingRaw).replace(/<[^>]*>/g, '').trim() : '';
+        // Preserve an existing note (re-write its raw value so the PUT still
+        // carries the field and bypasses the gate); else write the new note.
+        j.body[noteKey] = existing ? existingRaw : note;
+      });
+      cb(true);
+    });
+  }
+
   function openBulkModal(ids, sourceViewKey) {
     // If any selected row is locked (survey-associated sales item), only the
     // lock whitelist (Product / SCW Notes / Custom Disc %) is bulk-editable —
@@ -1747,6 +1816,15 @@
 
       var jobs = Object.keys(jobsByKey).map(function (jobKey) { return jobsByKey[jobKey]; });
 
+      // Clear-note gate (config clearNote): if this batch clears the configured
+      // connection (e.g. Bid), prompt ONCE and write the note into every
+      // clearing row's PUT before firing. Cancel = abort the whole save.
+      maybePromptClearNote(jobs, sourceViewKey, function (proceed) {
+        if (!proceed) { status.textContent = ''; return; }
+        runJobs();
+      });
+
+      function runJobs() {
       saveBtn.disabled   = true;
       cancelBtn.disabled = true;
       overlay.classList.add('scw-ws-v2-bulk-overlay--saving');
@@ -1809,6 +1887,7 @@
           cancelBtn.disabled = false;
         }
       });
+      } // end runJobs
     });
   }
 

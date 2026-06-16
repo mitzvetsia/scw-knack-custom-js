@@ -610,12 +610,27 @@
   // for the same request.
   var _replayBypass = Object.create(null);
 
+  /** True when a PUT body already carries a non-empty survey note (field_2412).
+   *  Such a PUT satisfies the note requirement (a replay, or a caller — e.g.
+   *  the v2 bulk edit — that already prompted), so it must NOT be gated. */
+  function bodyHasNote(body) {
+    var s = (typeof body === 'string') ? body : bodyToStr(body);
+    if (!s || s.indexOf(NOTES) === -1) return false;
+    var p = null;
+    try { p = JSON.parse(s); }
+    catch (e) { try { p = JSON.parse(decodeURIComponent(s)); } catch (e2) { p = null; } }
+    if (!p || typeof p !== 'object') return false;
+    var v = p[NOTES];
+    return v != null && String(v).replace(/<[^>]*>/g, '').trim() !== '';
+  }
+
   function shouldGate(method, url, body) {
     if (!isWriteMethod(method)) return null;
     var viewId = gateViewForUrl(url);
     if (!viewId) return null;
     var recordId = recordIdFromUrl(url);
     if (recordId && _replayBypass[recordId]) return null; // replay — don't re-gate
+    if (bodyHasNote(body)) return null;                   // already carries a note
     var incoming = parseBidConnFromBody(body);
     if (incoming === undefined) return null; // field_2415 not in body
     if (normalizeBidIds(incoming).length !== 0) return null; // not emptied
