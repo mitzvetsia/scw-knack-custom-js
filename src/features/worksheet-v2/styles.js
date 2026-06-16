@@ -179,7 +179,7 @@
     '    72px                  /* qty / chips */',
     '    74px                  /* Labor */',
     '    60px                  /* Ext */',
-    '    52px                  /* Bid */',
+    '    62px                  /* Bid (boxed/editable) */',
     '    28px                  /* warning */',
     '    28px                  /* trash */ !important;',
     '}',
@@ -197,22 +197,13 @@
     '.scw-ws-v2-card--survey .scw-ws-v2-cell--survey-notes .scw-ws-v2-input--textarea {',
     '  height: 100% !important; field-sizing: fixed;',
     '}',
-    /* Survey money cells — right-aligned figures. */
-    '.scw-ws-v2-cell--survey-ext, .scw-ws-v2-cell--survey-bid {',
+    /* Survey Ext — right-aligned figure. (Bid reuses the boxed/editable SOW
+       cell look via .scw-ws-v2-cell--sow, so it needs no styling here.) */
+    '.scw-ws-v2-cell--survey-ext {',
     '  text-align: right !important;',
     '  font: 600 12px/1.2 system-ui, -apple-system, sans-serif !important;',
     '  color: #334155 !important;',
     '  white-space: nowrap !important;',
-    '}',
-    '.scw-ws-v2-cell--survey-bid { color: #64748b !important; }',
-    /* Editable bid cell — it\'s a <button>; reset chrome, keep it clickable. */
-    'button.scw-ws-v2-cell--survey-bid {',
-    '  border: 1px solid transparent !important; background: transparent !important;',
-    '  cursor: pointer !important; padding: 2px 4px !important; border-radius: 4px !important;',
-    '  line-height: 1.25 !important;',
-    '}',
-    'button.scw-ws-v2-cell--survey-bid:hover {',
-    '  border-color: #cbd5e1 !important; background: #f8fafc !important; color: #07467c !important;',
     '}',
     /* Survey product is read-only in the preview (picker not wired) — drop the
        button affordance/cursor so it reads as static text. */

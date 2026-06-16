@@ -1325,11 +1325,16 @@
       if (s) parts = s.split(/\s*,\s*/);
     }
     var title = parts.length ? ('Bid ' + parts.join(', ') + ' — click to change') : 'Set bid';
+    // Reuse the SOW cell look (boxed/editable, one value per line) so it
+    // reads as clearly editable — same as the SOW cell on the ops/sales
+    // worksheets.
     var inner = parts.length
-      ? parts.map(escapeHtml).join('<br>')
+      ? parts.map(function (p) {
+          return '<span class="scw-ws-v2-sow-value">' + escapeHtml(p) + '</span>';
+        }).join('')
       : '<span class="scw-ws-v2-sow-value">&mdash;</span>';
     return '<button type="button" ' +
-      'class="scw-ws-v2-cell scw-ws-v2-cell--survey-bid scw-ws-v2-cell--editable-conn" ' +
+      'class="scw-ws-v2-cell scw-ws-v2-cell--sow scw-ws-v2-cell--editable-conn scw-ws-v2-cell--survey-bid" ' +
       'data-scw-ws-v2-conn="' + escapeHtml(fieldKey) + '" ' +
       'data-scw-ws-v2-record="' + escapeHtml(rec.id) + '" ' +
       'data-scw-ws-v2-view="' + escapeHtml(viewKey) + '" ' +
