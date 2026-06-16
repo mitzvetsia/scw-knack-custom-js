@@ -985,18 +985,262 @@
     return card;
   }
 
-  function renderOrphanSection(container, orphans) {
+  // ── ORPHAN (ADD) PLACEMENT ───────────────────────────────
+  // Read the orphan's MDF/IDF id + label + sort order from its JSON, so it
+  // can drop into the matching L1 (MDF/IDF) group like a real device row.
+  function revMdfId(rev) {
+    var j = rev.changeJson;
+    if (!j) return '';
+    var ids = j.bidMdfIdfIds || (j.requested && j.requested.bidMdfIdfIds) || (j.current && j.current.bidMdfIdfIds);
+    if (Array.isArray(ids) && ids.length && ids[0]) return ids[0];
+    return '';
+  }
+  function revMdfLabel(rev) {
+    var j = rev.changeJson;
+    if (!j) return '';
+    if (j.bidMdfIdf) return String(j.bidMdfIdf);
+    if (j.requested && j.requested.bidMdfIdf) return String(j.requested.bidMdfIdf);
+    if (j.current && j.current.bidMdfIdf) return String(j.current.bidMdfIdf);
+    return '';
+  }
+  function revSortOrder(rev) {
+    var j = rev.changeJson;
+    if (j && j.sortOrder != null) return Number(j.sortOrder) || 0;
+    return 0;
+  }
+  function normLabel(s) { return String(s || '').replace(/\s+/g, ' ').trim().toLowerCase(); }
+
+  /** Find the L1 (MDF/IDF) group block for an orphan: by record id first
+   *  (data-scw-ws-v2-l1), then by normalized label match. */
+  function findL1Block(container, mdfId, mdfLabel) {
+    if (mdfId) {
+      var byId = container.querySelector('.scw-ws-v2-l1[data-scw-ws-v2-l1="' + mdfId + '"]');
+      if (byId) return byId;
+    }
+    var target = normLabel(mdfLabel);
+    if (!target) return null;
+    var blocks = container.querySelectorAll('.scw-ws-v2-l1');
+    for (var i = 0; i < blocks.length; i++) {
+      var lblEl = blocks[i].querySelector('.scw-ws-v2-l1-label');
+      var lbl = normLabel(lblEl ? lblEl.textContent : '');
+      if (lbl && (lbl === target || lbl.indexOf(target) !== -1 || target.indexOf(lbl) !== -1)) return blocks[i];
+    }
+    return null;
+  }
+
+  /** Place ADD requests: each orphan that maps to an existing MDF/IDF group
+   *  drops into that L1's body (sorted by sortOrder); the rest fall back to a
+   *  top "Add Requests" section. Mirrors v1 renderOrphanSection. */
+  function renderOrphans(container, orphans) {
     if (!orphans.length) return;
+    orphans.sort(function (a, b) { return revSortOrder(a) - revSortOrder(b); });
+
+    var ungrouped = [];
+    for (var i = 0; i < orphans.length; i++) {
+      var rev = orphans[i];
+      var block = findL1Block(container, revMdfId(rev), revMdfLabel(rev));
+      if (!block) { ungrouped.push(rev); continue; }
+      var l1body = block.querySelector('.scw-ws-v2-l1-body');
+      if (!l1body) { ungrouped.push(rev); continue; }
+      var oCard = makeOrphanCard(rev);
+      oCard.classList.add(P + '-orphan-card--grouped');
+      // Insert before the first device card whose sort order exceeds ours;
+      // else append. v2 cards don't expose field_2218, so we sort orphans
+      // among themselves and place them at the top of the group body.
+      var firstCard = l1body.querySelector('.scw-ws-v2-card, .' + P + '-orphan-card--grouped');
+      // Keep already-placed grouped orphans before device cards, in order.
+      var anchor = null;
+      var existingOrphans = l1body.querySelectorAll('.' + P + '-orphan-card--grouped');
+      if (existingOrphans.length) anchor = existingOrphans[existingOrphans.length - 1].nextSibling;
+      else anchor = firstCard;
+      if (anchor) l1body.insertBefore(oCard, anchor);
+      else l1body.appendChild(oCard);
+    }
+
+    if (!ungrouped.length) return;
     var section = document.createElement('div');
     section.className = ORPHAN_SEC;
     var header = document.createElement('div');
     header.className = P + '-orphan-header';
-    header.textContent = 'Add Requests (' + orphans.length + ')';
+    header.textContent = 'Add Requests (' + ungrouped.length + ')';
     section.appendChild(header);
-    for (var i = 0; i < orphans.length; i++) section.appendChild(makeOrphanCard(orphans[i]));
+    for (var u = 0; u < ungrouped.length; u++) section.appendChild(makeOrphanCard(ungrouped[u]));
     var body = container.querySelector('.scw-ws-v2-body') || container;
     if (body.firstChild) body.insertBefore(section, body.firstChild);
     else body.appendChild(section);
+  }
+
+  // ── SUMMARY PANEL (collapsible, top) — v1 revision-bar equivalent ────
+  var BAR_CLS = P + '-bar';
+  var _barOpen = false;
+
+  /** Jump to a revision's card (matched survey item or orphan), expanding any
+   *  collapsed L1 group + the card itself, then scroll it into view. */
+  function navigateToRev(container, siId, revId) {
+    var target = siId ? findCard(container, siId)
+                      : container.querySelector('[data-rev-id="' + revId + '"]');
+    if (!target) return;
+    var l1 = target.closest ? target.closest('.scw-ws-v2-l1') : null;
+    if (l1 && !l1.classList.contains('scw-ws-v2-l1--open')) {
+      var l1Toggle = l1.querySelector('[data-scw-ws-v2-l1-toggle]');
+      if (l1Toggle) l1Toggle.click();
+    }
+    if (target.classList.contains('scw-ws-v2-card') && !target.classList.contains('scw-ws-v2-card--open')) {
+      var chev = target.querySelector('[data-scw-ws-v2-expand]');
+      if (chev) chev.click();
+    }
+    setTimeout(function () {
+      try { target.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) { target.scrollIntoView(); }
+    }, 80);
+  }
+
+  function buildRevisionItemFlat(rev) { return buildRevisionItem(rev); }
+
+  /** Accept/Reject ALL — one webhook POST with every item grouped by parent
+   *  request, plus a direct status PUT per record (mirrors v1 fireRevisionAction). */
+  function fireBulkAction(action, revs, btn) {
+    if (!revs.length) return;
+    btn.disabled = true;
+    btn.textContent = action === 'accept' ? 'Accepting…' : 'Rejecting…';
+
+    var byParent = {};
+    for (var i = 0; i < revs.length; i++) {
+      var pid = revs[i].parentRequestId || '_unknown';
+      if (!byParent[pid]) byParent[pid] = { revisionRequestId: revs[i].parentRequestId || '', items: [] };
+      byParent[pid].items.push(buildRevisionItemFlat(revs[i]));
+    }
+    var revisionRequests = [];
+    Object.keys(byParent).forEach(function (k) { revisionRequests.push(byParent[k]); });
+
+    var payload = {
+      actionType: 'revision_response', action: action,
+      timestamp: new Date().toISOString(), totalItems: revs.length,
+      revisionRequests: revisionRequests
+    };
+    try { var u = Knack.getUserAttributes(); if (u) payload.user = { id: u.id || '', name: u.name || '', email: u.email || '' }; } catch (e) {}
+
+    var webhookUrl = (window.SCW && window.SCW.bidReview && window.SCW.bidReview.CONFIG)
+      ? window.SCW.bidReview.CONFIG.revisionResponseWebhook : '';
+    if (!webhookUrl) { console.error('[ws-v2-rev] no webhook URL configured'); btn.disabled = false; return; }
+
+    var statusVal = action === 'accept' ? 'Accepted' : 'Rejected';
+    var statusData = {}; statusData[CFG.fields.status.key] = statusVal;
+    var done = 0, total = revs.length;
+
+    function refreshAll() {
+      btn.textContent = action === 'accept' ? 'Accepted ✓' : 'Rejected ✓';
+      setTimeout(function () {
+        if (Knack.views[CFG.revisionView] && Knack.views[CFG.revisionView].model) Knack.views[CFG.revisionView].model.fetch();
+        if (Knack.views[CFG.targetView] && Knack.views[CFG.targetView].model) Knack.views[CFG.targetView].model.fetch();
+        setTimeout(inject, 1500);
+      }, 800);
+    }
+    function fireWebhook() {
+      SCW.knackAjax({
+        url: webhookUrl, type: 'POST', data: JSON.stringify(payload), timeout: 90000,
+        success: function () { refreshAll(); },
+        error:   function () { refreshAll(); }
+      });
+    }
+    for (var si = 0; si < revs.length; si++) {
+      (function (revId) {
+        SCW.knackAjax({
+          url: SCW.knackRecordUrl(CFG.revisionView, revId), type: 'PUT', data: JSON.stringify(statusData),
+          success: function () { done++; if (done >= total) fireWebhook(); },
+          error:   function () { done++; if (done >= total) fireWebhook(); }
+        });
+      })(revs[si].id);
+    }
+    if (!total) fireWebhook();
+  }
+
+  function buildSummaryPanel(container, revMap, orphaned) {
+    var existing = container.querySelector('.' + BAR_CLS);
+    if (existing) existing.remove();
+
+    var all = [];
+    Object.keys(revMap).forEach(function (k) { revMap[k].forEach(function (e) { all.push(e); }); });
+    orphaned.forEach(function (e) { all.push(e); });
+    if (!all.length) return;
+
+    var bar = document.createElement('div');
+    bar.className = BAR_CLS;
+
+    var head = document.createElement('div');
+    head.className = P + '-bar-head';
+    var chev = document.createElement('span');
+    chev.className = P + '-bar-chev' + (_barOpen ? ' is-open' : '');
+    chev.innerHTML = '<svg width="12" height="12" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 2 8 6 4 10"></polyline></svg>';
+    head.appendChild(chev);
+    var count = document.createElement('span');
+    count.className = P + '-bar-count';
+    count.textContent = all.length;
+    head.appendChild(count);
+    var lbl = document.createElement('span');
+    lbl.className = P + '-bar-title';
+    lbl.textContent = ' pending revision' + (all.length === 1 ? '' : 's');
+    head.appendChild(lbl);
+    var spacer = document.createElement('span');
+    spacer.style.flex = '1';
+    head.appendChild(spacer);
+
+    var rejectAll = document.createElement('button');
+    rejectAll.type = 'button';
+    rejectAll.className = P + '-bar-btn ' + P + '-bar-btn--reject';
+    rejectAll.textContent = 'Reject All';
+    rejectAll.addEventListener('click', function (e) {
+      e.stopPropagation();
+      if (!window.confirm('Reject all ' + all.length + ' revision(s)?')) return;
+      fireBulkAction('reject', all, rejectAll);
+    });
+    var acceptAll = document.createElement('button');
+    acceptAll.type = 'button';
+    acceptAll.className = P + '-bar-btn ' + P + '-bar-btn--accept';
+    acceptAll.textContent = 'Accept All';
+    acceptAll.addEventListener('click', function (e) {
+      e.stopPropagation();
+      if (!window.confirm('Accept all ' + all.length + ' revision(s)?')) return;
+      fireBulkAction('accept', all, acceptAll);
+    });
+    head.appendChild(rejectAll);
+    head.appendChild(acceptAll);
+
+    var panel = document.createElement('div');
+    panel.className = P + '-bar-panel';
+    panel.style.display = _barOpen ? 'block' : 'none';
+
+    head.addEventListener('click', function () {
+      _barOpen = !_barOpen;
+      panel.style.display = _barOpen ? 'block' : 'none';
+      chev.className = P + '-bar-chev' + (_barOpen ? ' is-open' : '');
+    });
+
+    for (var i = 0; i < all.length; i++) {
+      var rev = all[i];
+      var card = document.createElement('div');
+      card.className = P + '-bar-card';
+      card.title = 'Click to jump to this item in the worksheet';
+      if (rev.changeHtml) {
+        card.innerHTML = rev.changeHtml;
+        postProcessHtmlCard(card);
+      } else {
+        var j = rev.changeJson || {};
+        card.textContent = j.displayLabel || j.productName || 'Revision';
+      }
+      (function (siId, revId) {
+        card.addEventListener('click', function (e) {
+          if (e.target.closest && e.target.closest('a,button,input,textarea,select')) return;
+          navigateToRev(container, siId, revId);
+        });
+      })(rev.surveyItemId, rev.id);
+      panel.appendChild(card);
+    }
+
+    bar.appendChild(head);
+    bar.appendChild(panel);
+    var body = container.querySelector('.scw-ws-v2-body');
+    if (body && body.parentNode) body.parentNode.insertBefore(bar, body);
+    else container.insertBefore(bar, container.firstChild);
   }
 
   // ── INJECTION ────────────────────────────────────────────
@@ -1005,7 +1249,8 @@
   }
 
   function cleanup(container) {
-    var sel = '.' + STRIP_CLS + ', .' + BADGE_CLS + ', .' + ORPHAN_SEC;
+    var sel = '.' + STRIP_CLS + ', .' + BADGE_CLS + ', .' + ORPHAN_SEC +
+              ', .' + BAR_CLS + ', .' + P + '-orphan-card--grouped';
     var nodes = container.querySelectorAll(sel);
     for (var i = 0; i < nodes.length; i++) nodes[i].remove();
     var flagged = container.querySelectorAll('[' + INJECTED + ']');
@@ -1040,7 +1285,8 @@
       // V2 hasn't rendered its cards yet — retry briefly.
       _retries++;
       if (_retries < 12) setTimeout(inject, 500);
-      renderOrphanSection(container, orphaned);
+      renderOrphans(container, orphaned);
+      buildSummaryPanel(container, revMap, result.orphaned);
       startObserving();
       return;
     }
@@ -1049,7 +1295,13 @@
     for (var i = 0; i < siIds.length; i++) {
       var siId = siIds[i];
       var card = findCard(container, siId);
-      if (!card) { revMap[siId].forEach(function (e) { orphaned.push(e); }); continue; }
+      if (!card) {
+        // No matching device card — treat as an ADD/orphan instead, and drop
+        // it from revMap so the summary panel doesn't list it twice.
+        revMap[siId].forEach(function (e) { orphaned.push(e); });
+        delete revMap[siId];
+        continue;
+      }
       card.setAttribute(INJECTED, '1');
       card.classList.add('scw-ws-v2-card--has-rev');
       var revisions = revMap[siId];
@@ -1073,7 +1325,8 @@
       if (detail) detail.appendChild(makeStrip(revisions));
     }
 
-    renderOrphanSection(container, orphaned);
+    renderOrphans(container, orphaned);
+    buildSummaryPanel(container, revMap, orphaned);
     startObserving();
   }
 
@@ -1164,6 +1417,40 @@
       '.' + P + '-orphan-card { background: #fff; border: 1px solid #d1fae5; border-radius: 6px; padding: 8px 10px; margin-bottom: 8px; }',
       '.' + P + '-orphan-card:last-child { margin-bottom: 0; }',
       '.' + P + '-orphan-title { font-weight: 600; margin-bottom: 6px; color: #166534; }',
+      '.' + P + '-orphan-card--grouped { margin: 6px 8px; }',
+      /* Collapsible summary panel (top) */
+      '.' + BAR_CLS + ' {',
+      '  margin: 0 0 10px; border: 1px solid #93c5fd; border-radius: 8px;',
+      '  background: #fff; overflow: hidden; box-shadow: 0 1px 3px rgba(0,0,0,0.06);',
+      '}',
+      '.' + P + '-bar-head {',
+      '  display: flex; align-items: center; gap: 8px; padding: 9px 14px;',
+      '  background: #eff6ff; cursor: pointer; font: 13px system-ui, sans-serif;',
+      '}',
+      '.' + P + '-bar-chev { display: inline-flex; transition: transform 120ms ease; color: #1e40af; }',
+      '.' + P + '-bar-chev.is-open { transform: rotate(90deg); }',
+      '.' + P + '-bar-count {',
+      '  display: inline-flex; align-items: center; justify-content: center;',
+      '  min-width: 22px; height: 22px; padding: 0 6px; border-radius: 11px;',
+      '  background: #3b82f6; color: #fff; font: 700 12px system-ui, sans-serif;',
+      '}',
+      '.' + P + '-bar-title { font-weight: 700; color: #0f172a; }',
+      '.' + P + '-bar-btn {',
+      '  appearance: none; border: 0; cursor: pointer; color: #fff;',
+      '  padding: 6px 14px; border-radius: 5px; font: 600 12px system-ui, sans-serif;',
+      '}',
+      '.' + P + '-bar-btn[disabled] { opacity: 0.6; cursor: not-allowed; }',
+      '.' + P + '-bar-btn--accept { background: #16a34a; }',
+      '.' + P + '-bar-btn--reject { background: #dc2626; }',
+      '.' + P + '-bar-panel {',
+      '  border-top: 1px solid #e2e8f0; padding: 8px 14px 12px;',
+      '  max-height: 50vh; overflow-y: auto; display: flex; flex-direction: column; gap: 6px;',
+      '}',
+      '.' + P + '-bar-card {',
+      '  border: 1px solid #e2e8f0; border-radius: 6px; padding: 8px 10px; cursor: pointer;',
+      '  background: #fff;',
+      '}',
+      '.' + P + '-bar-card:hover { background: #f8fafc; border-color: #bfdbfe; }',
       /* Edit modal */
       '.' + P + '-modal-overlay {',
       '  position: fixed; inset: 0; background: rgba(15,23,42,0.45); z-index: 100000;',
