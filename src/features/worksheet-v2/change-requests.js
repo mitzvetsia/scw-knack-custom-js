@@ -964,47 +964,91 @@
     return strip;
   }
 
+  /** Prominent "change request pending" banner across the top of a card. */
+  function makeBanner(revisions, actionOverride, textOverride) {
+    var action = actionOverride || actionOf(revisions || []);
+    var n = revisions ? revisions.length : 0;
+    var banner = document.createElement('div');
+    banner.className = P + '-banner ' + P + '-banner--' + action;
+    var text = textOverride ||
+      ('Change request pending' + (n > 1 ? ' (' + n + ')' : ''));
+    banner.innerHTML = '<span class="' + P + '-banner-ic">' + WARN_SVG + '</span>' +
+      '<span class="' + P + '-banner-text">' + escHtml(text) + '</span>';
+    return banner;
+  }
+
+  function roCell(text, colCls) {
+    return '<div class="scw-ws-v2-cell ' + colCls + ' scw-ws-v2-cell--ro"><span>' +
+      escHtml(text == null ? '' : text) + '</span></div>';
+  }
+
+  // An ADD/orphan change request rendered as a real line-item card: same
+  // survey card chrome + 11-column row so it aligns with the device rows,
+  // a "change request" banner, the extra cabling/connection fields as chips,
+  // and the Edit / Reject / Approve buttons.
   function makeOrphanCard(rev) {
     var json = rev.changeJson || {};
+    var r = json.requested || json;
+    function get(k) { return (r[k] != null && r[k] !== '') ? r[k] : (json[k] != null ? json[k] : ''); }
     var action = json.action || 'add';
     var actionLabel = action === 'remove' ? 'REMOVE' : action === 'revise' ? 'REVISE' : 'ADD';
+
     var card = document.createElement('div');
-    card.className = P + '-orphan-card ' + P + '-orphan-card--' + action;
+    card.className = 'scw-ws-v2-card scw-ws-v2-card--survey ' +
+      P + '-orphan-card ' + P + '-orphan-card--' + action;
     if (rev.id) card.setAttribute('data-rev-id', rev.id);
 
-    // Header ribbon — reads as a line-item card that is clearly a change
-    // request: action tag + item label + "Change request" caption.
-    var head = document.createElement('div');
-    head.className = P + '-orphan-head';
-    head.innerHTML =
-      '<span class="' + P + '-orphan-tag ' + P + '-orphan-tag--' + action + '">' + actionLabel + '</span>' +
-      '<span class="' + P + '-orphan-name">' +
-        escHtml(json.displayLabel || json.productName || 'New line item') + '</span>' +
-      '<span class="' + P + '-orphan-cr">Change request</span>';
-    card.appendChild(head);
+    card.appendChild(makeBanner(null, action,
+      actionLabel + ' — change request' +
+      (json.displayLabel ? ' · ' + json.displayLabel : '')));
 
-    // Body — the field diff (pre-built HTML), or a fallback line.
-    if (rev.changeHtml) {
-      var htmlWrap = document.createElement('div');
-      htmlWrap.className = P + '-html-card';
-      htmlWrap.innerHTML = rev.changeHtml;
-      postProcessHtmlCard(htmlWrap);
-      // Flatten the pre-built green box so it blends into our card chrome,
-      // and drop its internal badge+name row (already shown in our header).
-      var inner = htmlWrap.querySelector('div[style*="background"]');
-      if (inner) {
-        inner.style.background = 'transparent';
-        inner.style.border = '0';
-        inner.style.padding = '0';
-        var firstRow = inner.querySelector('div');
-        if (firstRow && firstRow.querySelector('span')) firstRow.style.display = 'none';
-      }
-      card.appendChild(htmlWrap);
+    // Line-item row (matches the survey grid columns so it lines up with the
+    // real device rows above/below).
+    var rate = get('rate');
+    var rateStr = (rate !== '' && rate != null) ? fmtCurrencyHtml(rate) : '';
+    var row = document.createElement('div');
+    row.className = 'scw-ws-v2-row scw-ws-v2-row--default';
+    row.innerHTML =
+      '<div class="scw-ws-v2-cell scw-ws-v2-chevron" style="visibility:hidden"></div>' +
+      roCell(json.displayLabel || '', 'scw-ws-v2-cell--label') +
+      roCell(get('productName'), 'scw-ws-v2-cell--product') +
+      roCell(json.changeNotes || '', 'scw-ws-v2-cell--survey-notes') +
+      roCell(get('laborDesc'), 'scw-ws-v2-cell--labor-desc') +
+      roCell(get('qty'), 'scw-ws-v2-cell--num') +
+      roCell(rateStr, 'scw-ws-v2-cell--num scw-ws-v2-cell--survey-labor') +
+      roCell('', 'scw-ws-v2-cell--survey-ext') +
+      roCell('', 'scw-ws-v2-cell--survey-bid') +
+      '<div class="scw-ws-v2-cell scw-ws-v2-cell--warn"></div>' +
+      '<div class="scw-ws-v2-cell"></div>';
+    card.appendChild(row);
+
+    // Extra cabling / connection fields as compact chips (skip empty / "No").
+    var extras = [];
+    function pushX(lbl, k) {
+      var v = get(k);
+      if (v !== '' && v != null && !/^no$/i.test(String(v))) extras.push(lbl + ': ' + v);
+    }
+    pushX('Existing Cabling', 'bidExistCabling');
+    pushX('Plenum', 'bidPlenum');
+    pushX('Exterior', 'bidExterior');
+    pushX('Drop Length', 'bidDropLength');
+    pushX('Conduit', 'bidConduit');
+    pushX('Connected Devices', 'bidConnDevice');
+    pushX('Connected To', 'bidConnTo');
+    pushX('MDF/IDF', 'bidMdfIdf');
+    if (extras.length) {
+      var ex = document.createElement('div');
+      ex.className = P + '-orphan-extras';
+      ex.innerHTML = extras.map(function (e) {
+        return '<span class="' + P + '-orphan-chip">' + escHtml(e) + '</span>';
+      }).join('');
+      card.appendChild(ex);
     }
 
     card.appendChild(buildActionButtons(rev.id, rev.changeJson));
     return card;
   }
+
 
   // ── ORPHAN (ADD) PLACEMENT ───────────────────────────────
   // Read the orphan's MDF/IDF id + label + sort order from its JSON, so it
@@ -1284,7 +1328,7 @@
     // — tearing it down on every re-inject made it intermittently swallow the
     // open/close click while it was mid-rebuild.
     var sel = '.' + STRIP_CLS + ', .' + BADGE_CLS + ', .' + ORPHAN_SEC +
-              ', .' + P + '-orphan-card--grouped';
+              ', .' + P + '-banner, .' + P + '-orphan-card--grouped';
     var nodes = container.querySelectorAll(sel);
     for (var i = 0; i < nodes.length; i++) nodes[i].remove();
     var flagged = container.querySelectorAll('[' + INJECTED + ']');
@@ -1312,7 +1356,7 @@
     var revMap = result.map;
     var orphaned = result.orphaned.slice();
     var siIds = Object.keys(revMap);
-    if (!siIds.length && !orphaned.length) { startObserving(); return; }
+    if (!siIds.length && !orphaned.length) { buildSummaryPanel(container, {}, []); startObserving(); return; }
 
     var cards = container.querySelectorAll('.scw-ws-v2-card[data-scw-ws-v2-record]');
     if (!cards.length && siIds.length) {
@@ -1340,18 +1384,19 @@
       card.classList.add('scw-ws-v2-card--has-rev');
       var revisions = revMap[siId];
 
-      // Badge → into the row's warn slot (append; keep any existing warning chips).
-      var warnSlot = card.querySelector('.scw-ws-v2-cell--warn');
-      if (warnSlot && !warnSlot.querySelector('.' + BADGE_CLS)) {
-        var badge = makeBadge(revisions);
-        badge.addEventListener('click', (function (cardEl) {
+      // Prominent banner across the TOP of the card so a line item with a
+      // pending change request is unmistakable. Click → expand the card.
+      if (!card.querySelector('.' + P + '-banner')) {
+        var banner = makeBanner(revisions);
+        banner.style.cursor = 'pointer';
+        banner.addEventListener('click', (function (cardEl) {
           return function (e) {
             e.stopPropagation();
             var chevron = cardEl.querySelector('[data-scw-ws-v2-expand]');
             if (chevron) chevron.click();
           };
         })(card));
-        warnSlot.appendChild(badge);
+        card.insertBefore(banner, card.firstChild);
       }
 
       // Strip → into the detail panel (visible when the card is expanded).
@@ -1448,26 +1493,34 @@
       '  border: 1px solid #bbf7d0; border-radius: 8px;',
       '}',
       '.' + P + '-orphan-header { font: 700 12px system-ui, sans-serif; color: #166534; margin-bottom: 8px; }',
-      // Orphan ADD/REVISE/REMOVE card — line-item card chrome + action stripe.
+      // Orphan ADD/REVISE/REMOVE card — full line-item card chrome + action
+      // stripe (it carries .scw-ws-v2-card too, so it lines up with real rows).
       '.' + P + '-orphan-card {',
-      '  background: #fff; border: 1px solid #e2e8f0; border-left: 4px solid #16a34a;',
-      '  border-radius: 6px; padding: 8px 10px; margin-bottom: 8px;',
+      '  border-left: 4px solid #16a34a !important;',
+      '  margin: 6px 0 !important; overflow: hidden !important;',
       '}',
-      '.' + P + '-orphan-card:last-child { margin-bottom: 0; }',
-      '.' + P + '-orphan-card--grouped { margin: 6px 8px; }',
-      '.' + P + '-orphan-card--remove { border-left-color: #dc2626; }',
-      '.' + P + '-orphan-card--revise { border-left-color: #3b82f6; }',
-      '.' + P + '-orphan-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }',
-      '.' + P + '-orphan-tag {',
-      '  display: inline-block; padding: 1px 7px; border-radius: 4px;',
-      '  font: 700 10px system-ui, sans-serif; letter-spacing: 0.5px;',
-      '  background: #dcfce7; color: #166534;',
+      '.' + P + '-orphan-card--remove { border-left-color: #dc2626 !important; }',
+      '.' + P + '-orphan-card--revise { border-left-color: #3b82f6 !important; }',
+      '.' + P + '-orphan-card .' + P + '-actions { margin: 6px 10px 8px; }',
+      // Extra cabling / connection fields as compact chips beneath the row.
+      '.' + P + '-orphan-extras {',
+      '  display: flex; flex-wrap: wrap; gap: 5px; padding: 2px 10px 6px 44px;',
       '}',
-      '.' + P + '-orphan-tag--remove { background: #fee2e2; color: #991b1b; }',
-      '.' + P + '-orphan-tag--revise { background: #dbeafe; color: #1e40af; }',
-      '.' + P + '-orphan-name { font: 600 13px system-ui, sans-serif; color: #0f172a; flex: 1 1 auto; }',
-      '.' + P + '-orphan-cr { font: 600 10px system-ui, sans-serif; text-transform: uppercase; letter-spacing: 0.04em; color: #94a3b8; }',
-      '.' + P + '-orphan-card .' + P + '-actions { margin-top: 6px; }',
+      '.' + P + '-orphan-chip {',
+      '  background: #f1f5f9; border: 1px solid #e2e8f0; border-radius: 4px;',
+      '  padding: 1px 7px; font: 500 11px system-ui, sans-serif; color: #475569;',
+      '}',
+      // "Change request pending" banner across the top of a line-item card.
+      '.' + P + '-banner {',
+      '  display: flex; align-items: center; gap: 6px;',
+      '  padding: 5px 12px; font: 700 11.5px system-ui, sans-serif;',
+      '  text-transform: uppercase; letter-spacing: 0.04em;',
+      '  background: #fef3c7; color: #92400e; border-bottom: 1px solid #fde68a;',
+      '}',
+      '.' + P + '-banner-ic { display: inline-flex; }',
+      '.' + P + '-banner--add    { background: #dcfce7; color: #166534; border-bottom-color: #bbf7d0; }',
+      '.' + P + '-banner--remove { background: #fee2e2; color: #991b1b; border-bottom-color: #fecaca; }',
+      '.' + P + '-banner--revise { background: #dbeafe; color: #1e40af; border-bottom-color: #bfdbfe; }',
       /* Collapsible summary panel (top) */
       '.' + BAR_CLS + ' {',
       '  margin: 0 0 10px; border: 1px solid #93c5fd; border-radius: 8px;',
