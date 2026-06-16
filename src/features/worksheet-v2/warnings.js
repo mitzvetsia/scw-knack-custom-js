@@ -104,6 +104,21 @@
     return false;
   }
 
+  /** v1 parity: the survey/device worksheet drives its photo warning off a
+   *  precomputed Knack count field (field_2454, "SYS_incomplete photos"),
+   *  mapped per-view as the logical `warningCount`. Prefer it when present —
+   *  it's reliable even before the photo strip DOM is built. Falls back to
+   *  client-side detection (extractPhotoRecords) for views without the field. */
+  function hasPhotoWarning(rec, viewKey) {
+    var countKey = F().warningCount;
+    if (countKey) {
+      var rawN = (rec[countKey + '_raw'] != null) ? rec[countKey + '_raw'] : rec[countKey];
+      var n = parseFloat(String(rawN == null ? '' : rawN).replace(/[^0-9.\-]/g, ''));
+      if (isFinite(n)) return n > 0;   // count field present → trust it
+    }
+    return hasMissingRequiredPhotos(rec, viewKey);
+  }
+
   // Active source view for the current analyze() pass — lets the helpers
   // below resolve field keys / bucket ids through the per-view config.
   var curView = '';
@@ -221,7 +236,7 @@
       var rec = records[i];
       if (!rec || !rec.id) continue;
       var issues = [];
-      if (hasMissingRequiredPhotos(rec, viewKey)) issues.push('photos');
+      if (hasPhotoWarning(rec, viewKey))           issues.push('photos');
       if (isDisconnected(rec))                     issues.push('disconnected');
       if (bracketParents[rec.id])                  issues.push('bracket');
       if (issues.length) byRecord[rec.id] = issues;

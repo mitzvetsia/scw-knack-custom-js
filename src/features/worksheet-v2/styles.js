@@ -607,6 +607,19 @@
     '  padding-left: 14px !important;',
     '}',
 
+    /* v1 dynamic-cell-colors parity (survey worksheet) — empty/zero highlight
+       on the Bid, Labor ("sub bid"), Qty and Labor Description cells. Same
+       palette as v1: danger = pale red, warning = pale yellow. The tinted
+       inputs/buttons go transparent so the cell colour shows through. */
+    '.scw-ws-v2-cell--danger  { background-color: #f8d7da !important; }',
+    '.scw-ws-v2-cell--warning { background-color: #fff3cd !important; }',
+    '.scw-ws-v2-cell--danger .scw-ws-v2-input,',
+    '.scw-ws-v2-cell--warning .scw-ws-v2-input,',
+    '.scw-ws-v2-cell--danger.scw-ws-v2-cell--survey-bid,',
+    '.scw-ws-v2-cell--warning.scw-ws-v2-cell--survey-bid {',
+    '  background-color: transparent !important;',
+    '}',
+
     '.scw-ws-v2-input--notes {',
     '  white-space: nowrap !important;',
     '  overflow: hidden !important;',

@@ -258,6 +258,30 @@
     } catch (e) { return false; }
   }
 
+  // ── v1 dynamic-cell-colors parity (survey worksheet) ──────────────
+  // v1 colors the survey worksheet table cells (dynamic-cell-colors.js,
+  // view_3505 rules): Labor (field_2400) empty→danger / zero→warning, Bid
+  // (field_2415) empty→warning, Qty (field_2399) zero→warning, Labor
+  // Description (field_2409) empty→danger. The v2 worksheet renders cards
+  // (not table cells), so we recompute the same empty/zero state per field
+  // and add a warn class to the card cell. Mirrors v1's normalize/isZero.
+  function _normCellText(s) {
+    return String(s == null ? '' : s)
+      .replace(/<[^>]*>/g, ' ')
+      .replace(/[ ​‌‍﻿]/g, ' ')
+      .trim();
+  }
+  function _cellIsEmpty(t) { return t === '' || t === '-' || t === '—'; }
+  function _cellIsZero(t)  { return /^\$?0+(\.0+)?$/.test(t); }
+  /** v1 empty/zero → warn class. emptyColor/zeroColor are 'danger'|'warning'
+   *  |null. Returns '' (no class) when neither condition matches. */
+  function surveyWarnClass(rec, fieldKey, emptyColor, zeroColor) {
+    var t = _normCellText(readField(rec, fieldKey));
+    if (_cellIsEmpty(t)) return emptyColor ? ('scw-ws-v2-cell--' + emptyColor) : '';
+    if (_cellIsZero(t))  return zeroColor  ? ('scw-ws-v2-cell--' + zeroColor)  : '';
+    return '';
+  }
+
   /** Resolved field map for a view (logical name → field key). Survey reads
    *  go through this so the survey builders carry no hardcoded survey keys. */
   function fieldsFor(viewKey) {
@@ -1333,8 +1357,10 @@
           return '<span class="scw-ws-v2-sow-value">' + escapeHtml(p) + '</span>';
         }).join('')
       : '<span class="scw-ws-v2-sow-value">&mdash;</span>';
+    // v1 parity: empty bid → warning (yellow).
+    var bidWarn = parts.length ? '' : ' scw-ws-v2-cell--warning';
     return '<button type="button" ' +
-      'class="scw-ws-v2-cell scw-ws-v2-cell--sow scw-ws-v2-cell--editable-conn scw-ws-v2-cell--survey-bid" ' +
+      'class="scw-ws-v2-cell scw-ws-v2-cell--sow scw-ws-v2-cell--editable-conn scw-ws-v2-cell--survey-bid' + bidWarn + '" ' +
       'data-scw-ws-v2-conn="' + escapeHtml(fieldKey) + '" ' +
       'data-scw-ws-v2-record="' + escapeHtml(rec.id) + '" ' +
       'data-scw-ws-v2-view="' + escapeHtml(viewKey) + '" ' +
@@ -1397,8 +1423,10 @@
     // lives in the detail panel (first/leftmost field).
     var surveyNotesCell = surveyFill(rec, viewKey, F.surveyNotes || 'field_2412',
       'Survey notes', 'scw-ws-v2-cell--survey-notes');
+    // v1 parity: empty Labor Description → danger (red).
+    var laborDescWarn = surveyWarnClass(rec, F.laborDesc || 'field_2409', 'danger', null);
     var laborDescCell   = surveyFill(rec, viewKey, F.laborDesc || 'field_2409',
-      isCam ? 'Labor description' : 'Description');
+      isCam ? 'Labor description' : 'Description', laborDescWarn);
 
     // Slot 5 (qty/chips): cam → cabling chips; assumptions → blank;
     // qty-locked (FLAG_limit to quantity one = Yes) → blank (qty implicit 1,
@@ -1411,16 +1439,20 @@
     } else if (readBool(rec, F.qtyOne || 'field_2373') === 'Yes') {
       slot5 = empty('scw-ws-v2-cell--num');
     } else {
-      slot5 = '<div class="scw-ws-v2-cell scw-ws-v2-cell--num">' +
+      // v1 parity: qty zero → warning (yellow).
+      var qtyWarn = surveyWarnClass(rec, F.qty || 'field_2399', null, 'warning');
+      slot5 = '<div class="scw-ws-v2-cell scw-ws-v2-cell--num ' + qtyWarn + '">' +
         numInput(rec, viewKey, F.qty || 'field_2399', readNum(rec, F.qty || 'field_2399'), 'Qty') +
       '</div>';
     }
 
     // Money: Labor (editable; blank for assumptions) · Ext (read-only;
     // blank for cam + assumptions, matching v1) · Bid (read-only conn).
+    // v1 parity: Labor ("sub bid") empty → danger (red), zero → warning.
+    var laborWarn = surveyWarnClass(rec, F.labor || 'field_2400', 'danger', 'warning');
     var laborCell = (cat === 'assumptions')
       ? empty('scw-ws-v2-cell--num scw-ws-v2-cell--survey-labor')
-      : '<div class="scw-ws-v2-cell scw-ws-v2-cell--num scw-ws-v2-cell--survey-labor scw-ws-v2-cell--currency">' +
+      : '<div class="scw-ws-v2-cell scw-ws-v2-cell--num scw-ws-v2-cell--survey-labor scw-ws-v2-cell--currency ' + laborWarn + '">' +
           '<span class="scw-ws-v2-currency-glyph">$</span>' +
           numInput(rec, viewKey, F.labor || 'field_2400', readNum(rec, F.labor || 'field_2400'), 'Labor') +
         '</div>';
