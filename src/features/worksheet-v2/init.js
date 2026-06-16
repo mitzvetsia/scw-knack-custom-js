@@ -1046,14 +1046,35 @@
         };
 
         // Bid (multi) — full list from the BIDs grid (view_3507, label
-        // field_2414). Modeled on SOW field_2154.
+        // field_2414). Modeled on SOW field_2154. When CLEARING the bid, the
+        // beforeSave hook injects the required survey note into the same PUT so
+        // survey-bid-validate's gate skips it (instead of aborting it and
+        // leaving the picker stuck on "Saving…").
         if (fieldKey === (SF.bid || 'field_2415')) {
+          var _noteKey = SF.surveyNotes || 'field_2412';
           ns.picker.open({
             sourceViewKey: viewKey, putViewKey: viewKey, recordId: recordId,
             fieldKey: fieldKey, label: 'Bid', selectedIds: sel,
             candidates: surveyCandidates(['view_3507'], 'field_2414', fieldKey), groupBy: false,
             itemLabel: function (r) { return r.name || r.id; },
-            multi: true, onSaved: surveyRefetch
+            multi: true, onSaved: surveyRefetch,
+            beforeSave: function (chosenIds) {
+              if (chosenIds && chosenIds.length) return null;   // not clearing
+              var existingRaw = current ? current[_noteKey] : '';
+              var existing = (existingRaw != null)
+                ? String(existingRaw).replace(/<[^>]*>/g, '').trim() : '';
+              if (existing) { var e = {}; e[_noteKey] = existingRaw; return e; } // carry existing
+              if (typeof ns.promptNote !== 'function') return null;
+              return ns.promptNote({
+                title: 'Survey note required',
+                body: '<p>You’re removing this item from the bid. Capture a survey ' +
+                      'note explaining why.</p>',
+                placeholder: 'e.g. Item not needed per customer; duplicate of E-014; etc.'
+              }).then(function (note) {
+                if (note == null) return false;   // cancelled → abort save
+                var ex = {}; ex[_noteKey] = note; return ex;
+              });
+            }
           });
           return;
         }

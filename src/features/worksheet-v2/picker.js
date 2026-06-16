@@ -454,6 +454,35 @@
         return;
       }
 
+      // Optional beforeSave hook — the caller may need to inject extra fields
+      // into the SAME PUT (e.g. a required survey note when clearing the Bid,
+      // so survey-bid-validate's gate skips this PUT instead of aborting it and
+      // leaving the modal stuck on "Saving…"). It may prompt the user and
+      // resolve with an extra-data object, null/{} for "nothing extra", or
+      // `false` to abort the save. Runs once; we re-enter the handler after.
+      if (typeof opts.beforeSave === 'function' && !this.__scwBeforeDone) {
+        var self = this;
+        confirmBtn.disabled = true;
+        cancelBtn.disabled  = true;
+        setStatus('Saving…');
+        Promise.resolve(opts.beforeSave(ids)).then(function (extra) {
+          if (extra === false) {   // caller aborted (e.g. cancelled the note prompt)
+            confirmBtn.disabled = false;
+            cancelBtn.disabled  = false;
+            setStatus('');
+            return;
+          }
+          self.__scwExtra = (extra && typeof extra === 'object') ? extra : null;
+          self.__scwBeforeDone = true;
+          self.click();   // re-enter — now skips beforeSave and PUTs with __scwExtra
+        }, function () {
+          confirmBtn.disabled = false;
+          cancelBtn.disabled  = false;
+          setStatus('Save failed. Try again.', true);
+        });
+        return;
+      }
+
       // Always send connection fields as arrays — Knack\'s REST API
       // accepts arrays for single- and multi-connection writes alike,
       // but a bare string can silently no-op on connection fields
@@ -461,6 +490,13 @@
       // [id] (or [] to clear) is the safe canonical form.
       var body = {};
       body[opts.fieldKey] = ids;
+      // Extra fields from beforeSave ride in the same PUT.
+      var _extra = this.__scwExtra;
+      if (_extra) {
+        for (var _ek in _extra) {
+          if (Object.prototype.hasOwnProperty.call(_extra, _ek)) body[_ek] = _extra[_ek];
+        }
+      }
 
       confirmBtn.disabled = true;
       cancelBtn.disabled  = true;

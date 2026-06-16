@@ -90,6 +90,47 @@
   }
   ns.confirmModal = confirmModal;
 
+  /** Shared one-shot note prompt (textarea) → Promise<string|null> (null on
+   *  cancel). Reuses bulk.js's modal CSS. opts: { title, body(html), placeholder }. */
+  function promptNote(opts) {
+    opts = opts || {};
+    return new Promise(function (resolve) {
+      function esc(s) {
+        return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+          return ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[c];
+        });
+      }
+      var ov = document.createElement('div');
+      ov.className = 'scw-ws-v2-bulk-overlay';
+      ov.innerHTML =
+        '<div class="scw-ws-v2-bulk-modal scw-ws-v2-bulk-modal--confirm">' +
+          '<div class="scw-ws-v2-bulk-modal-head">' +
+            '<div class="scw-ws-v2-bulk-modal-title">' + esc(opts.title || 'Survey note required') + '</div>' +
+            '<div class="scw-ws-v2-bulk-modal-sub">' + (opts.body || '') + '</div>' +
+          '</div>' +
+          '<div style="padding:0 18px 6px;">' +
+            '<textarea class="scw-ws-v2-bulk-note" rows="3" placeholder="' + esc(opts.placeholder || '') + '" ' +
+              'style="width:100%;box-sizing:border-box;font:inherit;padding:8px;border:1px solid #cbd5e1;border-radius:6px;resize:vertical;"></textarea>' +
+          '</div>' +
+          '<div class="scw-ws-v2-bulk-modal-actions">' +
+            '<button type="button" class="scw-ws-v2-bulk-modal-cancel">Cancel</button>' +
+            '<button type="button" class="scw-ws-v2-bulk-modal-confirm-delete" disabled>Save with note</button>' +
+          '</div>' +
+        '</div>';
+      document.body.appendChild(ov);
+      var ta  = ov.querySelector('.scw-ws-v2-bulk-note');
+      var okB = ov.querySelector('.scw-ws-v2-bulk-modal-confirm-delete');
+      var caB = ov.querySelector('.scw-ws-v2-bulk-modal-cancel');
+      function done(v) { if (ov.parentNode) ov.parentNode.removeChild(ov); resolve(v); }
+      ta.addEventListener('input', function () { okB.disabled = !ta.value.trim(); });
+      caB.addEventListener('click', function () { done(null); });
+      okB.addEventListener('click', function () { var v = ta.value.trim(); if (v) done(v); });
+      ov.addEventListener('click', function (e) { if (e.target === ov) done(null); });
+      setTimeout(function () { ta.focus(); }, 30);
+    });
+  }
+  ns.promptNote = promptNote;
+
   /** confirmZero config rule for a view, if any. */
   function confirmZeroSpec(viewKey) {
     try {
