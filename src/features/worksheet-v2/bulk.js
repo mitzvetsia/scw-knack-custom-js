@@ -137,6 +137,53 @@
     ]
   };
 
+  // ── Config-driven field registry ─────────────────────────────
+  // A deployment can declare its bulk-editable fields in config via a
+  // per-bucket `bulkFields` block of LOGICAL-name specs, e.g.
+  //   bulkFields: { cam: [{ f:'laborDesc', kind:'text', label:'Labor desc' },
+  //                       { f:'qty', kind:'number', gateNo:'qtyOne' }, … ] }
+  // configRegistry resolves each logical name → field key via cfg.fields(),
+  // so the editable-field list lives in ONE place (config) instead of a
+  // hardcoded registry per object. The result is then intersected with what's
+  // actually on the selected rows (intersectVisibleFields) so a field only
+  // appears when EVERY selected row's bucket exposes it. The survey view
+  // (view_3505) uses this; SOW/sales still use the legacy FIELDS/SALES_FIELDS
+  // registries below until they're migrated (CLAUDE.md #15).
+  var _regCache = Object.create(null);
+  function configRegistry(sourceViewKey) {
+    if (sourceViewKey in _regCache) return _regCache[sourceViewKey];
+    var vc  = (ns.cfg && typeof ns.cfg.viewCfg === 'function') ? ns.cfg.viewCfg(sourceViewKey) : null;
+    var reg = null;
+    if (vc && vc.bulkFields) {
+      var F = (ns.cfg && ns.cfg.fields(sourceViewKey)) || {};
+      reg = {};
+      Object.keys(vc.bulkFields).forEach(function (cat) {
+        reg[cat] = (vc.bulkFields[cat] || []).map(function (spec) {
+          return {
+            key:        F[spec.f] || spec.f,         // logical → field key
+            label:      spec.label || spec.f,
+            kind:       spec.kind || 'text',
+            candSource: spec.candSource,
+            // Hide on a row when this (resolved) gate field is Yes — e.g. Qty
+            // hidden when "limit to quantity one" (qtyOne) is Yes.
+            gateNoKey:  spec.gateNo ? (F[spec.gateNo] || spec.gateNo) : null
+          };
+        });
+      });
+    }
+    _regCache[sourceViewKey] = reg;
+    return reg;
+  }
+
+  /** Active field registry for a view: config `bulkFields` if present, else
+   *  the legacy sales / SOW registries. */
+  function fieldSetFor(sourceViewKey) {
+    var cfgReg = configRegistry(sourceViewKey);
+    if (cfgReg) return cfgReg;
+    if (isSalesView(sourceViewKey)) return SALES_FIELDS;
+    return FIELDS;
+  }
+
   /** True when every selected record shares the same proposal bucket. */
   function allSameBucket(ids, sourceViewKey) {
     if (!ns.card || typeof ns.card.bucketIdOf !== 'function') return true;
@@ -145,7 +192,7 @@
     for (var i = 0; i < ids.length; i++) {
       var a = idx[ids[i]];
       if (!a) continue;
-      var b = ns.card.bucketIdOf(a);
+      var b = ns.card.bucketIdOf(a, sourceViewKey);
       if (first === null) { first = b; continue; }
       if (b !== first) return false;
     }
@@ -187,7 +234,7 @@
       var attrs = idx[ids[i]];
       if (!attrs) continue;
       var cat = ns.card && ns.card.bucketCategoryOf
-        ? ns.card.bucketCategoryOf(attrs)
+        ? ns.card.bucketCategoryOf(attrs, sourceViewKey)
         : 'default';
       seen[cat] = true;
     }
@@ -213,20 +260,33 @@
   //   • Connected Devices (1957) — only when the row maps connections (NVR/switch).
   // Cabling (existing/exterior/plenum/drop/conduit) + Connected Device (2197)
   // live in the cam set, so they naturally appear for cam/reader rows only.
-  function visibleBulkFieldsFor(attrs, fieldSet) {
-    var cat = (ns.card && ns.card.bucketCategoryOf) ? ns.card.bucketCategoryOf(attrs) : 'default';
+  function visibleBulkFieldsFor(attrs, fieldSet, sourceViewKey) {
+    var cat = (ns.card && ns.card.bucketCategoryOf)
+      ? ns.card.bucketCategoryOf(attrs, sourceViewKey) : 'default';
     // Fall back to the base FIELDS set (then 'default') if this fieldSet has no
     // entry for the category — e.g. SALES_FIELDS has no 'assumptions', which
     // would otherwise leave the row with ZERO editable fields ("no options").
-    var base = fieldSet[cat] || FIELDS[cat] || fieldSet['default'] || FIELDS['default'] || [];
+    var base = fieldSet[cat] || fieldSet['default'] || FIELDS[cat] || FIELDS['default'] || [];
     var out = [];
     for (var i = 0; i < base.length; i++) {
       var f = base[i];
+      // Legacy SOW conditional gates (hardcoded keys).
       if (f.key === 'field_1964' && !qtyAllowsMulti(attrs)) continue;
       if (f.key === 'field_1957' && !isMapConnectionsRow(attrs)) continue;
+      // Config-declared gate: hide when the gate field is Yes (e.g. Qty hidden
+      // when "limit to quantity one" is Yes on a survey row).
+      if (f.gateNoKey && isYes(attrs, f.gateNoKey)) continue;
       out.push(f);
     }
     return out;
+  }
+
+  /** True when a record's field reads Yes/true (for config gates). */
+  function isYes(attrs, fieldKey) {
+    var raw = attrs && attrs[fieldKey + '_raw'];
+    if (raw === true || raw === 'Yes' || raw === 'yes' || raw === 1) return true;
+    var s = (attrs && attrs[fieldKey] || '').toString().trim().toLowerCase();
+    return s === 'yes' || s === 'true' || s === '1';
   }
 
   // INTERSECTION of every selected row's visible bulk fields — only offer a
@@ -243,7 +303,7 @@
     for (var i = 0; i < ids.length; i++) {
       var attrs = idx[ids[i]];
       if (!attrs) continue;
-      var vis = visibleBulkFieldsFor(attrs, fieldSet);
+      var vis = visibleBulkFieldsFor(attrs, fieldSet, sourceViewKey);
       var keys = Object.create(null);
       for (var j = 0; j < vis.length; j++) keys[vis[j].key] = true;
       rowSets.push({ fields: vis, keys: keys });
@@ -270,7 +330,7 @@
       var attrs = idx[ids[i]];
       if (!attrs) continue;
       var set = Object.create(null);
-      var vis = visibleBulkFieldsFor(attrs, fieldSet);
+      var vis = visibleBulkFieldsFor(attrs, fieldSet, sourceViewKey);
       for (var j = 0; j < vis.length; j++) set[vis[j].key] = true;
       map[ids[i]] = set;
     }
@@ -313,20 +373,29 @@
       if (recs[i] && recs[i].id) idx[recs[i].id] = recs[i];
     }
     try {
+      // Store the synthesized bucket under THIS view's bucket field key so
+      // ns.card.bucketIdOf(attrs, sourceViewKey) resolves it (survey =
+      // field_2366, SOW = field_2219).
+      var bucketKey = 'field_2219';
+      try {
+        var _f = ns.cfg && typeof ns.cfg.fields === 'function' && ns.cfg.fields(sourceViewKey);
+        if (_f && _f.bucket) bucketKey = _f.bucket;
+      } catch (eB) { /* default field_2219 */ }
       var cards = document.querySelectorAll('.scw-ws-v2-card[data-scw-ws-v2-record]');
       for (var c = 0; c < cards.length; c++) {
         var card = cards[c];
         var rid  = card.getAttribute('data-scw-ws-v2-record');
         if (!rid || idx[rid]) continue;   // model attrs (richer) win
         var bucketId = card.getAttribute('data-scw-ws-v2-bucket') || '';
-        idx[rid] = {
+        var dom = {
           id:             rid,
-          field_2219_raw: bucketId ? [{ id: bucketId }] : [],
           // --locked ⇔ survey-associated (field_2586 >= 1); enough for
           // isCrLocked / isDeleteBlocked which only test "> 0".
           field_2586:     card.classList.contains('scw-ws-v2-card--locked') ? 1 : 0,
           _scwDomFallback: true
         };
+        dom[bucketKey + '_raw'] = bucketId ? [{ id: bucketId }] : [];
+        idx[rid] = dom;
       }
     } catch (e) { /* best effort */ }
 
@@ -1299,6 +1368,32 @@
       return { candidates: prodCands, groupBy: null, itemLabel: null };
     }
 
+    if (field.candSource === 'survey-bids') {
+      // Bids from the BIDs grid (view_3507, label field_2414). Prefer the
+      // in-use connection identifier from the survey line items so labels
+      // read identically to the worksheet (e.g. "1" / "93").
+      var bidAttrs = fromFirstView(['view_3507']);
+      var inUseBid = Object.create(null);
+      var sv2 = window.Knack && Knack.views && Knack.views[sourceViewKey];
+      var sm2 = (sv2 && sv2.model && sv2.model.data && sv2.model.data.models) || [];
+      for (var bi = 0; bi < sm2.length; bi++) {
+        var braw = sm2[bi].attributes && sm2[bi].attributes.field_2415_raw;
+        if (!Array.isArray(braw)) continue;
+        for (var bj = 0; bj < braw.length; bj++) {
+          var bv = braw[bj];
+          if (bv && bv.id && bv.identifier != null) inUseBid[bv.id] = String(bv.identifier);
+        }
+      }
+      var bidCands = bidAttrs.map(function (a) {
+        return { id: a.id, identifier: inUseBid[a.id] || stripHtml(a.field_2414) || stripHtml(a.identifier) || a.id };
+      }).filter(function (c) { return c.identifier; });
+      bidCands.sort(function (a, b) {
+        return String(a.identifier).localeCompare(String(b.identifier), undefined,
+          { numeric: true, sensitivity: 'base' });
+      });
+      return { candidates: bidCands, groupBy: null, itemLabel: null };
+    }
+
     if (field.candSource === 'dropPrefix') {
       // Catalog loaded by the Builder JS snippet (see CLAUDE.md
       // "Out-of-bundle Knack Builder snippets"). Each entry:
@@ -1322,7 +1417,7 @@
     var locked = selectionHasLocked(ids, sourceViewKey);
     var categories = recordCategories(ids, sourceViewKey);
     var sales = isSalesView(sourceViewKey);
-    var fieldSet = sales ? SALES_FIELDS : FIELDS;
+    var fieldSet = fieldSetFor(sourceViewKey);
     var fields = locked ? LOCKED_BULK_FIELDS.slice() : intersectVisibleFields(ids, sourceViewKey, fieldSet);
     // Per-row visible-field map for save-time gating (null when locked → the
     // whitelist applies to every selected row uniformly).

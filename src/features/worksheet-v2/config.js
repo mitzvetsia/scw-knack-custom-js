@@ -267,8 +267,8 @@
         independentFields: true,            // Survey object — no SOW fallback
         moneyMode:         'survey',
         hideSow:           true,            // survey groups by Bid, not SOW
-        mdfSourceViewKey:  '',              // TODO: empty-L1 seed source (MDF/IDF on the survey scene)
-        mdfLabelField:     '',              // TODO
+        mdfSourceViewKey:  'view_3617',     // MDF/IDF locations grid on the survey scene
+        mdfLabelField:     'field_1642',    // MDF/IDF full label
         fields: {
           // identity / grouping
           product:        'field_2627',     // REL_product (editable)
@@ -316,6 +316,54 @@
           // survey shows the same buckets; only the extra ones beyond
           // DEFAULT_BUCKETS need listing.
           otherEquip: '5df12ce036f91b0015404d78'   // "Other Equipment"
+        },
+
+        // ── Bulk-edit field spec (config-driven; bulk.js resolves these
+        //    LOGICAL names → field keys via cfg.fields and intersects with
+        //    what's actually editable on the selected rows). ONLY fields that
+        //    are editable in the survey card UI + on the Survey Line Item
+        //    object. Excluded: product/ext/mounting hardware (read-only on the
+        //    card); Connected Devices/To (edit per-row so the field_2380↔2381
+        //    cascade fires); Mounting Height (3-option chip, no bulk widget).
+        bulkFields: {
+          cam: [
+            { f: 'laborDesc',    kind: 'text',        label: 'Labor description' },
+            { f: 'labor',        kind: 'number',      label: 'Labor' },
+            { f: 'existCabling', kind: 'bool',        label: 'Existing cabling' },
+            { f: 'exterior',     kind: 'bool',        label: 'Exterior' },
+            { f: 'plenum',       kind: 'bool',        label: 'Plenum' },
+            { f: 'dropLength',   kind: 'number',      label: 'Drop length' },
+            { f: 'conduit',      kind: 'number',      label: 'Conduit' },
+            { f: 'surveyNotes',  kind: 'text',        label: 'Survey notes' },
+            { f: 'scwNotes',     kind: 'text',        label: 'SCW Notes' },
+            { f: 'mdfIdf',       kind: 'conn-single', label: 'MDF / IDF', candSource: 'mdf' },
+            { f: 'bid',          kind: 'conn-multi',  label: 'Bid',       candSource: 'survey-bids' }
+          ],
+          'default': [
+            { f: 'laborDesc',   kind: 'text',        label: 'Labor description' },
+            { f: 'labor',       kind: 'number',      label: 'Labor' },
+            { f: 'qty',         kind: 'number',      label: 'Qty', gateNo: 'qtyOne' },
+            { f: 'surveyNotes', kind: 'text',        label: 'Survey notes' },
+            { f: 'scwNotes',    kind: 'text',        label: 'SCW Notes' },
+            { f: 'mdfIdf',      kind: 'conn-single', label: 'MDF / IDF', candSource: 'mdf' },
+            { f: 'bid',         kind: 'conn-multi',  label: 'Bid',       candSource: 'survey-bids' }
+          ],
+          services: [
+            { f: 'laborDesc',   kind: 'text',        label: 'Service description' },
+            { f: 'labor',       kind: 'number',      label: 'Labor' },
+            { f: 'qty',         kind: 'number',      label: 'Qty', gateNo: 'qtyOne' },
+            { f: 'surveyNotes', kind: 'text',        label: 'Survey notes' },
+            { f: 'scwNotes',    kind: 'text',        label: 'SCW Notes' },
+            { f: 'mdfIdf',      kind: 'conn-single', label: 'MDF / IDF', candSource: 'mdf' },
+            { f: 'bid',         kind: 'conn-multi',  label: 'Bid',       candSource: 'survey-bids' }
+          ],
+          assumptions: [
+            { f: 'laborDesc',   kind: 'text',        label: 'Assumption text' },
+            { f: 'surveyNotes', kind: 'text',        label: 'Survey notes' },
+            { f: 'scwNotes',    kind: 'text',        label: 'SCW Notes' },
+            { f: 'mdfIdf',      kind: 'conn-single', label: 'MDF / IDF', candSource: 'mdf' },
+            { f: 'bid',         kind: 'conn-multi',  label: 'Bid',       candSource: 'survey-bids' }
+          ]
         }
       }
 
