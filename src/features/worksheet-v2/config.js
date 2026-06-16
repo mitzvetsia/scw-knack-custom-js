@@ -274,6 +274,18 @@
         // write it into every clearing row's PUT (so the rows carry the note
         // and survey-bid-validate's bid-gate doesn't re-prompt). Logical names.
         clearNote:         { conn: 'bid', note: 'surveyNotes' },
+        // Confirm before saving a $0 OR blank value on this field (the sub-bid
+        // Labor). Translates v1 survey-bid-validate's $0-confirm to v2 — fired
+        // in BOTH the single edit (edit.js) and bulk edit (bulk.js) paths.
+        confirmZero: {
+          field: 'labor',
+          title: 'Confirm $0 / blank bid',
+          body: '<p>You’re setting this bid to <strong>$0</strong> (or leaving ' +
+            'it blank).</p><p>That commits you to <strong>doing this item for ' +
+            'free</strong> — it does <strong>not</strong> remove it from the ' +
+            'bid. If the item shouldn’t be done, <strong>take it off the bid' +
+            '</strong> instead.</p><p>Continue?</p>'
+        },
         mdfSourceViewKey:  'view_3617',     // MDF/IDF locations grid on the survey scene
         mdfLabelField:     'field_1642',    // MDF/IDF full label
         fields: {

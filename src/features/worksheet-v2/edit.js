@@ -49,6 +49,55 @@
     return d.promise();
   }
 
+  /** True when a value is $0 or blank (for the confirmZero rule). */
+  function isZeroBlank(v) {
+    var s = (v == null ? '' : String(v)).replace(/[^0-9.\-]/g, '').trim();
+    if (s === '') return true;            // blank
+    var n = parseFloat(s);
+    return !isNaN(n) && n === 0;          // $0
+  }
+  ns.isZeroBlank = isZeroBlank;
+
+  /** Shared yes/no confirm modal → Promise<bool>. Reuses bulk.js's modal
+   *  CSS (loaded via styles.js). opts: { title, body(html), okLabel, cancelLabel }. */
+  function confirmModal(opts) {
+    opts = opts || {};
+    return new Promise(function (resolve) {
+      function esc(s) {
+        return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+          return ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[c];
+        });
+      }
+      var ov = document.createElement('div');
+      ov.className = 'scw-ws-v2-bulk-overlay';
+      ov.innerHTML =
+        '<div class="scw-ws-v2-bulk-modal scw-ws-v2-bulk-modal--confirm">' +
+          '<div class="scw-ws-v2-bulk-modal-head">' +
+            '<div class="scw-ws-v2-bulk-modal-title">' + esc(opts.title || 'Confirm') + '</div>' +
+            '<div class="scw-ws-v2-bulk-modal-sub">' + (opts.body || '') + '</div>' +
+          '</div>' +
+          '<div class="scw-ws-v2-bulk-modal-actions">' +
+            '<button type="button" class="scw-ws-v2-bulk-modal-cancel">' + esc(opts.cancelLabel || 'Cancel') + '</button>' +
+            '<button type="button" class="scw-ws-v2-bulk-modal-confirm-delete">' + esc(opts.okLabel || 'Confirm') + '</button>' +
+          '</div>' +
+        '</div>';
+      document.body.appendChild(ov);
+      function done(v) { if (ov.parentNode) ov.parentNode.removeChild(ov); resolve(v); }
+      ov.querySelector('.scw-ws-v2-bulk-modal-cancel').addEventListener('click', function () { done(false); });
+      ov.querySelector('.scw-ws-v2-bulk-modal-confirm-delete').addEventListener('click', function () { done(true); });
+      ov.addEventListener('click', function (e) { if (e.target === ov) done(false); });
+    });
+  }
+  ns.confirmModal = confirmModal;
+
+  /** confirmZero config rule for a view, if any. */
+  function confirmZeroSpec(viewKey) {
+    try {
+      var vc = ns.cfg && typeof ns.cfg.viewCfg === 'function' && ns.cfg.viewCfg(viewKey);
+      return (vc && vc.confirmZero) || null;
+    } catch (e) { return null; }
+  }
+
   /** Commit an input: optimistic flash, fire PUT, handle error path. */
   function commit(input) {
     var fieldKey  = input.getAttribute('data-scw-ws-v2-field');
@@ -59,6 +108,34 @@
     var newValue  = input.value;
     var prevValue = input._scwWsV2Prev != null ? input._scwWsV2Prev : (input.defaultValue || '');
     if (newValue === prevValue) return; // no-op — value didn't actually change
+
+    // Config-driven $0/blank confirm (e.g. survey sub-bid Labor). Gate BEFORE
+    // saving: on cancel revert the input; on confirm fall through to save.
+    var zSpec = confirmZeroSpec(viewKey);
+    if (zSpec) {
+      var zCfg = (ns.cfg && ns.cfg.fields(viewKey)) || {};
+      var zKey = zCfg[zSpec.field] || zSpec.field;
+      if (fieldKey === zKey && isZeroBlank(newValue)) {
+        confirmModal({
+          title: zSpec.title, body: zSpec.body,
+          okLabel: 'Yes, continue', cancelLabel: 'Cancel'
+        }).then(function (ok) {
+          if (!ok) {
+            // Revert the cell to its prior value.
+            input.value = prevValue;
+            input._scwWsV2Prev = prevValue;
+            return;
+          }
+          performSave(input, fieldKey, recordId, viewKey, newValue, prevValue);
+        });
+        return;
+      }
+    }
+    performSave(input, fieldKey, recordId, viewKey, newValue, prevValue);
+  }
+
+  /** The actual optimistic-UI + PUT for a committed input. */
+  function performSave(input, fieldKey, recordId, viewKey, newValue, prevValue) {
 
     // Stamp the new value as the new "previous" right away — protects
     // against a Knack re-render coming in with a stale model value and

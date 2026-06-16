@@ -1495,6 +1495,25 @@
     });
   }
 
+  /** Config-driven $0/blank confirm (confirmZero) for the bulk path: if this
+   *  batch sets the configured field to $0 or blank on ≥1 row, confirm ONCE.
+   *  cb(true) to proceed, cb(false) to abort. */
+  function maybeConfirmZero(jobs, sourceViewKey, cb) {
+    var vc = (ns.cfg && typeof ns.cfg.viewCfg === 'function') ? ns.cfg.viewCfg(sourceViewKey) : null;
+    var spec = vc && vc.confirmZero;
+    if (!spec || !ns.confirmModal || !ns.isZeroBlank) return cb(true);
+    var F = (ns.cfg && ns.cfg.fields(sourceViewKey)) || {};
+    var key = F[spec.field] || spec.field;
+    var hit = jobs.some(function (j) {
+      return j.body && (key in j.body) && ns.isZeroBlank(j.body[key]);
+    });
+    if (!hit) return cb(true);
+    ns.confirmModal({
+      title: spec.title, body: spec.body,
+      okLabel: 'Yes, continue', cancelLabel: 'Cancel'
+    }).then(function (ok) { cb(!!ok); });
+  }
+
   function openBulkModal(ids, sourceViewKey) {
     // If any selected row is locked (survey-associated sales item), only the
     // lock whitelist (Product / SCW Notes / Custom Disc %) is bulk-editable —
@@ -1819,9 +1838,12 @@
       // Clear-note gate (config clearNote): if this batch clears the configured
       // connection (e.g. Bid), prompt ONCE and write the note into every
       // clearing row's PUT before firing. Cancel = abort the whole save.
-      maybePromptClearNote(jobs, sourceViewKey, function (proceed) {
-        if (!proceed) { status.textContent = ''; return; }
-        runJobs();
+      maybePromptClearNote(jobs, sourceViewKey, function (p1) {
+        if (!p1) { status.textContent = ''; return; }
+        maybeConfirmZero(jobs, sourceViewKey, function (p2) {
+          if (!p2) { status.textContent = ''; return; }
+          runJobs();
+        });
       });
 
       function runJobs() {
