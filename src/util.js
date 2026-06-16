@@ -257,7 +257,7 @@ window.SCW = window.SCW || {};
     var el = document.createElement('div');
     el.id = TOAST_ID;
     el.innerHTML =
-      '<span>Session expired &mdash; save failed. Please log out and back in.</span>' +
+      '<span>Your login session has expired. Please log out and back in to continue.</span>' +
       '<button id="scw-session-logout">Log out &amp; come back</button>' +
       '<button id="scw-session-dismiss">&times;</button>';
 
@@ -291,6 +291,58 @@ window.SCW = window.SCW || {};
     });
   }
 
+  // ── Expired-token detection across 401 AND 403 ──────────────────
+  // Knack returns 401 for some token failures, but an expired user token on
+  // an active session commonly comes back as 403 (Forbidden) — the same status
+  // as an ordinary permission denial. We distinguish them so an expired token
+  // prompts re-login instead of silently failing every save/read:
+  //   - 403 on a WRITE (PUT/POST/DELETE): the user already had the edit UI, so
+  //     they had access — a sudden 403 is an expired token, not a role change.
+  //   - a BURST of read 403s across a page's data sources: a genuine per-view
+  //     permission gap doesn't storm every source at once; a dead token does.
+  //   - any token-ish response body.
+  var _auth403Times = [];
+  var AUTH_BURST_WINDOW = 12000;  // ms
+  var AUTH_BURST_COUNT  = 3;
+
+  function isKnackApiUrl(url) {
+    url = url || '';
+    return url.indexOf('knack.com') !== -1 || url.indexOf('/v1/') !== -1;
+  }
+  function isWriteMethod(m) {
+    m = (m || 'GET').toString().toUpperCase();
+    return m === 'PUT' || m === 'POST' || m === 'DELETE' || m === 'PATCH';
+  }
+  function looksLikeTokenBody(body) {
+    return /invalid token|reauthenticate|invalid authentication|token (?:is )?expired|expired token/i
+      .test(String(body || ''));
+  }
+
+  function maybeFlagAuthFailure(status, method, url, body) {
+    if (status !== 401 && status !== 403) return;
+    if (!isKnackApiUrl(url)) return;
+
+    if (looksLikeTokenBody(body)) { console.warn('[SCW] Auth: token body on ' + status, url); showSessionToast(); return; }
+    if (status === 401) return; // 401 without a token body — let Knack handle it
+
+    // 403 below.
+    if (isWriteMethod(method)) {
+      console.warn('[SCW] Auth: 403 on write → likely expired token', method, url);
+      showSessionToast();
+      return;
+    }
+    // Read 403 — count toward a burst.
+    var now = Date.now();
+    _auth403Times.push(now);
+    _auth403Times = _auth403Times.filter(function (t) { return now - t <= AUTH_BURST_WINDOW; });
+    if (_auth403Times.length >= AUTH_BURST_COUNT) {
+      console.warn('[SCW] Auth: 403 burst → likely expired token', _auth403Times.length, url);
+      _auth403Times = [];
+      showSessionToast();
+    }
+  }
+  namespace.flagAuthFailure = maybeFlagAuthFailure;
+
   /**
    * SCW.knackAjax(options)
    *
@@ -321,18 +373,9 @@ window.SCW = window.SCW || {};
     var merged = $.extend(true, {}, defaults, opts);
 
     merged.error = function (xhr) {
-      // Only 401 = unauthenticated / expired token. 403 = forbidden
-      // (a permission issue on a specific view) and must NOT trip
-      // the session-expired toast — those are normal for users who
-      // lack access to a particular data source.
-      if (xhr.status === 401) {
-        var body = '';
-        try { body = xhr.responseText || ''; } catch (e) { /* ignore */ }
-        if (/invalid token|reauthenticate/i.test(body)) {
-          console.warn('[SCW] Auth expired — prompting reload');
-          showSessionToast();
-        }
-      }
+      var body = '';
+      try { body = xhr.responseText || ''; } catch (e) { /* ignore */ }
+      maybeFlagAuthFailure(xhr.status, merged.type || opts.type, merged.url || opts.url, body);
       if (typeof callerError === 'function') callerError.apply(this, arguments);
     };
 
@@ -349,20 +392,15 @@ window.SCW = window.SCW || {};
 
   // ── Global 401/403 interceptor ──
   // Catches auth failures from ANY AJAX/fetch call (including KTL bulk ops)
-  // and shows the session-expired toast.
+  // and shows the session-expired toast (see maybeFlagAuthFailure for the
+  // expired-token-vs-permission heuristic).
 
-  // 1) jQuery $.ajax errors — 401 only (see note above)
+  // 1) jQuery $.ajax errors
   $(document).ajaxError(function (event, xhr, settings) {
-    if (xhr.status === 401) {
-      var url = settings.url || '';
-      if (url.indexOf('knack.com') !== -1 || url.indexOf('/v1/') !== -1) {
-        var body = '';
-        try { body = xhr.responseText || ''; } catch (e) {}
-        if (/invalid token|reauthenticate/i.test(body)) {
-          showSessionToast();
-        }
-      }
-    }
+    if (xhr.status !== 401 && xhr.status !== 403) return;
+    var body = '';
+    try { body = xhr.responseText || ''; } catch (e) {}
+    maybeFlagAuthFailure(xhr.status, settings && settings.type, settings && settings.url, body);
   });
 
   // 2) fetch() errors — KTL uses fetch for bulk delete/write operations
@@ -370,16 +408,17 @@ window.SCW = window.SCW || {};
   if (typeof _origFetch === 'function') {
     window.fetch = function scwFetchInterceptor(input, init) {
       return _origFetch.apply(this, arguments).then(function (response) {
-        // 401 only — 403 is permission denied, not session expired.
-        if (response.status === 401) {
+        if (response.status === 401 || response.status === 403) {
           var url = typeof input === 'string' ? input : (input && input.url ? input.url : '');
-          if (url.indexOf('knack.com') !== -1 || url.indexOf('/v1/') !== -1) {
+          var method = (init && init.method) ||
+            (input && typeof input === 'object' && input.method) || 'GET';
+          // Read body best-effort; flag with whatever we have either way.
+          try {
             response.clone().text().then(function (body) {
-              if (/invalid token|reauthenticate/i.test(body)) {
-                console.warn('[SCW] Auth failure (' + response.status + ') on fetch: ' + url);
-                showSessionToast();
-              }
-            });
+              maybeFlagAuthFailure(response.status, method, url, body);
+            }, function () { maybeFlagAuthFailure(response.status, method, url, ''); });
+          } catch (e) {
+            maybeFlagAuthFailure(response.status, method, url, '');
           }
         }
         return response;
