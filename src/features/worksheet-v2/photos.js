@@ -162,6 +162,10 @@
   }
 
   function editPhotoHref(photoRecordId) {
+    // Survey scene (view_3505): #subcontractor-portal/site-survey-request-
+    // details/<id>/edit-doc-photo/<photoId> — matches v1 inline-photo-row.
+    var survey = surveyBasePath();
+    if (survey) return '#' + survey + '/edit-doc-photo/' + photoRecordId + '/';
     var base = buildSowBasePath();
     if (!base) return '';
     var slug = (base.indexOf('scope-of-work-details') !== -1)
@@ -169,9 +173,20 @@
     return '#' + base + '/' + slug + '/' + photoRecordId + '/';
   }
   function addPhotoHref(lineItemId) {
+    // Survey scene: .../add-photo-to-survey-line-item/<lineItemId>.
+    var survey = surveyBasePath();
+    if (survey) return '#' + survey + '/add-photo-to-survey-line-item/' + lineItemId + '/';
     var base = buildSowBasePath();
     if (!base) return '';
     return '#' + base + '/add-photo-to-sow-line-item/' + lineItemId + '/';
+  }
+
+  /** Survey-scene base path. Returns '' off the survey scene so the
+   *  SOW/sales/deploy callers above fall through to buildSowBasePath. */
+  function surveyBasePath() {
+    var hash = window.location.hash || '';
+    var m = hash.match(/site-survey-request-details\/([a-f0-9]{24})/);
+    return m ? ('subcontractor-portal/site-survey-request-details/' + m[1]) : '';
   }
 
   /** Public API: build a strip element for one record. Returns null
