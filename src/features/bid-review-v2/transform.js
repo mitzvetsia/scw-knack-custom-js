@@ -27,6 +27,10 @@
 
   var FK = ns.CONFIG.fieldKeys;
 
+  // bid record id → SOW line item id; (re)built each buildState() run, read by
+  // getMismatches to resolve bid-side connections to SOW line items.
+  var _bidToSow = Object.create(null);
+
   // ── adapters (verbatim from v1's transform.js) ──────────────
 
   function stripHtml(s) {
@@ -220,7 +224,8 @@
           // Bid-side connection topology (mirror of the SOW side):
           // field_2380 Connected Devices, field_2381 Connected To.
           connDevice:   connectionAll(rec, FK.bidConnDevice),
-          connTo:       connectionLabel(rec, FK.bidConnTo)
+          connTo:       connectionLabel(rec, FK.bidConnTo),
+          connToId:     connectionId(rec, FK.bidConnTo)
         };
       }
     }
@@ -530,6 +535,16 @@
 
   function buildState(records, sowItems, bidPackages) {
     var sows = extractSows(records);
+    // bid record id → its SOW line item id (field_2404 relatedSowItem). Lets
+    // the connected-device / connected-to diff resolve a bid record's
+    // connections (field_2380/2381 point at OTHER bid records) to SOW line
+    // items, so both sides compare in the same id space — not by mismatched
+    // display labels ("…Extended Transmission" vs "…Ex").
+    _bidToSow = Object.create(null);
+    for (var _bti = 0; _bti < records.length; _bti++) {
+      var _btr = records[_bti];
+      if (_btr && _btr.id) _bidToSow[_btr.id] = connectionId(_btr, FK.relatedSowItem);
+    }
     var sowNameById = Object.create(null);
     for (var sni = 0; sni < sows.length; sni++) sowNameById[sows[sni].id] = sows[sni].name;
     // SOW line item → its OWN SOW membership (field_2154). Built before
@@ -599,6 +614,7 @@
         // whichever is present, so each device shows the appropriate field.
         connDevice:     connectionAll(s, SFK.connDevice),
         connTo:         connectionLabel(s, SFK.connTo),
+        connToId:       connectionId(s, SFK.connTo),
         // Cabling attributes for the comparison cells (cam/reader). Diffed
         // against the bid record's own cabling fields in getMismatches.
         existCabling:   bool(s, SFK.existCabling),
@@ -1063,16 +1079,23 @@
     // devices, so compare by normalized label, not id. Anchor on the SOW side
     // having a value (the reference): a bid that dropped a connection the SOW
     // expects counts as a diff; a row with no SOW-side topology is never flagged.
-    function connSet(v) {
+    // Resolve a connection to the SOW line item it represents, so both sides
+    // compare in the same id space. SOW-side connections (field_1957/2197)
+    // already point AT SOW line items → use the id verbatim. Bid-side
+    // connections (field_2380/2381) point at OTHER bid records → map each
+    // through _bidToSow to its SOW line item. A bid record with no SOW
+    // mapping (or an unresolved id) contributes nothing.
+    function sowIdOf(id, fromBid) {
+      if (!id) return '';
+      return fromBid ? (_bidToSow[id] || '') : id;
+    }
+    function connIdSet(arr, fromBid) {
       var set = Object.create(null);
-      if (Array.isArray(v)) {
-        for (var i = 0; i < v.length; i++) {
-          var l = norm((v[i] && (v[i].identifier || v[i].name)) || '');
-          if (l) set[l] = true;
+      if (Array.isArray(arr)) {
+        for (var i = 0; i < arr.length; i++) {
+          var sid = sowIdOf(arr[i] && arr[i].id, fromBid);
+          if (sid) set[sid] = true;
         }
-      } else {
-        var s = norm(v || '');
-        if (s) set[s] = true;
       }
       return set;
     }
@@ -1083,11 +1106,16 @@
       return true;
     }
     var sd    = row.sowItemData || {};
-    var sowCD = sd.connDevice || [];
-    var sowCT = sd.connTo || '';
-    var connDeviceDiff = (Array.isArray(sowCD) && sowCD.length)
-      ? !sameSet(connSet(sowCD), connSet(cell.connDevice || [])) : false;
-    var connToDiff = norm(sowCT) ? (norm(sowCT) !== norm(cell.connTo || '')) : false;
+    // Connected Devices: compare the FULL set of connected devices, matched by
+    // their underlying SOW line item id (label-agnostic). Anchor on the SOW
+    // side carrying connections (the reference) so a row with no SOW-side
+    // topology is never flagged.
+    var sowCDset = connIdSet(sd.connDevice, false);
+    var connDeviceDiff = Object.keys(sowCDset).length
+      ? !sameSet(sowCDset, connIdSet(cell.connDevice || [], true)) : false;
+    // Connected To: single connection, compared by SOW line item id.
+    var sowCTid = sowIdOf(sd.connToId, false);
+    var connToDiff = sowCTid ? (sowCTid !== sowIdOf(cell.connToId, true)) : false;
     // Word-sequence compare for free text — strips tags/punctuation/case down
     // to the same [a-z0-9] tokens the card's markWordDiff highlights, so a
     // field flags as "different" ONLY when there's an actual word to underline
