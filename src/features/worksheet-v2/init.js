@@ -1047,9 +1047,9 @@
 
         // Bid (multi) — full list from the BIDs grid (view_3507, label
         // field_2414). Modeled on SOW field_2154. When CLEARING the bid, the
-        // beforeSave hook injects the required survey note into the same PUT so
-        // survey-bid-validate's gate skips it (instead of aborting it and
-        // leaving the picker stuck on "Saving…").
+        // picker's integrated clearNote field injects the required survey note
+        // into the same PUT (and suppresses survey-bid-validate's gate) so the
+        // requirement is satisfied without a second modal.
         if (fieldKey === (SF.bid || 'field_2415')) {
           var _noteKey = SF.surveyNotes || 'field_2412';
           ns.picker.open({
@@ -1058,32 +1058,26 @@
             candidates: surveyCandidates(['view_3507'], 'field_2414', fieldKey), groupBy: false,
             itemLabel: function (r) { return r.name || r.id; },
             multi: true, onSaved: surveyRefetch,
-            beforeSave: function (chosenIds) {
-              if (chosenIds && chosenIds.length) return null;   // not clearing
-              // We're clearing the bid → write the note in the SAME PUT, and
-              // suppress survey-bid-validate's knack-cell-update gate so it
+            // Clearing every bid requires a survey note written in the SAME
+            // PUT. The note field is integrated into the picker (shown only
+            // when all selections are cleared) and prefilled with the current
+            // survey note so the user appends/edits it.
+            clearNote: {
+              fieldKey: _noteKey,
+              current: current ? current[_noteKey] : '',
+              title: 'Survey note required',
+              help: "You're removing this item from the bid. Add to or edit " +
+                    'the survey note explaining why.',
+              placeholder: 'e.g. Item not needed per customer; duplicate of E-014; etc.',
+              requiredMsg: 'A survey note is required to clear the bid.',
+              // Suppress survey-bid-validate's knack-cell-update gate so it
               // doesn't re-prompt (and clobber) on the picker's own refresh.
-              var _suppress = function (n) {
+              onClear: function (note) {
                 if (SCW.surveyBidValidate &&
                     typeof SCW.surveyBidValidate.markOwnBidWrite === 'function') {
-                  SCW.surveyBidValidate.markOwnBidWrite(recordId, n);
+                  SCW.surveyBidValidate.markOwnBidWrite(recordId, note);
                 }
-              };
-              var existingRaw = current ? current[_noteKey] : '';
-              var existing = (existingRaw != null)
-                ? String(existingRaw).replace(/<[^>]*>/g, '').trim() : '';
-              if (existing) { _suppress(existingRaw); var e = {}; e[_noteKey] = existingRaw; return e; } // carry existing
-              if (typeof ns.promptNote !== 'function') { _suppress(''); return null; }
-              return ns.promptNote({
-                title: 'Survey note required',
-                body: '<p>You’re removing this item from the bid. Capture a survey ' +
-                      'note explaining why.</p>',
-                placeholder: 'e.g. Item not needed per customer; duplicate of E-014; etc.'
-              }).then(function (note) {
-                if (note == null) return false;   // cancelled → abort save
-                _suppress(note);
-                var ex = {}; ex[_noteKey] = note; return ex;
-              });
+              }
             }
           });
           return;

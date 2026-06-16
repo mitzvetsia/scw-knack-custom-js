@@ -261,7 +261,32 @@
       '  background: #07467c; color: #fff; border-color: #053659;',
       '}',
       '.scw-ws-v2-picker-btn--confirm:hover { background: #053659; }',
-      '.scw-ws-v2-picker-btn[disabled] { opacity: 0.6; cursor: not-allowed; }'
+      '.scw-ws-v2-picker-btn[disabled] { opacity: 0.6; cursor: not-allowed; }',
+      // Inline note section — appears only when all selections are cleared
+      // (e.g. clearing the Bid requires a survey note in the SAME save).
+      '.scw-ws-v2-picker-note {',
+      '  border-top: 1px solid #e5e7eb;',
+      '  background: #fffbeb;',
+      '  padding: 12px 18px 14px;',
+      '}',
+      '.scw-ws-v2-picker-note[hidden] { display: none; }',
+      '.scw-ws-v2-picker-note-title {',
+      '  font: 700 12px system-ui, sans-serif; color: #92400e;',
+      '  display: flex; align-items: center; gap: 6px; margin-bottom: 2px;',
+      '}',
+      '.scw-ws-v2-picker-note-help {',
+      '  font-size: 12px; color: #78716c; margin: 0 0 8px;',
+      '}',
+      '.scw-ws-v2-picker-note textarea {',
+      '  width: 100%; box-sizing: border-box;',
+      '  min-height: 72px; resize: vertical;',
+      '  padding: 8px 10px; border: 1px solid #d6b46a; border-radius: 6px;',
+      '  font: 13px/1.4 system-ui, sans-serif; color: #1f2937; background: #fff;',
+      '}',
+      '.scw-ws-v2-picker-note textarea:focus {',
+      '  outline: none; border-color: #b45309;',
+      '  box-shadow: 0 0 0 3px rgba(180,83,9,0.15);',
+      '}'
     ].join('\n');
     var s = document.createElement('style');
     s.id = 'scw-ws-v2-picker-css';
@@ -406,6 +431,56 @@
       });
     }
 
+    // ── Inline "clear note" section ──────────────────────────────────
+    // When opts.clearNote is configured (e.g. the Bid picker), clearing
+    // every selection requires a note written in the SAME PUT. Rather than
+    // stack a second modal, the note field lives inside the picker and is
+    // revealed only while no option is selected. Prefilled with the record's
+    // current note so the user appends/edits rather than starting blank.
+    var noteWrap = null, noteTextarea = null;
+    var clearNote = (opts.clearNote && multi) ? opts.clearNote : null;
+    if (clearNote) {
+      var curNote = (clearNote.current != null)
+        ? String(clearNote.current).replace(/<br\s*\/?>/gi, '\n').replace(/<[^>]*>/g, '').trim()
+        : '';
+      noteWrap = document.createElement('div');
+      noteWrap.className = 'scw-ws-v2-picker-note';
+      noteWrap.innerHTML =
+        '<div class="scw-ws-v2-picker-note-title">' +
+          '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" ' +
+            'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+            '<path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>' +
+            '<line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>' +
+          '</svg>' +
+          escapeHtml(clearNote.title || 'Survey note required') +
+        '</div>' +
+        '<p class="scw-ws-v2-picker-note-help">' +
+          escapeHtml(clearNote.help ||
+            "You're clearing this connection — add or edit the note explaining why.") +
+        '</p>' +
+        '<textarea placeholder="' + escapeHtml(clearNote.placeholder || '') + '"></textarea>';
+      card.appendChild(noteWrap);
+      noteTextarea = noteWrap.querySelector('textarea');
+      noteTextarea.value = curNote;
+    }
+
+    // Reveal the note section only while nothing is selected (all cleared).
+    function anySelected() {
+      var checked = bd.querySelectorAll(
+        'input[name="scw-ws-v2-pick-' + opts.fieldKey + '"]:checked');
+      for (var i = 0; i < checked.length; i++) { if (checked[i].value) return true; }
+      return false;
+    }
+    function syncNoteVisibility() {
+      if (!noteWrap) return;
+      noteWrap.hidden = anySelected();
+    }
+    if (noteWrap) {
+      // React to every input toggle (option clicks + the "Clear all" row).
+      bd.addEventListener('change', syncNoteVisibility);
+      syncNoteVisibility();
+    }
+
     var ft = document.createElement('div');
     ft.className = 'scw-ws-v2-picker-ft';
     ft.innerHTML =
@@ -454,40 +529,34 @@
         return;
       }
 
-      // Optional beforeSave hook — the caller may need to inject extra fields
-      // into the SAME PUT (e.g. a required survey note when clearing the Bid,
-      // so survey-bid-validate's gate skips this PUT instead of aborting it and
-      // leaving the modal stuck on "Saving…"). It may prompt the user and
-      // resolve with an extra-data object, null/{} for "nothing extra", or
-      // `false` to abort the save. We run it ONCE then call doSave() directly —
-      // NOT by re-clicking confirmBtn (a disabled button never fires click,
-      // which silently dropped the PUT entirely).
-      if (typeof opts.beforeSave === 'function') {
-        confirmBtn.disabled = true;
-        cancelBtn.disabled  = true;
-        setStatus('Saving…');
-        Promise.resolve(opts.beforeSave(ids)).then(function (extra) {
-          if (extra === false) {   // caller aborted (e.g. cancelled the note prompt)
-            confirmBtn.disabled = false;
-            cancelBtn.disabled  = false;
-            setStatus('');
-            return;
-          }
-          doSave(ids, (extra && typeof extra === 'object') ? extra : null);
-        }, function () {
-          confirmBtn.disabled = false;
-          cancelBtn.disabled  = false;
-          setStatus('Save failed. Try again.', true);
-        });
-        return;
+      // Integrated "clear note" — when every selection is cleared and a
+      // clearNote field is configured (the Bid picker), the note written into
+      // the inline textarea is required and rides in the SAME PUT. No second
+      // modal: the note field is part of this picker.
+      var extra = null;
+      if (clearNote && ids.length === 0) {
+        var noteVal = noteTextarea ? noteTextarea.value.trim() : '';
+        if (!noteVal) {
+          setStatus(clearNote.requiredMsg || 'A note is required to clear this.', true);
+          if (noteWrap) { noteWrap.hidden = false; }
+          if (noteTextarea) noteTextarea.focus();
+          return;
+        }
+        extra = {};
+        extra[clearNote.fieldKey] = noteVal;
+        // Let the caller suppress any downstream re-prompt (e.g. survey-bid-
+        // validate's knack-cell-update gate) now that the note is handled here.
+        if (typeof clearNote.onClear === 'function') {
+          try { clearNote.onClear(noteVal); } catch (e) {}
+        }
       }
 
-      doSave(ids, null);
+      doSave(ids, extra);
     });
 
-    // Build the PUT body (the chosen ids + any extra fields the beforeSave
-    // hook injected) and write it. Extracted so the beforeSave path can call
-    // it directly after resolving, instead of re-entering the click handler.
+    // Build the PUT body (the chosen ids + any extra fields, e.g. the
+    // integrated clearNote survey note) and write it. Extracted so the
+    // confirm handler stays a thin validate-then-save shell.
     function doSave(ids, extra) {
       // Always send connection fields as arrays — Knack\'s REST API
       // accepts arrays for single- and multi-connection writes alike,
@@ -496,7 +565,7 @@
       // [id] (or [] to clear) is the safe canonical form.
       var body = {};
       body[opts.fieldKey] = ids;
-      // Extra fields from beforeSave ride in the same PUT.
+      // Extra fields (e.g. the integrated clearNote) ride in the same PUT.
       if (extra) {
         for (var _ek in extra) {
           if (Object.prototype.hasOwnProperty.call(extra, _ek)) body[_ek] = extra[_ek];
