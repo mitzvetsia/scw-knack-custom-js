@@ -805,8 +805,35 @@
     return item;
   }
 
+  // ── Global feedback toast + in-flight guard ──────────────
+  // Accept/Reject fire a webhook + several PUTs; without prominent feedback
+  // the small in-card spinner is easy to miss, so users mash the buttons and
+  // it feels like the page froze. A fixed toast + a one-at-a-time guard fix it.
+  var _busy = false;
+  function showToast(msg, kind) {
+    var t = document.getElementById(P + '-toast');
+    if (!t) { t = document.createElement('div'); t.id = P + '-toast'; document.body.appendChild(t); }
+    t.className = P + '-toast is-show' + (kind ? ' ' + P + '-toast--' + kind : '');
+    t.innerHTML = (kind === 'work' ? '<span class="' + P + '-toast-spin"></span>' : '') +
+      '<span>' + escHtml(msg) + '</span>';
+    return t;
+  }
+  function hideToast(delay) {
+    var t = document.getElementById(P + '-toast');
+    if (!t) return;
+    setTimeout(function () { if (t) t.classList.remove('is-show'); }, delay || 0);
+  }
+
   function submitRevisionAction(revisionId, action, reason, wrapEl, extra) {
     extra = extra || {};
+    // Guard against button-mashing / overlapping submits — one webhook at a
+    // time (the success path refetches + re-injects, which would clobber a
+    // second in-flight submit anyway).
+    if (_busy) { showToast('A change request is already being submitted…', 'work'); return; }
+    _busy = true;
+    var outcomeLabel = extra.outcome === 'rejected' ? 'Rejecting' :
+      extra.outcome === 'accepted with changes' ? 'Approving (with changes)' : 'Approving';
+    showToast(outcomeLabel + ' change request…', 'work');
     var result = buildRevisionMap();
     var revEntry = null, all = [];
     Object.keys(result.map).forEach(function (k) { result.map[k].forEach(function (e) { all.push(e); }); });
@@ -829,7 +856,7 @@
 
     var webhookUrl = (window.SCW && window.SCW.bidReview && window.SCW.bidReview.CONFIG)
       ? window.SCW.bidReview.CONFIG.revisionResponseWebhook : '';
-    if (!webhookUrl) { console.error('[ws-v2-rev] no webhook URL configured'); return; }
+    if (!webhookUrl) { console.error('[ws-v2-rev] no webhook URL configured'); _busy = false; hideToast(); showToast('Cannot submit — no webhook configured.', 'err'); hideToast(4000); return; }
 
     wrapEl.innerHTML = '';
     var spinner = document.createElement('div');
@@ -860,6 +887,13 @@
         wrapEl.innerHTML = '';
         wrapEl.appendChild(badge);
 
+        _busy = false;
+        var okMsg = extra.outcome === 'rejected' ? 'Change request rejected ✓'
+          : extra.outcome === 'accepted with changes' ? 'Approved with changes ✓'
+          : 'Change request approved ✓';
+        showToast(okMsg, 'ok');
+        hideToast(3000);
+
         if (typeof resp === 'string') { try { resp = JSON.parse(resp); } catch (e) {} }
         if (resp && resp.success) {
           setTimeout(function () {
@@ -884,6 +918,9 @@
       },
       error: function (xhr) {
         console.error('[ws-v2-rev]', action, 'failed', revisionId, xhr.status);
+        _busy = false;
+        showToast('Submit failed — please reload and try again.', 'err');
+        hideToast(5000);
         wrapEl.innerHTML = '';
         var errBadge = document.createElement('div');
         errBadge.className = P + '-status';
@@ -1165,8 +1202,12 @@
    *  request, plus a direct status PUT per record (mirrors v1 fireRevisionAction). */
   function fireBulkAction(action, revs, btn) {
     if (!revs.length) return;
+    if (_busy) { showToast('A change request is already being submitted…', 'work'); return; }
+    _busy = true;
     btn.disabled = true;
     btn.textContent = action === 'accept' ? 'Accepting…' : 'Rejecting…';
+    showToast((action === 'accept' ? 'Approving' : 'Rejecting') + ' ' + revs.length +
+      ' change request' + (revs.length === 1 ? '' : 's') + '…', 'work');
 
     var byParent = {};
     for (var i = 0; i < revs.length; i++) {
@@ -1186,14 +1227,18 @@
 
     var webhookUrl = (window.SCW && window.SCW.bidReview && window.SCW.bidReview.CONFIG)
       ? window.SCW.bidReview.CONFIG.revisionResponseWebhook : '';
-    if (!webhookUrl) { console.error('[ws-v2-rev] no webhook URL configured'); btn.disabled = false; return; }
+    if (!webhookUrl) { console.error('[ws-v2-rev] no webhook URL configured'); btn.disabled = false; _busy = false; showToast('Cannot submit — no webhook configured.', 'err'); hideToast(4000); return; }
 
     var statusVal = action === 'accept' ? 'Accepted' : 'Rejected';
     var statusData = {}; statusData[CFG.fields.status.key] = statusVal;
     var done = 0, total = revs.length;
 
     function refreshAll() {
+      _busy = false;
       btn.textContent = action === 'accept' ? 'Accepted ✓' : 'Rejected ✓';
+      showToast(revs.length + ' change request' + (revs.length === 1 ? '' : 's') +
+        ' ' + (action === 'accept' ? 'approved' : 'rejected') + ' ✓', 'ok');
+      hideToast(3000);
       setTimeout(function () {
         if (Knack.views[CFG.revisionView] && Knack.views[CFG.revisionView].model) Knack.views[CFG.revisionView].model.fetch();
         if (Knack.views[CFG.targetView] && Knack.views[CFG.targetView].model) Knack.views[CFG.targetView].model.fetch();
@@ -1521,6 +1566,24 @@
       '.' + P + '-banner--add    { background: #dcfce7; color: #166534; border-bottom-color: #bbf7d0; }',
       '.' + P + '-banner--remove { background: #fee2e2; color: #991b1b; border-bottom-color: #fecaca; }',
       '.' + P + '-banner--revise { background: #dbeafe; color: #1e40af; border-bottom-color: #bfdbfe; }',
+      /* Global feedback toast (bottom-right) for accept/reject submits. */
+      '.' + P + '-toast {',
+      '  position: fixed; right: 18px; bottom: 18px; z-index: 100001;',
+      '  display: none; align-items: center; gap: 8px;',
+      '  max-width: 340px; padding: 11px 16px; border-radius: 8px;',
+      '  background: #0f172a; color: #fff; font: 600 13px system-ui, sans-serif;',
+      '  box-shadow: 0 10px 30px rgba(0,0,0,0.28);',
+      '}',
+      '.' + P + '-toast.is-show { display: flex; }',
+      '.' + P + '-toast--ok  { background: #166534; }',
+      '.' + P + '-toast--err { background: #b91c1c; }',
+      '.' + P + '-toast--work { background: #1e40af; }',
+      '.' + P + '-toast-spin {',
+      '  width: 14px; height: 14px; flex: 0 0 auto; border-radius: 50%;',
+      '  border: 2px solid rgba(255,255,255,0.4); border-top-color: #fff;',
+      '  animation: scwWsV2RevSpin 0.7s linear infinite;',
+      '}',
+      '@keyframes scwWsV2RevSpin { to { transform: rotate(360deg); } }',
       /* Collapsible summary panel (top) */
       '.' + BAR_CLS + ' {',
       '  margin: 0 0 10px; border: 1px solid #93c5fd; border-radius: 8px;',
