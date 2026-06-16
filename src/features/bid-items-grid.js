@@ -24,6 +24,7 @@
           prefix: 'field_2361',
           number: 'field_2362',
           field2409: 'field_2409',
+          product: 'field_2365',  // product / item name — shown above the labor desc
           l2Sort: 'field_2218',
           l2Selector: 'field_2228',
           conduit: 'field_2368',  // per-row conduit feet — summed into the L3 drop header
@@ -409,6 +410,9 @@ tr.scw-level-total-row.scw-subtotal .scw-level-total-label { white-space: nowrap
 .scw-l3-2409 { display: inline; line-height: 1.2; }
 .scw-l3-2409 b,
 .scw-l3-2409 strong { font-weight: 800 !important; }
+
+/* Product name(s) shown above the labor description on an L3 header. */
+.scw-l3-product { font-weight: 800 !important; color: #07467c; line-height: 1.3; }
 
 /* Hide the raw field_2409 column (data lives in data rows for injection) */
 th.field_2409, td.field_2409 { display: none !important; }
@@ -1150,6 +1154,55 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   }
 
   // ============================================================
+  // FEATURE: Product-name injection (L3) — show WHAT is being installed
+  // ============================================================
+  // The bid grid hides the per-product data rows and shows only L3 (labor-
+  // description) headers, so the actual products were invisible — and a group
+  // of products with a blank labor description rendered as an empty header.
+  // We surface the distinct product name(s) (field_2365) of the group's rows
+  // as a bold line ABOVE the labor description. Skipped for cameras ('drop',
+  // already listed by the concat feature) and Mounting Hardware (its own
+  // concat); Services/Assumptions return before this runs.
+  function injectProductNamesIntoLevel3Header(ctx, { $groupRow, $rowsToSum, runId }) {
+    if (!ctx.keys.product) return;
+    if ($groupRow.data('scwProdNamesRunId') === runId) return;
+    $groupRow.data('scwProdNamesRunId', runId);
+
+    const labelCell = $groupRow[0].querySelector('td:first-child');
+    if (!labelCell) return;
+
+    // Distinct product names in row order, with a count when repeated.
+    const counts = new Map();
+    $rowsToSum.each(function () {
+      const cell = this.querySelector(`td.${ctx.keys.product}`);
+      if (!cell) return;
+      const name = norm(cell.textContent || '');
+      if (!name) return;
+      counts.set(name, (counts.get(name) || 0) + 1);
+    });
+    if (!counts.size) return;
+
+    const parts = [];
+    counts.forEach((count, name) => {
+      parts.push(escapeHtml(name) + (count > 1 ? ` (×${count})` : ''));
+    });
+
+    // Idempotent: strip any prior injection (+ its trailing <br>) first.
+    const prev = labelCell.querySelector('.scw-l3-product');
+    if (prev) {
+      const br = prev.nextElementSibling;
+      if (br && br.tagName === 'BR') br.remove();
+      prev.remove();
+    }
+
+    const wrap = document.createElement('span');
+    wrap.className = 'scw-l3-product';
+    wrap.innerHTML = parts.join('<br>');
+    labelCell.insertBefore(document.createElement('br'), labelCell.firstChild);
+    labelCell.insertBefore(wrap, labelCell.firstChild);
+  }
+
+  // ============================================================
   // FEATURE: Concat injection (L3 drop)
   // ============================================================
 
@@ -1722,6 +1775,12 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         if (isMounting) {
           $groupRow.addClass(ctx.l2Specials.classOnLevel3);
           injectConcatIntoLevel3HeaderForMounting(ctx, caches, { $groupRow, $rowsToSum, runId });
+        }
+
+        // Show the product name(s) above the labor description — except for
+        // cameras ('drop', listed by concat) and Mounting Hardware (own concat).
+        if (!isMounting && sectionContext.key !== 'drop') {
+          injectProductNamesIntoLevel3Header(ctx, { $groupRow, $rowsToSum, runId });
         }
 
         const qty = totals[qtyKey];
