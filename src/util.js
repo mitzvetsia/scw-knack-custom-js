@@ -281,9 +281,23 @@ window.SCW = window.SCW || {};
     document.body.appendChild(el);
 
     document.getElementById('scw-session-logout').addEventListener('click', function () {
-      // Save current page so we can return after re-login
-      sessionStorage.setItem(RETURN_KEY, window.location.hash);
-      window.location.hash = '#logout';
+      // Save current page so we can return after re-login.
+      try { sessionStorage.setItem(RETURN_KEY, window.location.hash); } catch (e) {}
+      // Knack's canonical logout — clears the session and routes to login.
+      // (#logout is NOT a real route in every app, so it just dumped users to
+      // the home page.) Fall back to a rendered logout link, then a reload.
+      try {
+        if (typeof Knack !== 'undefined' && typeof Knack.handleLogout === 'function') {
+          Knack.handleLogout();
+          return;
+        }
+      } catch (e) { /* fall through */ }
+      var logoutLink = document.querySelector(
+        'a.kn-log-out, a[href*="logout" i], a[href$="#logout"]');
+      if (logoutLink) { logoutLink.click(); return; }
+      // Last resort: reload — if the session cookie is still valid Knack mints
+      // a fresh token on load; otherwise it drops the user at the login screen.
+      window.location.reload();
     });
     document.getElementById('scw-session-dismiss').addEventListener('click', function () {
       el.remove();
