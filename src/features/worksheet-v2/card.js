@@ -1379,10 +1379,10 @@
     else if (cat === 'assumptions')  productSlot = empty('scw-ws-v2-cell--product');
     else                             productSlot = surveyProductCell(rec, F);
 
-    // Two fill cells: Survey Notes (LEFT) then Labor Description.
-    var surveyNotesCell = surveyFill(rec, viewKey, F.surveyNotes || 'field_2412',
-      'Survey notes', 'scw-ws-v2-cell--survey-notes');
-    var laborDescCell   = surveyFill(rec, viewKey, F.laborDesc || 'field_2409',
+    // Single fill cell — Labor Description. Survey Notes + SCW Notes are
+    // stacked together in the detail panel (cleaner than crowding the
+    // summary row, and keeps the two notes fields adjacent).
+    var laborDescCell = surveyFill(rec, viewKey, F.laborDesc || 'field_2409',
       isCam ? 'Labor description' : 'Description');
 
     // Slot 5 (qty/chips): cam → cabling chips; assumptions → blank;
@@ -1418,7 +1418,6 @@
       chevronCell(rec) +
       labelSlot +
       productSlot +
-      surveyNotesCell +
       laborDescCell +
       slot5 +
       laborCell +
@@ -1453,11 +1452,18 @@
 
     items += sdItem(detailReadOnly(rec, F.mounting || 'field_2463', 'Mounting Hardware'),
       'scw-ws-v2-sd--wide');
-    items += sdItem(detailTextArea(rec, viewKey, F.scwNotes || 'field_2418', 'SCW Notes'),
-      'scw-ws-v2-sd--notes');
+
+    // Notes stack — Survey Notes on top, SCW Notes directly under it. Both
+    // editable; kept together in their own section below the info fields.
+    var notes =
+      '<div class="scw-ws-v2-survey-notes-stack">' +
+        detailTextArea(rec, viewKey, F.surveyNotes || 'field_2412', 'Survey Notes') +
+        detailTextArea(rec, viewKey, F.scwNotes    || 'field_2418', 'SCW Notes') +
+      '</div>';
 
     return '<div class="scw-ws-v2-detail">' +
       '<div class="scw-ws-v2-survey-detail">' + items + '</div>' +
+      notes +
     '</div>';
   }
 

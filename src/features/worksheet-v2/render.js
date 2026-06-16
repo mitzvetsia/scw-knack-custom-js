@@ -267,14 +267,13 @@
         (salesMoney  ? ' scw-ws-v2-col-header--sales'  : '') +
         (surveyMoney ? ' scw-ws-v2-col-header--survey' : '');
       if (surveyMoney) {
-        // Survey 11-track header mirroring v1 view_3505 column order:
-        // chevron · Drop · Product · Survey Notes · Description · Qty/Chips ·
-        // Labor · Ext · Bid · warn · trash.
+        // Survey 10-track header: chevron · Drop · Product · Description ·
+        // Qty/Chips · Labor · Ext · Bid · warn · trash. (Survey + SCW Notes
+        // live in the detail panel, not the summary row.)
         hdr.innerHTML =
           '<span></span>' +
           '<span>Drop</span>' +
           '<span>Product</span>' +
-          '<span>Survey Notes</span>' +
           '<span>Description</span>' +
           '<span>Qty</span>' +
           '<span class="scw-ws-v2-col-header-total">Labor</span>' +
