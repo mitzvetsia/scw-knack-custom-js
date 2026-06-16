@@ -226,6 +226,10 @@
     // refreshes. No `labor` logical key on the SOW object → no-op there.
     if (EF.labor) RECALC_DEPS[EF.labor] = 1;
 
+    // Two-arg .then(onOk, onErr) — NOT .then().catch(). $.Deferred promises
+    // (and any fetch polyfill in the wrapper chain) may not expose .catch,
+    // which threw "Uncaught TypeError: ...catch is not a function" and broke
+    // the save's error handling in some users' environments.
     savePut(viewKey, recordId, fieldKey, newValue)
       .then(function (resp) {
         // SCW.knackAjax doesn\'t auto-fire knack-cell-update like
@@ -258,8 +262,8 @@
           }
         }
         if (ns.data && typeof ns.data.notify === 'function') ns.data.notify(viewKey);
-      })
-      .catch(function (xhr) {
+      },
+      function (xhr) {
         console.warn('[scw-ws-v2] save failed', { recordId: recordId, fieldKey: fieldKey, xhr: xhr });
         // Revert the optimistic model patch + the input.
         try {

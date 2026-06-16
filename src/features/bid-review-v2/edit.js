@@ -70,6 +70,9 @@
       }
     } catch (e) { /* ignore */ }
 
+    // Two-arg .then(onOk, onErr) — NOT .then().catch(): $.Deferred promises
+    // (and fetch polyfills in the wrapper chain) may lack .catch, which threw
+    // "Uncaught TypeError: ...catch is not a function" in some environments.
     savePut(viewKey, recordId, fieldKey, newValue)
       .then(function (resp) {
         try {
@@ -80,8 +83,8 @@
         if (ns.data && typeof ns.data.notifyDebounced === 'function') {
           ns.data.notifyDebounced();
         }
-      })
-      .catch(function (xhr) {
+      },
+      function (xhr) {
         console.warn('[scw-br-v2] save failed', { recordId: recordId, fieldKey: fieldKey, xhr: xhr });
         // Revert the optimistic model patch + the input.
         try {
