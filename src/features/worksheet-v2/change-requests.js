@@ -965,22 +965,43 @@
   }
 
   function makeOrphanCard(rev) {
+    var json = rev.changeJson || {};
+    var action = json.action || 'add';
+    var actionLabel = action === 'remove' ? 'REMOVE' : action === 'revise' ? 'REVISE' : 'ADD';
     var card = document.createElement('div');
-    card.className = P + '-orphan-card';
+    card.className = P + '-orphan-card ' + P + '-orphan-card--' + action;
     if (rev.id) card.setAttribute('data-rev-id', rev.id);
+
+    // Header ribbon — reads as a line-item card that is clearly a change
+    // request: action tag + item label + "Change request" caption.
+    var head = document.createElement('div');
+    head.className = P + '-orphan-head';
+    head.innerHTML =
+      '<span class="' + P + '-orphan-tag ' + P + '-orphan-tag--' + action + '">' + actionLabel + '</span>' +
+      '<span class="' + P + '-orphan-name">' +
+        escHtml(json.displayLabel || json.productName || 'New line item') + '</span>' +
+      '<span class="' + P + '-orphan-cr">Change request</span>';
+    card.appendChild(head);
+
+    // Body — the field diff (pre-built HTML), or a fallback line.
     if (rev.changeHtml) {
       var htmlWrap = document.createElement('div');
       htmlWrap.className = P + '-html-card';
       htmlWrap.innerHTML = rev.changeHtml;
       postProcessHtmlCard(htmlWrap);
+      // Flatten the pre-built green box so it blends into our card chrome,
+      // and drop its internal badge+name row (already shown in our header).
+      var inner = htmlWrap.querySelector('div[style*="background"]');
+      if (inner) {
+        inner.style.background = 'transparent';
+        inner.style.border = '0';
+        inner.style.padding = '0';
+        var firstRow = inner.querySelector('div');
+        if (firstRow && firstRow.querySelector('span')) firstRow.style.display = 'none';
+      }
       card.appendChild(htmlWrap);
-    } else {
-      var json = rev.changeJson || {};
-      var head = document.createElement('div');
-      head.className = P + '-orphan-title';
-      head.textContent = json.displayLabel || json.productName || 'Add request';
-      card.appendChild(head);
     }
+
     card.appendChild(buildActionButtons(rev.id, rev.changeJson));
     return card;
   }
@@ -1154,14 +1175,22 @@
     if (!total) fireWebhook();
   }
 
-  function buildSummaryPanel(container, revMap, orphaned) {
-    var existing = container.querySelector('.' + BAR_CLS);
-    if (existing) existing.remove();
+  var _barSig = '';
 
+  function buildSummaryPanel(container, revMap, orphaned) {
     var all = [];
     Object.keys(revMap).forEach(function (k) { revMap[k].forEach(function (e) { all.push(e); }); });
     orphaned.forEach(function (e) { all.push(e); });
-    if (!all.length) return;
+
+    var existing = container.querySelector('.' + BAR_CLS);
+    if (!all.length) { if (existing) existing.remove(); _barSig = ''; return; }
+
+    // Rebuild only when the revision set changes — otherwise keep the live bar
+    // (and its click handler) so frequent re-injects don't swallow clicks.
+    var sig = all.map(function (r) { return r.id + ':' + actionOf([r]); }).sort().join('|');
+    if (existing && sig === _barSig) return;
+    if (existing) existing.remove();
+    _barSig = sig;
 
     var bar = document.createElement('div');
     bar.className = BAR_CLS;
@@ -1249,8 +1278,13 @@
   }
 
   function cleanup(container) {
+    // NOTE: the summary bar (.BAR_CLS) is intentionally NOT torn down here.
+    // It lives outside .scw-ws-v2-body (so v2 rebuilds don't wipe it) and is
+    // only rebuilt by buildSummaryPanel when the revision set actually changes
+    // — tearing it down on every re-inject made it intermittently swallow the
+    // open/close click while it was mid-rebuild.
     var sel = '.' + STRIP_CLS + ', .' + BADGE_CLS + ', .' + ORPHAN_SEC +
-              ', .' + BAR_CLS + ', .' + P + '-orphan-card--grouped';
+              ', .' + P + '-orphan-card--grouped';
     var nodes = container.querySelectorAll(sel);
     for (var i = 0; i < nodes.length; i++) nodes[i].remove();
     var flagged = container.querySelectorAll('[' + INJECTED + ']');
@@ -1414,10 +1448,26 @@
       '  border: 1px solid #bbf7d0; border-radius: 8px;',
       '}',
       '.' + P + '-orphan-header { font: 700 12px system-ui, sans-serif; color: #166534; margin-bottom: 8px; }',
-      '.' + P + '-orphan-card { background: #fff; border: 1px solid #d1fae5; border-radius: 6px; padding: 8px 10px; margin-bottom: 8px; }',
+      // Orphan ADD/REVISE/REMOVE card — line-item card chrome + action stripe.
+      '.' + P + '-orphan-card {',
+      '  background: #fff; border: 1px solid #e2e8f0; border-left: 4px solid #16a34a;',
+      '  border-radius: 6px; padding: 8px 10px; margin-bottom: 8px;',
+      '}',
       '.' + P + '-orphan-card:last-child { margin-bottom: 0; }',
-      '.' + P + '-orphan-title { font-weight: 600; margin-bottom: 6px; color: #166534; }',
       '.' + P + '-orphan-card--grouped { margin: 6px 8px; }',
+      '.' + P + '-orphan-card--remove { border-left-color: #dc2626; }',
+      '.' + P + '-orphan-card--revise { border-left-color: #3b82f6; }',
+      '.' + P + '-orphan-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }',
+      '.' + P + '-orphan-tag {',
+      '  display: inline-block; padding: 1px 7px; border-radius: 4px;',
+      '  font: 700 10px system-ui, sans-serif; letter-spacing: 0.5px;',
+      '  background: #dcfce7; color: #166534;',
+      '}',
+      '.' + P + '-orphan-tag--remove { background: #fee2e2; color: #991b1b; }',
+      '.' + P + '-orphan-tag--revise { background: #dbeafe; color: #1e40af; }',
+      '.' + P + '-orphan-name { font: 600 13px system-ui, sans-serif; color: #0f172a; flex: 1 1 auto; }',
+      '.' + P + '-orphan-cr { font: 600 10px system-ui, sans-serif; text-transform: uppercase; letter-spacing: 0.04em; color: #94a3b8; }',
+      '.' + P + '-orphan-card .' + P + '-actions { margin-top: 6px; }',
       /* Collapsible summary panel (top) */
       '.' + BAR_CLS + ' {',
       '  margin: 0 0 10px; border: 1px solid #93c5fd; border-radius: 8px;',
