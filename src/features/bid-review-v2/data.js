@@ -133,6 +133,26 @@
       document.documentElement.setAttribute('data-scw-br-v2-cascade-bound', '1');
       document.addEventListener('scw-cascade-idle', refetchDebounced);
     }
+
+    // The expand-panel SOW editor is an embedded worksheet-v2 card that writes
+    // through worksheet-v2/edit.js. That commits via SCW.knackAjax (no
+    // knack-cell-update event) and only calls worksheet-v2's OWN data.notify —
+    // which this grid wouldn't otherwise hear. Recalc fields additionally
+    // refetch + fire knack-view-render (heard above), but PLAIN field edits
+    // (labor desc, SOW connection, etc.) fire nothing we catch, so the grid
+    // stayed stale until a manual refresh. Subscribe to worksheet-v2's notify
+    // for our source views so every embedded edit re-renders this grid too.
+    if (!document.documentElement.hasAttribute('data-scw-br-v2-wsv2-bound')) {
+      document.documentElement.setAttribute('data-scw-br-v2-wsv2-bound', '1');
+      try {
+        var wsData = window.SCW && SCW.worksheetV2 && SCW.worksheetV2.data;
+        if (wsData && typeof wsData.subscribe === 'function') {
+          keys.forEach(function (key) {
+            wsData.subscribe(key, function () { notifyDebounced(); });
+          });
+        }
+      } catch (e) { /* worksheet-v2 absent → embedded editor unavailable anyway */ }
+    }
   }
 
   /** Report each source view's loaded record count vs. its page cap.
