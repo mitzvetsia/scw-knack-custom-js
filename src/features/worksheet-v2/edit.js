@@ -237,6 +237,14 @@
             SCW.syncKnackModel(viewKey, recordId, resp, fieldKey, newValue);
           }
         } catch (e) { /* ignore */ }
+        // Let external grids that embed this card (e.g. the bid-review-v2
+        // comparison grid's expand-panel editor) know a record was saved so
+        // they can refetch + rebuild. SCW.knackAjax fires no knack-cell-update,
+        // and our internal notify only reaches worksheet-v2 subscribers.
+        try {
+          $(document).trigger('scw-ws-v2-record-saved',
+            [{ viewKey: viewKey, recordId: recordId, fieldKey: fieldKey }]);
+        } catch (e) { /* ignore */ }
         // Fee depends on a server-side formula recompute. The per-
         // record fetch is unreliable on this view, so refetch the
         // whole view\'s model — heavier but the only path that

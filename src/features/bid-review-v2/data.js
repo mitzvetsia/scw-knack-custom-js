@@ -135,23 +135,21 @@
     }
 
     // The expand-panel SOW editor is an embedded worksheet-v2 card that writes
-    // through worksheet-v2/edit.js. That commits via SCW.knackAjax (no
-    // knack-cell-update event) and only calls worksheet-v2's OWN data.notify —
-    // which this grid wouldn't otherwise hear. Recalc fields additionally
-    // refetch + fire knack-view-render (heard above), but PLAIN field edits
-    // (labor desc, SOW connection, etc.) fire nothing we catch, so the grid
-    // stayed stale until a manual refresh. Subscribe to worksheet-v2's notify
-    // for our source views so every embedded edit re-renders this grid too.
-    if (!document.documentElement.hasAttribute('data-scw-br-v2-wsv2-bound')) {
-      document.documentElement.setAttribute('data-scw-br-v2-wsv2-bound', '1');
-      try {
-        var wsData = window.SCW && SCW.worksheetV2 && SCW.worksheetV2.data;
-        if (wsData && typeof wsData.subscribe === 'function') {
-          keys.forEach(function (key) {
-            wsData.subscribe(key, function () { notifyDebounced(); });
-          });
-        }
-      } catch (e) { /* worksheet-v2 absent → embedded editor unavailable anyway */ }
+    // through worksheet-v2/edit.js. It commits via SCW.knackAjax (no
+    // knack-cell-update event) and the optimistic local patch isn't reliably
+    // reflected in this grid's read-only SOW cell — so a saved edit only showed
+    // after a manual refresh. edit.js fires scw-ws-v2-record-saved on success;
+    // refetch the source views (server-fresh) and rebuild. refetchDebounced
+    // coalesces and guards on the grid being mounted; renderSnapshot defers
+    // while the panel still has focus and flushes when the row collapses.
+    if (!document.documentElement.hasAttribute('data-scw-br-v2-wsv2saved-bound')) {
+      document.documentElement.setAttribute('data-scw-br-v2-wsv2saved-bound', '1');
+      $(document).on('scw-ws-v2-record-saved', function (e, info) {
+        if (!info || !info.viewKey) return;
+        var srcKeys = (ns.CONFIG && ns.CONFIG.sourceViewKeys) || [];
+        if (srcKeys.indexOf(info.viewKey) === -1) return;
+        refetchDebounced();
+      });
     }
   }
 
