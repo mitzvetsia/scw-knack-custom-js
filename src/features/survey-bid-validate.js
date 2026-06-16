@@ -813,6 +813,28 @@
       });
   });
 
+  // ── Public suppression hook for the v2 worksheet bid picker ──────────
+  // When worksheet-v2 clears the Bid (field_2415) it writes the required
+  // survey note (field_2412) in the SAME PUT, then dispatches a synthetic
+  // knack-cell-update so the cascade/cards refresh. That event re-enters
+  // onBidCellUpdate, which sees the bid empty and the LOCAL model's note
+  // still stale (the picker only syncs field_2415, not field_2412) — so it
+  // would pop a SECOND "note required" modal whose empty textarea then
+  // clobbers the note we just wrote. The v2 clear path calls this first to
+  // mark the record as its own write so the gate skips it. Auto-clears so a
+  // dropped cell-update can't permanently suppress the gate for that record.
+  SCW.surveyBidValidate = SCW.surveyBidValidate || {};
+  SCW.surveyBidValidate.markOwnBidWrite = function (recordId, noteText) {
+    if (!recordId) return;
+    _bidOwnPuts[recordId] = true;
+    // Prime the cache with the note so any later read reflects it, and so a
+    // subsequent genuine clear still gates correctly.
+    if (noteText != null) {
+      try { _bidCache[recordId] = _bidCache[recordId] || []; } catch (e) {}
+    }
+    setTimeout(function () { delete _bidOwnPuts[recordId]; }, 8000);
+  };
+
   // ── TODO: bulk path for field_2150 (Sub Bid) ─────────────────
   // The preSaveHook above gates Sub Bid commits row-by-row. KTL bulk
   // edits that set field_2150 still fire PUTs through XHR and bypass

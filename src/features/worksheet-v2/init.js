@@ -1060,11 +1060,20 @@
             multi: true, onSaved: surveyRefetch,
             beforeSave: function (chosenIds) {
               if (chosenIds && chosenIds.length) return null;   // not clearing
+              // We're clearing the bid → write the note in the SAME PUT, and
+              // suppress survey-bid-validate's knack-cell-update gate so it
+              // doesn't re-prompt (and clobber) on the picker's own refresh.
+              var _suppress = function (n) {
+                if (SCW.surveyBidValidate &&
+                    typeof SCW.surveyBidValidate.markOwnBidWrite === 'function') {
+                  SCW.surveyBidValidate.markOwnBidWrite(recordId, n);
+                }
+              };
               var existingRaw = current ? current[_noteKey] : '';
               var existing = (existingRaw != null)
                 ? String(existingRaw).replace(/<[^>]*>/g, '').trim() : '';
-              if (existing) { var e = {}; e[_noteKey] = existingRaw; return e; } // carry existing
-              if (typeof ns.promptNote !== 'function') return null;
+              if (existing) { _suppress(existingRaw); var e = {}; e[_noteKey] = existingRaw; return e; } // carry existing
+              if (typeof ns.promptNote !== 'function') { _suppress(''); return null; }
               return ns.promptNote({
                 title: 'Survey note required',
                 body: '<p>You’re removing this item from the bid. Capture a survey ' +
@@ -1072,6 +1081,7 @@
                 placeholder: 'e.g. Item not needed per customer; duplicate of E-014; etc.'
               }).then(function (note) {
                 if (note == null) return false;   // cancelled → abort save
+                _suppress(note);
                 var ex = {}; ex[_noteKey] = note; return ex;
               });
             }
