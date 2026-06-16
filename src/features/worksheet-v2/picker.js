@@ -459,9 +459,10 @@
       // so survey-bid-validate's gate skips this PUT instead of aborting it and
       // leaving the modal stuck on "Saving…"). It may prompt the user and
       // resolve with an extra-data object, null/{} for "nothing extra", or
-      // `false` to abort the save. Runs once; we re-enter the handler after.
-      if (typeof opts.beforeSave === 'function' && !this.__scwBeforeDone) {
-        var self = this;
+      // `false` to abort the save. We run it ONCE then call doSave() directly —
+      // NOT by re-clicking confirmBtn (a disabled button never fires click,
+      // which silently dropped the PUT entirely).
+      if (typeof opts.beforeSave === 'function') {
         confirmBtn.disabled = true;
         cancelBtn.disabled  = true;
         setStatus('Saving…');
@@ -472,9 +473,7 @@
             setStatus('');
             return;
           }
-          self.__scwExtra = (extra && typeof extra === 'object') ? extra : null;
-          self.__scwBeforeDone = true;
-          self.click();   // re-enter — now skips beforeSave and PUTs with __scwExtra
+          doSave(ids, (extra && typeof extra === 'object') ? extra : null);
         }, function () {
           confirmBtn.disabled = false;
           cancelBtn.disabled  = false;
@@ -483,6 +482,13 @@
         return;
       }
 
+      doSave(ids, null);
+    });
+
+    // Build the PUT body (the chosen ids + any extra fields the beforeSave
+    // hook injected) and write it. Extracted so the beforeSave path can call
+    // it directly after resolving, instead of re-entering the click handler.
+    function doSave(ids, extra) {
       // Always send connection fields as arrays — Knack\'s REST API
       // accepts arrays for single- and multi-connection writes alike,
       // but a bare string can silently no-op on connection fields
@@ -491,10 +497,9 @@
       var body = {};
       body[opts.fieldKey] = ids;
       // Extra fields from beforeSave ride in the same PUT.
-      var _extra = this.__scwExtra;
-      if (_extra) {
-        for (var _ek in _extra) {
-          if (Object.prototype.hasOwnProperty.call(_extra, _ek)) body[_ek] = _extra[_ek];
+      if (extra) {
+        for (var _ek in extra) {
+          if (Object.prototype.hasOwnProperty.call(extra, _ek)) body[_ek] = extra[_ek];
         }
       }
 
@@ -590,7 +595,7 @@
         confirmBtn.disabled = false;
         cancelBtn.disabled  = false;
       }
-    });
+    }
 
     document.body.appendChild(overlay);
   }
