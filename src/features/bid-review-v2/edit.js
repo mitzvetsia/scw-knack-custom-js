@@ -59,6 +59,17 @@
     input.classList.add(SAV_CLS);
     setTimeout(function () { input.classList.remove(SAV_CLS); }, FLASH_MS);
 
+    // Optimistically patch the local model NOW, before the PUT resolves, so any
+    // re-render in the meantime (closing the row, a deferred rebuild, a sibling
+    // edit) reflects the typed value instead of reverting to the stale model.
+    // The success handler re-patches with the server response (for recomputes);
+    // the error handler reverts.
+    try {
+      if (typeof SCW.syncKnackModel === 'function') {
+        SCW.syncKnackModel(viewKey, recordId, {}, fieldKey, newValue);
+      }
+    } catch (e) { /* ignore */ }
+
     savePut(viewKey, recordId, fieldKey, newValue)
       .then(function (resp) {
         try {
@@ -72,9 +83,18 @@
       })
       .catch(function (xhr) {
         console.warn('[scw-br-v2] save failed', { recordId: recordId, fieldKey: fieldKey, xhr: xhr });
+        // Revert the optimistic model patch + the input.
+        try {
+          if (typeof SCW.syncKnackModel === 'function') {
+            SCW.syncKnackModel(viewKey, recordId, {}, fieldKey, prevValue);
+          }
+        } catch (e) { /* ignore */ }
         input.classList.add(ERR_CLS);
         input.value = prevValue;
         input._scwBrV2Prev = prevValue;
+        if (ns.data && typeof ns.data.notifyDebounced === 'function') {
+          ns.data.notifyDebounced();
+        }
       });
   }
 

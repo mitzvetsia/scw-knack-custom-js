@@ -2084,25 +2084,48 @@
   }
 
   /**
+   * Read a group header's MDF/IDF label. Robust to whether group-collapse has
+   * wrapped the cell (.scw-group-inner) or not, and ignores our injected
+   * chrome (collapse chevron + count/warning badges). Returns normalized text.
+   */
+  function groupHeaderLabel(headerTr) {
+    var src = headerTr.querySelector('.scw-group-inner') ||
+              headerTr.querySelector('td, th');
+    if (!src) return '';
+    // Clone so we can strip injected chrome without touching the live DOM.
+    var clone = src.cloneNode(true);
+    var drop = clone.querySelectorAll(
+      '.scw-collapse-icon, .scw-group-badges, .scw-record-count, .scw-warning-count');
+    for (var i = 0; i < drop.length; i++) {
+      if (drop[i].parentNode) drop[i].parentNode.removeChild(drop[i]);
+    }
+    return (clone.textContent || '').replace(/\s+/g, ' ').trim();
+  }
+
+  /**
    * Find the group header <tr> whose text matches the given MDF/IDF label.
    * Returns the header row or null.
    */
   function findGroupHeader(viewEl, mdfIdf) {
     if (!mdfIdf) return null;
     var headers = viewEl.querySelectorAll('tr.kn-table-group');
-    var target = mdfIdf.trim().toLowerCase();
+    var target = String(mdfIdf).replace(/\s+/g, ' ').trim().toLowerCase();
+    if (!target) return null;
+    var labels = [];
+    // 1) Exact (normalized) match.
     for (var i = 0; i < headers.length; i++) {
-      var inner = headers[i].querySelector('.scw-group-inner');
-      if (!inner) continue;
-      // The group label is a text node between the collapse icon and the badges span.
-      // Walk child nodes to extract just the text, ignoring badges/counts.
-      var label = '';
-      for (var ci = 0; ci < inner.childNodes.length; ci++) {
-        var n = inner.childNodes[ci];
-        if (n.nodeType === 3) label += n.textContent; // text nodes only
-      }
-      if (label.trim().toLowerCase() === target) return headers[i];
+      var lbl = groupHeaderLabel(headers[i]).toLowerCase();
+      labels.push(lbl);
+      if (lbl === target) return headers[i];
     }
+    // 2) Containment fallback — handles a prefix/suffix one side carries that
+    //    the other doesn't (e.g. a trailing count, or an "MDF/IDF:" lead-in).
+    for (var j = 0; j < headers.length; j++) {
+      var l = labels[j];
+      if (l && (l.indexOf(target) !== -1 || target.indexOf(l) !== -1)) return headers[j];
+    }
+    SCW.debug('[BidRevInject] No group header matched "' + target +
+              '" — available group labels:', labels);
     return null;
   }
 

@@ -12,13 +12,11 @@
   var VIEW_ID       = 'view_3820';
   var WORKSHEET_ID  = 'view_3505';
   var REVISIONS_ID  = 'view_3823';
-  // Sub-side revision response webhook (Accept All / Reject All from
-  // the revision requests grid). Matches the per-card modal flow's
-  // revisionResponseWebhook so every Accept/Reject surface in the sub
-  // portal funnels into the same Make scenario. The previous
-  // 0cobxwo9… URL pointed at a deleted scenario and was silently
-  // no-op'ing because xhr.status === 0 is treated as success below.
-  var WEBHOOK       = 'https://hook.us1.make.com/t6hczsjuia9l21d1u9ghfohmifw0r43f';
+  // Revision response webhook (Accept All / Reject All from the revision
+  // requests grid). Sends the same `revision_response` payload shape that
+  // bid-revision-inject.js's Accept All / Reject All emits, so both surfaces
+  // funnel into the one Make scenario.
+  var WEBHOOK       = 'https://hook.us1.make.com/0cobxwo9q6ycek787agapekg7gtahmt5';
   var CSS_ID        = 'scw-rev-accept-reject-css';
   var EVENT_NS      = '.scwRevAcceptReject';
   var POLL_MS       = 5000;
@@ -158,11 +156,21 @@
     btn.disabled = true;
     btn.textContent = label + 'ing\u2026';
 
+    // Match bid-revision-inject.js's fireRevisionAction payload shape. The
+    // view_3820 row id is the revision REQUEST id \u2192 revisionRequestId; this is
+    // the whole-request "All" action, so items isn't enumerated (the scenario
+    // resolves the request's items by id).
     var payload = {
-      action: action,
-      recordId: recordId,
-      timestamp: new Date().toISOString(),
+      actionType:  'revision_response',
+      action:      action,
+      timestamp:   new Date().toISOString(),
+      totalItems:  1,
+      revisionRequests: [{ revisionRequestId: recordId, items: [] }],
     };
+    try {
+      var u = Knack.getUserAttributes();
+      if (u) payload.user = { id: u.id || '', name: u.name || '', email: u.email || '' };
+    } catch (ex) { /* user attrs unavailable */ }
 
     $.ajax({
       url: WEBHOOK,
@@ -217,24 +225,47 @@
       var wrapper = document.createElement('span');
       wrapper.className = 'scw-rev-actions';
 
+      // Identity carried on the buttons (NOT via addEventListener): KTL
+      // re-renders / clones these table cells, and cloneNode drops
+      // addEventListener handlers — so per-button listeners silently stop
+      // firing. The click is handled by ONE delegated listener (below) that
+      // reads these data-* attrs, which survive cloning.
       var rejectBtn = document.createElement('button');
       rejectBtn.className = 'scw-rev-actions__btn scw-rev-actions__btn--reject';
       rejectBtn.textContent = 'Reject All';
-      rejectBtn.addEventListener('click', (function (rid, pname) {
-        return function () { sendAction('reject', rid, pname, this); };
-      })(recordId, pkgName));
+      rejectBtn.type = 'button';
+      rejectBtn.setAttribute('data-rev-action', 'reject');
+      rejectBtn.setAttribute('data-rev-id', recordId);
+      rejectBtn.setAttribute('data-rev-pkg', pkgName);
       wrapper.appendChild(rejectBtn);
 
       var acceptBtn = document.createElement('button');
       acceptBtn.className = 'scw-rev-actions__btn scw-rev-actions__btn--accept';
       acceptBtn.textContent = 'Accept All';
-      acceptBtn.addEventListener('click', (function (rid, pname) {
-        return function () { sendAction('accept', rid, pname, this); };
-      })(recordId, pkgName));
+      acceptBtn.type = 'button';
+      acceptBtn.setAttribute('data-rev-action', 'accept');
+      acceptBtn.setAttribute('data-rev-id', recordId);
+      acceptBtn.setAttribute('data-rev-pkg', pkgName);
       wrapper.appendChild(acceptBtn);
 
       actionTd.appendChild(wrapper);
     }
+  }
+
+  // Single delegated click handler — survives KTL cell re-renders/clones that
+  // strip per-element listeners. Bound once.
+  if (!document.documentElement.hasAttribute('data-scw-rev-actions-bound')) {
+    document.documentElement.setAttribute('data-scw-rev-actions-bound', '1');
+    document.addEventListener('click', function (e) {
+      var btn = e.target && e.target.closest &&
+                e.target.closest('.scw-rev-actions__btn[data-rev-action]');
+      if (!btn || btn.disabled) return;
+      e.preventDefault();
+      e.stopPropagation();
+      sendAction(btn.getAttribute('data-rev-action'),
+                 btn.getAttribute('data-rev-id'),
+                 btn.getAttribute('data-rev-pkg') || '', btn);
+    });
   }
 
   $(document)

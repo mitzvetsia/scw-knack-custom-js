@@ -27,6 +27,10 @@
 
   var FK = ns.CONFIG.fieldKeys;
 
+  // bid record id → SOW line item id; (re)built each buildState() run, read by
+  // getMismatches to resolve bid-side connections to SOW line items.
+  var _bidToSow = Object.create(null);
+
   // ── adapters (verbatim from v1's transform.js) ──────────────
 
   function stripHtml(s) {
@@ -215,10 +219,13 @@
           existCabling: bool(rec, FK.bidExistCabling),
           plenum:       bool(rec, FK.plenum),
           exterior:     bool(rec, FK.exterior),
+          conduit:      raw(rec, FK.conduit),
+          dropLength:   raw(rec, FK.dropLength),
           // Bid-side connection topology (mirror of the SOW side):
           // field_2380 Connected Devices, field_2381 Connected To.
           connDevice:   connectionAll(rec, FK.bidConnDevice),
-          connTo:       connectionLabel(rec, FK.bidConnTo)
+          connTo:       connectionLabel(rec, FK.bidConnTo),
+          connToId:     connectionId(rec, FK.bidConnTo)
         };
       }
     }
@@ -497,6 +504,19 @@
         if (bidName) info.bidName = bidName;
       }
 
+      // REL_SOW on the bid package (field_2387). Gates which SOW grids this bid
+      // appears on: a bid tied to a sibling SOW must NOT show on other SOWs'
+      // grids (v1 parity) — without this, a bid for SOW-A leaks onto SOW-B's
+      // grid and dumps all its SOW-A items into "belong to another SOW".
+      if (FK.bidSow) {
+        var bidSowIds = [];
+        var bsConns = connectionAll(rec, FK.bidSow);
+        for (var bsi = 0; bsi < bsConns.length; bsi++) {
+          if (bsConns[bsi] && bsConns[bsi].id) bidSowIds.push(bsConns[bsi].id);
+        }
+        info.bidSowIds = bidSowIds;
+      }
+
       var rawPdf = rec[FK.bidPdf + '_raw'] || rec[FK.bidPdf];
       if (rawPdf) {
         if (typeof rawPdf === 'object' && rawPdf.url) {
@@ -515,6 +535,16 @@
 
   function buildState(records, sowItems, bidPackages) {
     var sows = extractSows(records);
+    // bid record id → its SOW line item id (field_2404 relatedSowItem). Lets
+    // the connected-device / connected-to diff resolve a bid record's
+    // connections (field_2380/2381 point at OTHER bid records) to SOW line
+    // items, so both sides compare in the same id space — not by mismatched
+    // display labels ("…Extended Transmission" vs "…Ex").
+    _bidToSow = Object.create(null);
+    for (var _bti = 0; _bti < records.length; _bti++) {
+      var _btr = records[_bti];
+      if (_btr && _btr.id) _bidToSow[_btr.id] = connectionId(_btr, FK.relatedSowItem);
+    }
     var sowNameById = Object.create(null);
     for (var sni = 0; sni < sows.length; sni++) sowNameById[sows[sni].id] = sows[sni].name;
     // SOW line item → its OWN SOW membership (field_2154). Built before
@@ -583,7 +613,15 @@
         // has connTo (field_2197) populated (its NVR) — the cell renders
         // whichever is present, so each device shows the appropriate field.
         connDevice:     connectionAll(s, SFK.connDevice),
-        connTo:         connectionLabel(s, SFK.connTo)
+        connTo:         connectionLabel(s, SFK.connTo),
+        connToId:       connectionId(s, SFK.connTo),
+        // Cabling attributes for the comparison cells (cam/reader). Diffed
+        // against the bid record's own cabling fields in getMismatches.
+        existCabling:   bool(s, SFK.existCabling),
+        plenum:         bool(s, SFK.plenum),
+        exterior:       bool(s, SFK.exterior),
+        conduit:        raw(s, SFK.conduit),
+        dropLength:     raw(s, SFK.dropLength)
       };
     }
 
@@ -785,6 +823,13 @@
       var packages = [];
       for (var ap = 0; ap < allPackages.length; ap++) {
         if (!packageTouchesSow(allPackages[ap].id, sow.id)) continue;
+        // Sibling-SOW gate (v1 parity): a bid whose REL_SOW (field_2387) is set
+        // to OTHER SOW(s) and NOT this one is a bid for a different SOW — exclude
+        // it so its items don't get dumped into this grid's "belong to another
+        // SOW" block. Empty bidSow = unrestricted (shows on every SOW it touches).
+        var _pkInfo = pkgInfo[allPackages[ap].id];
+        var _bidSowIds = (_pkInfo && _pkInfo.bidSowIds) || [];
+        if (_bidSowIds.length && _bidSowIds.indexOf(sow.id) === -1) continue;
         var pc = {};
         for (var pk in allPackages[ap]) {
           if (Object.prototype.hasOwnProperty.call(allPackages[ap], pk)) pc[pk] = allPackages[ap][pk];
@@ -1034,16 +1079,23 @@
     // devices, so compare by normalized label, not id. Anchor on the SOW side
     // having a value (the reference): a bid that dropped a connection the SOW
     // expects counts as a diff; a row with no SOW-side topology is never flagged.
-    function connSet(v) {
+    // Resolve a connection to the SOW line item it represents, so both sides
+    // compare in the same id space. SOW-side connections (field_1957/2197)
+    // already point AT SOW line items → use the id verbatim. Bid-side
+    // connections (field_2380/2381) point at OTHER bid records → map each
+    // through _bidToSow to its SOW line item. A bid record with no SOW
+    // mapping (or an unresolved id) contributes nothing.
+    function sowIdOf(id, fromBid) {
+      if (!id) return '';
+      return fromBid ? (_bidToSow[id] || '') : id;
+    }
+    function connIdSet(arr, fromBid) {
       var set = Object.create(null);
-      if (Array.isArray(v)) {
-        for (var i = 0; i < v.length; i++) {
-          var l = norm((v[i] && (v[i].identifier || v[i].name)) || '');
-          if (l) set[l] = true;
+      if (Array.isArray(arr)) {
+        for (var i = 0; i < arr.length; i++) {
+          var sid = sowIdOf(arr[i] && arr[i].id, fromBid);
+          if (sid) set[sid] = true;
         }
-      } else {
-        var s = norm(v || '');
-        if (s) set[s] = true;
       }
       return set;
     }
@@ -1054,19 +1106,59 @@
       return true;
     }
     var sd    = row.sowItemData || {};
-    var sowCD = sd.connDevice || [];
-    var sowCT = sd.connTo || '';
-    var connDeviceDiff = (Array.isArray(sowCD) && sowCD.length)
-      ? !sameSet(connSet(sowCD), connSet(cell.connDevice || [])) : false;
-    var connToDiff = norm(sowCT) ? (norm(sowCT) !== norm(cell.connTo || '')) : false;
+    // Connected Devices: compare the FULL set of connected devices, matched by
+    // their underlying SOW line item id (label-agnostic). Anchor on the SOW
+    // side carrying connections (the reference) so a row with no SOW-side
+    // topology is never flagged.
+    var sowCDset = connIdSet(sd.connDevice, false);
+    var connDeviceDiff = Object.keys(sowCDset).length
+      ? !sameSet(sowCDset, connIdSet(cell.connDevice || [], true)) : false;
+    // Connected To: single connection, compared by SOW line item id.
+    var sowCTid = sowIdOf(sd.connToId, false);
+    var connToDiff = sowCTid ? (sowCTid !== sowIdOf(cell.connToId, true)) : false;
+    // Word-sequence compare for free text — strips tags/punctuation/case down
+    // to the same [a-z0-9] tokens the card's markWordDiff highlights, so a
+    // field flags as "different" ONLY when there's an actual word to underline
+    // (no more cells tinted with nothing visible). Labor-desc basis is the
+    // DISPLAYED SOW desc (field_2020, sowItemData) so the flag + underlines
+    // match the SOW column the reviewer sees, not the bid-snapshot field_2019.
+    function wseq(v) {
+      var w = String(v == null ? '' : v).replace(/<[^>]*>/g, ' ')
+        .toLowerCase().match(/[a-z0-9]+/g);
+      return w ? w.join(' ') : '';
+    }
+    // Numeric cabling value (conduit / drop length in feet). Blank / non-numeric
+    // → null; an explicit 0 stays 0 (a real "0 ft" spec, shown + comparable).
+    function cnum(v) {
+      var s = String(v == null ? '' : v).replace(/[$,\s]/g, '');
+      if (s === '') return null;
+      var n = parseFloat(s);
+      return isNaN(n) ? null : n;
+    }
+    var sowDesc = (row.sowItemData && row.sowItemData.laborDesc) || row.sowLaborDesc;
+    var bConduit = cnum(cell.conduit), bDrop = cnum(cell.dropLength);
+    // Cabling diffs anchor on the BID carrying a value (incl. 0), so a bid that
+    // simply didn't capture conduit/drop (blank) doesn't flag every row against
+    // a spec that has one. Booleans flag on any true≠false delta.
     var m = {
       product:    productDiff,
-      laborDesc:  norm(row.sowLaborDesc) !== norm(cell.laborDesc),
+      laborDesc:  wseq(sowDesc) !== wseq(cell.laborDesc),
+      // Anchor qty on the SOW side carrying a value (mirrors the conn anchors)
+      // so a blank-spec line item doesn't flag every bid that priced qty 1.
+      qty:        (Number(sd.qty) || 0) > 0
+                    ? ((Number(sd.qty) || 0) !== (Number(cell.qty) || 0)) : false,
       fee:        Math.abs((Number(row.sowFee) || 0) - (Number(cell.labor) || 0)) > 0.001,
+      conduit:    bConduit != null ? (bConduit !== (cnum(sd.conduit) || 0)) : false,
+      dropLength: bDrop != null ? (bDrop !== (cnum(sd.dropLength) || 0)) : false,
+      plenum:     !!sd.plenum !== !!cell.plenum,
+      exterior:   !!sd.exterior !== !!cell.exterior,
+      existing:   !!sd.existCabling !== !!cell.existCabling,
       connDevice: connDeviceDiff,
       connTo:     connToDiff
     };
-    m.any = m.product || m.laborDesc || m.fee || m.connDevice || m.connTo;
+    m.any = m.product || m.laborDesc || m.qty || m.fee || m.conduit ||
+            m.dropLength || m.plenum || m.exterior || m.existing ||
+            m.connDevice || m.connTo;
     return m;
   }
 

@@ -196,6 +196,87 @@
     return out;
   }
 
+  // Qty is editable only when the line item allows MORE than quantity 1 —
+  // i.e. field_2230 ("single qty") is NOT yes. Mirrors card.js isQtyLocked /
+  // qtyCell so the bulk panel matches what the worksheet card shows per row.
+  function qtyAllowsMulti(attrs) {
+    var raw = attrs && attrs['field_2230_raw'];
+    if (raw === true || raw === 'Yes' || raw === 'yes' || raw === 1) return false;
+    var s = (attrs && attrs['field_2230'] || '').toString().trim().toLowerCase();
+    return !(s === 'yes' || s === 'true' || s === '1');
+  }
+
+  // Per-row bulk-editable fields: the row's bucket field list, filtered by the
+  // SAME conditional visibility rules the worksheet card applies, so the bulk
+  // panel only offers a field where that row actually exposes it:
+  //   • Qty (field_1964)        — only when the row allows qty > 1.
+  //   • Connected Devices (1957) — only when the row maps connections (NVR/switch).
+  // Cabling (existing/exterior/plenum/drop/conduit) + Connected Device (2197)
+  // live in the cam set, so they naturally appear for cam/reader rows only.
+  function visibleBulkFieldsFor(attrs, fieldSet) {
+    var cat = (ns.card && ns.card.bucketCategoryOf) ? ns.card.bucketCategoryOf(attrs) : 'default';
+    // Fall back to the base FIELDS set (then 'default') if this fieldSet has no
+    // entry for the category — e.g. SALES_FIELDS has no 'assumptions', which
+    // would otherwise leave the row with ZERO editable fields ("no options").
+    var base = fieldSet[cat] || FIELDS[cat] || fieldSet['default'] || FIELDS['default'] || [];
+    var out = [];
+    for (var i = 0; i < base.length; i++) {
+      var f = base[i];
+      if (f.key === 'field_1964' && !qtyAllowsMulti(attrs)) continue;
+      if (f.key === 'field_1957' && !isMapConnectionsRow(attrs)) continue;
+      out.push(f);
+    }
+    return out;
+  }
+
+  // INTERSECTION of every selected row's visible bulk fields — only offer a
+  // field that EVERY selected line item actually exposes (so a mixed selection
+  // narrows to the common editable set). Unlike the old intersectFields (which
+  // intersected static bucket lists), this intersects each row's per-row
+  // VISIBLE set, so the conditional rules (qty only when >1 allowed, Connected
+  // Devices only when the row maps connections) are honored: a field that's
+  // conditionally hidden on one selected row drops from the bulk list too.
+  // Order seeds from the first resolved row.
+  function intersectVisibleFields(ids, sourceViewKey, fieldSet) {
+    var idx = attrsIndex(sourceViewKey);
+    var rowSets = [];
+    for (var i = 0; i < ids.length; i++) {
+      var attrs = idx[ids[i]];
+      if (!attrs) continue;
+      var vis = visibleBulkFieldsFor(attrs, fieldSet);
+      var keys = Object.create(null);
+      for (var j = 0; j < vis.length; j++) keys[vis[j].key] = true;
+      rowSets.push({ fields: vis, keys: keys });
+    }
+    if (!rowSets.length) return [];
+    var seed = rowSets[0].fields, out = [];
+    for (var s = 0; s < seed.length; s++) {
+      var f = seed[s], inAll = true;
+      for (var r = 1; r < rowSets.length; r++) {
+        if (!rowSets[r].keys[f.key]) { inAll = false; break; }
+      }
+      if (inAll) out.push(f);
+    }
+    return out;
+  }
+
+  // recordId → { fieldKey: true } of its visible bulk fields. Save uses this to
+  // only write a field to the rows that expose it (a cabling value isn't pushed
+  // to a non-cam row that happened to be in the same selection).
+  function rowVisibleMap(ids, sourceViewKey, fieldSet) {
+    var idx = attrsIndex(sourceViewKey);
+    var map = Object.create(null);
+    for (var i = 0; i < ids.length; i++) {
+      var attrs = idx[ids[i]];
+      if (!attrs) continue;
+      var set = Object.create(null);
+      var vis = visibleBulkFieldsFor(attrs, fieldSet);
+      for (var j = 0; j < vis.length; j++) set[vis[j].key] = true;
+      map[ids[i]] = set;
+    }
+    return map;
+  }
+
   // ── Lock + delete-block helpers (shared with the per-card rules) ──
   // When ANY selected row is a LOCKED sales row (card.js isCrLocked: sales
   // deployment + survey-associated), the bulk-edit modal is restricted to the
@@ -244,6 +325,52 @@
           // --locked ⇔ survey-associated (field_2586 >= 1); enough for
           // isCrLocked / isDeleteBlocked which only test "> 0".
           field_2586:     card.classList.contains('scw-ws-v2-card--locked') ? 1 : 0,
+          _scwDomFallback: true
+        };
+      }
+    } catch (e) { /* best effort */ }
+
+    // Bid-comparison grid fallback: that grid (bid-review-v2) renders its OWN
+    // rows (.scw-bid-review-v2__row[data-sow-item-id]) and has NO worksheet
+    // cards, so the card fallback above finds nothing — and view_3921's model
+    // read often comes back empty on that scene, which left the modal with zero
+    // resolved attrs ("no fields editable across all selected rows" no matter
+    // what). Synthesize attrs from the bid rows, inferring the bucket from the
+    // SOW cell (cam-only cabling chips → cam; assumption class → assumptions)
+    // so cabling/qty/connection visibility still resolves correctly.
+    try {
+      var CAM = (ns.card && ns.card.CAM_READER_BUCKET) || '';
+      var ASSUM = (ns.card && ns.card.ASSUMPTIONS_BUCKET) || '';
+      var brRows = document.querySelectorAll('.scw-bid-review-v2__row[data-sow-item-id]');
+      for (var b = 0; b < brRows.length; b++) {
+        var rid2 = brRows[b].getAttribute('data-sow-item-id');
+        if (!rid2 || idx[rid2]) continue;   // model attrs (richer) win
+        var sowCell = brRows[b].querySelector('.scw-bid-review-v2__sow-cell');
+        var bId = '';
+        if (sowCell) {
+          if (sowCell.classList.contains('scw-bid-review-v2__sow-cell--assumption')) {
+            bId = ASSUM;
+          } else {
+            // Cam/reader = a CHILD device: it has a drop length and/or is
+            // "Connected to" a single parent. NVRs/switches are PARENTS
+            // ("Connected devices: …") and can also carry an Exterior/Existing
+            // chip, so those chips are NOT reliable cam signals — only the
+            // drop + child-connection are.
+            var hasDrop = !!sowCell.querySelector('[data-scw-sow-field="dropLength"]');
+            var connTo = false;
+            var conns = sowCell.querySelectorAll('.scw-bid-review-v2__cell-conn[title]');
+            for (var k = 0; k < conns.length; k++) {
+              if (/^connected to:/i.test((conns[k].getAttribute('title') || '').trim())) {
+                connTo = true; break;
+              }
+            }
+            if (hasDrop || connTo) bId = CAM;
+          }
+        }
+        idx[rid2] = {
+          id:             rid2,
+          field_2219_raw: bId ? [{ id: bId }] : [],
+          field_2586:     0,
           _scwDomFallback: true
         };
       }
@@ -537,34 +664,32 @@
     }
     return d.promise();
   }
-  /** POST to MAKE_DELETE_RECORD_WEBHOOK with { recordId } — same
-   *  contract the per-row trash + chip × handlers use. Retried on
-   *  transient errors. Resolves to a settle-shaped result so partial
-   *  failures don\'t reject the whole batch. */
-  function doDeleteWithRetry(recordId, webhookUrl, attempt) {
+
+  /** CANONICAL front-end record delete (NO Make webhook). View-scoped REST
+   *  DELETE via SCW.knackAjax + SCW.knackRecordUrl — the user's session token
+   *  authorizes it and it's CORS-safe, so it works for any record on a view
+   *  with Delete enabled (the same proven path the per-row line-item delete +
+   *  v1 bid-review use). Retried on transient errors (429 / 5xx / 408 /
+   *  network-0); settle-shaped so a partial failure never rejects the batch.
+   *  This is THE deletion primitive — replaces doDeleteWithRetry (Make). */
+  function deleteRecordFE(viewKey, recordId, attempt) {
     attempt = attempt || 1;
     var d = $.Deferred();
+    if (!viewKey || !(window.SCW && typeof SCW.knackAjax === 'function' &&
+        typeof SCW.knackRecordUrl === 'function')) {
+      d.resolve({ ok: false, recordId: recordId, status: -1 });
+      return d.promise();
+    }
     try {
-      $.ajax({
-        url:  webhookUrl,
-        type: 'POST',
-        contentType: 'application/json',
-        data: JSON.stringify({ recordId: recordId }),
-        crossDomain: true,
-        timeout: 60000,
+      SCW.knackAjax({
+        url:  SCW.knackRecordUrl(viewKey, recordId),
+        type: 'DELETE',
         success: function () { d.resolve({ ok: true, recordId: recordId, status: 200 }); },
         error: function (xhr) {
-          // Make webhooks often CORS-block the response (status 0)
-          // even when the scenario ran fine — treat as success.
-          if (xhr && xhr.status === 0) {
-            d.resolve({ ok: true, recordId: recordId, status: 0 });
-            return;
-          }
           if (attempt < MAX_ATTEMPTS && isRetryable(xhr)) {
             var wait = BASE_BACKOFF * Math.pow(2, attempt - 1) + Math.random() * 250;
             setTimeout(function () {
-              doDeleteWithRetry(recordId, webhookUrl, attempt + 1)
-                .then(function (r) { d.resolve(r); });
+              deleteRecordFE(viewKey, recordId, attempt + 1).then(function (r) { d.resolve(r); });
             }, wait);
           } else {
             d.resolve({ ok: false, recordId: recordId, status: xhr && xhr.status });
@@ -630,6 +755,70 @@
       }
     }
     return accIds;
+  }
+
+  /** Map each given parent id → its accessory line-item ids (field_2464
+   *  back-mirror), read from the source view\'s model. Like collectAccessoryIds
+   *  but keyed per-parent, so each accessory can be matched to ITS parent\'s
+   *  resulting value (needed for "accessory SOW must equal parent SOW" when
+   *  parents end up with different values, e.g. add-mode unions). */
+  function accessoriesByParent(parentIds, sourceViewKey) {
+    var parentSet = Object.create(null);
+    for (var p = 0; p < parentIds.length; p++) parentSet[parentIds[p]] = true;
+    var map = Object.create(null);
+    var v = window.Knack && Knack.views && Knack.views[sourceViewKey];
+    var models = (v && v.model && v.model.data && v.model.data.models) || [];
+    for (var i = 0; i < models.length; i++) {
+      var r = models[i] && models[i].attributes;
+      if (!r || !r.id || parentSet[r.id]) continue;
+      var raw = r.field_2464_raw;
+      if (!Array.isArray(raw)) continue;
+      for (var j = 0; j < raw.length; j++) {
+        var pid = raw[j] && raw[j].id;
+        if (pid && parentSet[pid]) { (map[pid] = map[pid] || []).push(r.id); break; }
+      }
+    }
+    return map;
+  }
+
+  /** Fire the Connected Devices (field_1957) → Connected To (field_2197)
+   *  reciprocal cascade for every bulk job that wrote field_1957. The bulk
+   *  save PUTs directly (SCW.knackAjax), which — unlike Knack\'s inline edit —
+   *  does NOT fire knack-cell-update, so mirror-connection-sync never runs.
+   *  We replicate the v2 picker\'s contract (worksheet-v2/picker.js): patch
+   *  the local model, then dispatch knack-cell-update.<view> with the
+   *  AUTHORITATIVE chosen ids as the 5th arg so the cascade can\'t mis-read a
+   *  racing refetch. Skipped for records whose PUT failed (the field_1957
+   *  write didn\'t land — cascading it would write reciprocals for a value
+   *  that isn\'t there). */
+  function fireConnectedDevicesCascades(jobList, failedRecSet) {
+    var TRIGGER = 'field_1957';
+    for (var i = 0; i < jobList.length; i++) {
+      var job = jobList[i];
+      if (!job || !job.body || !(TRIGGER in job.body)) continue;
+      if (failedRecSet && failedRecSet[job.recordId]) continue;
+      try {
+        var idsVal = job.body[TRIGGER];
+        var arr = Array.isArray(idsVal) ? idsVal : (idsVal ? [idsVal] : []);
+        var rawObjs = arr.map(function (v) {
+          return (v && typeof v === 'object') ? v : { id: v };
+        });
+        if (typeof SCW.syncKnackModel === 'function') {
+          SCW.syncKnackModel(job.viewKey, job.recordId, {}, TRIGGER, rawObjs);
+        }
+        var view = window.Knack && Knack.views && Knack.views[job.viewKey];
+        if (view && view.model && view.model.data) {
+          var rec = (typeof view.model.data.get === 'function')
+            ? view.model.data.get(job.recordId) : null;
+          if (rec) {
+            $(document).trigger('knack-cell-update.' + job.viewKey,
+              [view, rec.attributes || rec, TRIGGER, arr]);
+          }
+        }
+      } catch (e) {
+        console.warn('[scw-ws-v2-bulk] connected-devices cascade trigger failed', e);
+      }
+    }
   }
 
   /** Standalone "are you sure" modal for the toolbar Delete button.
@@ -870,17 +1059,11 @@
     });
   }
 
-  /** Bulk delete — accessories first, then parents. Both go through
-   *  the existing MAKE_DELETE_RECORD_WEBHOOK (no API keys, no auto-
-   *  confirm modal serialization), capped at MAX_CONCURRENT in flight
-   *  with retry-on-transient-error. */
+  /** Bulk delete — accessories first, then parents. Front-end only: each
+   *  record is removed with the view-scoped REST DELETE (deleteRecordFE),
+   *  capped at MAX_CONCURRENT in flight with retry-on-transient-error. No
+   *  Make webhook. */
   function runBulkDelete(parentIds, accIds, sourceViewKey, overlay, status, confirmBtn, cancelBtn, close) {
-    var webhookUrl = (window.SCW && SCW.CONFIG && SCW.CONFIG.MAKE_DELETE_RECORD_WEBHOOK) || '';
-    if (!webhookUrl || /PLACEHOLDER/.test(webhookUrl)) {
-      status.innerHTML = '<div class="scw-ws-v2-bulk-fail">' +
-        'Delete webhook URL not configured (MAKE_DELETE_RECORD_WEBHOOK).</div>';
-      return;
-    }
     var totalN  = parentIds.length + accIds.length;
 
     confirmBtn.disabled = true;
@@ -901,7 +1084,7 @@
     // mid-cascade.
     var jobs = accIds.concat(parentIds);
     runJobQueue(jobs, function (id) {
-      return doDeleteWithRetry(id, webhookUrl);
+      return deleteRecordFE(sourceViewKey, id);
     }, function (done, total) {
       var pct = Math.round((done / total) * 100);
       if (bar) bar.style.width = pct + '%';
@@ -1140,7 +1323,10 @@
     var categories = recordCategories(ids, sourceViewKey);
     var sales = isSalesView(sourceViewKey);
     var fieldSet = sales ? SALES_FIELDS : FIELDS;
-    var fields = locked ? LOCKED_BULK_FIELDS.slice() : intersectFields(categories, fieldSet);
+    var fields = locked ? LOCKED_BULK_FIELDS.slice() : intersectVisibleFields(ids, sourceViewKey, fieldSet);
+    // Per-row visible-field map for save-time gating (null when locked → the
+    // whitelist applies to every selected row uniformly).
+    var rowVisible = locked ? null : rowVisibleMap(ids, sourceViewKey, fieldSet);
     // Diagnostic: if a selection yields no categories the modal will read
     // "no shared fields". Log exactly why (selection size, how many ids
     // resolved, the view key + record counts) so the intermittent blank
@@ -1199,7 +1385,7 @@
     var rowState = {};
 
     fields.forEach(function (f) {
-      rowState[f.key] = { apply: false, value: null };
+      rowState[f.key] = { apply: false, value: null, mode: 'replace' };
       var row = document.createElement('div');
       row.className = 'scw-ws-v2-bulk-row';
       row.setAttribute('data-scw-ws-v2-bulk-field', f.key);
@@ -1251,7 +1437,22 @@
           '<button type="button" class="scw-ws-v2-bulk-conn-btn">' +
             '<span class="scw-ws-v2-bulk-conn-val">(choose)</span>' +
             '<span class="scw-ws-v2-bulk-conn-edit">pick</span>' +
-          '</button>';
+          '</button>' +
+          // Multi-connection fields (SOW, Connected Devices) can ADD the picked
+          // records to each row's existing selection instead of replacing it.
+          (f.kind === 'conn-multi'
+            ? '<label class="scw-ws-v2-bulk-conn-mode" title="Add the picked ' +
+                'records to each row\'s existing selection instead of replacing it.">' +
+                '<input type="checkbox" class="scw-ws-v2-bulk-conn-add">' +
+                '<span>Add to existing (don\'t replace)</span>' +
+              '</label>'
+            : '');
+        var addToggle = slot.querySelector('.scw-ws-v2-bulk-conn-add');
+        if (addToggle) {
+          addToggle.addEventListener('change', function (e) {
+            rowState[f.key].mode = e.target.checked ? 'add' : 'replace';
+          });
+        }
         slot.querySelector('button').addEventListener('click', function () {
           var resolved = getSourceCandidatesForConn(f, sourceViewKey, ids);
           var cands = resolved.candidates;
@@ -1357,29 +1558,83 @@
       // off the page, so any writeViewKey override would 404. Kept as
       // a generic group-by route in case a future field needs a custom
       // routing target.
-      var groups = Object.create(null);
-      var applied = 0;
       var fieldByKey = Object.create(null);
       for (var fi = 0; fi < fields.length; fi++) fieldByKey[fields[fi].key] = fields[fi];
-      Object.keys(rowState).forEach(function (k) {
-        if (!rowState[k].apply) return;
-        var f = fieldByKey[k];
-        var route = (f && f.writeViewKey) || sourceViewKey;
-        if (!groups[route]) groups[route] = {};
-        groups[route][k] = rowState[k].value;
-        applied++;
-      });
-      if (!applied) {
+      var appliedKeys = Object.keys(rowState).filter(function (k) { return rowState[k].apply; });
+      if (!appliedKeys.length) {
         status.textContent = 'Tick at least one field to apply.';
         return;
       }
 
-      var jobs = [];
-      Object.keys(groups).forEach(function (routeViewKey) {
-        ids.forEach(function (rid) {
-          jobs.push({ viewKey: routeViewKey, recordId: rid, body: groups[routeViewKey] });
+      // Read a record's CURRENT connection ids for a field from the loaded
+      // model — used to UNION rather than overwrite in "add to existing" mode.
+      function currentConnIds(recordId, fieldKey) {
+        try {
+          var sv = window.Knack && Knack.views && Knack.views[sourceViewKey];
+          var models = (sv && sv.model && sv.model.data && sv.model.data.models) || [];
+          for (var i = 0; i < models.length; i++) {
+            var a = models[i] && models[i].attributes;
+            if (!a || a.id !== recordId) continue;
+            var raw = a[fieldKey + '_raw'];
+            var out = [];
+            if (Array.isArray(raw)) {
+              for (var r = 0; r < raw.length; r++) if (raw[r] && raw[r].id) out.push(raw[r].id);
+            } else if (raw && raw.id) { out.push(raw.id); }
+            return out;
+          }
+        } catch (e) { /* fall through */ }
+        return [];
+      }
+
+      // Build a body PER (record, route). Override fields share one value
+      // across rows; a conn-multi field in "add" mode is per-record — its
+      // value is the union of the picked ids with THAT row's existing
+      // selection, so nothing already connected is dropped.
+      var jobsByKey = Object.create(null);
+      ids.forEach(function (rid) {
+        appliedKeys.forEach(function (k) {
+          // Only write a field to rows that actually expose it (qty to multi-qty
+          // rows, cabling to cam rows, Connected Devices to mapping rows, …).
+          if (rowVisible && rowVisible[rid] && !rowVisible[rid][k]) return;
+          var f = fieldByKey[k];
+          var route = (f && f.writeViewKey) || sourceViewKey;
+          var val = rowState[k].value;
+          if (f && f.kind === 'conn-multi' && rowState[k].mode === 'add') {
+            var chosen = Array.isArray(val) ? val : (val ? [val] : []);
+            var merged = currentConnIds(rid, k).slice();
+            for (var c = 0; c < chosen.length; c++) {
+              if (merged.indexOf(chosen[c]) === -1) merged.push(chosen[c]);
+            }
+            val = merged;
+          }
+          var jobKey = route + '|' + rid;
+          if (!jobsByKey[jobKey]) jobsByKey[jobKey] = { viewKey: route, recordId: rid, body: {} };
+          jobsByKey[jobKey].body[k] = val;
         });
       });
+
+      // Accessory SOW must ALWAYS match its parent's SOW. When the bulk edit
+      // touches the SOW field (field_2154), propagate each parent's RESULTING
+      // SOW value down to its accessory children (field_2464 back-mirror) so
+      // they don't get left behind on the old SOW. Uses the parent's final
+      // value (post replace/add), and overrides any value the accessory may
+      // have gotten from being selected directly — the match invariant wins.
+      var SOW_FIELD = 'field_2154';
+      if (appliedKeys.indexOf(SOW_FIELD) !== -1) {
+        var accMap = accessoriesByParent(ids, sourceViewKey);
+        ids.forEach(function (rid) {
+          var parentJob = jobsByKey[sourceViewKey + '|' + rid];
+          if (!parentJob || !(SOW_FIELD in parentJob.body)) return;
+          var parentVal = parentJob.body[SOW_FIELD];
+          (accMap[rid] || []).forEach(function (accId) {
+            var jk = sourceViewKey + '|' + accId;
+            if (!jobsByKey[jk]) jobsByKey[jk] = { viewKey: sourceViewKey, recordId: accId, body: {} };
+            jobsByKey[jk].body[SOW_FIELD] = parentVal;
+          });
+        });
+      }
+
+      var jobs = Object.keys(jobsByKey).map(function (jobKey) { return jobsByKey[jobKey]; });
 
       saveBtn.disabled   = true;
       cancelBtn.disabled = true;
@@ -1400,10 +1655,16 @@
         if (bar) bar.style.width = pct + '%';
         if (label) label.textContent = 'Saving ' + done + ' of ' + total + '… (' + pct + '%)';
       }).then(function (results) {
-        var ok = 0, fail = 0;
+        var ok = 0, fail = 0, failedRec = Object.create(null);
         for (var r = 0; r < results.length; r++) {
-          if (results[r].ok) ok++; else fail++;
+          if (results[r].ok) ok++;
+          else { fail++; if (results[r].recordId) failedRec[results[r].recordId] = true; }
         }
+        // Run the reciprocal cascade for any Connected Devices (field_1957)
+        // writes that landed — bulk PUTs don't fire knack-cell-update, so
+        // without this the field_2197 back-pointers drift on bulk edits.
+        try { fireConnectedDevicesCascades(jobs, failedRec); }
+        catch (e) { console.warn('[scw-ws-v2-bulk] cascade dispatch threw', e); }
         overlay.classList.remove('scw-ws-v2-bulk-overlay--saving');
         if (fail === 0) {
           status.innerHTML =
@@ -1450,27 +1711,29 @@
     refreshToolbar();
   }
 
-  /** Concurrency-capped + retry/backoff delete queue, exposed so the
-   *  per-row trash + accessory-chip × handlers in init.js converge onto
-   *  the same proven path instead of hand-rolling fire-and-forget fetches
-   *  (which silently lose writes to Knack's ~10 req/s 429s — backlog #1).
-   *  ids: record ids to delete via MAKE_DELETE_RECORD_WEBHOOK. Resolves to
-   *  an array of settle-shaped results ({ ok, recordId, status }); a
-   *  failure never rejects the batch. */
-  function queuedDelete(ids, webhookUrl, onProgress) {
+  /** Concurrency-capped + retry/backoff FRONT-END delete queue, exposed so the
+   *  per-row trash + accessory-chip × handlers in init.js converge onto the
+   *  same proven path instead of hand-rolling fire-and-forget fetches (which
+   *  silently lose writes to Knack's ~10 req/s 429s — backlog #1).
+   *  viewKey: the view to DELETE through; ids: record ids. Resolves to an array
+   *  of settle-shaped results ({ ok, recordId, status }); a failure never
+   *  rejects the batch. No Make webhook — view-scoped REST DELETE only. */
+  function queuedDeleteFE(viewKey, ids, onProgress) {
     if (!ids || !ids.length) {
       var d = $.Deferred(); d.resolve([]); return d.promise();
     }
     return runJobQueue(ids, function (id) {
-      return doDeleteWithRetry(id, webhookUrl);
+      return deleteRecordFE(viewKey, id);
     }, onProgress);
   }
 
   ns.bulk = {
-    mount:           mount,
+    mount:            mount,
     syncDomFromState: syncDomFromState,
-    refreshToolbar:  refreshToolbar,
-    queuedDelete:    queuedDelete
+    refreshToolbar:   refreshToolbar,
+    // FE-only delete primitives — callers must pass the view to DELETE through.
+    deleteRecordFE:   deleteRecordFE,
+    queuedDeleteFE:   queuedDeleteFE
   };
 })();
 /*** END WORKSHEET V2 — BULK EDIT *********************************************/

@@ -306,6 +306,36 @@
       'width:' + width + 'px;';
   }
 
+  // Unique SOW line-item ids of the currently-checked grid rows. Selection
+  // is the worksheet-v2 row checkboxes the comparison grid reuses.
+  function getSelectedSowItemIds() {
+    var nodes = document.querySelectorAll('.scw-br-v2-rowselect:checked');
+    var seen = Object.create(null), out = [];
+    for (var i = 0; i < nodes.length; i++) {
+      var id = nodes[i].getAttribute('data-scw-ws-v2-select');
+      if (id && !seen[id]) { seen[id] = true; out.push(id); }
+    }
+    return out;
+  }
+
+  // Open the bulk-CR modal for one bid column against the selected rows.
+  // Requires a selection (per design) — nudge the user if none.
+  function openBulkCr(button) {
+    var v1 = window.SCW.bidReview;
+    var ids = getSelectedSowItemIds();
+    if (!ids.length) {
+      if (v1 && v1.renderToast) v1.renderToast('Select one or more line items first', 'info');
+      else alert('Select one or more line items first.');
+      return;
+    }
+    if (!ns.bulkCr || typeof ns.bulkCr.open !== 'function') return;
+    ns.bulkCr.open({
+      pkgId:      button.getAttribute('data-pkg-id') || button.getAttribute('data-package-id'),
+      pkgName:    button.getAttribute('data-pkg-name') || '',
+      sowItemIds: ids
+    });
+  }
+
   // Delegated clicks for everything that routes into v1's handlers:
   //   • header action buttons (Update SOW / Create SOW / Reopen Bid)
   //   • header CR controls (Submit Change Request / Clear All)
@@ -337,6 +367,14 @@
       // item is still in the DOM, so its dispatch below still resolves.
       closeReviseMenus();
 
+      // Bulk Change Request on the selected line items (one bid column).
+      var bulkCrBtn = e.target.closest('[data-action="cr_bulk_selected"]');
+      if (bulkCrBtn) {
+        e.preventDefault(); e.stopPropagation();
+        openBulkCr(bulkCrBtn);
+        return;
+      }
+
       // Header buttons — package_* go to dispatchHeaderAction, cr_* fall
       // through to dispatchCRAction.
       var headBtn = e.target.closest('.scw-bid-review-v2__head-btn[data-action]');
@@ -359,6 +397,18 @@
       var crCard = e.target.closest('.scw-bid-cr-card[data-action]');
       if (crCard) {
         e.preventDefault(); e.stopPropagation();
+        // The "×" dismiss lives INSIDE the card; the card carries data-action
+        // so a click anywhere on it would re-open the editor. Intercept the
+        // dismiss and REMOVE the pending item instead of opening it.
+        if (e.target.closest('.scw-bid-cr-card__dismiss')) {
+          var dPkg = crCard.getAttribute('data-package-id');
+          var dRow = crCard.getAttribute('data-row-id');
+          var crApi = v1.changeRequests;
+          if (crApi && typeof crApi.dismissPendingItem === 'function' && dPkg && dRow) {
+            crApi.dismissPendingItem(dPkg, dRow);
+          }
+          return;
+        }
         if (v1.dispatchCRAction) v1.dispatchCRAction(crCard);
         return;
       }
@@ -427,9 +477,18 @@
     var isOpen = next && next.classList &&
       next.classList.contains('scw-bid-review-v2__expand-row');
     if (isOpen) {
+      // Commit any in-progress edit inside the panel BEFORE removing it —
+      // otherwise tearing down the inputs drops a typed-but-uncommitted value
+      // (edit.js commits on blur, so force the blur first).
+      var active = document.activeElement;
+      if (active && next.contains(active) && typeof active.blur === 'function') {
+        active.blur();
+      }
       next.parentNode.removeChild(next);
       row.setAttribute('aria-expanded', 'false');
       row.classList.remove('scw-bid-review-v2__row--open');
+      var closedId = row.getAttribute('data-sow-item-id');
+      if (closedId && ns.state) ns.state.setRowExpanded(closedId, false);
       return;
     }
     var sowItemId = row.getAttribute('data-sow-item-id');
@@ -475,6 +534,9 @@
     row.parentNode.insertBefore(expand, row.nextSibling);
     row.classList.add('scw-bid-review-v2__row--open');
     row.setAttribute('aria-expanded', 'true');
+    // Remember this row is open so a post-edit/-delete grid rebuild can
+    // re-open it (render.js → reopenExpandedRows) instead of collapsing it.
+    if (ns.state) ns.state.setRowExpanded(sowItemId, true);
 
     mountWorksheetV2Card(cardCol, sowRec);
 
@@ -688,6 +750,32 @@
   }
 
   ns.openWithPhoto = openWithPhoto;
+
+  // After a grid rebuild (render.js), re-open the row panels the user had
+  // expanded so an edit/delete-driven refetch doesn't collapse them. The
+  // rebuilt rows come back collapsed; re-running toggleRowExpand on each
+  // tracked-open row rebuilds its panel from the FRESH model (so e.g. a just-
+  // deleted accessory is already gone from the re-mounted worksheet card).
+  function reopenExpandedRows(scope) {
+    if (!ns.state || typeof ns.state.isRowExpanded !== 'function') return;
+    var root = scope || (ns.CONFIG && document.getElementById(ns.CONFIG.mountId));
+    if (!root) return;
+    var rows = root.querySelectorAll('.scw-bid-review-v2__row[data-sow-item-id]');
+    for (var i = 0; i < rows.length; i++) {
+      var row = rows[i];
+      var rid = row.getAttribute('data-sow-item-id');
+      if (!rid || !ns.state.isRowExpanded(rid)) continue;
+      // Skip rows hidden by a collapsed MDF/IDF group — don't surface a
+      // detached panel; the state stays set so it re-opens if the group opens.
+      if (row.offsetParent === null) continue;
+      // Already open (panel survived) — leave it.
+      var nx = row.nextElementSibling;
+      if (nx && nx.classList &&
+          nx.classList.contains('scw-bid-review-v2__expand-row')) continue;
+      toggleRowExpand(row);
+    }
+  }
+  ns.reopenExpandedRows = reopenExpandedRows;
 
   // Find the full Backbone-style attributes hash for a SOW item id.
   // Prefer the live model so we always see the freshest values; fall

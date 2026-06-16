@@ -3245,6 +3245,76 @@
   // data-pkg-id for cr_submit) attrs v1's own click handler reads. v1's
   // _state is live (same scene), so row lookups by id resolve. Returns
   // true if dispatched.
+  // Bulk Change Request: apply the SAME `requested` field changes (+ optional
+  // changeNotes) to EVERY selected SOW line item that has a bid record on
+  // `pkgId`. Selected rows are identified by SOW line-item id (row.sowItem).
+  // Rows with no bid on this package are skipped. Merges into an existing
+  // pending item for the same row rather than clobbering it. Returns
+  // { applied, skipped }. Driven by bid-review-v2's bulk-CR modal.
+  ns.addBulkChangeRequest = function (pkgId, sowItemIds, requested, changeNotes) {
+    if (!_state || !_state.sowGrids || !ns.changeRequests) return { applied: 0, skipped: 0 };
+    requested = requested || {};
+    var fieldKeys = [];
+    for (var fk in requested) if (Object.prototype.hasOwnProperty.call(requested, fk)) fieldKeys.push(fk);
+    if (!fieldKeys.length && !(changeNotes && changeNotes.trim())) return { applied: 0, skipped: 0 };
+
+    var want = Object.create(null);
+    for (var i = 0; i < (sowItemIds || []).length; i++) want[sowItemIds[i]] = true;
+
+    var pending = (ns.changeRequests.getPending && ns.changeRequests.getPending()) || {};
+    function existingFor(rowId) {
+      var b = pending[pkgId];
+      if (!b || !b.items) return null;
+      for (var x = 0; x < b.items.length; x++) if (b.items[x].rowId === rowId) return b.items[x];
+      return null;
+    }
+
+    var applied = 0, skipped = 0, seenRows = Object.create(null);
+    for (var g = 0; g < _state.sowGrids.length; g++) {
+      var grid = _state.sowGrids[g];
+      var pkgName  = findPackageName(grid, pkgId);
+      var surveyId = findPackageSurveyId(grid, pkgId);
+      for (var r = 0; r < grid.rows.length; r++) {
+        var row = grid.rows[r];
+        if (!row || !row.sowItem || !want[row.sowItem] || seenRows[row.id]) continue;
+        var cell = row.cellsByPackage && row.cellsByPackage[pkgId];
+        if (!cell || !cell.id) { skipped++; continue; }   // no bid on this package
+        seenRows[row.id] = true;
+
+        // Merge onto any existing pending item for this row so a prior CR
+        // isn't wiped — overlay the bulk fields on top.
+        var prior = existingFor(row.id);
+        var rowRequested = {}, current = {};
+        if (prior) {
+          for (var pk in prior.requested) if (Object.prototype.hasOwnProperty.call(prior.requested, pk)) rowRequested[pk] = prior.requested[pk];
+          for (var ck in prior.current)   if (Object.prototype.hasOwnProperty.call(prior.current, ck))   current[ck]      = prior.current[ck];
+        }
+        for (var f = 0; f < fieldKeys.length; f++) {
+          var k = fieldKeys[f];
+          rowRequested[k] = requested[k];
+          if (cell[k] != null && cell[k] !== '') current[k] = cell[k];
+        }
+        var notes = (changeNotes && changeNotes.trim())
+          ? changeNotes : (prior ? prior.changeNotes : '');
+
+        ns.changeRequests.addSilent(pkgId, pkgName, grid.sowId, grid.sowName, {
+          rowId:            row.id,
+          bidRecordId:      cell.id,
+          sowItemId:        row.sowItem,
+          displayLabel:     row.displayLabel,
+          productName:      cell.productName || row.productName,
+          proposalBucket:   row.proposalBucket || '',
+          proposalBucketId: row.proposalBucketId || '',
+          current:          current,
+          requested:        rowRequested,
+          changeNotes:      notes || ''
+        }, surveyId);
+        applied++;
+      }
+    }
+    return { applied: applied, skipped: skipped };
+  };
+
   ns.dispatchCRAction = function dispatchCRAction(button) {
     if (!button) return false;
     var action = button.getAttribute('data-action');

@@ -10,11 +10,6 @@
   // webhook when the parent record is deleted.
   var CONNECTION_FIELDS = ['field_1958'];
 
-  // Webhook URL — reuses the existing delete record webhook.
-  function getWebhookUrl() {
-    return (window.SCW && SCW.CONFIG && SCW.CONFIG.MAKE_DELETE_RECORD_WEBHOOK) || '';
-  }
-
   // Delete confirm message patterns
   var SINGLE_DELETE_RE = /are you sure you want to delete this/i;
   var BULK_DELETE_RE = /are you sure you want to permanently delete \d+ records/i;
@@ -60,33 +55,51 @@
   }
 
   /**
-   * Fire-and-forget webhook with the accessory record IDs.
+   * Pick a view to DELETE the accessory records through. Accessories are line
+   * items; any line-item view with Delete enabled works. Prefer the view the
+   * user clicked the parent-delete in, else the worksheet row's enclosing view.
    */
-  function fireWebhook(deletedRecordIds, accessoryIds) {
-    var url = getWebhookUrl();
-    if (!url) {
-      console.warn('[SCW][delete-intercept] No webhook URL configured');
+  function deleteViewKey() {
+    if (_lastClickedViewKey) return _lastClickedViewKey;
+    var wsRow = document.querySelector('tr.scw-ws-row[id]');
+    var vw = wsRow && wsRow.closest('.kn-view');
+    return vw ? vw.id : '';
+  }
+
+  /**
+   * FRONT-END cascade delete of the accessory records (no Make webhook).
+   * Routes through worksheet-v2's concurrency-capped + retry FE delete queue
+   * (view-scoped REST DELETE). The parent itself is deleted by Knack's own
+   * native delete that this intercept lets proceed.
+   */
+  function cascadeDeleteFE(accessoryIds) {
+    var viewKey = deleteViewKey();
+    var bulk = window.SCW && SCW.worksheetV2 && SCW.worksheetV2.bulk;
+    if (!viewKey) {
+      console.warn('[SCW][delete-intercept] no view to DELETE accessories through');
       return;
     }
-
-    var payload = {
-      deletedRecordIds: deletedRecordIds,
-      accessoryRecordIds: accessoryIds
-    };
-
-    SCW.debug('[SCW][delete-intercept] Sending to webhook:', payload);
-
-    fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    }).then(function (resp) {
-      if (!resp.ok) {
-        console.warn('[SCW][delete-intercept] Webhook responded ' + resp.status);
+    if (bulk && typeof bulk.queuedDeleteFE === 'function') {
+      bulk.queuedDeleteFE(viewKey, accessoryIds).then(function (results) {
+        var failed = 0;
+        for (var i = 0; i < results.length; i++) if (!results[i].ok) failed++;
+        if (failed) console.warn('[SCW][delete-intercept] ' + failed + ' of ' +
+          accessoryIds.length + ' accessory FE delete(s) failed');
+      });
+    } else if (window.SCW && typeof SCW.knackAjax === 'function' &&
+               typeof SCW.knackRecordUrl === 'function') {
+      // Fallback: direct REST DELETE per id (bulk module not loaded).
+      for (var i = 0; i < accessoryIds.length; i++) {
+        (function (id) {
+          SCW.knackAjax({ url: SCW.knackRecordUrl(viewKey, id), type: 'DELETE',
+            error: function (xhr) {
+              console.warn('[SCW][delete-intercept] accessory DELETE failed ' +
+                id, xhr && xhr.status); } });
+        })(accessoryIds[i]);
       }
-    }).catch(function (err) {
-      console.warn('[SCW][delete-intercept] Webhook failed:', err);
-    });
+    } else {
+      console.warn('[SCW][delete-intercept] no FE delete path available');
+    }
   }
 
   // ============================================================
@@ -94,6 +107,7 @@
   // ============================================================
 
   var _lastClickedRecordId = null;
+  var _lastClickedViewKey  = null;   // view the parent-delete was clicked in
 
   // Capture clicks on delete icons / links BEFORE the confirm dialog fires.
   // Uses capture phase so we see it before Knack's handler calls confirm().
@@ -103,13 +117,17 @@
     var link = e.target.closest('a.kn-link-delete, .kn-link-delete, td.kn-table-link a');
     if (!link) {
       _lastClickedRecordId = null;
+      _lastClickedViewKey  = null;
       return;
     }
 
     var tr = link.closest('tr[id]');
     if (tr && /^[a-f0-9]{24}$/.test(tr.id)) {
       _lastClickedRecordId = tr.id;
-      SCW.debug('[SCW][delete-intercept] Tracked click on record ' + tr.id);
+      var vw = link.closest('.kn-view');
+      _lastClickedViewKey = vw ? vw.id : null;
+      SCW.debug('[SCW][delete-intercept] Tracked click on record ' + tr.id +
+        ' in ' + _lastClickedViewKey);
     }
   }, true); // capture phase
 
@@ -205,7 +223,7 @@
     }
 
     if (allAccessoryIds.length) {
-      fireWebhook(deletedRecordIds, allAccessoryIds);
+      cascadeDeleteFE(allAccessoryIds);
     } else {
       SCW.debug('[SCW][delete-intercept] No connected accessories found for deleted records');
     }

@@ -54,7 +54,15 @@
   }
 
   /** Fire all subscribers for a given view. */
-  function notify(sourceViewKey) {
+  // Each notify drives a FULL worksheet rebuild in render.js (rebuilds every
+  // card's DOM + summaries). Recalc-field edits fire notify twice — once from
+  // refetchAndNotify's model.fetch().always, and once from the knack-view-render
+  // that the same fetch triggers — so without coalescing every such edit pays
+  // for two full rebuilds back-to-back (the post-edit "freeze"). Collapse all
+  // notifies for a view that land in the same frame into ONE render.
+  var notifyScheduled = Object.create(null);
+
+  function runNotify(sourceViewKey) {
     var list = subscribers[sourceViewKey];
     if (!list || !list.length) return;
     var records = readRecords(sourceViewKey);
@@ -62,6 +70,24 @@
       try { list[i](sourceViewKey, records); }
       catch (e) { console.warn('[scw-ws-v2] subscriber threw', e); }
     }
+  }
+
+  function notify(sourceViewKey) {
+    if (notifyScheduled[sourceViewKey]) return;
+    notifyScheduled[sourceViewKey] = true;
+    var run = function () {
+      notifyScheduled[sourceViewKey] = false;
+      runNotify(sourceViewKey);
+    };
+    if (typeof window.requestAnimationFrame === 'function') window.requestAnimationFrame(run);
+    else setTimeout(run, 0);
+  }
+
+  /** Synchronous notify — bypasses the frame coalescing. Reserved for the
+   *  rare caller that must render before reading the DOM back. */
+  function notifyNow(sourceViewKey) {
+    notifyScheduled[sourceViewKey] = false;
+    runNotify(sourceViewKey);
   }
 
   /**
@@ -146,6 +172,7 @@
     readRecords: readRecords,
     subscribe:   subscribe,
     notify:      notify,
+    notifyNow:   notifyNow,
     refetchAndNotify: refetchAndNotify,
     attachListeners: attachListeners
   };

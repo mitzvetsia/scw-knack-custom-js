@@ -105,8 +105,15 @@
           ns.sowFilter.mount(key);
         }
         // After every re-render, sync the bulk-select checkboxes to
-        // current selection state + refresh the floating toolbar.
-        if (ns.bulk && typeof ns.bulk.mount === 'function') {
+        // current selection state + refresh the floating toolbar. GUARD on the
+        // panel actually being mounted on THIS scene: bulk is a singleton, and
+        // the background poll fires notify() for EVERY configured view on every
+        // scene — without this guard the sales view's poll (view_3586) calls
+        // bulk.mount('view_3586') on the bid-review scene, clobbering
+        // _sourceViewKey to a SALES view so the bulk modal serves SALES fields
+        // (Custom Disc %, Label #) on the bid comparison grid.
+        if (ns.bulk && typeof ns.bulk.mount === 'function' &&
+            document.getElementById('scw-ws-v2-' + key)) {
           ns.bulk.mount(key);
         }
       });
@@ -508,10 +515,19 @@
       if (!chipId) return;
 
       var wrap = btn.closest('.scw-ws-v2-mh-chip-wrap');
+      // Resolve the view to DELETE the accessory through. The main worksheet
+      // wraps cards in #scw-ws-v2-<sourceView>, so the container resolves there
+      // (build-SOW unchanged). The bid-review comparison grid mounts the card
+      // OUTSIDE that container, so fall back to the source view stamped on the
+      // card's own editable elements (data-scw-ws-v2-view = view_3921) instead
+      // of the old blind 'view_3962' default — which isn't on that scene and
+      // made the REST DELETE 403.
       var v3962Container = btn.closest('[id^="scw-ws-v2-"]');
+      var cardEl = btn.closest('.scw-ws-v2-card');
+      var viewNode = cardEl && cardEl.querySelector('[data-scw-ws-v2-view]');
       var v3962ViewKey = v3962Container
         ? v3962Container.id.replace(/^scw-ws-v2-/, '')
-        : 'view_3962';
+        : ((viewNode && viewNode.getAttribute('data-scw-ws-v2-view')) || 'view_3962');
 
       // PREFERRED path: click Knack's native FE delete button on the
       // record's row (auto-confirming the modal). Same attribute-selector
@@ -541,24 +557,20 @@
       if (link) {
         autoConfirmKnackDelete();
         link.click();
-      } else {
-        var webhookUrl = (window.SCW && SCW.CONFIG && SCW.CONFIG.MAKE_DELETE_RECORD_WEBHOOK) || '';
-        if (!webhookUrl) {
-          console.warn('[scw-ws-v2] kn-link-delete missing AND ' +
-            'MAKE_DELETE_RECORD_WEBHOOK not configured; cannot ' +
-            'delete accessory ' + chipId);
-          clearChipDeleting(chipId, v3962ViewKey, wrap);
-          return;
-        }
-        fetch(webhookUrl, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ recordId: chipId })
-        }).catch(function (err) {
-          console.warn('[scw-ws-v2] accessory delete webhook failed for ' +
-            chipId, err);
-          clearChipDeleting(chipId, v3962ViewKey, wrap);
+      } else if (ns.bulk && typeof ns.bulk.deleteRecordFE === 'function') {
+        // No native delete link in the DOM (freshly-created accessory whose
+        // <tr> lags) → front-end view-scoped REST DELETE, no Make webhook.
+        ns.bulk.deleteRecordFE(v3962ViewKey, chipId).then(function (r) {
+          if (!r || !r.ok) {
+            console.warn('[scw-ws-v2] accessory FE delete failed for ' +
+              chipId, r && r.status);
+            clearChipDeleting(chipId, v3962ViewKey, wrap);
+          }
         });
+      } else {
+        console.warn('[scw-ws-v2] cannot delete accessory ' + chipId +
+          ' — no delete link and ns.bulk.deleteRecordFE unavailable');
+        clearChipDeleting(chipId, v3962ViewKey, wrap);
       }
 
       // Poll the source view until the record actually drops out of the
@@ -731,9 +743,10 @@
 
   // Kebab menu — two-click delete with no confirm prompt.
   //   1. Click kebab → menu opens positioned under the button
-  //   2. Click "Delete line item" → POST to MAKE_DELETE_RECORD_WEBHOOK
-  //      with { recordId } (mirrors connected-records.js deleteRecord).
-  //      Make does the actual delete server-side, no keys in the bundle.
+  //   2. Click "Delete line item" → FRONT-END delete: cascade the accessory
+  //      children through ns.bulk.queuedDeleteFE (view-scoped REST DELETE),
+  //      then delete the parent via its native delete link (REST fallback).
+  //      No Make webhook.
   // Single popover element reused across cards. Outside click closes.
   if (!document.documentElement.hasAttribute('data-scw-ws-v2-kebab-bound')) {
     document.documentElement.setAttribute('data-scw-ws-v2-kebab-bound', '1');
@@ -803,8 +816,6 @@
               }
             }
           }
-          var webhookUrl = (window.SCW && SCW.CONFIG && SCW.CONFIG.MAKE_DELETE_RECORD_WEBHOOK) || '';
-
           // Delete the parent line item itself. Defined here but invoked
           // only AFTER the accessory cascade settles (below), so a parent
           // delete that re-renders or navigates the view can't cancel the
@@ -867,14 +878,14 @@
           }
 
           // 2. Cascade-delete the accessories FIRST, through the bulk
-          //    module's concurrency-capped + retry/backoff queue
-          //    (ns.bulk.queuedDelete — the repo-mandated pattern). A bare
-          //    fetch-per-child silently loses writes to Knack's ~10 req/s
-          //    429s and gets cancelled when the parent delete navigates
-          //    (backlog #1). Delete the parent once the children settle.
-          if (accIds.length && webhookUrl && ns.bulk &&
-              typeof ns.bulk.queuedDelete === 'function') {
-            ns.bulk.queuedDelete(accIds, webhookUrl).then(function (results) {
+          //    module's FRONT-END concurrency-capped + retry/backoff queue
+          //    (ns.bulk.queuedDeleteFE — view-scoped REST DELETE, no Make).
+          //    A bare fetch-per-child silently loses writes to Knack's
+          //    ~10 req/s 429s and gets cancelled when the parent delete
+          //    navigates (backlog #1). Delete the parent once children settle.
+          if (accIds.length && ns.bulk &&
+              typeof ns.bulk.queuedDeleteFE === 'function') {
+            ns.bulk.queuedDeleteFE(viewId, accIds).then(function (results) {
               var failed = 0;
               for (var fr = 0; fr < results.length; fr++) {
                 if (!results[fr].ok) failed++;
@@ -885,27 +896,8 @@
               }
               deleteParent();
             });
-          } else if (accIds.length && !webhookUrl) {
-            console.warn('[scw-ws-v2] ' + accIds.length +
-              ' accessories not deleted — MAKE_DELETE_RECORD_WEBHOOK missing');
-            deleteParent();
-          } else if (accIds.length && webhookUrl) {
-            // ns.bulk.queuedDelete unavailable (shouldn't happen — bulk.js is
-            // bundled before init.js). Degrade to keepalive fire-and-forget so
-            // the accessory deletes are never skipped entirely, then delete
-            // the parent.
-            for (var ax = 0; ax < accIds.length; ax++) {
-              (function (accId) {
-                fetch(webhookUrl, {
-                  method: 'POST', keepalive: true,
-                  headers: { 'Content-Type': 'application/json' },
-                  body: JSON.stringify({ recordId: accId })
-                }).catch(function () {});
-              })(accIds[ax]);
-            }
-            deleteParent();
           } else {
-            // No accessories — just delete the parent.
+            // No accessories (or queue unavailable) — just delete the parent.
             deleteParent();
           }
         }

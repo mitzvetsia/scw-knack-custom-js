@@ -33,6 +33,137 @@
     });
   }
 
+  // Word-level diff for text fields (product name / labor desc). Returns
+  // escaped HTML of `text` with only the WORDS that differ from the SOW
+  // counterpart (`against`) wrapped in <u class="…tok-diff"> — the reviewer
+  // sees exactly which terms changed instead of the whole value lighting up.
+  //
+  // Uses a TRUE positional diff: an LCS (longest common subsequence) over the
+  // lowercased word sequences. Words that fall on the LCS are unchanged;
+  // everything else (inserted / replaced) is underlined. Order matters, so a
+  // reordered phrase highlights what actually moved — unlike a bag-of-words
+  // compare. Whitespace/punctuation is preserved verbatim and never marked.
+  // Pathologically long inputs (>600 words a side) fall back to a multiset
+  // compare to bound the O(n·m) table.
+  function isWordTok(p) { return /^[A-Za-z0-9]+$/.test(p); }
+  function tokenizeParts(s) {
+    return String(s).match(/[A-Za-z0-9]+|[^A-Za-z0-9]+/g) || [];
+  }
+  // Returns a boolean[] over `a` marking which words are part of the LCS
+  // with `b` (true = unchanged / keep, false = differs / underline).
+  function lcsKeep(a, b) {
+    var n = a.length, mm = b.length;
+    var dp = [];
+    for (var i = 0; i <= n; i++) {
+      var rowArr = new Array(mm + 1);
+      for (var j = 0; j <= mm; j++) rowArr[j] = 0;
+      dp.push(rowArr);
+    }
+    for (i = 1; i <= n; i++) {
+      for (j = 1; j <= mm; j++) {
+        if (a[i - 1] === b[j - 1]) dp[i][j] = dp[i - 1][j - 1] + 1;
+        else dp[i][j] = dp[i - 1][j] >= dp[i][j - 1] ? dp[i - 1][j] : dp[i][j - 1];
+      }
+    }
+    var keep = new Array(n);
+    for (i = 0; i < n; i++) keep[i] = false;
+    i = n; j = mm;
+    while (i > 0 && j > 0) {
+      if (a[i - 1] === b[j - 1]) { keep[i - 1] = true; i--; j--; }
+      else if (dp[i - 1][j] >= dp[i][j - 1]) i--;
+      else j--;
+    }
+    return keep;
+  }
+  function multisetKeep(a, b) {
+    var pool = Object.create(null);
+    for (var i = 0; i < b.length; i++) pool[b[i]] = (pool[b[i]] || 0) + 1;
+    var keep = new Array(a.length);
+    for (var k = 0; k < a.length; k++) {
+      if (pool[a[k]] > 0) { pool[a[k]]--; keep[k] = true; } else keep[k] = false;
+    }
+    return keep;
+  }
+  function markWordDiff(text, against) {
+    var t = String(text == null ? '' : text);
+    if (!t) return '';
+    var a = String(against == null ? '' : against);
+    if (!a.trim()) return escapeHtml(t);
+    var parts = tokenizeParts(t);
+    var aWords = [], aIdx = [];
+    for (var i = 0; i < parts.length; i++) {
+      if (isWordTok(parts[i])) { aWords.push(parts[i].toLowerCase()); aIdx.push(i); }
+    }
+    var bParts = tokenizeParts(a), bWords = [];
+    for (var k = 0; k < bParts.length; k++) {
+      if (isWordTok(bParts[k])) bWords.push(bParts[k].toLowerCase());
+    }
+    var keepWord = (aWords.length > 600 || bWords.length > 600)
+      ? multisetKeep(aWords, bWords) : lcsKeep(aWords, bWords);
+    var keepPart = Object.create(null);
+    for (var w = 0; w < aIdx.length; w++) keepPart[aIdx[w]] = keepWord[w];
+    var out = '';
+    for (var j = 0; j < parts.length; j++) {
+      var p = parts[j];
+      if (isWordTok(p) && keepPart[j] !== true) {
+        out += '<u class="scw-bid-review-v2__tok-diff">' + escapeHtml(p) + '</u>';
+      } else {
+        out += escapeHtml(p);
+      }
+    }
+    return out;
+  }
+
+  // Cabling attributes (cam/reader) for a comparison cell: conduit + drop
+  // length values, plenum / exterior / existing-cabling booleans. Rendered on
+  // BOTH the SOW and bid sides so a reviewer can eyeball spec vs. bid.
+  //   opts.side  'sow' | 'bid'
+  //   opts.diffs per-field mismatch flags (bid side only) — a differing field
+  //              gets the amber pill + the data-scw-diff-field hover hook;
+  //              the SOW side carries the matching data-scw-sow-field target.
+  // A boolean the bid DROPPED (false here, true on the SOW) still renders on
+  // the bid side as a struck-through "off" chip so the removal is visible.
+  function cablingLineHtml(data, opts) {
+    if (!data) return '';
+    opts = opts || {};
+    var diffs = opts.diffs || {};
+    var isSow = opts.side === 'sow';
+    var DIFF = ' scw-bid-review-v2__field-diff';
+    function hook(name, isDiff) {
+      if (isSow) return ' data-scw-sow-field="' + name + '"';
+      return isDiff ? ' data-scw-diff-field="' + name + '"' : '';
+    }
+    function valChip(v, label, name, isDiff) {
+      var s = String(v == null ? '' : v).replace(/<[^>]*>/g, '').trim();
+      // Hide only blank — "0" is a real value (0 ft of conduit/drop) and should
+      // show so the SOW spec reads explicitly. Truly empty fields stay hidden.
+      if (!s) return '';
+      return '<span class="scw-bid-review-v2__cabling-val' + (!isSow && isDiff ? DIFF : '') +
+        '"' + hook(name, isDiff) + '><label>' + escapeHtml(label) + '</label>' +
+        escapeHtml(s) + '</span>';
+    }
+    function boolChip(on, label, name, isDiff) {
+      if (on) {
+        return '<span class="scw-bid-review-v2__cabling-chip' + (!isSow && isDiff ? DIFF : '') +
+          '"' + hook(name, isDiff) + '>' + escapeHtml(label) + '</span>';
+      }
+      // false but differing on the bid side → show it struck so "dropped" reads.
+      if (!isSow && isDiff) {
+        return '<span class="scw-bid-review-v2__cabling-chip scw-bid-review-v2__cabling-chip--off' +
+          DIFF + '"' + hook(name, isDiff) + '>' + escapeHtml(label) + '</span>';
+      }
+      return '';
+    }
+    var inner =
+      valChip(data.conduit,    'Conduit', 'conduit',    diffs.conduit) +
+      valChip(data.dropLength, 'Drop',    'dropLength', diffs.dropLength) +
+      boolChip(data.plenum,    'Plenum',   'plenum',   diffs.plenum) +
+      boolChip(data.exterior,  'Exterior', 'exterior', diffs.exterior) +
+      boolChip(data.existCabling, 'Existing cabling', 'existing', diffs.existing);
+    if (!inner) return '';
+    return '<div class="scw-bid-review-v2__cabling">' + inner + '</div>';
+  }
+
   // Cam/reader detection — mirrors v1's showCabling(). Only these
   // buckets get the displayLabel column (E-001, E-002, …) and the
   // cabling/plenum/exterior chips (Phase 2).
@@ -231,6 +362,13 @@
           ' title="Connected devices: ' + escapeHtml(joined) + '">' +
           '<label>Connected</label>' + escapeHtml(joined) + '</div>';
       }
+    } else if (opts.side === 'bid' && opts.deviceDiff) {
+      // Bid has NO connected devices but the SOW does — surface the gap so the
+      // dropped connection reads as a difference, not just an amber cell tint.
+      var am = lineAttrs(true);
+      html += '<div class="scw-bid-review-v2__cell-conn' + am.cls + '"' + am.hook +
+        ' title="No connected devices on this bid (SOW expects connected devices)">' +
+        '<label>Connected</label><em style="opacity:.6">(none)</em></div>';
     }
     var to = ns.transform.stripHtml(connTo || '').trim();
     if (to && !/^\(none\)$/i.test(to)) {
@@ -238,6 +376,12 @@
       html += '<div class="scw-bid-review-v2__cell-conn' + a2.cls + '"' + a2.hook +
         ' title="Connected to: ' + escapeHtml(to) + '">' +
         '<label>Connected&nbsp;to</label>' + escapeHtml(to) + '</div>';
+    } else if (opts.side === 'bid' && opts.toDiff) {
+      // Bid not connected but the SOW expects a connection — show the gap.
+      var a2m = lineAttrs(true);
+      html += '<div class="scw-bid-review-v2__cell-conn' + a2m.cls + '"' + a2m.hook +
+        ' title="Not connected on this bid (SOW expects a connection)">' +
+        '<label>Connected&nbsp;to</label><em style="opacity:.6">(none)</em></div>';
     }
     return html;
   }
@@ -334,7 +478,7 @@
           escapeHtml(sowItemData.productName) +
         '</div>' : '') +
       '<div class="scw-bid-review-v2__sow-numbers">' +
-        '<span class="scw-bid-review-v2__sow-num"><label>Qty</label>' +
+        '<span class="scw-bid-review-v2__sow-num" data-scw-sow-field="qty"><label>Qty</label>' +
           escapeHtml(qtyTxt) + '</span>' +
         '<span class="scw-bid-review-v2__sow-num" data-scw-sow-field="fee"><label>Sub Bid</label>' +
           escapeHtml(feeTxt) + '</span>' +
@@ -344,6 +488,7 @@
           escapeHtml(descTxt) + '">' + escapeHtml(descTxt) +
         '</div>' : '') +
       connLineHtml(sowItemData.connDevice, sowItemData.connTo, { side: 'sow' }) +
+      cablingLineHtml(sowItemData, { side: 'sow' }) +
       // "belongs to another SOW" rows note which SOW(s) the item is on.
       ((row && row.otherKind === 'other-sow' && row.otherSowNames && row.otherSowNames.length) ?
         '<div class="scw-bid-review-v2__sow-elsewhere">on ' +
@@ -559,26 +704,39 @@
     var DIFF = ' scw-bid-review-v2__field-diff';
     if (diffs && diffs.any) td.classList.add('scw-bid-review-v2__cell--mismatch');
     if (cell.dupes && cell.dupes.length) td.classList.add('scw-bid-review-v2__cell--dupe-bid');
-    var prodDiff = (diffs && diffs.product) ? DIFF : '';
-    var descDiff = (diffs && diffs.laborDesc) ? DIFF : '';
+    // Numeric fields (fee) still flag the whole value — there's no sub-token
+    // to pinpoint. Text fields (product / desc) underline only the differing
+    // WORDS via markWordDiff below, so they don't carry the whole-field pill.
     var feeOnExt = (diffs && diffs.fee && showExt) ? DIFF : '';
     var feeOnBid = (diffs && diffs.fee && !showExt) ? DIFF : '';
+    // SOW counterparts for word-level diffing of the text fields. Desc basis
+    // is the DISPLAYED SOW desc (sowItemData / field_2020) so the underlines
+    // match the SOW column shown alongside, not the bid-snapshot field_2019.
+    var sowProd  = (row.sowItemData && row.sowItemData.productName) || row.sowProduct || '';
+    var sowDesc  = ns.transform.stripHtml(
+      (row.sowItemData && row.sowItemData.laborDesc) || row.sowLaborDesc || '');
+    var prodInner = (diffs && diffs.product)
+      ? markWordDiff(cell.productName, sowProd) : escapeHtml(cell.productName);
+    var descInner = (diffs && diffs.laborDesc)
+      ? markWordDiff(descTxt, sowDesc) : escapeHtml(descTxt);
     // Hover hooks: hovering a differing field highlights its SOW-cell
     // counterpart (init.js wires the mouseover). Only the actually-
     // differing field carries the hook.
     var prodHover = (diffs && diffs.product)   ? ' data-scw-diff-field="product"' : '';
     var feeHover  = (diffs && diffs.fee)       ? ' data-scw-diff-field="fee"' : '';
     var descHover = (diffs && diffs.laborDesc) ? ' data-scw-diff-field="desc"' : '';
+    var qtyDiff   = (diffs && diffs.qty) ? DIFF : '';
+    var qtyHover  = (diffs && diffs.qty) ? ' data-scw-diff-field="qty"' : '';
 
     var primaryHtml =
       (cell.productName ?
-        '<div class="scw-bid-review-v2__cell-product' + prodDiff + '"' + prodHover + ' title="' +
+        '<div class="scw-bid-review-v2__cell-product"' + prodHover + ' title="' +
           escapeHtml(cell.productName) + '">' +
-          escapeHtml(cell.productName) +
+          prodInner +
         '</div>' : '') +
       '<div class="scw-bid-review-v2__cell-numbers">' +
-        '<span class="scw-bid-review-v2__cell-num"><label>Qty</label>' +
-          escapeHtml(qtyTxt) + '</span>' +
+        '<span class="scw-bid-review-v2__cell-num' + qtyDiff + '"' + qtyHover +
+          '><label>Qty</label>' + escapeHtml(qtyTxt) + '</span>' +
         '<span class="scw-bid-review-v2__cell-num' + feeOnBid + '"' + (showExt ? '' : feeHover) +
           '><label>Sub Bid</label>' + escapeHtml(rateTxt) + '</span>' +
         (showExt ?
@@ -586,11 +744,12 @@
             '><label>Ext</label>' + escapeHtml(extTxt) + '</span>' : '') +
       '</div>' +
       (descTxt ?
-        '<div class="scw-bid-review-v2__cell-desc' + descDiff + '"' + descHover + ' title="' +
-          escapeHtml(descTxt) + '">' + escapeHtml(descTxt) +
+        '<div class="scw-bid-review-v2__cell-desc"' + descHover + ' title="' +
+          escapeHtml(descTxt) + '">' + descInner +
         '</div>' : '') +
       connLineHtml(cell.connDevice, cell.connTo,
         { side: 'bid', deviceDiff: diffs && diffs.connDevice, toDiff: diffs && diffs.connTo }) +
+      cablingLineHtml(cell, { side: 'bid', diffs: diffs }) +
       // Survey note (field_2412) on the bid record — v1 parity: populated
       // cells render the sub's note too, not just the no-bid cutouts.
       surveyNoteHtml(cell.notes) +
@@ -1045,7 +1204,7 @@
       '</div>' + delta);
   }
 
-  function pkgDetailsCell(pkg) {
+  function pkgDetailsCell(pkg, sowId) {
     // Bid Name (field_2636) FIRST, with a label above it — mirrors the
     // "SOW Name" label/value at the top of the SOW details band so the two
     // columns' details line up vertically. Always rendered (placeholder
@@ -1068,50 +1227,82 @@
           escapeHtml(pkg.bidStatus.toLowerCase().replace(/\s+/g, '-')) + '">' +
           escapeHtml(pkg.bidStatus) + '</span>'
       : '';
+    // Reopen Bid lives WITH the status (it's a bid-state action), directly
+    // under the badge — separated from the SOW / CR action groups below.
+    var isSubmitted = /^submitted$/i.test(String(pkg.bidStatus || '').trim());
+    var reopenBtn = isSubmitted
+      ? '<button type="button" class="scw-bid-review__btn scw-bid-review__btn--reopen ' +
+          'scw-bid-review-v2__head-btn scw-bid-review-v2__head-btn--reopen-inline" ' +
+          'data-action="package_reopen_bid" ' +
+          'data-package-id="' + escapeHtml(pkg.id) + '" ' +
+          'data-sow-id="' + escapeHtml(sowId || '') + '">Reopen Bid</button>'
+      : '';
     return pkgTh(pkg, 'scw-bid-review-v2__head-cell--details',
       nameBlock +
       '<div class="scw-bid-review-v2__head-subtitle">' +
         '<span class="scw-bid-review-v2__head-pkg-label">' + escapeHtml(pkg.label) + '</span>' +
         pdfLink +
       '</div>' +
-      (statusBadge ? '<div class="scw-bid-review-v2__head-statusline">' + statusBadge + '</div>' : ''));
+      ((statusBadge || reopenBtn)
+        ? '<div class="scw-bid-review-v2__head-statusline">' + statusBadge + reopenBtn + '</div>'
+        : ''));
   }
 
   function pkgActionsCell(pkg, sowId) {
-    // Action buttons (Submitted bids only) — reuse v1's handlers via
-    // SCW.bidReview.dispatchHeaderAction. Buttons carry the same data-*
-    // attrs + .scw-bid-review__btn class v1's setBusy/CSS expect. Order:
-    // destructive/secondary first, primary (adopt) last per house style.
+    // Actions are grouped into two clearly-labelled categories so they don't
+    // read as one undifferentiated stack:
+    //   • SOW  — Create new SOW / Update SOW to match Bid
+    //   • Change Requests — Request Change on Selected + Submit / Clear
+    // (Reopen Bid — a BID-state action — moved up under the status badge.)
+    // Reuse v1's handlers via SCW.bidReview.dispatchHeaderAction; buttons keep
+    // the v1 data-* attrs + .scw-bid-review__btn classes v1's setBusy expects.
     var isSubmitted = /^submitted$/i.test(String(pkg.bidStatus || '').trim());
-    var actions = '';
+
+    var sowGroup = '';
     if (isSubmitted) {
-      actions =
-        '<div class="scw-bid-review-v2__head-actions">' +
-          headBtn('Reopen Bid', 'reopen', 'package_reopen_bid', pkg.id, sowId) +
+      sowGroup =
+        '<div class="scw-bid-review-v2__head-group scw-bid-review-v2__head-group--sow">' +
+          '<div class="scw-bid-review-v2__head-group-label">SOW</div>' +
           headBtn('+ Create new SOW', 'create', 'package_create_sow', pkg.id, sowId) +
           headBtn('← Update SOW to match Bid', 'adopt', 'package_copy_to_sow', pkg.id, sowId) +
         '</div>';
     }
 
     // Pending change-request controls — Submit (N) + Clear All, shown when
-    // this package has pending CRs. Route through dispatchCRAction.
+    // this package has pending CRs.
     var api = crApi();
     var pending = (api && api.getPending) ? (api.getPending() || {}) : {};
     var bucket = pending[pkg.id];
     var crCount = (bucket && bucket.items) ? bucket.items.length : 0;
-    var crBtns = '';
-    if (crCount) {
-      crBtns =
-        '<div class="scw-bid-review-v2__head-cr-actions">' +
-          '<button type="button" class="scw-bid-review__btn scw-bid-review-v2__head-btn ' +
-            'scw-bid-review-v2__head-btn--cr-clear" data-action="cr_clear_all">Clear All</button>' +
-          '<button type="button" class="scw-bid-review__btn scw-bid-review-v2__head-btn ' +
+
+    var crGroup = '';
+    if (isSubmitted || crCount) {
+      var bulkBtn = isSubmitted
+        ? '<button type="button" class="scw-bid-review__btn scw-bid-review-v2__head-btn ' +
+            'scw-bid-review-v2__head-btn--cr-bulk" data-action="cr_bulk_selected" ' +
+            'data-pkg-id="' + escapeHtml(pkg.id) + '" data-package-id="' + escapeHtml(pkg.id) + '" ' +
+            'data-pkg-name="' + escapeHtml(pkg.label || '') + '" ' +
+            'data-sow-id="' + escapeHtml(sowId || '') + '" ' +
+            'title="Request the same change on all selected line items for this bid">' +
+            'Request Change on Selected</button>'
+        : '';
+      var pendingBtns = crCount
+        ? '<button type="button" class="scw-bid-review__btn scw-bid-review-v2__head-btn ' +
             'scw-bid-review-v2__head-btn--cr-submit" data-action="cr_submit" ' +
             'data-pkg-id="' + escapeHtml(pkg.id) + '">Submit Change Request (' + crCount + ')</button>' +
+          '<button type="button" class="scw-bid-review__btn scw-bid-review-v2__head-btn ' +
+            'scw-bid-review-v2__head-btn--cr-clear" data-action="cr_clear_all">Clear All</button>'
+        : '';
+      crGroup =
+        '<div class="scw-bid-review-v2__head-group scw-bid-review-v2__head-group--cr">' +
+          '<div class="scw-bid-review-v2__head-group-label">Change Requests' +
+            (crCount ? ' <span class="scw-bid-review-v2__head-group-count">' + crCount + '</span>' : '') +
+          '</div>' +
+          bulkBtn + pendingBtns +
         '</div>';
     }
 
-    return pkgTh(pkg, 'scw-bid-review-v2__head-cell--actions', actions + crBtns);
+    return pkgTh(pkg, 'scw-bid-review-v2__head-cell--actions', sowGroup + crGroup);
   }
 
   // A header action button — v1-compatible classes + data attrs so
@@ -1222,7 +1413,7 @@
     // Band 3 — details (SOW name/proposal/docs/survey/margin ‖ bid label/PDF/status).
     var r3 = makeRow('details',
       sowTh('scw-bid-review-v2__head-cell--details scw-bid-review-v2__head--sow-details', ''),
-      pkgDetailsCell);
+      function (pkg) { return pkgDetailsCell(pkg, grid.sowId); });
     thead.appendChild(r3);
 
     // Band 4 — actions (both columns' buttons at the bottom).

@@ -1143,6 +1143,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     ':not(.scw-mdf-summary-row)' +
     ':not(.scw-synth-divider)' +
     ':not(.scw-mounting-product-line)' +
+    ':not(.scw-rev-orphan-row)' +
     ' { visibility: hidden; height: 0; overflow: hidden; }';
 }).join('\n')}
 

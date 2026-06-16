@@ -2373,6 +2373,23 @@
     addSilent:        function (pkgId, pkgName, sowId, sowName, item, surveyId) {
       addPendingItem(pkgId, pkgName, sowId, sowName, item, surveyId);
     },
+    /** Remove a pending item by (pkgId, rowId) — same behavior as the
+     *  summary card's "×" dismiss, including the addToBid/reciprocal cleanup.
+     *  Exposed so v2's delegated click handler can dismiss a card whose inline
+     *  "×" listener is shadowed by the card-level data-action open handler. */
+    dismissPendingItem: function (pkgId, rowId) {
+      var bucket = _pending[pkgId];
+      if (bucket && bucket.items) {
+        for (var i = 0; i < bucket.items.length; i++) {
+          if (bucket.items[i].rowId === rowId) {
+            var it = bucket.items[i];
+            if (it.addToBid && it.reciprocalSource) removeAddToBidFromSource(pkgId, it);
+            break;
+          }
+        }
+      }
+      removePendingItem(pkgId, rowId);
+    },
   };
 
 })();
