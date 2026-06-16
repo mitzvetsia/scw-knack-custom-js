@@ -127,7 +127,10 @@
   function isCamReader(rec) {
     var CAM = (ns.cfg && ns.cfg.bucket('camReader', curView)) ||
               (ns.card && ns.card.CAM_READER_BUCKET) || '6481e5ba38f283002898113c';
-    var bid = (ns.card && ns.card.bucketIdOf && ns.card.bucketIdOf(rec)) || '';
+    // Pass curView so bucketIdOf resolves the per-object bucket field
+    // (survey = field_2366, NOT the SOW default field_2219) — otherwise
+    // survey rows read no bucket and never register as cam/readers.
+    var bid = (ns.card && ns.card.bucketIdOf && ns.card.bucketIdOf(rec, curView)) || '';
     return bid === CAM;
   }
 
