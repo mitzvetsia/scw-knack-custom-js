@@ -1307,6 +1307,34 @@
     '</div>';
   }
 
+  /** Bid cell — a line item can belong to multiple bids (field_2415). Render
+   *  each bid label on its OWN line (v1 shows them stacked, not comma-joined). */
+  function surveyBidCell(rec, fieldKey) {
+    var raw = rec[fieldKey + '_raw'];
+    var parts = [];
+    if (Array.isArray(raw)) {
+      for (var i = 0; i < raw.length; i++) {
+        var r = raw[i];
+        if (!r) continue;
+        var v = (r.identifier != null && r.identifier !== '') ? r.identifier : r.id;
+        if (v != null && v !== '') parts.push(String(v));
+      }
+    } else {
+      var s = readField(rec, fieldKey);
+      if (s) parts = s.split(/\s*,\s*/);
+    }
+    var title = parts.length ? ('Bid ' + parts.join(', ')) : 'Bid';
+    return '<div class="scw-ws-v2-cell scw-ws-v2-cell--survey-bid" title="' + escapeHtml(title) + '">' +
+      parts.map(escapeHtml).join('<br>') +
+    '</div>';
+  }
+
+  /** A survey detail-panel item wrapper carrying a width-hint class so the
+   *  flex layout sizes each field to its expected value width. */
+  function sdItem(html, widthCls) {
+    return '<div class="scw-ws-v2-sd-item ' + (widthCls || '') + '">' + html + '</div>';
+  }
+
   /** A fill (textarea) summary cell — survey notes / labor description. */
   function surveyFill(rec, viewKey, fieldKey, label, cls) {
     return '<div class="scw-ws-v2-cell scw-ws-v2-cell--labor-desc ' + (cls || '') + '">' +
@@ -1358,13 +1386,20 @@
       isCam ? 'Labor description' : 'Description');
 
     // Slot 5 (qty/chips): cam → cabling chips; assumptions → blank;
-    // else → editable Qty.
+    // qty-locked (FLAG_limit to quantity one = Yes) → blank (qty implicit 1,
+    // v1 parity); else → editable Qty.
     var slot5;
-    if (isCam)                       slot5 = surveyChips(rec, viewKey, F);
-    else if (cat === 'assumptions')  slot5 = empty('scw-ws-v2-cell--num');
-    else                             slot5 = '<div class="scw-ws-v2-cell scw-ws-v2-cell--num">' +
-      numInput(rec, viewKey, F.qty || 'field_2399', readNum(rec, F.qty || 'field_2399'), 'Qty') +
-    '</div>';
+    if (isCam) {
+      slot5 = surveyChips(rec, viewKey, F);
+    } else if (cat === 'assumptions') {
+      slot5 = empty('scw-ws-v2-cell--num');
+    } else if (readBool(rec, F.qtyOne || 'field_2373') === 'Yes') {
+      slot5 = empty('scw-ws-v2-cell--num');
+    } else {
+      slot5 = '<div class="scw-ws-v2-cell scw-ws-v2-cell--num">' +
+        numInput(rec, viewKey, F.qty || 'field_2399', readNum(rec, F.qty || 'field_2399'), 'Qty') +
+      '</div>';
+    }
 
     // Money: Labor (editable; blank for assumptions) · Ext (read-only;
     // blank for cam + assumptions, matching v1) · Bid (read-only conn).
@@ -1377,8 +1412,7 @@
     var extCell = (isCam || cat === 'assumptions')
       ? empty('scw-ws-v2-cell--survey-ext')
       : ro(readField(rec, F.extended || 'field_2401'), 'scw-ws-v2-cell--survey-ext', 'Extended');
-    var bidVal  = readField(rec, F.bid || 'field_2415');
-    var bidCell = ro(bidVal, 'scw-ws-v2-cell--survey-bid', bidVal ? ('Bid ' + bidVal) : 'Bid');
+    var bidCell = surveyBidCell(rec, F.bid || 'field_2415');
 
     return '<div class="scw-ws-v2-row scw-ws-v2-row--' + cat + '">' +
       chevronCell(rec) +
@@ -1398,32 +1432,32 @@
   function buildDetail_survey(rec, viewKey, cat) {
     var F = fieldsFor(viewKey);
 
-    // Connections READ-ONLY (SOW-specific picker not wired for survey).
-    // Mirrors v1 detailLayout: cam right = Connected To · Mounting Height ·
-    // Drop Length · Conduit; default right = Connected Devices.
-    var rightZone = '';
+    // Survey detail = one flex-wrap row; each field is sized to its expected
+    // value width (numbers narrow, the connection medium, the mounting-
+    // hardware list wide). Connections render READ-ONLY (SOW-specific picker
+    // not wired). Order mirrors v1 detailLayout.
+    var items = '';
     if (cat === 'cam') {
-      rightZone += detailReadOnly(rec, F.connectedDevice || 'field_2381', 'Connected To');
-      rightZone += singleChipField(rec, viewKey, F.mountingHeight || 'field_2455',
-        'Mounting Height', ["Under 16'", "16' - 24'", "Over 24'"]);
-      rightZone += detailField(rec, viewKey, F.dropLength || 'field_2367', 'Drop Length', 'number');
-      rightZone += detailField(rec, viewKey, F.conduit    || 'field_2368', 'Conduit',     'number');
+      items += sdItem(detailReadOnly(rec, F.connectedDevice || 'field_2381', 'Connected To'),
+        'scw-ws-v2-sd--conn');
+      items += sdItem(singleChipField(rec, viewKey, F.mountingHeight || 'field_2455',
+        'Mounting Height', ["Under 16'", "16' - 24'", "Over 24'"]), 'scw-ws-v2-sd--chips');
+      items += sdItem(detailField(rec, viewKey, F.dropLength || 'field_2367', 'Drop Length', 'number'),
+        'scw-ws-v2-sd--num');
+      items += sdItem(detailField(rec, viewKey, F.conduit || 'field_2368', 'Conduit', 'number'),
+        'scw-ws-v2-sd--num');
     } else if (cat === 'default') {
-      rightZone += detailReadOnly(rec, F.connectedDevices || 'field_2380', 'Connected Devices');
+      items += sdItem(detailReadOnly(rec, F.connectedDevices || 'field_2380', 'Connected Devices'),
+        'scw-ws-v2-sd--conn');
     }
 
-    // Left = Mounting Hardware list (read-only) + SCW Notes (editable),
-    // matching v1 detailLayout left:['mounting','scwNotes'].
-    var leftZone = detailReadOnly(rec, F.mounting || 'field_2463', 'Mounting Hardware') +
-      detailTextArea(rec, viewKey, F.scwNotes || 'field_2418', 'SCW Notes');
+    items += sdItem(detailReadOnly(rec, F.mounting || 'field_2463', 'Mounting Hardware'),
+      'scw-ws-v2-sd--wide');
+    items += sdItem(detailTextArea(rec, viewKey, F.scwNotes || 'field_2418', 'SCW Notes'),
+      'scw-ws-v2-sd--notes');
 
     return '<div class="scw-ws-v2-detail">' +
-      '<div class="scw-ws-v2-detail-zones">' +
-        '<div class="scw-ws-v2-detail-zone scw-ws-v2-detail-zone--identity">' + leftZone + '</div>' +
-        (rightZone
-          ? '<div class="scw-ws-v2-detail-zone scw-ws-v2-detail-zone--connections">' + rightZone + '</div>'
-          : '') +
-      '</div>' +
+      '<div class="scw-ws-v2-survey-detail">' + items + '</div>' +
     '</div>';
   }
 

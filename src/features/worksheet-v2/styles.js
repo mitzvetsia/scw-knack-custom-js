@@ -226,6 +226,20 @@
     '.scw-ws-v2-radiochip.scw-ws-v2-radiochip--error {',
     '  border-color: #dc2626 !important; color: #dc2626 !important;',
     '}',
+    /* Survey detail panel — flex-wrap row; each field sized to its expected
+       value width (numbers narrow, connection medium, mounting-hardware list
+       wide) instead of the SOW two-zone grid. */
+    '.scw-ws-v2-survey-detail {',
+    '  display: flex !important; flex-wrap: wrap !important;',
+    '  gap: 10px 18px !important; align-items: flex-start !important;',
+    '}',
+    '.scw-ws-v2-sd-item { min-width: 0 !important; }',
+    '.scw-ws-v2-sd--num   { flex: 0 0 90px !important; width: 90px !important; }',
+    '.scw-ws-v2-sd--num .scw-ws-v2-input--num { width: 100% !important; }',
+    '.scw-ws-v2-sd--chips { flex: 0 0 auto !important; }',
+    '.scw-ws-v2-sd--conn  { flex: 0 1 220px !important; min-width: 150px !important; }',
+    '.scw-ws-v2-sd--notes { flex: 1 1 200px !important; min-width: 170px !important; max-width: 300px !important; }',
+    '.scw-ws-v2-sd--wide  { flex: 2 1 280px !important; min-width: 220px !important; }',
     /* Sales detail — v1-style two columns: pricing/identity stacked on the
        left, connections + Labor Desc stacked on the right. */
     '.scw-ws-v2-sales-detail {',
