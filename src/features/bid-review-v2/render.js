@@ -18,8 +18,14 @@
 
   function hasFocusInPanel(container) {
     var a = document.activeElement;
-    if (!a || !container) return false;
-    if (!a.hasAttribute || !a.hasAttribute('data-scw-br-v2-field')) return false;
+    if (!a || !container || !a.hasAttribute) return false;
+    // Defer the rebuild while the user is mid-edit in EITHER a comparison-grid
+    // input (data-scw-br-v2-field) OR an embedded worksheet-v2 card input
+    // (data-scw-ws-v2-field) inside an expanded row's SOW editor. Without the
+    // ws-v2 check, editing a SOW field + tabbing fired a refetch that rebuilt
+    // the grid and tore down the panel mid-edit, dropping the in-progress edit.
+    if (!a.hasAttribute('data-scw-br-v2-field') &&
+        !a.hasAttribute('data-scw-ws-v2-field')) return false;
     return container.contains(a);
   }
 

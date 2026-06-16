@@ -1291,7 +1291,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
       const $head = $(
         `<tr class="kn-table-group kn-group-level-2 ${SECT} ${SECT}-head">` +
-        `<td colspan="${cols}">Other Associated Equipment</td></tr>`
+        `<td colspan="${cols}">Other Expected Equipment</td></tr>`
       );
       const $list = $(
         `<tr class="${SECT} ${SECT}-list"><td colspan="${cols}">` +
