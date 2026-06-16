@@ -1004,29 +1004,67 @@
           });
           return out;
         };
+
+        // Full candidate list from a dedicated grid view (bids view_3507,
+        // MDF/IDF view_3617) so EVERY option shows, not just in-use ones.
+        // Label prefers the in-use connection identifier (matches the
+        // worksheet display exactly), then the view's label field, then id.
+        // Falls back to in-use-only (collectConnValues) if the grid isn't
+        // loaded on the page.
+        var surveyCandidates = function (viewKeys, labelField, connF) {
+          var recs = firstViewRecords(viewKeys) || [];
+          if (!recs.length) return collectConnValues(connF);
+          var inUse = Object.create(null);
+          for (var u = 0; u < records.length; u++) {
+            var uraw = records[u] && records[u][connF + '_raw'];
+            if (!Array.isArray(uraw)) continue;
+            for (var uj = 0; uj < uraw.length; uj++) {
+              var uv = uraw[uj];
+              if (uv && uv.id && uv.identifier != null) inUse[uv.id] = String(uv.identifier);
+            }
+          }
+          var out = [], seen = Object.create(null);
+          for (var i = 0; i < recs.length; i++) {
+            var a = recs[i].attributes || recs[i] || {};
+            if (!a.id || seen[a.id]) continue;
+            seen[a.id] = true;
+            var lbl = inUse[a.id] ||
+              (a[labelField] != null ? String(a[labelField]).replace(/<[^>]*>/g, '').trim() : '') ||
+              (a.identifier != null ? String(a.identifier).replace(/<[^>]*>/g, '').trim() : '') ||
+              a.id;
+            out.push({ id: a.id, name: String(lbl) });
+          }
+          out.sort(function (x, y) {
+            return String(x.name).localeCompare(String(y.name), undefined,
+              { numeric: true, sensitivity: 'base' });
+          });
+          return out;
+        };
         var surveyRefetch = function () {
           if (ns.data && typeof ns.data.refetchAndNotify === 'function') ns.data.refetchAndNotify(viewKey);
           else if (ns.data && typeof ns.data.notify === 'function') ns.data.notify(viewKey);
         };
 
-        // Bid (multi) — model on SOW field_2154.
+        // Bid (multi) — full list from the BIDs grid (view_3507, label
+        // field_2414). Modeled on SOW field_2154.
         if (fieldKey === (SF.bid || 'field_2415')) {
           ns.picker.open({
             sourceViewKey: viewKey, putViewKey: viewKey, recordId: recordId,
             fieldKey: fieldKey, label: 'Bid', selectedIds: sel,
-            candidates: collectConnValues(fieldKey), groupBy: false,
+            candidates: surveyCandidates(['view_3507'], 'field_2414', fieldKey), groupBy: false,
             itemLabel: function (r) { return r.name || r.id; },
             multi: true, onSaved: surveyRefetch
           });
           return;
         }
 
-        // MDF / IDF (single).
+        // MDF / IDF (single) — full list from the MDF/IDF locations grid
+        // (view_3617, label field_1642).
         if (fieldKey === (SF.mdfIdf || 'field_2375')) {
           ns.picker.open({
             sourceViewKey: viewKey, putViewKey: viewKey, recordId: recordId,
             fieldKey: fieldKey, label: 'MDF / IDF', selectedIds: sel,
-            candidates: collectConnValues(fieldKey), groupBy: false,
+            candidates: surveyCandidates(['view_3617'], 'field_1642', fieldKey), groupBy: false,
             itemLabel: function (r) { return r.name || r.id; },
             multi: false, onSaved: surveyRefetch
           });
