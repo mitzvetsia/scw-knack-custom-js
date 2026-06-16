@@ -1278,24 +1278,16 @@
   }
 
   // ── Survey card path (moneyMode:'survey', view_3505) ───────────
-  // The Survey Line Item object has its own keys (resolved via fieldsFor) and
-  // a simpler money model: a single editable Labor cell with the CALC Ext
-  // below it; Qty in the qty/chips slot; Bid membership + connections shown
-  // READ-ONLY in the detail (the connection picker is SOW-specific; product
-  // edit + connection edit are a clean fast-follow). NO accessory/parent UI —
-  // Survey Line Items have no accessory relationship yet (CLAUDE.md #16).
-  // Cabling chips + the inline inputs save through the same generic
-  // chip/edit handlers the SOW card uses (init.js / edit.js are view-generic).
-
-  function surveyMoneyCell(rec, viewKey, F) {
-    if (!F.labor) return empty('scw-ws-v2-cell--stack scw-ws-v2-cell--survey-money');
-    var ext = readField(rec, F.extended || 'field_2401');
-    return '<div class="scw-ws-v2-cell scw-ws-v2-cell--stack scw-ws-v2-cell--survey-money scw-ws-v2-cell--currency">' +
-      '<span class="scw-ws-v2-currency-glyph">$</span>' +
-      numInput(rec, viewKey, F.labor, readNum(rec, F.labor), 'Labor') +
-      '<div class="scw-ws-v2-stack-total" title="Extended">' + escapeHtml(ext || '') + '</div>' +
-    '</div>';
-  }
+  // Mirrors the v1 device-worksheet (view_3505) summary order:
+  //   cam:     [Survey Notes][Labor Desc][Existing/Exterior/Plenum][Labor][Ext][Bid]
+  //   default: [Survey Notes][Labor Desc][Qty][Labor][Ext][Bid]
+  // Survey Notes sits LEFT of Labor Description in the header. Money is
+  // Labor (editable) · Ext (read-only) · Bid (read-only, connection). NO
+  // accessory/parent UI — Survey Line Items have no accessory relationship
+  // yet (CLAUDE.md #16). Product + connections render read-only this pass
+  // (SOW-specific picker — fast-follow). Cabling chips, Mounting-Height
+  // single-chips, and the inline inputs all save through the generic
+  // chip / radiochip / edit handlers (init.js / edit.js are view-generic).
 
   function surveyProductCell(rec, F) {
     // Read-only for the preview — survey product (field_2627) picker not wired.
@@ -1315,76 +1307,115 @@
     '</div>';
   }
 
+  /** A fill (textarea) summary cell — survey notes / labor description. */
+  function surveyFill(rec, viewKey, fieldKey, label, cls) {
+    return '<div class="scw-ws-v2-cell scw-ws-v2-cell--labor-desc ' + (cls || '') + '">' +
+      textArea(rec, viewKey, fieldKey, readField(rec, fieldKey), label) +
+    '</div>';
+  }
+
+  /** Single-select chip group (Mounting Height) — editable; saves via the
+   *  radiochip handler in init.js. Mirrors v1's singleChip radio chips. */
+  function singleChipField(rec, viewKey, fieldKey, label, options) {
+    var cur = readField(rec, fieldKey);
+    var chips = '';
+    for (var i = 0; i < options.length; i++) {
+      var opt = options[i];
+      var sel = (cur === opt);
+      chips += '<button type="button" class="scw-ws-v2-radiochip ' +
+        (sel ? 'is-selected' : 'is-unselected') + '" ' +
+        'data-scw-ws-v2-radiochip="' + escapeHtml(fieldKey) + '" ' +
+        'data-scw-ws-v2-record="' + escapeHtml(rec.id) + '" ' +
+        'data-scw-ws-v2-view="' + escapeHtml(viewKey) + '" ' +
+        'data-scw-ws-v2-option="' + escapeHtml(opt) + '">' + escapeHtml(opt) + '</button>';
+    }
+    return '<div class="scw-ws-v2-detail-field scw-ws-v2-detail-field--chips">' +
+      '<div class="scw-ws-v2-detail-label">' + escapeHtml(label) + '</div>' +
+      '<div class="scw-ws-v2-radiochips" data-scw-ws-v2-radio-field="' + escapeHtml(fieldKey) + '">' +
+        chips +
+      '</div>' +
+    '</div>';
+  }
+
   function buildRow_survey(rec, viewKey, cat) {
     var F     = fieldsFor(viewKey);
     var isCam = (cat === 'cam');
     var label = readField(rec, F.displayLabel || 'field_2365');
 
-    // Slot 5 (qty/chips): cam → cabling chips; assumptions → blank;
-    // else → editable Qty.
-    var slot5;
-    if (isCam) {
-      slot5 = surveyChips(rec, viewKey, F);
-    } else if (cat === 'assumptions') {
-      slot5 = empty('scw-ws-v2-cell--num');
-    } else {
-      slot5 = '<div class="scw-ws-v2-cell scw-ws-v2-cell--num">' +
-        numInput(rec, viewKey, F.qty || 'field_2399', readNum(rec, F.qty || 'field_2399'), 'Qty') +
-      '</div>';
-    }
-
-    var fillField = F.laborDesc || 'field_2409';
-    var fill = '<div class="scw-ws-v2-cell scw-ws-v2-cell--labor-desc">' +
-      textArea(rec, viewKey, fillField, readField(rec, fillField),
-               isCam ? 'Labor description' : 'Description') +
-    '</div>';
-
-    var money = (cat === 'assumptions')
-      ? empty('scw-ws-v2-cell--stack scw-ws-v2-cell--survey-money')
-      : surveyMoneyCell(rec, viewKey, F);
+    var labelSlot = isCam
+      ? ro(label, 'scw-ws-v2-cell--label', label)
+      : empty('scw-ws-v2-cell--label');
 
     var productSlot;
     if (cat === 'services')          productSlot = ro('Service', 'scw-ws-v2-cell--tag');
     else if (cat === 'assumptions')  productSlot = empty('scw-ws-v2-cell--product');
     else                             productSlot = surveyProductCell(rec, F);
 
-    var labelSlot = isCam
-      ? ro(label, 'scw-ws-v2-cell--label', label)
-      : empty('scw-ws-v2-cell--label');
+    // Two fill cells: Survey Notes (LEFT) then Labor Description.
+    var surveyNotesCell = surveyFill(rec, viewKey, F.surveyNotes || 'field_2412',
+      'Survey notes', 'scw-ws-v2-cell--survey-notes');
+    var laborDescCell   = surveyFill(rec, viewKey, F.laborDesc || 'field_2409',
+      isCam ? 'Labor description' : 'Description');
+
+    // Slot 5 (qty/chips): cam → cabling chips; assumptions → blank;
+    // else → editable Qty.
+    var slot5;
+    if (isCam)                       slot5 = surveyChips(rec, viewKey, F);
+    else if (cat === 'assumptions')  slot5 = empty('scw-ws-v2-cell--num');
+    else                             slot5 = '<div class="scw-ws-v2-cell scw-ws-v2-cell--num">' +
+      numInput(rec, viewKey, F.qty || 'field_2399', readNum(rec, F.qty || 'field_2399'), 'Qty') +
+    '</div>';
+
+    // Money: Labor (editable; blank for assumptions) · Ext (read-only;
+    // blank for cam + assumptions, matching v1) · Bid (read-only conn).
+    var laborCell = (cat === 'assumptions')
+      ? empty('scw-ws-v2-cell--num scw-ws-v2-cell--survey-labor')
+      : '<div class="scw-ws-v2-cell scw-ws-v2-cell--num scw-ws-v2-cell--survey-labor scw-ws-v2-cell--currency">' +
+          '<span class="scw-ws-v2-currency-glyph">$</span>' +
+          numInput(rec, viewKey, F.labor || 'field_2400', readNum(rec, F.labor || 'field_2400'), 'Labor') +
+        '</div>';
+    var extCell = (isCam || cat === 'assumptions')
+      ? empty('scw-ws-v2-cell--survey-ext')
+      : ro(readField(rec, F.extended || 'field_2401'), 'scw-ws-v2-cell--survey-ext', 'Extended');
+    var bidVal  = readField(rec, F.bid || 'field_2415');
+    var bidCell = ro(bidVal, 'scw-ws-v2-cell--survey-bid', bidVal ? ('Bid ' + bidVal) : 'Bid');
 
     return '<div class="scw-ws-v2-row scw-ws-v2-row--' + cat + '">' +
       chevronCell(rec) +
       labelSlot +
       productSlot +
-      fill +
+      surveyNotesCell +
+      laborDescCell +
       slot5 +
-      money +
+      laborCell +
+      extCell +
+      bidCell +
       warnCell(rec) +
       kebabCell(rec, viewKey) +
     '</div>';
   }
 
   function buildDetail_survey(rec, viewKey, cat) {
-    var F     = fieldsFor(viewKey);
-    var isCam = (cat === 'cam');
+    var F = fieldsFor(viewKey);
 
     // Connections READ-ONLY (SOW-specific picker not wired for survey).
-    // Connected To (single) on cam/reader; Connected Devices (multi) on
-    // networking/default. Assumptions/services show neither.
+    // Mirrors v1 detailLayout: cam right = Connected To · Mounting Height ·
+    // Drop Length · Conduit; default right = Connected Devices.
     var rightZone = '';
     if (cat === 'cam') {
       rightZone += detailReadOnly(rec, F.connectedDevice || 'field_2381', 'Connected To');
-      rightZone += detailReadOnly(rec, F.mountingHeight  || 'field_2455', 'Mounting Height');
+      rightZone += singleChipField(rec, viewKey, F.mountingHeight || 'field_2455',
+        'Mounting Height', ["Under 16'", "16' - 24'", "Over 24'"]);
       rightZone += detailField(rec, viewKey, F.dropLength || 'field_2367', 'Drop Length', 'number');
       rightZone += detailField(rec, viewKey, F.conduit    || 'field_2368', 'Conduit',     'number');
     } else if (cat === 'default') {
       rightZone += detailReadOnly(rec, F.connectedDevices || 'field_2380', 'Connected Devices');
     }
 
-    var leftZone = detailReadOnly(rec, F.mounting || 'field_2463', 'Mounting Hardware');
-    if (readField(rec, F.bid || 'field_2415')) {
-      leftZone += detailReadOnly(rec, F.bid || 'field_2415', 'Bid');
-    }
+    // Left = Mounting Hardware list (read-only) + SCW Notes (editable),
+    // matching v1 detailLayout left:['mounting','scwNotes'].
+    var leftZone = detailReadOnly(rec, F.mounting || 'field_2463', 'Mounting Hardware') +
+      detailTextArea(rec, viewKey, F.scwNotes || 'field_2418', 'SCW Notes');
 
     return '<div class="scw-ws-v2-detail">' +
       '<div class="scw-ws-v2-detail-zones">' +
@@ -1392,10 +1423,6 @@
         (rightZone
           ? '<div class="scw-ws-v2-detail-zone scw-ws-v2-detail-zone--connections">' + rightZone + '</div>'
           : '') +
-      '</div>' +
-      '<div class="scw-ws-v2-detail-notes">' +
-        detailTextArea(rec, viewKey, F.scwNotes    || 'field_2418', 'SCW Notes') +
-        detailTextArea(rec, viewKey, F.surveyNotes || 'field_2412', 'Survey Notes') +
       '</div>' +
     '</div>';
   }

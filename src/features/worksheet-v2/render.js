@@ -267,16 +267,19 @@
         (salesMoney  ? ' scw-ws-v2-col-header--sales'  : '') +
         (surveyMoney ? ' scw-ws-v2-col-header--survey' : '');
       if (surveyMoney) {
-        // Survey 8-track header: chevron · Drop · Product · Description ·
-        // Qty/Chips · Labor (money) · warn · trash. Money = Labor input
-        // with Ext below (see card.js surveyMoneyCell).
+        // Survey 11-track header mirroring v1 view_3505 column order:
+        // chevron · Drop · Product · Survey Notes · Description · Qty/Chips ·
+        // Labor · Ext · Bid · warn · trash.
         hdr.innerHTML =
           '<span></span>' +
           '<span>Drop</span>' +
           '<span>Product</span>' +
+          '<span>Survey Notes</span>' +
           '<span>Description</span>' +
           '<span>Qty</span>' +
           '<span class="scw-ws-v2-col-header-total">Labor</span>' +
+          '<span class="scw-ws-v2-col-header-total">Ext</span>' +
+          '<span class="scw-ws-v2-col-header-total">Bid</span>' +
           '<span></span>' +
           '<span></span>';
       } else {

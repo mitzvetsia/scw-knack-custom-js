@@ -1658,6 +1658,73 @@
     });
   }
 
+  // Single-select chip groups (e.g. survey Mounting Height). View-generic:
+  // clicking an option sets that field to the option value and PUTs to the
+  // record's view URL. Mirrors the boolean chip handler above.
+  if (!document.documentElement.hasAttribute('data-scw-ws-v2-radiochip-bound')) {
+    document.documentElement.setAttribute('data-scw-ws-v2-radiochip-bound', '1');
+    document.addEventListener('click', function (e) {
+      var chipEl = e.target && e.target.closest && e.target.closest('[data-scw-ws-v2-radiochip]');
+      if (!chipEl) return;
+      e.preventDefault();
+      e.stopPropagation();
+
+      var fieldKey = chipEl.getAttribute('data-scw-ws-v2-radiochip');
+      var recordId = chipEl.getAttribute('data-scw-ws-v2-record');
+      var viewKey  = chipEl.getAttribute('data-scw-ws-v2-view');
+      var option   = chipEl.getAttribute('data-scw-ws-v2-option');
+      if (!fieldKey || !recordId || !viewKey) return;
+      if (chipEl.classList.contains('is-selected')) return; // already set — no-op
+
+      // Optimistic single-select within the group.
+      var group = chipEl.closest('.scw-ws-v2-radiochips');
+      var prevSel = group ? group.querySelector('.scw-ws-v2-radiochip.is-selected') : null;
+      if (group) {
+        var sibs = group.querySelectorAll('.scw-ws-v2-radiochip');
+        for (var s = 0; s < sibs.length; s++) {
+          sibs[s].classList.toggle('is-selected',   sibs[s] === chipEl);
+          sibs[s].classList.toggle('is-unselected', sibs[s] !== chipEl);
+        }
+      }
+      chipEl.classList.add('scw-ws-v2-radiochip--saving');
+      setTimeout(function () {
+        chipEl.classList.remove('scw-ws-v2-radiochip--saving');
+      }, 200);
+
+      var body = {}; body[fieldKey] = option;
+      try {
+        SCW.knackAjax({
+          url:  SCW.knackRecordUrl(viewKey, recordId),
+          type: 'PUT',
+          data: JSON.stringify(body),
+          success: function () {
+            try {
+              if (typeof SCW.syncKnackModel === 'function') {
+                SCW.syncKnackModel(viewKey, recordId, {}, fieldKey, option);
+              }
+            } catch (e2) { /* ignore */ }
+          },
+          error: function (xhr) {
+            console.warn('[scw-ws-v2] radiochip save failed', { recordId: recordId, fieldKey: fieldKey, xhr: xhr });
+            // Revert selection.
+            if (group) {
+              var sibs2 = group.querySelectorAll('.scw-ws-v2-radiochip');
+              for (var r = 0; r < sibs2.length; r++) {
+                var was = (sibs2[r] === prevSel);
+                sibs2[r].classList.toggle('is-selected',   was);
+                sibs2[r].classList.toggle('is-unselected', !was);
+              }
+            }
+            chipEl.classList.add('scw-ws-v2-radiochip--error');
+            setTimeout(function () {
+              chipEl.classList.remove('scw-ws-v2-radiochip--error');
+            }, 1500);
+          }
+        });
+      } catch (e3) { /* silent — error path covers it */ }
+    });
+  }
+
   // Mount on every scene render — cheap (idempotent guard) and
   // catches SPA navigations into scenes that host the source view.
   $(document)

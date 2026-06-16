@@ -160,11 +160,11 @@
     '  text-align: right !important;',
     '  padding-right: 6px !important;',
     '}',
-    /* Survey money model (moneyMode:"survey", view_3505): no Sub Bid / +Hrs /
-       +Mat / Fee / SOW — a single Labor (editable) cell with the CALC Ext
-       below it, Qty/chips in slot 5. Same 8-track grid as sales so nothing
-       squishes; doubled header class for the same specificity reason noted
-       on the sales rule above. */
+    /* Survey money model (moneyMode:"survey", view_3505). Mirrors the v1
+       view_3505 summary order: Survey Notes · Labor Desc · Qty/chips ·
+       Labor · Ext · Bid (no Sub Bid/+Hrs/+Mat/Fee/SOW). 11-track grid;
+       doubled header class for the same specificity reason noted on the
+       sales rule above. */
     '.scw-ws-v2-card--survey .scw-ws-v2-row--default,',
     '.scw-ws-v2-card--survey .scw-ws-v2-row--cam,',
     '.scw-ws-v2-card--survey .scw-ws-v2-row--services,',
@@ -172,21 +172,59 @@
     '.scw-ws-v2-col-header.scw-ws-v2-col-header--survey {',
     '  grid-template-columns:',
     '    20px                  /* chevron */',
-    '    64px                  /* label */',
-    '    minmax(150px, 1.3fr)  /* product */',
-    '    minmax(240px, 2.4fr)  /* description */',
+    '    64px                  /* label / drop */',
+    '    minmax(140px, 1.1fr)  /* product */',
+    '    minmax(150px, 1.3fr)  /* survey notes */',
+    '    minmax(150px, 1.3fr)  /* labor description */',
     '    72px                  /* qty / chips */',
-    '    92px                  /* Labor (Ext below) */',
+    '    74px                  /* Labor */',
+    '    60px                  /* Ext */',
+    '    52px                  /* Bid */',
     '    28px                  /* warning */',
     '    28px                  /* trash */ !important;',
     '}',
-    /* Survey money cell — right-aligned Labor input + Ext total, reusing the
-       --stack / --currency styling. */
-    '.scw-ws-v2-cell--survey-money { justify-self: stretch !important; }',
+    /* Survey money cells — right-aligned figures. */
+    '.scw-ws-v2-cell--survey-ext, .scw-ws-v2-cell--survey-bid {',
+    '  text-align: right !important;',
+    '  font: 600 12px/1.2 system-ui, -apple-system, sans-serif !important;',
+    '  color: #334155 !important;',
+    '  white-space: nowrap !important;',
+    '}',
+    '.scw-ws-v2-cell--survey-bid { color: #64748b !important; }',
     /* Survey product is read-only in the preview (picker not wired) — drop the
        button affordance/cursor so it reads as static text. */
     '.scw-ws-v2-card--survey .scw-ws-v2-cell--product.scw-ws-v2-cell--ro {',
     '  cursor: default !important;',
+    '}',
+    /* Survey assumptions: assumption text (labor-desc) spans the middle;
+       Survey Notes + Labor/Ext blanks hidden so they don\'t overlap. Bid
+       stays at col 9. Overrides the base 3/10 assumptions span. */
+    '.scw-ws-v2-card--survey .scw-ws-v2-row--assumptions > .scw-ws-v2-cell--labor-desc {',
+    '  grid-column: 4 / 9 !important;',
+    '}',
+    '.scw-ws-v2-card--survey .scw-ws-v2-row--assumptions > .scw-ws-v2-cell--survey-notes,',
+    '.scw-ws-v2-card--survey .scw-ws-v2-row--assumptions > .scw-ws-v2-cell--survey-labor,',
+    '.scw-ws-v2-card--survey .scw-ws-v2-row--assumptions > .scw-ws-v2-cell--survey-ext {',
+    '  display: none !important;',
+    '}',
+    /* Mounting-Height single-select chips (editable; radiochip handler). */
+    '.scw-ws-v2-radiochips {',
+    '  display: inline-flex !important; flex-wrap: wrap !important; gap: 4px !important;',
+    '}',
+    '.scw-ws-v2-radiochip {',
+    '  border: 1px solid #cbd5e1 !important; background: #fff !important;',
+    '  color: #475569 !important; border-radius: 6px !important;',
+    '  padding: 3px 9px !important; font: 600 11px/1.2 system-ui, sans-serif !important;',
+    '  cursor: pointer !important; white-space: nowrap !important;',
+    '}',
+    '.scw-ws-v2-radiochip.is-selected {',
+    '  background: #295f91 !important; border-color: #295f91 !important; color: #fff !important;',
+    '}',
+    '.scw-ws-v2-radiochip:hover { border-color: #94a3b8 !important; }',
+    '.scw-ws-v2-radiochip.is-selected:hover { background: #21507c !important; }',
+    '.scw-ws-v2-radiochip.scw-ws-v2-radiochip--saving { opacity: .6 !important; }',
+    '.scw-ws-v2-radiochip.scw-ws-v2-radiochip--error {',
+    '  border-color: #dc2626 !important; color: #dc2626 !important;',
     '}',
     /* Sales detail — v1-style two columns: pricing/identity stacked on the
        left, connections + Labor Desc stacked on the right. */
