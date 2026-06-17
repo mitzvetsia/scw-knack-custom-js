@@ -166,13 +166,16 @@
   1) MAIN ({{locationRows}}): filter to items that HAVE an MDF, then the usual
      Array Aggregator (group by MDF) → Text Aggregator. (Keeps null-MDF
      services/assumptions OUT of the "No MDF / IDF" group.)
-  2) OTHER SERVICES: filter  MDF is empty  AND  type = Services  → build the
-     same .la-loc cards → Text Aggregator into a var (e.g. otherServicesRows).
+  2) OTHER SERVICES: filter  MDF is empty  AND  proposal bucket = Services  →
+     build the same .la-loc cards → Text Aggregator into a var (otherServicesRows).
      Then a Set variable wraps a header ONLY when non-empty:
        {{otherServices}} = if( length(otherServicesRows) > 0;
          "<div class='la-group'>Other Services</div>" + otherServicesRows; "" )
-  3) GENERAL ASSUMPTIONS: same, filter  MDF is empty  AND  type = Assumptions:
+  3) GENERAL ASSUMPTIONS: same, filter  MDF is empty  AND  proposal bucket = Assumptions:
        {{generalAssumptions}} = if( length(generalAssumptionsRows) > 0;
          "<div class='la-group'>General Assumptions</div>" + generalAssumptionsRows; "" )
+  (proposal bucket = the connection field on the line item; filter on its
+   record id:  Services = 6977caa7f246edf67b52cbcd ,
+               Assumptions = 697b7a023a31502ec68b3303 )
   (the if() hides the header/section entirely when there are no such items.)
 ═════════════════════════════════════════════════════════════════════════════ -->
