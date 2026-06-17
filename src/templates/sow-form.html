@@ -1,0 +1,166 @@
+<!--
+  Statement of Work — HTML→PDF template (Make-side, PDF.co).
+
+  Same header/customer block + MDF grouping as the LA form, but the body is a
+  TABLE of work line items (no photos, no pricing, no signature).
+  Columns: Label | Product | Notes | Mount Only | Plenum.
+  Self-contained inline CSS. NOT part of the Knack bundle.
+
+  ── Data contract ──────────────────────────────────────────────────────────
+  Header scalars:
+    {{logoUrl}} {{formNumber}} {{generatedDate}} {{customerName}}
+    {{projectName}} {{siteAddress}}
+
+  Rows ({{locationRows}} = Text Aggregator output, grouped by MDF — SAME
+  pipeline as the LA form: Iterator → row var → Array Aggregator (Group by MDF
+  text) → Text Aggregator emits a group-header <tr> + the joined item <tr>s).
+  Per line item:
+    {{label}}      – device label, e.g. "AC-01"
+    {{product}}    – product / device type
+    {{notes}}      – notes (empty ok)
+    {{mountOnly}}  – "Y" / "N"  (convert in Make if the field is Yes/No or bool)
+    {{plenum}}     – "Y" / "N"
+
+  ── "Page X of X" + margins: set in the PDF.co module ──────────────────────
+    Footer: <div style="font-size:9px;color:#94a3b8;width:100%;text-align:center;font-family:sans-serif;">Page <span class="pageNumber"></span> of <span class="totalPages"></span></div>
+    Margins: 16mm 14mm 18mm 14mm
+  ───────────────────────────────────────────────────────────────────────────
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<style>
+  @page { size: letter; }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    color: #1f2937; font-size: 12px; line-height: 1.4;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+  .la-page { padding: 0; }
+
+  /* ── Header (same as LA) ────────────────────────────────── */
+  .la-header {
+    display: flex; align-items: flex-start; justify-content: space-between;
+    border-bottom: 3px solid #07467c; padding-bottom: 14px; margin-bottom: 18px;
+  }
+  .la-header-logo img { max-height: 54px; max-width: 220px; display: block; }
+  .la-header-right { text-align: right; }
+  .la-title { font-size: 20px; font-weight: 800; color: #07467c; letter-spacing: 0.01em; margin: 0 0 4px; }
+  .la-meta { font-size: 11px; color: #64748b; }
+  .la-meta b { color: #334155; font-weight: 700; }
+
+  /* ── Customer / site block (same as LA) ─────────────────── */
+  .la-info {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 6px 24px;
+    background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;
+    padding: 12px 16px; margin-bottom: 18px;
+  }
+  .la-info-item { font-size: 12px; }
+  .la-info-label { font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.06em; color: #94a3b8; font-weight: 700; margin-bottom: 1px; }
+  .la-info-value { color: #1f2937; font-weight: 600; }
+
+  .la-intro { font-size: 11.5px; color: #475569; margin: 0 0 14px; }
+
+  /* ── SOW table ──────────────────────────────────────────── */
+  .sow-table { width: 100%; border-collapse: collapse; font-size: 11px; }
+  .sow-table thead { display: table-header-group; }  /* repeat header each page */
+  .sow-table th {
+    text-align: left; font-size: 9px; text-transform: uppercase; letter-spacing: 0.05em;
+    color: #94a3b8; font-weight: 700; padding: 6px 8px; border-bottom: 2px solid #07467c;
+  }
+  .sow-table td {
+    padding: 6px 8px; border-bottom: 1px solid #e2e8f0; color: #334155;
+    vertical-align: top;
+  }
+  .sow-table tr { page-break-inside: avoid; break-inside: avoid; }
+  .sow-label { font-weight: 800; color: #07467c; white-space: nowrap; }
+  .sow-yn { text-align: center; white-space: nowrap; }
+
+  /* group header row (spans all columns) */
+  .sow-group td {
+    background: #eef4fa; color: #07467c; font-weight: 800; font-size: 12px;
+    border-left: 4px solid #07467c; border-bottom: 1px solid #cbd5e1;
+    padding: 7px 10px;
+  }
+
+  /* column widths */
+  .col-label   { width: 12%; }
+  .col-product { width: 30%; }
+  .col-notes   { width: 38%; }
+  .col-mount   { width: 10%; }
+  .col-plenum  { width: 10%; }
+</style>
+</head>
+<body>
+  <div class="la-page">
+
+    <div class="la-header">
+      <div class="la-header-logo"><img src="{{logoUrl}}" alt="SCW"></div>
+      <div class="la-header-right">
+        <div class="la-title">Statement of Work</div>
+        <div class="la-meta">
+          <div><b>Form #:</b> {{formNumber}}</div>
+          <div><b>Date:</b> {{generatedDate}}</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="la-info">
+      <div class="la-info-item"><div class="la-info-label">Customer</div><div class="la-info-value">{{customerName}}</div></div>
+      <div class="la-info-item"><div class="la-info-label">Project</div><div class="la-info-value">{{projectName}}</div></div>
+      <div class="la-info-item"><div class="la-info-label">Site Address</div><div class="la-info-value">{{siteAddress}}</div></div>
+    </div>
+
+    <p class="la-intro">
+      The following describes the work to be performed under this Statement of Work,
+      organized by location.
+    </p>
+
+    <table class="sow-table">
+      <colgroup>
+        <col class="col-label"><col class="col-product"><col class="col-notes">
+        <col class="col-mount"><col class="col-plenum">
+      </colgroup>
+      <thead>
+        <tr>
+          <th>Label</th><th>Product</th><th>Notes</th>
+          <th class="sow-yn">Mount Only</th><th class="sow-yn">Plenum</th>
+        </tr>
+      </thead>
+      <tbody>
+        {{locationRows}}
+      </tbody>
+    </table>
+
+  </div>
+</body>
+</html>
+
+<!-- ════════════════════════════════════════════════════════════════════════
+  PER-LINE-ITEM ROW SNIPPET (build in the row module; grouping handled by the
+  Array Aggregator + Text Aggregator exactly like the LA form)
+
+<tr>
+  <td class="sow-label">{{label}}</td>
+  <td>{{product}}</td>
+  <td>{{notes}}</td>
+  <td class="sow-yn">{{mountOnly}}</td>
+  <td class="sow-yn">{{plenum}}</td>
+</tr>
+
+  Y/N conversion in Make (if the Knack field is Yes/No text or a boolean):
+    {{mountOnly}} → if( 1.mountField = "Yes"; "Y"; "" )    (blank for No, or "N")
+    or for a true/false boolean:  if( 1.mountField; "Y"; "" )
+
+  Group header row — emitted once per group by the Text Aggregator
+  (source = Array Aggregator grouped by MDF text). The header <tr> spans all 5
+  columns, then the group's item rows are joined after it:
+
+    <tr class="sow-group"><td colspan="5">{{if(length(KEY) > 0; KEY; "No MDF / IDF")}}</td></tr>{{join(map(array; "value"); "")}}
+
+  (KEY = the group's MDF text; "value" = whatever field your aggregator stores
+   each row HTML under — match the name you used for the LA form.)
+═════════════════════════════════════════════════════════════════════════════ -->
