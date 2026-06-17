@@ -1,9 +1,11 @@
 <!--
   Statement of Work — HTML→PDF template (Make-side, PDF.co).
 
-  Same header/customer block + MDF grouping as the LA form, but the body is a
-  TABLE of work line items (no photos, no pricing, no signature).
-  Columns: Label | Product | Notes | Mount Only | Plenum.
+  Same header/customer block + MDF grouping as the LA form, body is a TABLE of
+  work line items (no photos, no pricing, no signature).
+  Columns: Label | Product | Notes | Flags.
+  Mount Only / Plenum are NOT columns — they render as CHIPS in the Flags cell
+  only when YES (nothing shown when NO).
   Self-contained inline CSS. NOT part of the Knack bundle.
 
   ── Data contract ──────────────────────────────────────────────────────────
@@ -12,14 +14,13 @@
     {{projectName}} {{siteAddress}}
 
   Rows ({{locationRows}} = Text Aggregator output, grouped by MDF — SAME
-  pipeline as the LA form: Iterator → row var → Array Aggregator (Group by MDF
-  text) → Text Aggregator emits a group-header <tr> + the joined item <tr>s).
-  Per line item:
-    {{label}}      – device label, e.g. "AC-01"
-    {{product}}    – product / device type
-    {{notes}}      – notes (empty ok)
-    {{mountOnly}}  – "Y" / "N"  (convert in Make if the field is Yes/No or bool)
-    {{plenum}}     – "Y" / "N"
+  pipeline as the LA form). Per line item:
+    {{label}}    – device label, e.g. "AC-01"
+    {{product}}  – product / device type
+    {{notes}}    – notes (empty ok)
+    {{flags}}    – the chips cell, built by two if()s in the row module:
+                   Mount Only=Yes -> a "Mount Only" chip; Plenum=Yes -> a
+                   "Plenum" chip; both No -> empty cell.
 
   ── "Page X of X" + margins: set in the PDF.co module ──────────────────────
     Footer: <div style="font-size:9px;color:#94a3b8;width:100%;text-align:center;font-family:sans-serif;">Page <span class="pageNumber"></span> of <span class="totalPages"></span></div>
@@ -77,7 +78,16 @@
   }
   .sow-table tr { page-break-inside: avoid; break-inside: avoid; }
   .sow-label { font-weight: 800; color: #07467c; white-space: nowrap; }
-  .sow-yn { text-align: center; white-space: nowrap; }
+
+  /* chips (only rendered when YES) */
+  .sow-flags { white-space: nowrap; }
+  .sow-chip {
+    display: inline-block; padding: 2px 8px; border-radius: 10px;
+    font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em;
+    margin: 0 4px 2px 0;
+  }
+  .sow-chip-mount  { background: #e0e7ff; color: #3730a3; }  /* indigo */
+  .sow-chip-plenum { background: #fef3c7; color: #92400e; }  /* amber  */
 
   /* group header row (spans all columns) */
   .sow-group td {
@@ -90,8 +100,7 @@
   .col-label   { width: 12%; }
   .col-product { width: 30%; }
   .col-notes   { width: 38%; }
-  .col-mount   { width: 10%; }
-  .col-plenum  { width: 10%; }
+  .col-flags   { width: 20%; }
 </style>
 </head>
 <body>
@@ -121,13 +130,12 @@
 
     <table class="sow-table">
       <colgroup>
-        <col class="col-label"><col class="col-product"><col class="col-notes">
-        <col class="col-mount"><col class="col-plenum">
+        <col class="col-label"><col class="col-product">
+        <col class="col-notes"><col class="col-flags">
       </colgroup>
       <thead>
         <tr>
-          <th>Label</th><th>Product</th><th>Notes</th>
-          <th class="sow-yn">Mount Only</th><th class="sow-yn">Plenum</th>
+          <th>Label</th><th>Product</th><th>Notes</th><th>Flags</th>
         </tr>
       </thead>
       <tbody>
@@ -147,20 +155,21 @@
   <td class="sow-label">{{label}}</td>
   <td>{{product}}</td>
   <td>{{notes}}</td>
-  <td class="sow-yn">{{mountOnly}}</td>
-  <td class="sow-yn">{{plenum}}</td>
+  <td class="sow-flags">{{flags}}</td>
 </tr>
 
-  Y/N conversion in Make (if the Knack field is Yes/No text or a boolean):
-    {{mountOnly}} → if( 1.mountField = "Yes"; "Y"; "" )    (blank for No, or "N")
-    or for a true/false boolean:  if( 1.mountField; "Y"; "" )
+  ── {{flags}} — two if()s, chip only when YES (nothing when NO) ─────────────
+  Concatenate the two; an empty result just leaves the cell blank:
 
-  Group header row — emitted once per group by the Text Aggregator
-  (source = Array Aggregator grouped by MDF text). The header <tr> spans all 5
-  columns, then the group's item rows are joined after it:
+  if( 1.mountField = "Yes"; "<span class='sow-chip sow-chip-mount'>Mount Only</span>"; "" )
+  + if( 1.plenumField = "Yes"; "<span class='sow-chip sow-chip-plenum'>Plenum</span>"; "" )
 
-    <tr class="sow-group"><td colspan="5">{{if(length(KEY) > 0; KEY; "No MDF / IDF")}}</td></tr>{{join(map(array; "value"); "")}}
+  (If the fields come through as true/false instead of "Yes"/"No", use
+   if(1.mountField; ...) / if(1.plenumField; ...). Swap mountField/plenumField
+   for your actual Iterator fields.)
 
-  (KEY = the group's MDF text; "value" = whatever field your aggregator stores
-   each row HTML under — match the name you used for the LA form.)
+  ── Group header row (Text Aggregator, source = Array Aggregator by MDF) ────
+    <tr class="sow-group"><td colspan="4">{{if(length(KEY) > 0; KEY; "No MDF / IDF")}}</td></tr>{{join(map(array; "value"); "")}}
+  (colspan="4" now that there are 4 columns. KEY = group MDF text; "value" =
+   the field your aggregator stores each row HTML under.)
 ═════════════════════════════════════════════════════════════════════════════ -->
