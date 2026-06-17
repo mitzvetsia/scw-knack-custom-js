@@ -1,0 +1,231 @@
+<!--
+  Location Approval Form — HTML→PDF template (Make-side).
+
+  Self-contained HTML (inline CSS, no external stylesheets) so any HTML→PDF
+  module renders it identically — the SAME pipeline your proposal PDFs use.
+  NOT part of the Knack bundle; this lives here as the source of truth for the
+  Make scenario to inject data into.
+
+  ── Data contract (Make fills these) ──────────────────────────────────────
+  Scalars (mustache-style {{ }} merge tags):
+    {{logoUrl}}          – SCW logo image URL
+    {{formNumber}}       – e.g. "LA-CA-2026-02-23-7940"
+    {{generatedDate}}    – e.g. "February 23, 2026"
+    {{customerName}}     – e.g. "Morgan Services"
+    {{projectName}}      – project / deal name
+    {{siteAddress}}      – full site address (use <br> for line breaks)
+    {{preparedBy}}       – SCW rep name (optional)
+
+  Repeating device rows: build one {{LOCATION_ROW}} block per location (see the
+  snippet at the bottom), concatenate them, and substitute the joined string in
+  for {{locationRows}}. Per-row fields:
+    {{label}}            – device label, e.g. "E-001"
+    {{location}}         – install location / description
+    {{mdf}}              – MDF/IDF, e.g. "HEADEND: Manager's Office"
+    {{photoUrl}}         – field_771 image URL (rendered server-side, no proxy)
+    {{signoffClass}}     – signoff--approved | signoff--pending | signoff--na
+    {{signoffLabel}}     – "Approved" | "Pending" | "N/A"
+  If a location has no photo, set {{photoUrl}} empty — the cell shows a
+  "No photo on file" placeholder (swap the <img> for the .la-photo--empty div).
+  ───────────────────────────────────────────────────────────────────────────
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<style>
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    color: #1f2937; font-size: 12px; line-height: 1.4;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+  .la-page { padding: 28px 32px; }
+
+  /* ── Header ─────────────────────────────────────────────── */
+  .la-header {
+    display: flex; align-items: flex-start; justify-content: space-between;
+    border-bottom: 3px solid #07467c; padding-bottom: 14px; margin-bottom: 18px;
+  }
+  .la-header-logo img { max-height: 54px; max-width: 220px; display: block; }
+  .la-header-right { text-align: right; }
+  .la-title {
+    font-size: 20px; font-weight: 800; color: #07467c; letter-spacing: 0.01em;
+    margin: 0 0 4px;
+  }
+  .la-meta { font-size: 11px; color: #64748b; }
+  .la-meta b { color: #334155; font-weight: 700; }
+
+  /* ── Customer / site block ──────────────────────────────── */
+  .la-info {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 6px 24px;
+    background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;
+    padding: 12px 16px; margin-bottom: 18px;
+  }
+  .la-info-item { font-size: 12px; }
+  .la-info-label {
+    font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.06em;
+    color: #94a3b8; font-weight: 700; margin-bottom: 1px;
+  }
+  .la-info-value { color: #1f2937; font-weight: 600; }
+
+  .la-intro {
+    font-size: 11.5px; color: #475569; margin: 0 0 16px;
+  }
+
+  /* ── Device location rows ───────────────────────────────── */
+  .la-locations { display: flex; flex-direction: column; gap: 12px; }
+  .la-loc {
+    display: grid; grid-template-columns: 200px 1fr 120px;
+    gap: 16px; align-items: stretch;
+    border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden;
+    page-break-inside: avoid; break-inside: avoid;
+  }
+  .la-photo {
+    width: 200px; height: 150px; background: #f1f5f9;
+    display: flex; align-items: center; justify-content: center;
+  }
+  .la-photo img { width: 100%; height: 100%; object-fit: cover; display: block; }
+  .la-photo--empty { color: #94a3b8; font-size: 11px; font-style: italic; }
+  .la-loc-body { padding: 12px 4px; display: flex; flex-direction: column; gap: 6px; }
+  .la-loc-label {
+    font-size: 16px; font-weight: 800; color: #07467c; line-height: 1.1;
+  }
+  .la-loc-field { font-size: 11.5px; }
+  .la-loc-field .k { color: #94a3b8; font-weight: 700; text-transform: uppercase;
+    font-size: 9px; letter-spacing: 0.05em; display: block; }
+  .la-loc-field .v { color: #334155; }
+  .la-signoff {
+    padding: 12px; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 6px;
+    border-left: 1px solid #e2e8f0; background: #fcfdfe;
+  }
+  .la-signoff-pill {
+    padding: 3px 12px; border-radius: 12px; font-size: 11px; font-weight: 700;
+    white-space: nowrap;
+  }
+  .signoff--approved { background: #dcfce7; color: #166534; }
+  .signoff--pending  { background: #fef3c7; color: #92400e; }
+  .signoff--na       { background: #f1f5f9; color: #64748b; }
+  .la-signoff-init {
+    width: 90px; border-bottom: 1px solid #cbd5e1; height: 22px;
+  }
+  .la-signoff-cap { font-size: 8.5px; color: #94a3b8; text-transform: uppercase;
+    letter-spacing: 0.05em; }
+
+  /* ── Approval / signature block ─────────────────────────── */
+  .la-approval {
+    margin-top: 24px; border-top: 2px solid #07467c; padding-top: 16px;
+    page-break-inside: avoid; break-inside: avoid;
+  }
+  .la-approval-text { font-size: 11px; color: #475569; margin-bottom: 18px; }
+  .la-sign-row { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; }
+  .la-sign-line { border-bottom: 1px solid #334155; height: 34px; }
+  .la-sign-cap { font-size: 10px; color: #64748b; margin-top: 4px; }
+  .la-footer {
+    margin-top: 22px; font-size: 9px; color: #94a3b8; text-align: center;
+  }
+</style>
+</head>
+<body>
+  <div class="la-page">
+
+    <div class="la-header">
+      <div class="la-header-logo">
+        <img src="{{logoUrl}}" alt="SCW">
+      </div>
+      <div class="la-header-right">
+        <div class="la-title">Location Approval Form</div>
+        <div class="la-meta">
+          <div><b>Form #:</b> {{formNumber}}</div>
+          <div><b>Date:</b> {{generatedDate}}</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="la-info">
+      <div class="la-info-item">
+        <div class="la-info-label">Customer</div>
+        <div class="la-info-value">{{customerName}}</div>
+      </div>
+      <div class="la-info-item">
+        <div class="la-info-label">Project</div>
+        <div class="la-info-value">{{projectName}}</div>
+      </div>
+      <div class="la-info-item">
+        <div class="la-info-label">Site Address</div>
+        <div class="la-info-value">{{siteAddress}}</div>
+      </div>
+      <div class="la-info-item">
+        <div class="la-info-label">Prepared By</div>
+        <div class="la-info-value">{{preparedBy}}</div>
+      </div>
+    </div>
+
+    <p class="la-intro">
+      Please review each proposed device location below. By signing, the customer
+      confirms the mounting locations shown in the photos are approved for
+      installation. Any changes after approval may be subject to a change order.
+    </p>
+
+    <div class="la-locations">
+      {{locationRows}}
+    </div>
+
+    <div class="la-approval">
+      <div class="la-approval-text">
+        I, the undersigned, have reviewed and approve the device mounting
+        locations documented in this form for <b>{{customerName}}</b>
+        ({{projectName}}).
+      </div>
+      <div class="la-sign-row">
+        <div>
+          <div class="la-sign-line"></div>
+          <div class="la-sign-cap">Customer signature</div>
+        </div>
+        <div>
+          <div class="la-sign-line"></div>
+          <div class="la-sign-cap">Date</div>
+        </div>
+      </div>
+      <div class="la-sign-row" style="margin-top:16px;">
+        <div>
+          <div class="la-sign-line"></div>
+          <div class="la-sign-cap">Printed name</div>
+        </div>
+        <div>
+          <div class="la-sign-line"></div>
+          <div class="la-sign-cap">Title</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="la-footer">{{formNumber}} &middot; Generated {{generatedDate}}</div>
+  </div>
+</body>
+</html>
+
+<!-- ════════════════════════════════════════════════════════════════════════
+  PER-LOCATION ROW SNIPPET  ({{LOCATION_ROW}})
+  Make: iterate the location records, render this once per record, join the
+  results, and substitute the joined string for {{locationRows}} above.
+
+<div class="la-loc">
+  <div class="la-photo">
+    <img src="{{photoUrl}}" alt="{{label}}">
+    <!-- when no photo: <div class="la-photo la-photo--empty">No photo on file</div> -->
+  </div>
+  <div class="la-loc-body">
+    <div class="la-loc-label">{{label}}</div>
+    <div class="la-loc-field"><span class="k">Location</span><span class="v">{{location}}</span></div>
+    <div class="la-loc-field"><span class="k">MDF / IDF</span><span class="v">{{mdf}}</span></div>
+  </div>
+  <div class="la-signoff">
+    <div class="la-signoff-pill {{signoffClass}}">{{signoffLabel}}</div>
+    <div class="la-signoff-init"></div>
+    <div class="la-signoff-cap">Initials</div>
+  </div>
+</div>
+
+═════════════════════════════════════════════════════════════════════════════ -->
