@@ -14,8 +14,10 @@
     {{generatedDate}}    – formatDate(now; "MMMM D, YYYY")
     {{customerName}} {{projectName}} {{siteAddress}}
 
-  Repeating rows ({{locationRows}} = Text Aggregator output, one block/device):
-    {{label}}  {{product}}  {{mdf}}  {{notes}}
+  Repeating rows ({{locationRows}} = Text Aggregator output, one block/device).
+  MDF is the group header (not in the row). Per device:
+    {{label}}  {{product}}  {{notes}}
+    {{flags}}  – Mount Only / Plenum chips (only when YES; see snippet)
     {{photoCells}}  – ALL of the device's photos as <img> tags, built by the
                       Make join() formula (see bottom). Empty → placeholder.
 
@@ -91,6 +93,15 @@
   }
   .la-photos-empty { color: #94a3b8; font-size: 11px; font-style: italic; }
 
+  /* chips (Mount Only / Plenum) — only rendered when YES */
+  .la-chip {
+    display: inline-block; padding: 2px 8px; border-radius: 10px;
+    font-size: 9px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em;
+    margin: 0 4px 2px 0; vertical-align: middle;
+  }
+  .la-chip-mount  { background: #e0e7ff; color: #3730a3; }  /* indigo */
+  .la-chip-plenum { background: #fef3c7; color: #92400e; }  /* amber  */
+
   /* ── Approval / signature block (always last) ───────────── */
   .la-approval { margin-top: 28px; border-top: 2px solid #07467c; padding-top: 16px; page-break-inside: avoid; break-inside: avoid; }
   .la-approval-text { font-size: 11px; color: #475569; margin-bottom: 18px; }
@@ -153,18 +164,24 @@
   Build one per device in the row module, join with the Text Aggregator,
   substitute for {{locationRows}}.
 
-{{groupHeader}}<div class="la-loc">
+<div class="la-loc">
   <div class="la-loc-head">
     <div class="la-loc-label">{{label}}</div>
     <div class="la-loc-product">{{product}}</div>
+    {{flags}}
   </div>
   <div class="la-loc-meta">
-    <span class="k">MDF / IDF</span> <span class="v">{{mdf}}</span>
-    <span class="sep">&middot;</span>
     <span class="k">Notes</span> <span class="v">{{notes}}</span>
   </div>
   <div class="la-photos">{{photoCells}}</div>
 </div>
+
+  ── {{flags}} — chip only when YES (nothing when NO); concatenate the two ───
+  if( 1.mountField = "Yes"; "<span class='la-chip la-chip-mount'>Mount Only</span>"; "" )
+  + if( 1.plenumField = "Yes"; "<span class='la-chip la-chip-plenum'>Plenum</span>"; "" )
+
+  (MDF removed — it's the group header. {{groupHeader}} also removed; the group
+   header is emitted by the Text Aggregator, not the row.)
 
   ── {{photoCells}} — build N <img> tags from the photo array ───────────────
   THE TRICK: join the urls with  "><img src="  as the separator, then wrap the
