@@ -2016,7 +2016,13 @@
 
     /* ── Photo drag-to-fill-required-slot (v1 parity) ────────── */
     '.scw-ws-v2-photo-card { position: relative !important; }',
-    '.scw-ws-v2-photo-card[draggable="true"] { cursor: grab; }',
+    '.scw-ws-v2-photo-card[draggable="true"] {',
+    '  cursor: grab;',
+    /* KTL/Knack set -webkit-user-drag:none globally on anchors; re-enable so
+       the whole photo card (not just the <img>) is a drag source. */
+    '  -webkit-user-drag: element !important;',
+    '}',
+    '.scw-ws-v2-photo-card[draggable="true"]:active { cursor: grabbing; }',
     '.scw-ws-v2-photo-drag-src { opacity: 0.45 !important; }',
     '.scw-ws-v2-photo-drop-ok {',
     '  outline: 2px dashed #16a34a !important; outline-offset: 2px !important;',

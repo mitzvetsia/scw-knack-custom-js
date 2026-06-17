@@ -789,6 +789,13 @@
     return card && card.getAttribute('data-photo-has-image') !== 'true' &&
            card.getAttribute('data-photo-required') === 'true';
   }
+  // Drop target for drag-to-fill/replace: ANY required slot (empty OR already
+  // filled). Dropping onto a filled required slot REPLACES which photo serves
+  // that required type. (Was empty-only — which showed no targets once the
+  // required slots were already filled.)
+  function isReqSlot(card) {
+    return card && card.getAttribute('data-photo-required') === 'true';
+  }
   function clearDragState() {
     var all = document.querySelectorAll(
       '.scw-ws-v2-photo-drop-ok, .scw-ws-v2-photo-drop-hover, .scw-ws-v2-photo-drag-src');
@@ -866,7 +873,7 @@
       if (strip) {
         var cards = strip.querySelectorAll(CARD_SEL);
         for (var i = 0; i < cards.length; i++) {
-          if (cards[i] !== card && isReqEmpty(cards[i])) {
+          if (cards[i] !== card && isReqSlot(cards[i])) {
             cards[i].classList.add('scw-ws-v2-photo-drop-ok');
           }
         }
