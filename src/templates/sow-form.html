@@ -107,6 +107,8 @@
   }
   .sow-note ul, .sow-note ol { margin: 4px 0 0; padding-left: 18px; }
   .sow-note p { margin: 0 0 4px; }
+  .sow-note-extra { margin-top: 4px; font-size: 10px; color: #64748b; }
+  .sow-note-extra b { color: #475569; }
 </style>
 </head>
 <body>
@@ -176,8 +178,9 @@
      Array Aggregator (group by MDF) → Text Aggregator. (Keeps null-MDF
      services/assumptions OUT of the "No MDF / IDF" group.)
   2) OTHER SERVICES: filter  MDF is empty  AND  proposal bucket = Services  →
-     build a SIMPLE text row (NOT the .la-loc device card — that nests):
-       <div class="sow-note">{{<service description field>}}</div>
+     build a SIMPLE text row (NOT the .la-loc device card — that nests). Main
+     description always; the (rare) separate notes field only when present:
+       <div class="sow-note">{{<description field>}}{{if(length(<notes field>) > 0; "<div class='sow-note-extra'><b>Notes:</b> " + <notes field> + "</div>"; "")}}</div>
      → Text Aggregator into a var (otherServicesRows).
      Then a Set variable wraps a header ONLY when non-empty:
        {{otherServices}} = if( length(otherServicesRows) > 0;
