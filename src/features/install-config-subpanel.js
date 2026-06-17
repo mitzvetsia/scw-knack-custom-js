@@ -390,10 +390,37 @@
    *  lives INSIDE the detail panel so it follows the accordion (hidden
    *  when the row/card is collapsed). Works on both the V1 (.scw-ws-detail)
    *  and V2 (.scw-ws-v2-detail) card structures. */
+  // A config record is "empty" when none of its 4 display cells carries
+  // content AND it has no Verified QA state — i.e. a connected view_3916 stub
+  // with no actual config. Don't render a blank "Camera config" block for it.
+  function cellHasContent(td) {
+    if (!td) return false;
+    return td.textContent.replace(/ /g, '').trim() !== '';
+  }
+  function isConfigEmpty(cfg) {
+    if (cfg && cfg.qa && cfg.qa.status === 'Verified') return false;
+    if (!cfg || !cfg.cells) return true;
+    for (var f = 0; f < FIELDS.length; f++) {
+      if (cellHasContent(cfg.cells[FIELDS[f].key])) return false;
+    }
+    return true;
+  }
+  function filterNonEmptyConfigs(configs) {
+    if (!configs) return configs;
+    var out = [];
+    for (var i = 0; i < configs.length; i++) {
+      if (!isConfigEmpty(configs[i])) out.push(configs[i]);
+    }
+    return out;
+  }
+
   function injectSubpanel(recordId, configs) {
     var target = findDetailTarget(recordId);
     if (!target) return;
     var detail = target.detail;
+    // Drop blank config stubs so a record with no real config renders nothing
+    // (the stale-removal below still runs, then the length guard returns).
+    configs = filterNonEmptyConfigs(configs);
 
     var prior = detail.querySelector('.' + SUBPANEL_CLS);
     if (prior) prior.parentNode.removeChild(prior);

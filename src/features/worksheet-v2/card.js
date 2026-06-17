@@ -1572,11 +1572,22 @@
     '</div>';
   }
 
-  function installChips(rec, viewKey, F) {
-    return '<div class="scw-ws-v2-cell scw-ws-v2-cell--chips">' +
-      chip(rec, viewKey, F.existCabling || 'field_2807', 'Existing', 'Existing cabling') +
-      chip(rec, viewKey, F.exterior     || 'field_2805', 'Exterior', 'Exterior') +
-      chip(rec, viewKey, F.plenum       || 'field_2806', 'Plenum',   'Plenum') +
+  // Read-only flag chit — rendered ONLY when the boolean is Yes (hidden when
+  // No; v1 view_3915 shows Existing/Exterior/Plenum as show-when-true READ-ONLY
+  // chits, never editable). Not interactive (no data-scw-ws-v2-chip hook).
+  function installFlagChit(rec, fieldKey, label) {
+    if (readBool(rec, fieldKey) !== 'Yes') return '';
+    return '<span class="scw-ws-v2-chip scw-ws-v2-chip--yes scw-ws-v2-chip--ro" ' +
+      'title="' + escapeHtml(label) + '">' + escapeHtml(label) + '</span>';
+  }
+
+  // Flag-chits cell — always emitted (holds its grid track); empty when no
+  // flag is true. Cam rows carry cabling/exterior/plenum.
+  function installFlags(rec, viewKey, F) {
+    return '<div class="scw-ws-v2-cell scw-ws-v2-cell--install-flags">' +
+      installFlagChit(rec, F.existCabling || 'field_2807', 'Existing') +
+      installFlagChit(rec, F.exterior     || 'field_2805', 'Exterior') +
+      installFlagChit(rec, F.plenum       || 'field_2806', 'Plenum') +
     '</div>';
   }
 
@@ -1594,24 +1605,22 @@
     else if (cat === 'assumptions')  productSlot = empty('scw-ws-v2-cell--product');
     else                             productSlot = installProductCell(rec, F);
 
-    // Single wide fill cell: Labor Description (read on the install object via
-    // field_2809). No money cells follow it — the row ends at warn / kebab.
-    var descLabel = isCam ? 'Labor description' :
-      (cat === 'services' ? 'Service description' :
-        (cat === 'assumptions' ? 'Assumption text' : 'Description'));
-    var laborDescCell = surveyFill(rec, viewKey, F.laborDesc || 'field_2809',
-      descLabel, 'scw-ws-v2-cell--install-desc');
+    // Read-only flag chits (Existing/Exterior/Plenum) — cam rows only, shown
+    // only when true. Non-cam keeps an empty track for grid alignment.
+    var flagsSlot = isCam ? installFlags(rec, viewKey, F)
+                          : empty('scw-ws-v2-cell--install-flags');
 
-    // Slot for cam cabling chips; non-cam rows get no chip slot (the row
-    // template is shorter — money region is suppressed entirely).
-    var chipsSlot = isCam ? installChips(rec, viewKey, F) : '';
+    // SCW Notes — the ONE editable field in the install header (v1 field_2808
+    // directEdit). Everything else on the card is read-only.
+    var scwNotesCell = surveyFill(rec, viewKey, F.scwNotes || 'field_2808',
+      'SCW Notes', 'scw-ws-v2-cell--install-scwnotes');
 
     return '<div class="scw-ws-v2-row scw-ws-v2-row--' + cat + ' scw-ws-v2-row--install">' +
       chevronCell(rec) +
       labelSlot +
       productSlot +
-      laborDescCell +
-      chipsSlot +
+      flagsSlot +
+      scwNotesCell +
       warnCell(rec) +
       kebabCell(rec, viewKey) +
     '</div>';
@@ -1620,46 +1629,34 @@
   function buildDetail_install(rec, viewKey, cat) {
     var F = fieldsFor(viewKey);
 
-    // Install detail = one flex-wrap row (same scaffold as the survey detail
-    // so install-config-subpanel.js / config-qa-popover.js can hook the
-    // standard .scw-ws-v2-detail). SCW Notes (field_2808) is the leftmost
-    // field; connections render read-only/editable per the v1 view_3915
-    // config (Connected To read-only display, MDF/IDF emitted by Knack's
-    // native group header, so not repeated here).
-    var items = sdItem(
-      detailTextArea(rec, viewKey, F.scwNotes || 'field_2808', 'SCW Notes'),
-      'scw-ws-v2-sd--paragraph');
+    // Install detail = READ-ONLY info (per v1 view_3915). The ONLY editable
+    // items are SCW Notes (header) and Connected Devices (network devices).
+    // Connected To (field_2821) is read-only display (v1: connectedTo readOnly).
+    var items = '';
 
     if (cat === 'cam') {
-      // Connected To (field_2821, single) — editable; cascade writes the
-      // parent's field_2820. Picker candidates resolved in init.js.
-      items += sdItem(detailConnection(rec, viewKey, F.connectedDevice || 'field_2821',
-        'Connected To', hasIssue(rec, 'disconnected')), 'scw-ws-v2-sd--conn');
-      // Cabling flags also surface in the detail panel as read-only chits
-      // (v1 view_3915 puts them in the Info column). They're editable chips
-      // in the summary row; here they read as plain display values.
-      items += sdItem(detailReadOnly(rec, F.existCabling || 'field_2807', 'Existing cabling'),
-        'scw-ws-v2-sd--num');
-      items += sdItem(detailReadOnly(rec, F.exterior || 'field_2805', 'Exterior'),
-        'scw-ws-v2-sd--num');
-      items += sdItem(detailReadOnly(rec, F.plenum || 'field_2806', 'Plenum'),
-        'scw-ws-v2-sd--num');
+      items += sdItem(detailReadOnly(rec, F.connectedDevice || 'field_2821', 'Connected To'),
+        'scw-ws-v2-sd--conn');
       items += sdItem(detailReadOnly(rec, F.dropLength || 'field_2804', 'Drop Length'),
         'scw-ws-v2-sd--num');
       items += sdItem(detailReadOnly(rec, F.conduit || 'field_2803', 'Conduit'),
         'scw-ws-v2-sd--num');
-      items += sdItem(detailReadOnly(rec, F.laborDesc || 'field_2809', 'Labor Desc'),
+      items += sdItem(detailReadOnly(rec, F.laborDesc || 'field_2809', 'Labor description'),
         'scw-ws-v2-sd--wide');
     } else if (cat === 'default') {
-      // Connected Devices (field_2820, multi, NVR/switch side) — editable.
-      // ONLY shown when this record's "map camera/reader connections" flag
-      // (field_2795 / mapConn) is Yes (v1: showWhenFieldIsYes: 'field_2795').
+      // Connected Devices (field_2820, multi) — EDITABLE, network devices only
+      // (v1: showWhenFieldIsYes field_2795 / mapConn).
       if (readBool(rec, F.mapConn || 'field_2795') === 'Yes') {
         items += sdItem(detailConnection(rec, viewKey, F.connectedDevices || 'field_2820',
           'Connected Devices'), 'scw-ws-v2-sd--conn');
       }
+      items += sdItem(detailReadOnly(rec, F.laborDesc || 'field_2809', 'Labor description'),
+        'scw-ws-v2-sd--wide');
+    } else {
+      // services / assumptions — labor/assumption text, read-only.
+      items += sdItem(detailReadOnly(rec, F.laborDesc || 'field_2809',
+        cat === 'assumptions' ? 'Assumption' : 'Description'), 'scw-ws-v2-sd--wide');
     }
-    // services / assumptions: SCW Notes only (already added above).
 
     return '<div class="scw-ws-v2-detail">' +
       '<div class="scw-ws-v2-survey-detail scw-ws-v2-install-detail">' + items + '</div>' +

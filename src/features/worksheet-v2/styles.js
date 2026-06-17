@@ -221,6 +221,36 @@
     '.scw-ws-v2-card--survey .scw-ws-v2-row--assumptions > .scw-ws-v2-cell--survey-ext {',
     '  display: none !important;',
     '}',
+    /* Install money model (moneyMode:"install", view_3915). No money cells at
+       all — header is chevron · label · product · flag chits (RO, show-when-
+       true) · SCW Notes (editable) · warn · trash. 7-track grid (replaces the
+       inherited SOW grid that was leaving phantom money columns). */
+    '.scw-ws-v2-card--install .scw-ws-v2-row--default,',
+    '.scw-ws-v2-card--install .scw-ws-v2-row--cam,',
+    '.scw-ws-v2-card--install .scw-ws-v2-row--services,',
+    '.scw-ws-v2-card--install .scw-ws-v2-row--assumptions,',
+    '.scw-ws-v2-col-header.scw-ws-v2-col-header--install {',
+    '  grid-template-columns:',
+    '    20px                  /* chevron */',
+    '    64px                  /* label / drop */',
+    '    minmax(150px, 1.2fr)  /* product */',
+    '    minmax(0px, auto)     /* flag chits (RO, only-if-true) */',
+    '    minmax(200px, 2fr)    /* SCW Notes (editable) */',
+    '    28px                  /* warning */',
+    '    28px                  /* trash */ !important;',
+    '}',
+    '.scw-ws-v2-cell--install-flags {',
+    '  display: flex !important; flex-wrap: wrap; gap: 3px;',
+    '  align-items: center !important;',
+    '}',
+    '.scw-ws-v2-chip--ro { cursor: default !important; }',
+    '.scw-ws-v2-card--install .scw-ws-v2-cell--product.scw-ws-v2-cell--ro {',
+    '  cursor: default !important;',
+    '}',
+    '.scw-ws-v2-card--install .scw-ws-v2-cell--install-scwnotes { align-self: stretch !important; }',
+    '.scw-ws-v2-card--install .scw-ws-v2-cell--install-scwnotes .scw-ws-v2-input--textarea {',
+    '  height: 100% !important; field-sizing: fixed;',
+    '}',
     /* SCW Notes — first/leftmost detail field, shown as a clear multi-line
        paragraph (wider than the info fields, taller min-height). */
     '.scw-ws-v2-sd--paragraph { flex: 1 1 280px !important; min-width: 220px !important; max-width: 420px !important; }',
