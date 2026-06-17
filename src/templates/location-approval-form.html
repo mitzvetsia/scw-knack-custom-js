@@ -22,7 +22,10 @@
     {{label}}            – device label, e.g. "E-001"
     {{location}}         – install location / description
     {{mdf}}              – MDF/IDF, e.g. "HEADEND: Manager's Office"
-    {{photoUrl}}         – field_771 image URL (rendered server-side, no proxy)
+    {{photoUrl}}         – field_771_raw.thumb_url (preferred, smaller) or .url.
+                           The whole .la-photo cell is produced by the Make
+                           if() in the row snippet below: real <img> when a URL
+                           exists, else the "No photo on file" placeholder.
     {{signoffClass}}     – signoff--approved | signoff--pending | signoff--na
     {{signoffLabel}}     – "Approved" | "Pending" | "N/A"
   If a location has no photo, set {{photoUrl}} empty — the cell shows a
@@ -212,10 +215,7 @@
   results, and substitute the joined string for {{locationRows}} above.
 
 <div class="la-loc">
-  <div class="la-photo">
-    <img src="{{photoUrl}}" alt="{{label}}">
-    <!-- when no photo: <div class="la-photo la-photo--empty">No photo on file</div> -->
-  </div>
+  {{photoCell}}
   <div class="la-loc-body">
     <div class="la-loc-label">{{label}}</div>
     <div class="la-loc-field"><span class="k">Location</span><span class="v">{{location}}</span></div>
@@ -227,5 +227,24 @@
     <div class="la-signoff-cap">Initials</div>
   </div>
 </div>
+
+  ── {{photoCell}} — paste this Make formula where {{photoCell}} sits above ──
+  (uses thumb_url, falls back to url, then to the placeholder when both empty)
+
+  if( length(coalesce(1.field_771_raw.thumb_url; 1.field_771_raw.url)) > 0 ;
+      "<div class='la-photo'><img src='" +
+          coalesce(1.field_771_raw.thumb_url; 1.field_771_raw.url) +
+          "' alt='" + 1.field_368 + "'></div>" ;
+      "<div class='la-photo la-photo--empty'>No photo on file</div>" )
+
+  (replace 1.field_771_raw with your Iterator's photo field, and 1.field_368
+   with the device-label field; coalesce = "first non-empty".)
+
+  ── {{signoffClass}} / {{signoffLabel}} from field_2860 (client sign-off) ──
+
+  class:  if( 1.field_2860 = "Approved" ; "signoff--approved" ;
+          if( length(1.field_2860) > 0 ; "signoff--na" ; "signoff--pending" ) )
+  label:  if( 1.field_2860 = "Approved" ; "Approved" ;
+          if( length(1.field_2860) > 0 ; 1.field_2860 ; "Pending" ) )
 
 ═════════════════════════════════════════════════════════════════════════════ -->
