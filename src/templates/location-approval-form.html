@@ -34,20 +34,11 @@
 <head>
 <meta charset="utf-8">
 <style>
-  /* Page size + margins + "Page X of X" footer.
-     NOTE: the @bottom-center page counter works in CSS-Paged-Media engines
-     (WeasyPrint, Prince, PDFreactor, DocRaptor, Vivliostyle). If your converter
-     is Chrome/Puppeteer-based (PDF.co, PDFShift, Browserless) or wkhtmltopdf,
-     DELETE the @bottom-center block and set page numbers in the converter's own
-     footer option instead (see chat for the snippet). */
-  @page {
-    size: letter;
-    margin: 16mm 14mm 16mm 14mm;
-    @bottom-center {
-      content: "Page " counter(page) " of " counter(pages);
-      font-family: system-ui, sans-serif; font-size: 9px; color: #94a3b8;
-    }
-  }
+  /* PDF.co is Chrome/Puppeteer-based, so it IGNORES CSS page-counter margin
+     boxes (@bottom-center). "Page X of X" is set in the PDF.co module's
+     Footer field, and page margins in the PDF.co module's Margins field —
+     NOT here. See chat for the exact PDF.co settings. */
+  @page { size: letter; }
 
   * { box-sizing: border-box; }
   html, body {
