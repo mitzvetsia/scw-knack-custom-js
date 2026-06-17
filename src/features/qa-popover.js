@@ -180,7 +180,65 @@
       '  background: #fef2f2; border: 1px solid #fecaca; color: #991b1b;',
       '  padding: 6px 10px; border-radius: 6px; font-size: 11px; margin: 0 14px 12px;',
       '}',
-      '.scw-qa-popover.is-saving { opacity: 0.7; pointer-events: none; }'
+      '.scw-qa-popover.is-saving { opacity: 0.7; pointer-events: none; }',
+
+      /* ── Modal presentation (openForAnchor / V2 install path) ──────────
+       * Mirrors the closeout-deliverables FILES QA modal: a centered
+       * overlay with a large photo PREVIEW pane on the left and the QA
+       * SIDEBAR (the exact same controls used by the docked popover) on the
+       * right. The inner controls keep their .scw-qa-popover__* class names
+       * so every save/validation routine works identically in both shells. */
+      '.scw-qa-modal__overlay {',
+      '  position: fixed; inset: 0; background: rgba(15,23,42,0.55);',
+      '  z-index: 10000; display: flex; align-items: center; justify-content: center;',
+      '}',
+      '.scw-qa-modal {',
+      '  position: relative; background: #fff; border-radius: 10px;',
+      '  box-shadow: 0 20px 50px rgba(0,0,0,0.25);',
+      '  width: 95vw; height: 92vh; max-width: 1400px; max-height: 1000px;',
+      '  display: flex; flex-direction: column; overflow: hidden;',
+      '  font: 12px/1.4 system-ui, -apple-system, Segoe UI, sans-serif; color: #1f2937;',
+      '}',
+      '.scw-qa-modal.is-saving { opacity: 0.7; pointer-events: none; }',
+      /* Header strip */
+      '.scw-qa-modal__head {',
+      '  display: flex; align-items: center; gap: 16px;',
+      '  padding: 12px 18px; border-bottom: 1px solid #e5e7eb;',
+      '  background: #f9fafb; flex: 0 0 auto;',
+      '}',
+      '.scw-qa-modal__head-meta { flex: 1 1 auto; min-width: 0; }',
+      '.scw-qa-modal__type {',
+      '  font-size: 15px; font-weight: 700; color: #111827;',
+      '  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;',
+      '}',
+      '.scw-qa-modal__sub { font-size: 12px; color: #6b7280; margin-top: 2px; }',
+      '.scw-qa-modal__head-actions { display: flex; gap: 8px; flex: 0 0 auto; }',
+      '.scw-qa-modal__head-btn {',
+      '  padding: 7px 14px; border-radius: 6px; background: #fff; color: #1f2937;',
+      '  border: 1px solid #d1d5db; font: 600 12px/1.2 system-ui; cursor: pointer;',
+      '}',
+      '.scw-qa-modal__head-btn:hover { background: #f3f4f6; border-color: #9ca3af; }',
+      '.scw-qa-modal__head-btn--close {',
+      '  color: #6b7280; width: 32px; padding: 0; font-size: 18px; line-height: 30px;',
+      '}',
+      /* Body split — preview on the left, QA sidebar on the right */
+      '.scw-qa-modal__body { display: flex; flex: 1 1 auto; min-height: 0; }',
+      '.scw-qa-modal__viewer {',
+      '  flex: 1 1 auto; min-width: 0; background: #1f2937; position: relative;',
+      '  display: flex; align-items: center; justify-content: center; overflow: hidden;',
+      '}',
+      '.scw-qa-modal__viewer img {',
+      '  max-width: 100%; max-height: 100%; object-fit: contain; cursor: zoom-in;',
+      '}',
+      '.scw-qa-modal__viewer-empty { color: #9ca3af; padding: 40px; text-align: center; font-size: 14px; }',
+      '.scw-qa-modal__sidebar {',
+      '  flex: 0 0 340px; border-left: 1px solid #e5e7eb;',
+      '  display: flex; flex-direction: column; background: #fff;',
+      '}',
+      /* The reused QA body becomes the scroll region; neutralize the docked',
+         max-height so it fills the sidebar column. */
+      '.scw-qa-modal__sidebar .scw-qa-popover__body { max-height: none; flex: 1 1 auto; }',
+      '.scw-qa-modal__sidebar .scw-qa-popover__actions { flex: 0 0 auto; }'
     ].join('\n');
 
     var style = document.createElement('style');
@@ -388,14 +446,31 @@
   }
   function escapeHtml(s) { return String(s == null ? '' : s).replace(/[<>&"']/g, escHtmlChar); }
 
-  function buildPopover(photo) {
+  /**
+   * Build the QA controls (header + body + actions).
+   *
+   * @param {Object}      photo    QA photo snapshot.
+   * @param {HTMLElement} [hostPop] When provided (modal path), chip/notes
+   *        handlers and updateActions operate on THIS element instead of the
+   *        docked popover container — so the controls can be transplanted
+   *        into the modal sidebar while still reading/writing the live shell
+   *        (which owns .scw-qa-popover__body / __actions). The save routines
+   *        treat hostPop as _popover. The docked __head is skipped in this
+   *        mode (the modal supplies its own header + large preview).
+   */
+  function buildPopover(photo, hostPop) {
     var clientGateActive = isClientGateActive(photo.client);
     var alreadySignedOff = isFullyComplete(photo.status, photo.client);
+    var isModal = !!hostPop;
 
     var pop = document.createElement('div');
     pop.className = 'scw-qa-popover';
-    pop.id = POPOVER_ID;
-    pop.setAttribute('data-photo-id', photo.id);
+    if (!isModal) {
+      pop.id = POPOVER_ID;
+      pop.setAttribute('data-photo-id', photo.id);
+    }
+    // ctl is the element chip/notes handlers + updateActions act on.
+    var ctl = hostPop || pop;
 
     // ── Header strip: thumbnail + type/sub (mirrors closeout __head) ──
     var head = document.createElement('div');
@@ -425,7 +500,9 @@
     meta.appendChild(typeEl);
     meta.appendChild(subEl);
     head.appendChild(meta);
-    pop.appendChild(head);
+    // The modal supplies its own header + large preview, so the compact
+    // docked header strip is only added in popover mode.
+    if (!isModal) pop.appendChild(head);
 
     // ── Body: scrollable QA controls (mirrors closeout __sidebar-content) ──
     var body = document.createElement('div');
@@ -433,13 +510,13 @@
 
     // Status chips
     body.appendChild(buildChipRow(
-      'QA Status', STATUS_OPTIONS, photo.status, 'status', pop, photo
+      'QA Status', STATUS_OPTIONS, photo.status, 'status', ctl, photo
     ));
 
     // Client signoff chips (only when applicable)
     if (clientGateActive) {
       body.appendChild(buildChipRow(
-        'Client signoff', CLIENT_OPTIONS, photo.client, 'client', pop, photo
+        'Client signoff', CLIENT_OPTIONS, photo.client, 'client', ctl, photo
       ));
     }
 
@@ -457,7 +534,7 @@
     notes.addEventListener('input', function () {
       photo.notes = notes.value;
       _hasUnsavedChanges = true;
-      updateActions(pop, photo);
+      updateActions(ctl, photo);
     });
     notesSec.appendChild(notes);
     var hint = document.createElement('div');
@@ -504,6 +581,106 @@
 
     updateActions(pop, photo);
     return pop;
+  }
+
+  /**
+   * Modal shell (openForAnchor path). Reuses buildPopover to build the
+   * exact same QA controls, then transplants its scrollable body + action
+   * footer into a centered modal sidebar alongside a large photo preview.
+   * Returns { overlay, dialog } — dialog is the element the save routines
+   * treat as _popover (it owns .scw-qa-popover__body / __actions and the
+   * is-saving toggle via .scw-qa-modal.is-saving).
+   */
+  function buildModal(photo) {
+    var alreadySignedOff = isFullyComplete(photo.status, photo.client);
+
+    var overlay = document.createElement('div');
+    overlay.className = 'scw-qa-modal__overlay';
+
+    var dialog = document.createElement('div');
+    dialog.className = 'scw-qa-modal';
+    dialog.id = POPOVER_ID;
+    dialog.setAttribute('data-photo-id', photo.id);
+
+    // Build the QA controls wired to `dialog` (the live shell the save
+    // routines treat as _popover), then harvest the body + actions and
+    // mount them in the sidebar. `src` is a throwaway container.
+    var src = buildPopover(photo, dialog);
+    var body    = src.querySelector('.scw-qa-popover__body');
+    var actions = src.querySelector('.scw-qa-popover__actions');
+
+    // ── Header ───────────────────────────────────────────────────────
+    var head = document.createElement('div');
+    head.className = 'scw-qa-modal__head';
+    var meta = document.createElement('div');
+    meta.className = 'scw-qa-modal__head-meta';
+    var typeEl = document.createElement('div');
+    typeEl.className = 'scw-qa-modal__type';
+    typeEl.textContent = photo.type || 'Photo';
+    typeEl.title = photo.type || 'Photo';
+    var subEl = document.createElement('div');
+    subEl.className = 'scw-qa-modal__sub';
+    subEl.textContent = alreadySignedOff ? 'Signed off' : 'QA review';
+    meta.appendChild(typeEl);
+    meta.appendChild(subEl);
+    head.appendChild(meta);
+
+    var headActions = document.createElement('div');
+    headActions.className = 'scw-qa-modal__head-actions';
+    if (photo.imgUrl) {
+      var openBtn = document.createElement('button');
+      openBtn.type = 'button';
+      openBtn.className = 'scw-qa-modal__head-btn';
+      openBtn.textContent = 'Open ↗';
+      openBtn.addEventListener('click', function () { window.open(photo.imgUrl, '_blank'); });
+      headActions.appendChild(openBtn);
+    }
+    var closeBtn = document.createElement('button');
+    closeBtn.type = 'button';
+    closeBtn.className = 'scw-qa-modal__head-btn scw-qa-modal__head-btn--close';
+    closeBtn.innerHTML = '&times;';
+    closeBtn.title = 'Close';
+    closeBtn.addEventListener('click', function () { closePopover(false); });
+    headActions.appendChild(closeBtn);
+    head.appendChild(headActions);
+    dialog.appendChild(head);
+
+    // ── Body: photo preview (left) + reused QA sidebar (right) ───────
+    var splitBody = document.createElement('div');
+    splitBody.className = 'scw-qa-modal__body';
+
+    var viewer = document.createElement('div');
+    viewer.className = 'scw-qa-modal__viewer';
+    if (photo.imgUrl) {
+      var img = document.createElement('img');
+      img.src = photo.imgUrl;
+      img.alt = photo.type || 'Photo';
+      img.title = 'Open full image';
+      img.addEventListener('click', function () { window.open(photo.imgUrl, '_blank'); });
+      viewer.appendChild(img);
+    } else {
+      var empty = document.createElement('div');
+      empty.className = 'scw-qa-modal__viewer-empty';
+      empty.textContent = 'No photo uploaded yet.';
+      viewer.appendChild(empty);
+    }
+    splitBody.appendChild(viewer);
+
+    var sidebar = document.createElement('div');
+    sidebar.className = 'scw-qa-modal__sidebar';
+    if (body)    sidebar.appendChild(body);     // reused QA controls
+    if (actions) sidebar.appendChild(actions);  // reused footer buttons
+    splitBody.appendChild(sidebar);
+
+    dialog.appendChild(splitBody);
+
+    // The footer was populated by buildPopover while it still lived in the
+    // throwaway `src`; now that it's mounted under `dialog`, re-run so any
+    // later updateActions(dialog,…) calls (chip/notes edits) keep resolving.
+    updateActions(dialog, photo);
+
+    overlay.appendChild(dialog);
+    return { overlay: overlay, dialog: dialog };
   }
 
   function buildChipRow(label, options, currentValue, fieldName, pop, photo) {
@@ -981,12 +1158,21 @@
       : null;
 
     injectCSS();
-    var pop = buildPopover(photo);
-    pop._triggerChit = anchorEl;   // used only for positioning / outside-click
-    document.body.appendChild(pop);
-    _popover = pop;
-
-    positionPopover(pop, anchorEl);
+    // The install (host-anchored) path opens as a CENTERED MODAL with a
+    // large photo preview + the QA sidebar — mirrors the closeout FILES QA
+    // modal. _popover points at the dialog (it owns the QA body/actions the
+    // save routines query + the is-saving toggle via .scw-qa-modal).
+    var built = buildModal(photo);
+    var overlay = built.overlay;
+    var dialog  = built.dialog;
+    dialog._triggerChit = anchorEl;   // outside-click guard + refresh anchor
+    dialog._overlay = overlay;
+    // Backdrop click closes (autosaves) — like closeout's overlay handler.
+    overlay.addEventListener('mousedown', function (e) {
+      if (e.target === overlay) closePopover(false);
+    });
+    document.body.appendChild(overlay);
+    _popover = dialog;
   }
 
   function positionPopover(pop, anchor) {
@@ -1016,7 +1202,10 @@
     if (!_popover) return;
     var finish = function () {
       if (_popover) {
-        _popover.remove();
+        // Modal path mounts the dialog inside a full-screen overlay; remove
+        // the overlay so the backdrop goes too. Docked path has no overlay.
+        var toRemove = _popover._overlay || _popover;
+        if (toRemove && toRemove.parentNode) toRemove.parentNode.removeChild(toRemove);
         _popover = null;
       }
       _photoId = null;
