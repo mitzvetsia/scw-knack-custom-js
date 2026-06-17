@@ -101,13 +101,6 @@
   }
   .la-chip-mount  { background: #e0e7ff; color: #3730a3; }  /* indigo */
   .la-chip-plenum { background: #fef3c7; color: #92400e; }  /* amber  */
-
-  /* ── Approval / signature block (always last) ───────────── */
-  .la-approval { margin-top: 28px; border-top: 2px solid #07467c; padding-top: 16px; page-break-inside: avoid; break-inside: avoid; }
-  .la-approval-text { font-size: 11px; color: #475569; margin-bottom: 18px; }
-  .la-sign-row { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; }
-  .la-sign-line { border-bottom: 1px solid #334155; height: 34px; }
-  .la-sign-cap { font-size: 10px; color: #64748b; margin-top: 4px; }
 </style>
 </head>
 <body>
@@ -131,28 +124,11 @@
     </div>
 
     <p class="la-intro">
-      Please review each proposed device location below. By signing, the customer
-      confirms the mounting locations shown in the photos are approved for
-      installation. Any changes after approval may be subject to a change order.
+      Device photo documentation, organized by location.
     </p>
 
     <div class="la-locations">
       {{locationRows}}
-    </div>
-
-    <div class="la-approval">
-      <div class="la-approval-text">
-        I, the undersigned, have reviewed and approve the device mounting
-        locations documented in this form for <b>{{customerName}}</b> ({{projectName}}).
-      </div>
-      <div class="la-sign-row">
-        <div><div class="la-sign-line"></div><div class="la-sign-cap">Customer signature</div></div>
-        <div><div class="la-sign-line"></div><div class="la-sign-cap">Date</div></div>
-      </div>
-      <div class="la-sign-row" style="margin-top:16px;">
-        <div><div class="la-sign-line"></div><div class="la-sign-cap">Printed name</div></div>
-        <div><div class="la-sign-line"></div><div class="la-sign-cap">Title</div></div>
-      </div>
     </div>
 
   </div>
