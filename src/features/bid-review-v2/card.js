@@ -519,11 +519,19 @@
       'data-package-id="' + escapeHtml(pkgId || '') + '" ' +
       'data-sow-id="' + escapeHtml(sowId || '') + '"';
   }
-  // Revise + Remove stack for a populated bid cell. Skipped for
-  // requireSubBid:No rows (informational items the bidder isn't pricing).
+  // Revise + Remove stack for a populated bid cell. CR buttons require
+  // sub-bid to be wanted on EITHER side: the bid record (field_2478 →
+  // row.requireSubBid) OR the SOW line item (field_2479 →
+  // row.requireSubBidSow). Suppress ONLY when both are explicitly No — a
+  // lone "No" on the bid record no longer hides the buttons if the SOW
+  // still wants the item priced.
   function cellActionStack(row, pkgId, sowId, diffs) {
-    var noSubBid = row.requireSubBid && /^no$/i.test(String(row.requireSubBid).trim());
-    if (noSubBid) return '';
+    var isNoFlag = function (v) {
+      if (v === false) return true;
+      if (v == null) return false;
+      return /^(no|false)$/i.test(String(v).replace(/<[^>]*>/g, '').trim());
+    };
+    if (isNoFlag(row.requireSubBid) && isNoFlag(row.requireSubBidSow)) return '';
     // When the bid mismatches the SOW for this row, the Revise button
     // becomes a dropdown (v1 parity): "Edit bid values" (free-form CR) +
     // "Match SOW values" (CR prefilled from SOW). dispatchCRAction handles
