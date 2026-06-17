@@ -1591,6 +1591,15 @@
     '</div>';
   }
 
+  // Read-only labor/assumption description for the header — services &
+  // assumptions rows surface their text inline (read-only). HTML is stripped
+  // by readField.
+  function installDescRO(rec, viewKey, F) {
+    var txt = readField(rec, F.laborDesc || 'field_2809');
+    return '<div class="scw-ws-v2-cell scw-ws-v2-cell--labor-desc scw-ws-v2-cell--install-descro" ' +
+      'title="' + escapeHtml(txt) + '">' + escapeHtml(txt) + '</div>';
+  }
+
   function buildRow_install(rec, viewKey, cat) {
     var F     = fieldsFor(viewKey);
     var isCam = (cat === 'cam');
@@ -1600,10 +1609,13 @@
       ? ro(label, 'scw-ws-v2-cell--label', label)
       : empty('scw-ws-v2-cell--label');
 
+    // services & assumptions show their labor/assumption text (read-only) in
+    // the header; cam/default show the product (read-only).
     var productSlot;
-    if (cat === 'services')          productSlot = ro('Service', 'scw-ws-v2-cell--tag');
-    else if (cat === 'assumptions')  productSlot = empty('scw-ws-v2-cell--product');
-    else                             productSlot = installProductCell(rec, F);
+    if (cat === 'services' || cat === 'assumptions')
+      productSlot = installDescRO(rec, viewKey, F);
+    else
+      productSlot = installProductCell(rec, F);
 
     // Read-only flag chits (Existing/Exterior/Plenum) — cam rows only, shown
     // only when true. Non-cam keeps an empty track for grid alignment.
@@ -1652,11 +1664,9 @@
       }
       items += sdItem(detailReadOnly(rec, F.laborDesc || 'field_2809', 'Labor description'),
         'scw-ws-v2-sd--wide');
-    } else {
-      // services / assumptions — labor/assumption text, read-only.
-      items += sdItem(detailReadOnly(rec, F.laborDesc || 'field_2809',
-        cat === 'assumptions' ? 'Assumption' : 'Description'), 'scw-ws-v2-sd--wide');
     }
+    // services / assumptions: their labor/assumption text is in the header
+    // (read-only) — nothing extra in the detail panel.
 
     return '<div class="scw-ws-v2-detail">' +
       '<div class="scw-ws-v2-survey-detail scw-ws-v2-install-detail">' + items + '</div>' +

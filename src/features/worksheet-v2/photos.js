@@ -168,8 +168,11 @@
     if (survey) return '#' + survey + '/edit-doc-photo/' + photoRecordId + '/';
     var base = buildSowBasePath();
     if (!base) return '';
-    var slug = (base.indexOf('scope-of-work-details') !== -1)
-      ? 'edit-doc-photo2' : 'edit-photo';
+    // Deploy scene (install line items, view_3915) uses edit-doc-photo3;
+    // sales scope-of-work-details uses edit-doc-photo2; build-SOW uses edit-photo.
+    var slug = (base.indexOf('/deploy/') !== -1) ? 'edit-doc-photo3'
+      : (base.indexOf('scope-of-work-details') !== -1) ? 'edit-doc-photo2'
+      : 'edit-photo';
     return '#' + base + '/' + slug + '/' + photoRecordId + '/';
   }
   function addPhotoHref(lineItemId) {
@@ -178,7 +181,10 @@
     if (survey) return '#' + survey + '/add-photo-to-survey-line-item/' + lineItemId + '/';
     var base = buildSowBasePath();
     if (!base) return '';
-    return '#' + base + '/add-photo-to-sow-line-item/' + lineItemId + '/';
+    // Deploy scene → install line item; everywhere else → SOW line item.
+    var addSlug = (base.indexOf('/deploy/') !== -1)
+      ? 'add-photo-to-install-line-item' : 'add-photo-to-sow-line-item';
+    return '#' + base + '/' + addSlug + '/' + lineItemId + '/';
   }
 
   /** Survey-scene base path. Returns '' off the survey scene so the

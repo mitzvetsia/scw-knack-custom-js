@@ -251,6 +251,12 @@
     '.scw-ws-v2-card--install .scw-ws-v2-cell--install-scwnotes .scw-ws-v2-input--textarea {',
     '  height: 100% !important; field-sizing: fixed;',
     '}',
+    /* Read-only labor/assumption text in the header (services & assumptions) */
+    '.scw-ws-v2-cell--install-descro {',
+    '  font: 400 12px/1.4 system-ui, -apple-system, sans-serif !important;',
+    '  color: #475569 !important; white-space: normal !important;',
+    '  align-self: center !important; overflow: hidden !important;',
+    '}',
     /* SCW Notes — first/leftmost detail field, shown as a clear multi-line
        paragraph (wider than the info fields, taller min-height). */
     '.scw-ws-v2-sd--paragraph { flex: 1 1 280px !important; min-width: 220px !important; max-width: 420px !important; }',
