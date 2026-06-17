@@ -145,11 +145,15 @@
     {{if(5.field_2807_raw = true; "<span class='la-chip la-chip-mount'>Mount Only</span>"; "")}}{{if(5.field_2806_raw = true; "<span class='la-chip la-chip-plenum'>Plenum</span>"; "")}}
     <span class="k">Notes</span> <span class="v">{{5.field_2808_raw}}</span>
   </div>
+  <div class="la-loc-meta">
+    <span class="k">Labor</span> <span class="v">{{5.field_XXXX_raw}}</span>
+  </div>
   <div class="la-photos"><img src='{{join(38.`photo URL`; "'><img src='")}}'></div>
 </div>
 
   field map: label field_2801 | product field_2790 (de-duped vs label) |
   Mount Only field_2807 (bool) | Plenum field_2806 (bool) | notes field_2808 |
+  labor field_XXXX (TODO: set the labor-description field) |
   photos 38.`photo URL` (array of url strings → join trick builds the <img> tags;
   if it's an array of OBJECTS instead, use join(map(38.array; "photo URL"); ...)).
 ═════════════════════════════════════════════════════════════════════════════ -->
