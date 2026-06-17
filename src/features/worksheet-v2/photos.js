@@ -310,6 +310,12 @@
     fail:    '<svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>',
     pending: '<svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>'
   };
+  // "Needs QA" RULE (assumption — see GOAL): a photo needs QA when it is
+  // REQUIRED (field_2446 = Yes). Non-required photos get NO QA status served
+  // and open the modal as a plain big-photo viewer (no QA sidebar). To change
+  // the rule later, this is the one line to edit.
+  function photoNeedsQa(p) { return !!p.required; }
+
   function qaChitHtml(p) {
     var state = qaChitState(p);
     var icon = QA_ICONS[state] || QA_ICONS.pending;
@@ -385,11 +391,26 @@
       // full-size url + identity so the delegated click handler can build
       // the viewer without re-scraping the source view.
       var reqState = p.required ? (p.completed ? 'done' : 'missing') : '';
+      var needsQa = photoNeedsQa(p);
+      // QA snapshot attrs on the card itself (install surface) so a click on
+      // the THUMBNAIL can open the same QA modal as the chit — without
+      // re-scraping the source view. needsQa drives whether the modal shows
+      // the QA sidebar (true) or opens as a plain big-photo viewer (false).
+      var qaCardAttrs = (qaEnabled && p.id && p.imgUrl)
+        ? ' data-scw-ws-v2-photo-needsqa="' + (needsQa ? '1' : '0') + '"' +
+          ' data-qa-status="'  + escapeHtml(p.qaStatus || 'Pending') + '"' +
+          ' data-qa-client="'  + escapeHtml(p.qaClient || 'N/A')     + '"' +
+          ' data-qa-notes="'   + escapeHtml(p.qaNotes || '')         + '"' +
+          ' data-qa-history="' + escapeHtml(p.qaHistory || '')       + '"' +
+          ' data-qa-by="'      + escapeHtml(p.qaCompletedBy || '')   + '"' +
+          ' data-qa-date="'    + escapeHtml(p.qaCompletedDate || '') + '"'
+        : '';
       var dataAttrs =
         ' data-scw-ws-v2-photo-url="'  + escapeHtml(p.imgUrl || '') + '"' +
         ' data-scw-ws-v2-photo-id="'   + escapeHtml(p.id)          + '"' +
         ' data-scw-ws-v2-photo-type="' + escapeHtml(p.type || '')  + '"' +
         ' data-scw-ws-v2-photo-req="'  + reqState + '"' +
+        qaCardAttrs +
         // v1-parity drag attrs: filled cards are drag sources, required +
         // image-less cards are drop targets (drag-to-fill-required-slot).
         ' data-photo-id="'         + escapeHtml(p.id) + '"' +
@@ -406,9 +427,12 @@
             'data-scw-ws-v2-photo-view="' + escapeHtml(sourceViewKey) + '" ' +
             'title="Delete photo">' + PHOTO_TRASH_SVG + '</button>'
         : '';
-      // Photo QA chit — install surface only, and only on cards that hold
-      // an actual photo (a placeholder has nothing to QA).
-      var qaChit = (qaEnabled && p.id && p.imgUrl) ? qaChitHtml(p) : '';
+      // Photo QA chit — install surface only, only on cards that hold an
+      // actual photo, AND only on photos that NEED QA (required). Non-QA
+      // photos are not served a QA status (they still open the big-photo
+      // modal, just without the QA sidebar).
+      var qaChit = (qaEnabled && p.id && p.imgUrl && photoNeedsQa(p))
+        ? qaChitHtml(p) : '';
       html +=
         '<a class="' + cls + '"' + openAttrs + dataAttrs + draggableAttr +
             ' title="' + escapeHtml((p.type || 'Photo') + (p.required ? ' (Required)' : '')) + '">' +
@@ -625,11 +649,56 @@
     }, true);
   }
 
+  // Shared opener for the photo QA modal (qa-popover.js openForAnchor). Both
+  // the QA chit AND the photo thumbnail (install surface) route through here
+  // so they open the IDENTICAL modal off the same snapshot.
+  //
+  // `el` supplies the QA data-* attrs (the chit, or the photo card itself);
+  // `photoId`, `type`, `imgUrl`, `needsQa` come from the caller. When needsQa
+  // is false, the modal opens as a plain big-photo viewer (no QA sidebar) —
+  // qa-popover.js reads snapshot.needsQa to decide.
+  function openPhotoQaModal(el, photoId, type, imgUrl, needsQa) {
+    if (!(window.SCW && SCW.qaPopover && typeof SCW.qaPopover.openAnchor === 'function')) {
+      console.warn('[scw-ws-v2] photo QA: SCW.qaPopover.openAnchor unavailable');
+      return false;
+    }
+    if (!photoId) return false;
+
+    // Resolve which source view this card belongs to so we can refetch it
+    // after a save (rebuilds the strip with the fresh QA state).
+    var viewKey = '';
+    var host = el.closest('[data-scw-ws-v2-view]') ||
+               (el.closest('.scw-ws-v2-card') &&
+                el.closest('.scw-ws-v2-card').querySelector('[data-scw-ws-v2-view]'));
+    if (host) viewKey = host.getAttribute('data-scw-ws-v2-view') || '';
+
+    var snapshot = {
+      type:          type || el.getAttribute('data-qa-type') || 'Photo',
+      imgUrl:        imgUrl || el.getAttribute('data-qa-img') || '',
+      status:        el.getAttribute('data-qa-status')   || 'Pending',
+      client:        el.getAttribute('data-qa-client')   || 'N/A',
+      notes:         el.getAttribute('data-qa-notes')    || '',
+      history:       el.getAttribute('data-qa-history')  || '',
+      completedBy:   el.getAttribute('data-qa-by')       || '',
+      completedDate: el.getAttribute('data-qa-date')     || '',
+      completed:     true,
+      needsQa:       !!needsQa
+    };
+
+    SCW.qaPopover.openAnchor(el, photoId, snapshot, function () {
+      // Refetch the source view so the strip rebuilds from authoritative
+      // data (the QA columns now reflect the save).
+      if (viewKey && ns.data && typeof ns.data.refetchAndNotify === 'function') {
+        setTimeout(function () { ns.data.refetchAndNotify(viewKey); }, 800);
+      }
+    });
+    return true;
+  }
+
   // Delegated photo-QA chit click (install surface). CAPTURE phase so the
   // wrapping <a>'s lightbox / edit-page navigation never fires. Opens the
-  // shared photo QA panel (qa-popover.js openForAnchor) docked off the chit;
-  // on save it refetches the source view so the strip rebuilds with the new
-  // QA state. Bound once.
+  // shared photo QA modal. The chit only ever renders on photos that NEED
+  // QA, so this always opens with the QA sidebar (needsQa=true). Bound once.
   if (!document.documentElement.hasAttribute('data-scw-ws-v2-photo-qa-bound')) {
     document.documentElement.setAttribute('data-scw-ws-v2-photo-qa-bound', '1');
     document.addEventListener('click', function (e) {
@@ -638,41 +707,13 @@
       if (!chit) return;
       e.preventDefault();
       e.stopPropagation();
-
-      if (!(window.SCW && SCW.qaPopover && typeof SCW.qaPopover.openAnchor === 'function')) {
-        console.warn('[scw-ws-v2] photo QA: SCW.qaPopover.openAnchor unavailable');
-        return;
-      }
-      var photoId = chit.getAttribute('data-scw-ws-v2-photo-qa');
-      if (!photoId) return;
-
-      // Resolve which source view this card belongs to so we can refetch
-      // it after a save (rebuilds the strip with the fresh QA state).
-      var viewKey = '';
-      var host = chit.closest('[data-scw-ws-v2-view]') ||
-                 (chit.closest('.scw-ws-v2-card') &&
-                  chit.closest('.scw-ws-v2-card').querySelector('[data-scw-ws-v2-view]'));
-      if (host) viewKey = host.getAttribute('data-scw-ws-v2-view') || '';
-
-      var snapshot = {
-        type:          chit.getAttribute('data-qa-type')    || 'Photo',
-        imgUrl:        chit.getAttribute('data-qa-img')      || '',
-        status:        chit.getAttribute('data-qa-status')   || 'Pending',
-        client:        chit.getAttribute('data-qa-client')   || 'N/A',
-        notes:         chit.getAttribute('data-qa-notes')    || '',
-        history:       chit.getAttribute('data-qa-history')  || '',
-        completedBy:   chit.getAttribute('data-qa-by')       || '',
-        completedDate: chit.getAttribute('data-qa-date')     || '',
-        completed:     true
-      };
-
-      SCW.qaPopover.openAnchor(chit, photoId, snapshot, function () {
-        // Refetch the source view so the strip rebuilds from authoritative
-        // data (the QA columns now reflect the save).
-        if (viewKey && ns.data && typeof ns.data.refetchAndNotify === 'function') {
-          setTimeout(function () { ns.data.refetchAndNotify(viewKey); }, 800);
-        }
-      });
+      openPhotoQaModal(
+        chit,
+        chit.getAttribute('data-scw-ws-v2-photo-qa'),
+        chit.getAttribute('data-qa-type') || 'Photo',
+        chit.getAttribute('data-qa-img') || '',
+        true   // chit only renders on needs-QA photos
+      );
     }, true);
   }
 
@@ -686,6 +727,26 @@
       if (!card) return;
       // No image to view → let it navigate to the edit page as before.
       if (!card.getAttribute('data-scw-ws-v2-photo-url')) return;
+
+      // Install surface (QA_CHIT_VIEWS): clicking the photo opens the SAME QA
+      // modal as the chit — unifying the entry point. The needsqa attr is only
+      // emitted on those views, so other surfaces (bid-review/sales/etc.) fall
+      // through to the lightbox below unchanged. Required photos open with the
+      // QA sidebar; non-required open as a plain big-photo viewer (needsQa=0).
+      if (card.hasAttribute('data-scw-ws-v2-photo-needsqa')) {
+        var needsQa = card.getAttribute('data-scw-ws-v2-photo-needsqa') === '1';
+        var opened = openPhotoQaModal(
+          card,
+          card.getAttribute('data-scw-ws-v2-photo-id'),
+          card.getAttribute('data-scw-ws-v2-photo-type') || 'Photo',
+          card.getAttribute('data-scw-ws-v2-photo-url') || '',
+          needsQa
+        );
+        if (opened) { e.preventDefault(); e.stopPropagation(); return; }
+        // openPhotoQaModal failed (qaPopover unavailable) — fall through to
+        // the lightbox so the user can still see the photo.
+      }
+
       var stripEl = card.closest('.scw-ws-v2-photos-strip');
       if (!stripEl) return;
       var anchors = stripEl.querySelectorAll('a.scw-ws-v2-photo-card');

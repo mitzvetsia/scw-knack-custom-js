@@ -238,7 +238,9 @@
       /* The reused QA body becomes the scroll region; neutralize the docked',
          max-height so it fills the sidebar column. */
       '.scw-qa-modal__sidebar .scw-qa-popover__body { max-height: none; flex: 1 1 auto; }',
-      '.scw-qa-modal__sidebar .scw-qa-popover__actions { flex: 0 0 auto; }'
+      '.scw-qa-modal__sidebar .scw-qa-popover__actions { flex: 0 0 auto; }',
+      /* No-QA (preview-only) modal — no sidebar, viewer fills full width. */
+      '.scw-qa-modal--noqa .scw-qa-modal__viewer { flex: 1 1 100%; }'
     ].join('\n');
 
     var style = document.createElement('style');
@@ -593,21 +595,28 @@
    */
   function buildModal(photo) {
     var alreadySignedOff = isFullyComplete(photo.status, photo.client);
+    // needsQa=false → plain big-photo viewer: no QA sidebar, no QA controls
+    // built at all (so the save routines are never reachable for this photo).
+    var showQa = (photo.needsQa !== false);
 
     var overlay = document.createElement('div');
     overlay.className = 'scw-qa-modal__overlay';
 
     var dialog = document.createElement('div');
-    dialog.className = 'scw-qa-modal';
+    dialog.className = 'scw-qa-modal' + (showQa ? '' : ' scw-qa-modal--noqa');
     dialog.id = POPOVER_ID;
     dialog.setAttribute('data-photo-id', photo.id);
 
     // Build the QA controls wired to `dialog` (the live shell the save
     // routines treat as _popover), then harvest the body + actions and
-    // mount them in the sidebar. `src` is a throwaway container.
-    var src = buildPopover(photo, dialog);
-    var body    = src.querySelector('.scw-qa-popover__body');
-    var actions = src.querySelector('.scw-qa-popover__actions');
+    // mount them in the sidebar. `src` is a throwaway container. Skipped
+    // entirely when the photo doesn't need QA (preview-only modal).
+    var body = null, actions = null;
+    if (showQa) {
+      var src = buildPopover(photo, dialog);
+      body    = src.querySelector('.scw-qa-popover__body');
+      actions = src.querySelector('.scw-qa-popover__actions');
+    }
 
     // ── Header ───────────────────────────────────────────────────────
     var head = document.createElement('div');
@@ -620,7 +629,7 @@
     typeEl.title = photo.type || 'Photo';
     var subEl = document.createElement('div');
     subEl.className = 'scw-qa-modal__sub';
-    subEl.textContent = alreadySignedOff ? 'Signed off' : 'QA review';
+    subEl.textContent = !showQa ? 'Photo' : (alreadySignedOff ? 'Signed off' : 'QA review');
     meta.appendChild(typeEl);
     meta.appendChild(subEl);
     head.appendChild(meta);
@@ -666,18 +675,22 @@
     }
     splitBody.appendChild(viewer);
 
-    var sidebar = document.createElement('div');
-    sidebar.className = 'scw-qa-modal__sidebar';
-    if (body)    sidebar.appendChild(body);     // reused QA controls
-    if (actions) sidebar.appendChild(actions);  // reused footer buttons
-    splitBody.appendChild(sidebar);
+    // QA sidebar — only when the photo needs QA. When omitted the viewer
+    // pane flexes to fill the modal (a plain big-photo viewer).
+    if (showQa) {
+      var sidebar = document.createElement('div');
+      sidebar.className = 'scw-qa-modal__sidebar';
+      if (body)    sidebar.appendChild(body);     // reused QA controls
+      if (actions) sidebar.appendChild(actions);  // reused footer buttons
+      splitBody.appendChild(sidebar);
+    }
 
     dialog.appendChild(splitBody);
 
     // The footer was populated by buildPopover while it still lived in the
     // throwaway `src`; now that it's mounted under `dialog`, re-run so any
     // later updateActions(dialog,…) calls (chip/notes edits) keep resolving.
-    updateActions(dialog, photo);
+    if (showQa) updateActions(dialog, photo);
 
     overlay.appendChild(dialog);
     return { overlay: overlay, dialog: dialog };
@@ -1141,7 +1154,12 @@
       completedBy:   snapshot.completedBy   || '',
       completedDate: snapshot.completedDate || '',
       // If the host didn't tell us, assume the photo exists (it has a chit).
-      completed:     (snapshot.completed != null) ? !!snapshot.completed : true
+      completed:     (snapshot.completed != null) ? !!snapshot.completed : true,
+      // Whether to render the QA sidebar. When false, the modal opens as a
+      // plain big-photo viewer (preview only) — e.g. non-required install
+      // photos that don't get QA served. Default true for backward compat
+      // (existing callers, e.g. the install QA chit, expect the sidebar).
+      needsQa:       (snapshot.needsQa != null) ? !!snapshot.needsQa : true
     };
 
     _photoId = photoId;
