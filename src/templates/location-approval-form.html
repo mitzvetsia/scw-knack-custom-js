@@ -12,12 +12,8 @@
     Rows          14.text                       (Text Aggregator, grouped by MDF)
     Approval line 17.field_2755_raw[].identifier
 
-  ── NOTE on "Page X of X" ──────────────────────────────────────────────────
-    The @page { @bottom-center } counter below is CSS Paged Media — PDF.co
-    (Chrome/Puppeteer) IGNORES it, so it renders nothing. For page numbers in
-    PDF.co, set the module's Footer field:
-      <div style="font-size:9px;color:#94a3b8;width:100%;text-align:center;font-family:sans-serif;">Page <span class="pageNumber"></span> of <span class="totalPages"></span></div>
-    (the CSS block is harmless to leave; it just won't do anything in PDF.co)
+  ── "Page X of X": handled by the @page { @bottom-center } counter below
+     (PDF.co's engine honors CSS Paged Media counters).
   ───────────────────────────────────────────────────────────────────────────
 -->
 <!DOCTYPE html>

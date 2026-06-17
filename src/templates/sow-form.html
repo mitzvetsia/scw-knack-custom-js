@@ -1,30 +1,23 @@
 <!--
   Statement of Work — HTML→PDF template (Make-side, PDF.co).
+  Built on the live LA form: same header + info block (same Make mappings),
+  body is a TABLE of work line items (no photos, no signature).
+  Columns: Label | Product | Notes | Flags (Mount Only / Plenum chips, only when YES).
+  NOT part of the Knack bundle.
 
-  Same header/customer block + MDF grouping as the LA form, body is a TABLE of
-  work line items (no photos, no pricing, no signature).
-  Columns: Label | Product | Notes | Flags.
-  Mount Only / Plenum are NOT columns — they render as CHIPS in the Flags cell
-  only when YES (nothing shown when NO).
-  Self-contained inline CSS. NOT part of the Knack bundle.
+  ── Data contract (Make mappings — copied from the LA form; adjust the module
+     numbers if this is a separate scenario) ──────────────────────────────────
+    Date          formatDate(now; "MM/DD/YYYY")
+    Client        18.field_6_raw[].identifier
+    Project       18.field_4_raw - get(split(17.field_2755_raw[].identifier; "|"); 2)
+    Proposal      19.field_2663_raw
+    Site Address  18.field_22
+    Rows          {{locationRows}} ← your SOW Text Aggregator output (e.g. {{NN.text}}),
+                  grouped by MDF (Array Aggregator group-by + Text Aggregator)
+    Per row:      label | product | notes | flags  (see snippet at bottom)
 
-  ── Data contract ──────────────────────────────────────────────────────────
-  Header scalars:
-    {{logoUrl}} {{formNumber}} {{generatedDate}} {{customerName}}
-    {{projectName}} {{siteAddress}}
-
-  Rows ({{locationRows}} = Text Aggregator output, grouped by MDF — SAME
-  pipeline as the LA form). Per line item:
-    {{label}}    – device label, e.g. "AC-01"
-    {{product}}  – product / device type
-    {{notes}}    – notes (empty ok)
-    {{flags}}    – the chips cell, built by two if()s in the row module:
-                   Mount Only=Yes -> a "Mount Only" chip; Plenum=Yes -> a
-                   "Plenum" chip; both No -> empty cell.
-
-  ── "Page X of X" + margins: set in the PDF.co module ──────────────────────
-    Footer: <div style="font-size:9px;color:#94a3b8;width:100%;text-align:center;font-family:sans-serif;">Page <span class="pageNumber"></span> of <span class="totalPages"></span></div>
-    Margins: 16mm 14mm 18mm 14mm
+  ── "Page X of X": handled by the @page { @bottom-center } counter below
+     (PDF.co's engine honors CSS Paged Media counters).
   ───────────────────────────────────────────────────────────────────────────
 -->
 <!DOCTYPE html>
@@ -32,7 +25,13 @@
 <head>
 <meta charset="utf-8">
 <style>
-  @page { size: letter; }
+  @page {
+    size: letter; margin: 16mm 14mm 16mm 14mm;
+    @bottom-center {
+      content: "Page " counter(page) " of " counter(pages);
+      font-family: system-ui, sans-serif; font-size: 9px; color: #94a3b8;
+    }
+  }
   * { box-sizing: border-box; }
   html, body {
     margin: 0; padding: 0;
@@ -41,8 +40,6 @@
     -webkit-print-color-adjust: exact; print-color-adjust: exact;
   }
   .la-page { padding: 0; }
-
-  /* ── Header (same as LA) ────────────────────────────────── */
   .la-header {
     display: flex; align-items: flex-start; justify-content: space-between;
     border-bottom: 3px solid #07467c; padding-bottom: 14px; margin-bottom: 18px;
@@ -52,8 +49,6 @@
   .la-title { font-size: 20px; font-weight: 800; color: #07467c; letter-spacing: 0.01em; margin: 0 0 4px; }
   .la-meta { font-size: 11px; color: #64748b; }
   .la-meta b { color: #334155; font-weight: 700; }
-
-  /* ── Customer / site block (same as LA) ─────────────────── */
   .la-info {
     display: grid; grid-template-columns: 1fr 1fr; gap: 6px 24px;
     background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;
@@ -62,7 +57,6 @@
   .la-info-item { font-size: 12px; }
   .la-info-label { font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.06em; color: #94a3b8; font-weight: 700; margin-bottom: 1px; }
   .la-info-value { color: #1f2937; font-weight: 600; }
-
   .la-intro { font-size: 11.5px; color: #475569; margin: 0 0 14px; }
 
   /* ── SOW table ──────────────────────────────────────────── */
@@ -72,14 +66,10 @@
     text-align: left; font-size: 9px; text-transform: uppercase; letter-spacing: 0.05em;
     color: #94a3b8; font-weight: 700; padding: 6px 8px; border-bottom: 2px solid #07467c;
   }
-  .sow-table td {
-    padding: 6px 8px; border-bottom: 1px solid #e2e8f0; color: #334155;
-    vertical-align: top;
-  }
+  .sow-table td { padding: 6px 8px; border-bottom: 1px solid #e2e8f0; color: #334155; vertical-align: top; }
   .sow-table tr { page-break-inside: avoid; break-inside: avoid; }
   .sow-label { font-weight: 800; color: #07467c; white-space: nowrap; }
 
-  /* chips (only rendered when YES) */
   .sow-flags { white-space: nowrap; }
   .sow-chip {
     display: inline-block; padding: 2px 8px; border-radius: 10px;
@@ -89,14 +79,10 @@
   .sow-chip-mount  { background: #e0e7ff; color: #3730a3; }  /* indigo */
   .sow-chip-plenum { background: #fef3c7; color: #92400e; }  /* amber  */
 
-  /* group header row (spans all columns) */
   .sow-group td {
     background: #eef4fa; color: #07467c; font-weight: 800; font-size: 12px;
-    border-left: 4px solid #07467c; border-bottom: 1px solid #cbd5e1;
-    padding: 7px 10px;
+    border-left: 4px solid #07467c; border-bottom: 1px solid #cbd5e1; padding: 7px 10px;
   }
-
-  /* column widths */
   .col-label   { width: 12%; }
   .col-product { width: 30%; }
   .col-notes   { width: 38%; }
@@ -105,22 +91,28 @@
 </head>
 <body>
   <div class="la-page">
-
     <div class="la-header">
-      <div class="la-header-logo"><img src="{{logoUrl}}" alt="SCW"></div>
+      <div class="la-header-logo"><img src="https://www.getscw.com/media/logo/stores/1/logo-scw.jpeg" alt="SCW"></div>
       <div class="la-header-right">
         <div class="la-title">Statement of Work</div>
         <div class="la-meta">
-          <div><b>Form #:</b> {{formNumber}}</div>
-          <div><b>Date:</b> {{generatedDate}}</div>
+          <div><b>Date:</b> {{formatDate(now; "MM/DD/YYYY")}}</div>
         </div>
       </div>
     </div>
 
     <div class="la-info">
-      <div class="la-info-item"><div class="la-info-label">Customer</div><div class="la-info-value">{{customerName}}</div></div>
-      <div class="la-info-item"><div class="la-info-label">Project</div><div class="la-info-value">{{projectName}}</div></div>
-      <div class="la-info-item"><div class="la-info-label">Site Address</div><div class="la-info-value">{{siteAddress}}</div></div>
+
+      <div class="la-info-item">
+<div class="la-info-label">Client</div><div class="la-info-value">{{18.field_6_raw[].identifier}}</div></div>
+
+      <div class="la-info-item"><div class="la-info-label">Project</div><div class="la-info-value">{{18.field_4_raw}} - {{get(split(17.field_2755_raw[].identifier; "|"); 2)}}</div></div>
+
+<div class="la-info-item">
+<div class="la-info-label">Proposal</div><div class="la-info-value">{{19.field_2663_raw}}</div></div>
+
+
+      <div class="la-info-item"><div class="la-info-label">Site Address</div><div class="la-info-value">{{18.field_22}}</div></div>
     </div>
 
     <p class="la-intro">
@@ -130,13 +122,10 @@
 
     <table class="sow-table">
       <colgroup>
-        <col class="col-label"><col class="col-product">
-        <col class="col-notes"><col class="col-flags">
+        <col class="col-label"><col class="col-product"><col class="col-notes"><col class="col-flags">
       </colgroup>
       <thead>
-        <tr>
-          <th>Label</th><th>Product</th><th>Notes</th><th>Flags</th>
-        </tr>
+        <tr><th>Label</th><th>Product</th><th>Notes</th><th>Flags</th></tr>
       </thead>
       <tbody>
         {{locationRows}}
@@ -148,8 +137,8 @@
 </html>
 
 <!-- ════════════════════════════════════════════════════════════════════════
-  PER-LINE-ITEM ROW SNIPPET (build in the row module; grouping handled by the
-  Array Aggregator + Text Aggregator exactly like the LA form)
+  PER-LINE-ITEM ROW SNIPPET (row module; grouping handled by Array Aggregator
+  + Text Aggregator, same as the LA form)
 
 <tr>
   <td class="sow-label">{{label}}</td>
@@ -158,18 +147,12 @@
   <td class="sow-flags">{{flags}}</td>
 </tr>
 
-  ── {{flags}} — two if()s, chip only when YES (nothing when NO) ─────────────
-  Concatenate the two; an empty result just leaves the cell blank:
-
+  ── {{flags}} — chip only when YES (nothing when NO); concatenate the two ───
   if( 1.mountField = "Yes"; "<span class='sow-chip sow-chip-mount'>Mount Only</span>"; "" )
   + if( 1.plenumField = "Yes"; "<span class='sow-chip sow-chip-plenum'>Plenum</span>"; "" )
+  (use if(1.mountField; ...) if the fields are true/false instead of "Yes"/"No")
 
-  (If the fields come through as true/false instead of "Yes"/"No", use
-   if(1.mountField; ...) / if(1.plenumField; ...). Swap mountField/plenumField
-   for your actual Iterator fields.)
-
-  ── Group header row (Text Aggregator, source = Array Aggregator by MDF) ────
+  ── Group header row (Text Aggregator, source = Array Aggregator by MDF text) ─
     <tr class="sow-group"><td colspan="4">{{if(length(KEY) > 0; KEY; "No MDF / IDF")}}</td></tr>{{join(map(array; "value"); "")}}
-  (colspan="4" now that there are 4 columns. KEY = group MDF text; "value" =
-   the field your aggregator stores each row HTML under.)
+  (KEY = group MDF text; "value" = the field your aggregator stores each row HTML under.)
 ═════════════════════════════════════════════════════════════════════════════ -->
