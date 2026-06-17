@@ -1603,7 +1603,10 @@
   function buildRow_install(rec, viewKey, cat) {
     var F     = fieldsFor(viewKey);
     var isCam = (cat === 'cam');
-    var label = readField(rec, F.displayLabel || 'field_2802');
+    // displayLabel (field_2802 LABEL_DISPLAY) is often blank on install rows —
+    // fall back to labelAlt (field_2801 "set label by bucket", e.g. AC-01).
+    var label = readField(rec, F.displayLabel || 'field_2802') ||
+                readField(rec, F.labelAlt || 'field_2801');
 
     var labelSlot = isCam
       ? ro(label, 'scw-ws-v2-cell--label', label)

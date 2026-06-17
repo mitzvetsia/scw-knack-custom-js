@@ -232,11 +232,13 @@
     // column (Total vs Sub Bid) and the column-header labels below.
     var salesMoney = false;
     var surveyMoney = false;
+    var installMoney = false;
     try {
       var _vcSales = ns.cfg && typeof ns.cfg.viewCfg === 'function' &&
                      ns.cfg.viewCfg(sourceViewKey);
       salesMoney  = !!(_vcSales && _vcSales.moneyMode === 'sales');
       surveyMoney = !!(_vcSales && _vcSales.moneyMode === 'survey');
+      installMoney = !!(_vcSales && _vcSales.moneyMode === 'install');
     } catch (e) { /* default to build-SOW */ }
     var summaryMoneyOpts = salesMoney
       ? { moneyField: 'field_2269', moneyLabel: 'Total' }
@@ -247,7 +249,7 @@
     // Skipped for the survey preview: summary.js reads SOW money keys
     // hardcoded, so it would render blank totals on the survey object.
     // (Folds into Known Issue #15 — generalize summary.js through cfg.)
-    if (!surveyMoney && ns.summary && typeof ns.summary.buildL1Summary === 'function') {
+    if (!surveyMoney && !installMoney && ns.summary && typeof ns.summary.buildL1Summary === 'function') {
       try {
         var sumEl = ns.summary.buildL1Summary(l1, summaryMoneyOpts);
         if (sumEl) body.appendChild(sumEl);
@@ -265,8 +267,20 @@
       var hdr = document.createElement('div');
       hdr.className = 'scw-ws-v2-col-header' +
         (salesMoney  ? ' scw-ws-v2-col-header--sales'  : '') +
-        (surveyMoney ? ' scw-ws-v2-col-header--survey' : '');
-      if (surveyMoney) {
+        (surveyMoney ? ' scw-ws-v2-col-header--survey' : '') +
+        (installMoney ? ' scw-ws-v2-col-header--install' : '');
+      if (installMoney) {
+        // Install 7-track header (matches the install row grid): chevron ·
+        // Label · Product · Flags · SCW Notes · warn · trash. No money columns.
+        hdr.innerHTML =
+          '<span></span>' +
+          '<span>Label</span>' +
+          '<span>Product</span>' +
+          '<span>Flags</span>' +
+          '<span>SCW Notes</span>' +
+          '<span></span>' +
+          '<span></span>';
+      } else if (surveyMoney) {
         // Survey 11-track header: chevron · Drop · Product · Survey Notes ·
         // Description · Qty/Chips · Labor · Ext · Bid · warn · trash.
         // (SCW Notes lives in the detail panel.)
@@ -455,18 +469,20 @@
     // into one table. Visible in default mode AND summary-only mode.
     var _grandSales = false;
     var _grandSurvey = false;
+    var _grandInstall = false;
     try {
       var _vcGrand = ns.cfg && typeof ns.cfg.viewCfg === 'function' &&
                      ns.cfg.viewCfg(sourceViewKey);
       _grandSales  = !!(_vcGrand && _vcGrand.moneyMode === 'sales');
       _grandSurvey = !!(_vcGrand && _vcGrand.moneyMode === 'survey');
+      _grandInstall = !!(_vcGrand && _vcGrand.moneyMode === 'install');
     } catch (e) { /* default */ }
     var grandMoneyOpts = _grandSales
       ? { moneyField: 'field_2269', moneyLabel: 'Total' }
       : null;
     // Survey: skip the grand summary too — summary.js reads SOW money keys
     // (folds into Known Issue #15). The per-card worksheet is the surface.
-    if (!_grandSurvey && ns.summary && typeof ns.summary.buildGrandSummary === 'function') {
+    if (!_grandSurvey && !_grandInstall && ns.summary && typeof ns.summary.buildGrandSummary === 'function') {
       try {
         var grand = ns.summary.buildGrandSummary(tree, grandMoneyOpts);
         if (grand) frag.appendChild(grand);
