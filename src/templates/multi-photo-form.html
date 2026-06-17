@@ -15,7 +15,7 @@
     {{customerName}} {{projectName}} {{siteAddress}}
 
   Repeating rows ({{locationRows}} = Text Aggregator output, one block/device):
-    {{label}}  {{mdf}}  {{notes}}
+    {{label}}  {{product}}  {{mdf}}  {{notes}}
     {{photoCells}}  – ALL of the device's photos as <img> tags, built by the
                       Make join() formula (see bottom). Empty → placeholder.
 
@@ -76,9 +76,10 @@
   }
   /* keep the device header with at least its first photos; let a big gallery
      flow onto the next page rather than overflowing */
-  .la-loc-head { display: flex; align-items: baseline; gap: 14px; margin-bottom: 10px; page-break-after: avoid; break-after: avoid; }
+  .la-loc-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 3px; page-break-after: avoid; break-after: avoid; }
   .la-loc-label { font-size: 16px; font-weight: 800; color: #07467c; line-height: 1.1; white-space: nowrap; }
-  .la-loc-meta { font-size: 11px; color: #334155; }
+  .la-loc-product { font-size: 12px; font-weight: 600; color: #334155; }
+  .la-loc-meta { font-size: 11px; color: #334155; margin-bottom: 10px; }
   .la-loc-meta .k { color: #94a3b8; font-weight: 700; text-transform: uppercase; font-size: 9px; letter-spacing: 0.05em; }
   .la-loc-meta .v { color: #334155; }
   .la-loc-meta .sep { color: #cbd5e1; margin: 0 6px; }
@@ -155,11 +156,12 @@
 {{groupHeader}}<div class="la-loc">
   <div class="la-loc-head">
     <div class="la-loc-label">{{label}}</div>
-    <div class="la-loc-meta">
-      <span class="k">MDF / IDF</span> <span class="v">{{mdf}}</span>
-      <span class="sep">&middot;</span>
-      <span class="k">Notes</span> <span class="v">{{notes}}</span>
-    </div>
+    <div class="la-loc-product">{{product}}</div>
+  </div>
+  <div class="la-loc-meta">
+    <span class="k">MDF / IDF</span> <span class="v">{{mdf}}</span>
+    <span class="sep">&middot;</span>
+    <span class="k">Notes</span> <span class="v">{{notes}}</span>
   </div>
   <div class="la-photos">{{photoCells}}</div>
 </div>
