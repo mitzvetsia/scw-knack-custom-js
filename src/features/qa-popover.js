@@ -61,86 +61,124 @@
   var _initialState = null;     // snapshot at open time, used to detect changes
   var _hasUnsavedChanges = false;
   var _isSaving = false;
+  // When the popover is opened off a host-supplied anchor (e.g. the V2
+  // install photo strip via openForAnchor) rather than a worksheet chit,
+  // this holds a callback(fields, photo) that lets the host refresh its own
+  // chit in place after a save. V1's chit path leaves this null and uses
+  // refreshChitAndCells (which walks the worksheet <tr>) instead.
+  var _refreshHandler = null;
 
   // ── CSS ──────────────────────────────────────────────────────────
 
   function injectCSS() {
     if (document.getElementById('scw-qa-popover-css')) return;
+    // Visual language mirrors the closeout-deliverables FILES QA panel
+    // (closeout-deliverables.js): same section labels, segmented status
+    // control, notes field, audit/sign-off blocks and history list so the
+    // photo QA panel reads as a sibling of the files QA panel. This stays
+    // an anchored popover (not a full-screen modal) because it docks off a
+    // small chit in the worksheet — but the inner content/styling matches.
     var css = [
       '.scw-qa-popover {',
       '  position: absolute; z-index: 10000;',
-      '  background: #fff; border: 1px solid #d1d5db; border-radius: 10px;',
-      '  box-shadow: 0 12px 32px rgba(0,0,0,0.18);',
-      '  width: 420px; max-width: calc(100vw - 24px);',
-      '  font: 13px/1.4 system-ui, -apple-system, Segoe UI, sans-serif;',
+      '  background: #fff; border: 1px solid #e5e7eb; border-radius: 10px;',
+      '  box-shadow: 0 20px 50px rgba(0,0,0,0.25);',
+      '  width: 360px; max-width: calc(100vw - 24px);',
+      '  font: 12px/1.4 system-ui, -apple-system, Segoe UI, sans-serif;',
       '  color: #1f2937;',
-      '  padding: 14px 16px;',
+      '  display: flex; flex-direction: column; overflow: hidden;',
       '}',
+      /* Header strip — matches closeout __head */
       '.scw-qa-popover__head {',
-      '  display: flex; flex-direction: column; align-items: stretch;',
-      '  gap: 8px; margin-bottom: 12px;',
+      '  display: flex; align-items: center; gap: 12px;',
+      '  padding: 10px 14px; border-bottom: 1px solid #e5e7eb;',
+      '  background: #f9fafb; flex: 0 0 auto;',
       '}',
       '.scw-qa-popover__thumb {',
-      '  width: 100%; height: 220px; border-radius: 6px;',
-      '  background: #f3f4f6 center/contain no-repeat;',
-      '  border: 1px solid #e5e7eb;',
-      '  cursor: zoom-in;',
+      '  width: 56px; height: 56px; border-radius: 6px; flex: 0 0 auto;',
+      '  background: #f3f4f6 center/cover no-repeat;',
+      '  border: 1px solid #e5e7eb; cursor: zoom-in;',
       '}',
       '.scw-qa-popover__thumb--empty {',
       '  display: flex; align-items: center; justify-content: center;',
-      '  color: #9ca3af; font-size: 11px; text-align: center;',
-      '  cursor: default;',
+      '  color: #9ca3af; font-size: 9px; text-align: center; cursor: default;',
       '}',
-      '.scw-qa-popover__type { font-weight: 700; font-size: 13px; line-height: 1.2; }',
-      '.scw-qa-popover__sub  { font-size: 11px; color: #6b7280; margin-top: 2px; }',
-      '.scw-qa-popover__section { margin-bottom: 12px; }',
-      '.scw-qa-popover__label { font-size: 11px; font-weight: 700; text-transform: uppercase; color: #6b7280; letter-spacing: 0.04em; margin-bottom: 4px; }',
-      '.scw-qa-popover__chips { display: flex; gap: 4px; }',
+      '.scw-qa-popover__head-meta { flex: 1 1 auto; min-width: 0; }',
+      '.scw-qa-popover__type {',
+      '  font-weight: 700; font-size: 14px; color: #111827; line-height: 1.2;',
+      '  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;',
+      '}',
+      '.scw-qa-popover__sub  { font-size: 12px; color: #6b7280; margin-top: 2px; }',
+      /* Body — scrollable content area, like closeout __sidebar-content */
+      '.scw-qa-popover__body {',
+      '  padding: 14px; overflow-y: auto; max-height: 60vh; flex: 1 1 auto;',
+      '}',
+      '.scw-qa-popover__section { margin-bottom: 16px; }',
+      '.scw-qa-popover__label {',
+      '  font-size: 11px; font-weight: 700; text-transform: uppercase;',
+      '  color: #6b7280; letter-spacing: 0.04em; margin-bottom: 6px;',
+      '}',
+      /* Segmented status control — matches closeout __chips */
+      '.scw-qa-popover__chips { display: flex; gap: 6px; }',
       '.scw-qa-popover__chip {',
-      '  flex: 1 1 0; min-width: 0; padding: 5px 8px; border-radius: 6px;',
+      '  flex: 1 1 0; min-width: 0; padding: 8px 10px; border-radius: 8px;',
       '  border: 1px solid #d1d5db; background: #fff; cursor: pointer;',
-      '  font-size: 11px; font-weight: 600; text-align: center;',
+      '  font: 600 12px/1.2 system-ui; text-align: center;',
       '  white-space: nowrap; user-select: none; transition: all 0.12s;',
       '}',
-      '.scw-qa-popover__chip:hover { background: #f9fafb; }',
+      '.scw-qa-popover__chip:hover { background: #f3f4f6; }',
+      '.scw-qa-popover__chip.is-selected[data-value="Pending"]  { background: #ede9fe; color: #6d28d9; border-color: #8b5cf6; }',
       '.scw-qa-popover__chip.is-selected[data-value="Pass"],',
       '.scw-qa-popover__chip.is-selected[data-value="Approved"],',
-      '.scw-qa-popover__chip.is-selected[data-value="Bypassed"] { background: #dcfce7; color: #15803d; border-color: #86efac; }',
-      '.scw-qa-popover__chip.is-selected[data-value="Fail"]     { background: #fee2e2; color: #991b1b; border-color: #fca5a5; }',
-      '.scw-qa-popover__chip.is-selected[data-value="Pending"]  { background: #eef2ff; color: #4338ca; border-color: #a5b4fc; }',
+      '.scw-qa-popover__chip.is-selected[data-value="Bypassed"] { background: #dcfce7; color: #15803d; border-color: #16a34a; }',
+      '.scw-qa-popover__chip.is-selected[data-value="Fail"]     { background: #fee2e2; color: #b91c1c; border-color: #dc2626; }',
+      /* Notes — matches closeout __notes */
       '.scw-qa-popover__notes {',
-      '  width: 100%; min-height: 60px; box-sizing: border-box;',
-      '  padding: 6px 8px; border: 1px solid #d1d5db; border-radius: 6px;',
-      '  font: inherit; resize: vertical; outline: none;',
+      '  width: 100%; min-height: 80px; box-sizing: border-box; resize: vertical;',
+      '  padding: 8px 10px; border: 1px solid #d1d5db; border-radius: 6px;',
+      '  font: inherit; outline: none;',
       '}',
-      '.scw-qa-popover__notes:focus { border-color: #3b82f6; box-shadow: 0 0 0 3px rgba(59,130,246,0.15); }',
-      '.scw-qa-popover__notes-hint { font-size: 11px; color: #b45309; margin-top: 4px; }',
-      '.scw-qa-popover__actions { display: flex; gap: 8px; margin-top: 14px; }',
-      '.scw-qa-popover__btn {',
-      '  flex: 1; padding: 8px 14px; border-radius: 6px;',
-      '  font-size: 12px; font-weight: 700; cursor: pointer; border: 1px solid transparent;',
-      '  transition: all 0.12s; text-transform: uppercase; letter-spacing: 0.04em;',
-      '}',
-      '.scw-qa-popover__btn--primary {',
-      '  background: #059669; color: #fff; border-color: #047857;',
-      '}',
-      '.scw-qa-popover__btn--primary:hover { background: #047857; }',
-      '.scw-qa-popover__btn--primary:disabled { background: #e5e7eb; color: #9ca3af; border-color: #e5e7eb; cursor: not-allowed; }',
-      '.scw-qa-popover__btn--revert {',
-      '  background: #fff; color: #b91c1c; border-color: #fca5a5;',
-      '}',
-      '.scw-qa-popover__btn--revert:hover { background: #fef2f2; }',
-      '.scw-qa-popover__btn--cancel {',
-      '  background: #fff; color: #374151; border-color: #d1d5db;',
-      '}',
-      '.scw-qa-popover__btn--cancel:hover { background: #f9fafb; }',
+      '.scw-qa-popover__notes:focus { border-color: #6b7280; }',
+      '.scw-qa-popover__notes-hint { font-size: 11px; color: #b91c1c; margin-top: 4px; }',
+      /* Sign-off / audit summary block — matches closeout __signoff */
       '.scw-qa-popover__signoff {',
-      '  font-size: 11px; color: #6b7280; margin-top: 8px;',
-      '  padding-top: 8px; border-top: 1px solid #f3f4f6;',
+      '  font-size: 11px; color: #6b7280;',
+      '  background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px;',
+      '  padding: 8px 10px; margin-bottom: 8px;',
       '}',
+      '.scw-qa-popover__signoff strong { color: #111827; font-weight: 600; }',
+      /* History list — append-only audit trail */
+      '.scw-qa-popover__history {',
+      '  font-size: 11px; color: #4b5563; line-height: 1.6;',
+      '  background: #f9fafb; border: 1px solid #e5e7eb; border-radius: 6px;',
+      '  padding: 8px 10px; max-height: 120px; overflow-y: auto;',
+      '  white-space: normal; word-break: break-word;',
+      '}',
+      '.scw-qa-popover__history-empty { color: #9ca3af; font-style: italic; }',
+      /* Footer — Cancel/Revert + primary, matches closeout __footer */
+      '.scw-qa-popover__actions {',
+      '  display: flex; gap: 8px; justify-content: flex-end;',
+      '  padding: 12px 14px; border-top: 1px solid #e5e7eb;',
+      '  background: #fff; flex: 0 0 auto;',
+      '}',
+      '.scw-qa-popover__btn {',
+      '  padding: 8px 16px; border-radius: 6px;',
+      '  font: 600 12px/1.2 system-ui; cursor: pointer; border: 1px solid #d1d5db;',
+      '  background: #fff; color: #1f2937; transition: all 0.12s;',
+      '}',
+      '.scw-qa-popover__btn:hover { background: #f3f4f6; }',
+      '.scw-qa-popover__btn--primary {',
+      '  background: #2563eb; color: #fff; border-color: #1d4ed8;',
+      '}',
+      '.scw-qa-popover__btn--primary:hover { background: #1d4ed8; }',
+      '.scw-qa-popover__btn--primary:disabled {',
+      '  background: #cbd5e1; border-color: #cbd5e1; color: #fff; cursor: not-allowed;',
+      '}',
+      '.scw-qa-popover__btn--revert { color: #b91c1c; border-color: #fca5a5; }',
+      '.scw-qa-popover__btn--revert:hover { background: #fef2f2; }',
       '.scw-qa-popover__error {',
       '  background: #fef2f2; border: 1px solid #fecaca; color: #991b1b;',
-      '  padding: 6px 10px; border-radius: 6px; font-size: 11px; margin-top: 8px;',
+      '  padding: 6px 10px; border-radius: 6px; font-size: 11px; margin: 0 14px 12px;',
       '}',
       '.scw-qa-popover.is-saving { opacity: 0.7; pointer-events: none; }'
     ].join('\n');
@@ -345,6 +383,11 @@
 
   // ── Popover rendering ───────────────────────────────────────────
 
+  function escHtmlChar(c) {
+    return ({ '<': '&lt;', '>': '&gt;', '&': '&amp;', '"': '&quot;', "'": '&#39;' })[c] || c;
+  }
+  function escapeHtml(s) { return String(s == null ? '' : s).replace(/[<>&"']/g, escHtmlChar); }
+
   function buildPopover(photo) {
     var clientGateActive = isClientGateActive(photo.client);
     var alreadySignedOff = isFullyComplete(photo.status, photo.client);
@@ -354,14 +397,14 @@
     pop.id = POPOVER_ID;
     pop.setAttribute('data-photo-id', photo.id);
 
-    // Head: thumbnail + photo type label
+    // ── Header strip: thumbnail + type/sub (mirrors closeout __head) ──
     var head = document.createElement('div');
     head.className = 'scw-qa-popover__head';
     var thumb = document.createElement('div');
     thumb.className = 'scw-qa-popover__thumb';
     if (photo.imgUrl) {
-      // Use original (not thumb_14) so it's a real image; thumb_14 path is also fine.
       thumb.style.backgroundImage = "url('" + photo.imgUrl.replace(/'/g, "\\'") + "')";
+      thumb.title = 'Open full image';
       thumb.addEventListener('click', function () {
         window.open(photo.imgUrl, '_blank');
       });
@@ -371,9 +414,11 @@
     }
     head.appendChild(thumb);
     var meta = document.createElement('div');
+    meta.className = 'scw-qa-popover__head-meta';
     var typeEl = document.createElement('div');
     typeEl.className = 'scw-qa-popover__type';
     typeEl.textContent = photo.type || 'Photo';
+    typeEl.title = photo.type || 'Photo';
     var subEl = document.createElement('div');
     subEl.className = 'scw-qa-popover__sub';
     subEl.textContent = alreadySignedOff ? 'Signed off' : 'QA review';
@@ -382,14 +427,18 @@
     head.appendChild(meta);
     pop.appendChild(head);
 
+    // ── Body: scrollable QA controls (mirrors closeout __sidebar-content) ──
+    var body = document.createElement('div');
+    body.className = 'scw-qa-popover__body';
+
     // Status chips
-    pop.appendChild(buildChipRow(
-      'Status', STATUS_OPTIONS, photo.status, 'status', pop, photo
+    body.appendChild(buildChipRow(
+      'QA Status', STATUS_OPTIONS, photo.status, 'status', pop, photo
     ));
 
     // Client signoff chips (only when applicable)
     if (clientGateActive) {
-      pop.appendChild(buildChipRow(
+      body.appendChild(buildChipRow(
         'Client signoff', CLIENT_OPTIONS, photo.client, 'client', pop, photo
       ));
     }
@@ -415,27 +464,43 @@
     hint.className = 'scw-qa-popover__notes-hint';
     hint.style.display = 'none';
     notesSec.appendChild(hint);
-    pop.appendChild(notesSec);
+    body.appendChild(notesSec);
+
+    // Sign-off metadata summary (read-only) — matches closeout __signoff.
+    if (alreadySignedOff && (photo.completedBy || photo.completedDate)) {
+      var foot = document.createElement('div');
+      foot.className = 'scw-qa-popover__signoff';
+      foot.innerHTML =
+        'Last signed off by <strong>' + escapeHtml(photo.completedBy || '—') +
+        '</strong> on <strong>' + escapeHtml(photo.completedDate || '—') + '</strong>';
+      body.appendChild(foot);
+    }
+
+    // History list (append-only audit) — matches closeout history block.
+    var histSec = document.createElement('div');
+    histSec.className = 'scw-qa-popover__section';
+    var histLbl = document.createElement('div');
+    histLbl.className = 'scw-qa-popover__label';
+    histLbl.textContent = 'History';
+    histSec.appendChild(histLbl);
+    var hist = document.createElement('div');
+    hist.className = 'scw-qa-popover__history';
+    if (photo.history && photo.history.trim()) {
+      // history is paragraph-text innerHTML (newlines as <br>) — render as-is.
+      hist.innerHTML = photo.history;
+    } else {
+      hist.className += ' scw-qa-popover__history-empty';
+      hist.textContent = 'No QA history yet.';
+    }
+    histSec.appendChild(hist);
+    body.appendChild(histSec);
+
+    pop.appendChild(body);
 
     // Action buttons (placeholder — filled by updateActions)
     var actions = document.createElement('div');
     actions.className = 'scw-qa-popover__actions';
     pop.appendChild(actions);
-
-    // Signoff metadata footer if already signed off
-    if (alreadySignedOff) {
-      var foot = document.createElement('div');
-      foot.className = 'scw-qa-popover__signoff';
-      var who  = (photo.completedBy   || '').trim();
-      var when = (photo.completedDate || '').trim();
-      var meta = '';
-      if (who && when) meta = 'Signed off by ' + who + ' on ' + when + '.';
-      else if (who)    meta = 'Signed off by ' + who + '.';
-      else if (when)   meta = 'Signed off on ' + when + '.';
-      else             meta = 'Signed off.';
-      foot.textContent = meta + ' Click Revert to re-open for review.';
-      pop.appendChild(foot);
-    }
 
     updateActions(pop, photo);
     return pop;
@@ -627,16 +692,15 @@
       // Build a minimal photo snapshot so the chit reflects the
       // autosaved values (note: completion isn't toggled here — that
       // only happens via the explicit Sign Off button).
-      if (chit) {
-        var snapshot = {
-          id:        _photoId,
-          type:      (chit.querySelector('span:last-child') || {}).textContent || '',
-          completed: true,
-          status:    status,
-          client:    client
-        };
-        refreshChitAndCells(chit, snapshot, fields);
-      }
+      var snapshot = {
+        id:        _photoId,
+        type:      chit ? ((chit.querySelector('span:last-child') || {}).textContent || '') : '',
+        completed: true,
+        status:    status,
+        client:    client
+      };
+      if (_refreshHandler) _refreshHandler(fields, snapshot);
+      else if (chit) refreshChitAndCells(chit, snapshot, fields);
       onDone && onDone();
     });
   }
@@ -679,7 +743,8 @@
       // hidden source-tr cells so subsequent reads (and the next
       // view-render pass) see the new values without waiting on a
       // model.fetch() roundtrip.
-      if (chit) refreshChitAndCells(chit, photo, fields);
+      if (_refreshHandler) _refreshHandler(fields, photo);
+      else if (chit) refreshChitAndCells(chit, photo, fields);
       closePopover(true);
     });
   }
@@ -816,7 +881,10 @@
     var err = document.createElement('div');
     err.className = 'scw-qa-popover__error';
     err.textContent = msg;
-    _popover.appendChild(err);
+    // Insert just above the action footer so it reads as part of the panel.
+    var actions = _popover.querySelector('.scw-qa-popover__actions');
+    if (actions) _popover.insertBefore(err, actions);
+    else _popover.appendChild(err);
   }
 
   function findCurrentViewId() {
@@ -868,6 +936,59 @@
     positionPopover(pop, chitEl);
   }
 
+  /**
+   * Host-agnostic open — used by surfaces that don't have a worksheet
+   * source <tr> to scrape (e.g. the worksheet-v2 install photo strip).
+   * The caller supplies the PIC record id, the anchor element to dock the
+   * popover off, a QA snapshot, and an onSaved(fields, photo) callback so
+   * the host can refresh its own chit in place. Save still goes through
+   * view_3937 (saveFields) — identical write path to the chit flow.
+   *
+   * snapshot shape (all optional, sensible defaults applied):
+   *   { type, imgUrl, status, client, notes, history,
+   *     completedBy, completedDate, completed }
+   */
+  function openForAnchor(anchorEl, photoId, snapshot, onSaved) {
+    closePopover(false);
+    if (!anchorEl || !photoId) return;
+    snapshot = snapshot || {};
+
+    var photo = {
+      id:            photoId,
+      type:          snapshot.type || 'Photo',
+      imgUrl:        snapshot.imgUrl || '',
+      status:        normalizeOption(snapshot.status, STATUS_OPTIONS) || 'Pending',
+      client:        normalizeOption(snapshot.client, ['N/A'].concat(CLIENT_OPTIONS)) || 'N/A',
+      notes:         snapshot.notes   || '',
+      history:       snapshot.history || '',
+      completedBy:   snapshot.completedBy   || '',
+      completedDate: snapshot.completedDate || '',
+      // If the host didn't tell us, assume the photo exists (it has a chit).
+      completed:     (snapshot.completed != null) ? !!snapshot.completed : true
+    };
+
+    _photoId = photoId;
+    _initialState = {
+      status:  photo.status,
+      client:  photo.client,
+      notes:   photo.notes,
+      history: photo.history
+    };
+    _hasUnsavedChanges = false;
+    _isSaving = false;
+    _refreshHandler = (typeof onSaved === 'function')
+      ? function (fields, p) { onSaved(fields, p); }
+      : null;
+
+    injectCSS();
+    var pop = buildPopover(photo);
+    pop._triggerChit = anchorEl;   // used only for positioning / outside-click
+    document.body.appendChild(pop);
+    _popover = pop;
+
+    positionPopover(pop, anchorEl);
+  }
+
   function positionPopover(pop, anchor) {
     var rect = anchor.getBoundingClientRect();
     var popW = pop.offsetWidth;
@@ -901,6 +1022,7 @@
       _photoId = null;
       _initialState = null;
       _hasUnsavedChanges = false;
+      _refreshHandler = null;
     };
     if (skipAutosave) {
       finish();
@@ -926,6 +1048,9 @@
     if (!_popover) return;
     if (_popover.contains(e.target)) return;
     if (e.target.closest('.scw-ws-req-photo-chit')) return;
+    // V2 install photo-strip QA chit (openForAnchor host) — its own click
+    // handler opens/positions the popover; don't let this fire first.
+    if (e.target.closest('.scw-ws-v2-photo-qa-chit')) return;
     closePopover(false);
   }, true);
 
@@ -939,7 +1064,8 @@
   // Expose for diagnostics
   window.SCW = window.SCW || {};
   SCW.qaPopover = {
-    open:  openForChit,
-    close: function () { closePopover(true); }
+    open:       openForChit,     // V1 chit path (reads worksheet source <tr>)
+    openAnchor: openForAnchor,   // host-agnostic path (V2 install photo strip)
+    close:      function () { closePopover(true); }
   };
 })();

@@ -1938,6 +1938,33 @@
     '  box-sizing: border-box !important;',
     '}',
     '.scw-ws-v2-photo-req--ok { background: #16a34a !important; }',
+
+    /* ── Photo QA chit (install surface — see photos.js QA_CHIT_VIEWS).
+       Sits under the type/required labels; click opens the photo QA panel
+       (qa-popover.js). State colors mirror the QA panel\'s segmented control
+       and the closeout files QA card states. ── */
+    '.scw-ws-v2-photo-qa-chit {',
+    '  display: inline-flex !important; align-items: center !important; gap: 4px !important;',
+    '  margin-top: 3px !important; width: 100% !important; box-sizing: border-box !important;',
+    '  padding: 3px 8px !important; border-radius: 999px !important;',
+    '  border: 1px solid #d1d5db !important; background: #fff !important;',
+    '  font: 700 9px/1.2 system-ui, sans-serif !important;',
+    '  letter-spacing: 0.4px !important; text-transform: uppercase !important;',
+    '  color: #4b5563 !important; cursor: pointer !important; user-select: none !important;',
+    '  justify-content: center !important; white-space: nowrap !important;',
+    '  transition: filter 120ms ease, box-shadow 120ms ease !important;',
+    '}',
+    '.scw-ws-v2-photo-qa-chit:hover {',
+    '  filter: brightness(0.97) !important; box-shadow: 0 1px 2px rgba(0,0,0,0.08) !important;',
+    '}',
+    '.scw-ws-v2-photo-qa-chit svg { display: block !important; flex: 0 0 auto !important; }',
+    '.scw-ws-v2-photo-qa-chit-state { overflow: hidden !important; text-overflow: ellipsis !important; }',
+    '.scw-ws-v2-photo-qa-chit.is-pending  { background: #ede9fe !important; color: #6d28d9 !important; border-color: #c4b5fd !important; }',
+    '.scw-ws-v2-photo-qa-chit.is-half-pass { background: #fef3c7 !important; color: #92400e !important; border-color: #fcd34d !important; }',
+    '.scw-ws-v2-photo-qa-chit.is-done     { background: #dcfce7 !important; color: #15803d !important; border-color: #86efac !important; }',
+    '.scw-ws-v2-photo-qa-chit.is-fail     { background: #fee2e2 !important; color: #b91c1c !important; border-color: #fca5a5 !important; }',
+    '.scw-ws-v2-photo-qa-chit.is-missing  { background: #f3f4f6 !important; color: #6b7280 !important; border-color: #d1d5db !important; }',
+
     '.scw-ws-v2-photo-add {',
     '  display: flex !important;',
     '  align-items: center !important;',

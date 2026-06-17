@@ -56,7 +56,14 @@
     var map = Object.create(null);
     function ensure(rid) {
       if (!map[rid]) {
-        map[rid] = { id: rid, imgUrl: '', type: '', required: false, completed: false, notes: '' };
+        map[rid] = {
+          id: rid, imgUrl: '', type: '', required: false, completed: false, notes: '',
+          // Photo QA (PIC object) — populated only when the QA columns are
+          // present on the source view (install surface). Defaults keep the
+          // chit in a neutral "Pending" state everywhere else.
+          qaStatus: 'Pending', qaClient: 'N/A', qaNotes: '', qaHistory: '',
+          qaCompletedBy: '', qaCompletedDate: '', qaPresent: false
+        };
       }
       return map[rid];
     }
@@ -69,6 +76,15 @@
     var FK_REQ  = F.photoRequired  || 'field_2446';
     var FK_COMP = F.photoCompleted || 'field_2447';
     var FK_NOTE = F.photoNotes     || 'field_114';
+    // Photo QA fields on the PIC object (matches qa-popover.js). Read only
+    // when surfaced as connection columns on the source view — absent on
+    // most surfaces, in which case the chit stays Pending / non-blocking.
+    var FK_QA_STATUS   = F.photoQaStatus        || 'field_2859';
+    var FK_QA_CLIENT   = F.photoQaClient        || 'field_2860';
+    var FK_QA_NOTES    = F.photoQaNotes         || 'field_2861';
+    var FK_QA_BY       = F.photoQaCompletedBy   || 'field_2862';
+    var FK_QA_DATE     = F.photoQaCompletedDate || 'field_2863';
+    var FK_QA_HISTORY  = F.photoQaHistory       || 'field_2865';
 
     var imgCells = findAllCellsByFieldKey(tr, FK_IMG);
     for (var ic = 0; ic < imgCells.length; ic++) {
@@ -126,6 +142,36 @@
         if (!rid5) continue;
         ensure(rid5).notes = (notesSpans[n].textContent || '').trim();
       }
+    }
+
+    // ── Photo QA fields (install surface) ────────────────────────────
+    // Each QA cell, when present, repeats the per-photo connection-value
+    // span keyed by the PIC record id — same DOM contract qa-popover.js
+    // reads off the worksheet <tr>. Connection fields (status/client/by)
+    // nest an inner connection-value span carrying the display text.
+    function eachQaSpan(fieldKey, apply) {
+      var cell = findCellByFieldKey(tr, fieldKey);
+      if (!cell) return false;
+      var spans = cell.querySelectorAll('span[id][data-kn="connection-value"]');
+      for (var i = 0; i < spans.length; i++) {
+        var rid = (spans[i].id || '').trim();
+        if (!rid) continue;
+        apply(ensure(rid), spans[i]);
+      }
+      return true;
+    }
+    function spanText(span) {
+      var inner = span.querySelector('span[data-kn="connection-value"]');
+      return ((inner ? inner.textContent : span.textContent) || '').trim();
+    }
+    if (eachQaSpan(FK_QA_STATUS, function (rec, span) {
+      var t = spanText(span); if (t) { rec.qaStatus = t; rec.qaPresent = true; }
+    })) {
+      eachQaSpan(FK_QA_CLIENT,  function (rec, span) { var t = spanText(span); if (t) rec.qaClient = t; });
+      eachQaSpan(FK_QA_NOTES,   function (rec, span) { rec.qaNotes = (span.textContent || '').trim(); });
+      eachQaSpan(FK_QA_BY,      function (rec, span) { rec.qaCompletedBy = spanText(span); });
+      eachQaSpan(FK_QA_DATE,    function (rec, span) { rec.qaCompletedDate = (span.textContent || '').trim(); });
+      eachQaSpan(FK_QA_HISTORY, function (rec, span) { rec.qaHistory = (span.innerHTML || '').trim(); });
     }
 
     var arr = [];
@@ -236,8 +282,55 @@
     '<path d="M10 11v6"></path><path d="M14 11v6"></path>' +
     '<path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"></path></svg>';
 
+  // ── Photo QA chit (install surface) ──────────────────────────────
+  // Surfaces a photo's QA state on its strip card and opens the photo QA
+  // panel (qa-popover.js openForAnchor) on click. Mirrors the chit-state
+  // model qa-popover.js uses (computeChitState). Only rendered when the
+  // source view exposed QA columns (p.qaPresent) — i.e. the install
+  // worksheet (view_3915). Other surfaces render no chit.
+  var QA_CHIT_VIEWS = { view_3915: 1 };
+
+  function qaChitState(p) {
+    if (!p.completed) return 'missing';
+    var s = (p.qaStatus || '').toLowerCase();
+    if (s === 'fail') return 'fail';
+    if (s === 'pass') {
+      var c = (p.qaClient || '').toLowerCase();
+      if (c === '' || c === 'n/a' || c === 'approved' || c === 'bypassed') return 'done';
+      return 'half-pass';
+    }
+    return 'pending';
+  }
+  function qaChitLabel(state) {
+    return ({ missing: 'No photo', pending: 'Needs QA', 'half-pass': 'Client pending',
+              done: 'Signed off', fail: 'Failed' })[state] || 'Needs QA';
+  }
+  var QA_ICONS = {
+    done:    '<svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>',
+    fail:    '<svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>',
+    pending: '<svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>'
+  };
+  function qaChitHtml(p) {
+    var state = qaChitState(p);
+    var icon = QA_ICONS[state] || QA_ICONS.pending;
+    return '<span class="scw-ws-v2-photo-qa-chit is-' + state + '"' +
+      ' data-scw-ws-v2-photo-qa="' + escapeHtml(p.id) + '"' +
+      ' data-qa-status="'   + escapeHtml(p.qaStatus || 'Pending') + '"' +
+      ' data-qa-client="'   + escapeHtml(p.qaClient || 'N/A')     + '"' +
+      ' data-qa-notes="'    + escapeHtml(p.qaNotes || '')         + '"' +
+      ' data-qa-history="'  + escapeHtml(p.qaHistory || '')       + '"' +
+      ' data-qa-by="'       + escapeHtml(p.qaCompletedBy || '')   + '"' +
+      ' data-qa-date="'     + escapeHtml(p.qaCompletedDate || '') + '"' +
+      ' data-qa-type="'     + escapeHtml(p.type || 'Photo')       + '"' +
+      ' data-qa-img="'      + escapeHtml(p.imgUrl || '')          + '"' +
+      ' title="Photo QA — ' + escapeHtml(qaChitLabel(state)) + ' (click to review)">' +
+        icon + '<span class="scw-ws-v2-photo-qa-chit-state">' + qaChitLabel(state) + '</span>' +
+      '</span>';
+  }
+
   function buildStrip(rec, sourceViewKey) {
     var photos = extractPhotoRecords(sourceViewKey, rec.id);
+    var qaEnabled = !!QA_CHIT_VIEWS[sourceViewKey];
     var addHref = addPhotoHref(rec.id);
     // When there are no photos AND no add route, there's nothing to
     // render. Otherwise keep the strip so the user always has a way
@@ -313,10 +406,13 @@
             'data-scw-ws-v2-photo-view="' + escapeHtml(sourceViewKey) + '" ' +
             'title="Delete photo">' + PHOTO_TRASH_SVG + '</button>'
         : '';
+      // Photo QA chit — install surface only, and only on cards that hold
+      // an actual photo (a placeholder has nothing to QA).
+      var qaChit = (qaEnabled && p.id && p.imgUrl) ? qaChitHtml(p) : '';
       html +=
         '<a class="' + cls + '"' + openAttrs + dataAttrs + draggableAttr +
             ' title="' + escapeHtml((p.type || 'Photo') + (p.required ? ' (Required)' : '')) + '">' +
-          thumb + typeHtml + reqHtml + delBtn +
+          thumb + typeHtml + reqHtml + qaChit + delBtn +
         '</a>';
     }
 
@@ -526,6 +622,57 @@
       console.warn('[scw-ws-v2] photo delete: no kn-link-delete row for ' +
         photoId + ' and no fallback grid configured for ' + viewKey +
         ' — is the DOC_photos grid (with Delete enabled) on this page?');
+    }, true);
+  }
+
+  // Delegated photo-QA chit click (install surface). CAPTURE phase so the
+  // wrapping <a>'s lightbox / edit-page navigation never fires. Opens the
+  // shared photo QA panel (qa-popover.js openForAnchor) docked off the chit;
+  // on save it refetches the source view so the strip rebuilds with the new
+  // QA state. Bound once.
+  if (!document.documentElement.hasAttribute('data-scw-ws-v2-photo-qa-bound')) {
+    document.documentElement.setAttribute('data-scw-ws-v2-photo-qa-bound', '1');
+    document.addEventListener('click', function (e) {
+      var chit = e.target && e.target.closest &&
+                 e.target.closest('[data-scw-ws-v2-photo-qa]');
+      if (!chit) return;
+      e.preventDefault();
+      e.stopPropagation();
+
+      if (!(window.SCW && SCW.qaPopover && typeof SCW.qaPopover.openAnchor === 'function')) {
+        console.warn('[scw-ws-v2] photo QA: SCW.qaPopover.openAnchor unavailable');
+        return;
+      }
+      var photoId = chit.getAttribute('data-scw-ws-v2-photo-qa');
+      if (!photoId) return;
+
+      // Resolve which source view this card belongs to so we can refetch
+      // it after a save (rebuilds the strip with the fresh QA state).
+      var viewKey = '';
+      var host = chit.closest('[data-scw-ws-v2-view]') ||
+                 (chit.closest('.scw-ws-v2-card') &&
+                  chit.closest('.scw-ws-v2-card').querySelector('[data-scw-ws-v2-view]'));
+      if (host) viewKey = host.getAttribute('data-scw-ws-v2-view') || '';
+
+      var snapshot = {
+        type:          chit.getAttribute('data-qa-type')    || 'Photo',
+        imgUrl:        chit.getAttribute('data-qa-img')      || '',
+        status:        chit.getAttribute('data-qa-status')   || 'Pending',
+        client:        chit.getAttribute('data-qa-client')   || 'N/A',
+        notes:         chit.getAttribute('data-qa-notes')    || '',
+        history:       chit.getAttribute('data-qa-history')  || '',
+        completedBy:   chit.getAttribute('data-qa-by')       || '',
+        completedDate: chit.getAttribute('data-qa-date')     || '',
+        completed:     true
+      };
+
+      SCW.qaPopover.openAnchor(chit, photoId, snapshot, function () {
+        // Refetch the source view so the strip rebuilds from authoritative
+        // data (the QA columns now reflect the save).
+        if (viewKey && ns.data && typeof ns.data.refetchAndNotify === 'function') {
+          setTimeout(function () { ns.data.refetchAndNotify(viewKey); }, 800);
+        }
+      });
     }, true);
   }
 
