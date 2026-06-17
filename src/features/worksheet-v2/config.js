@@ -131,6 +131,8 @@
         mountAfterSelector: '#view_3915',   // TODO confirm anchor; disable v1 here on enable
         label:            'Install Line Items',
         independentFields: true,            // different object — no DEFAULT_FIELDS fallback
+        moneyMode:        'install',        // no money columns at all — card.js install path
+        hideSow:          true,             // install groups by MDF/IDF, not SOW
         mdfSourceViewKey: '',               // TODO: empty-L1 seed source (analogue of view_3577)
         mdfLabelField:    '',               // TODO
         hideMoneyColumns: true,             // no subBid/fee/hrs/mat/installFee on this object

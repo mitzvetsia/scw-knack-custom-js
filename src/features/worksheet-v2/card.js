@@ -258,6 +258,21 @@
     } catch (e) { return false; }
   }
 
+  /** True when the deployment uses the install money model (moneyMode:'install',
+   *  view_3915 — Deploy / Install Line Items). The install object is a DIFFERENT
+   *  Knack object from the SOW line item and has NO money columns at all (no Sub
+   *  Bid / +Hrs / +Mat / Fee / Labor / Ext / Bid). The summary row is just
+   *  chevron · label (cam) · product (read-only) · labor-desc fill · warn ·
+   *  kebab; the money region is fully suppressed. Drives the install card path
+   *  (buildCard dispatch). The install-status chip + QA chits are NOT built here
+   *  — install-config-subpanel.js / config-qa-popover.js inject them post-render. */
+  function isInstallMoney(viewKey) {
+    try {
+      var vc = ns.cfg && typeof ns.cfg.viewCfg === 'function' && ns.cfg.viewCfg(viewKey);
+      return !!(vc && vc.moneyMode === 'install');
+    } catch (e) { return false; }
+  }
+
   // ── v1 dynamic-cell-colors parity (survey worksheet) ──────────────
   // v1 colors the survey worksheet table cells (dynamic-cell-colors.js,
   // view_3505 rules): Labor (field_2400) empty→danger / zero→warning, Bid
@@ -1521,6 +1536,136 @@
     '</div>';
   }
 
+  // ── Install card path (moneyMode:'install', view_3915) ─────────
+  // Mirrors the v1 device-worksheet (view_3915) config. The install object
+  // (Deploy / Install Line Items) has NO money columns — no Sub Bid/+Hrs/
+  // +Mat/Fee/Labor/Ext/Bid — so the money region is fully suppressed. The
+  // summary row is just:
+  //   chevron · label (cam only) · product (read-only) · labor-desc fill ·
+  //   warn · kebab
+  // The install-status segmented chip (field_2825) and the per-photo QA
+  // chits are NOT rendered here — install-config-subpanel.js /
+  // config-qa-popover.js inject those into the card post-render. We only
+  // produce a normal .scw-ws-v2-detail panel they can hook into.
+  //
+  // Detail panel per bucket category (mirrors v1 view_3915 detailLayout):
+  //   cam:         Connected To (field_2821) + Existing/Exterior/Plenum
+  //                chips (field_2807/2805/2806) + Drop Length (field_2804) +
+  //                Conduit (field_2803) + Labor Desc (field_2809) +
+  //                SCW Notes (field_2808).
+  //   default/hw:  Connected Devices (field_2820, only when mapConn
+  //                field_2795 is Yes) + SCW Notes.
+  //   services:    SCW Notes (install object has no Other Services bucket
+  //                in v1, but keep the branch for parity / safety).
+  //   assumptions: Labor/Assumption text + SCW Notes.
+  // All fields read via fieldsFor(viewKey) + logical names, with the install
+  // field key as the fallback (same idiom as the survey path).
+
+  function installProductCell(rec, F) {
+    // Read-only — config sets productEditable:false. Prefer the STORED
+    // product name (field_2790); fall back to the connection (field_2846).
+    var name = readField(rec, F.productName || 'field_2790') ||
+               readField(rec, F.product || 'field_2846') || '(unnamed)';
+    return '<div class="scw-ws-v2-cell scw-ws-v2-cell--product scw-ws-v2-cell--ro" ' +
+      'title="' + escapeHtml(name) + '">' +
+      '<span class="scw-ws-v2-product-name">' + escapeHtml(name) + '</span>' +
+    '</div>';
+  }
+
+  function installChips(rec, viewKey, F) {
+    return '<div class="scw-ws-v2-cell scw-ws-v2-cell--chips">' +
+      chip(rec, viewKey, F.existCabling || 'field_2807', 'Existing', 'Existing cabling') +
+      chip(rec, viewKey, F.exterior     || 'field_2805', 'Exterior', 'Exterior') +
+      chip(rec, viewKey, F.plenum       || 'field_2806', 'Plenum',   'Plenum') +
+    '</div>';
+  }
+
+  function buildRow_install(rec, viewKey, cat) {
+    var F     = fieldsFor(viewKey);
+    var isCam = (cat === 'cam');
+    var label = readField(rec, F.displayLabel || 'field_2802');
+
+    var labelSlot = isCam
+      ? ro(label, 'scw-ws-v2-cell--label', label)
+      : empty('scw-ws-v2-cell--label');
+
+    var productSlot;
+    if (cat === 'services')          productSlot = ro('Service', 'scw-ws-v2-cell--tag');
+    else if (cat === 'assumptions')  productSlot = empty('scw-ws-v2-cell--product');
+    else                             productSlot = installProductCell(rec, F);
+
+    // Single wide fill cell: Labor Description (read on the install object via
+    // field_2809). No money cells follow it — the row ends at warn / kebab.
+    var descLabel = isCam ? 'Labor description' :
+      (cat === 'services' ? 'Service description' :
+        (cat === 'assumptions' ? 'Assumption text' : 'Description'));
+    var laborDescCell = surveyFill(rec, viewKey, F.laborDesc || 'field_2809',
+      descLabel, 'scw-ws-v2-cell--install-desc');
+
+    // Slot for cam cabling chips; non-cam rows get no chip slot (the row
+    // template is shorter — money region is suppressed entirely).
+    var chipsSlot = isCam ? installChips(rec, viewKey, F) : '';
+
+    return '<div class="scw-ws-v2-row scw-ws-v2-row--' + cat + ' scw-ws-v2-row--install">' +
+      chevronCell(rec) +
+      labelSlot +
+      productSlot +
+      laborDescCell +
+      chipsSlot +
+      warnCell(rec) +
+      kebabCell(rec, viewKey) +
+    '</div>';
+  }
+
+  function buildDetail_install(rec, viewKey, cat) {
+    var F = fieldsFor(viewKey);
+
+    // Install detail = one flex-wrap row (same scaffold as the survey detail
+    // so install-config-subpanel.js / config-qa-popover.js can hook the
+    // standard .scw-ws-v2-detail). SCW Notes (field_2808) is the leftmost
+    // field; connections render read-only/editable per the v1 view_3915
+    // config (Connected To read-only display, MDF/IDF emitted by Knack's
+    // native group header, so not repeated here).
+    var items = sdItem(
+      detailTextArea(rec, viewKey, F.scwNotes || 'field_2808', 'SCW Notes'),
+      'scw-ws-v2-sd--paragraph');
+
+    if (cat === 'cam') {
+      // Connected To (field_2821, single) — editable; cascade writes the
+      // parent's field_2820. Picker candidates resolved in init.js.
+      items += sdItem(detailConnection(rec, viewKey, F.connectedDevice || 'field_2821',
+        'Connected To', hasIssue(rec, 'disconnected')), 'scw-ws-v2-sd--conn');
+      // Cabling flags also surface in the detail panel as read-only chits
+      // (v1 view_3915 puts them in the Info column). They're editable chips
+      // in the summary row; here they read as plain display values.
+      items += sdItem(detailReadOnly(rec, F.existCabling || 'field_2807', 'Existing cabling'),
+        'scw-ws-v2-sd--num');
+      items += sdItem(detailReadOnly(rec, F.exterior || 'field_2805', 'Exterior'),
+        'scw-ws-v2-sd--num');
+      items += sdItem(detailReadOnly(rec, F.plenum || 'field_2806', 'Plenum'),
+        'scw-ws-v2-sd--num');
+      items += sdItem(detailReadOnly(rec, F.dropLength || 'field_2804', 'Drop Length'),
+        'scw-ws-v2-sd--num');
+      items += sdItem(detailReadOnly(rec, F.conduit || 'field_2803', 'Conduit'),
+        'scw-ws-v2-sd--num');
+      items += sdItem(detailReadOnly(rec, F.laborDesc || 'field_2809', 'Labor Desc'),
+        'scw-ws-v2-sd--wide');
+    } else if (cat === 'default') {
+      // Connected Devices (field_2820, multi, NVR/switch side) — editable.
+      // ONLY shown when this record's "map camera/reader connections" flag
+      // (field_2795 / mapConn) is Yes (v1: showWhenFieldIsYes: 'field_2795').
+      if (readBool(rec, F.mapConn || 'field_2795') === 'Yes') {
+        items += sdItem(detailConnection(rec, viewKey, F.connectedDevices || 'field_2820',
+          'Connected Devices'), 'scw-ws-v2-sd--conn');
+      }
+    }
+    // services / assumptions: SCW Notes only (already added above).
+
+    return '<div class="scw-ws-v2-detail">' +
+      '<div class="scw-ws-v2-survey-detail scw-ws-v2-install-detail">' + items + '</div>' +
+    '</div>';
+  }
+
   // ── Public entry point ─────────────────────────────────────
 
   function buildCard(rec, sourceViewKey) {
@@ -1530,8 +1675,9 @@
 
     var cat = bucketCategoryOf(rec, sourceViewKey);
     card.classList.add('scw-ws-v2-card--' + cat);
-    if (isSalesMoney(sourceViewKey))  card.classList.add('scw-ws-v2-card--sales');
-    if (isSurveyMoney(sourceViewKey)) card.classList.add('scw-ws-v2-card--survey');
+    if (isSalesMoney(sourceViewKey))   card.classList.add('scw-ws-v2-card--sales');
+    if (isSurveyMoney(sourceViewKey))  card.classList.add('scw-ws-v2-card--survey');
+    if (isInstallMoney(sourceViewKey)) card.classList.add('scw-ws-v2-card--install');
     var bid = bucketIdOf(rec, sourceViewKey);
     if (bid) card.setAttribute('data-scw-ws-v2-bucket', bid);
     // Promoted-bracket marker: the bracket has a parent (field_2464
@@ -1562,13 +1708,18 @@
     }
 
     var row, det;
-    var sales  = isSalesMoney(sourceViewKey);
-    var survey = isSurveyMoney(sourceViewKey);
-    // Survey object (view_3505) takes a dedicated row/detail path for every
-    // bucket category — its keys + money model differ from the SOW object.
+    var sales   = isSalesMoney(sourceViewKey);
+    var survey  = isSurveyMoney(sourceViewKey);
+    var install = isInstallMoney(sourceViewKey);
+    // Survey object (view_3505) and install object (view_3915) each take a
+    // dedicated row/detail path for every bucket category — their keys +
+    // money model differ from the SOW object (install has NO money columns).
     if (survey) {
       row = buildRow_survey(rec, sourceViewKey, cat);
       det = buildDetail_survey(rec, sourceViewKey, cat);
+    } else if (install) {
+      row = buildRow_install(rec, sourceViewKey, cat);
+      det = buildDetail_install(rec, sourceViewKey, cat);
     } else if (cat === 'cam') {
       row = buildRow_cam(rec, sourceViewKey);
       det = sales ? buildDetail_sales(rec, sourceViewKey, cat) : buildDetail_cam(rec, sourceViewKey);
