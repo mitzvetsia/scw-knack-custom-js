@@ -2,35 +2,31 @@
   Location Approval Form — HTML→PDF template (Make-side).
 
   Self-contained HTML (inline CSS, no external stylesheets) so any HTML→PDF
-  module renders it identically — the SAME pipeline your proposal PDFs use.
-  NOT part of the Knack bundle; this lives here as the source of truth for the
-  Make scenario to inject data into.
+  engine renders it identically. NOT part of the Knack bundle; this is the
+  source of truth for the Make scenario to inject data into. Headless-safe.
 
   ── Data contract (Make fills these) ──────────────────────────────────────
-  Scalars (mustache-style {{ }} merge tags):
-    {{logoUrl}}          – SCW logo image URL
+  Header scalars (Method A: delete the {{token}} and drag the field in):
+    {{logoUrl}}          – SCW logo image URL (leave the whole <img> out if none)
     {{formNumber}}       – e.g. "LA-CA-2026-02-23-7940"
-    {{generatedDate}}    – e.g. "February 23, 2026"
-    {{customerName}}     – e.g. "Morgan Services"
+    {{generatedDate}}    – formatDate(now; "MMMM D, YYYY")  → "June 17, 2026"
+    {{customerName}}     – customer name
     {{projectName}}      – project / deal name
-    {{siteAddress}}      – full site address (use <br> for line breaks)
-    {{preparedBy}}       – SCW rep name (optional)
+    {{siteAddress}}      – site address (use <br> for line breaks)
 
-  Repeating device rows: build one {{LOCATION_ROW}} block per location (see the
-  snippet at the bottom), concatenate them, and substitute the joined string in
-  for {{locationRows}}. Per-row fields:
+  Repeating device rows: build ONE row block per device (snippet at the bottom),
+  let the Text Aggregator join them, and drop that joined string in for
+  {{locationRows}}. Per-row fields:
     {{groupHeader}}      – MDF/IDF section header, emitted ONLY when the MDF
                            changes from the previous row (see GROUPING note).
-    {{label}}            – device label, e.g. "E-001"
-    {{location}}         – install location / description
-    {{notes}}            – any existing notes for the device/photo (empty ok)
     {{photoCell}}        – the whole .la-photo cell, produced by the Make if()
-                           in the row snippet: real <img> (field_771_raw.thumb_url
-                           preferred, else .url) when a URL exists, else the
-                           "No photo on file" placeholder.
-  (MDF is now the group header, so it's no longer a per-card field.)
-  If a location has no photo, set {{photoUrl}} empty — the cell shows a
-  "No photo on file" placeholder (swap the <img> for the .la-photo--empty div).
+                           in the row snippet: real <img> when a URL exists,
+                           else the "No photo on file" placeholder (this is what
+                           kills the broken-image icon — never emit <img src="">).
+    {{label}}            – device label, e.g. "AC-01"
+    {{mdf}}              – MDF/IDF text (kept per-card; harmless if you also use
+                           group headers)
+    {{notes}}            – any existing notes for the device/photo (empty ok)
   ───────────────────────────────────────────────────────────────────────────
 -->
 <!DOCTYPE html>
@@ -38,6 +34,21 @@
 <head>
 <meta charset="utf-8">
 <style>
+  /* Page size + margins + "Page X of X" footer.
+     NOTE: the @bottom-center page counter works in CSS-Paged-Media engines
+     (WeasyPrint, Prince, PDFreactor, DocRaptor, Vivliostyle). If your converter
+     is Chrome/Puppeteer-based (PDF.co, PDFShift, Browserless) or wkhtmltopdf,
+     DELETE the @bottom-center block and set page numbers in the converter's own
+     footer option instead (see chat for the snippet). */
+  @page {
+    size: letter;
+    margin: 16mm 14mm 16mm 14mm;
+    @bottom-center {
+      content: "Page " counter(page) " of " counter(pages);
+      font-family: system-ui, sans-serif; font-size: 9px; color: #94a3b8;
+    }
+  }
+
   * { box-sizing: border-box; }
   html, body {
     margin: 0; padding: 0;
@@ -45,7 +56,9 @@
     color: #1f2937; font-size: 12px; line-height: 1.4;
     -webkit-print-color-adjust: exact; print-color-adjust: exact;
   }
-  .la-page { padding: 28px 32px; }
+  /* no padding here — @page handles the margins; padding on top of @page
+     margins is what tends to push a blank first page in some engines */
+  .la-page { padding: 0; }
 
   /* ── Header ─────────────────────────────────────────────── */
   .la-header {
@@ -74,9 +87,7 @@
   }
   .la-info-value { color: #1f2937; font-weight: 600; }
 
-  .la-intro {
-    font-size: 11.5px; color: #475569; margin: 0 0 16px;
-  }
+  .la-intro { font-size: 11.5px; color: #475569; margin: 0 0 16px; }
 
   /* ── Device location rows ───────────────────────────────── */
   .la-locations { display: flex; flex-direction: column; gap: 8px; }
@@ -107,18 +118,16 @@
   .la-loc-field .k { color: #94a3b8; font-weight: 700; text-transform: uppercase;
     font-size: 9px; letter-spacing: 0.05em; display: block; }
   .la-loc-field .v { color: #334155; }
-  /* ── Approval / signature block ─────────────────────────── */
+
+  /* ── Approval / signature block (always last) ───────────── */
   .la-approval {
-    margin-top: 24px; border-top: 2px solid #07467c; padding-top: 16px;
+    margin-top: 28px; border-top: 2px solid #07467c; padding-top: 16px;
     page-break-inside: avoid; break-inside: avoid;
   }
   .la-approval-text { font-size: 11px; color: #475569; margin-bottom: 18px; }
   .la-sign-row { display: grid; grid-template-columns: 1fr 1fr; gap: 32px; }
   .la-sign-line { border-bottom: 1px solid #334155; height: 34px; }
   .la-sign-cap { font-size: 10px; color: #64748b; margin-top: 4px; }
-  .la-footer {
-    margin-top: 22px; font-size: 9px; color: #94a3b8; text-align: center;
-  }
 </style>
 </head>
 <body>
@@ -149,10 +158,6 @@
       <div class="la-info-item">
         <div class="la-info-label">Site Address</div>
         <div class="la-info-value">{{siteAddress}}</div>
-      </div>
-      <div class="la-info-item">
-        <div class="la-info-label">Prepared By</div>
-        <div class="la-info-value">{{preparedBy}}</div>
       </div>
     </div>
 
@@ -194,43 +199,27 @@
       </div>
     </div>
 
-    <div class="la-footer">{{formNumber}} &middot; Generated {{generatedDate}}</div>
   </div>
 </body>
 </html>
 
 <!-- ════════════════════════════════════════════════════════════════════════
-  PER-LOCATION ROW SNIPPET  ({{LOCATION_ROW}})
-  Make: iterate the location records, render this once per record, join the
-  results, and substitute the joined string for {{locationRows}} above.
+  PER-LOCATION ROW SNIPPET
+  Build this once per device in the row module, join with the Text Aggregator,
+  and substitute the result for {{locationRows}} above.
 
 {{groupHeader}}<div class="la-loc">
   {{photoCell}}
   <div class="la-loc-body">
     <div class="la-loc-label">{{label}}</div>
-    <div class="la-loc-field"><span class="k">Location</span><span class="v">{{location}}</span></div>
+    <div class="la-loc-field"><span class="k">MDF / IDF</span><span class="v">{{mdf}}</span></div>
     <div class="la-loc-field"><span class="k">Notes</span><span class="v">{{notes}}</span></div>
   </div>
 </div>
 
-  ── GROUPING by MDF/IDF — {{groupHeader}} ────────────────────────────────
-  1. In the Knack HTTP GET add  &sort_field=<mdfField>&sort_order=asc  so all
-     rows for one MDF arrive adjacent. (Empty MDF sinks together → label it
-     "No MDF / IDF" via coalesce below.)
-  2. Emit a header ONLY when this row's MDF differs from the PREVIOUS row's.
-     "Previous row" = index into the parsed records array (2.records here is
-     the Parse-JSON output; 1.`__IMTINDEX__` is the Iterator's position):
-
-  if( coalesce(1.field_1946; "No MDF / IDF")
-        <> coalesce(get(2.records; (1.`__IMTINDEX__` - 1) + ".field_1946"); "—") ;
-      "<div class='la-group'>" + coalesce(1.field_1946; "No MDF / IDF") + "</div>" ;
-      "" )
-
-  First row (index 1) compares against "—" → header always prints. Swap
-  field_1946 for your object's MDF field (survey = field_2375).
-
-  ── {{photoCell}} — paste this Make formula where {{photoCell}} sits above ──
-  (uses thumb_url, falls back to url, then to the placeholder when both empty)
+  ── {{photoCell}} — paste this Make if() (KILLS the broken-image icon) ──────
+  Emits a real <img> when a URL exists, else the placeholder div — never an
+  empty <img src="">.
 
   if( length(coalesce(1.field_771_raw.thumb_url; 1.field_771_raw.url)) > 0 ;
       "<div class='la-photo'><img src='" +
@@ -238,7 +227,20 @@
           "' alt='" + 1.field_368 + "'></div>" ;
       "<div class='la-photo la-photo--empty'>No photo on file</div>" )
 
-  (replace 1.field_771_raw with your Iterator's photo field, and 1.field_368
-   with the device-label field; coalesce = "first non-empty".)
+  (swap 1.field_771_raw for your Iterator's photo field, 1.field_368 for the
+   device-label field. coalesce = "first non-empty".)
 
+  ── GROUPING by MDF/IDF — {{groupHeader}} (optional, stage 2) ───────────────
+  1. In the Knack HTTP GET add  &sort_field=<mdfField>&sort_order=asc  so all
+     rows for one MDF arrive adjacent.
+  2. Emit a header only when this row's MDF differs from the previous row's:
+
+  if( coalesce(1.field_1946; "No MDF / IDF")
+        <> coalesce(get(2.records; (1.`__IMTINDEX__` - 1) + ".field_1946"); "—") ;
+      "<div class='la-group'>" + coalesce(1.field_1946; "No MDF / IDF") + "</div>" ;
+      "" )
+
+  (2.records = your Parse-JSON output; 1.`__IMTINDEX__` = the Iterator's
+   position. Swap field_1946 for your MDF field — survey = field_2375. If you're
+   not grouping yet, just leave {{groupHeader}} empty.)
 ═════════════════════════════════════════════════════════════════════════════ -->
