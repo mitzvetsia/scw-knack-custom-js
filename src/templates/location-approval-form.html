@@ -19,15 +19,18 @@
   Repeating device rows: build one {{LOCATION_ROW}} block per location (see the
   snippet at the bottom), concatenate them, and substitute the joined string in
   for {{locationRows}}. Per-row fields:
+    {{groupHeader}}      – MDF/IDF section header, emitted ONLY when the MDF
+                           changes from the previous row (see GROUPING note).
     {{label}}            – device label, e.g. "E-001"
     {{location}}         – install location / description
-    {{mdf}}              – MDF/IDF, e.g. "HEADEND: Manager's Office"
-    {{photoUrl}}         – field_771_raw.thumb_url (preferred, smaller) or .url.
-                           The whole .la-photo cell is produced by the Make
-                           if() in the row snippet below: real <img> when a URL
-                           exists, else the "No photo on file" placeholder.
+    {{notes}}            – any existing notes for the device/photo (empty ok)
+    {{photoCell}}        – the whole .la-photo cell, produced by the Make if()
+                           in the row snippet: real <img> (field_771_raw.thumb_url
+                           preferred, else .url) when a URL exists, else the
+                           "No photo on file" placeholder.
     {{signoffClass}}     – signoff--approved | signoff--pending | signoff--na
     {{signoffLabel}}     – "Approved" | "Pending" | "N/A"
+  (MDF is now the group header, so it's no longer a per-card field.)
   If a location has no photo, set {{photoUrl}} empty — the cell shows a
   "No photo on file" placeholder (swap the <img> for the .la-photo--empty div).
   ───────────────────────────────────────────────────────────────────────────
@@ -78,7 +81,14 @@
   }
 
   /* ── Device location rows ───────────────────────────────── */
-  .la-locations { display: flex; flex-direction: column; gap: 12px; }
+  .la-locations { display: flex; flex-direction: column; gap: 8px; }
+  .la-group {
+    font-size: 13px; font-weight: 800; color: #07467c;
+    background: #eef4fa; border-left: 4px solid #07467c;
+    padding: 7px 12px; border-radius: 4px; margin: 10px 0 2px;
+    page-break-after: avoid; break-after: avoid;
+  }
+  .la-group:first-child { margin-top: 0; }
   .la-loc {
     display: grid; grid-template-columns: 200px 1fr 120px;
     gap: 16px; align-items: stretch;
@@ -214,12 +224,12 @@
   Make: iterate the location records, render this once per record, join the
   results, and substitute the joined string for {{locationRows}} above.
 
-<div class="la-loc">
+{{groupHeader}}<div class="la-loc">
   {{photoCell}}
   <div class="la-loc-body">
     <div class="la-loc-label">{{label}}</div>
     <div class="la-loc-field"><span class="k">Location</span><span class="v">{{location}}</span></div>
-    <div class="la-loc-field"><span class="k">MDF / IDF</span><span class="v">{{mdf}}</span></div>
+    <div class="la-loc-field"><span class="k">Notes</span><span class="v">{{notes}}</span></div>
   </div>
   <div class="la-signoff">
     <div class="la-signoff-pill {{signoffClass}}">{{signoffLabel}}</div>
@@ -227,6 +237,22 @@
     <div class="la-signoff-cap">Initials</div>
   </div>
 </div>
+
+  ── GROUPING by MDF/IDF — {{groupHeader}} ────────────────────────────────
+  1. In the Knack HTTP GET add  &sort_field=<mdfField>&sort_order=asc  so all
+     rows for one MDF arrive adjacent. (Empty MDF sinks together → label it
+     "No MDF / IDF" via coalesce below.)
+  2. Emit a header ONLY when this row's MDF differs from the PREVIOUS row's.
+     "Previous row" = index into the parsed records array (2.records here is
+     the Parse-JSON output; 1.`__IMTINDEX__` is the Iterator's position):
+
+  if( coalesce(1.field_1946; "No MDF / IDF")
+        <> coalesce(get(2.records; (1.`__IMTINDEX__` - 1) + ".field_1946"); "—") ;
+      "<div class='la-group'>" + coalesce(1.field_1946; "No MDF / IDF") + "</div>" ;
+      "" )
+
+  First row (index 1) compares against "—" → header always prints. Swap
+  field_1946 for your object's MDF field (survey = field_2375).
 
   ── {{photoCell}} — paste this Make formula where {{photoCell}} sits above ──
   (uses thumb_url, falls back to url, then to the placeholder when both empty)
