@@ -134,33 +134,22 @@
 </html>
 
 <!-- ════════════════════════════════════════════════════════════════════════
-  PER-DEVICE CARD SNIPPET (row module; grouping by Array+Text Aggregator)
+  PER-DEVICE CARD SNIPPET (LIVE field mappings; grouping by Array+Text Aggregator)
 
 <div class="la-loc">
   <div class="la-loc-head">
-    <div class="la-loc-label">{{label}}</div>
-    <div class="la-loc-product">{{product}}</div>
+    <div class="la-loc-label">{{5.field_2801_raw}}</div>
+    <div class="la-loc-product">{{if(5.field_2801_raw = 5.field_2790_raw; ""; 5.field_2790_raw)}}</div>
   </div>
   <div class="la-loc-meta">
-    {{flags}}
-    <span class="k">Notes</span> <span class="v">{{notes}}</span>
+    {{if(5.field_2807_raw = true; "<span class='la-chip la-chip-mount'>Mount Only</span>"; "")}}{{if(5.field_2806_raw = true; "<span class='la-chip la-chip-plenum'>Plenum</span>"; "")}}
+    <span class="k">Notes</span> <span class="v">{{5.field_2808_raw}}</span>
   </div>
-  <div class="la-photos">{{photoCells}}</div>
+  <div class="la-photos"><img src='{{join(38.`photo URL`; "'><img src='")}}'></div>
 </div>
 
-  ── {{product}} — DE-DUP: only show product when it differs from the label ──
-  (kills the "Avigilon Alta 4 Door Hub / Avigilon Alta 4 Door Hub" double-up
-   for devices whose label IS the product name)
-
-  if( 1.labelField = 1.productField; ""; 1.productField )
-
-  ── {{flags}} — chip only when YES; concatenate the two ─────────────────────
-  if( 1.mountField = "Yes"; "<span class='la-chip la-chip-mount'>Mount Only</span>"; "" )
-  + if( 1.plenumField = "Yes"; "<span class='la-chip la-chip-plenum'>Plenum</span>"; "" )
-
-  ── {{photoCells}} — N <img> from the photo array (join trick) ──────────────
-  Type plain text  <div class="la-photos"><img src='  then ONE join chip:
-    join(map(9.array; "photo url"); "'><img src='")
-  then plain text  '></div>
-  (filter out photoless devices upstream, or use the if() placeholder version.)
+  field map: label field_2801 | product field_2790 (de-duped vs label) |
+  Mount Only field_2807 (bool) | Plenum field_2806 (bool) | notes field_2808 |
+  photos 38.`photo URL` (array of url strings → join trick builds the <img> tags;
+  if it's an array of OBJECTS instead, use join(map(38.array; "photo URL"); ...)).
 ═════════════════════════════════════════════════════════════════════════════ -->
