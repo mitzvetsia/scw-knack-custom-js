@@ -1273,6 +1273,13 @@
        rules + the view_3586 entry in device-worksheet\'s V2 kill-switch. */
     '.scw-ktl-accordion:has(#view_3586) { display: none !important; }',
     '#view_3586 { display: none !important; }',
+    /* Same cutover for the deploy/install page: hide v1\'s view_3915 table +
+       accordion shell now that v2 is primary there. Camera Config + QA fold
+       into the v2 cards via install-config-subpanel/config-qa-popover. Reverse
+       by removing these two rules + the view_3915 entry in device-worksheet\'s
+       V2 kill-switch + flipping the config entry enabled:false. */
+    '.scw-ktl-accordion:has(#view_3915) { display: none !important; }',
+    '#view_3915 { display: none !important; }',
 
     '.scw-ws-v2-mh-step {',
     '  width: 16px !important; height: 18px !important;',

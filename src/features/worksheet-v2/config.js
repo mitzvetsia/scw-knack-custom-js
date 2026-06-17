@@ -122,13 +122,16 @@
       // the deploy scene. independentFields:true means this `fields` map is
       // used AS-IS (no SOW fallback), so any omitted logical name resolves
       // undefined and its feature no-ops here (intended for the money
-      // columns this object doesn't have). Keep enabled:false until the
-      // render-side money-column suppression + QA surface are ported and
-      // the existing v1 worksheet on this view is turned off.
+      // columns this object doesn't have). CUTOVER: v2 is now the primary
+      // surface on the deploy scene — v1 device-worksheet bails via its
+      // V2_TAKEOVER entry, and styles.js hides the native #view_3915 table +
+      // accordion. The install card path lives in card.js (moneyMode:'install');
+      // Camera Config + QA fold in via install-config-subpanel/config-qa-popover
+      // (dual-host). Reverse by flipping enabled:false here.
       ,{
-        enabled:          false,
+        enabled:          true,
         sourceViewKey:    'view_3915',
-        mountAfterSelector: '#view_3915',   // TODO confirm anchor; disable v1 here on enable
+        mountAfterSelector: '#view_3915',
         label:            'Install Line Items',
         independentFields: true,            // different object — no DEFAULT_FIELDS fallback
         moneyMode:        'install',        // no money columns at all — card.js install path
