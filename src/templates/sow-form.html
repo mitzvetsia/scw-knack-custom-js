@@ -98,6 +98,15 @@
   }
   .la-chip-mount  { background: #e0e7ff; color: #3730a3; }
   .la-chip-plenum { background: #fef3c7; color: #92400e; }
+
+  /* text-only rows for the Other Services / General Assumptions sections */
+  .sow-note {
+    font-size: 11px; color: #475569; padding: 6px 10px;
+    border: 1px solid #e2e8f0; border-radius: 5px; margin-top: 5px;
+    page-break-inside: avoid; break-inside: avoid;
+  }
+  .sow-note ul, .sow-note ol { margin: 4px 0 0; padding-left: 18px; }
+  .sow-note p { margin: 0 0 4px; }
 </style>
 </head>
 <body>
@@ -167,11 +176,14 @@
      Array Aggregator (group by MDF) → Text Aggregator. (Keeps null-MDF
      services/assumptions OUT of the "No MDF / IDF" group.)
   2) OTHER SERVICES: filter  MDF is empty  AND  proposal bucket = Services  →
-     build the same .la-loc cards → Text Aggregator into a var (otherServicesRows).
+     build a SIMPLE text row (NOT the .la-loc device card — that nests):
+       <div class="sow-note">{{<service description field>}}</div>
+     → Text Aggregator into a var (otherServicesRows).
      Then a Set variable wraps a header ONLY when non-empty:
        {{otherServices}} = if( length(otherServicesRows) > 0;
          "<div class='la-group'>Other Services</div>" + otherServicesRows; "" )
-  3) GENERAL ASSUMPTIONS: same, filter  MDF is empty  AND  proposal bucket = Assumptions:
+  3) GENERAL ASSUMPTIONS: same, filter  MDF is empty  AND  proposal bucket = Assumptions,
+     same  <div class="sow-note">…</div>  row:
        {{generalAssumptions}} = if( length(generalAssumptionsRows) > 0;
          "<div class='la-group'>General Assumptions</div>" + generalAssumptionsRows; "" )
   (proposal bucket = the connection field on the line item; filter on its
