@@ -2122,6 +2122,18 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
     let lastL2 = null, lastL3 = null;
     let l2SinceL1 = false, l3SinceL1 = false;
 
+    // Clone a group header down to just its label cell (full-width colspan) so
+    // the main pipeline rebuilds the data cells cleanly. The source header may
+    // already carry appended Qty/Cost cells from an earlier pipeline pass —
+    // cloning those verbatim leaves duplicate trailing columns.
+    function pristineHeaderClone(srcRow) {
+      const clone = srcRow.cloneNode(true);
+      const tds = clone.querySelectorAll('td');
+      for (let t = tds.length - 1; t >= 1; t--) tds[t].remove();
+      if (tds[0]) tds[0].setAttribute('colspan', '100');
+      return clone;
+    }
+
     const rows = Array.prototype.slice.call(tbody.children);
     for (let i = 0; i < rows.length; i++) {
       const row = rows[i];
@@ -2154,12 +2166,12 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
 
       let newL2 = null, newL3 = null;
       if (!l2SinceL1 && tmpl.l2) {
-        newL2 = tmpl.l2.cloneNode(true);
+        newL2 = pristineHeaderClone(tmpl.l2);
         newL2.classList.add('scw-synthetic-l2');
         row.parentNode.insertBefore(newL2, row);
       }
       if (!l3SinceL1 && tmpl.l3) {
-        newL3 = tmpl.l3.cloneNode(true);
+        newL3 = pristineHeaderClone(tmpl.l3);
         newL3.classList.add('scw-synthetic-l3');
         row.parentNode.insertBefore(newL3, row);
       }
