@@ -373,7 +373,7 @@
         (p.required ? ' scw-ws-v2-photo-card--required' : '') +
         (missing   ? ' scw-ws-v2-photo-card--missing'  : '');
       var thumb = p.imgUrl
-        ? '<img class="scw-ws-v2-photo-img" draggable="true" src="' + escapeHtml(p.imgUrl) + '" alt="">'
+        ? '<img class="scw-ws-v2-photo-img" draggable="false" src="' + escapeHtml(p.imgUrl) + '" alt="">'
         : '<div class="scw-ws-v2-photo-img scw-ws-v2-photo-img--placeholder">No image</div>';
       var typeHtml = p.type
         ? '<div class="scw-ws-v2-photo-type">' + escapeHtml(p.type) + '</div>'
@@ -418,7 +418,10 @@
         ' data-photo-required="'   + (p.required ? 'true' : 'false') + '"' +
         ' data-photo-type="'       + escapeHtml(p.type || '') + '"' +
         ' data-photo-notes="'      + escapeHtml(p.notes || '') + '"';
-      var draggableAttr = p.imgUrl ? ' draggable="true"' : '';
+      // Pointer-based drag (below) handles dragging — native HTML5 draggable
+      // is suppressed by KTL on these anchors, so we don't use it. Mark filled
+      // cards so the grab cursor + pointer-drag opt-in.
+      var draggableAttr = p.imgUrl ? ' data-scw-ws-v2-photo-drag="1"' : '';
       // OPS-only photo delete (see PHOTO_DELETE_VIEWS). Only on cards that
       // hold a real photo record; placeholders have nothing to delete.
       var delBtn = (PHOTO_DELETE_VIEWS[sourceViewKey] && p.id)
@@ -859,70 +862,101 @@
     targetCard.appendChild(ov);
   }
 
+  // POINTER-BASED drag (KTL suppresses native HTML5 drag-and-drop on these
+  // anchors, so we implement drag with mousedown/move/up + a floating ghost).
+  // Threshold avoids hijacking plain clicks (which open the QA modal/lightbox);
+  // a click that follows a real drag is suppressed.
   if (!document.documentElement.hasAttribute('data-scw-ws-v2-photo-drag-bound')) {
     document.documentElement.setAttribute('data-scw-ws-v2-photo-drag-bound', '1');
 
-    document.addEventListener('dragstart', function (e) {
+    var DRAG_THRESHOLD = 6;
+    var pCard = null, pStartX = 0, pStartY = 0, pDragging = false,
+        pGhost = null, pHover = null, pSuppressClick = false;
+
+    function pHighlightTargets(card) {
+      var strip = stripOf(card);
+      if (!strip) return;
+      var cards = strip.querySelectorAll(CARD_SEL);
+      for (var i = 0; i < cards.length; i++) {
+        if (cards[i] !== card && isReqSlot(cards[i])) {
+          cards[i].classList.add('scw-ws-v2-photo-drop-ok');
+        }
+      }
+    }
+    function pMoveGhost(x, y) {
+      if (pGhost) { pGhost.style.left = (x + 14) + 'px'; pGhost.style.top = (y + 14) + 'px'; }
+    }
+    function pCleanup() {
+      clearDragState();
+      if (pGhost && pGhost.parentNode) pGhost.parentNode.removeChild(pGhost);
+      pGhost = null; pDragging = false; pCard = null; pHover = null;
+      document.body.style.userSelect = '';
+    }
+
+    document.addEventListener('mousedown', function (e) {
+      if (e.button !== 0) return;
       var card = cardOf(e);
       if (!isFilled(card)) return;
-      dragSrc = card;
-      card.classList.add('scw-ws-v2-photo-drag-src');
-      try { e.dataTransfer.effectAllowed = 'copy';
-            e.dataTransfer.setData('text/plain', card.getAttribute('data-photo-id') || ''); } catch (x) {}
-      var strip = stripOf(card);
-      if (strip) {
-        var cards = strip.querySelectorAll(CARD_SEL);
-        for (var i = 0; i < cards.length; i++) {
-          if (cards[i] !== card && isReqSlot(cards[i])) {
-            cards[i].classList.add('scw-ws-v2-photo-drop-ok');
-          }
+      pCard = card; pStartX = e.clientX; pStartY = e.clientY; pDragging = false;
+    }, true);
+
+    document.addEventListener('mousemove', function (e) {
+      if (!pCard) return;
+      if (!pDragging) {
+        if (Math.abs(e.clientX - pStartX) + Math.abs(e.clientY - pStartY) < DRAG_THRESHOLD) return;
+        // Start the drag.
+        pDragging = true;
+        pCard.classList.add('scw-ws-v2-photo-drag-src');
+        pHighlightTargets(pCard);
+        document.body.style.userSelect = 'none';
+        pGhost = document.createElement('div');
+        pGhost.className = 'scw-ws-v2-photo-ghost';
+        var img = pCard.querySelector('.scw-ws-v2-photo-img');
+        if (img && img.tagName === 'IMG' && img.src) {
+          var gi = document.createElement('img'); gi.src = img.src; pGhost.appendChild(gi);
         }
+        document.body.appendChild(pGhost);
+      }
+      e.preventDefault();
+      pMoveGhost(e.clientX, e.clientY);
+      var under = document.elementFromPoint(e.clientX, e.clientY);
+      var t = (under && under.closest) ? under.closest(CARD_SEL) : null;
+      var ok = (t && t.classList.contains('scw-ws-v2-photo-drop-ok')) ? t : null;
+      if (pHover && pHover !== ok) pHover.classList.remove('scw-ws-v2-photo-drop-hover');
+      if (ok) ok.classList.add('scw-ws-v2-photo-drop-hover');
+      pHover = ok;
+    }, true);
+
+    document.addEventListener('mouseup', function () {
+      if (!pCard) return;
+      var wasDragging = pDragging, src = pCard, target = pHover;
+      if (wasDragging && target) {
+        var detail = {
+          sourceRecordId:  src.getAttribute('data-photo-id'),
+          sourcePhotoType: src.getAttribute('data-photo-type') || '',
+          sourceRequired:  src.getAttribute('data-photo-required') === 'true',
+          sourceNotes:     src.getAttribute('data-photo-notes') || '',
+          targetRecordId:  target.getAttribute('data-photo-id'),
+          targetPhotoType: target.getAttribute('data-photo-type') || 'this slot',
+          targetRequired:  target.getAttribute('data-photo-required') === 'true',
+          targetNotes:     target.getAttribute('data-photo-notes') || '',
+          surveyRequestId: getSurveyRequestId()
+        };
+        var viewKey = getViewKeyFor(target);
+        confirmMove(target, detail, viewKey);
+      }
+      pCleanup();
+      if (wasDragging) {
+        // Swallow the click that fires after the drag so the QA modal /
+        // lightbox doesn't open on drop.
+        pSuppressClick = true;
+        setTimeout(function () { pSuppressClick = false; }, 50);
       }
     }, true);
 
-    document.addEventListener('dragend', function () {
-      clearDragState();
-      dragSrc = null;
+    document.addEventListener('click', function (e) {
+      if (pSuppressClick) { e.preventDefault(); e.stopPropagation(); pSuppressClick = false; }
     }, true);
-
-    document.addEventListener('dragover', function (e) {
-      if (!dragSrc) return;
-      var card = cardOf(e);
-      if (!card || !card.classList.contains('scw-ws-v2-photo-drop-ok')) return;
-      e.preventDefault();
-      e.dataTransfer.dropEffect = 'copy';
-    });
-    document.addEventListener('dragenter', function (e) {
-      if (!dragSrc) return;
-      var card = cardOf(e);
-      if (!card || !card.classList.contains('scw-ws-v2-photo-drop-ok')) return;
-      e.preventDefault();
-      card.classList.add('scw-ws-v2-photo-drop-hover');
-    });
-    document.addEventListener('dragleave', function (e) {
-      var card = cardOf(e);
-      if (!card || card.contains(e.relatedTarget)) return;
-      card.classList.remove('scw-ws-v2-photo-drop-hover');
-    });
-    document.addEventListener('drop', function (e) {
-      var targetCard = cardOf(e);
-      if (!targetCard || !targetCard.classList.contains('scw-ws-v2-photo-drop-ok') || !dragSrc) return;
-      e.preventDefault();
-      var detail = {
-        sourceRecordId:  dragSrc.getAttribute('data-photo-id'),
-        sourcePhotoType: dragSrc.getAttribute('data-photo-type') || '',
-        sourceRequired:  dragSrc.getAttribute('data-photo-required') === 'true',
-        sourceNotes:     dragSrc.getAttribute('data-photo-notes') || '',
-        targetRecordId:  targetCard.getAttribute('data-photo-id'),
-        targetPhotoType: targetCard.getAttribute('data-photo-type') || 'this slot',
-        targetRequired:  targetCard.getAttribute('data-photo-required') === 'true',
-        targetNotes:     targetCard.getAttribute('data-photo-notes') || '',
-        surveyRequestId: getSurveyRequestId()
-      };
-      var viewKey = getViewKeyFor(targetCard);
-      clearDragState();
-      confirmMove(targetCard, detail, viewKey);
-    });
   }
 
   ns.photos = {

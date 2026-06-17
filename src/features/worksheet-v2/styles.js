@@ -1886,8 +1886,9 @@
     '  border: 1px solid #ddd !important;',
     '  box-shadow: 0 1px 4px rgba(0,0,0,0.08) !important;',
     '  cursor: pointer !important;',
-    /* Re-enable image drag (Knack/KTL sets img -webkit-user-drag: none). */
-    '  -webkit-user-drag: element !important;',
+    /* Disable native image drag — dragging is handled by the pointer-drag
+       implementation (mousedown/move/up), so native img drag must not fire. */
+    '  -webkit-user-drag: none !important;',
     '  transition: transform 120ms ease, box-shadow 120ms ease !important;',
     '}',
     '.scw-ws-v2-photo-img:hover {',
@@ -2016,13 +2017,21 @@
 
     /* ── Photo drag-to-fill-required-slot (v1 parity) ────────── */
     '.scw-ws-v2-photo-card { position: relative !important; }',
-    '.scw-ws-v2-photo-card[draggable="true"] {',
-    '  cursor: grab;',
-    /* KTL/Knack set -webkit-user-drag:none globally on anchors; re-enable so
-       the whole photo card (not just the <img>) is a drag source. */
-    '  -webkit-user-drag: element !important;',
+    '.scw-ws-v2-photo-card[data-scw-ws-v2-photo-drag] { cursor: grab; }',
+    '.scw-ws-v2-photo-card[data-scw-ws-v2-photo-drag]:active { cursor: grabbing; }',
+    /* Floating ghost that trails the cursor during a pointer-drag. */
+    '.scw-ws-v2-photo-ghost {',
+    '  position: fixed !important; z-index: 100000 !important;',
+    '  pointer-events: none !important; opacity: 0.85 !important;',
+    '  width: 84px !important; height: 64px !important;',
+    '  border-radius: 6px !important; overflow: hidden !important;',
+    '  box-shadow: 0 6px 18px rgba(0,0,0,0.35) !important;',
+    '  transform: rotate(-3deg) !important;',
     '}',
-    '.scw-ws-v2-photo-card[draggable="true"]:active { cursor: grabbing; }',
+    '.scw-ws-v2-photo-ghost img {',
+    '  width: 100% !important; height: 100% !important;',
+    '  object-fit: cover !important; display: block !important;',
+    '}',
     '.scw-ws-v2-photo-drag-src { opacity: 0.45 !important; }',
     '.scw-ws-v2-photo-drop-ok {',
     '  outline: 2px dashed #16a34a !important; outline-offset: 2px !important;',
