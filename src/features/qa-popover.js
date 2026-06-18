@@ -61,6 +61,7 @@
   var _initialState = null;     // snapshot at open time, used to detect changes
   var _hasUnsavedChanges = false;
   var _isSaving = false;
+  var _savedFadeTimer = null;   // resets the "Saved ✓" status after a beat
   // When the popover is opened off a host-supplied anchor (e.g. the V2
   // install photo strip via openForAnchor) rather than a worksheet chit,
   // this holds a callback(fields, photo) that lets the host refresh its own
@@ -157,10 +158,21 @@
       '.scw-qa-popover__history-empty { color: #9ca3af; font-style: italic; }',
       /* Footer — Cancel/Revert + primary, matches closeout __footer */
       '.scw-qa-popover__actions {',
-      '  display: flex; gap: 8px; justify-content: flex-end;',
+      '  display: flex; gap: 8px; justify-content: space-between; align-items: center;',
       '  padding: 12px 14px; border-top: 1px solid #e5e7eb;',
       '  background: #fff; flex: 0 0 auto;',
       '}',
+      '.scw-qa-popover__btns { display: flex; gap: 8px; align-items: center; }',
+      /* Live save-status indicator (left of the action buttons). */
+      '.scw-qa-popover__save-status {',
+      '  font: 600 11px/1.2 system-ui; color: #6b7280; flex: 0 1 auto;',
+      '  display: inline-flex; align-items: center; gap: 5px; min-width: 0;',
+      '}',
+      '.scw-qa-popover__save-status:empty { display: none; }',
+      '.scw-qa-popover__save-status.is-dirty  { color: #b45309; }',
+      '.scw-qa-popover__save-status.is-saving { color: #2563eb; }',
+      '.scw-qa-popover__save-status.is-saved  { color: #15803d; }',
+      '.scw-qa-popover__save-status.is-error  { color: #b91c1c; }',
       '.scw-qa-popover__btn {',
       '  padding: 8px 16px; border-radius: 6px;',
       '  font: 600 12px/1.2 system-ui; cursor: pointer; border: 1px solid #d1d5db;',
@@ -536,6 +548,7 @@
     notes.addEventListener('input', function () {
       photo.notes = notes.value;
       _hasUnsavedChanges = true;
+      setSaveStatus(ctl, 'dirty', 'Unsaved changes');
       updateActions(ctl, photo);
     });
     notesSec.appendChild(notes);
@@ -576,9 +589,17 @@
 
     pop.appendChild(body);
 
-    // Action buttons (placeholder — filled by updateActions)
+    // Footer: live save-status (left) + action buttons (right, filled by
+    // updateActions). The status span persists across updateActions rebuilds
+    // (which only re-fill the .scw-qa-popover__btns container).
     var actions = document.createElement('div');
     actions.className = 'scw-qa-popover__actions';
+    var saveStatus = document.createElement('span');
+    saveStatus.className = 'scw-qa-popover__save-status';
+    actions.appendChild(saveStatus);
+    var btns = document.createElement('div');
+    btns.className = 'scw-qa-popover__btns';
+    actions.appendChild(btns);
     pop.appendChild(actions);
 
     updateActions(pop, photo);
@@ -722,6 +743,7 @@
         chip.classList.add('is-selected');
         photo[fieldName] = opt;
         _hasUnsavedChanges = true;
+        setSaveStatus(pop, 'dirty', 'Unsaved changes');
         updateActions(pop, photo);
       });
       row.appendChild(chip);
@@ -730,10 +752,22 @@
     return sec;
   }
 
+  // Update the live save-status indicator. ctl is the element owning the
+  // footer (popover or modal dialog). kind: '' | 'dirty' | 'saving' | 'saved'
+  // | 'error'. Idempotent — safe to call from any handler.
+  function setSaveStatus(ctl, kind, text) {
+    ctl = ctl || _popover;
+    if (!ctl) return;
+    var el = ctl.querySelector('.scw-qa-popover__save-status');
+    if (!el) return;
+    el.className = 'scw-qa-popover__save-status' + (kind ? ' is-' + kind : '');
+    el.textContent = text || '';
+  }
+
   function updateActions(pop, photo) {
-    var actions = pop.querySelector('.scw-qa-popover__actions');
-    if (!actions) return;
-    actions.innerHTML = '';
+    var btns = pop.querySelector('.scw-qa-popover__btns');
+    if (!btns) return;
+    btns.innerHTML = '';
 
     var hint = pop.querySelector('.scw-qa-popover__notes-hint');
     var notes = (photo.notes || '').trim();
@@ -755,6 +789,21 @@
       }
     }
 
+    // Save button — persists the current edits (notes + chip changes that
+    // don't complete a sign-off) WITHOUT closing the panel, with inline
+    // feedback. Shown whenever there are unsaved changes. Secondary style;
+    // sits left of the state-specific primary button.
+    function appendSaveBtn() {
+      if (!_hasUnsavedChanges) return;
+      var save = document.createElement('button');
+      save.type = 'button';
+      save.className = 'scw-qa-popover__btn';
+      save.textContent = 'Save';
+      save.disabled = notesMissing;
+      save.addEventListener('click', function () { saveDirty(pop, photo); });
+      btns.appendChild(save);
+    }
+
     // Primary action depends on state.
     if (alreadySignedOff) {
       var revert = document.createElement('button');
@@ -762,21 +811,25 @@
       revert.className = 'scw-qa-popover__btn scw-qa-popover__btn--revert';
       revert.textContent = 'Revert sign-off';
       revert.addEventListener('click', function () { onRevert(photo); });
-      actions.appendChild(revert);
+      btns.appendChild(revert);
+
+      appendSaveBtn();
 
       var close = document.createElement('button');
       close.type = 'button';
       close.className = 'scw-qa-popover__btn scw-qa-popover__btn--cancel';
       close.textContent = 'Close';
       close.addEventListener('click', function () { closePopover(true); });
-      actions.appendChild(close);
+      btns.appendChild(close);
     } else {
       var cancel = document.createElement('button');
       cancel.type = 'button';
       cancel.className = 'scw-qa-popover__btn scw-qa-popover__btn--cancel';
       cancel.textContent = 'Cancel';
       cancel.addEventListener('click', function () { closePopover(false); });
-      actions.appendChild(cancel);
+      btns.appendChild(cancel);
+
+      appendSaveBtn();
 
       var signoff = document.createElement('button');
       signoff.type = 'button';
@@ -784,8 +837,60 @@
       signoff.textContent = 'Sign Off';
       signoff.disabled = !wouldBeComplete || notesMissing;
       signoff.addEventListener('click', function () { onSignOff(photo); });
-      actions.appendChild(signoff);
+      btns.appendChild(signoff);
     }
+  }
+
+  // Persist the current edits (notes + any chip changes) without closing the
+  // panel — gives the user explicit "Saving… → Saved ✓" feedback. Mirrors the
+  // field diff in autoSaveIfDirty but keeps the popover open.
+  function saveDirty(pop, photo) {
+    if (_isSaving) return;
+    var status = readSelectedChip(pop, 'status') || _initialState.status;
+    var client = readSelectedChip(pop, 'client') || _initialState.client;
+    var notesEl = pop.querySelector('.scw-qa-popover__notes');
+    var notes  = notesEl ? notesEl.value : _initialState.notes;
+
+    var requiresNotes = (status === 'Fail') || (client === 'Bypassed');
+    if (requiresNotes && !(notes || '').trim()) {
+      setSaveStatus(pop, 'error',
+        status === 'Fail' ? 'Notes required to Fail.' : 'Bypass reason required.');
+      return;
+    }
+
+    var fields = {};
+    if (status !== _initialState.status) fields[F.status] = status;
+    if (isClientGateActive(_initialState.client) && client !== _initialState.client) {
+      fields[F.client] = client;
+    }
+    if (notes !== _initialState.notes) fields[F.notes] = notes;
+    if (!Object.keys(fields).length) { setSaveStatus(pop, '', ''); return; }
+
+    _isSaving = true;
+    setSaveStatus(pop, 'saving', 'Saving…');
+    updateActions(pop, photo);   // disable Save while in flight (via re-render)
+    var chit = _popover && _popover._triggerChit;
+    saveFields(fields, function (err) {
+      _isSaving = false;
+      if (err) {
+        setSaveStatus(pop, 'error', 'Save failed — try again');
+        return;
+      }
+      // Commit to the baseline so close-autosave + diff stay consistent.
+      if (fields[F.status] != null) _initialState.status = status;
+      if (fields[F.client] != null) _initialState.client = client;
+      if (fields[F.notes]  != null) { _initialState.notes = notes; photo.notes = notes; }
+      photo.status = status; photo.client = client;
+      _hasUnsavedChanges = false;
+      if (_refreshHandler) _refreshHandler(fields, photo);
+      else if (chit) refreshChitAndCells(chit, photo, fields);
+      setSaveStatus(pop, 'saved', 'Saved ✓');
+      updateActions(pop, photo);   // drop the Save button now that we're clean
+      clearTimeout(_savedFadeTimer);
+      _savedFadeTimer = setTimeout(function () {
+        if (!_hasUnsavedChanges) setSaveStatus(pop, '', '');
+      }, 2500);
+    });
   }
 
   // ── Sign-off / revert / autosave ────────────────────────────────
