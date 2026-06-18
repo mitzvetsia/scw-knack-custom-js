@@ -246,7 +246,11 @@
       '  font-size: 12px; color: #64748b;',
       '}',
       '.scw-ws-v2-picker-status--err { color: #b45309; }',
-      '.scw-ws-v2-picker-actions { display: flex; gap: 8px; }',
+      '.scw-ws-v2-picker-actions { display: flex; gap: 10px; align-items: center; }',
+      '.scw-ws-v2-picker-count {',
+      '  font: 600 12px system-ui, sans-serif; color: #475569;',
+      '  font-variant-numeric: tabular-nums; white-space: nowrap;',
+      '}',
       '.scw-ws-v2-picker-btn {',
       '  appearance: none; cursor: pointer;',
       '  padding: 8px 16px; border-radius: 6px;',
@@ -486,11 +490,31 @@
     ft.innerHTML =
       '<span class="scw-ws-v2-picker-status"></span>' +
       '<div class="scw-ws-v2-picker-actions">' +
+        (multi ? '<span class="scw-ws-v2-picker-count"></span>' : '') +
         '<button type="button" class="scw-ws-v2-picker-btn scw-ws-v2-picker-btn--confirm">Save</button>' +
       '</div>';
     card.appendChild(ft);
 
     var statusEl  = ft.querySelector('.scw-ws-v2-picker-status');
+    var countEl   = ft.querySelector('.scw-ws-v2-picker-count');
+
+    // Live "N selected" tally next to Save (multi-select only). Counts the
+    // checked option inputs whose value is non-empty (the "Clear all" sentinel
+    // has value '' so it never counts). Recomputed on every toggle — bd's
+    // change event fires for direct clicks, the clear-all row, and after
+    // shift-click range selects (the clicked box still emits change).
+    function updateCount() {
+      if (!countEl) return;
+      var checked = bd.querySelectorAll(
+        'input[name="scw-ws-v2-pick-' + opts.fieldKey + '"]:checked');
+      var n = 0;
+      for (var i = 0; i < checked.length; i++) { if (checked[i].value) n++; }
+      countEl.textContent = n + ' selected';
+    }
+    if (countEl) {
+      bd.addEventListener('change', updateCount);
+      updateCount();
+    }
     // Cancel is now the X in the header. Keep the binding name
     // so the in-flight handlers (which call cancelBtn.disabled = …)
     // still resolve to a real element.
