@@ -1131,10 +1131,15 @@
           filename: fl.filename || '',
           alt: fl.filename || label || ''
         });
-      } else if (entry.proxyResize && fl.fromDom) {
-        // DOM-rendered map asset that can't be canvas-downscaled (no CORS) —
-        // route through the server-side resize proxy so Make fetches a small
-        // copy. ⚠️ third-party CDN; see toProxyResizeUrl / CLAUDE.md.
+      } else if (entry.proxyResize) {
+        // Map asset that can't be canvas-downscaled (no-CORS File/Image host)
+        // AND whose raw File-field URL won't render natively / survive the
+        // snapshot sanitizer. Route through the server-side resize proxy so
+        // Make (and the published page) fetch a small, renderable .jpg copy —
+        // for DOM-matched assets (fromDom) this resizes the DOM src; otherwise
+        // it resizes the record's asset URL. Site Maps hit the latter (their
+        // api.knack.com File URL isn't matched by collectDomImageSrcs).
+        // ⚠️ third-party CDN, Site-Maps-only; see toProxyResizeUrl / CLAUDE.md.
         var proxyUrl = toProxyResizeUrl(url, entry.proxyResize);
         out.push({
           src: proxyUrl,
