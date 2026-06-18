@@ -3152,6 +3152,59 @@
     }
   }
 
+  // ── reinstate (per-cell, for "Removed from bid" rows) ───────
+  //
+  // Distinct from Add to Bid: the bid RECORD still exists (just unlinked
+  // from this package). Reinstate must NOT create a new bid record — it
+  // RE-LINKS the existing one. We produce a REVISE-type pending CR item
+  // (addToBid:false) carrying the existing bid record id + a reinstate
+  // marker, prefilled from the removed record's snapshot so the reviewer
+  // sees what's being put back. Make branches on `reinstate:true` +
+  // `bidRecordId` to re-link rather than insert.
+  function handleReinstate(button) {
+    if (!_state || !ns.changeRequests || !ns.changeRequests.openAddItem) {
+      ns.renderToast('Reinstate not available', 'info');
+      return;
+    }
+    var rowId       = button.getAttribute('data-row-id');
+    var pkgId       = button.getAttribute('data-package-id');
+    var sowId       = button.getAttribute('data-sow-id');
+    var bidRecordId = button.getAttribute('data-bid-record-id') || rowId;
+    var sowItemId   = button.getAttribute('data-sow-item-id') || '';
+    var label       = button.getAttribute('data-display-label') || '';
+    var product     = button.getAttribute('data-product-name') || '';
+    var snapQty     = button.getAttribute('data-reinstate-qty');
+    var snapFee     = button.getAttribute('data-reinstate-fee');
+    var snapDesc    = button.getAttribute('data-reinstate-desc') || '';
+
+    var grid = findSowGrid(sowId);
+    var sowName = grid ? grid.sowName : '';
+
+    ns.changeRequests.openAddItem({
+      reinstate:    true,
+      bidRecordId:  bidRecordId,
+      rowId:        rowId,
+      pkgId:        pkgId,
+      pkgName:      grid ? findPackageName(grid, pkgId) : '',
+      surveyId:     grid ? findPackageSurveyId(grid, pkgId) : '',
+      sowId:        sowId,
+      sowName:      sowName,
+      sowItemId:    sowItemId,
+      displayLabel: label || product,
+      productName:  product,
+      // Prefill the reinstate CR from the removed bid record's snapshot.
+      sowProduct:   product,
+      sowQty:       (snapQty !== '' && snapQty != null) ? snapQty : '',
+      sowFee:       (snapFee !== '' && snapFee != null) ? snapFee : '',
+      sowLaborDesc: snapDesc,
+      proposalBucket:   '',
+      proposalBucketId: '',
+      sortOrder:        0,
+      connOptions:      { bidMdfIdf: buildMdfIdfOptions() },
+      visibility:       {},
+    });
+  }
+
   // ── row-level action ────────────────────────────────────────
 
   function handleRowAction(button, actionType) {
@@ -3323,6 +3376,7 @@
     if (action === 'cell_request_change_from_sow')  { handleChangeRequest(button, { sourceFromSow: true }); return true; }
     if (action === 'cell_remove_from_bid')          { handleRemoveFromBid(button); return true; }
     if (action === 'cell_add_to_bid')               { handleAddToBid(button); return true; }
+    if (action === 'cell_reinstate')                { handleReinstate(button); return true; }
     if (action === 'cell_create_sow_from_bid')      { handleCreateSowFromBid(button); return true; }
     if (action === 'cr_submit') {
       var pkgId = button.getAttribute('data-pkg-id');

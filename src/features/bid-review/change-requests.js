@@ -1125,11 +1125,12 @@
 
   /** Build a styled card DOM element summarizing a pending change item. */
   function buildSummaryCard(item, pkgId, pkgName) {
-    var cardClass = 'scw-bid-cr-card' + (item.removeFromBid ? ' scw-bid-cr-card--removal' : item.addToBid ? ' scw-bid-cr-card--add' : '');
+    var cardClass = 'scw-bid-cr-card' + (item.removeFromBid ? ' scw-bid-cr-card--removal' : item.reinstate ? ' scw-bid-cr-card--add' : item.addToBid ? ' scw-bid-cr-card--add' : '');
     var card = el('div', cardClass);
     card.style.cursor = 'pointer';
 
     var headerLabel = item.removeFromBid ? 'Remove from Bid'
+                    : item.reinstate     ? 'Reinstate to Bid'
                     : item.addToBid      ? 'Add to Bid'
                     : 'Pending Change';
     if (pkgName) headerLabel += ' \u2014 ' + pkgName;
@@ -1279,6 +1280,7 @@
    */
   function itemActionType(item) {
     if (item.removeFromBid) return 'remove';
+    if (item.reinstate)     return 'reinstate';
     if (item.addToBid)      return 'add';
     return 'revise';
   }
@@ -1356,9 +1358,10 @@
    */
   function buildItemHtml(item, fieldList) {
     var action = itemActionType(item);
-    var palette = action === 'add'    ? { color: '#16a34a', bg: '#f0fdf4', border: '#16a34a33', badge: '#dcfce7', badgeText: '#166534', label: 'ADD' }
-                : action === 'remove' ? { color: '#dc2626', bg: '#fef2f2', border: '#dc262633', badge: '#fee2e2', badgeText: '#991b1b', label: 'REMOVE' }
-                :                       { color: '#3b82f6', bg: '#eff6ff', border: '#3b82f633', badge: '#dbeafe', badgeText: '#1e40af', label: 'REVISE' };
+    var palette = action === 'add'       ? { color: '#16a34a', bg: '#f0fdf4', border: '#16a34a33', badge: '#dcfce7', badgeText: '#166534', label: 'ADD' }
+                : action === 'reinstate' ? { color: '#16a34a', bg: '#f0fdf4', border: '#16a34a33', badge: '#dcfce7', badgeText: '#166534', label: 'REINSTATE' }
+                : action === 'remove'    ? { color: '#dc2626', bg: '#fef2f2', border: '#dc262633', badge: '#fee2e2', badgeText: '#991b1b', label: 'REMOVE' }
+                :                          { color: '#3b82f6', bg: '#eff6ff', border: '#3b82f633', badge: '#dbeafe', badgeText: '#1e40af', label: 'REVISE' };
 
     // When the field list already shows an explicit Product change
     // (from→to), suppress the trailing "— productName" suffix in the
@@ -1455,7 +1458,7 @@
   /** Build a plain-text version of one item (ClickUp-safe). */
   function buildItemPlainText(item, fieldList) {
     var action = itemActionType(item);
-    var label  = (action === 'add' ? 'ADD' : action === 'remove' ? 'REMOVE' : 'REVISE');
+    var label  = (action === 'add' ? 'ADD' : action === 'reinstate' ? 'REINSTATE' : action === 'remove' ? 'REMOVE' : 'REVISE');
     var displayName = item.displayLabel || item.productName || 'Item';
 
     // Mirror buildItemHtml: if an explicit Product change is in the
@@ -1539,6 +1542,12 @@
 
       if (it.salesRevisionId) entry.salesRevisionId = it.salesRevisionId;
       if (it.salesRevisionRequestId) entry.salesRevisionRequestId = it.salesRevisionRequestId;
+
+      // Reinstate marker — re-link the EXISTING bid record onto this package
+      // (NOT a new add). bidRecordId is the view_3680 record Make re-links;
+      // action is 'reinstate' (via itemActionType). This is what lets the Make
+      // scenario branch reinstate vs. add vs. revise.
+      if (it.reinstate) entry.reinstate = true;
 
       // Proposal bucket + sort order
       entry.proposalBucket   = it.proposalBucket || '';
@@ -1684,16 +1693,17 @@
   }
 
   function buildGroupHtml(groupItems, pkgName, sowName) {
-    var groups = { revise: [], add: [], remove: [] };
+    var groups = { revise: [], add: [], reinstate: [], remove: [] };
     for (var i = 0; i < groupItems.length; i++) {
       var act = groupItems[i].action || 'revise';
       if (groups[act]) groups[act].push(groupItems[i]);
     }
 
     var sectionOrder = [
-      { key: 'revise', title: 'Revisions',      color: '#3b82f6', bg: '#eff6ff', icon: '\u270E' },
-      { key: 'add',    title: 'Items to Add',    color: '#16a34a', bg: '#f0fdf4', icon: '+' },
-      { key: 'remove', title: 'Items to Remove', color: '#dc2626', bg: '#fef2f2', icon: '\u2212' },
+      { key: 'revise',    title: 'Revisions',         color: '#3b82f6', bg: '#eff6ff', icon: '\u270E' },
+      { key: 'add',       title: 'Items to Add',       color: '#16a34a', bg: '#f0fdf4', icon: '+' },
+      { key: 'reinstate', title: 'Items to Reinstate', color: '#16a34a', bg: '#f0fdf4', icon: '\u21BA' },
+      { key: 'remove',    title: 'Items to Remove',    color: '#dc2626', bg: '#fef2f2', icon: '\u2212' },
     ];
 
     var h = [];
@@ -2061,6 +2071,7 @@
 
     var vis = params.visibility || {};
     var existing = params.existing || null;
+    var isReinstateModal = !!params.reinstate;
 
     var overlay = el('div', 'scw-bid-cr-overlay');
     overlay.id = OVERLAY_ID;
@@ -2070,7 +2081,8 @@
 
     var header = el('div', 'scw-bid-cr-modal__header');
     var hLeft = el('div');
-    hLeft.appendChild(el('div', 'scw-bid-cr-modal__title', existing ? 'Edit Line Item' : 'Add Line Item'));
+    hLeft.appendChild(el('div', 'scw-bid-cr-modal__title',
+      existing ? 'Edit Line Item' : (isReinstateModal ? 'Reinstate Line Item' : 'Add Line Item')));
     hLeft.appendChild(el('div', 'scw-bid-cr-modal__subtitle',
       params.pkgName + ' \u2014 ' + (params.displayLabel || params.sowProduct || params.productName || 'Item')));
     header.appendChild(hLeft);
@@ -2082,7 +2094,10 @@
     var body = el('div', 'scw-bid-cr-modal__body');
     body.appendChild(el('div', 'scw-bid-cr-modal__hint',
       existing ? 'Edit the add-to-bid line item details.'
-               : 'Request a new line item be added to this bid package. Fields are pre-filled from the SOW.'));
+               : (isReinstateModal
+                  ? 'Re-link this existing bid item back onto this bid package. ' +
+                    'Fields are pre-filled from the removed bid item.'
+                  : 'Request a new line item be added to this bid package. Fields are pre-filled from the SOW.')));
 
     // Pre-fill: use existing pending values (if editing), otherwise SOW data
     var req = existing ? existing.requested : {};
@@ -2215,7 +2230,8 @@
     footer.appendChild(el('button', 'scw-bid-cr-modal__btn scw-bid-cr-modal__btn--cancel', 'Cancel'));
     footer.lastChild.addEventListener('click', closeModal);
     var addBtn = el('button', 'scw-bid-cr-modal__btn scw-bid-cr-modal__btn--add',
-      existing ? 'Update Change Request' : 'Add to Change Request');
+      existing ? 'Update Change Request'
+               : (isReinstateModal ? 'Reinstate' : 'Add to Change Request'));
     addBtn.addEventListener('click', function () {
       var product = (inputs.productName ? (inputs.productName.textContent || '').trim() : '') ||
                     params.sowProduct || params.productName || '';
@@ -2260,13 +2276,18 @@
       // Use the noBid row ID if available, else generate a pseudo-ID
       var itemRowId = params.rowId || ('new_' + Date.now() + '_' + Math.random().toString(36).substr(2, 5));
       var displayLabel = params.displayLabel || params.sowProduct || product;
+      // Reinstate is NOT an add: the bid record already exists and just needs
+      // re-linking to the package. addToBid stays FALSE (so it types as a
+      // "Pending Change" / revise, not "Add to Bid") and we carry the existing
+      // bid record id + a reinstate marker through for Make to re-link.
+      var isReinstate = !!params.reinstate;
       var newItem = {
         rowId:        itemRowId,
-        bidRecordId:  null,
+        bidRecordId:  isReinstate ? (params.bidRecordId || itemRowId) : null,
         sowItemId:    params.sowItemId || '',
         displayLabel: displayLabel,
         productName:  product,
-        addToBid:     true,
+        addToBid:     isReinstate ? false : true,
         proposalBucket:   params.proposalBucket || '',
         proposalBucketId: params.proposalBucketId || '',
         sortOrder:        params.sortOrder || 0,
@@ -2275,6 +2296,7 @@
         requested:    requested,
         changeNotes:  ta.value.trim(),
       };
+      if (isReinstate) newItem.reinstate = true;
       // Preserve reciprocal metadata when editing a reciprocal add-to-bid item
       if (existing && existing.reciprocal)       newItem.reciprocal = true;
       if (existing && existing.reciprocalSource) newItem.reciprocalSource = existing.reciprocalSource;

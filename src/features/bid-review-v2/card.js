@@ -669,13 +669,38 @@
       var noteHtml = surveyNoteHtml(surveyNoteTxt);
       var actions  = '';
       if (row) {
-        var addLabel = hasBidRecord ? '+ Reinstate' : '+ Add to bid';
-        actions =
-          '<div class="scw-bid-review-v2__cell-actions">' +
-            '<button type="button" class="scw-bid-review__cell-action ' +
-              'scw-bid-review__cell-action--add scw-bid-review-v2__cell-action" ' +
-              crAttrs('cell_add_to_bid', row.id, pkgId, sowId) + '>' + addLabel + '</button>' +
+        // "+ Add to bid" (no existing bid record) → a true ADD that creates a
+        // brand-new bid record. "+ Reinstate" (the bid record still exists, just
+        // unlinked from this package) → a REVISE-type CR that RE-LINKS the
+        // existing bid record (never a new add). The two MUST dispatch
+        // different actions or reinstate duplicates the bid record.
+        if (hasBidRecord) {
+          // The bid RECORD id to re-link. For a bid-side row (surveyNoBid /
+          // Source-B removed) row.id IS the view_3680 bid record id; the
+          // snapshot carries the values to show in the CR.
+          var det = (row.detail && row.detail.side === 'BID') ? row.detail : null;
+          actions =
+            '<div class="scw-bid-review-v2__cell-actions">' +
+              '<button type="button" class="scw-bid-review__cell-action ' +
+                'scw-bid-review__cell-action--add scw-bid-review-v2__cell-action" ' +
+                crAttrs('cell_reinstate', row.id, pkgId, sowId) +
+                ' data-bid-record-id="' + escapeHtml(row.id || '') + '"' +
+                ' data-sow-item-id="' + escapeHtml(row.sowItem || '') + '"' +
+                ' data-display-label="' + escapeHtml(row.displayLabel || '') + '"' +
+                ' data-product-name="' + escapeHtml((det && det.product) || row.productName || '') + '"' +
+                ' data-reinstate-qty="' + escapeHtml(det && det.qty != null ? det.qty : '') + '"' +
+                ' data-reinstate-fee="' + escapeHtml(det && det.fee != null ? det.fee : '') + '"' +
+                ' data-reinstate-desc="' + escapeHtml(ns.transform.stripHtml((det && det.desc) || '')) + '"' +
+                '>+ Reinstate</button>' +
+            '</div>';
+        } else {
+          actions =
+            '<div class="scw-bid-review-v2__cell-actions">' +
+              '<button type="button" class="scw-bid-review__cell-action ' +
+                'scw-bid-review__cell-action--add scw-bid-review-v2__cell-action" ' +
+                crAttrs('cell_add_to_bid', row.id, pkgId, sowId) + '>+ Add to bid</button>' +
           '</div>';
+        }
       }
       td.innerHTML =
         '<span class="' + badgeCls + '">' + badge + '</span>' + detail + noteHtml + actions;
