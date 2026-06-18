@@ -2657,6 +2657,12 @@
     return buildSowStatusBar(sowGridLike);
   };
 
+  // Public so v2 can drop the cached DOC_files index before re-rendering its
+  // header (v2 calls buildSowStatusBar directly, never v1's renderMatrix,
+  // which is where the cache is normally reset). Without this, a link/unlink
+  // PUT + view_3926 refetch wouldn't surface fresh docs in the v2 header.
+  ns.resetDocsIndex = function () { resetDocsIndex(); };
+
   ns.renderMatrix = function renderMatrix(state) {
     var mount = getOrCreateMount();
     if (!mount) return null;   // wrong scene — scene gate refused

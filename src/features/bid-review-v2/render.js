@@ -79,6 +79,14 @@
       return;
     }
 
+    // Drop v1's cached DOC_files scrape so the docs block v1 injects into
+    // each SOW header (via buildSowStatusBar) re-reads view_3926's fresh DOM.
+    // Needed because a link/unlink PUT refetches view_3926 → fires a render
+    // v2 now subscribes to, but the scrape is cached per v1 renderMatrix pass
+    // and v2 never calls renderMatrix.
+    var v1ns = window.SCW && window.SCW.bidReview;
+    if (v1ns && typeof v1ns.resetDocsIndex === 'function') v1ns.resetDocsIndex();
+
     var frag = document.createDocumentFragment();
     for (var i = 0; i < state.sowGrids.length; i++) {
       try {
