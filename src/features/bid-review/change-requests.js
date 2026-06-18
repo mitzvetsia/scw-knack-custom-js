@@ -1783,22 +1783,23 @@
     h.push('</div>');
 
     // Group items by action type for readability
-    var groups = { revise: [], add: [], remove: [] };
+    var groups = { revise: [], add: [], reinstate: [], remove: [] };
     for (var i = 0; i < pkg.items.length; i++) {
       var it = pkg.items[i];
-      groups[itemActionType(it)].push(it);
+      (groups[itemActionType(it)] || groups.revise).push(it);
     }
 
     var sectionOrder = [
       { key: 'revise', title: 'Revisions',        color: '#3b82f6', bg: '#eff6ff', icon: '\u270E' },
       { key: 'add',    title: 'Items to Add',      color: '#16a34a', bg: '#f0fdf4', icon: '+' },
+      { key: 'reinstate', title: 'Items to Reinstate', color: '#0891b2', bg: '#ecfeff', icon: '\u21BA' },
       { key: 'remove', title: 'Items to Remove',   color: '#dc2626', bg: '#fef2f2', icon: '\u2212' },
     ];
 
     for (var si = 0; si < sectionOrder.length; si++) {
       var sec = sectionOrder[si];
       var arr = groups[sec.key];
-      if (!arr.length) continue;
+      if (!arr || !arr.length) continue;
 
       h.push('<div style="margin-bottom:20px;">');
       h.push('<div style="font-size:14px;font-weight:700;color:' + sec.color + ';margin-bottom:8px;">');
@@ -1910,7 +1911,7 @@
     lines.push('────────────────────');
     lines.push('');
 
-    var groups = { revise: [], add: [], remove: [] };
+    var groups = { revise: [], add: [], reinstate: [], remove: [] };
     for (var i = 0; i < pkg.items.length; i++) {
       var it = pkg.items[i];
       var at = itemActionType(it);
@@ -1918,9 +1919,10 @@
     }
 
     var sections = [
-      { key: 'revise', title: 'REVISIONS' },
-      { key: 'add',    title: 'ITEMS TO ADD' },
-      { key: 'remove', title: 'ITEMS TO REMOVE' },
+      { key: 'revise',    title: 'REVISIONS' },
+      { key: 'add',       title: 'ITEMS TO ADD' },
+      { key: 'reinstate', title: 'ITEMS TO REINSTATE' },
+      { key: 'remove',    title: 'ITEMS TO REMOVE' },
     ];
 
     for (var si = 0; si < sections.length; si++) {
