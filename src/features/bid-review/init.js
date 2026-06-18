@@ -2532,6 +2532,12 @@
           gridRows:         grid.rows,
           visibility:       { qty: row.sowQty > 1, cabling: isCR2, connDevice: showConn2 },
           existing:         pendItem,
+          // Preserve reinstate identity when re-editing a pending reinstate
+          // CR. Without these, re-saving drops the reinstate marker + the bid
+          // record id (the existing view_3680 record Make re-links), so the
+          // CR degrades into a plain "add" with a null bidRecordId.
+          reinstate:        !!(pendItem && pendItem.reinstate),
+          bidRecordId:      (pendItem && pendItem.bidRecordId) || '',
         });
       }
       return;

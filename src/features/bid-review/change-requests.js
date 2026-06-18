@@ -2291,10 +2291,14 @@
       // re-linking to the package. addToBid stays FALSE (so it types as a
       // "Pending Change" / revise, not "Add to Bid") and we carry the existing
       // bid record id + a reinstate marker through for Make to re-link.
-      var isReinstate = !!params.reinstate;
+      // Reinstate identity also survives an edit: when re-opening a pending
+      // reinstate CR, the existing item carries reinstate + bidRecordId even
+      // if the caller didn't re-pass them.
+      var isReinstate = !!params.reinstate || !!(existing && existing.reinstate);
+      var reinstateBidId = params.bidRecordId || (existing && existing.bidRecordId) || itemRowId;
       var newItem = {
         rowId:        itemRowId,
-        bidRecordId:  isReinstate ? (params.bidRecordId || itemRowId) : null,
+        bidRecordId:  isReinstate ? reinstateBidId : null,
         sowItemId:    params.sowItemId || '',
         displayLabel: displayLabel,
         productName:  product,
