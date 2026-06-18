@@ -257,6 +257,33 @@
     '  color: #475569 !important; white-space: normal !important;',
     '  align-self: center !important; overflow: hidden !important;',
     '}',
+    /* Install assumptions & services are text-only (description + SCW Notes).
+       The shared .scw-ws-v2-row--assumptions labor-desc span (grid-column 3/10)
+       overflows the 7-track install grid and pushed the delete button below the
+       fields. Hide the unused Label + Flags cells and pin each cell to its track
+       so the description spans the freed space and the delete keeps its slot. */
+    '.scw-ws-v2-card--install .scw-ws-v2-row--assumptions > .scw-ws-v2-cell--label,',
+    '.scw-ws-v2-card--install .scw-ws-v2-row--assumptions > .scw-ws-v2-cell--install-flags,',
+    '.scw-ws-v2-card--install .scw-ws-v2-row--services > .scw-ws-v2-cell--label,',
+    '.scw-ws-v2-card--install .scw-ws-v2-row--services > .scw-ws-v2-cell--install-flags {',
+    '  display: none !important;',
+    '}',
+    '.scw-ws-v2-card--install .scw-ws-v2-row--assumptions > .scw-ws-v2-cell--install-descro,',
+    '.scw-ws-v2-card--install .scw-ws-v2-row--services > .scw-ws-v2-cell--install-descro {',
+    '  grid-column: 2 / 5 !important; align-self: center !important;',
+    '}',
+    '.scw-ws-v2-card--install .scw-ws-v2-row--assumptions > .scw-ws-v2-cell--install-scwnotes,',
+    '.scw-ws-v2-card--install .scw-ws-v2-row--services > .scw-ws-v2-cell--install-scwnotes {',
+    '  grid-column: 5 / 6 !important;',
+    '}',
+    '.scw-ws-v2-card--install .scw-ws-v2-row--assumptions > .scw-ws-v2-cell--warn,',
+    '.scw-ws-v2-card--install .scw-ws-v2-row--services > .scw-ws-v2-cell--warn {',
+    '  grid-column: 6 / 7 !important;',
+    '}',
+    '.scw-ws-v2-card--install .scw-ws-v2-row--assumptions > .scw-ws-v2-trash,',
+    '.scw-ws-v2-card--install .scw-ws-v2-row--services > .scw-ws-v2-trash {',
+    '  grid-column: 7 / 8 !important;',
+    '}',
     /* SCW Notes — first/leftmost detail field, shown as a clear multi-line
        paragraph (wider than the info fields, taller min-height). */
     '.scw-ws-v2-sd--paragraph { flex: 1 1 280px !important; min-width: 220px !important; max-width: 420px !important; }',
