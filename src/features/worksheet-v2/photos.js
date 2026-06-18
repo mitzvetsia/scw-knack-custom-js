@@ -861,6 +861,13 @@
     ov.querySelector('.scw-ws-v2-photo-confirm-yes').addEventListener('click', function () {
       ov.parentNode && ov.parentNode.removeChild(ov);
       targetCard.classList.add('scw-ws-v2-photo-card--pending');
+      // Visible "working" feedback while the move webhook + refetch run (the
+      // overlay is discarded when the strip rebuilds on refetch).
+      var saving = document.createElement('div');
+      saving.className = 'scw-ws-v2-photo-saving';
+      saving.innerHTML = '<span class="scw-ws-v2-photo-spinner"></span>' +
+                         '<span>Saving…</span>';
+      targetCard.appendChild(saving);
       dispatchPhotoMove(detail, viewKey);
     });
     targetCard.appendChild(ov);
