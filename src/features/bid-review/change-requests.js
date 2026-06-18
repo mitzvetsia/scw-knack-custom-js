@@ -1951,8 +1951,14 @@
       pkg.items.length + ' item(s) will be sent.')) return;
 
     var payload = buildSubmitPayload(pkgId);
-    payload.html      = buildSubmitHtml(pkgId);
-    payload.plainText = buildSubmitPlainText(pkgId);
+    // The HTML/plain-text summaries are decorative — the structured items[]
+    // payload is what Make consumes. NEVER let a summary-builder exception
+    // block the webhook POST (a missing action key here once silently killed
+    // submit for reinstate CRs). Build them defensively.
+    try { payload.html = buildSubmitHtml(pkgId); }
+    catch (e1) { console.error('[BidReview CR] buildSubmitHtml failed — sending without html', e1); payload.html = ''; }
+    try { payload.plainText = buildSubmitPlainText(pkgId); }
+    catch (e2) { console.error('[BidReview CR] buildSubmitPlainText failed — sending without plainText', e2); payload.plainText = ''; }
     var html = payload.html;
 
     if (CFG.debug) {
