@@ -68,6 +68,7 @@
   var ORPHAN_SEC = P + '-orphan-section';
   var INJECTED   = 'data-scw-ws-v2-rev-injected';
   var MODAL_ID   = P + '-edit-overlay';
+  var REJECT_MODAL_ID = P + '-reject-overlay';
 
   function debug() {
     if (window.SCW && typeof SCW.debug === 'function') SCW.debug.apply(SCW, arguments);
@@ -741,43 +742,97 @@
     actions.appendChild(approveBtn);
     wrap.appendChild(actions);
 
-    var rejectWrap = document.createElement('div');
-    rejectWrap.className = P + '-reject-wrap';
-    var input = document.createElement('textarea');
-    input.className = P + '-reject-input';
-    input.placeholder = 'Reason for rejection (required)…';
-    input.rows = 2;
-    rejectWrap.appendChild(input);
-    var errorMsg = document.createElement('div');
-    errorMsg.className = P + '-reject-error';
-    rejectWrap.appendChild(errorMsg);
-    var confirmBtn = document.createElement('button');
-    confirmBtn.type = 'button';
-    confirmBtn.className = P + '-reject-confirm';
-    confirmBtn.textContent = 'Confirm Rejection';
-    rejectWrap.appendChild(confirmBtn);
-    wrap.appendChild(rejectWrap);
-
-    approveBtn.addEventListener('click', function () {
+    // stopPropagation on every action click: these buttons live inside the
+    // revision strip nested in a worksheet card, and a bubbling click can be
+    // re-handled by the card/banner toggle.
+    approveBtn.addEventListener('click', function (e) {
+      e.stopPropagation();
       approveBtn.disabled = editBtn.disabled = rejectBtn.disabled = true;
       submitRevisionAction(revisionId, 'approve', '', wrap, { outcome: 'accepted' });
     });
-    editBtn.addEventListener('click', function () {
+    editBtn.addEventListener('click', function (e) {
+      e.stopPropagation();
       openEditModal(revisionId, jsonRef.data, wrap, jsonRef);
     });
-    rejectBtn.addEventListener('click', function () {
-      rejectWrap.classList.toggle('is-open');
-      if (rejectWrap.classList.contains('is-open')) input.focus();
-    });
-    confirmBtn.addEventListener('click', function () {
-      var reason = input.value.trim();
-      if (!reason) { errorMsg.textContent = 'A reason is required to reject.'; input.focus(); return; }
-      errorMsg.textContent = '';
-      approveBtn.disabled = editBtn.disabled = rejectBtn.disabled = confirmBtn.disabled = true;
-      submitRevisionAction(revisionId, 'reject', reason, wrap, { outcome: 'rejected' });
+    // Reject reason is captured in a body-level modal, NOT an inline panel:
+    // inject()/cleanup() rebuild the revision strip on every observer tick /
+    // view re-render, which wiped an inline panel mid-interaction ("flash then
+    // nothing"). A body-level modal survives container rebuilds.
+    rejectBtn.addEventListener('click', function (e) {
+      e.stopPropagation();
+      openRejectModal(revisionId, wrap);
     });
 
     return wrap;
+  }
+
+  function closeRejectModal() {
+    var el = document.getElementById(REJECT_MODAL_ID);
+    if (el) el.remove();
+  }
+
+  function openRejectModal(revisionId, wrapEl) {
+    closeRejectModal();
+
+    var overlay = document.createElement('div');
+    overlay.id = REJECT_MODAL_ID;
+    overlay.className = P + '-modal-overlay';
+    overlay.addEventListener('click', function (e) { if (e.target === overlay) closeRejectModal(); });
+
+    var modal = document.createElement('div');
+    modal.className = P + '-modal';
+    modal.style.maxWidth = '440px';
+
+    var header = document.createElement('div');
+    header.className = P + '-modal-header';
+    var title = document.createElement('div');
+    title.className = P + '-modal-title';
+    title.textContent = 'Reject Change Request';
+    header.appendChild(title);
+    var closeBtn = document.createElement('button');
+    closeBtn.className = P + '-modal-close';
+    closeBtn.textContent = '×';
+    closeBtn.addEventListener('click', closeRejectModal);
+    header.appendChild(closeBtn);
+    modal.appendChild(header);
+
+    var body = document.createElement('div');
+    body.className = P + '-modal-body';
+    var ta = document.createElement('textarea');
+    ta.className = P + '-reject-input';
+    ta.placeholder = 'Reason for rejection (required)…';
+    ta.rows = 4;
+    body.appendChild(ta);
+    var errorMsg = document.createElement('div');
+    errorMsg.className = P + '-reject-error';
+    body.appendChild(errorMsg);
+    modal.appendChild(body);
+
+    var footer = document.createElement('div');
+    footer.className = P + '-modal-footer';
+    var cancelBtn = document.createElement('button');
+    cancelBtn.type = 'button';
+    cancelBtn.className = P + '-btn ' + P + '-btn--cancel';
+    cancelBtn.textContent = 'Cancel';
+    cancelBtn.addEventListener('click', closeRejectModal);
+    var confirmBtn = document.createElement('button');
+    confirmBtn.type = 'button';
+    confirmBtn.className = P + '-btn ' + P + '-btn--reject';
+    confirmBtn.textContent = 'Confirm Rejection';
+    confirmBtn.addEventListener('click', function () {
+      var reason = ta.value.trim();
+      if (!reason) { errorMsg.textContent = 'A reason is required to reject.'; ta.focus(); return; }
+      confirmBtn.disabled = cancelBtn.disabled = true;
+      closeRejectModal();
+      submitRevisionAction(revisionId, 'reject', reason, wrapEl, { outcome: 'rejected' });
+    });
+    footer.appendChild(cancelBtn);
+    footer.appendChild(confirmBtn);
+    modal.appendChild(footer);
+
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+    setTimeout(function () { ta.focus(); }, 50);
   }
 
   function buildRevisionItem(rev) {
@@ -1445,16 +1500,13 @@
 
       // Prominent banner across the TOP of the card so a line item with a
       // pending change request is unmistakable. Click → expand the card.
+      // The toggle is wired via a DELEGATED document handler (wireBannerToggle)
+      // rather than a per-banner listener: cleanup() removes + re-adds banners
+      // on every inject, so a directly-bound listener intermittently lands on a
+      // banner mid-rebuild and the click is swallowed ("only sometimes toggles").
       if (!card.querySelector('.' + P + '-banner')) {
         var banner = makeBanner(revisions);
         banner.style.cursor = 'pointer';
-        banner.addEventListener('click', (function (cardEl) {
-          return function (e) {
-            e.stopPropagation();
-            var chevron = cardEl.querySelector('[data-scw-ws-v2-expand]');
-            if (chevron) chevron.click();
-          };
-        })(card));
         card.insertBefore(banner, card.firstChild);
       }
 
@@ -1666,9 +1718,29 @@
     document.head.appendChild(s);
   }
 
+  // Delegated banner-toggle: clicking a "change request pending" banner expands
+  // its card. Bound once at the document level so it survives every inject()
+  // rebuild of the banners (a per-banner listener missed clicks mid-rebuild).
+  // Orphan/ADD cards have a banner but no expand chevron → no-op for them.
+  function wireBannerToggle() {
+    if (document.documentElement.hasAttribute('data-scw-ws-v2-rev-banner-bound')) return;
+    document.documentElement.setAttribute('data-scw-ws-v2-rev-banner-bound', '1');
+    document.addEventListener('click', function (e) {
+      var banner = e.target && e.target.closest && e.target.closest('.' + P + '-banner');
+      if (!banner) return;
+      var card = banner.closest('.scw-ws-v2-card');
+      if (!card) return;
+      var chevron = card.querySelector('[data-scw-ws-v2-expand]');
+      if (!chevron) return;   // orphan card — not expandable
+      e.stopPropagation();
+      chevron.click();
+    });
+  }
+
   // ── BOOT ─────────────────────────────────────────────────
   function boot() {
     injectStyles();
+    wireBannerToggle();
     ensureObserver();
     scheduleInject();
   }
