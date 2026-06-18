@@ -269,6 +269,13 @@
         sourceViewKey:     'view_3505',
         mountAfterSelector: '#view_3505',
         label:             'Survey Line Items (v2 preview)',
+        // Toolbar CTA wiring for the survey scene (the shared toolbar defaults
+        // to the SOW context). addItemLabel = the "+ Add" button label AND the
+        // Knack link text the add handler clicks. photoUploadView = the
+        // bulk-upload VIEWS[] menuViewId for this scene (survey → view_3532,
+        // linkField surveyID, hash /site-survey-request-details/).
+        addItemLabel:      'Add Survey/Bid Item',
+        photoUploadView:   'view_3532',
         independentFields: true,            // Survey object — no SOW fallback
         moneyMode:         'survey',
         hideSow:           true,            // survey groups by Bid, not SOW

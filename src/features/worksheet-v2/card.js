@@ -1455,7 +1455,7 @@
     // v1 parity: empty Labor Description → danger (red).
     var laborDescWarn = surveyWarnClass(rec, F.laborDesc || 'field_2409', 'danger', null);
     var laborDescCell   = surveyFill(rec, viewKey, F.laborDesc || 'field_2409',
-      isCam ? 'Labor description' : 'Description', laborDescWarn);
+      isCam ? 'Labor description' : 'Description of Work', laborDescWarn);
 
     // Slot 5 (qty/chips): cam → cabling chips; assumptions → blank;
     // qty-locked (FLAG_limit to quantity one = Yes) → blank (qty implicit 1,

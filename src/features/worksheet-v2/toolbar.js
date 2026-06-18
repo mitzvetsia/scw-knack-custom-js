@@ -113,6 +113,8 @@
   }
 
   function build(viewKey) {
+    var _vc = ns.cfg && typeof ns.cfg.viewCfg === 'function' && ns.cfg.viewCfg(viewKey);
+    var addLabel = (_vc && _vc.addItemLabel) ? ('+ ' + _vc.addItemLabel) : '+ Add to SOW';
     var bar = document.createElement('div');
     bar.className = 'scw-ws-v2-toolbar';
     bar.innerHTML =
@@ -144,8 +146,8 @@
       '</div>' +
       '<div class="scw-ws-v2-toolbar-spacer"></div>' +
       '<div class="scw-ws-v2-toolbar-group scw-ws-v2-toolbar-group--cta">' +
-        actionBtn('add-sow',      '+ Add to SOW',         'Add a new SOW line item') +
-        actionBtn('add-photos',   '+ Add Photos',         'Bulk upload photos to this SOW') +
+        actionBtn('add-sow',      addLabel,               'Add a new line item') +
+        actionBtn('add-photos',   '+ Add Photos',         'Bulk upload photos') +
         // "+ Add Accessories" lives in the floating bulk panel (bulk.js)
         // now — it only applies to a row selection, same as Remove.
       '</div>';
@@ -283,8 +285,15 @@
         'Add SOW Line Item',
         'Add Scope of Work Line Item',
         'Add Bid Item',
-        'Add Survey Item'
+        'Add Survey Item',
+        'Add Survey/Bid Item'
       ];
+      // Prefer the per-view configured link text (e.g. survey → "Add
+      // Survey/Bid Item") so the right Knack link is matched first.
+      try {
+        var _vcAdd = ns.cfg && typeof ns.cfg.viewCfg === 'function' && ns.cfg.viewCfg(viewKey);
+        if (_vcAdd && _vcAdd.addItemLabel) candidates.unshift(_vcAdd.addItemLabel);
+      } catch (e) { /* fall back to the static list */ }
       var anchors = document.querySelectorAll('a.kn-link, .scw-acc-action-btn, .kn-link-page, a');
       var match = null;
       for (var ci = 0; ci < anchors.length && !match; ci++) {
@@ -307,7 +316,7 @@
       return;
     }
     if (action === 'add-photos') {
-      openBulkPhotoUpload();
+      openBulkPhotoUpload(viewKey);
       return;
     }
     if (action === 'add-mounting') {
@@ -346,32 +355,46 @@
   // the existing SCW.bulkUpload modal. We borrow v1\'s registered view
   // config so refresh hooks (re-fetch view_3610 / view_3962) stay
   // consistent without us duplicating the list.
-  function openBulkPhotoUpload() {
+  function openBulkPhotoUpload(viewKey) {
     var bu = window.SCW && window.SCW.bulkUpload;
     if (!bu || typeof bu.open !== 'function' || !bu.config) {
       alert('Bulk upload is not loaded. Refresh the page and try again.');
       return;
     }
-    // Find the SOW-context entry (menuViewId view_3482 has the SOW /
-    // build-sow / project-dashboard contexts wired). Fall back to a
-    // generic build-sow hash pattern if the entry isn\'t available.
+    // Which bulk-upload VIEWS[] entry serves this scene's photo context?
+    // Per-view config picks it (survey → view_3532, surveyID, /site-survey-
+    // request-details/); defaults to the SOW context (view_3482).
+    var _vc = ns.cfg && typeof ns.cfg.viewCfg === 'function' && ns.cfg.viewCfg(viewKey);
+    var menuViewId = (_vc && _vc.photoUploadView) || 'view_3482';
     var views = bu.config.VIEWS || [];
     var viewCfg = null;
     for (var i = 0; i < views.length; i++) {
-      if (views[i].menuViewId === 'view_3482') { viewCfg = views[i]; break; }
+      if (views[i].menuViewId === menuViewId) { viewCfg = views[i]; break; }
     }
     if (!viewCfg) {
-      alert('Bulk upload config for SOW photos not found.');
+      alert('Bulk upload config for these photos (' + menuViewId + ') not found.');
       return;
     }
 
-    // resolveContext-equivalent: project-dashboard takes precedence
-    // (its 24-hex id is the project), then the SOW page route.
+    // resolveContext: prefer the entry's own injectTarget contexts (e.g.
+    // view_3610's project-dashboard-vs-SOW precedence); otherwise derive a
+    // single context from the entry's hashPattern + linkField (survey uses
+    // /site-survey-request-details/ → surveyID).
     var hash = window.location.hash || '';
-    var contexts = [
-      { linkField: 'projectID', hashPattern: /project-dashboard\/([a-f0-9]{24})/ },
-      { linkField: 'sowID',     hashPattern: /(?:scope-of-work-details|build-sow)\/([a-f0-9]{24})/ }
-    ];
+    var contexts = null;
+    var injectTargets = viewCfg.injectTargets || [];
+    for (var t = 0; t < injectTargets.length; t++) {
+      if (injectTargets[t] && injectTargets[t].contexts && injectTargets[t].contexts.length) {
+        contexts = injectTargets[t].contexts; break;
+      }
+    }
+    if (!contexts) {
+      contexts = [{
+        linkField:   viewCfg.linkField || 'sowID',
+        hashPattern: viewCfg.hashPattern ||
+          /(?:scope-of-work-details|build-sow)\/([a-f0-9]{24})/
+      }];
+    }
     var recordId = '', linkField = '';
     for (var c = 0; c < contexts.length; c++) {
       var m = hash.match(contexts[c].hashPattern);

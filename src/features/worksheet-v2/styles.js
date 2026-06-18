@@ -210,13 +210,17 @@
     '.scw-ws-v2-card--survey .scw-ws-v2-cell--product.scw-ws-v2-cell--ro {',
     '  cursor: default !important;',
     '}',
-    /* Survey assumptions: assumption text (labor-desc, col 5) spans the
-       middle; Survey Notes + Labor/Ext blanks hidden so they don\'t overlap.
-       Bid stays at col 9. Overrides the base 3/10 assumptions span. */
+    /* Survey assumptions: assumption text (labor-desc) spans from the label
+       column through the money columns — assumptions need no drop label or
+       product, so those cells are hidden and the text reclaims their space.
+       Bid stays at col 9. Survey Notes + Labor/Ext/Qty blanks hidden too. */
     '.scw-ws-v2-card--survey .scw-ws-v2-row--assumptions > .scw-ws-v2-cell--labor-desc {',
-    '  grid-column: 4 / 9 !important;',
+    '  grid-column: 2 / 9 !important;',
     '}',
+    '.scw-ws-v2-card--survey .scw-ws-v2-row--assumptions > .scw-ws-v2-cell--label,',
+    '.scw-ws-v2-card--survey .scw-ws-v2-row--assumptions > .scw-ws-v2-cell--product,',
     '.scw-ws-v2-card--survey .scw-ws-v2-row--assumptions > .scw-ws-v2-cell--survey-notes,',
+    '.scw-ws-v2-card--survey .scw-ws-v2-row--assumptions > .scw-ws-v2-cell--num,',
     '.scw-ws-v2-card--survey .scw-ws-v2-row--assumptions > .scw-ws-v2-cell--survey-labor,',
     '.scw-ws-v2-card--survey .scw-ws-v2-row--assumptions > .scw-ws-v2-cell--survey-ext {',
     '  display: none !important;',

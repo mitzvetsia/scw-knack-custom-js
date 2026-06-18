@@ -289,7 +289,8 @@
           '<span>Drop</span>' +
           '<span>Product</span>' +
           '<span>Survey Notes</span>' +
-          '<span>Description</span>' +
+          '<span title="Detail the work that will be completed under this line item">' +
+            'Description of Work</span>' +
           '<span>Qty</span>' +
           '<span class="scw-ws-v2-col-header-total">Labor</span>' +
           '<span class="scw-ws-v2-col-header-total">Ext</span>' +
