@@ -28,6 +28,16 @@
 
   var ns = window.SCW.worksheetV2;
   if (!ns || !ns.CONFIG) return;
+
+  // External users explicitly admitted to internalOnly v2 previews on top of
+  // the @getscw.com domain (e.g. subcontractors who need the v2 bid worksheet,
+  // view_3505). Passed to SCW.isInternalUser() by the gate below. Lowercase.
+  // NOTE: this is the UI gate only — these users ALSO need Knack view/object
+  // read permission on the gated view for the data to load.
+  var PREVIEW_ALLOWLIST = [
+    'aaron.marheine@securevisionsolutions.com',
+    'preston.bauer@securevisionsolutions.com'
+  ];
   if (!ns.CONFIG.enabled) return;
 
   function buildPanel(vcfg) {
@@ -63,7 +73,8 @@
   // attribute populates.
   function gatedOut(vcfg) {
     if (!vcfg || !vcfg.internalOnly) return false;
-    return !(window.SCW && typeof SCW.isInternalUser === 'function' && SCW.isInternalUser());
+    return !(window.SCW && typeof SCW.isInternalUser === 'function' &&
+      SCW.isInternalUser(PREVIEW_ALLOWLIST));
   }
 
   function tryMount(vcfg) {
