@@ -62,6 +62,7 @@
   var _hasUnsavedChanges = false;
   var _isSaving = false;
   var _savedFadeTimer = null;   // resets the "Saved ✓" status after a beat
+  var _resavePending = null;    // edit that arrived mid-save → drained on completion
   // When the popover is opened off a host-supplied anchor (e.g. the V2
   // install photo strip via openForAnchor) rather than a worksheet chit,
   // this holds a callback(fields, photo) that lets the host refresh its own
@@ -551,6 +552,17 @@
       setSaveStatus(ctl, 'dirty', 'Unsaved changes');
       updateActions(ctl, photo);
     });
+    // Auto-save on tab-out / click-away (blur) and on plain Enter, so the user
+    // never has to hit a Save button. Shift+Enter inserts a newline.
+    notes.addEventListener('blur', function () {
+      if (_hasUnsavedChanges) saveDirty(ctl, photo);
+    });
+    notes.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' && !e.shiftKey) {
+        e.preventDefault();
+        if (_hasUnsavedChanges) saveDirty(ctl, photo);
+      }
+    });
     notesSec.appendChild(notes);
     var hint = document.createElement('div');
     hint.className = 'scw-qa-popover__notes-hint';
@@ -743,8 +755,9 @@
         chip.classList.add('is-selected');
         photo[fieldName] = opt;
         _hasUnsavedChanges = true;
-        setSaveStatus(pop, 'dirty', 'Unsaved changes');
         updateActions(pop, photo);
+        // Auto-save the chip change immediately (with Saving…/Saved feedback).
+        saveDirty(pop, photo);
       });
       row.appendChild(chip);
     });
@@ -789,20 +802,10 @@
       }
     }
 
-    // Save button — persists the current edits (notes + chip changes that
-    // don't complete a sign-off) WITHOUT closing the panel, with inline
-    // feedback. Shown whenever there are unsaved changes. Secondary style;
-    // sits left of the state-specific primary button.
-    function appendSaveBtn() {
-      if (!_hasUnsavedChanges) return;
-      var save = document.createElement('button');
-      save.type = 'button';
-      save.className = 'scw-qa-popover__btn';
-      save.textContent = 'Save';
-      save.disabled = notesMissing;
-      save.addEventListener('click', function () { saveDirty(pop, photo); });
-      btns.appendChild(save);
-    }
+    // No explicit Save button — edits (chips + notes) auto-save on change /
+    // tab / Enter with inline Saving…/Saved feedback. "Close" simply leaves
+    // (a final autosave-on-close catches any not-yet-committed text as a
+    // safety net).
 
     // Primary action depends on state.
     if (alreadySignedOff) {
@@ -812,8 +815,6 @@
       revert.textContent = 'Revert sign-off';
       revert.addEventListener('click', function () { onRevert(photo); });
       btns.appendChild(revert);
-
-      appendSaveBtn();
 
       var close = document.createElement('button');
       close.type = 'button';
@@ -825,11 +826,9 @@
       var cancel = document.createElement('button');
       cancel.type = 'button';
       cancel.className = 'scw-qa-popover__btn scw-qa-popover__btn--cancel';
-      cancel.textContent = 'Cancel';
+      cancel.textContent = 'Close';
       cancel.addEventListener('click', function () { closePopover(false); });
       btns.appendChild(cancel);
-
-      appendSaveBtn();
 
       var signoff = document.createElement('button');
       signoff.type = 'button';
@@ -845,7 +844,11 @@
   // panel — gives the user explicit "Saving… → Saved ✓" feedback. Mirrors the
   // field diff in autoSaveIfDirty but keeps the popover open.
   function saveDirty(pop, photo) {
-    if (_isSaving) return;
+    // A save requested while another is in flight (e.g. a chip click landing
+    // during a notes-blur save) is queued, not dropped — drained on completion
+    // so concurrent edits converge instead of being lost when the in-flight
+    // save clears the dirty flag.
+    if (_isSaving) { _resavePending = { pop: pop, photo: photo }; return; }
     var status = readSelectedChip(pop, 'status') || _initialState.status;
     var client = readSelectedChip(pop, 'client') || _initialState.client;
     var notesEl = pop.querySelector('.scw-qa-popover__notes');
@@ -874,6 +877,8 @@
       _isSaving = false;
       if (err) {
         setSaveStatus(pop, 'error', 'Save failed — try again');
+        // A queued edit still needs a home; leave it dirty for close-autosave.
+        _resavePending = null;
         return;
       }
       // Commit to the baseline so close-autosave + diff stay consistent.
@@ -884,8 +889,15 @@
       _hasUnsavedChanges = false;
       if (_refreshHandler) _refreshHandler(fields, photo);
       else if (chit) refreshChitAndCells(chit, photo, fields);
+      // Drain a queued save (an edit that arrived mid-flight). It re-diffs
+      // against the just-updated baseline, so only genuinely-new changes save.
+      if (_resavePending) {
+        var pend = _resavePending; _resavePending = null;
+        saveDirty(pend.pop, pend.photo);
+        return;
+      }
       setSaveStatus(pop, 'saved', 'Saved ✓');
-      updateActions(pop, photo);   // drop the Save button now that we're clean
+      updateActions(pop, photo);
       clearTimeout(_savedFadeTimer);
       _savedFadeTimer = setTimeout(function () {
         if (!_hasUnsavedChanges) setSaveStatus(pop, '', '');
