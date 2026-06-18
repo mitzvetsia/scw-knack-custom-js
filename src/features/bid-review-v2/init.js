@@ -375,6 +375,20 @@
         return;
       }
 
+      // Project-docs controls (link / unlink / filter chip / "other docs"
+      // expand toggle). v1 renders these inside the SOW status bar v2 injects
+      // into its header, but v1's listener is bound to v1's grid mount so it
+      // never sees them on the v2 page. Route to v1's docs dispatcher.
+      var docsBtn = e.target.closest('.scw-bid-review__docs-other-toggle[data-action]')
+        || e.target.closest('.scw-bid-review__docs-link-btn[data-action]')
+        || e.target.closest('.scw-bid-review__docs-unlink-btn[data-action]')
+        || e.target.closest('.scw-bid-review__docs-chip[data-action]');
+      if (docsBtn) {
+        e.preventDefault(); e.stopPropagation();
+        if (v1.dispatchDocsAction) v1.dispatchDocsAction(docsBtn);
+        return;
+      }
+
       // Header buttons — package_* go to dispatchHeaderAction, cr_* fall
       // through to dispatchCRAction.
       var headBtn = e.target.closest('.scw-bid-review-v2__head-btn[data-action]');

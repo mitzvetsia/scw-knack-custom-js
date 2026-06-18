@@ -3399,6 +3399,30 @@
     return false;
   };
 
+  // Public dispatcher for the project-docs controls v1 renders inside the
+  // SOW status bar. v2 injects that status bar into its own header DOM via
+  // buildSowStatusBar, but v1's click listener is bound to v1's grid mount
+  // (not document), so these buttons never fire on the v2 reconcile page.
+  // v2's document-level listener calls this verbatim. Returns true if
+  // dispatched.
+  ns.dispatchDocsAction = function dispatchDocsAction(button) {
+    if (!button) return false;
+    var action = button.getAttribute('data-action');
+    if (!action) return false;
+    if (action === 'doc_link_to_sow')     { handleDocLinkToSow(button); return true; }
+    if (action === 'doc_unlink_from_sow') { handleDocUnlinkFromSow(button); return true; }
+    if (action === 'doc_filter')          { handleDocFilter(button); return true; }
+    if (action === 'docs_toggle_other') {
+      var section = button.closest('.scw-bid-review__docs-other');
+      if (section) {
+        var c = section.getAttribute('data-collapsed') === '1';
+        section.setAttribute('data-collapsed', c ? '0' : '1');
+      }
+      return true;
+    }
+    return false;
+  };
+
   // Public change dispatcher for the SOW metric inputs v2 renders via
   // buildSowStatusBar (exposed from render.js). Mirrors v1's mount change
   // listener.
