@@ -418,10 +418,14 @@
         ' data-photo-required="'   + (p.required ? 'true' : 'false') + '"' +
         ' data-photo-type="'       + escapeHtml(p.type || '') + '"' +
         ' data-photo-notes="'      + escapeHtml(p.notes || '') + '"';
-      // Pointer-based drag (below) handles dragging — native HTML5 draggable
-      // is suppressed by KTL on these anchors, so we don't use it. Mark filled
-      // cards so the grab cursor + pointer-drag opt-in.
-      var draggableAttr = p.imgUrl ? ' data-scw-ws-v2-photo-drag="1"' : '';
+      // Pointer-based drag (below) handles dragging. CRITICAL: an <a href> is
+      // draggable by DEFAULT, so without draggable="false" the browser starts a
+      // native link-drag that captures the mouse — mouseup never reaches our
+      // handler, the ghost sticks, and the drop needs a second click. Kill
+      // native drag on every photo card (v1 does the same). The data marker
+      // (+ grab cursor) goes only on filled cards (the pointer-drag sources).
+      var draggableAttr = ' draggable="false"' +
+        (p.imgUrl ? ' data-scw-ws-v2-photo-drag="1"' : '');
       // OPS-only photo delete (see PHOTO_DELETE_VIEWS). Only on cards that
       // hold a real photo record; placeholders have nothing to delete.
       var delBtn = (PHOTO_DELETE_VIEWS[sourceViewKey] && p.id)
