@@ -874,14 +874,28 @@
         pGhost = null, pHover = null, pSuppressClick = false;
 
     function pHighlightTargets(card) {
+      // Mirror v1 inline-photo-row: valid drop targets are any OTHER card that
+      // is still EMPTY (no image yet), required or not. Filled slots are
+      // excluded so a drop can never silently overwrite an existing photo.
       var strip = stripOf(card);
       if (!strip) return;
+      var srcId = card.getAttribute('data-photo-id');
       var cards = strip.querySelectorAll(CARD_SEL);
       for (var i = 0; i < cards.length; i++) {
-        if (cards[i] !== card && isReqSlot(cards[i])) {
-          cards[i].classList.add('scw-ws-v2-photo-drop-ok');
-        }
+        if (cards[i].getAttribute('data-photo-id') === srcId) continue;
+        if (cards[i].getAttribute('data-photo-has-image') === 'true') continue;
+        cards[i].classList.add('scw-ws-v2-photo-drop-ok');
       }
+    }
+    // The drop-ok card under the cursor — temporarily hide the ghost so it
+    // doesn't shadow elementFromPoint (mirrors v1's targetUnder).
+    function pTargetUnder(x, y) {
+      var prev = pGhost ? pGhost.style.display : null;
+      if (pGhost) pGhost.style.display = 'none';
+      var el = document.elementFromPoint(x, y);
+      if (pGhost) pGhost.style.display = prev || '';
+      var t = (el && el.closest) ? el.closest(CARD_SEL) : null;
+      return (t && t.classList.contains('scw-ws-v2-photo-drop-ok')) ? t : null;
     }
     function pMoveGhost(x, y) {
       if (pGhost) { pGhost.style.left = (x + 14) + 'px'; pGhost.style.top = (y + 14) + 'px'; }
@@ -919,9 +933,7 @@
       }
       e.preventDefault();
       pMoveGhost(e.clientX, e.clientY);
-      var under = document.elementFromPoint(e.clientX, e.clientY);
-      var t = (under && under.closest) ? under.closest(CARD_SEL) : null;
-      var ok = (t && t.classList.contains('scw-ws-v2-photo-drop-ok')) ? t : null;
+      var ok = pTargetUnder(e.clientX, e.clientY);
       if (pHover && pHover !== ok) pHover.classList.remove('scw-ws-v2-photo-drop-hover');
       if (ok) ok.classList.add('scw-ws-v2-photo-drop-hover');
       pHover = ok;
@@ -956,6 +968,11 @@
 
     document.addEventListener('click', function (e) {
       if (pSuppressClick) { e.preventDefault(); e.stopPropagation(); pSuppressClick = false; }
+    }, true);
+
+    // Escape cancels an in-progress drag (mirrors v1).
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && pDragging) pCleanup();
     }, true);
   }
 

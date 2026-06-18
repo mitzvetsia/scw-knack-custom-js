@@ -2026,7 +2026,6 @@
     '  width: 84px !important; height: 64px !important;',
     '  border-radius: 6px !important; overflow: hidden !important;',
     '  box-shadow: 0 6px 18px rgba(0,0,0,0.35) !important;',
-    '  transform: rotate(-3deg) !important;',
     '}',
     '.scw-ws-v2-photo-ghost img {',
     '  width: 100% !important; height: 100% !important;',
