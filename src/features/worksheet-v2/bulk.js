@@ -349,6 +349,15 @@
     { key: 'field_2261', label: 'Custom Disc %', kind: 'number' }
   ];
 
+  // Fields that are READ-ONLY in a given source-view context, so they must not
+  // appear as bulk-edit options even though they live in the field registry.
+  // SCW Notes (field_1953) is owned upstream (build-SOW) and is read-only on
+  // the bid-review comparison grid (view_3921) — see bid-review-v2's
+  // makeScwNotesReadOnly, which locks the per-card field too.
+  var READONLY_FIELDS_BY_VIEW = {
+    view_3921: { field_1953: true }
+  };
+
   /** Build an id→attributes index from the source view's loaded records.
    *  Uses ns.data.readRecords (the .models read path that render.js draws
    *  from) rather than Backbone Collection.get(), which on Knack's model
@@ -1551,6 +1560,12 @@
     var mixedBuckets = !allSameBucket(ids, sourceViewKey);
     if (mixedBuckets && !locked) {
       fields = fields.filter(function (f) { return f.key !== 'field_1949'; });
+    }
+    // Drop fields that are read-only in this view's context (e.g. SCW Notes on
+    // the bid-review comparison grid). Applies even to the locked whitelist.
+    var roSet = READONLY_FIELDS_BY_VIEW[sourceViewKey];
+    if (roSet) {
+      fields = fields.filter(function (f) { return !roSet[f.key]; });
     }
     var subHtml = locked
       ? 'Some selected rows are locked — only <b>Product</b>, <b>SCW Notes</b> &amp; <b>Custom Disc %</b> can be bulk-edited.'
