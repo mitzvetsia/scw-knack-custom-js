@@ -782,8 +782,10 @@
   }
 
   // Append v1's pending-CR summary card (if any) into a cell + flag the
-  // cell so it reads as "has a pending change". The card carries the CR
-  // dispatch attrs so clicking it re-opens the edit modal (v1 parity).
+  // cell so it reads as "has a pending change". Clicking the card EXPANDS the
+  // row (bubbles to the row's expand handler) rather than re-opening the edit
+  // modal — the cell's own Revise button still covers editing the CR. (The
+  // card's × dismiss button stops propagation, so it still dismisses.)
   function appendPendingCard(td, pendingItem, row, pkg, sowId) {
     if (!pendingItem) return;
     var api = crApi();
@@ -792,10 +794,6 @@
       var card = api.buildSummaryCard(pendingItem, pkg && pkg.id, pkg && pkg.label);
       if (card) {
         card.classList.add('scw-bid-review-v2__cell-cr-card');
-        card.setAttribute('data-action', 'cell_request_change');
-        card.setAttribute('data-row-id', (row && row.id) || '');
-        card.setAttribute('data-package-id', (pkg && pkg.id) || '');
-        card.setAttribute('data-sow-id', sowId || '');
         td.classList.add('scw-bid-review-v2__cell--has-cr');
         td.appendChild(card);
       }
