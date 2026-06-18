@@ -784,20 +784,30 @@
     var json = rev.changeJson;
     if (json && typeof json === 'string') { try { json = JSON.parse(json); } catch (e) { json = null; } }
     var cr = json ? JSON.parse(JSON.stringify(json)) : {};
+    var action = cr.action || 'revise';
     var surveyId = rev.surveyItemId || cr.bidRecordId || cr.rowId || '';
+    // The bid record id is the view_3680 record Make re-links on a reinstate.
+    // For reinstate it must come STRICTLY from cr.bidRecordId — never fall back
+    // to surveyId (a SOW line-item id), or Make receives a SOW id where it
+    // expects a bid id and the reinstate can't resolve the record. For other
+    // actions the surveyId fallback is harmless (revise/remove key off it).
+    var bidRecordId = (action === 'reinstate')
+      ? (cr.bidRecordId || '')
+      : (cr.bidRecordId || surveyId);
     var item = {
-      action:             cr.action || 'revise',
+      action:             action,
       revisionLineItemId: rev.id,
       parentRequestId:    rev.parentRequestId || '',
       surveyItemId:       surveyId,
       rowId:              cr.rowId || surveyId,
-      bidRecordId:        cr.bidRecordId || surveyId,
+      bidRecordId:        bidRecordId,
       sowItemId:          cr.sowItemId || '',
       displayLabel:       cr.displayLabel || '',
       productName:        cr.productName || '',
       changeNotes:        cr.changeNotes || '',
       proposalBucketId:   cr.proposalBucketId || ''
     };
+    if (cr.reinstate) item.reinstate = true;
     if (cr.current)   item.current   = cr.current;
     if (cr.requested) item.requested = cr.requested;
     if (cr.fields)    item.fields    = cr.fields;
