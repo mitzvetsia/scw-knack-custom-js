@@ -1538,6 +1538,12 @@
         rowId:        it.rowId,
         bidRecordId:  it.bidRecordId || null,
         sowItemId:    it.sowItemId || '',
+        // Carry the bid package per-item so it survives into the stored change
+        // JSON. The acceptance flow (worksheet-v2/change-requests.js) reads it
+        // back so Make knows which package to re-link a reinstated bid record
+        // onto — the top-level payload.packageId isn't stored per revision row.
+        packageId:    pkgId,
+        packageName:  pkg.pkgName || '',
         displayLabel: it.displayLabel || '',
         productName:  it.productName || '',
         changeNotes:  it.changeNotes || '',

@@ -802,6 +802,10 @@
       rowId:              cr.rowId || surveyId,
       bidRecordId:        bidRecordId,
       sowItemId:          cr.sowItemId || '',
+      // Bid package the CR targeted — Make re-links the reinstated bid record
+      // onto it. Stored per-item in the change JSON at submit time.
+      packageId:          cr.packageId || '',
+      packageName:        cr.packageName || '',
       displayLabel:       cr.displayLabel || '',
       productName:        cr.productName || '',
       changeNotes:        cr.changeNotes || '',
