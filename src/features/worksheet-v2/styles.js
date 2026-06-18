@@ -1055,6 +1055,11 @@
     '  color: #94a3b8 !important;',
     '  font-style: italic;',
     '}',
+    /* "· Read-only" tag appended to a detail-field label (e.g. SCW Notes on
+       the bid worksheet) to make the non-editable state explicit. */
+    '.scw-ws-v2-detail .scw-ws-v2-ro-tag {',
+    '  font-weight: 600; color: #9ca3af; text-transform: none; letter-spacing: 0;',
+    '}',
     /* When there\'s no identity zone (default/services), let connections
        fill the full width. */
     '.scw-ws-v2-detail-zones:not(:has(.scw-ws-v2-detail-zone--identity)) {',

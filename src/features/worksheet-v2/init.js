@@ -34,10 +34,11 @@
   // view_3505). Passed to SCW.isInternalUser() by the gate below. Lowercase.
   // NOTE: this is the UI gate only — these users ALSO need Knack view/object
   // read permission on the gated view for the data to load.
-  var PREVIEW_ALLOWLIST = [
-    'aaron.marheine@securevisionsolutions.com',
-    'preston.bauer@securevisionsolutions.com'
-  ];
+  // Temporarily empty — external access rolled back pending more bug fixes.
+  // To re-grant, add their lowercase emails back here (e.g.
+  // 'aaron.marheine@securevisionsolutions.com',
+  // 'preston.bauer@securevisionsolutions.com').
+  var PREVIEW_ALLOWLIST = [];
   if (!ns.CONFIG.enabled) return;
 
   function buildPanel(vcfg) {

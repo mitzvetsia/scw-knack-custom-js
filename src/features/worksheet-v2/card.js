@@ -933,6 +933,20 @@
     '</div>';
   }
 
+  /** Read-only multi-line notes display — same paragraph shape as
+   *  detailTextArea but non-editable (no edit hook, wrapping display, and a
+   *  "· Read-only" label tag). Used for SCW Notes on the bid worksheet, where
+   *  it's owned upstream and must not be edited. */
+  function detailNotesReadOnly(rec, fieldKey, label) {
+    return '<div class="scw-ws-v2-detail-field scw-ws-v2-detail-field--notes scw-ws-v2-detail-field--ro">' +
+      '<div class="scw-ws-v2-detail-label">' + escapeHtml(label) +
+        ' <span class="scw-ws-v2-ro-tag">· Read-only</span></div>' +
+      '<div class="scw-ws-v2-display scw-ws-v2-display--paragraph">' +
+        escapeHtml(readField(rec, fieldKey)) +
+      '</div>' +
+    '</div>';
+  }
+
   /**
    * Editable connection field — renders the current value as a button-
    * styled cell. Click handler in init.js reads the data-* attrs and
@@ -1499,8 +1513,10 @@
     // hardware list wide). Connections render READ-ONLY (SOW-specific picker
     // not wired). SCW Notes is the first/leftmost field — a clear multi-line
     // paragraph. Order otherwise mirrors v1 detailLayout.
+    // SCW Notes (field_2418) is READ-ONLY on the bid worksheet — owned
+    // upstream, not editable while bidding. Render as a non-editable paragraph.
     var items = sdItem(
-      detailTextArea(rec, viewKey, F.scwNotes || 'field_2418', 'SCW Notes'),
+      detailNotesReadOnly(rec, F.scwNotes || 'field_2418', 'SCW Notes'),
       'scw-ws-v2-sd--paragraph');
     if (cat === 'cam') {
       // Connected To (field_2381, single) — editable; cascade writes the

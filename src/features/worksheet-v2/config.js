@@ -359,7 +359,7 @@
             { f: 'dropLength',   kind: 'number',      label: 'Drop length' },
             { f: 'conduit',      kind: 'number',      label: 'Conduit' },
             { f: 'surveyNotes',  kind: 'text',        label: 'Survey notes' },
-            { f: 'scwNotes',     kind: 'text',        label: 'SCW Notes' },
+            // SCW Notes (field_2418) is READ-ONLY on the bid worksheet — omitted.
             { f: 'mdfIdf',       kind: 'conn-single', label: 'MDF / IDF', candSource: 'mdf' },
             { f: 'bid',          kind: 'conn-multi',  label: 'Bid',       candSource: 'survey-bids' }
           ],
@@ -368,7 +368,7 @@
             { f: 'labor',       kind: 'number',      label: 'Labor' },
             { f: 'qty',         kind: 'number',      label: 'Qty', gateNo: 'qtyOne' },
             { f: 'surveyNotes', kind: 'text',        label: 'Survey notes' },
-            { f: 'scwNotes',    kind: 'text',        label: 'SCW Notes' },
+            // SCW Notes (field_2418) is READ-ONLY on the bid worksheet — omitted.
             { f: 'mdfIdf',      kind: 'conn-single', label: 'MDF / IDF', candSource: 'mdf' },
             { f: 'bid',         kind: 'conn-multi',  label: 'Bid',       candSource: 'survey-bids' }
           ],
@@ -377,14 +377,14 @@
             { f: 'labor',       kind: 'number',      label: 'Labor' },
             { f: 'qty',         kind: 'number',      label: 'Qty', gateNo: 'qtyOne' },
             { f: 'surveyNotes', kind: 'text',        label: 'Survey notes' },
-            { f: 'scwNotes',    kind: 'text',        label: 'SCW Notes' },
+            // SCW Notes (field_2418) is READ-ONLY on the bid worksheet — omitted.
             { f: 'mdfIdf',      kind: 'conn-single', label: 'MDF / IDF', candSource: 'mdf' },
             { f: 'bid',         kind: 'conn-multi',  label: 'Bid',       candSource: 'survey-bids' }
           ],
           assumptions: [
             { f: 'laborDesc',   kind: 'text',        label: 'Assumption text' },
             { f: 'surveyNotes', kind: 'text',        label: 'Survey notes' },
-            { f: 'scwNotes',    kind: 'text',        label: 'SCW Notes' },
+            // SCW Notes (field_2418) is READ-ONLY on the bid worksheet — omitted.
             { f: 'mdfIdf',      kind: 'conn-single', label: 'MDF / IDF', candSource: 'mdf' },
             { f: 'bid',         kind: 'conn-multi',  label: 'Bid',       candSource: 'survey-bids' }
           ]
