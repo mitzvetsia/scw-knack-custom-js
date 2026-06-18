@@ -1125,7 +1125,10 @@
 
   /** Build a styled card DOM element summarizing a pending change item. */
   function buildSummaryCard(item, pkgId, pkgName) {
-    var cardClass = 'scw-bid-cr-card' + (item.removeFromBid ? ' scw-bid-cr-card--removal' : item.reinstate ? ' scw-bid-cr-card--add' : item.addToBid ? ' scw-bid-cr-card--add' : '');
+    // Reinstate is a REVISE (re-link an existing bid record), so it uses the
+    // neutral revise styling — NOT the green --add card. Only a true addToBid
+    // (new record) gets --add.
+    var cardClass = 'scw-bid-cr-card' + (item.removeFromBid ? ' scw-bid-cr-card--removal' : item.addToBid ? ' scw-bid-cr-card--add' : '');
     var card = el('div', cardClass);
     card.style.cursor = 'pointer';
 
