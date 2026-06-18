@@ -352,15 +352,19 @@
       // builds the ids array — the none row\'s value is '' so it
       // serializes to either an empty string (single) or skipped
       // entirely (multi → resulting in `[]`).
-      var noneRow = document.createElement('label');
-      noneRow.className = 'scw-ws-v2-picker-item scw-ws-v2-picker-item--none';
-      noneRow.innerHTML =
-        '<input type="' + inputType + '" name="' + inputName + '" value=""' +
-          (selected.length === 0 ? ' checked' : '') + '>' +
-        '<span class="scw-ws-v2-picker-item-text">' +
-          (multi ? 'Clear all selections' : '(no selection)') +
-        '</span>';
-      bd.appendChild(noneRow);
+      // Suppressed via allowClear:false — e.g. bulk "Add to existing" mode,
+      // where "clear" is meaningless (you can only ADD records, never clear).
+      if (opts.allowClear !== false) {
+        var noneRow = document.createElement('label');
+        noneRow.className = 'scw-ws-v2-picker-item scw-ws-v2-picker-item--none';
+        noneRow.innerHTML =
+          '<input type="' + inputType + '" name="' + inputName + '" value=""' +
+            (selected.length === 0 ? ' checked' : '') + '>' +
+          '<span class="scw-ws-v2-picker-item-text">' +
+            (multi ? 'Clear all selections' : '(no selection)') +
+          '</span>';
+        bd.appendChild(noneRow);
+      }
       groups.forEach(function (g) {
         if (g.label) {
           var head = document.createElement('div');

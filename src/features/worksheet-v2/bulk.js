@@ -1660,6 +1660,11 @@
         slot.querySelector('button').addEventListener('click', function () {
           var resolved = getSourceCandidatesForConn(f, sourceViewKey, ids);
           var cands = resolved.candidates;
+          // "Add to existing" mode only ADDS the picked records to each row's
+          // current selection — clearing is meaningless there, so suppress the
+          // picker's "Clear all selections" row and treat an empty pick as "no
+          // change" rather than a no-op clear (the illogical UX we're fixing).
+          var addMode = (f.kind === 'conn-multi' && rowState[f.key].mode === 'add');
           if (!ns.picker || typeof ns.picker.open !== 'function') {
             status.textContent = 'Picker not available.';
             return;
@@ -1717,8 +1722,17 @@
             groupBy:       resolved.groupBy || undefined,
             multi:         f.kind === 'conn-multi',
             pickOnly:      true,
+            allowClear:    !addMode,
             itemLabel:     resolved.itemLabel || function (r) { return r.identifier || r.id; },
             onChoose: function (chosenIds) {
+              // Empty pick in "Add to existing" mode = nothing to add → don't
+              // mark the field for apply (avoids a confusing no-op save).
+              if (addMode && !chosenIds.length) {
+                rowState[f.key].apply = false;
+                applyCb.checked = false;
+                slot.querySelector('.scw-ws-v2-bulk-conn-val').textContent = '(none added)';
+                return;
+              }
               rowState[f.key].value = f.kind === 'conn-multi'
                 ? chosenIds
                 : (chosenIds[0] || '');
