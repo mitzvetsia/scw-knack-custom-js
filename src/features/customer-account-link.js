@@ -100,8 +100,9 @@
     var cells = grid.querySelectorAll('td.' + CONN_FIELD);
     for (var i = 0; i < cells.length; i++) {
       var cell = cells[i];
-      if (cell.getAttribute('data-scw-cust') === '1') continue;
-      cell.setAttribute('data-scw-cust', '1');
+      // No cell-level "done" marker: rely on the per-element guards below so a
+      // pass that runs BEFORE view_4040's links are captured doesn't lock the
+      // cell out of later passes.
 
       // 1) Turn each customer connection-value (the inner span carrying a
       //    24-hex class = the customer record id) into an edit link.
@@ -153,5 +154,26 @@
   // case where the grid paints before view_4040's links exist.
   setTimeout(run, 400);
   setTimeout(run, 1500);
+
+  // On-demand diagnostic — run SCW.custAcctDebug() in the console.
+  window.SCW = window.SCW || {};
+  window.SCW.custAcctDebug = function () {
+    var grid = document.getElementById(GRID_VIEW);
+    var detail = document.getElementById(DETAIL_VIEW);
+    var info = {
+      gridPresent: !!grid,
+      detailPresent: !!detail,
+      cells: grid ? grid.querySelectorAll('td.' + CONN_FIELD).length : 0,
+      connSpans: grid ? grid.querySelectorAll('td.' + CONN_FIELD + ' span[data-kn="connection-value"]').length : 0,
+      editBase: editBase,
+      addUrl: addUrl,
+      detailAddLink: detail ? !!detail.querySelector('a[href*="add-customer-account2/"]') : false,
+      detailEditLink: detail ? !!detail.querySelector('a[href*="edit-customer-account/"]') : false,
+      editLinksInjected: grid ? grid.querySelectorAll('.scw-cust-edit-link').length : 0,
+      addBtnsInjected: grid ? grid.querySelectorAll('.scw-cust-add-btn').length : 0
+    };
+    if (window.console) console.log('[scw-cust-acct] debug', info);
+    return info;
+  };
 })();
 /*** END CUSTOMER ACCOUNT LINKS ***/
