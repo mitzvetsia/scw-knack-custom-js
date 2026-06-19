@@ -190,6 +190,7 @@ cat \
   src/features/deliverables-worksheet.js \
   src/features/customer-questionnaire.js \
   src/features/customer-account-link.js \
+  src/features/customer-questionnaire-scene.js \
   > "$TMP_BUNDLE"
 
 UNMIN_BYTES=$(wc -c < "$TMP_BUNDLE" | tr -d ' ')
