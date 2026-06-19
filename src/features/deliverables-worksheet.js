@@ -494,5 +494,19 @@
     }
     return info;
   };
+
+  // Reusable API so other surfaces (e.g. worksheet-v2 bulk edit) can render +
+  // save the same questionnaire fields without duplicating the schema logic.
+  // Uses the INTERNAL field set (all active fields, no customer flag).
+  window.SCW.deliverables = {
+    schemaFieldsById: loadSchemaFields,        // -> { schemaId: [def, …] }
+    schemaIdOf: function (rec) { return firstConnId(rec, CONFIG.LINE_ITEM_SCHEMA_FIELD); },
+    readValues: readValues,                    // (rec) -> answers blob object
+    renderField: renderField,                  // (def, value) -> field HTML
+    coerceDefault: coerceDefault,              // (def, rec) -> default value
+    classPrefix: PREFIX,                       // 'scw-deliverables' (for value reads)
+    valueField: CONFIG.VALUE_FIELD,            // field_2932
+    ready: function () { return !!(window.SCW && window.SCW.deliverablesFieldsReady); }
+  };
 })();
 /*** END DELIVERABLES WORKSHEET ***/

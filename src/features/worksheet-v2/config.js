@@ -192,7 +192,22 @@
         buckets: {
           // shared proposal-bucket object; only the extra one this view shows
           otherEquip: '5df12ce036f91b0015404d78'   // "Other Equipment"
-        }
+        },
+        // Bulk-edit field spec — ONLY what's actually editable on the install
+        // card (everything else is read-only there), so the bulk modal stops
+        // offering inherited SOW fields. SCW Notes is the lone editable column.
+        bulkFields: {
+          cam:         [ { f: 'scwNotes', kind: 'text', label: 'SCW Notes' } ],
+          'default':   [ { f: 'scwNotes', kind: 'text', label: 'SCW Notes' } ],
+          services:    [ { f: 'scwNotes', kind: 'text', label: 'SCW Notes' } ],
+          assumptions: [ { f: 'scwNotes', kind: 'text', label: 'SCW Notes' } ]
+        },
+        // Questionnaire (deliverables) answers live in a JSON blob on the line
+        // item. bulk.js folds a "System Questionnaire" section into the modal
+        // (schema resolved per record from schemaField; answers merged into
+        // valueField). Uses the internal field set (all active fields) via
+        // window.SCW.deliverables.
+        questionnaire: { schemaField: 'field_2930', valueField: 'field_2932' }
       }
 
       // ── Sales scope-of-work-details page (view_3586) ────────────────

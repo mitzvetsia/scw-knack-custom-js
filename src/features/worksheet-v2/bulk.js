@@ -1528,6 +1528,28 @@
     }).then(function (ok) { cb(!!ok); });
   }
 
+  // Styles for the questionnaire section folded into the bulk modal. The field
+  // controls themselves carry deliverables (.scw-deliverables-*) classes whose
+  // CSS is already injected on this scene; this only adds the section header +
+  // apply-row layout.
+  var _qStyleInjected = false;
+  function injectQStyles() {
+    if (_qStyleInjected || document.getElementById('scw-ws-v2-bulk-q-css')) { _qStyleInjected = true; return; }
+    _qStyleInjected = true;
+    var css =
+      '.scw-ws-v2-bulk-section{font:700 11px system-ui,sans-serif;text-transform:uppercase;' +
+        'letter-spacing:.05em;color:#0f4c75;margin:16px 0 8px;padding-bottom:5px;border-bottom:1px solid #e2e8f0;}' +
+      '.scw-ws-v2-bulk-section:first-child{margin-top:0;}' +
+      '.scw-ws-v2-bulk-qrow{display:flex;align-items:flex-start;gap:12px;margin-bottom:12px;}' +
+      '.scw-ws-v2-bulk-qapply{display:inline-flex;align-items:center;gap:5px;flex:0 0 auto;width:56px;' +
+        'padding-top:20px;font:600 11px system-ui,sans-serif;color:#475569;cursor:pointer;}' +
+      '.scw-ws-v2-bulk-qcontrol{flex:1 1 auto;min-width:0;}';
+    var s = document.createElement('style');
+    s.id = 'scw-ws-v2-bulk-q-css';
+    s.textContent = css;
+    document.head.appendChild(s);
+  }
+
   function openBulkModal(ids, sourceViewKey) {
     // If any selected row is locked (survey-associated sales item), only the
     // lock whitelist (Product / SCW Notes / Custom Disc %) is bulk-editable —
@@ -1573,6 +1595,36 @@
           ? 'All rows in <b>' + escapeHtml(categories[0]) + '</b> category'
           : 'Mixed buckets — showing fields common to all');
 
+    // ── Questionnaire (deliverables) fold-in ──────────────────────────
+    // When the view declares a `questionnaire` config and the deliverables
+    // API is ready, compute the schema questions COMMON to every selected
+    // record (intersected by key) so we can offer them in a dedicated
+    // "System Questionnaire" section that writes the JSON answer blob.
+    var _vc = (ns.cfg && typeof ns.cfg.viewCfg === 'function') ? ns.cfg.viewCfg(sourceViewKey) : null;
+    var qCfg = _vc && _vc.questionnaire;
+    var DLV = window.SCW && window.SCW.deliverables;
+    var qDefs = [];
+    if (qCfg && DLV && DLV.ready && DLV.ready()) {
+      var _bySchema = DLV.schemaFieldsById();
+      var _idx = attrsIndex(sourceViewKey);
+      var _lists = [];
+      for (var _qi = 0; _qi < ids.length; _qi++) {
+        var _rec = _idx[ids[_qi]];
+        if (!_rec) continue;
+        var _sid = DLV.schemaIdOf(_rec);
+        var _fl = _sid ? _bySchema[_sid] : null;
+        if (_fl && _fl.length) _lists.push(_fl);
+      }
+      if (_lists.length) {
+        qDefs = _lists[0].filter(function (def) {
+          return _lists.every(function (list) {
+            return list.some(function (d) { return d.key === def.key; });
+          });
+        });
+      }
+    }
+    var hasQ = qDefs.length > 0;
+
     var overlay = document.createElement('div');
     overlay.className = 'scw-ws-v2-bulk-overlay';
     overlay.innerHTML =
@@ -1595,7 +1647,7 @@
     var saveBtn   = overlay.querySelector('.scw-ws-v2-bulk-modal-save');
     var cancelBtn = overlay.querySelector('.scw-ws-v2-bulk-modal-cancel');
 
-    if (!fields.length) {
+    if (!fields.length && !hasQ) {
       body.innerHTML = '<div class="scw-ws-v2-bulk-empty">No fields are editable across all selected rows.</div>';
       saveBtn.disabled = true;
     }
@@ -1777,6 +1829,79 @@
       });
     });
 
+    // ── Build the "System Questionnaire" section (writes the JSON blob) ──
+    // qWrap stays null when there's no questionnaire. When present we also
+    // label the regular fields with a "Line item" header so it's clear what
+    // each section edits.
+    var qWrap = null, qByKey = Object.create(null);
+    function collectQ() {
+      var out = [];
+      if (!qWrap) return out;
+      var rows = qWrap.querySelectorAll('[data-q-key]');
+      for (var i = 0; i < rows.length; i++) {
+        var cb = rows[i].querySelector('[data-scw-ws-v2-bulk-apply]');
+        if (!cb || !cb.checked) continue;
+        var key = rows[i].getAttribute('data-q-key');
+        var def = qByKey[key]; if (!def) continue;
+        out.push({ key: key, value: readQVal(rows[i], def) });
+      }
+      return out;
+    }
+    function readQVal(row, def) {
+      var pfx = DLV.classPrefix;
+      if (def.type === 'multiselect') {
+        var chips = row.querySelector('.' + pfx + '-chips');
+        return chips ? Array.prototype.slice.call(chips.querySelectorAll('.is-on'))
+          .map(function (b) { return b.getAttribute('data-val'); }) : [];
+      }
+      var el = row.querySelector('.' + pfx + '-input');
+      return el ? el.value : '';
+    }
+    if (hasQ) {
+      injectQStyles();
+      var pfx = DLV.classPrefix;
+      // Label the line-item fields section (only when a questionnaire follows).
+      if (fields.length) {
+        var liHdr = document.createElement('div');
+        liHdr.className = 'scw-ws-v2-bulk-section';
+        liHdr.textContent = 'Line item';
+        body.insertBefore(liHdr, body.firstChild);
+      }
+      var qHdr = document.createElement('div');
+      qHdr.className = 'scw-ws-v2-bulk-section';
+      qHdr.textContent = 'System Questionnaire';
+      body.appendChild(qHdr);
+      qWrap = document.createElement('div');
+      qWrap.className = 'scw-ws-v2-bulk-qsection';
+      qDefs.forEach(function (def) {
+        qByKey[def.key] = def;
+        var row = document.createElement('div');
+        row.className = 'scw-ws-v2-bulk-qrow';
+        row.setAttribute('data-q-key', def.key);
+        row.innerHTML =
+          '<label class="scw-ws-v2-bulk-qapply"><input type="checkbox" data-scw-ws-v2-bulk-apply><span>Apply</span></label>' +
+          '<div class="scw-ws-v2-bulk-qcontrol">' +
+            DLV.renderField(def, def.type === 'multiselect' ? [] : '') +
+          '</div>';
+        qWrap.appendChild(row);
+      });
+      body.appendChild(qWrap);
+      // Renders use deliverables markup; wire chip toggle + auto-tick Apply.
+      function tickRow(row) { if (!row) return; var cb = row.querySelector('[data-scw-ws-v2-bulk-apply]'); if (cb) cb.checked = true; }
+      qWrap.addEventListener('click', function (e) {
+        var chip = e.target.closest('.' + pfx + '-chip');
+        if (!chip) return;
+        var on = chip.classList.toggle('is-on'); chip.setAttribute('aria-pressed', on);
+        tickRow(chip.closest('[data-q-key]'));
+      });
+      qWrap.addEventListener('change', function (e) {
+        if (e.target.matches && e.target.matches('select.' + pfx + '-input')) tickRow(e.target.closest('[data-q-key]'));
+      });
+      qWrap.addEventListener('input', function (e) {
+        if (e.target.matches && e.target.matches('input.' + pfx + '-input, textarea.' + pfx + '-input')) tickRow(e.target.closest('[data-q-key]'));
+      });
+    }
+
     function close() {
       overlay.parentNode && overlay.parentNode.removeChild(overlay);
     }
@@ -1794,7 +1919,8 @@
       var fieldByKey = Object.create(null);
       for (var fi = 0; fi < fields.length; fi++) fieldByKey[fields[fi].key] = fields[fi];
       var appliedKeys = Object.keys(rowState).filter(function (k) { return rowState[k].apply; });
-      if (!appliedKeys.length) {
+      var qApplied = collectQ();   // [] when no questionnaire section
+      if (!appliedKeys.length && !qApplied.length) {
         status.textContent = 'Tick at least one field to apply.';
         return;
       }
@@ -1864,6 +1990,22 @@
             if (!jobsByKey[jk]) jobsByKey[jk] = { viewKey: sourceViewKey, recordId: accId, body: {} };
             jobsByKey[jk].body[SOW_FIELD] = parentVal;
           });
+        });
+      }
+
+      // Questionnaire answers: merge the applied common fields into each
+      // selected record's JSON blob and ride it in that record's PUT (same
+      // job, so one PUT per record). Reads the current blob off the model.
+      if (qApplied.length && DLV) {
+        var vfield = DLV.valueField;
+        var qIdx = attrsIndex(sourceViewKey);
+        ids.forEach(function (rid) {
+          var rec = qIdx[rid]; if (!rec) return;
+          var blob = DLV.readValues(rec) || {};
+          for (var qa = 0; qa < qApplied.length; qa++) blob[qApplied[qa].key] = qApplied[qa].value;
+          var jk = sourceViewKey + '|' + rid;
+          if (!jobsByKey[jk]) jobsByKey[jk] = { viewKey: sourceViewKey, recordId: rid, body: {} };
+          jobsByKey[jk].body[vfield] = JSON.stringify(blob);
         });
       }
 
