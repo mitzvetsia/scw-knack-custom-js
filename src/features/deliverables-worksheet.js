@@ -347,10 +347,22 @@
     document.head.appendChild(style);
   }
   /* ── bind ── */
+  var _autoDbg = false;
   SCW.onViewRender(CONFIG.WORKSHEET_VIEW, function () {
     injectCss();
     installV2Observer();
     stagger();
+    // One-time auto-diagnostic: ~2.5s after the first worksheet render (gives
+    // the snippet + cards time), dump the gate status so we don't need a
+    // manual console call. Remove once this is dialed in.
+    if (!_autoDbg) {
+      _autoDbg = true;
+      setTimeout(function () {
+        if (window.SCW && typeof window.SCW.deliverablesDebug === 'function') {
+          window.SCW.deliverablesDebug();
+        }
+      }, 2500);
+    }
   }, NS);
 
   /* ── diagnostic: run SCW.deliverablesDebug() in the console to see which
@@ -386,5 +398,10 @@
     if (window.console) console.log('[scw-deliverables] debug', info);
     return info;
   };
+
+  if (window.console) {
+    console.log('[scw-deliverables] module loaded — view ' + CONFIG.WORKSHEET_VIEW +
+      '; run SCW.deliverablesDebug() any time for details');
+  }
 })();
 /*** END DELIVERABLES WORKSHEET ***/
