@@ -32,10 +32,16 @@
     // zero config). Add entries only for friendly aliases.
     DEFAULT_TOKENS: {},
     // Input Type label -> widget (matched case-insensitively; a widget type
-    // passed directly also works).
+    // passed directly also works). Synonyms included so the non-backend user
+    // can pick natural Knack-style names ("Paragraph", "Dropdown", …).
     INPUT_TYPES: {
-      'Short Text': 'text', 'Long Text': 'textarea', 'Number': 'number',
-      'Yes-No': 'yesno', 'Single Select': 'select', 'Multi Select': 'multiselect', 'Date': 'date'
+      'Short Text': 'text', 'Text': 'text',
+      'Long Text': 'textarea', 'Paragraph': 'textarea', 'Paragraph Text': 'textarea', 'Rich Text': 'textarea',
+      'Number': 'number',
+      'Yes-No': 'yesno', 'Yes/No': 'yesno', 'Boolean': 'yesno',
+      'Single Select': 'select', 'Dropdown': 'select',
+      'Multi Select': 'multiselect', 'Multi-Select': 'multiselect',
+      'Date': 'date'
     },
     debug: false
   };
