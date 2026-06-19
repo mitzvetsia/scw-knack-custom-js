@@ -18,6 +18,7 @@
   var STYLE_ID    = 'scw-nav2-highlight-css';
   var PRIMARY_CLS = 'scw-nav2-primary';
   var LEGACY_CLS  = 'scw-nav2-legacy';
+  var KEPT_CLS    = 'scw-nav2-kept';   // top-level non-primary kept link (not dimmed)
 
   // Top-level links that stay visible in the nav, in order. Everything else
   // collapses under a "K1 Pages" dropdown. Matched by normalized label.
@@ -100,18 +101,34 @@
       '  border-color: #a5f3fc !important;' +
       '  color: #0e7490 !important;' +
       '}' +
+      /* Kept top-level non-K2 links (Dashboard, Manage Deployment) — clean and
+         neutral, NOT dimmed like the now-hidden legacy pages. */
+      '#' + NAV_VIEW + ' a.kn-link.' + KEPT_CLS + ' {' +
+      '  opacity: 1 !important; filter: none !important;' +
+      '  font-weight: 500 !important; color: #334155 !important;' +
+      '}' +
+      '#' + NAV_VIEW + ' a.kn-link.' + KEPT_CLS + ' span { color: #334155 !important; }' +
+      '#' + NAV_VIEW + ' a.kn-link.' + KEPT_CLS + ':hover { background: #f1f5f9 !important; }' +
+      '#' + NAV_VIEW + ' a.kn-link.' + KEPT_CLS + '.is-active,' +
+      '#' + NAV_VIEW + ' a.kn-link.' + KEPT_CLS + '.is-primary,' +
+      '#' + NAV_VIEW + ' li.is-active > a.kn-link.' + KEPT_CLS + ' {' +
+      '  background: #ecfeff !important; border-color: #a5f3fc !important; color: #0e7490 !important;' +
+      '}' +
       /* ── "K1 Pages" collapse dropdown ─────────────────────────────── */
       '#' + NAV_VIEW + ' .scw-k1-wrap {' +
-      '  position: relative; display: inline-flex; margin-left: 10px;' +
+      '  position: relative; display: inline-flex; align-items: center;' +
+      '  vertical-align: middle; margin-left: 12px;' +
       '}' +
       '#' + NAV_VIEW + ' .scw-k1-toggle {' +
       '  display: inline-flex; align-items: center; gap: 6px;' +
-      '  font: 600 16px system-ui, -apple-system, sans-serif !important;' +
-      '  padding: 8px 14px; border: 1px solid #cbd5e1; border-radius: 6px;' +
-      '  background: #f1f5f9; color: #475569; cursor: pointer; white-space: nowrap;' +
+      '  font: 500 16px system-ui, -apple-system, sans-serif !important;' +
+      '  padding: 7px 12px; border: 1px solid #e2e8f0; border-radius: 6px;' +
+      '  background: #fff; color: #64748b; cursor: pointer; white-space: nowrap;' +
+      '  transition: background .12s ease, border-color .12s ease, color .12s ease;' +
       '}' +
-      '#' + NAV_VIEW + ' .scw-k1-toggle:hover { background: #e2e8f0; border-color: #94a3b8; }' +
-      '#' + NAV_VIEW + ' .scw-k1-caret { font-size: 10px; transition: transform .15s ease; }' +
+      '#' + NAV_VIEW + ' .scw-k1-toggle:hover { background: #f8fafc; border-color: #cbd5e1; color: #334155; }' +
+      '#' + NAV_VIEW + ' .scw-k1-wrap.is-open .scw-k1-toggle { background: #f1f5f9; border-color: #cbd5e1; color: #334155; }' +
+      '#' + NAV_VIEW + ' .scw-k1-caret { flex: 0 0 auto; color: #94a3b8; transition: transform .15s ease; }' +
       '#' + NAV_VIEW + ' .scw-k1-wrap.is-open .scw-k1-caret { transform: rotate(180deg); }' +
       '#' + NAV_VIEW + ' .scw-k1-panel {' +
       '  position: absolute; top: calc(100% + 6px); left: 0; z-index: 1000;' +
@@ -169,8 +186,10 @@
       var label = span ? span.textContent : a.textContent;
       if (!norm(label)) continue;   // skip not-yet-rendered links
       var primary = isPrimary(label, a.getAttribute('href') || '');
+      var kept = KEEP.indexOf(norm(label)) !== -1;
       a.classList.toggle(PRIMARY_CLS, primary);
-      a.classList.toggle(LEGACY_CLS, !primary);
+      a.classList.toggle(KEPT_CLS, !primary && kept);
+      a.classList.toggle(LEGACY_CLS, !primary && !kept);
     }
   }
 
@@ -213,7 +232,10 @@
         var btn = document.createElement('button');
         btn.type = 'button';
         btn.className = 'kn-button scw-k1-toggle';
-        btn.innerHTML = '<span>K1 Pages</span><span class="scw-k1-caret" aria-hidden="true">▾</span>';
+        btn.innerHTML = '<span>K1 Pages</span>' +
+          '<svg class="scw-k1-caret" aria-hidden="true" viewBox="0 0 24 24" width="13" height="13" ' +
+          'fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">' +
+          '<polyline points="6 9 12 15 18 9"/></svg>';
         var panel = document.createElement('div');
         panel.className = 'scw-k1-panel';
         wrap.appendChild(btn);
