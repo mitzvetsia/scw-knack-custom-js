@@ -210,11 +210,12 @@
       return renderField(def, v);
     }).join('');
     return '<div class="' + PREFIX + '-panel" data-record-id="' + esc(recordId) + '">' +
-        '<div class="' + PREFIX + '-grid">' + body + '</div>' +
-        '<div class="' + PREFIX + '-actions">' +
+        '<div class="' + PREFIX + '-head">' +
+          '<span class="' + PREFIX + '-title">Deliverables</span>' +
           '<span class="' + PREFIX + '-status" aria-live="polite"></span>' +
-          '<button type="button" class="' + PREFIX + '-save">Save</button>' +
-        '</div></div>';
+        '</div>' +
+        '<div class="' + PREFIX + '-grid">' + body + '</div>' +
+      '</div>';
   }
   function collectValues(panelEl) {
     var out = {};
@@ -246,23 +247,62 @@
       success: function () { onDone(true); }, error: function (xhr) { onDone(false, parseKnackError(xhr)); }
     });
   }
-  /* ── wire a mounted panel ── */
+  /* ── wire a mounted panel (auto-save, no Save button) ──
+   * Persists the whole blob on any change: chip toggle / select change / input
+   * blur (tab/click-away) / Enter. Inline Saving…→Saved feedback, a dirty-skip
+   * (don't re-PUT an unchanged blob), and a pending-resave queue so an edit
+   * landing mid-save still lands. */
   function wirePanel(panelEl, viewId) {
     var recordId = panelEl.getAttribute('data-record-id');
+    var statusEl = panelEl.querySelector('.' + PREFIX + '-status');
+    var lastSaved = JSON.stringify(collectValues(panelEl));
+    var saving = false, pending = false, fadeTimer = null;
+
+    function setStatus(kind, text) {
+      statusEl.className = PREFIX + '-status' + (kind ? ' is-' + kind : '');
+      statusEl.textContent = text || '';
+    }
+    function commit() {
+      var current = JSON.stringify(collectValues(panelEl));
+      if (current === lastSaved) return;          // nothing changed — skip
+      if (saving) { pending = true; return; }     // queue behind the in-flight save
+      saving = true;
+      setStatus('saving', 'Saving…');
+      save(viewId, recordId, JSON.parse(current), function (ok, msg) {
+        saving = false;
+        if (!ok) { setStatus('err', msg || 'Save failed'); pending = false; return; }
+        lastSaved = current;
+        if (pending) { pending = false; commit(); return; }
+        setStatus('ok', 'Saved');
+        clearTimeout(fadeTimer);
+        fadeTimer = setTimeout(function () { setStatus('', ''); }, 1500);
+      });
+    }
+
+    // Multi-select chips: toggle + save.
     panelEl.addEventListener('click', function (e) {
       var chip = e.target.closest('.' + PREFIX + '-chip');
-      if (chip) { var on = chip.classList.toggle('is-on'); chip.setAttribute('aria-pressed', on); }
+      if (!chip) return;
+      var on = chip.classList.toggle('is-on');
+      chip.setAttribute('aria-pressed', on);
+      commit();
     });
-    var saveBtn = panelEl.querySelector('.' + PREFIX + '-save');
-    var statusEl = panelEl.querySelector('.' + PREFIX + '-status');
-    saveBtn.addEventListener('click', function () {
-      saveBtn.disabled = true; statusEl.textContent = 'Saving…'; statusEl.className = PREFIX + '-status';
-      save(viewId, recordId, collectValues(panelEl), function (ok, msg) {
-        saveBtn.disabled = false;
-        statusEl.textContent = ok ? 'Saved' : (msg || 'Save failed');
-        statusEl.classList.add(ok ? 'is-ok' : 'is-err');
-        if (ok) setTimeout(function () { statusEl.textContent = ''; statusEl.className = PREFIX + '-status'; }, 1800);
-      });
+    // Selects (Yes-No / Single Select) save on change.
+    panelEl.addEventListener('change', function (e) {
+      if (e.target.matches && e.target.matches('select.' + PREFIX + '-input')) commit();
+    });
+    // Text / number / date / textarea save on blur (tab or click-away).
+    panelEl.addEventListener('blur', function (e) {
+      if (e.target.matches && e.target.matches('input.' + PREFIX + '-input, textarea.' + PREFIX + '-input')) commit();
+    }, true);
+    // Enter commits (Shift+Enter = newline in a textarea).
+    panelEl.addEventListener('keydown', function (e) {
+      var t = e.target;
+      if (!t.matches || !t.matches('input.' + PREFIX + '-input, textarea.' + PREFIX + '-input')) return;
+      if (e.key !== 'Enter') return;
+      if (t.tagName === 'TEXTAREA' && e.shiftKey) return;
+      e.preventDefault();
+      commit();
     });
   }
   /* ── mount: fold one editor into each v2 install card's detail panel ──
@@ -353,23 +393,33 @@
   function injectCss() {
     var STYLE_ID = PREFIX + '-css';
     if (document.getElementById(STYLE_ID)) return;
+    // Visual language mirrors worksheet-v2 detail fields (label #64748b,
+    // inputs #e2e8f0 border, chips #295f91 selected) so it reads as part of the
+    // card — but the panel keeps a distinct slate background + border so it's a
+    // clearly contained sub-section.
     var css =
-      '.' + PREFIX + '-panel{padding:14px 18px;background:#f8fafc;border-top:1px solid #e5e7eb;}' +
-      '.' + PREFIX + '-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:12px 18px;}' +
-      '.' + PREFIX + '-field{display:flex;flex-direction:column;gap:4px;}' +
-      '.' + PREFIX + '-label{font:600 12px/1.3 system-ui,sans-serif;color:#374151;}' +
-      '.' + PREFIX + '-req{color:#b45309;}' +
-      '.' + PREFIX + '-input{font:14px/1.3 system-ui,sans-serif;padding:6px 8px;border:1px solid #d1d5db;border-radius:5px;background:#f3f4f6;}' +
-      '.' + PREFIX + '-input:focus{background:#fff;outline:2px solid #93c5fd;}' +
-      'textarea.' + PREFIX + '-input{min-height:54px;resize:vertical;}' +
-      '.' + PREFIX + '-chips{display:flex;flex-wrap:wrap;gap:6px;}' +
-      '.' + PREFIX + '-chip{font:600 12px/1 system-ui,sans-serif;padding:6px 10px;border:1px solid #d1d5db;border-radius:14px;background:#fff;color:#374151;cursor:pointer;}' +
-      '.' + PREFIX + '-chip.is-on{background:#0f4c75;border-color:#0f4c75;color:#fff;}' +
-      '.' + PREFIX + '-actions{display:flex;align-items:center;justify-content:flex-end;gap:12px;margin-top:12px;}' +
-      '.' + PREFIX + '-status{font:600 12px/1 system-ui,sans-serif;color:#6b7280;}' +
-      '.' + PREFIX + '-status.is-ok{color:#15803d;}.' + PREFIX + '-status.is-err{color:#b91c1c;}' +
-      '.' + PREFIX + '-save{font:600 13px/1 system-ui,sans-serif;padding:8px 16px;border:0;border-radius:6px;background:#0f4c75;color:#fff;cursor:pointer;}' +
-      '.' + PREFIX + '-save:disabled{opacity:.6;cursor:default;}';
+      '.' + PREFIX + '-panel{margin-top:10px;padding:11px 13px;background:#eef2f6;' +
+        'border:1px solid #e2e8f0;border-radius:8px;font-family:system-ui,-apple-system,sans-serif;}' +
+      '.' + PREFIX + '-head{display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:9px;}' +
+      '.' + PREFIX + '-title{font:700 10.5px/1.2 system-ui,sans-serif;text-transform:uppercase;letter-spacing:.05em;color:#0f4c75;}' +
+      '.' + PREFIX + '-status{font:600 11px/1.2 system-ui,sans-serif;color:#94a3b8;min-height:13px;}' +
+      '.' + PREFIX + '-status.is-saving{color:#2563eb;}' +
+      '.' + PREFIX + '-status.is-ok{color:#15803d;}' +
+      '.' + PREFIX + '-status.is-err{color:#b91c1c;}' +
+      '.' + PREFIX + '-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:9px 14px;}' +
+      '.' + PREFIX + '-field{display:flex;flex-direction:column;gap:3px;min-width:0;}' +
+      '.' + PREFIX + '-label{font:500 11px/1.2 system-ui,sans-serif;color:#64748b;}' +
+      '.' + PREFIX + '-req{color:#b45309;margin-left:2px;}' +
+      '.' + PREFIX + '-input{display:block;width:100%;box-sizing:border-box;padding:4px 7px;' +
+        'border:1px solid #e2e8f0;border-radius:4px;background:#fff;font:13px/1.3 system-ui,sans-serif;' +
+        'color:#1f2937;min-height:28px;transition:border-color .1s,box-shadow .1s;}' +
+      '.' + PREFIX + '-input:focus{outline:none;border-color:#93c5fd;box-shadow:0 0 0 2px rgba(59,130,246,.14);}' +
+      'textarea.' + PREFIX + '-input{min-height:46px;resize:vertical;}' +
+      '.' + PREFIX + '-chips{display:flex;flex-wrap:wrap;gap:4px;}' +
+      '.' + PREFIX + '-chip{font:600 11px/1.2 system-ui,sans-serif;padding:4px 10px;border:1px solid #cbd5e1;' +
+        'border-radius:6px;background:#fff;color:#475569;cursor:pointer;white-space:nowrap;transition:all .1s;}' +
+      '.' + PREFIX + '-chip:hover{border-color:#94a3b8;}' +
+      '.' + PREFIX + '-chip.is-on{background:#295f91;border-color:#295f91;color:#fff;}';
     var style = document.createElement('style'); style.id = STYLE_ID; style.textContent = css;
     document.head.appendChild(style);
   }
