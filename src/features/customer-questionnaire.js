@@ -213,6 +213,7 @@
     }).join('');
     return '<div class="' + PREFIX + '-card" data-record-id="' + esc(rec.id) + '">' +
         '<div class="' + PREFIX + '-card-head">' +
+          '<input type="checkbox" class="' + PREFIX + '-select" data-record-id="' + esc(rec.id) + '" aria-label="Select item">' +
           '<div class="' + PREFIX + '-card-titles">' +
             '<span class="' + PREFIX + '-card-title">' + esc(title) + '</span>' +
             (sub ? '<span class="' + PREFIX + '-card-sub">' + esc(sub) + '</span>' : '') +
@@ -304,6 +305,209 @@
     });
   }
 
+  /* ── bulk edit: select cards → apply one or more answers to all ── */
+  var _selected = Object.create(null);
+  function selectedIds() {
+    return Object.keys(_selected).filter(function (k) { return _selected[k]; });
+  }
+  function readControlValue(rowEl, def) {
+    if (def.type === 'multiselect') {
+      var chips = rowEl.querySelector('.' + PREFIX + '-chips');
+      return chips ? Array.prototype.slice.call(chips.querySelectorAll('.is-on'))
+        .map(function (b) { return b.getAttribute('data-val'); }) : [];
+    }
+    var el = rowEl.querySelector('.' + PREFIX + '-input');
+    return el ? el.value : '';
+  }
+  function renderBar(container) {
+    var ids = selectedIds();
+    var bar = container.querySelector('.' + PREFIX + '-bulkbar');
+    if (!ids.length) { if (bar) bar.parentNode.removeChild(bar); return; }
+    if (!bar) {
+      bar = document.createElement('div');
+      bar.className = PREFIX + '-bulkbar';
+      container.insertBefore(bar, container.firstChild);
+    }
+    bar.innerHTML =
+      '<span class="' + PREFIX + '-bulkbar-count">' + ids.length + ' selected</span>' +
+      '<div class="' + PREFIX + '-bulkbar-actions">' +
+        '<button type="button" class="' + PREFIX + '-bulkbar-btn ' + PREFIX + '-bulkbar-clear">Clear</button>' +
+        '<button type="button" class="' + PREFIX + '-bulkbar-btn ' + PREFIX + '-bulkbar-edit">Edit ' + ids.length + ' item' + (ids.length === 1 ? '' : 's') + '</button>' +
+      '</div>';
+  }
+  function syncSelectionUI(container) {
+    var boxes = container.querySelectorAll('.' + PREFIX + '-select');
+    for (var i = 0; i < boxes.length; i++) {
+      var id = boxes[i].getAttribute('data-record-id');
+      boxes[i].checked = !!_selected[id];
+      var card = boxes[i].closest('.' + PREFIX + '-card');
+      if (card) card.classList.toggle('is-selected', !!_selected[id]);
+    }
+    renderBar(container);
+  }
+  function wireContainer(container, viewId) {
+    if (container._scwCqWired) return;
+    container._scwCqWired = true;
+    container.addEventListener('change', function (e) {
+      var cb = e.target.closest && e.target.closest('.' + PREFIX + '-select');
+      if (!cb) return;
+      var id = cb.getAttribute('data-record-id');
+      if (cb.checked) _selected[id] = true; else delete _selected[id];
+      var card = cb.closest('.' + PREFIX + '-card');
+      if (card) card.classList.toggle('is-selected', cb.checked);
+      renderBar(container);
+    });
+    container.addEventListener('click', function (e) {
+      if (e.target.closest('.' + PREFIX + '-bulkbar-clear')) {
+        _selected = Object.create(null);
+        syncSelectionUI(container);
+        return;
+      }
+      if (e.target.closest('.' + PREFIX + '-bulkbar-edit')) {
+        openBulkModal(container, viewId);
+      }
+    });
+  }
+
+  // Concurrency-capped PUT queue (Knack ~10 req/s; cap 4 + retry/backoff on
+  // transient errors). Merges each change into the record's existing blob.
+  function bulkApply(jobs, changes, viewId, onProgress, onDone) {
+    var MAX = 4, BASE = 500, MAXATT = 4;
+    var idx = 0, active = 0, done = 0, results = [];
+    function retryable(s) { return s === 0 || s === 408 || s === 429 || (s >= 500 && s <= 599); }
+    function put(job, attempt, cb) {
+      var blob = readValues(job.rec);
+      Object.keys(changes).forEach(function (k) { blob[k] = changes[k]; });
+      var json = JSON.stringify(blob);
+      var data = {}; data[CONFIG.VALUE_FIELD] = json;
+      SCW.knackAjax({
+        url: SCW.knackRecordUrl(viewId, job.id), type: 'PUT', data: JSON.stringify(data),
+        success: function () { job.rec[CONFIG.VALUE_FIELD] = json; cb(true); },
+        error: function (xhr) {
+          if (attempt < MAXATT && retryable(xhr && xhr.status)) {
+            setTimeout(function () { put(job, attempt + 1, cb); },
+              BASE * Math.pow(2, attempt - 1) + Math.random() * 200);
+          } else { cb(false); }
+        }
+      });
+    }
+    function pump() {
+      while (active < MAX && idx < jobs.length) {
+        var job = jobs[idx++]; active++;
+        put(job, 1, function (ok) {
+          active--; done++; results.push(ok);
+          onProgress(done, jobs.length);
+          if (done === jobs.length) onDone(results); else pump();
+        });
+      }
+    }
+    if (!jobs.length) { onDone([]); return; }
+    pump();
+  }
+
+  function openBulkModal(container, viewId) {
+    var ids = selectedIds();
+    if (!ids.length) return;
+    var bySchema = loadSchemaFields();
+    var records = getViewRecords(viewId);
+    var recById = {}; records.forEach(function (r) { recById[r.id] = r; });
+
+    // Intersect the selected records' schema field sets by key.
+    var lists = [];
+    ids.forEach(function (id) {
+      var rec = recById[id]; if (!rec) return;
+      var sid = firstConnId(rec, CONFIG.LINE_ITEM_SCHEMA_FIELD);
+      var fields = sid ? bySchema[sid] : null;
+      if (fields && fields.length) lists.push(fields);
+    });
+    var common = [], commonByKey = {};
+    if (lists.length) {
+      common = lists[0].filter(function (def) {
+        return lists.every(function (list) {
+          return list.some(function (d) { return d.key === def.key; });
+        });
+      });
+      common.forEach(function (d) { commonByKey[d.key] = d; });
+    }
+
+    var rowsHtml = common.map(function (def) {
+      return '<div class="' + PREFIX + '-bulk-row" data-bulk-field="' + esc(def.key) + '">' +
+        '<label class="' + PREFIX + '-bulk-apply-lbl">' +
+          '<input type="checkbox" class="' + PREFIX + '-bulk-apply"><span>Apply</span>' +
+        '</label>' +
+        '<div class="' + PREFIX + '-bulk-control">' + renderField(def, def.type === 'multiselect' ? [] : '') + '</div>' +
+      '</div>';
+    }).join('');
+
+    var overlay = document.createElement('div');
+    overlay.className = PREFIX + '-bulk-overlay';
+    overlay.innerHTML =
+      '<div class="' + PREFIX + '-bulk-modal">' +
+        '<div class="' + PREFIX + '-bulk-head">Edit ' + ids.length + ' item' + (ids.length === 1 ? '' : 's') + '</div>' +
+        '<div class="' + PREFIX + '-bulk-sub">Tick a question and set a value to apply it to every selected item. Unticked questions are left as-is.</div>' +
+        '<div class="' + PREFIX + '-bulk-body">' +
+          (common.length ? rowsHtml : '<div class="' + PREFIX + '-empty">No shared questions across the selected items.</div>') +
+        '</div>' +
+        '<div class="' + PREFIX + '-bulk-status" aria-live="polite"></div>' +
+        '<div class="' + PREFIX + '-bulk-foot">' +
+          '<button type="button" class="' + PREFIX + '-bulk-cancel">Cancel</button>' +
+          '<button type="button" class="' + PREFIX + '-bulk-apply-btn"' + (common.length ? '' : ' disabled') + '>Apply to ' + ids.length + '</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(overlay);
+
+    var statusEl = overlay.querySelector('.' + PREFIX + '-bulk-status');
+    var applyBtn = overlay.querySelector('.' + PREFIX + '-bulk-apply-btn');
+    var cancelBtn = overlay.querySelector('.' + PREFIX + '-bulk-cancel');
+    function close() { if (overlay.parentNode) overlay.parentNode.removeChild(overlay); }
+    function tickApply(rowEl) { if (!rowEl) return; var cb = rowEl.querySelector('.' + PREFIX + '-bulk-apply'); if (cb) cb.checked = true; }
+
+    cancelBtn.addEventListener('click', close);
+    overlay.addEventListener('click', function (e) { if (e.target === overlay) close(); });
+    // Setting any control auto-ticks its Apply.
+    overlay.addEventListener('click', function (e) {
+      var chip = e.target.closest('.' + PREFIX + '-chip');
+      if (!chip) return;
+      var on = chip.classList.toggle('is-on'); chip.setAttribute('aria-pressed', on);
+      tickApply(chip.closest('.' + PREFIX + '-bulk-row'));
+    });
+    overlay.addEventListener('change', function (e) {
+      if (e.target.matches && e.target.matches('select.' + PREFIX + '-input')) tickApply(e.target.closest('.' + PREFIX + '-bulk-row'));
+    });
+    overlay.addEventListener('input', function (e) {
+      if (e.target.matches && e.target.matches('input.' + PREFIX + '-input, textarea.' + PREFIX + '-input')) tickApply(e.target.closest('.' + PREFIX + '-bulk-row'));
+    });
+
+    applyBtn.addEventListener('click', function () {
+      var changes = {};
+      overlay.querySelectorAll('.' + PREFIX + '-bulk-row').forEach(function (row) {
+        var key = row.getAttribute('data-bulk-field');
+        var def = commonByKey[key]; if (!def) return;
+        var cb = row.querySelector('.' + PREFIX + '-bulk-apply');
+        if (!cb || !cb.checked) return;
+        changes[key] = readControlValue(row, def);
+      });
+      if (!Object.keys(changes).length) { statusEl.textContent = 'Tick at least one question to apply.'; return; }
+      var jobs = ids.map(function (id) { return { id: id, rec: recById[id] }; })
+        .filter(function (j) { return j.rec; });
+      applyBtn.disabled = true; cancelBtn.disabled = true;
+      bulkApply(jobs, changes, viewId, function (d, t) {
+        statusEl.textContent = 'Saving ' + d + ' of ' + t + '…';
+      }, function (resultsArr) {
+        var ok = resultsArr.filter(Boolean).length, fail = resultsArr.length - ok;
+        // Rebuild the affected cards from the now-updated model.
+        jobs.forEach(function (j) {
+          var card = container.querySelector('.' + PREFIX + '-card[data-record-id="' + j.id + '"]');
+          if (card && card.parentNode) card.parentNode.removeChild(card);
+        });
+        _selected = Object.create(null);
+        close();
+        render(viewId);
+        if (fail && window.console) console.warn('[' + PREFIX + '] bulk: ' + fail + ' of ' + resultsArr.length + ' failed');
+      });
+    });
+  }
+
   /* ── render: hide native table, render a card per line item ── */
   function ensureContainer(viewEl, viewId) {
     var id = PREFIX + '-' + viewId;
@@ -363,6 +567,10 @@
     } else if (empty) {
       empty.parentNode.removeChild(empty);
     }
+
+    // Selection + bulk-edit bar (delegated handlers bound once).
+    wireContainer(container, viewId);
+    syncSelectionUI(container);
   }
 
   /* ── CSS ── */
@@ -401,7 +609,37 @@
         'border-radius:999px;background:#fff;color:#374151;cursor:pointer;transition:all .1s;}' +
       '.' + PREFIX + '-chip:hover{border-color:#94a3b8;}' +
       '.' + PREFIX + '-chip.is-on{background:#2563eb;border-color:#2563eb;color:#fff;}' +
-      '.' + PREFIX + '-empty{padding:24px;text-align:center;color:#94a3b8;font:500 13px system-ui,sans-serif;}';
+      '.' + PREFIX + '-empty{padding:24px;text-align:center;color:#94a3b8;font:500 13px system-ui,sans-serif;}' +
+      // Select checkbox + selected card highlight
+      '.' + PREFIX + '-select{width:17px;height:17px;flex:0 0 auto;cursor:pointer;accent-color:#2563eb;margin-top:2px;}' +
+      '.' + PREFIX + '-card.is-selected{border-color:#2563eb;box-shadow:0 0 0 2px rgba(37,99,235,.18);}' +
+      // Sticky bulk bar
+      '.' + PREFIX + '-bulkbar{position:sticky;top:0;z-index:5;display:flex;align-items:center;justify-content:space-between;' +
+        'gap:12px;padding:10px 14px;background:#0f4c75;color:#fff;border-radius:8px;box-shadow:0 2px 6px rgba(15,23,42,.2);}' +
+      '.' + PREFIX + '-bulkbar-count{font:700 13px system-ui,sans-serif;}' +
+      '.' + PREFIX + '-bulkbar-actions{display:flex;gap:8px;}' +
+      '.' + PREFIX + '-bulkbar-btn{font:600 13px system-ui,sans-serif;padding:7px 14px;border-radius:6px;border:1px solid transparent;cursor:pointer;}' +
+      '.' + PREFIX + '-bulkbar-clear{background:transparent;color:#cbd5e1;border-color:rgba(255,255,255,.3);}' +
+      '.' + PREFIX + '-bulkbar-clear:hover{color:#fff;border-color:#fff;}' +
+      '.' + PREFIX + '-bulkbar-edit{background:#fff;color:#0f4c75;}' +
+      '.' + PREFIX + '-bulkbar-edit:hover{background:#e0f2fe;}' +
+      // Bulk modal
+      '.' + PREFIX + '-bulk-overlay{position:fixed;inset:0;z-index:100000;background:rgba(15,23,42,.55);' +
+        'display:flex;align-items:center;justify-content:center;font-family:system-ui,sans-serif;}' +
+      '.' + PREFIX + '-bulk-modal{background:#fff;border-radius:12px;box-shadow:0 18px 50px rgba(0,0,0,.35);' +
+        'width:680px;max-width:calc(100vw - 32px);max-height:86vh;display:flex;flex-direction:column;overflow:hidden;}' +
+      '.' + PREFIX + '-bulk-head{padding:16px 20px 4px;font:700 16px system-ui,sans-serif;color:#0f4c75;}' +
+      '.' + PREFIX + '-bulk-sub{padding:0 20px 12px;font:500 12px system-ui,sans-serif;color:#64748b;border-bottom:1px solid #eef2f6;}' +
+      '.' + PREFIX + '-bulk-body{padding:14px 20px;overflow-y:auto;display:flex;flex-direction:column;gap:14px;}' +
+      '.' + PREFIX + '-bulk-row{display:flex;align-items:flex-start;gap:14px;}' +
+      '.' + PREFIX + '-bulk-apply-lbl{display:inline-flex;align-items:center;gap:5px;flex:0 0 auto;width:64px;padding-top:22px;' +
+        'font:600 11px system-ui,sans-serif;color:#475569;cursor:pointer;}' +
+      '.' + PREFIX + '-bulk-control{flex:1 1 auto;min-width:0;}' +
+      '.' + PREFIX + '-bulk-status{padding:0 20px;min-height:16px;font:600 12px system-ui,sans-serif;color:#2563eb;}' +
+      '.' + PREFIX + '-bulk-foot{display:flex;justify-content:flex-end;gap:10px;padding:14px 20px;border-top:1px solid #eef2f6;}' +
+      '.' + PREFIX + '-bulk-cancel{font:600 13px system-ui,sans-serif;padding:8px 16px;border:1px solid #cbd5e1;border-radius:6px;background:#fff;color:#1f2937;cursor:pointer;}' +
+      '.' + PREFIX + '-bulk-apply-btn{font:600 13px system-ui,sans-serif;padding:8px 18px;border:0;border-radius:6px;background:#0f4c75;color:#fff;cursor:pointer;}' +
+      '.' + PREFIX + '-bulk-apply-btn:disabled{opacity:.55;cursor:default;}';
     var style = document.createElement('style'); style.id = STYLE_ID; style.textContent = css;
     document.head.appendChild(style);
   }
