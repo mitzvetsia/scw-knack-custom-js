@@ -15,7 +15,7 @@
   var NS = '.scwCustQ';
   var PREFIX = 'scw-cq';
   var CONFIG = {
-    WORKSHEET_VIEW:  'view_XXXX',   // TODO: the customer questionnaire grid view
+    WORKSHEET_VIEW:  'view_4031',   // the customer questionnaire grid view
     // Fields on the LINE ITEM
     VALUE_FIELD:            'field_2932',   // JSON answer blob
     LINE_ITEM_SCHEMA_FIELD: 'field_2930',   // Deliverable Schema connection
