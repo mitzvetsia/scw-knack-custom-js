@@ -1353,11 +1353,14 @@
     '.scw-ktl-accordion:has(#view_3915) { display: none !important; }',
     '#view_3915 { display: none !important; }',
     /* Same cutover for the survey/bid page: v2 is primary on view_3505 now.
-       Hide ONLY the native view (NOT its accordion) — the v2 panel mounts as a
-       sibling of #view_3505 and may live inside the same accordion body, so a
-       `:has(#view_3505)` rule could hide the v2 panel too. display:none keeps
-       the view in the DOM so v2 still reads its model. Reverse by removing this
-       rule + the view_3505 V2_TAKEOVER entry + re-adding internalOnly. */
+       FULL cutover — hide the native view AND its KTL accordion shell so JUST
+       the v2 grid shows (no collapsible header). Safe to hide the whole
+       accordion with `:has(#view_3505)` because init.js (hideSourceAccordion)
+       relocates the v2 panel OUT of the accordion body first, so this rule
+       only catches the shell wrapping the hidden source table. #view_3505 stays
+       in the DOM (display:none) so v2 still reads its model. Reverse by removing
+       these rules + the view_3505 V2_TAKEOVER entry + hideSourceAccordion. */
+    '.scw-ktl-accordion:has(#view_3505) { display: none !important; }',
     '#view_3505 { display: none !important; }',
 
     '.scw-ws-v2-mh-step {',

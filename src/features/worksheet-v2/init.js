@@ -80,13 +80,36 @@
   function tryMount(vcfg) {
     if (!vcfg || vcfg.enabled === false) return;   // per-view kill switch
     if (gatedOut(vcfg)) return;                     // internal-only preview gate
-    if (document.getElementById('scw-ws-v2-' + vcfg.sourceViewKey)) return;
+    if (document.getElementById('scw-ws-v2-' + vcfg.sourceViewKey)) {
+      // Already mounted — still ensure the panel stays outside the source
+      // view's KTL accordion (the accordion may have wrapped after mount).
+      if (vcfg.hideSourceAccordion) relocatePanelOutsideAccordion(vcfg.sourceViewKey);
+      return;
+    }
     var anchor = document.querySelector(vcfg.mountAfterSelector);
     if (!anchor) return; // source view not on this scene
     var panel = buildPanel(vcfg);
     anchor.insertAdjacentElement('afterend', panel);
+    if (vcfg.hideSourceAccordion) relocatePanelOutsideAccordion(vcfg.sourceViewKey);
     // Initial paint — v1 may have already loaded the records by now.
     if (ns.data) ns.render.renderView(vcfg.sourceViewKey, ns.data.readRecords(vcfg.sourceViewKey));
+  }
+
+  // Full cutover views hide their native source view AND its KTL accordion
+  // shell entirely — leaving JUST the v2 grid. The catch: the accordion
+  // moves only the .kn-view into its body (see ktl-accordion.js), so
+  // depending on render order the v2 panel can land INSIDE the accordion
+  // body — and a collapsed accordion hides its body's contents. So we pull
+  // the panel back OUT to be the accordion wrapper's next sibling; styles.js
+  // then hides the (now panel-free) accordion wholesale. Idempotent.
+  function relocatePanelOutsideAccordion(viewKey) {
+    var panel = document.getElementById('scw-ws-v2-' + viewKey);
+    if (!panel || !panel.closest) return;
+    var wrapper = panel.closest('.scw-ktl-accordion');
+    if (!wrapper || !wrapper.parentNode) return;   // not inside an accordion
+    if (wrapper.nextSibling !== panel) {
+      wrapper.parentNode.insertBefore(panel, wrapper.nextSibling);
+    }
   }
 
   function tryMountAll() {
@@ -111,6 +134,7 @@
       }
       ns.data.subscribe(vcfg.sourceViewKey, function (key, records) {
         ns.render.renderView(key, records);
+        if (vcfg.hideSourceAccordion) relocatePanelOutsideAccordion(key);
         // Mode/photos toolbar — mount idempotently above the L1 list.
         if (ns.toolbar && typeof ns.toolbar.mount === 'function') {
           ns.toolbar.mount(key);
@@ -2000,7 +2024,19 @@
   // catches SPA navigations into scenes that host the source view.
   $(document)
     .off('knack-scene-render.any.scwWsV2')
-    .on('knack-scene-render.any.scwWsV2', function () { tryMountAll(); });
+    .on('knack-scene-render.any.scwWsV2', function () {
+      tryMountAll();
+      // The KTL accordion wraps the source view ~80ms after scene render,
+      // which can re-capture the v2 panel into its body. Re-assert the
+      // panel's position outside the accordion once that has settled.
+      setTimeout(function () {
+        (ns.CONFIG.views || []).forEach(function (vcfg) {
+          if (vcfg && vcfg.hideSourceAccordion) {
+            relocatePanelOutsideAccordion(vcfg.sourceViewKey);
+          }
+        });
+      }, 200);
+    });
 
   // Also mount on view-render in case the source view appears on a
   // scene that already rendered. Cheap.

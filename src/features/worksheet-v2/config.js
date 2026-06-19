@@ -296,6 +296,11 @@
         independentFields: true,            // Survey object — no SOW fallback
         moneyMode:         'survey',
         hideSow:           true,            // survey groups by Bid, not SOW
+        // Full cutover: hide the native source view AND its KTL accordion
+        // shell entirely (no collapsible header) — JUST the v2 grid. init.js
+        // relocates the v2 panel out of the accordion; styles.js hides the
+        // accordion wrapper + the source table.
+        hideSourceAccordion: true,
         // Quick-filter pill strip above the grid — survey filters by BID
         // (field_2415) instead of SOW. Generalizes sow-filter.js: when
         // filterPills is set the strip mounts even with hideSow:true, reads
