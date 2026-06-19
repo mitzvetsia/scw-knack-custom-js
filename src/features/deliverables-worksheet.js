@@ -414,6 +414,8 @@
       '.' + PREFIX + '-status.is-err{color:#b91c1c;}' +
       '.' + PREFIX + '-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(190px,1fr));gap:9px 14px;}' +
       '.' + PREFIX + '-field{display:flex;flex-direction:column;gap:3px;min-width:0;}' +
+      /* Long-text / paragraph fields span the full panel width. */
+      '.' + PREFIX + '-field[data-type="textarea"]{grid-column:1/-1;}' +
       '.' + PREFIX + '-label{font:500 11px/1.2 system-ui,sans-serif;color:#64748b;}' +
       '.' + PREFIX + '-req{color:#b45309;margin-left:2px;}' +
       '.' + PREFIX + '-input{display:block;width:100%;box-sizing:border-box;padding:4px 7px;' +
@@ -430,27 +432,15 @@
     document.head.appendChild(style);
   }
   /* ── bind ── */
-  var _autoDbg = false;
   SCW.onViewRender(CONFIG.WORKSHEET_VIEW, function () {
     injectCss();
     installV2Observer();
     stagger();
-    // One-time auto-diagnostic: ~2.5s after the first worksheet render (gives
-    // the snippet + cards time), dump the gate status so we don't need a
-    // manual console call. Remove once this is dialed in.
-    if (!_autoDbg) {
-      _autoDbg = true;
-      setTimeout(function () {
-        if (window.SCW && typeof window.SCW.deliverablesDebug === 'function') {
-          window.SCW.deliverablesDebug();
-        }
-      }, 2500);
-    }
   }, NS);
 
   /* ── diagnostic: run SCW.deliverablesDebug() in the console to see which
    * gate is failing (snippet global ready? field_2930 on the model? schema
-   * matched?). Returns + logs a summary; harmless to leave shipped. */
+   * matched?) + a per-config-row kept/DROPPED table. Silent unless called. */
   window.SCW = window.SCW || {};
   window.SCW.deliverablesDebug = function () {
     var g = window.SCW && window.SCW.deliverablesFields;
@@ -504,10 +494,5 @@
     }
     return info;
   };
-
-  if (window.console) {
-    console.log('[scw-deliverables] module loaded — view ' + CONFIG.WORKSHEET_VIEW +
-      '; run SCW.deliverablesDebug() any time for details');
-  }
 })();
 /*** END DELIVERABLES WORKSHEET ***/
