@@ -472,7 +472,30 @@
         info.sample.push({ id: rec.id, hasField2930: has, schemaId: sid, matched: !!(sid && bySchema[sid]) });
       }
     });
-    if (window.console) console.log('[scw-deliverables] debug', info);
+    // Per-config-row breakdown: why each Config Field Definition row is kept or
+    // dropped by loadSchemaFields. Use this to see why one field (e.g.
+    // client-notes-ac-entry) doesn't render while its siblings do.
+    var D = CONFIG.DEF;
+    info.rows = (g || []).map(function (rec) {
+      var label    = String(rawVal(rec, D.label) || '').trim();
+      var key      = String(rawVal(rec, D.key) || '').trim() || slug(label);
+      var inputRaw = String(rawVal(rec, D.inputType) || '');
+      var type     = inputTypeWidget(inputRaw);
+      var schemaId = firstConnId(rec, D.schema);
+      var activeVal = rawVal(rec, D.active);
+      var active   = !(activeVal !== '' && activeVal != null && !isYes(activeVal));
+      var reason = 'kept';
+      if (!active)        reason = 'DROPPED: inactive (' + D.active + ' = No)';
+      else if (!schemaId) reason = 'DROPPED: no schema (' + D.schema + ' empty)';
+      else if (!type)     reason = 'DROPPED: unknown Input Type "' + inputRaw + '"';
+      else if (!key)      reason = 'DROPPED: no key/label';
+      return { label: label, key: key, inputType: inputRaw, mappedType: type,
+        schemaId: schemaId, active: active, reason: reason };
+    });
+    if (window.console) {
+      console.log('[scw-deliverables] debug', info);
+      if (console.table) console.table(info.rows);
+    }
     return info;
   };
 
