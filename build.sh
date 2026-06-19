@@ -188,6 +188,7 @@ cat \
   src/features/survey-report-photo-lightbox.js \
   src/features/sales-change-request/render-v2.js \
   src/features/deliverables-worksheet.js \
+  src/features/customer-questionnaire.js \
   > "$TMP_BUNDLE"
 
 UNMIN_BYTES=$(wc -c < "$TMP_BUNDLE" | tr -d ' ')
