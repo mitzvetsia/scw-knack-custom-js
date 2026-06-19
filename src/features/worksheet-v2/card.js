@@ -670,14 +670,29 @@
   // survey-derived items. The internal build-SOW grid (view_3962) is left
   // alone, matching v1 (view_3610 has no block).
   var DELETE_BLOCK_VIEWS = { view_3586: 1, view_3921: 1 };
+  // Survey worksheet (view_3505): v1 hid delete via hideDeleteWhenFieldNotBlank
+  // = field_2404 — once a survey line item is adopted into a SOW (REL_sow line
+  // item populated) it must be removed from the SOW, not deleted here. Map the
+  // logical field per view so it resolves correctly.
+  var DELETE_BLOCK_WHEN_SET = { view_3505: 'sowLineItem' };
 
   function isDeleteBlocked(rec, viewKey) {
-    if (!DELETE_BLOCK_VIEWS[viewKey]) return false;
     var f = (ns.cfg && ns.cfg.fields(viewKey)) || {};
-    var key = f.surveyItemCount || 'field_2586';
-    var raw = rec[key + '_raw'];
-    var n = (typeof raw === 'number') ? raw : parseFloat(readNum(rec, key));
-    return !isNaN(n) && n > 0;
+    // (a) "field not blank" rule (survey item adopted into a SOW).
+    if (DELETE_BLOCK_WHEN_SET[viewKey]) {
+      var fk = f[DELETE_BLOCK_WHEN_SET[viewKey]] || 'field_2404';
+      var v = rec[fk + '_raw'];
+      var blank = (v == null) || v === '' || (Array.isArray(v) && !v.length);
+      if (!blank) return true;
+    }
+    // (b) "count > 0" rule (survey-derived SOW items on sales / bid-review).
+    if (DELETE_BLOCK_VIEWS[viewKey]) {
+      var key = f.surveyItemCount || 'field_2586';
+      var raw = rec[key + '_raw'];
+      var n = (typeof raw === 'number') ? raw : parseFloat(readNum(rec, key));
+      if (!isNaN(n) && n > 0) return true;
+    }
+    return false;
   }
 
   /** Direct-action delete button — was a kebab menu, now a single
@@ -689,9 +704,12 @@
    *  mirroring v1's hide-delete behavior. */
   function kebabCell(rec, viewKey) {
     if (isDeleteBlocked(rec, viewKey)) {
+      var msg = DELETE_BLOCK_WHEN_SET[viewKey]
+        ? 'Adopted into a SOW — remove it from the SOW, not here.'
+        : 'Linked to survey line items — remove it from the survey, not here.';
       return '<span class="scw-ws-v2-cell scw-ws-v2-trash scw-ws-v2-trash--blocked" ' +
         'aria-hidden="true" ' +
-        'title="Linked to survey line items — remove it from the survey, not here.">' +
+        'title="' + escapeHtml(msg) + '">' +
         TRASH_SVG +
       '</span>';
     }

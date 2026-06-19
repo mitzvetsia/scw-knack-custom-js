@@ -802,28 +802,19 @@
           var allRecs = (viewId && ns.data && typeof ns.data.readRecords === 'function')
             ? ns.data.readRecords(viewId) : [];
 
-          // v1-parity safety net: never delete a survey-derived SOW item
-          // (field_2586 = # associated survey line items > 0) on the surfaces
-          // where the block applies (sales view_3586 + bid-review view_3921;
-          // see card.js DELETE_BLOCK_VIEWS). The card hides the trash for these
-          // (kebabCell → isDeleteBlocked), but guard here too in case a stale
-          // render left a clickable button behind.
+          // v1-parity safety net: honor the per-view delete-block rule
+          // (card.js isDeleteBlocked) even if a stale render left a clickable
+          // trash button behind — survey-derived SOW items (view_3586/3921,
+          // field_2586 > 0) and survey items adopted into a SOW (view_3505,
+          // field_2404 set). The card normally hides the trash for these.
           var selfRec = null;
-          if (viewId === 'view_3586' || viewId === 'view_3921') {
-            for (var qi = 0; qi < allRecs.length; qi++) {
-              if (allRecs[qi] && allRecs[qi].id === rowId) { selfRec = allRecs[qi]; break; }
-            }
+          for (var qi = 0; qi < allRecs.length; qi++) {
+            if (allRecs[qi] && allRecs[qi].id === rowId) { selfRec = allRecs[qi]; break; }
           }
-          if (selfRec) {
-            var scRaw = selfRec['field_2586_raw'];
-            var scN = (typeof scRaw === 'number') ? scRaw
-              : parseFloat(String(selfRec['field_2586'] == null ? '' : selfRec['field_2586'])
-                  .replace(/[^0-9.\-]/g, ''));
-            if (!isNaN(scN) && scN > 0) {
-              console.warn('[scw-ws-v2] delete blocked — ' + rowId +
-                ' has ' + scN + ' associated survey item(s) (field_2586)');
-              return;
-            }
+          if (selfRec && ns.card && typeof ns.card.isDeleteBlocked === 'function' &&
+              ns.card.isDeleteBlocked(selfRec, viewId)) {
+            console.warn('[scw-ws-v2] delete blocked — ' + rowId + ' on ' + viewId);
+            return;
           }
 
           var accIds = [];
