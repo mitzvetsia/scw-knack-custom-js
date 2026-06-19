@@ -277,13 +277,15 @@
         // field_2366; groups.js resolves L1/L2/sort per-view). Gated to
         // @getscw.com (internalOnly) so it previews beneath the live v1
         // worksheet. Editable: labor/qty/desc/drop/conduit/notes + cabling
-        // chips (generic edit/chip handlers). Read-only for now: product +
-        // connections (SOW-specific picker) — fast-follow.
+        // chips (generic edit/chip handlers) + Connected Devices/To pickers.
+        // CUTOVER: v2 is now the PRIMARY survey/bid worksheet — v1 device-
+        // worksheet bails via its V2_TAKEOVER entry and styles.js hides the
+        // native #view_3505 table. Reverse by re-adding internalOnly + removing
+        // the view_3505 cutover rule + V2_TAKEOVER entry.
         enabled:           true,
-        internalOnly:      true,            // @getscw.com gate (init.js)
         sourceViewKey:     'view_3505',
         mountAfterSelector: '#view_3505',
-        label:             'Survey Line Items (v2 preview)',
+        label:             'Survey Line Items',
         // Toolbar CTA wiring for the survey scene (the shared toolbar defaults
         // to the SOW context). addItemLabel = the "+ Add" button label AND the
         // Knack link text the add handler clicks. photoUploadView = the

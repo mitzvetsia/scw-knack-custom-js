@@ -19,16 +19,10 @@
   var SCENE     = 'scene_1347';
   var POC_FORM  = 'view_4025';     // editable POC form → per-field auto-save
   var SIGNOFF   = 'view_4029';     // final sign-off form → gated by required POC fields
-  // POC fields that must be filled before the customer can sign off. With the
-  // Knack "required" setting turned OFF (so partial per-field PUTs save), this
-  // is the client-side gate enforced at sign-off. { key, label }.
-  var REQUIRED = [
-    { key: 'field_1759', label: 'Super Admin Email' },
-    { key: 'field_1793', label: 'Onsite Contact Email' },
-    { key: 'field_1763', label: 'Onsite Contact Phone' },
-    { key: 'field_1794', label: 'View Approval Email' },
-    { key: 'field_1765', label: 'View Approval Phone' }
-  ];
+  // EVERY POC field is required before the customer can sign off. With Knack's
+  // "required" setting turned OFF (so partial per-field PUTs save), this is the
+  // client-side gate — derived dynamically from the form's fields (pocFields),
+  // and we draw the asterisks ourselves since Knack's are gone.
   var NS       = '.scwCqScene';
   var STYLE_ID = 'scw-cq-scene-css';
 
@@ -175,11 +169,22 @@
       if (!type) continue;
       fieldEl._scwPrev = valKey(readVal(fieldEl, type));
       var label = fieldEl.querySelector('.kn-label');
-      if (label && !label.querySelector('.scw-cqf-status')) {
-        var st = document.createElement('span');
-        st.className = 'scw-cqf-status';
-        st.setAttribute('aria-live', 'polite');
-        label.appendChild(st);
+      if (label) {
+        // Every POC field is required → draw our own asterisk (Knack's is gone
+        // once the required setting is turned off). One per field.
+        var firstSpan = label.querySelector(':scope > span');
+        if (firstSpan && !label.querySelector('.scw-cqf-star')) {
+          var star = document.createElement('span');
+          star.className = 'kn-required scw-cqf-star';
+          star.textContent = ' *';
+          firstSpan.insertAdjacentElement('afterend', star);
+        }
+        if (!label.querySelector('.scw-cqf-status')) {
+          var st = document.createElement('span');
+          st.className = 'scw-cqf-status';
+          st.setAttribute('aria-live', 'polite');
+          label.appendChild(st);
+        }
       }
     }
   }
@@ -227,9 +232,27 @@
     if (type === 'name') return !!((val.first && val.first.trim()) || (val.last && val.last.trim()));
     return !!String(val == null ? '' : val).trim();
   }
-  function requiredMissing() {
+  // Every editable POC field, as { key, label }. Label read from the field's
+  // own <label> (asterisk stripped).
+  function pocFields() {
+    var form = document.getElementById(POC_FORM);
+    if (!form) return [];
     var out = [];
-    for (var i = 0; i < REQUIRED.length; i++) if (!fieldFilled(REQUIRED[i].key)) out.push(REQUIRED[i]);
+    var els = form.querySelectorAll('.kn-input[data-input-id]');
+    for (var i = 0; i < els.length; i++) {
+      var el = els[i];
+      var key = el.getAttribute('data-input-id');
+      if (!key || !fieldType(el)) continue;
+      var span = el.querySelector('.kn-label > span');
+      var label = span ? span.textContent.replace(/\*/g, '').trim() : key;
+      out.push({ key: key, label: label });
+    }
+    return out;
+  }
+  function requiredMissing() {
+    var req = pocFields();
+    var out = [];
+    for (var i = 0; i < req.length; i++) if (!fieldFilled(req[i].key)) out.push(req[i]);
     return out;
   }
   function clearMissingHighlights() {

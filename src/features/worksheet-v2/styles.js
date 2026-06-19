@@ -1352,6 +1352,13 @@
        V2 kill-switch + flipping the config entry enabled:false. */
     '.scw-ktl-accordion:has(#view_3915) { display: none !important; }',
     '#view_3915 { display: none !important; }',
+    /* Same cutover for the survey/bid page: v2 is primary on view_3505 now.
+       Hide ONLY the native view (NOT its accordion) — the v2 panel mounts as a
+       sibling of #view_3505 and may live inside the same accordion body, so a
+       `:has(#view_3505)` rule could hide the v2 panel too. display:none keeps
+       the view in the DOM so v2 still reads its model. Reverse by removing this
+       rule + the view_3505 V2_TAKEOVER entry + re-adding internalOnly. */
+    '#view_3505 { display: none !important; }',
 
     '.scw-ws-v2-mh-step {',
     '  width: 16px !important; height: 18px !important;',
