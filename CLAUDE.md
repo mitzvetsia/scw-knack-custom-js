@@ -376,7 +376,10 @@ Populated by this Builder snippet (one-time fetch on app boot):
 ```js
 (function () {
   var APP_ID  = Knack.application_id;
-  var API_KEY = 'f8371b90-524d-11e7-abaf-870b3d262aa2';
+  // The live Knack REST API key lives ONLY in the Builder snippet, NEVER in
+  // this repo (this file is public). Replace this placeholder with the real
+  // key inside Knack Builder's app-level JavaScript settings.
+  var API_KEY = '<KNACK_REST_API_KEY>';
   var PRODUCT_OBJECT = 'object_8';
   var BUCKET_FIELD   = 'field_133';   // proposal bucket on the Products object
   var STATUS_FIELD   = 'field_956';   // Status (filter to "Enabled")
@@ -428,8 +431,10 @@ Notes:
   need names (e.g. a v2 product picker) must source those separately
   — typically from a hidden Knack view that exposes name + id, with
   the bucket map used purely to FILTER candidates.
-- The API key in the snippet is the live one. Treat the snippet
-  contents as a secret; don't paste it into public PRs/issues.
+- The real Knack REST API key is NOT in this repo — it lives only in the
+  Builder snippet (app-level JS in Knack). The `API_KEY` above is a
+  placeholder. Never paste the live key into this repo, PRs, or issues —
+  this repo is public (jsDelivr serves the bundle from it).
 
 ## Security & External Services
 
