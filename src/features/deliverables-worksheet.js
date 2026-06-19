@@ -4,31 +4,34 @@
   var NS = '.scwDeliverables';
   var PREFIX = 'scw-deliverables';
   var CONFIG = {
-    WORKSHEET_VIEW:  'view_XXXX',   // TODO: line-items grid/worksheet view
-    // Schema field definitions come from the boot snippet's global
-    // (window.SCW.deliverablesFields), NOT an on-page view. Schema resolves
-    // directly from field_2930 on the line item — no hidden product view.
+    // The install worksheet (view_3915) is a V2 cutover: the native table is
+    // hidden and worksheet-v2 renders cards. We mount the deliverables panel
+    // INSIDE each v2 install card's detail panel (not the hidden native rows).
+    WORKSHEET_VIEW:  'view_3915',
     // Fields on the LINE ITEM
-    VALUE_FIELD:            'field_XXXX',   // TODO: Paragraph/Rich-Text — stores the JSON blob
-    PRODUCT_FIELD:          'field_XXXX',   // TODO (optional): product connection, only if a token needs it
+    VALUE_FIELD:            'field_2932',   // Paragraph/Rich-Text — stores the JSON answer blob
     LINE_ITEM_SCHEMA_FIELD: 'field_2930',   // Deliverable Schema connection on the line item
-    // Fields on the CONFIG FIELD DEFINITION object
-    DEF: {
-      schema:    'field_2924',  // connection -> Deliverable Schema
-      label:     'field_XXXX',  // TODO: short text  "Mount Height"
-      key:       'field_XXXX',  // TODO: short text  "mount_height" (locked on create)
-      inputType: 'field_XXXX',  // TODO: single-select (see INPUT_TYPES)
-      choices:   'field_XXXX',  // TODO: paragraph — one choice per line (select types)
-      required:  'field_XXXX',  // TODO: yes/no
-      sortOrder: 'field_XXXX',  // TODO: number
-      active:    'field_XXXX',  // TODO: yes/no (soft delete)
-      default:   'field_XXXX'   // TODO: paragraph — Default Value (literal and/or {token})
-    },
-    // Friendly token name -> line-item field key. Raw {field_###} also works with no entry here.
-    DEFAULT_TOKENS: {
-      label: 'field_XXXX'       // TODO: the camera-label field on the line item
-    },
-    // Input Type choice text -> widget
+    // Schema FIELD DEFINITIONS come from the boot snippet's global — NOT an
+    // on-page view, and NOT raw Knack records — so the bundle needs ZERO
+    // Config-Field-Definition column ids. The snippet reads that object
+    // (schema connection field_2924, label/key/inputType/choices/required/
+    // sortOrder/active/default) and emits one SHAPED object per field:
+    //   window.SCW.deliverablesFields = [{
+    //     schemaId,            // Deliverable Schema record id (field_2924 conn)
+    //     key, label,
+    //     inputType,           // human label (INPUT_TYPES key) or a widget type
+    //     choices,             // array OR newline-joined string
+    //     required, active,    // bool OR "Yes"/"No"
+    //     sortOrder,           // number
+    //     default              // string (literal and/or {token})
+    //   }, …]
+    //   window.SCW.deliverablesFieldsReady = true;   // set when the fetch completes
+    // Friendly token name -> line-item field key for {token} defaults. Empty:
+    // we use raw {field_###} tokens (resolved against the worksheet model with
+    // zero config). Add entries only for friendly aliases.
+    DEFAULT_TOKENS: {},
+    // Input Type label -> widget (snippet may also pass a widget type directly,
+    // which passes through unchanged).
     INPUT_TYPES: {
       'Short Text': 'text', 'Long Text': 'textarea', 'Number': 'number',
       'Yes-No': 'yesno', 'Single Select': 'select', 'Multi Select': 'multiselect', 'Date': 'date'
@@ -50,24 +53,32 @@
   }
   /* ── load schema fields grouped by schema id ── */
   function loadSchemaFields() {
-    var rows = (window.SCW && window.SCW.deliverablesFields) || [];   // boot-snippet global (was a view read)
-    var D = CONFIG.DEF, bySchema = {};
-    rows.forEach(function (rec) {
-      if (!isYes(rec[D.active])) return;
-      var schemaId = firstConnId(rec, D.schema);
+    // The snippet emits pre-shaped field objects (friendly keys), so there are
+    // no Knack column ids to read here — just normalize light types and group
+    // by schema. Tolerant of inputType being a human label ("Single Select")
+    // or an already-mapped widget type, and choices/booleans in either form.
+    var rows = (window.SCW && window.SCW.deliverablesFields) || [];
+    var bySchema = {};
+    rows.forEach(function (f) {
+      if (!f) return;
+      if (f.active != null && !isYes(f.active)) return;   // honor soft-delete when present
+      var schemaId = f.schemaId || f.schema;
       if (!schemaId) return;
-      var type = CONFIG.INPUT_TYPES[String(rec[D.inputType] || '').trim()];
-      if (!type) return;
+      var key = String(f.key == null ? '' : f.key).trim();
+      if (!key) return;
+      var rawType = String(f.inputType || f.type || '').trim();
+      var type = CONFIG.INPUT_TYPES[rawType] || rawType || 'text';
       var def = {
-        key:       String(rec[D.key] || '').trim(),
-        label:     String(rec[D.label] || '').trim(),
+        key:       key,
+        label:     String(f.label == null ? '' : f.label).trim(),
         type:      type,
-        choices:   parseChoices(rec[D.choices]),
-        required:  isYes(rec[D.required]),
-        sortOrder: Number(rec[D.sortOrder]) || 0,
-        def:       String(rec[D.default] == null ? '' : rec[D.default]).trim()
+        choices:   Array.isArray(f.choices)
+                     ? f.choices.map(function (c) { return String(c == null ? '' : c).trim(); }).filter(Boolean)
+                     : parseChoices(f.choices),
+        required:  isYes(f.required),
+        sortOrder: Number(f.sortOrder) || 0,
+        def:       String(f['default'] == null ? '' : f['default']).trim()
       };
-      if (!def.key) return;
       (bySchema[schemaId] = bySchema[schemaId] || []).push(def);
     });
     Object.keys(bySchema).forEach(function (sid) {
@@ -227,7 +238,22 @@
       });
     });
   }
-  /* ── mount: one editor per line-item row (ADAPT to your layout) ── */
+  /* ── mount: fold one editor into each v2 install card's detail panel ──
+   * view_3915 is a V2 cutover — the native table is display:none and
+   * worksheet-v2 renders cards (.scw-ws-v2-card[data-scw-ws-v2-record]) whose
+   * collapsible body is .scw-ws-v2-detail. We mount the deliverables panel
+   * there (so it follows the card accordion). worksheet-v2 rebuilds its body
+   * innerHTML on every data tick, so we re-inject idempotently on a container
+   * observer + staggered passes (mirrors install-config-subpanel.js). */
+  var V2_CONTAINER_ID = 'scw-ws-v2-' + CONFIG.WORKSHEET_VIEW;
+  var _selfMutating = false;
+
+  function v2DetailFor(recordId) {
+    var card = document.querySelector(
+      '.scw-ws-v2-card[data-scw-ws-v2-record="' + recordId + '"]');
+    return card ? card.querySelector('.scw-ws-v2-detail') : null;
+  }
+
   function mount(viewId) {
     // Boot-race guard: the snippet that fills window.SCW.deliverablesFields
     // may not have finished its API fetch when the worksheet first renders
@@ -241,24 +267,60 @@
     var bySchema = loadSchemaFields();
     var records = getViewRecords(viewId);
     if (!records.length) return;
-    records.forEach(function (rec) {
-      var tr = document.querySelector('#' + viewId + ' tr#' + rec.id +
-                                      ', #' + viewId + ' tr[data-record-id="' + rec.id + '"]');
-      if (!tr) return;
-      var schemaId = resolveSchemaId(rec);
-      var fields = schemaId ? bySchema[schemaId] : null;
-      if (!fields || !fields.length) return;
-      var holderId = PREFIX + '-row-' + rec.id;
-      if (document.getElementById(holderId)) return;
-      var values = readValues(rec);
-      var holder = document.createElement('tr');
-      holder.id = holderId; holder.className = PREFIX + '-row';
-      var td = document.createElement('td'); td.colSpan = (tr.children.length || 1);
-      td.innerHTML = buildPanel(rec.id, rec, fields, values);
-      holder.appendChild(td);
-      tr.parentNode.insertBefore(holder, tr.nextSibling);
-      wirePanel(holder.querySelector('.' + PREFIX + '-panel'), viewId);
+    _selfMutating = true;
+    try {
+      records.forEach(function (rec) {
+        var detail = v2DetailFor(rec.id);
+        if (!detail) return;   // card not painted yet — a later pass catches it
+        var schemaId = resolveSchemaId(rec);
+        var fields = schemaId ? bySchema[schemaId] : null;
+        var existing = detail.querySelector(
+          '.' + PREFIX + '-panel[data-record-id="' + rec.id + '"]');
+        if (!fields || !fields.length) {
+          // No schema for this row → ensure no stale panel lingers.
+          if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
+          return;
+        }
+        if (existing) return;   // already mounted (and holds the user's edits) — leave it
+        var values = readValues(rec);
+        var holder = document.createElement('div');
+        holder.innerHTML = buildPanel(rec.id, rec, fields, values);
+        var panel = holder.firstChild;
+        detail.appendChild(panel);
+        wirePanel(panel, viewId);
+      });
+    } finally {
+      setTimeout(function () { _selfMutating = false; }, 0);
+    }
+  }
+
+  /** Re-run mount at staggered delays — worksheet-v2 mounts its panel + paints
+   *  cards slightly AFTER the view-render fires (its data subscriber is async). */
+  function stagger() {
+    var delays = [50, 250, 750, 2000];
+    for (var i = 0; i < delays.length; i++) {
+      setTimeout(function () {
+        installV2Observer();
+        mount(CONFIG.WORKSHEET_VIEW);
+      }, delays[i]);
+    }
+  }
+
+  /** Watch the worksheet-v2 container — it swaps its body innerHTML on every
+   *  data subscriber fire, wiping our panels; re-mount on any child mutation.
+   *  No-op until the v2 panel exists. Ignores our own writes via _selfMutating. */
+  function installV2Observer() {
+    var container = document.getElementById(V2_CONTAINER_ID);
+    if (!container || container.__scwDeliverablesObs) return;
+    var body = container.querySelector('.scw-ws-v2-body') || container;
+    container.__scwDeliverablesObs = true;
+    var pending = false;
+    var obs = new MutationObserver(function () {
+      if (_selfMutating || pending) return;
+      pending = true;
+      setTimeout(function () { pending = false; mount(CONFIG.WORKSHEET_VIEW); }, 150);
     });
+    obs.observe(body, { childList: true, subtree: true });
   }
   /* ── CSS ── */
   function injectCss() {
@@ -285,6 +347,10 @@
     document.head.appendChild(style);
   }
   /* ── bind ── */
-  SCW.onViewRender(CONFIG.WORKSHEET_VIEW, function () { injectCss(); mount(CONFIG.WORKSHEET_VIEW); }, NS);
+  SCW.onViewRender(CONFIG.WORKSHEET_VIEW, function () {
+    injectCss();
+    installV2Observer();
+    stagger();
+  }, NS);
 })();
 /*** END DELIVERABLES WORKSHEET ***/
