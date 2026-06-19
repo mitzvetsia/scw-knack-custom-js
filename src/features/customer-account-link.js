@@ -37,19 +37,32 @@
     'stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/>' +
     '<line x1="5" y1="12" x2="19" y2="12"/></svg>';
 
+  var PENCIL_SVG =
+    '<svg class="scw-cust-edit-ic" xmlns="http://www.w3.org/2000/svg" width="12" height="12" ' +
+    'viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+    'stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>' +
+    '<path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>';
+
   function injectCss() {
     if (document.getElementById(STYLE_ID)) return;
     var css = [
       // Hide the companion details view's accordion (links harvested from it).
       '.scw-ktl-accordion:has(> .scw-ktl-accordion__header[data-view-key="' + DETAIL_VIEW + '"]) { display: none !important; }',
       '#' + DETAIL_VIEW + ' { display: none !important; }',
-      // Customer name → link
+      // Customer name → clearly-clickable edit link (underline + pencil).
       '#' + GRID_VIEW + ' td.' + CONN_FIELD + ' .scw-cust-edit-link {',
-      '  color: #0f4c75; font-weight: 600; cursor: pointer; text-decoration: none;',
+      '  display: inline-flex; align-items: center; gap: 5px;',
+      '  color: #0f4c75; font-weight: 600; cursor: pointer;',
+      '  text-decoration: underline; text-decoration-color: #93b8d6;',
+      '  text-underline-offset: 2px;',
       '}',
       '#' + GRID_VIEW + ' td.' + CONN_FIELD + ' .scw-cust-edit-link:hover {',
-      '  text-decoration: underline; color: #0a3a63;',
+      '  color: #0a3a63; text-decoration-color: currentColor;',
       '}',
+      '#' + GRID_VIEW + ' td.' + CONN_FIELD + ' .scw-cust-edit-ic {',
+      '  flex: 0 0 auto; opacity: .65;',
+      '}',
+      '#' + GRID_VIEW + ' td.' + CONN_FIELD + ' .scw-cust-edit-link:hover .scw-cust-edit-ic { opacity: 1; }',
       // Add-customer button
       '#' + GRID_VIEW + ' td.' + CONN_FIELD + ' .scw-cust-add-btn {',
       '  display: inline-flex; align-items: center; gap: 5px; margin-top: 6px;',
@@ -120,6 +133,7 @@
           a.href = editBase + cls;
           a.title = 'Edit customer account';
           a.textContent = txt;
+          a.insertAdjacentHTML('beforeend', PENCIL_SVG);
           span.textContent = '';
           span.appendChild(a);
         }
