@@ -151,11 +151,32 @@
     }
   }
 
+  // Open the row "view details" link (the magnifier in the .kn-table-link
+  // column) in a NEW TAB. These are Knack SPA hash links with a Vue click
+  // handler, so we intercept in capture phase (before Knack's router) and
+  // window.open the absolute URL. Bound once on the grid container (survives
+  // table re-renders).
+  function wireNewTab() {
+    var grid = document.getElementById(GRID_VIEW);
+    if (!grid || grid.getAttribute('data-scw-newtab') === '1') return;
+    grid.setAttribute('data-scw-newtab', '1');
+    grid.addEventListener('click', function (e) {
+      var a = e.target.closest && e.target.closest('td.kn-table-link a[href^="#"]');
+      if (!a) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+      var url = location.href.split('#')[0] + a.getAttribute('href');
+      window.open(url, '_blank', 'noopener');
+    }, true);
+  }
+
   function run() {
     injectCss();
     captureLinks();
     hideDetailAccordion();
     decorateGrid();
+    wireNewTab();
   }
 
   if (window.SCW && typeof SCW.onViewRender === 'function') {
