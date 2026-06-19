@@ -1160,6 +1160,85 @@
         }
       }
 
+      // ── Install object pickers (view_3915) ──────────────────────────
+      // Connected Devices (field_2820, multi, NVR/switch side) + Connected To
+      // (field_2821, single, cam/reader side). Candidates come from the loaded
+      // install records; PUT through view_3915 so mirror-connection-sync's
+      // field_2820↔field_2821 cascade fires (createMirror VIEW_ID view_3915).
+      var _vcfgInstall = (ns.cfg && typeof ns.cfg.viewCfg === 'function')
+        ? ns.cfg.viewCfg(viewKey) : null;
+      if (_vcfgInstall && _vcfgInstall.moneyMode === 'install') {
+        var IF = (ns.cfg && ns.cfg.fields(viewKey)) || {};
+        var _ICD = IF.connectedDevices || 'field_2820';
+        var _ICT = IF.connectedDevice  || 'field_2821';
+        if (fieldKey === _ICD || fieldKey === _ICT) {
+          var _icam = ns.card && ns.card.CAM_READER_BUCKET;
+          var _iIsCD = (fieldKey === _ICD);
+          // CD pre-select hardening (same as field_1957): union in any cam/reader
+          // whose Connected To (field_2821) already points back at THIS device,
+          // so the picker opens with the true set even if the parent's forward
+          // list is stale.
+          var _iSel = {}; for (var ix = 0; ix < sel.length; ix++) _iSel[sel[ix]] = true;
+          if (_iIsCD) {
+            for (var rb = 0; rb < records.length; rb++) {
+              var rbr = records[rb]; if (!rbr || !rbr.id) continue;
+              var bRaw = rbr[_ICT + '_raw'];
+              var bId = (Array.isArray(bRaw) && bRaw[0] && bRaw[0].id) ? bRaw[0].id : null;
+              if (bId === recordId && !_iSel[rbr.id]) { sel.push(rbr.id); _iSel[rbr.id] = true; }
+            }
+          }
+          var iCands = [];
+          for (var ci3 = 0; ci3 < records.length; ci3++) {
+            var icr = records[ci3];
+            if (!icr || !icr.id || icr.id === recordId) continue;
+            var icb = (ns.card && typeof ns.card.bucketIdOf === 'function')
+              ? ns.card.bucketIdOf(icr, viewKey) : '';
+            if (_iIsCD) {
+              if (icb !== _icam) continue;                  // devices → connect cam/readers
+              if (!_iSel[icr.id]) {                          // skip cams already spoken for
+                var ictRaw = icr[_ICT + '_raw'];
+                if (Array.isArray(ictRaw) && ictRaw.length && ictRaw[0] && ictRaw[0].id) continue;
+              }
+            } else {
+              if (icb === _icam) continue;                   // cam → connect to network gear
+              var iccat = (ns.card && typeof ns.card.bucketCategoryOf === 'function')
+                ? ns.card.bucketCategoryOf(icr, viewKey) : 'default';
+              if (iccat === 'assumptions' || iccat === 'services') continue;
+            }
+            iCands.push(icr);
+          }
+          var _ilbl  = IF.displayLabel || 'field_2802';
+          var _ialt  = IF.labelAlt     || 'field_2801';
+          var _iprod = IF.productName  || 'field_2790';
+          var _imdf  = IF.mdfIdf       || 'field_2818';
+          var installRefetch = function () {
+            if (ns.data && typeof ns.data.refetchAndNotify === 'function') ns.data.refetchAndNotify(viewKey);
+            else if (ns.data && typeof ns.data.notify === 'function') ns.data.notify(viewKey);
+          };
+          ns.picker.open({
+            sourceViewKey: viewKey, putViewKey: viewKey, recordId: recordId,
+            fieldKey: fieldKey, label: label, selectedIds: sel,
+            candidates: iCands,
+            groupBy: function (r) {
+              var raw = r[_imdf + '_raw'];
+              if (Array.isArray(raw) && raw[0] && raw[0].id) {
+                return { id: raw[0].id, label: String(raw[0].identifier || '').replace(/<[^>]*>/g, '').trim() || 'MDF / IDF' };
+              }
+              return { id: '__unknown', label: 'No MDF / IDF' };
+            },
+            itemLabel: function (r) {
+              var lbl = (r[_ilbl] || '').toString().replace(/<[^>]*>/g, '').trim() ||
+                        (r[_ialt] || '').toString().replace(/<[^>]*>/g, '').trim();
+              var prod = (r[_iprod] || '').toString().replace(/<[^>]*>/g, '').trim();
+              if (lbl && prod) return lbl + ' · ' + prod;
+              return lbl || prod || r.id;
+            },
+            multi: _iIsCD, onSaved: installRefetch
+          });
+          return;
+        }
+      }
+
       // Connected Devices (field_1957) hardening — pre-select the TRUE set.
       // ------------------------------------------------------------------
       // field_1957 (parent → children) and field_2197 (child → parent) are

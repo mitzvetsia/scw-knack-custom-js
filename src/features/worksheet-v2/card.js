@@ -1696,8 +1696,11 @@
     var items = '';
 
     if (cat === 'cam') {
-      items += sdItem(detailReadOnly(rec, F.connectedDevice || 'field_2821', 'Connected To'),
-        'scw-ws-v2-sd--conn');
+      // Connected To (field_2821, single → network device) — EDITABLE; the
+      // field_2820↔field_2821 cascade (createMirror VIEW_ID view_3915) keeps
+      // the NVR/switch's Connected Devices in sync.
+      items += sdItem(detailConnection(rec, viewKey, F.connectedDevice || 'field_2821',
+        'Connected To', hasIssue(rec, 'disconnected')), 'scw-ws-v2-sd--conn');
       items += sdItem(detailReadOnly(rec, F.dropLength || 'field_2804', 'Drop Length'),
         'scw-ws-v2-sd--num');
       items += sdItem(detailReadOnly(rec, F.conduit || 'field_2803', 'Conduit'),
