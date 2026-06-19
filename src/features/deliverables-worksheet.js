@@ -211,7 +211,7 @@
     }).join('');
     return '<div class="' + PREFIX + '-panel" data-record-id="' + esc(recordId) + '">' +
         '<div class="' + PREFIX + '-head">' +
-          '<span class="' + PREFIX + '-title">Deliverables</span>' +
+          '<span class="' + PREFIX + '-title">System Questionnaire</span>' +
           '<span class="' + PREFIX + '-status" aria-live="polite"></span>' +
         '</div>' +
         '<div class="' + PREFIX + '-grid">' + body + '</div>' +
