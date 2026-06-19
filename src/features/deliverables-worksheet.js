@@ -11,27 +11,28 @@
     // Fields on the LINE ITEM
     VALUE_FIELD:            'field_2932',   // Paragraph/Rich-Text — stores the JSON answer blob
     LINE_ITEM_SCHEMA_FIELD: 'field_2930',   // Deliverable Schema connection on the line item
-    // Schema FIELD DEFINITIONS come from the boot snippet's global — NOT an
-    // on-page view, and NOT raw Knack records — so the bundle needs ZERO
-    // Config-Field-Definition column ids. The snippet reads that object
-    // (schema connection field_2924, label/key/inputType/choices/required/
-    // sortOrder/active/default) and emits one SHAPED object per field:
-    //   window.SCW.deliverablesFields = [{
-    //     schemaId,            // Deliverable Schema record id (field_2924 conn)
-    //     key, label,
-    //     inputType,           // human label (INPUT_TYPES key) or a widget type
-    //     choices,             // array OR newline-joined string
-    //     required, active,    // bool OR "Yes"/"No"
-    //     sortOrder,           // number
-    //     default              // string (literal and/or {token})
-    //   }, …]
-    //   window.SCW.deliverablesFieldsReady = true;   // set when the fetch completes
+    // The boot snippet emits RAW Knack records (field_XXXX / field_XXXX_raw)
+    // for each Config Field Definition row, so we read the columns here.
+    // Mapping inferred from a live record; adjust if a column moves. The three
+    // yes/no columns are field_2926/field_2928/field_2933 — required/active are
+    // two of them (field_2933 unused/unknown).
+    DEF: {
+      schema:    'field_2924',  // connection -> Deliverable Schema ("IP Cameras")
+      label:     'field_2922',  // short text  ("OSD")
+      key:       'field_2925',  // machine key ("osd") — blank falls back to slug(label)
+      inputType: 'field_2923',  // "Short text" / "Single Select" … (matched case-insensitively)
+      choices:   'field_2929',  // paragraph — one choice per line (select types)
+      required:  'field_2926',  // yes/no
+      sortOrder: 'field_2927',  // number
+      active:    'field_2928',  // yes/no (soft delete)
+      def:       'field_2931'   // paragraph — Default Value (literal and/or {token})
+    },
     // Friendly token name -> line-item field key for {token} defaults. Empty:
     // we use raw {field_###} tokens (resolved against the worksheet model with
     // zero config). Add entries only for friendly aliases.
     DEFAULT_TOKENS: {},
-    // Input Type label -> widget (snippet may also pass a widget type directly,
-    // which passes through unchanged).
+    // Input Type label -> widget (matched case-insensitively; a widget type
+    // passed directly also works).
     INPUT_TYPES: {
       'Short Text': 'text', 'Long Text': 'textarea', 'Number': 'number',
       'Yes-No': 'yesno', 'Single Select': 'select', 'Multi Select': 'multiselect', 'Date': 'date'
@@ -52,32 +53,58 @@
     return null;
   }
   /* ── load schema fields grouped by schema id ── */
+  /** Prefer the clean `_raw` value (string/number/bool); else strip HTML off
+   *  the formatted value. Connection fields keep their array _raw — use
+   *  firstConnId for those instead. */
+  function rawVal(rec, fk) {
+    if (!fk || !rec) return '';
+    var r = rec[fk + '_raw'];
+    if (typeof r === 'number' || typeof r === 'boolean' || typeof r === 'string') return r;
+    var v = rec[fk];
+    return String(v == null ? '' : v).replace(/<[^>]*>/g, '');
+  }
+  /** Input-type label/widget -> widget, case-insensitive; passes a widget
+   *  type ('text'/'select'/…) through unchanged. Unknown -> '' (skip). */
+  function inputTypeWidget(s) {
+    s = String(s == null ? '' : s).trim();
+    if (!s) return '';
+    var keys = Object.keys(CONFIG.INPUT_TYPES);
+    for (var i = 0; i < keys.length; i++) {
+      if (keys[i].toLowerCase() === s.toLowerCase()) return CONFIG.INPUT_TYPES[keys[i]];
+    }
+    var widgets = { text: 1, textarea: 1, number: 1, yesno: 1, select: 1, multiselect: 1, date: 1 };
+    return widgets[s.toLowerCase()] ? s.toLowerCase() : '';
+  }
+  /** Slug a label into a stable storage key when the key column is blank. */
+  function slug(s) {
+    return String(s == null ? '' : s).replace(/<[^>]*>/g, '').toLowerCase().trim()
+      .replace(/[^a-z0-9]+/g, '_').replace(/^_+|_+$/g, '');
+  }
+
   function loadSchemaFields() {
-    // The snippet emits pre-shaped field objects (friendly keys), so there are
-    // no Knack column ids to read here — just normalize light types and group
-    // by schema. Tolerant of inputType being a human label ("Single Select")
-    // or an already-mapped widget type, and choices/booleans in either form.
+    // Snippet emits RAW Knack records — read the Config-Field-Definition
+    // columns (CONFIG.DEF) off each, group by the schema connection (field_2924).
     var rows = (window.SCW && window.SCW.deliverablesFields) || [];
-    var bySchema = {};
-    rows.forEach(function (f) {
-      if (!f) return;
-      if (f.active != null && !isYes(f.active)) return;   // honor soft-delete when present
-      var schemaId = f.schemaId || f.schema;
+    var D = CONFIG.DEF, bySchema = {};
+    rows.forEach(function (rec) {
+      if (!rec) return;
+      var activeVal = rawVal(rec, D.active);
+      if (activeVal !== '' && activeVal != null && !isYes(activeVal)) return;  // soft-deleted
+      var schemaId = firstConnId(rec, D.schema);
       if (!schemaId) return;
-      var key = String(f.key == null ? '' : f.key).trim();
+      var type = inputTypeWidget(rawVal(rec, D.inputType));
+      if (!type) return;
+      var label = String(rawVal(rec, D.label) || '').trim();
+      var key   = String(rawVal(rec, D.key) || '').trim() || slug(label);
       if (!key) return;
-      var rawType = String(f.inputType || f.type || '').trim();
-      var type = CONFIG.INPUT_TYPES[rawType] || rawType || 'text';
       var def = {
         key:       key,
-        label:     String(f.label == null ? '' : f.label).trim(),
+        label:     label,
         type:      type,
-        choices:   Array.isArray(f.choices)
-                     ? f.choices.map(function (c) { return String(c == null ? '' : c).trim(); }).filter(Boolean)
-                     : parseChoices(f.choices),
-        required:  isYes(f.required),
-        sortOrder: Number(f.sortOrder) || 0,
-        def:       String(f['default'] == null ? '' : f['default']).trim()
+        choices:   parseChoices(rawVal(rec, D.choices)),
+        required:  isYes(rawVal(rec, D.required)),
+        sortOrder: Number(rawVal(rec, D.sortOrder)) || 0,
+        def:       String(rawVal(rec, D.def) || '').trim()
       };
       (bySchema[schemaId] = bySchema[schemaId] || []).push(def);
     });
