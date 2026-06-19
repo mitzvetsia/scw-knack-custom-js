@@ -5,8 +5,9 @@
   var PREFIX = 'scw-deliverables';
   var CONFIG = {
     WORKSHEET_VIEW:  'view_XXXX',   // TODO: line-items grid/worksheet view
-    SCHEMA_DEF_VIEW: 'view_XXXX',   // TODO: hidden view listing ALL Config Field Definition records
-    PRODUCT_SCHEMA_VIEW: '',        // not needed — schema is direct on the line item
+    // Schema field definitions come from the boot snippet's global
+    // (window.SCW.deliverablesFields), NOT an on-page view. Schema resolves
+    // directly from field_2930 on the line item — no hidden product view.
     // Fields on the LINE ITEM
     VALUE_FIELD:            'field_XXXX',   // TODO: Paragraph/Rich-Text — stores the JSON blob
     PRODUCT_FIELD:          'field_XXXX',   // TODO (optional): product connection, only if a token needs it
@@ -49,7 +50,7 @@
   }
   /* ── load schema fields grouped by schema id ── */
   function loadSchemaFields() {
-    var rows = getViewRecords(CONFIG.SCHEMA_DEF_VIEW);
+    var rows = (window.SCW && window.SCW.deliverablesFields) || [];   // boot-snippet global (was a view read)
     var D = CONFIG.DEF, bySchema = {};
     rows.forEach(function (rec) {
       if (!isYes(rec[D.active])) return;
@@ -77,22 +78,12 @@
     if (CONFIG.debug) SCW.log('[' + PREFIX + '] schema fields', bySchema);
     return bySchema;
   }
-  function loadProductSchemaMap() {
-    if (!CONFIG.PRODUCT_SCHEMA_VIEW) return {};
-    var map = {};
-    getViewRecords(CONFIG.PRODUCT_SCHEMA_VIEW).forEach(function (rec) {
-      var sid = firstConnId(rec, CONFIG.DEF.schema);
-      if (rec.id && sid) map[rec.id] = sid;
-    });
-    return map;
-  }
-  function resolveSchemaId(rec, productSchemaMap) {
-    if (CONFIG.LINE_ITEM_SCHEMA_FIELD) {
-      var direct = firstConnId(rec, CONFIG.LINE_ITEM_SCHEMA_FIELD);
-      if (direct) return direct;
-    }
-    var pid = CONFIG.PRODUCT_FIELD ? firstConnId(rec, CONFIG.PRODUCT_FIELD) : null;
-    return pid ? (productSchemaMap[pid] || null) : null;
+  // Schema resolves directly from the line item's Deliverable Schema
+  // connection (field_2930) — no product→schema view needed.
+  function resolveSchemaId(rec) {
+    return CONFIG.LINE_ITEM_SCHEMA_FIELD
+      ? firstConnId(rec, CONFIG.LINE_ITEM_SCHEMA_FIELD)
+      : null;
   }
   /* ── parsing helpers ── */
   function isYes(v) {
@@ -238,15 +229,23 @@
   }
   /* ── mount: one editor per line-item row (ADAPT to your layout) ── */
   function mount(viewId) {
+    // Boot-race guard: the snippet that fills window.SCW.deliverablesFields
+    // may not have finished its API fetch when the worksheet first renders
+    // (same cold-load race as productBucketMap). Retry briefly instead of
+    // rendering nothing — re-run mount until the global is ready (~6s).
+    if (!(window.SCW && window.SCW.deliverablesFieldsReady)) {
+      if (mount._tries == null) mount._tries = 0;
+      if (mount._tries++ < 20) { setTimeout(function () { mount(viewId); }, 300); }
+      return;
+    }
     var bySchema = loadSchemaFields();
-    var productSchemaMap = loadProductSchemaMap();
     var records = getViewRecords(viewId);
     if (!records.length) return;
     records.forEach(function (rec) {
       var tr = document.querySelector('#' + viewId + ' tr#' + rec.id +
                                       ', #' + viewId + ' tr[data-record-id="' + rec.id + '"]');
       if (!tr) return;
-      var schemaId = resolveSchemaId(rec, productSchemaMap);
+      var schemaId = resolveSchemaId(rec);
       var fields = schemaId ? bySchema[schemaId] : null;
       if (!fields || !fields.length) return;
       var holderId = PREFIX + '-row-' + rec.id;
