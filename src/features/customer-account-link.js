@@ -65,7 +65,7 @@
       '#' + GRID_VIEW + ' td.' + CONN_FIELD + ' .scw-cust-edit-link:hover .scw-cust-edit-ic { opacity: 1; }',
       // Add-customer button
       '#' + GRID_VIEW + ' td.' + CONN_FIELD + ' .scw-cust-add-btn {',
-      '  display: inline-flex; align-items: center; gap: 5px; margin-top: 6px;',
+      '  display: inline-flex; align-items: center; gap: 5px; margin-top: 12px;',
       '  padding: 4px 10px; border: 1px solid #163C6E; border-radius: 6px;',
       '  background: #163C6E; color: #fff !important; cursor: pointer;',
       '  font: 600 12px system-ui, -apple-system, sans-serif; text-decoration: none !important;',
