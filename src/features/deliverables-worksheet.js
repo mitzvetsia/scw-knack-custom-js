@@ -352,5 +352,39 @@
     installV2Observer();
     stagger();
   }, NS);
+
+  /* ── diagnostic: run SCW.deliverablesDebug() in the console to see which
+   * gate is failing (snippet global ready? field_2930 on the model? schema
+   * matched?). Returns + logs a summary; harmless to leave shipped. */
+  window.SCW = window.SCW || {};
+  window.SCW.deliverablesDebug = function () {
+    var g = window.SCW && window.SCW.deliverablesFields;
+    var bySchema = loadSchemaFields();
+    var schemaIds = Object.keys(bySchema);
+    var records = getViewRecords(CONFIG.WORKSHEET_VIEW);
+    var info = {
+      globalPresent: !!g,
+      globalLength: (g && g.length) || 0,
+      ready: !!(window.SCW && window.SCW.deliverablesFieldsReady),
+      schemaCount: schemaIds.length,
+      schemaIds: schemaIds,
+      records: records.length,
+      withField2930: 0,
+      matched: 0,
+      v2Cards: document.querySelectorAll('.scw-ws-v2-card[data-scw-ws-v2-record]').length,
+      sample: []
+    };
+    records.forEach(function (rec) {
+      var has = recordHasField(rec, CONFIG.LINE_ITEM_SCHEMA_FIELD);
+      var sid = resolveSchemaId(rec);
+      if (has) info.withField2930++;
+      if (sid && bySchema[sid]) info.matched++;
+      if (info.sample.length < 6) {
+        info.sample.push({ id: rec.id, hasField2930: has, schemaId: sid, matched: !!(sid && bySchema[sid]) });
+      }
+    });
+    if (window.console) console.log('[scw-deliverables] debug', info);
+    return info;
+  };
 })();
 /*** END DELIVERABLES WORKSHEET ***/
