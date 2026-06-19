@@ -16,8 +16,19 @@
 (function () {
   'use strict';
 
-  var SCENE    = 'scene_1347';
-  var POC_FORM = 'view_4025';      // editable POC form → auto-save
+  var SCENE     = 'scene_1347';
+  var POC_FORM  = 'view_4025';     // editable POC form → per-field auto-save
+  var SIGNOFF   = 'view_4029';     // final sign-off form → gated by required POC fields
+  // POC fields that must be filled before the customer can sign off. With the
+  // Knack "required" setting turned OFF (so partial per-field PUTs save), this
+  // is the client-side gate enforced at sign-off. { key, label }.
+  var REQUIRED = [
+    { key: 'field_1759', label: 'Super Admin Email' },
+    { key: 'field_1793', label: 'Onsite Contact Email' },
+    { key: 'field_1763', label: 'Onsite Contact Phone' },
+    { key: 'field_1794', label: 'View Approval Email' },
+    { key: 'field_1765', label: 'View Approval Phone' }
+  ];
   var NS       = '.scwCqScene';
   var STYLE_ID = 'scw-cq-scene-css';
 
@@ -76,7 +87,15 @@
       S + ' .scw-cqf-status { margin-left: 8px; font: 600 11px/1 system-ui, sans-serif; color: #94a3b8; }',
       S + ' .scw-cqf-status.is-saving { color: #2563eb; }',
       S + ' .scw-cqf-status.is-ok { color: #15803d; }',
-      S + ' .scw-cqf-status.is-err { color: #b91c1c; }'
+      S + ' .scw-cqf-status.is-err { color: #b91c1c; }',
+      // Sign-off gate: highlight incomplete required POC fields + error banner.
+      S + ' .kn-input.scw-cqf-missing input, ' + S + ' .kn-input.scw-cqf-missing textarea {',
+      '  border-color: #dc2626 !important; box-shadow: 0 0 0 3px rgba(220,38,38,.14) !important; background: #fff7f7 !important; }',
+      S + ' .kn-input.scw-cqf-missing .kn-label { color: #b91c1c !important; }',
+      S + ' #' + SIGNOFF + ' .scw-cq-signoff-error {',
+      '  background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; border-radius: 8px;',
+      '  padding: 10px 12px; margin-bottom: 12px; font: 500 13px/1.45 system-ui, sans-serif; }',
+      S + ' #' + SIGNOFF + ' .scw-cq-signoff-error b { font-weight: 700; }'
     ].join('\n');
     var s = document.createElement('style');
     s.id = STYLE_ID; s.textContent = css;
@@ -194,7 +213,80 @@
     }, true);
   }
 
-  function run() { injectCss(); initFields(); wire(); }
+  /* ── Sign-off gate: block view_4029 submit until required POC fields filled ── */
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[c];
+    });
+  }
+  function fieldFilled(key) {
+    var fieldEl = document.querySelector('#' + POC_FORM + ' .kn-input[data-input-id="' + key + '"]');
+    if (!fieldEl) return true;   // field not on the form → don't block
+    var type = fieldType(fieldEl);
+    var val = readVal(fieldEl, type);
+    if (type === 'name') return !!((val.first && val.first.trim()) || (val.last && val.last.trim()));
+    return !!String(val == null ? '' : val).trim();
+  }
+  function requiredMissing() {
+    var out = [];
+    for (var i = 0; i < REQUIRED.length; i++) if (!fieldFilled(REQUIRED[i].key)) out.push(REQUIRED[i]);
+    return out;
+  }
+  function clearMissingHighlights() {
+    var els = document.querySelectorAll('#' + POC_FORM + ' .scw-cqf-missing');
+    for (var i = 0; i < els.length; i++) els[i].classList.remove('scw-cqf-missing');
+  }
+  function clearSignoffError() {
+    var err = document.querySelector('#' + SIGNOFF + ' .scw-cq-signoff-error');
+    if (err && err.parentNode) err.parentNode.removeChild(err);
+  }
+  function showSignoffError(missing) {
+    clearMissingHighlights();
+    var first = null;
+    for (var i = 0; i < missing.length; i++) {
+      var fieldEl = document.querySelector('#' + POC_FORM + ' .kn-input[data-input-id="' + missing[i].key + '"]');
+      if (fieldEl) { fieldEl.classList.add('scw-cqf-missing'); if (!first) first = fieldEl; }
+    }
+    var form = document.querySelector('#' + SIGNOFF + ' form');
+    if (form) {
+      var err = form.querySelector('.scw-cq-signoff-error');
+      if (!err) {
+        err = document.createElement('div');
+        err.className = 'scw-cq-signoff-error';
+        form.insertBefore(err, form.firstChild);
+      }
+      err.innerHTML = 'Please complete these required fields above before signing off: <b>' +
+        missing.map(function (m) { return esc(m.label); }).join(', ') + '</b>';
+    }
+    if (first && first.scrollIntoView) first.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  }
+
+  function wireSignoffGate() {
+    if (document.documentElement.hasAttribute('data-scw-cq-signoff-bound')) return;
+    document.documentElement.setAttribute('data-scw-cq-signoff-bound', '1');
+    function gate(e) {
+      var inForm = e.target.closest && e.target.closest('#' + SIGNOFF + ' form');
+      var onBtn = e.target.closest && e.target.closest('#' + SIGNOFF + ' .kn-submit button, #' + SIGNOFF + ' button[type="submit"]');
+      if (!inForm && !onBtn) return;
+      var missing = requiredMissing();
+      if (!missing.length) return;
+      e.preventDefault();
+      e.stopPropagation();
+      if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+      showSignoffError(missing);
+    }
+    document.addEventListener('submit', gate, true);   // primary block (capture, before Knack)
+    document.addEventListener('click', gate, true);    // backup if Knack binds the button click
+    // Clear a field's red state as soon as the user fills it; drop the banner
+    // once nothing's missing.
+    document.addEventListener('input', function (e) {
+      var fieldEl = e.target.closest && e.target.closest('#' + POC_FORM + ' .scw-cqf-missing');
+      if (fieldEl) fieldEl.classList.remove('scw-cqf-missing');
+      if (!requiredMissing().length) clearSignoffError();
+    }, true);
+  }
+
+  function run() { injectCss(); initFields(); wire(); wireSignoffGate(); }
 
   if (window.SCW && typeof SCW.onSceneRender === 'function') {
     SCW.onSceneRender(SCENE, function () { setTimeout(run, 60); }, NS);
