@@ -242,14 +242,21 @@
     } catch (e) { /* default to build-SOW */ }
     var summaryMoneyOpts = salesMoney
       ? { moneyField: 'field_2269', moneyLabel: 'Total' }
-      : null;
+      : (surveyMoney ? { moneyField: 'field_2401', moneyLabel: 'Sub Bid' } : {});
+    // Hand the summary a per-view field map (cfg.fields) + the view key so
+    // aggregate() resolves product/qty/cabling/money per-object instead of
+    // the SOW literals it used to hardcode (CLAUDE.md #15). SOW path is
+    // unchanged (map resolves to the same literals).
+    try {
+      summaryMoneyOpts.fields = (ns.cfg && typeof ns.cfg.fields === 'function')
+        ? ns.cfg.fields(sourceViewKey) : null;
+    } catch (eF) { summaryMoneyOpts.fields = null; }
+    summaryMoneyOpts.viewKey = sourceViewKey;
 
     // Per-L1 summary block — sits at the top of the body, always
     // rendered; CSS controls its visibility per toolbar mode.
-    // Skipped for the survey preview: summary.js reads SOW money keys
-    // hardcoded, so it would render blank totals on the survey object.
-    // (Folds into Known Issue #15 — generalize summary.js through cfg.)
-    if (!surveyMoney && !installMoney && ns.summary && typeof ns.summary.buildL1Summary === 'function') {
+    // Skipped only for install (no money model / different surface).
+    if (!installMoney && ns.summary && typeof ns.summary.buildL1Summary === 'function') {
       try {
         var sumEl = ns.summary.buildL1Summary(l1, summaryMoneyOpts);
         if (sumEl) body.appendChild(sumEl);
@@ -480,10 +487,14 @@
     } catch (e) { /* default */ }
     var grandMoneyOpts = _grandSales
       ? { moneyField: 'field_2269', moneyLabel: 'Total' }
-      : null;
-    // Survey: skip the grand summary too — summary.js reads SOW money keys
-    // (folds into Known Issue #15). The per-card worksheet is the surface.
-    if (!_grandSurvey && !_grandInstall && ns.summary && typeof ns.summary.buildGrandSummary === 'function') {
+      : (_grandSurvey ? { moneyField: 'field_2401', moneyLabel: 'Sub Bid' } : {});
+    try {
+      grandMoneyOpts.fields = (ns.cfg && typeof ns.cfg.fields === 'function')
+        ? ns.cfg.fields(sourceViewKey) : null;
+    } catch (eGF) { grandMoneyOpts.fields = null; }
+    grandMoneyOpts.viewKey = sourceViewKey;
+    // Grand summary — rendered for SOW/sales/survey; skipped only for install.
+    if (!_grandInstall && ns.summary && typeof ns.summary.buildGrandSummary === 'function') {
       try {
         var grand = ns.summary.buildGrandSummary(tree, grandMoneyOpts);
         if (grand) frag.appendChild(grand);

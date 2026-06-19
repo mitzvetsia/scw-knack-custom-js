@@ -63,8 +63,22 @@
   //   { sections: [{label, products, subtotal}], totals }
   // where sections are ordered: cam/reader first, then "default"
   // (networking / headend / everything else).
-  function aggregate(records, moneyField) {
-    moneyField = moneyField || 'field_2150';
+  function aggregate(records, opts) {
+    opts = opts || {};
+    var F = opts.fields || {};
+    var viewKey = opts.viewKey;
+    // Field map — logical name → field key, resolved per-view via
+    // cfg.fields (see CLAUDE.md #15). SOW defaults keep the build-SOW
+    // path byte-identical; survey/install resolve their own keys.
+    var moneyField = opts.moneyField || F.subBid || 'field_2150';
+    var fProduct   = F.product      || 'field_1949';
+    var fProductNm = F.productName  || null;   // stored name (survey); SOW has none
+    var fQty       = F.qty          || 'field_1964';
+    var fSort      = F.sortOrder    || 'field_2218';
+    var fLabel     = F.displayLabel || 'field_1950';
+    var fExist     = F.existCabling || 'field_2461';
+    var fExt       = F.exterior     || 'field_1984';
+    var fPlenum    = F.plenum       || 'field_1983';
     var bucketCategoryOf = (ns.card && ns.card.bucketCategoryOf) ||
                            function () { return 'default'; };
 
@@ -79,21 +93,22 @@
     for (var i = 0; i < records.length; i++) {
       var r = records[i];
       if (!r) continue;
-      var cat = bucketCategoryOf(r);
+      var cat = bucketCategoryOf(r, viewKey);
       // Skip assumptions / services — they don\'t belong in the
       // hardware summary.
       if (cat === 'assumptions' || cat === 'services') continue;
       var groupKey = (cat === 'cam') ? 'cam' : 'default';
       var grp = groups[groupKey];
 
-      // Track the section\'s sort key = minimum field_2218 (proposal
+      // Track the section\'s sort key = minimum sortOrder (proposal
       // bucket sortOrder) across its records, so the section ordering
       // matches the main grid\'s L2 sort.
-      var so = readNum(r, 'field_2218');
+      var so = readNum(r, fSort);
       if (isFinite(so) && so < grp.minSort) grp.minSort = so;
 
-      var prod = stripHtml(r.field_1949) || '(unnamed)';
-      var qty = readNum(r, 'field_1964') || 1;
+      var prod = (fProductNm && stripHtml(r[fProductNm])) ||
+                 stripHtml(r[fProduct]) || '(unnamed)';
+      var qty = readNum(r, fQty) || 1;
 
       var p = grp.byProduct[prod];
       if (!p) {
@@ -111,24 +126,24 @@
       totals.count       += qty;
 
       if (groupKey === 'cam') {
-        var devLabel = stripHtml(r.field_1950);
+        var devLabel = stripHtml(r[fLabel]);
         if (devLabel) p.labels.push(devLabel);
 
-        if (r.field_2461 != null && stripHtml(r.field_2461) !== '') {
-          if (isYes(r, 'field_2461')) {
+        if (r[fExist] != null && stripHtml(r[fExist]) !== '') {
+          if (isYes(r, fExist)) {
             p.existCabling++; grp.subtotal.existCabling++; totals.existCabling++;
           } else {
             p.newCabling++;   grp.subtotal.newCabling++;   totals.newCabling++;
           }
         }
-        if (r.field_1984 != null && stripHtml(r.field_1984) !== '') {
-          if (isYes(r, 'field_1984')) {
+        if (r[fExt] != null && stripHtml(r[fExt]) !== '') {
+          if (isYes(r, fExt)) {
             p.exterior++; grp.subtotal.exterior++; totals.exterior++;
           } else {
             p.interior++; grp.subtotal.interior++; totals.interior++;
           }
         }
-        if (isYes(r, 'field_1983')) {
+        if (isYes(r, fPlenum)) {
           p.plenum++; grp.subtotal.plenum++; totals.plenum++;
         }
       }
@@ -368,7 +383,7 @@
   function buildL1Summary(l1, opts) {
     opts = opts || {};
     var recs = collectRecords(l1);
-    var agg = aggregate(recs, opts.moneyField);
+    var agg = aggregate(recs, opts);
     if (!agg.sections.length) {
       var wrapEmpty = document.createElement('div');
       wrapEmpty.className = 'scw-ws-v2-summary scw-ws-v2-summary--empty';
@@ -404,7 +419,7 @@
     for (var i = 0; i < tree.length; i++) {
       all = all.concat(collectRecords(tree[i]));
     }
-    var agg = aggregate(all, opts.moneyField);
+    var agg = aggregate(all, opts);
     if (!agg.sections.length) {
       var wrapEmpty = document.createElement('div');
       wrapEmpty.className = 'scw-ws-v2-grand-summary scw-ws-v2-grand-summary--empty';
