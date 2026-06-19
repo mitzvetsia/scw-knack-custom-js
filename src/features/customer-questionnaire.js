@@ -320,20 +320,34 @@
     return el ? el.value : '';
   }
   function renderBar(container) {
-    var ids = selectedIds();
+    var boxes = container.querySelectorAll('.' + PREFIX + '-select');
+    var allIds = [];
+    for (var i = 0; i < boxes.length; i++) {
+      var rid = boxes[i].getAttribute('data-record-id');
+      if (rid) allIds.push(rid);
+    }
     var bar = container.querySelector('.' + PREFIX + '-bulkbar');
-    if (!ids.length) { if (bar) bar.parentNode.removeChild(bar); return; }
+    if (!allIds.length) { if (bar) bar.parentNode.removeChild(bar); return; }
+    var sel = selectedIds().filter(function (id) { return allIds.indexOf(id) !== -1; });
+    var n = sel.length, dis = n ? '' : ' disabled';
     if (!bar) {
       bar = document.createElement('div');
       bar.className = PREFIX + '-bulkbar';
       container.insertBefore(bar, container.firstChild);
     }
+    bar.classList.toggle('is-active', n > 0);
     bar.innerHTML =
-      '<span class="' + PREFIX + '-bulkbar-count">' + ids.length + ' selected</span>' +
+      '<label class="' + PREFIX + '-bulkbar-all">' +
+        '<input type="checkbox" class="' + PREFIX + '-master"><span>Select all</span>' +
+      '</label>' +
+      '<span class="' + PREFIX + '-bulkbar-count">' + (n ? n + ' selected' : '') + '</span>' +
       '<div class="' + PREFIX + '-bulkbar-actions">' +
-        '<button type="button" class="' + PREFIX + '-bulkbar-btn ' + PREFIX + '-bulkbar-clear">Clear</button>' +
-        '<button type="button" class="' + PREFIX + '-bulkbar-btn ' + PREFIX + '-bulkbar-edit">Edit ' + ids.length + ' item' + (ids.length === 1 ? '' : 's') + '</button>' +
+        '<button type="button" class="' + PREFIX + '-bulkbar-btn ' + PREFIX + '-bulkbar-clear"' + dis + '>Clear</button>' +
+        '<button type="button" class="' + PREFIX + '-bulkbar-btn ' + PREFIX + '-bulkbar-edit"' + dis + '>Edit' + (n ? ' ' + n : '') + '</button>' +
       '</div>';
+    var master = bar.querySelector('.' + PREFIX + '-master');
+    master.checked = n > 0 && n === allIds.length;
+    master.indeterminate = n > 0 && n < allIds.length;
   }
   function syncSelectionUI(container) {
     var boxes = container.querySelectorAll('.' + PREFIX + '-select');
@@ -349,6 +363,18 @@
     if (container._scwCqWired) return;
     container._scwCqWired = true;
     container.addEventListener('change', function (e) {
+      // Master "Select all" — select/deselect every rendered card.
+      var master = e.target.closest && e.target.closest('.' + PREFIX + '-master');
+      if (master) {
+        var boxes = container.querySelectorAll('.' + PREFIX + '-select');
+        for (var i = 0; i < boxes.length; i++) {
+          var rid = boxes[i].getAttribute('data-record-id');
+          if (!rid) continue;
+          if (master.checked) _selected[rid] = true; else delete _selected[rid];
+        }
+        syncSelectionUI(container);
+        return;
+      }
       var cb = e.target.closest && e.target.closest('.' + PREFIX + '-select');
       if (!cb) return;
       var id = cb.getAttribute('data-record-id');
@@ -613,16 +639,20 @@
       // Select checkbox + selected card highlight
       '.' + PREFIX + '-select{width:17px;height:17px;flex:0 0 auto;cursor:pointer;accent-color:#2563eb;margin-top:2px;}' +
       '.' + PREFIX + '-card.is-selected{border-color:#2563eb;box-shadow:0 0 0 2px rgba(37,99,235,.18);}' +
-      // Sticky bulk bar
-      '.' + PREFIX + '-bulkbar{position:sticky;top:0;z-index:5;display:flex;align-items:center;justify-content:space-between;' +
-        'gap:12px;padding:10px 14px;background:#0f4c75;color:#fff;border-radius:8px;box-shadow:0 2px 6px rgba(15,23,42,.2);}' +
-      '.' + PREFIX + '-bulkbar-count{font:700 13px system-ui,sans-serif;}' +
-      '.' + PREFIX + '-bulkbar-actions{display:flex;gap:8px;}' +
+      // Sticky bulk bar (always visible; emphasized when items are selected)
+      '.' + PREFIX + '-bulkbar{position:sticky;top:0;z-index:5;display:flex;align-items:center;' +
+        'gap:14px;padding:10px 14px;background:#475569;color:#fff;border-radius:8px;box-shadow:0 2px 6px rgba(15,23,42,.18);}' +
+      '.' + PREFIX + '-bulkbar.is-active{background:#0f4c75;}' +
+      '.' + PREFIX + '-bulkbar-all{display:inline-flex;align-items:center;gap:7px;cursor:pointer;font:600 13px system-ui,sans-serif;flex:0 0 auto;}' +
+      '.' + PREFIX + '-master{width:17px;height:17px;cursor:pointer;accent-color:#fff;}' +
+      '.' + PREFIX + '-bulkbar-count{flex:1 1 auto;font:700 13px system-ui,sans-serif;}' +
+      '.' + PREFIX + '-bulkbar-actions{display:flex;gap:8px;flex:0 0 auto;}' +
       '.' + PREFIX + '-bulkbar-btn{font:600 13px system-ui,sans-serif;padding:7px 14px;border-radius:6px;border:1px solid transparent;cursor:pointer;}' +
-      '.' + PREFIX + '-bulkbar-clear{background:transparent;color:#cbd5e1;border-color:rgba(255,255,255,.3);}' +
-      '.' + PREFIX + '-bulkbar-clear:hover{color:#fff;border-color:#fff;}' +
+      '.' + PREFIX + '-bulkbar-btn:disabled{opacity:.45;cursor:default;}' +
+      '.' + PREFIX + '-bulkbar-clear{background:transparent;color:#e2e8f0;border-color:rgba(255,255,255,.35);}' +
+      '.' + PREFIX + '-bulkbar-clear:hover:not(:disabled){color:#fff;border-color:#fff;}' +
       '.' + PREFIX + '-bulkbar-edit{background:#fff;color:#0f4c75;}' +
-      '.' + PREFIX + '-bulkbar-edit:hover{background:#e0f2fe;}' +
+      '.' + PREFIX + '-bulkbar-edit:hover:not(:disabled){background:#e0f2fe;}' +
       // Bulk modal
       '.' + PREFIX + '-bulk-overlay{position:fixed;inset:0;z-index:100000;background:rgba(15,23,42,.55);' +
         'display:flex;align-items:center;justify-content:center;font-family:system-ui,sans-serif;}' +
