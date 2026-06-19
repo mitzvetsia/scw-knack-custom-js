@@ -296,6 +296,12 @@
         independentFields: true,            // Survey object — no SOW fallback
         moneyMode:         'survey',
         hideSow:           true,            // survey groups by Bid, not SOW
+        // Quick-filter pill strip above the grid — survey filters by BID
+        // (field_2415) instead of SOW. Generalizes sow-filter.js: when
+        // filterPills is set the strip mounts even with hideSow:true, reads
+        // this connection field, and labels itself accordingly. `field` may
+        // be a field key or a logical name (resolved via cfg.fields).
+        filterPills:       { field: 'field_2415', label: 'Bid' },
         noAccessories:     true,            // Survey Line Items have no accessory
                                             // relationship yet (CLAUDE.md #16) — hide
                                             // the bulk Add/Remove accessories buttons

@@ -57,20 +57,50 @@
     });
   }
 
-  // Map SOW record id → name (field_2126), read from the SOW source views
-  // (same ones bulk.js sources its SOW candidates from). The connection
-  // payload on field_2154_raw only carries the SW-#### identifier, not the
-  // friendly name — so we look it up here for the pill hover tooltip.
-  function sowNameById() {
+  // Per-view filter spec. Default = SOW (field_2154, labelled "SOW", names
+  // sourced from the SOW grids). A view can override via config.filterPills
+  // (e.g. survey filters by BID field_2415) — `field` may be a field key or
+  // a logical name resolved through cfg.fields.
+  function filterSpec(viewKey) {
+    var vc = (ns.cfg && typeof ns.cfg.viewCfg === 'function')
+      ? ns.cfg.viewCfg(viewKey) : null;
+    if (vc && vc.filterPills && vc.filterPills.field) {
+      var fp = vc.filterPills;
+      var fk = fp.field;
+      if (fk.indexOf('field_') !== 0 && ns.cfg && typeof ns.cfg.fields === 'function') {
+        fk = ns.cfg.fields(viewKey)[fk] || fk;
+      }
+      return {
+        fieldKey:  fk,
+        label:     fp.label || 'Filter',
+        nameViews: fp.nameViews || null,
+        nameField: fp.nameField || null
+      };
+    }
+    var sowK = (ns.cfg && ns.cfg.fields(viewKey).sow) || 'field_2154';
+    return {
+      fieldKey:  sowK,
+      label:     'SOW',
+      nameViews: ['view_3325', 'view_3918'],
+      nameField: 'field_2126'
+    };
+  }
+
+  // Map connection record id → friendly name, read from the spec's name
+  // grids. The connection _raw payload only carries the identifier, not the
+  // friendly name — so we look it up here for the pill hover tooltip. When
+  // the spec has no nameViews (e.g. the Bid filter), returns an empty map
+  // and the pill just shows its identifier.
+  function nameById(spec) {
     var map = Object.create(null);
-    var views = ['view_3325', 'view_3918'];
-    for (var vi = 0; vi < views.length; vi++) {
-      var v = window.Knack && Knack.views && Knack.views[views[vi]];
+    if (!spec || !spec.nameViews || !spec.nameField) return map;
+    for (var vi = 0; vi < spec.nameViews.length; vi++) {
+      var v = window.Knack && Knack.views && Knack.views[spec.nameViews[vi]];
       var models = (v && v.model && v.model.data && v.model.data.models) || [];
       for (var i = 0; i < models.length; i++) {
         var a = models[i] && models[i].attributes;
         if (!a || !a.id || map[a.id]) continue;
-        var name = stripHtml(a.field_2126);
+        var name = stripHtml(a[spec.nameField]);
         if (name) map[a.id] = name;
       }
     }
@@ -81,8 +111,9 @@
     var v = window.Knack && Knack.views && Knack.views[viewKey];
     if (!v || !v.model || !v.model.data) return [];
     var models = v.model.data.models || [];
-    var SOWK = ((ns.cfg && ns.cfg.fields(viewKey).sow) || 'field_2154') + '_raw';
-    var nameMap = sowNameById();
+    var spec = filterSpec(viewKey);
+    var SOWK = spec.fieldKey + '_raw';
+    var nameMap = nameById(spec);
     var seen = Object.create(null);
     var list = [];
     for (var i = 0; i < models.length; i++) {
@@ -152,7 +183,7 @@
       if (active[a] === BLANK) blankActive = true;
       else activeSet[active[a]] = true;
     }
-    var SOWK = ((ns.cfg && ns.cfg.fields(viewKey).sow) || 'field_2154') + '_raw';
+    var SOWK = filterSpec(viewKey).fieldKey + '_raw';
     var out = [];
     for (var i = 0; i < records.length; i++) {
       var r = records[i];
@@ -187,7 +218,7 @@
 
     var html =
       '<div class="scw-ws-v2-sow-pills">' +
-        '<span class="scw-ws-v2-sow-pills-label">SOW</span>' +
+        '<span class="scw-ws-v2-sow-pills-label">' + esc(filterSpec(viewKey).label) + '</span>' +
         '<button type="button" class="scw-ws-v2-sow-pill" ' +
           'data-scw-ws-v2-sow-pill="__all">Show All</button>' +
         sows.map(function (s) {

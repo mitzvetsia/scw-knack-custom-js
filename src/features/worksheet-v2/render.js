@@ -411,7 +411,9 @@
     try {
       var _vcS = ns.cfg && typeof ns.cfg.viewCfg === 'function' &&
                  ns.cfg.viewCfg(sourceViewKey);
-      _vcHideSow = !!(_vcS && _vcS.hideSow);
+      // hideSow suppresses the filter ONLY when the view has no filterPills
+      // override. A filterPills view (survey → Bid) keeps the filter active.
+      _vcHideSow = !!(_vcS && _vcS.hideSow && !_vcS.filterPills);
     } catch (e) { /* default: filter applies */ }
     var effectiveRecords = (!_vcHideSow && ns.sowFilter &&
         typeof ns.sowFilter.filterRecords === 'function')

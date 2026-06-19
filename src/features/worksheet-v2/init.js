@@ -123,8 +123,11 @@
         }
         var _vcSow = (ns.cfg && typeof ns.cfg.viewCfg === 'function')
           ? ns.cfg.viewCfg(key) : null;
+        // Mount the pill strip when SOW isn't hidden, OR when the view
+        // configures its own filterPills (e.g. survey filters by Bid even
+        // though hideSow:true suppresses the SOW column).
         if (ns.sowFilter && typeof ns.sowFilter.mount === 'function' &&
-            !(_vcSow && _vcSow.hideSow)) {
+            (!(_vcSow && _vcSow.hideSow) || (_vcSow && _vcSow.filterPills))) {
           ns.sowFilter.mount(key);
         }
         // After every re-render, sync the bulk-select checkboxes to
