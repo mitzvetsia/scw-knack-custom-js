@@ -323,7 +323,14 @@
    *  SCW Notes (field_1953). Brand-new sales items (field_2586 = 0) stay
    *  fully editable. Only applies on the sales deployment. */
   function isCrLocked(rec, viewKey) {
-    return isSalesMoney(viewKey) && surveyAssocCount(rec) >= 1;
+    if (isSalesMoney(viewKey) && surveyAssocCount(rec) >= 1) return true;
+    // Survey worksheet (view_3505): a finalized row (FLAG_locked field_2551 =
+    // Yes) is fully read-only — v1 "lock all fields if field_2551 = Yes". The
+    // `locked` logical field is mapped only on the survey view, so this is a
+    // no-op everywhere else.
+    var f = (ns.cfg && ns.cfg.fields(viewKey)) || {};
+    if (f.locked && readBool(rec, f.locked) === 'Yes') return true;
+    return false;
   }
 
   // Fields that stay editable even on a locked (existing) sales row.
@@ -386,10 +393,13 @@
     }
   }
 
-  // Shared copy + glyph for the survey-lock messaging.
+  // Shared copy + glyph for the lock messaging.
   var LOCKED_MSG = 'This item is locked because it has already been ' +
     'submitted for survey. Product, Custom Disc % and SCW Notes remain editable.';
   var LOCK_HOVER_MSG = 'Fields are locked because this item has been part of a survey.';
+  // Reason-aware copy — set per card right before the lock pass runs (sales
+  // survey-assoc vs survey finalized). setLockTooltip + addLockedNote read it.
+  var _lockCopy = { msg: LOCKED_MSG, hover: LOCK_HOVER_MSG };
 
   /** Hover tooltip for a locked control. The control itself has
    *  pointer-events:none (it can't receive hover, so a title on it never
@@ -400,7 +410,7 @@
         '.scw-ws-v2-detail-field, .scw-ws-v2-cell, .scw-ws-v2-mh-chip-wrap, ' +
         '.scw-ws-v2-mh-addrow'
       ) || el.parentElement;
-      if (wrap) wrap.title = LOCK_HOVER_MSG;
+      if (wrap) wrap.title = _lockCopy.hover;
     } catch (e) { /* tooltip is best-effort */ }
   }
   var LOCK_SVG_SM =
@@ -419,7 +429,7 @@
     if (!detail || detail.querySelector('.scw-ws-v2-locked-note')) return;
     var note = document.createElement('div');
     note.className = 'scw-ws-v2-locked-note';
-    note.innerHTML = LOCK_SVG_SM + '<span>' + escapeHtml(LOCKED_MSG) + '</span>';
+    note.innerHTML = LOCK_SVG_SM + '<span>' + escapeHtml(_lockCopy.msg) + '</span>';
     detail.insertBefore(note, detail.firstChild);
   }
 
@@ -685,6 +695,8 @@
       var blank = (v == null) || v === '' || (Array.isArray(v) && !v.length);
       if (!blank) return true;
     }
+    // Finalized rows (FLAG_locked = Yes) can't be deleted either.
+    if (f.locked && readBool(rec, f.locked) === 'Yes') return true;
     // (b) "count > 0" rule (survey-derived SOW items on sales / bid-review).
     if (DELETE_BLOCK_VIEWS[viewKey]) {
       var key = f.surveyItemCount || 'field_2586';
@@ -1801,6 +1813,12 @@
     // read-only except Product / Custom Disc % / SCW Notes (v1 parity).
     if (isCrLocked(rec, sourceViewKey)) {
       card.classList.add('scw-ws-v2-card--locked');
+      // Reason-aware copy: sales survey-assoc keeps Product/Disc/SCW Notes
+      // editable; survey finalized is a full lock.
+      _lockCopy = isSalesMoney(sourceViewKey)
+        ? { msg: LOCKED_MSG, hover: LOCK_HOVER_MSG }
+        : { msg: 'This item is locked because it has been finalized.',
+            hover: 'Locked — this item is finalized.' };
       lockCardFields(card);
       addLockedNote(card);
     }
