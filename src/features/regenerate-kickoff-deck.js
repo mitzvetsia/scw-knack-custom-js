@@ -58,7 +58,11 @@
     var s = document.createElement('style');
     s.id = STYLE_ID;
     s.textContent =
-      '#' + BTN_ID + '{display:inline-flex;align-items:center;gap:8px;margin:0 0 14px;' +
+      // display:flex + width:fit-content + margin-right:auto + align-self:flex-start
+      // forces the button to the LEFT whether its parent is a plain block or a
+      // centering flex container.
+      '#' + BTN_ID + '{display:flex;width:-moz-fit-content;width:fit-content;' +
+        'align-self:flex-start;align-items:center;gap:8px;margin:0 auto 14px 0;' +
         'padding:9px 16px;font:600 13px/1 system-ui,-apple-system,sans-serif;cursor:pointer;' +
         'color:#fff;background:#0f4c75;border:1px solid #0a3a63;border-radius:6px;' +
         'transition:background .12s;}' +
