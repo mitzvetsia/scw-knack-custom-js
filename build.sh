@@ -193,6 +193,7 @@ cat \
   src/features/customer-account-link.js \
   src/features/customer-questionnaire-scene.js \
   src/features/regenerate-kickoff-deck.js \
+  src/features/questionnaire-deployment-audit.js \
   > "$TMP_BUNDLE"
 
 UNMIN_BYTES=$(wc -c < "$TMP_BUNDLE" | tr -d ' ')
