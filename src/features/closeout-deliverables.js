@@ -239,6 +239,12 @@
       '  border-radius: 4px;',
       '  box-shadow: 0 1px 2px rgba(0,0,0,0.08);',
       '}',
+      // PDF first-page preview — fills the thumb, non-interactive so the card
+      // click still opens the popover.
+      '.scw-cd-doc__preview--pdf {',
+      '  width: 100%; height: 150px; max-height: none; max-width: none;',
+      '  border: 0; pointer-events: none; overflow: hidden;',
+      '}',
 
       /* Type label */
       '.scw-cd-doc__type {',
@@ -488,6 +494,42 @@
     ].join('');
   }
 
+  // A real thumbnail for the card: Knack's thumb_url when present, else the raw
+  // S3 URL rendered directly — <img> for images, a non-interactive <iframe>
+  // first-page preview for PDFs. Returns null when no previewable file (→ icon).
+  function buildCardPreview(doc) {
+    if (doc.thumbUrl) {
+      var t = document.createElement('img');
+      t.className = 'scw-cd-doc__preview';
+      t.src = doc.thumbUrl; t.alt = doc.fileName || doc.type || 'Document';
+      t.loading = 'lazy';
+      return t;
+    }
+    var src = doc.rawUrl || doc.fileUrl;
+    if (!src) return null;
+    var ext = ((doc.fileName || src).toLowerCase().match(/\.([a-z0-9]+)(?:\?|$)/) || [])[1] || '';
+    if (/^(png|jpe?g|gif|bmp|webp|heic|heif|tiff?|svg)$/.test(ext)) {
+      var im = document.createElement('img');
+      im.className = 'scw-cd-doc__preview';
+      im.src = src; im.alt = doc.fileName || doc.type || 'Document';
+      im.loading = 'lazy';
+      return im;
+    }
+    // PDF — needs the raw S3 URL (real application/pdf) for the inline viewer.
+    if (ext === 'pdf' && doc.rawUrl) {
+      var fr = document.createElement('iframe');
+      fr.className = 'scw-cd-doc__preview scw-cd-doc__preview--pdf';
+      fr.src = doc.rawUrl + (doc.rawUrl.indexOf('#') === -1 ? '#' : '&') +
+               'toolbar=0&navpanes=0&scrollbar=0&view=FitH';
+      fr.setAttribute('scrolling', 'no');
+      fr.setAttribute('tabindex', '-1');
+      fr.setAttribute('aria-hidden', 'true');
+      fr.setAttribute('loading', 'lazy');
+      return fr;
+    }
+    return null;
+  }
+
   function buildDocCard(doc, closeoutId) {
     var card = document.createElement('div');
     card.className = 'scw-cd-doc';
@@ -530,13 +572,9 @@
     // that reflects QA state (Pending QA / QA Pass / QA Fail / Required).
     var thumb = document.createElement('div');
     thumb.className = 'scw-cd-doc__thumb';
-    if (hasFile && doc.thumbUrl) {
-      var preview = document.createElement('img');
-      preview.className = 'scw-cd-doc__preview';
-      preview.src = doc.thumbUrl;
-      preview.alt = doc.fileName || doc.type || 'Document';
-      preview.loading = 'lazy';
-      thumb.appendChild(preview);
+    var previewEl = hasFile ? buildCardPreview(doc) : null;
+    if (previewEl) {
+      thumb.appendChild(previewEl);
     } else {
       var iconBox = document.createElement('div');
       iconBox.className = 'scw-cd-doc__icon';
