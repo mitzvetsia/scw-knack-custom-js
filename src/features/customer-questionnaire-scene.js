@@ -21,6 +21,8 @@
   var SIGNOFF   = 'view_4029';     // final sign-off form → gated by required POC fields
   var DEELIV    = 'view_4031';     // customer deliverables grid (own module)
   var STATUS_VIEW  = 'view_4024';  // details view exposing the workflow STATUS
+  // On sign-off, POST a printable snapshot + record id + submitter to Make.
+  var SIGNOFF_WEBHOOK = 'https://hook.us1.make.com/sreazoatcr18tpjy2mhn9fg4qa4vqbrm';
   var STATUS_FIELD = 'field_1772'; // STATUS — page is editable ONLY while this is
                                    // "Pending Customer Sign off"; any other status
                                    // (e.g. "PENDING PROJECT MANAGER SIGNOFF") → all
@@ -322,6 +324,91 @@
     if (first && first.scrollIntoView) first.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
 
+  /* ── Sign-off webhook: printable snapshot + record id + submitter → Make ── */
+  function formRecordId(viewId) {
+    var i = document.querySelector('#' + viewId + ' input[name="id"]');
+    return i ? i.value : '';
+  }
+  function getSubmitter() {
+    try {
+      var u = (typeof Knack !== 'undefined' && Knack.getUserAttributes) ? Knack.getUserAttributes() : null;
+      if (!u || typeof u !== 'object') return {};
+      var name = u.name;
+      if (name && typeof name === 'object') name = ((name.first || '') + ' ' + (name.last || '')).trim();
+      return { id: u.id || '', name: name || '', email: u.email || '' };
+    } catch (e) { return {}; }
+  }
+  // Copy live input values into the cloned scene — input values live in the
+  // DOM .value, not the serialized HTML, so a raw clone would print blank
+  // fields. Clone is a deep copy so the node order matches the live tree.
+  function syncValuesIntoClone(live, clone) {
+    var L = live.querySelectorAll('input, textarea, select');
+    var C = clone.querySelectorAll('input, textarea, select');
+    for (var i = 0; i < L.length && i < C.length; i++) {
+      var l = L[i], c = C[i];
+      if (l.tagName === 'SELECT') {
+        var opts = c.querySelectorAll('option');
+        for (var j = 0; j < opts.length; j++) {
+          if (j === l.selectedIndex) opts[j].setAttribute('selected', 'selected');
+          else opts[j].removeAttribute('selected');
+        }
+      } else if (l.type === 'checkbox' || l.type === 'radio') {
+        if (l.checked) c.setAttribute('checked', 'checked'); else c.removeAttribute('checked');
+      } else if (l.tagName === 'TEXTAREA') {
+        c.textContent = l.value;
+      } else {
+        c.setAttribute('value', l.value);
+      }
+    }
+  }
+  // Self-contained printable HTML of the scene as the customer sees it.
+  function buildPrintableHtml() {
+    var scene = document.getElementById('kn-' + SCENE);
+    if (!scene) return '';
+    var clone = scene.cloneNode(true);
+    syncValuesIntoClone(scene, clone);
+    // Strip page chrome / interactive-only bits that don't belong in a record.
+    var drop = clone.querySelectorAll(
+      'script, .scw-cqf-status, .scw-cq-copy-btn, .kn-submit, .kn-records-nav, ' +
+      '.scw-cq-lock-banner, .scw-cq-signoff-error, .kn-add-filter, .kn-filters-nav');
+    for (var i = 0; i < drop.length; i++) if (drop[i].parentNode) drop[i].parentNode.removeChild(drop[i]);
+    var css = '';
+    var st = document.getElementById(STYLE_ID);
+    if (st) css = st.textContent || '';
+    return '<!DOCTYPE html><html><head><meta charset="utf-8">' +
+      '<title>System Setup Questionnaire</title><style>' +
+      'body{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;color:#1f2937;margin:24px;background:#fff;}' +
+      css +
+      '</style></head><body>' + clone.innerHTML + '</body></html>';
+  }
+  // Fire-and-(briefly-)wait POST. Calls done() on completion OR an 8s timeout
+  // so the sign-off is never blocked by a slow/failing webhook.
+  function sendSignoffWebhook(done) {
+    var payload = {
+      event:         'customer-questionnaire-signoff',
+      recordId:      formRecordId(POC_FORM) || formRecordId(SIGNOFF),
+      signoffRecordId: formRecordId(SIGNOFF),
+      sceneId:       SCENE,
+      pageUrl:       location.href,
+      status:        readStatus(),
+      submittedAt:   new Date().toISOString(),
+      submittedBy:   getSubmitter(),
+      printableHtml: buildPrintableHtml()
+    };
+    var finished = false;
+    function fin() { if (finished) return; finished = true; if (done) done(); }
+    try {
+      $.ajax({
+        url: SIGNOFF_WEBHOOK, type: 'POST', contentType: 'application/json',
+        data: JSON.stringify(payload), crossDomain: true, timeout: 30000
+      }).always(function () { fin(); });
+    } catch (e) { fin(); }
+    setTimeout(fin, 8000);   // hard cap — release the submit regardless
+  }
+
+  var _signoffAuthorized = false;   // our webhook done → let Knack's submit run
+  var _signoffSending = false;      // in-flight guard
+
   function wireSignoffGate() {
     if (document.documentElement.hasAttribute('data-scw-cq-signoff-bound')) return;
     document.documentElement.setAttribute('data-scw-cq-signoff-bound', '1');
@@ -329,12 +416,38 @@
       var inForm = e.target.closest && e.target.closest('#' + SIGNOFF + ' form');
       var onBtn = e.target.closest && e.target.closest('#' + SIGNOFF + ' .kn-submit button, #' + SIGNOFF + ' button[type="submit"]');
       if (!inForm && !onBtn) return;
+      // Our webhook already fired → this is the re-triggered submit; let Knack run.
+      if (_signoffAuthorized) return;
+
+      function block() {
+        e.preventDefault();
+        e.stopPropagation();
+        if (e.stopImmediatePropagation) e.stopImmediatePropagation();
+      }
+
+      // Page locked (status ≠ Pending Customer Sign off) → never submit.
+      if (!isEditable()) { block(); return; }
+
+      // Required POC fields incomplete → block + highlight.
       var missing = requiredMissing();
-      if (!missing.length) return;
-      e.preventDefault();
-      e.stopPropagation();
-      if (e.stopImmediatePropagation) e.stopImmediatePropagation();
-      showSignoffError(missing);
+      if (missing.length) { block(); showSignoffError(missing); return; }
+
+      // Passed validation: hold the submit, POST the snapshot to Make, then
+      // re-trigger the button so Knack does its native sign-off save + redirect.
+      block();
+      if (_signoffSending) return;
+      _signoffSending = true;
+      var btn = document.querySelector('#' + SIGNOFF + ' .kn-submit button, #' + SIGNOFF + ' button[type="submit"]');
+      if (btn) { btn.setAttribute('data-scw-orig', btn.textContent); btn.textContent = 'Submitting…'; }
+      sendSignoffWebhook(function () {
+        _signoffAuthorized = true;
+        _signoffSending = false;
+        if (btn && btn.getAttribute('data-scw-orig')) btn.textContent = btn.getAttribute('data-scw-orig');
+        var b2 = document.querySelector('#' + SIGNOFF + ' .kn-submit button, #' + SIGNOFF + ' button[type="submit"]');
+        if (b2) b2.click(); else if (inForm && inForm.submit) inForm.submit();
+        // Safety: if the redirect doesn't happen, let a later retry re-fire.
+        setTimeout(function () { _signoffAuthorized = false; }, 5000);
+      });
     }
     document.addEventListener('submit', gate, true);   // primary block (capture, before Knack)
     document.addEventListener('click', gate, true);    // backup if Knack binds the button click
