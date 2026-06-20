@@ -76,7 +76,8 @@
     return [{
       project_recordID:       urlProjectId(),
       questionnaire_recordID: firstRowId(QUESTIONNAIRE_VIEW),
-      acceptance_recordID:    firstRowId(ACCEPTANCE_VIEW)
+      acceptance_recordID:    firstRowId(ACCEPTANCE_VIEW),
+      closeout_recordID:      firstRowId(VIEW)   // first row of the closeout grid
     }];
   }
 
