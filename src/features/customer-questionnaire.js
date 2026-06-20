@@ -31,7 +31,8 @@
       required:  'field_2926',  // yes/no
       sortOrder: 'field_2927',  // number
       active:    'field_2928',  // yes/no (soft delete)
-      def:       'field_2931'   // paragraph — Default Value (literal and/or {token})
+      def:       'field_2931',  // paragraph — Default Value (literal and/or {token})
+      tooltip:   'field_2938'   // paragraph — field explanation (shown under the label)
     },
     CUSTOMER_FLAG: 'field_2933', // INPUT_included on questionnaire (Yes = show to customer)
     // Friendly token name -> line-item field key for {token} defaults. Empty:
@@ -114,7 +115,8 @@
         choices:   parseChoices(rawVal(rec, D.choices)),
         required:  isYes(rawVal(rec, D.required)),
         sortOrder: Number(rawVal(rec, D.sortOrder)) || 0,
-        def:       String(rawVal(rec, D.def) || '').trim()
+        def:       String(rawVal(rec, D.def) || '').trim(),
+        tooltip:   String(rawVal(rec, D.tooltip) || '').trim()
       };
       (bySchema[schemaId] = bySchema[schemaId] || []).push(def);
     });
@@ -169,6 +171,8 @@
     var id = PREFIX + '-' + def.key + '-' + Math.random().toString(36).slice(2, 7);
     var req = def.required ? ' <span class="' + PREFIX + '-req">*</span>' : '';
     var label = '<label class="' + PREFIX + '-label" for="' + id + '">' + esc(def.label) + req + '</label>';
+    // Field explanation (field_2938) — shown as muted help text under the label.
+    var help = def.tooltip ? '<div class="' + PREFIX + '-help">' + esc(def.tooltip) + '</div>' : '';
     var control = '', v = value == null ? '' : value;
     switch (def.type) {
       case 'textarea':
@@ -198,7 +202,7 @@
       default:
         control = '<input id="' + id + '" data-key="' + esc(def.key) + '" type="text" class="' + PREFIX + '-input" value="' + esc(v) + '">';
     }
-    return '<div class="' + PREFIX + '-field" data-type="' + def.type + '">' + label + control + '</div>';
+    return '<div class="' + PREFIX + '-field" data-type="' + def.type + '">' + label + help + control + '</div>';
   }
 
   /* ── build / collect / save ── */
@@ -625,6 +629,7 @@
       '.' + PREFIX + '-field[data-type="textarea"]{grid-column:1/-1;}' +
       '.' + PREFIX + '-label{font:600 12px/1.3 system-ui,sans-serif;color:#374151;}' +
       '.' + PREFIX + '-req{color:#b45309;margin-left:2px;}' +
+      '.' + PREFIX + '-help{font:400 11.5px/1.45 system-ui,sans-serif;color:#64748b;margin:1px 0 2px;}' +
       '.' + PREFIX + '-input{display:block;width:100%;box-sizing:border-box;padding:7px 9px;' +
         'border:1px solid #cbd5e1;border-radius:6px;background:#fff;font:14px/1.35 system-ui,sans-serif;' +
         'color:#1f2937;min-height:36px;transition:border-color .1s,box-shadow .1s;}' +

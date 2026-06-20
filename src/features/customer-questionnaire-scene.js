@@ -24,11 +24,12 @@
   // On sign-off, POST a printable snapshot + record id + submitter to Make.
   var SIGNOFF_WEBHOOK = 'https://hook.us1.make.com/sreazoatcr18tpjy2mhn9fg4qa4vqbrm';
   // @getscw.com edits are appended here (tamper audit trail). field_2937 lives
-  // on view_4046 ("PM: Finalize Questionnaire"), so audit reads/writes go
-  // through that view's record endpoint (the view itself is hidden — we use
-  // the custom button for sign-off, not its native submit).
+  // on view_4048, so audit reads/writes go through that view's record endpoint
+  // (the view itself is hidden). The write is GUARDED on the view actually being
+  // present on the scene — firing a PUT at an absent view 401/403s, which the
+  // global auth interceptor turns into a false "session expired" toast.
   var AUDIT_FIELD = 'field_2937';
-  var AUDIT_VIEW  = 'view_4046';
+  var AUDIT_VIEW  = 'view_4048';
   var STATUS_FIELD = 'field_1772'; // STATUS. Editability rule:
                                    //   @getscw.com staff      → ALWAYS editable
                                    //   everyone else (customer)→ editable ONLY while
@@ -306,10 +307,22 @@
     _auditExisting = val;
     cb();
   }
+  function auditViewPresent() {
+    var v = (typeof Knack !== 'undefined' && Knack.views) ? Knack.views[AUDIT_VIEW] : null;
+    return !!(v && v.model);
+  }
   function pumpAudit() {
     if (_auditBusy || !_auditPending.length) return;
     var recId = recordId();
-    if (!recId || !AUDIT_FIELD) { _auditPending = []; return; }
+    // GUARD: never PUT at a view that isn't on this scene — a doomed request
+    // 401/403s and trips the global session-expired toast. Skip silently.
+    if (!recId || !AUDIT_FIELD || !auditViewPresent()) {
+      _auditPending = [];
+      if (window.console && window.console.warn) {
+        console.warn('[scw-cq] audit skipped — ' + AUDIT_VIEW + ' not present on this scene');
+      }
+      return;
+    }
     _auditBusy = true;
     seedAudit(function () {
       var lines = _auditPending.splice(0, _auditPending.length);
