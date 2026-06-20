@@ -7,26 +7,24 @@
  *   [{ "proposal_recordID": "...", "project_recordID": "...",
  *      "questionnaire_recordID": "..." }]
  *
- * The ids are read from connection fields on the closeout record (view_3940's
- * model). Set WEBHOOK + ID_FIELDS below.
+ * ID sources (all on the deploy scene):
+ *   project_recordID       → the page URL (#…/project-dashboard/<id>/deploy/<id>/)
+ *   proposal_recordID      → the single ACCEPTANCE row in view_3914 (tr id)
+ *   questionnaire_recordID → the single questionnaire row in view_4015 (tr id)
  ****************************************************************************/
 (function () {
   'use strict';
 
-  var VIEW     = 'view_3940';            // CLOSEOUT details view
-  var WEBHOOK  = '__FILL_WEBHOOK_URL__';  // Make webhook for kickoff-deck regen
-  // Where each payload id comes from — a connection field on the closeout
-  // record (read from view_3940's model). Fill in the field keys.
-  var ID_FIELDS = {
-    proposal_recordID:      '__field_proposal__',
-    project_recordID:       '__field_project__',
-    questionnaire_recordID: '__field_questionnaire__'
-  };
+  var VIEW         = 'view_3940';   // CLOSEOUT view (button mount)
+  var PROPOSAL_VIEW     = 'view_3914';   // ACCEPTANCE (single row)
+  var QUESTIONNAIRE_VIEW = 'view_4015';  // System Setup Questionnaire (single row)
+  var WEBHOOK = 'https://hook.us1.make.com/biytjoog3spow4fx2f7zanjjjj792q9c';
 
   var BTN_ID    = 'scw-regen-kickoff-deck';
   var STYLE_ID  = 'scw-regen-kickoff-deck-css';
   var EVENT_NS  = '.scwKickoffDeck';
   var LABEL     = 'Regenerate Kickoff Deck';
+  var HEX24     = /[0-9a-f]{24}/i;
 
   var DECK_SVG =
     '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" ' +
@@ -51,35 +49,39 @@
       '#' + BTN_ID + '[disabled]{opacity:.7;cursor:default;}' +
       '#' + BTN_ID + '.is-loading svg{animation:scw-kod-spin .8s linear infinite;}' +
       '#' + BTN_ID + '.is-done{background:#15803d;border-color:#166534;}' +
+      '#' + BTN_ID + '.is-err{background:#b91c1c;border-color:#991b1b;}' +
       '@keyframes scw-kod-spin{to{transform:rotate(360deg);}}';
     document.head.appendChild(s);
   }
 
-  function closeoutAttrs() {
-    var v = (typeof Knack !== 'undefined' && Knack.views) ? Knack.views[VIEW] : null;
-    return (v && v.model && (v.model.attributes || (v.model.data && v.model.data.attributes))) || null;
+  // project id from the deploy-scene URL: #…/project-dashboard/<id>/deploy/<id>/
+  function urlProjectId() {
+    var m = (window.location.hash || '').match(/project-dashboard\/([0-9a-f]{24})/i);
+    return m ? m[1] : '';
   }
-  function firstConnId(attrs, fk) {
-    if (!attrs || !fk) return '';
-    var raw = attrs[fk + '_raw'];
-    if (Array.isArray(raw) && raw.length && raw[0]) return raw[0].id || '';
-    if (raw && raw.id) return raw.id;
-    var plain = attrs[fk];
-    return (plain && /^[0-9a-f]{24}$/i.test(String(plain).trim())) ? String(plain).trim() : '';
+  // The id of the first (only) row in a list view — model first, DOM fallback.
+  function firstRowId(viewId) {
+    try {
+      var v = (typeof Knack !== 'undefined' && Knack.views) ? Knack.views[viewId] : null;
+      var models = v && v.model && v.model.data && v.model.data.models;
+      if (models && models.length && models[0]) {
+        var id = models[0].id || (models[0].attributes && models[0].attributes.id);
+        if (id) return id;
+      }
+    } catch (e) { /* fall through to DOM */ }
+    var tr = document.querySelector('#' + viewId + ' tbody tr[id]');
+    return (tr && HEX24.test(tr.id)) ? tr.id : '';
   }
   function gatherPayload() {
-    var attrs = closeoutAttrs();
-    var obj = {};
-    for (var key in ID_FIELDS) {
-      if (Object.prototype.hasOwnProperty.call(ID_FIELDS, key)) {
-        obj[key] = firstConnId(attrs, ID_FIELDS[key]);
-      }
-    }
-    return [obj];   // array-wrapped, matching the Make scenario's expected shape
+    return [{
+      proposal_recordID:      firstRowId(PROPOSAL_VIEW),
+      project_recordID:       urlProjectId(),
+      questionnaire_recordID: firstRowId(QUESTIONNAIRE_VIEW)
+    }];
   }
 
   function setState(btn, state) {
-    btn.classList.remove('is-loading', 'is-done');
+    btn.classList.remove('is-loading', 'is-done', 'is-err');
     if (state === 'loading') {
       btn.classList.add('is-loading'); btn.disabled = true;
       btn.innerHTML = SPIN_SVG + '<span>Regenerating…</span>';
@@ -95,6 +97,7 @@
 
   function fire(btn) {
     var payload = gatherPayload();
+    if (window.SCW && SCW.debug) SCW.debug('[kickoff-deck] payload', payload[0]);
     setState(btn, 'loading');
     $.ajax({
       url: WEBHOOK, type: 'POST', contentType: 'application/json',
@@ -110,7 +113,6 @@
     btn.id = BTN_ID; btn.type = 'button';
     setState(btn, 'idle');
     btn.addEventListener('click', function () { if (!btn.disabled) fire(btn); });
-    // Mount at the top of the closeout view body.
     var header = view.querySelector('.view-header');
     if (header && header.parentNode) header.parentNode.insertBefore(btn, header.nextSibling);
     else view.insertBefore(btn, view.firstChild);
