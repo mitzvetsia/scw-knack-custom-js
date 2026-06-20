@@ -11,6 +11,23 @@
  *   project_recordID       → the page URL (#…/project-dashboard/<id>/deploy/<id>/)
  *   questionnaire_recordID → the single questionnaire row in view_4015 (tr id)
  *   acceptance_recordID    → the single ACCEPTANCE row in view_3914 (tr id)
+ *   closeout_recordID      → the first row of view_3940 (tr id)
+ *
+ * Make should fire a "Webhook Response" (200, Content-Type application/json,
+ * with CORS header Access-Control-Allow-Origin: *) AFTER the deck is generated
+ * and attached to the closeout. Expected body:
+ *
+ *   success:  { "success": true,
+ *               "closeout_recordID": "<id>",      // optional, echo
+ *               "doc_recordID":      "<new DOC>", // optional
+ *               "file_url":          "<url>",     // optional
+ *               "message":           "Kickoff deck regenerated" }
+ *   failure:  { "success": false, "error": "<message>" }
+ *
+ * On success the button refreshes view_3940 + view_3941 so the new file shows
+ * in the closeout deliverables strip (closeout-deliverables.js re-renders on
+ * those views' render). A lenient parser treats any 2xx body without an
+ * explicit success:false as success (and a CORS-opaque status 0 as "landed").
  ****************************************************************************/
 (function () {
   'use strict';
@@ -81,19 +98,39 @@
     }];
   }
 
-  function setState(btn, state) {
+  function setState(btn, state, msg) {
     btn.classList.remove('is-loading', 'is-done', 'is-err');
     if (state === 'loading') {
       btn.classList.add('is-loading'); btn.disabled = true;
       btn.innerHTML = SPIN_SVG + '<span>Regenerating…</span>';
     } else if (state === 'done') {
       btn.classList.add('is-done'); btn.disabled = false;
-      btn.innerHTML = DECK_SVG + '<span>Sent — regenerating</span>';
+      btn.innerHTML = DECK_SVG + '<span>Done — deck updated</span>';
       setTimeout(function () { setState(btn, 'idle'); }, 4000);
+    } else if (state === 'err') {
+      btn.classList.add('is-err'); btn.disabled = false;
+      btn.innerHTML = DECK_SVG + '<span>' + (msg || 'Failed — retry') + '</span>';
+      setTimeout(function () { setState(btn, 'idle'); }, 6000);
     } else {
       btn.disabled = false;
       btn.innerHTML = DECK_SVG + '<span>' + LABEL + '</span>';
     }
+  }
+
+  // Re-fetch the closeout views so closeout-deliverables.js rebuilds the strip
+  // and the freshly-generated deck shows up. Staggered to catch connection-cell
+  // lag after Make writes the new DOC.
+  function refreshCloseoutViews() {
+    ['view_3940', 'view_3941'].forEach(function (vk) {
+      var v = window.Knack && Knack.views && Knack.views[vk];
+      if (v && v.model && typeof v.model.fetch === 'function') v.model.fetch();
+    });
+  }
+  function onSuccess(btn) {
+    setState(btn, 'done');
+    refreshCloseoutViews();
+    setTimeout(refreshCloseoutViews, 3000);
+    setTimeout(refreshCloseoutViews, 8000);
   }
 
   function fire(btn) {
@@ -102,8 +139,18 @@
     setState(btn, 'loading');
     $.ajax({
       url: WEBHOOK, type: 'POST', contentType: 'application/json',
-      data: JSON.stringify(payload), crossDomain: true, timeout: 60000
-    }).always(function () { setState(btn, 'done'); });
+      data: JSON.stringify(payload), crossDomain: true, timeout: 120000
+    }).done(function (resp) {
+      var data = resp;
+      if (typeof resp === 'string') { try { data = JSON.parse(resp); } catch (e) { data = null; } }
+      // Lenient: any 2xx body without an explicit success:false = success.
+      if (!data || data.success !== false) onSuccess(btn);
+      else setState(btn, 'err', (data && data.error) ? 'Failed: ' + data.error : 'Generation failed');
+    }).fail(function (xhr) {
+      // CORS-opaque (status 0) or 2xx-with-unparseable body → assume it landed.
+      if (xhr && (xhr.status === 0 || (xhr.status >= 200 && xhr.status < 300))) onSuccess(btn);
+      else setState(btn, 'err', 'Webhook error (' + (xhr ? xhr.status : '?') + ')');
+    });
   }
 
   function mount() {
