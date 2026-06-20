@@ -19,6 +19,14 @@
   var SCENE     = 'scene_1347';
   var POC_FORM  = 'view_4025';     // editable POC form → per-field auto-save
   var SIGNOFF   = 'view_4029';     // final sign-off form → gated by required POC fields
+  var DEELIV    = 'view_4031';     // customer deliverables grid (own module)
+  var STATUS_VIEW  = 'view_4024';  // details view exposing the workflow STATUS
+  var STATUS_FIELD = 'field_1772'; // STATUS — page is editable ONLY while this is
+                                   // "Pending Customer Sign off"; any other status
+                                   // (e.g. "PENDING PROJECT MANAGER SIGNOFF") → all
+                                   // fields read-only. Matched loosely (contains
+                                   // "customer" + "sign off"/"signoff", any case).
+
   // EVERY POC field is required before the customer can sign off. With Knack's
   // "required" setting turned OFF (so partial per-field PUTs save), this is the
   // client-side gate — derived dynamically from the form's fields (pocFields),
@@ -89,7 +97,37 @@
       S + ' #' + SIGNOFF + ' .scw-cq-signoff-error {',
       '  background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; border-radius: 8px;',
       '  padding: 10px 12px; margin-bottom: 12px; font: 500 13px/1.45 system-ui, sans-serif; }',
-      S + ' #' + SIGNOFF + ' .scw-cq-signoff-error b { font-weight: 700; }'
+      S + ' #' + SIGNOFF + ' .scw-cq-signoff-error b { font-weight: 700; }',
+      // Section instruction blocks → soft blue callouts for a cleaner read.
+      S + ' .kn-section-break .kn-description {',
+      '  background: #f0f6ff; border-left: 3px solid #3b82f6; border-radius: 0 6px 6px 0;',
+      '  padding: 9px 12px; margin-top: 6px; }',
+      // "Same as System Super Admin" copy button (sits in the POC section heads).
+      S + ' .scw-cq-copy-btn {',
+      '  display: inline-flex; align-items: center; gap: 6px; margin-top: 8px;',
+      '  font: 600 12px/1 system-ui, sans-serif; color: #0f4c75; cursor: pointer;',
+      '  background: #eef5fc; border: 1px solid #bcd6ef; border-radius: 6px; padding: 7px 11px;',
+      '  transition: background .12s, border-color .12s; }',
+      S + ' .scw-cq-copy-btn:hover { background: #dceafa; border-color: #93c5fd; }',
+      S + ' .scw-cq-copy-btn.is-done { background: #dcfce7; border-color: #86efac; color: #15803d; }',
+      S + ' .scw-cq-copy-ico { font-size: 13px; line-height: 1; }',
+      // Read-only lock banner.
+      S + ' .scw-cq-lock-banner {',
+      '  background: #fffbeb; border: 1px solid #fde68a; color: #92400e; border-radius: 8px;',
+      '  padding: 10px 13px; margin-bottom: 14px; font: 500 13px/1.45 system-ui, sans-serif; }',
+      S + ' .scw-cq-lock-banner b { font-weight: 700; }',
+      // ── Locked state (status ≠ Pending Customer Sign off): read-only, no graying.
+      // White bg + pointer-events:none per the repo's locked-field convention.
+      S + '.scw-cq-locked #' + POC_FORM + ' input, ' + S + '.scw-cq-locked #' + POC_FORM + ' textarea, ' +
+        S + '.scw-cq-locked #' + SIGNOFF + ' input, ' + S + '.scw-cq-locked #' + SIGNOFF + ' textarea {',
+      '  pointer-events: none !important; background: #fff !important; }',
+      S + '.scw-cq-locked #' + POC_FORM + ' .kn-submit, ' +
+        S + '.scw-cq-locked .scw-cq-copy-btn, ' +
+        S + '.scw-cq-locked #' + SIGNOFF + ' .kn-submit { display: none !important; }',
+      // Deliverables grid controls (own module) lock too.
+      S + '.scw-cq-locked #' + DEELIV + ' .scw-deliverables-input, ' +
+        S + '.scw-cq-locked #' + DEELIV + ' .scw-deliverables-chip {',
+      '  pointer-events: none !important; background: #fff !important; }'
     ].join('\n');
     var s = document.createElement('style');
     s.id = STYLE_ID; s.textContent = css;
@@ -309,13 +347,147 @@
     }, true);
   }
 
-  function run() { injectCss(); initFields(); wire(); wireSignoffGate(); }
+  /* ── Read-only gate: editable only while STATUS is "Pending Customer Sign off" ── */
+  function readStatus() {
+    try {
+      var v = (typeof Knack !== 'undefined' && Knack.views) ? Knack.views[STATUS_VIEW] : null;
+      var a = v && v.model && (v.model.attributes || (v.model.data && v.model.data.attributes));
+      if (a) {
+        var raw = (a[STATUS_FIELD + '_raw'] != null) ? a[STATUS_FIELD + '_raw'] : a[STATUS_FIELD];
+        if (raw != null && raw !== '') return String(raw).replace(/<[^>]*>/g, '').trim();
+      }
+    } catch (e) { /* fall through to DOM */ }
+    var cell = document.querySelector('#' + STATUS_VIEW + ' .' + STATUS_FIELD + ' .kn-detail-body');
+    return cell ? cell.textContent.replace(/\s+/g, ' ').trim() : '';
+  }
+  function isEditable() {
+    var s = readStatus().toLowerCase();
+    return /customer/.test(s) && /sign\s*off/.test(s);
+  }
+  function toggleLockBanner(locked, status) {
+    var form = document.getElementById(POC_FORM);
+    var existing = document.getElementById('scw-cq-lock-banner');
+    if (!locked) { if (existing && existing.parentNode) existing.parentNode.removeChild(existing); return; }
+    if (!form) return;
+    if (!existing) {
+      existing = document.createElement('div');
+      existing.id = 'scw-cq-lock-banner';
+      existing.className = 'scw-cq-lock-banner';
+      form.insertBefore(existing, form.firstChild);
+    }
+    existing.innerHTML = 'This questionnaire is <b>read-only</b> — it isn’t currently awaiting ' +
+      'customer sign-off' + (status ? ' (status: <b>' + esc(status) + '</b>)' : '') +
+      '. Contact your SCW representative if changes are needed.';
+  }
+  function applyLock() {
+    var status = readStatus();
+    var locked = !isEditable();
+    var scene = document.getElementById('kn-' + SCENE);
+    if (scene) scene.classList.toggle('scw-cq-locked', locked);
+    // readOnly on the POC + sign-off text controls so the keyboard can't edit
+    // either (CSS pointer-events only stops the mouse). White bg via CSS keeps
+    // them fully readable per the repo's locked-field convention.
+    [POC_FORM, SIGNOFF].forEach(function (vid) {
+      var v = document.getElementById(vid);
+      if (!v) return;
+      var inps = v.querySelectorAll('input, textarea');
+      for (var i = 0; i < inps.length; i++) inps[i].readOnly = locked;
+    });
+    toggleLockBanner(locked, status);
+  }
+
+  /* ── Copy POC answers from "System Super Admin" down to the two POC sections ── */
+  function fireInput(el) {
+    el.dispatchEvent(new Event('input', { bubbles: true }));
+    el.dispatchEvent(new Event('change', { bubbles: true }));
+  }
+  // Group the form into sections keyed off the section-break titles, each with
+  // its ordered list of editable fields. Document order: a section's fields
+  // follow its break and precede the next break.
+  function buildSections() {
+    var form = document.getElementById(POC_FORM);
+    if (!form) return [];
+    var nodes = form.querySelectorAll('.kn-section-break, .kn-input[data-input-id]');
+    var sections = [], cur = null;
+    for (var i = 0; i < nodes.length; i++) {
+      var n = nodes[i];
+      if (n.classList.contains('kn-section-break')) {
+        var t = n.querySelector('.kn-title');
+        cur = { title: t ? t.textContent.trim() : '', breakEl: n, fields: [] };
+        sections.push(cur);
+      } else if (fieldType(n)) {
+        if (!cur) { cur = { title: '', breakEl: null, fields: [] }; sections.push(cur); }
+        cur.fields.push(n);
+      }
+    }
+    return sections;
+  }
+  function fieldOfType(section, type) {
+    for (var i = 0; i < section.fields.length; i++) {
+      if (fieldType(section.fields[i]) === type) return section.fields[i];
+    }
+    return null;
+  }
+  function copySection(src, dst) {
+    var moved = false;
+    var sn = fieldOfType(src, 'name'), dn = fieldOfType(dst, 'name');
+    if (sn && dn) {
+      var nv = readVal(sn, 'name');
+      var df = dn.querySelector('input[name="first"]'), dl = dn.querySelector('input[name="last"]');
+      if (df) { df.value = nv.first || ''; fireInput(df); }
+      if (dl) { dl.value = nv.last || ''; fireInput(dl); }
+      saveField(dn); moved = true;
+    }
+    var se = fieldOfType(src, 'email'), de = fieldOfType(dst, 'email');
+    if (se && de) {
+      var ev = readVal(se, 'email');
+      var ei = de.querySelector('input, textarea');
+      if (ei) { ei.value = ev == null ? '' : ev; fireInput(ei); }
+      saveField(de); moved = true;
+    }
+    return moved;
+  }
+  function addCopyButtons() {
+    if (!isEditable()) return;   // locked → no copy affordance
+    var sections = buildSections();
+    var src = null;
+    for (var i = 0; i < sections.length; i++) {
+      if (/super\s*admin/i.test(sections[i].title)) { src = sections[i]; break; }
+    }
+    if (!src) return;
+    sections.forEach(function (s) {
+      if (s === src || !s.breakEl) return;
+      if (!(/location\s*approval/i.test(s.title) || /view\s*approval/i.test(s.title))) return;
+      if (s.breakEl.querySelector('.scw-cq-copy-btn')) return;   // already added
+      if (!fieldOfType(s, 'name') && !fieldOfType(s, 'email')) return;
+      var btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = 'scw-cq-copy-btn';
+      btn.innerHTML = '<span class="scw-cq-copy-ico">⧉</span> Same as System Super Admin';
+      btn.addEventListener('click', function () {
+        if (copySection(src, s)) {
+          btn.classList.add('is-done');
+          var orig = btn.innerHTML;
+          btn.innerHTML = '✓ Copied';
+          setTimeout(function () { btn.innerHTML = orig; btn.classList.remove('is-done'); }, 1600);
+        }
+      });
+      s.breakEl.appendChild(btn);
+    });
+  }
+
+  function run() {
+    injectCss(); initFields(); wire(); wireSignoffGate();
+    applyLock(); addCopyButtons();
+  }
 
   if (window.SCW && typeof SCW.onSceneRender === 'function') {
     SCW.onSceneRender(SCENE, function () { setTimeout(run, 60); }, NS);
   }
   if (window.SCW && typeof SCW.onViewRender === 'function') {
     SCW.onViewRender(POC_FORM, function () { setTimeout(run, 30); }, NS);
+    // Status view may render after the form — re-apply the lock when it does.
+    SCW.onViewRender(STATUS_VIEW, function () { setTimeout(applyLock, 30); }, NS);
   }
   setTimeout(run, 400);
 })();
