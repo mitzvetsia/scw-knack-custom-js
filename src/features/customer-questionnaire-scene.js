@@ -185,22 +185,27 @@
       S + ' .scw-cq-lock-sub b { font-weight: 700; }',
       // Locked scene: a faint top accent rail reinforces the read-only state.
       S + '.scw-cq-locked { position: relative; }',
-      // ── Locked state (status ≠ Pending Customer Sign off): read-only, no graying.
-      // White bg + pointer-events:none per the repo's locked-field convention.
+      // ── Locked state: strip ALL input chrome so values read as plain text,
+      // not editable fields (no border / box / fill / dropdown arrow). Covers
+      // the POC form, sign-off, and the deliverables cards (.scw-cq-panel is a
+      // SIBLING of #view_4031, so scope to the panel).
       S + '.scw-cq-locked #' + POC_FORM + ' input, ' + S + '.scw-cq-locked #' + POC_FORM + ' textarea, ' +
-        S + '.scw-cq-locked #' + SIGNOFF + ' input, ' + S + '.scw-cq-locked #' + SIGNOFF + ' textarea {',
-      '  pointer-events: none !important; background: #fff !important; }',
+        S + '.scw-cq-locked #' + SIGNOFF + ' input, ' + S + '.scw-cq-locked #' + SIGNOFF + ' textarea, ' +
+        S + '.scw-cq-locked .scw-cq-panel .scw-cq-input {',
+      '  pointer-events: none !important; background: transparent !important;',
+      '  border: 0 !important; box-shadow: none !important;',
+      '  padding-left: 0 !important; padding-right: 0 !important;',
+      '  -webkit-appearance: none !important; -moz-appearance: none !important; appearance: none !important;',
+      '  resize: none !important; color: #1f2937 !important; }',
+      // Hide the empty/unused parts: submit buttons, copy buttons, bulk bar,
+      // select checkboxes, and freeze (but keep visible) the multi-select chips.
       S + '.scw-cq-locked #' + POC_FORM + ' .kn-submit, ' +
+        S + '.scw-cq-locked .scw-cq-copy-row, ' +
         S + '.scw-cq-locked .scw-cq-copy-btn, ' +
-        S + '.scw-cq-locked #' + SIGNOFF + ' .kn-submit { display: none !important; }',
-      // Deliverables cards (customer-questionnaire.js renders .scw-cq-panel as a
-      // SIBLING of #view_4031, not inside it — so scope the lock to the panel).
-      // Lock inputs read-only, freeze chips, hide bulk-edit bar + select boxes.
-      S + '.scw-cq-locked .scw-cq-panel .scw-cq-input {',
-      '  pointer-events: none !important; background: #fff !important; }',
-      S + '.scw-cq-locked .scw-cq-panel .scw-cq-chip { pointer-events: none !important; }',
-      S + '.scw-cq-locked .scw-cq-panel .scw-cq-bulkbar, ' +
-        S + '.scw-cq-locked .scw-cq-panel .scw-cq-select { display: none !important; }'
+        S + '.scw-cq-locked #' + SIGNOFF + ' .kn-submit, ' +
+        S + '.scw-cq-locked .scw-cq-panel .scw-cq-bulkbar, ' +
+        S + '.scw-cq-locked .scw-cq-panel .scw-cq-select { display: none !important; }',
+      S + '.scw-cq-locked .scw-cq-panel .scw-cq-chip { pointer-events: none !important; }'
     ].join('\n');
     var s = document.createElement('style');
     s.id = STYLE_ID; s.textContent = css;
@@ -582,9 +587,8 @@
         '<path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>' +
       '<div>' +
         '<div class="scw-cq-lock-title">This questionnaire is read-only</div>' +
-        '<div class="scw-cq-lock-sub">It isn’t currently awaiting customer sign-off' +
-          (status ? ' (status: <b>' + esc(status) + '</b>)' : '') +
-          '. Contact your SCW representative if changes are needed.</div>' +
+        '<div class="scw-cq-lock-sub">Client sign-off received on the Questionnaire. ' +
+          'Contact your SCW representative if changes are needed.</div>' +
       '</div>';
   }
   function applyLock() {
