@@ -625,13 +625,13 @@
   var _pmSending = false;   // in-flight guard for the PM sign-off button
 
   // PM sign-off: the native form (view_4029) is hidden; instead we show a
-  // custom button — ONLY for @getscw.com staff AND only once the record is
-  // PAST "Pending Customer Sign off". Clicking it fires the Make webhook with
-  // the printable snapshot + record + who, then confirms. Make owns whatever
-  // happens next (status change / PDF). Re-runnable: rebuilt on every render.
+  // custom button for @getscw.com staff — available regardless of status
+  // (including while it's still Pending Customer Sign off). Clicking it fires
+  // the Make webhook with the printable snapshot + record + who, then confirms.
+  // Make owns whatever happens next (status change / PDF). Rebuilt on render.
   var PM_BTN_ID = 'scw-cq-pm-signoff';
   function syncPmButton() {
-    var show = isInternal() && !statusIsCustomerSignoff();
+    var show = isInternal();
     var existing = document.getElementById(PM_BTN_ID);
     if (!show) { if (existing && existing.parentNode) existing.parentNode.removeChild(existing); return; }
     if (existing) return;   // already mounted
