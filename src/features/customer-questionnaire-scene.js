@@ -506,9 +506,10 @@
   }
   function _printCss() {
     return [
-      '@page{size:letter;margin:16mm 14mm;@bottom-center{content:"Page " counter(page) " of " counter(pages);font-family:system-ui,sans-serif;font-size:9px;color:#94a3b8;}}',
+      '@import url("https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&display=swap");',
+      '@page{size:letter;margin:16mm 14mm;@bottom-center{content:"Page " counter(page) " of " counter(pages);font-family:"Inter",sans-serif;font-size:9px;color:#94a3b8;}}',
       '*{box-sizing:border-box;}',
-      'html,body{margin:0;padding:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:#1f2937;font-size:12px;line-height:1.45;-webkit-print-color-adjust:exact;print-color-adjust:exact;}',
+      'html,body{margin:0;padding:0;font-family:"Inter","Helvetica Neue",Helvetica,Arial,sans-serif;color:#1f2937;font-size:12px;line-height:1.45;-webkit-print-color-adjust:exact;print-color-adjust:exact;}',
       '.q-header{display:flex;align-items:flex-start;justify-content:space-between;border-bottom:3px solid #07467c;padding-bottom:14px;margin-bottom:18px;}',
       '.q-logo img{max-height:54px;max-width:220px;display:block;}',
       '.q-head-right{text-align:right;}',
