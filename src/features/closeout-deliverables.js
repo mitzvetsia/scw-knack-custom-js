@@ -1462,12 +1462,17 @@
     }
 
     // Destructive action first (leftmost) — deletes the file/document.
-    var del = document.createElement('button');
-    del.type = 'button';
-    del.className = POPOVER_ID + '__btn ' + POPOVER_ID + '__btn--danger';
-    del.textContent = 'Delete file';
-    del.addEventListener('click', function () { deleteDoc(); });
-    footer.appendChild(del);
+    // Hidden once QA is signed off (Pass) so a completed deliverable can't be
+    // deleted out from under the sign-off; flip QA back to Pending/Fail first.
+    var signedOff = !!_popoverDoc.required && (status === 'Pass');
+    if (!signedOff) {
+      var del = document.createElement('button');
+      del.type = 'button';
+      del.className = POPOVER_ID + '__btn ' + POPOVER_ID + '__btn--danger';
+      del.textContent = 'Delete file';
+      del.addEventListener('click', function () { deleteDoc(); });
+      footer.appendChild(del);
+    }
 
     var closeBtn = document.createElement('button');
     closeBtn.type = 'button';
