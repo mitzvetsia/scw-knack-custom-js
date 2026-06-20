@@ -122,13 +122,19 @@
       '  background: #fef2f2; border: 1px solid #fecaca; color: #991b1b; border-radius: 8px;',
       '  padding: 10px 12px; margin-bottom: 12px; font: 500 13px/1.45 system-ui, sans-serif; }',
       S + ' #' + SIGNOFF + ' .scw-cq-signoff-error b { font-weight: 700; }',
-      // Section instruction blocks → soft blue callouts for a cleaner read.
+      // Section instruction blocks → calm, low-contrast slate callouts so the
+      // input fields (not the guidance) are the visual focus.
       S + ' .kn-section-break .kn-description {',
-      '  background: #f0f6ff; border-left: 3px solid #3b82f6; border-radius: 0 6px 6px 0;',
-      '  padding: 9px 12px; margin-top: 6px; }',
-      // "Same as System Super Admin" copy button (sits in the POC section heads).
+      '  background: #f8fafc; border-left: 3px solid #cbd5e1; border-radius: 0 6px 6px 0;',
+      '  padding: 8px 12px; margin-top: 6px;',
+      '  font: 400 12px/1.5 system-ui, sans-serif; color: #64748b; }',
+      S + ' .kn-section-break .kn-description b, ' + S + ' .kn-section-break .kn-description strong {',
+      '  color: #475569; font-weight: 600; }',
+      // "Same as System Super Admin" copy button — sits ABOVE the fields it
+      // fills (its own row), not under the instructions.
+      S + ' .scw-cq-copy-row { margin: 0 0 10px; }',
       S + ' .scw-cq-copy-btn {',
-      '  display: inline-flex; align-items: center; gap: 6px; margin-top: 8px;',
+      '  display: inline-flex; align-items: center; gap: 6px;',
       '  font: 600 12px/1 system-ui, sans-serif; color: #0f4c75; cursor: pointer;',
       '  background: #eef5fc; border: 1px solid #bcd6ef; border-radius: 6px; padding: 7px 11px;',
       '  transition: background .12s, border-color .12s; }',
@@ -605,8 +611,14 @@
     sections.forEach(function (s) {
       if (s === src || !s.breakEl) return;
       if (!(/location\s*approval/i.test(s.title) || /view\s*approval/i.test(s.title))) return;
-      if (s.breakEl.querySelector('.scw-cq-copy-btn')) return;   // already added
+      // Mount it WITH the fields it fills (above the first input), not under the
+      // instructions where it reads as unrelated.
+      var firstField = s.fields[0];
+      if (!firstField || !firstField.parentNode) return;
+      if (firstField.parentNode.querySelector('.scw-cq-copy-row')) return;   // already added
       if (!fieldOfType(s, 'name') && !fieldOfType(s, 'email')) return;
+      var row = document.createElement('div');
+      row.className = 'scw-cq-copy-row';
       var btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'scw-cq-copy-btn';
@@ -619,7 +631,8 @@
           setTimeout(function () { btn.innerHTML = orig; btn.classList.remove('is-done'); }, 1600);
         }
       });
-      s.breakEl.appendChild(btn);
+      row.appendChild(btn);
+      firstField.parentNode.insertBefore(row, firstField);
     });
   }
 
