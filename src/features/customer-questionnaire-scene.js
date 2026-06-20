@@ -172,11 +172,19 @@
       // Stack each field with breathing room inside the fields column.
       S + ' #' + POC_FORM + ' .kn-form-col .kn-input { margin-bottom: 12px; }',
       S + ' #' + POC_FORM + ' .kn-form-col .kn-input:last-child { margin-bottom: 0; }',
-      // Read-only lock banner.
+      // Read-only lock banner — prominent + sticky so the state is unmissable.
       S + ' .scw-cq-lock-banner {',
-      '  background: #fffbeb; border: 1px solid #fde68a; color: #92400e; border-radius: 8px;',
-      '  padding: 10px 13px; margin-bottom: 14px; font: 500 13px/1.45 system-ui, sans-serif; }',
-      S + ' .scw-cq-lock-banner b { font-weight: 700; }',
+      '  position: sticky; top: 8px; z-index: 40;',
+      '  display: flex; align-items: flex-start; gap: 12px;',
+      '  background: #fef3c7; border: 1px solid #fcd34d; border-left: 5px solid #d97706;',
+      '  color: #92400e; border-radius: 10px; padding: 13px 18px; margin: 0 0 18px;',
+      '  box-shadow: 0 4px 14px rgba(217,119,6,.18); }',
+      S + ' .scw-cq-lock-ico { flex: 0 0 auto; width: 22px; height: 22px; color: #d97706; margin-top: 1px; }',
+      S + ' .scw-cq-lock-title { font: 800 15px/1.3 system-ui, sans-serif; color: #7c2d12; margin-bottom: 2px; }',
+      S + ' .scw-cq-lock-sub { font: 500 13px/1.5 system-ui, sans-serif; color: #92400e; }',
+      S + ' .scw-cq-lock-sub b { font-weight: 700; }',
+      // Locked scene: a faint top accent rail reinforces the read-only state.
+      S + '.scw-cq-locked { position: relative; }',
       // ── Locked state (status ≠ Pending Customer Sign off): read-only, no graying.
       // White bg + pointer-events:none per the repo's locked-field convention.
       S + '.scw-cq-locked #' + POC_FORM + ' input, ' + S + '.scw-cq-locked #' + POC_FORM + ' textarea, ' +
@@ -185,14 +193,14 @@
       S + '.scw-cq-locked #' + POC_FORM + ' .kn-submit, ' +
         S + '.scw-cq-locked .scw-cq-copy-btn, ' +
         S + '.scw-cq-locked #' + SIGNOFF + ' .kn-submit { display: none !important; }',
-      // Deliverables grid (view_4031, customer-questionnaire.js — class prefix
-      // "scw-cq"). Lock its inputs read-only, freeze chips, and remove the
-      // bulk-edit bar + per-card select checkboxes so nothing is editable.
-      S + '.scw-cq-locked #' + DEELIV + ' .scw-cq-input {',
+      // Deliverables cards (customer-questionnaire.js renders .scw-cq-panel as a
+      // SIBLING of #view_4031, not inside it — so scope the lock to the panel).
+      // Lock inputs read-only, freeze chips, hide bulk-edit bar + select boxes.
+      S + '.scw-cq-locked .scw-cq-panel .scw-cq-input {',
       '  pointer-events: none !important; background: #fff !important; }',
-      S + '.scw-cq-locked #' + DEELIV + ' .scw-cq-chip { pointer-events: none !important; }',
-      S + '.scw-cq-locked #' + DEELIV + ' .scw-cq-bulkbar, ' +
-        S + '.scw-cq-locked #' + DEELIV + ' .scw-cq-select { display: none !important; }'
+      S + '.scw-cq-locked .scw-cq-panel .scw-cq-chip { pointer-events: none !important; }',
+      S + '.scw-cq-locked .scw-cq-panel .scw-cq-bulkbar, ' +
+        S + '.scw-cq-locked .scw-cq-panel .scw-cq-select { display: none !important; }'
     ].join('\n');
     var s = document.createElement('style');
     s.id = STYLE_ID; s.textContent = css;
@@ -548,19 +556,28 @@
     return isInternal() || statusIsCustomerSignoff();
   }
   function toggleLockBanner(locked, status) {
-    var form = document.getElementById(POC_FORM);
+    var scene = document.getElementById('kn-' + SCENE);
     var existing = document.getElementById('scw-cq-lock-banner');
     if (!locked) { if (existing && existing.parentNode) existing.parentNode.removeChild(existing); return; }
-    if (!form) return;
+    if (!scene) return;
     if (!existing) {
       existing = document.createElement('div');
       existing.id = 'scw-cq-lock-banner';
       existing.className = 'scw-cq-lock-banner';
-      form.insertBefore(existing, form.firstChild);
     }
-    existing.innerHTML = 'This questionnaire is <b>read-only</b> — it isn’t currently awaiting ' +
-      'customer sign-off' + (status ? ' (status: <b>' + esc(status) + '</b>)' : '') +
-      '. Contact your SCW representative if changes are needed.';
+    // Keep it pinned as the scene's first element so it's the first thing seen.
+    if (scene.firstChild !== existing) scene.insertBefore(existing, scene.firstChild);
+    existing.innerHTML =
+      '<svg class="scw-cq-lock-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+        'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+        '<rect x="3" y="11" width="18" height="11" rx="2" ry="2"></rect>' +
+        '<path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>' +
+      '<div>' +
+        '<div class="scw-cq-lock-title">This questionnaire is read-only</div>' +
+        '<div class="scw-cq-lock-sub">It isn’t currently awaiting customer sign-off' +
+          (status ? ' (status: <b>' + esc(status) + '</b>)' : '') +
+          '. Contact your SCW representative if changes are needed.</div>' +
+      '</div>';
   }
   function applyLock() {
     var status = readStatus();
@@ -568,13 +585,16 @@
     var scene = document.getElementById('kn-' + SCENE);
     if (scene) scene.classList.toggle('scw-cq-locked', locked);
     // readOnly on the text controls across the POC form, sign-off, AND the
-    // deliverables grid (view_4031) so the keyboard can't edit either (CSS
-    // pointer-events only stops the mouse). White bg via CSS keeps them fully
-    // readable per the repo's locked-field convention.
-    [POC_FORM, SIGNOFF, DEELIV].forEach(function (vid) {
-      var v = document.getElementById(vid);
-      if (!v) return;
-      var inps = v.querySelectorAll('input, textarea');
+    // deliverables cards so the keyboard can't edit either (CSS pointer-events
+    // only stops the mouse). White bg via CSS keeps them fully readable per the
+    // repo's locked-field convention. The deliverables cards render in a
+    // .scw-cq-panel SIBLING of #view_4031, so target that, not the view.
+    var lockRoots = [document.getElementById(POC_FORM), document.getElementById(SIGNOFF)];
+    var panels = scene ? scene.querySelectorAll('.scw-cq-panel') : [];
+    for (var p = 0; p < panels.length; p++) lockRoots.push(panels[p]);
+    lockRoots.forEach(function (root) {
+      if (!root) return;
+      var inps = root.querySelectorAll('input, textarea');
       for (var i = 0; i < inps.length; i++) inps[i].readOnly = locked;
     });
     toggleLockBanner(locked, status);
