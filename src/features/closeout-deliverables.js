@@ -159,6 +159,17 @@
       '  border-color: #9ca3af; box-shadow: 0 2px 6px rgba(0,0,0,0.06);',
       '  transform: translateY(-1px);',
       '}',
+      /* Placeholder remove (×) — empty cards only */
+      '.scw-cd-doc__del {',
+      '  position: absolute; top: 5px; right: 5px; z-index: 2;',
+      '  width: 20px; height: 20px; padding: 0; line-height: 1;',
+      '  display: flex; align-items: center; justify-content: center;',
+      '  border: none; border-radius: 50%; cursor: pointer;',
+      '  background: rgba(15,23,42,0.06); color: #64748b; font-size: 15px;',
+      '  opacity: 0; transition: opacity 0.12s, background 0.12s, color 0.12s;',
+      '}',
+      '.scw-cd-doc:hover .scw-cd-doc__del { opacity: 1; }',
+      '.scw-cd-doc__del:hover { background: #fee2e2; color: #b91c1c; }',
 
       /* State colours — three-tier QA model:
            no file          → red (urgent, blocks closeout)
@@ -547,6 +558,29 @@
     type.textContent = doc.type || 'Document';
     type.title = doc.type || '';
     card.appendChild(type);
+
+    // Placeholder delete — empty (no-file) cards get a small × to remove the
+    // empty deliverable slot (the DOC record itself). Filed cards delete via
+    // the QA popover's "Delete file" button instead.
+    if (!hasFile) {
+      var del = document.createElement('button');
+      del.type = 'button';
+      del.className = 'scw-cd-doc__del';
+      del.title = 'Remove this placeholder';
+      del.setAttribute('aria-label', 'Remove placeholder');
+      del.innerHTML = '&times;';
+      del.addEventListener('click', function (e) {
+        e.stopPropagation();
+        var label = doc.type || 'this placeholder';
+        if (!window.confirm('Remove ' + label + ' from this closeout?')) return;
+        setCardPending(card);
+        performDocDelete(doc.id, null, function (xhr) {
+          card.classList.remove('is-pending');
+          alert('Delete failed (' + xhr.status + ')');
+        });
+      });
+      card.appendChild(del);
+    }
 
     // Click behaviour:
     //   No file              → file picker (or Knack edit form if webhook off)
@@ -1199,54 +1233,58 @@
     var sbContent = document.createElement('div');
     sbContent.className = POPOVER_ID + '__sidebar-content';
 
-    // Status chips
-    var statusSec = document.createElement('div');
-    statusSec.className = POPOVER_ID + '__section';
-    var statusLbl = document.createElement('div');
-    statusLbl.className = POPOVER_ID + '__label';
-    statusLbl.textContent = 'QA Status';
-    statusSec.appendChild(statusLbl);
-    var chips = document.createElement('div');
-    chips.className = POPOVER_ID + '__chips';
-    QA_STATUS_OPTIONS.forEach(function (opt) {
-      var c = document.createElement('button');
-      c.type = 'button';
-      c.className = POPOVER_ID + '__chip';
-      c.setAttribute('data-value', opt);
-      c.textContent = opt;
-      if (opt === _popoverDoc.qaStatus) c.classList.add('is-selected');
-      c.addEventListener('click', function () {
-        var siblings = chips.querySelectorAll('.' + POPOVER_ID + '__chip');
-        for (var i = 0; i < siblings.length; i++) siblings[i].classList.remove('is-selected');
-        c.classList.add('is-selected');
-        _popoverDoc.qaStatus = opt;
+    // QA options (status chips + notes) are only shown for REQUIRED docs
+    // (field_2894 = Yes). Optional deliverables don't get a QA sign-off.
+    if (doc.required) {
+      // Status chips
+      var statusSec = document.createElement('div');
+      statusSec.className = POPOVER_ID + '__section';
+      var statusLbl = document.createElement('div');
+      statusLbl.className = POPOVER_ID + '__label';
+      statusLbl.textContent = 'QA Status';
+      statusSec.appendChild(statusLbl);
+      var chips = document.createElement('div');
+      chips.className = POPOVER_ID + '__chips';
+      QA_STATUS_OPTIONS.forEach(function (opt) {
+        var c = document.createElement('button');
+        c.type = 'button';
+        c.className = POPOVER_ID + '__chip';
+        c.setAttribute('data-value', opt);
+        c.textContent = opt;
+        if (opt === _popoverDoc.qaStatus) c.classList.add('is-selected');
+        c.addEventListener('click', function () {
+          var siblings = chips.querySelectorAll('.' + POPOVER_ID + '__chip');
+          for (var i = 0; i < siblings.length; i++) siblings[i].classList.remove('is-selected');
+          c.classList.add('is-selected');
+          _popoverDoc.qaStatus = opt;
+          refreshActions(pop);
+        });
+        chips.appendChild(c);
+      });
+      statusSec.appendChild(chips);
+      sbContent.appendChild(statusSec);
+
+      // Notes
+      var notesSec = document.createElement('div');
+      notesSec.className = POPOVER_ID + '__section';
+      var notesLbl = document.createElement('div');
+      notesLbl.className = POPOVER_ID + '__label';
+      notesLbl.textContent = 'Notes';
+      notesSec.appendChild(notesLbl);
+      var notes = document.createElement('textarea');
+      notes.className = POPOVER_ID + '__notes';
+      notes.value = _popoverDoc.qaNotes || '';
+      notes.addEventListener('input', function () {
+        _popoverDoc.qaNotes = notes.value;
         refreshActions(pop);
       });
-      chips.appendChild(c);
-    });
-    statusSec.appendChild(chips);
-    sbContent.appendChild(statusSec);
-
-    // Notes
-    var notesSec = document.createElement('div');
-    notesSec.className = POPOVER_ID + '__section';
-    var notesLbl = document.createElement('div');
-    notesLbl.className = POPOVER_ID + '__label';
-    notesLbl.textContent = 'Notes';
-    notesSec.appendChild(notesLbl);
-    var notes = document.createElement('textarea');
-    notes.className = POPOVER_ID + '__notes';
-    notes.value = _popoverDoc.qaNotes || '';
-    notes.addEventListener('input', function () {
-      _popoverDoc.qaNotes = notes.value;
-      refreshActions(pop);
-    });
-    notesSec.appendChild(notes);
-    var hint = document.createElement('div');
-    hint.className = POPOVER_ID + '__hint';
-    hint.textContent = 'Notes required when marking Fail.';
-    notesSec.appendChild(hint);
-    sbContent.appendChild(notesSec);
+      notesSec.appendChild(notes);
+      var hint = document.createElement('div');
+      hint.className = POPOVER_ID + '__hint';
+      hint.textContent = 'Notes required when marking Fail.';
+      notesSec.appendChild(hint);
+      sbContent.appendChild(notesSec);
+    }
 
     // Upload audit — who uploaded this file and when (from field_2902/2903
     // on the DOC record, captured by Make at upload time).
@@ -1405,7 +1443,7 @@
     // the Replace action without a re-open).
     var replaceBtn = pop.querySelector('.' + POPOVER_ID + '__replace-btn');
     if (replaceBtn) {
-      var locked = (status === 'Pass');
+      var locked = !!_popoverDoc.required && (status === 'Pass');
       replaceBtn.disabled = locked;
       if (locked) {
         replaceBtn.textContent = 'Replace locked (QA signed off)';
@@ -1431,14 +1469,17 @@
     closeBtn.addEventListener('click', function () { closeQAPopover(); });
     footer.appendChild(closeBtn);
 
-    var save = document.createElement('button');
-    save.type = 'button';
-    save.className = POPOVER_ID + '__btn ' + POPOVER_ID + '__btn--primary';
-    save.textContent = (status === 'Pass') ? 'Sign off' :
-                       (status === 'Fail') ? 'Mark fail' : 'Save QA';
-    save.disabled = !dirty || needsNotes;
-    save.addEventListener('click', function () { saveQA(); });
-    footer.appendChild(save);
+    // QA save only for required docs (optional docs show no QA controls).
+    if (_popoverDoc.required) {
+      var save = document.createElement('button');
+      save.type = 'button';
+      save.className = POPOVER_ID + '__btn ' + POPOVER_ID + '__btn--primary';
+      save.textContent = (status === 'Pass') ? 'Sign off' :
+                         (status === 'Fail') ? 'Mark fail' : 'Save QA';
+      save.disabled = !dirty || needsNotes;
+      save.addEventListener('click', function () { saveQA(); });
+      footer.appendChild(save);
+    }
   }
 
   function closeQAPopover() {
@@ -1517,35 +1558,41 @@
     });
   }
 
-  // Delete the DOC record (the file) via the view_3941 record endpoint —
-  // mirror of saveQA's PUT. Removing the DOC drops it from the closeout's
-  // connection columns, so the card disappears on the refetch.
-  function deleteDoc() {
-    if (!_popover || !_popoverDoc) return;
+  function refetchCloseoutViews() {
+    var v1 = window.Knack && Knack.views && Knack.views[VIEW_ID];
+    if (v1 && v1.model && typeof v1.model.fetch === 'function') v1.model.fetch();
+    var v2 = window.Knack && Knack.views && Knack.views[DOC_SAVE_VIEW];
+    if (v2 && v2.model && typeof v2.model.fetch === 'function') v2.model.fetch();
+  }
+  // Delete a DOC record via the view_3941 record endpoint — mirror of saveQA's
+  // PUT. Removing the DOC drops it from the closeout's connection columns, so
+  // the card disappears on the refetch. Shared by the popover (filed docs) and
+  // the placeholder × (empty cards).
+  function performDocDelete(docId, onSuccess, onError) {
     if (typeof SCW === 'undefined' || typeof SCW.knackAjax !== 'function' ||
         typeof SCW.knackRecordUrl !== 'function') {
       alert('Delete unavailable (SCW.knackAjax missing)');
       return;
     }
+    SCW.knackAjax({
+      url:  SCW.knackRecordUrl(DOC_SAVE_VIEW, docId),
+      type: 'DELETE',
+      success: function () { if (onSuccess) onSuccess(); refetchCloseoutViews(); },
+      error: function (xhr) {
+        console.error('[SCW] doc delete error:', xhr.status, xhr.responseText);
+        if (onError) onError(xhr);
+      }
+    });
+  }
+  function deleteDoc() {   // popover (filed doc)
+    if (!_popover || !_popoverDoc) return;
     var label = _popoverDoc.type || 'this file';
     if (!window.confirm('Delete ' + label + '?\n\nThis permanently removes the document from this closeout.')) return;
     var pop = _popover.querySelector('.' + POPOVER_ID);
     if (pop) pop.classList.add(POPOVER_ID + '__saving');
-    SCW.knackAjax({
-      url:  SCW.knackRecordUrl(DOC_SAVE_VIEW, _popoverDoc.id),
-      type: 'DELETE',
-      success: function () {
-        closeQAPopover();
-        var v1 = window.Knack && Knack.views && Knack.views[VIEW_ID];
-        if (v1 && v1.model && typeof v1.model.fetch === 'function') v1.model.fetch();
-        var v2 = window.Knack && Knack.views && Knack.views[DOC_SAVE_VIEW];
-        if (v2 && v2.model && typeof v2.model.fetch === 'function') v2.model.fetch();
-      },
-      error: function (xhr) {
-        if (pop) pop.classList.remove(POPOVER_ID + '__saving');
-        console.error('[SCW] doc delete error:', xhr.status, xhr.responseText);
-        alert('Delete failed (' + xhr.status + ')');
-      }
+    performDocDelete(_popoverDoc.id, function () { closeQAPopover(); }, function (xhr) {
+      if (pop) pop.classList.remove(POPOVER_ID + '__saving');
+      alert('Delete failed (' + xhr.status + ')');
     });
   }
 
