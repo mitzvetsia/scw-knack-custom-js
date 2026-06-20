@@ -435,48 +435,166 @@
       return { id: u.id || '', name: name || '', email: u.email || '' };
     } catch (e) { return {}; }
   }
-  // Copy live input values into the cloned scene — input values live in the
-  // DOM .value, not the serialized HTML, so a raw clone would print blank
-  // fields. Clone is a deep copy so the node order matches the live tree.
-  function syncValuesIntoClone(live, clone) {
-    var L = live.querySelectorAll('input, textarea, select');
-    var C = clone.querySelectorAll('input, textarea, select');
-    for (var i = 0; i < L.length && i < C.length; i++) {
-      var l = L[i], c = C[i];
-      if (l.tagName === 'SELECT') {
-        var opts = c.querySelectorAll('option');
-        for (var j = 0; j < opts.length; j++) {
-          if (j === l.selectedIndex) opts[j].setAttribute('selected', 'selected');
-          else opts[j].removeAttribute('selected');
-        }
-      } else if (l.type === 'checkbox' || l.type === 'radio') {
-        if (l.checked) c.setAttribute('checked', 'checked'); else c.removeAttribute('checked');
-      } else if (l.tagName === 'TEXTAREA') {
-        c.textContent = l.value;
-      } else {
-        c.setAttribute('value', l.value);
-      }
-    }
+  // ── Printable document (Make → PDF). Built fresh from the page data as a
+  //    clean, branded document modeled on the Location Approval Form PDF —
+  //    NOT a clone of the editable scene (which renders as ugly input boxes). ──
+  var SCW_LOGO = 'https://www.getscw.com/media/logo/stores/1/logo-scw.jpeg';
+  function _txt(el) { return el ? el.textContent.replace(/\s+/g, ' ').trim() : ''; }
+  function _today() {
+    var d = new Date(); function p(n) { return (n < 10 ? '0' : '') + n; }
+    return p(d.getMonth() + 1) + '/' + p(d.getDate()) + '/' + d.getFullYear();
   }
-  // Self-contained printable HTML of the scene as the customer sees it.
+  // Top "info" rows from the details view (Status, Company, Site, …).
+  function collectDetails() {
+    var out = [], v = document.getElementById(STATUS_VIEW);
+    if (!v) return out;
+    var dets = v.querySelectorAll('.kn-detail');
+    for (var i = 0; i < dets.length; i++) {
+      var label = _txt(dets[i].querySelector('.kn-detail-label'));
+      var val = _txt(dets[i].querySelector('.kn-detail-body'));
+      if (label) out.push({ label: label, value: val });
+    }
+    return out;
+  }
+  // One POC field → { label, value } (name fields collapse to "First Last").
+  function fieldLabelValue(fieldEl) {
+    var type = fieldType(fieldEl);
+    if (!type) return null;
+    var span = fieldEl.querySelector('.kn-label > span');
+    var label = span ? span.textContent.replace(/\*/g, '').trim() : '';
+    var val = readVal(fieldEl, type);
+    if (type === 'name') val = ((val.first || '') + ' ' + (val.last || '')).trim();
+    return { label: label, value: String(val == null ? '' : val).trim() };
+  }
+  // Deliverables answers, one block per device card.
+  function collectDeliverables() {
+    var out = [];
+    var cards = document.querySelectorAll('#kn-' + SCENE + ' .scw-cq-panel .scw-cq-card');
+    for (var c = 0; c < cards.length; c++) {
+      var card = cards[c];
+      var fields = [];
+      var fEls = card.querySelectorAll('.scw-cq-field');
+      for (var f = 0; f < fEls.length; f++) {
+        var lab = fEls[f].querySelector('.scw-cq-label');
+        var label = lab ? lab.textContent.replace(/\*/g, '').trim() : '';
+        var val = '';
+        var chips = fEls[f].querySelector('.scw-cq-chips');
+        if (chips) {
+          val = Array.prototype.map.call(chips.querySelectorAll('.scw-cq-chip.is-on'),
+            function (b) { return b.textContent.trim(); }).join(', ');
+        } else {
+          var inp = fEls[f].querySelector('.scw-cq-input');
+          val = inp ? (inp.value || '') : '';
+        }
+        fields.push({ label: label, value: val });
+      }
+      out.push({
+        title: _txt(card.querySelector('.scw-cq-card-title')),
+        sub:   _txt(card.querySelector('.scw-cq-card-sub')),
+        fields: fields
+      });
+    }
+    return out;
+  }
+  function _infoVal(details, re) {
+    for (var i = 0; i < details.length; i++) if (re.test(details[i].label)) return details[i].value;
+    return '';
+  }
+  function _row(label, value) {
+    return '<div class="q-field"><div class="q-k">' + esc(label) + '</div>' +
+      '<div class="q-v">' + (value ? esc(value) : '<span class="q-empty">—</span>') + '</div></div>';
+  }
+  function _printCss() {
+    return [
+      '@page{size:letter;margin:16mm 14mm;@bottom-center{content:"Page " counter(page) " of " counter(pages);font-family:system-ui,sans-serif;font-size:9px;color:#94a3b8;}}',
+      '*{box-sizing:border-box;}',
+      'html,body{margin:0;padding:0;font-family:system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;color:#1f2937;font-size:12px;line-height:1.45;-webkit-print-color-adjust:exact;print-color-adjust:exact;}',
+      '.q-header{display:flex;align-items:flex-start;justify-content:space-between;border-bottom:3px solid #07467c;padding-bottom:14px;margin-bottom:18px;}',
+      '.q-logo img{max-height:54px;max-width:220px;display:block;}',
+      '.q-head-right{text-align:right;}',
+      '.q-title{font-size:20px;font-weight:800;color:#07467c;margin:0 0 4px;}',
+      '.q-meta{font-size:11px;color:#64748b;}.q-meta b{color:#334155;}',
+      '.q-info{display:grid;grid-template-columns:1fr 1fr;gap:6px 24px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:12px 16px;margin-bottom:20px;}',
+      '.q-info-item{font-size:12px;}',
+      '.q-info-label{font-size:9.5px;text-transform:uppercase;letter-spacing:.06em;color:#94a3b8;font-weight:700;margin-bottom:1px;}',
+      '.q-info-value{color:#1f2937;font-weight:600;}',
+      '.q-section{margin-bottom:18px;page-break-inside:avoid;break-inside:avoid;}',
+      '.q-section-title{font-size:13px;font-weight:800;color:#07467c;background:#eef4fa;border-left:4px solid #07467c;padding:7px 12px;border-radius:4px;margin:0 0 10px;}',
+      '.q-fields{display:grid;grid-template-columns:1fr 1fr;gap:9px 24px;}',
+      '.q-field{font-size:11.5px;}',
+      '.q-k{color:#94a3b8;font-weight:700;text-transform:uppercase;font-size:9px;letter-spacing:.05em;margin-bottom:1px;}',
+      '.q-v{color:#334155;font-weight:600;white-space:pre-wrap;}',
+      '.q-empty{color:#cbd5e1;font-weight:400;}',
+      '.q-device{border:1px solid #e2e8f0;border-radius:8px;padding:11px 14px;margin-bottom:10px;page-break-inside:avoid;break-inside:avoid;}',
+      '.q-device-head{font-size:13px;font-weight:800;color:#07467c;margin-bottom:8px;}',
+      '.q-device-head .sub{font-weight:500;color:#64748b;font-size:11px;}',
+      '.q-sign{margin-top:8px;display:flex;align-items:flex-end;gap:24px;border-top:2px solid #07467c;padding-top:14px;page-break-inside:avoid;}',
+      '.q-sign img{max-height:70px;max-width:280px;}',
+      '.q-sign-cap{font-size:10px;color:#64748b;}'
+    ].join('');
+  }
   function buildPrintableHtml() {
-    var scene = document.getElementById('kn-' + SCENE);
-    if (!scene) return '';
-    var clone = scene.cloneNode(true);
-    syncValuesIntoClone(scene, clone);
-    // Strip page chrome / interactive-only bits that don't belong in a record.
-    var drop = clone.querySelectorAll(
-      'script, .scw-cqf-status, .scw-cq-copy-btn, .scw-cq-pm-wrap, .kn-submit, .kn-records-nav, ' +
-      '.scw-cq-lock-banner, .scw-cq-signoff-error, .kn-add-filter, .kn-filters-nav');
-    for (var i = 0; i < drop.length; i++) if (drop[i].parentNode) drop[i].parentNode.removeChild(drop[i]);
-    var css = '';
-    var st = document.getElementById(STYLE_ID);
-    if (st) css = st.textContent || '';
-    return '<!DOCTYPE html><html><head><meta charset="utf-8">' +
-      '<title>System Setup Questionnaire</title><style>' +
-      'body{font-family:system-ui,-apple-system,"Segoe UI",sans-serif;color:#1f2937;margin:24px;background:#fff;}' +
-      css +
-      '</style></head><body>' + clone.innerHTML + '</body></html>';
+    var details = collectDetails();
+    // ── Info grid (skip the workflow STATUS row — internal). ──
+    var infoHtml = '';
+    for (var i = 0; i < details.length; i++) {
+      if (/^status$/i.test(details[i].label)) continue;
+      infoHtml += '<div class="q-info-item"><div class="q-info-label">' + esc(details[i].label) +
+        '</div><div class="q-info-value">' + (details[i].value ? esc(details[i].value) : '—') + '</div></div>';
+    }
+
+    // ── POC sections (title + label/value rows). ──
+    var body = '';
+    var sections = (typeof buildSections === 'function') ? buildSections() : [];
+    for (var s = 0; s < sections.length; s++) {
+      var sec = sections[s];
+      var rows = '';
+      for (var fi = 0; fi < sec.fields.length; fi++) {
+        var lv = fieldLabelValue(sec.fields[fi]);
+        if (lv) rows += _row(lv.label, lv.value);
+      }
+      if (!rows) continue;
+      var title = sec.title || 'Details';
+      body += '<div class="q-section"><div class="q-section-title">' + esc(title) +
+        '</div><div class="q-fields">' + rows + '</div></div>';
+    }
+
+    // ── Deliverables (per-device answers). ──
+    var devs = collectDeliverables();
+    if (devs.length) {
+      var devHtml = '';
+      for (var d = 0; d < devs.length; d++) {
+        var dv = devs[d];
+        var drows = '';
+        for (var df = 0; df < dv.fields.length; df++) drows += _row(dv.fields[df].label, dv.fields[df].value);
+        devHtml += '<div class="q-device"><div class="q-device-head">' + esc(dv.title) +
+          (dv.sub ? ' <span class="sub">— ' + esc(dv.sub) + '</span>' : '') + '</div>' +
+          '<div class="q-fields">' + drows + '</div></div>';
+      }
+      body += '<div class="q-section"><div class="q-section-title">Device Configuration</div>' +
+        devHtml + '</div>';
+    }
+
+    // ── Signature block (view_4047), if present. ──
+    var sig = document.querySelector('#view_4047 .field_1776 img');
+    var sigDate = _txt(document.querySelector('#view_4047 .field_1782 .kn-detail-body'));
+    if (sig) {
+      body += '<div class="q-sign"><div><img src="' + esc(sig.getAttribute('src') || '') + '">' +
+        '<div class="q-sign-cap">Customer signature</div></div>' +
+        (sigDate ? '<div><div style="font-weight:700;color:#334155;">' + esc(sigDate) +
+          '</div><div class="q-sign-cap">Date signed</div></div>' : '') + '</div>';
+    }
+
+    return '<!DOCTYPE html><html lang="en"><head><meta charset="utf-8">' +
+      '<title>System Setup Questionnaire</title><style>' + _printCss() + '</style></head><body>' +
+        '<div class="q-header">' +
+          '<div class="q-logo"><img src="' + SCW_LOGO + '" alt="SCW"></div>' +
+          '<div class="q-head-right"><div class="q-title">System Setup Questionnaire</div>' +
+            '<div class="q-meta"><b>Date:</b> ' + _today() + '</div></div>' +
+        '</div>' +
+        '<div class="q-info">' + infoHtml + '</div>' +
+        body +
+      '</body></html>';
   }
   // Fire-and-(briefly-)wait POST. Calls done() on completion OR an 8s timeout
   // so the sign-off is never blocked by a slow/failing webhook.
