@@ -94,7 +94,10 @@
       S + ' .scw-cq-pm-wrap {',
       '  background: #fff; border: 1px solid #e5e7eb; border-radius: 10px;',
       '  box-shadow: 0 1px 2px rgba(15,23,42,.04); padding: 16px 20px; margin-bottom: 16px; }',
-      S + ' .scw-cq-pm-note { font: 500 13px/1.5 system-ui, sans-serif; color: #475569; margin-bottom: 10px; }',
+      S + ' .scw-cq-pm-title { font: 700 15px/1.35 system-ui, sans-serif; color: #0f172a; margin-bottom: 8px; }',
+      S + ' .scw-cq-pm-note { font: 500 13px/1.55 system-ui, sans-serif; color: #475569; margin-bottom: 12px; }',
+      S + ' .scw-cq-pm-note strong { display: block; margin-bottom: 6px; font-weight: 700; font-size: 14px;',
+      '  color: #0f4c75; }',
       S + ' .scw-cq-pm-btn {',
       '  background: #0f4c75; border: 1px solid #0a3a63; color: #fff;',
       '  font: 600 13px system-ui, sans-serif; border-radius: 6px; padding: 9px 18px; cursor: pointer; }',
@@ -145,10 +148,14 @@
       S + '.scw-cq-locked #' + POC_FORM + ' .kn-submit, ' +
         S + '.scw-cq-locked .scw-cq-copy-btn, ' +
         S + '.scw-cq-locked #' + SIGNOFF + ' .kn-submit { display: none !important; }',
-      // Deliverables grid controls (own module) lock too.
-      S + '.scw-cq-locked #' + DEELIV + ' .scw-deliverables-input, ' +
-        S + '.scw-cq-locked #' + DEELIV + ' .scw-deliverables-chip {',
-      '  pointer-events: none !important; background: #fff !important; }'
+      // Deliverables grid (view_4031, customer-questionnaire.js — class prefix
+      // "scw-cq"). Lock its inputs read-only, freeze chips, and remove the
+      // bulk-edit bar + per-card select checkboxes so nothing is editable.
+      S + '.scw-cq-locked #' + DEELIV + ' .scw-cq-input {',
+      '  pointer-events: none !important; background: #fff !important; }',
+      S + '.scw-cq-locked #' + DEELIV + ' .scw-cq-chip { pointer-events: none !important; }',
+      S + '.scw-cq-locked #' + DEELIV + ' .scw-cq-bulkbar, ' +
+        S + '.scw-cq-locked #' + DEELIV + ' .scw-cq-select { display: none !important; }'
     ].join('\n');
     var s = document.createElement('style');
     s.id = STYLE_ID; s.textContent = css;
@@ -446,8 +453,12 @@
     wrap.id = PM_BTN_ID;
     wrap.className = 'scw-cq-pm-wrap';
     wrap.innerHTML =
-      '<div class="scw-cq-pm-note">Reviewed the customer’s answers above? Submit your ' +
-        'sign-off to finalize. Any edits you made are recorded on the audit trail.</div>' +
+      '<div class="scw-cq-pm-title">Click below when you’re ready to finalize the Questionnaire.</div>' +
+      '<div class="scw-cq-pm-note">' +
+        '<strong>Review the customer’s answers below and submit your sign-off to finalize.</strong> ' +
+        'This will trigger submission of the questionnaire to our install partners and an update ' +
+        'to be sent to all POC’s referenced in the questionnaire. Any edits you made are recorded ' +
+        'on the audit trail.</div>' +
       '<button type="button" class="scw-cq-pm-btn">Submit Sign-Off</button>' +
       '<span class="scw-cq-pm-status" aria-live="polite"></span>';
     if (host.id === SIGNOFF) host.parentNode.insertBefore(wrap, host.nextSibling);
@@ -519,10 +530,11 @@
     var locked = !isEditable();
     var scene = document.getElementById('kn-' + SCENE);
     if (scene) scene.classList.toggle('scw-cq-locked', locked);
-    // readOnly on the POC + sign-off text controls so the keyboard can't edit
-    // either (CSS pointer-events only stops the mouse). White bg via CSS keeps
-    // them fully readable per the repo's locked-field convention.
-    [POC_FORM, SIGNOFF].forEach(function (vid) {
+    // readOnly on the text controls across the POC form, sign-off, AND the
+    // deliverables grid (view_4031) so the keyboard can't edit either (CSS
+    // pointer-events only stops the mouse). White bg via CSS keeps them fully
+    // readable per the repo's locked-field convention.
+    [POC_FORM, SIGNOFF, DEELIV].forEach(function (vid) {
       var v = document.getElementById(vid);
       if (!v) return;
       var inps = v.querySelectorAll('input, textarea');
@@ -623,6 +635,8 @@
     SCW.onViewRender(POC_FORM, function () { setTimeout(run, 30); }, NS);
     // Status view may render after the form — re-apply the lock when it does.
     SCW.onViewRender(STATUS_VIEW, function () { setTimeout(applyLock, 30); }, NS);
+    // Deliverables grid (view_4031) rebuilds its own cards — re-apply readOnly.
+    SCW.onViewRender(DEELIV, function () { setTimeout(applyLock, 60); }, NS);
   }
   setTimeout(run, 400);
 })();
