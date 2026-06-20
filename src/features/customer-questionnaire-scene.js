@@ -23,9 +23,12 @@
   var STATUS_VIEW  = 'view_4024';  // details view exposing the workflow STATUS
   // On sign-off, POST a printable snapshot + record id + submitter to Make.
   var SIGNOFF_WEBHOOK = 'https://hook.us1.make.com/sreazoatcr18tpjy2mhn9fg4qa4vqbrm';
-  // @getscw.com edits are appended here (tamper audit trail) — a paragraph/
-  // text field on the questionnaire record (the POC form's object).
+  // @getscw.com edits are appended here (tamper audit trail). field_2937 lives
+  // on view_4046 ("PM: Finalize Questionnaire"), so audit reads/writes go
+  // through that view's record endpoint (the view itself is hidden — we use
+  // the custom button for sign-off, not its native submit).
   var AUDIT_FIELD = 'field_2937';
+  var AUDIT_VIEW  = 'view_4046';
   var STATUS_FIELD = 'field_1772'; // STATUS. Editability rule:
                                    //   @getscw.com staff      → ALWAYS editable
                                    //   everyone else (customer)→ editable ONLY while
@@ -90,6 +93,10 @@
       '#' + POC_FORM + ' .kn-submit { display: none !important; }',
       // Native sign-off form is replaced by the custom PM button (syncPmButton).
       '#' + SIGNOFF + ' { display: none !important; }',
+      // view_4046 ("PM: Finalize Questionnaire") is hidden — we use it only as
+      // the writable endpoint for the audit field (field_2937); the custom PM
+      // button drives sign-off, not its native Finalize submit.
+      '#' + AUDIT_VIEW + ' { display: none !important; }',
       // Custom PM sign-off button (staff-only, shown when past customer sign-off).
       S + ' .scw-cq-pm-wrap {',
       '  background: #fff; border: 1px solid #e5e7eb; border-radius: 10px;',
@@ -269,7 +276,7 @@
     var recId = recordId();
     if (!recId) { _auditExisting = ''; cb(); return; }
     SCW.knackAjax({
-      url: SCW.knackRecordUrl(POC_FORM, recId), type: 'GET',
+      url: SCW.knackRecordUrl(AUDIT_VIEW, recId), type: 'GET',
       success: function (resp) {
         var raw = resp ? (resp[AUDIT_FIELD + '_raw'] != null ? resp[AUDIT_FIELD + '_raw'] : resp[AUDIT_FIELD]) : '';
         _auditExisting = (raw != null) ? String(raw).replace(/<[^>]*>/g, '').trim() : '';
@@ -292,11 +299,11 @@
         _auditBusy = false;
         if (_auditPending.length) pumpAudit();
       };
-      var view = (typeof Knack !== 'undefined' && Knack.views) ? Knack.views[POC_FORM] : null;
+      var view = (typeof Knack !== 'undefined' && Knack.views) ? Knack.views[AUDIT_VIEW] : null;
       if (view && view.model && typeof view.model.updateRecord === 'function') {
         view.model.updateRecord(recId, data, { success: function () { done(true); }, error: function () { done(false); } });
       } else {
-        SCW.knackAjax({ url: SCW.knackRecordUrl(POC_FORM, recId), type: 'PUT', data: JSON.stringify(data),
+        SCW.knackAjax({ url: SCW.knackRecordUrl(AUDIT_VIEW, recId), type: 'PUT', data: JSON.stringify(data),
           success: function () { done(true); }, error: function () { done(false); } });
       }
     });
