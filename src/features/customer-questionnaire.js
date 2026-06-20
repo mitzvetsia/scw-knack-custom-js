@@ -171,8 +171,8 @@
     var id = PREFIX + '-' + def.key + '-' + Math.random().toString(36).slice(2, 7);
     var req = def.required ? ' <span class="' + PREFIX + '-req">*</span>' : '';
     var label = '<label class="' + PREFIX + '-label" for="' + id + '">' + esc(def.label) + req + '</label>';
-    // Field explanation (field_2938) — shown as muted help text under the label.
-    var help = def.tooltip ? '<div class="' + PREFIX + '-help">' + esc(def.tooltip) + '</div>' : '';
+    // Field explanations (field_2938) are NOT inlined per field (redundant
+    // across every card) — they're shown once in the field-guide panel.
     var control = '', v = value == null ? '' : value;
     switch (def.type) {
       case 'textarea':
@@ -202,7 +202,53 @@
       default:
         control = '<input id="' + id + '" data-key="' + esc(def.key) + '" type="text" class="' + PREFIX + '-input" value="' + esc(v) + '">';
     }
-    return '<div class="' + PREFIX + '-field" data-type="' + def.type + '">' + label + help + control + '</div>';
+    return '<div class="' + PREFIX + '-field" data-type="' + def.type + '">' + label + control + '</div>';
+  }
+
+  /* ── Field guide: show each field's explanation (field_2938) ONCE, in a
+   *    single panel above the cards, instead of repeating it under every
+   *    field in every card. Distinct fields (with a tooltip) across whatever
+   *    schemas are used on this page, deduped by key, in display order. */
+  var GUIDE_ICON =
+    '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" ' +
+    'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+    '<circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line>' +
+    '<line x1="12" y1="8" x2="12.01" y2="8"></line></svg>';
+  function collectGuideFields(bySchema, records) {
+    var seen = {}, out = [];
+    records.forEach(function (rec) {
+      var sid = firstConnId(rec, CONFIG.LINE_ITEM_SCHEMA_FIELD);
+      var fields = sid ? bySchema[sid] : null;
+      if (!fields) return;
+      fields.forEach(function (def) {
+        if (!def.tooltip || seen[def.key]) return;
+        seen[def.key] = true;
+        out.push(def);
+      });
+    });
+    return out;
+  }
+  function syncFieldGuide(container, guideFields) {
+    var id = PREFIX + '-guide-' + container.id;
+    var existing = document.getElementById(id);
+    if (!guideFields.length) { if (existing && existing.parentNode) existing.parentNode.removeChild(existing); return; }
+    var items = guideFields.map(function (d) {
+      return '<div class="' + PREFIX + '-guide-item">' +
+        '<dt>' + esc(d.label) + '</dt>' +
+        '<dd>' + esc(d.tooltip) + '</dd></div>';
+    }).join('');
+    var html =
+      '<div class="' + PREFIX + '-guide-head">' + GUIDE_ICON +
+        '<span>What these questions mean</span></div>' +
+      '<dl class="' + PREFIX + '-guide-list">' + items + '</dl>';
+    if (!existing) {
+      existing = document.createElement('div');
+      existing.id = id;
+      existing.className = PREFIX + '-guide';
+      // Sits directly above the cards container.
+      container.parentNode.insertBefore(existing, container);
+    }
+    existing.innerHTML = html;
   }
 
   /* ── build / collect / save ── */
@@ -566,6 +612,9 @@
     var records = getViewRecords(viewId);
     var container = ensureContainer(viewEl, viewId);
 
+    // One field-guide panel above the cards (explanations shown once).
+    syncFieldGuide(container, collectGuideFields(bySchema, records));
+
     var any = false;
     records.forEach(function (rec) {
       var schemaId = firstConnId(rec, CONFIG.LINE_ITEM_SCHEMA_FIELD);
@@ -629,7 +678,17 @@
       '.' + PREFIX + '-field[data-type="textarea"]{grid-column:1/-1;}' +
       '.' + PREFIX + '-label{font:600 12px/1.3 system-ui,sans-serif;color:#374151;}' +
       '.' + PREFIX + '-req{color:#b45309;margin-left:2px;}' +
-      '.' + PREFIX + '-help{font:400 11.5px/1.45 system-ui,sans-serif;color:#64748b;margin:1px 0 2px;}' +
+      // Field-guide panel (explanations shown once, above the cards).
+      '.' + PREFIX + '-guide{background:#f0f6ff;border:1px solid #d6e4f7;border-radius:10px;' +
+        'padding:14px 18px;margin:0 0 16px;}' +
+      '.' + PREFIX + '-guide-head{display:flex;align-items:center;gap:7px;color:#0f4c75;' +
+        'font:700 13px/1.2 system-ui,sans-serif;margin-bottom:10px;}' +
+      '.' + PREFIX + '-guide-head svg{flex:0 0 auto;color:#2563eb;}' +
+      '.' + PREFIX + '-guide-list{margin:0;display:grid;grid-template-columns:1fr;gap:8px 24px;}' +
+      '@media (min-width:680px){.' + PREFIX + '-guide-list{grid-template-columns:1fr 1fr;}}' +
+      '.' + PREFIX + '-guide-item{display:flex;flex-direction:column;gap:1px;margin:0;}' +
+      '.' + PREFIX + '-guide-item dt{font:600 12.5px/1.3 system-ui,sans-serif;color:#0f172a;}' +
+      '.' + PREFIX + '-guide-item dd{margin:0;font:400 12px/1.45 system-ui,sans-serif;color:#475569;}' +
       '.' + PREFIX + '-input{display:block;width:100%;box-sizing:border-box;padding:7px 9px;' +
         'border:1px solid #cbd5e1;border-radius:6px;background:#fff;font:14px/1.35 system-ui,sans-serif;' +
         'color:#1f2937;min-height:36px;transition:border-color .1s,box-shadow .1s;}' +
