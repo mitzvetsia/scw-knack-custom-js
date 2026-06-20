@@ -141,6 +141,30 @@
       S + ' .scw-cq-copy-btn:hover { background: #dceafa; border-color: #93c5fd; }',
       S + ' .scw-cq-copy-btn.is-done { background: #dcfce7; border-color: #86efac; color: #15803d; }',
       S + ' .scw-cq-copy-ico { font-size: 13px; line-height: 1; }',
+      // ── Section layout: each kn-form-group <ul> is ONE section = the left
+      //    column (title + instructions) sits beside the right column (the
+      //    fields it describes) inside a single card, so the association is
+      //    obvious. Flatten the form's own outer card chrome first.
+      S + ' #' + POC_FORM + '.kn-form.kn-view {',
+      '  background: transparent !important; border: 0 !important;',
+      '  box-shadow: none !important; padding: 0 !important; }',
+      S + ' #' + POC_FORM + ' .kn-form-group.columns {',
+      '  display: flex !important; flex-wrap: wrap; gap: 6px 30px; margin: 0 0 16px !important;',
+      '  background: #fff; border: 1px solid #e5e7eb; border-radius: 10px;',
+      '  box-shadow: 0 1px 2px rgba(15,23,42,.04); padding: 18px 22px; }',
+      S + ' #' + POC_FORM + ' .kn-form-col.column { padding: 0 !important; }',
+      S + ' #' + POC_FORM + ' .kn-form-col.is-one-half {',
+      '  flex: 1 1 calc(50% - 15px); max-width: calc(50% - 15px); min-width: 240px; }',
+      // Freeform paragraph sections (no section-break) span the full card width.
+      S + ' #' + POC_FORM + ' .kn-form-col:has(.kn-input-paragraph_text) {',
+      '  flex: 1 1 100%; max-width: 100%; }',
+      // Section title = card header (drop the old under-title divider rule).
+      S + ' #' + POC_FORM + ' .kn-section-break .kn-title {',
+      '  border-bottom: 0 !important; padding-bottom: 0 !important; margin: 0 0 8px !important;',
+      '  font: 700 15px/1.3 system-ui, sans-serif !important; color: #0f4c75 !important; }',
+      // Stack each field with breathing room inside the fields column.
+      S + ' #' + POC_FORM + ' .kn-form-col .kn-input { margin-bottom: 12px; }',
+      S + ' #' + POC_FORM + ' .kn-form-col .kn-input:last-child { margin-bottom: 0; }',
       // Read-only lock banner.
       S + ' .scw-cq-lock-banner {',
       '  background: #fffbeb; border: 1px solid #fde68a; color: #92400e; border-radius: 8px;',
