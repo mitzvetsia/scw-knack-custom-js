@@ -194,6 +194,9 @@
       '}',
       '.scw-cd-doc.is-qa-pending:hover { background: #ede9fe; border-color: #8b5cf6; }',
       '.scw-cd-doc.is-qa-pending .scw-cd-doc__icon { color: #6d28d9; }',
+      /* Non-required uploaded doc — neutral, no QA verdict. */
+      '.scw-cd-doc.is-uploaded { border-color: #cbd5e1; }',
+      '.scw-cd-doc.is-uploaded .scw-cd-doc__icon { color: #64748b; }',
 
       '.scw-cd-doc.is-qa-pass {',
       '  border: 1px solid #86efac; background: #f0fdf4;',
@@ -503,6 +506,9 @@
     if (!hasFile) {
       card.classList.add('is-no-file');
       if (!doc.required) card.classList.add('is-optional');
+    } else if (!doc.required) {
+      // Non-required docs have no QA — neutral "uploaded" state, no QA colour.
+      card.classList.add('is-uploaded');
     } else if (isPass) {
       card.classList.add('is-qa-pass');
     } else if (isFail) {
@@ -536,9 +542,10 @@
       iconBox.className = 'scw-cd-doc__icon';
       var iconLabel;
       if (hasFile) {
-        if (isPass)      iconLabel = 'QA Pass';
-        else if (isFail) iconLabel = 'QA Fail';
-        else             iconLabel = 'Pending QA';
+        if (!doc.required)   iconLabel = 'Uploaded';
+        else if (isPass)     iconLabel = 'QA Pass';
+        else if (isFail)     iconLabel = 'QA Fail';
+        else                 iconLabel = 'Pending QA';
         iconBox.innerHTML = pdfIconSvg() +
           '<span class="scw-cd-doc__icon-label">' + iconLabel + '</span>';
       } else if (doc.required) {
