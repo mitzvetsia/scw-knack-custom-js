@@ -1100,6 +1100,10 @@
       '  background: #cbd5e1; border-color: #cbd5e1; color: #fff;',
       '  cursor: not-allowed;',
       '}',
+      '.' + POPOVER_ID + '__btn--danger {',
+      '  color: #b91c1c; border-color: #fecaca; background: #fff; margin-right: auto;',
+      '}',
+      '.' + POPOVER_ID + '__btn--danger:hover { background: #fef2f2; border-color: #fca5a5; }',
       '.' + POPOVER_ID + '__saving { pointer-events: none; opacity: 0.7; }'
     ].join('\n');
     var s = document.createElement('style');
@@ -1412,6 +1416,14 @@
       }
     }
 
+    // Destructive action first (leftmost) — deletes the file/document.
+    var del = document.createElement('button');
+    del.type = 'button';
+    del.className = POPOVER_ID + '__btn ' + POPOVER_ID + '__btn--danger';
+    del.textContent = 'Delete file';
+    del.addEventListener('click', function () { deleteDoc(); });
+    footer.appendChild(del);
+
     var closeBtn = document.createElement('button');
     closeBtn.type = 'button';
     closeBtn.className = POPOVER_ID + '__btn';
@@ -1501,6 +1513,38 @@
         if (pop) pop.classList.remove(POPOVER_ID + '__saving');
         console.error('[SCW] doc QA save error:', xhr.status, xhr.responseText);
         alert('Save failed (' + xhr.status + ')');
+      }
+    });
+  }
+
+  // Delete the DOC record (the file) via the view_3941 record endpoint —
+  // mirror of saveQA's PUT. Removing the DOC drops it from the closeout's
+  // connection columns, so the card disappears on the refetch.
+  function deleteDoc() {
+    if (!_popover || !_popoverDoc) return;
+    if (typeof SCW === 'undefined' || typeof SCW.knackAjax !== 'function' ||
+        typeof SCW.knackRecordUrl !== 'function') {
+      alert('Delete unavailable (SCW.knackAjax missing)');
+      return;
+    }
+    var label = _popoverDoc.type || 'this file';
+    if (!window.confirm('Delete ' + label + '?\n\nThis permanently removes the document from this closeout.')) return;
+    var pop = _popover.querySelector('.' + POPOVER_ID);
+    if (pop) pop.classList.add(POPOVER_ID + '__saving');
+    SCW.knackAjax({
+      url:  SCW.knackRecordUrl(DOC_SAVE_VIEW, _popoverDoc.id),
+      type: 'DELETE',
+      success: function () {
+        closeQAPopover();
+        var v1 = window.Knack && Knack.views && Knack.views[VIEW_ID];
+        if (v1 && v1.model && typeof v1.model.fetch === 'function') v1.model.fetch();
+        var v2 = window.Knack && Knack.views && Knack.views[DOC_SAVE_VIEW];
+        if (v2 && v2.model && typeof v2.model.fetch === 'function') v2.model.fetch();
+      },
+      error: function (xhr) {
+        if (pop) pop.classList.remove(POPOVER_ID + '__saving');
+        console.error('[SCW] doc delete error:', xhr.status, xhr.responseText);
+        alert('Delete failed (' + xhr.status + ')');
       }
     });
   }
