@@ -23,16 +23,19 @@
   var STATUS_VIEW  = 'view_4024';  // details view exposing the workflow STATUS
   // On sign-off, POST a printable snapshot + record id + submitter to Make.
   var SIGNOFF_WEBHOOK = 'https://hook.us1.make.com/sreazoatcr18tpjy2mhn9fg4qa4vqbrm';
-  var STATUS_FIELD = 'field_1772'; // STATUS — page is editable ONLY while this is
-                                   // "Pending Customer Sign off"; any other status
-                                   // (e.g. "PENDING PROJECT MANAGER SIGNOFF") → all
-                                   // fields read-only. Matched loosely (contains
-                                   // "customer" + "sign off"/"signoff", any case).
+  // @getscw.com edits are appended here (tamper audit trail) — a paragraph/
+  // text field on the questionnaire record (the POC form's object).
+  var AUDIT_FIELD = 'field_2937';
+  var STATUS_FIELD = 'field_1772'; // STATUS. Editability rule:
+                                   //   @getscw.com staff      → ALWAYS editable
+                                   //   everyone else (customer)→ editable ONLY while
+                                   //     STATUS is "Pending Customer Sign off"
+                                   //     (matched loosely: "customer" + "sign off"/
+                                   //     "signoff", any case); otherwise read-only.
+                                   // Staff edits are appended to AUDIT_FIELD.
 
-  // EVERY POC field is required before the customer can sign off. With Knack's
-  // "required" setting turned OFF (so partial per-field PUTs save), this is the
-  // client-side gate — derived dynamically from the form's fields (pocFields),
-  // and we draw the asterisks ourselves since Knack's are gone.
+  // Every POC field still gets a drawn asterisk (Knack's "required" setting is
+  // off so partial per-field PUTs save) — purely a visual required indicator.
   var NS       = '.scwCqScene';
   var STYLE_ID = 'scw-cq-scene-css';
 
@@ -85,6 +88,22 @@
       S + ' .kn-button.is-primary:hover { background: #0a3a63 !important; }',
       // POC form: hide the UPDATE FORM submit — fields auto-save.
       '#' + POC_FORM + ' .kn-submit { display: none !important; }',
+      // Native sign-off form is replaced by the custom PM button (syncPmButton).
+      '#' + SIGNOFF + ' { display: none !important; }',
+      // Custom PM sign-off button (staff-only, shown when past customer sign-off).
+      S + ' .scw-cq-pm-wrap {',
+      '  background: #fff; border: 1px solid #e5e7eb; border-radius: 10px;',
+      '  box-shadow: 0 1px 2px rgba(15,23,42,.04); padding: 16px 20px; margin-bottom: 16px; }',
+      S + ' .scw-cq-pm-note { font: 500 13px/1.5 system-ui, sans-serif; color: #475569; margin-bottom: 10px; }',
+      S + ' .scw-cq-pm-btn {',
+      '  background: #0f4c75; border: 1px solid #0a3a63; color: #fff;',
+      '  font: 600 13px system-ui, sans-serif; border-radius: 6px; padding: 9px 18px; cursor: pointer; }',
+      S + ' .scw-cq-pm-btn:hover { background: #0a3a63; }',
+      S + ' .scw-cq-pm-btn[disabled] { cursor: default; opacity: .9; }',
+      S + ' .scw-cq-pm-btn.is-done { background: #15803d; border-color: #166534; }',
+      S + ' .scw-cq-pm-status { margin-left: 10px; font: 600 12px system-ui, sans-serif; color: #94a3b8; }',
+      S + ' .scw-cq-pm-status.is-saving { color: #2563eb; }',
+      S + ' .scw-cq-pm-status.is-ok { color: #15803d; }',
       // view_4031 native table + header hidden (customer-questionnaire renders cards)
       '#view_4031 .view-header { display: none !important; }',
       // Per-field auto-save status pill
@@ -177,12 +196,14 @@
     var val = readVal(fieldEl, type);
     var now = valKey(val);
     if (fieldEl._scwPrev === now) return;   // unchanged since last save
+    var prev = fieldEl._scwPrev;            // for the staff-edit audit trail
     setStatus(fieldEl, 'saving', 'Saving…');
     var data = {}; data[key] = val;
     var done = function (ok) {
       if (!ok) { setStatus(fieldEl, 'err', 'Save failed'); return; }
       fieldEl._scwPrev = now;
       setStatus(fieldEl, 'ok', 'Saved');
+      logInternalEdit(fieldEl, prev == null ? '' : prev, now);   // @getscw.com → audit
       clearTimeout(_fadeTimers[key]);
       _fadeTimers[key] = setTimeout(function () { setStatus(fieldEl, '', ''); }, 1600);
     };
@@ -195,6 +216,64 @@
       url: SCW.knackRecordUrl(POC_FORM, recId), type: 'PUT', data: JSON.stringify(data),
       success: function () { done(true); }, error: function () { done(false); }
     });
+  }
+
+  /* ── Staff-edit audit trail (appended to AUDIT_FIELD on the record) ──
+   * Every @getscw.com edit appends a timestamped line so we can see if a PM
+   * changed the customer's answers. We seed the existing log once (GET the
+   * record) so appends never clobber prior history, then keep it in memory.
+   * Writes go through the POC form view — AUDIT_FIELD must be present + writable
+   * on view_4025 (add it as a hidden field on that form). */
+  var _auditExisting = null;   // null = not yet seeded
+  var _auditBusy = false;
+  var _auditPending = [];
+  function seedAudit(cb) {
+    if (_auditExisting !== null) { cb(); return; }
+    var recId = recordId();
+    if (!recId) { _auditExisting = ''; cb(); return; }
+    SCW.knackAjax({
+      url: SCW.knackRecordUrl(POC_FORM, recId), type: 'GET',
+      success: function (resp) {
+        var raw = resp ? (resp[AUDIT_FIELD + '_raw'] != null ? resp[AUDIT_FIELD + '_raw'] : resp[AUDIT_FIELD]) : '';
+        _auditExisting = (raw != null) ? String(raw).replace(/<[^>]*>/g, '').trim() : '';
+        cb();
+      },
+      error: function () { _auditExisting = ''; cb(); }
+    });
+  }
+  function pumpAudit() {
+    if (_auditBusy || !_auditPending.length) return;
+    var recId = recordId();
+    if (!recId || !AUDIT_FIELD) { _auditPending = []; return; }
+    _auditBusy = true;
+    seedAudit(function () {
+      var lines = _auditPending.splice(0, _auditPending.length);
+      var combined = (_auditExisting ? _auditExisting + '\n' : '') + lines.join('\n');
+      var data = {}; data[AUDIT_FIELD] = combined;
+      var done = function (ok) {
+        if (ok) _auditExisting = combined;
+        _auditBusy = false;
+        if (_auditPending.length) pumpAudit();
+      };
+      var view = (typeof Knack !== 'undefined' && Knack.views) ? Knack.views[POC_FORM] : null;
+      if (view && view.model && typeof view.model.updateRecord === 'function') {
+        view.model.updateRecord(recId, data, { success: function () { done(true); }, error: function () { done(false); } });
+      } else {
+        SCW.knackAjax({ url: SCW.knackRecordUrl(POC_FORM, recId), type: 'PUT', data: JSON.stringify(data),
+          success: function () { done(true); }, error: function () { done(false); } });
+      }
+    });
+  }
+  function logInternalEdit(fieldEl, oldVal, newVal) {
+    if (!isInternal() || !AUDIT_FIELD) return;   // only staff edits are audited
+    var key = fieldEl.getAttribute('data-input-id');
+    var labelEl = fieldEl.querySelector('.kn-label > span');
+    var label = labelEl ? labelEl.textContent.replace(/\*/g, '').trim() : key;
+    var who = getSubmitter();
+    _auditPending.push('[' + new Date().toISOString() + '] ' +
+      (who.email || who.name || 'staff') + ' set "' + label + '" (' + key + ') to "' +
+      String(newVal) + '" (was "' + String(oldVal) + '")');
+    pumpAudit();
   }
 
   // Snapshot each field's saved value + add a status pill. Re-run per render
@@ -258,70 +337,10 @@
     }, true);
   }
 
-  /* ── Sign-off gate: block view_4029 submit until required POC fields filled ── */
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
       return ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[c];
     });
-  }
-  function fieldFilled(key) {
-    var fieldEl = document.querySelector('#' + POC_FORM + ' .kn-input[data-input-id="' + key + '"]');
-    if (!fieldEl) return true;   // field not on the form → don't block
-    var type = fieldType(fieldEl);
-    var val = readVal(fieldEl, type);
-    if (type === 'name') return !!((val.first && val.first.trim()) || (val.last && val.last.trim()));
-    return !!String(val == null ? '' : val).trim();
-  }
-  // Every editable POC field, as { key, label }. Label read from the field's
-  // own <label> (asterisk stripped).
-  function pocFields() {
-    var form = document.getElementById(POC_FORM);
-    if (!form) return [];
-    var out = [];
-    var els = form.querySelectorAll('.kn-input[data-input-id]');
-    for (var i = 0; i < els.length; i++) {
-      var el = els[i];
-      var key = el.getAttribute('data-input-id');
-      if (!key || !fieldType(el)) continue;
-      var span = el.querySelector('.kn-label > span');
-      var label = span ? span.textContent.replace(/\*/g, '').trim() : key;
-      out.push({ key: key, label: label });
-    }
-    return out;
-  }
-  function requiredMissing() {
-    var req = pocFields();
-    var out = [];
-    for (var i = 0; i < req.length; i++) if (!fieldFilled(req[i].key)) out.push(req[i]);
-    return out;
-  }
-  function clearMissingHighlights() {
-    var els = document.querySelectorAll('#' + POC_FORM + ' .scw-cqf-missing');
-    for (var i = 0; i < els.length; i++) els[i].classList.remove('scw-cqf-missing');
-  }
-  function clearSignoffError() {
-    var err = document.querySelector('#' + SIGNOFF + ' .scw-cq-signoff-error');
-    if (err && err.parentNode) err.parentNode.removeChild(err);
-  }
-  function showSignoffError(missing) {
-    clearMissingHighlights();
-    var first = null;
-    for (var i = 0; i < missing.length; i++) {
-      var fieldEl = document.querySelector('#' + POC_FORM + ' .kn-input[data-input-id="' + missing[i].key + '"]');
-      if (fieldEl) { fieldEl.classList.add('scw-cqf-missing'); if (!first) first = fieldEl; }
-    }
-    var form = document.querySelector('#' + SIGNOFF + ' form');
-    if (form) {
-      var err = form.querySelector('.scw-cq-signoff-error');
-      if (!err) {
-        err = document.createElement('div');
-        err.className = 'scw-cq-signoff-error';
-        form.insertBefore(err, form.firstChild);
-      }
-      err.innerHTML = 'Please complete these required fields above before signing off: <b>' +
-        missing.map(function (m) { return esc(m.label); }).join(', ') + '</b>';
-    }
-    if (first && first.scrollIntoView) first.scrollIntoView({ behavior: 'smooth', block: 'center' });
   }
 
   /* ── Sign-off webhook: printable snapshot + record id + submitter → Make ── */
@@ -369,7 +388,7 @@
     syncValuesIntoClone(scene, clone);
     // Strip page chrome / interactive-only bits that don't belong in a record.
     var drop = clone.querySelectorAll(
-      'script, .scw-cqf-status, .scw-cq-copy-btn, .kn-submit, .kn-records-nav, ' +
+      'script, .scw-cqf-status, .scw-cq-copy-btn, .scw-cq-pm-wrap, .kn-submit, .kn-records-nav, ' +
       '.scw-cq-lock-banner, .scw-cq-signoff-error, .kn-add-filter, .kn-filters-nav');
     for (var i = 0; i < drop.length; i++) if (drop[i].parentNode) drop[i].parentNode.removeChild(drop[i]);
     var css = '';
@@ -406,58 +425,53 @@
     setTimeout(fin, 8000);   // hard cap — release the submit regardless
   }
 
-  var _signoffAuthorized = false;   // our webhook done → let Knack's submit run
-  var _signoffSending = false;      // in-flight guard
+  var _pmSending = false;   // in-flight guard for the PM sign-off button
 
-  function wireSignoffGate() {
-    if (document.documentElement.hasAttribute('data-scw-cq-signoff-bound')) return;
-    document.documentElement.setAttribute('data-scw-cq-signoff-bound', '1');
-    function gate(e) {
-      var inForm = e.target.closest && e.target.closest('#' + SIGNOFF + ' form');
-      var onBtn = e.target.closest && e.target.closest('#' + SIGNOFF + ' .kn-submit button, #' + SIGNOFF + ' button[type="submit"]');
-      if (!inForm && !onBtn) return;
-      // Our webhook already fired → this is the re-triggered submit; let Knack run.
-      if (_signoffAuthorized) return;
+  // PM sign-off: the native form (view_4029) is hidden; instead we show a
+  // custom button — ONLY for @getscw.com staff AND only once the record is
+  // PAST "Pending Customer Sign off". Clicking it fires the Make webhook with
+  // the printable snapshot + record + who, then confirms. Make owns whatever
+  // happens next (status change / PDF). Re-runnable: rebuilt on every render.
+  var PM_BTN_ID = 'scw-cq-pm-signoff';
+  function syncPmButton() {
+    var show = isInternal() && !statusIsCustomerSignoff();
+    var existing = document.getElementById(PM_BTN_ID);
+    if (!show) { if (existing && existing.parentNode) existing.parentNode.removeChild(existing); return; }
+    if (existing) return;   // already mounted
 
-      function block() {
-        e.preventDefault();
-        e.stopPropagation();
-        if (e.stopImmediatePropagation) e.stopImmediatePropagation();
-      }
+    // Mount where the (now hidden) sign-off form sat, else at the scene end.
+    var host = document.getElementById(SIGNOFF) || document.getElementById('kn-' + SCENE);
+    if (!host) return;
+    var wrap = document.createElement('div');
+    wrap.id = PM_BTN_ID;
+    wrap.className = 'scw-cq-pm-wrap';
+    wrap.innerHTML =
+      '<div class="scw-cq-pm-note">Reviewed the customer’s answers above? Submit your ' +
+        'sign-off to finalize. Any edits you made are recorded on the audit trail.</div>' +
+      '<button type="button" class="scw-cq-pm-btn">Submit Sign-Off</button>' +
+      '<span class="scw-cq-pm-status" aria-live="polite"></span>';
+    if (host.id === SIGNOFF) host.parentNode.insertBefore(wrap, host.nextSibling);
+    else host.appendChild(wrap);
 
-      // Page locked (status ≠ Pending Customer Sign off) → never submit.
-      if (!isEditable()) { block(); return; }
-
-      // Required POC fields incomplete → block + highlight.
-      var missing = requiredMissing();
-      if (missing.length) { block(); showSignoffError(missing); return; }
-
-      // Passed validation: hold the submit, POST the snapshot to Make, then
-      // re-trigger the button so Knack does its native sign-off save + redirect.
-      block();
-      if (_signoffSending) return;
-      _signoffSending = true;
-      var btn = document.querySelector('#' + SIGNOFF + ' .kn-submit button, #' + SIGNOFF + ' button[type="submit"]');
-      if (btn) { btn.setAttribute('data-scw-orig', btn.textContent); btn.textContent = 'Submitting…'; }
+    var btn = wrap.querySelector('.scw-cq-pm-btn');
+    var status = wrap.querySelector('.scw-cq-pm-status');
+    btn.addEventListener('click', function () {
+      if (_pmSending) return;
+      _pmSending = true;
+      btn.disabled = true;
+      var orig = btn.textContent;
+      btn.textContent = 'Submitting…';
+      status.className = 'scw-cq-pm-status is-saving';
+      status.textContent = '';
       sendSignoffWebhook(function () {
-        _signoffAuthorized = true;
-        _signoffSending = false;
-        if (btn && btn.getAttribute('data-scw-orig')) btn.textContent = btn.getAttribute('data-scw-orig');
-        var b2 = document.querySelector('#' + SIGNOFF + ' .kn-submit button, #' + SIGNOFF + ' button[type="submit"]');
-        if (b2) b2.click(); else if (inForm && inForm.submit) inForm.submit();
-        // Safety: if the redirect doesn't happen, let a later retry re-fire.
-        setTimeout(function () { _signoffAuthorized = false; }, 5000);
+        _pmSending = false;
+        btn.textContent = '✓ Submitted';
+        btn.classList.add('is-done');
+        status.className = 'scw-cq-pm-status is-ok';
+        status.textContent = 'Sign-off sent.';
+        // Leave it disabled — the record is being finalized by Make.
       });
-    }
-    document.addEventListener('submit', gate, true);   // primary block (capture, before Knack)
-    document.addEventListener('click', gate, true);    // backup if Knack binds the button click
-    // Clear a field's red state as soon as the user fills it; drop the banner
-    // once nothing's missing.
-    document.addEventListener('input', function (e) {
-      var fieldEl = e.target.closest && e.target.closest('#' + POC_FORM + ' .scw-cqf-missing');
-      if (fieldEl) fieldEl.classList.remove('scw-cqf-missing');
-      if (!requiredMissing().length) clearSignoffError();
-    }, true);
+    });
   }
 
   /* ── Read-only gate: editable only while STATUS is "Pending Customer Sign off" ── */
@@ -473,9 +487,17 @@
     var cell = document.querySelector('#' + STATUS_VIEW + ' .' + STATUS_FIELD + ' .kn-detail-body');
     return cell ? cell.textContent.replace(/\s+/g, ' ').trim() : '';
   }
-  function isEditable() {
+  function isInternal() {
+    return !!(window.SCW && typeof SCW.isInternalUser === 'function' && SCW.isInternalUser());
+  }
+  function statusIsCustomerSignoff() {
     var s = readStatus().toLowerCase();
     return /customer/.test(s) && /sign\s*off/.test(s);
+  }
+  // Editable for @getscw.com staff ALWAYS; for everyone else only while the
+  // record is "Pending Customer Sign off". Otherwise the page is read-only.
+  function isEditable() {
+    return isInternal() || statusIsCustomerSignoff();
   }
   function toggleLockBanner(locked, status) {
     var form = document.getElementById(POC_FORM);
@@ -590,8 +612,8 @@
   }
 
   function run() {
-    injectCss(); initFields(); wire(); wireSignoffGate();
-    applyLock(); addCopyButtons();
+    injectCss(); initFields(); wire();
+    applyLock(); addCopyButtons(); syncPmButton();
   }
 
   if (window.SCW && typeof SCW.onSceneRender === 'function') {
