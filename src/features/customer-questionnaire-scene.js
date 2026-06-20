@@ -279,19 +279,27 @@
   var _auditExisting = null;   // null = not yet seeded
   var _auditBusy = false;
   var _auditPending = [];
+  // Seed the existing audit log from the already-loaded form (NOT a network
+  // GET — view_4046 is a form view whose record endpoint rejects GET with 401,
+  // which knackAjax misreads as an expired session). The form model is
+  // prefilled with the record, so read field_2937 from there / the textarea.
   function seedAudit(cb) {
     if (_auditExisting !== null) { cb(); return; }
-    var recId = recordId();
-    if (!recId) { _auditExisting = ''; cb(); return; }
-    SCW.knackAjax({
-      url: SCW.knackRecordUrl(AUDIT_VIEW, recId), type: 'GET',
-      success: function (resp) {
-        var raw = resp ? (resp[AUDIT_FIELD + '_raw'] != null ? resp[AUDIT_FIELD + '_raw'] : resp[AUDIT_FIELD]) : '';
-        _auditExisting = (raw != null) ? String(raw).replace(/<[^>]*>/g, '').trim() : '';
-        cb();
-      },
-      error: function () { _auditExisting = ''; cb(); }
-    });
+    var val = '';
+    try {
+      var v = (typeof Knack !== 'undefined' && Knack.views) ? Knack.views[AUDIT_VIEW] : null;
+      var a = v && v.model && (v.model.attributes || (v.model.data && v.model.data.attributes));
+      if (a) {
+        var raw = (a[AUDIT_FIELD + '_raw'] != null) ? a[AUDIT_FIELD + '_raw'] : a[AUDIT_FIELD];
+        if (raw != null) val = String(raw).replace(/<[^>]*>/g, '').trim();
+      }
+    } catch (e) { /* fall through to DOM */ }
+    if (!val) {
+      var ta = document.querySelector('#' + AUDIT_VIEW + ' textarea[name="' + AUDIT_FIELD + '"]');
+      if (ta) val = ta.value || '';
+    }
+    _auditExisting = val;
+    cb();
   }
   function pumpAudit() {
     if (_auditBusy || !_auditPending.length) return;
