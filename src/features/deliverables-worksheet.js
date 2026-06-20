@@ -180,7 +180,6 @@
     var id = PREFIX + '-' + def.key;
     var req = def.required ? ' <span class="' + PREFIX + '-req">*</span>' : '';
     var label = '<label class="' + PREFIX + '-label" for="' + id + '">' + esc(def.label) + req + '</label>';
-    var help = def.tooltip ? '<div class="' + PREFIX + '-help">' + esc(def.tooltip) + '</div>' : '';
     var control = '', v = value == null ? '' : value;
     switch (def.type) {
       case 'textarea':
@@ -210,7 +209,7 @@
       default:
         control = '<input id="' + id + '" data-key="' + esc(def.key) + '" type="text" class="' + PREFIX + '-input" value="' + esc(v) + '">';
     }
-    return '<div class="' + PREFIX + '-field" data-type="' + def.type + '">' + label + help + control + '</div>';
+    return '<div class="' + PREFIX + '-field" data-type="' + def.type + '">' + label + control + '</div>';
   }
   /* ── build / collect / save ── */
   function buildPanel(recordId, rec, fields, values) {
@@ -421,7 +420,6 @@
       '.' + PREFIX + '-field[data-type="textarea"]{grid-column:1/-1;}' +
       '.' + PREFIX + '-label{font:500 11px/1.2 system-ui,sans-serif;color:#64748b;}' +
       '.' + PREFIX + '-req{color:#b45309;margin-left:2px;}' +
-      '.' + PREFIX + '-help{font:400 11px/1.4 system-ui,sans-serif;color:#94a3b8;margin:1px 0 2px;}' +
       '.' + PREFIX + '-input{display:block;width:100%;box-sizing:border-box;padding:4px 7px;' +
         'border:1px solid #e2e8f0;border-radius:4px;background:#fff;font:13px/1.3 system-ui,sans-serif;' +
         'color:#1f2937;min-height:28px;transition:border-color .1s,box-shadow .1s;}' +

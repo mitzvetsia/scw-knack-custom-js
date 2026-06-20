@@ -210,10 +210,14 @@
    *    field in every card. Distinct fields (with a tooltip) across whatever
    *    schemas are used on this page, deduped by key, in display order. */
   var GUIDE_ICON =
-    '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor" ' +
-    'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+    '<svg class="' + PREFIX + '-guide-ico" viewBox="0 0 24 24" width="15" height="15" fill="none" ' +
+    'stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
     '<circle cx="12" cy="12" r="10"></circle><line x1="12" y1="16" x2="12" y2="12"></line>' +
     '<line x1="12" y1="8" x2="12.01" y2="8"></line></svg>';
+  var GUIDE_CHEV =
+    '<svg class="' + PREFIX + '-guide-chev" viewBox="0 0 24 24" width="14" height="14" fill="none" ' +
+    'stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">' +
+    '<polyline points="9 6 15 12 9 18"></polyline></svg>';
   function collectGuideFields(bySchema, records) {
     var seen = {}, out = [];
     records.forEach(function (rec) {
@@ -228,27 +232,46 @@
     });
     return out;
   }
+  // Collapse state persists per scene so a user's choice sticks across renders.
+  function guideKey() {
+    var m = (document.body.id || '').match(/scene_\d+/);
+    return 'scw:cq:guide:' + (m ? m[0] : 'x');
+  }
+  function guideIsOpen() {
+    try { return localStorage.getItem(guideKey()) !== 'closed'; } catch (e) { return true; }
+  }
+  function setGuideOpen(open) {
+    try { localStorage.setItem(guideKey(), open ? 'open' : 'closed'); } catch (e) {}
+  }
   function syncFieldGuide(container, guideFields) {
     var id = PREFIX + '-guide-' + container.id;
     var existing = document.getElementById(id);
     if (!guideFields.length) { if (existing && existing.parentNode) existing.parentNode.removeChild(existing); return; }
+    var open = guideIsOpen();
     var items = guideFields.map(function (d) {
       return '<div class="' + PREFIX + '-guide-item">' +
         '<dt>' + esc(d.label) + '</dt>' +
         '<dd>' + esc(d.tooltip) + '</dd></div>';
     }).join('');
     var html =
-      '<div class="' + PREFIX + '-guide-head">' + GUIDE_ICON +
-        '<span>What these questions mean</span></div>' +
-      '<dl class="' + PREFIX + '-guide-list">' + items + '</dl>';
+      '<button type="button" class="' + PREFIX + '-guide-head" aria-expanded="' + open + '">' +
+        GUIDE_CHEV + GUIDE_ICON + '<span>What these questions mean</span></button>' +
+      '<div class="' + PREFIX + '-guide-body"><dl class="' + PREFIX + '-guide-list">' + items + '</dl></div>';
     if (!existing) {
       existing = document.createElement('div');
       existing.id = id;
       existing.className = PREFIX + '-guide';
-      // Sits directly above the cards container.
-      container.parentNode.insertBefore(existing, container);
+      container.parentNode.insertBefore(existing, container);   // above the cards
     }
+    existing.classList.toggle('is-open', open);
     existing.innerHTML = html;
+    var head = existing.querySelector('.' + PREFIX + '-guide-head');
+    head.addEventListener('click', function () {
+      var nowOpen = !existing.classList.contains('is-open');
+      existing.classList.toggle('is-open', nowOpen);
+      head.setAttribute('aria-expanded', nowOpen);
+      setGuideOpen(nowOpen);
+    });
   }
 
   /* ── build / collect / save ── */
@@ -678,17 +701,25 @@
       '.' + PREFIX + '-field[data-type="textarea"]{grid-column:1/-1;}' +
       '.' + PREFIX + '-label{font:600 12px/1.3 system-ui,sans-serif;color:#374151;}' +
       '.' + PREFIX + '-req{color:#b45309;margin-left:2px;}' +
-      // Field-guide panel (explanations shown once, above the cards).
+      // Collapsible field-guide panel (explanations shown once, above the cards).
       '.' + PREFIX + '-guide{background:#f0f6ff;border:1px solid #d6e4f7;border-radius:10px;' +
-        'padding:14px 18px;margin:0 0 16px;}' +
-      '.' + PREFIX + '-guide-head{display:flex;align-items:center;gap:7px;color:#0f4c75;' +
-        'font:700 13px/1.2 system-ui,sans-serif;margin-bottom:10px;}' +
-      '.' + PREFIX + '-guide-head svg{flex:0 0 auto;color:#2563eb;}' +
-      '.' + PREFIX + '-guide-list{margin:0;display:grid;grid-template-columns:1fr;gap:8px 24px;}' +
+        'margin:0 0 16px;overflow:hidden;}' +
+      '.' + PREFIX + '-guide-head{display:flex;align-items:center;gap:8px;width:100%;text-align:left;' +
+        'cursor:pointer;background:transparent;border:0;padding:12px 16px;color:#0f4c75;' +
+        'font:700 13px/1.2 system-ui,sans-serif;}' +
+      '.' + PREFIX + '-guide-head:hover{background:#e7f0fc;}' +
+      '.' + PREFIX + '-guide-ico{flex:0 0 auto;color:#2563eb;}' +
+      '.' + PREFIX + '-guide-chev{flex:0 0 auto;color:#0f4c75;transition:transform .15s;}' +
+      '.' + PREFIX + '-guide.is-open .' + PREFIX + '-guide-chev{transform:rotate(90deg);}' +
+      '.' + PREFIX + '-guide-body{padding:0 16px 14px;}' +
+      '.' + PREFIX + '-guide:not(.is-open) .' + PREFIX + '-guide-body{display:none;}' +
+      '.' + PREFIX + '-guide-list{margin:0;display:grid;grid-template-columns:1fr;gap:10px 24px;}' +
       '@media (min-width:680px){.' + PREFIX + '-guide-list{grid-template-columns:1fr 1fr;}}' +
       '.' + PREFIX + '-guide-item{display:flex;flex-direction:column;gap:1px;margin:0;}' +
       '.' + PREFIX + '-guide-item dt{font:600 12.5px/1.3 system-ui,sans-serif;color:#0f172a;}' +
       '.' + PREFIX + '-guide-item dd{margin:0;font:400 12px/1.45 system-ui,sans-serif;color:#475569;}' +
+      // Hide the native grid nav ("Showing 1-2 of 2", filters, pagination).
+      '#' + CONFIG.WORKSHEET_VIEW + ' .kn-records-nav{display:none !important;}' +
       '.' + PREFIX + '-input{display:block;width:100%;box-sizing:border-box;padding:7px 9px;' +
         'border:1px solid #cbd5e1;border-radius:6px;background:#fff;font:14px/1.35 system-ui,sans-serif;' +
         'color:#1f2937;min-height:36px;transition:border-color .1s,box-shadow .1s;}' +
