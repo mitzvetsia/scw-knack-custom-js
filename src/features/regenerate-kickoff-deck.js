@@ -4,19 +4,19 @@
  * (view_3940). On click it POSTs to the Make webhook with the proposal,
  * project, and questionnaire record ids — matching the scenario's payload:
  *
- *   [{ "proposal_recordID": "...", "project_recordID": "...",
- *      "questionnaire_recordID": "..." }]
+ *   [{ "project_recordID": "...", "questionnaire_recordID": "...",
+ *      "acceptance_recordID": "..." }]
  *
  * ID sources (all on the deploy scene):
  *   project_recordID       → the page URL (#…/project-dashboard/<id>/deploy/<id>/)
- *   proposal_recordID      → the single ACCEPTANCE row in view_3914 (tr id)
  *   questionnaire_recordID → the single questionnaire row in view_4015 (tr id)
+ *   acceptance_recordID    → the single ACCEPTANCE row in view_3914 (tr id)
  ****************************************************************************/
 (function () {
   'use strict';
 
   var VIEW         = 'view_3940';   // CLOSEOUT view (button mount)
-  var PROPOSAL_VIEW     = 'view_3914';   // ACCEPTANCE (single row)
+  var ACCEPTANCE_VIEW     = 'view_3914';   // ACCEPTANCE (single row)
   var QUESTIONNAIRE_VIEW = 'view_4015';  // System Setup Questionnaire (single row)
   var WEBHOOK = 'https://hook.us1.make.com/biytjoog3spow4fx2f7zanjjjj792q9c';
 
@@ -74,9 +74,9 @@
   }
   function gatherPayload() {
     return [{
-      proposal_recordID:      firstRowId(PROPOSAL_VIEW),
       project_recordID:       urlProjectId(),
-      questionnaire_recordID: firstRowId(QUESTIONNAIRE_VIEW)
+      questionnaire_recordID: firstRowId(QUESTIONNAIRE_VIEW),
+      acceptance_recordID:    firstRowId(ACCEPTANCE_VIEW)
     }];
   }
 
