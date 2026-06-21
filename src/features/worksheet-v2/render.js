@@ -243,6 +243,8 @@
     var summaryMoneyOpts = salesMoney
       ? { moneyField: 'field_2269', moneyLabel: 'Total' }
       : (surveyMoney ? { moneyField: 'field_2401', moneyLabel: 'Sub Bid' } : {});
+    // Install has no money columns — show the summary minus the Sub Bid column.
+    if (installMoney) summaryMoneyOpts.hideMoney = true;
     // Hand the summary a per-view field map (cfg.fields) + the view key so
     // aggregate() resolves product/qty/cabling/money per-object instead of
     // the SOW literals it used to hardcode (CLAUDE.md #15). SOW path is
@@ -253,10 +255,10 @@
     } catch (eF) { summaryMoneyOpts.fields = null; }
     summaryMoneyOpts.viewKey = sourceViewKey;
 
-    // Per-L1 summary block — sits at the top of the body, always
-    // rendered; CSS controls its visibility per toolbar mode.
-    // Skipped only for install (no money model / different surface).
-    if (!installMoney && ns.summary && typeof ns.summary.buildL1Summary === 'function') {
+    // Per-L1 summary block — sits at the top of the body, always rendered;
+    // CSS controls its visibility per toolbar mode. Rendered for every money
+    // model now (install gets the no-money variant).
+    if (ns.summary && typeof ns.summary.buildL1Summary === 'function') {
       try {
         var sumEl = ns.summary.buildL1Summary(l1, summaryMoneyOpts);
         if (sumEl) body.appendChild(sumEl);
@@ -490,13 +492,14 @@
     var grandMoneyOpts = _grandSales
       ? { moneyField: 'field_2269', moneyLabel: 'Total' }
       : (_grandSurvey ? { moneyField: 'field_2401', moneyLabel: 'Sub Bid' } : {});
+    if (_grandInstall) grandMoneyOpts.hideMoney = true;
     try {
       grandMoneyOpts.fields = (ns.cfg && typeof ns.cfg.fields === 'function')
         ? ns.cfg.fields(sourceViewKey) : null;
     } catch (eGF) { grandMoneyOpts.fields = null; }
     grandMoneyOpts.viewKey = sourceViewKey;
-    // Grand summary — rendered for SOW/sales/survey; skipped only for install.
-    if (!_grandInstall && ns.summary && typeof ns.summary.buildGrandSummary === 'function') {
+    // Grand summary — rendered for every money model (install = no-money variant).
+    if (ns.summary && typeof ns.summary.buildGrandSummary === 'function') {
       try {
         var grand = ns.summary.buildGrandSummary(tree, grandMoneyOpts);
         if (grand) frag.appendChild(grand);

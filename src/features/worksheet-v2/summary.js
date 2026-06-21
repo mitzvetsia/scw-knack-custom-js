@@ -218,6 +218,11 @@
     return all;
   }
 
+  // Set per build (buildL1Summary / buildGrandSummary) — when true the money
+  // (Sub Bid) column is omitted entirely (e.g. the install worksheet, which has
+  // no money columns). Synchronous build, so a module flag is safe.
+  var _hideMoney = false;
+
   function productRow(p, isSubtotal) {
     var cls = isSubtotal ? ' class="scw-ws-v2-summary-row--total"' : '';
     var showCR = isSubtotal ? true : p.isCamReader;
@@ -237,9 +242,10 @@
       '<td class="scw-ws-v2-summary-num">' + (showCR ? fmtNum(p.interior)     : '') + '</td>' +
       '<td class="scw-ws-v2-summary-num">' + (showCR ? fmtNum(p.plenum)       : '') + '</td>' +
       '<td class="scw-ws-v2-summary-num">' + fmtNum(p.count) + '</td>' +
-      '<td class="scw-ws-v2-summary-money">' +
-        (p.subBidSum > 0 ? esc(fmtMoney(p.subBidSum)) : '') +
-      '</td>' +
+      (_hideMoney ? '' :
+        '<td class="scw-ws-v2-summary-money">' +
+          (p.subBidSum > 0 ? esc(fmtMoney(p.subBidSum)) : '') +
+        '</td>') +
     '</tr>';
   }
 
@@ -252,13 +258,14 @@
       '<th class="scw-ws-v2-summary-num">Int</th>' +
       '<th class="scw-ws-v2-summary-num">Plen</th>' +
       '<th class="scw-ws-v2-summary-num">Qty</th>' +
-      '<th class="scw-ws-v2-summary-money">' + esc(moneyLabel || 'Sub Bid') + '</th>' +
+      (_hideMoney ? '' :
+        '<th class="scw-ws-v2-summary-money">' + esc(moneyLabel || 'Sub Bid') + '</th>') +
     '</tr></thead>';
   }
 
   function sectionHeadRow(label) {
     return '<tr class="scw-ws-v2-summary-row--bucket">' +
-      '<td colspan="8">' + esc(label) + '</td>' +
+      '<td colspan="' + (_hideMoney ? 7 : 8) + '">' + esc(label) + '</td>' +
     '</tr>';
   }
 
@@ -376,12 +383,13 @@
   function fmtSummaryStat(totals) {
     var bits = [];
     if (totals.count) bits.push(totals.count + ' items');
-    if (totals.subBidSum) bits.push(fmtMoney(totals.subBidSum));
+    if (!_hideMoney && totals.subBidSum) bits.push(fmtMoney(totals.subBidSum));
     return bits.join(' · ');
   }
 
   function buildL1Summary(l1, opts) {
     opts = opts || {};
+    _hideMoney = !!opts.hideMoney;
     var recs = collectRecords(l1);
     var agg = aggregate(recs, opts);
     if (!agg.sections.length) {
@@ -415,6 +423,7 @@
   /** Grand summary — aggregates EVERY record across every L1. */
   function buildGrandSummary(tree, opts) {
     opts = opts || {};
+    _hideMoney = !!opts.hideMoney;
     var all = [];
     for (var i = 0; i < tree.length; i++) {
       all = all.concat(collectRecords(tree[i]));
