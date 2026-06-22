@@ -1269,12 +1269,23 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       const counts = new Map();
       let anchor = null; // first L1 subtotal in this section → insert above it
       let cur = l1El.nextElementSibling;
+      // Track the current L2 section: Assumptions / Services rows are NOT
+      // equipment — they stay as their own independent line items and must
+      // never be rolled into "Other Expected SCW Provided Equipment". Their
+      // L2 group header carries scw-l2--assumptions / scw-l2--services
+      // (applyLevel2Styling).
+      let inNonEquipL2 = false;
       while (cur && cur !== nextL1) {
+        if (cur.classList.contains('kn-table-group') &&
+            cur.classList.contains('kn-group-level-2')) {
+          inNonEquipL2 = cur.classList.contains('scw-l2--assumptions') ||
+                         cur.classList.contains('scw-l2--services');
+        }
         if (!anchor && cur.classList.contains('scw-subtotal--level-1')) anchor = cur;
         const isData = cur.id &&
           !cur.classList.contains('kn-table-group') &&
           !cur.classList.contains('scw-level-total-row');
-        if (isData) {
+        if (isData && !inNonEquipL2) {
           const sb = cur.querySelector(`td.${ctx.keys.subBidRequired}`);
           if (sb && norm(sb.textContent || '').toLowerCase() === 'no') {
             const pc = cur.querySelector(`td.${ctx.keys.product}`);
@@ -1291,7 +1302,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
       const $head = $(
         `<tr class="kn-table-group kn-group-level-2 ${SECT} ${SECT}-head">` +
-        `<td colspan="${cols}">Other Expected Equipment</td></tr>`
+        `<td colspan="${cols}">Other Expected SCW Provided Equipment</td></tr>`
       );
       const $list = $(
         `<tr class="${SECT} ${SECT}-list"><td colspan="${cols}">` +
