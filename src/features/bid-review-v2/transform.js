@@ -586,6 +586,25 @@
     var buckets = groupBySow(records, sowIdsByItem);
     var pkgInfo = buildPkgInfoMap(bidPackages);
 
+    // Fallback: when NOTHING resolves to a SOW (e.g. an all-services bid with
+    // no SOW line items yet), still surface the bids so they're reviewable.
+    // One synthetic SOW whose bucket is every bid-package record — the per-SOW
+    // loop below renders it like a real grid (columns = packages, rows = bid
+    // line items). Only when there are zero real SOWs, so it never duplicates
+    // the bid-only rows that real grids already show.
+    var SYN_SOW = '__no_sow__';
+    if (sows.length === 0) {
+      var orphanRecs = [];
+      for (var _o = 0; _o < records.length; _o++) {
+        var _or = records[_o];
+        if (_or && _or.id && connectionAll(_or, FK.bidPackage).length > 0) orphanRecs.push(_or);
+      }
+      if (orphanRecs.length) {
+        sows.push({ id: SYN_SOW, name: 'Bid items (no matching SOW)' });
+        buckets[SYN_SOW] = orphanRecs;
+      }
+    }
+
     // Index SOW items by id for fast per-row lookup. The row carries a
     // `sowItem` id from the bid record's field_2404 (relatedSowItem);
     // we use it to attach the SOW-side product / qty / fee / desc so
@@ -837,19 +856,35 @@
     for (var i = 0; i < sows.length; i++) {
       var sow = sows[i];
       var bucket = buckets[sow.id] || [];
+      var isSyn = (sow.id === SYN_SOW);
+      // Synthetic grid: which bid records are in this fallback bucket.
+      var synSet = null;
+      if (isSyn) {
+        synSet = Object.create(null);
+        for (var _z = 0; _z < bucket.length; _z++) if (bucket[_z] && bucket[_z].id) synSet[bucket[_z].id] = true;
+      }
       // Columns: every package that TOUCHES this SOW (not just ones with
       // a bucketed record), cloned so per-SOW totals/status don't bleed
-      // across grids.
+      // across grids. Synthetic grid: include any package holding a bucket record.
       var packages = [];
       for (var ap = 0; ap < allPackages.length; ap++) {
-        if (!packageTouchesSow(allPackages[ap].id, sow.id)) continue;
-        // Sibling-SOW gate (v1 parity): a bid whose REL_SOW (field_2387) is set
-        // to OTHER SOW(s) and NOT this one is a bid for a different SOW — exclude
-        // it so its items don't get dumped into this grid's "belong to another
-        // SOW" block. Empty bidSow = unrestricted (shows on every SOW it touches).
-        var _pkInfo = pkgInfo[allPackages[ap].id];
-        var _bidSowIds = (_pkInfo && _pkInfo.bidSowIds) || [];
-        if (_bidSowIds.length && _bidSowIds.indexOf(sow.id) === -1) continue;
+        if (isSyn) {
+          var _precs = pkgAllRecords[allPackages[ap].id] || [];
+          var _hit = false;
+          for (var _pz = 0; _pz < _precs.length; _pz++) {
+            if (_precs[_pz] && synSet[_precs[_pz].id]) { _hit = true; break; }
+          }
+          if (!_hit) continue;
+        } else {
+          if (!packageTouchesSow(allPackages[ap].id, sow.id)) continue;
+          // Sibling-SOW gate (v1 parity): a bid whose REL_SOW (field_2387) is set
+          // to OTHER SOW(s) and NOT this one is a bid for a different SOW — exclude
+          // it so its items don't get dumped into this grid's "belong to another
+          // SOW" block. Empty bidSow = unrestricted (shows on every SOW it touches).
+          var _pkInfo = pkgInfo[allPackages[ap].id];
+          var _bidSowIds = (_pkInfo && _pkInfo.bidSowIds) || [];
+          if (_bidSowIds.length && _bidSowIds.indexOf(sow.id) === -1) continue;
+        }
         var pc = {};
         for (var pk in allPackages[ap]) {
           if (Object.prototype.hasOwnProperty.call(allPackages[ap], pk)) pc[pk] = allPackages[ap][pk];
@@ -917,7 +952,9 @@
         }
       }
       var otherRecs = [], seenOther = Object.create(null);
-      for (var oc = 0; oc < packages.length; oc++) {
+      // Synthetic grid already holds every bucket record as a matched row —
+      // don't re-collect package-mates (they'd pull real-SOW items in).
+      if (!isSyn) for (var oc = 0; oc < packages.length; oc++) {
         var oprecs = pkgAllRecords[packages[oc].id] || [];
         for (var op = 0; op < oprecs.length; op++) {
           var orec = oprecs[op];
