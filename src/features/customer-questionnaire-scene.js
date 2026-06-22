@@ -697,18 +697,77 @@
   // status or @getscw.com staff membership. Matched case-insensitively against
   // the logged-in user's Knack role names.
   var READONLY_ROLES = ['tech group manager', 'tech group technician'];
-  function isReadOnlyRole() {
+
+  // Resolve the logged-in user's role/profile NAMES from every source Knack
+  // might expose them on — `Knack.getUserRoleNames()` is not standard across
+  // app versions (the rest of this codebase only uses getUserAttributes), so
+  // we also map the user's profile_keys → profile names via Knack.objects, and
+  // fall back to the raw profile keys so a key can be allow-listed if needed.
+  function getRoleNames() {
+    var out = [];
+    function add(v) {
+      if (v == null) return;
+      var s = String(v).trim();
+      if (s && out.indexOf(s) === -1) out.push(s);
+    }
+    // 1) Direct role-name helper, if this Knack build exposes it.
     try {
-      var names = (typeof Knack !== 'undefined' && Knack.getUserRoleNames)
-        ? (Knack.getUserRoleNames() || []) : [];
-      for (var i = 0; i < names.length; i++) {
-        if (READONLY_ROLES.indexOf(String(names[i] == null ? '' : names[i]).trim().toLowerCase()) !== -1) {
-          return true;
+      if (typeof Knack !== 'undefined' && typeof Knack.getUserRoleNames === 'function') {
+        var n = Knack.getUserRoleNames() || [];
+        for (var i = 0; i < n.length; i++) add(n[i]);
+      }
+    } catch (e) {}
+    // 2) Map the user's profile_keys → profile object names.
+    try {
+      var u = (typeof Knack !== 'undefined' && Knack.getUserAttributes) ? Knack.getUserAttributes() : null;
+      var keys = u && (u.profile_keys || u.profileKeys ||
+        (u.values && (u.values.profile_keys || u.values.profileKeys)));
+      if (keys && keys.length && typeof Knack !== 'undefined' && Knack.objects) {
+        for (var k = 0; k < keys.length; k++) {
+          var key = keys[k];
+          var obj = null;
+          try { obj = (typeof Knack.objects.get === 'function') ? Knack.objects.get(key) : null; } catch (e2) {}
+          var nm = obj && (obj.attributes ? obj.attributes.name : obj.name);
+          if (nm) add(nm); else add(key);   // raw key as last resort
         }
       }
     } catch (e) {}
+    return out;
+  }
+
+  function isReadOnlyRole() {
+    var names = getRoleNames();
+    for (var i = 0; i < names.length; i++) {
+      var s = String(names[i] == null ? '' : names[i]).trim().toLowerCase();
+      if (!s) continue;
+      if (READONLY_ROLES.indexOf(s) !== -1) return true;
+      // Tolerant match: "Tech Group Managers", "Tech Group - Technician", etc.
+      if (s.indexOf('tech group') !== -1 &&
+          (s.indexOf('manager') !== -1 || s.indexOf('technician') !== -1)) return true;
+    }
     return false;
   }
+
+  // Console diagnostic: run SCW.cqDebugRoles() to see exactly what role names
+  // resolve for the current user and whether the read-only gate fires.
+  window.SCW = window.SCW || {};
+  window.SCW.cqDebugRoles = function () {
+    var info = {
+      resolvedRoleNames: getRoleNames(),
+      isReadOnlyRole: isReadOnlyRole(),
+      isInternal: isInternal(),
+      status: readStatus(),
+      editable: isEditable()
+    };
+    try { info.getUserRoleNames = (Knack.getUserRoleNames && Knack.getUserRoleNames()) || null; }
+    catch (e) { info.getUserRoleNames = 'threw/absent'; }
+    try {
+      var u = Knack.getUserAttributes ? Knack.getUserAttributes() : null;
+      info.profile_keys = u && (u.profile_keys || u.profileKeys || (u.values && u.values.profile_keys)) || null;
+    } catch (e) {}
+    if (window.console) console.log('[scw-cq] role debug', info);
+    return info;
+  };
   function statusIsCustomerSignoff() {
     var s = readStatus().toLowerCase();
     return /customer/.test(s) && /sign\s*off/.test(s);
