@@ -20,6 +20,11 @@
 
   var FK  = ns.CONFIG.fieldKeys;
   var SFK = ns.CONFIG.sowItemFieldKeys || {};
+  // Synthetic "no SOW" grid (all-services bid etc.): the SOW column shows only
+  // a "No SOW" note and per-row sync-to-SOW is suppressed — the only SOW action
+  // is the per-bid "+ Create new SOW".
+  var NO_SOW_ID = (ns.transform && ns.transform.NO_SOW) || '__no_sow__';
+  function isNoSowGrid(sowId) { return sowId === NO_SOW_ID; }
   // Source views:
   //   [0] view_3680 — bid records  (READ-ONLY in this grid; changes go
   //                                 through Change Requests)
@@ -403,6 +408,15 @@
   }
 
   function buildSowCell(row, isAssumption, sowId) {
+    // No-SOW grid: there's no SOW to sync a row into, so show ONLY a "No SOW"
+    // note — no per-row "+ Add to SOW" (that path can't work here). The single
+    // SOW action is the per-bid "+ Create new SOW" in the column header.
+    if (isNoSowGrid(sowId)) {
+      var noTd = document.createElement('td');
+      noTd.className = 'scw-bid-review-v2__sow-cell scw-bid-review-v2__sow-cell--empty';
+      noTd.innerHTML = '<span class="scw-bid-review-v2__no-sow-note">No SOW</span>';
+      return noTd;
+    }
     var sowItemData = row && row.sowItemData;
     var diff = aggregateMismatch(row);
     var td = document.createElement('td');
@@ -1295,7 +1309,9 @@
         '<div class="scw-bid-review-v2__head-group scw-bid-review-v2__head-group--sow">' +
           '<div class="scw-bid-review-v2__head-group-label">SOW</div>' +
           headBtn('+ Create new SOW', 'create', 'package_create_sow', pkg.id, sowId) +
-          headBtn('← Update SOW to match Bid', 'adopt', 'package_copy_to_sow', pkg.id, sowId) +
+          // No SOW exists to "update to match" — offer Create only.
+          (isNoSowGrid(sowId) ? '' :
+            headBtn('← Update SOW to match Bid', 'adopt', 'package_copy_to_sow', pkg.id, sowId)) +
         '</div>';
     }
 

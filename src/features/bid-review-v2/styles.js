@@ -969,6 +969,7 @@
     '  background: #fafafa; text-align: center; color: #cbd5e1;',
     '}',
     '.scw-bid-review-v2__cell-empty-mark { font-size: 18px; line-height: 1; }',
+    '.scw-bid-review-v2__no-sow-note { font-size: 12px; font-style: italic; color: #94a3b8; }',
     /* Stacked bid items: 2+ bid line items on one bid mapping to the same
        SOW item. Each is a delineated block; the SOW cell (single <td>)
        naturally spans the full stacked height. */

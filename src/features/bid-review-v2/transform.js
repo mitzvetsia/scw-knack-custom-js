@@ -27,6 +27,10 @@
 
   var FK = ns.CONFIG.fieldKeys;
 
+  // Synthetic grid id used when no real SOW resolves (all-services bid, etc).
+  // Exported so card.js can render its SOW column as "No SOW" only.
+  var NO_SOW = '__no_sow__';
+
   // bid record id → SOW line item id; (re)built each buildState() run, read by
   // getMismatches to resolve bid-side connections to SOW line items.
   var _bidToSow = Object.create(null);
@@ -592,7 +596,7 @@
     // loop below renders it like a real grid (columns = packages, rows = bid
     // line items). Only when there are zero real SOWs, so it never duplicates
     // the bid-only rows that real grids already show.
-    var SYN_SOW = '__no_sow__';
+    var SYN_SOW = NO_SOW;
     if (sows.length === 0) {
       var orphanRecs = [];
       for (var _o = 0; _o < records.length; _o++) {
@@ -1220,6 +1224,7 @@
   }
 
   ns.transform = {
+    NO_SOW:           NO_SOW,
     buildState:       buildState,
     groupRows:        groupRows,
     getMismatches:    getMismatches,
