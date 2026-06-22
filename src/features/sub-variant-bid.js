@@ -127,9 +127,16 @@
       '.' + CARD_BTN_CLASS + ':hover {',
       '  background: #eaf2fb; border-color: #07467c; color: #053659;',
       '}',
-      // v2 worksheet: the button sits in the card detail panel on its own row.
-      '.scw-svb-v2-action { margin-top: 10px; padding-top: 8px;',
-      '  border-top: 1px solid #eef2f6; }',
+      // v2 worksheet: the button sits in the card HEADER, stacked directly
+      // beneath the Bid summary cell. The wrapper takes the bid cell's grid
+      // track; the cell keeps its look and the button sits under it.
+      '.scw-svb-bid-stack {',
+      '  display: flex; flex-direction: column; align-items: stretch;',
+      '  gap: 3px; min-width: 0;',
+      '}',
+      '.scw-svb-bid-stack .' + CARD_BTN_CLASS + ' {',
+      '  align-self: center; text-align: center;',
+      '}',
 
       // Modal scaffold (shared with both features)
       '.scw-svb-overlay {',
@@ -933,12 +940,16 @@
 
   // ── v2 worksheet path ───────────────────────────────────
   // view_3505 is cut over to worksheet-v2, which renders .scw-ws-v2-card
-  // (not v1's tr.scw-ws-row). Inject the same "+ Variant" button into each
-  // v2 card's detail panel — shown on EVERY card including locked ones (the
-  // variant action is independent of the card's own field lock). The
-  // document-level click handler + openItemVariantModal (model-based) work
-  // unchanged. Mirrors deliverables-worksheet's v2 re-inject pattern.
+  // (not v1's tr.scw-ws-row). Inject the same "+ Variant" button into the
+  // card HEADER, directly beneath the Bid summary cell (NOT the detail
+  // panel) — mirroring the v1 path that anchors inside the bid group. Shown
+  // on EVERY card including locked ones (the variant action is independent of
+  // the card's own field lock). The summary row is a CSS grid; the Bid cell
+  // is one grid track, so wrap it and stack the button below it in-column.
+  // The document-level click handler + openItemVariantModal (model-based)
+  // work unchanged.
   var V2_PANEL_ID = 'scw-ws-v2-' + CONFIG.itemGridView;
+  var BID_STACK_CLASS = 'scw-svb-bid-stack';
   var _v2Mutating = false;
   function injectItemButtonsV2() {
     var container = document.getElementById(V2_PANEL_ID);
@@ -952,18 +963,29 @@
         var recId = card.getAttribute('data-scw-ws-v2-record');
         if (!recId || !/^[0-9a-f]{24}$/i.test(recId)) continue;
         if (card.querySelector('button.' + CARD_BTN_CLASS)) continue;   // already injected
-        var detail = card.querySelector('.scw-ws-v2-detail');
-        if (!detail) continue;
-        var wrap = document.createElement('div');
-        wrap.className = 'scw-svb-v2-action';
+        // Anchor under the Bid summary cell in the card header. No detail-
+        // panel fallback — if the bid cell isn't built yet, bail and let the
+        // observer re-fire (better an absent button than a misplaced one).
+        var bidCell = card.querySelector('.scw-ws-v2-cell--survey-bid');
+        if (!bidCell || !bidCell.parentNode) continue;
+        // Wrap the bid cell so the button stacks beneath it within the same
+        // grid track (the wrapper takes the bid cell's grid placement).
+        var stack = bidCell.parentNode.classList &&
+          bidCell.parentNode.classList.contains(BID_STACK_CLASS)
+            ? bidCell.parentNode : null;
+        if (!stack) {
+          stack = document.createElement('div');
+          stack.className = BID_STACK_CLASS;
+          bidCell.parentNode.insertBefore(stack, bidCell);
+          stack.appendChild(bidCell);
+        }
         var btn = document.createElement('button');
         btn.type = 'button';
         btn.className = CARD_BTN_CLASS;
         btn.textContent = '+ Variant';
         btn.setAttribute('data-item-id', recId);
         btn.setAttribute('title', 'Send a copy of this line item to another bid');
-        wrap.appendChild(btn);
-        detail.appendChild(wrap);
+        stack.appendChild(btn);
       }
     } finally {
       setTimeout(function () { _v2Mutating = false; }, 0);
