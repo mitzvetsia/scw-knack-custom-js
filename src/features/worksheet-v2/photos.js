@@ -288,7 +288,7 @@
   // model qa-popover.js uses (computeChitState). Only rendered when the
   // source view exposed QA columns (p.qaPresent) — i.e. the install
   // worksheet (view_3915). Other surfaces render no chit.
-  var QA_CHIT_VIEWS = { view_3915: 1 };
+  var QA_CHIT_VIEWS = { view_3915: 1, view_4056: 1 };
 
   function qaChitState(p) {
     if (!p.completed) return 'missing';

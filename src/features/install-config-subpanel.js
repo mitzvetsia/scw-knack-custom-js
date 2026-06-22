@@ -31,8 +31,12 @@
 (function () {
   'use strict';
 
-  var INSTALL_VIEW = 'view_3915';
-  var CONFIG_VIEW  = 'view_3916';
+  // view_3915 = Implementation install worksheet; view_4056 = "WHAT WE'RE
+  // INSTALLING" (SAME install object/fields). Fold camera configs into the
+  // matching card on either surface. Everything no-ops on a scene where the
+  // config grid (view_3916) isn't present (buildConfigIndex returns empty).
+  var INSTALL_VIEWS = ['view_3915', 'view_4056'];
+  var CONFIG_VIEW   = 'view_3916';
 
   var CONNECTION_FIELD = 'field_2835';   // → install line item record id
   var FIELDS = [
@@ -60,7 +64,7 @@
   // .scw-ws-v2-detail. Today view_3915 still renders V1 cards so this
   // selector matches nothing; after the cutover flip it matches and the
   // subpanel folds into the V2 detail instead. See CLAUDE.md migration.
-  var V2_CONTAINER_ID = 'scw-ws-v2-' + INSTALL_VIEW;
+  function v2ContainerId(viewId) { return 'scw-ws-v2-' + viewId; }
   // (former toggle-button constants removed — the camera-config grid is
   // now always hidden; configs are folded into the worksheet detail panel.)
 
@@ -69,6 +73,18 @@
     if (document.getElementById(CSS_ID)) return;
     var s = document.createElement('style');
     s.id = CSS_ID;
+    // Scope the cabling/exterior/plenum chip restyle to EVERY install surface
+    // (view_3915 + view_4056) — generate the selector list across both.
+    var _chipFields = ['field_2807', 'field_2805', 'field_2806'];
+    function chipSel(sub) {
+      var parts = [];
+      INSTALL_VIEWS.forEach(function (v) {
+        _chipFields.forEach(function (f) {
+          parts.push('#' + v + ' .scw-ws-field[data-scw-field="' + f + '"] .scw-ws-field-' + sub);
+        });
+      });
+      return parts.join(',\n');
+    }
     s.textContent = [
       /* Camera-config grid view is always hidden — its data is folded
          into each worksheet card's detail panel via the merge() pass. */
@@ -88,9 +104,7 @@
          host .scw-ws-field's display — we only restyle the LABEL
          (which becomes the chip) and HIDE the value.  Sky-blue
          palette so it reads informational, not as a warning. */
-      '#' + INSTALL_VIEW + ' .scw-ws-field[data-scw-field="field_2807"] .scw-ws-field-label,',
-      '#' + INSTALL_VIEW + ' .scw-ws-field[data-scw-field="field_2805"] .scw-ws-field-label,',
-      '#' + INSTALL_VIEW + ' .scw-ws-field[data-scw-field="field_2806"] .scw-ws-field-label {',
+      chipSel('label') + ' {',
       '  display: inline-block;',
       '  width: auto;',
       '  min-width: 0;',
@@ -105,9 +119,7 @@
       '  letter-spacing: 0.4px;',
       '  white-space: nowrap;',
       '}',
-      '#' + INSTALL_VIEW + ' .scw-ws-field[data-scw-field="field_2807"] .scw-ws-field-value,',
-      '#' + INSTALL_VIEW + ' .scw-ws-field[data-scw-field="field_2805"] .scw-ws-field-value,',
-      '#' + INSTALL_VIEW + ' .scw-ws-field[data-scw-field="field_2806"] .scw-ws-field-value {',
+      chipSel('value') + ' {',
       '  display: none;',
       '}',
       '.' + SUBPANEL_CLS + '-title {',
@@ -591,18 +603,21 @@
     var seen = {};
     function push(id) { if (id && !seen[id]) { seen[id] = true; ids.push(id); } }
 
-    var v1Rows = document.querySelectorAll(
-      'tr.scw-ws-row[data-scw-view-id="' + INSTALL_VIEW + '"]'
-    );
-    for (var i = 0; i < v1Rows.length; i++) push(v1Rows[i].id);
-
-    var v2Container = document.getElementById(V2_CONTAINER_ID);
-    if (v2Container) {
-      var v2Cards = v2Container.querySelectorAll(
-        '.scw-ws-v2-card[data-scw-ws-v2-record]'
+    for (var v = 0; v < INSTALL_VIEWS.length; v++) {
+      var viewId = INSTALL_VIEWS[v];
+      var v1Rows = document.querySelectorAll(
+        'tr.scw-ws-row[data-scw-view-id="' + viewId + '"]'
       );
-      for (var j = 0; j < v2Cards.length; j++) {
-        push(v2Cards[j].getAttribute('data-scw-ws-v2-record'));
+      for (var i = 0; i < v1Rows.length; i++) push(v1Rows[i].id);
+
+      var v2Container = document.getElementById(v2ContainerId(viewId));
+      if (v2Container) {
+        var v2Cards = v2Container.querySelectorAll(
+          '.scw-ws-v2-card[data-scw-ws-v2-record]'
+        );
+        for (var j = 0; j < v2Cards.length; j++) {
+          push(v2Cards[j].getAttribute('data-scw-ws-v2-record'));
+        }
       }
     }
     return ids;
@@ -649,23 +664,25 @@
   /** Watch only the install-view tbody (row add/remove). Anything deeper
    *  is our own work and is ignored via _selfMutating. */
   function installMutationObserver() {
-    var installView = document.getElementById(INSTALL_VIEW);
-    if (!installView || installView.__scwInstallObs) return;
-    var tbody = installView.querySelector('table tbody');
-    if (!tbody) return;
-    installView.__scwInstallObs = true;
-    var pending = false;
-    var obs = new MutationObserver(function () {
-      if (_selfMutating || pending) return;
-      pending = true;
-      setTimeout(function () {
-        pending = false;
-        // Row set may have changed — re-evaluate.
-        invalidate();
-        merge();
-      }, 150);
-    });
-    obs.observe(tbody, { childList: true });
+    for (var v = 0; v < INSTALL_VIEWS.length; v++) {
+      var installView = document.getElementById(INSTALL_VIEWS[v]);
+      if (!installView || installView.__scwInstallObs) continue;
+      var tbody = installView.querySelector('table tbody');
+      if (!tbody) continue;
+      installView.__scwInstallObs = true;
+      var pending = false;
+      var obs = new MutationObserver(function () {
+        if (_selfMutating || pending) return;
+        pending = true;
+        setTimeout(function () {
+          pending = false;
+          // Row set may have changed — re-evaluate.
+          invalidate();
+          merge();
+        }, 150);
+      });
+      obs.observe(tbody, { childList: true });
+    }
   }
 
   /** Watch the worksheet-v2 panel container. worksheet-v2 rebuilds its
@@ -673,22 +690,24 @@
    *  body), so we re-merge on any child mutation under the container.
    *  No-op until the V2 panel exists (i.e. after the cutover flip). */
   function installV2MutationObserver() {
-    var v2Container = document.getElementById(V2_CONTAINER_ID);
-    if (!v2Container || v2Container.__scwInstallConfigObs) return;
-    var body = v2Container.querySelector('.scw-ws-v2-body') || v2Container;
-    v2Container.__scwInstallConfigObs = true;
-    var pending = false;
-    var obs = new MutationObserver(function () {
-      if (_selfMutating || pending) return;
-      pending = true;
-      setTimeout(function () {
-        pending = false;
-        // Card set / detail panels may have been rebuilt — re-evaluate.
-        invalidate();
-        merge();
-      }, 150);
-    });
-    obs.observe(body, { childList: true, subtree: true });
+    for (var v = 0; v < INSTALL_VIEWS.length; v++) {
+      var v2Container = document.getElementById(v2ContainerId(INSTALL_VIEWS[v]));
+      if (!v2Container || v2Container.__scwInstallConfigObs) continue;
+      var body = v2Container.querySelector('.scw-ws-v2-body') || v2Container;
+      v2Container.__scwInstallConfigObs = true;
+      var pending = false;
+      var obs = new MutationObserver(function () {
+        if (_selfMutating || pending) return;
+        pending = true;
+        setTimeout(function () {
+          pending = false;
+          // Card set / detail panels may have been rebuilt — re-evaluate.
+          invalidate();
+          merge();
+        }, 150);
+      });
+      obs.observe(body, { childList: true, subtree: true });
+    }
   }
 
   // ── Init ────────────────────────────────────────────────────────
@@ -696,19 +715,21 @@
     injectCss();
     if (!window.SCW || typeof window.SCW.onViewRender !== 'function') return;
 
-    window.SCW.onViewRender(INSTALL_VIEW, function () {
-      // tbody is re-built; row set may have changed. The V2 panel (if
-      // mounted) is a sibling of #view_3915 and re-renders off the same
-      // view render via its data subscriber, so attach its observer too.
-      // Stagger the re-runs: V2 mounts its panel + paints cards slightly
-      // AFTER this view-render fires (its data subscriber runs async), so
-      // a single 50ms pass can miss the V2 cards. The observers above
-      // catch later rebuilds; these passes catch the initial paint.
-      invalidate();
-      installMutationObserver();
-      installV2MutationObserver();
-      stagger();
-    }, 'scwInstallConfig');
+    INSTALL_VIEWS.forEach(function (iv) {
+      window.SCW.onViewRender(iv, function () {
+        // tbody is re-built; row set may have changed. The V2 panel (if
+        // mounted) is a sibling of the install view and re-renders off the
+        // same view render via its data subscriber, so attach its observer too.
+        // Stagger the re-runs: V2 mounts its panel + paints cards slightly
+        // AFTER this view-render fires (its data subscriber runs async), so
+        // a single 50ms pass can miss the V2 cards. The observers above
+        // catch later rebuilds; these passes catch the initial paint.
+        invalidate();
+        installMutationObserver();
+        installV2MutationObserver();
+        stagger();
+      }, 'scwInstallConfig');
+    });
 
     window.SCW.onViewRender(CONFIG_VIEW, function () {
       // Config data may have changed after an inline edit.

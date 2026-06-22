@@ -650,6 +650,12 @@
       TARGET: 'field_2820', RECIPROCAL: 'field_2821',
       BUCKET: 'field_2822', GROUPING: 'field_2818',
       IDENTIFIER: 'field_2819'
+    },
+    // view_4056 ("WHAT WE'RE INSTALLING") — same install object as view_3915.
+    view_4056: {
+      TARGET: 'field_2820', RECIPROCAL: 'field_2821',
+      BUCKET: 'field_2822', GROUPING: 'field_2818',
+      IDENTIFIER: 'field_2819'
     }
   };
 

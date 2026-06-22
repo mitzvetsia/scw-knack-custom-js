@@ -1363,6 +1363,10 @@
        V2 kill-switch + flipping the config entry enabled:false. */
     '.scw-ktl-accordion:has(#view_3915) { display: none !important; }',
     '#view_3915 { display: none !important; }',
+    /* "WHAT WE'RE INSTALLING" (view_4056) — same install object/cutover as
+       view_3915. Hide its native table + accordion shell; v2 renders the cards. */
+    '.scw-ktl-accordion:has(#view_4056) { display: none !important; }',
+    '#view_4056 { display: none !important; }',
     /* Same cutover for the survey/bid page: v2 is primary on view_3505 now.
        FULL cutover — hide the native view AND its KTL accordion shell so JUST
        the v2 grid shows (no collapsible header). Safe to hide the whole

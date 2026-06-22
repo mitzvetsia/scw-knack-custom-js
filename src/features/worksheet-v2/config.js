@@ -451,6 +451,25 @@
     ]
   };
 
+  // ── view_4056 ("WHAT WE'RE INSTALLING") — SAME object + field map as the
+  //    view_3915 install worksheet. Rather than duplicate the ~80-line install
+  //    config (and let the two drift), clone the view_3915 entry verbatim and
+  //    swap only the source view key + mount anchor. Any future change to the
+  //    install card config then applies to BOTH surfaces automatically. The
+  //    install entry is pure data (no functions), so a JSON deep-clone is safe.
+  (function cloneInstallEntryForView4056() {
+    var views = SCW.worksheetV2.CONFIG.views || [];
+    var src = null;
+    for (var i = 0; i < views.length; i++) {
+      if (views[i] && views[i].sourceViewKey === 'view_3915') { src = views[i]; break; }
+    }
+    if (!src) return;
+    var clone = JSON.parse(JSON.stringify(src));
+    clone.sourceViewKey      = 'view_4056';
+    clone.mountAfterSelector = '#view_4056';
+    views.push(clone);
+  })();
+
   // ── Resolver API ──────────────────────────────────────────────────
   // Modules read field keys + bucket ids through these so a deployment is
   // pure config. Cheap; safe to call per render.

@@ -7,7 +7,10 @@
     // The install worksheet (view_3915) is a V2 cutover: the native table is
     // hidden and worksheet-v2 renders cards. We mount the deliverables panel
     // INSIDE each v2 install card's detail panel (not the hidden native rows).
-    WORKSHEET_VIEW:  'view_3915',
+    // view_3915 = Implementation install worksheet; view_4056 = "WHAT WE'RE
+    // INSTALLING" (SAME install object/fields). Mount the deliverables panel on
+    // both v2 install surfaces.
+    WORKSHEET_VIEWS: ['view_3915', 'view_4056'],
     // Fields on the LINE ITEM
     VALUE_FIELD:            'field_2932',   // Paragraph/Rich-Text — stores the JSON answer blob
     LINE_ITEM_SCHEMA_FIELD: 'field_2930',   // Deliverable Schema connection on the line item
@@ -320,11 +323,15 @@
    * there (so it follows the card accordion). worksheet-v2 rebuilds its body
    * innerHTML on every data tick, so we re-inject idempotently on a container
    * observer + staggered passes (mirrors install-config-subpanel.js). */
-  var V2_CONTAINER_ID = 'scw-ws-v2-' + CONFIG.WORKSHEET_VIEW;
+  function v2ContainerId(viewId) { return 'scw-ws-v2-' + viewId; }
   var _selfMutating = false;
 
-  function v2DetailFor(recordId) {
-    var card = document.querySelector(
+  function v2DetailFor(recordId, viewId) {
+    // Scope to the view's own v2 container so a record id present on BOTH
+    // install surfaces (view_3915 + view_4056, same object) resolves to the
+    // right card instead of whichever appears first in the DOM.
+    var root = document.getElementById(v2ContainerId(viewId)) || document;
+    var card = root.querySelector(
       '.scw-ws-v2-card[data-scw-ws-v2-record="' + recordId + '"]');
     return card ? card.querySelector('.scw-ws-v2-detail') : null;
   }
@@ -345,7 +352,7 @@
     _selfMutating = true;
     try {
       records.forEach(function (rec) {
-        var detail = v2DetailFor(rec.id);
+        var detail = v2DetailFor(rec.id, viewId);
         if (!detail) return;   // card not painted yet — a later pass catches it
         var schemaId = resolveSchemaId(rec);
         var fields = schemaId ? bySchema[schemaId] : null;
@@ -375,8 +382,10 @@
     var delays = [50, 250, 750, 2000];
     for (var i = 0; i < delays.length; i++) {
       setTimeout(function () {
-        installV2Observer();
-        mount(CONFIG.WORKSHEET_VIEW);
+        CONFIG.WORKSHEET_VIEWS.forEach(function (v) {
+          installV2Observer(v);
+          mount(v);
+        });
       }, delays[i]);
     }
   }
@@ -384,8 +393,8 @@
   /** Watch the worksheet-v2 container — it swaps its body innerHTML on every
    *  data subscriber fire, wiping our panels; re-mount on any child mutation.
    *  No-op until the v2 panel exists. Ignores our own writes via _selfMutating. */
-  function installV2Observer() {
-    var container = document.getElementById(V2_CONTAINER_ID);
+  function installV2Observer(viewId) {
+    var container = document.getElementById(v2ContainerId(viewId));
     if (!container || container.__scwDeliverablesObs) return;
     var body = container.querySelector('.scw-ws-v2-body') || container;
     container.__scwDeliverablesObs = true;
@@ -393,7 +402,7 @@
     var obs = new MutationObserver(function () {
       if (_selfMutating || pending) return;
       pending = true;
-      setTimeout(function () { pending = false; mount(CONFIG.WORKSHEET_VIEW); }, 150);
+      setTimeout(function () { pending = false; mount(viewId); }, 150);
     });
     obs.observe(body, { childList: true, subtree: true });
   }
@@ -434,11 +443,13 @@
     document.head.appendChild(style);
   }
   /* ── bind ── */
-  SCW.onViewRender(CONFIG.WORKSHEET_VIEW, function () {
-    injectCss();
-    installV2Observer();
-    stagger();
-  }, NS);
+  CONFIG.WORKSHEET_VIEWS.forEach(function (wv) {
+    SCW.onViewRender(wv, function () {
+      injectCss();
+      installV2Observer(wv);
+      stagger();
+    }, NS);
+  });
 
   /* ── diagnostic: run SCW.deliverablesDebug() in the console to see which
    * gate is failing (snippet global ready? field_2930 on the model? schema
@@ -448,7 +459,8 @@
     var g = window.SCW && window.SCW.deliverablesFields;
     var bySchema = loadSchemaFields();
     var schemaIds = Object.keys(bySchema);
-    var records = getViewRecords(CONFIG.WORKSHEET_VIEW);
+    var records = [];
+    CONFIG.WORKSHEET_VIEWS.forEach(function (v) { records = records.concat(getViewRecords(v)); });
     var info = {
       globalPresent: !!g,
       globalLength: (g && g.length) || 0,
