@@ -1335,10 +1335,10 @@
       // once all paginated product pages have been fetched — await
       // it before opening the picker so we never show an empty
       // candidate list.
-      if (fieldKey === 'field_1949') {
+      if (fieldKey === 'field_1949' || fieldKey === 'field_2627') {
         var openProductPicker = function () {
           var pmap = (window.SCW && SCW.productMap) || {};
-          var myBucketId = current ? bucketIdOf(current) : '';
+          var myBucketId = current ? bucketIdOf(current, viewKey) : '';
           var prodCandidates = [];
           for (var pid in pmap) {
             if (!Object.prototype.hasOwnProperty.call(pmap, pid)) continue;
@@ -1366,7 +1366,7 @@
           // connection; read the existing connected id (if any).
           var prodSel = [];
           if (current) {
-            var rawSel = current['field_1949_raw'];
+            var rawSel = current[fieldKey + '_raw'];
             if (Array.isArray(rawSel)) {
               for (var s = 0; s < rawSel.length; s++) {
                 if (rawSel[s] && rawSel[s].id) prodSel.push(rawSel[s].id);
@@ -1382,7 +1382,7 @@
             // view_3610 is no longer on this page post-cutover.
             putViewKey:    viewKey,
             recordId:      recordId,
-            fieldKey:      'field_1949',
+            fieldKey:      fieldKey,
             label:         'Product',
             selectedIds:   prodSel,
             candidates:    prodCandidates,

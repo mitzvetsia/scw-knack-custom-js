@@ -1372,14 +1372,23 @@
   // single-chips, and the inline inputs all save through the generic
   // chip / radiochip / edit handlers (init.js / edit.js are view-generic).
 
-  function surveyProductCell(rec, F) {
-    // Read-only for the preview — survey product (field_2627) picker not wired.
+  function surveyProductCell(rec, viewKey, F) {
+    // Editable product picker — writes the survey product connection
+    // (field_2627). Display prefers the STORED name (field_2379), falling back
+    // to the connection's identifier (so it updates after a change even before
+    // the stored name recomputes). Same picker as the SOW product cell.
+    var prodField = F.product || 'field_2627';
     var name = readField(rec, F.productName || 'field_2379') ||
-               readField(rec, F.product || 'field_2627') || '(unnamed)';
-    return '<div class="scw-ws-v2-cell scw-ws-v2-cell--product scw-ws-v2-cell--ro" ' +
-      'title="' + escapeHtml(name) + '">' +
+               readField(rec, prodField) || '(unnamed)';
+    return '<button type="button" ' +
+      'class="scw-ws-v2-cell scw-ws-v2-cell--product scw-ws-v2-cell--editable-conn" ' +
+      'data-scw-ws-v2-conn="' + escapeHtml(prodField) + '" ' +
+      'data-scw-ws-v2-record="' + escapeHtml(rec.id) + '" ' +
+      'data-scw-ws-v2-view="' + escapeHtml(viewKey) + '" ' +
+      'data-scw-ws-v2-conn-label="Product" ' +
+      'title="' + escapeHtml(name) + ' — click to change product">' +
       '<span class="scw-ws-v2-product-name">' + escapeHtml(name) + '</span>' +
-    '</div>';
+    '</button>';
   }
 
   function surveyChips(rec, viewKey, F) {
@@ -1476,7 +1485,7 @@
     var productSlot;
     if (cat === 'services')          productSlot = ro('Service', 'scw-ws-v2-cell--tag');
     else if (cat === 'assumptions')  productSlot = empty('scw-ws-v2-cell--product');
-    else                             productSlot = surveyProductCell(rec, F);
+    else                             productSlot = surveyProductCell(rec, viewKey, F);
 
     // Two fill cells: Survey Notes (LEFT) then Labor Description. SCW Notes
     // lives in the detail panel (first/leftmost field).
