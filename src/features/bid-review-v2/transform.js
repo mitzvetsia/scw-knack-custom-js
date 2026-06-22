@@ -535,6 +535,26 @@
 
   function buildState(records, sowItems, bidPackages) {
     var sows = extractSows(records);
+    // Also surface SOWs reachable through the SOW line items (view_3921): a bid
+    // record's own field_2154 can be empty while its related line item IS on a
+    // SOW (the line item is authoritative — same rule groupBySow uses). Without
+    // this, a bid set whose SOW link lives only on the line items renders 0 SOW
+    // grids even though the SOW has items to review.
+    (function unionSowsFromItems() {
+      var _SFK0 = ns.CONFIG.sowItemFieldKeys || {};
+      var seen = Object.create(null);
+      for (var s = 0; s < sows.length; s++) seen[sows[s].id] = true;
+      var items = sowItems || [];
+      for (var j = 0; j < items.length; j++) {
+        var conns = connectionAll(items[j], _SFK0.sow);
+        for (var c = 0; c < conns.length; c++) {
+          var id = conns[c] && conns[c].id;
+          if (!id || seen[id]) continue;
+          seen[id] = true;
+          sows.push({ id: id, name: stripHtml(conns[c].identifier || ('SOW ' + sows.length)) });
+        }
+      }
+    })();
     // bid record id → its SOW line item id (field_2404 relatedSowItem). Lets
     // the connected-device / connected-to diff resolve a bid record's
     // connections (field_2380/2381 point at OTHER bid records) to SOW line
