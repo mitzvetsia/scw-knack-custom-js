@@ -1293,9 +1293,12 @@
     // Reuse v1's handlers via SCW.bidReview.dispatchHeaderAction; buttons keep
     // the v1 data-* attrs + .scw-bid-review__btn classes v1's setBusy expects.
     var isSubmitted = /^submitted$/i.test(String(pkg.bidStatus || '').trim());
+    // The no-SOW grid surfaces draft / in-progress bids, so show the bid-column
+    // action buttons there regardless of submitted status.
+    var showActions = isSubmitted || isNoSowGrid(sowId);
 
     var sowGroup = '';
-    if (isSubmitted) {
+    if (showActions) {
       sowGroup =
         '<div class="scw-bid-review-v2__head-group scw-bid-review-v2__head-group--sow">' +
           '<div class="scw-bid-review-v2__head-group-label">SOW</div>' +
@@ -1315,8 +1318,8 @@
     var crCount = (bucket && bucket.items) ? bucket.items.length : 0;
 
     var crGroup = '';
-    if (isSubmitted || crCount) {
-      var bulkBtn = isSubmitted
+    if (showActions || crCount) {
+      var bulkBtn = showActions
         ? '<button type="button" class="scw-bid-review__btn scw-bid-review-v2__head-btn ' +
             'scw-bid-review-v2__head-btn--cr-bulk" data-action="cr_bulk_selected" ' +
             'data-pkg-id="' + escapeHtml(pkg.id) + '" data-package-id="' + escapeHtml(pkg.id) + '" ' +
