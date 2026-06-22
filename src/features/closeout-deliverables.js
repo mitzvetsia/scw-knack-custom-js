@@ -23,13 +23,38 @@
 (function () {
   'use strict';
 
-  var VIEW_ID = 'view_3940';
-
-  // Hidden inline-editable grid of DOC records — used as the save target
-  // for QA updates. Same pattern as qa-popover.js using view_3937 for
-  // PIC photo records. The view must expose every field we PUT to as a
-  // cell-edit column: field_2879/2880/2881/2882/2883/2895.
-  var DOC_SAVE_VIEW = 'view_3941';
+  // ── Deployments ──────────────────────────────────────────────────
+  // The closeout strip runs on multiple scenes. Each deployment pairs:
+  //   closeoutView — the CLOSEOUT grid we replace with the card strip
+  //   docSaveView  — a hidden DOC inline-edit grid on the SAME scene
+  //                  (raw S3 urls/thumbs + the QA-save/delete PUT/DELETE
+  //                  target). SCW.knackRecordUrl is scoped to the CURRENT
+  //                  scene, so this MUST live on the closeout's own scene;
+  //                  it must expose every field we PUT as a cell-edit column
+  //                  (field_2879/2880/2881/2882/2883/2895 + field_68).
+  //   addSlug / editSlug — child-page slugs for "add doc"/"edit doc"
+  //                  navigation (appended to the current hash).
+  //   view_3940: deploy scene.  view_4058: subcontractor edit-core-project.
+  var DEPLOYMENTS = [
+    { closeoutView: 'view_3940', docSaveView: 'view_3941',
+      addSlug: 'add-file-to-closeout',  editSlug: 'edit-doc-file' },
+    { closeoutView: 'view_4058', docSaveView: 'view_4063',
+      addSlug: 'add-file-to-closeout3', editSlug: 'edit-doc-file' }
+  ];
+  function depFor(closeoutView) {
+    for (var i = 0; i < DEPLOYMENTS.length; i++) {
+      if (DEPLOYMENTS[i].closeoutView === closeoutView) return DEPLOYMENTS[i];
+    }
+    return null;
+  }
+  // The deployment whose closeout grid is on the CURRENT scene (only one
+  // closeout scene renders at a time) — used by the save/upload/slug paths.
+  function activeDep() {
+    for (var i = 0; i < DEPLOYMENTS.length; i++) {
+      if (document.getElementById(DEPLOYMENTS[i].closeoutView)) return DEPLOYMENTS[i];
+    }
+    return DEPLOYMENTS[0];
+  }
 
   // Connection-displayed columns on view_3940 (each row has one
   // connection-value span per connected DOC, keyed by DOC record id).
@@ -65,9 +90,15 @@
   var docFileMeta = {};
 
   function rebuildFileMetaIndex() {
-    var v = window.Knack && Knack.views && Knack.views[DOC_SAVE_VIEW];
-    if (!v || !v.model || !v.model.data || !v.model.data.models) return false;
-    var models = v.model.data.models;
+    var changed = false;
+    for (var d = 0; d < DEPLOYMENTS.length; d++) {
+      var v = window.Knack && Knack.views && Knack.views[DEPLOYMENTS[d].docSaveView];
+      if (!v || !v.model || !v.model.data || !v.model.data.models) continue;
+      changed = scanDocModels(v.model.data.models) || changed;
+    }
+    return changed;
+  }
+  function scanDocModels(models) {
     var changed = false;
     for (var i = 0; i < models.length; i++) {
       var m = models[i];
@@ -103,8 +134,7 @@
     return changed;
   }
 
-  var ADD_DOC_SLUG  = 'add-file-to-closeout';
-  var EDIT_DOC_SLUG = 'edit-doc-file';
+  // add/edit-doc slugs are per-deployment now (see DEPLOYMENTS above).
 
   // ── CSS injection ────────────────────────────────────────────────
 
@@ -119,9 +149,11 @@
       // <section.hideShow_view_3940 ktlHideShowSection ...> so a
       // direct-child combinator misses .kn-records-nav and
       // .kn-table-wrapper.  Descendant selector covers both layouts.
-      '#' + VIEW_ID + ' .view-header,',
-      '#' + VIEW_ID + ' .kn-records-nav,',
-      '#' + VIEW_ID + ' .kn-table-wrapper { display: none !important; }',
+      DEPLOYMENTS.map(function (d) {
+        return '#' + d.closeoutView + ' .view-header,' +
+               '#' + d.closeoutView + ' .kn-records-nav,' +
+               '#' + d.closeoutView + ' .kn-table-wrapper';
+      }).join(',') + ' { display: none !important; }',
 
       /* Container card */
       '.scw-cd-card {',
@@ -457,11 +489,11 @@
   }
 
   function addDocHash(closeoutId) {
-    return buildHashFromCurrent(ADD_DOC_SLUG, closeoutId);
+    return buildHashFromCurrent(activeDep().addSlug, closeoutId);
   }
 
   function editDocHash(docId) {
-    return buildHashFromCurrent(EDIT_DOC_SLUG, docId);
+    return buildHashFromCurrent(activeDep().editSlug, docId);
   }
 
   function navigate(hash) {
@@ -792,7 +824,7 @@
           kind:        'document',
           docRecordId: docId,
           closeoutId:  closeoutId,
-          viewId:      VIEW_ID,
+          viewId:      activeDep().closeoutView,
           filename:    file.name || 'document.pdf',
           mimeType:    file.type || 'application/pdf',
           sizeBytes:   file.size,
@@ -861,7 +893,7 @@
           // event fires, our own docHasFileUploaded → rebuildFileMetaIndex
           // has already updated docFileMeta in place, so the hook sees
           // no change and skips the rebuild. Force it from here.
-          var viewEl = document.getElementById(VIEW_ID);
+          var viewEl = document.getElementById(activeDep().closeoutView);
           if (viewEl) renderInto(viewEl);
           // Flash a green pulse on the freshly-rebuilt card so the user
           // sees the upload land. The class is removed after the
@@ -914,7 +946,8 @@
   var FETCH_RESOLVE_TIMEOUT_MS = 4000;
 
   function fetchBothViewsForDoc() {
-    var ids = [VIEW_ID, DOC_SAVE_VIEW];
+    var _dep = activeDep();
+    var ids = [_dep.closeoutView, _dep.docSaveView];
     var promises = [];
     for (var i = 0; i < ids.length; i++) {
       var v = window.Knack && Knack.views && Knack.views[ids[i]];
@@ -957,7 +990,7 @@
   }
 
   function docHasFileInDOM(docId) {
-    var viewEl = document.getElementById(VIEW_ID);
+    var viewEl = document.getElementById(activeDep().closeoutView);
     if (!viewEl) return false;
     var spans = viewEl.querySelectorAll(
       'td.' + F.file + ' span[id][data-kn="connection-value"],' +
@@ -1579,16 +1612,16 @@
     }
 
     SCW.knackAjax({
-      url:  SCW.knackRecordUrl(DOC_SAVE_VIEW, _popoverDoc.id),
+      url:  SCW.knackRecordUrl(activeDep().docSaveView, _popoverDoc.id),
       type: 'PUT',
       data: JSON.stringify(fields),
       success: function () {
         closeQAPopover();
         // Refresh both views so the strip and the underlying DOC grid
         // both reflect the new state.
-        var v1 = window.Knack && Knack.views && Knack.views[VIEW_ID];
+        var v1 = window.Knack && Knack.views && Knack.views[activeDep().closeoutView];
         if (v1 && v1.model && typeof v1.model.fetch === 'function') v1.model.fetch();
-        var v2 = window.Knack && Knack.views && Knack.views[DOC_SAVE_VIEW];
+        var v2 = window.Knack && Knack.views && Knack.views[activeDep().docSaveView];
         if (v2 && v2.model && typeof v2.model.fetch === 'function') v2.model.fetch();
       },
       error: function (xhr) {
@@ -1600,9 +1633,9 @@
   }
 
   function refetchCloseoutViews() {
-    var v1 = window.Knack && Knack.views && Knack.views[VIEW_ID];
+    var v1 = window.Knack && Knack.views && Knack.views[activeDep().closeoutView];
     if (v1 && v1.model && typeof v1.model.fetch === 'function') v1.model.fetch();
-    var v2 = window.Knack && Knack.views && Knack.views[DOC_SAVE_VIEW];
+    var v2 = window.Knack && Knack.views && Knack.views[activeDep().docSaveView];
     if (v2 && v2.model && typeof v2.model.fetch === 'function') v2.model.fetch();
   }
   // Delete a DOC record via the view_3941 record endpoint — mirror of saveQA's
@@ -1616,7 +1649,7 @@
       return;
     }
     SCW.knackAjax({
-      url:  SCW.knackRecordUrl(DOC_SAVE_VIEW, docId),
+      url:  SCW.knackRecordUrl(activeDep().docSaveView, docId),
       type: 'DELETE',
       success: function () { if (onSuccess) onSuccess(); refetchCloseoutViews(); },
       error: function (xhr) {
@@ -1725,23 +1758,25 @@
   function bindView() {
     if (!window.SCW || typeof SCW.onViewRender !== 'function') return;
     injectCSS();
-    SCW.onViewRender(VIEW_ID, function () {
-      var viewEl = document.getElementById(VIEW_ID);
-      if (!viewEl) return;
-      renderInto(viewEl);
-    }, 'scwCloseoutDeliverables');
+    DEPLOYMENTS.forEach(function (dep) {
+      SCW.onViewRender(dep.closeoutView, function () {
+        var viewEl = document.getElementById(dep.closeoutView);
+        if (!viewEl) return;
+        renderInto(viewEl);
+      }, 'scwCloseoutDeliverables');
 
-    // view_3941 (DOC inline-edit grid) carries the raw file URL and
-    // thumb_url that view_3940 hides behind a route URL.  When it
-    // renders (which may be before OR after view_3940), refresh our
-    // index and rebuild the strip so the cards pick up the new metadata
-    // for thumbnails + clean modal previews.
-    SCW.onViewRender(DOC_SAVE_VIEW, function () {
-      var changed = rebuildFileMetaIndex();
-      if (!changed) return;
-      var viewEl = document.getElementById(VIEW_ID);
-      if (viewEl) renderInto(viewEl);
-    }, 'scwCloseoutDeliverables_metaIndex');
+      // The DOC inline-edit grid carries the raw file URL and thumb_url
+      // that the closeout grid hides behind a route URL. When it renders
+      // (which may be before OR after the closeout grid), refresh our index
+      // and rebuild the strip so the cards pick up the new metadata for
+      // thumbnails + clean modal previews.
+      SCW.onViewRender(dep.docSaveView, function () {
+        var changed = rebuildFileMetaIndex();
+        if (!changed) return;
+        var viewEl = document.getElementById(dep.closeoutView);
+        if (viewEl) renderInto(viewEl);
+      }, 'scwCloseoutDeliverables_metaIndex');
+    });
   }
 
   if (document.readyState === 'loading') {
