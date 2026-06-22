@@ -485,6 +485,48 @@
   }
 
   // ── Toolbar ──────────────────────────────────────────────────
+  // ── Duplicate selected (bid/survey) — POST record ids to Make ──
+  var DUPLICATE_WEBHOOK = 'https://hook.us1.make.com/sfdf6ruwhb6nrfsy0ynkqauyjsva62ce';
+  function viewAllowsDuplicate(viewKey) {
+    try {
+      var vc = ns.cfg && typeof ns.cfg.viewCfg === 'function' && ns.cfg.viewCfg(viewKey);
+      return !!(vc && vc.bulkDuplicate);
+    } catch (e) { return false; }
+  }
+  function bulkTriggeredBy() {
+    try {
+      var u = (typeof Knack !== 'undefined' && Knack.getUserAttributes) ? Knack.getUserAttributes() : null;
+      if (!u || typeof u !== 'object') return {};
+      var n = u.name;
+      if (n && typeof n === 'object') n = ((n.first || '') + ' ' + (n.last || '')).trim();
+      return { id: u.id || '', name: n || '', email: u.email || '' };
+    } catch (e) { return {}; }
+  }
+  function handleDuplicate(ids, viewKey) {
+    if (!ids || !ids.length) return;
+    if (!window.confirm('Duplicate ' + ids.length + ' selected item' +
+        (ids.length === 1 ? '' : 's') + '?')) return;
+    var dup = toolbar && toolbar.querySelector('.scw-ws-v2-bulk-duplicate');
+    if (toolbar) toolbar.classList.add('scw-ws-v2-bulk-toolbar--saving');
+    if (dup) dup.disabled = true;
+    function refetch() {
+      var v = window.Knack && Knack.views && Knack.views[viewKey];
+      if (v && v.model && typeof v.model.fetch === 'function') v.model.fetch();
+    }
+    $.ajax({
+      url: DUPLICATE_WEBHOOK, type: 'POST', contentType: 'application/json',
+      data: JSON.stringify({ recordIds: ids, viewId: viewKey, triggeredBy: bulkTriggeredBy() }),
+      crossDomain: true, timeout: 120000
+    }).always(function () {
+      if (toolbar) toolbar.classList.remove('scw-ws-v2-bulk-toolbar--saving');
+      clearAll(); syncDomFromState(); refreshToolbar();
+      // Refetch so the new duplicates appear (staggered for Make-write lag).
+      refetch();
+      setTimeout(refetch, 3000);
+      setTimeout(refetch, 8000);
+    });
+  }
+
   var toolbar; // DOM element, lazily created
   function ensureToolbar(sourceViewKey) {
     if (toolbar) return toolbar;
@@ -496,6 +538,15 @@
     toolbar.innerHTML =
       '<span class="scw-ws-v2-bulk-count">0 selected</span>' +
       '<button type="button" class="scw-ws-v2-bulk-edit" disabled>Edit selected</button>' +
+      '<button type="button" class="scw-ws-v2-bulk-duplicate" disabled>' +
+        '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" ' +
+          'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+          'stroke-linejoin="round">' +
+          '<rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>' +
+          '<path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>' +
+        '</svg>' +
+        '<span class="scw-ws-v2-bulk-duplicate-label">Duplicate</span>' +
+      '</button>' +
       '<button type="button" class="scw-ws-v2-bulk-add-acc" disabled>Add accessories</button>' +
       '<button type="button" class="scw-ws-v2-bulk-remove-acc" disabled>' +
         '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" ' +
@@ -554,6 +605,12 @@
       if (!ids.length) return;
       openBulkModal(ids, _sourceViewKey || sourceViewKey);
     });
+    var dupBtn = toolbar.querySelector('.scw-ws-v2-bulk-duplicate');
+    if (dupBtn) dupBtn.addEventListener('click', function () {
+      var ids = selList();
+      if (!ids.length) return;
+      handleDuplicate(ids, _sourceViewKey || sourceViewKey);
+    });
     toolbar.querySelector('.scw-ws-v2-bulk-delete').addEventListener('click', function () {
       var ids = selList();
       if (!ids.length) return;
@@ -578,6 +635,13 @@
     toolbar.classList.toggle('scw-ws-v2-bulk-toolbar--active', n > 0);
     toolbar.querySelector('.scw-ws-v2-bulk-count').textContent = n + ' selected';
     toolbar.querySelector('.scw-ws-v2-bulk-edit').disabled   = (n === 0);
+    var dupBtn = toolbar.querySelector('.scw-ws-v2-bulk-duplicate');
+    if (dupBtn) {
+      // Shown only on views that opt in (config bulkDuplicate — bid/survey).
+      if (viewAllowsDuplicate(_sourceViewKey)) dupBtn.style.removeProperty('display');
+      else dupBtn.style.setProperty('display', 'none', 'important');
+      dupBtn.disabled = (n === 0);
+    }
     var addAccBtn = toolbar.querySelector('.scw-ws-v2-bulk-add-acc');
     if (addAccBtn) {
       // Use setProperty w/ !important — the toolbar's CSS sets the buttons'

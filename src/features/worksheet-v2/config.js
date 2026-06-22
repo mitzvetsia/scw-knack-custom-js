@@ -296,6 +296,7 @@
         independentFields: true,            // Survey object — no SOW fallback
         moneyMode:         'survey',
         hideSow:           true,            // survey groups by Bid, not SOW
+        bulkDuplicate:     true,            // bulk panel "Duplicate" → Make webhook
         // Full cutover: hide the native source view AND its KTL accordion
         // shell entirely (no collapsible header) — JUST the v2 grid. init.js
         // relocates the v2 panel out of the accordion; styles.js hides the
