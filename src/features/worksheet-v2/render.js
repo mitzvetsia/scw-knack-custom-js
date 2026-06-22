@@ -186,10 +186,29 @@
     var issueChips = (ns.summary && typeof ns.summary.issueChipsForL1 === 'function')
       ? (ns.summary.issueChipsForL1(l1) || '') : '';
 
+    // Sub-bid total for this MDF/IDF — shown in the header so the per-MDF
+    // money is visible at a glance (skipped for install — no money model).
+    var moneyStr = '';
+    try {
+      var _vc = ns.cfg && typeof ns.cfg.viewCfg === 'function' && ns.cfg.viewCfg(sourceViewKey);
+      var _mm = _vc && _vc.moneyMode;
+      if (_mm !== 'install' && ns.summary && typeof ns.summary.l1MoneyTotal === 'function') {
+        var _opts = {
+          viewKey:         sourceViewKey,
+          fields:          (ns.cfg && typeof ns.cfg.fields === 'function') ? ns.cfg.fields(sourceViewKey) : null,
+          moneyField:      (_mm === 'sales') ? 'field_2269' : (_mm === 'survey' ? 'field_2401' : null),
+          includeServices: (_mm === 'survey')
+        };
+        var _t = ns.summary.l1MoneyTotal(l1, _opts);
+        if (_t) moneyStr = ns.summary.fmtMoney(_t);
+      }
+    } catch (e) { /* no money in header */ }
+
     head.innerHTML =
       '<span class="scw-ws-v2-l1-chevron">' + L1_CHEVRON_SVG + '</span>' +
       '<span class="scw-ws-v2-l1-label">' + escapeHtml(l1.label) + '</span>' +
       issueChips +
+      (moneyStr ? '<span class="scw-ws-v2-l1-money">' + moneyStr + '</span>' : '') +
       '<span class="scw-ws-v2-l1-count">' + l1.recordCount + '</span>';
 
     return head;

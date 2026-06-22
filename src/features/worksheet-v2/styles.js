@@ -833,6 +833,17 @@
     '  min-width: 22px !important;',
     '  text-align: center !important;',
     '}',
+    /* Per-MDF sub-bid total in the header (money at a glance). */
+    '.scw-ws-v2-l1-money {',
+    '  flex: 0 0 auto !important;',
+    '  margin-right: 6px !important;',
+    '  padding: 2px 9px !important;',
+    '  background: rgba(255, 255, 255, 0.22) !important;',
+    '  border-radius: 10px !important;',
+    '  font-size: 11.5px !important;',
+    '  font-weight: 800 !important;',
+    '  font-variant-numeric: tabular-nums !important;',
+    '}',
 
     /* L1 body — collapsed by default; opens via .scw-ws-v2-l1--open */
     '.scw-ws-v2-l1-body {',

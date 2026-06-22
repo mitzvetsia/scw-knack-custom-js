@@ -493,11 +493,20 @@
     return fmtIssueChips(allIds);
   }
 
+  // Sub-bid total for one L1 (respects moneyField + includeServices; skips
+  // assumptions). Surfaced in the MDF/IDF header by render.js.
+  function l1MoneyTotal(l1, opts) {
+    var agg = aggregate(collectRecords(l1), opts || {});
+    return (agg.totals && agg.totals.subBidSum) || 0;
+  }
+
   ns.summary = {
     buildL1Summary:    buildL1Summary,
     buildGrandSummary: buildGrandSummary,
     issueChipsForL1:   issueChipsForL1,
-    grandIssueChips:   grandIssueChips
+    grandIssueChips:   grandIssueChips,
+    l1MoneyTotal:      l1MoneyTotal,
+    fmtMoney:          fmtMoney
   };
 })();
 /*** END WORKSHEET V2 — SUMMARY ***********************************************/
