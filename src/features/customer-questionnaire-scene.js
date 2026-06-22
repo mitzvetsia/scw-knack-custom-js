@@ -631,7 +631,9 @@
   // Make owns whatever happens next (status change / PDF). Rebuilt on render.
   var PM_BTN_ID = 'scw-cq-pm-signoff';
   function syncPmButton() {
-    var show = isInternal();
+    // Staff get the finalize button — EXCEPT view-only roles (Tech Group),
+    // who can't take the sign-off action.
+    var show = isInternal() && !isReadOnlyRole();
     var existing = document.getElementById(PM_BTN_ID);
     if (!show) { if (existing && existing.parentNode) existing.parentNode.removeChild(existing); return; }
     if (existing) return;   // already mounted
@@ -691,16 +693,35 @@
   function isInternal() {
     return !!(window.SCW && typeof SCW.isInternalUser === 'function' && SCW.isInternalUser());
   }
+  // Roles that get VIEW-ONLY access to the whole questionnaire, regardless of
+  // status or @getscw.com staff membership. Matched case-insensitively against
+  // the logged-in user's Knack role names.
+  var READONLY_ROLES = ['tech group manager', 'tech group technician'];
+  function isReadOnlyRole() {
+    try {
+      var names = (typeof Knack !== 'undefined' && Knack.getUserRoleNames)
+        ? (Knack.getUserRoleNames() || []) : [];
+      for (var i = 0; i < names.length; i++) {
+        if (READONLY_ROLES.indexOf(String(names[i] == null ? '' : names[i]).trim().toLowerCase()) !== -1) {
+          return true;
+        }
+      }
+    } catch (e) {}
+    return false;
+  }
   function statusIsCustomerSignoff() {
     var s = readStatus().toLowerCase();
     return /customer/.test(s) && /sign\s*off/.test(s);
   }
   // Editable for @getscw.com staff ALWAYS; for everyone else only while the
   // record is "Pending Customer Sign off". Otherwise the page is read-only.
+  // EXCEPTION: Tech Group Manager / Tech Group Technician are always read-only,
+  // even though they're internal staff.
   function isEditable() {
+    if (isReadOnlyRole()) return false;
     return isInternal() || statusIsCustomerSignoff();
   }
-  function toggleLockBanner(locked, status) {
+  function toggleLockBanner(locked, status, roleLocked) {
     var scene = document.getElementById('kn-' + SCENE);
     var existing = document.getElementById('scw-cq-lock-banner');
     if (!locked) { if (existing && existing.parentNode) existing.parentNode.removeChild(existing); return; }
@@ -712,6 +733,12 @@
     }
     // Keep it pinned as the scene's first element so it's the first thing seen.
     if (scene.firstChild !== existing) scene.insertBefore(existing, scene.firstChild);
+    // Role-locked (Tech Group) gets a role-appropriate message; otherwise the
+    // default client-signoff message.
+    var sub = roleLocked
+      ? 'Your role has view-only access to the project questionnaire.'
+      : 'Client sign-off received on the Questionnaire. ' +
+        'Contact your SCW representative if changes are needed.';
     existing.innerHTML =
       '<svg class="scw-cq-lock-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
         'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
@@ -719,13 +746,13 @@
         '<path d="M7 11V7a5 5 0 0 1 10 0v4"></path></svg>' +
       '<div>' +
         '<div class="scw-cq-lock-title">This questionnaire is read-only</div>' +
-        '<div class="scw-cq-lock-sub">Client sign-off received on the Questionnaire. ' +
-          'Contact your SCW representative if changes are needed.</div>' +
+        '<div class="scw-cq-lock-sub">' + sub + '</div>' +
       '</div>';
   }
   function applyLock() {
     var status = readStatus();
     var locked = !isEditable();
+    var roleLocked = isReadOnlyRole();
     var scene = document.getElementById('kn-' + SCENE);
     if (scene) scene.classList.toggle('scw-cq-locked', locked);
     // readOnly on the text controls across the POC form, sign-off, AND the
@@ -741,7 +768,7 @@
       var inps = root.querySelectorAll('input, textarea');
       for (var i = 0; i < inps.length; i++) inps[i].readOnly = locked;
     });
-    toggleLockBanner(locked, status);
+    toggleLockBanner(locked, status, roleLocked);
   }
 
   /* ── Copy POC answers from "System Super Admin" down to the two POC sections ── */
