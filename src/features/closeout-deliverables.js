@@ -495,8 +495,11 @@
   }
 
   // A real thumbnail for the card: Knack's thumb_url when present, else the raw
-  // S3 URL rendered directly — <img> for images, a non-interactive <iframe>
-  // first-page preview for PDFs. Returns null when no previewable file (→ icon).
+  // S3 URL as an <img> for image files. PDFs are NOT embedded inline — Chrome
+  // renders embedded PDFs via its built-in PDF Viewer extension, which trips
+  // org "DeveloperToolsAvailability" policies and blocks DevTools on the whole
+  // page. PDFs fall back to the icon (the popover still shows the full PDF on
+  // demand). Returns null when there's no image preview (→ icon).
   function buildCardPreview(doc) {
     if (doc.thumbUrl) {
       var t = document.createElement('img');
@@ -515,19 +518,7 @@
       im.loading = 'lazy';
       return im;
     }
-    // PDF — needs the raw S3 URL (real application/pdf) for the inline viewer.
-    if (ext === 'pdf' && doc.rawUrl) {
-      var fr = document.createElement('iframe');
-      fr.className = 'scw-cd-doc__preview scw-cd-doc__preview--pdf';
-      fr.src = doc.rawUrl + (doc.rawUrl.indexOf('#') === -1 ? '#' : '&') +
-               'toolbar=0&navpanes=0&scrollbar=0&view=FitH';
-      fr.setAttribute('scrolling', 'no');
-      fr.setAttribute('tabindex', '-1');
-      fr.setAttribute('aria-hidden', 'true');
-      fr.setAttribute('loading', 'lazy');
-      return fr;
-    }
-    return null;
+    return null;   // PDFs / other → icon fallback (no inline PDF embed)
   }
 
   function buildDocCard(doc, closeoutId) {
