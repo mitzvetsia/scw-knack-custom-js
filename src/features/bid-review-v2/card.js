@@ -408,15 +408,6 @@
   }
 
   function buildSowCell(row, isAssumption, sowId) {
-    // No-SOW grid: there's no SOW to sync a row into, so show ONLY a "No SOW"
-    // note — no per-row "+ Add to SOW" (that path can't work here). The single
-    // SOW action is the per-bid "+ Create new SOW" in the column header.
-    if (isNoSowGrid(sowId)) {
-      var noTd = document.createElement('td');
-      noTd.className = 'scw-bid-review-v2__sow-cell scw-bid-review-v2__sow-cell--empty';
-      noTd.innerHTML = '<span class="scw-bid-review-v2__no-sow-note">No SOW</span>';
-      return noTd;
-    }
     var sowItemData = row && row.sowItemData;
     var diff = aggregateMismatch(row);
     var td = document.createElement('td');
@@ -1308,10 +1299,11 @@
       sowGroup =
         '<div class="scw-bid-review-v2__head-group scw-bid-review-v2__head-group--sow">' +
           '<div class="scw-bid-review-v2__head-group-label">SOW</div>' +
-          headBtn('+ Create new SOW', 'create', 'package_create_sow', pkg.id, sowId) +
-          // No SOW exists to "update to match" — offer Create only.
+          // Hide only "+ Create new SOW" on the no-SOW grid; keep every other
+          // SOW/CR action and the per-row "+ Add to SOW".
           (isNoSowGrid(sowId) ? '' :
-            headBtn('← Update SOW to match Bid', 'adopt', 'package_copy_to_sow', pkg.id, sowId)) +
+            headBtn('+ Create new SOW', 'create', 'package_create_sow', pkg.id, sowId)) +
+          headBtn('← Update SOW to match Bid', 'adopt', 'package_copy_to_sow', pkg.id, sowId) +
         '</div>';
     }
 
