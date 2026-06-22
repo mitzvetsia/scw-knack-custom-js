@@ -127,6 +127,9 @@
       '.' + CARD_BTN_CLASS + ':hover {',
       '  background: #eaf2fb; border-color: #07467c; color: #053659;',
       '}',
+      // v2 worksheet: the button sits in the card detail panel on its own row.
+      '.scw-svb-v2-action { margin-top: 10px; padding-top: 8px;',
+      '  border-top: 1px solid #eef2f6; }',
 
       // Modal scaffold (shared with both features)
       '.scw-svb-overlay {',
@@ -928,6 +931,65 @@
     });
   }
 
+  // ── v2 worksheet path ───────────────────────────────────
+  // view_3505 is cut over to worksheet-v2, which renders .scw-ws-v2-card
+  // (not v1's tr.scw-ws-row). Inject the same "+ Variant" button into each
+  // v2 card's detail panel — shown on EVERY card including locked ones (the
+  // variant action is independent of the card's own field lock). The
+  // document-level click handler + openItemVariantModal (model-based) work
+  // unchanged. Mirrors deliverables-worksheet's v2 re-inject pattern.
+  var V2_PANEL_ID = 'scw-ws-v2-' + CONFIG.itemGridView;
+  var _v2Mutating = false;
+  function injectItemButtonsV2() {
+    var container = document.getElementById(V2_PANEL_ID);
+    if (!container) return;
+    var cards = container.querySelectorAll('.scw-ws-v2-card[data-scw-ws-v2-record]');
+    if (!cards.length) return;
+    _v2Mutating = true;
+    try {
+      for (var i = 0; i < cards.length; i++) {
+        var card = cards[i];
+        var recId = card.getAttribute('data-scw-ws-v2-record');
+        if (!recId || !/^[0-9a-f]{24}$/i.test(recId)) continue;
+        if (card.querySelector('button.' + CARD_BTN_CLASS)) continue;   // already injected
+        var detail = card.querySelector('.scw-ws-v2-detail');
+        if (!detail) continue;
+        var wrap = document.createElement('div');
+        wrap.className = 'scw-svb-v2-action';
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = CARD_BTN_CLASS;
+        btn.textContent = '+ Variant';
+        btn.setAttribute('data-item-id', recId);
+        btn.setAttribute('title', 'Send a copy of this line item to another bid');
+        wrap.appendChild(btn);
+        detail.appendChild(wrap);
+      }
+    } finally {
+      setTimeout(function () { _v2Mutating = false; }, 0);
+    }
+  }
+  // worksheet-v2 swaps its body innerHTML on every data tick, wiping our
+  // buttons; re-inject on any child mutation (ignoring our own writes).
+  function installV2Observer() {
+    var container = document.getElementById(V2_PANEL_ID);
+    if (!container || container.__scwSvbObs) return;
+    container.__scwSvbObs = true;
+    var body = container.querySelector('.scw-ws-v2-body') || container;
+    var pending = false;
+    var obs = new MutationObserver(function () {
+      if (_v2Mutating || pending) return;
+      pending = true;
+      setTimeout(function () { pending = false; injectItemButtonsV2(); }, 150);
+    });
+    obs.observe(body, { childList: true, subtree: true });
+  }
+  function staggerV2() {
+    [50, 250, 750, 2000].forEach(function (d) {
+      setTimeout(function () { installV2Observer(); injectItemButtonsV2(); }, d);
+    });
+  }
+
   document.addEventListener('click', function (e) {
     var btn = e.target.closest && e.target.closest('button.' + CARD_BTN_CLASS);
     if (!btn) return;
@@ -1028,13 +1090,17 @@
     // Scene-wide hook: enhances both views whenever scene_1140 renders.
     SCW.onSceneRender(CONFIG.sceneId, function () {
       injectBidColumn();
-      injectItemButtons();
+      injectItemButtons();   // v1 cards (if any)
+      staggerV2();           // v2 worksheet cards
     }, 'scwSubVariantBid');
 
     // View-specific hooks so re-renders after inline edits don't strip
     // our column or per-card buttons.
     SCW.onViewRender(CONFIG.bidGridView,  injectBidColumn,   'scwSubVariantBid');
-    SCW.onViewRender(CONFIG.itemGridView, injectItemButtons, 'scwSubVariantBid');
+    SCW.onViewRender(CONFIG.itemGridView, function () {
+      injectItemButtons();   // v1 path (no-op on v2)
+      staggerV2();           // v2 path
+    }, 'scwSubVariantBid');
 
     // device-worksheet rebuilds the worksheet cards inside view_3505
     // every time it runs transformView (initial render, inline edits,
