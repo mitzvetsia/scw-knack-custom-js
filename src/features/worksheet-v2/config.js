@@ -307,7 +307,11 @@
         // filterPills is set the strip mounts even with hideSow:true, reads
         // this connection field, and labels itself accordingly. `field` may
         // be a field key or a logical name (resolved via cfg.fields).
-        filterPills:       { field: 'field_2415', label: 'Bid' },
+        filterPills:       { field: 'field_2415', label: 'Bid',
+                             // Append the friendly bid name (field_2636) to each
+                             // pill, resolved from the BIDs grid (view_3507).
+                             nameViews: ['view_3507'], nameField: 'field_2636',
+                             appendName: true },
         noAccessories:     true,            // Survey Line Items have no accessory
                                             // relationship yet (CLAUDE.md #16) — hide
                                             // the bulk Add/Remove accessories buttons

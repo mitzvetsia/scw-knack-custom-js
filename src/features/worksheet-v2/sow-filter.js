@@ -71,10 +71,11 @@
         fk = ns.cfg.fields(viewKey)[fk] || fk;
       }
       return {
-        fieldKey:  fk,
-        label:     fp.label || 'Filter',
-        nameViews: fp.nameViews || null,
-        nameField: fp.nameField || null
+        fieldKey:   fk,
+        label:      fp.label || 'Filter',
+        nameViews:  fp.nameViews || null,
+        nameField:  fp.nameField || null,
+        appendName: !!fp.appendName   // show friendly name ON the pill, not just hover
       };
     }
     var sowK = (ns.cfg && ns.cfg.fields(viewKey).sow) || 'field_2154';
@@ -216,18 +217,21 @@
       return;
     }
 
+    var spec = filterSpec(viewKey);
     var html =
       '<div class="scw-ws-v2-sow-pills">' +
-        '<span class="scw-ws-v2-sow-pills-label">' + esc(filterSpec(viewKey).label) + '</span>' +
+        '<span class="scw-ws-v2-sow-pills-label">' + esc(spec.label) + '</span>' +
         '<button type="button" class="scw-ws-v2-sow-pill" ' +
           'data-scw-ws-v2-sow-pill="__all">Show All</button>' +
         sows.map(function (s) {
-          // Hover tooltip shows the SOW name (field_2126); fall back to the
-          // SW-#### label when a record has no name loaded.
+          // Tooltip always shows "label — name". When the spec opts in via
+          // appendName (e.g. the Bid filter), the friendly name is also shown
+          // ON the pill (label — name); otherwise the pill stays terse.
           var tip = s.name ? (s.label + ' — ' + s.name) : s.label;
+          var text = (spec.appendName && s.name) ? (s.label + ' — ' + s.name) : s.label;
           return '<button type="button" class="scw-ws-v2-sow-pill" ' +
             'title="' + esc(tip) + '" ' +
-            'data-scw-ws-v2-sow-pill="' + esc(s.id) + '">' + esc(s.label) + '</button>';
+            'data-scw-ws-v2-sow-pill="' + esc(s.id) + '">' + esc(text) + '</button>';
         }).join('') +
         '<button type="button" class="scw-ws-v2-sow-pill scw-ws-v2-sow-pill--blank" ' +
           'data-scw-ws-v2-sow-pill="' + BLANK + '">(blank)</button>' +
