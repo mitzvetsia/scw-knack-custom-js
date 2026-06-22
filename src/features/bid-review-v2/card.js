@@ -1302,11 +1302,12 @@
       sowGroup =
         '<div class="scw-bid-review-v2__head-group scw-bid-review-v2__head-group--sow">' +
           '<div class="scw-bid-review-v2__head-group-label">SOW</div>' +
-          // Hide only "+ Create new SOW" on the no-SOW grid; keep every other
-          // SOW/CR action and the per-row "+ Add to SOW".
+          // No-SOW grid: there's no SOW to "update to match", so show only
+          // "+ Create new SOW" and hide "Update SOW to match Bid". Real grids
+          // show both.
+          headBtn('+ Create new SOW', 'create', 'package_create_sow', pkg.id, sowId) +
           (isNoSowGrid(sowId) ? '' :
-            headBtn('+ Create new SOW', 'create', 'package_create_sow', pkg.id, sowId)) +
-          headBtn('← Update SOW to match Bid', 'adopt', 'package_copy_to_sow', pkg.id, sowId) +
+            headBtn('← Update SOW to match Bid', 'adopt', 'package_copy_to_sow', pkg.id, sowId)) +
         '</div>';
     }
 
