@@ -79,6 +79,8 @@
     var fExist     = F.existCabling || 'field_2461';
     var fExt       = F.exterior     || 'field_1984';
     var fPlenum    = F.plenum       || 'field_1983';
+    var fLaborDesc = F.laborDesc    || '';
+    var includeServices = !!opts.includeServices;   // bid: count services too
     var bucketCategoryOf = (ns.card && ns.card.bucketCategoryOf) ||
                            function () { return 'default'; };
 
@@ -86,6 +88,8 @@
       cam:      { label: 'Camera / Reader',     byProduct: Object.create(null),
                   subtotal: emptyAgg(), minSort: Infinity },
       'default':{ label: 'Networking / Headend', byProduct: Object.create(null),
+                  subtotal: emptyAgg(), minSort: Infinity },
+      services: { label: 'Services',            byProduct: Object.create(null),
                   subtotal: emptyAgg(), minSort: Infinity }
     };
     var totals = emptyAgg();
@@ -94,10 +98,12 @@
       var r = records[i];
       if (!r) continue;
       var cat = bucketCategoryOf(r, viewKey);
-      // Skip assumptions / services — they don\'t belong in the
-      // hardware summary.
-      if (cat === 'assumptions' || cat === 'services') continue;
-      var groupKey = (cat === 'cam') ? 'cam' : 'default';
+      // Assumptions never belong in the summary. Services are skipped UNLESS
+      // includeServices (bid) — then they roll into a "Services" section so the
+      // per-MDF sub-bid total is complete.
+      if (cat === 'assumptions') continue;
+      if (cat === 'services' && !includeServices) continue;
+      var groupKey = (cat === 'cam') ? 'cam' : (cat === 'services' ? 'services' : 'default');
       var grp = groups[groupKey];
 
       // Track the section\'s sort key = minimum sortOrder (proposal
@@ -106,8 +112,9 @@
       var so = readNum(r, fSort);
       if (isFinite(so) && so < grp.minSort) grp.minSort = so;
 
-      var prod = (fProductNm && stripHtml(r[fProductNm])) ||
-                 stripHtml(r[fProduct]) || '(unnamed)';
+      var prod = (fProductNm && stripHtml(r[fProductNm])) || stripHtml(r[fProduct]) ||
+                 (groupKey === 'services' && fLaborDesc ? stripHtml(r[fLaborDesc]) : '') ||
+                 (groupKey === 'services' ? '(service)' : '(unnamed)');
       var qty = readNum(r, fQty) || 1;
 
       var p = grp.byProduct[prod];
@@ -187,6 +194,17 @@
         sortOrder: groups['default'].minSort,
         products: defProducts,
         subtotal: groups['default'].subtotal
+      });
+    }
+    var svcProducts = productList(groups.services.byProduct);
+    if (svcProducts.length) {
+      sections.push({
+        key: 'services',
+        label: groups.services.label,
+        isCamReader: false,
+        sortOrder: groups.services.minSort,
+        products: svcProducts,
+        subtotal: groups.services.subtotal
       });
     }
     // Sort sections by their minimum field_2218 (proposal bucket

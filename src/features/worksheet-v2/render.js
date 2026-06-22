@@ -245,6 +245,9 @@
       : (surveyMoney ? { moneyField: 'field_2401', moneyLabel: 'Sub Bid' } : {});
     // Install has no money columns — show the summary minus the Sub Bid column.
     if (installMoney) summaryMoneyOpts.hideMoney = true;
+    // Bid (survey): roll service items into the summary so the per-MDF sub-bid
+    // total is complete.
+    if (surveyMoney) summaryMoneyOpts.includeServices = true;
     // Hand the summary a per-view field map (cfg.fields) + the view key so
     // aggregate() resolves product/qty/cabling/money per-object instead of
     // the SOW literals it used to hardcode (CLAUDE.md #15). SOW path is
@@ -493,6 +496,7 @@
       ? { moneyField: 'field_2269', moneyLabel: 'Total' }
       : (_grandSurvey ? { moneyField: 'field_2401', moneyLabel: 'Sub Bid' } : {});
     if (_grandInstall) grandMoneyOpts.hideMoney = true;
+    if (_grandSurvey) grandMoneyOpts.includeServices = true;
     try {
       grandMoneyOpts.fields = (ns.cfg && typeof ns.cfg.fields === 'function')
         ? ns.cfg.fields(sourceViewKey) : null;
