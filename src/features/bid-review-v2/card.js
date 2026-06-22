@@ -1482,7 +1482,16 @@
     var colspan = grid.packages.length + 3;
     var groups = grid.groups || [{ key: '__all__', level: 0, rows: grid.rows, subgroups: [] }];
     for (var g = 0; g < groups.length; g++) {
-      appendGroup(tbody, groups[g], grid.packages, colspan, grid.sowId);
+      // Per-group guard: a throw in one group must not blank the whole section
+      // (render.js's per-grid catch would otherwise drop the entire grid →
+      // empty body, which is the "loads then disappears" on a no-SOW bid).
+      try {
+        appendGroup(tbody, groups[g], grid.packages, colspan, grid.sowId);
+      } catch (ge) {
+        if (window.console && console.warn) {
+          console.warn('[scw-br-v2] appendGroup threw', grid.sowId, groups[g] && groups[g].key, ge);
+        }
+      }
     }
     table.appendChild(tbody);
     section.appendChild(table);
