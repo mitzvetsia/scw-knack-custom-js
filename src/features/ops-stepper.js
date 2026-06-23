@@ -682,12 +682,25 @@
     // visibility gate used before it was disabled. Zero/absent ⇒ no bids.
     if (!conditionMet({ field: 'field_2728', gt: 0 })) return '';
     var snap = readSubBidSnapshot();
-    if (snap === null) return '';                       // field not on the view → fail open
-    if (snap._empty || snap._bad || !snap.basisBidId) {
+
+    // The basis-bid CHOICE is the actual review decision, and it persists as a
+    // connection on the SOW (field_2942) independently of the diff snapshot
+    // (field_2941). The snapshot can read empty here when it isn't exposed on
+    // the Bid Review write view (view_3918) — Knack silently drops it on the
+    // PUT — but the basis still saved, so the review DID happen. Honor a
+    // persisted basis so a reviewed bid (especially a zero-difference one)
+    // isn't falsely blocked. When the snapshot IS present we still use it to
+    // require a reviewer note on a differing bid.
+    var hasBasis = !!(snap && snap.basisBidId) ||
+      (fieldPresent('field_2942') && String(readField('field_2942') || '').trim() !== '');
+
+    if (!hasBasis) {
+      if (snap === null) return '';                     // field not on the view → fail open
       return 'Select the basis bid on the Bid Review page so the sub-bid diff ' +
              'review is captured, then publish.';
     }
-    if (Number(snap.total) > 0 && !(snap.note && String(snap.note).trim())) {
+    if (snap && snap.basisBidId && Number(snap.total) > 0 &&
+        !(snap.note && String(snap.note).trim())) {
       return 'The basis bid differs from this SOW (' + snap.total + ' difference' +
              (Number(snap.total) === 1 ? '' : 's') + '). Add a reviewer note on ' +
              'the Bid Review page explaining why, then publish.';
@@ -733,12 +746,18 @@
     // instead of a "Review needed" / "choose a basis bid" prompt the user can
     // never satisfy (there are no bids to pick).
     var noBids = !conditionMet({ field: 'field_2728', gt: 0 });
+    // Basis chosen even when the snapshot didn't persist onto this view (see
+    // publishFinalBlockReason) — read the basis connection (field_2942) too.
+    var hasBasis = !!(snap && snap.basisBidId) ||
+      (fieldPresent('field_2942') && String(readField('field_2942') || '').trim() !== '');
 
     var wrap = document.createElement('div');
     wrap.className = 'scw-ops-subbid';
     var html = '';
 
-    var basis = (snap && snap.basisBidId) ? (snap.basisBidName || 'selected bid') : '';
+    var basis = (snap && snap.basisBidId)
+      ? (snap.basisBidName || 'selected bid')
+      : (hasBasis ? (String(readField('field_2942') || '').trim() || 'selected bid') : '');
     var readyCls = reason ? 'warn' : 'ok';
     var readyTxt = reason ? 'Review needed' : (noBids ? 'Not required' : '✓ Reviewed');
     html += '<div class="scw-ops-subbid__bar">' +
@@ -758,11 +777,13 @@
 
     // No saved diff yet → nothing more to show.
     if (!snap || snap._empty || snap._bad || !snap.basisBidId) {
-      html += '<div class="scw-ops-subbid__empty">' +
-              (noBids
-                ? 'No subcontractor bids for this SOW — sub-bid review isn’t required.'
-                : 'No sub-bid diff saved for this SOW yet. Choose the basis bid on the Bid Review page.') +
-              '</div>';
+      var emptyMsg = noBids
+        ? 'No subcontractor bids for this SOW — sub-bid review isn’t required.'
+        : (hasBasis
+            ? 'Basis bid selected on the Bid Review page. The full diff isn’t projected onto ' +
+              'this view — open the Bid Review page for line detail.'
+            : 'No sub-bid diff saved for this SOW yet. Choose the basis bid on the Bid Review page.');
+      html += '<div class="scw-ops-subbid__empty">' + emptyMsg + '</div>';
       wrap.innerHTML = html;
       return wrap;
     }
