@@ -38,7 +38,7 @@
   var DEPLOYMENTS = [
     { closeoutView: 'view_3940', docSaveView: 'view_3941',
       addSlug: 'add-file-to-closeout',  editSlug: 'edit-doc-file' },
-    { closeoutView: 'view_4058', docSaveView: 'view_4063',
+    { closeoutView: 'view_4058', docSaveView: 'view_4068',
       addSlug: 'add-file-to-closeout3', editSlug: 'edit-doc-file' }
   ];
   function depFor(closeoutView) {
