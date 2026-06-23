@@ -221,6 +221,18 @@
       if (records[rb] && records[rb].id) recordByIdLocal[records[rb].id] = records[rb];
     }
 
+    // MDF/IDF label → canonical group id, built from records whose MDF
+    // connection _raw IS present. A record whose _raw is MISSING (Knack still
+    // renders the connection's display text in field_XXXX, but the parsed
+    // _raw array isn't on the model this pass) can then re-home into the right
+    // L1 by matching that display label — instead of dropping into the
+    // synthetic "Unassigned" group while its card still shows the MDF.
+    var mdfLabelToId = Object.create(null);
+    for (var ml = 0; ml < records.length; ml++) {
+      var mlc = readConn(records[ml], FIELD_MDF_IDF);
+      if (mlc.id && mlc.label && !mdfLabelToId[mlc.label]) mdfLabelToId[mlc.label] = mlc.id;
+    }
+
     for (var i = 0; i < records.length; i++) {
       var rec = records[i];
       var inMountingBucket = bucketIdOf(rec) === MOUNTING_HARDWARE_BUCKET;
@@ -292,14 +304,23 @@
           l1Id    = '__synthetic__' + l1Label;
         }
         isSynthetic = !pMdf.label && !l1Conn.label;
-      } else if (l1Conn.label) {
-        l1Id        = l1Conn.id || l1Conn.label;
-        l1Label     = l1Conn.label;
-        isSynthetic = false;
       } else {
-        l1Label     = syntheticL1ForBucket(l2Conn.label);
-        l1Id        = '__synthetic__' + l1Label;
-        isSynthetic = true;
+        // Prefer the parsed connection (_raw). Fall back to the DISPLAY value
+        // (field_XXXX rendered text, HTML-stripped) when _raw is absent, so a
+        // record whose MDF shows on its card still groups under that MDF.
+        // Re-home to the canonical group id another record established for the
+        // same label, so the _raw-less record merges into the real group
+        // rather than forming a duplicate (or sinking to "Unassigned").
+        var mdfLabel = l1Conn.label || readPlain(rec, FIELD_MDF_IDF);
+        if (mdfLabel) {
+          l1Id        = l1Conn.id || mdfLabelToId[mdfLabel] || mdfLabel;
+          l1Label     = mdfLabel;
+          isSynthetic = false;
+        } else {
+          l1Label     = syntheticL1ForBucket(l2Conn.label);
+          l1Id        = '__synthetic__' + l1Label;
+          isSynthetic = true;
+        }
       }
 
       var l1 = l1Map[l1Id];
