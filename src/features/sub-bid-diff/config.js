@@ -62,10 +62,17 @@
       pkgPdf:        'field_2626'   // Current Bid PDF (file)
     },
 
-    // A package whose status text matches this is treated as a
-    // "complete / submitted" bid — eligible to be the diff baseline.
-    // field_2550 is free text, so we match loosely. Non-matching packages
-    // are still selectable via the manual override dropdown.
+    // ── Explicit "basis bid" designation ──────────────────────────────
+    // The diff is ALWAYS against the bid the user explicitly designates as
+    // the basis for this SOW → Proposal — never an auto-pick. Persisted as
+    // a single-connection field on the SOW (SOW → bid package). Until the
+    // Knack field exists, leave basisBidField '' and the panel uses an
+    // interim in-session selector (still explicit — the user must choose).
+    basisBidField: '',          // TODO: 'field_XXXX' — SOW→bid connection once created
+    basisBidView:  'view_3918', // SOW records view on scene_1155 (carries SOW fields)
+
+    // A package whose status text reads complete/submitted — surfaced as a
+    // hint next to each option, NOT used to auto-select.
     completeStatusRe: /complete|submit|final|received|done/i,
 
     // ── Diff tiers ─────────────────────────────────────────────────────

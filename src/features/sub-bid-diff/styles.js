@@ -23,7 +23,14 @@
     '  padding: 2px 9px; font-size: 11px; font-weight: 600; text-transform: uppercase; }',
     '.scw-sbd-banner__spacer { flex: 1 1 auto; }',
 
+    /* per-SOW section */
+    '.scw-sbd-sec { border-top: 1px solid #e2e8f0; }',
+    '.scw-sbd-sec:first-child { border-top: none; }',
+    '.scw-sbd-sow-head { padding: 10px 14px 0; }',
+    '.scw-sbd-sow-name { font-size: 14px; font-weight: 700; color: #0f172a; }',
+
     /* baseline picker */
+    '.scw-sbd-baseline select[disabled] { background: #f1f5f9; color: #334155; cursor: default; }',
     '.scw-sbd-baseline { display: flex; align-items: center; gap: 10px; flex-wrap: wrap;',
     '  padding: 10px 14px; background: #f8fafc; border-bottom: 1px solid #e2e8f0; font-size: 13px; }',
     '.scw-sbd-baseline label { color: #475569; font-weight: 600; }',
