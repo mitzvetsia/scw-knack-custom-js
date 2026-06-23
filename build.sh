@@ -70,6 +70,11 @@ cat \
   src/features/bid-review-v2/bulk-cr.js \
   src/features/bid-review-v2/render.js \
   src/features/bid-review-v2/init.js \
+  src/features/sub-bid-diff/config.js \
+  src/features/sub-bid-diff/transform.js \
+  src/features/sub-bid-diff/styles.js \
+  src/features/sub-bid-diff/render.js \
+  src/features/sub-bid-diff/init.js \
   src/features/sales-revision-column.js \
   src/features/group-collapse.js \
   src/features/sow-filter-pills.js \
