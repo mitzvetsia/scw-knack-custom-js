@@ -68,8 +68,8 @@
     // a single-connection field on the SOW (SOW → bid package). Until the
     // Knack field exists, leave basisBidField '' and the panel uses an
     // interim in-session selector (still explicit — the user must choose).
-    basisBidField: '',          // TODO: 'field_XXXX' — SOW→bid connection once created
-    basisBidView:  'view_3918', // SOW records view on scene_1155 (carries SOW fields)
+    basisBidField: 'field_2942', // REL_proposal basis — SOW→bid package (single connection)
+    basisBidView:  'view_3918',  // SOW records write view on scene_1155 (must expose field_2942)
 
     // A package whose status text reads complete/submitted — surfaced as a
     // hint next to each option, NOT used to auto-select.

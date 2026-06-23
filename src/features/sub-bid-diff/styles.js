@@ -37,6 +37,7 @@
     '.scw-sbd-baseline select { padding: 5px 8px; border: 1px solid #cbd5e1;',
     '  border-radius: 6px; font-size: 13px; background: #fff; max-width: 460px; }',
     '.scw-sbd-baseline__meta { color: #64748b; font-size: 12px; }',
+    '.scw-sbd-baseline__meta--saved { color: #047857; font-weight: 600; }',
 
     /* tally header */
     '.scw-sbd-tally { display: flex; gap: 8px; flex-wrap: wrap; align-items: center;',

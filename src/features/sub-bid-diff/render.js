@@ -49,6 +49,31 @@
   // Explicit, per-SOW basis selection. No default — the user must choose.
   // Keyed by sowId. Seeded from the persisted field when configured.
   var selectedByGrid = Object.create(null);
+  var savedByGrid    = Object.create(null);  // sowId → true once PUT succeeds
+  var savingGrid     = Object.create(null);  // sowId → true while a write is in flight
+
+  /** Persist the basis bid on the SOW (field_2942, single connection) via the
+   *  SOW write view. Optimistic: caller updates selection + re-renders first. */
+  function writeBasis(sowId, pkgId) {
+    if (!C.basisBidField || !sowId) return;
+    if (!(window.SCW && typeof SCW.knackAjax === 'function' && SCW.knackRecordUrl)) return;
+    var body = {};
+    body[C.basisBidField] = pkgId ? [pkgId] : [];
+    savingGrid[sowId] = true; render();
+    SCW.knackAjax({
+      url: SCW.knackRecordUrl(C.basisBidView, sowId),
+      type: 'PUT',
+      data: JSON.stringify(body)
+    }).then(function () {
+      savingGrid[sowId] = false;
+      if (pkgId) savedByGrid[sowId] = true; else delete savedByGrid[sowId];
+      render();
+    }, function (xhr) {
+      savingGrid[sowId] = false;
+      console.warn('[scw-sub-bid-diff] basis write failed', sowId, xhr && xhr.status);
+      render();
+    });
+  }
 
   // ── source reads ───────────────────────────────────────────────────────
   function v2data() { return window.SCW.bidReviewV2 && window.SCW.bidReviewV2.data; }
@@ -166,15 +191,21 @@
     var pkgs = grid.packages || [];
     var opts = '<option value="">— choose the basis bid —</option>' +
       pkgs.map(function (p) { return pkgOption(p, selId); }).join('');
-    var lockNote = persisted
-      ? '<span class="scw-sbd-baseline__meta">basis bid is saved on this SOW</span>'
-      : '<span class="scw-sbd-baseline__meta">interim — choose the bid this SOW is built on' +
-        ' (saved once the Basis Bid field exists)</span>';
+    var note;
+    if (savingGrid[grid.sowId]) {
+      note = '<span class="scw-sbd-baseline__meta">saving…</span>';
+    } else if (selId && (persisted || savedByGrid[grid.sowId])) {
+      note = '<span class="scw-sbd-baseline__meta scw-sbd-baseline__meta--saved">✓ saved as the basis for this SOW → proposal</span>';
+    } else if (selId) {
+      note = '<span class="scw-sbd-baseline__meta">not saved yet</span>';
+    } else {
+      note = '<span class="scw-sbd-baseline__meta">choose the bid this SOW → proposal is built on</span>';
+    }
     return '<div class="scw-sbd-baseline">' +
       '<label>Basis bid:</label>' +
       '<select data-scw-sbd-basis data-sow-id="' + esc(grid.sowId) + '"' +
-        (persisted ? ' disabled' : '') + '>' + opts + '</select>' +
-      lockNote + '</div>';
+        (savingGrid[grid.sowId] ? ' disabled' : '') + '>' + opts + '</select>' +
+      note + '</div>';
   }
 
   function tally(res) {
@@ -279,8 +310,11 @@
       var sel = e.target.closest && e.target.closest('[data-scw-sbd-basis]');
       if (!sel) return;
       var sowId = sel.getAttribute('data-sow-id');
-      if (sowId) selectedByGrid[sowId] = sel.value || '';
-      render();
+      if (!sowId) return;
+      var pkgId = sel.value || '';
+      selectedByGrid[sowId] = pkgId;   // optimistic — diff shows immediately
+      if (C.basisBidField) writeBasis(sowId, pkgId);  // persist (re-renders)
+      else render();
     });
   }
 
