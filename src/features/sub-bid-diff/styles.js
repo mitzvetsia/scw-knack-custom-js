@@ -42,7 +42,8 @@
     '.scw-sbd-ready { font-size: 11px; font-weight: 700; padding: 2px 9px; border-radius: 999px; }',
     '.scw-sbd-ready--ready { background: #f0fdf4; color: #047857; border: 1px solid #bbf7d0; }',
     '.scw-sbd-ready--needs-basis { background: #fffbeb; color: #b45309; border: 1px solid #fde68a; }',
-    '.scw-sbd-ready--needs-review { background: #fffbeb; color: #b45309; border: 1px solid #fde68a; }',
+    '.scw-sbd-ready--needs-review { background: #f8fafc; color: #475569; border: 1px solid #e2e8f0; }',
+    '.scw-sbd-ready--needs-note { background: #fffbeb; color: #b45309; border: 1px solid #fde68a; }',
     '.scw-sbd-ready--stale { background: #fff1f2; color: ' + T.added.color + '; border: 1px solid #fecdd3; }',
 
     /* per-SOW inline block (lives inside each v2 SOW section, under header) */
@@ -133,18 +134,18 @@
     '@keyframes scwSbdFlash { 0% { background: #fde68a; } 100% { background: transparent; } }',
     '.scw-sbd-flash > td, tr.scw-sbd-flash > td { animation: scwSbdFlash 2s ease-out; }',
 
-    /* reviewer note + save */
+    /* reviewer note (auto-saves — no Save button) */
     '.scw-sbd-notebar { padding: 12px 14px; border-top: 1px solid #f1f5f9; background: #fafbfc; }',
+    '.scw-sbd-notebar--req { background: #fffbeb; border-top-color: #fde68a; }',
     '.scw-sbd-note-label { display: block; font-size: 12px; color: #475569; font-weight: 600; margin-bottom: 6px; }',
+    '.scw-sbd-req { color: #b45309; font-weight: 700; }',
     '.scw-sbd-note { width: 100%; box-sizing: border-box; border: 1px solid #cbd5e1;',
     '  border-radius: 6px; padding: 7px 9px; font-size: 13px; font-family: inherit; resize: vertical; }',
+    '.scw-sbd-notebar--req .scw-sbd-note { border-color: #fbbf24; background: #fff; }',
     '.scw-sbd-noterow { display: flex; align-items: center; gap: 10px; margin-top: 8px; }',
-    '.scw-sbd-save-btn { padding: 6px 14px; border: none; border-radius: 6px; background: #0f172a;',
-    '  color: #fff; font-size: 13px; font-weight: 600; cursor: pointer; }',
-    '.scw-sbd-save-btn:hover { background: #1e293b; }',
-    '.scw-sbd-save-btn[disabled] { opacity: .6; cursor: default; }',
     '.scw-sbd-savemsg { font-size: 12px; color: #64748b; }',
     '.scw-sbd-savemsg--ok { color: #047857; font-weight: 600; }',
+    '.scw-sbd-hint { font-size: 11px; color: #94a3b8; margin-left: auto; }',
 
     '.scw-sbd-empty { padding: 22px 14px; color: #94a3b8; text-align: center; font-size: 13px; }'
   ].join('\n');

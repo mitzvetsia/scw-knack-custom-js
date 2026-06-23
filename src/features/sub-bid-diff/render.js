@@ -111,20 +111,6 @@
     return persistedBasis(sowId) || '';
   }
 
-  /** Publish-readiness for a SOW, derived from the persisted fields that the
-   *  publish surface can also read: field_2942 (basis bid) + field_2941 (saved
-   *  diff/note). The diff is computed here, but the GATE FLAGS travel. */
-  function readinessFor(sowId) {
-    var basis = C.basisBidField ? persistedBasis(sowId) : '';
-    if (!basis) return { state: 'needs-basis', label: 'Pick a basis bid' };
-    var snap = persistedSnapshot(sowId);
-    if (!snap || !snap.savedAt) return { state: 'needs-review', label: 'Save your review' };
-    if (snap.basisBidId && snap.basisBidId !== basis) {
-      return { state: 'stale', label: 'Basis changed — re-save review' };
-    }
-    return { state: 'ready', label: '✓ Reviewed — ready to publish' };
-  }
-
   // ── snapshot (field_2941): reviewer note + frozen diff ──────────────────
   var noteByGrid = Object.create(null);  // sowId → in-progress note text
   var savedSnap  = Object.create(null);  // sowId → true after a successful save
@@ -147,18 +133,41 @@
     return null;
   }
 
-  /** Build the frozen diff blob for a SOW against its current basis. */
-  function buildBlob(sowId) {
-    var v2t = window.SCW.bidReviewV2 && window.SCW.bidReviewV2.transform;
-    if (!v2t || typeof v2t.buildState !== 'function') return null;
-    var state = v2t.buildState(
-      readView(C.bidViewKey), readView(C.sowItemsViewKey), readView(C.bidPkgViewKey));
-    var grid = null;
-    for (var i = 0; state && i < state.sowGrids.length; i++) {
-      if (state.sowGrids[i].sowId === sowId) { grid = state.sowGrids[i]; break; }
-    }
+  var lastWrittenSig = Object.create(null);  // sowId → signature last PUT to field_2941
+  var autoTimers     = Object.create(null);  // sowId → pending debounce timer
+
+  /** The reviewer note in effect for a SOW: an in-session edit wins, else the
+   *  persisted snapshot's note. */
+  function currentNote(sowId) {
+    if (sowId in noteByGrid) return noteByGrid[sowId] || '';
+    var snap = persistedSnapshot(sowId);
+    return (snap && snap.note) || '';
+  }
+
+  /** Stable signature of a blob's MEANINGFUL content (excludes savedAt, which
+   *  always changes) — so auto-save only fires when the diff/note actually
+   *  changed, never in a loop. */
+  function blobSig(b) {
+    if (!b) return '';
+    var exSig = (b.exceptions || []).map(function (e) {
+      return e.tier + '|' + e.label + '|' + Math.round((e.delta || 0) * 100) +
+        '|' + ((e.fields || []).join(','));
+    }).join(';');
+    var c = b.counts || {};
+    return [
+      b.basisBidId || '', b.total || 0, Math.round((b.laborDelta || 0) * 100),
+      [c.material || 0, c.spec || 0, c.added || 0, c.orphan || 0].join(','),
+      String(b.note || '').trim(), exSig
+    ].join('~');
+  }
+
+  /** Build the diff blob for a SOW from an already-resolved v2 grid (no second
+   *  buildState). The note is whatever's currently in effect for the SOW. */
+  function buildBlobWith(grid) {
+    if (!grid) return null;
+    var sowId = grid.sowId;
     var pkgId = basisFor(sowId);
-    if (!grid || !pkgId) return null;
+    if (!pkgId) return null;
     var res = distill(grid, pkgId);
     var pkg = null;
     for (var p = 0; p < (grid.packages || []).length; p++) {
@@ -169,20 +178,37 @@
       basisBidId: pkgId, basisBidName: (pkg && (pkg.bidName || pkg.name)) || '',
       savedAt: new Date().toISOString(),
       laborDelta: res.laborDelta, counts: res.counts, coverageGaps: res.coverageGaps,
+      total: res.total,
       exceptions: res.exceptions.map(function (e) {
         return { tier: e.tier, label: e.label, product: e.product, fields: e.fields || [],
                  sowFee: e.sowFee, bidLabor: e.bidLabor, delta: e.delta, jumpId: e.jumpId || '' };
       }),
-      note: noteByGrid[sowId] || ''
+      note: currentNote(sowId)
     };
   }
 
-  /** Persist the blob to field_2941 on the SOW via the write view. */
-  function writeSnapshot(sowId) {
-    if (!C.snapshotField || !sowId) return;
+  /** Build the diff blob for a SOW by id (resolves the grid via buildState). */
+  function buildBlob(sowId) {
+    var v2t = window.SCW.bidReviewV2 && window.SCW.bidReviewV2.transform;
+    if (!v2t || typeof v2t.buildState !== 'function') return null;
+    var state = v2t.buildState(
+      readView(C.bidViewKey), readView(C.sowItemsViewKey), readView(C.bidPkgViewKey));
+    var grid = null;
+    for (var i = 0; state && i < state.sowGrids.length; i++) {
+      if (state.sowGrids[i].sowId === sowId) { grid = state.sowGrids[i]; break; }
+    }
+    return buildBlobWith(grid);
+  }
+
+  /** Persist a blob to field_2941. Records its signature so auto-save won't
+   *  re-write the same content (the local model isn't refetched after a PUT). */
+  function writeSnapshotWith(grid, sig) {
+    if (!C.snapshotField || !grid) return;
     if (!(window.SCW && typeof SCW.knackAjax === 'function' && SCW.knackRecordUrl)) return;
-    var blob = buildBlob(sowId);
+    var sowId = grid.sowId;
+    var blob = buildBlobWith(grid);
     if (!blob) return;
+    if (!sig) sig = blobSig(blob);
     var body = {};
     body[C.snapshotField] = JSON.stringify(blob);
     savingSnap[sowId] = true; render();
@@ -190,10 +216,55 @@
       url: SCW.knackRecordUrl(C.basisBidView, sowId),
       type: 'PUT', data: JSON.stringify(body)
     }).then(function () {
-      savingSnap[sowId] = false; savedSnap[sowId] = true; render();
+      savingSnap[sowId] = false; savedSnap[sowId] = true;
+      lastWrittenSig[sowId] = sig; render();
     }, function (xhr) {
       savingSnap[sowId] = false;
       console.warn('[scw-sub-bid-diff] snapshot write failed', sowId, xhr && xhr.status);
+      render();
+    });
+  }
+
+  /** Auto-save the snapshot whenever the diff or note for a SOW changes.
+   *  Debounced + signature-guarded so it fires once per real change, never in a
+   *  loop. No basis → nothing to snapshot. */
+  function autoSave(grid) {
+    if (!C.snapshotField || !grid) return;
+    var sowId = grid.sowId;
+    if (!basisFor(sowId)) return;
+    var blob = buildBlobWith(grid);
+    if (!blob) return;
+    var sig = blobSig(blob);
+    if (lastWrittenSig[sowId] === sig) return;          // already persisted this exact diff
+    var snap = persistedSnapshot(sowId);
+    if (snap && blobSig(snap) === sig) {                // model already has it
+      lastWrittenSig[sowId] = sig; return;
+    }
+    if (savingSnap[sowId]) return;                      // a write is mid-flight
+    if (autoTimers[sowId]) return;                      // already scheduled
+    autoTimers[sowId] = setTimeout(function () {
+      autoTimers[sowId] = null;
+      writeSnapshotWith(grid, sig);
+    }, 400);
+  }
+
+  /** Clear the persisted snapshot (called when the basis is cleared). */
+  function clearSnapshot(sowId) {
+    if (!C.snapshotField || !sowId) return;
+    if (!(window.SCW && typeof SCW.knackAjax === 'function' && SCW.knackRecordUrl)) return;
+    delete lastWrittenSig[sowId];
+    if (autoTimers[sowId]) { clearTimeout(autoTimers[sowId]); autoTimers[sowId] = null; }
+    var body = {};
+    body[C.snapshotField] = '';
+    savingSnap[sowId] = true; render();
+    SCW.knackAjax({
+      url: SCW.knackRecordUrl(C.basisBidView, sowId),
+      type: 'PUT', data: JSON.stringify(body)
+    }).then(function () {
+      savingSnap[sowId] = false; savedSnap[sowId] = false; render();
+    }, function (xhr) {
+      savingSnap[sowId] = false;
+      console.warn('[scw-sub-bid-diff] snapshot clear failed', sowId, xhr && xhr.status);
       render();
     });
   }
@@ -453,9 +524,24 @@
    *  grid itself shows them — the block leads with the decision: basis bid +
    *  readiness + the labor/coverage headline + note. */
   function inlineHtml(grid) {
-    var selId = basisFor(grid.sowId);
-    var persisted = !!(C.basisBidField && persistedBasis(grid.sowId));
-    var rd = readinessFor(grid.sowId);
+    var sowId = grid.sowId;
+    var selId = basisFor(sowId);
+    var persisted = !!(C.basisBidField && persistedBasis(sowId));
+
+    // Readiness derived from the LOCAL diff (no second buildState). The snapshot
+    // auto-saves, so the only thing a reviewer still owes us is a note when
+    // there are differences.
+    var rd, res = null, needsNote = false;
+    if (!selId) {
+      rd = { state: 'needs-basis', label: 'Pick a basis bid' };
+    } else {
+      res = distill(grid, selId);
+      needsNote = res.total > 0 && !currentNote(sowId).trim();
+      if (needsNote)               rd = { state: 'needs-note',   label: 'Add a reviewer note' };
+      else if (savingSnap[sowId])  rd = { state: 'needs-review', label: 'Saving…' };
+      else                         rd = { state: 'ready',        label: '✓ Reviewed — auto-saved' };
+    }
+
     var bar = '<div class="scw-sbd-inline-bar">' +
       '<span class="scw-sbd-pill">sub-bid diff</span>' +
       selector(grid, selId, persisted) +
@@ -464,34 +550,38 @@
     if (!selId) {
       return bar + '<div class="scw-sbd-empty">Choose the basis bid to see what differs vs this SOW.</div>';
     }
-    var res = distill(grid, selId);
     var ex = res.total
       ? '<details class="scw-sbd-exwrap"><summary>' + res.total + ' difference' +
         (res.total === 1 ? '' : 's') + ' — show line detail</summary>' +
-        exTable(res, grid.sowId) + '</details>'
+        exTable(res, sowId) + '</details>'
       : '';
     return bar + tally(res) + flag(res) + ex +
-      (res.total > 0 ? noteBar(grid.sowId) : '');
+      (res.total > 0 ? noteBar(sowId, needsNote) : '');
   }
 
-  /** Reviewer note + Save (freezes the diff JSON + note to field_2941). */
-  function noteBar(sowId) {
-    var snap = persistedSnapshot(sowId);
-    var noteVal = (sowId in noteByGrid) ? noteByGrid[sowId] : ((snap && snap.note) || '');
+  /** Reviewer note. Auto-saves with the diff (no Save button) — the note PUTs
+   *  to field_2941 when the reviewer clicks away. Required when diffs exist. */
+  function noteBar(sowId, needsNote) {
+    var noteVal = currentNote(sowId);
     var msg = '';
     if (savingSnap[sowId]) msg = '<span class="scw-sbd-savemsg">saving…</span>';
-    else if (savedSnap[sowId]) msg = '<span class="scw-sbd-savemsg scw-sbd-savemsg--ok">✓ review saved</span>';
-    else if (snap && snap.savedAt) msg = '<span class="scw-sbd-savemsg">last saved ' +
-      esc(String(snap.savedAt).slice(0, 10)) + '</span>';
-    return '<div class="scw-sbd-notebar">' +
-      '<label class="scw-sbd-note-label">Reviewer note — why we’re proceeding with this diff (optional)</label>' +
+    else if (savedSnap[sowId]) msg = '<span class="scw-sbd-savemsg scw-sbd-savemsg--ok">✓ auto-saved</span>';
+    else {
+      var snap = persistedSnapshot(sowId);
+      if (snap && snap.savedAt) msg = '<span class="scw-sbd-savemsg">saved ' +
+        esc(String(snap.savedAt).slice(0, 10)) + '</span>';
+    }
+    var reqLbl = needsNote
+      ? ' <span class="scw-sbd-req">(required — there are differences)</span>'
+      : ' (optional)';
+    return '<div class="scw-sbd-notebar' + (needsNote ? ' scw-sbd-notebar--req' : '') + '">' +
+      '<label class="scw-sbd-note-label">Reviewer note — why we’re proceeding with this diff' +
+        reqLbl + '</label>' +
       '<textarea class="scw-sbd-note" data-scw-sbd-note data-sow-id="' + esc(sowId) + '" ' +
         'rows="2" placeholder="e.g. labor delta approved with sub; descriptions reworded, scope unchanged.">' +
         esc(noteVal) + '</textarea>' +
-      '<div class="scw-sbd-noterow">' +
-        '<button type="button" class="scw-sbd-save-btn" data-scw-sbd-save data-sow-id="' +
-          esc(sowId) + '"' + (savingSnap[sowId] ? ' disabled' : '') + '>Save review</button>' +
-        msg + '</div></div>';
+      '<div class="scw-sbd-noterow">' + msg +
+        '<span class="scw-sbd-hint">Saves automatically when you click away.</span></div></div>';
   }
 
   /** Inject/refresh a per-SOW diff block inside each v2 SOW section. Deferred
@@ -530,6 +620,10 @@
         else sec.insertBefore(block, sec.firstChild);
       }
       block.innerHTML = inlineHtml(grid);
+
+      // Keep field_2941 in lockstep with whatever the diff currently shows —
+      // any data change, basis pick, or note edit re-persists (debounced).
+      autoSave(grid);
     }
   }
 
@@ -538,16 +632,30 @@
     document.documentElement.setAttribute('data-scw-sbd-bound', '1');
     document.addEventListener('change', function (e) {
       var sel = e.target.closest && e.target.closest('[data-scw-sbd-basis]');
-      if (!sel) return;
-      var sowId = sel.getAttribute('data-sow-id');
-      if (!sowId) return;
-      var pkgId = sel.value || '';
-      selectedByGrid[sowId] = pkgId;   // optimistic — diff shows immediately
-      if (C.basisBidField) writeBasis(sowId, pkgId);  // persist (re-renders)
-      else render();
+      if (sel) {
+        var bsow = sel.getAttribute('data-sow-id');
+        if (!bsow) return;
+        var pkgId = sel.value || '';
+        selectedByGrid[bsow] = pkgId;          // optimistic — diff shows immediately
+        if (pkgId) {
+          if (C.basisBidField) writeBasis(bsow, pkgId);  // persist basis (re-renders → autoSave writes snapshot)
+          else render();
+        } else {
+          if (C.basisBidField) writeBasis(bsow, '');      // clear basis
+          clearSnapshot(bsow);                            // and the snapshot it gated
+        }
+        return;
+      }
+      // Reviewer note committed (blur / Enter on the field) → re-persist.
+      var nt = e.target.closest && e.target.closest('[data-scw-sbd-note]');
+      if (nt) {
+        var nsow = nt.getAttribute('data-sow-id');
+        if (nsow) { noteByGrid[nsow] = nt.value; render(); }  // render → autoSave persists the note
+      }
     });
     // Capture the reviewer note live (no re-render → caret stays put; render()
-    // also skips rebuilds while a note is focused).
+    // also skips rebuilds while a note is focused). The actual save happens on
+    // 'change' (blur) above.
     document.addEventListener('input', function (e) {
       var n = e.target.closest && e.target.closest('[data-scw-sbd-note]');
       if (!n) return;
@@ -560,12 +668,6 @@
         jumpTo(jr.getAttribute('data-scw-sbd-jump-sow'),
                jr.getAttribute('data-scw-sbd-jump-attr'),
                jr.getAttribute('data-scw-sbd-jump-id'));
-        return;
-      }
-      var sv = e.target.closest && e.target.closest('[data-scw-sbd-save]');
-      if (sv) {
-        var sowId = sv.getAttribute('data-sow-id');
-        if (sowId) writeSnapshot(sowId);
       }
     });
   }

@@ -1380,10 +1380,19 @@
       try { snap = JSON.parse(readField('field_2941')); } catch (e) { snap = null; }
       if (!snap || !snap.savedAt || !snap.basisBidId) {
         alert('Can’t publish as final yet.\n\n' +
-              'On the Bid Review page for this SOW, select the basis bid and ' +
-              'save your sub-bid diff review, then try again.\n\n' +
+              'On the Bid Review page for this SOW, select the basis bid so the ' +
+              'sub-bid diff review is captured, then try again.\n\n' +
               'This makes sure we’re publishing against a chosen sub bid with any ' +
               'differences reviewed and noted.');
+        return;
+      }
+      // When the chosen basis differs from the SOW, a reviewer note is required.
+      if (Number(snap.total) > 0 && !(snap.note && String(snap.note).trim())) {
+        alert('Can’t publish as final yet.\n\n' +
+              'The chosen basis bid differs from this SOW (' + snap.total +
+              ' difference' + (Number(snap.total) === 1 ? '' : 's') + ').\n\n' +
+              'On the Bid Review page, add a reviewer note explaining why we’re ' +
+              'proceeding with these differences, then try again.');
         return;
       }
     }
