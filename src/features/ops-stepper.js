@@ -564,6 +564,14 @@
     return '';
   }
 
+  /** Is a field actually projected onto the source view? Used to "fail open"
+   *  — a gate keyed on a field that isn't on view_3861 stays inactive rather
+   *  than locking the action until the field is added to the view. */
+  function fieldPresent(fieldKey) {
+    var view = document.getElementById(SOURCE_VIEW);
+    return !!(view && view.querySelector('.kn-detail.' + fieldKey));
+  }
+
   // Numeric comparison for `gt` / `gte` etc.
   function toNum(v) {
     if (v == null) return NaN;
@@ -1358,6 +1366,26 @@
         !SCW.pdfExport.isPageReady('scene_1096')) {
       alert('Page is still loading — please wait a moment, then try again.');
       return;
+    }
+
+    // ── Final-publish gate: sub-bid review must be completed first ──────────
+    // The diff is only computable on the Bid Review page (orphans/bids aren't
+    // reachable from here), but it's stamped onto the SOW's field_2941 — a
+    // self-contained snapshot carrying the chosen basis bid + savedAt — which
+    // DOES travel to this page. So we gate "Publish as Final" on that snapshot
+    // being present + saved. Fail open: if field_2941 isn't projected onto
+    // view_3861 yet, the gate stays inactive (add the field to activate).
+    if (step.id === 'publish-final' && fieldPresent('field_2941')) {
+      var snap = null;
+      try { snap = JSON.parse(readField('field_2941')); } catch (e) { snap = null; }
+      if (!snap || !snap.savedAt || !snap.basisBidId) {
+        alert('Can’t publish as final yet.\n\n' +
+              'On the Bid Review page for this SOW, select the basis bid and ' +
+              'save your sub-bid diff review, then try again.\n\n' +
+              'This makes sure we’re publishing against a chosen sub bid with any ' +
+              'differences reviewed and noted.');
+        return;
+      }
     }
 
     // Steps that target a subset of surveys (Request Alt Bid) ask
