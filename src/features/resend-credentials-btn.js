@@ -19,6 +19,13 @@
   var EVENT_NS = '.scwResendCreds';
   var LABEL    = 'Resend Credentials';
 
+  // Custom "New Temp Password" field — the native temp-password input was
+  // removed from the form. This injected field is NOT saved to Knack; its
+  // value is sent in the resend-credentials webhook payload under the key
+  // "new_temp_password".
+  var TEMP_PASS_ID       = 'scw-rc-temp-pass';
+  var TEMP_PASS_INPUT_ID = 'scw-rc-temp-pass-input';
+
   var SEND_SVG =
     '<svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" ' +
     'fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" ' +
@@ -43,6 +50,14 @@
       '#' + BTN_ID + '.is-loading svg{animation:scw-rc-spin .8s linear infinite;}' +
       '#' + BTN_ID + '.is-done{background:#dcfce7;border-color:#86efac;color:#15803d;}' +
       '#' + BTN_ID + '.is-err{background:#fef2f2;border-color:#fca5a5;color:#b91c1c;}' +
+      // Injected custom Temp Password field (native field_1786 removed from form).
+      '#' + TEMP_PASS_ID + '{margin-bottom:1em;}' +
+      '#' + TEMP_PASS_ID + ' .scw-rc-pass-row{display:flex;gap:8px;align-items:center;}' +
+      '#' + TEMP_PASS_ID + ' input.input{flex:1 1 auto;font-family:ui-monospace,SFMono-Regular,Menlo,monospace;letter-spacing:.5px;}' +
+      '.scw-rc-gen-btn{flex:0 0 auto;cursor:pointer;padding:8px 14px;border-radius:6px;' +
+        'font:600 12.5px/1 system-ui,-apple-system,sans-serif;color:#0f4c75;background:#eef5fc;' +
+        'border:1px solid #bcd6ef;transition:background .12s,border-color .12s;}' +
+      '.scw-rc-gen-btn:hover{background:#dceafa;border-color:#93c5fd;}' +
       '@keyframes scw-rc-spin{to{transform:rotate(360deg);}}';
     document.head.appendChild(s);
   }
@@ -99,6 +114,57 @@
     return { id: '', name: '', email: '' };
   }
 
+  // Strong-ish temp password: 10 chars, guaranteed a symbol + digit, the rest
+  // unambiguous uppercase/digits (no 0/O/1/I confusion), lightly shuffled.
+  function generateTempPassword() {
+    var upper   = 'ABCDEFGHJKLMNPQRSTUVWXYZ';
+    var digits  = '23456789';
+    var symbols = '@#$%&*';
+    var pool    = upper + digits;
+    function pick(s) { return s.charAt(Math.floor(Math.random() * s.length)); }
+    var chars = [pick(symbols), pick(digits)];
+    for (var i = 0; i < 8; i++) chars.push(pick(pool));
+    for (var j = chars.length - 1; j > 0; j--) {       // Fisher–Yates shuffle
+      var r = Math.floor(Math.random() * (j + 1));
+      var t = chars[j]; chars[j] = chars[r]; chars[r] = t;
+    }
+    return chars.join('');
+  }
+
+  function tempPasswordValue() {
+    var el = document.getElementById(TEMP_PASS_INPUT_ID);
+    return el ? (el.value || '') : '';
+  }
+
+  // Inject a custom Temp Password field (editable input + Generate button)
+  // into the form, prefilled with a freshly generated password.
+  function injectTempPasswordField(viewEl) {
+    if (document.getElementById(TEMP_PASS_ID)) return;
+    var form = viewEl.querySelector('form');
+    if (!form) return;
+    var wrap = document.createElement('div');
+    wrap.className = 'kn-input control';
+    wrap.id = TEMP_PASS_ID;
+    wrap.innerHTML =
+      '<label class="label kn-label"><span>New Temp Password</span></label>' +
+      '<div class="control scw-rc-pass-row">' +
+        '<input class="input" type="text" id="' + TEMP_PASS_INPUT_ID + '" autocomplete="off" spellcheck="false">' +
+        '<button type="button" class="scw-rc-gen-btn">Generate</button>' +
+      '</div>';
+    var input = wrap.querySelector('#' + TEMP_PASS_INPUT_ID);
+    input.value = generateTempPassword();
+    wrap.querySelector('.scw-rc-gen-btn').addEventListener('click', function () {
+      input.value = generateTempPassword();
+      input.focus(); input.select();
+    });
+    // Drop it in as the last field of the form column, ahead of the submit row.
+    var col = form.querySelector('li.kn-form-col');
+    var submit = form.querySelector('.kn-submit');
+    if (col) col.appendChild(wrap);
+    else if (submit && submit.parentNode) submit.parentNode.insertBefore(wrap, submit);
+    else form.appendChild(wrap);
+  }
+
   function setState(btn, state) {
     btn.classList.remove('is-loading', 'is-done', 'is-err');
     if (state === 'loading') {
@@ -141,6 +207,10 @@
     var payload = {};
     for (var k in record) if (record.hasOwnProperty(k)) payload[k] = record[k];
     for (var lk in live) if (live.hasOwnProperty(lk)) payload[lk] = live[lk];
+    // Custom "New Temp Password" field (native temp-password input removed) —
+    // send the on-screen value under "new_temp_password".
+    var tempPass = tempPasswordValue();
+    if (tempPass) payload.new_temp_password = tempPass;
     payload.event       = 'resend-credentials';
     payload.record_id   = recordId(viewEl);
     payload.id          = payload.id || payload.record_id;
@@ -171,8 +241,10 @@
 
   function mount() {
     var viewEl = document.getElementById(VIEW);
-    if (!viewEl || document.getElementById(BTN_ID)) return;
+    if (!viewEl) return;
     injectStyles();
+    injectTempPasswordField(viewEl);
+    if (document.getElementById(BTN_ID)) return;
     var btn = document.createElement('button');
     btn.id = BTN_ID; btn.type = 'button';
     setState(btn, 'idle');
