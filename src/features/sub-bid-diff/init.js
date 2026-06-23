@@ -29,15 +29,12 @@
     });
   }
 
-  // Render on every source-view tick. Reuse the v2 data layer's subscribe
-  // (already debounced + listening to the right views) when present;
-  // otherwise bind our own listeners to the three source views.
+  // Re-inject on every source-view tick. Bind the source-view render events
+  // directly (so we catch v2's render even if we subscribed after its first
+  // data notify) AND subscribe to the v2 data layer when present.
   function wireData() {
     var v2 = window.SCW.bidReviewV2 && window.SCW.bidReviewV2.data;
-    if (v2 && typeof v2.subscribe === 'function') {
-      v2.subscribe(scheduleRender);
-      return;
-    }
+    if (v2 && typeof v2.subscribe === 'function') v2.subscribe(scheduleRender);
     var keys = [C.bidViewKey, C.sowItemsViewKey, C.bidPkgViewKey];
     var nsEvt = C.eventNs;
     keys.forEach(function (k) {
@@ -50,7 +47,9 @@
   function boot() {
     ns.render.bindOnce();
     wireData();
+    // Initial inject + a few retries to catch v2 rendering its sections late.
     scheduleRender();
+    [150, 500, 1200].forEach(function (ms) { setTimeout(scheduleRender, ms); });
   }
 
   if (window.SCW.onSceneRender && C.sceneKey) {
