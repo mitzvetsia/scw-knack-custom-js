@@ -3222,12 +3222,33 @@
   // handlers verbatim. `button` must carry data-action / data-package-id /
   // data-sow-id; v1 looks the SOW grid up in its own _state (which is live
   // because v2 renders on the same scene). Returns true if dispatched.
+  // "Update SOW to match Bid" also records WHICH bid the SOW is now based on:
+  // stamp the SOW's REL_proposal basis (field_2942 → bid package) so the
+  // sub-bid-diff basis is set without a separate pick. Fire-and-forget; the
+  // adopt webhook handles the value copy.
+  function stampBasisBidOnAdopt(button) {
+    try {
+      var sowId = button.getAttribute('data-sow-id');
+      var pkgId = button.getAttribute('data-package-id');
+      if (!sowId || !pkgId) return;
+      if (!(window.SCW && typeof SCW.knackAjax === 'function' && SCW.knackRecordUrl)) return;
+      var writeView = (window.SCW.bidReview && window.SCW.bidReview.CONFIG &&
+        window.SCW.bidReview.CONFIG.surveyCostsWriteView) || 'view_3918';
+      var body = { field_2942: [pkgId] };
+      SCW.knackAjax({
+        url: SCW.knackRecordUrl(writeView, sowId),
+        type: 'PUT', data: JSON.stringify(body)
+      });
+    } catch (e) { /* fail soft — basis can still be picked manually */ }
+  }
+
   ns.dispatchHeaderAction = function dispatchHeaderAction(button) {
     if (!button) return false;
     var action = button.getAttribute('data-action');
     if (!action) return false;
     if (button.classList.contains('scw-bid-review__btn--busy')) return false;
     if (action === 'package_copy_to_sow') {
+      stampBasisBidOnAdopt(button);
       handlePackageAction(button, action);
     } else if (action === 'package_create_sow') {
       handleCreateNewSowForPackage(button);
