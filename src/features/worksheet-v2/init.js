@@ -133,7 +133,13 @@
         ns.poll.start(vcfg.sourceViewKey);
       }
       ns.data.subscribe(vcfg.sourceViewKey, function (key, records) {
-        ns.render.renderView(key, records);
+        // Anchor the viewport across the rebuild so edits don't jump the page.
+        if (window.SCW.v2ScrollAnchor) {
+          SCW.v2ScrollAnchor.around('[data-scw-ws-v2-record]', 'data-scw-ws-v2-record',
+            function () { ns.render.renderView(key, records); });
+        } else {
+          ns.render.renderView(key, records);
+        }
         if (vcfg.hideSourceAccordion) relocatePanelOutsideAccordion(key);
         // Mode/photos toolbar — mount idempotently above the L1 list.
         if (ns.toolbar && typeof ns.toolbar.mount === 'function') {

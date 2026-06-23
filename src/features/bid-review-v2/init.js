@@ -987,7 +987,14 @@
     hookV1Rerender();
     if (ns.data && ns.render) {
       ns.data.subscribe(function (snapshot) {
-        ns.render.renderSnapshot(snapshot);
+        // Anchor on the SOW section nearest the viewport top so the grid
+        // doesn't jump after an inline edit rebuilds the body.
+        if (window.SCW.v2ScrollAnchor) {
+          SCW.v2ScrollAnchor.around('.scw-bid-review-v2__sow[data-sow-id]', 'data-sow-id',
+            function () { ns.render.renderSnapshot(snapshot); });
+        } else {
+          ns.render.renderSnapshot(snapshot);
+        }
         mountBulk();
       });
     }
