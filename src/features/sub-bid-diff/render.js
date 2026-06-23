@@ -107,6 +107,103 @@
     return persistedBasis(sowId) || selectedByGrid[sowId] || '';
   }
 
+  // ── snapshot (field_2941): reviewer note + frozen diff ──────────────────
+  var noteByGrid = Object.create(null);  // sowId → in-progress note text
+  var savedSnap  = Object.create(null);  // sowId → true after a successful save
+  var savingSnap = Object.create(null);  // sowId → true while a save is in flight
+
+  /** Parsed field_2941 JSON for a SOW, or null. */
+  function persistedSnapshot(sowId) {
+    if (!C.snapshotField) return null;
+    var sows = readView(C.basisBidView);
+    for (var i = 0; i < sows.length; i++) {
+      if (sows[i] && sows[i].id === sowId) {
+        var raw = sows[i][C.snapshotField + '_raw'];
+        if (raw == null) raw = sows[i][C.snapshotField];
+        if (raw == null) return null;
+        var s = String(raw).replace(/<[^>]*>/g, '').trim();
+        if (!s) return null;
+        try { return JSON.parse(s); } catch (e) { return null; }
+      }
+    }
+    return null;
+  }
+
+  /** Build the frozen diff blob for a SOW against its current basis. */
+  function buildBlob(sowId) {
+    var v2t = window.SCW.bidReviewV2 && window.SCW.bidReviewV2.transform;
+    if (!v2t || typeof v2t.buildState !== 'function') return null;
+    var state = v2t.buildState(
+      readView(C.bidViewKey), readView(C.sowItemsViewKey), readView(C.bidPkgViewKey));
+    var grid = null;
+    for (var i = 0; state && i < state.sowGrids.length; i++) {
+      if (state.sowGrids[i].sowId === sowId) { grid = state.sowGrids[i]; break; }
+    }
+    var pkgId = basisFor(sowId);
+    if (!grid || !pkgId) return null;
+    var res = distill(grid, pkgId);
+    var pkg = null;
+    for (var p = 0; p < (grid.packages || []).length; p++) {
+      if (grid.packages[p].id === pkgId) { pkg = grid.packages[p]; break; }
+    }
+    return {
+      v: 1, sowId: sowId, sowName: grid.sowName || '',
+      basisBidId: pkgId, basisBidName: (pkg && (pkg.bidName || pkg.name)) || '',
+      savedAt: new Date().toISOString(),
+      laborDelta: res.laborDelta, counts: res.counts, coverageGaps: res.coverageGaps,
+      exceptions: res.exceptions.map(function (e) {
+        return { tier: e.tier, label: e.label, product: e.product, fields: e.fields || [],
+                 sowFee: e.sowFee, bidLabor: e.bidLabor, delta: e.delta, jumpId: e.jumpId || '' };
+      }),
+      note: noteByGrid[sowId] || ''
+    };
+  }
+
+  /** Persist the blob to field_2941 on the SOW via the write view. */
+  function writeSnapshot(sowId) {
+    if (!C.snapshotField || !sowId) return;
+    if (!(window.SCW && typeof SCW.knackAjax === 'function' && SCW.knackRecordUrl)) return;
+    var blob = buildBlob(sowId);
+    if (!blob) return;
+    var body = {};
+    body[C.snapshotField] = JSON.stringify(blob);
+    savingSnap[sowId] = true; render();
+    SCW.knackAjax({
+      url: SCW.knackRecordUrl(C.basisBidView, sowId),
+      type: 'PUT', data: JSON.stringify(body)
+    }).then(function () {
+      savingSnap[sowId] = false; savedSnap[sowId] = true; render();
+    }, function (xhr) {
+      savingSnap[sowId] = false;
+      console.warn('[scw-sub-bid-diff] snapshot write failed', sowId, xhr && xhr.status);
+      render();
+    });
+  }
+
+  /** Scroll to + flash the matching v2 grid row for an exception. */
+  function jumpTo(sowId, attr, id) {
+    var sec = document.querySelector('.scw-bid-review-v2__sow[data-sow-id="' + sowId + '"]');
+    if (!sec) return;
+    var sel = attr === 'bid'
+      ? '[data-row-id="' + id + '"]' : '[data-sow-item-id="' + id + '"]';
+    var el = sec.querySelector(sel);
+    if (!el) return;
+    // If the row sits in a collapsed group, open it first.
+    var grpHidden = el.classList.contains('scw-bid-review-v2__row--hidden');
+    if (grpHidden) {
+      var sub = el.previousElementSibling;
+      while (sub && !sub.classList.contains('scw-bid-review-v2__subgroup-header')) {
+        sub = sub.previousElementSibling;
+      }
+      if (sub) sub.click();
+    }
+    el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    el.classList.remove('scw-sbd-flash');
+    void el.offsetWidth;            // restart the animation
+    el.classList.add('scw-sbd-flash');
+    setTimeout(function () { el.classList.remove('scw-sbd-flash'); }, 2000);
+  }
+
   // ── distill one SOW grid against the chosen basis package ───────────────
   function distill(grid, pkgId) {
     var ex = [];
@@ -145,7 +242,8 @@
           product: cell.productName || row.productName || '',
           note: (row.otherSowNames && row.otherSowNames.length)
                   ? 'on ' + row.otherSowNames.join(', ') : 'not on this SOW',
-          sowFee: 0, bidLabor: ol, delta: -ol
+          sowFee: 0, bidLabor: ol, delta: -ol,
+          jumpId: row.id || '', jumpAttr: 'bid'   // off-sow rows keyed by bid record id
         });
         continue;
       }
@@ -160,12 +258,14 @@
                    row.productName || '(line item)';
       var product = (row.sowItemData && row.sowItemData.productName) ||
                     row.productName || row.sowProduct || '';
+      var jId = row.sowItem || row.id || '';   // SOW line item id → v2 grid row
 
       if (!cell) {
         // SOW line that requires a bid but isn't on the basis bid → gap.
         laborDelta += sowFee; counts.added++;
         ex.push({ tier: 'added', label: label, product: product,
-                  note: 'not on basis bid', sowFee: sowFee, bidLabor: 0, delta: sowFee });
+                  note: 'not on basis bid', sowFee: sowFee, bidLabor: 0, delta: sowFee,
+                  jumpId: jId, jumpAttr: 'item' });
         continue;
       }
 
@@ -202,12 +302,14 @@
         laborDelta += d; counts.material++;
         ex.push({ tier: 'material', label: label, product: product,
                   note: '', fields: changed.slice(),
-                  sowFee: sowFee, bidLabor: bidLabor, delta: d });
+                  sowFee: sowFee, bidLabor: bidLabor, delta: d,
+                  jumpId: jId, jumpAttr: 'item' });
       } else {
         counts.spec++;
         ex.push({ tier: 'spec', label: label, product: product,
                   note: '', fields: changed.slice(),
-                  sowFee: sowFee, bidLabor: bidLabor, delta: 0 });
+                  sowFee: sowFee, bidLabor: bidLabor, delta: 0,
+                  jumpId: jId, jumpAttr: 'item' });
       }
     }
 
@@ -293,8 +395,14 @@
     return '<td class="scw-sbd-num ' + (n > 0 ? 'scw-sbd-delta-pos' : 'scw-sbd-delta-neg') +
       '">' + signedMoney(n) + '</td>';
   }
-  function exRow(r) {
-    return '<tr class="scw-sbd-row scw-sbd-row--' + r.tier + '">' +
+  function exRow(r, sowId) {
+    var jump = r.jumpId
+      ? ' data-scw-sbd-jump-id="' + esc(r.jumpId) + '" data-scw-sbd-jump-attr="' +
+        esc(r.jumpAttr || 'item') + '" data-scw-sbd-jump-sow="' + esc(sowId) +
+        '" title="Jump to this row in the grid above"'
+      : '';
+    return '<tr class="scw-sbd-row scw-sbd-row--' + r.tier +
+        (r.jumpId ? ' scw-sbd-row--jump' : '') + '"' + jump + '>' +
       '<td>' + badge(r.tier) + '</td>' +
       '<td><div class="scw-sbd-label">' + esc(r.label) + '</div>' +
         (r.product ? '<div class="scw-sbd-product">' + esc(r.product) + '</div>' : '') +
@@ -307,13 +415,14 @@
       '<td class="scw-sbd-num">' + (r.tier === 'added' ? '—' : money(r.bidLabor)) + '</td>' +
       deltaCell(r.delta) + '</tr>';
   }
-  function exTable(res) {
+  function exTable(res, sowId) {
     if (!res.exceptions.length) return '';
     return '<table class="scw-sbd-table"><thead><tr>' +
       '<th>Status</th><th>Line item</th>' +
       '<th class="scw-sbd-num">SOW labor</th><th class="scw-sbd-num">Sub bid</th>' +
       '<th class="scw-sbd-num">Δ</th></tr></thead><tbody>' +
-      res.exceptions.map(exRow).join('') + '</tbody></table>';
+      res.exceptions.map(function (r) { return exRow(r, sowId); }).join('') +
+      '</tbody></table>';
   }
 
   function gridSection(grid) {
@@ -330,7 +439,28 @@
     }
     var res = distill(grid, selId);
     return '<section class="scw-sbd-sec">' + head + sel +
-      tally(res) + flag(res) + exTable(res) + '</section>';
+      tally(res) + flag(res) + exTable(res, grid.sowId) +
+      noteBar(grid.sowId) + '</section>';
+  }
+
+  /** Reviewer note + Save (freezes the diff JSON + note to field_2941). */
+  function noteBar(sowId) {
+    var snap = persistedSnapshot(sowId);
+    var noteVal = (sowId in noteByGrid) ? noteByGrid[sowId] : ((snap && snap.note) || '');
+    var msg = '';
+    if (savingSnap[sowId]) msg = '<span class="scw-sbd-savemsg">saving…</span>';
+    else if (savedSnap[sowId]) msg = '<span class="scw-sbd-savemsg scw-sbd-savemsg--ok">✓ review saved</span>';
+    else if (snap && snap.savedAt) msg = '<span class="scw-sbd-savemsg">last saved ' +
+      esc(String(snap.savedAt).slice(0, 10)) + '</span>';
+    return '<div class="scw-sbd-notebar">' +
+      '<label class="scw-sbd-note-label">Reviewer note — why we’re proceeding with this diff (optional)</label>' +
+      '<textarea class="scw-sbd-note" data-scw-sbd-note data-sow-id="' + esc(sowId) + '" ' +
+        'rows="2" placeholder="e.g. labor delta approved with sub; descriptions reworded, scope unchanged.">' +
+        esc(noteVal) + '</textarea>' +
+      '<div class="scw-sbd-noterow">' +
+        '<button type="button" class="scw-sbd-save-btn" data-scw-sbd-save data-sow-id="' +
+          esc(sowId) + '"' + (savingSnap[sowId] ? ' disabled' : '') + '>Save review</button>' +
+        msg + '</div></div>';
   }
 
   function render() {
@@ -338,6 +468,11 @@
     if (!container) return;
     var body = container.querySelector('.scw-sbd-body');
     if (!body) return;
+
+    // Don't clobber a reviewer note mid-type when a background tick fires.
+    var ae = document.activeElement;
+    if (ae && ae.getAttribute && ae.getAttribute('data-scw-sbd-note') != null &&
+        body.contains(ae)) return;
 
     var v2t = window.SCW.bidReviewV2 && window.SCW.bidReviewV2.transform;
     if (!v2t || typeof v2t.buildState !== 'function') {
@@ -366,6 +501,28 @@
       selectedByGrid[sowId] = pkgId;   // optimistic — diff shows immediately
       if (C.basisBidField) writeBasis(sowId, pkgId);  // persist (re-renders)
       else render();
+    });
+    // Capture the reviewer note live (no re-render → caret stays put; render()
+    // also skips rebuilds while a note is focused).
+    document.addEventListener('input', function (e) {
+      var n = e.target.closest && e.target.closest('[data-scw-sbd-note]');
+      if (!n) return;
+      var sowId = n.getAttribute('data-sow-id');
+      if (sowId) noteByGrid[sowId] = n.value;
+    });
+    document.addEventListener('click', function (e) {
+      var jr = e.target.closest && e.target.closest('[data-scw-sbd-jump-id]');
+      if (jr) {
+        jumpTo(jr.getAttribute('data-scw-sbd-jump-sow'),
+               jr.getAttribute('data-scw-sbd-jump-attr'),
+               jr.getAttribute('data-scw-sbd-jump-id'));
+        return;
+      }
+      var sv = e.target.closest && e.target.closest('[data-scw-sbd-save]');
+      if (sv) {
+        var sowId = sv.getAttribute('data-sow-id');
+        if (sowId) writeSnapshot(sowId);
+      }
     });
   }
 
