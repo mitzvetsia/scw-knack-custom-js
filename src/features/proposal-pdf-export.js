@@ -3704,6 +3704,24 @@
       elements.push({ type: 'text_normal', text: text });
     }
 
+    // eSignatures.io rejects any table whose rows don't all have the same
+    // number of cells ("The table_cells must have the same number of cells
+    // in each row"). Merged L1 product tables interleave 3-column device
+    // rows with single-column assumption rows (colspan in the source HTML),
+    // so pad every row out to the widest row with empty cells before emit.
+    function pushTable(rows) {
+      if (!rows || !rows.length) return;
+      var maxCols = 0;
+      for (var i = 0; i < rows.length; i++) {
+        if (rows[i] && rows[i].length > maxCols) maxCols = rows[i].length;
+      }
+      for (var j = 0; j < rows.length; j++) {
+        if (!rows[j]) rows[j] = [];
+        while (rows[j].length < maxCols) rows[j].push({ text: '' });
+      }
+      elements.push({ type: 'table', table_cells: rows });
+    }
+
     // .detail-label-none holds the rendered project name + quote name
     // as <h1>/<h2>. Skip the <h1> (project name) — Make injects it
     // dynamically at the top of the agreement instead. Keep the <h2>
@@ -3740,7 +3758,7 @@
           { text: value }
         ]);
       }
-      if (cells.length) elements.push({ type: 'table', table_cells: cells });
+      pushTable(cells);
     }
 
     // .col-qty / .col-cost cells get center alignment per request.
@@ -3796,9 +3814,7 @@
         }
         // <tfoot> (.l2-footer) rows skipped intentionally.
       }
-      if (combinedCells.length) {
-        elements.push({ type: 'table', table_cells: combinedCells });
-      }
+      pushTable(combinedCells);
 
       var footer = section.querySelector('.l1-footer');
       if (footer) {
@@ -3836,9 +3852,7 @@
         }
         tableCells.push([labelCell, valueCell]);
       }
-      if (tableCells.length) {
-        elements.push({ type: 'table', table_cells: tableCells });
-      }
+      pushTable(tableCells);
     }
 
     // Generic table fallback (BOM, etc.). Center-aligns numeric cells.
@@ -3862,7 +3876,7 @@
         }
         cells.push(rowCells);
       }
-      if (cells.length) elements.push({ type: 'table', table_cells: cells });
+      pushTable(cells);
     }
 
     function walkChildren(parent) {
