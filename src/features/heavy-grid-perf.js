@@ -45,7 +45,9 @@
     'view_3803',
     'view_3915',
     'view_4056',
-    'view_3921'
+    'view_3921',
+    'view_3932',
+    'view_4060'
   ];
 
   // Delay between scw-worksheet-ready firing and the tbody reveal.

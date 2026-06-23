@@ -346,7 +346,7 @@
         ]
       },
       {
-        viewIds: ['view_3559', 'view_3577', 'view_3617', 'view_3803'],
+        viewIds: ['view_3559', 'view_3577', 'view_3617', 'view_3803', 'view_3932', 'view_4060'],
         layout: { labelWidth: '400px' },
         fields: {
           label:            { key: 'field_1642', type: 'readOnly',   summary: true },
