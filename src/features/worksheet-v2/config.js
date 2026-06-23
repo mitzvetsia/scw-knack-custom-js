@@ -135,6 +135,12 @@
         label:            'Install Line Items',
         independentFields: true,            // different object — no DEFAULT_FIELDS fallback
         moneyMode:        'install',        // no money columns at all — card.js install path
+        // Bulk photo upload context: the "+ Add Photos" toolbar button opens
+        // SCW.bulkUpload against the DEPLOYMENT (linkField 'deploymentID' +
+        // project/deployment id from the URL), NOT a SOW. See the
+        // 'view_3915_deploy' entry in bulk-upload.js CONFIG.VIEWS. The
+        // view_4056 clone below inherits this via the JSON deep-clone.
+        photoUploadView:  'view_3915_deploy',
         hideSow:          true,             // install groups by MDF/IDF, not SOW
         mdfSourceViewKey: '',               // TODO: empty-L1 seed source (analogue of view_3577)
         mdfLabelField:    '',               // TODO

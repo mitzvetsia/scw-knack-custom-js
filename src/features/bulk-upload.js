@@ -181,6 +181,37 @@
         refreshRecordInViews: [],
         refreshViews:         [],
         reloadOnClose:        false
+      },
+      {
+        // ── Deployment bulk photo upload (install worksheets) ──────────
+        // Fired by the worksheet-v2 toolbar "+ Add Photos" button on the
+        // install worksheets — view_3915 (internal deploy page) and its
+        // clone view_4056 (subcontractor deployment dashboard). This is NOT
+        // a Knack menu-link interception: there's no source menu view, so
+        // `menuViewId` is just the lookup key the worksheet-v2 toolbar
+        // resolves via the install config's `photoUploadView`. The
+        // onViewRender bind in INIT is inert (no view by this id renders).
+        //
+        // ROUTING: `linkField: 'deploymentID'` is the discriminator that
+        // tells Make this batch targets a DEPLOYMENT — distinct from a
+        // SOW upload (which on the project-dashboard route already ships
+        // `linkField: 'projectID'`, so we must NOT reuse that), a survey
+        // ('surveyID'), or a proposal ('proposalID'). Pair it with
+        // `recordId` (the project / deployment id pulled from the URL) to
+        // connect the photos. The id is whichever dashboard segment the
+        // route carries:
+        //   internal deploy page  → #…/project-dashboard/<proj>/deploy/<proj>
+        //   subcontractor portal  → #…/deployment-dashboard/<id>
+        menuViewId:           'view_3915_deploy',
+        linkText:             'Bulk Add Photos',
+        linkField:            'deploymentID',
+        hashPattern:          /(?:project-dashboard|deployment-dashboard)\/([a-f0-9]{24})/,
+        refreshRecordInViews: [],
+        // Whichever install grid is on the current scene gets a full
+        // re-fetch on modal close so the new photos surface; the absent
+        // one is skipped harmlessly.
+        refreshViews:         ['view_3915', 'view_4056'],
+        reloadOnClose:        false
       }
     ]
   };
