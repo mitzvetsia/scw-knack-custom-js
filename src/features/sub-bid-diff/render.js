@@ -110,9 +110,10 @@
   // ── distill one SOW grid against the chosen basis package ───────────────
   function distill(grid, pkgId) {
     var ex = [];
-    var counts = { material: 0, added: 0, orphan: 0 };
+    var counts = { material: 0, spec: 0, added: 0, orphan: 0 };
     var laborDelta = 0;
     var rows = grid.rows || [];
+    var v2t = window.SCW.bidReviewV2 && window.SCW.bidReviewV2.transform;
 
     for (var i = 0; i < rows.length; i++) {
       var row = rows[i];
@@ -156,17 +157,40 @@
       }
 
       var bidLabor = Number(cell.labor) || 0;
-      if (!moneyEq(sowFee, bidLabor)) {
+      var feeDiff = !moneyEq(sowFee, bidLabor);
+
+      // Non-labor spec diffs (labor desc / connected-to / connected-devices /
+      // conduit) come straight from v2's getMismatches so they match the grid.
+      var changed = [];
+      var mm = null;
+      if (v2t && typeof v2t.getMismatches === 'function') {
+        try { mm = v2t.getMismatches(row, cell); } catch (e) { mm = null; }
+      }
+      if (mm) {
+        if (mm.laborDesc)  changed.push('labor desc');
+        if (mm.connTo)     changed.push('connected to');
+        if (mm.connDevice) changed.push('connected devices');
+        if (mm.conduit)    changed.push('conduit');
+      }
+
+      if (!feeDiff && !changed.length) continue;   // covered — suppressed
+
+      if (feeDiff) {
         var d = sowFee - bidLabor;
         laborDelta += d; counts.material++;
         ex.push({ tier: 'material', label: label, product: product,
-                  note: '', sowFee: sowFee, bidLabor: bidLabor, delta: d });
+                  note: changed.length ? 'also: ' + changed.join(', ') : '',
+                  sowFee: sowFee, bidLabor: bidLabor, delta: d });
+      } else {
+        counts.spec++;
+        ex.push({ tier: 'spec', label: label, product: product,
+                  note: 'changed: ' + changed.join(', '),
+                  sowFee: sowFee, bidLabor: bidLabor, delta: 0 });
       }
-      // else covered — suppressed.
     }
 
-    // Order: material → added → orphan, then by |delta| desc.
-    var order = { material: 0, added: 1, orphan: 2 };
+    // Order: material → spec → added → orphan, then by |delta| desc.
+    var order = { material: 0, spec: 1, added: 2, orphan: 3 };
     ex.sort(function (a, b) {
       if (order[a.tier] !== order[b.tier]) return order[a.tier] - order[b.tier];
       return Math.abs(b.delta) - Math.abs(a.delta);
@@ -217,6 +241,7 @@
     var dCls = Math.abs(d) <= C.moneyEps ? 'zero' : (d > 0 ? 'pos' : 'neg');
     return '<div class="scw-sbd-tally">' +
       stat(res.counts.material, 'Labor change') +
+      stat(res.counts.spec, 'Spec change') +
       stat(res.counts.added, 'Not bid') +
       stat(res.counts.orphan, 'Bid only') +
       '<div class="scw-sbd-stat scw-sbd-stat--delta"><span class="scw-sbd-stat__n ' + dCls +
