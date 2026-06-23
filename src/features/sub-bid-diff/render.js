@@ -114,6 +114,19 @@
     var laborDelta = 0;
     var rows = grid.rows || [];
     var v2t = window.SCW.bidReviewV2 && window.SCW.bidReviewV2.transform;
+    // Same normalization v2 uses, so our labor-desc/conduit diffs match its
+    // grid underlines exactly.
+    function wseq(v) {
+      var w = String(v == null ? '' : v).replace(/<[^>]*>/g, ' ')
+        .toLowerCase().match(/[a-z0-9]+/g);
+      return w ? w.join(' ') : '';
+    }
+    function cnum(v) {
+      var s = String(v == null ? '' : v).replace(/[$,\s]/g, '');
+      if (s === '') return null;
+      var n = parseFloat(s);
+      return isNaN(n) ? null : n;
+    }
 
     for (var i = 0; i < rows.length; i++) {
       var row = rows[i];
@@ -166,12 +179,21 @@
       if (v2t && typeof v2t.getMismatches === 'function') {
         try { mm = v2t.getMismatches(row, cell); } catch (e) { mm = null; }
       }
-      if (mm) {
-        if (mm.laborDesc)  changed.push('labor desc');
-        if (mm.connTo)     changed.push('connected to');
-        if (mm.connDevice) changed.push('connected devices');
-        if (mm.conduit)    changed.push('conduit');
-      }
+      // Labor desc + conduit computed LOCALLY (same normalization as v2) so
+      // they're detected even when getMismatches bails — its guard needs
+      // row.sowItem, which isn't guaranteed on every grid row, which is why
+      // labor-desc diffs were being missed. Connection diffs still come from
+      // getMismatches (they need its internal bid→SOW id map).
+      var sowDesc = (row.sowItemData && row.sowItemData.laborDesc) ||
+                    row.sowLaborDesc || '';
+      if (wseq(sowDesc) !== wseq(cell.laborDesc)) changed.push('labor desc');
+      if (mm && mm.connTo)     changed.push('connected to');
+      if (mm && mm.connDevice) changed.push('connected devices');
+      var sowCond = cnum(row.sowItemData && row.sowItemData.conduit);
+      var bidCond = cnum(cell.conduit);
+      var conduitDiff = (sowCond != null && bidCond != null)
+                          ? (sowCond !== bidCond) : (mm ? !!mm.conduit : false);
+      if (conduitDiff) changed.push('conduit');
 
       if (!feeDiff && !changed.length) continue;   // covered — suppressed
 
@@ -179,12 +201,12 @@
         var d = sowFee - bidLabor;
         laborDelta += d; counts.material++;
         ex.push({ tier: 'material', label: label, product: product,
-                  note: changed.length ? 'also: ' + changed.join(', ') : '',
+                  note: '', fields: changed.slice(),
                   sowFee: sowFee, bidLabor: bidLabor, delta: d });
       } else {
         counts.spec++;
         ex.push({ tier: 'spec', label: label, product: product,
-                  note: 'changed: ' + changed.join(', '),
+                  note: '', fields: changed.slice(),
                   sowFee: sowFee, bidLabor: bidLabor, delta: 0 });
       }
     }
@@ -276,6 +298,10 @@
       '<td>' + badge(r.tier) + '</td>' +
       '<td><div class="scw-sbd-label">' + esc(r.label) + '</div>' +
         (r.product ? '<div class="scw-sbd-product">' + esc(r.product) + '</div>' : '') +
+        (r.fields && r.fields.length
+          ? '<div class="scw-sbd-changed">' + r.fields.map(function (f) {
+              return '<span class="scw-sbd-chip">' + esc(f) + '</span>'; }).join('') + '</div>'
+          : '') +
         (r.note ? '<div class="scw-sbd-mdf">' + esc(r.note) + '</div>' : '') + '</td>' +
       '<td class="scw-sbd-num">' + (r.tier === 'orphan' ? '—' : money(r.sowFee)) + '</td>' +
       '<td class="scw-sbd-num">' + (r.tier === 'added' ? '—' : money(r.bidLabor)) + '</td>' +
