@@ -496,6 +496,34 @@
       return;
     }
     body.innerHTML = state.sowGrids.map(gridSection).join('');
+    updateSummary(container, state);
+  }
+
+  /** Cross-SOW one-line summary shown in the (collapsible) banner. */
+  function updateSummary(container, state) {
+    var sumEl = container.querySelector('.scw-sbd-summary');
+    if (!sumEl) return;
+    var totalEx = 0, gaps = 0, delta = 0, needBasis = 0, withBasis = 0;
+    for (var i = 0; i < state.sowGrids.length; i++) {
+      var g = state.sowGrids[i];
+      var pid = basisFor(g.sowId);
+      if (!pid) { needBasis++; continue; }
+      withBasis++;
+      var res = distill(g, pid);
+      totalEx += res.total; gaps += res.coverageGaps; delta += res.laborDelta;
+    }
+    var parts = [];
+    if (needBasis) parts.push(needBasis + ' need basis bid');
+    if (gaps) parts.push(gaps + ' coverage gap' + (gaps === 1 ? '' : 's'));
+    if (totalEx) parts.push(totalEx + ' difference' + (totalEx === 1 ? '' : 's'));
+    if (withBasis && !totalEx && !needBasis) parts.push('all clear');
+    if (Math.abs(delta) > C.moneyEps) {
+      parts.push('labor Δ ' + (delta > 0 ? '+$' : '-$') +
+        Math.abs(delta).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
+    }
+    sumEl.textContent = parts.length ? '— ' + parts.join(' · ') : '';
+    container.setAttribute('data-has-gaps', gaps > 0 ? '1' : '0');
+    container.setAttribute('data-needs-basis', needBasis > 0 ? '1' : '0');
   }
 
   function bindOnce() {

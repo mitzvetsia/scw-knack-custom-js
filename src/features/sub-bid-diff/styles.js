@@ -22,6 +22,17 @@
     '.scw-sbd-pill { background: #1e293b; color: #93c5fd; border-radius: 999px;',
     '  padding: 2px 9px; font-size: 11px; font-weight: 600; text-transform: uppercase; }',
     '.scw-sbd-banner__spacer { flex: 1 1 auto; }',
+    '.scw-sbd-banner { cursor: pointer; user-select: none; }',
+    '.scw-sbd-banner:hover { background: #111c33; }',
+    '.scw-sbd-caret-top { display: inline-flex; color: #93c5fd; transition: transform .15s ease; }',
+    '#' + ns.CONFIG.mountId + '[data-collapsed="1"] .scw-sbd-caret-top { transform: rotate(-90deg); }',
+    '#' + ns.CONFIG.mountId + '[data-collapsed="1"] .scw-sbd-body { display: none; }',
+    '.scw-sbd-summary { font-size: 12px; color: #cbd5e1; font-weight: 500; }',
+    /* accent the pill when there are coverage gaps / unselected basis */
+    '#' + ns.CONFIG.mountId + '[data-has-gaps="1"] .scw-sbd-pill { background: ' + T.added.color + '; color: #fff; }',
+    '#' + ns.CONFIG.mountId + '[data-needs-basis="1"] .scw-sbd-pill { background: #b45309; color: #fff; }',
+    /* when collapsed, pin the thin bar to the top so it stays reachable */
+    '#' + ns.CONFIG.mountId + '[data-collapsed="1"] { position: sticky; top: 0; z-index: 30; }',
 
     /* per-SOW section */
     '.scw-sbd-sec { border-top: 1px solid #e2e8f0; }',
