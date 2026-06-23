@@ -1676,16 +1676,24 @@
         return;
       }
 
-      // MDF/IDF picker (field_1946) — candidates come from view_3577
-      // (the Network Locations grid on the same scene). Single-select.
-      // The MODEL_ONLY cascade in mirror-connection-sync handles
-      // accessory re-grouping when this changes.
+      // MDF/IDF picker (field_1946) — candidates come from this view's
+      // configured MDF/IDF locations grid. Single-select. The MODEL_ONLY
+      // cascade in mirror-connection-sync handles accessory re-grouping
+      // when this changes.
       if (fieldKey === 'field_1946') {
-        // view_3577 on the build-SOW scene; view_3822 (MDF/IDF locations)
-        // on the bid-review scene. Same MDF/IDF object (field_1642 label).
-        var mdfRecords = firstViewRecords(['view_3577', 'view_3822']);
+        // Source the candidates from the view's own mdfSourceViewKey
+        // (view_3577 on build-SOW, view_3602 on sales view_3586, …) so the
+        // picker opens on every deployment — NOT just the build/bid grids.
+        // Fall back to the known grids if config is absent. Same MDF/IDF
+        // object (field_1642 label) across all of them.
+        var _mdfCfg = ns.cfg && typeof ns.cfg.viewCfg === 'function' && ns.cfg.viewCfg(viewKey);
+        var _mdfViews = [];
+        if (_mdfCfg && _mdfCfg.mdfSourceViewKey) _mdfViews.push(_mdfCfg.mdfSourceViewKey);
+        _mdfViews.push('view_3577', 'view_3822');
+        var mdfRecords = firstViewRecords(_mdfViews);
         if (!mdfRecords || !mdfRecords.length) {
-          console.warn('[scw-ws-v2] view_3577/view_3822 model empty/missing — MDF picker can\'t open');
+          console.warn('[scw-ws-v2] MDF locations grid (' + _mdfViews.join('/') +
+            ') empty/missing — MDF picker can\'t open');
           return;
         }
         var mdfCandidates = [];
