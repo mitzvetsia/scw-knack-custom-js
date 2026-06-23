@@ -442,8 +442,12 @@
       }
     }
 
-    // Order: material → spec → added → orphan, then by |delta| desc.
-    var order = { material: 0, spec: 1, added: 2, orphan: 3 };
+    // Order MOST important first: coverage gaps (a SOW line nobody bid, a bid
+    // line off this SOW) lead, then labor changes, then model/spec diffs (the
+    // least actionable — same scope, attributes reworded). Within a tier, by
+    // |delta| desc. The panel additionally tucks the spec tier behind a
+    // collapsible group, but this order also drives the PDF + snapshot blob.
+    var order = { added: 0, orphan: 1, material: 2, spec: 3 };
     ex.sort(function (a, b) {
       if (order[a.tier] !== order[b.tier]) return order[a.tier] - order[b.tier];
       return Math.abs(b.delta) - Math.abs(a.delta);
@@ -493,10 +497,10 @@
     var d = res.laborDelta;
     var dCls = Math.abs(d) <= C.moneyEps ? 'zero' : (d > 0 ? 'pos' : 'neg');
     return '<div class="scw-sbd-tally">' +
-      stat(res.counts.material, 'Labor change') +
-      stat(res.counts.spec, 'Spec change') +
       stat(res.counts.added, 'Not bid') +
       stat(res.counts.orphan, 'Bid only') +
+      stat(res.counts.material, 'Labor change') +
+      stat(res.counts.spec, 'Spec change') +
       '<div class="scw-sbd-stat scw-sbd-stat--delta"><span class="scw-sbd-stat__n ' + dCls +
         '">' + signedMoney(d) + '</span><span class="scw-sbd-stat__l">labor Δ (SOW − sub)</span></div>' +
       '</div>';
@@ -544,14 +548,38 @@
       '<td class="scw-sbd-num">' + (r.tier === 'added' ? '—' : money(r.bidLabor)) + '</td>' +
       deltaCell(r.delta) + '</tr>';
   }
-  function exTable(res, sowId) {
-    if (!res.exceptions.length) return '';
+  function exTable(rows, sowId) {
+    if (!rows || !rows.length) return '';
     return '<table class="scw-sbd-table"><thead><tr>' +
       '<th>Status</th><th>Line item</th>' +
       '<th class="scw-sbd-num">SOW labor</th><th class="scw-sbd-num">Sub bid</th>' +
       '<th class="scw-sbd-num">Δ</th></tr></thead><tbody>' +
-      res.exceptions.map(function (r) { return exRow(r, sowId); }).join('') +
+      rows.map(function (r) { return exRow(r, sowId); }).join('') +
       '</tbody></table>';
+  }
+
+  /** Exception detail, importance-tiered: coverage gaps + labor changes are
+   *  surfaced directly (most actionable), while model/spec differences — same
+   *  scope, attributes reworded — collapse into their own group so they don't
+   *  bury the gaps that actually need a decision. */
+  function exDetail(res, sowId) {
+    if (!res.exceptions.length) return '';
+    var significant = [], minor = [];
+    for (var i = 0; i < res.exceptions.length; i++) {
+      (res.exceptions[i].tier === 'spec' ? minor : significant).push(res.exceptions[i]);
+    }
+    var html = '';
+    if (significant.length) {
+      html += '<div class="scw-sbd-exwrap scw-sbd-exwrap--lead">' +
+        exTable(significant, sowId) + '</div>';
+    }
+    if (minor.length) {
+      html += '<details class="scw-sbd-exwrap scw-sbd-exwrap--minor"><summary>' +
+        minor.length + ' model / spec difference' + (minor.length === 1 ? '' : 's') +
+        ' — same scope, attributes reworded</summary>' +
+        exTable(minor, sowId) + '</details>';
+    }
+    return html;
   }
 
   /** Compact per-SOW diff block, injected INTO that SOW's section in the v2
@@ -585,11 +613,7 @@
     if (!selId) {
       return bar + '<div class="scw-sbd-empty">Choose the basis bid to see what differs vs this SOW.</div>';
     }
-    var ex = res.total
-      ? '<details class="scw-sbd-exwrap"><summary>' + res.total + ' difference' +
-        (res.total === 1 ? '' : 's') + ' — show line detail</summary>' +
-        exTable(res, sowId) + '</details>'
-      : '';
+    var ex = res.total ? exDetail(res, sowId) : '';
     return bar + tally(res) + flag(res) + ex +
       (res.total > 0 ? noteBar(sowId, needsNote) : '');
   }

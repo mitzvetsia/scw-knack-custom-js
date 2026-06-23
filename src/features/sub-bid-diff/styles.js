@@ -61,6 +61,12 @@
     '.scw-sbd-exwrap > summary::before { content: "▸ "; color: #94a3b8; }',
     '.scw-sbd-exwrap[open] > summary::before { content: "▾ "; }',
     '.scw-sbd-exwrap[open] > summary:hover { background: #f8fafc; }',
+    /* lead block: coverage gaps + labor changes, surfaced directly */
+    '.scw-sbd-exwrap--lead { border-top: 1px solid #f1f5f9; }',
+    /* model/spec diffs: demoted into their own collapsible group */
+    '.scw-sbd-exwrap--minor > summary { color: ' + T.spec.color + '; background: #fafaff; }',
+    '.scw-sbd-exwrap--minor > summary::before { color: ' + T.spec.color + '; }',
+    '.scw-sbd-exwrap--minor > summary:hover { background: #f5f3ff; }',
 
     /* baseline picker */
     '.scw-sbd-baseline select[disabled] { background: #f1f5f9; color: #334155; cursor: default; }',
