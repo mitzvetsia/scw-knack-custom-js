@@ -675,6 +675,12 @@
    *  the SOW — a reviewer note must be present. Basis + note ⇒ unblocked.
    *  Fails open when field_2941 isn't projected onto view_3861. */
   function publishFinalBlockReason() {
+    // No subcontractor bids for this SOW → there's nothing to diff against, so
+    // the sub-bid review doesn't apply and Publish Final is free. field_2728 is
+    // the subcontractor survey/bid-request count — the same signal that gates
+    // the Request/Update Subcontractor Bid steps, and that the publish-final
+    // visibility gate used before it was disabled. Zero/absent ⇒ no bids.
+    if (!conditionMet({ field: 'field_2728', gt: 0 })) return '';
     var snap = readSubBidSnapshot();
     if (snap === null) return '';                       // field not on the view → fail open
     if (snap._empty || snap._bad || !snap.basisBidId) {
@@ -723,13 +729,18 @@
     if (snap === null) return null;             // field not on the view → show nothing
     var reason = publishFinalBlockReason();
 
+    // No subcontractor bids → nothing to review. Show a concise N/A state
+    // instead of a "Review needed" / "choose a basis bid" prompt the user can
+    // never satisfy (there are no bids to pick).
+    var noBids = !conditionMet({ field: 'field_2728', gt: 0 });
+
     var wrap = document.createElement('div');
     wrap.className = 'scw-ops-subbid';
     var html = '';
 
     var basis = (snap && snap.basisBidId) ? (snap.basisBidName || 'selected bid') : '';
     var readyCls = reason ? 'warn' : 'ok';
-    var readyTxt = reason ? 'Review needed' : '✓ Reviewed';
+    var readyTxt = reason ? 'Review needed' : (noBids ? 'Not required' : '✓ Reviewed');
     html += '<div class="scw-ops-subbid__bar">' +
             '<span class="scw-ops-subbid__t">SUB-BID REVIEW</span>' +
             (basis ? '<span class="scw-ops-subbid__basis">' + escHtml(basis) + '</span>' : '') +
@@ -747,8 +758,11 @@
 
     // No saved diff yet → nothing more to show.
     if (!snap || snap._empty || snap._bad || !snap.basisBidId) {
-      html += '<div class="scw-ops-subbid__empty">No sub-bid diff saved for this SOW yet. ' +
-              'Choose the basis bid on the Bid Review page.</div>';
+      html += '<div class="scw-ops-subbid__empty">' +
+              (noBids
+                ? 'No subcontractor bids for this SOW — sub-bid review isn’t required.'
+                : 'No sub-bid diff saved for this SOW yet. Choose the basis bid on the Bid Review page.') +
+              '</div>';
       wrap.innerHTML = html;
       return wrap;
     }
