@@ -823,13 +823,17 @@
       var packages = [];
       for (var ap = 0; ap < allPackages.length; ap++) {
         if (!packageTouchesSow(allPackages[ap].id, sow.id)) continue;
-        // Sibling-SOW gate (v1 parity): a bid whose REL_SOW (field_2387) is set
-        // to OTHER SOW(s) and NOT this one is a bid for a different SOW — exclude
-        // it so its items don't get dumped into this grid's "belong to another
-        // SOW" block. Empty bidSow = unrestricted (shows on every SOW it touches).
-        var _pkInfo = pkgInfo[allPackages[ap].id];
-        var _bidSowIds = (_pkInfo && _pkInfo.bidSowIds) || [];
-        if (_bidSowIds.length && _bidSowIds.indexOf(sow.id) === -1) continue;
+        // Sibling-SOW gate — CLEARED 2026-06-23 (per request). Previously a
+        // bid whose REL_SOW (field_2387) named OTHER SOW(s) was excluded from
+        // this grid. That hid bids from sibling/alternate-option SOWs that
+        // share line items (e.g. camera opt2 vs opt3): a bid placed against
+        // 1294 never showed on 1210 even though they share the headend/IDF
+        // devices. Now a bid shows on EVERY SOW it touches (shares a line
+        // item with), regardless of field_2387 — matching the empty-bidSow
+        // behavior for all bids. To restore the gate, un-comment below.
+        // var _pkInfo = pkgInfo[allPackages[ap].id];
+        // var _bidSowIds = (_pkInfo && _pkInfo.bidSowIds) || [];
+        // if (_bidSowIds.length && _bidSowIds.indexOf(sow.id) === -1) continue;
         var pc = {};
         for (var pk in allPackages[ap]) {
           if (Object.prototype.hasOwnProperty.call(allPackages[ap], pk)) pc[pk] = allPackages[ap][pk];
