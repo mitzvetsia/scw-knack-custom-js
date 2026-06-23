@@ -45,6 +45,22 @@
     '.scw-sbd-ready--needs-review { background: #fffbeb; color: #b45309; border: 1px solid #fde68a; }',
     '.scw-sbd-ready--stale { background: #fff1f2; color: ' + T.added.color + '; border: 1px solid #fecdd3; }',
 
+    /* per-SOW inline block (lives inside each v2 SOW section, under header) */
+    '.scw-sbd-inline { border-bottom: 2px solid #e2e8f0; background: #fff;',
+    '  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }',
+    '.scw-sbd-inline-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap;',
+    '  padding: 9px 14px; background: #f8fafc; border-bottom: 1px solid #eef2f7; }',
+    '.scw-sbd-inline-bar .scw-sbd-baseline { padding: 0; background: transparent; border: none; }',
+    '.scw-sbd-inline-bar .scw-sbd-pill { background: #1e293b; color: #93c5fd; }',
+    '.scw-sbd-inline .scw-sbd-tally { border-bottom: none; }',
+    '.scw-sbd-exwrap { border-top: 1px solid #f1f5f9; }',
+    '.scw-sbd-exwrap > summary { cursor: pointer; padding: 8px 14px; font-size: 12px;',
+    '  color: #475569; font-weight: 600; list-style: none; user-select: none; }',
+    '.scw-sbd-exwrap > summary::-webkit-details-marker { display: none; }',
+    '.scw-sbd-exwrap > summary::before { content: "▸ "; color: #94a3b8; }',
+    '.scw-sbd-exwrap[open] > summary::before { content: "▾ "; }',
+    '.scw-sbd-exwrap[open] > summary:hover { background: #f8fafc; }',
+
     /* baseline picker */
     '.scw-sbd-baseline select[disabled] { background: #f1f5f9; color: #334155; cursor: default; }',
     '.scw-sbd-baseline { display: flex; align-items: center; gap: 10px; flex-wrap: wrap;',

@@ -448,25 +448,30 @@
       '</tbody></table>';
   }
 
-  function gridSection(grid) {
+  /** Compact per-SOW diff block, injected INTO that SOW's section in the v2
+   *  grid (under its header). Exceptions collapse behind a <details> since the
+   *  grid itself shows them — the block leads with the decision: basis bid +
+   *  readiness + the labor/coverage headline + note. */
+  function inlineHtml(grid) {
     var selId = basisFor(grid.sowId);
     var persisted = !!(C.basisBidField && persistedBasis(grid.sowId));
     var rd = readinessFor(grid.sowId);
-    var head = '<div class="scw-sbd-sow-head">' +
-      '<span class="scw-sbd-sow-name">' + esc(grid.sowName || 'SOW') + '</span>' +
+    var bar = '<div class="scw-sbd-inline-bar">' +
+      '<span class="scw-sbd-pill">sub-bid diff</span>' +
+      selector(grid, selId, persisted) +
       '<span class="scw-sbd-ready scw-sbd-ready--' + rd.state + '">' + esc(rd.label) + '</span>' +
       '</div>';
-    var sel = selector(grid, selId, persisted);
-
     if (!selId) {
-      return '<section class="scw-sbd-sec">' + head + sel +
-        '<div class="scw-sbd-empty">Select the basis bid above to see what differs vs the SOW.</div>' +
-        '</section>';
+      return bar + '<div class="scw-sbd-empty">Choose the basis bid to see what differs vs this SOW.</div>';
     }
     var res = distill(grid, selId);
-    return '<section class="scw-sbd-sec">' + head + sel +
-      tally(res) + flag(res) + exTable(res, grid.sowId) +
-      (res.total > 0 ? noteBar(grid.sowId) : '') + '</section>';
+    var ex = res.total
+      ? '<details class="scw-sbd-exwrap"><summary>' + res.total + ' difference' +
+        (res.total === 1 ? '' : 's') + ' — show line detail</summary>' +
+        exTable(res, grid.sowId) + '</details>'
+      : '';
+    return bar + tally(res) + flag(res) + ex +
+      (res.total > 0 ? noteBar(grid.sowId) : '');
   }
 
   /** Reviewer note + Save (freezes the diff JSON + note to field_2941). */
@@ -489,58 +494,43 @@
         msg + '</div></div>';
   }
 
+  /** Inject/refresh a per-SOW diff block inside each v2 SOW section. Deferred
+   *  one frame so it runs AFTER v2 rebuilds its section innerHTML on a tick. */
   function render() {
-    var container = document.getElementById(C.mountId);
-    if (!container) return;
-    var body = container.querySelector('.scw-sbd-body');
-    if (!body) return;
-
-    // Don't clobber a reviewer note mid-type when a background tick fires.
-    var ae = document.activeElement;
-    if (ae && ae.getAttribute && ae.getAttribute('data-scw-sbd-note') != null &&
-        body.contains(ae)) return;
-
     var v2t = window.SCW.bidReviewV2 && window.SCW.bidReviewV2.transform;
-    if (!v2t || typeof v2t.buildState !== 'function') {
-      body.innerHTML = '<div class="scw-sbd-empty">Bid-review v2 not loaded — diff unavailable.</div>';
-      return;
-    }
+    if (!v2t || typeof v2t.buildState !== 'function') return;
     var state = v2t.buildState(
       readView(C.bidViewKey), readView(C.sowItemsViewKey), readView(C.bidPkgViewKey));
+    if (!state || !state.sowGrids || !state.sowGrids.length) return;
 
-    if (!state || state.isEmpty || !state.sowGrids.length) {
-      body.innerHTML = '<div class="scw-sbd-empty">No bid + SOW data loaded yet.</div>';
-      return;
-    }
-    body.innerHTML = state.sowGrids.map(gridSection).join('');
-    updateSummary(container, state);
-  }
+    var byId = Object.create(null);
+    for (var i = 0; i < state.sowGrids.length; i++) byId[state.sowGrids[i].sowId] = state.sowGrids[i];
 
-  /** Cross-SOW one-line summary shown in the (collapsible) banner. */
-  function updateSummary(container, state) {
-    var sumEl = container.querySelector('.scw-sbd-summary');
-    if (!sumEl) return;
-    var gaps = 0, delta = 0, ready = 0, notReady = 0;
-    for (var i = 0; i < state.sowGrids.length; i++) {
-      var g = state.sowGrids[i];
-      if (readinessFor(g.sowId).state === 'ready') ready++; else notReady++;
-      var pid = basisFor(g.sowId);
-      if (!pid) continue;
-      var res = distill(g, pid);
-      gaps += res.coverageGaps; delta += res.laborDelta;
+    var ae = document.activeElement;
+    var sections = document.querySelectorAll('.scw-bid-review-v2__sow[data-sow-id]');
+    for (var s = 0; s < sections.length; s++) {
+      var sec = sections[s];
+      var sowId = sec.getAttribute('data-sow-id');
+      var grid = byId[sowId];
+      if (!grid) continue;
+
+      var block = null, kids = sec.children;
+      for (var k = 0; k < kids.length; k++) {
+        if (kids[k].className && kids[k].className.indexOf('scw-sbd-inline') !== -1) { block = kids[k]; break; }
+      }
+      // Don't clobber a note being typed inside this block.
+      if (block && ae && block.contains(ae) && ae.getAttribute &&
+          ae.getAttribute('data-scw-sbd-note') != null) continue;
+
+      if (!block) {
+        block = document.createElement('div');
+        block.className = 'scw-sbd-inline';
+        var hdr = sec.querySelector('.scw-bid-review-v2__sow-header');
+        if (hdr) hdr.insertAdjacentElement('afterend', block);
+        else sec.insertBefore(block, sec.firstChild);
+      }
+      block.innerHTML = inlineHtml(grid);
     }
-    var parts = [];
-    var n = state.sowGrids.length;
-    if (notReady) parts.push(notReady + ' of ' + n + ' not publish-ready');
-    else parts.push('all ' + n + ' publish-ready');
-    if (gaps) parts.push(gaps + ' coverage gap' + (gaps === 1 ? '' : 's'));
-    if (Math.abs(delta) > C.moneyEps) {
-      parts.push('labor Δ ' + (delta > 0 ? '+$' : '-$') +
-        Math.abs(delta).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
-    }
-    sumEl.textContent = '— ' + parts.join(' · ');
-    container.setAttribute('data-has-gaps', gaps > 0 ? '1' : '0');
-    container.setAttribute('data-needs-basis', notReady > 0 ? '1' : '0');
   }
 
   function bindOnce() {
