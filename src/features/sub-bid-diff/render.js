@@ -440,7 +440,7 @@
     var res = distill(grid, selId);
     return '<section class="scw-sbd-sec">' + head + sel +
       tally(res) + flag(res) + exTable(res, grid.sowId) +
-      noteBar(grid.sowId) + '</section>';
+      (res.total > 0 ? noteBar(grid.sowId) : '') + '</section>';
   }
 
   /** Reviewer note + Save (freezes the diff JSON + note to field_2941). */
