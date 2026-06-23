@@ -1453,17 +1453,14 @@
       return;
     }
 
-    // PDF (or anything browser-renders inline). Append Chrome PDF-viewer
-    // hash params to hide the toolbar + thumbnail panel — they only
-    // take effect when the response is a real PDF, which is what the
-    // raw URL gives us. Knack's route URL ignores them.
-    var iframeSrc = src;
-    if (doc.rawUrl) {
-      iframeSrc = src + (src.indexOf('#') === -1 ? '#' : '&') +
-                  'toolbar=0&navpanes=0&scrollbar=0&view=FitH';
-    }
+    // PDF (or anything browser-renders inline). Embed the file directly and
+    // let the browser show its FULL native PDF viewer — toolbar, thumbnail
+    // panel, zoom — same interactive experience view_3940 gets from Knack's
+    // route URL. (We intentionally do NOT append #toolbar=0&navpanes=0&… —
+    // those would strip the viewer chrome on the raw-S3 path, which is the
+    // ONLY reason view_4058 used to render chrome-less while view_3940 didn't.)
     var iframe = document.createElement('iframe');
-    iframe.src = iframeSrc;
+    iframe.src = src;
     iframe.setAttribute('title', doc.fileName || 'Document preview');
     viewerEl.appendChild(iframe);
 
