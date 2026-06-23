@@ -1729,13 +1729,14 @@
         return;
       }
 
-      // Drop Prefix picker (field_2240) — single-select from the Drop
-      // Prefix catalog loaded by the Builder snippet
-      // (window.SCW.dropPrefixOptions; see CLAUDE.md "Out-of-bundle Knack
-      // Builder snippets"). Each entry is { id: <24-hex>, identifier: '<label>' }.
-      // Changing the prefix recomputes the drop LABEL (field_1950, e.g.
-      // "E-001") server-side, so refetch on save.
-      if (fieldKey === 'field_2240') {
+      // Drop Prefix picker — single-select from the Drop Prefix catalog loaded
+      // by the Builder snippet (window.SCW.dropPrefixOptions; see CLAUDE.md
+      // "Out-of-bundle Knack Builder snippets"). Each entry is
+      // { id: <24-hex>, identifier: '<label>' }. SOW line items use field_2240;
+      // Survey line items (view_3505) use field_2361 — SAME catalog, so the
+      // picker is shared. Changing the prefix recomputes the drop LABEL
+      // (field_1950 on SOW / field_2365 on survey) server-side, so refetch on save.
+      if (fieldKey === 'field_2240' || fieldKey === 'field_2361') {
         var dpRaw = (window.SCW && window.SCW.dropPrefixOptions) || [];
         if (!dpRaw.length) {
           console.warn('[scw-ws-v2] SCW.dropPrefixOptions missing/empty — Builder snippet not loaded? Drop Prefix picker can\'t open');
@@ -1757,7 +1758,7 @@
           sourceViewKey: viewKey,
           putViewKey:    viewKey,
           recordId:      recordId,
-          fieldKey:      'field_2240',
+          fieldKey:      fieldKey,
           label:         label || 'Drop Prefix',
           selectedIds:   sel,
           candidates:    dpCandidates,

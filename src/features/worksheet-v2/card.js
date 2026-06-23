@@ -1558,6 +1558,12 @@
       detailNotesReadOnly(rec, F.scwNotes || 'field_2418', 'SCW Notes'),
       'scw-ws-v2-sd--paragraph');
     if (cat === 'cam') {
+      // Drop Prefix (field_2361) — editable; same Drop Prefix catalog the SOW
+      // worksheet uses (field_2240), so the init.js picker reuses
+      // SCW.dropPrefixOptions. Changing it recomputes the drop label
+      // (field_2365) server-side, so the picker's onSaved refetches.
+      items += sdItem(detailConnection(rec, viewKey, F.dropPrefix || 'field_2361',
+        'Prefix'), 'scw-ws-v2-sd--conn');
       // Connected To (field_2381, single) — editable; cascade writes the
       // parent's field_2380. Picker candidates resolved in init.js.
       items += sdItem(detailConnection(rec, viewKey, F.connectedDevice || 'field_2381',

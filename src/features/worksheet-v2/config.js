@@ -339,6 +339,8 @@
           productName:    'field_2379',     // STORED product name (display)
           displayLabel:   'field_2365',     // label (E-001 …)
           labelAlt:       'field_2365',     // same — survey line item label
+          dropPrefix:     'field_2361',     // REL_drop prefix (Drop Prefix catalog — same as SOW's 2240)
+          dropNumber:     'field_2362',     // drop number (label recomputes from prefix + number)
           bucket:         'field_2366',     // proposal bucket (L2) — NOT SOW's 2219
           sortOrder:      'field_2218',     // CONFIG_sort order (shared key)
           mdfIdf:         'field_2375',     // MDF/IDF location (L1 grouping + move)
@@ -391,6 +393,7 @@
         //    cascade fires); Mounting Height (3-option chip, no bulk widget).
         bulkFields: {
           cam: [
+            { f: 'dropPrefix',   kind: 'conn-single', label: 'Drop prefix', candSource: 'dropPrefix' },
             { f: 'laborDesc',    kind: 'text',        label: 'Labor description' },
             { f: 'labor',        kind: 'number',      label: 'Labor' },
             { f: 'existCabling', kind: 'bool',        label: 'Existing cabling' },
