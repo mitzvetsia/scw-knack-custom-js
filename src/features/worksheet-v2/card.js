@@ -1564,6 +1564,10 @@
       // (field_2365) server-side, so the picker's onSaved refetches.
       items += sdItem(detailConnection(rec, viewKey, F.dropPrefix || 'field_2361',
         'Prefix'), 'scw-ws-v2-sd--conn');
+      // Cam/Reader number (field_2362) — the numeric part of the AC-001
+      // designation; editable plain number. Pairs with the Prefix above.
+      items += sdItem(detailField(rec, viewKey, F.dropNumber || 'field_2362',
+        'Cam/Reader #', 'number'), 'scw-ws-v2-sd--num');
       // Connected To (field_2381, single) — editable; cascade writes the
       // parent's field_2380. Picker candidates resolved in init.js.
       items += sdItem(detailConnection(rec, viewKey, F.connectedDevice || 'field_2381',

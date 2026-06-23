@@ -399,7 +399,8 @@
         //    cascade fires); Mounting Height (3-option chip, no bulk widget).
         bulkFields: {
           cam: [
-            { f: 'dropPrefix',   kind: 'conn-single', label: 'Drop prefix', candSource: 'dropPrefix' },
+            { f: 'dropPrefix',   kind: 'conn-single', label: 'Prefix',      candSource: 'dropPrefix' },
+            { f: 'dropNumber',   kind: 'number',      label: 'Cam/Reader #' },
             { f: 'laborDesc',    kind: 'text',        label: 'Labor description' },
             { f: 'labor',        kind: 'number',      label: 'Labor' },
             { f: 'existCabling', kind: 'bool',        label: 'Existing cabling' },
