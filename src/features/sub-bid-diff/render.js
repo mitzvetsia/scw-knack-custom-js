@@ -211,11 +211,35 @@
     return buildBlobWith(grid);
   }
 
+  // One-time guard: a Knack view-based PUT only accepts fields that are
+  // exposed (editable) on the write view. If field_2941 isn't on view_3918,
+  // the snapshot PUT is silently dropped — basis (field_2942) saves but the
+  // diff/note never persists, so the publish gate stays blocked. Warn loudly
+  // (once) so this config gap is diagnosable instead of mysterious.
+  var _warnedNoSnapCol = false;
+  function warnIfFieldMissingFromWriteView() {
+    if (_warnedNoSnapCol) return;
+    var recs = readView(C.basisBidView);
+    if (!recs.length) return;                 // can't tell yet
+    var has = recs.some(function (r) {
+      return r && (r[C.snapshotField] !== undefined || r[C.snapshotField + '_raw'] !== undefined);
+    });
+    if (!has) {
+      _warnedNoSnapCol = true;
+      console.warn('[scw-sub-bid-diff] ' + C.snapshotField + ' is not exposed on ' +
+        C.basisBidView + ' — Knack will silently DROP the snapshot on the view-based ' +
+        'PUT. Add ' + C.snapshotField + ' as an editable field on ' + C.basisBidView +
+        ' (the SOW write view on scene_1155). Until then the publish-final gate stays ' +
+        'blocked because the diff/note never persists.');
+    }
+  }
+
   /** Persist a blob to field_2941. Records its signature so auto-save won't
    *  re-write the same content (the local model isn't refetched after a PUT). */
   function writeSnapshotWith(grid, sig) {
     if (!C.snapshotField || !grid) return;
     if (!(window.SCW && typeof SCW.knackAjax === 'function' && SCW.knackRecordUrl)) return;
+    warnIfFieldMissingFromWriteView();
     var sowId = grid.sowId;
     var blob = buildBlobWith(grid);
     if (!blob) return;
