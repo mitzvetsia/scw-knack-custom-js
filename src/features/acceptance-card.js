@@ -24,6 +24,7 @@
     proposal:  'field_2755',
     payment:   'field_2765',
     signed:    'field_2766',
+    terms:     'field_2940',   // FLAG_approved for terms (Yes/No)
     xero:      'field_1847',
     agreement: 'field_2767'
   };
@@ -112,6 +113,9 @@
     var propHref = propA ? (propA.getAttribute('href') || '') : '';
     var paid    = isYes(cellText(row, F.payment));
     var signed  = isYes(cellText(row, F.signed));
+    // When approved for terms, the initial-payment requirement is waived —
+    // show an "Approved for terms" pill in place of the payment-received pill.
+    var terms   = isYes(cellText(row, F.terms));
     var xeroA   = cellAnchor(row, F.xero);
     var fileA   = cellAnchor(row, F.agreement, 'a.kn-view-asset') || cellAnchor(row, F.agreement);
     var actionA = row.parentNode &&
@@ -123,7 +127,9 @@
         ? '<a class="scw-acpt-title" href="' + esc(propHref) + '">' + esc(propTxt) + '</a>'
         : '<div class="scw-acpt-title">' + esc(propTxt) + '</div>') +
       '<div class="scw-acpt-status">' +
-        pill(paid   ? 'Initial payment received' : 'Initial payment pending', paid) +
+        (terms
+          ? pill('Approved for terms', true)
+          : pill(paid ? 'Initial payment received' : 'Initial payment pending', paid)) +
         pill(signed ? 'Agreement signed'         : 'Agreement not signed',    signed) +
       '</div>' +
       '<div class="scw-acpt-actions">' +
