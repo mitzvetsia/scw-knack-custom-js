@@ -3926,6 +3926,27 @@
   // record (internal copy), not to the customer proposal.
   function buildSubBidReview() {
     var empty = { bidHtml: '', diffHtml: '', reviewHtml: '', basis: '', hasDiff: false, note: '' };
+    function finishSubBid(snap) {
+      if (!snap || (!snap.bidHtml && !snap.diffHtml)) return empty;
+      var b = snap.bidHtml || '', d = snap.diffHtml || '', rv = '';
+      if (b || d) {
+        rv = ['<!DOCTYPE html>', '<html><head><meta charset="utf-8">',
+          '<title>Sub-Bid Review — ' + esc(snap.basisBidName || '') + '</title>',
+          '<style>', getPdfCss(), '</style>', '</head><body>',
+          d, b, '</body></html>'].join('\n');
+      }
+      return { bidHtml: b, diffHtml: d, reviewHtml: rv,
+        basis: snap.basisBidName || '', hasDiff: Number(snap.total) > 0, note: snap.note || '' };
+    }
+    // Prefer the Knack MODEL value (verbatim JSON) — Knack renders the embedded
+    // HTML fragments as elements in the detail body, so DOM textContent strips
+    // the tags and corrupts the blob. The model holds it exactly as PUT.
+    try {
+      var mv = window.Knack && Knack.views && Knack.views.view_3861;
+      var ma = mv && mv.model && mv.model.attributes;
+      var mt = (ma && ma.field_2941 != null) ? String(ma.field_2941).trim() : '';
+      if (mt) { try { return finishSubBid(JSON.parse(mt)); } catch (e) {} }
+    } catch (e) { /* fall through to DOM */ }
     var cell = document.querySelector('.kn-detail.field_2941 .kn-detail-body');
     if (!cell) return empty;
     var txt = (cell.textContent || '').replace(/ /g, ' ').replace(/<[^>]*>/g, '').trim();

@@ -629,14 +629,43 @@
     return !!(view && view.querySelector('.kn-detail.' + fieldKey));
   }
 
+  /** Raw field_2941 string, read from the Knack MODEL (verbatim stored value)
+   *  rather than the DOM. The snapshot embeds bidHtml/diffHtml fragments, and
+   *  Knack renders those as elements in the detail body — so DOM textContent
+   *  strips the tags and corrupts the JSON. The model holds the value exactly
+   *  as it was PUT, so it parses cleanly. DOM is the last-resort fallback. */
+  function rawSubBidJson() {
+    try {
+      var v = window.Knack && Knack.views && Knack.views[SOURCE_VIEW];
+      var a = v && v.model && v.model.attributes;
+      if (a) {
+        if (a.field_2941 != null && String(a.field_2941).trim() !== '') return String(a.field_2941);
+        if (a.field_2941_raw != null && String(a.field_2941_raw).trim() !== '') return String(a.field_2941_raw);
+      }
+    } catch (e) { /* fall through to DOM */ }
+    return readField('field_2941');
+  }
+
+  /** Tolerant JSON parse: direct, then HTML-entity-decoded, then tag-stripped
+   *  (covers a value that came back DOM-mangled). Returns null on total failure. */
+  function parseLooseJson(s) {
+    if (s == null) return null;
+    var t = String(s).trim();
+    if (!t) return null;
+    try { return JSON.parse(t); } catch (e) {}
+    try { var ta = document.createElement('textarea'); ta.innerHTML = t; return JSON.parse(ta.value.trim()); } catch (e) {}
+    try { return JSON.parse(t.replace(/<[^>]*>/g, '').trim()); } catch (e) {}
+    return null;
+  }
+
   /** Parse the SOW's field_2941 sub-bid snapshot off view_3861. Returns null
    *  when the field isn't projected (fail-open), { _empty:true } when present
    *  but blank, { _bad:true } when unparseable, else the parsed snapshot. */
   function readSubBidSnapshot() {
     if (!fieldPresent('field_2941')) return null;
-    var raw = readField('field_2941');
-    if (!raw) return { _empty: true };
-    try { return JSON.parse(raw); } catch (e) { return { _bad: true }; }
+    var raw = rawSubBidJson();
+    if (!raw || !String(raw).trim()) return { _empty: true };
+    return parseLooseJson(raw) || { _bad: true };
   }
 
   /** Sub-bid review gate for "Publish as Final". Returns '' when publishing is
