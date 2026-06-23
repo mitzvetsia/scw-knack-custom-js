@@ -111,6 +111,20 @@
     return persistedBasis(sowId) || '';
   }
 
+  /** Publish-readiness for a SOW, derived from the persisted fields that the
+   *  publish surface can also read: field_2942 (basis bid) + field_2941 (saved
+   *  diff/note). The diff is computed here, but the GATE FLAGS travel. */
+  function readinessFor(sowId) {
+    var basis = C.basisBidField ? persistedBasis(sowId) : '';
+    if (!basis) return { state: 'needs-basis', label: 'Pick a basis bid' };
+    var snap = persistedSnapshot(sowId);
+    if (!snap || !snap.savedAt) return { state: 'needs-review', label: 'Save your review' };
+    if (snap.basisBidId && snap.basisBidId !== basis) {
+      return { state: 'stale', label: 'Basis changed — re-save review' };
+    }
+    return { state: 'ready', label: '✓ Reviewed — ready to publish' };
+  }
+
   // ── snapshot (field_2941): reviewer note + frozen diff ──────────────────
   var noteByGrid = Object.create(null);  // sowId → in-progress note text
   var savedSnap  = Object.create(null);  // sowId → true after a successful save
@@ -437,8 +451,11 @@
   function gridSection(grid) {
     var selId = basisFor(grid.sowId);
     var persisted = !!(C.basisBidField && persistedBasis(grid.sowId));
+    var rd = readinessFor(grid.sowId);
     var head = '<div class="scw-sbd-sow-head">' +
-      '<span class="scw-sbd-sow-name">' + esc(grid.sowName || 'SOW') + '</span></div>';
+      '<span class="scw-sbd-sow-name">' + esc(grid.sowName || 'SOW') + '</span>' +
+      '<span class="scw-sbd-ready scw-sbd-ready--' + rd.state + '">' + esc(rd.label) + '</span>' +
+      '</div>';
     var sel = selector(grid, selId, persisted);
 
     if (!selId) {
@@ -503,27 +520,27 @@
   function updateSummary(container, state) {
     var sumEl = container.querySelector('.scw-sbd-summary');
     if (!sumEl) return;
-    var totalEx = 0, gaps = 0, delta = 0, needBasis = 0, withBasis = 0;
+    var gaps = 0, delta = 0, ready = 0, notReady = 0;
     for (var i = 0; i < state.sowGrids.length; i++) {
       var g = state.sowGrids[i];
+      if (readinessFor(g.sowId).state === 'ready') ready++; else notReady++;
       var pid = basisFor(g.sowId);
-      if (!pid) { needBasis++; continue; }
-      withBasis++;
+      if (!pid) continue;
       var res = distill(g, pid);
-      totalEx += res.total; gaps += res.coverageGaps; delta += res.laborDelta;
+      gaps += res.coverageGaps; delta += res.laborDelta;
     }
     var parts = [];
-    if (needBasis) parts.push(needBasis + ' need basis bid');
+    var n = state.sowGrids.length;
+    if (notReady) parts.push(notReady + ' of ' + n + ' not publish-ready');
+    else parts.push('all ' + n + ' publish-ready');
     if (gaps) parts.push(gaps + ' coverage gap' + (gaps === 1 ? '' : 's'));
-    if (totalEx) parts.push(totalEx + ' difference' + (totalEx === 1 ? '' : 's'));
-    if (withBasis && !totalEx && !needBasis) parts.push('all clear');
     if (Math.abs(delta) > C.moneyEps) {
       parts.push('labor Δ ' + (delta > 0 ? '+$' : '-$') +
         Math.abs(delta).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }));
     }
-    sumEl.textContent = parts.length ? '— ' + parts.join(' · ') : '';
+    sumEl.textContent = '— ' + parts.join(' · ');
     container.setAttribute('data-has-gaps', gaps > 0 ? '1' : '0');
-    container.setAttribute('data-needs-basis', needBasis > 0 ? '1' : '0');
+    container.setAttribute('data-needs-basis', notReady > 0 ? '1' : '0');
   }
 
   function bindOnce() {

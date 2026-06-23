@@ -37,8 +37,13 @@
     /* per-SOW section */
     '.scw-sbd-sec { border-top: 1px solid #e2e8f0; }',
     '.scw-sbd-sec:first-child { border-top: none; }',
-    '.scw-sbd-sow-head { padding: 10px 14px 0; }',
+    '.scw-sbd-sow-head { padding: 10px 14px 0; display: flex; align-items: center; gap: 10px; }',
     '.scw-sbd-sow-name { font-size: 14px; font-weight: 700; color: #0f172a; }',
+    '.scw-sbd-ready { font-size: 11px; font-weight: 700; padding: 2px 9px; border-radius: 999px; }',
+    '.scw-sbd-ready--ready { background: #f0fdf4; color: #047857; border: 1px solid #bbf7d0; }',
+    '.scw-sbd-ready--needs-basis { background: #fffbeb; color: #b45309; border: 1px solid #fde68a; }',
+    '.scw-sbd-ready--needs-review { background: #fffbeb; color: #b45309; border: 1px solid #fde68a; }',
+    '.scw-sbd-ready--stale { background: #fff1f2; color: ' + T.added.color + '; border: 1px solid #fecdd3; }',
 
     /* baseline picker */
     '.scw-sbd-baseline select[disabled] { background: #f1f5f9; color: #334155; cursor: default; }',
