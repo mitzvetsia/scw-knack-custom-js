@@ -104,7 +104,11 @@
   }
 
   function basisFor(sowId) {
-    return persistedBasis(sowId) || selectedByGrid[sowId] || '';
+    // An explicit session choice — INCLUDING the cleared '' option — wins over
+    // the persisted value, so toggling back to "— choose —" actually clears
+    // the diff (and the field_2942 write below clears the connection).
+    if (sowId in selectedByGrid) return selectedByGrid[sowId];
+    return persistedBasis(sowId) || '';
   }
 
   // ── snapshot (field_2941): reviewer note + frozen diff ──────────────────
@@ -182,20 +186,25 @@
 
   /** Scroll to + flash the matching v2 grid row for an exception. */
   function jumpTo(sowId, attr, id) {
-    var sec = document.querySelector('.scw-bid-review-v2__sow[data-sow-id="' + sowId + '"]');
-    if (!sec) return;
+    if (!id) return;
     var sel = attr === 'bid'
       ? '[data-row-id="' + id + '"]' : '[data-sow-item-id="' + id + '"]';
-    var el = sec.querySelector(sel);
-    if (!el) return;
-    // If the row sits in a collapsed group, open it first.
-    var grpHidden = el.classList.contains('scw-bid-review-v2__row--hidden');
-    if (grpHidden) {
-      var sub = el.previousElementSibling;
-      while (sub && !sub.classList.contains('scw-bid-review-v2__subgroup-header')) {
-        sub = sub.previousElementSibling;
+    var sec = document.querySelector('.scw-bid-review-v2__sow[data-sow-id="' + sowId + '"]');
+    // Expand the SOW section if it's collapsed (rows are hidden when closed).
+    if (sec) {
+      var hdr = sec.querySelector('.scw-bid-review-v2__sow-header');
+      if (hdr && hdr.getAttribute('aria-expanded') === 'false') hdr.click();
+    }
+    var el = (sec && sec.querySelector(sel)) || document.querySelector(sel);
+    if (!el) { console.warn('[scw-sub-bid-diff] jump target not found:', sel, 'in SOW', sowId); return; }
+    // Expand a collapsed group/subgroup the row sits inside.
+    if (el.classList.contains('scw-bid-review-v2__row--hidden')) {
+      var prev = el.previousElementSibling;
+      while (prev && !prev.classList.contains('scw-bid-review-v2__subgroup-header') &&
+             !prev.classList.contains('scw-bid-review-v2__group-header')) {
+        prev = prev.previousElementSibling;
       }
-      if (sub) sub.click();
+      if (prev) prev.click();
     }
     el.scrollIntoView({ behavior: 'smooth', block: 'center' });
     el.classList.remove('scw-sbd-flash');
