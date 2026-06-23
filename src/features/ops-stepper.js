@@ -572,6 +572,27 @@
     return !!(view && view.querySelector('.kn-detail.' + fieldKey));
   }
 
+  /** Sub-bid review gate for "Publish as Final". Returns '' when publishing is
+   *  allowed, or a human-readable reason string when it's blocked. Drives BOTH
+   *  the visible locked state in renderInto AND the click-time guard in
+   *  fireStep, so the page itself shows the gate (not just an alert on click).
+   *  Fails open: if field_2941 isn't projected onto view_3861, returns ''. */
+  function publishFinalBlockReason() {
+    if (!fieldPresent('field_2941')) return '';
+    var snap = null;
+    try { snap = JSON.parse(readField('field_2941')); } catch (e) { snap = null; }
+    if (!snap || !snap.savedAt || !snap.basisBidId) {
+      return 'Select the basis bid on the Bid Review page so the sub-bid diff ' +
+             'review is captured, then publish.';
+    }
+    if (Number(snap.total) > 0 && !(snap.note && String(snap.note).trim())) {
+      return 'The basis bid differs from this SOW (' + snap.total + ' difference' +
+             (Number(snap.total) === 1 ? '' : 's') + '). Add a reviewer note on ' +
+             'the Bid Review page explaining why, then publish.';
+    }
+    return '';
+  }
+
   // Numeric comparison for `gt` / `gte` etc.
   function toNum(v) {
     if (v == null) return NaN;
@@ -1375,26 +1396,9 @@
     // DOES travel to this page. So we gate "Publish as Final" on that snapshot
     // being present + saved. Fail open: if field_2941 isn't projected onto
     // view_3861 yet, the gate stays inactive (add the field to activate).
-    if (step.id === 'publish-final' && fieldPresent('field_2941')) {
-      var snap = null;
-      try { snap = JSON.parse(readField('field_2941')); } catch (e) { snap = null; }
-      if (!snap || !snap.savedAt || !snap.basisBidId) {
-        alert('Can’t publish as final yet.\n\n' +
-              'On the Bid Review page for this SOW, select the basis bid so the ' +
-              'sub-bid diff review is captured, then try again.\n\n' +
-              'This makes sure we’re publishing against a chosen sub bid with any ' +
-              'differences reviewed and noted.');
-        return;
-      }
-      // When the chosen basis differs from the SOW, a reviewer note is required.
-      if (Number(snap.total) > 0 && !(snap.note && String(snap.note).trim())) {
-        alert('Can’t publish as final yet.\n\n' +
-              'The chosen basis bid differs from this SOW (' + snap.total +
-              ' difference' + (Number(snap.total) === 1 ? '' : 's') + ').\n\n' +
-              'On the Bid Review page, add a reviewer note explaining why we’re ' +
-              'proceeding with these differences, then try again.');
-        return;
-      }
+    if (step.id === 'publish-final') {
+      var gateReason = publishFinalBlockReason();
+      if (gateReason) { alert('Can’t publish as final yet.\n\n' + gateReason); return; }
     }
 
     // Steps that target a subset of surveys (Request Alt Bid) ask
@@ -1534,6 +1538,12 @@
 
       var completed = step.completed ? conditionMet(step.completed) : false;
       var available = step.showWhen ? conditionMet(step.showWhen) : true;
+      // Final-publish is additionally gated on the sub-bid review snapshot.
+      var gateReason = '';
+      if (!completed && available && step.id === 'publish-final') {
+        gateReason = publishFinalBlockReason();
+        if (gateReason) available = false;
+      }
       var locked    = !completed && !available;
 
       var el = document.createElement('a');
@@ -1543,7 +1553,7 @@
       if (completed) cls += ' is-completed is-disabled';
       else if (locked) cls += ' is-disabled';
       el.className = cls;
-      if (locked) el.setAttribute('title', 'Not available for this SOW right now.');
+      if (locked) el.setAttribute('title', gateReason || 'Not available for this SOW right now.');
 
       var icon = document.createElement('span');
       icon.className = 'scw-step-icon';

@@ -173,9 +173,19 @@
     for (var p = 0; p < (grid.packages || []).length; p++) {
       if (grid.packages[p].id === pkgId) { pkg = grid.packages[p]; break; }
     }
+    var basisName = (pkg && (pkg.bidName || pkg.name)) || '';
+    // PDF-ready HTML fragments (bid + diff) so the snapshot can be stamped onto
+    // the published proposal. Built with the bid-PDF class names — see
+    // sub-bid-diff/pdf-html.js. Guarded: absent module → empty strings.
+    var pdf = window.SCW.subBidDiff && window.SCW.subBidDiff.pdfHtml;
+    var bidHtml = '', diffHtml = '';
+    if (pdf) {
+      try { bidHtml  = pdf.buildBid(grid, pkgId, basisName) || ''; } catch (e) { bidHtml = ''; }
+      try { diffHtml = pdf.buildDiff(grid, pkgId, basisName) || ''; } catch (e) { diffHtml = ''; }
+    }
     return {
       v: 1, sowId: sowId, sowName: grid.sowName || '',
-      basisBidId: pkgId, basisBidName: (pkg && (pkg.bidName || pkg.name)) || '',
+      basisBidId: pkgId, basisBidName: basisName,
       savedAt: new Date().toISOString(),
       laborDelta: res.laborDelta, counts: res.counts, coverageGaps: res.coverageGaps,
       total: res.total,
@@ -183,7 +193,8 @@
         return { tier: e.tier, label: e.label, product: e.product, fields: e.fields || [],
                  sowFee: e.sowFee, bidLabor: e.bidLabor, delta: e.delta, jumpId: e.jumpId || '' };
       }),
-      note: currentNote(sowId)
+      note: currentNote(sowId),
+      bidHtml: bidHtml, diffHtml: diffHtml
     };
   }
 

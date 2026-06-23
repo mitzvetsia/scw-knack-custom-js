@@ -73,6 +73,7 @@ cat \
   src/features/sub-bid-diff/config.js \
   src/features/sub-bid-diff/styles.js \
   src/features/sub-bid-diff/render.js \
+  src/features/sub-bid-diff/pdf-html.js \
   src/features/sub-bid-diff/init.js \
   src/features/sales-revision-column.js \
   src/features/group-collapse.js \
