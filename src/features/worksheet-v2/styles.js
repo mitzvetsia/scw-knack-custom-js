@@ -160,6 +160,173 @@
     '  text-align: right !important;',
     '  padding-right: 6px !important;',
     '}',
+    /* Survey money model (moneyMode:"survey", view_3505). Mirrors the v1
+       view_3505 summary order: Survey Notes · Labor Desc · Qty/chips ·
+       Labor · Ext · Bid (no Sub Bid/+Hrs/+Mat/Fee/SOW). 11-track grid;
+       doubled header class for the same specificity reason noted on the
+       sales rule above. */
+    '.scw-ws-v2-card--survey .scw-ws-v2-row--default,',
+    '.scw-ws-v2-card--survey .scw-ws-v2-row--cam,',
+    '.scw-ws-v2-card--survey .scw-ws-v2-row--services,',
+    '.scw-ws-v2-card--survey .scw-ws-v2-row--assumptions,',
+    '.scw-ws-v2-col-header.scw-ws-v2-col-header--survey {',
+    '  grid-template-columns:',
+    '    20px                  /* chevron */',
+    '    64px                  /* label / drop */',
+    '    minmax(140px, 1.1fr)  /* product */',
+    '    minmax(150px, 1.3fr)  /* survey notes */',
+    '    minmax(150px, 1.3fr)  /* labor description */',
+    '    72px                  /* qty / chips */',
+    '    74px                  /* Labor */',
+    '    60px                  /* Ext */',
+    '    62px                  /* Bid (boxed/editable) */',
+    '    28px                  /* warning */',
+    '    28px                  /* trash */ !important;',
+    '}',
+    /* Stretch the two header fill cells (Survey Notes + Description) to the
+       full row height so a short/empty Survey Notes is AT LEAST as tall as
+       the (content-sized) Description and their tops line up. The Description
+       textarea keeps field-sizing:content and drives the row height; the
+       Survey Notes textarea fills the stretched cell. */
+    '.scw-ws-v2-card--survey .scw-ws-v2-cell--survey-notes,',
+    '.scw-ws-v2-card--survey .scw-ws-v2-row--cam > .scw-ws-v2-cell--labor-desc,',
+    '.scw-ws-v2-card--survey .scw-ws-v2-row--default > .scw-ws-v2-cell--labor-desc,',
+    '.scw-ws-v2-card--survey .scw-ws-v2-row--services > .scw-ws-v2-cell--labor-desc {',
+    '  align-self: stretch !important;',
+    '}',
+    '.scw-ws-v2-card--survey .scw-ws-v2-cell--survey-notes .scw-ws-v2-input--textarea {',
+    '  height: 100% !important; field-sizing: fixed;',
+    '}',
+    /* Survey Ext — right-aligned figure. (Bid reuses the boxed/editable SOW
+       cell look via .scw-ws-v2-cell--sow, so it needs no styling here.) */
+    '.scw-ws-v2-cell--survey-ext {',
+    '  text-align: right !important;',
+    '  font: 600 12px/1.2 system-ui, -apple-system, sans-serif !important;',
+    '  color: #334155 !important;',
+    '  white-space: nowrap !important;',
+    '}',
+    /* Survey product is read-only in the preview (picker not wired) — drop the
+       button affordance/cursor so it reads as static text. */
+    '.scw-ws-v2-card--survey .scw-ws-v2-cell--product.scw-ws-v2-cell--ro {',
+    '  cursor: default !important;',
+    '}',
+    /* Survey assumptions: assumption text (labor-desc) spans from the label
+       column through the money columns — assumptions need no drop label or
+       product, so those cells are hidden and the text reclaims their space.
+       Bid stays at col 9. Survey Notes + Labor/Ext/Qty blanks hidden too. */
+    '.scw-ws-v2-card--survey .scw-ws-v2-row--assumptions > .scw-ws-v2-cell--labor-desc {',
+    '  grid-column: 2 / 9 !important;',
+    '}',
+    '.scw-ws-v2-card--survey .scw-ws-v2-row--assumptions > .scw-ws-v2-cell--label,',
+    '.scw-ws-v2-card--survey .scw-ws-v2-row--assumptions > .scw-ws-v2-cell--product,',
+    '.scw-ws-v2-card--survey .scw-ws-v2-row--assumptions > .scw-ws-v2-cell--survey-notes,',
+    '.scw-ws-v2-card--survey .scw-ws-v2-row--assumptions > .scw-ws-v2-cell--num,',
+    '.scw-ws-v2-card--survey .scw-ws-v2-row--assumptions > .scw-ws-v2-cell--survey-labor,',
+    '.scw-ws-v2-card--survey .scw-ws-v2-row--assumptions > .scw-ws-v2-cell--survey-ext {',
+    '  display: none !important;',
+    '}',
+    /* Install money model (moneyMode:"install", view_3915). No money cells at
+       all — header is chevron · label · product · flag chits (RO, show-when-
+       true) · SCW Notes (editable) · warn · trash. 7-track grid (replaces the
+       inherited SOW grid that was leaving phantom money columns). */
+    '.scw-ws-v2-card--install .scw-ws-v2-row--default,',
+    '.scw-ws-v2-card--install .scw-ws-v2-row--cam,',
+    '.scw-ws-v2-card--install .scw-ws-v2-row--services,',
+    '.scw-ws-v2-card--install .scw-ws-v2-row--assumptions,',
+    '.scw-ws-v2-col-header.scw-ws-v2-col-header--install {',
+    '  grid-template-columns:',
+    '    20px                  /* chevron */',
+    '    64px                  /* label / drop */',
+    '    minmax(150px, 1.2fr)  /* product */',
+    '    minmax(0px, auto)     /* flag chits (RO, only-if-true) */',
+    '    minmax(200px, 2fr)    /* SCW Notes (editable) */',
+    '    28px                  /* warning */',
+    '    28px                  /* trash */ !important;',
+    '}',
+    '.scw-ws-v2-cell--install-flags {',
+    '  display: flex !important; flex-wrap: wrap; gap: 3px;',
+    '  align-items: center !important;',
+    '}',
+    '.scw-ws-v2-chip--ro { cursor: default !important; }',
+    '.scw-ws-v2-card--install .scw-ws-v2-cell--product.scw-ws-v2-cell--ro {',
+    '  cursor: default !important;',
+    '}',
+    '.scw-ws-v2-card--install .scw-ws-v2-cell--install-scwnotes { align-self: stretch !important; }',
+    '.scw-ws-v2-card--install .scw-ws-v2-cell--install-scwnotes .scw-ws-v2-input--textarea {',
+    '  height: 100% !important; field-sizing: fixed;',
+    '}',
+    /* Read-only labor/assumption text in the header (services & assumptions) */
+    '.scw-ws-v2-cell--install-descro {',
+    '  font: 400 12px/1.4 system-ui, -apple-system, sans-serif !important;',
+    '  color: #475569 !important; white-space: normal !important;',
+    '  align-self: center !important; overflow: hidden !important;',
+    '}',
+    /* Install assumptions & services are text-only (description + SCW Notes).
+       The shared .scw-ws-v2-row--assumptions labor-desc span (grid-column 3/10)
+       overflows the 7-track install grid and pushed the delete button below the
+       fields. Hide the unused Label + Flags cells and pin each cell to its track
+       so the description spans the freed space and the delete keeps its slot. */
+    '.scw-ws-v2-card--install .scw-ws-v2-row--assumptions > .scw-ws-v2-cell--label,',
+    '.scw-ws-v2-card--install .scw-ws-v2-row--assumptions > .scw-ws-v2-cell--install-flags,',
+    '.scw-ws-v2-card--install .scw-ws-v2-row--services > .scw-ws-v2-cell--label,',
+    '.scw-ws-v2-card--install .scw-ws-v2-row--services > .scw-ws-v2-cell--install-flags {',
+    '  display: none !important;',
+    '}',
+    '.scw-ws-v2-card--install .scw-ws-v2-row--assumptions > .scw-ws-v2-cell--install-descro,',
+    '.scw-ws-v2-card--install .scw-ws-v2-row--services > .scw-ws-v2-cell--install-descro {',
+    '  grid-column: 2 / 5 !important; align-self: center !important;',
+    '}',
+    '.scw-ws-v2-card--install .scw-ws-v2-row--assumptions > .scw-ws-v2-cell--install-scwnotes,',
+    '.scw-ws-v2-card--install .scw-ws-v2-row--services > .scw-ws-v2-cell--install-scwnotes {',
+    '  grid-column: 5 / 6 !important;',
+    '}',
+    '.scw-ws-v2-card--install .scw-ws-v2-row--assumptions > .scw-ws-v2-cell--warn,',
+    '.scw-ws-v2-card--install .scw-ws-v2-row--services > .scw-ws-v2-cell--warn {',
+    '  grid-column: 6 / 7 !important;',
+    '}',
+    '.scw-ws-v2-card--install .scw-ws-v2-row--assumptions > .scw-ws-v2-trash,',
+    '.scw-ws-v2-card--install .scw-ws-v2-row--services > .scw-ws-v2-trash {',
+    '  grid-column: 7 / 8 !important;',
+    '}',
+    /* SCW Notes — first/leftmost detail field, shown as a clear multi-line
+       paragraph (wider than the info fields, taller min-height). */
+    '.scw-ws-v2-sd--paragraph { flex: 1 1 280px !important; min-width: 220px !important; max-width: 420px !important; }',
+    '.scw-ws-v2-sd--paragraph .scw-ws-v2-input--textarea {',
+    '  width: 100% !important; min-height: 60px !important;',
+    '}',
+    /* Mounting-Height single-select chips (editable; radiochip handler). */
+    '.scw-ws-v2-radiochips {',
+    '  display: inline-flex !important; flex-wrap: wrap !important; gap: 4px !important;',
+    '}',
+    '.scw-ws-v2-radiochip {',
+    '  border: 1px solid #cbd5e1 !important; background: #fff !important;',
+    '  color: #475569 !important; border-radius: 6px !important;',
+    '  padding: 3px 9px !important; font: 600 11px/1.2 system-ui, sans-serif !important;',
+    '  cursor: pointer !important; white-space: nowrap !important;',
+    '}',
+    '.scw-ws-v2-radiochip.is-selected {',
+    '  background: #295f91 !important; border-color: #295f91 !important; color: #fff !important;',
+    '}',
+    '.scw-ws-v2-radiochip:hover { border-color: #94a3b8 !important; }',
+    '.scw-ws-v2-radiochip.is-selected:hover { background: #21507c !important; }',
+    '.scw-ws-v2-radiochip.scw-ws-v2-radiochip--saving { opacity: .6 !important; }',
+    '.scw-ws-v2-radiochip.scw-ws-v2-radiochip--error {',
+    '  border-color: #dc2626 !important; color: #dc2626 !important;',
+    '}',
+    /* Survey detail panel — flex-wrap row; each field sized to its expected
+       value width (numbers narrow, connection medium, mounting-hardware list
+       wide) instead of the SOW two-zone grid. */
+    '.scw-ws-v2-survey-detail {',
+    '  display: flex !important; flex-wrap: wrap !important;',
+    '  gap: 10px 18px !important; align-items: flex-start !important;',
+    '}',
+    '.scw-ws-v2-sd-item { min-width: 0 !important; }',
+    '.scw-ws-v2-sd--num   { flex: 0 0 90px !important; width: 90px !important; }',
+    '.scw-ws-v2-sd--num .scw-ws-v2-input--num { width: 100% !important; }',
+    '.scw-ws-v2-sd--chips { flex: 0 0 auto !important; }',
+    '.scw-ws-v2-sd--conn  { flex: 0 1 220px !important; min-width: 150px !important; }',
+    '.scw-ws-v2-sd--notes { flex: 1 1 200px !important; min-width: 170px !important; max-width: 300px !important; }',
+    '.scw-ws-v2-sd--wide  { flex: 2 1 280px !important; min-width: 220px !important; }',
     /* Sales detail — v1-style two columns: pricing/identity stacked on the
        left, connections + Labor Desc stacked on the right. */
     '.scw-ws-v2-sales-detail {',
@@ -507,6 +674,30 @@
     '  padding-left: 14px !important;',
     '}',
 
+    /* v1 dynamic-cell-colors parity (survey worksheet) — empty/zero highlight
+       on the Bid, Labor ("sub bid"), Qty and Labor Description cells. Same
+       palette as v1: danger = pale red, warning = pale yellow. */
+    '.scw-ws-v2-cell--danger  { background-color: #f8d7da !important; }',
+    '.scw-ws-v2-cell--warning { background-color: #fff3cd !important; }',
+    /* Inputs inside a tinted DIV cell (Labor / Qty / Labor Desc) go
+       transparent so the cell colour shows through. */
+    '.scw-ws-v2-cell--danger .scw-ws-v2-input,',
+    '.scw-ws-v2-cell--warning .scw-ws-v2-input {',
+    '  background-color: transparent !important;',
+    '}',
+    /* The Bid cell IS the button — its boxed white background
+       (.scw-ws-v2-cell--editable-conn.scw-ws-v2-cell--sow, specificity 0,2,0)
+       would hide the warn tint, so tint the button directly at higher
+       specificity (0,3,0) and keep it through hover. */
+    '.scw-ws-v2-cell--editable-conn.scw-ws-v2-cell--survey-bid.scw-ws-v2-cell--danger,',
+    '.scw-ws-v2-cell--editable-conn.scw-ws-v2-cell--survey-bid.scw-ws-v2-cell--danger:hover {',
+    '  background-color: #f8d7da !important;',
+    '}',
+    '.scw-ws-v2-cell--editable-conn.scw-ws-v2-cell--survey-bid.scw-ws-v2-cell--warning,',
+    '.scw-ws-v2-cell--editable-conn.scw-ws-v2-cell--survey-bid.scw-ws-v2-cell--warning:hover {',
+    '  background-color: #fff3cd !important;',
+    '}',
+
     '.scw-ws-v2-input--notes {',
     '  white-space: nowrap !important;',
     '  overflow: hidden !important;',
@@ -641,6 +832,17 @@
     '  font-variant-numeric: tabular-nums !important;',
     '  min-width: 22px !important;',
     '  text-align: center !important;',
+    '}',
+    /* Per-MDF sub-bid total in the header (money at a glance). */
+    '.scw-ws-v2-l1-money {',
+    '  flex: 0 0 auto !important;',
+    '  margin-right: 6px !important;',
+    '  padding: 2px 9px !important;',
+    '  background: rgba(255, 255, 255, 0.22) !important;',
+    '  border-radius: 10px !important;',
+    '  font-size: 11.5px !important;',
+    '  font-weight: 800 !important;',
+    '  font-variant-numeric: tabular-nums !important;',
     '}',
 
     /* L1 body — collapsed by default; opens via .scw-ws-v2-l1--open */
@@ -867,6 +1069,11 @@
     '  content: "(none)";',
     '  color: #94a3b8 !important;',
     '  font-style: italic;',
+    '}',
+    /* "· Read-only" tag appended to a detail-field label (e.g. SCW Notes on
+       the bid worksheet) to make the non-editable state explicit. */
+    '.scw-ws-v2-detail .scw-ws-v2-ro-tag {',
+    '  font-weight: 600; color: #9ca3af; text-transform: none; letter-spacing: 0;',
     '}',
     /* When there\'s no identity zone (default/services), let connections
        fill the full width. */
@@ -1149,6 +1356,27 @@
        rules + the view_3586 entry in device-worksheet\'s V2 kill-switch. */
     '.scw-ktl-accordion:has(#view_3586) { display: none !important; }',
     '#view_3586 { display: none !important; }',
+    /* Same cutover for the deploy/install page: hide v1\'s view_3915 table +
+       accordion shell now that v2 is primary there. Camera Config + QA fold
+       into the v2 cards via install-config-subpanel/config-qa-popover. Reverse
+       by removing these two rules + the view_3915 entry in device-worksheet\'s
+       V2 kill-switch + flipping the config entry enabled:false. */
+    '.scw-ktl-accordion:has(#view_3915) { display: none !important; }',
+    '#view_3915 { display: none !important; }',
+    /* "WHAT WE'RE INSTALLING" (view_4056) — same install object/cutover as
+       view_3915. Hide its native table + accordion shell; v2 renders the cards. */
+    '.scw-ktl-accordion:has(#view_4056) { display: none !important; }',
+    '#view_4056 { display: none !important; }',
+    /* Same cutover for the survey/bid page: v2 is primary on view_3505 now.
+       FULL cutover — hide the native view AND its KTL accordion shell so JUST
+       the v2 grid shows (no collapsible header). Safe to hide the whole
+       accordion with `:has(#view_3505)` because init.js (hideSourceAccordion)
+       relocates the v2 panel OUT of the accordion body first, so this rule
+       only catches the shell wrapping the hidden source table. #view_3505 stays
+       in the DOM (display:none) so v2 still reads its model. Reverse by removing
+       these rules + the view_3505 V2_TAKEOVER entry + hideSourceAccordion. */
+    '.scw-ktl-accordion:has(#view_3505) { display: none !important; }',
+    '#view_3505 { display: none !important; }',
 
     '.scw-ws-v2-mh-step {',
     '  width: 16px !important; height: 18px !important;',
@@ -1719,8 +1947,9 @@
     '  border: 1px solid #ddd !important;',
     '  box-shadow: 0 1px 4px rgba(0,0,0,0.08) !important;',
     '  cursor: pointer !important;',
-    /* Re-enable image drag (Knack/KTL sets img -webkit-user-drag: none). */
-    '  -webkit-user-drag: element !important;',
+    /* Disable native image drag — dragging is handled by the pointer-drag
+       implementation (mousedown/move/up), so native img drag must not fire. */
+    '  -webkit-user-drag: none !important;',
     '  transition: transform 120ms ease, box-shadow 120ms ease !important;',
     '}',
     '.scw-ws-v2-photo-img:hover {',
@@ -1771,6 +2000,33 @@
     '  box-sizing: border-box !important;',
     '}',
     '.scw-ws-v2-photo-req--ok { background: #16a34a !important; }',
+
+    /* ── Photo QA chit (install surface — see photos.js QA_CHIT_VIEWS).
+       Sits under the type/required labels; click opens the photo QA panel
+       (qa-popover.js). State colors mirror the QA panel\'s segmented control
+       and the closeout files QA card states. ── */
+    '.scw-ws-v2-photo-qa-chit {',
+    '  display: inline-flex !important; align-items: center !important; gap: 4px !important;',
+    '  margin-top: 3px !important; width: 100% !important; box-sizing: border-box !important;',
+    '  padding: 3px 8px !important; border-radius: 999px !important;',
+    '  border: 1px solid #d1d5db !important; background: #fff !important;',
+    '  font: 700 9px/1.2 system-ui, sans-serif !important;',
+    '  letter-spacing: 0.4px !important; text-transform: uppercase !important;',
+    '  color: #4b5563 !important; cursor: pointer !important; user-select: none !important;',
+    '  justify-content: center !important; white-space: nowrap !important;',
+    '  transition: filter 120ms ease, box-shadow 120ms ease !important;',
+    '}',
+    '.scw-ws-v2-photo-qa-chit:hover {',
+    '  filter: brightness(0.97) !important; box-shadow: 0 1px 2px rgba(0,0,0,0.08) !important;',
+    '}',
+    '.scw-ws-v2-photo-qa-chit svg { display: block !important; flex: 0 0 auto !important; }',
+    '.scw-ws-v2-photo-qa-chit-state { overflow: hidden !important; text-overflow: ellipsis !important; }',
+    '.scw-ws-v2-photo-qa-chit.is-pending  { background: #ede9fe !important; color: #6d28d9 !important; border-color: #c4b5fd !important; }',
+    '.scw-ws-v2-photo-qa-chit.is-half-pass { background: #fef3c7 !important; color: #92400e !important; border-color: #fcd34d !important; }',
+    '.scw-ws-v2-photo-qa-chit.is-done     { background: #dcfce7 !important; color: #15803d !important; border-color: #86efac !important; }',
+    '.scw-ws-v2-photo-qa-chit.is-fail     { background: #fee2e2 !important; color: #b91c1c !important; border-color: #fca5a5 !important; }',
+    '.scw-ws-v2-photo-qa-chit.is-missing  { background: #f3f4f6 !important; color: #6b7280 !important; border-color: #d1d5db !important; }',
+
     '.scw-ws-v2-photo-add {',
     '  display: flex !important;',
     '  align-items: center !important;',
@@ -1822,7 +2078,20 @@
 
     /* ── Photo drag-to-fill-required-slot (v1 parity) ────────── */
     '.scw-ws-v2-photo-card { position: relative !important; }',
-    '.scw-ws-v2-photo-card[draggable="true"] { cursor: grab; }',
+    '.scw-ws-v2-photo-card[data-scw-ws-v2-photo-drag] { cursor: grab; }',
+    '.scw-ws-v2-photo-card[data-scw-ws-v2-photo-drag]:active { cursor: grabbing; }',
+    /* Floating ghost that trails the cursor during a pointer-drag. */
+    '.scw-ws-v2-photo-ghost {',
+    '  position: fixed !important; z-index: 100000 !important;',
+    '  pointer-events: none !important; opacity: 0.85 !important;',
+    '  width: 84px !important; height: 64px !important;',
+    '  border-radius: 6px !important; overflow: hidden !important;',
+    '  box-shadow: 0 6px 18px rgba(0,0,0,0.35) !important;',
+    '}',
+    '.scw-ws-v2-photo-ghost img {',
+    '  width: 100% !important; height: 100% !important;',
+    '  object-fit: cover !important; display: block !important;',
+    '}',
     '.scw-ws-v2-photo-drag-src { opacity: 0.45 !important; }',
     '.scw-ws-v2-photo-drop-ok {',
     '  outline: 2px dashed #16a34a !important; outline-offset: 2px !important;',
@@ -1835,6 +2104,22 @@
     '  0%,100% { outline-color: #16a34a; } 50% { outline-color: #86efac; }',
     '}',
     '.scw-ws-v2-photo-card--pending { opacity: 0.6 !important; pointer-events: none !important; }',
+    /* "Saving…" overlay shown on the target card while the move webhook +
+       refetch run (removed when the strip rebuilds on refetch). */
+    '.scw-ws-v2-photo-saving {',
+    '  position: absolute !important; inset: 0 !important; z-index: 5 !important;',
+    '  display: flex !important; flex-direction: column !important;',
+    '  align-items: center !important; justify-content: center !important; gap: 5px !important;',
+    '  background: rgba(255,255,255,0.8) !important; border-radius: 6px !important;',
+    '  font: 700 10px/1.2 system-ui, -apple-system, sans-serif !important;',
+    '  letter-spacing: 0.03em !important; color: #07467c !important;',
+    '}',
+    '.scw-ws-v2-photo-spinner {',
+    '  width: 18px !important; height: 18px !important; border-radius: 50% !important;',
+    '  border: 2px solid rgba(7,70,124,0.25) !important; border-top-color: #07467c !important;',
+    '  animation: scw-ws-v2-photo-spin 0.7s linear infinite !important;',
+    '}',
+    '@keyframes scw-ws-v2-photo-spin { to { transform: rotate(360deg); } }',
     '.scw-ws-v2-photo-confirm {',
     '  position: absolute !important; inset: 0 !important; z-index: 5 !important;',
     '  display: flex !important; flex-direction: column !important;',

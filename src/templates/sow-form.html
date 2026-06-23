@@ -1,0 +1,197 @@
+<!--
+  Statement of Work (photo-card style) — HTML→PDF template (Make-side, PDF.co).
+  Same header/info block as the live LA form; body is compact device cards with
+  a photo strip, grouped by MDF. No signature. Tightened for density.
+  NOT part of the Knack bundle.
+
+  ── Data contract ──────────────────────────────────────────────────────────
+    Date          formatDate(now; "MM/DD/YYYY")
+    Client        18.field_6_raw[].identifier
+    Project       18.field_4_raw - get(split(17.field_2755_raw[].identifier; "|"); 2)
+    Proposal      19.field_2663_raw
+    Site Address  18.field_22
+    Rows          {{locationRows}} ← SOW Text Aggregator (grouped by MDF)
+    Per card:     label | product | notes | flags | photo strip (see snippet)
+
+  Group header (Text Aggregator, source = Array Aggregator by MDF text):
+    <div class="la-group">{{if(length(KEY) > 0; KEY; "No MDF / IDF")}}</div>{{join(map(array; "value"); "")}}
+
+  Page X of X: handled by the @page { @bottom-center } counter (PDF.co honors it).
+  ───────────────────────────────────────────────────────────────────────────
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700;800&display=swap" rel="stylesheet">
+<style>
+  @page {
+    size: letter; margin: 14mm 14mm 14mm 14mm;
+    @bottom-center {
+      content: "Page " counter(page) " of " counter(pages);
+      font-family: 'Inter', Arial, sans-serif; font-size: 9px; color: #94a3b8;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    font-family: 'Inter', Arial, Helvetica, sans-serif;
+    color: #1f2937; font-size: 12px; line-height: 1.35;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+  .la-page { padding: 0; }
+
+  /* ── Header ─────────────────────────────────────────────── */
+  .la-header {
+    display: flex; align-items: flex-start; justify-content: space-between;
+    border-bottom: 3px solid #07467c; padding-bottom: 12px; margin-bottom: 12px;
+  }
+  .la-header-logo img { max-height: 50px; max-width: 210px; display: block; }
+  .la-header-right { text-align: right; }
+  .la-title { font-size: 19px; font-weight: 800; color: #07467c; letter-spacing: 0.01em; margin: 0 0 4px; }
+  .la-meta { font-size: 11px; color: #64748b; }
+  .la-meta b { color: #334155; font-weight: 700; }
+
+  /* ── Customer / site block ──────────────────────────────── */
+  .la-info {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 4px 24px;
+    background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px;
+    padding: 9px 14px; margin-bottom: 12px;
+  }
+  .la-info-item { font-size: 11.5px; }
+  .la-info-label { font-size: 9px; text-transform: uppercase; letter-spacing: 0.06em; color: #94a3b8; font-weight: 700; }
+  .la-info-value { color: #1f2937; font-weight: 600; }
+
+  .la-intro { font-size: 11px; color: #475569; margin: 0 0 10px; }
+
+  /* ── Device cards (compact) ─────────────────────────────── */
+  .la-locations { display: flex; flex-direction: column; gap: 5px; }
+  .la-group {
+    font-size: 12px; font-weight: 800; color: #07467c;
+    background: #eef4fa; border-left: 4px solid #07467c;
+    padding: 4px 10px; border-radius: 3px; margin: 7px 0 1px;
+    page-break-after: avoid; break-after: avoid;
+  }
+  .la-group:first-child { margin-top: 0; }
+  .la-loc {
+    border: 1px solid #e2e8f0; border-radius: 5px; padding: 6px 9px;
+    page-break-inside: avoid; break-inside: avoid;
+  }
+  .la-loc-head { display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap; }
+  .la-loc-label { font-size: 13px; font-weight: 800; color: #07467c; line-height: 1.1; overflow-wrap: break-word; }
+  .la-loc-product { font-size: 11px; font-weight: 600; color: #334155; overflow-wrap: break-word; }
+  .la-loc-meta { font-size: 10.5px; color: #334155; margin-top: 1px; }
+  .la-loc-meta .k { color: #94a3b8; font-weight: 700; text-transform: uppercase; font-size: 8.5px; letter-spacing: 0.05em; }
+  .la-loc-meta .v { color: #334155; }
+
+  .la-photos { display: flex; flex-wrap: wrap; gap: 5px; margin-top: 5px; }
+  .la-photos img {
+    width: 118px; height: 88px; object-fit: cover;
+    border-radius: 3px; border: 1px solid #e2e8f0; background: #f1f5f9; display: block;
+  }
+  .la-photos-empty { color: #94a3b8; font-size: 10px; font-style: italic; }
+
+  /* chips (Mount Only / Plenum) — only when YES */
+  .la-chip {
+    display: inline-block; padding: 1px 7px; border-radius: 9px;
+    font-size: 8.5px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.03em;
+    margin-right: 4px; vertical-align: middle;
+  }
+  .la-chip-mount  { background: #e0e7ff; color: #3730a3; }
+  .la-chip-plenum { background: #fef3c7; color: #92400e; }
+
+  /* text-only rows for the Other Services / General Assumptions sections */
+  .sow-note {
+    font-size: 11px; color: #475569; padding: 6px 10px;
+    border: 1px solid #e2e8f0; border-radius: 5px; margin-top: 5px;
+    page-break-inside: avoid; break-inside: avoid;
+  }
+  .sow-note ul, .sow-note ol { margin: 4px 0 0; padding-left: 18px; }
+  .sow-note p { margin: 0 0 4px; }
+  .sow-note-extra { margin-top: 4px; font-size: 10px; color: #64748b; }
+  .sow-note-extra b { color: #475569; }
+</style>
+</head>
+<body>
+  <div class="la-page">
+
+    <div class="la-header">
+      <div class="la-header-logo"><img src="https://www.getscw.com/media/logo/stores/1/logo-scw.jpeg" alt="SCW"></div>
+      <div class="la-header-right">
+        <div class="la-title">Statement of Work</div>
+        <div class="la-meta">
+          <div><b>Date:</b> {{formatDate(now; "MM/DD/YYYY")}}</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="la-info">
+      <div class="la-info-item"><div class="la-info-label">Client</div><div class="la-info-value">{{18.field_6_raw[].identifier}}</div></div>
+      <div class="la-info-item"><div class="la-info-label">Project</div><div class="la-info-value">{{18.field_4_raw}} - {{get(split(17.field_2755_raw[].identifier; "|"); 2)}}</div></div>
+      <div class="la-info-item"><div class="la-info-label">Proposal</div><div class="la-info-value">{{19.field_2663_raw}}</div></div>
+      <div class="la-info-item"><div class="la-info-label">Site Address</div><div class="la-info-value">{{18.field_22}}</div></div>
+    </div>
+
+    <p class="la-intro">
+      The following describes the work to be performed under this Statement of Work,
+      organized by location.
+    </p>
+
+    <div class="la-locations">
+      {{locationRows}}
+      {{otherServices}}
+      {{generalAssumptions}}
+    </div>
+
+  </div>
+</body>
+</html>
+
+<!-- ════════════════════════════════════════════════════════════════════════
+  PER-DEVICE CARD SNIPPET (LIVE field mappings; grouping by Array+Text Aggregator)
+
+<div class="la-loc">
+  <div class="la-loc-head">
+    <div class="la-loc-label">{{5.field_2801_raw}}</div>
+    <div class="la-loc-product">{{if(5.field_2801_raw = 5.field_2790_raw; ""; 5.field_2790_raw)}}</div>
+  </div>
+  <div class="la-loc-meta">
+    {{if(5.field_2807_raw = true; "<span class='la-chip la-chip-mount'>Mount Only</span>"; "")}}{{if(5.field_2806_raw = true; "<span class='la-chip la-chip-plenum'>Plenum</span>"; "")}}
+    <span class="k">Notes</span> <span class="v">{{5.field_2808_raw}}</span>
+  </div>
+  <div class="la-loc-meta">
+    <span class="k">Labor</span> <span class="v">{{5.field_XXXX_raw}}</span>
+  </div>
+  <div class="la-photos"><img src='{{join(38.`photo URL`; "'><img src='")}}'></div>
+</div>
+
+  field map: label field_2801 | product field_2790 (de-duped vs label) |
+  Mount Only field_2807 (bool) | Plenum field_2806 (bool) | notes field_2808 |
+  labor field_XXXX (TODO: set the labor-description field) |
+  photos 38.`photo URL` (array of url strings → join trick builds the <img> tags;
+  if it's an array of OBJECTS instead, use join(map(38.array; "photo URL"); ...)).
+
+  ── BOTTOM SECTIONS: {{otherServices}} + {{generalAssumptions}} ─────────────
+  Three streams; the two special ones are pinned to the bottom by their order
+  in the template above (after {{locationRows}}).
+
+  1) MAIN ({{locationRows}}): filter to items that HAVE an MDF, then the usual
+     Array Aggregator (group by MDF) → Text Aggregator. (Keeps null-MDF
+     services/assumptions OUT of the "No MDF / IDF" group.)
+  2) OTHER SERVICES: filter  MDF is empty  AND  proposal bucket = Services  →
+     build a SIMPLE text row (NOT the .la-loc device card — that nests). Main
+     description always; the (rare) separate notes field only when present:
+       <div class="sow-note">{{<description field>}}{{if(length(<notes field>) > 0; "<div class='sow-note-extra'><b>Notes:</b> " + <notes field> + "</div>"; "")}}</div>
+     → Text Aggregator into a var (otherServicesRows).
+     Then a Set variable wraps a header ONLY when non-empty:
+       {{otherServices}} = if( length(otherServicesRows) > 0;
+         "<div class='la-group'>Other Services</div>" + otherServicesRows; "" )
+  3) GENERAL ASSUMPTIONS: same, filter  MDF is empty  AND  proposal bucket = Assumptions,
+     same  <div class="sow-note">…</div>  row:
+       {{generalAssumptions}} = if( length(generalAssumptionsRows) > 0;
+         "<div class='la-group'>General Assumptions</div>" + generalAssumptionsRows; "" )
+  (proposal bucket = the connection field on the line item; filter on its
+   record id:  Services = 6977caa7f246edf67b52cbcd ,
+               Assumptions = 697b7a023a31502ec68b3303 )
+  (the if() hides the header/section entirely when there are no such items.)
+═════════════════════════════════════════════════════════════════════════════ -->

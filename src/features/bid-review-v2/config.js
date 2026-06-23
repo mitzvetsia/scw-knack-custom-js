@@ -50,8 +50,10 @@
       v1.sowItemsViewKey,     // view_3921 — SOW line items
       v1.bidPackagesViewKey,  // view_3573 — bid packages
       v1.mdfIdfViewKey,       // view_3822 — MDF/IDF locations
-      v1.changeRequestViewKey // view_3818 — change requests
-    ] : [],
+      v1.changeRequestViewKey, // view_3818 — change requests
+      v1.docFilesViewKey      // view_3926 — DOC_files (link/unlink repaints
+                              // the docs block v1 injects into v2's header)
+    ].filter(Boolean) : [],
 
     // Field keys + webhooks come from v1 verbatim. Centralizing here
     // means v1 → v2 cutover is a single namespace flip, no key copy.

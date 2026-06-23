@@ -190,6 +190,43 @@ window.SCW = window.SCW || {};
   };
 })(window.SCW);
 
+// ── Logged-in user / internal-staff gate ─────────────────────
+// Knack exposes the current user client-side via Knack.getUserAttributes()
+// → { id, name, email, ... }. SCW.isInternalUser() returns true when that
+// email is on the @getscw.com domain (case-insensitive, tolerates trailing
+// whitespace, and matches sub-domains like @mail.getscw.com).
+//
+// ⚠️ This is a UI/preview gate, NOT a security boundary — it runs in the
+// browser and a technical user can flip it. Use it only to show/hide
+// preview surfaces; gate sensitive DATA at the Knack object/view permission
+// level. Fails safe: returns false when the session/email isn't populated
+// yet (e.g. a very early render), and onViewRender re-fires so a gated
+// feature resolves on the next pass.
+//
+// Optional allowlist: pass an array of explicit lowercase emails to also
+// admit (e.g. a contractor or test account) — SCW.isInternalUser(['x@y.com']).
+(function (namespace) {
+  var INTERNAL_DOMAIN_RE = /@([a-z0-9-]+\.)*getscw\.com\s*$/i;
+  namespace.getUserEmail = function getUserEmail() {
+    try {
+      var u = (typeof Knack !== 'undefined' && Knack.getUserAttributes)
+        ? Knack.getUserAttributes() : null;
+      return (u && typeof u === 'object' && u.email) ? String(u.email) : '';
+    } catch (e) { return ''; }
+  };
+  namespace.isInternalUser = function isInternalUser(allowlist) {
+    var email = namespace.getUserEmail().trim().toLowerCase();
+    if (!email) return false;
+    if (INTERNAL_DOMAIN_RE.test(email)) return true;
+    if (allowlist && allowlist.length) {
+      for (var i = 0; i < allowlist.length; i++) {
+        if (String(allowlist[i]).trim().toLowerCase() === email) return true;
+      }
+    }
+    return false;
+  };
+})(window.SCW);
+
 // ── Authenticated Knack AJAX wrapper ─────────────────────────
 // Detects 401 "Invalid token" responses and shows a non-intrusive
 // toast prompting the user to log out and back in. We *don't* treat
@@ -220,7 +257,7 @@ window.SCW = window.SCW || {};
     var el = document.createElement('div');
     el.id = TOAST_ID;
     el.innerHTML =
-      '<span>Session expired &mdash; save failed. Please log out and back in.</span>' +
+      '<span>Your login session has expired. Please log out and back in to continue.</span>' +
       '<button id="scw-session-logout">Log out &amp; come back</button>' +
       '<button id="scw-session-dismiss">&times;</button>';
 
@@ -244,15 +281,81 @@ window.SCW = window.SCW || {};
     document.body.appendChild(el);
 
     document.getElementById('scw-session-logout').addEventListener('click', function () {
-      // Save current page so we can return after re-login
-      sessionStorage.setItem(RETURN_KEY, window.location.hash);
-      window.location.hash = '#logout';
+      // Save current page so we can return after re-login.
+      try { sessionStorage.setItem(RETURN_KEY, window.location.hash); } catch (e) {}
+      // Knack's canonical logout — clears the session and routes to login.
+      // (#logout is NOT a real route in every app, so it just dumped users to
+      // the home page.) Fall back to a rendered logout link, then a reload.
+      try {
+        if (typeof Knack !== 'undefined' && typeof Knack.handleLogout === 'function') {
+          Knack.handleLogout();
+          return;
+        }
+      } catch (e) { /* fall through */ }
+      var logoutLink = document.querySelector(
+        'a.kn-log-out, a[href*="logout" i], a[href$="#logout"]');
+      if (logoutLink) { logoutLink.click(); return; }
+      // Last resort: reload — if the session cookie is still valid Knack mints
+      // a fresh token on load; otherwise it drops the user at the login screen.
+      window.location.reload();
     });
     document.getElementById('scw-session-dismiss').addEventListener('click', function () {
       el.remove();
       _toastVisible = false;
     });
   }
+
+  // ── Expired-token detection across 401 AND 403 ──────────────────
+  // Knack returns 401 for some token failures, but an expired user token on
+  // an active session commonly comes back as 403 (Forbidden) — the same status
+  // as an ordinary permission denial. We distinguish them so an expired token
+  // prompts re-login instead of silently failing every save/read:
+  //   - 403 on a WRITE (PUT/POST/DELETE): the user already had the edit UI, so
+  //     they had access — a sudden 403 is an expired token, not a role change.
+  //   - a BURST of read 403s across a page's data sources: a genuine per-view
+  //     permission gap doesn't storm every source at once; a dead token does.
+  //   - any token-ish response body.
+  var _auth403Times = [];
+  var AUTH_BURST_WINDOW = 12000;  // ms
+  var AUTH_BURST_COUNT  = 3;
+
+  function isKnackApiUrl(url) {
+    url = url || '';
+    return url.indexOf('knack.com') !== -1 || url.indexOf('/v1/') !== -1;
+  }
+  function isWriteMethod(m) {
+    m = (m || 'GET').toString().toUpperCase();
+    return m === 'PUT' || m === 'POST' || m === 'DELETE' || m === 'PATCH';
+  }
+  function looksLikeTokenBody(body) {
+    return /invalid token|reauthenticate|invalid authentication|token (?:is )?expired|expired token/i
+      .test(String(body || ''));
+  }
+
+  function maybeFlagAuthFailure(status, method, url, body) {
+    if (status !== 401 && status !== 403) return;
+    if (!isKnackApiUrl(url)) return;
+
+    if (looksLikeTokenBody(body)) { console.warn('[SCW] Auth: token body on ' + status, url); showSessionToast(); return; }
+    if (status === 401) return; // 401 without a token body — let Knack handle it
+
+    // 403 below.
+    if (isWriteMethod(method)) {
+      console.warn('[SCW] Auth: 403 on write → likely expired token', method, url);
+      showSessionToast();
+      return;
+    }
+    // Read 403 — count toward a burst.
+    var now = Date.now();
+    _auth403Times.push(now);
+    _auth403Times = _auth403Times.filter(function (t) { return now - t <= AUTH_BURST_WINDOW; });
+    if (_auth403Times.length >= AUTH_BURST_COUNT) {
+      console.warn('[SCW] Auth: 403 burst → likely expired token', _auth403Times.length, url);
+      _auth403Times = [];
+      showSessionToast();
+    }
+  }
+  namespace.flagAuthFailure = maybeFlagAuthFailure;
 
   /**
    * SCW.knackAjax(options)
@@ -284,18 +387,9 @@ window.SCW = window.SCW || {};
     var merged = $.extend(true, {}, defaults, opts);
 
     merged.error = function (xhr) {
-      // Only 401 = unauthenticated / expired token. 403 = forbidden
-      // (a permission issue on a specific view) and must NOT trip
-      // the session-expired toast — those are normal for users who
-      // lack access to a particular data source.
-      if (xhr.status === 401) {
-        var body = '';
-        try { body = xhr.responseText || ''; } catch (e) { /* ignore */ }
-        if (/invalid token|reauthenticate/i.test(body)) {
-          console.warn('[SCW] Auth expired — prompting reload');
-          showSessionToast();
-        }
-      }
+      var body = '';
+      try { body = xhr.responseText || ''; } catch (e) { /* ignore */ }
+      maybeFlagAuthFailure(xhr.status, merged.type || opts.type, merged.url || opts.url, body);
       if (typeof callerError === 'function') callerError.apply(this, arguments);
     };
 
@@ -312,20 +406,15 @@ window.SCW = window.SCW || {};
 
   // ── Global 401/403 interceptor ──
   // Catches auth failures from ANY AJAX/fetch call (including KTL bulk ops)
-  // and shows the session-expired toast.
+  // and shows the session-expired toast (see maybeFlagAuthFailure for the
+  // expired-token-vs-permission heuristic).
 
-  // 1) jQuery $.ajax errors — 401 only (see note above)
+  // 1) jQuery $.ajax errors
   $(document).ajaxError(function (event, xhr, settings) {
-    if (xhr.status === 401) {
-      var url = settings.url || '';
-      if (url.indexOf('knack.com') !== -1 || url.indexOf('/v1/') !== -1) {
-        var body = '';
-        try { body = xhr.responseText || ''; } catch (e) {}
-        if (/invalid token|reauthenticate/i.test(body)) {
-          showSessionToast();
-        }
-      }
-    }
+    if (xhr.status !== 401 && xhr.status !== 403) return;
+    var body = '';
+    try { body = xhr.responseText || ''; } catch (e) {}
+    maybeFlagAuthFailure(xhr.status, settings && settings.type, settings && settings.url, body);
   });
 
   // 2) fetch() errors — KTL uses fetch for bulk delete/write operations
@@ -333,16 +422,17 @@ window.SCW = window.SCW || {};
   if (typeof _origFetch === 'function') {
     window.fetch = function scwFetchInterceptor(input, init) {
       return _origFetch.apply(this, arguments).then(function (response) {
-        // 401 only — 403 is permission denied, not session expired.
-        if (response.status === 401) {
+        if (response.status === 401 || response.status === 403) {
           var url = typeof input === 'string' ? input : (input && input.url ? input.url : '');
-          if (url.indexOf('knack.com') !== -1 || url.indexOf('/v1/') !== -1) {
+          var method = (init && init.method) ||
+            (input && typeof input === 'object' && input.method) || 'GET';
+          // Read body best-effort; flag with whatever we have either way.
+          try {
             response.clone().text().then(function (body) {
-              if (/invalid token|reauthenticate/i.test(body)) {
-                console.warn('[SCW] Auth failure (' + response.status + ') on fetch: ' + url);
-                showSessionToast();
-              }
-            });
+              maybeFlagAuthFailure(response.status, method, url, body);
+            }, function () { maybeFlagAuthFailure(response.status, method, url, ''); });
+          } catch (e) {
+            maybeFlagAuthFailure(response.status, method, url, '');
           }
         }
         return response;

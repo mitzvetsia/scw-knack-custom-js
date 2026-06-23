@@ -31,8 +31,12 @@
 (function () {
   'use strict';
 
-  var INSTALL_VIEW = 'view_3915';
-  var CONFIG_VIEW  = 'view_3916';
+  // view_3915 = Implementation install worksheet; view_4056 = "WHAT WE'RE
+  // INSTALLING" (SAME install object/fields). Fold camera configs into the
+  // matching card on either surface. Everything no-ops on a scene where the
+  // config grid (view_3916) isn't present (buildConfigIndex returns empty).
+  var INSTALL_VIEWS = ['view_3915', 'view_4056'];
+  var CONFIG_VIEW   = 'view_3916';
 
   var CONNECTION_FIELD = 'field_2835';   // → install line item record id
   var FIELDS = [
@@ -54,6 +58,13 @@
 
   var SUBPANEL_CLS  = 'scw-install-config';
   var CSS_ID        = 'scw-install-config-css';
+  // V2 worksheet (worksheet-v2) container mounted as a sibling of
+  // #view_3915 — id is "scw-ws-v2-<sourceView>". Cards inside carry
+  // data-scw-ws-v2-record="<recordId>"; the detail panel is
+  // .scw-ws-v2-detail. Today view_3915 still renders V1 cards so this
+  // selector matches nothing; after the cutover flip it matches and the
+  // subpanel folds into the V2 detail instead. See CLAUDE.md migration.
+  function v2ContainerId(viewId) { return 'scw-ws-v2-' + viewId; }
   // (former toggle-button constants removed — the camera-config grid is
   // now always hidden; configs are folded into the worksheet detail panel.)
 
@@ -62,6 +73,18 @@
     if (document.getElementById(CSS_ID)) return;
     var s = document.createElement('style');
     s.id = CSS_ID;
+    // Scope the cabling/exterior/plenum chip restyle to EVERY install surface
+    // (view_3915 + view_4056) — generate the selector list across both.
+    var _chipFields = ['field_2807', 'field_2805', 'field_2806'];
+    function chipSel(sub) {
+      var parts = [];
+      INSTALL_VIEWS.forEach(function (v) {
+        _chipFields.forEach(function (f) {
+          parts.push('#' + v + ' .scw-ws-field[data-scw-field="' + f + '"] .scw-ws-field-' + sub);
+        });
+      });
+      return parts.join(',\n');
+    }
     s.textContent = [
       /* Camera-config grid view is always hidden — its data is folded
          into each worksheet card's detail panel via the merge() pass. */
@@ -81,9 +104,7 @@
          host .scw-ws-field's display — we only restyle the LABEL
          (which becomes the chip) and HIDE the value.  Sky-blue
          palette so it reads informational, not as a warning. */
-      '#' + INSTALL_VIEW + ' .scw-ws-field[data-scw-field="field_2807"] .scw-ws-field-label,',
-      '#' + INSTALL_VIEW + ' .scw-ws-field[data-scw-field="field_2805"] .scw-ws-field-label,',
-      '#' + INSTALL_VIEW + ' .scw-ws-field[data-scw-field="field_2806"] .scw-ws-field-label {',
+      chipSel('label') + ' {',
       '  display: inline-block;',
       '  width: auto;',
       '  min-width: 0;',
@@ -98,9 +119,7 @@
       '  letter-spacing: 0.4px;',
       '  white-space: nowrap;',
       '}',
-      '#' + INSTALL_VIEW + ' .scw-ws-field[data-scw-field="field_2807"] .scw-ws-field-value,',
-      '#' + INSTALL_VIEW + ' .scw-ws-field[data-scw-field="field_2805"] .scw-ws-field-value,',
-      '#' + INSTALL_VIEW + ' .scw-ws-field[data-scw-field="field_2806"] .scw-ws-field-value {',
+      chipSel('value') + ' {',
       '  display: none;',
       '}',
       '.' + SUBPANEL_CLS + '-title {',
@@ -220,6 +239,26 @@
       '}',
       '.' + SUBPANEL_CLS + '-qa-chit.is-verified {',
       '  background: #dcfce7; color: #15803d; border-color: #86efac;',
+      '}',
+
+      /* ── V2 worksheet host overrides ──────────────────────────────
+         When the subpanel is folded into a worksheet-v2 detail panel
+         (.scw-ws-v2-detail) the V1 left-gutter padding (70px) is wrong —
+         the V2 detail has its own padding scale. Tighten the edges so the
+         camera-config block lines up with the V2 detail fields above it,
+         and let the QA chit sit inline in the section header (V2 has no
+         photo-strip column to mirror into). */
+      '.scw-ws-v2-detail .' + SUBPANEL_CLS + ' {',
+      '  padding: 12px 0 4px;',
+      '  margin-top: 8px;',
+      '}',
+      '.scw-ws-v2-detail .' + SUBPANEL_CLS + '-section-head {',
+      '  gap: 10px;',
+      '}',
+      /* In the V2 host the chit shouldn\'t stretch full-width (no column to
+         fill) — size it to its content. */
+      '.scw-ws-v2-detail .' + SUBPANEL_CLS + '-qa-chit {',
+      '  width: auto; flex: 0 0 auto;',
       '}'
     ].join('\n');
     document.head.appendChild(s);
@@ -327,16 +366,86 @@
     return chit;
   }
 
-  /** Inject the configs sub-panel into one worksheet card. The panel
-   *  lives INSIDE .scw-ws-detail so it follows the accordion (hidden
-   *  when the row is collapsed). */
-  function injectSubpanel(wsTr, configs) {
-    var prior = wsTr.querySelector('.' + SUBPANEL_CLS);
-    if (prior) prior.parentNode.removeChild(prior);
-    if (!configs || !configs.length) return;
+  /**
+   * Resolve the detail container + host kind for one record id, trying the
+   * V2 worksheet card first, then the V1 worksheet card. Returns null when
+   * neither is present on the page.
+   *
+   *   V2: .scw-ws-v2-card[data-scw-ws-v2-record="<id>"] .scw-ws-v2-detail
+   *   V1: tr.scw-ws-row[id="<id>"] .scw-ws-card > .scw-ws-detail
+   *
+   * `host` is the element we hang the subpanel off (the card/row root) so
+   * the photo-strip mirror (V1 only) can find the summary photo column.
+   */
+  function findDetailTarget(recordId) {
+    if (!recordId) return null;
+    // V2 first — after the cutover flip view_3915 renders V2 cards.
+    var v2Card = document.querySelector(
+      '.scw-ws-v2-card[data-scw-ws-v2-record="' + recordId + '"]'
+    );
+    if (v2Card) {
+      var v2Detail = v2Card.querySelector('.scw-ws-v2-detail');
+      if (v2Detail) return { detail: v2Detail, host: v2Card, v2: true };
+    }
+    // V1 fallback — current production structure.
+    var v1Row = document.querySelector(
+      'tr.scw-ws-row[id="' + recordId + '"]'
+    );
+    if (v1Row) {
+      var v1Detail = v1Row.querySelector('.scw-ws-card > .scw-ws-detail');
+      if (v1Detail) return { detail: v1Detail, host: v1Row, v2: false };
+    }
+    return null;
+  }
 
-    var detail = wsTr.querySelector('.scw-ws-card > .scw-ws-detail');
-    if (!detail) return;
+  /** Inject the configs sub-panel into one worksheet card. The panel
+   *  lives INSIDE the detail panel so it follows the accordion (hidden
+   *  when the row/card is collapsed). Works on both the V1 (.scw-ws-detail)
+   *  and V2 (.scw-ws-v2-detail) card structures. */
+  // A config record is "empty" when none of its 4 display cells carries
+  // content AND it has no Verified QA state — i.e. a connected view_3916 stub
+  // with no actual config. Don't render a blank "Camera config" block for it.
+  function cellHasContent(td) {
+    if (!td) return false;
+    return td.textContent.replace(/ /g, '').trim() !== '';
+  }
+  function isConfigEmpty(cfg) {
+    if (cfg && cfg.qa && cfg.qa.status === 'Verified') return false;
+    if (!cfg || !cfg.cells) return true;
+    for (var f = 0; f < FIELDS.length; f++) {
+      if (cellHasContent(cfg.cells[FIELDS[f].key])) return false;
+    }
+    return true;
+  }
+  function filterNonEmptyConfigs(configs) {
+    if (!configs) return configs;
+    var out = [];
+    for (var i = 0; i < configs.length; i++) {
+      if (!isConfigEmpty(configs[i])) out.push(configs[i]);
+    }
+    return out;
+  }
+
+  function injectSubpanel(recordId, configs) {
+    var target = findDetailTarget(recordId);
+    if (!target) return;
+    var detail = target.detail;
+    // Drop blank config stubs so a record with no real config renders nothing
+    // (the stale-removal below still runs, then the length guard returns).
+    configs = filterNonEmptyConfigs(configs);
+
+    var prior = detail.querySelector('.' + SUBPANEL_CLS);
+    if (prior) prior.parentNode.removeChild(prior);
+    // Also strip any chits we mirrored into the V1 photo strip last pass.
+    if (target.host) {
+      var stalePhotoChits = target.host.querySelectorAll(
+        '.scw-ws-req-photos .' + SUBPANEL_CLS + '-qa-chit'
+      );
+      for (var s = 0; s < stalePhotoChits.length; s++) {
+        stalePhotoChits[s].remove();
+      }
+    }
+    if (!configs || !configs.length) return;
 
     var panel = document.createElement('div');
     panel.className = SUBPANEL_CLS;
@@ -352,16 +461,24 @@
       var cfg = configs[c];
 
       // When there are multiple configs, label each section with
-      // "Config N".  The QA chit itself lives in the photo-strip
+      // "Config N".  In the V1 host the QA chit lives in the photo-strip
       // column above (see injectQaChitsIntoPhotoStrip below) so it
-      // visually aligns directly under the photo QA chits.
-      if (configs.length > 1) {
+      // visually aligns directly under the photo QA chits. The V2 host
+      // has no photo-strip column to mirror into, so render the chit
+      // inline in the section header instead — and always emit a header
+      // (single config too) so the V2 card still surfaces QA at a glance.
+      if (configs.length > 1 || target.v2) {
         var header = document.createElement('div');
         header.className = SUBPANEL_CLS + '-section-head';
         var hLabel = document.createElement('span');
         hLabel.className = SUBPANEL_CLS + '-section-label';
-        hLabel.textContent = 'Config ' + (c + 1);
+        hLabel.textContent = configs.length > 1
+          ? ('Config ' + (c + 1))
+          : 'Camera config';
         header.appendChild(hLabel);
+        if (target.v2 && cfg.qa) {
+          header.appendChild(buildQaChit(cfg, c, configs.length));
+        }
         panel.appendChild(header);
       }
 
@@ -410,16 +527,16 @@
       }
     }
 
-    // Mount as the FIRST child of .scw-ws-detail so the camera config
-    // sits above the sections grid (and stays hidden when the row
-    // accordion is closed, since it lives inside the collapsible
-    // panel).
+    // Mount as the FIRST child of the detail panel so the camera config
+    // sits above the sections grid (and stays hidden when the row/card
+    // accordion is closed, since it lives inside the collapsible panel).
     detail.insertBefore(panel, detail.firstChild);
 
-    // Mirror the per-config QA chits into the row's photo-strip column
-    // so they stack directly beneath the photo QA chits at matching
-    // width — same QA-at-a-glance treatment for both photos and configs.
-    injectQaChitsIntoPhotoStrip(wsTr, configs);
+    // V1 only: mirror the per-config QA chits into the row's photo-strip
+    // column so they stack directly beneath the photo QA chits at matching
+    // width. The V2 host has no photo-strip column — its chits render
+    // inline in the section header above.
+    if (!target.v2) injectQaChitsIntoPhotoStrip(target.host, configs);
   }
 
   /**
@@ -451,7 +568,7 @@
   // skip work when nothing changed.
   var _lastHash = '';
 
-  function computeHash(index, wsRows) {
+  function computeHash(index, recordIds) {
     var keys = Object.keys(index).sort();
     var parts = [];
     for (var k = 0; k < keys.length; k++) {
@@ -468,27 +585,58 @@
         parts.push((cfg.qa && cfg.qa.notes)  || '');
       }
     }
-    for (var w = 0; w < wsRows.length; w++) parts.push(wsRows[w].id);
+    var sorted = recordIds.slice().sort();
+    for (var w = 0; w < sorted.length; w++) parts.push(sorted[w]);
     return parts.join('|');
   }
 
-  /** Merge configs into every install worksheet card. */
+  /**
+   * Collect the install line-item record ids currently rendered as cards,
+   * from BOTH worksheet structures:
+   *   V1: tr.scw-ws-row[data-scw-view-id="view_3915"]  (id = record id)
+   *   V2: .scw-ws-v2-card[data-scw-ws-v2-record]       (inside the v2 panel)
+   * Today only V1 matches; after the cutover flip only V2 matches. The
+   * dedupe keeps merge() correct even during a transient overlap.
+   */
+  function collectRecordIds() {
+    var ids = [];
+    var seen = {};
+    function push(id) { if (id && !seen[id]) { seen[id] = true; ids.push(id); } }
+
+    for (var v = 0; v < INSTALL_VIEWS.length; v++) {
+      var viewId = INSTALL_VIEWS[v];
+      var v1Rows = document.querySelectorAll(
+        'tr.scw-ws-row[data-scw-view-id="' + viewId + '"]'
+      );
+      for (var i = 0; i < v1Rows.length; i++) push(v1Rows[i].id);
+
+      var v2Container = document.getElementById(v2ContainerId(viewId));
+      if (v2Container) {
+        var v2Cards = v2Container.querySelectorAll(
+          '.scw-ws-v2-card[data-scw-ws-v2-record]'
+        );
+        for (var j = 0; j < v2Cards.length; j++) {
+          push(v2Cards[j].getAttribute('data-scw-ws-v2-record'));
+        }
+      }
+    }
+    return ids;
+  }
+
+  /** Merge configs into every install worksheet card (V1 + V2). */
   function merge() {
-    var wsRows = document.querySelectorAll(
-      'tr.scw-ws-row[data-scw-view-id="' + INSTALL_VIEW + '"]'
-    );
-    if (!wsRows.length) return;
+    var recordIds = collectRecordIds();
+    if (!recordIds.length) return;
     var index = buildConfigIndex();
-    var hash = computeHash(index, wsRows);
+    var hash = computeHash(index, recordIds);
     var needsInject = (hash !== _lastHash);
     _lastHash = hash;
+    if (!needsInject) return;
 
     _selfMutating = true;
     try {
-      for (var i = 0; i < wsRows.length; i++) {
-        if (needsInject) {
-          injectSubpanel(wsRows[i], index[wsRows[i].id] || []);
-        }
+      for (var i = 0; i < recordIds.length; i++) {
+        injectSubpanel(recordIds[i], index[recordIds[i]] || []);
       }
     } finally {
       // Defer clearing so the observer ignores the microtask batch
@@ -500,26 +648,66 @@
   /** Reset the hash so the next merge() rebuilds even if data is unchanged. */
   function invalidate() { _lastHash = ''; }
 
+  /** Fire merge() at staggered delays so we catch whichever worksheet
+   *  (V1 or V2) paints first / last. Re-attaches the V2 observer at each
+   *  pass since the V2 panel may mount after the first run. */
+  function stagger() {
+    var delays = [50, 250, 750, 2000];
+    for (var i = 0; i < delays.length; i++) {
+      setTimeout(function () {
+        installV2MutationObserver();
+        merge();
+      }, delays[i]);
+    }
+  }
+
   /** Watch only the install-view tbody (row add/remove). Anything deeper
    *  is our own work and is ignored via _selfMutating. */
   function installMutationObserver() {
-    var installView = document.getElementById(INSTALL_VIEW);
-    if (!installView || installView.__scwInstallObs) return;
-    var tbody = installView.querySelector('table tbody');
-    if (!tbody) return;
-    installView.__scwInstallObs = true;
-    var pending = false;
-    var obs = new MutationObserver(function () {
-      if (_selfMutating || pending) return;
-      pending = true;
-      setTimeout(function () {
-        pending = false;
-        // Row set may have changed — re-evaluate.
-        invalidate();
-        merge();
-      }, 150);
-    });
-    obs.observe(tbody, { childList: true });
+    for (var v = 0; v < INSTALL_VIEWS.length; v++) {
+      var installView = document.getElementById(INSTALL_VIEWS[v]);
+      if (!installView || installView.__scwInstallObs) continue;
+      var tbody = installView.querySelector('table tbody');
+      if (!tbody) continue;
+      installView.__scwInstallObs = true;
+      var pending = false;
+      var obs = new MutationObserver(function () {
+        if (_selfMutating || pending) return;
+        pending = true;
+        setTimeout(function () {
+          pending = false;
+          // Row set may have changed — re-evaluate.
+          invalidate();
+          merge();
+        }, 150);
+      });
+      obs.observe(tbody, { childList: true });
+    }
+  }
+
+  /** Watch the worksheet-v2 panel container. worksheet-v2 rebuilds its
+   *  card list on every data subscriber fire (full innerHTML swap of the
+   *  body), so we re-merge on any child mutation under the container.
+   *  No-op until the V2 panel exists (i.e. after the cutover flip). */
+  function installV2MutationObserver() {
+    for (var v = 0; v < INSTALL_VIEWS.length; v++) {
+      var v2Container = document.getElementById(v2ContainerId(INSTALL_VIEWS[v]));
+      if (!v2Container || v2Container.__scwInstallConfigObs) continue;
+      var body = v2Container.querySelector('.scw-ws-v2-body') || v2Container;
+      v2Container.__scwInstallConfigObs = true;
+      var pending = false;
+      var obs = new MutationObserver(function () {
+        if (_selfMutating || pending) return;
+        pending = true;
+        setTimeout(function () {
+          pending = false;
+          // Card set / detail panels may have been rebuilt — re-evaluate.
+          invalidate();
+          merge();
+        }, 150);
+      });
+      obs.observe(body, { childList: true, subtree: true });
+    }
   }
 
   // ── Init ────────────────────────────────────────────────────────
@@ -527,17 +715,26 @@
     injectCss();
     if (!window.SCW || typeof window.SCW.onViewRender !== 'function') return;
 
-    window.SCW.onViewRender(INSTALL_VIEW, function () {
-      // tbody is re-built; row set may have changed.
-      invalidate();
-      installMutationObserver();
-      setTimeout(merge, 50);
-    }, 'scwInstallConfig');
+    INSTALL_VIEWS.forEach(function (iv) {
+      window.SCW.onViewRender(iv, function () {
+        // tbody is re-built; row set may have changed. The V2 panel (if
+        // mounted) is a sibling of the install view and re-renders off the
+        // same view render via its data subscriber, so attach its observer too.
+        // Stagger the re-runs: V2 mounts its panel + paints cards slightly
+        // AFTER this view-render fires (its data subscriber runs async), so
+        // a single 50ms pass can miss the V2 cards. The observers above
+        // catch later rebuilds; these passes catch the initial paint.
+        invalidate();
+        installMutationObserver();
+        installV2MutationObserver();
+        stagger();
+      }, 'scwInstallConfig');
+    });
 
     window.SCW.onViewRender(CONFIG_VIEW, function () {
       // Config data may have changed after an inline edit.
       invalidate();
-      setTimeout(merge, 50);
+      stagger();
     }, 'scwInstallConfig');
   }
 

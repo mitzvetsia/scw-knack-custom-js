@@ -94,6 +94,13 @@
     },
     {
       viewId: 'view_3956',   // Accept Proposal
+      // The accept page (#project-proposal/accept-proposal3) is a Knack
+      // record-scoped CHILD page of the proposal. On the public token flow
+      // there's no record in route context, so Knack renders the link WITHOUT
+      // the proposal id — the accept form then opens connectionless. Splice the
+      // proposal record id on as the final path segment so Knack scopes the
+      // child page to it and the connected Add form auto-fills the connection.
+      appendRecordId: true,
       gate: function (attrs) {
         return isYes(attrs.field_2747) || isYes(attrs.field_2747_raw);
       }
@@ -508,15 +515,30 @@
     return out;
   }
 
+  // Append a Knack record id as the final hash path segment, e.g.
+  //   #project-proposal/accept-proposal3  →  …/accept-proposal3/<id>
+  // Idempotent — won't double-append if the id is already the last segment.
+  function appendRecordIdToHref(href, recordId) {
+    if (!href || !recordId) return href;
+    if (new RegExp('/' + recordId + '/?$').test(href)) return href;  // already there
+    return href.replace(/\/?$/, '/') + recordId;
+  }
+
   function gatherCtaLinks(attrs) {
     var all = [];
+    var recordId = attrs && attrs.id;
     for (var i = 0; i < CTA_CONFIGS.length; i++) {
       var cfg = CTA_CONFIGS[i];
       var ok;
       try { ok = cfg.gate(attrs); } catch (e) { ok = false; }
       if (!ok) continue;
       var links = readLinksFromView(cfg.viewId);
-      for (var j = 0; j < links.length; j++) all.push(links[j]);
+      for (var j = 0; j < links.length; j++) {
+        if (cfg.appendRecordId && recordId) {
+          links[j].href = appendRecordIdToHref(links[j].href, recordId);
+        }
+        all.push(links[j]);
+      }
     }
     return all;
   }

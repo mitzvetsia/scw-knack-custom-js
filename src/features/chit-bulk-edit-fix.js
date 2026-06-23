@@ -207,11 +207,18 @@
       // arguments[1] reference instead of our rewrite, which is the
       // bug that let the boolean body through previously.
       var promise = origFetch.call(this, input, init);
-      if (hadChit && promise && typeof promise.then === 'function') {
-        promise.then(function (resp) {
-          if (resp && resp.ok) setTimeout(notifySaved, 250);
-        }).catch(function () { /* ignore */ });
-      }
+      // Best-effort "saved" ping. Must NEVER throw — some environments wrap
+      // window.fetch so its .then() doesn't return a spec Promise (no .catch),
+      // and an exception here would propagate OUT of fetch() before we return
+      // the promise, breaking the caller's save. Use the two-arg .then form and
+      // guard the whole thing.
+      try {
+        if (hadChit && promise && typeof promise.then === 'function') {
+          promise.then(function (resp) {
+            if (resp && resp.ok) setTimeout(notifySaved, 250);
+          }, function () { /* ignore */ });
+        }
+      } catch (e) { /* ignore — don't let the ping break the request */ }
       return promise;
     };
     try { window.fetch.__scwChitWrapped = true; } catch (e) {}

@@ -2091,6 +2091,97 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
   }
 
   // ============================================================
+  // FEATURE: Synthesize missing L2/L3 (ancestor) group headers
+  // ============================================================
+  // Knack suppresses a sub-group header when its value matches the one it
+  // already emitted — so when the L1 (MDF/IDF) changes but the L2 (bucket) /
+  // L3 (product) values are identical to a PRIOR group, Knack drops those
+  // headers and the data row lands directly under the L1 header. Data rows are
+  // display:none, so the item is invisible but still sums into the totals.
+  //
+  // The orphan row only carries bucket id (field_2218) + labor desc
+  // (field_2019) + rate (field_1960) — not the product/bucket *labels* — so we
+  // key each properly-rendered product group by those three and clone the
+  // matching twin group's L2/L3 headers in front of the orphan. (synthesizeMissing
+  // L4Headers, which runs next, then fills in the L4 from field_2019.)
+  function synthesizeMissingAncestorHeaders(ctx) {
+    const tbody = ctx.$tbody[0];
+    if (!tbody) return;
+
+    function sigOf(row) {
+      const bSpan = row.querySelector('td.field_2218 span[data-kn="connection-value"]');
+      const bId = bSpan ? norm(bSpan.id || bSpan.className || '') : '';
+      const dCell = row.querySelector('td.' + ctx.keys.field2019);
+      const desc = dCell ? normKey(dCell.textContent || '') : '';
+      const rCell = row.querySelector('td.field_1960');
+      const rate = rCell ? norm(rCell.textContent || '') : '';
+      return bId + '|' + desc + '|' + rate;
+    }
+
+    const registry = Object.create(null); // sig → { l2, l3 }
+    let lastL2 = null, lastL3 = null;
+    let l2SinceL1 = false, l3SinceL1 = false;
+
+    // Clone a group header down to just its label cell (full-width colspan) so
+    // the main pipeline rebuilds the data cells cleanly. The source header may
+    // already carry appended Qty/Cost cells from an earlier pipeline pass —
+    // cloning those verbatim leaves duplicate trailing columns.
+    function pristineHeaderClone(srcRow) {
+      const clone = srcRow.cloneNode(true);
+      const tds = clone.querySelectorAll('td');
+      for (let t = tds.length - 1; t >= 1; t--) tds[t].remove();
+      if (tds[0]) tds[0].setAttribute('colspan', '100');
+      return clone;
+    }
+
+    const rows = Array.prototype.slice.call(tbody.children);
+    for (let i = 0; i < rows.length; i++) {
+      const row = rows[i];
+      if (!row.classList) continue;
+
+      if (row.classList.contains('kn-table-group')) {
+        const m = row.className.match(/kn-group-level-(\d+)/);
+        const lvl = m ? parseInt(m[1], 10) : null;
+        if (lvl === 1) { l2SinceL1 = false; l3SinceL1 = false; }
+        else if (lvl === 2) { lastL2 = row; l2SinceL1 = true; l3SinceL1 = false; }
+        else if (lvl === 3) { lastL3 = row; l3SinceL1 = true; }
+        continue;
+      }
+
+      if (!row.id) continue;
+      if (row.classList.contains('scw-relocated-accessory') ||
+          row.classList.contains('scw-mounting-product-line') ||
+          row.classList.contains('scw-level-total-row')) continue;
+
+      // Properly grouped (has L3 since the last L1) → remember as a template.
+      if (l3SinceL1 && lastL3) {
+        const sig = sigOf(row);
+        if (!registry[sig]) registry[sig] = { l2: lastL2, l3: lastL3 };
+        continue;
+      }
+
+      // Orphan — missing L2 and/or L3. Clone the matching twin group's headers.
+      const tmpl = registry[sigOf(row)];
+      if (!tmpl) continue; // no known twin → leave as-is (can't reconstruct)
+
+      let newL2 = null, newL3 = null;
+      if (!l2SinceL1 && tmpl.l2) {
+        newL2 = pristineHeaderClone(tmpl.l2);
+        newL2.classList.add('scw-synthetic-l2');
+        row.parentNode.insertBefore(newL2, row);
+      }
+      if (!l3SinceL1 && tmpl.l3) {
+        newL3 = pristineHeaderClone(tmpl.l3);
+        newL3.classList.add('scw-synthetic-l3');
+        row.parentNode.insertBefore(newL3, row);
+      }
+      // Cover any subsequent identical rows in this orphan group.
+      if (newL2) { lastL2 = newL2; l2SinceL1 = true; }
+      if (newL3) { lastL3 = newL3; l3SinceL1 = true; }
+    }
+  }
+
+  // ============================================================
   // FEATURE: Synthesize missing L4 group headers
   // ============================================================
   // Knack sometimes fails to emit L4 group headers, leaving data
@@ -2852,8 +2943,8 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
       ]);
 
     $tbody.find('tr.scw-level-total-row').remove();
-    // Remove synthetic L4 headers from previous runs so they're rebuilt fresh
-    $tbody.find('tr.scw-synthetic-l4').remove();
+    // Remove synthetic headers from previous runs so they're rebuilt fresh
+    $tbody.find('tr.scw-synthetic-l4, tr.scw-synthetic-l2, tr.scw-synthetic-l3').remove();
     $tbody
       .find(`tr.kn-table-group.kn-group-level-3.${ctx.l2Specials.classOnLevel3}`)
       .removeClass(ctx.l2Specials.classOnLevel3);
@@ -2867,7 +2958,10 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
     // the new row positions.
     relocateAccessoriesToParents(ctx);
 
-    // Synthesize missing L4 headers before the main pipeline processes groups
+    // Rebuild L2/L3 headers Knack suppressed for items identical to a prior
+    // group (so the orphaned data row gets its bucket + product headers back),
+    // THEN synthesize any missing L4 headers on top.
+    synthesizeMissingAncestorHeaders(ctx);
     synthesizeMissingL4Headers(ctx);
 
     const $firstDataRow = $tbody.find('tr[id]').first();
@@ -3275,11 +3369,14 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
       if ($costCell.length) $costCell.html(TBD);
     });
 
-    // Installation Total → TBD
+    // Installation Total AND Grand Total → TBD. The grand total sums in
+    // install labor (grandTotal = equipment + installation − discount), so
+    // while labor is unreleased it can't show a real number — it reads "TBD",
+    // not the equipment-only figure.
     $view.find('tr.scw-project-totals').each(function () {
       var $tr = $(this);
       var label = ($tr.find('.scw-l1-labelcell').text() || '').trim().toLowerCase();
-      if (label.indexOf('installation') !== -1) {
+      if (label.indexOf('installation') !== -1 || label.indexOf('grand total') !== -1) {
         $tr.find('.scw-l1-valuecell').html('<strong>' + TBD + '</strong>');
       }
     });

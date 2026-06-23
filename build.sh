@@ -146,6 +146,7 @@ cat \
   src/features/import-unique-items-btn.js \
   src/features/hide-self-row.js \
   src/features/hide-view-conditional.js \
+  src/features/internal-only-views.js \
   src/features/hide-views-below-bom.js \
   src/features/survey-worksheet-pdf-export.js \
   src/features/sub-portal-survey-request-export.js \
@@ -182,10 +183,19 @@ cat \
   src/features/worksheet-v2/native-filter.js \
   src/features/worksheet-v2/bulk.js \
   src/features/worksheet-v2/prefill-accessory-parent.js \
+  src/features/worksheet-v2/change-requests.js \
   src/features/worksheet-v2/poll.js \
   src/features/worksheet-v2/init.js \
   src/features/survey-report-photo-lightbox.js \
   src/features/sales-change-request/render-v2.js \
+  src/features/deliverables-worksheet.js \
+  src/features/customer-questionnaire.js \
+  src/features/customer-account-link.js \
+  src/features/customer-questionnaire-scene.js \
+  src/features/regenerate-kickoff-deck.js \
+  src/features/questionnaire-deployment-audit.js \
+  src/features/acceptance-card.js \
+  src/features/resend-credentials-btn.js \
   > "$TMP_BUNDLE"
 
 UNMIN_BYTES=$(wc -c < "$TMP_BUNDLE" | tr -d ' ')

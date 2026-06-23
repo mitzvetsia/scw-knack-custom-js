@@ -514,6 +514,10 @@
       if (!noteAlreadySet(item.viewId, item.recordId)) {
         body[NOTES] = note;
       }
+      // Bypass the gate for this replay (it carries the note + still empties
+      // the bid). Cleared on complete — prefilter + send both run synchronously
+      // within this $.ajax call, so the flag is live for both.
+      _replayBypass[item.recordId] = true;
       $.ajax({
         url:  item.url,
         type: item.method,
@@ -523,7 +527,8 @@
         success: function () { /* server has the right state now */ },
         error:   function (xhr) {
           console.warn('[scw-survey-bid-validate] replay failed', xhr);
-        }
+        },
+        complete: function () { delete _replayBypass[item.recordId]; }
       });
     } catch (e) {
       console.warn('[scw-survey-bid-validate] replay threw', e);
@@ -597,14 +602,38 @@
    *  i.e. the incoming value is an empty array and the record currently has
    *  at least one bid. Removing one bid while others remain (a multi-bid
    *  array merely shrinking) is intentionally NOT gated. */
+  // Records whose next gated PUT is a REPLAY from this gate (already carries
+  // the survey note) — must bypass shouldGate, else the replay re-empties the
+  // bid while the model still shows the old bids and the modal loops forever.
+  // Set before firing the replay, cleared when it settles. NOT consumed on
+  // read because BOTH the ajaxPrefilter and the XHR.send hook call shouldGate
+  // for the same request.
+  var _replayBypass = Object.create(null);
+
+  /** True when a PUT body already carries a non-empty survey note (field_2412).
+   *  Such a PUT satisfies the note requirement (a replay, or a caller — e.g.
+   *  the v2 bulk edit — that already prompted), so it must NOT be gated. */
+  function bodyHasNote(body) {
+    var s = (typeof body === 'string') ? body : bodyToStr(body);
+    if (!s || s.indexOf(NOTES) === -1) return false;
+    var p = null;
+    try { p = JSON.parse(s); }
+    catch (e) { try { p = JSON.parse(decodeURIComponent(s)); } catch (e2) { p = null; } }
+    if (!p || typeof p !== 'object') return false;
+    var v = p[NOTES];
+    return v != null && String(v).replace(/<[^>]*>/g, '').trim() !== '';
+  }
+
   function shouldGate(method, url, body) {
     if (!isWriteMethod(method)) return null;
     var viewId = gateViewForUrl(url);
     if (!viewId) return null;
+    var recordId = recordIdFromUrl(url);
+    if (recordId && _replayBypass[recordId]) return null; // replay — don't re-gate
+    if (bodyHasNote(body)) return null;                   // already carries a note
     var incoming = parseBidConnFromBody(body);
     if (incoming === undefined) return null; // field_2415 not in body
     if (normalizeBidIds(incoming).length !== 0) return null; // not emptied
-    var recordId = recordIdFromUrl(url);
     if (!recordId) return null;
     if (!currentBidIds(viewId, recordId).length) return null; // already empty
     return { viewId: viewId, recordId: recordId };
@@ -783,6 +812,28 @@
         onBidCellUpdate(vid, record);
       });
   });
+
+  // ── Public suppression hook for the v2 worksheet bid picker ──────────
+  // When worksheet-v2 clears the Bid (field_2415) it writes the required
+  // survey note (field_2412) in the SAME PUT, then dispatches a synthetic
+  // knack-cell-update so the cascade/cards refresh. That event re-enters
+  // onBidCellUpdate, which sees the bid empty and the LOCAL model's note
+  // still stale (the picker only syncs field_2415, not field_2412) — so it
+  // would pop a SECOND "note required" modal whose empty textarea then
+  // clobbers the note we just wrote. The v2 clear path calls this first to
+  // mark the record as its own write so the gate skips it. Auto-clears so a
+  // dropped cell-update can't permanently suppress the gate for that record.
+  SCW.surveyBidValidate = SCW.surveyBidValidate || {};
+  SCW.surveyBidValidate.markOwnBidWrite = function (recordId, noteText) {
+    if (!recordId) return;
+    _bidOwnPuts[recordId] = true;
+    // Prime the cache with the note so any later read reflects it, and so a
+    // subsequent genuine clear still gates correctly.
+    if (noteText != null) {
+      try { _bidCache[recordId] = _bidCache[recordId] || []; } catch (e) {}
+    }
+    setTimeout(function () { delete _bidOwnPuts[recordId]; }, 8000);
+  };
 
   // ── TODO: bulk path for field_2150 (Sub Bid) ─────────────────
   // The preSaveHook above gates Sub Bid commits row-by-row. KTL bulk

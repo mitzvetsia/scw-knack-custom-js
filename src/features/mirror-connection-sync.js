@@ -2122,6 +2122,17 @@
     PUBLIC_API_NAME:   'silentRegroupView3915'
   });
 
+  // view_4056 ("WHAT WE'RE INSTALLING") — SAME install object + field map as
+  // view_3915, so it needs its own mirror instance to fire the field_2820↔2821
+  // cascade when Connected Devices/To are edited through that view's pickers.
+  createMirror({
+    VIEW_ID:           'view_4056',
+    TRIGGER_FIELD:     'field_2820',
+    CONNECTIONS_FIELD: 'field_2821',
+    GROUPING_FIELD:    'field_2818',
+    PUBLIC_API_NAME:   'silentRegroupView4056'
+  });
+
   // Backward-compat alias for any lingering DevTools snippets that
   // referenced the old "silentPoll" name.
   window.SCW = window.SCW || {};

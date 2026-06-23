@@ -299,6 +299,10 @@
     }
   };
 
+  // "WHAT WE'RE INSTALLING" (view_4056) shares the install line-item schema
+  // with view_3915 — alias rather than duplicate the field map.
+  FIELD_MAPS['view_4056'] = FIELD_MAPS['view_3915'];
+
   // Views that share another view\'s schema. Add an alias here instead
   // of duplicating the field map.
   var FIELD_ALIASES = {

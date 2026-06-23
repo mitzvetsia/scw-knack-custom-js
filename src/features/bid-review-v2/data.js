@@ -133,6 +133,24 @@
       document.documentElement.setAttribute('data-scw-br-v2-cascade-bound', '1');
       document.addEventListener('scw-cascade-idle', refetchDebounced);
     }
+
+    // The expand-panel SOW editor is an embedded worksheet-v2 card that writes
+    // through worksheet-v2/edit.js. It commits via SCW.knackAjax (no
+    // knack-cell-update event) and the optimistic local patch isn't reliably
+    // reflected in this grid's read-only SOW cell — so a saved edit only showed
+    // after a manual refresh. edit.js fires scw-ws-v2-record-saved on success;
+    // refetch the source views (server-fresh) and rebuild. refetchDebounced
+    // coalesces and guards on the grid being mounted; renderSnapshot defers
+    // while the panel still has focus and flushes when the row collapses.
+    if (!document.documentElement.hasAttribute('data-scw-br-v2-wsv2saved-bound')) {
+      document.documentElement.setAttribute('data-scw-br-v2-wsv2saved-bound', '1');
+      $(document).on('scw-ws-v2-record-saved', function (e, info) {
+        if (!info || !info.viewKey) return;
+        var srcKeys = (ns.CONFIG && ns.CONFIG.sourceViewKeys) || [];
+        if (srcKeys.indexOf(info.viewKey) === -1) return;
+        refetchDebounced();
+      });
+    }
   }
 
   /** Report each source view's loaded record count vs. its page cap.

@@ -137,6 +137,53 @@
     ]
   };
 
+  // ── Config-driven field registry ─────────────────────────────
+  // A deployment can declare its bulk-editable fields in config via a
+  // per-bucket `bulkFields` block of LOGICAL-name specs, e.g.
+  //   bulkFields: { cam: [{ f:'laborDesc', kind:'text', label:'Labor desc' },
+  //                       { f:'qty', kind:'number', gateNo:'qtyOne' }, … ] }
+  // configRegistry resolves each logical name → field key via cfg.fields(),
+  // so the editable-field list lives in ONE place (config) instead of a
+  // hardcoded registry per object. The result is then intersected with what's
+  // actually on the selected rows (intersectVisibleFields) so a field only
+  // appears when EVERY selected row's bucket exposes it. The survey view
+  // (view_3505) uses this; SOW/sales still use the legacy FIELDS/SALES_FIELDS
+  // registries below until they're migrated (CLAUDE.md #15).
+  var _regCache = Object.create(null);
+  function configRegistry(sourceViewKey) {
+    if (sourceViewKey in _regCache) return _regCache[sourceViewKey];
+    var vc  = (ns.cfg && typeof ns.cfg.viewCfg === 'function') ? ns.cfg.viewCfg(sourceViewKey) : null;
+    var reg = null;
+    if (vc && vc.bulkFields) {
+      var F = (ns.cfg && ns.cfg.fields(sourceViewKey)) || {};
+      reg = {};
+      Object.keys(vc.bulkFields).forEach(function (cat) {
+        reg[cat] = (vc.bulkFields[cat] || []).map(function (spec) {
+          return {
+            key:        F[spec.f] || spec.f,         // logical → field key
+            label:      spec.label || spec.f,
+            kind:       spec.kind || 'text',
+            candSource: spec.candSource,
+            // Hide on a row when this (resolved) gate field is Yes — e.g. Qty
+            // hidden when "limit to quantity one" (qtyOne) is Yes.
+            gateNoKey:  spec.gateNo ? (F[spec.gateNo] || spec.gateNo) : null
+          };
+        });
+      });
+    }
+    _regCache[sourceViewKey] = reg;
+    return reg;
+  }
+
+  /** Active field registry for a view: config `bulkFields` if present, else
+   *  the legacy sales / SOW registries. */
+  function fieldSetFor(sourceViewKey) {
+    var cfgReg = configRegistry(sourceViewKey);
+    if (cfgReg) return cfgReg;
+    if (isSalesView(sourceViewKey)) return SALES_FIELDS;
+    return FIELDS;
+  }
+
   /** True when every selected record shares the same proposal bucket. */
   function allSameBucket(ids, sourceViewKey) {
     if (!ns.card || typeof ns.card.bucketIdOf !== 'function') return true;
@@ -145,7 +192,7 @@
     for (var i = 0; i < ids.length; i++) {
       var a = idx[ids[i]];
       if (!a) continue;
-      var b = ns.card.bucketIdOf(a);
+      var b = ns.card.bucketIdOf(a, sourceViewKey);
       if (first === null) { first = b; continue; }
       if (b !== first) return false;
     }
@@ -187,7 +234,7 @@
       var attrs = idx[ids[i]];
       if (!attrs) continue;
       var cat = ns.card && ns.card.bucketCategoryOf
-        ? ns.card.bucketCategoryOf(attrs)
+        ? ns.card.bucketCategoryOf(attrs, sourceViewKey)
         : 'default';
       seen[cat] = true;
     }
@@ -213,20 +260,33 @@
   //   • Connected Devices (1957) — only when the row maps connections (NVR/switch).
   // Cabling (existing/exterior/plenum/drop/conduit) + Connected Device (2197)
   // live in the cam set, so they naturally appear for cam/reader rows only.
-  function visibleBulkFieldsFor(attrs, fieldSet) {
-    var cat = (ns.card && ns.card.bucketCategoryOf) ? ns.card.bucketCategoryOf(attrs) : 'default';
+  function visibleBulkFieldsFor(attrs, fieldSet, sourceViewKey) {
+    var cat = (ns.card && ns.card.bucketCategoryOf)
+      ? ns.card.bucketCategoryOf(attrs, sourceViewKey) : 'default';
     // Fall back to the base FIELDS set (then 'default') if this fieldSet has no
     // entry for the category — e.g. SALES_FIELDS has no 'assumptions', which
     // would otherwise leave the row with ZERO editable fields ("no options").
-    var base = fieldSet[cat] || FIELDS[cat] || fieldSet['default'] || FIELDS['default'] || [];
+    var base = fieldSet[cat] || fieldSet['default'] || FIELDS[cat] || FIELDS['default'] || [];
     var out = [];
     for (var i = 0; i < base.length; i++) {
       var f = base[i];
+      // Legacy SOW conditional gates (hardcoded keys).
       if (f.key === 'field_1964' && !qtyAllowsMulti(attrs)) continue;
       if (f.key === 'field_1957' && !isMapConnectionsRow(attrs)) continue;
+      // Config-declared gate: hide when the gate field is Yes (e.g. Qty hidden
+      // when "limit to quantity one" is Yes on a survey row).
+      if (f.gateNoKey && isYes(attrs, f.gateNoKey)) continue;
       out.push(f);
     }
     return out;
+  }
+
+  /** True when a record's field reads Yes/true (for config gates). */
+  function isYes(attrs, fieldKey) {
+    var raw = attrs && attrs[fieldKey + '_raw'];
+    if (raw === true || raw === 'Yes' || raw === 'yes' || raw === 1) return true;
+    var s = (attrs && attrs[fieldKey] || '').toString().trim().toLowerCase();
+    return s === 'yes' || s === 'true' || s === '1';
   }
 
   // INTERSECTION of every selected row's visible bulk fields — only offer a
@@ -243,7 +303,7 @@
     for (var i = 0; i < ids.length; i++) {
       var attrs = idx[ids[i]];
       if (!attrs) continue;
-      var vis = visibleBulkFieldsFor(attrs, fieldSet);
+      var vis = visibleBulkFieldsFor(attrs, fieldSet, sourceViewKey);
       var keys = Object.create(null);
       for (var j = 0; j < vis.length; j++) keys[vis[j].key] = true;
       rowSets.push({ fields: vis, keys: keys });
@@ -270,7 +330,7 @@
       var attrs = idx[ids[i]];
       if (!attrs) continue;
       var set = Object.create(null);
-      var vis = visibleBulkFieldsFor(attrs, fieldSet);
+      var vis = visibleBulkFieldsFor(attrs, fieldSet, sourceViewKey);
       for (var j = 0; j < vis.length; j++) set[vis[j].key] = true;
       map[ids[i]] = set;
     }
@@ -288,6 +348,15 @@
     { key: 'field_1953', label: 'SCW Notes',     kind: 'text' },
     { key: 'field_2261', label: 'Custom Disc %', kind: 'number' }
   ];
+
+  // Fields that are READ-ONLY in a given source-view context, so they must not
+  // appear as bulk-edit options even though they live in the field registry.
+  // SCW Notes (field_1953) is owned upstream (build-SOW) and is read-only on
+  // the bid-review comparison grid (view_3921) — see bid-review-v2's
+  // makeScwNotesReadOnly, which locks the per-card field too.
+  var READONLY_FIELDS_BY_VIEW = {
+    view_3921: { field_1953: true }
+  };
 
   /** Build an id→attributes index from the source view's loaded records.
    *  Uses ns.data.readRecords (the .models read path that render.js draws
@@ -313,20 +382,29 @@
       if (recs[i] && recs[i].id) idx[recs[i].id] = recs[i];
     }
     try {
+      // Store the synthesized bucket under THIS view's bucket field key so
+      // ns.card.bucketIdOf(attrs, sourceViewKey) resolves it (survey =
+      // field_2366, SOW = field_2219).
+      var bucketKey = 'field_2219';
+      try {
+        var _f = ns.cfg && typeof ns.cfg.fields === 'function' && ns.cfg.fields(sourceViewKey);
+        if (_f && _f.bucket) bucketKey = _f.bucket;
+      } catch (eB) { /* default field_2219 */ }
       var cards = document.querySelectorAll('.scw-ws-v2-card[data-scw-ws-v2-record]');
       for (var c = 0; c < cards.length; c++) {
         var card = cards[c];
         var rid  = card.getAttribute('data-scw-ws-v2-record');
         if (!rid || idx[rid]) continue;   // model attrs (richer) win
         var bucketId = card.getAttribute('data-scw-ws-v2-bucket') || '';
-        idx[rid] = {
+        var dom = {
           id:             rid,
-          field_2219_raw: bucketId ? [{ id: bucketId }] : [],
           // --locked ⇔ survey-associated (field_2586 >= 1); enough for
           // isCrLocked / isDeleteBlocked which only test "> 0".
           field_2586:     card.classList.contains('scw-ws-v2-card--locked') ? 1 : 0,
           _scwDomFallback: true
         };
+        dom[bucketKey + '_raw'] = bucketId ? [{ id: bucketId }] : [];
+        idx[rid] = dom;
       }
     } catch (e) { /* best effort */ }
 
@@ -407,6 +485,48 @@
   }
 
   // ── Toolbar ──────────────────────────────────────────────────
+  // ── Duplicate selected (bid/survey) — POST record ids to Make ──
+  var DUPLICATE_WEBHOOK = 'https://hook.us1.make.com/sfdf6ruwhb6nrfsy0ynkqauyjsva62ce';
+  function viewAllowsDuplicate(viewKey) {
+    try {
+      var vc = ns.cfg && typeof ns.cfg.viewCfg === 'function' && ns.cfg.viewCfg(viewKey);
+      return !!(vc && vc.bulkDuplicate);
+    } catch (e) { return false; }
+  }
+  function bulkTriggeredBy() {
+    try {
+      var u = (typeof Knack !== 'undefined' && Knack.getUserAttributes) ? Knack.getUserAttributes() : null;
+      if (!u || typeof u !== 'object') return {};
+      var n = u.name;
+      if (n && typeof n === 'object') n = ((n.first || '') + ' ' + (n.last || '')).trim();
+      return { id: u.id || '', name: n || '', email: u.email || '' };
+    } catch (e) { return {}; }
+  }
+  function handleDuplicate(ids, viewKey) {
+    if (!ids || !ids.length) return;
+    if (!window.confirm('Duplicate ' + ids.length + ' selected item' +
+        (ids.length === 1 ? '' : 's') + '?')) return;
+    var dup = toolbar && toolbar.querySelector('.scw-ws-v2-bulk-duplicate');
+    if (toolbar) toolbar.classList.add('scw-ws-v2-bulk-toolbar--saving');
+    if (dup) dup.disabled = true;
+    function refetch() {
+      var v = window.Knack && Knack.views && Knack.views[viewKey];
+      if (v && v.model && typeof v.model.fetch === 'function') v.model.fetch();
+    }
+    $.ajax({
+      url: DUPLICATE_WEBHOOK, type: 'POST', contentType: 'application/json',
+      data: JSON.stringify({ recordIds: ids, viewId: viewKey, triggeredBy: bulkTriggeredBy() }),
+      crossDomain: true, timeout: 120000
+    }).always(function () {
+      if (toolbar) toolbar.classList.remove('scw-ws-v2-bulk-toolbar--saving');
+      clearAll(); syncDomFromState(); refreshToolbar();
+      // Refetch so the new duplicates appear (staggered for Make-write lag).
+      refetch();
+      setTimeout(refetch, 3000);
+      setTimeout(refetch, 8000);
+    });
+  }
+
   var toolbar; // DOM element, lazily created
   function ensureToolbar(sourceViewKey) {
     if (toolbar) return toolbar;
@@ -418,6 +538,15 @@
     toolbar.innerHTML =
       '<span class="scw-ws-v2-bulk-count">0 selected</span>' +
       '<button type="button" class="scw-ws-v2-bulk-edit" disabled>Edit selected</button>' +
+      '<button type="button" class="scw-ws-v2-bulk-duplicate" disabled>' +
+        '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" ' +
+          'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+          'stroke-linejoin="round">' +
+          '<rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect>' +
+          '<path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path>' +
+        '</svg>' +
+        '<span class="scw-ws-v2-bulk-duplicate-label">Duplicate</span>' +
+      '</button>' +
       '<button type="button" class="scw-ws-v2-bulk-add-acc" disabled>Add accessories</button>' +
       '<button type="button" class="scw-ws-v2-bulk-remove-acc" disabled>' +
         '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" ' +
@@ -476,6 +605,12 @@
       if (!ids.length) return;
       openBulkModal(ids, _sourceViewKey || sourceViewKey);
     });
+    var dupBtn = toolbar.querySelector('.scw-ws-v2-bulk-duplicate');
+    if (dupBtn) dupBtn.addEventListener('click', function () {
+      var ids = selList();
+      if (!ids.length) return;
+      handleDuplicate(ids, _sourceViewKey || sourceViewKey);
+    });
     toolbar.querySelector('.scw-ws-v2-bulk-delete').addEventListener('click', function () {
       var ids = selList();
       if (!ids.length) return;
@@ -484,14 +619,38 @@
     return toolbar;
   }
 
+  /** Does the active view's object lack an accessory relationship? (config
+   *  noAccessories — survey). Hides the bulk Add/Remove accessories buttons. */
+  function viewHasNoAccessories(sourceViewKey) {
+    try {
+      var vc = ns.cfg && typeof ns.cfg.viewCfg === 'function' && ns.cfg.viewCfg(sourceViewKey);
+      return !!(vc && vc.noAccessories);
+    } catch (e) { return false; }
+  }
+
   function refreshToolbar() {
     if (!toolbar) return;
     var n = selSize();
+    var noAcc = viewHasNoAccessories(_sourceViewKey);
     toolbar.classList.toggle('scw-ws-v2-bulk-toolbar--active', n > 0);
     toolbar.querySelector('.scw-ws-v2-bulk-count').textContent = n + ' selected';
     toolbar.querySelector('.scw-ws-v2-bulk-edit').disabled   = (n === 0);
+    var dupBtn = toolbar.querySelector('.scw-ws-v2-bulk-duplicate');
+    if (dupBtn) {
+      // Shown only on views that opt in (config bulkDuplicate — bid/survey).
+      if (viewAllowsDuplicate(_sourceViewKey)) dupBtn.style.removeProperty('display');
+      else dupBtn.style.setProperty('display', 'none', 'important');
+      dupBtn.disabled = (n === 0);
+    }
     var addAccBtn = toolbar.querySelector('.scw-ws-v2-bulk-add-acc');
-    if (addAccBtn) addAccBtn.disabled = (n === 0);
+    if (addAccBtn) {
+      // Use setProperty w/ !important — the toolbar's CSS sets the buttons'
+      // display with !important, which would otherwise beat a plain inline
+      // display:none and leave the button visible on noAccessories views.
+      if (noAcc) addAccBtn.style.setProperty('display', 'none', 'important');
+      else       addAccBtn.style.removeProperty('display');
+      addAccBtn.disabled = (n === 0);
+    }
     var delBtn = toolbar.querySelector('.scw-ws-v2-bulk-delete');
     var delLabel = delBtn.querySelector('.scw-ws-v2-bulk-delete-label');
     if (n === 0) {
@@ -508,7 +667,11 @@
       if (delLabel) delLabel.textContent = nDel > 0 ? ('Delete (' + nDel + ')') : 'Delete';
     }
     var raBtn = toolbar.querySelector('.scw-ws-v2-bulk-remove-acc');
-    if (raBtn) raBtn.disabled = (n === 0);
+    if (raBtn) {
+      if (noAcc) raBtn.style.setProperty('display', 'none', 'important');
+      else       raBtn.style.removeProperty('display');
+      raBtn.disabled = (n === 0);
+    }
   }
 
   // ── DOM sync (when re-renders happen) ────────────────────────
@@ -1299,6 +1462,32 @@
       return { candidates: prodCands, groupBy: null, itemLabel: null };
     }
 
+    if (field.candSource === 'survey-bids') {
+      // Bids from the BIDs grid (view_3507, label field_2414). Prefer the
+      // in-use connection identifier from the survey line items so labels
+      // read identically to the worksheet (e.g. "1" / "93").
+      var bidAttrs = fromFirstView(['view_3507']);
+      var inUseBid = Object.create(null);
+      var sv2 = window.Knack && Knack.views && Knack.views[sourceViewKey];
+      var sm2 = (sv2 && sv2.model && sv2.model.data && sv2.model.data.models) || [];
+      for (var bi = 0; bi < sm2.length; bi++) {
+        var braw = sm2[bi].attributes && sm2[bi].attributes.field_2415_raw;
+        if (!Array.isArray(braw)) continue;
+        for (var bj = 0; bj < braw.length; bj++) {
+          var bv = braw[bj];
+          if (bv && bv.id && bv.identifier != null) inUseBid[bv.id] = String(bv.identifier);
+        }
+      }
+      var bidCands = bidAttrs.map(function (a) {
+        return { id: a.id, identifier: inUseBid[a.id] || stripHtml(a.field_2414) || stripHtml(a.identifier) || a.id };
+      }).filter(function (c) { return c.identifier; });
+      bidCands.sort(function (a, b) {
+        return String(a.identifier).localeCompare(String(b.identifier), undefined,
+          { numeric: true, sensitivity: 'base' });
+      });
+      return { candidates: bidCands, groupBy: null, itemLabel: null };
+    }
+
     if (field.candSource === 'dropPrefix') {
       // Catalog loaded by the Builder JS snippet (see CLAUDE.md
       // "Out-of-bundle Knack Builder snippets"). Each entry:
@@ -1315,6 +1504,116 @@
     return { candidates: [], groupBy: null, itemLabel: null };
   }
 
+  /** One-shot note prompt (textarea). cb(noteText) on save, cb(null) on cancel. */
+  function promptNote(count, cb) {
+    var ov = document.createElement('div');
+    ov.className = 'scw-ws-v2-bulk-overlay';
+    ov.innerHTML =
+      '<div class="scw-ws-v2-bulk-modal scw-ws-v2-bulk-modal--confirm">' +
+        '<div class="scw-ws-v2-bulk-modal-head">' +
+          '<div class="scw-ws-v2-bulk-modal-title">Survey note required</div>' +
+          '<div class="scw-ws-v2-bulk-modal-sub">You’re removing ' + count +
+            ' item' + (count === 1 ? '' : 's') + ' from the bid. Capture a survey note ' +
+            'explaining why — it’ll be saved on each item (existing notes are kept).</div>' +
+        '</div>' +
+        '<div style="padding:0 18px 6px;">' +
+          '<textarea class="scw-ws-v2-bulk-note" rows="3" placeholder="e.g. Item not needed per customer; duplicate of E-014; etc." ' +
+            'style="width:100%;box-sizing:border-box;font:inherit;padding:8px;border:1px solid #cbd5e1;border-radius:6px;resize:vertical;"></textarea>' +
+        '</div>' +
+        '<div class="scw-ws-v2-bulk-modal-actions">' +
+          '<button type="button" class="scw-ws-v2-bulk-modal-cancel">Cancel</button>' +
+          '<button type="button" class="scw-ws-v2-bulk-modal-confirm-delete" disabled>Save with note</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(ov);
+    var ta  = ov.querySelector('.scw-ws-v2-bulk-note');
+    var okB = ov.querySelector('.scw-ws-v2-bulk-modal-confirm-delete');
+    var caB = ov.querySelector('.scw-ws-v2-bulk-modal-cancel');
+    function close() { ov.parentNode && ov.parentNode.removeChild(ov); }
+    ta.addEventListener('input', function () { okB.disabled = !ta.value.trim(); });
+    caB.addEventListener('click', function () { close(); cb(null); });
+    okB.addEventListener('click', function () {
+      var v = ta.value.trim(); if (!v) return; close(); cb(v);
+    });
+    ov.addEventListener('click', function (e) { if (e.target === ov) { close(); cb(null); } });
+    setTimeout(function () { ta.focus(); }, 30);
+  }
+
+  /** Config-driven clear-note gate: if the view declares `clearNote:{conn,note}`
+   *  (logical names) and this bulk batch CLEARS that connection on ≥1 row,
+   *  prompt ONCE and write the note into every clearing row's PUT (preserving
+   *  existing notes). The note in the body makes survey-bid-validate's bid-gate
+   *  skip these PUTs, so there's no second prompt and no loop. cb(true) to
+   *  proceed, cb(false) if the user cancels. */
+  function maybePromptClearNote(jobs, sourceViewKey, cb) {
+    var vc = (ns.cfg && typeof ns.cfg.viewCfg === 'function') ? ns.cfg.viewCfg(sourceViewKey) : null;
+    var spec = vc && vc.clearNote;
+    if (!spec) return cb(true);
+    var F = (ns.cfg && ns.cfg.fields(sourceViewKey)) || {};
+    var connKey = F[spec.conn] || spec.conn;
+    var noteKey = F[spec.note] || spec.note;
+    var clearing = jobs.filter(function (j) {
+      if (!j.body || !(connKey in j.body)) return false;
+      var v = j.body[connKey];
+      return Array.isArray(v) ? (v.length === 0) : (!v || v === '');
+    });
+    if (!clearing.length) return cb(true);
+    promptNote(clearing.length, function (note) {
+      if (note == null) return cb(false);   // cancelled
+      var idx = attrsIndex(sourceViewKey);
+      clearing.forEach(function (j) {
+        var a = idx[j.recordId];
+        var existingRaw = a ? a[noteKey] : '';
+        var existing = (existingRaw != null) ? String(existingRaw).replace(/<[^>]*>/g, '').trim() : '';
+        // Preserve an existing note (re-write its raw value so the PUT still
+        // carries the field and bypasses the gate); else write the new note.
+        j.body[noteKey] = existing ? existingRaw : note;
+      });
+      cb(true);
+    });
+  }
+
+  /** Config-driven $0/blank confirm (confirmZero) for the bulk path: if this
+   *  batch sets the configured field to $0 or blank on ≥1 row, confirm ONCE.
+   *  cb(true) to proceed, cb(false) to abort. */
+  function maybeConfirmZero(jobs, sourceViewKey, cb) {
+    var vc = (ns.cfg && typeof ns.cfg.viewCfg === 'function') ? ns.cfg.viewCfg(sourceViewKey) : null;
+    var spec = vc && vc.confirmZero;
+    if (!spec || !ns.confirmModal || !ns.isZeroBlank) return cb(true);
+    var F = (ns.cfg && ns.cfg.fields(sourceViewKey)) || {};
+    var key = F[spec.field] || spec.field;
+    var hit = jobs.some(function (j) {
+      return j.body && (key in j.body) && ns.isZeroBlank(j.body[key]);
+    });
+    if (!hit) return cb(true);
+    ns.confirmModal({
+      title: spec.title, body: spec.body,
+      okLabel: 'Yes, continue', cancelLabel: 'Cancel'
+    }).then(function (ok) { cb(!!ok); });
+  }
+
+  // Styles for the questionnaire section folded into the bulk modal. The field
+  // controls themselves carry deliverables (.scw-deliverables-*) classes whose
+  // CSS is already injected on this scene; this only adds the section header +
+  // apply-row layout.
+  var _qStyleInjected = false;
+  function injectQStyles() {
+    if (_qStyleInjected || document.getElementById('scw-ws-v2-bulk-q-css')) { _qStyleInjected = true; return; }
+    _qStyleInjected = true;
+    var css =
+      '.scw-ws-v2-bulk-section{font:700 11px system-ui,sans-serif;text-transform:uppercase;' +
+        'letter-spacing:.05em;color:#0f4c75;margin:16px 0 8px;padding-bottom:5px;border-bottom:1px solid #e2e8f0;}' +
+      '.scw-ws-v2-bulk-section:first-child{margin-top:0;}' +
+      '.scw-ws-v2-bulk-qrow{display:flex;align-items:flex-start;gap:12px;margin-bottom:12px;}' +
+      '.scw-ws-v2-bulk-qapply{display:inline-flex;align-items:center;gap:5px;flex:0 0 auto;width:56px;' +
+        'padding-top:20px;font:600 11px system-ui,sans-serif;color:#475569;cursor:pointer;}' +
+      '.scw-ws-v2-bulk-qcontrol{flex:1 1 auto;min-width:0;}';
+    var s = document.createElement('style');
+    s.id = 'scw-ws-v2-bulk-q-css';
+    s.textContent = css;
+    document.head.appendChild(s);
+  }
+
   function openBulkModal(ids, sourceViewKey) {
     // If any selected row is locked (survey-associated sales item), only the
     // lock whitelist (Product / SCW Notes / Custom Disc %) is bulk-editable —
@@ -1322,7 +1621,7 @@
     var locked = selectionHasLocked(ids, sourceViewKey);
     var categories = recordCategories(ids, sourceViewKey);
     var sales = isSalesView(sourceViewKey);
-    var fieldSet = sales ? SALES_FIELDS : FIELDS;
+    var fieldSet = fieldSetFor(sourceViewKey);
     var fields = locked ? LOCKED_BULK_FIELDS.slice() : intersectVisibleFields(ids, sourceViewKey, fieldSet);
     // Per-row visible-field map for save-time gating (null when locked → the
     // whitelist applies to every selected row uniformly).
@@ -1348,11 +1647,47 @@
     if (mixedBuckets && !locked) {
       fields = fields.filter(function (f) { return f.key !== 'field_1949'; });
     }
+    // Drop fields that are read-only in this view's context (e.g. SCW Notes on
+    // the bid-review comparison grid). Applies even to the locked whitelist.
+    var roSet = READONLY_FIELDS_BY_VIEW[sourceViewKey];
+    if (roSet) {
+      fields = fields.filter(function (f) { return !roSet[f.key]; });
+    }
     var subHtml = locked
       ? 'Some selected rows are locked — only <b>Product</b>, <b>SCW Notes</b> &amp; <b>Custom Disc %</b> can be bulk-edited.'
       : (categories.length === 1
           ? 'All rows in <b>' + escapeHtml(categories[0]) + '</b> category'
           : 'Mixed buckets — showing fields common to all');
+
+    // ── Questionnaire (deliverables) fold-in ──────────────────────────
+    // When the view declares a `questionnaire` config and the deliverables
+    // API is ready, compute the schema questions COMMON to every selected
+    // record (intersected by key) so we can offer them in a dedicated
+    // "System Questionnaire" section that writes the JSON answer blob.
+    var _vc = (ns.cfg && typeof ns.cfg.viewCfg === 'function') ? ns.cfg.viewCfg(sourceViewKey) : null;
+    var qCfg = _vc && _vc.questionnaire;
+    var DLV = window.SCW && window.SCW.deliverables;
+    var qDefs = [];
+    if (qCfg && DLV && DLV.ready && DLV.ready()) {
+      var _bySchema = DLV.schemaFieldsById();
+      var _idx = attrsIndex(sourceViewKey);
+      var _lists = [];
+      for (var _qi = 0; _qi < ids.length; _qi++) {
+        var _rec = _idx[ids[_qi]];
+        if (!_rec) continue;
+        var _sid = DLV.schemaIdOf(_rec);
+        var _fl = _sid ? _bySchema[_sid] : null;
+        if (_fl && _fl.length) _lists.push(_fl);
+      }
+      if (_lists.length) {
+        qDefs = _lists[0].filter(function (def) {
+          return _lists.every(function (list) {
+            return list.some(function (d) { return d.key === def.key; });
+          });
+        });
+      }
+    }
+    var hasQ = qDefs.length > 0;
 
     var overlay = document.createElement('div');
     overlay.className = 'scw-ws-v2-bulk-overlay';
@@ -1376,7 +1711,7 @@
     var saveBtn   = overlay.querySelector('.scw-ws-v2-bulk-modal-save');
     var cancelBtn = overlay.querySelector('.scw-ws-v2-bulk-modal-cancel');
 
-    if (!fields.length) {
+    if (!fields.length && !hasQ) {
       body.innerHTML = '<div class="scw-ws-v2-bulk-empty">No fields are editable across all selected rows.</div>';
       saveBtn.disabled = true;
     }
@@ -1456,6 +1791,11 @@
         slot.querySelector('button').addEventListener('click', function () {
           var resolved = getSourceCandidatesForConn(f, sourceViewKey, ids);
           var cands = resolved.candidates;
+          // "Add to existing" mode only ADDS the picked records to each row's
+          // current selection — clearing is meaningless there, so suppress the
+          // picker's "Clear all selections" row and treat an empty pick as "no
+          // change" rather than a no-op clear (the illogical UX we're fixing).
+          var addMode = (f.kind === 'conn-multi' && rowState[f.key].mode === 'add');
           if (!ns.picker || typeof ns.picker.open !== 'function') {
             status.textContent = 'Picker not available.';
             return;
@@ -1513,8 +1853,17 @@
             groupBy:       resolved.groupBy || undefined,
             multi:         f.kind === 'conn-multi',
             pickOnly:      true,
+            allowClear:    !addMode,
             itemLabel:     resolved.itemLabel || function (r) { return r.identifier || r.id; },
             onChoose: function (chosenIds) {
+              // Empty pick in "Add to existing" mode = nothing to add → don't
+              // mark the field for apply (avoids a confusing no-op save).
+              if (addMode && !chosenIds.length) {
+                rowState[f.key].apply = false;
+                applyCb.checked = false;
+                slot.querySelector('.scw-ws-v2-bulk-conn-val').textContent = '(none added)';
+                return;
+              }
               rowState[f.key].value = f.kind === 'conn-multi'
                 ? chosenIds
                 : (chosenIds[0] || '');
@@ -1544,6 +1893,79 @@
       });
     });
 
+    // ── Build the "System Questionnaire" section (writes the JSON blob) ──
+    // qWrap stays null when there's no questionnaire. When present we also
+    // label the regular fields with a "Line item" header so it's clear what
+    // each section edits.
+    var qWrap = null, qByKey = Object.create(null);
+    function collectQ() {
+      var out = [];
+      if (!qWrap) return out;
+      var rows = qWrap.querySelectorAll('[data-q-key]');
+      for (var i = 0; i < rows.length; i++) {
+        var cb = rows[i].querySelector('[data-scw-ws-v2-bulk-apply]');
+        if (!cb || !cb.checked) continue;
+        var key = rows[i].getAttribute('data-q-key');
+        var def = qByKey[key]; if (!def) continue;
+        out.push({ key: key, value: readQVal(rows[i], def) });
+      }
+      return out;
+    }
+    function readQVal(row, def) {
+      var pfx = DLV.classPrefix;
+      if (def.type === 'multiselect') {
+        var chips = row.querySelector('.' + pfx + '-chips');
+        return chips ? Array.prototype.slice.call(chips.querySelectorAll('.is-on'))
+          .map(function (b) { return b.getAttribute('data-val'); }) : [];
+      }
+      var el = row.querySelector('.' + pfx + '-input');
+      return el ? el.value : '';
+    }
+    if (hasQ) {
+      injectQStyles();
+      var pfx = DLV.classPrefix;
+      // Label the line-item fields section (only when a questionnaire follows).
+      if (fields.length) {
+        var liHdr = document.createElement('div');
+        liHdr.className = 'scw-ws-v2-bulk-section';
+        liHdr.textContent = 'Line item';
+        body.insertBefore(liHdr, body.firstChild);
+      }
+      var qHdr = document.createElement('div');
+      qHdr.className = 'scw-ws-v2-bulk-section';
+      qHdr.textContent = 'System Questionnaire';
+      body.appendChild(qHdr);
+      qWrap = document.createElement('div');
+      qWrap.className = 'scw-ws-v2-bulk-qsection';
+      qDefs.forEach(function (def) {
+        qByKey[def.key] = def;
+        var row = document.createElement('div');
+        row.className = 'scw-ws-v2-bulk-qrow';
+        row.setAttribute('data-q-key', def.key);
+        row.innerHTML =
+          '<label class="scw-ws-v2-bulk-qapply"><input type="checkbox" data-scw-ws-v2-bulk-apply><span>Apply</span></label>' +
+          '<div class="scw-ws-v2-bulk-qcontrol">' +
+            DLV.renderField(def, def.type === 'multiselect' ? [] : '') +
+          '</div>';
+        qWrap.appendChild(row);
+      });
+      body.appendChild(qWrap);
+      // Renders use deliverables markup; wire chip toggle + auto-tick Apply.
+      function tickRow(row) { if (!row) return; var cb = row.querySelector('[data-scw-ws-v2-bulk-apply]'); if (cb) cb.checked = true; }
+      qWrap.addEventListener('click', function (e) {
+        var chip = e.target.closest('.' + pfx + '-chip');
+        if (!chip) return;
+        var on = chip.classList.toggle('is-on'); chip.setAttribute('aria-pressed', on);
+        tickRow(chip.closest('[data-q-key]'));
+      });
+      qWrap.addEventListener('change', function (e) {
+        if (e.target.matches && e.target.matches('select.' + pfx + '-input')) tickRow(e.target.closest('[data-q-key]'));
+      });
+      qWrap.addEventListener('input', function (e) {
+        if (e.target.matches && e.target.matches('input.' + pfx + '-input, textarea.' + pfx + '-input')) tickRow(e.target.closest('[data-q-key]'));
+      });
+    }
+
     function close() {
       overlay.parentNode && overlay.parentNode.removeChild(overlay);
     }
@@ -1561,7 +1983,8 @@
       var fieldByKey = Object.create(null);
       for (var fi = 0; fi < fields.length; fi++) fieldByKey[fields[fi].key] = fields[fi];
       var appliedKeys = Object.keys(rowState).filter(function (k) { return rowState[k].apply; });
-      if (!appliedKeys.length) {
+      var qApplied = collectQ();   // [] when no questionnaire section
+      if (!appliedKeys.length && !qApplied.length) {
         status.textContent = 'Tick at least one field to apply.';
         return;
       }
@@ -1634,8 +2057,36 @@
         });
       }
 
+      // Questionnaire answers: merge the applied common fields into each
+      // selected record's JSON blob and ride it in that record's PUT (same
+      // job, so one PUT per record). Reads the current blob off the model.
+      if (qApplied.length && DLV) {
+        var vfield = DLV.valueField;
+        var qIdx = attrsIndex(sourceViewKey);
+        ids.forEach(function (rid) {
+          var rec = qIdx[rid]; if (!rec) return;
+          var blob = DLV.readValues(rec) || {};
+          for (var qa = 0; qa < qApplied.length; qa++) blob[qApplied[qa].key] = qApplied[qa].value;
+          var jk = sourceViewKey + '|' + rid;
+          if (!jobsByKey[jk]) jobsByKey[jk] = { viewKey: sourceViewKey, recordId: rid, body: {} };
+          jobsByKey[jk].body[vfield] = JSON.stringify(blob);
+        });
+      }
+
       var jobs = Object.keys(jobsByKey).map(function (jobKey) { return jobsByKey[jobKey]; });
 
+      // Clear-note gate (config clearNote): if this batch clears the configured
+      // connection (e.g. Bid), prompt ONCE and write the note into every
+      // clearing row's PUT before firing. Cancel = abort the whole save.
+      maybePromptClearNote(jobs, sourceViewKey, function (p1) {
+        if (!p1) { status.textContent = ''; return; }
+        maybeConfirmZero(jobs, sourceViewKey, function (p2) {
+          if (!p2) { status.textContent = ''; return; }
+          runJobs();
+        });
+      });
+
+      function runJobs() {
       saveBtn.disabled   = true;
       cancelBtn.disabled = true;
       overlay.classList.add('scw-ws-v2-bulk-overlay--saving');
@@ -1698,6 +2149,7 @@
           cancelBtn.disabled = false;
         }
       });
+      } // end runJobs
     });
   }
 

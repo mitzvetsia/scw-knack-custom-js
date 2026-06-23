@@ -56,7 +56,14 @@
     var map = Object.create(null);
     function ensure(rid) {
       if (!map[rid]) {
-        map[rid] = { id: rid, imgUrl: '', type: '', required: false, completed: false, notes: '' };
+        map[rid] = {
+          id: rid, imgUrl: '', type: '', required: false, completed: false, notes: '',
+          // Photo QA (PIC object) — populated only when the QA columns are
+          // present on the source view (install surface). Defaults keep the
+          // chit in a neutral "Pending" state everywhere else.
+          qaStatus: 'Pending', qaClient: 'N/A', qaNotes: '', qaHistory: '',
+          qaCompletedBy: '', qaCompletedDate: '', qaPresent: false
+        };
       }
       return map[rid];
     }
@@ -69,6 +76,15 @@
     var FK_REQ  = F.photoRequired  || 'field_2446';
     var FK_COMP = F.photoCompleted || 'field_2447';
     var FK_NOTE = F.photoNotes     || 'field_114';
+    // Photo QA fields on the PIC object (matches qa-popover.js). Read only
+    // when surfaced as connection columns on the source view — absent on
+    // most surfaces, in which case the chit stays Pending / non-blocking.
+    var FK_QA_STATUS   = F.photoQaStatus        || 'field_2859';
+    var FK_QA_CLIENT   = F.photoQaClient        || 'field_2860';
+    var FK_QA_NOTES    = F.photoQaNotes         || 'field_2861';
+    var FK_QA_BY       = F.photoQaCompletedBy   || 'field_2862';
+    var FK_QA_DATE     = F.photoQaCompletedDate || 'field_2863';
+    var FK_QA_HISTORY  = F.photoQaHistory       || 'field_2865';
 
     var imgCells = findAllCellsByFieldKey(tr, FK_IMG);
     for (var ic = 0; ic < imgCells.length; ic++) {
@@ -128,6 +144,36 @@
       }
     }
 
+    // ── Photo QA fields (install surface) ────────────────────────────
+    // Each QA cell, when present, repeats the per-photo connection-value
+    // span keyed by the PIC record id — same DOM contract qa-popover.js
+    // reads off the worksheet <tr>. Connection fields (status/client/by)
+    // nest an inner connection-value span carrying the display text.
+    function eachQaSpan(fieldKey, apply) {
+      var cell = findCellByFieldKey(tr, fieldKey);
+      if (!cell) return false;
+      var spans = cell.querySelectorAll('span[id][data-kn="connection-value"]');
+      for (var i = 0; i < spans.length; i++) {
+        var rid = (spans[i].id || '').trim();
+        if (!rid) continue;
+        apply(ensure(rid), spans[i]);
+      }
+      return true;
+    }
+    function spanText(span) {
+      var inner = span.querySelector('span[data-kn="connection-value"]');
+      return ((inner ? inner.textContent : span.textContent) || '').trim();
+    }
+    if (eachQaSpan(FK_QA_STATUS, function (rec, span) {
+      var t = spanText(span); if (t) { rec.qaStatus = t; rec.qaPresent = true; }
+    })) {
+      eachQaSpan(FK_QA_CLIENT,  function (rec, span) { var t = spanText(span); if (t) rec.qaClient = t; });
+      eachQaSpan(FK_QA_NOTES,   function (rec, span) { rec.qaNotes = (span.textContent || '').trim(); });
+      eachQaSpan(FK_QA_BY,      function (rec, span) { rec.qaCompletedBy = spanText(span); });
+      eachQaSpan(FK_QA_DATE,    function (rec, span) { rec.qaCompletedDate = (span.textContent || '').trim(); });
+      eachQaSpan(FK_QA_HISTORY, function (rec, span) { rec.qaHistory = (span.innerHTML || '').trim(); });
+    }
+
     var arr = [];
     for (var k in map) arr.push(map[k]);
     // Sort: required+incomplete first, then required, then by type, then id
@@ -162,16 +208,37 @@
   }
 
   function editPhotoHref(photoRecordId) {
+    // Survey scene (view_3505): #subcontractor-portal/site-survey-request-
+    // details/<id>/edit-doc-photo/<photoId> — matches v1 inline-photo-row.
+    var survey = surveyBasePath();
+    if (survey) return '#' + survey + '/edit-doc-photo/' + photoRecordId + '/';
     var base = buildSowBasePath();
     if (!base) return '';
-    var slug = (base.indexOf('scope-of-work-details') !== -1)
-      ? 'edit-doc-photo2' : 'edit-photo';
+    // Deploy scene (install line items, view_3915) uses edit-doc-photo3;
+    // sales scope-of-work-details uses edit-doc-photo2; build-SOW uses edit-photo.
+    var slug = (base.indexOf('/deploy/') !== -1) ? 'edit-doc-photo3'
+      : (base.indexOf('scope-of-work-details') !== -1) ? 'edit-doc-photo2'
+      : 'edit-photo';
     return '#' + base + '/' + slug + '/' + photoRecordId + '/';
   }
   function addPhotoHref(lineItemId) {
+    // Survey scene: .../add-photo-to-survey-line-item/<lineItemId>.
+    var survey = surveyBasePath();
+    if (survey) return '#' + survey + '/add-photo-to-survey-line-item/' + lineItemId + '/';
     var base = buildSowBasePath();
     if (!base) return '';
-    return '#' + base + '/add-photo-to-sow-line-item/' + lineItemId + '/';
+    // Deploy scene → install line item; everywhere else → SOW line item.
+    var addSlug = (base.indexOf('/deploy/') !== -1)
+      ? 'add-photo-to-install-line-item' : 'add-photo-to-sow-line-item';
+    return '#' + base + '/' + addSlug + '/' + lineItemId + '/';
+  }
+
+  /** Survey-scene base path. Returns '' off the survey scene so the
+   *  SOW/sales/deploy callers above fall through to buildSowBasePath. */
+  function surveyBasePath() {
+    var hash = window.location.hash || '';
+    var m = hash.match(/site-survey-request-details\/([a-f0-9]{24})/);
+    return m ? ('subcontractor-portal/site-survey-request-details/' + m[1]) : '';
   }
 
   /** Public API: build a strip element for one record. Returns null
@@ -215,8 +282,61 @@
     '<path d="M10 11v6"></path><path d="M14 11v6"></path>' +
     '<path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"></path></svg>';
 
+  // ── Photo QA chit (install surface) ──────────────────────────────
+  // Surfaces a photo's QA state on its strip card and opens the photo QA
+  // panel (qa-popover.js openForAnchor) on click. Mirrors the chit-state
+  // model qa-popover.js uses (computeChitState). Only rendered when the
+  // source view exposed QA columns (p.qaPresent) — i.e. the install
+  // worksheet (view_3915). Other surfaces render no chit.
+  var QA_CHIT_VIEWS = { view_3915: 1, view_4056: 1 };
+
+  function qaChitState(p) {
+    if (!p.completed) return 'missing';
+    var s = (p.qaStatus || '').toLowerCase();
+    if (s === 'fail') return 'fail';
+    if (s === 'pass') {
+      var c = (p.qaClient || '').toLowerCase();
+      if (c === '' || c === 'n/a' || c === 'approved' || c === 'bypassed') return 'done';
+      return 'half-pass';
+    }
+    return 'pending';
+  }
+  function qaChitLabel(state) {
+    return ({ missing: 'No photo', pending: 'Needs QA', 'half-pass': 'Client pending',
+              done: 'Signed off', fail: 'Failed' })[state] || 'Needs QA';
+  }
+  var QA_ICONS = {
+    done:    '<svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>',
+    fail:    '<svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>',
+    pending: '<svg viewBox="0 0 24 24" width="10" height="10" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>'
+  };
+  // "Needs QA" RULE (assumption — see GOAL): a photo needs QA when it is
+  // REQUIRED (field_2446 = Yes). Non-required photos get NO QA status served
+  // and open the modal as a plain big-photo viewer (no QA sidebar). To change
+  // the rule later, this is the one line to edit.
+  function photoNeedsQa(p) { return !!p.required; }
+
+  function qaChitHtml(p) {
+    var state = qaChitState(p);
+    var icon = QA_ICONS[state] || QA_ICONS.pending;
+    return '<span class="scw-ws-v2-photo-qa-chit is-' + state + '"' +
+      ' data-scw-ws-v2-photo-qa="' + escapeHtml(p.id) + '"' +
+      ' data-qa-status="'   + escapeHtml(p.qaStatus || 'Pending') + '"' +
+      ' data-qa-client="'   + escapeHtml(p.qaClient || 'N/A')     + '"' +
+      ' data-qa-notes="'    + escapeHtml(p.qaNotes || '')         + '"' +
+      ' data-qa-history="'  + escapeHtml(p.qaHistory || '')       + '"' +
+      ' data-qa-by="'       + escapeHtml(p.qaCompletedBy || '')   + '"' +
+      ' data-qa-date="'     + escapeHtml(p.qaCompletedDate || '') + '"' +
+      ' data-qa-type="'     + escapeHtml(p.type || 'Photo')       + '"' +
+      ' data-qa-img="'      + escapeHtml(p.imgUrl || '')          + '"' +
+      ' title="Photo QA — ' + escapeHtml(qaChitLabel(state)) + ' (click to review)">' +
+        icon + '<span class="scw-ws-v2-photo-qa-chit-state">' + qaChitLabel(state) + '</span>' +
+      '</span>';
+  }
+
   function buildStrip(rec, sourceViewKey) {
     var photos = extractPhotoRecords(sourceViewKey, rec.id);
+    var qaEnabled = !!QA_CHIT_VIEWS[sourceViewKey];
     var addHref = addPhotoHref(rec.id);
     // When there are no photos AND no add route, there's nothing to
     // render. Otherwise keep the strip so the user always has a way
@@ -253,7 +373,7 @@
         (p.required ? ' scw-ws-v2-photo-card--required' : '') +
         (missing   ? ' scw-ws-v2-photo-card--missing'  : '');
       var thumb = p.imgUrl
-        ? '<img class="scw-ws-v2-photo-img" draggable="true" src="' + escapeHtml(p.imgUrl) + '" alt="">'
+        ? '<img class="scw-ws-v2-photo-img" draggable="false" src="' + escapeHtml(p.imgUrl) + '" alt="">'
         : '<div class="scw-ws-v2-photo-img scw-ws-v2-photo-img--placeholder">No image</div>';
       var typeHtml = p.type
         ? '<div class="scw-ws-v2-photo-type">' + escapeHtml(p.type) + '</div>'
@@ -271,11 +391,26 @@
       // full-size url + identity so the delegated click handler can build
       // the viewer without re-scraping the source view.
       var reqState = p.required ? (p.completed ? 'done' : 'missing') : '';
+      var needsQa = photoNeedsQa(p);
+      // QA snapshot attrs on the card itself (install surface) so a click on
+      // the THUMBNAIL can open the same QA modal as the chit — without
+      // re-scraping the source view. needsQa drives whether the modal shows
+      // the QA sidebar (true) or opens as a plain big-photo viewer (false).
+      var qaCardAttrs = (qaEnabled && p.id && p.imgUrl)
+        ? ' data-scw-ws-v2-photo-needsqa="' + (needsQa ? '1' : '0') + '"' +
+          ' data-qa-status="'  + escapeHtml(p.qaStatus || 'Pending') + '"' +
+          ' data-qa-client="'  + escapeHtml(p.qaClient || 'N/A')     + '"' +
+          ' data-qa-notes="'   + escapeHtml(p.qaNotes || '')         + '"' +
+          ' data-qa-history="' + escapeHtml(p.qaHistory || '')       + '"' +
+          ' data-qa-by="'      + escapeHtml(p.qaCompletedBy || '')   + '"' +
+          ' data-qa-date="'    + escapeHtml(p.qaCompletedDate || '') + '"'
+        : '';
       var dataAttrs =
         ' data-scw-ws-v2-photo-url="'  + escapeHtml(p.imgUrl || '') + '"' +
         ' data-scw-ws-v2-photo-id="'   + escapeHtml(p.id)          + '"' +
         ' data-scw-ws-v2-photo-type="' + escapeHtml(p.type || '')  + '"' +
         ' data-scw-ws-v2-photo-req="'  + reqState + '"' +
+        qaCardAttrs +
         // v1-parity drag attrs: filled cards are drag sources, required +
         // image-less cards are drop targets (drag-to-fill-required-slot).
         ' data-photo-id="'         + escapeHtml(p.id) + '"' +
@@ -283,7 +418,14 @@
         ' data-photo-required="'   + (p.required ? 'true' : 'false') + '"' +
         ' data-photo-type="'       + escapeHtml(p.type || '') + '"' +
         ' data-photo-notes="'      + escapeHtml(p.notes || '') + '"';
-      var draggableAttr = p.imgUrl ? ' draggable="true"' : '';
+      // Pointer-based drag (below) handles dragging. CRITICAL: an <a href> is
+      // draggable by DEFAULT, so without draggable="false" the browser starts a
+      // native link-drag that captures the mouse — mouseup never reaches our
+      // handler, the ghost sticks, and the drop needs a second click. Kill
+      // native drag on every photo card (v1 does the same). The data marker
+      // (+ grab cursor) goes only on filled cards (the pointer-drag sources).
+      var draggableAttr = ' draggable="false"' +
+        (p.imgUrl ? ' data-scw-ws-v2-photo-drag="1"' : '');
       // OPS-only photo delete (see PHOTO_DELETE_VIEWS). Only on cards that
       // hold a real photo record; placeholders have nothing to delete.
       var delBtn = (PHOTO_DELETE_VIEWS[sourceViewKey] && p.id)
@@ -292,10 +434,16 @@
             'data-scw-ws-v2-photo-view="' + escapeHtml(sourceViewKey) + '" ' +
             'title="Delete photo">' + PHOTO_TRASH_SVG + '</button>'
         : '';
+      // Photo QA chit — install surface only, only on cards that hold an
+      // actual photo, AND only on photos that NEED QA (required). Non-QA
+      // photos are not served a QA status (they still open the big-photo
+      // modal, just without the QA sidebar).
+      var qaChit = (qaEnabled && p.id && p.imgUrl && photoNeedsQa(p))
+        ? qaChitHtml(p) : '';
       html +=
         '<a class="' + cls + '"' + openAttrs + dataAttrs + draggableAttr +
             ' title="' + escapeHtml((p.type || 'Photo') + (p.required ? ' (Required)' : '')) + '">' +
-          thumb + typeHtml + reqHtml + delBtn +
+          thumb + typeHtml + reqHtml + qaChit + delBtn +
         '</a>';
     }
 
@@ -508,6 +656,74 @@
     }, true);
   }
 
+  // Shared opener for the photo QA modal (qa-popover.js openForAnchor). Both
+  // the QA chit AND the photo thumbnail (install surface) route through here
+  // so they open the IDENTICAL modal off the same snapshot.
+  //
+  // `el` supplies the QA data-* attrs (the chit, or the photo card itself);
+  // `photoId`, `type`, `imgUrl`, `needsQa` come from the caller. When needsQa
+  // is false, the modal opens as a plain big-photo viewer (no QA sidebar) —
+  // qa-popover.js reads snapshot.needsQa to decide.
+  function openPhotoQaModal(el, photoId, type, imgUrl, needsQa) {
+    if (!(window.SCW && SCW.qaPopover && typeof SCW.qaPopover.openAnchor === 'function')) {
+      console.warn('[scw-ws-v2] photo QA: SCW.qaPopover.openAnchor unavailable');
+      return false;
+    }
+    if (!photoId) return false;
+
+    // Resolve which source view this card belongs to so we can refetch it
+    // after a save (rebuilds the strip with the fresh QA state).
+    var viewKey = '';
+    var host = el.closest('[data-scw-ws-v2-view]') ||
+               (el.closest('.scw-ws-v2-card') &&
+                el.closest('.scw-ws-v2-card').querySelector('[data-scw-ws-v2-view]'));
+    if (host) viewKey = host.getAttribute('data-scw-ws-v2-view') || '';
+
+    var snapshot = {
+      type:          type || el.getAttribute('data-qa-type') || 'Photo',
+      imgUrl:        imgUrl || el.getAttribute('data-qa-img') || '',
+      status:        el.getAttribute('data-qa-status')   || 'Pending',
+      client:        el.getAttribute('data-qa-client')   || 'N/A',
+      notes:         el.getAttribute('data-qa-notes')    || '',
+      history:       el.getAttribute('data-qa-history')  || '',
+      completedBy:   el.getAttribute('data-qa-by')       || '',
+      completedDate: el.getAttribute('data-qa-date')     || '',
+      completed:     true,
+      needsQa:       !!needsQa
+    };
+
+    SCW.qaPopover.openAnchor(el, photoId, snapshot, function () {
+      // Refetch the source view so the strip rebuilds from authoritative
+      // data (the QA columns now reflect the save).
+      if (viewKey && ns.data && typeof ns.data.refetchAndNotify === 'function') {
+        setTimeout(function () { ns.data.refetchAndNotify(viewKey); }, 800);
+      }
+    });
+    return true;
+  }
+
+  // Delegated photo-QA chit click (install surface). CAPTURE phase so the
+  // wrapping <a>'s lightbox / edit-page navigation never fires. Opens the
+  // shared photo QA modal. The chit only ever renders on photos that NEED
+  // QA, so this always opens with the QA sidebar (needsQa=true). Bound once.
+  if (!document.documentElement.hasAttribute('data-scw-ws-v2-photo-qa-bound')) {
+    document.documentElement.setAttribute('data-scw-ws-v2-photo-qa-bound', '1');
+    document.addEventListener('click', function (e) {
+      var chit = e.target && e.target.closest &&
+                 e.target.closest('[data-scw-ws-v2-photo-qa]');
+      if (!chit) return;
+      e.preventDefault();
+      e.stopPropagation();
+      openPhotoQaModal(
+        chit,
+        chit.getAttribute('data-scw-ws-v2-photo-qa'),
+        chit.getAttribute('data-qa-type') || 'Photo',
+        chit.getAttribute('data-qa-img') || '',
+        true   // chit only renders on needs-QA photos
+      );
+    }, true);
+  }
+
   // Delegated: intercept thumbnail clicks → open the viewer instead of
   // navigating to Knack's edit page. Placeholder cards (no image) and the
   // "+ Add" pill fall through to their default hash navigation. Bound once.
@@ -518,6 +734,26 @@
       if (!card) return;
       // No image to view → let it navigate to the edit page as before.
       if (!card.getAttribute('data-scw-ws-v2-photo-url')) return;
+
+      // Install surface (QA_CHIT_VIEWS): clicking the photo opens the SAME QA
+      // modal as the chit — unifying the entry point. The needsqa attr is only
+      // emitted on those views, so other surfaces (bid-review/sales/etc.) fall
+      // through to the lightbox below unchanged. Required photos open with the
+      // QA sidebar; non-required open as a plain big-photo viewer (needsQa=0).
+      if (card.hasAttribute('data-scw-ws-v2-photo-needsqa')) {
+        var needsQa = card.getAttribute('data-scw-ws-v2-photo-needsqa') === '1';
+        var opened = openPhotoQaModal(
+          card,
+          card.getAttribute('data-scw-ws-v2-photo-id'),
+          card.getAttribute('data-scw-ws-v2-photo-type') || 'Photo',
+          card.getAttribute('data-scw-ws-v2-photo-url') || '',
+          needsQa
+        );
+        if (opened) { e.preventDefault(); e.stopPropagation(); return; }
+        // openPhotoQaModal failed (qaPopover unavailable) — fall through to
+        // the lightbox so the user can still see the photo.
+      }
+
       var stripEl = card.closest('.scw-ws-v2-photos-strip');
       if (!stripEl) return;
       var anchors = stripEl.querySelectorAll('a.scw-ws-v2-photo-card');
@@ -559,6 +795,13 @@
   function isReqEmpty(card) {
     return card && card.getAttribute('data-photo-has-image') !== 'true' &&
            card.getAttribute('data-photo-required') === 'true';
+  }
+  // Drop target for drag-to-fill/replace: ANY required slot (empty OR already
+  // filled). Dropping onto a filled required slot REPLACES which photo serves
+  // that required type. (Was empty-only — which showed no targets once the
+  // required slots were already filled.)
+  function isReqSlot(card) {
+    return card && card.getAttribute('data-photo-required') === 'true';
   }
   function clearDragState() {
     var all = document.querySelectorAll(
@@ -618,75 +861,130 @@
     ov.querySelector('.scw-ws-v2-photo-confirm-yes').addEventListener('click', function () {
       ov.parentNode && ov.parentNode.removeChild(ov);
       targetCard.classList.add('scw-ws-v2-photo-card--pending');
+      // Visible "working" feedback while the move webhook + refetch run (the
+      // overlay is discarded when the strip rebuilds on refetch).
+      var saving = document.createElement('div');
+      saving.className = 'scw-ws-v2-photo-saving';
+      saving.innerHTML = '<span class="scw-ws-v2-photo-spinner"></span>' +
+                         '<span>Saving…</span>';
+      targetCard.appendChild(saving);
       dispatchPhotoMove(detail, viewKey);
     });
     targetCard.appendChild(ov);
   }
 
+  // POINTER-BASED drag (KTL suppresses native HTML5 drag-and-drop on these
+  // anchors, so we implement drag with mousedown/move/up + a floating ghost).
+  // Threshold avoids hijacking plain clicks (which open the QA modal/lightbox);
+  // a click that follows a real drag is suppressed.
   if (!document.documentElement.hasAttribute('data-scw-ws-v2-photo-drag-bound')) {
     document.documentElement.setAttribute('data-scw-ws-v2-photo-drag-bound', '1');
 
-    document.addEventListener('dragstart', function (e) {
+    var DRAG_THRESHOLD = 6;
+    var pCard = null, pStartX = 0, pStartY = 0, pDragging = false,
+        pGhost = null, pHover = null, pSuppressClick = false;
+
+    function pHighlightTargets(card) {
+      // Mirror v1 inline-photo-row: valid drop targets are any OTHER card that
+      // is still EMPTY (no image yet), required or not. Filled slots are
+      // excluded so a drop can never silently overwrite an existing photo.
+      var strip = stripOf(card);
+      if (!strip) return;
+      var srcId = card.getAttribute('data-photo-id');
+      var cards = strip.querySelectorAll(CARD_SEL);
+      for (var i = 0; i < cards.length; i++) {
+        if (cards[i].getAttribute('data-photo-id') === srcId) continue;
+        if (cards[i].getAttribute('data-photo-has-image') === 'true') continue;
+        cards[i].classList.add('scw-ws-v2-photo-drop-ok');
+      }
+    }
+    // The drop-ok card under the cursor — temporarily hide the ghost so it
+    // doesn't shadow elementFromPoint (mirrors v1's targetUnder).
+    function pTargetUnder(x, y) {
+      var prev = pGhost ? pGhost.style.display : null;
+      if (pGhost) pGhost.style.display = 'none';
+      var el = document.elementFromPoint(x, y);
+      if (pGhost) pGhost.style.display = prev || '';
+      var t = (el && el.closest) ? el.closest(CARD_SEL) : null;
+      return (t && t.classList.contains('scw-ws-v2-photo-drop-ok')) ? t : null;
+    }
+    function pMoveGhost(x, y) {
+      if (pGhost) { pGhost.style.left = (x + 14) + 'px'; pGhost.style.top = (y + 14) + 'px'; }
+    }
+    function pCleanup() {
+      clearDragState();
+      if (pGhost && pGhost.parentNode) pGhost.parentNode.removeChild(pGhost);
+      pGhost = null; pDragging = false; pCard = null; pHover = null;
+      document.body.style.userSelect = '';
+    }
+
+    document.addEventListener('mousedown', function (e) {
+      if (e.button !== 0) return;
       var card = cardOf(e);
       if (!isFilled(card)) return;
-      dragSrc = card;
-      card.classList.add('scw-ws-v2-photo-drag-src');
-      try { e.dataTransfer.effectAllowed = 'copy';
-            e.dataTransfer.setData('text/plain', card.getAttribute('data-photo-id') || ''); } catch (x) {}
-      var strip = stripOf(card);
-      if (strip) {
-        var cards = strip.querySelectorAll(CARD_SEL);
-        for (var i = 0; i < cards.length; i++) {
-          if (cards[i] !== card && isReqEmpty(cards[i])) {
-            cards[i].classList.add('scw-ws-v2-photo-drop-ok');
-          }
+      pCard = card; pStartX = e.clientX; pStartY = e.clientY; pDragging = false;
+    }, true);
+
+    document.addEventListener('mousemove', function (e) {
+      if (!pCard) return;
+      if (!pDragging) {
+        if (Math.abs(e.clientX - pStartX) + Math.abs(e.clientY - pStartY) < DRAG_THRESHOLD) return;
+        // Start the drag.
+        pDragging = true;
+        pCard.classList.add('scw-ws-v2-photo-drag-src');
+        pHighlightTargets(pCard);
+        document.body.style.userSelect = 'none';
+        pGhost = document.createElement('div');
+        pGhost.className = 'scw-ws-v2-photo-ghost';
+        var img = pCard.querySelector('.scw-ws-v2-photo-img');
+        if (img && img.tagName === 'IMG' && img.src) {
+          var gi = document.createElement('img'); gi.src = img.src; pGhost.appendChild(gi);
         }
+        document.body.appendChild(pGhost);
+      }
+      e.preventDefault();
+      pMoveGhost(e.clientX, e.clientY);
+      var ok = pTargetUnder(e.clientX, e.clientY);
+      if (pHover && pHover !== ok) pHover.classList.remove('scw-ws-v2-photo-drop-hover');
+      if (ok) ok.classList.add('scw-ws-v2-photo-drop-hover');
+      pHover = ok;
+    }, true);
+
+    document.addEventListener('mouseup', function () {
+      if (!pCard) return;
+      var wasDragging = pDragging, src = pCard, target = pHover;
+      if (wasDragging && target) {
+        var detail = {
+          sourceRecordId:  src.getAttribute('data-photo-id'),
+          sourcePhotoType: src.getAttribute('data-photo-type') || '',
+          sourceRequired:  src.getAttribute('data-photo-required') === 'true',
+          sourceNotes:     src.getAttribute('data-photo-notes') || '',
+          targetRecordId:  target.getAttribute('data-photo-id'),
+          targetPhotoType: target.getAttribute('data-photo-type') || 'this slot',
+          targetRequired:  target.getAttribute('data-photo-required') === 'true',
+          targetNotes:     target.getAttribute('data-photo-notes') || '',
+          surveyRequestId: getSurveyRequestId()
+        };
+        var viewKey = getViewKeyFor(target);
+        confirmMove(target, detail, viewKey);
+      }
+      pCleanup();
+      if (wasDragging) {
+        // Swallow the click that fires after the drag so the QA modal /
+        // lightbox doesn't open on drop.
+        pSuppressClick = true;
+        setTimeout(function () { pSuppressClick = false; }, 50);
       }
     }, true);
 
-    document.addEventListener('dragend', function () {
-      clearDragState();
-      dragSrc = null;
+    document.addEventListener('click', function (e) {
+      if (pSuppressClick) { e.preventDefault(); e.stopPropagation(); pSuppressClick = false; }
     }, true);
 
-    document.addEventListener('dragover', function (e) {
-      if (!dragSrc) return;
-      var card = cardOf(e);
-      if (!card || !card.classList.contains('scw-ws-v2-photo-drop-ok')) return;
-      e.preventDefault();
-      e.dataTransfer.dropEffect = 'copy';
-    });
-    document.addEventListener('dragenter', function (e) {
-      if (!dragSrc) return;
-      var card = cardOf(e);
-      if (!card || !card.classList.contains('scw-ws-v2-photo-drop-ok')) return;
-      e.preventDefault();
-      card.classList.add('scw-ws-v2-photo-drop-hover');
-    });
-    document.addEventListener('dragleave', function (e) {
-      var card = cardOf(e);
-      if (!card || card.contains(e.relatedTarget)) return;
-      card.classList.remove('scw-ws-v2-photo-drop-hover');
-    });
-    document.addEventListener('drop', function (e) {
-      var targetCard = cardOf(e);
-      if (!targetCard || !targetCard.classList.contains('scw-ws-v2-photo-drop-ok') || !dragSrc) return;
-      e.preventDefault();
-      var detail = {
-        sourceRecordId:  dragSrc.getAttribute('data-photo-id'),
-        sourcePhotoType: dragSrc.getAttribute('data-photo-type') || '',
-        sourceRequired:  dragSrc.getAttribute('data-photo-required') === 'true',
-        sourceNotes:     dragSrc.getAttribute('data-photo-notes') || '',
-        targetRecordId:  targetCard.getAttribute('data-photo-id'),
-        targetPhotoType: targetCard.getAttribute('data-photo-type') || 'this slot',
-        targetRequired:  targetCard.getAttribute('data-photo-required') === 'true',
-        targetNotes:     targetCard.getAttribute('data-photo-notes') || '',
-        surveyRequestId: getSurveyRequestId()
-      };
-      var viewKey = getViewKeyFor(targetCard);
-      clearDragState();
-      confirmMove(targetCard, detail, viewKey);
-    });
+    // Escape cancels an in-progress drag (mirrors v1).
+    document.addEventListener('keydown', function (e) {
+      if (e.key === 'Escape' && pDragging) pCleanup();
+    }, true);
   }
 
   ns.photos = {

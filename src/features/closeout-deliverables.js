@@ -23,13 +23,38 @@
 (function () {
   'use strict';
 
-  var VIEW_ID = 'view_3940';
-
-  // Hidden inline-editable grid of DOC records — used as the save target
-  // for QA updates. Same pattern as qa-popover.js using view_3937 for
-  // PIC photo records. The view must expose every field we PUT to as a
-  // cell-edit column: field_2879/2880/2881/2882/2883/2895.
-  var DOC_SAVE_VIEW = 'view_3941';
+  // ── Deployments ──────────────────────────────────────────────────
+  // The closeout strip runs on multiple scenes. Each deployment pairs:
+  //   closeoutView — the CLOSEOUT grid we replace with the card strip
+  //   docSaveView  — a hidden DOC inline-edit grid on the SAME scene
+  //                  (raw S3 urls/thumbs + the QA-save/delete PUT/DELETE
+  //                  target). SCW.knackRecordUrl is scoped to the CURRENT
+  //                  scene, so this MUST live on the closeout's own scene;
+  //                  it must expose every field we PUT as a cell-edit column
+  //                  (field_2879/2880/2881/2882/2883/2895 + field_68).
+  //   addSlug / editSlug — child-page slugs for "add doc"/"edit doc"
+  //                  navigation (appended to the current hash).
+  //   view_3940: deploy scene.  view_4058: subcontractor edit-core-project.
+  var DEPLOYMENTS = [
+    { closeoutView: 'view_3940', docSaveView: 'view_3941',
+      addSlug: 'add-file-to-closeout',  editSlug: 'edit-doc-file' },
+    { closeoutView: 'view_4058', docSaveView: 'view_4063',
+      addSlug: 'add-file-to-closeout3', editSlug: 'edit-doc-file' }
+  ];
+  function depFor(closeoutView) {
+    for (var i = 0; i < DEPLOYMENTS.length; i++) {
+      if (DEPLOYMENTS[i].closeoutView === closeoutView) return DEPLOYMENTS[i];
+    }
+    return null;
+  }
+  // The deployment whose closeout grid is on the CURRENT scene (only one
+  // closeout scene renders at a time) — used by the save/upload/slug paths.
+  function activeDep() {
+    for (var i = 0; i < DEPLOYMENTS.length; i++) {
+      if (document.getElementById(DEPLOYMENTS[i].closeoutView)) return DEPLOYMENTS[i];
+    }
+    return DEPLOYMENTS[0];
+  }
 
   // Connection-displayed columns on view_3940 (each row has one
   // connection-value span per connected DOC, keyed by DOC record id).
@@ -65,9 +90,15 @@
   var docFileMeta = {};
 
   function rebuildFileMetaIndex() {
-    var v = window.Knack && Knack.views && Knack.views[DOC_SAVE_VIEW];
-    if (!v || !v.model || !v.model.data || !v.model.data.models) return false;
-    var models = v.model.data.models;
+    var changed = false;
+    for (var d = 0; d < DEPLOYMENTS.length; d++) {
+      var v = window.Knack && Knack.views && Knack.views[DEPLOYMENTS[d].docSaveView];
+      if (!v || !v.model || !v.model.data || !v.model.data.models) continue;
+      changed = scanDocModels(v.model.data.models) || changed;
+    }
+    return changed;
+  }
+  function scanDocModels(models) {
     var changed = false;
     for (var i = 0; i < models.length; i++) {
       var m = models[i];
@@ -103,8 +134,7 @@
     return changed;
   }
 
-  var ADD_DOC_SLUG  = 'add-file-to-closeout';
-  var EDIT_DOC_SLUG = 'edit-doc-file';
+  // add/edit-doc slugs are per-deployment now (see DEPLOYMENTS above).
 
   // ── CSS injection ────────────────────────────────────────────────
 
@@ -119,9 +149,11 @@
       // <section.hideShow_view_3940 ktlHideShowSection ...> so a
       // direct-child combinator misses .kn-records-nav and
       // .kn-table-wrapper.  Descendant selector covers both layouts.
-      '#' + VIEW_ID + ' .view-header,',
-      '#' + VIEW_ID + ' .kn-records-nav,',
-      '#' + VIEW_ID + ' .kn-table-wrapper { display: none !important; }',
+      DEPLOYMENTS.map(function (d) {
+        return '#' + d.closeoutView + ' .view-header,' +
+               '#' + d.closeoutView + ' .kn-records-nav,' +
+               '#' + d.closeoutView + ' .kn-table-wrapper';
+      }).join(',') + ' { display: none !important; }',
 
       /* Container card */
       '.scw-cd-card {',
@@ -159,6 +191,17 @@
       '  border-color: #9ca3af; box-shadow: 0 2px 6px rgba(0,0,0,0.06);',
       '  transform: translateY(-1px);',
       '}',
+      /* Placeholder remove (×) — empty cards only */
+      '.scw-cd-doc__del {',
+      '  position: absolute; top: 5px; right: 5px; z-index: 2;',
+      '  width: 20px; height: 20px; padding: 0; line-height: 1;',
+      '  display: flex; align-items: center; justify-content: center;',
+      '  border: none; border-radius: 50%; cursor: pointer;',
+      '  background: rgba(15,23,42,0.06); color: #64748b; font-size: 15px;',
+      '  opacity: 0; transition: opacity 0.12s, background 0.12s, color 0.12s;',
+      '}',
+      '.scw-cd-doc:hover .scw-cd-doc__del { opacity: 1; }',
+      '.scw-cd-doc__del:hover { background: #fee2e2; color: #b91c1c; }',
 
       /* State colours — three-tier QA model:
            no file          → red (urgent, blocks closeout)
@@ -183,6 +226,9 @@
       '}',
       '.scw-cd-doc.is-qa-pending:hover { background: #ede9fe; border-color: #8b5cf6; }',
       '.scw-cd-doc.is-qa-pending .scw-cd-doc__icon { color: #6d28d9; }',
+      /* Non-required uploaded doc — neutral, no QA verdict. */
+      '.scw-cd-doc.is-uploaded { border-color: #cbd5e1; }',
+      '.scw-cd-doc.is-uploaded .scw-cd-doc__icon { color: #64748b; }',
 
       '.scw-cd-doc.is-qa-pass {',
       '  border: 1px solid #86efac; background: #f0fdf4;',
@@ -224,6 +270,12 @@
       '  background: #fff;',
       '  border-radius: 4px;',
       '  box-shadow: 0 1px 2px rgba(0,0,0,0.08);',
+      '}',
+      // PDF first-page preview — fills the thumb, non-interactive so the card
+      // click still opens the popover.
+      '.scw-cd-doc__preview--pdf {',
+      '  width: 100%; height: 150px; max-height: none; max-width: none;',
+      '  border: 0; pointer-events: none; overflow: hidden;',
       '}',
 
       /* Type label */
@@ -437,11 +489,11 @@
   }
 
   function addDocHash(closeoutId) {
-    return buildHashFromCurrent(ADD_DOC_SLUG, closeoutId);
+    return buildHashFromCurrent(activeDep().addSlug, closeoutId);
   }
 
   function editDocHash(docId) {
-    return buildHashFromCurrent(EDIT_DOC_SLUG, docId);
+    return buildHashFromCurrent(activeDep().editSlug, docId);
   }
 
   function navigate(hash) {
@@ -474,6 +526,33 @@
     ].join('');
   }
 
+  // A real thumbnail for the card: Knack's thumb_url when present, else the raw
+  // S3 URL as an <img> for image files. PDFs are NOT embedded inline — Chrome
+  // renders embedded PDFs via its built-in PDF Viewer extension, which trips
+  // org "DeveloperToolsAvailability" policies and blocks DevTools on the whole
+  // page. PDFs fall back to the icon (the popover still shows the full PDF on
+  // demand). Returns null when there's no image preview (→ icon).
+  function buildCardPreview(doc) {
+    if (doc.thumbUrl) {
+      var t = document.createElement('img');
+      t.className = 'scw-cd-doc__preview';
+      t.src = doc.thumbUrl; t.alt = doc.fileName || doc.type || 'Document';
+      t.loading = 'lazy';
+      return t;
+    }
+    var src = doc.rawUrl || doc.fileUrl;
+    if (!src) return null;
+    var ext = ((doc.fileName || src).toLowerCase().match(/\.([a-z0-9]+)(?:\?|$)/) || [])[1] || '';
+    if (/^(png|jpe?g|gif|bmp|webp|heic|heif|tiff?|svg)$/.test(ext)) {
+      var im = document.createElement('img');
+      im.className = 'scw-cd-doc__preview';
+      im.src = src; im.alt = doc.fileName || doc.type || 'Document';
+      im.loading = 'lazy';
+      return im;
+    }
+    return null;   // PDFs / other → icon fallback (no inline PDF embed)
+  }
+
   function buildDocCard(doc, closeoutId) {
     var card = document.createElement('div');
     card.className = 'scw-cd-doc';
@@ -492,6 +571,9 @@
     if (!hasFile) {
       card.classList.add('is-no-file');
       if (!doc.required) card.classList.add('is-optional');
+    } else if (!doc.required) {
+      // Non-required docs have no QA — neutral "uploaded" state, no QA colour.
+      card.classList.add('is-uploaded');
     } else if (isPass) {
       card.classList.add('is-qa-pass');
     } else if (isFail) {
@@ -513,21 +595,18 @@
     // that reflects QA state (Pending QA / QA Pass / QA Fail / Required).
     var thumb = document.createElement('div');
     thumb.className = 'scw-cd-doc__thumb';
-    if (hasFile && doc.thumbUrl) {
-      var preview = document.createElement('img');
-      preview.className = 'scw-cd-doc__preview';
-      preview.src = doc.thumbUrl;
-      preview.alt = doc.fileName || doc.type || 'Document';
-      preview.loading = 'lazy';
-      thumb.appendChild(preview);
+    var previewEl = hasFile ? buildCardPreview(doc) : null;
+    if (previewEl) {
+      thumb.appendChild(previewEl);
     } else {
       var iconBox = document.createElement('div');
       iconBox.className = 'scw-cd-doc__icon';
       var iconLabel;
       if (hasFile) {
-        if (isPass)      iconLabel = 'QA Pass';
-        else if (isFail) iconLabel = 'QA Fail';
-        else             iconLabel = 'Pending QA';
+        if (!doc.required)   iconLabel = 'Uploaded';
+        else if (isPass)     iconLabel = 'QA Pass';
+        else if (isFail)     iconLabel = 'QA Fail';
+        else                 iconLabel = 'Pending QA';
         iconBox.innerHTML = pdfIconSvg() +
           '<span class="scw-cd-doc__icon-label">' + iconLabel + '</span>';
       } else if (doc.required) {
@@ -547,6 +626,29 @@
     type.textContent = doc.type || 'Document';
     type.title = doc.type || '';
     card.appendChild(type);
+
+    // Placeholder delete — empty (no-file) cards get a small × to remove the
+    // empty deliverable slot (the DOC record itself). Filed cards delete via
+    // the QA popover's "Delete file" button instead.
+    if (!hasFile) {
+      var del = document.createElement('button');
+      del.type = 'button';
+      del.className = 'scw-cd-doc__del';
+      del.title = 'Remove this placeholder';
+      del.setAttribute('aria-label', 'Remove placeholder');
+      del.innerHTML = '&times;';
+      del.addEventListener('click', function (e) {
+        e.stopPropagation();
+        var label = doc.type || 'this placeholder';
+        if (!window.confirm('Remove ' + label + ' from this closeout?')) return;
+        setCardPending(card);
+        performDocDelete(doc.id, null, function (xhr) {
+          card.classList.remove('is-pending');
+          alert('Delete failed (' + xhr.status + ')');
+        });
+      });
+      card.appendChild(del);
+    }
 
     // Click behaviour:
     //   No file              → file picker (or Knack edit form if webhook off)
@@ -722,7 +824,7 @@
           kind:        'document',
           docRecordId: docId,
           closeoutId:  closeoutId,
-          viewId:      VIEW_ID,
+          viewId:      activeDep().closeoutView,
           filename:    file.name || 'document.pdf',
           mimeType:    file.type || 'application/pdf',
           sizeBytes:   file.size,
@@ -791,7 +893,7 @@
           // event fires, our own docHasFileUploaded → rebuildFileMetaIndex
           // has already updated docFileMeta in place, so the hook sees
           // no change and skips the rebuild. Force it from here.
-          var viewEl = document.getElementById(VIEW_ID);
+          var viewEl = document.getElementById(activeDep().closeoutView);
           if (viewEl) renderInto(viewEl);
           // Flash a green pulse on the freshly-rebuilt card so the user
           // sees the upload land. The class is removed after the
@@ -844,7 +946,8 @@
   var FETCH_RESOLVE_TIMEOUT_MS = 4000;
 
   function fetchBothViewsForDoc() {
-    var ids = [VIEW_ID, DOC_SAVE_VIEW];
+    var _dep = activeDep();
+    var ids = [_dep.closeoutView, _dep.docSaveView];
     var promises = [];
     for (var i = 0; i < ids.length; i++) {
       var v = window.Knack && Knack.views && Knack.views[ids[i]];
@@ -887,7 +990,7 @@
   }
 
   function docHasFileInDOM(docId) {
-    var viewEl = document.getElementById(VIEW_ID);
+    var viewEl = document.getElementById(activeDep().closeoutView);
     if (!viewEl) return false;
     var spans = viewEl.querySelectorAll(
       'td.' + F.file + ' span[id][data-kn="connection-value"],' +
@@ -1100,6 +1203,10 @@
       '  background: #cbd5e1; border-color: #cbd5e1; color: #fff;',
       '  cursor: not-allowed;',
       '}',
+      '.' + POPOVER_ID + '__btn--danger {',
+      '  color: #b91c1c; border-color: #fecaca; background: #fff; margin-right: auto;',
+      '}',
+      '.' + POPOVER_ID + '__btn--danger:hover { background: #fef2f2; border-color: #fca5a5; }',
       '.' + POPOVER_ID + '__saving { pointer-events: none; opacity: 0.7; }'
     ].join('\n');
     var s = document.createElement('style');
@@ -1195,54 +1302,58 @@
     var sbContent = document.createElement('div');
     sbContent.className = POPOVER_ID + '__sidebar-content';
 
-    // Status chips
-    var statusSec = document.createElement('div');
-    statusSec.className = POPOVER_ID + '__section';
-    var statusLbl = document.createElement('div');
-    statusLbl.className = POPOVER_ID + '__label';
-    statusLbl.textContent = 'QA Status';
-    statusSec.appendChild(statusLbl);
-    var chips = document.createElement('div');
-    chips.className = POPOVER_ID + '__chips';
-    QA_STATUS_OPTIONS.forEach(function (opt) {
-      var c = document.createElement('button');
-      c.type = 'button';
-      c.className = POPOVER_ID + '__chip';
-      c.setAttribute('data-value', opt);
-      c.textContent = opt;
-      if (opt === _popoverDoc.qaStatus) c.classList.add('is-selected');
-      c.addEventListener('click', function () {
-        var siblings = chips.querySelectorAll('.' + POPOVER_ID + '__chip');
-        for (var i = 0; i < siblings.length; i++) siblings[i].classList.remove('is-selected');
-        c.classList.add('is-selected');
-        _popoverDoc.qaStatus = opt;
+    // QA options (status chips + notes) are only shown for REQUIRED docs
+    // (field_2894 = Yes). Optional deliverables don't get a QA sign-off.
+    if (doc.required) {
+      // Status chips
+      var statusSec = document.createElement('div');
+      statusSec.className = POPOVER_ID + '__section';
+      var statusLbl = document.createElement('div');
+      statusLbl.className = POPOVER_ID + '__label';
+      statusLbl.textContent = 'QA Status';
+      statusSec.appendChild(statusLbl);
+      var chips = document.createElement('div');
+      chips.className = POPOVER_ID + '__chips';
+      QA_STATUS_OPTIONS.forEach(function (opt) {
+        var c = document.createElement('button');
+        c.type = 'button';
+        c.className = POPOVER_ID + '__chip';
+        c.setAttribute('data-value', opt);
+        c.textContent = opt;
+        if (opt === _popoverDoc.qaStatus) c.classList.add('is-selected');
+        c.addEventListener('click', function () {
+          var siblings = chips.querySelectorAll('.' + POPOVER_ID + '__chip');
+          for (var i = 0; i < siblings.length; i++) siblings[i].classList.remove('is-selected');
+          c.classList.add('is-selected');
+          _popoverDoc.qaStatus = opt;
+          refreshActions(pop);
+        });
+        chips.appendChild(c);
+      });
+      statusSec.appendChild(chips);
+      sbContent.appendChild(statusSec);
+
+      // Notes
+      var notesSec = document.createElement('div');
+      notesSec.className = POPOVER_ID + '__section';
+      var notesLbl = document.createElement('div');
+      notesLbl.className = POPOVER_ID + '__label';
+      notesLbl.textContent = 'Notes';
+      notesSec.appendChild(notesLbl);
+      var notes = document.createElement('textarea');
+      notes.className = POPOVER_ID + '__notes';
+      notes.value = _popoverDoc.qaNotes || '';
+      notes.addEventListener('input', function () {
+        _popoverDoc.qaNotes = notes.value;
         refreshActions(pop);
       });
-      chips.appendChild(c);
-    });
-    statusSec.appendChild(chips);
-    sbContent.appendChild(statusSec);
-
-    // Notes
-    var notesSec = document.createElement('div');
-    notesSec.className = POPOVER_ID + '__section';
-    var notesLbl = document.createElement('div');
-    notesLbl.className = POPOVER_ID + '__label';
-    notesLbl.textContent = 'Notes';
-    notesSec.appendChild(notesLbl);
-    var notes = document.createElement('textarea');
-    notes.className = POPOVER_ID + '__notes';
-    notes.value = _popoverDoc.qaNotes || '';
-    notes.addEventListener('input', function () {
-      _popoverDoc.qaNotes = notes.value;
-      refreshActions(pop);
-    });
-    notesSec.appendChild(notes);
-    var hint = document.createElement('div');
-    hint.className = POPOVER_ID + '__hint';
-    hint.textContent = 'Notes required when marking Fail.';
-    notesSec.appendChild(hint);
-    sbContent.appendChild(notesSec);
+      notesSec.appendChild(notes);
+      var hint = document.createElement('div');
+      hint.className = POPOVER_ID + '__hint';
+      hint.textContent = 'Notes required when marking Fail.';
+      notesSec.appendChild(hint);
+      sbContent.appendChild(notesSec);
+    }
 
     // Upload audit — who uploaded this file and when (from field_2902/2903
     // on the DOC record, captured by Make at upload time).
@@ -1401,7 +1512,7 @@
     // the Replace action without a re-open).
     var replaceBtn = pop.querySelector('.' + POPOVER_ID + '__replace-btn');
     if (replaceBtn) {
-      var locked = (status === 'Pass');
+      var locked = !!_popoverDoc.required && (status === 'Pass');
       replaceBtn.disabled = locked;
       if (locked) {
         replaceBtn.textContent = 'Replace locked (QA signed off)';
@@ -1412,6 +1523,19 @@
       }
     }
 
+    // Destructive action first (leftmost) — deletes the file/document.
+    // Hidden once QA is signed off (Pass) so a completed deliverable can't be
+    // deleted out from under the sign-off; flip QA back to Pending/Fail first.
+    var signedOff = !!_popoverDoc.required && (status === 'Pass');
+    if (!signedOff) {
+      var del = document.createElement('button');
+      del.type = 'button';
+      del.className = POPOVER_ID + '__btn ' + POPOVER_ID + '__btn--danger';
+      del.textContent = 'Delete file';
+      del.addEventListener('click', function () { deleteDoc(); });
+      footer.appendChild(del);
+    }
+
     var closeBtn = document.createElement('button');
     closeBtn.type = 'button';
     closeBtn.className = POPOVER_ID + '__btn';
@@ -1419,14 +1543,17 @@
     closeBtn.addEventListener('click', function () { closeQAPopover(); });
     footer.appendChild(closeBtn);
 
-    var save = document.createElement('button');
-    save.type = 'button';
-    save.className = POPOVER_ID + '__btn ' + POPOVER_ID + '__btn--primary';
-    save.textContent = (status === 'Pass') ? 'Sign off' :
-                       (status === 'Fail') ? 'Mark fail' : 'Save QA';
-    save.disabled = !dirty || needsNotes;
-    save.addEventListener('click', function () { saveQA(); });
-    footer.appendChild(save);
+    // QA save only for required docs (optional docs show no QA controls).
+    if (_popoverDoc.required) {
+      var save = document.createElement('button');
+      save.type = 'button';
+      save.className = POPOVER_ID + '__btn ' + POPOVER_ID + '__btn--primary';
+      save.textContent = (status === 'Pass') ? 'Sign off' :
+                         (status === 'Fail') ? 'Mark fail' : 'Save QA';
+      save.disabled = !dirty || needsNotes;
+      save.addEventListener('click', function () { saveQA(); });
+      footer.appendChild(save);
+    }
   }
 
   function closeQAPopover() {
@@ -1485,16 +1612,16 @@
     }
 
     SCW.knackAjax({
-      url:  SCW.knackRecordUrl(DOC_SAVE_VIEW, _popoverDoc.id),
+      url:  SCW.knackRecordUrl(activeDep().docSaveView, _popoverDoc.id),
       type: 'PUT',
       data: JSON.stringify(fields),
       success: function () {
         closeQAPopover();
         // Refresh both views so the strip and the underlying DOC grid
         // both reflect the new state.
-        var v1 = window.Knack && Knack.views && Knack.views[VIEW_ID];
+        var v1 = window.Knack && Knack.views && Knack.views[activeDep().closeoutView];
         if (v1 && v1.model && typeof v1.model.fetch === 'function') v1.model.fetch();
-        var v2 = window.Knack && Knack.views && Knack.views[DOC_SAVE_VIEW];
+        var v2 = window.Knack && Knack.views && Knack.views[activeDep().docSaveView];
         if (v2 && v2.model && typeof v2.model.fetch === 'function') v2.model.fetch();
       },
       error: function (xhr) {
@@ -1502,6 +1629,44 @@
         console.error('[SCW] doc QA save error:', xhr.status, xhr.responseText);
         alert('Save failed (' + xhr.status + ')');
       }
+    });
+  }
+
+  function refetchCloseoutViews() {
+    var v1 = window.Knack && Knack.views && Knack.views[activeDep().closeoutView];
+    if (v1 && v1.model && typeof v1.model.fetch === 'function') v1.model.fetch();
+    var v2 = window.Knack && Knack.views && Knack.views[activeDep().docSaveView];
+    if (v2 && v2.model && typeof v2.model.fetch === 'function') v2.model.fetch();
+  }
+  // Delete a DOC record via the view_3941 record endpoint — mirror of saveQA's
+  // PUT. Removing the DOC drops it from the closeout's connection columns, so
+  // the card disappears on the refetch. Shared by the popover (filed docs) and
+  // the placeholder × (empty cards).
+  function performDocDelete(docId, onSuccess, onError) {
+    if (typeof SCW === 'undefined' || typeof SCW.knackAjax !== 'function' ||
+        typeof SCW.knackRecordUrl !== 'function') {
+      alert('Delete unavailable (SCW.knackAjax missing)');
+      return;
+    }
+    SCW.knackAjax({
+      url:  SCW.knackRecordUrl(activeDep().docSaveView, docId),
+      type: 'DELETE',
+      success: function () { if (onSuccess) onSuccess(); refetchCloseoutViews(); },
+      error: function (xhr) {
+        console.error('[SCW] doc delete error:', xhr.status, xhr.responseText);
+        if (onError) onError(xhr);
+      }
+    });
+  }
+  function deleteDoc() {   // popover (filed doc)
+    if (!_popover || !_popoverDoc) return;
+    var label = _popoverDoc.type || 'this file';
+    if (!window.confirm('Delete ' + label + '?\n\nThis permanently removes the document from this closeout.')) return;
+    var pop = _popover.querySelector('.' + POPOVER_ID);
+    if (pop) pop.classList.add(POPOVER_ID + '__saving');
+    performDocDelete(_popoverDoc.id, function () { closeQAPopover(); }, function (xhr) {
+      if (pop) pop.classList.remove(POPOVER_ID + '__saving');
+      alert('Delete failed (' + xhr.status + ')');
     });
   }
 
@@ -1593,23 +1758,25 @@
   function bindView() {
     if (!window.SCW || typeof SCW.onViewRender !== 'function') return;
     injectCSS();
-    SCW.onViewRender(VIEW_ID, function () {
-      var viewEl = document.getElementById(VIEW_ID);
-      if (!viewEl) return;
-      renderInto(viewEl);
-    }, 'scwCloseoutDeliverables');
+    DEPLOYMENTS.forEach(function (dep) {
+      SCW.onViewRender(dep.closeoutView, function () {
+        var viewEl = document.getElementById(dep.closeoutView);
+        if (!viewEl) return;
+        renderInto(viewEl);
+      }, 'scwCloseoutDeliverables');
 
-    // view_3941 (DOC inline-edit grid) carries the raw file URL and
-    // thumb_url that view_3940 hides behind a route URL.  When it
-    // renders (which may be before OR after view_3940), refresh our
-    // index and rebuild the strip so the cards pick up the new metadata
-    // for thumbnails + clean modal previews.
-    SCW.onViewRender(DOC_SAVE_VIEW, function () {
-      var changed = rebuildFileMetaIndex();
-      if (!changed) return;
-      var viewEl = document.getElementById(VIEW_ID);
-      if (viewEl) renderInto(viewEl);
-    }, 'scwCloseoutDeliverables_metaIndex');
+      // The DOC inline-edit grid carries the raw file URL and thumb_url
+      // that the closeout grid hides behind a route URL. When it renders
+      // (which may be before OR after the closeout grid), refresh our index
+      // and rebuild the strip so the cards pick up the new metadata for
+      // thumbnails + clean modal previews.
+      SCW.onViewRender(dep.docSaveView, function () {
+        var changed = rebuildFileMetaIndex();
+        if (!changed) return;
+        var viewEl = document.getElementById(dep.closeoutView);
+        if (viewEl) renderInto(viewEl);
+      }, 'scwCloseoutDeliverables_metaIndex');
+    });
   }
 
   if (document.readyState === 'loading') {
