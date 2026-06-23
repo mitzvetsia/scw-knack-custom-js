@@ -28,6 +28,16 @@
 
   var ns = window.SCW.worksheetV2;
   if (!ns || !ns.CONFIG) return;
+
+  // External users explicitly admitted to internalOnly v2 previews on top of
+  // the @getscw.com domain (e.g. subcontractors who need the v2 bid worksheet,
+  // view_3505). Passed to SCW.isInternalUser() by the gate below. Lowercase.
+  // NOTE: this is the UI gate only — these users ALSO need Knack view/object
+  // read permission on the gated view for the data to load.
+  var PREVIEW_ALLOWLIST = [
+    'aaron.marheine@securevisionsolutions.com',
+    'preston.bauer@securevisionsolutions.com'
+  ];
   if (!ns.CONFIG.enabled) return;
 
   function buildPanel(vcfg) {
@@ -56,15 +66,50 @@
    * Try to mount the v2 panel for one source view. No-op if the
    * source view isn't on this scene, or the panel is already mounted.
    */
+  // Internal-staff gate: a view flagged internalOnly mounts only for
+  // @getscw.com users (SCW.isInternalUser). Fails safe to "not internal"
+  // when the helper/session isn't ready — onViewRender re-fires, so a
+  // staff member's panel resolves on the next render once the email
+  // attribute populates.
+  function gatedOut(vcfg) {
+    if (!vcfg || !vcfg.internalOnly) return false;
+    return !(window.SCW && typeof SCW.isInternalUser === 'function' &&
+      SCW.isInternalUser(PREVIEW_ALLOWLIST));
+  }
+
   function tryMount(vcfg) {
     if (!vcfg || vcfg.enabled === false) return;   // per-view kill switch
-    if (document.getElementById('scw-ws-v2-' + vcfg.sourceViewKey)) return;
+    if (gatedOut(vcfg)) return;                     // internal-only preview gate
+    if (document.getElementById('scw-ws-v2-' + vcfg.sourceViewKey)) {
+      // Already mounted — still ensure the panel stays outside the source
+      // view's KTL accordion (the accordion may have wrapped after mount).
+      if (vcfg.hideSourceAccordion) relocatePanelOutsideAccordion(vcfg.sourceViewKey);
+      return;
+    }
     var anchor = document.querySelector(vcfg.mountAfterSelector);
     if (!anchor) return; // source view not on this scene
     var panel = buildPanel(vcfg);
     anchor.insertAdjacentElement('afterend', panel);
+    if (vcfg.hideSourceAccordion) relocatePanelOutsideAccordion(vcfg.sourceViewKey);
     // Initial paint — v1 may have already loaded the records by now.
     if (ns.data) ns.render.renderView(vcfg.sourceViewKey, ns.data.readRecords(vcfg.sourceViewKey));
+  }
+
+  // Full cutover views hide their native source view AND its KTL accordion
+  // shell entirely — leaving JUST the v2 grid. The catch: the accordion
+  // moves only the .kn-view into its body (see ktl-accordion.js), so
+  // depending on render order the v2 panel can land INSIDE the accordion
+  // body — and a collapsed accordion hides its body's contents. So we pull
+  // the panel back OUT to be the accordion wrapper's next sibling; styles.js
+  // then hides the (now panel-free) accordion wholesale. Idempotent.
+  function relocatePanelOutsideAccordion(viewKey) {
+    var panel = document.getElementById('scw-ws-v2-' + viewKey);
+    if (!panel || !panel.closest) return;
+    var wrapper = panel.closest('.scw-ktl-accordion');
+    if (!wrapper || !wrapper.parentNode) return;   // not inside an accordion
+    if (wrapper.nextSibling !== panel) {
+      wrapper.parentNode.insertBefore(panel, wrapper.nextSibling);
+    }
   }
 
   function tryMountAll() {
@@ -80,6 +125,7 @@
     var views = ns.CONFIG.views || [];
     views.forEach(function (vcfg) {
       if (!vcfg || vcfg.enabled === false) return;   // per-view kill switch
+      if (gatedOut(vcfg)) return;                     // internal-only preview gate
       // Background polling — keep v2 in sync with records added via
       // API / other tabs / Make scenarios. 2-min default, 15-sec
       // burst for 5 minutes after a known local change.
@@ -88,6 +134,7 @@
       }
       ns.data.subscribe(vcfg.sourceViewKey, function (key, records) {
         ns.render.renderView(key, records);
+        if (vcfg.hideSourceAccordion) relocatePanelOutsideAccordion(key);
         // Mode/photos toolbar — mount idempotently above the L1 list.
         if (ns.toolbar && typeof ns.toolbar.mount === 'function') {
           ns.toolbar.mount(key);
@@ -100,8 +147,11 @@
         }
         var _vcSow = (ns.cfg && typeof ns.cfg.viewCfg === 'function')
           ? ns.cfg.viewCfg(key) : null;
+        // Mount the pill strip when SOW isn't hidden, OR when the view
+        // configures its own filterPills (e.g. survey filters by Bid even
+        // though hideSow:true suppresses the SOW column).
         if (ns.sowFilter && typeof ns.sowFilter.mount === 'function' &&
-            !(_vcSow && _vcSow.hideSow)) {
+            (!(_vcSow && _vcSow.hideSow) || (_vcSow && _vcSow.filterPills))) {
           ns.sowFilter.mount(key);
         }
         // After every re-render, sync the bulk-select checkboxes to
@@ -779,28 +829,19 @@
           var allRecs = (viewId && ns.data && typeof ns.data.readRecords === 'function')
             ? ns.data.readRecords(viewId) : [];
 
-          // v1-parity safety net: never delete a survey-derived SOW item
-          // (field_2586 = # associated survey line items > 0) on the surfaces
-          // where the block applies (sales view_3586 + bid-review view_3921;
-          // see card.js DELETE_BLOCK_VIEWS). The card hides the trash for these
-          // (kebabCell → isDeleteBlocked), but guard here too in case a stale
-          // render left a clickable button behind.
+          // v1-parity safety net: honor the per-view delete-block rule
+          // (card.js isDeleteBlocked) even if a stale render left a clickable
+          // trash button behind — survey-derived SOW items (view_3586/3921,
+          // field_2586 > 0) and survey items adopted into a SOW (view_3505,
+          // field_2404 set). The card normally hides the trash for these.
           var selfRec = null;
-          if (viewId === 'view_3586' || viewId === 'view_3921') {
-            for (var qi = 0; qi < allRecs.length; qi++) {
-              if (allRecs[qi] && allRecs[qi].id === rowId) { selfRec = allRecs[qi]; break; }
-            }
+          for (var qi = 0; qi < allRecs.length; qi++) {
+            if (allRecs[qi] && allRecs[qi].id === rowId) { selfRec = allRecs[qi]; break; }
           }
-          if (selfRec) {
-            var scRaw = selfRec['field_2586_raw'];
-            var scN = (typeof scRaw === 'number') ? scRaw
-              : parseFloat(String(selfRec['field_2586'] == null ? '' : selfRec['field_2586'])
-                  .replace(/[^0-9.\-]/g, ''));
-            if (!isNaN(scN) && scN > 0) {
-              console.warn('[scw-ws-v2] delete blocked — ' + rowId +
-                ' has ' + scN + ' associated survey item(s) (field_2586)');
-              return;
-            }
+          if (selfRec && ns.card && typeof ns.card.isDeleteBlocked === 'function' &&
+              ns.card.isDeleteBlocked(selfRec, viewId)) {
+            console.warn('[scw-ws-v2] delete blocked — ' + rowId + ' on ' + viewId);
+            return;
           }
 
           var accIds = [];
@@ -959,6 +1000,272 @@
         }
       }
 
+      // ── Survey object pickers (view_3505) ───────────────────────────
+      // Bid (field_2415) · MDF/IDF (field_2375) · Connected Devices
+      // (field_2380) · Connected To (field_2381). Candidates are collected
+      // from the loaded survey records — self-contained, no external
+      // locations/bids view needed (so only values already in use on this
+      // survey appear; brand-new ones aren't pickable here yet). Connected
+      // Devices/To PUT through view_3505 so mirror-connection-sync's
+      // field_2380↔field_2381 cascade fires (createMirror VIEW_ID view_3505).
+      var _vcfgSurvey = (ns.cfg && typeof ns.cfg.viewCfg === 'function')
+        ? ns.cfg.viewCfg(viewKey) : null;
+      if (_vcfgSurvey && _vcfgSurvey.moneyMode === 'survey') {
+        var SF = (ns.cfg && ns.cfg.fields(viewKey)) || {};
+
+        // Unique {id, name} from a connection field across all loaded records.
+        var collectConnValues = function (fieldK) {
+          var seen = Object.create(null), out = [];
+          for (var i = 0; i < records.length; i++) {
+            var raw = records[i] && records[i][fieldK + '_raw'];
+            if (!Array.isArray(raw)) continue;
+            for (var j = 0; j < raw.length; j++) {
+              var v = raw[j];
+              if (v && v.id && !seen[v.id]) {
+                seen[v.id] = true;
+                out.push({ id: v.id, name: (v.identifier != null ? String(v.identifier) : v.id) });
+              }
+            }
+          }
+          out.sort(function (a, b) {
+            return String(a.name).localeCompare(String(b.name), undefined,
+              { numeric: true, sensitivity: 'base' });
+          });
+          return out;
+        };
+
+        // Full candidate list from a dedicated grid view (bids view_3507,
+        // MDF/IDF view_3617) so EVERY option shows, not just in-use ones.
+        // Label prefers the in-use connection identifier (matches the
+        // worksheet display exactly), then the view's label field, then id.
+        // Falls back to in-use-only (collectConnValues) if the grid isn't
+        // loaded on the page.
+        var surveyCandidates = function (viewKeys, labelField, connF) {
+          var recs = firstViewRecords(viewKeys) || [];
+          if (!recs.length) return collectConnValues(connF);
+          var inUse = Object.create(null);
+          for (var u = 0; u < records.length; u++) {
+            var uraw = records[u] && records[u][connF + '_raw'];
+            if (!Array.isArray(uraw)) continue;
+            for (var uj = 0; uj < uraw.length; uj++) {
+              var uv = uraw[uj];
+              if (uv && uv.id && uv.identifier != null) inUse[uv.id] = String(uv.identifier);
+            }
+          }
+          var out = [], seen = Object.create(null);
+          for (var i = 0; i < recs.length; i++) {
+            var a = recs[i].attributes || recs[i] || {};
+            if (!a.id || seen[a.id]) continue;
+            seen[a.id] = true;
+            var lbl = inUse[a.id] ||
+              (a[labelField] != null ? String(a[labelField]).replace(/<[^>]*>/g, '').trim() : '') ||
+              (a.identifier != null ? String(a.identifier).replace(/<[^>]*>/g, '').trim() : '') ||
+              a.id;
+            out.push({ id: a.id, name: String(lbl) });
+          }
+          out.sort(function (x, y) {
+            return String(x.name).localeCompare(String(y.name), undefined,
+              { numeric: true, sensitivity: 'base' });
+          });
+          return out;
+        };
+        var surveyRefetch = function () {
+          if (ns.data && typeof ns.data.refetchAndNotify === 'function') ns.data.refetchAndNotify(viewKey);
+          else if (ns.data && typeof ns.data.notify === 'function') ns.data.notify(viewKey);
+        };
+
+        // Bid (multi) — full list from the BIDs grid (view_3507, label
+        // field_2414). Modeled on SOW field_2154. When CLEARING the bid, the
+        // picker's integrated clearNote field injects the required survey note
+        // into the same PUT (and suppresses survey-bid-validate's gate) so the
+        // requirement is satisfied without a second modal.
+        if (fieldKey === (SF.bid || 'field_2415')) {
+          var _noteKey = SF.surveyNotes || 'field_2412';
+          ns.picker.open({
+            sourceViewKey: viewKey, putViewKey: viewKey, recordId: recordId,
+            fieldKey: fieldKey, label: 'Bid', selectedIds: sel,
+            candidates: surveyCandidates(['view_3507'], 'field_2414', fieldKey), groupBy: false,
+            itemLabel: function (r) { return r.name || r.id; },
+            multi: true, onSaved: surveyRefetch,
+            // Clearing every bid requires a survey note written in the SAME
+            // PUT. The note field is integrated into the picker (shown only
+            // when all selections are cleared) and prefilled with the current
+            // survey note so the user appends/edits it.
+            clearNote: {
+              fieldKey: _noteKey,
+              current: current ? current[_noteKey] : '',
+              title: 'Survey note required',
+              help: "You're removing this item from the bid. Add to or edit " +
+                    'the survey note explaining why.',
+              placeholder: 'e.g. Item not needed per customer; duplicate of E-014; etc.',
+              requiredMsg: 'A survey note is required to clear the bid.',
+              // Suppress survey-bid-validate's knack-cell-update gate so it
+              // doesn't re-prompt (and clobber) on the picker's own refresh.
+              onClear: function (note) {
+                if (SCW.surveyBidValidate &&
+                    typeof SCW.surveyBidValidate.markOwnBidWrite === 'function') {
+                  SCW.surveyBidValidate.markOwnBidWrite(recordId, note);
+                }
+              }
+            }
+          });
+          return;
+        }
+
+        // MDF / IDF (single) — full list from the MDF/IDF locations grid
+        // (view_3617, label field_1642).
+        if (fieldKey === (SF.mdfIdf || 'field_2375')) {
+          ns.picker.open({
+            sourceViewKey: viewKey, putViewKey: viewKey, recordId: recordId,
+            fieldKey: fieldKey, label: 'MDF / IDF', selectedIds: sel,
+            candidates: surveyCandidates(['view_3617'], 'field_1642', fieldKey), groupBy: false,
+            itemLabel: function (r) { return r.name || r.id; },
+            multi: false, onSaved: surveyRefetch
+          });
+          return;
+        }
+
+        // Connected Devices (multi, NVR side) / Connected To (single, cam side).
+        var _CD = SF.connectedDevices || 'field_2380';
+        var _CT = SF.connectedDevice  || 'field_2381';
+        if (fieldKey === _CD || fieldKey === _CT) {
+          var _camBucket = ns.card && ns.card.CAM_READER_BUCKET;
+          var _isCD = (fieldKey === _CD);
+          // Cam/readers already connected to THIS device — keep them offered
+          // (so they stay checked) even though their Connected To is populated.
+          var _selSet = {};
+          for (var si = 0; si < sel.length; si++) _selSet[sel[si]] = true;
+          var connCands = [];
+          for (var ci = 0; ci < records.length; ci++) {
+            var crec = records[ci];
+            if (!crec || !crec.id || crec.id === recordId) continue;
+            var cbid = (ns.card && typeof ns.card.bucketIdOf === 'function')
+              ? ns.card.bucketIdOf(crec, viewKey) : '';
+            if (_isCD) {
+              if (cbid !== _camBucket) continue;            // devices → connect cam/readers
+              // Only offer cam/readers that AREN'T already connected to another
+              // device — mirrors the other worksheets. Their Connected To
+              // (field_2381) being populated (and not already ours) means
+              // they're spoken for; skip them.
+              if (!_selSet[crec.id]) {
+                var _ctRaw = crec[_CT + '_raw'];
+                var _ctPop = (Array.isArray(_ctRaw) && _ctRaw.length && _ctRaw[0] && _ctRaw[0].id) ||
+                  (typeof crec[_CT] === 'string' && /[0-9a-f]{24}/i.test(crec[_CT]));
+                if (_ctPop) continue;
+              }
+            } else {
+              if (cbid === _camBucket) continue;            // cam → connect to non-cam network gear
+              var ccat = (ns.card && typeof ns.card.bucketCategoryOf === 'function')
+                ? ns.card.bucketCategoryOf(crec, viewKey) : 'default';
+              if (ccat === 'assumptions' || ccat === 'services') continue;
+            }
+            connCands.push(crec);
+          }
+          var _lblF  = SF.displayLabel || 'field_2365';
+          var _prodF = SF.productName  || 'field_2379';
+          var _mdfF  = SF.mdfIdf       || 'field_2375';
+          ns.picker.open({
+            sourceViewKey: viewKey, putViewKey: viewKey, recordId: recordId,
+            fieldKey: fieldKey, label: label, selectedIds: sel,
+            candidates: connCands,
+            groupBy: function (r) {
+              var raw = r[_mdfF + '_raw'];
+              if (Array.isArray(raw) && raw[0] && raw[0].id) {
+                return { id: raw[0].id, label: String(raw[0].identifier || '').replace(/<[^>]*>/g, '').trim() || 'MDF / IDF' };
+              }
+              return { id: '__unknown', label: 'No MDF / IDF' };
+            },
+            itemLabel: function (r) {
+              var lbl  = (r[_lblF]  || '').toString().replace(/<[^>]*>/g, '').trim();
+              var prod = (r[_prodF] || '').toString().replace(/<[^>]*>/g, '').trim();
+              if (lbl && prod) return lbl + ' · ' + prod;
+              return lbl || prod || r.id;
+            },
+            multi: _isCD, onSaved: surveyRefetch
+          });
+          return;
+        }
+      }
+
+      // ── Install object pickers (view_3915) ──────────────────────────
+      // Connected Devices (field_2820, multi, NVR/switch side) + Connected To
+      // (field_2821, single, cam/reader side). Candidates come from the loaded
+      // install records; PUT through view_3915 so mirror-connection-sync's
+      // field_2820↔field_2821 cascade fires (createMirror VIEW_ID view_3915).
+      var _vcfgInstall = (ns.cfg && typeof ns.cfg.viewCfg === 'function')
+        ? ns.cfg.viewCfg(viewKey) : null;
+      if (_vcfgInstall && _vcfgInstall.moneyMode === 'install') {
+        var IF = (ns.cfg && ns.cfg.fields(viewKey)) || {};
+        var _ICD = IF.connectedDevices || 'field_2820';
+        var _ICT = IF.connectedDevice  || 'field_2821';
+        if (fieldKey === _ICD || fieldKey === _ICT) {
+          var _icam = ns.card && ns.card.CAM_READER_BUCKET;
+          var _iIsCD = (fieldKey === _ICD);
+          // CD pre-select hardening (same as field_1957): union in any cam/reader
+          // whose Connected To (field_2821) already points back at THIS device,
+          // so the picker opens with the true set even if the parent's forward
+          // list is stale.
+          var _iSel = {}; for (var ix = 0; ix < sel.length; ix++) _iSel[sel[ix]] = true;
+          if (_iIsCD) {
+            for (var rb = 0; rb < records.length; rb++) {
+              var rbr = records[rb]; if (!rbr || !rbr.id) continue;
+              var bRaw = rbr[_ICT + '_raw'];
+              var bId = (Array.isArray(bRaw) && bRaw[0] && bRaw[0].id) ? bRaw[0].id : null;
+              if (bId === recordId && !_iSel[rbr.id]) { sel.push(rbr.id); _iSel[rbr.id] = true; }
+            }
+          }
+          var iCands = [];
+          for (var ci3 = 0; ci3 < records.length; ci3++) {
+            var icr = records[ci3];
+            if (!icr || !icr.id || icr.id === recordId) continue;
+            var icb = (ns.card && typeof ns.card.bucketIdOf === 'function')
+              ? ns.card.bucketIdOf(icr, viewKey) : '';
+            if (_iIsCD) {
+              if (icb !== _icam) continue;                  // devices → connect cam/readers
+              if (!_iSel[icr.id]) {                          // skip cams already spoken for
+                var ictRaw = icr[_ICT + '_raw'];
+                if (Array.isArray(ictRaw) && ictRaw.length && ictRaw[0] && ictRaw[0].id) continue;
+              }
+            } else {
+              if (icb === _icam) continue;                   // cam → connect to network gear
+              var iccat = (ns.card && typeof ns.card.bucketCategoryOf === 'function')
+                ? ns.card.bucketCategoryOf(icr, viewKey) : 'default';
+              if (iccat === 'assumptions' || iccat === 'services') continue;
+            }
+            iCands.push(icr);
+          }
+          var _ilbl  = IF.displayLabel || 'field_2802';
+          var _ialt  = IF.labelAlt     || 'field_2801';
+          var _iprod = IF.productName  || 'field_2790';
+          var _imdf  = IF.mdfIdf       || 'field_2818';
+          var installRefetch = function () {
+            if (ns.data && typeof ns.data.refetchAndNotify === 'function') ns.data.refetchAndNotify(viewKey);
+            else if (ns.data && typeof ns.data.notify === 'function') ns.data.notify(viewKey);
+          };
+          ns.picker.open({
+            sourceViewKey: viewKey, putViewKey: viewKey, recordId: recordId,
+            fieldKey: fieldKey, label: label, selectedIds: sel,
+            candidates: iCands,
+            groupBy: function (r) {
+              var raw = r[_imdf + '_raw'];
+              if (Array.isArray(raw) && raw[0] && raw[0].id) {
+                return { id: raw[0].id, label: String(raw[0].identifier || '').replace(/<[^>]*>/g, '').trim() || 'MDF / IDF' };
+              }
+              return { id: '__unknown', label: 'No MDF / IDF' };
+            },
+            itemLabel: function (r) {
+              var lbl = (r[_ilbl] || '').toString().replace(/<[^>]*>/g, '').trim() ||
+                        (r[_ialt] || '').toString().replace(/<[^>]*>/g, '').trim();
+              var prod = (r[_iprod] || '').toString().replace(/<[^>]*>/g, '').trim();
+              if (lbl && prod) return lbl + ' · ' + prod;
+              return lbl || prod || r.id;
+            },
+            multi: _iIsCD, onSaved: installRefetch
+          });
+          return;
+        }
+      }
+
       // Connected Devices (field_1957) hardening — pre-select the TRUE set.
       // ------------------------------------------------------------------
       // field_1957 (parent → children) and field_2197 (child → parent) are
@@ -1028,10 +1335,10 @@
       // once all paginated product pages have been fetched — await
       // it before opening the picker so we never show an empty
       // candidate list.
-      if (fieldKey === 'field_1949') {
+      if (fieldKey === 'field_1949' || fieldKey === 'field_2627') {
         var openProductPicker = function () {
           var pmap = (window.SCW && SCW.productMap) || {};
-          var myBucketId = current ? bucketIdOf(current) : '';
+          var myBucketId = current ? bucketIdOf(current, viewKey) : '';
           var prodCandidates = [];
           for (var pid in pmap) {
             if (!Object.prototype.hasOwnProperty.call(pmap, pid)) continue;
@@ -1059,7 +1366,7 @@
           // connection; read the existing connected id (if any).
           var prodSel = [];
           if (current) {
-            var rawSel = current['field_1949_raw'];
+            var rawSel = current[fieldKey + '_raw'];
             if (Array.isArray(rawSel)) {
               for (var s = 0; s < rawSel.length; s++) {
                 if (rawSel[s] && rawSel[s].id) prodSel.push(rawSel[s].id);
@@ -1075,7 +1382,7 @@
             // view_3610 is no longer on this page post-cutover.
             putViewKey:    viewKey,
             recordId:      recordId,
-            fieldKey:      'field_1949',
+            fieldKey:      fieldKey,
             label:         'Product',
             selectedIds:   prodSel,
             candidates:    prodCandidates,
@@ -1646,11 +1953,90 @@
     });
   }
 
+  // Single-select chip groups (e.g. survey Mounting Height). View-generic:
+  // clicking an option sets that field to the option value and PUTs to the
+  // record's view URL. Mirrors the boolean chip handler above.
+  if (!document.documentElement.hasAttribute('data-scw-ws-v2-radiochip-bound')) {
+    document.documentElement.setAttribute('data-scw-ws-v2-radiochip-bound', '1');
+    document.addEventListener('click', function (e) {
+      var chipEl = e.target && e.target.closest && e.target.closest('[data-scw-ws-v2-radiochip]');
+      if (!chipEl) return;
+      e.preventDefault();
+      e.stopPropagation();
+
+      var fieldKey = chipEl.getAttribute('data-scw-ws-v2-radiochip');
+      var recordId = chipEl.getAttribute('data-scw-ws-v2-record');
+      var viewKey  = chipEl.getAttribute('data-scw-ws-v2-view');
+      var option   = chipEl.getAttribute('data-scw-ws-v2-option');
+      if (!fieldKey || !recordId || !viewKey) return;
+      if (chipEl.classList.contains('is-selected')) return; // already set — no-op
+
+      // Optimistic single-select within the group.
+      var group = chipEl.closest('.scw-ws-v2-radiochips');
+      var prevSel = group ? group.querySelector('.scw-ws-v2-radiochip.is-selected') : null;
+      if (group) {
+        var sibs = group.querySelectorAll('.scw-ws-v2-radiochip');
+        for (var s = 0; s < sibs.length; s++) {
+          sibs[s].classList.toggle('is-selected',   sibs[s] === chipEl);
+          sibs[s].classList.toggle('is-unselected', sibs[s] !== chipEl);
+        }
+      }
+      chipEl.classList.add('scw-ws-v2-radiochip--saving');
+      setTimeout(function () {
+        chipEl.classList.remove('scw-ws-v2-radiochip--saving');
+      }, 200);
+
+      var body = {}; body[fieldKey] = option;
+      try {
+        SCW.knackAjax({
+          url:  SCW.knackRecordUrl(viewKey, recordId),
+          type: 'PUT',
+          data: JSON.stringify(body),
+          success: function () {
+            try {
+              if (typeof SCW.syncKnackModel === 'function') {
+                SCW.syncKnackModel(viewKey, recordId, {}, fieldKey, option);
+              }
+            } catch (e2) { /* ignore */ }
+          },
+          error: function (xhr) {
+            console.warn('[scw-ws-v2] radiochip save failed', { recordId: recordId, fieldKey: fieldKey, xhr: xhr });
+            // Revert selection.
+            if (group) {
+              var sibs2 = group.querySelectorAll('.scw-ws-v2-radiochip');
+              for (var r = 0; r < sibs2.length; r++) {
+                var was = (sibs2[r] === prevSel);
+                sibs2[r].classList.toggle('is-selected',   was);
+                sibs2[r].classList.toggle('is-unselected', !was);
+              }
+            }
+            chipEl.classList.add('scw-ws-v2-radiochip--error');
+            setTimeout(function () {
+              chipEl.classList.remove('scw-ws-v2-radiochip--error');
+            }, 1500);
+          }
+        });
+      } catch (e3) { /* silent — error path covers it */ }
+    });
+  }
+
   // Mount on every scene render — cheap (idempotent guard) and
   // catches SPA navigations into scenes that host the source view.
   $(document)
     .off('knack-scene-render.any.scwWsV2')
-    .on('knack-scene-render.any.scwWsV2', function () { tryMountAll(); });
+    .on('knack-scene-render.any.scwWsV2', function () {
+      tryMountAll();
+      // The KTL accordion wraps the source view ~80ms after scene render,
+      // which can re-capture the v2 panel into its body. Re-assert the
+      // panel's position outside the accordion once that has settled.
+      setTimeout(function () {
+        (ns.CONFIG.views || []).forEach(function (vcfg) {
+          if (vcfg && vcfg.hideSourceAccordion) {
+            relocatePanelOutsideAccordion(vcfg.sourceViewKey);
+          }
+        });
+      }, 200);
+    });
 
   // Also mount on view-render in case the source view appears on a
   // scene that already rendered. Cheap.

@@ -177,6 +177,19 @@
   function buildGroupTree(records, seedL1Groups, opts) {
     opts = opts || {};
     var sortPreset = opts.sortPreset || null;
+    // Resolve the L1/L2/sort/label field keys from the per-view config map
+    // (opts.fields = SCW.worksheetV2.cfg.fields(viewKey)). Reassigning these
+    // module vars is safe — buildGroupTree is synchronous and every helper
+    // reads them during this call. Behavior-preserving for SOW deployments:
+    // DEFAULT_FIELDS maps these logical names to the exact literals below, so
+    // an unmapped/absent opts.fields falls through to the same keys. The
+    // survey object (view_3505) overrides mdfIdf→field_2375, bucket→field_2366.
+    var F = (opts && opts.fields) || {};
+    FIELD_MDF_IDF = F.mdfIdf    || 'field_1946';
+    FIELD_BUCKET  = F.bucket    || 'field_2219';
+    FIELD_SORT    = F.sortOrder || 'field_2218';
+    FIELD_LABEL   = F.labelAlt  || F.displayLabel || 'field_2365';
+    GF = F;
     // First pass: bucket into L1 → L2 maps
     var l1Map = Object.create(null);
 

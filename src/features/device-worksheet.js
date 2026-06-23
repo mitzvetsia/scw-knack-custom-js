@@ -346,7 +346,7 @@
         ]
       },
       {
-        viewIds: ['view_3559', 'view_3577', 'view_3617', 'view_3803'],
+        viewIds: ['view_3559', 'view_3577', 'view_3617', 'view_3803', 'view_3932', 'view_4060'],
         layout: { labelWidth: '400px' },
         fields: {
           label:            { key: 'field_1642', type: 'readOnly',   summary: true },
@@ -6448,7 +6448,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     // view_3962-sourced v2 mount; view_3586 (sales) by its own
     // view_3586-sourced v2 mount. Reversible: flip
     // SCW.worksheetV2.CONFIG.enabled = false or comment out this block.
-    var V2_TAKEOVER = { view_3610: 'view_3962', view_3586: 'view_3586' };
+    var V2_TAKEOVER = { view_3610: 'view_3962', view_3586: 'view_3586', view_3915: 'view_3915', view_3505: 'view_3505' };
     var v2SourceKey = V2_TAKEOVER[viewCfg.viewId];
     if (v2SourceKey &&
         window.SCW && window.SCW.worksheetV2 &&

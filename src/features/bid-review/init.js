@@ -2532,6 +2532,12 @@
           gridRows:         grid.rows,
           visibility:       { qty: row.sowQty > 1, cabling: isCR2, connDevice: showConn2 },
           existing:         pendItem,
+          // Preserve reinstate identity when re-editing a pending reinstate
+          // CR. Without these, re-saving drops the reinstate marker + the bid
+          // record id (the existing view_3680 record Make re-links), so the
+          // CR degrades into a plain "add" with a null bidRecordId.
+          reinstate:        !!(pendItem && pendItem.reinstate),
+          bidRecordId:      (pendItem && pendItem.bidRecordId) || '',
         });
       }
       return;
@@ -3152,6 +3158,59 @@
     }
   }
 
+  // ── reinstate (per-cell, for "Removed from bid" rows) ───────
+  //
+  // Distinct from Add to Bid: the bid RECORD still exists (just unlinked
+  // from this package). Reinstate must NOT create a new bid record — it
+  // RE-LINKS the existing one. We produce a REVISE-type pending CR item
+  // (addToBid:false) carrying the existing bid record id + a reinstate
+  // marker, prefilled from the removed record's snapshot so the reviewer
+  // sees what's being put back. Make branches on `reinstate:true` +
+  // `bidRecordId` to re-link rather than insert.
+  function handleReinstate(button) {
+    if (!_state || !ns.changeRequests || !ns.changeRequests.openAddItem) {
+      ns.renderToast('Reinstate not available', 'info');
+      return;
+    }
+    var rowId       = button.getAttribute('data-row-id');
+    var pkgId       = button.getAttribute('data-package-id');
+    var sowId       = button.getAttribute('data-sow-id');
+    var bidRecordId = button.getAttribute('data-bid-record-id') || rowId;
+    var sowItemId   = button.getAttribute('data-sow-item-id') || '';
+    var label       = button.getAttribute('data-display-label') || '';
+    var product     = button.getAttribute('data-product-name') || '';
+    var snapQty     = button.getAttribute('data-reinstate-qty');
+    var snapFee     = button.getAttribute('data-reinstate-fee');
+    var snapDesc    = button.getAttribute('data-reinstate-desc') || '';
+
+    var grid = findSowGrid(sowId);
+    var sowName = grid ? grid.sowName : '';
+
+    ns.changeRequests.openAddItem({
+      reinstate:    true,
+      bidRecordId:  bidRecordId,
+      rowId:        rowId,
+      pkgId:        pkgId,
+      pkgName:      grid ? findPackageName(grid, pkgId) : '',
+      surveyId:     grid ? findPackageSurveyId(grid, pkgId) : '',
+      sowId:        sowId,
+      sowName:      sowName,
+      sowItemId:    sowItemId,
+      displayLabel: label || product,
+      productName:  product,
+      // Prefill the reinstate CR from the removed bid record's snapshot.
+      sowProduct:   product,
+      sowQty:       (snapQty !== '' && snapQty != null) ? snapQty : '',
+      sowFee:       (snapFee !== '' && snapFee != null) ? snapFee : '',
+      sowLaborDesc: snapDesc,
+      proposalBucket:   '',
+      proposalBucketId: '',
+      sortOrder:        0,
+      connOptions:      { bidMdfIdf: buildMdfIdfOptions() },
+      visibility:       {},
+    });
+  }
+
   // ── row-level action ────────────────────────────────────────
 
   function handleRowAction(button, actionType) {
@@ -3344,6 +3403,7 @@
     if (action === 'cell_request_change_from_sow')  { handleChangeRequest(button, { sourceFromSow: true }); return true; }
     if (action === 'cell_remove_from_bid')          { handleRemoveFromBid(button); return true; }
     if (action === 'cell_add_to_bid')               { handleAddToBid(button); return true; }
+    if (action === 'cell_reinstate')                { handleReinstate(button); return true; }
     if (action === 'cell_create_sow_from_bid')      { handleCreateSowFromBid(button); return true; }
     if (action === 'cr_submit') {
       var pkgId = button.getAttribute('data-pkg-id');
@@ -3363,6 +3423,30 @@
     // here too, and v1 binds clicks to its own grid mount so it never
     // sees v2's buttons. Hand them to the shared row-action handler.
     if (action.indexOf('row_') === 0) { handleRowAction(button, action); return true; }
+    return false;
+  };
+
+  // Public dispatcher for the project-docs controls v1 renders inside the
+  // SOW status bar. v2 injects that status bar into its own header DOM via
+  // buildSowStatusBar, but v1's click listener is bound to v1's grid mount
+  // (not document), so these buttons never fire on the v2 reconcile page.
+  // v2's document-level listener calls this verbatim. Returns true if
+  // dispatched.
+  ns.dispatchDocsAction = function dispatchDocsAction(button) {
+    if (!button) return false;
+    var action = button.getAttribute('data-action');
+    if (!action) return false;
+    if (action === 'doc_link_to_sow')     { handleDocLinkToSow(button); return true; }
+    if (action === 'doc_unlink_from_sow') { handleDocUnlinkFromSow(button); return true; }
+    if (action === 'doc_filter')          { handleDocFilter(button); return true; }
+    if (action === 'docs_toggle_other') {
+      var section = button.closest('.scw-bid-review__docs-other');
+      if (section) {
+        var c = section.getAttribute('data-collapsed') === '1';
+        section.setAttribute('data-collapsed', c ? '0' : '1');
+      }
+      return true;
+    }
     return false;
   };
 

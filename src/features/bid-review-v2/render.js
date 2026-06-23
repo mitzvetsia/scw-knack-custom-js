@@ -18,8 +18,14 @@
 
   function hasFocusInPanel(container) {
     var a = document.activeElement;
-    if (!a || !container) return false;
-    if (!a.hasAttribute || !a.hasAttribute('data-scw-br-v2-field')) return false;
+    if (!a || !container || !a.hasAttribute) return false;
+    // Defer the rebuild while the user is mid-edit in EITHER a comparison-grid
+    // input (data-scw-br-v2-field) OR an embedded worksheet-v2 card input
+    // (data-scw-ws-v2-field) inside an expanded row's SOW editor. Without the
+    // ws-v2 check, editing a SOW field + tabbing fired a refetch that rebuilt
+    // the grid and tore down the panel mid-edit, dropping the in-progress edit.
+    if (!a.hasAttribute('data-scw-br-v2-field') &&
+        !a.hasAttribute('data-scw-ws-v2-field')) return false;
     return container.contains(a);
   }
 
@@ -72,6 +78,14 @@
         'No bid records loaded yet.</div>';
       return;
     }
+
+    // Drop v1's cached DOC_files scrape so the docs block v1 injects into
+    // each SOW header (via buildSowStatusBar) re-reads view_3926's fresh DOM.
+    // Needed because a link/unlink PUT refetches view_3926 → fires a render
+    // v2 now subscribes to, but the scrape is cached per v1 renderMatrix pass
+    // and v2 never calls renderMatrix.
+    var v1ns = window.SCW && window.SCW.bidReview;
+    if (v1ns && typeof v1ns.resetDocsIndex === 'function') v1ns.resetDocsIndex();
 
     var frag = document.createDocumentFragment();
     for (var i = 0; i < state.sowGrids.length; i++) {

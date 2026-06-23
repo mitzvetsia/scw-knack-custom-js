@@ -7,6 +7,15 @@
  * Triggered by: a click on .scw-install-config-qa-chit (handled inline
  * by install-config-subpanel.js, which calls SCW.configQaPopover.open).
  *
+ * Host-structure agnostic (V1 + V2 worksheet): this popover operates
+ * ENTIRELY off the anchor chit element handed to open() — it positions
+ * relative to the chit's bounding rect and rewrites the chit in place via
+ * refreshChit(). It never queries the surrounding worksheet card DOM, so
+ * it works identically whether install-config-subpanel.js injected the
+ * chit into the V1 card's photo strip (.scw-ws-req-photos) or the V2
+ * card's detail section header (.scw-ws-v2-detail). Keep it that way —
+ * do NOT reintroduce V1/V2-specific card-DOM lookups here.
+ *
  * Data contract — fields on the camera-config object:
  *   field_2896 — QA_status         (Multiple Choice: Pending / Verified)
  *   field_2897 — QA_completed_by   (Connection → user)

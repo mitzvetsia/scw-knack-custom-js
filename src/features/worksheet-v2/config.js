@@ -122,15 +122,20 @@
       // the deploy scene. independentFields:true means this `fields` map is
       // used AS-IS (no SOW fallback), so any omitted logical name resolves
       // undefined and its feature no-ops here (intended for the money
-      // columns this object doesn't have). Keep enabled:false until the
-      // render-side money-column suppression + QA surface are ported and
-      // the existing v1 worksheet on this view is turned off.
+      // columns this object doesn't have). CUTOVER: v2 is now the primary
+      // surface on the deploy scene — v1 device-worksheet bails via its
+      // V2_TAKEOVER entry, and styles.js hides the native #view_3915 table +
+      // accordion. The install card path lives in card.js (moneyMode:'install');
+      // Camera Config + QA fold in via install-config-subpanel/config-qa-popover
+      // (dual-host). Reverse by flipping enabled:false here.
       ,{
-        enabled:          false,
+        enabled:          true,
         sourceViewKey:    'view_3915',
-        mountAfterSelector: '#view_3915',   // TODO confirm anchor; disable v1 here on enable
+        mountAfterSelector: '#view_3915',
         label:            'Install Line Items',
         independentFields: true,            // different object — no DEFAULT_FIELDS fallback
+        moneyMode:        'install',        // no money columns at all — card.js install path
+        hideSow:          true,             // install groups by MDF/IDF, not SOW
         mdfSourceViewKey: '',               // TODO: empty-L1 seed source (analogue of view_3577)
         mdfLabelField:    '',               // TODO
         hideMoneyColumns: true,             // no subBid/fee/hrs/mat/installFee on this object
@@ -187,7 +192,22 @@
         buckets: {
           // shared proposal-bucket object; only the extra one this view shows
           otherEquip: '5df12ce036f91b0015404d78'   // "Other Equipment"
-        }
+        },
+        // Bulk-edit field spec — ONLY what's actually editable on the install
+        // card (everything else is read-only there), so the bulk modal stops
+        // offering inherited SOW fields. SCW Notes is the lone editable column.
+        bulkFields: {
+          cam:         [ { f: 'scwNotes', kind: 'text', label: 'SCW Notes' } ],
+          'default':   [ { f: 'scwNotes', kind: 'text', label: 'SCW Notes' } ],
+          services:    [ { f: 'scwNotes', kind: 'text', label: 'SCW Notes' } ],
+          assumptions: [ { f: 'scwNotes', kind: 'text', label: 'SCW Notes' } ]
+        },
+        // Questionnaire (deliverables) answers live in a JSON blob on the line
+        // item. bulk.js folds a "System Questionnaire" section into the modal
+        // (schema resolved per record from schemaField; answers merged into
+        // valueField). Uses the internal field set (all active fields) via
+        // window.SCW.deliverables.
+        questionnaire: { schemaField: 'field_2930', valueField: 'field_2932' }
       }
 
       // ── Sales scope-of-work-details page (view_3586) ────────────────
@@ -225,6 +245,192 @@
         }
       }
 
+      // ── Subcontractor SURVEY device worksheet (view_3505) ───────────
+      // DIFFERENT object from the SOW line item (Survey Line Item), so
+      // independentFields:true — this `fields` map is used AS-IS, no
+      // DEFAULT_FIELDS fallback. Mirrors the v1 device-worksheet config
+      // (device-worksheet.js view_3505 block) field-for-field.
+      //
+      // ⚠️ internalOnly:true — gated to @getscw.com staff via
+      //    SCW.isInternalUser() in init.js. This is a PREVIEW running
+      //    beneath the live v1 worksheet; subcontractors never see it.
+      //
+      // ⚠️ moneyMode:'survey' — the survey object has no Sub Bid/+Hrs/+Mat
+      //    stacks. Money model is Labor (field_2400) · Ext (field_2401) ·
+      //    Qty (field_2399), and the line's bid membership is a connection
+      //    (field_2415). card.js branches on this (see isSurveyMoney).
+      //
+      // ⚠️ PARENT/CHILD: Survey Line Items have NO accessory parent/child
+      //    denormalization yet (no analogue of the SOW's field_1957↔2197
+      //    cascade or field_2464 accessory→parent). connectedDevices
+      //    (field_2380, on NVR/switch) and connectedDevice (field_2381,
+      //    "Connected To" on a cam/reader) exist as PLAIN Knack
+      //    connections — they are NOT backed by mirror-connection-sync.
+      //    `accessories`/`children`/`parent`/`accessoryMatch` are
+      //    intentionally UNMAPPED here and the survey card path renders no
+      //    mounting-hardware/accessory UI. When that relationship is added
+      //    to the survey object (see CLAUDE.md), it maps into these same
+      //    logical slots — config-only at that point.
+      ,{
+        // Survey card path lives in card.js (moneyMode:'survey' branch +
+        // buildRow_survey/buildDetail_survey + bucket resolution via
+        // field_2366; groups.js resolves L1/L2/sort per-view). Gated to
+        // @getscw.com (internalOnly) so it previews beneath the live v1
+        // worksheet. Editable: labor/qty/desc/drop/conduit/notes + cabling
+        // chips (generic edit/chip handlers) + Connected Devices/To pickers.
+        // CUTOVER: v2 is now the PRIMARY survey/bid worksheet — v1 device-
+        // worksheet bails via its V2_TAKEOVER entry and styles.js hides the
+        // native #view_3505 table. Reverse by re-adding internalOnly + removing
+        // the view_3505 cutover rule + V2_TAKEOVER entry.
+        enabled:           true,
+        sourceViewKey:     'view_3505',
+        mountAfterSelector: '#view_3505',
+        label:             'Survey Line Items',
+        // Toolbar CTA wiring for the survey scene (the shared toolbar defaults
+        // to the SOW context). addItemLabel = the "+ Add" button label AND the
+        // Knack link text the add handler clicks. photoUploadView = the
+        // bulk-upload VIEWS[] menuViewId for this scene (survey → view_3532,
+        // linkField surveyID, hash /site-survey-request-details/).
+        addItemLabel:      'Add Survey/Bid Item',
+        photoUploadView:   'view_3532',
+        independentFields: true,            // Survey object — no SOW fallback
+        moneyMode:         'survey',
+        hideSow:           true,            // survey groups by Bid, not SOW
+        bulkDuplicate:     true,            // bulk panel "Duplicate" → Make webhook
+        // Full cutover: hide the native source view AND its KTL accordion
+        // shell entirely (no collapsible header) — JUST the v2 grid. init.js
+        // relocates the v2 panel out of the accordion; styles.js hides the
+        // accordion wrapper + the source table.
+        hideSourceAccordion: true,
+        // Quick-filter pill strip above the grid — survey filters by BID
+        // (field_2415) instead of SOW. Generalizes sow-filter.js: when
+        // filterPills is set the strip mounts even with hideSow:true, reads
+        // this connection field, and labels itself accordingly. `field` may
+        // be a field key or a logical name (resolved via cfg.fields).
+        filterPills:       { field: 'field_2415', label: 'Bid',
+                             // Append the friendly bid name (field_2636) to each
+                             // pill, resolved from the BIDs grid (view_3507).
+                             nameViews: ['view_3507'], nameField: 'field_2636',
+                             appendName: true },
+        noAccessories:     true,            // Survey Line Items have no accessory
+                                            // relationship yet (CLAUDE.md #16) — hide
+                                            // the bulk Add/Remove accessories buttons
+        // When a bulk edit CLEARS this connection, require a note ONCE and
+        // write it into every clearing row's PUT (so the rows carry the note
+        // and survey-bid-validate's bid-gate doesn't re-prompt). Logical names.
+        clearNote:         { conn: 'bid', note: 'surveyNotes' },
+        // Confirm before saving a $0 OR blank value on this field (the sub-bid
+        // Labor). Translates v1 survey-bid-validate's $0-confirm to v2 — fired
+        // in BOTH the single edit (edit.js) and bulk edit (bulk.js) paths.
+        confirmZero: {
+          field: 'labor',
+          title: 'Confirm $0 / blank bid',
+          body: '<p>You’re setting this bid to <strong>$0</strong> (or leaving ' +
+            'it blank).</p><p>That commits you to <strong>doing this item for ' +
+            'free</strong> — it does <strong>not</strong> remove it from the ' +
+            'bid. If the item shouldn’t be done, <strong>take it off the bid' +
+            '</strong> instead.</p><p>Continue?</p>'
+        },
+        mdfSourceViewKey:  'view_3617',     // MDF/IDF locations grid on the survey scene
+        mdfLabelField:     'field_1642',    // MDF/IDF full label
+        fields: {
+          // identity / grouping
+          product:        'field_2627',     // REL_product (editable)
+          productName:    'field_2379',     // STORED product name (display)
+          displayLabel:   'field_2365',     // label (E-001 …)
+          labelAlt:       'field_2365',     // same — survey line item label
+          bucket:         'field_2366',     // proposal bucket (L2) — NOT SOW's 2219
+          sortOrder:      'field_2218',     // CONFIG_sort order (shared key)
+          mdfIdf:         'field_2375',     // MDF/IDF location (L1 grouping + move)
+          bid:            'field_2415',     // REL_bid — survey grouping connection
+          // money / qty (moneyMode:'survey')
+          qty:            'field_2399',
+          labor:          'field_2400',     // Labor rate
+          extended:       'field_2401',     // CALC sub-bid extended (Ext)
+          // text
+          laborDesc:      'field_2409',
+          scwNotes:       'field_2418',
+          surveyNotes:    'field_2412',
+          // booleans / flags
+          existCabling:   'field_2370',
+          exterior:       'field_2372',
+          plenum:         'field_2371',
+          mapConn:        'field_2374',     // FLAG_map camera/reader connections
+          requireSubBid:  'field_2478',     // FLAG_require sub bid
+          qtyOne:         'field_2373',     // FLAG_limit to quantity one
+          locked:         'field_2551',     // FLAG_locked
+          warningCount:   'field_2454',     // SYS_incomplete photos
+          // connections (plain — NO mirror-sync cascade; see note above)
+          connectedDevices: 'field_2380',   // on NVR/switch (multi)
+          connectedDevice:  'field_2381',   // "Connected To" on cam/reader (single)
+          // detail
+          dropLength:     'field_2367',
+          conduit:        'field_2368',
+          mountingHeight: 'field_2455',     // survey single-chip (Under 16' / 16'-24' / Over 24')
+          mounting:       'field_2463',     // INPUT_mounting hardware list (read-only display)
+          sowLineItem:    'field_2404',     // REL_sow line item (source of truth) — gates lock/delete
+          // photos (shared DOC_photos object — identical keys to SOW)
+          photoImage:     'field_771',
+          photoType:      'field_2445',
+          photoRequired:  'field_2446',
+          photoCompleted: 'field_2447',
+          photoNotes:     'field_114'
+        },
+        buckets: {
+          // survey shows the same buckets; only the extra ones beyond
+          // DEFAULT_BUCKETS need listing.
+          otherEquip: '5df12ce036f91b0015404d78'   // "Other Equipment"
+        },
+
+        // ── Bulk-edit field spec (config-driven; bulk.js resolves these
+        //    LOGICAL names → field keys via cfg.fields and intersects with
+        //    what's actually editable on the selected rows). ONLY fields that
+        //    are editable in the survey card UI + on the Survey Line Item
+        //    object. Excluded: product/ext/mounting hardware (read-only on the
+        //    card); Connected Devices/To (edit per-row so the field_2380↔2381
+        //    cascade fires); Mounting Height (3-option chip, no bulk widget).
+        bulkFields: {
+          cam: [
+            { f: 'laborDesc',    kind: 'text',        label: 'Labor description' },
+            { f: 'labor',        kind: 'number',      label: 'Labor' },
+            { f: 'existCabling', kind: 'bool',        label: 'Existing cabling' },
+            { f: 'exterior',     kind: 'bool',        label: 'Exterior' },
+            { f: 'plenum',       kind: 'bool',        label: 'Plenum' },
+            { f: 'dropLength',   kind: 'number',      label: 'Drop length' },
+            { f: 'conduit',      kind: 'number',      label: 'Conduit' },
+            { f: 'surveyNotes',  kind: 'text',        label: 'Survey notes' },
+            // SCW Notes (field_2418) is READ-ONLY on the bid worksheet — omitted.
+            { f: 'mdfIdf',       kind: 'conn-single', label: 'MDF / IDF', candSource: 'mdf' },
+            { f: 'bid',          kind: 'conn-multi',  label: 'Bid',       candSource: 'survey-bids' }
+          ],
+          'default': [
+            { f: 'laborDesc',   kind: 'text',        label: 'Labor description' },
+            { f: 'labor',       kind: 'number',      label: 'Labor' },
+            { f: 'qty',         kind: 'number',      label: 'Qty', gateNo: 'qtyOne' },
+            { f: 'surveyNotes', kind: 'text',        label: 'Survey notes' },
+            // SCW Notes (field_2418) is READ-ONLY on the bid worksheet — omitted.
+            { f: 'mdfIdf',      kind: 'conn-single', label: 'MDF / IDF', candSource: 'mdf' },
+            { f: 'bid',         kind: 'conn-multi',  label: 'Bid',       candSource: 'survey-bids' }
+          ],
+          services: [
+            { f: 'laborDesc',   kind: 'text',        label: 'Service description' },
+            { f: 'labor',       kind: 'number',      label: 'Labor' },
+            { f: 'qty',         kind: 'number',      label: 'Qty', gateNo: 'qtyOne' },
+            { f: 'surveyNotes', kind: 'text',        label: 'Survey notes' },
+            // SCW Notes (field_2418) is READ-ONLY on the bid worksheet — omitted.
+            { f: 'mdfIdf',      kind: 'conn-single', label: 'MDF / IDF', candSource: 'mdf' },
+            { f: 'bid',         kind: 'conn-multi',  label: 'Bid',       candSource: 'survey-bids' }
+          ],
+          assumptions: [
+            { f: 'laborDesc',   kind: 'text',        label: 'Assumption text' },
+            { f: 'surveyNotes', kind: 'text',        label: 'Survey notes' },
+            // SCW Notes (field_2418) is READ-ONLY on the bid worksheet — omitted.
+            { f: 'mdfIdf',      kind: 'conn-single', label: 'MDF / IDF', candSource: 'mdf' },
+            { f: 'bid',         kind: 'conn-multi',  label: 'Bid',       candSource: 'survey-bids' }
+          ]
+        }
+      }
+
       // ── TEMPLATE (not yet enabled) — sales build-SOW page ───────────
       // Deploy target derived from view_3450. Fill in only the fields that
       // DIFFER from DEFAULT_FIELDS, the mount anchor, and the mdf source.
@@ -244,6 +450,25 @@
       // }
     ]
   };
+
+  // ── view_4056 ("WHAT WE'RE INSTALLING") — SAME object + field map as the
+  //    view_3915 install worksheet. Rather than duplicate the ~80-line install
+  //    config (and let the two drift), clone the view_3915 entry verbatim and
+  //    swap only the source view key + mount anchor. Any future change to the
+  //    install card config then applies to BOTH surfaces automatically. The
+  //    install entry is pure data (no functions), so a JSON deep-clone is safe.
+  (function cloneInstallEntryForView4056() {
+    var views = SCW.worksheetV2.CONFIG.views || [];
+    var src = null;
+    for (var i = 0; i < views.length; i++) {
+      if (views[i] && views[i].sourceViewKey === 'view_3915') { src = views[i]; break; }
+    }
+    if (!src) return;
+    var clone = JSON.parse(JSON.stringify(src));
+    clone.sourceViewKey      = 'view_4056';
+    clone.mountAfterSelector = '#view_4056';
+    views.push(clone);
+  })();
 
   // ── Resolver API ──────────────────────────────────────────────────
   // Modules read field keys + bucket ids through these so a deployment is

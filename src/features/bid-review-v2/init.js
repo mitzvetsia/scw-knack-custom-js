@@ -375,6 +375,20 @@
         return;
       }
 
+      // Project-docs controls (link / unlink / filter chip / "other docs"
+      // expand toggle). v1 renders these inside the SOW status bar v2 injects
+      // into its header, but v1's listener is bound to v1's grid mount so it
+      // never sees them on the v2 page. Route to v1's docs dispatcher.
+      var docsBtn = e.target.closest('.scw-bid-review__docs-other-toggle[data-action]')
+        || e.target.closest('.scw-bid-review__docs-link-btn[data-action]')
+        || e.target.closest('.scw-bid-review__docs-unlink-btn[data-action]')
+        || e.target.closest('.scw-bid-review__docs-chip[data-action]');
+      if (docsBtn) {
+        e.preventDefault(); e.stopPropagation();
+        if (v1.dispatchDocsAction) v1.dispatchDocsAction(docsBtn);
+        return;
+      }
+
       // Header buttons — package_* go to dispatchHeaderAction, cr_* fall
       // through to dispatchCRAction.
       var headBtn = e.target.closest('.scw-bid-review-v2__head-btn[data-action]');
@@ -852,7 +866,7 @@
     relocateSowField(card);
     removeSurveyNotes(card);
     lineBreakConnectedDevices(card);
-    makeScwNotesTextarea(card);
+    makeScwNotesReadOnly(card);
   }
 
   // Connected Devices (field_1957) is multi-value; show each on its own
@@ -874,22 +888,33 @@
     }
   }
 
-  // SCW Notes (field_1953) should read like the labor description: a
-  // full-width, wrapping textarea rather than a single-line input. Swap
-  // the input for a textarea, carrying its value + data-* attrs so the
-  // edit/save path keeps working.
-  function makeScwNotesTextarea(card) {
-    var inp = card.querySelector('input[data-scw-ws-v2-field="field_1953"]');
-    if (!inp || inp.tagName === 'TEXTAREA') return;
-    var ta = document.createElement('textarea');
-    ta.className = 'scw-ws-v2-input scw-ws-v2-input--textarea';
-    ta.value = inp.value;
-    for (var i = 0; i < inp.attributes.length; i++) {
-      var a = inp.attributes[i];
-      if (a.name === 'type' || a.name === 'class' || a.name === 'value') continue;
-      ta.setAttribute(a.name, a.value);
+  // SCW Notes (field_1953) is READ-ONLY on the bid comparison page — it's
+  // owned upstream (build-SOW), not editable while reconciling bids. Render it
+  // as a full-width, wrapping textarea for readability, but lock it: drop the
+  // edit hook (data-scw-ws-v2-field) so edit.js never PUTs it, and apply the
+  // repo's locked-field convention (white bg, pointer-events:none, readOnly) so
+  // it reads as non-interactive without being grayed out.
+  function makeScwNotesReadOnly(card) {
+    var el = card.querySelector('[data-scw-ws-v2-field="field_1953"], textarea.scw-br-v2-scwnotes-ro');
+    if (!el) return;
+    var ta = el;
+    if (el.tagName !== 'TEXTAREA') {
+      ta = document.createElement('textarea');
+      ta.value = el.value;
+      for (var i = 0; i < el.attributes.length; i++) {
+        var a = el.attributes[i];
+        if (a.name === 'type' || a.name === 'class' || a.name === 'value') continue;
+        ta.setAttribute(a.name, a.value);
+      }
+      el.parentNode.replaceChild(ta, el);
     }
-    inp.parentNode.replaceChild(ta, inp);
+    ta.className = 'scw-ws-v2-input scw-ws-v2-input--textarea ' +
+      'scw-br-v2-scwnotes-ro';
+    ta.readOnly = true;
+    ta.setAttribute('aria-readonly', 'true');
+    ta.setAttribute('title', 'SCW Notes are read-only here');
+    // Drop the edit hook so the delegated edit.js handler never saves it.
+    ta.removeAttribute('data-scw-ws-v2-field');
   }
 
   function findDetailFieldByLabel(card, labelText) {

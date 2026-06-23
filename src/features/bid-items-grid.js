@@ -24,6 +24,8 @@
           prefix: 'field_2361',
           number: 'field_2362',
           field2409: 'field_2409',
+          product: 'field_2365',  // product / item name — shown above the labor desc
+          subBidRequired: 'field_2478',  // "sub bid required" (No = present but not bid)
           l2Sort: 'field_2218',
           l2Selector: 'field_2228',
           conduit: 'field_2368',  // per-row conduit feet — summed into the L3 drop header
@@ -409,6 +411,21 @@ tr.scw-level-total-row.scw-subtotal .scw-level-total-label { white-space: nowrap
 .scw-l3-2409 { display: inline; line-height: 1.2; }
 .scw-l3-2409 b,
 .scw-l3-2409 strong { font-weight: 800 !important; }
+
+/* Product name(s) shown above the labor description on an L3 header. */
+.scw-l3-product { font-weight: 800 !important; color: #07467c; line-height: 1.3; }
+/* Hide the raw field_2478 ("sub bid required") column — read as a data source. */
+th.field_2478, td.field_2478 { display: none !important; }
+/* An L3 group whose every item is no-sub-bid — hidden; items move to the
+   "Other Associated Equipment" section below. */
+tr.scw-assoc-hidden { display: none !important; }
+/* "Other Associated Equipment" callout (no Rate/Qty/Cost columns). */
+tr.scw-assoc-equip-head td {
+  padding-left: 20px !important; padding-top: 14px !important;
+  font-weight: 600 !important; color: #475569 !important; font-style: italic;
+}
+tr.scw-assoc-equip-list td { padding-left: 40px !important; padding-top: 2px !important; }
+tr.scw-assoc-equip-list .scw-l3-product { font-weight: 600 !important; color: #334155; }
 
 /* Hide the raw field_2409 column (data lives in data rows for injection) */
 th.field_2409, td.field_2409 { display: none !important; }
@@ -1150,6 +1167,159 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   }
 
   // ============================================================
+  // FEATURE: Product-name injection (L3) — show WHAT is being installed
+  // ============================================================
+  // The bid grid hides the per-product data rows and shows only L3 (labor-
+  // description) headers, so the actual products were invisible — and a group
+  // of products with a blank labor description rendered as an empty header.
+  // We surface the distinct product name(s) (field_2365) of the group's rows
+  // as a bold line ABOVE the labor description. Skipped for cameras ('drop',
+  // already listed by the concat feature) and Mounting Hardware (its own
+  // concat); Services/Assumptions return before this runs.
+  // True when "sub bid required" (field_2478) on a row is explicitly No —
+  // i.e. the item will be PRESENT but the sub isn't bidding it separately.
+  function rowIsIncluded(ctx, row) {
+    if (!ctx.keys.subBidRequired) return false;
+    const cell = row.querySelector(`td.${ctx.keys.subBidRequired}`);
+    if (!cell) return false;
+    return norm(cell.textContent || '').toLowerCase() === 'no';
+  }
+
+  // Rows that count toward money totals — no-sub-bid items never contribute a
+  // labor/cost amount, so they're dropped from every sum/average.
+  function filterBillable(ctx, $rows) {
+    if (!ctx.keys.subBidRequired) return $rows;
+    return $rows.filter((i, el) => !rowIsIncluded(ctx, el));
+  }
+
+  // Lists the NON-included product name(s) above the labor description, and
+  // returns true when EVERY product row in the group is "included" (no sub bid
+  // required) — those items are pulled into the "Other Associated Equipment"
+  // section instead, so the caller hides this (now-empty) L3 header.
+  function injectProductNamesIntoLevel3Header(ctx, { $groupRow, $rowsToSum, runId }) {
+    if (!ctx.keys.product) return false;
+    if ($groupRow.data('scwProdNamesRunId') === runId) {
+      return Boolean($groupRow.data('scwProdNamesAllIncluded'));
+    }
+    $groupRow.data('scwProdNamesRunId', runId);
+
+    const labelCell = $groupRow[0].querySelector('td:first-child');
+    if (!labelCell) return false;
+
+    // Distinct NON-included product names in row order (included items move to
+    // the associated-equipment section).
+    const counts = new Map();
+    let rowCount = 0, includedCount = 0;
+    $rowsToSum.each(function () {
+      const cell = this.querySelector(`td.${ctx.keys.product}`);
+      if (!cell) return;
+      const name = norm(cell.textContent || '');
+      if (!name) return;
+      rowCount++;
+      if (rowIsIncluded(ctx, this)) { includedCount++; return; }
+      counts.set(name, (counts.get(name) || 0) + 1);
+    });
+
+    const allIncluded = rowCount > 0 && includedCount === rowCount;
+    $groupRow.data('scwProdNamesAllIncluded', allIncluded);
+
+    // Idempotent: strip any prior injection (+ its trailing <br>) first.
+    const prev = labelCell.querySelector('.scw-l3-product');
+    if (prev) {
+      const br = prev.nextElementSibling;
+      if (br && br.tagName === 'BR') br.remove();
+      prev.remove();
+    }
+
+    if (counts.size) {
+      const parts = [];
+      counts.forEach((count, name) => {
+        parts.push(escapeHtml(name) + (count > 1 ? ` (×${count})` : ''));
+      });
+      const wrap = document.createElement('span');
+      wrap.className = 'scw-l3-product';
+      wrap.innerHTML = parts.join('<br>');
+      labelCell.insertBefore(document.createElement('br'), labelCell.firstChild);
+      labelCell.insertBefore(wrap, labelCell.firstChild);
+    }
+
+    return allIncluded;
+  }
+
+  // ============================================================
+  // FEATURE: "Other Associated Equipment" section (sub bid not required)
+  // ============================================================
+  // Collect every "included" (field_2478 = No) item in each L1 section into a
+  // single "Other Associated Equipment" callout at the BOTTOM of that section
+  // (just above its subtotal), with no Rate/Qty/Cost columns — these items will
+  // be present but aren't separately bid. Runs after subtotals are inserted.
+  function buildAssociatedEquipmentSections(ctx, $tbody) {
+    if (!ctx.keys.subBidRequired || !ctx.keys.product) return;
+    const tbody = $tbody[0];
+    if (!tbody) return;
+    const SECT = 'scw-assoc-equip';
+    tbody.querySelectorAll('tr.' + SECT).forEach((el) => el.remove());
+
+    const meta = computeColumnMeta(ctx);
+    const cols = Math.max(meta.colCount || 0, 1);
+
+    const l1Headers = Array.from(tbody.querySelectorAll('tr.kn-table-group.kn-group-level-1'));
+    l1Headers.forEach((l1El, idx) => {
+      const nextL1 = idx + 1 < l1Headers.length ? l1Headers[idx + 1] : null;
+      const counts = new Map();
+      let anchor = null; // first L1 subtotal in this section → insert above it
+      let cur = l1El.nextElementSibling;
+      // Track the current L2 section: Assumptions / Services rows are NOT
+      // equipment — they stay as their own independent line items and must
+      // never be rolled into "Other Expected SCW Provided Equipment". Their
+      // L2 group header carries scw-l2--assumptions / scw-l2--services
+      // (applyLevel2Styling).
+      let inNonEquipL2 = false;
+      while (cur && cur !== nextL1) {
+        if (cur.classList.contains('kn-table-group') &&
+            cur.classList.contains('kn-group-level-2')) {
+          inNonEquipL2 = cur.classList.contains('scw-l2--assumptions') ||
+                         cur.classList.contains('scw-l2--services');
+        }
+        if (!anchor && cur.classList.contains('scw-subtotal--level-1')) anchor = cur;
+        const isData = cur.id &&
+          !cur.classList.contains('kn-table-group') &&
+          !cur.classList.contains('scw-level-total-row');
+        if (isData && !inNonEquipL2) {
+          const sb = cur.querySelector(`td.${ctx.keys.subBidRequired}`);
+          if (sb && norm(sb.textContent || '').toLowerCase() === 'no') {
+            const pc = cur.querySelector(`td.${ctx.keys.product}`);
+            const name = pc ? norm(pc.textContent || '') : '';
+            if (name) counts.set(name, (counts.get(name) || 0) + 1);
+          }
+        }
+        cur = cur.nextElementSibling;
+      }
+      if (!counts.size) return;
+
+      const parts = [];
+      counts.forEach((c, name) => parts.push(escapeHtml(name) + (c > 1 ? ` (×${c})` : '')));
+
+      const $head = $(
+        `<tr class="kn-table-group kn-group-level-2 ${SECT} ${SECT}-head">` +
+        `<td colspan="${cols}">Other Expected SCW Provided Equipment</td></tr>`
+      );
+      const $list = $(
+        `<tr class="${SECT} ${SECT}-list"><td colspan="${cols}">` +
+        `<span class="scw-l3-product">${parts.join('<br>')}</span></td></tr>`
+      );
+      const ref = anchor || nextL1;
+      if (ref) {
+        tbody.insertBefore($head[0], ref);
+        tbody.insertBefore($list[0], ref);
+      } else {
+        tbody.appendChild($head[0]);
+        tbody.appendChild($list[0]);
+      }
+    });
+  }
+
+  // ============================================================
   // FEATURE: Concat injection (L3 drop)
   // ============================================================
 
@@ -1362,8 +1532,10 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     const qtyKey = ctx.keys.qty;
     const laborKey = ctx.keys.labor;
 
-    const grandQty = sumField(caches, $allDataRows, qtyKey);
-    const grandTotal = sumField(caches, $allDataRows, laborKey);
+    // No-sub-bid items contribute no labor — exclude them from the grand total.
+    const $billableRows = filterBillable(ctx, $allDataRows);
+    const grandQty = sumField(caches, $billableRows, qtyKey);
+    const grandTotal = sumField(caches, $billableRows, laborKey);
 
     const meta = computeColumnMeta(ctx);
     const cols = Math.max(meta.colCount || 0, 1);
@@ -1640,9 +1812,13 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       const $rowsToSum = $groupBlock.filter('tr[id]');
       if (!$rowsToSum.length) return;
 
+      // Billable subset — no-sub-bid items never add a labor amount, so all
+      // money math (group totals, rate avg, subtotals) runs over this set.
+      const $billable = filterBillable(ctx, $rowsToSum);
+
       const totals = sumFields(
         caches,
-        $rowsToSum,
+        $billable,
         [qtyKey, laborKey].filter(Boolean)
       );
 
@@ -1724,13 +1900,25 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
           injectConcatIntoLevel3HeaderForMounting(ctx, caches, { $groupRow, $rowsToSum, runId });
         }
 
+        // Show the product name(s) above the labor description — except for
+        // cameras ('drop', listed by concat) and Mounting Hardware (own concat).
+        // Returns true when the whole group is "included" (no sub bid required).
+        let allIncluded = false;
+        if (!isMounting && sectionContext.key !== 'drop') {
+          allIncluded = injectProductNamesIntoLevel3Header(ctx, { $groupRow, $rowsToSum, runId });
+        }
+
         const qty = totals[qtyKey];
         const labor = totals[laborKey];
-        const rateAvg = avgField(caches, $rowsToSum, rateKey);
+        const rateAvg = avgField(caches, $billable, rateKey);
 
         $groupRow.find(`td.${qtyKey}`).html(`<strong>${Math.round(qty)}</strong>`);
         $groupRow.find(`td.${rateKey}`).html(`<strong>${escapeHtml(formatMoney(rateAvg))}</strong>`);
         $groupRow.find(`td.${laborKey}`).html(`<strong>${escapeHtml(formatMoney(labor))}</strong>`);
+
+        // Whole group is no-sub-bid → hide this L3 header; its items render in
+        // the "Other Associated Equipment" section at the bottom of the L1.
+        if (allIncluded) $groupRow.addClass('scw-assoc-hidden');
 
         if (sectionContext.hideQtyCostColumns) $groupRow.addClass('scw-hide-qty-cost');
 
@@ -1760,7 +1948,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
           hideQtyCostColumns: effectiveLevel === 2 ? sectionContext.hideQtyCostColumns : false,
           $groupBlock,
           $cellsTemplate,
-          $rowsToSum,
+          $rowsToSum: $billable,
           totals,
         });
       }
@@ -1812,6 +2000,10 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     }
 
     applyLevel2LabelRewrites(ctx, $tbody, runId);
+
+    // Collect no-sub-bid items into "Other Associated Equipment" sections at
+    // the bottom of each L1 (after subtotals exist so we can anchor above them).
+    buildAssociatedEquipmentSections(ctx, $tbody);
 
     if (shouldHideSubtotalFilterFlag) hideSubtotalFilter(ctx);
 

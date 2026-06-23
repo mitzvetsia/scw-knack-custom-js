@@ -49,6 +49,96 @@
     return d.promise();
   }
 
+  /** True when a value is $0 or blank (for the confirmZero rule). */
+  function isZeroBlank(v) {
+    var s = (v == null ? '' : String(v)).replace(/[^0-9.\-]/g, '').trim();
+    if (s === '') return true;            // blank
+    var n = parseFloat(s);
+    return !isNaN(n) && n === 0;          // $0
+  }
+  ns.isZeroBlank = isZeroBlank;
+
+  /** Shared yes/no confirm modal → Promise<bool>. Reuses bulk.js's modal
+   *  CSS (loaded via styles.js). opts: { title, body(html), okLabel, cancelLabel }. */
+  function confirmModal(opts) {
+    opts = opts || {};
+    return new Promise(function (resolve) {
+      function esc(s) {
+        return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+          return ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[c];
+        });
+      }
+      var ov = document.createElement('div');
+      ov.className = 'scw-ws-v2-bulk-overlay';
+      ov.innerHTML =
+        '<div class="scw-ws-v2-bulk-modal scw-ws-v2-bulk-modal--confirm">' +
+          '<div class="scw-ws-v2-bulk-modal-head">' +
+            '<div class="scw-ws-v2-bulk-modal-title">' + esc(opts.title || 'Confirm') + '</div>' +
+            '<div class="scw-ws-v2-bulk-modal-sub">' + (opts.body || '') + '</div>' +
+          '</div>' +
+          '<div class="scw-ws-v2-bulk-modal-actions">' +
+            '<button type="button" class="scw-ws-v2-bulk-modal-cancel">' + esc(opts.cancelLabel || 'Cancel') + '</button>' +
+            '<button type="button" class="scw-ws-v2-bulk-modal-confirm-delete">' + esc(opts.okLabel || 'Confirm') + '</button>' +
+          '</div>' +
+        '</div>';
+      document.body.appendChild(ov);
+      function done(v) { if (ov.parentNode) ov.parentNode.removeChild(ov); resolve(v); }
+      ov.querySelector('.scw-ws-v2-bulk-modal-cancel').addEventListener('click', function () { done(false); });
+      ov.querySelector('.scw-ws-v2-bulk-modal-confirm-delete').addEventListener('click', function () { done(true); });
+      ov.addEventListener('click', function (e) { if (e.target === ov) done(false); });
+    });
+  }
+  ns.confirmModal = confirmModal;
+
+  /** Shared one-shot note prompt (textarea) → Promise<string|null> (null on
+   *  cancel). Reuses bulk.js's modal CSS. opts: { title, body(html), placeholder }. */
+  function promptNote(opts) {
+    opts = opts || {};
+    return new Promise(function (resolve) {
+      function esc(s) {
+        return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+          return ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[c];
+        });
+      }
+      var ov = document.createElement('div');
+      ov.className = 'scw-ws-v2-bulk-overlay';
+      ov.innerHTML =
+        '<div class="scw-ws-v2-bulk-modal scw-ws-v2-bulk-modal--confirm">' +
+          '<div class="scw-ws-v2-bulk-modal-head">' +
+            '<div class="scw-ws-v2-bulk-modal-title">' + esc(opts.title || 'Survey note required') + '</div>' +
+            '<div class="scw-ws-v2-bulk-modal-sub">' + (opts.body || '') + '</div>' +
+          '</div>' +
+          '<div style="padding:0 18px 6px;">' +
+            '<textarea class="scw-ws-v2-bulk-note" rows="3" placeholder="' + esc(opts.placeholder || '') + '" ' +
+              'style="width:100%;box-sizing:border-box;font:inherit;padding:8px;border:1px solid #cbd5e1;border-radius:6px;resize:vertical;"></textarea>' +
+          '</div>' +
+          '<div class="scw-ws-v2-bulk-modal-actions">' +
+            '<button type="button" class="scw-ws-v2-bulk-modal-cancel">Cancel</button>' +
+            '<button type="button" class="scw-ws-v2-bulk-modal-confirm-delete" disabled>Save with note</button>' +
+          '</div>' +
+        '</div>';
+      document.body.appendChild(ov);
+      var ta  = ov.querySelector('.scw-ws-v2-bulk-note');
+      var okB = ov.querySelector('.scw-ws-v2-bulk-modal-confirm-delete');
+      var caB = ov.querySelector('.scw-ws-v2-bulk-modal-cancel');
+      function done(v) { if (ov.parentNode) ov.parentNode.removeChild(ov); resolve(v); }
+      ta.addEventListener('input', function () { okB.disabled = !ta.value.trim(); });
+      caB.addEventListener('click', function () { done(null); });
+      okB.addEventListener('click', function () { var v = ta.value.trim(); if (v) done(v); });
+      ov.addEventListener('click', function (e) { if (e.target === ov) done(null); });
+      setTimeout(function () { ta.focus(); }, 30);
+    });
+  }
+  ns.promptNote = promptNote;
+
+  /** confirmZero config rule for a view, if any. */
+  function confirmZeroSpec(viewKey) {
+    try {
+      var vc = ns.cfg && typeof ns.cfg.viewCfg === 'function' && ns.cfg.viewCfg(viewKey);
+      return (vc && vc.confirmZero) || null;
+    } catch (e) { return null; }
+  }
+
   /** Commit an input: optimistic flash, fire PUT, handle error path. */
   function commit(input) {
     var fieldKey  = input.getAttribute('data-scw-ws-v2-field');
@@ -59,6 +149,34 @@
     var newValue  = input.value;
     var prevValue = input._scwWsV2Prev != null ? input._scwWsV2Prev : (input.defaultValue || '');
     if (newValue === prevValue) return; // no-op — value didn't actually change
+
+    // Config-driven $0/blank confirm (e.g. survey sub-bid Labor). Gate BEFORE
+    // saving: on cancel revert the input; on confirm fall through to save.
+    var zSpec = confirmZeroSpec(viewKey);
+    if (zSpec) {
+      var zCfg = (ns.cfg && ns.cfg.fields(viewKey)) || {};
+      var zKey = zCfg[zSpec.field] || zSpec.field;
+      if (fieldKey === zKey && isZeroBlank(newValue)) {
+        confirmModal({
+          title: zSpec.title, body: zSpec.body,
+          okLabel: 'Yes, continue', cancelLabel: 'Cancel'
+        }).then(function (ok) {
+          if (!ok) {
+            // Revert the cell to its prior value.
+            input.value = prevValue;
+            input._scwWsV2Prev = prevValue;
+            return;
+          }
+          performSave(input, fieldKey, recordId, viewKey, newValue, prevValue);
+        });
+        return;
+      }
+    }
+    performSave(input, fieldKey, recordId, viewKey, newValue, prevValue);
+  }
+
+  /** The actual optimistic-UI + PUT for a committed input. */
+  function performSave(input, fieldKey, recordId, viewKey, newValue, prevValue) {
 
     // Stamp the new value as the new "previous" right away — protects
     // against a Knack re-render coming in with a stale model value and
@@ -103,7 +221,15 @@
     // Sales-only discount inputs (absent on the build view → no fallback).
     if (EF.lineDiscPct) RECALC_DEPS[EF.lineDiscPct] = 1;
     if (EF.lineDiscAmt) RECALC_DEPS[EF.lineDiscAmt] = 1;
+    // Survey (view_3505): editing Labor (field_2400) recomputes the CALC
+    // Ext (field_2401); refetch so the Ext total under the Labor input
+    // refreshes. No `labor` logical key on the SOW object → no-op there.
+    if (EF.labor) RECALC_DEPS[EF.labor] = 1;
 
+    // Two-arg .then(onOk, onErr) — NOT .then().catch(). $.Deferred promises
+    // (and any fetch polyfill in the wrapper chain) may not expose .catch,
+    // which threw "Uncaught TypeError: ...catch is not a function" and broke
+    // the save's error handling in some users' environments.
     savePut(viewKey, recordId, fieldKey, newValue)
       .then(function (resp) {
         // SCW.knackAjax doesn\'t auto-fire knack-cell-update like
@@ -114,6 +240,14 @@
           if (typeof SCW.syncKnackModel === 'function') {
             SCW.syncKnackModel(viewKey, recordId, resp, fieldKey, newValue);
           }
+        } catch (e) { /* ignore */ }
+        // Let external grids that embed this card (e.g. the bid-review-v2
+        // comparison grid's expand-panel editor) know a record was saved so
+        // they can refetch + rebuild. SCW.knackAjax fires no knack-cell-update,
+        // and our internal notify only reaches worksheet-v2 subscribers.
+        try {
+          $(document).trigger('scw-ws-v2-record-saved',
+            [{ viewKey: viewKey, recordId: recordId, fieldKey: fieldKey }]);
         } catch (e) { /* ignore */ }
         // Fee depends on a server-side formula recompute. The per-
         // record fetch is unreliable on this view, so refetch the
@@ -128,8 +262,8 @@
           }
         }
         if (ns.data && typeof ns.data.notify === 'function') ns.data.notify(viewKey);
-      })
-      .catch(function (xhr) {
+      },
+      function (xhr) {
         console.warn('[scw-ws-v2] save failed', { recordId: recordId, fieldKey: fieldKey, xhr: xhr });
         // Revert the optimistic model patch + the input.
         try {

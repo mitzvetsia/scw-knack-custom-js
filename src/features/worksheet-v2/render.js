@@ -186,10 +186,29 @@
     var issueChips = (ns.summary && typeof ns.summary.issueChipsForL1 === 'function')
       ? (ns.summary.issueChipsForL1(l1) || '') : '';
 
+    // Sub-bid total for this MDF/IDF — shown in the header so the per-MDF
+    // money is visible at a glance (skipped for install — no money model).
+    var moneyStr = '';
+    try {
+      var _vc = ns.cfg && typeof ns.cfg.viewCfg === 'function' && ns.cfg.viewCfg(sourceViewKey);
+      var _mm = _vc && _vc.moneyMode;
+      if (_mm !== 'install' && ns.summary && typeof ns.summary.l1MoneyTotal === 'function') {
+        var _opts = {
+          viewKey:         sourceViewKey,
+          fields:          (ns.cfg && typeof ns.cfg.fields === 'function') ? ns.cfg.fields(sourceViewKey) : null,
+          moneyField:      (_mm === 'sales') ? 'field_2269' : (_mm === 'survey' ? 'field_2401' : null),
+          includeServices: (_mm === 'survey')
+        };
+        var _t = ns.summary.l1MoneyTotal(l1, _opts);
+        if (_t) moneyStr = ns.summary.fmtMoney(_t);
+      }
+    } catch (e) { /* no money in header */ }
+
     head.innerHTML =
       '<span class="scw-ws-v2-l1-chevron">' + L1_CHEVRON_SVG + '</span>' +
       '<span class="scw-ws-v2-l1-label">' + escapeHtml(l1.label) + '</span>' +
       issueChips +
+      (moneyStr ? '<span class="scw-ws-v2-l1-money">' + moneyStr + '</span>' : '') +
       '<span class="scw-ws-v2-l1-count">' + l1.recordCount + '</span>';
 
     return head;
@@ -231,17 +250,36 @@
     // Sales money model? (moneyMode:'sales') — drives the summary money
     // column (Total vs Sub Bid) and the column-header labels below.
     var salesMoney = false;
+    var surveyMoney = false;
+    var installMoney = false;
     try {
       var _vcSales = ns.cfg && typeof ns.cfg.viewCfg === 'function' &&
                      ns.cfg.viewCfg(sourceViewKey);
-      salesMoney = !!(_vcSales && _vcSales.moneyMode === 'sales');
+      salesMoney  = !!(_vcSales && _vcSales.moneyMode === 'sales');
+      surveyMoney = !!(_vcSales && _vcSales.moneyMode === 'survey');
+      installMoney = !!(_vcSales && _vcSales.moneyMode === 'install');
     } catch (e) { /* default to build-SOW */ }
     var summaryMoneyOpts = salesMoney
       ? { moneyField: 'field_2269', moneyLabel: 'Total' }
-      : null;
+      : (surveyMoney ? { moneyField: 'field_2401', moneyLabel: 'Sub Bid' } : {});
+    // Install has no money columns — show the summary minus the Sub Bid column.
+    if (installMoney) summaryMoneyOpts.hideMoney = true;
+    // Bid (survey): roll service items into the summary so the per-MDF sub-bid
+    // total is complete.
+    if (surveyMoney) summaryMoneyOpts.includeServices = true;
+    // Hand the summary a per-view field map (cfg.fields) + the view key so
+    // aggregate() resolves product/qty/cabling/money per-object instead of
+    // the SOW literals it used to hardcode (CLAUDE.md #15). SOW path is
+    // unchanged (map resolves to the same literals).
+    try {
+      summaryMoneyOpts.fields = (ns.cfg && typeof ns.cfg.fields === 'function')
+        ? ns.cfg.fields(sourceViewKey) : null;
+    } catch (eF) { summaryMoneyOpts.fields = null; }
+    summaryMoneyOpts.viewKey = sourceViewKey;
 
-    // Per-L1 summary block — sits at the top of the body, always
-    // rendered; CSS controls its visibility per toolbar mode.
+    // Per-L1 summary block — sits at the top of the body, always rendered;
+    // CSS controls its visibility per toolbar mode. Rendered for every money
+    // model now (install gets the no-money variant).
     if (ns.summary && typeof ns.summary.buildL1Summary === 'function') {
       try {
         var sumEl = ns.summary.buildL1Summary(l1, summaryMoneyOpts);
@@ -258,20 +296,53 @@
       // headers line up with their columns. Cam-row-shaped (with
       // "Drop" slot) since the cam template is the superset.
       var hdr = document.createElement('div');
-      hdr.className = 'scw-ws-v2-col-header' + (salesMoney ? ' scw-ws-v2-col-header--sales' : '');
-      hdr.innerHTML =
-        '<span></span>' + /* chevron slot */
-        '<span>Drop</span>' +
-        '<span>Product</span>' +
-        // Sales rows put SCW Notes (field_1953) in this fill column, not
-        // a labor description — so label it accordingly there.
-        (salesMoney ? '<span>SCW Notes</span>' : '<span>Description</span>') +
-        '<span>Qty</span>' +
-        (salesMoney
-          ? '<span class="scw-ws-v2-col-header-total">Total</span>'
-          : '<span>Sub Bid</span><span>+Hrs</span><span>+Mat</span><span>Fee</span><span>SOW</span>') +
-        '<span></span>' + /* warning slot */
-        (salesMoney ? '<span>CR</span>' : '<span></span>');   /* trash / CR slot */
+      hdr.className = 'scw-ws-v2-col-header' +
+        (salesMoney  ? ' scw-ws-v2-col-header--sales'  : '') +
+        (surveyMoney ? ' scw-ws-v2-col-header--survey' : '') +
+        (installMoney ? ' scw-ws-v2-col-header--install' : '');
+      if (installMoney) {
+        // Install 7-track header (matches the install row grid): chevron ·
+        // Label · Product · Flags · SCW Notes · warn · trash. No money columns.
+        hdr.innerHTML =
+          '<span></span>' +
+          '<span>Label</span>' +
+          '<span>Product</span>' +
+          '<span>Flags</span>' +
+          '<span>SCW Notes</span>' +
+          '<span></span>' +
+          '<span></span>';
+      } else if (surveyMoney) {
+        // Survey 11-track header: chevron · Drop · Product · Survey Notes ·
+        // Description · Qty/Chips · Labor · Ext · Bid · warn · trash.
+        // (SCW Notes lives in the detail panel.)
+        hdr.innerHTML =
+          '<span></span>' +
+          '<span>Drop</span>' +
+          '<span>Product</span>' +
+          '<span>Survey Notes</span>' +
+          '<span title="Detail the work that will be completed under this line item">' +
+            'Description of Work</span>' +
+          '<span>Qty</span>' +
+          '<span class="scw-ws-v2-col-header-total">Labor</span>' +
+          '<span class="scw-ws-v2-col-header-total">Ext</span>' +
+          '<span class="scw-ws-v2-col-header-total">Bid</span>' +
+          '<span></span>' +
+          '<span></span>';
+      } else {
+        hdr.innerHTML =
+          '<span></span>' + /* chevron slot */
+          '<span>Drop</span>' +
+          '<span>Product</span>' +
+          // Sales rows put SCW Notes (field_1953) in this fill column, not
+          // a labor description — so label it accordingly there.
+          (salesMoney ? '<span>SCW Notes</span>' : '<span>Description</span>') +
+          '<span>Qty</span>' +
+          (salesMoney
+            ? '<span class="scw-ws-v2-col-header-total">Total</span>'
+            : '<span>Sub Bid</span><span>+Hrs</span><span>+Mat</span><span>Fee</span><span>SOW</span>') +
+          '<span></span>' + /* warning slot */
+          (salesMoney ? '<span>CR</span>' : '<span></span>');   /* trash / CR slot */
+      }
       body.appendChild(hdr);
 
       for (var i = 0; i < l1.l2.length; i++) {
@@ -364,7 +435,9 @@
     try {
       var _vcS = ns.cfg && typeof ns.cfg.viewCfg === 'function' &&
                  ns.cfg.viewCfg(sourceViewKey);
-      _vcHideSow = !!(_vcS && _vcS.hideSow);
+      // hideSow suppresses the filter ONLY when the view has no filterPills
+      // override. A filterPills view (survey → Bid) keeps the filter active.
+      _vcHideSow = !!(_vcS && _vcS.hideSow && !_vcS.filterPills);
     } catch (e) { /* default: filter applies */ }
     var effectiveRecords = (!_vcHideSow && ns.sowFilter &&
         typeof ns.sowFilter.filterRecords === 'function')
@@ -380,7 +453,13 @@
     var sortPreset = (ns.sort && typeof ns.sort.getActivePreset === 'function')
       ? ns.sort.getActivePreset(sourceViewKey)
       : null;
-    var tree = ns.groups.buildGroupTree(effectiveRecords, seedGroups, { sortPreset: sortPreset });
+    var tree = ns.groups.buildGroupTree(effectiveRecords, seedGroups, {
+      sortPreset: sortPreset,
+      // Per-view field map so L1 (MDF/IDF) / L2 (bucket) / sort resolve for
+      // non-SOW objects (survey view_3505 groups by field_2375 / field_2366).
+      fields: (ns.cfg && typeof ns.cfg.fields === 'function')
+        ? ns.cfg.fields(sourceViewKey) : null
+    });
     if (ns.state && typeof ns.state.applyOpenState === 'function') {
       ns.state.applyOpenState(sourceViewKey, tree);
     } else {
@@ -423,14 +502,26 @@
     // Whole-grid summary at the top — aggregates every L1\'s records
     // into one table. Visible in default mode AND summary-only mode.
     var _grandSales = false;
+    var _grandSurvey = false;
+    var _grandInstall = false;
     try {
       var _vcGrand = ns.cfg && typeof ns.cfg.viewCfg === 'function' &&
                      ns.cfg.viewCfg(sourceViewKey);
-      _grandSales = !!(_vcGrand && _vcGrand.moneyMode === 'sales');
+      _grandSales  = !!(_vcGrand && _vcGrand.moneyMode === 'sales');
+      _grandSurvey = !!(_vcGrand && _vcGrand.moneyMode === 'survey');
+      _grandInstall = !!(_vcGrand && _vcGrand.moneyMode === 'install');
     } catch (e) { /* default */ }
     var grandMoneyOpts = _grandSales
       ? { moneyField: 'field_2269', moneyLabel: 'Total' }
-      : null;
+      : (_grandSurvey ? { moneyField: 'field_2401', moneyLabel: 'Sub Bid' } : {});
+    if (_grandInstall) grandMoneyOpts.hideMoney = true;
+    if (_grandSurvey) grandMoneyOpts.includeServices = true;
+    try {
+      grandMoneyOpts.fields = (ns.cfg && typeof ns.cfg.fields === 'function')
+        ? ns.cfg.fields(sourceViewKey) : null;
+    } catch (eGF) { grandMoneyOpts.fields = null; }
+    grandMoneyOpts.viewKey = sourceViewKey;
+    // Grand summary — rendered for every money model (install = no-money variant).
     if (ns.summary && typeof ns.summary.buildGrandSummary === 'function') {
       try {
         var grand = ns.summary.buildGrandSummary(tree, grandMoneyOpts);

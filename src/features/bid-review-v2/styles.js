@@ -616,6 +616,17 @@
     '.scw-bid-review-v2__panel-col--card .scw-ws-v2-detail-notes {',
     '  grid-template-columns: 1fr !important;',
     '}',
+    /* SCW Notes is READ-ONLY on the bid comparison page. Repo locked-field
+       convention: fully readable, white background (editable inputs are
+       light-gray), no pointer interaction, no opacity/graying. The "Read-only"
+       tag in the label makes the non-editable state explicit. */
+    '.scw-bid-review-v2__panel-col--card .scw-br-v2-scwnotes-ro {',
+    '  background: #fff !important; pointer-events: none; cursor: default;',
+    '  color: #1f2937 !important;',
+    '}',
+    '.scw-bid-review-v2__panel-col--card .scw-ws-v2-detail-notes .scw-ws-v2-detail-label::after {',
+    '  content: " \\00B7 Read-only"; font-weight: 600; color: #9ca3af;',
+    '}',
     '.scw-bid-review-v2__panel-col--card .scw-ws-v2-input--num { width: 72px !important; }',
     '.scw-bid-review-v2__panel-col--card .scw-ws-v2-cell--blank { display: none !important; }',
     '.scw-bid-review-v2__panel-col--card .scw-ws-v2-col-header { display: none !important; }',
@@ -958,6 +969,7 @@
     '  background: #fafafa; text-align: center; color: #cbd5e1;',
     '}',
     '.scw-bid-review-v2__cell-empty-mark { font-size: 18px; line-height: 1; }',
+    '.scw-bid-review-v2__no-sow-note { font-size: 12px; font-style: italic; color: #94a3b8; }',
     /* Stacked bid items: 2+ bid line items on one bid mapping to the same
        SOW item. Each is a delineated block; the SOW cell (single <td>)
        naturally spans the full stacked height. */

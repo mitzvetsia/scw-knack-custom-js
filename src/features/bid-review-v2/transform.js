@@ -27,6 +27,10 @@
 
   var FK = ns.CONFIG.fieldKeys;
 
+  // Synthetic grid id used when no real SOW resolves (all-services bid, etc).
+  // Exported so card.js can render its SOW column as "No SOW" only.
+  var NO_SOW = '__no_sow__';
+
   // bid record id → SOW line item id; (re)built each buildState() run, read by
   // getMismatches to resolve bid-side connections to SOW line items.
   var _bidToSow = Object.create(null);
@@ -535,6 +539,26 @@
 
   function buildState(records, sowItems, bidPackages) {
     var sows = extractSows(records);
+    // Also surface SOWs reachable through the SOW line items (view_3921): a bid
+    // record's own field_2154 can be empty while its related line item IS on a
+    // SOW (the line item is authoritative — same rule groupBySow uses). Without
+    // this, a bid set whose SOW link lives only on the line items renders 0 SOW
+    // grids even though the SOW has items to review.
+    (function unionSowsFromItems() {
+      var _SFK0 = ns.CONFIG.sowItemFieldKeys || {};
+      var seen = Object.create(null);
+      for (var s = 0; s < sows.length; s++) seen[sows[s].id] = true;
+      var items = sowItems || [];
+      for (var j = 0; j < items.length; j++) {
+        var conns = connectionAll(items[j], _SFK0.sow);
+        for (var c = 0; c < conns.length; c++) {
+          var id = conns[c] && conns[c].id;
+          if (!id || seen[id]) continue;
+          seen[id] = true;
+          sows.push({ id: id, name: stripHtml(conns[c].identifier || ('SOW ' + sows.length)) });
+        }
+      }
+    })();
     // bid record id → its SOW line item id (field_2404 relatedSowItem). Lets
     // the connected-device / connected-to diff resolve a bid record's
     // connections (field_2380/2381 point at OTHER bid records) to SOW line
@@ -565,6 +589,88 @@
     }
     var buckets = groupBySow(records, sowIdsByItem);
     var pkgInfo = buildPkgInfoMap(bidPackages);
+
+    // Fallback: surface bid items that land on NO real SOW grid so they are
+    // never silently dropped. A bid record is "covered" when its bid package
+    // touches at least one real SOW — then it shows in that SOW's grid, either
+    // as a matched row or as an "other item" ("+ Add to SOW"). Records on a
+    // package that touches NO real SOW have no column anywhere and would
+    // otherwise disappear entirely (the user sees the SOW line items as
+    // "NOT ON BID" rows but none of the bid items). Collect them into one
+    // synthetic "Bid items (no matching SOW)" grid — columns = packages,
+    // rows = bid line items — appended last.
+    //
+    // This fires whenever such orphan packages exist, NOT only when there are
+    // zero real SOWs. Deriving SOW grids from the line items (unionSowsFromItems
+    // above) means real SOWs can be present while a given bid package still
+    // matches none of them; the old `sows.length === 0` gate let those orphan
+    // bids vanish. (When there ARE zero real SOWs every package is uncovered,
+    // so this reduces to the original all-services behavior.)
+    var SYN_SOW = NO_SOW;
+    (function buildSyntheticOrphanGrid() {
+      var realSowSet = Object.create(null);
+      for (var rs = 0; rs < sows.length; rs++) realSowSet[sows[rs].id] = true;
+
+      // Does a bid record touch ANY real SOW? Same rule as groupBySow: the
+      // record's own field_2154, OR its related SOW line item's field_2154.
+      function touchesAnyRealSow(rec) {
+        var sc = connectionAll(rec, FK.sow);
+        for (var x = 0; x < sc.length; x++) {
+          if (sc[x] && sc[x].id && realSowSet[sc[x].id]) return true;
+        }
+        var siId = connectionId(rec, FK.relatedSowItem);
+        if (siId && sowIdsByItem[siId]) {
+          for (var sk in sowIdsByItem[siId]) { if (realSowSet[sk]) return true; }
+        }
+        return false;
+      }
+
+      // Group bid-package records; a package is covered if ANY of its records
+      // touches a real SOW (so a partially-linked package isn't synthesized —
+      // its unlinked records already show as "other items" on the real grid).
+      var pkgRecs = Object.create(null);
+      var pkgCovered = Object.create(null);
+      for (var o = 0; o < records.length; o++) {
+        var r = records[o];
+        if (!r || !r.id) continue;
+        var pkgs = connectionAll(r, FK.bidPackage);
+        if (!pkgs.length) continue;
+        var touches = touchesAnyRealSow(r);
+        for (var p = 0; p < pkgs.length; p++) {
+          var pid = pkgs[p].id;
+          if (!pid) continue;
+          (pkgRecs[pid] = pkgRecs[pid] || []).push(r);
+          if (touches) pkgCovered[pid] = true;
+        }
+      }
+
+      // Orphan records = on a package NO record of which touches a real SOW.
+      var orphanRecs = [];
+      var seenOrphan = Object.create(null);
+      for (var pid2 in pkgRecs) {
+        if (pkgCovered[pid2]) continue;
+        var list = pkgRecs[pid2];
+        for (var rj = 0; rj < list.length; rj++) {
+          if (seenOrphan[list[rj].id]) continue;
+          seenOrphan[list[rj].id] = true;
+          orphanRecs.push(list[rj]);
+        }
+      }
+
+      if (ns.CONFIG.debug && orphanRecs.length) {
+        try {
+          console.log('[scw-br-v2] synthetic orphan grid', {
+            realSows: sows.length,
+            orphanBidRecords: orphanRecs.length
+          });
+        } catch (e) {}
+      }
+
+      if (orphanRecs.length) {
+        sows.push({ id: SYN_SOW, name: 'Bid items (no matching SOW)' });
+        buckets[SYN_SOW] = orphanRecs;
+      }
+    })();
 
     // Index SOW items by id for fast per-row lookup. The row carries a
     // `sowItem` id from the bid record's field_2404 (relatedSowItem);
@@ -659,6 +765,22 @@
       var precs = pkgAllRecords[pkgId] || [];
       for (var t = 0; t < precs.length; t++) {
         if (recordTouchesSow(precs[t], sowId)) return true;
+      }
+      return false;
+    }
+    // Does the package price a line item that is AUTHORITATIVELY on this SOW
+    // (the SOW line item's own field_2154 — not the drift-prone bid-side
+    // field_2154)? Used to narrow the sibling-SOW gate: a package whose items
+    // genuinely belong to this SOW must show here regardless of field_2387.
+    function recordItemOnSow(rec, sowId) {
+      var siId = connectionId(rec, FK.relatedSowItem);
+      return !!(siId && sowItemIndex[siId] && sowItemIndex[siId].sowIds &&
+                sowItemIndex[siId].sowIds[sowId]);
+    }
+    function packageHasItemOnSow(pkgId, sowId) {
+      var precs = pkgAllRecords[pkgId] || [];
+      for (var t = 0; t < precs.length; t++) {
+        if (recordItemOnSow(precs[t], sowId)) return true;
       }
       return false;
     }
@@ -816,24 +938,57 @@
     var sowGrids = [];
     for (var i = 0; i < sows.length; i++) {
       var sow = sows[i];
+      // Per-grid guard: a single SOW whose data trips an exception must NOT
+      // blank the whole bid review. buildState runs before render.js sets
+      // body.innerHTML, and it is not wrapped there — so an uncaught throw
+      // here leaves the grid empty. Skip the offending SOW, keep the rest.
+      try {
       var bucket = buckets[sow.id] || [];
+      var isSyn = (sow.id === SYN_SOW);
+      // Synthetic grid: which bid records are in this fallback bucket.
+      var synSet = null;
+      if (isSyn) {
+        synSet = Object.create(null);
+        for (var _z = 0; _z < bucket.length; _z++) if (bucket[_z] && bucket[_z].id) synSet[bucket[_z].id] = true;
+      }
       // Columns: every package that TOUCHES this SOW (not just ones with
       // a bucketed record), cloned so per-SOW totals/status don't bleed
-      // across grids.
+      // across grids. Synthetic grid: include any package holding a bucket record.
       var packages = [];
       for (var ap = 0; ap < allPackages.length; ap++) {
-        if (!packageTouchesSow(allPackages[ap].id, sow.id)) continue;
-        // Sibling-SOW gate — CLEARED 2026-06-23 (per request). Previously a
-        // bid whose REL_SOW (field_2387) named OTHER SOW(s) was excluded from
-        // this grid. That hid bids from sibling/alternate-option SOWs that
-        // share line items (e.g. camera opt2 vs opt3): a bid placed against
-        // 1294 never showed on 1210 even though they share the headend/IDF
-        // devices. Now a bid shows on EVERY SOW it touches (shares a line
-        // item with), regardless of field_2387 — matching the empty-bidSow
-        // behavior for all bids. To restore the gate, un-comment below.
-        // var _pkInfo = pkgInfo[allPackages[ap].id];
-        // var _bidSowIds = (_pkInfo && _pkInfo.bidSowIds) || [];
-        // if (_bidSowIds.length && _bidSowIds.indexOf(sow.id) === -1) continue;
+        // NOTE (merge 2026-06-23): this branch had blanket-CLEARED the
+        // sibling-SOW gate so bids show on every SOW they touch. quirky-fermat's
+        // version below is the refined superset — it keeps the gate ONLY when
+        // the package has no authoritative item on this SOW (field_2154 is the
+        // truth), so shared line items (field_2154 lists both SOWs) still show
+        // on both, while genuinely-other-SOW bids stay gated. Took quirky's.
+        if (isSyn) {
+          var _precs = pkgAllRecords[allPackages[ap].id] || [];
+          var _hit = false;
+          for (var _pz = 0; _pz < _precs.length; _pz++) {
+            if (_precs[_pz] && synSet[_precs[_pz].id]) { _hit = true; break; }
+          }
+          if (!_hit) continue;
+        } else {
+          if (!packageTouchesSow(allPackages[ap].id, sow.id)) continue;
+          // Sibling-SOW gate (v1 parity): a bid whose REL_SOW (field_2387) is set
+          // to OTHER SOW(s) and NOT this one is a bid for a different SOW — exclude
+          // it so its items don't get dumped into this grid's "belong to another
+          // SOW" block. Empty bidSow = unrestricted (shows on every SOW it touches).
+          //
+          // BUT only apply the gate when this package has NO item AUTHORITATIVELY
+          // on this SOW. field_2387 is a coarse, drift-prone hint set on the bid
+          // package; the SOW line item's own field_2154 membership is the truth.
+          // A package that genuinely prices line items on this SOW must show here
+          // even if field_2387 lists only a sibling SOW — otherwise its columns
+          // vanish and the grid reads "N line items × 0 bids" while the rows
+          // (bucketed via the same authoritative membership) still render.
+          if (!packageHasItemOnSow(allPackages[ap].id, sow.id)) {
+            var _pkInfo = pkgInfo[allPackages[ap].id];
+            var _bidSowIds = (_pkInfo && _pkInfo.bidSowIds) || [];
+            if (_bidSowIds.length && _bidSowIds.indexOf(sow.id) === -1) continue;
+          }
+        }
         var pc = {};
         for (var pk in allPackages[ap]) {
           if (Object.prototype.hasOwnProperty.call(allPackages[ap], pk)) pc[pk] = allPackages[ap][pk];
@@ -901,7 +1056,9 @@
         }
       }
       var otherRecs = [], seenOther = Object.create(null);
-      for (var oc = 0; oc < packages.length; oc++) {
+      // Synthetic grid already holds every bucket record as a matched row —
+      // don't re-collect package-mates (they'd pull real-SOW items in).
+      if (!isSyn) for (var oc = 0; oc < packages.length; oc++) {
         var oprecs = pkgAllRecords[packages[oc].id] || [];
         for (var op = 0; op < oprecs.length; op++) {
           var orec = oprecs[op];
@@ -1044,6 +1201,12 @@
         rows:     allRows,
         groups:   groups
       });
+      } catch (eGrid) {
+        try {
+          console.warn('[scw-br-v2] buildState: skipped SOW grid "' +
+            (sow && sow.name) + '" (' + (sow && sow.id) + ')', eGrid);
+        } catch (e) {}
+      }
     }
     return { sowGrids: sowGrids, isEmpty: sowGrids.length === 0 };
   }
@@ -1167,6 +1330,7 @@
   }
 
   ns.transform = {
+    NO_SOW:           NO_SOW,
     buildState:       buildState,
     groupRows:        groupRows,
     getMismatches:    getMismatches,

@@ -20,6 +20,11 @@
 
   var FK  = ns.CONFIG.fieldKeys;
   var SFK = ns.CONFIG.sowItemFieldKeys || {};
+  // Synthetic "no SOW" grid (all-services bid etc.): the SOW column shows only
+  // a "No SOW" note and per-row sync-to-SOW is suppressed — the only SOW action
+  // is the per-bid "+ Create new SOW".
+  var NO_SOW_ID = (ns.transform && ns.transform.NO_SOW) || '__no_sow__';
+  function isNoSowGrid(sowId) { return sowId === NO_SOW_ID; }
   // Source views:
   //   [0] view_3680 — bid records  (READ-ONLY in this grid; changes go
   //                                 through Change Requests)
@@ -519,11 +524,19 @@
       'data-package-id="' + escapeHtml(pkgId || '') + '" ' +
       'data-sow-id="' + escapeHtml(sowId || '') + '"';
   }
-  // Revise + Remove stack for a populated bid cell. Skipped for
-  // requireSubBid:No rows (informational items the bidder isn't pricing).
+  // Revise + Remove stack for a populated bid cell. CR buttons require
+  // sub-bid to be wanted on EITHER side: the bid record (field_2478 →
+  // row.requireSubBid) OR the SOW line item (field_2479 →
+  // row.requireSubBidSow). Suppress ONLY when both are explicitly No — a
+  // lone "No" on the bid record no longer hides the buttons if the SOW
+  // still wants the item priced.
   function cellActionStack(row, pkgId, sowId, diffs) {
-    var noSubBid = row.requireSubBid && /^no$/i.test(String(row.requireSubBid).trim());
-    if (noSubBid) return '';
+    var isNoFlag = function (v) {
+      if (v === false) return true;
+      if (v == null) return false;
+      return /^(no|false)$/i.test(String(v).replace(/<[^>]*>/g, '').trim());
+    };
+    if (isNoFlag(row.requireSubBid) && isNoFlag(row.requireSubBidSow)) return '';
     // When the bid mismatches the SOW for this row, the Revise button
     // becomes a dropdown (v1 parity): "Edit bid values" (free-form CR) +
     // "Match SOW values" (CR prefilled from SOW). dispatchCRAction handles
@@ -661,13 +674,38 @@
       var noteHtml = surveyNoteHtml(surveyNoteTxt);
       var actions  = '';
       if (row) {
-        var addLabel = hasBidRecord ? '+ Reinstate' : '+ Add to bid';
-        actions =
-          '<div class="scw-bid-review-v2__cell-actions">' +
-            '<button type="button" class="scw-bid-review__cell-action ' +
-              'scw-bid-review__cell-action--add scw-bid-review-v2__cell-action" ' +
-              crAttrs('cell_add_to_bid', row.id, pkgId, sowId) + '>' + addLabel + '</button>' +
+        // "+ Add to bid" (no existing bid record) → a true ADD that creates a
+        // brand-new bid record. "+ Reinstate" (the bid record still exists, just
+        // unlinked from this package) → a REVISE-type CR that RE-LINKS the
+        // existing bid record (never a new add). The two MUST dispatch
+        // different actions or reinstate duplicates the bid record.
+        if (hasBidRecord) {
+          // The bid RECORD id to re-link. For a bid-side row (surveyNoBid /
+          // Source-B removed) row.id IS the view_3680 bid record id; the
+          // snapshot carries the values to show in the CR.
+          var det = (row.detail && row.detail.side === 'BID') ? row.detail : null;
+          actions =
+            '<div class="scw-bid-review-v2__cell-actions">' +
+              '<button type="button" class="scw-bid-review__cell-action ' +
+                'scw-bid-review__cell-action--add scw-bid-review-v2__cell-action" ' +
+                crAttrs('cell_reinstate', row.id, pkgId, sowId) +
+                ' data-bid-record-id="' + escapeHtml(row.id || '') + '"' +
+                ' data-sow-item-id="' + escapeHtml(row.sowItem || '') + '"' +
+                ' data-display-label="' + escapeHtml(row.displayLabel || '') + '"' +
+                ' data-product-name="' + escapeHtml((det && det.product) || row.productName || '') + '"' +
+                ' data-reinstate-qty="' + escapeHtml(det && det.qty != null ? det.qty : '') + '"' +
+                ' data-reinstate-fee="' + escapeHtml(det && det.fee != null ? det.fee : '') + '"' +
+                ' data-reinstate-desc="' + escapeHtml(ns.transform.stripHtml((det && det.desc) || '')) + '"' +
+                '>+ Reinstate</button>' +
+            '</div>';
+        } else {
+          actions =
+            '<div class="scw-bid-review-v2__cell-actions">' +
+              '<button type="button" class="scw-bid-review__cell-action ' +
+                'scw-bid-review__cell-action--add scw-bid-review-v2__cell-action" ' +
+                crAttrs('cell_add_to_bid', row.id, pkgId, sowId) + '>+ Add to bid</button>' +
           '</div>';
+        }
       }
       td.innerHTML =
         '<span class="' + badgeCls + '">' + badge + '</span>' + detail + noteHtml + actions;
@@ -774,8 +812,10 @@
   }
 
   // Append v1's pending-CR summary card (if any) into a cell + flag the
-  // cell so it reads as "has a pending change". The card carries the CR
-  // dispatch attrs so clicking it re-opens the edit modal (v1 parity).
+  // cell so it reads as "has a pending change". Clicking the card EXPANDS the
+  // row (bubbles to the row's expand handler) rather than re-opening the edit
+  // modal — the cell's own Revise button still covers editing the CR. (The
+  // card's × dismiss button stops propagation, so it still dismisses.)
   function appendPendingCard(td, pendingItem, row, pkg, sowId) {
     if (!pendingItem) return;
     var api = crApi();
@@ -784,10 +824,6 @@
       var card = api.buildSummaryCard(pendingItem, pkg && pkg.id, pkg && pkg.label);
       if (card) {
         card.classList.add('scw-bid-review-v2__cell-cr-card');
-        card.setAttribute('data-action', 'cell_request_change');
-        card.setAttribute('data-row-id', (row && row.id) || '');
-        card.setAttribute('data-package-id', (pkg && pkg.id) || '');
-        card.setAttribute('data-sow-id', sowId || '');
         td.classList.add('scw-bid-review-v2__cell--has-cr');
         td.appendChild(card);
       }
@@ -1257,14 +1293,21 @@
     // Reuse v1's handlers via SCW.bidReview.dispatchHeaderAction; buttons keep
     // the v1 data-* attrs + .scw-bid-review__btn classes v1's setBusy expects.
     var isSubmitted = /^submitted$/i.test(String(pkg.bidStatus || '').trim());
+    // The no-SOW grid surfaces draft / in-progress bids, so show the bid-column
+    // action buttons there regardless of submitted status.
+    var showActions = isSubmitted || isNoSowGrid(sowId);
 
     var sowGroup = '';
-    if (isSubmitted) {
+    if (showActions) {
       sowGroup =
         '<div class="scw-bid-review-v2__head-group scw-bid-review-v2__head-group--sow">' +
           '<div class="scw-bid-review-v2__head-group-label">SOW</div>' +
+          // No-SOW grid: there's no SOW to "update to match", so show only
+          // "+ Create new SOW" and hide "Update SOW to match Bid". Real grids
+          // show both.
           headBtn('+ Create new SOW', 'create', 'package_create_sow', pkg.id, sowId) +
-          headBtn('← Update SOW to match Bid', 'adopt', 'package_copy_to_sow', pkg.id, sowId) +
+          (isNoSowGrid(sowId) ? '' :
+            headBtn('← Update SOW to match Bid', 'adopt', 'package_copy_to_sow', pkg.id, sowId)) +
         '</div>';
     }
 
@@ -1276,8 +1319,8 @@
     var crCount = (bucket && bucket.items) ? bucket.items.length : 0;
 
     var crGroup = '';
-    if (isSubmitted || crCount) {
-      var bulkBtn = isSubmitted
+    if (showActions || crCount) {
+      var bulkBtn = showActions
         ? '<button type="button" class="scw-bid-review__btn scw-bid-review-v2__head-btn ' +
             'scw-bid-review-v2__head-btn--cr-bulk" data-action="cr_bulk_selected" ' +
             'data-pkg-id="' + escapeHtml(pkg.id) + '" data-package-id="' + escapeHtml(pkg.id) + '" ' +
@@ -1451,7 +1494,16 @@
     var colspan = grid.packages.length + 3;
     var groups = grid.groups || [{ key: '__all__', level: 0, rows: grid.rows, subgroups: [] }];
     for (var g = 0; g < groups.length; g++) {
-      appendGroup(tbody, groups[g], grid.packages, colspan, grid.sowId);
+      // Per-group guard: a throw in one group must not blank the whole section
+      // (render.js's per-grid catch would otherwise drop the entire grid →
+      // empty body, which is the "loads then disappears" on a no-SOW bid).
+      try {
+        appendGroup(tbody, groups[g], grid.packages, colspan, grid.sowId);
+      } catch (ge) {
+        if (window.console && console.warn) {
+          console.warn('[scw-br-v2] appendGroup threw', grid.sowId, groups[g] && groups[g].key, ge);
+        }
+      }
     }
     table.appendChild(tbody);
     section.appendChild(table);

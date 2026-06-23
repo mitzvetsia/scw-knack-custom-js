@@ -32,6 +32,12 @@
     },
     {
       viewId: 'view_3908',
+      // Accept Proposal → a record-scoped child page of the proposal. Splice
+      // the proposal record id onto the link's final path segment so the
+      // connected Add form auto-fills the proposal connection (mirrors the
+      // public token snippet, where the id is otherwise lost). Idempotent —
+      // on this record-detail scene Knack may already include the id.
+      appendRecordId: true,
       gate: function (attrs) {
         return isYesValue(attrs.field_2747) || isYesValue(attrs.field_2747_raw);
       }
@@ -378,9 +384,19 @@
     return out;
   }
 
+  // Append a Knack record id as the final hash path segment, e.g.
+  //   #project-proposal/accept-proposal3  →  …/accept-proposal3/<id>
+  // Idempotent — won't double-append if the id is already the last segment.
+  function appendRecordIdToHref(href, recordId) {
+    if (!href || !recordId) return href;
+    if (new RegExp('/' + recordId + '/?$').test(href)) return href;  // already there
+    return href.replace(/\/?$/, '/') + recordId;
+  }
+
   function gatherCtaLinks() {
     var attrs = readPublishedProposalAttrs();
     if (!attrs) return [];
+    var recordId = attrs.id;
     var all = [];
     for (var i = 0; i < CTA_CONFIGS.length; i++) {
       var cfg = CTA_CONFIGS[i];
@@ -388,7 +404,12 @@
         if (!cfg.gate(attrs)) continue;
       } catch (e) { continue; }
       var links = readLinksFromView(cfg.viewId);
-      for (var j = 0; j < links.length; j++) all.push(links[j]);
+      for (var j = 0; j < links.length; j++) {
+        if (cfg.appendRecordId && recordId) {
+          links[j].href = appendRecordIdToHref(links[j].href, recordId);
+        }
+        all.push(links[j]);
+      }
     }
     return all;
   }

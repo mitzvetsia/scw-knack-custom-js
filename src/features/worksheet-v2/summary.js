@@ -63,8 +63,24 @@
   //   { sections: [{label, products, subtotal}], totals }
   // where sections are ordered: cam/reader first, then "default"
   // (networking / headend / everything else).
-  function aggregate(records, moneyField) {
-    moneyField = moneyField || 'field_2150';
+  function aggregate(records, opts) {
+    opts = opts || {};
+    var F = opts.fields || {};
+    var viewKey = opts.viewKey;
+    // Field map — logical name → field key, resolved per-view via
+    // cfg.fields (see CLAUDE.md #15). SOW defaults keep the build-SOW
+    // path byte-identical; survey/install resolve their own keys.
+    var moneyField = opts.moneyField || F.subBid || 'field_2150';
+    var fProduct   = F.product      || 'field_1949';
+    var fProductNm = F.productName  || null;   // stored name (survey); SOW has none
+    var fQty       = F.qty          || 'field_1964';
+    var fSort      = F.sortOrder    || 'field_2218';
+    var fLabel     = F.displayLabel || 'field_1950';
+    var fExist     = F.existCabling || 'field_2461';
+    var fExt       = F.exterior     || 'field_1984';
+    var fPlenum    = F.plenum       || 'field_1983';
+    var fLaborDesc = F.laborDesc    || '';
+    var includeServices = !!opts.includeServices;   // bid: count services too
     var bucketCategoryOf = (ns.card && ns.card.bucketCategoryOf) ||
                            function () { return 'default'; };
 
@@ -72,6 +88,8 @@
       cam:      { label: 'Camera / Reader',     byProduct: Object.create(null),
                   subtotal: emptyAgg(), minSort: Infinity },
       'default':{ label: 'Networking / Headend', byProduct: Object.create(null),
+                  subtotal: emptyAgg(), minSort: Infinity },
+      services: { label: 'Services',            byProduct: Object.create(null),
                   subtotal: emptyAgg(), minSort: Infinity }
     };
     var totals = emptyAgg();
@@ -79,21 +97,25 @@
     for (var i = 0; i < records.length; i++) {
       var r = records[i];
       if (!r) continue;
-      var cat = bucketCategoryOf(r);
-      // Skip assumptions / services — they don\'t belong in the
-      // hardware summary.
-      if (cat === 'assumptions' || cat === 'services') continue;
-      var groupKey = (cat === 'cam') ? 'cam' : 'default';
+      var cat = bucketCategoryOf(r, viewKey);
+      // Assumptions never belong in the summary. Services are skipped UNLESS
+      // includeServices (bid) — then they roll into a "Services" section so the
+      // per-MDF sub-bid total is complete.
+      if (cat === 'assumptions') continue;
+      if (cat === 'services' && !includeServices) continue;
+      var groupKey = (cat === 'cam') ? 'cam' : (cat === 'services' ? 'services' : 'default');
       var grp = groups[groupKey];
 
-      // Track the section\'s sort key = minimum field_2218 (proposal
+      // Track the section\'s sort key = minimum sortOrder (proposal
       // bucket sortOrder) across its records, so the section ordering
       // matches the main grid\'s L2 sort.
-      var so = readNum(r, 'field_2218');
+      var so = readNum(r, fSort);
       if (isFinite(so) && so < grp.minSort) grp.minSort = so;
 
-      var prod = stripHtml(r.field_1949) || '(unnamed)';
-      var qty = readNum(r, 'field_1964') || 1;
+      var prod = (fProductNm && stripHtml(r[fProductNm])) || stripHtml(r[fProduct]) ||
+                 (groupKey === 'services' && fLaborDesc ? stripHtml(r[fLaborDesc]) : '') ||
+                 (groupKey === 'services' ? '(service)' : '(unnamed)');
+      var qty = readNum(r, fQty) || 1;
 
       var p = grp.byProduct[prod];
       if (!p) {
@@ -111,24 +133,24 @@
       totals.count       += qty;
 
       if (groupKey === 'cam') {
-        var devLabel = stripHtml(r.field_1950);
+        var devLabel = stripHtml(r[fLabel]);
         if (devLabel) p.labels.push(devLabel);
 
-        if (r.field_2461 != null && stripHtml(r.field_2461) !== '') {
-          if (isYes(r, 'field_2461')) {
+        if (r[fExist] != null && stripHtml(r[fExist]) !== '') {
+          if (isYes(r, fExist)) {
             p.existCabling++; grp.subtotal.existCabling++; totals.existCabling++;
           } else {
             p.newCabling++;   grp.subtotal.newCabling++;   totals.newCabling++;
           }
         }
-        if (r.field_1984 != null && stripHtml(r.field_1984) !== '') {
-          if (isYes(r, 'field_1984')) {
+        if (r[fExt] != null && stripHtml(r[fExt]) !== '') {
+          if (isYes(r, fExt)) {
             p.exterior++; grp.subtotal.exterior++; totals.exterior++;
           } else {
             p.interior++; grp.subtotal.interior++; totals.interior++;
           }
         }
-        if (isYes(r, 'field_1983')) {
+        if (isYes(r, fPlenum)) {
           p.plenum++; grp.subtotal.plenum++; totals.plenum++;
         }
       }
@@ -174,6 +196,17 @@
         subtotal: groups['default'].subtotal
       });
     }
+    var svcProducts = productList(groups.services.byProduct);
+    if (svcProducts.length) {
+      sections.push({
+        key: 'services',
+        label: groups.services.label,
+        isCamReader: false,
+        sortOrder: groups.services.minSort,
+        products: svcProducts,
+        subtotal: groups.services.subtotal
+      });
+    }
     // Sort sections by their minimum field_2218 (proposal bucket
     // sortOrder) so the grouping order matches the main grid\'s L2
     // ordering. Ties fall back to the original push order so
@@ -203,6 +236,11 @@
     return all;
   }
 
+  // Set per build (buildL1Summary / buildGrandSummary) — when true the money
+  // (Sub Bid) column is omitted entirely (e.g. the install worksheet, which has
+  // no money columns). Synchronous build, so a module flag is safe.
+  var _hideMoney = false;
+
   function productRow(p, isSubtotal) {
     var cls = isSubtotal ? ' class="scw-ws-v2-summary-row--total"' : '';
     var showCR = isSubtotal ? true : p.isCamReader;
@@ -222,9 +260,10 @@
       '<td class="scw-ws-v2-summary-num">' + (showCR ? fmtNum(p.interior)     : '') + '</td>' +
       '<td class="scw-ws-v2-summary-num">' + (showCR ? fmtNum(p.plenum)       : '') + '</td>' +
       '<td class="scw-ws-v2-summary-num">' + fmtNum(p.count) + '</td>' +
-      '<td class="scw-ws-v2-summary-money">' +
-        (p.subBidSum > 0 ? esc(fmtMoney(p.subBidSum)) : '') +
-      '</td>' +
+      (_hideMoney ? '' :
+        '<td class="scw-ws-v2-summary-money">' +
+          (p.subBidSum > 0 ? esc(fmtMoney(p.subBidSum)) : '') +
+        '</td>') +
     '</tr>';
   }
 
@@ -237,13 +276,14 @@
       '<th class="scw-ws-v2-summary-num">Int</th>' +
       '<th class="scw-ws-v2-summary-num">Plen</th>' +
       '<th class="scw-ws-v2-summary-num">Qty</th>' +
-      '<th class="scw-ws-v2-summary-money">' + esc(moneyLabel || 'Sub Bid') + '</th>' +
+      (_hideMoney ? '' :
+        '<th class="scw-ws-v2-summary-money">' + esc(moneyLabel || 'Sub Bid') + '</th>') +
     '</tr></thead>';
   }
 
   function sectionHeadRow(label) {
     return '<tr class="scw-ws-v2-summary-row--bucket">' +
-      '<td colspan="8">' + esc(label) + '</td>' +
+      '<td colspan="' + (_hideMoney ? 7 : 8) + '">' + esc(label) + '</td>' +
     '</tr>';
   }
 
@@ -361,14 +401,15 @@
   function fmtSummaryStat(totals) {
     var bits = [];
     if (totals.count) bits.push(totals.count + ' items');
-    if (totals.subBidSum) bits.push(fmtMoney(totals.subBidSum));
+    if (!_hideMoney && totals.subBidSum) bits.push(fmtMoney(totals.subBidSum));
     return bits.join(' · ');
   }
 
   function buildL1Summary(l1, opts) {
     opts = opts || {};
+    _hideMoney = !!opts.hideMoney;
     var recs = collectRecords(l1);
-    var agg = aggregate(recs, opts.moneyField);
+    var agg = aggregate(recs, opts);
     if (!agg.sections.length) {
       var wrapEmpty = document.createElement('div');
       wrapEmpty.className = 'scw-ws-v2-summary scw-ws-v2-summary--empty';
@@ -400,11 +441,12 @@
   /** Grand summary — aggregates EVERY record across every L1. */
   function buildGrandSummary(tree, opts) {
     opts = opts || {};
+    _hideMoney = !!opts.hideMoney;
     var all = [];
     for (var i = 0; i < tree.length; i++) {
       all = all.concat(collectRecords(tree[i]));
     }
-    var agg = aggregate(all, opts.moneyField);
+    var agg = aggregate(all, opts);
     if (!agg.sections.length) {
       var wrapEmpty = document.createElement('div');
       wrapEmpty.className = 'scw-ws-v2-grand-summary scw-ws-v2-grand-summary--empty';
@@ -451,11 +493,20 @@
     return fmtIssueChips(allIds);
   }
 
+  // Sub-bid total for one L1 (respects moneyField + includeServices; skips
+  // assumptions). Surfaced in the MDF/IDF header by render.js.
+  function l1MoneyTotal(l1, opts) {
+    var agg = aggregate(collectRecords(l1), opts || {});
+    return (agg.totals && agg.totals.subBidSum) || 0;
+  }
+
   ns.summary = {
     buildL1Summary:    buildL1Summary,
     buildGrandSummary: buildGrandSummary,
     issueChipsForL1:   issueChipsForL1,
-    grandIssueChips:   grandIssueChips
+    grandIssueChips:   grandIssueChips,
+    l1MoneyTotal:      l1MoneyTotal,
+    fmtMoney:          fmtMoney
   };
 })();
 /*** END WORKSHEET V2 — SUMMARY ***********************************************/

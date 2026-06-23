@@ -110,15 +110,29 @@
     '</span>';
   }
 
-  function bucketIdOf(rec) {
-    var raw = rec['field_2219_raw'];
+  // Resolve the proposal-bucket field key for a view. Default field_2219
+  // (SOW); the survey object (view_3505) overrides bucket→field_2366. Callers
+  // that pass no viewKey keep the SOW default — behavior-preserving for the
+  // existing deployments (and for the cross-module callers in warnings/bulk/
+  // summary that classify SOW records).
+  function bucketFieldOf(viewKey) {
+    try {
+      var f = viewKey && ns.cfg && typeof ns.cfg.fields === 'function'
+        ? ns.cfg.fields(viewKey) : null;
+      if (f && f.bucket) return f.bucket;
+    } catch (e) { /* fall through */ }
+    return 'field_2219';
+  }
+
+  function bucketIdOf(rec, viewKey) {
+    var raw = rec[bucketFieldOf(viewKey) + '_raw'];
     if (Array.isArray(raw) && raw.length && raw[0]) return raw[0].id || '';
     if (raw && typeof raw === 'object' && raw.id) return raw.id;
     return '';
   }
 
-  function bucketCategoryOf(rec) {
-    var id = bucketIdOf(rec);
+  function bucketCategoryOf(rec, viewKey) {
+    var id = bucketIdOf(rec, viewKey);
     if (id === CAM_READER_BUCKET)  return 'cam';
     if (id === SERVICES_BUCKET)    return 'services';
     if (id === ASSUMPTIONS_BUCKET) return 'assumptions';
@@ -233,6 +247,64 @@
     } catch (e) { return false; }
   }
 
+  /** True when the deployment uses the survey money model (moneyMode:'survey',
+   *  view_3505). Survey has no Sub Bid/+Hrs/+Mat — the money region is a
+   *  single Labor (editable) cell with the CALC Ext below it; Qty lives in
+   *  the qty/chips slot. Drives the survey card path (buildCard dispatch). */
+  function isSurveyMoney(viewKey) {
+    try {
+      var vc = ns.cfg && typeof ns.cfg.viewCfg === 'function' && ns.cfg.viewCfg(viewKey);
+      return !!(vc && vc.moneyMode === 'survey');
+    } catch (e) { return false; }
+  }
+
+  /** True when the deployment uses the install money model (moneyMode:'install',
+   *  view_3915 — Deploy / Install Line Items). The install object is a DIFFERENT
+   *  Knack object from the SOW line item and has NO money columns at all (no Sub
+   *  Bid / +Hrs / +Mat / Fee / Labor / Ext / Bid). The summary row is just
+   *  chevron · label (cam) · product (read-only) · labor-desc fill · warn ·
+   *  kebab; the money region is fully suppressed. Drives the install card path
+   *  (buildCard dispatch). The install-status chip + QA chits are NOT built here
+   *  — install-config-subpanel.js / config-qa-popover.js inject them post-render. */
+  function isInstallMoney(viewKey) {
+    try {
+      var vc = ns.cfg && typeof ns.cfg.viewCfg === 'function' && ns.cfg.viewCfg(viewKey);
+      return !!(vc && vc.moneyMode === 'install');
+    } catch (e) { return false; }
+  }
+
+  // ── v1 dynamic-cell-colors parity (survey worksheet) ──────────────
+  // v1 colors the survey worksheet table cells (dynamic-cell-colors.js,
+  // view_3505 rules): Labor (field_2400) empty→danger / zero→warning, Bid
+  // (field_2415) empty→warning, Qty (field_2399) zero→warning, Labor
+  // Description (field_2409) empty→danger. The v2 worksheet renders cards
+  // (not table cells), so we recompute the same empty/zero state per field
+  // and add a warn class to the card cell. Mirrors v1's normalize/isZero.
+  function _normCellText(s) {
+    return String(s == null ? '' : s)
+      .replace(/<[^>]*>/g, ' ')
+      .replace(/[ ​‌‍﻿]/g, ' ')
+      .trim();
+  }
+  function _cellIsEmpty(t) { return t === '' || t === '-' || t === '—'; }
+  function _cellIsZero(t)  { return /^\$?0+(\.0+)?$/.test(t); }
+  /** v1 empty/zero → warn class. emptyColor/zeroColor are 'danger'|'warning'
+   *  |null. Returns '' (no class) when neither condition matches. */
+  function surveyWarnClass(rec, fieldKey, emptyColor, zeroColor) {
+    var t = _normCellText(readField(rec, fieldKey));
+    if (_cellIsEmpty(t)) return emptyColor ? ('scw-ws-v2-cell--' + emptyColor) : '';
+    if (_cellIsZero(t))  return zeroColor  ? ('scw-ws-v2-cell--' + zeroColor)  : '';
+    return '';
+  }
+
+  /** Resolved field map for a view (logical name → field key). Survey reads
+   *  go through this so the survey builders carry no hardcoded survey keys. */
+  function fieldsFor(viewKey) {
+    try {
+      return (ns.cfg && typeof ns.cfg.fields === 'function' && ns.cfg.fields(viewKey)) || {};
+    } catch (e) { return {}; }
+  }
+
   /** Count on field_2586 ("associated survey line items"). >0 means a survey
    *  line-item record has been created for this SOW line item (i.e. it's an
    *  existing/committed item), vs a brand-new sales addition (0). */
@@ -251,7 +323,14 @@
    *  SCW Notes (field_1953). Brand-new sales items (field_2586 = 0) stay
    *  fully editable. Only applies on the sales deployment. */
   function isCrLocked(rec, viewKey) {
-    return isSalesMoney(viewKey) && surveyAssocCount(rec) >= 1;
+    if (isSalesMoney(viewKey) && surveyAssocCount(rec) >= 1) return true;
+    // Survey worksheet (view_3505): a finalized row (FLAG_locked field_2551 =
+    // Yes) is fully read-only — v1 "lock all fields if field_2551 = Yes". The
+    // `locked` logical field is mapped only on the survey view, so this is a
+    // no-op everywhere else.
+    var f = (ns.cfg && ns.cfg.fields(viewKey)) || {};
+    if (f.locked && readBool(rec, f.locked) === 'Yes') return true;
+    return false;
   }
 
   // Fields that stay editable even on a locked (existing) sales row.
@@ -314,10 +393,13 @@
     }
   }
 
-  // Shared copy + glyph for the survey-lock messaging.
+  // Shared copy + glyph for the lock messaging.
   var LOCKED_MSG = 'This item is locked because it has already been ' +
     'submitted for survey. Product, Custom Disc % and SCW Notes remain editable.';
   var LOCK_HOVER_MSG = 'Fields are locked because this item has been part of a survey.';
+  // Reason-aware copy — set per card right before the lock pass runs (sales
+  // survey-assoc vs survey finalized). setLockTooltip + addLockedNote read it.
+  var _lockCopy = { msg: LOCKED_MSG, hover: LOCK_HOVER_MSG };
 
   /** Hover tooltip for a locked control. The control itself has
    *  pointer-events:none (it can't receive hover, so a title on it never
@@ -328,7 +410,7 @@
         '.scw-ws-v2-detail-field, .scw-ws-v2-cell, .scw-ws-v2-mh-chip-wrap, ' +
         '.scw-ws-v2-mh-addrow'
       ) || el.parentElement;
-      if (wrap) wrap.title = LOCK_HOVER_MSG;
+      if (wrap) wrap.title = _lockCopy.hover;
     } catch (e) { /* tooltip is best-effort */ }
   }
   var LOCK_SVG_SM =
@@ -347,7 +429,7 @@
     if (!detail || detail.querySelector('.scw-ws-v2-locked-note')) return;
     var note = document.createElement('div');
     note.className = 'scw-ws-v2-locked-note';
-    note.innerHTML = LOCK_SVG_SM + '<span>' + escapeHtml(LOCKED_MSG) + '</span>';
+    note.innerHTML = LOCK_SVG_SM + '<span>' + escapeHtml(_lockCopy.msg) + '</span>';
     detail.insertBefore(note, detail.firstChild);
   }
 
@@ -598,14 +680,31 @@
   // survey-derived items. The internal build-SOW grid (view_3962) is left
   // alone, matching v1 (view_3610 has no block).
   var DELETE_BLOCK_VIEWS = { view_3586: 1, view_3921: 1 };
+  // Survey worksheet (view_3505): v1 hid delete via hideDeleteWhenFieldNotBlank
+  // = field_2404 — once a survey line item is adopted into a SOW (REL_sow line
+  // item populated) it must be removed from the SOW, not deleted here. Map the
+  // logical field per view so it resolves correctly.
+  var DELETE_BLOCK_WHEN_SET = { view_3505: 'sowLineItem' };
 
   function isDeleteBlocked(rec, viewKey) {
-    if (!DELETE_BLOCK_VIEWS[viewKey]) return false;
     var f = (ns.cfg && ns.cfg.fields(viewKey)) || {};
-    var key = f.surveyItemCount || 'field_2586';
-    var raw = rec[key + '_raw'];
-    var n = (typeof raw === 'number') ? raw : parseFloat(readNum(rec, key));
-    return !isNaN(n) && n > 0;
+    // (a) "field not blank" rule (survey item adopted into a SOW).
+    if (DELETE_BLOCK_WHEN_SET[viewKey]) {
+      var fk = f[DELETE_BLOCK_WHEN_SET[viewKey]] || 'field_2404';
+      var v = rec[fk + '_raw'];
+      var blank = (v == null) || v === '' || (Array.isArray(v) && !v.length);
+      if (!blank) return true;
+    }
+    // Finalized rows (FLAG_locked = Yes) can't be deleted either.
+    if (f.locked && readBool(rec, f.locked) === 'Yes') return true;
+    // (b) "count > 0" rule (survey-derived SOW items on sales / bid-review).
+    if (DELETE_BLOCK_VIEWS[viewKey]) {
+      var key = f.surveyItemCount || 'field_2586';
+      var raw = rec[key + '_raw'];
+      var n = (typeof raw === 'number') ? raw : parseFloat(readNum(rec, key));
+      if (!isNaN(n) && n > 0) return true;
+    }
+    return false;
   }
 
   /** Direct-action delete button — was a kebab menu, now a single
@@ -617,9 +716,12 @@
    *  mirroring v1's hide-delete behavior. */
   function kebabCell(rec, viewKey) {
     if (isDeleteBlocked(rec, viewKey)) {
+      var msg = DELETE_BLOCK_WHEN_SET[viewKey]
+        ? 'Adopted into a SOW — remove it from the SOW, not here.'
+        : 'Linked to survey line items — remove it from the survey, not here.';
       return '<span class="scw-ws-v2-cell scw-ws-v2-trash scw-ws-v2-trash--blocked" ' +
         'aria-hidden="true" ' +
-        'title="Linked to survey line items — remove it from the survey, not here.">' +
+        'title="' + escapeHtml(msg) + '">' +
         TRASH_SVG +
       '</span>';
     }
@@ -858,6 +960,20 @@
     return '<div class="scw-ws-v2-detail-field scw-ws-v2-detail-field--ro">' +
       '<div class="scw-ws-v2-detail-label">' + escapeHtml(label) + '</div>' +
       '<div class="scw-ws-v2-display">' + escapeHtml(val) + '</div>' +
+    '</div>';
+  }
+
+  /** Read-only multi-line notes display — same paragraph shape as
+   *  detailTextArea but non-editable (no edit hook, wrapping display, and a
+   *  "· Read-only" label tag). Used for SCW Notes on the bid worksheet, where
+   *  it's owned upstream and must not be edited. */
+  function detailNotesReadOnly(rec, fieldKey, label) {
+    return '<div class="scw-ws-v2-detail-field scw-ws-v2-detail-field--notes scw-ws-v2-detail-field--ro">' +
+      '<div class="scw-ws-v2-detail-label">' + escapeHtml(label) +
+        ' <span class="scw-ws-v2-ro-tag">· Read-only</span></div>' +
+      '<div class="scw-ws-v2-display scw-ws-v2-display--paragraph">' +
+        escapeHtml(readField(rec, fieldKey)) +
+      '</div>' +
     '</div>';
   }
 
@@ -1244,6 +1360,380 @@
     '</div>';
   }
 
+  // ── Survey card path (moneyMode:'survey', view_3505) ───────────
+  // Mirrors the v1 device-worksheet (view_3505) summary order:
+  //   cam:     [Survey Notes][Labor Desc][Existing/Exterior/Plenum][Labor][Ext][Bid]
+  //   default: [Survey Notes][Labor Desc][Qty][Labor][Ext][Bid]
+  // Survey Notes sits LEFT of Labor Description in the header. Money is
+  // Labor (editable) · Ext (read-only) · Bid (read-only, connection). NO
+  // accessory/parent UI — Survey Line Items have no accessory relationship
+  // yet (CLAUDE.md #16). Product + connections render read-only this pass
+  // (SOW-specific picker — fast-follow). Cabling chips, Mounting-Height
+  // single-chips, and the inline inputs all save through the generic
+  // chip / radiochip / edit handlers (init.js / edit.js are view-generic).
+
+  function surveyProductCell(rec, viewKey, F) {
+    // Editable product picker — writes the survey product connection
+    // (field_2627). Display prefers the STORED name (field_2379), falling back
+    // to the connection's identifier (so it updates after a change even before
+    // the stored name recomputes). Same picker as the SOW product cell.
+    var prodField = F.product || 'field_2627';
+    var name = readField(rec, F.productName || 'field_2379') ||
+               readField(rec, prodField) || '(unnamed)';
+    return '<button type="button" ' +
+      'class="scw-ws-v2-cell scw-ws-v2-cell--product scw-ws-v2-cell--editable-conn" ' +
+      'data-scw-ws-v2-conn="' + escapeHtml(prodField) + '" ' +
+      'data-scw-ws-v2-record="' + escapeHtml(rec.id) + '" ' +
+      'data-scw-ws-v2-view="' + escapeHtml(viewKey) + '" ' +
+      'data-scw-ws-v2-conn-label="Product" ' +
+      'title="' + escapeHtml(name) + ' — click to change product">' +
+      '<span class="scw-ws-v2-product-name">' + escapeHtml(name) + '</span>' +
+    '</button>';
+  }
+
+  function surveyChips(rec, viewKey, F) {
+    return '<div class="scw-ws-v2-cell scw-ws-v2-cell--chips">' +
+      chip(rec, viewKey, F.existCabling || 'field_2370', 'Existing', 'Existing cabling') +
+      chip(rec, viewKey, F.exterior     || 'field_2372', 'Exterior', 'Exterior') +
+      chip(rec, viewKey, F.plenum       || 'field_2371', 'Plenum',   'Plenum') +
+    '</div>';
+  }
+
+  /** Bid cell — a line item can belong to multiple bids (field_2415). Render
+   *  each bid label on its OWN line (v1 stacks them, not comma-joined). Now an
+   *  editable picker button (data-scw-ws-v2-conn) — click opens the bid picker. */
+  function surveyBidCell(rec, viewKey, fieldKey) {
+    var raw = rec[fieldKey + '_raw'];
+    var parts = [];
+    if (Array.isArray(raw)) {
+      for (var i = 0; i < raw.length; i++) {
+        var r = raw[i];
+        if (!r) continue;
+        var v = (r.identifier != null && r.identifier !== '') ? r.identifier : r.id;
+        if (v != null && v !== '') parts.push(String(v));
+      }
+    } else {
+      var s = readField(rec, fieldKey);
+      if (s) parts = s.split(/\s*,\s*/);
+    }
+    var title = parts.length ? ('Bid ' + parts.join(', ') + ' — click to change') : 'Set bid';
+    // Reuse the SOW cell look (boxed/editable, one value per line) so it
+    // reads as clearly editable — same as the SOW cell on the ops/sales
+    // worksheets.
+    var inner = parts.length
+      ? parts.map(function (p) {
+          return '<span class="scw-ws-v2-sow-value">' + escapeHtml(p) + '</span>';
+        }).join('')
+      : '<span class="scw-ws-v2-sow-value">&mdash;</span>';
+    // v1 parity: empty bid → warning (yellow).
+    var bidWarn = parts.length ? '' : ' scw-ws-v2-cell--warning';
+    return '<button type="button" ' +
+      'class="scw-ws-v2-cell scw-ws-v2-cell--sow scw-ws-v2-cell--editable-conn scw-ws-v2-cell--survey-bid' + bidWarn + '" ' +
+      'data-scw-ws-v2-conn="' + escapeHtml(fieldKey) + '" ' +
+      'data-scw-ws-v2-record="' + escapeHtml(rec.id) + '" ' +
+      'data-scw-ws-v2-view="' + escapeHtml(viewKey) + '" ' +
+      'data-scw-ws-v2-conn-label="Bid" ' +
+      'title="' + escapeHtml(title) + '">' + inner +
+    '</button>';
+  }
+
+  /** A survey detail-panel item wrapper carrying a width-hint class so the
+   *  flex layout sizes each field to its expected value width. */
+  function sdItem(html, widthCls) {
+    return '<div class="scw-ws-v2-sd-item ' + (widthCls || '') + '">' + html + '</div>';
+  }
+
+  /** A fill (textarea) summary cell — survey notes / labor description. */
+  function surveyFill(rec, viewKey, fieldKey, label, cls) {
+    return '<div class="scw-ws-v2-cell scw-ws-v2-cell--labor-desc ' + (cls || '') + '">' +
+      textArea(rec, viewKey, fieldKey, readField(rec, fieldKey), label) +
+    '</div>';
+  }
+
+  /** Single-select chip group (Mounting Height) — editable; saves via the
+   *  radiochip handler in init.js. Mirrors v1's singleChip radio chips. */
+  function singleChipField(rec, viewKey, fieldKey, label, options) {
+    var cur = readField(rec, fieldKey);
+    var chips = '';
+    for (var i = 0; i < options.length; i++) {
+      var opt = options[i];
+      var sel = (cur === opt);
+      chips += '<button type="button" class="scw-ws-v2-radiochip ' +
+        (sel ? 'is-selected' : 'is-unselected') + '" ' +
+        'data-scw-ws-v2-radiochip="' + escapeHtml(fieldKey) + '" ' +
+        'data-scw-ws-v2-record="' + escapeHtml(rec.id) + '" ' +
+        'data-scw-ws-v2-view="' + escapeHtml(viewKey) + '" ' +
+        'data-scw-ws-v2-option="' + escapeHtml(opt) + '">' + escapeHtml(opt) + '</button>';
+    }
+    return '<div class="scw-ws-v2-detail-field scw-ws-v2-detail-field--chips">' +
+      '<div class="scw-ws-v2-detail-label">' + escapeHtml(label) + '</div>' +
+      '<div class="scw-ws-v2-radiochips" data-scw-ws-v2-radio-field="' + escapeHtml(fieldKey) + '">' +
+        chips +
+      '</div>' +
+    '</div>';
+  }
+
+  function buildRow_survey(rec, viewKey, cat) {
+    var F     = fieldsFor(viewKey);
+    var isCam = (cat === 'cam');
+    var label = readField(rec, F.displayLabel || 'field_2365');
+
+    var labelSlot = isCam
+      ? ro(label, 'scw-ws-v2-cell--label', label)
+      : empty('scw-ws-v2-cell--label');
+
+    var productSlot;
+    if (cat === 'services')          productSlot = ro('Service', 'scw-ws-v2-cell--tag');
+    else if (cat === 'assumptions')  productSlot = empty('scw-ws-v2-cell--product');
+    else                             productSlot = surveyProductCell(rec, viewKey, F);
+
+    // Two fill cells: Survey Notes (LEFT) then Labor Description. SCW Notes
+    // lives in the detail panel (first/leftmost field).
+    var surveyNotesCell = surveyFill(rec, viewKey, F.surveyNotes || 'field_2412',
+      'Survey notes', 'scw-ws-v2-cell--survey-notes');
+    // v1 parity: empty Labor Description → danger (red).
+    var laborDescWarn = surveyWarnClass(rec, F.laborDesc || 'field_2409', 'danger', null);
+    var laborDescCell   = surveyFill(rec, viewKey, F.laborDesc || 'field_2409',
+      isCam ? 'Labor description' : 'Description of Work', laborDescWarn);
+
+    // Slot 5 (qty/chips): cam → cabling chips; assumptions → blank;
+    // qty-locked (FLAG_limit to quantity one = Yes) → blank (qty implicit 1,
+    // v1 parity); else → editable Qty.
+    var slot5;
+    if (isCam) {
+      slot5 = surveyChips(rec, viewKey, F);
+    } else if (cat === 'assumptions') {
+      slot5 = empty('scw-ws-v2-cell--num');
+    } else if (readBool(rec, F.qtyOne || 'field_2373') === 'Yes') {
+      slot5 = empty('scw-ws-v2-cell--num');
+    } else {
+      // v1 parity: qty zero → warning (yellow).
+      var qtyWarn = surveyWarnClass(rec, F.qty || 'field_2399', null, 'warning');
+      slot5 = '<div class="scw-ws-v2-cell scw-ws-v2-cell--num ' + qtyWarn + '">' +
+        numInput(rec, viewKey, F.qty || 'field_2399', readNum(rec, F.qty || 'field_2399'), 'Qty') +
+      '</div>';
+    }
+
+    // Money: Labor (editable; blank for assumptions) · Ext (read-only;
+    // blank for cam + assumptions, matching v1) · Bid (read-only conn).
+    // v1 parity: Labor ("sub bid") empty → danger (red), zero → warning.
+    var laborWarn = surveyWarnClass(rec, F.labor || 'field_2400', 'danger', 'warning');
+    var laborCell = (cat === 'assumptions')
+      ? empty('scw-ws-v2-cell--num scw-ws-v2-cell--survey-labor')
+      : '<div class="scw-ws-v2-cell scw-ws-v2-cell--num scw-ws-v2-cell--survey-labor scw-ws-v2-cell--currency ' + laborWarn + '">' +
+          '<span class="scw-ws-v2-currency-glyph">$</span>' +
+          numInput(rec, viewKey, F.labor || 'field_2400', readNum(rec, F.labor || 'field_2400'), 'Labor') +
+        '</div>';
+    var extCell = (isCam || cat === 'assumptions')
+      ? empty('scw-ws-v2-cell--survey-ext')
+      : ro(readField(rec, F.extended || 'field_2401'), 'scw-ws-v2-cell--survey-ext', 'Extended');
+    var bidCell = surveyBidCell(rec, viewKey, F.bid || 'field_2415');
+
+    return '<div class="scw-ws-v2-row scw-ws-v2-row--' + cat + '">' +
+      chevronCell(rec) +
+      labelSlot +
+      productSlot +
+      surveyNotesCell +
+      laborDescCell +
+      slot5 +
+      laborCell +
+      extCell +
+      bidCell +
+      warnCell(rec) +
+      kebabCell(rec, viewKey) +
+    '</div>';
+  }
+
+  function buildDetail_survey(rec, viewKey, cat) {
+    var F = fieldsFor(viewKey);
+
+    // Survey detail = one flex-wrap row; each field is sized to its expected
+    // value width (numbers narrow, the connection medium, the mounting-
+    // hardware list wide). Connections render READ-ONLY (SOW-specific picker
+    // not wired). SCW Notes is the first/leftmost field — a clear multi-line
+    // paragraph. Order otherwise mirrors v1 detailLayout.
+    // SCW Notes (field_2418) is READ-ONLY on the bid worksheet — owned
+    // upstream, not editable while bidding. Render as a non-editable paragraph.
+    var items = sdItem(
+      detailNotesReadOnly(rec, F.scwNotes || 'field_2418', 'SCW Notes'),
+      'scw-ws-v2-sd--paragraph');
+    if (cat === 'cam') {
+      // Connected To (field_2381, single) — editable; cascade writes the
+      // parent's field_2380. Picker candidates resolved in init.js.
+      items += sdItem(detailConnection(rec, viewKey, F.connectedDevice || 'field_2381',
+        'Connected To', hasIssue(rec, 'disconnected')), 'scw-ws-v2-sd--conn');
+      items += sdItem(singleChipField(rec, viewKey, F.mountingHeight || 'field_2455',
+        'Mounting Height', ["Under 16'", "16' - 24'", "Over 24'"]), 'scw-ws-v2-sd--chips');
+      items += sdItem(detailField(rec, viewKey, F.dropLength || 'field_2367', 'Drop Length', 'number'),
+        'scw-ws-v2-sd--num');
+      items += sdItem(detailField(rec, viewKey, F.conduit || 'field_2368', 'Conduit', 'number'),
+        'scw-ws-v2-sd--num');
+    } else if (cat === 'default') {
+      // Connected Devices (field_2380, multi, NVR/switch side) — editable.
+      // ONLY shown when this record's "map camera/reader connections" flag
+      // (field_2374 / mapConn) is Yes — devices that don't map readers have
+      // no Connected Devices to manage.
+      if (readBool(rec, F.mapConn || 'field_2374') === 'Yes') {
+        items += sdItem(detailConnection(rec, viewKey, F.connectedDevices || 'field_2380',
+          'Connected Devices'), 'scw-ws-v2-sd--conn');
+      }
+    }
+
+    // MDF / IDF (field_2375) — editable on every bucket (re-home a line item).
+    items += sdItem(detailConnection(rec, viewKey, F.mdfIdf || 'field_2375', 'MDF / IDF'),
+      'scw-ws-v2-sd--conn');
+
+    items += sdItem(detailReadOnly(rec, F.mounting || 'field_2463', 'Mounting Hardware'),
+      'scw-ws-v2-sd--wide');
+
+    return '<div class="scw-ws-v2-detail">' +
+      '<div class="scw-ws-v2-survey-detail">' + items + '</div>' +
+    '</div>';
+  }
+
+  // ── Install card path (moneyMode:'install', view_3915) ─────────
+  // Mirrors the v1 device-worksheet (view_3915) config. The install object
+  // (Deploy / Install Line Items) has NO money columns — no Sub Bid/+Hrs/
+  // +Mat/Fee/Labor/Ext/Bid — so the money region is fully suppressed. The
+  // summary row is just:
+  //   chevron · label (cam only) · product (read-only) · labor-desc fill ·
+  //   warn · kebab
+  // The install-status segmented chip (field_2825) and the per-photo QA
+  // chits are NOT rendered here — install-config-subpanel.js /
+  // config-qa-popover.js inject those into the card post-render. We only
+  // produce a normal .scw-ws-v2-detail panel they can hook into.
+  //
+  // Detail panel per bucket category (mirrors v1 view_3915 detailLayout):
+  //   cam:         Connected To (field_2821) + Existing/Exterior/Plenum
+  //                chips (field_2807/2805/2806) + Drop Length (field_2804) +
+  //                Conduit (field_2803) + Labor Desc (field_2809) +
+  //                SCW Notes (field_2808).
+  //   default/hw:  Connected Devices (field_2820, only when mapConn
+  //                field_2795 is Yes) + SCW Notes.
+  //   services:    SCW Notes (install object has no Other Services bucket
+  //                in v1, but keep the branch for parity / safety).
+  //   assumptions: Labor/Assumption text + SCW Notes.
+  // All fields read via fieldsFor(viewKey) + logical names, with the install
+  // field key as the fallback (same idiom as the survey path).
+
+  function installProductCell(rec, F) {
+    // Read-only — config sets productEditable:false. Prefer the STORED
+    // product name (field_2790); fall back to the connection (field_2846).
+    var name = readField(rec, F.productName || 'field_2790') ||
+               readField(rec, F.product || 'field_2846') || '(unnamed)';
+    return '<div class="scw-ws-v2-cell scw-ws-v2-cell--product scw-ws-v2-cell--ro" ' +
+      'title="' + escapeHtml(name) + '">' +
+      '<span class="scw-ws-v2-product-name">' + escapeHtml(name) + '</span>' +
+    '</div>';
+  }
+
+  // Read-only flag chit — rendered ONLY when the boolean is Yes (hidden when
+  // No; v1 view_3915 shows Existing/Exterior/Plenum as show-when-true READ-ONLY
+  // chits, never editable). Not interactive (no data-scw-ws-v2-chip hook).
+  function installFlagChit(rec, fieldKey, label) {
+    if (readBool(rec, fieldKey) !== 'Yes') return '';
+    return '<span class="scw-ws-v2-chip scw-ws-v2-chip--yes scw-ws-v2-chip--ro" ' +
+      'title="' + escapeHtml(label) + '">' + escapeHtml(label) + '</span>';
+  }
+
+  // Flag-chits cell — always emitted (holds its grid track); empty when no
+  // flag is true. Cam rows carry cabling/exterior/plenum.
+  function installFlags(rec, viewKey, F) {
+    return '<div class="scw-ws-v2-cell scw-ws-v2-cell--install-flags">' +
+      installFlagChit(rec, F.existCabling || 'field_2807', 'Existing') +
+      installFlagChit(rec, F.exterior     || 'field_2805', 'Exterior') +
+      installFlagChit(rec, F.plenum       || 'field_2806', 'Plenum') +
+    '</div>';
+  }
+
+  // Read-only labor/assumption description for the header — services &
+  // assumptions rows surface their text inline (read-only). HTML is stripped
+  // by readField.
+  function installDescRO(rec, viewKey, F) {
+    var txt = readField(rec, F.laborDesc || 'field_2809');
+    return '<div class="scw-ws-v2-cell scw-ws-v2-cell--labor-desc scw-ws-v2-cell--install-descro" ' +
+      'title="' + escapeHtml(txt) + '">' + escapeHtml(txt) + '</div>';
+  }
+
+  function buildRow_install(rec, viewKey, cat) {
+    var F     = fieldsFor(viewKey);
+    var isCam = (cat === 'cam');
+    // displayLabel (field_2802 LABEL_DISPLAY) is often blank on install rows —
+    // fall back to labelAlt (field_2801 "set label by bucket", e.g. AC-01).
+    var label = readField(rec, F.displayLabel || 'field_2802') ||
+                readField(rec, F.labelAlt || 'field_2801');
+
+    var labelSlot = isCam
+      ? ro(label, 'scw-ws-v2-cell--label', label)
+      : empty('scw-ws-v2-cell--label');
+
+    // services & assumptions show their labor/assumption text (read-only) in
+    // the header; cam/default show the product (read-only).
+    var productSlot;
+    if (cat === 'services' || cat === 'assumptions')
+      productSlot = installDescRO(rec, viewKey, F);
+    else
+      productSlot = installProductCell(rec, F);
+
+    // Read-only flag chits (Existing/Exterior/Plenum) — cam rows only, shown
+    // only when true. Non-cam keeps an empty track for grid alignment.
+    var flagsSlot = isCam ? installFlags(rec, viewKey, F)
+                          : empty('scw-ws-v2-cell--install-flags');
+
+    // SCW Notes — the ONE editable field in the install header (v1 field_2808
+    // directEdit). Everything else on the card is read-only.
+    var scwNotesCell = surveyFill(rec, viewKey, F.scwNotes || 'field_2808',
+      'SCW Notes', 'scw-ws-v2-cell--install-scwnotes');
+
+    return '<div class="scw-ws-v2-row scw-ws-v2-row--' + cat + ' scw-ws-v2-row--install">' +
+      chevronCell(rec) +
+      labelSlot +
+      productSlot +
+      flagsSlot +
+      scwNotesCell +
+      warnCell(rec) +
+      kebabCell(rec, viewKey) +
+    '</div>';
+  }
+
+  function buildDetail_install(rec, viewKey, cat) {
+    var F = fieldsFor(viewKey);
+
+    // Install detail = READ-ONLY info (per v1 view_3915). The ONLY editable
+    // items are SCW Notes (header) and Connected Devices (network devices).
+    // Connected To (field_2821) is read-only display (v1: connectedTo readOnly).
+    var items = '';
+
+    if (cat === 'cam') {
+      // Connected To (field_2821, single → network device) — EDITABLE; the
+      // field_2820↔field_2821 cascade (createMirror VIEW_ID view_3915) keeps
+      // the NVR/switch's Connected Devices in sync.
+      items += sdItem(detailConnection(rec, viewKey, F.connectedDevice || 'field_2821',
+        'Connected To', hasIssue(rec, 'disconnected')), 'scw-ws-v2-sd--conn');
+      items += sdItem(detailReadOnly(rec, F.dropLength || 'field_2804', 'Drop Length'),
+        'scw-ws-v2-sd--num');
+      items += sdItem(detailReadOnly(rec, F.conduit || 'field_2803', 'Conduit'),
+        'scw-ws-v2-sd--num');
+      items += sdItem(detailReadOnly(rec, F.laborDesc || 'field_2809', 'Labor description'),
+        'scw-ws-v2-sd--wide');
+    } else if (cat === 'default') {
+      // Connected Devices (field_2820, multi) — EDITABLE, network devices only
+      // (v1: showWhenFieldIsYes field_2795 / mapConn).
+      if (readBool(rec, F.mapConn || 'field_2795') === 'Yes') {
+        items += sdItem(detailConnection(rec, viewKey, F.connectedDevices || 'field_2820',
+          'Connected Devices'), 'scw-ws-v2-sd--conn');
+      }
+      items += sdItem(detailReadOnly(rec, F.laborDesc || 'field_2809', 'Labor description'),
+        'scw-ws-v2-sd--wide');
+    }
+    // services / assumptions: their labor/assumption text is in the header
+    // (read-only) — nothing extra in the detail panel.
+
+    return '<div class="scw-ws-v2-detail">' +
+      '<div class="scw-ws-v2-survey-detail scw-ws-v2-install-detail">' + items + '</div>' +
+    '</div>';
+  }
+
   // ── Public entry point ─────────────────────────────────────
 
   function buildCard(rec, sourceViewKey) {
@@ -1251,10 +1741,12 @@
     card.className = 'scw-ws-v2-card';
     card.setAttribute('data-scw-ws-v2-record', rec.id);
 
-    var cat = bucketCategoryOf(rec);
+    var cat = bucketCategoryOf(rec, sourceViewKey);
     card.classList.add('scw-ws-v2-card--' + cat);
-    if (isSalesMoney(sourceViewKey)) card.classList.add('scw-ws-v2-card--sales');
-    var bid = bucketIdOf(rec);
+    if (isSalesMoney(sourceViewKey))   card.classList.add('scw-ws-v2-card--sales');
+    if (isSurveyMoney(sourceViewKey))  card.classList.add('scw-ws-v2-card--survey');
+    if (isInstallMoney(sourceViewKey)) card.classList.add('scw-ws-v2-card--install');
+    var bid = bucketIdOf(rec, sourceViewKey);
     if (bid) card.setAttribute('data-scw-ws-v2-bucket', bid);
     // Promoted-bracket marker: the bracket has a parent (field_2464
     // resolves) but is showing as its own row because Require Sub
@@ -1284,8 +1776,19 @@
     }
 
     var row, det;
-    var sales = isSalesMoney(sourceViewKey);
-    if (cat === 'cam') {
+    var sales   = isSalesMoney(sourceViewKey);
+    var survey  = isSurveyMoney(sourceViewKey);
+    var install = isInstallMoney(sourceViewKey);
+    // Survey object (view_3505) and install object (view_3915) each take a
+    // dedicated row/detail path for every bucket category — their keys +
+    // money model differ from the SOW object (install has NO money columns).
+    if (survey) {
+      row = buildRow_survey(rec, sourceViewKey, cat);
+      det = buildDetail_survey(rec, sourceViewKey, cat);
+    } else if (install) {
+      row = buildRow_install(rec, sourceViewKey, cat);
+      det = buildDetail_install(rec, sourceViewKey, cat);
+    } else if (cat === 'cam') {
       row = buildRow_cam(rec, sourceViewKey);
       det = sales ? buildDetail_sales(rec, sourceViewKey, cat) : buildDetail_cam(rec, sourceViewKey);
     } else if (cat === 'services') {
@@ -1322,6 +1825,12 @@
     // read-only except Product / Custom Disc % / SCW Notes (v1 parity).
     if (isCrLocked(rec, sourceViewKey)) {
       card.classList.add('scw-ws-v2-card--locked');
+      // Reason-aware copy: sales survey-assoc keeps Product/Disc/SCW Notes
+      // editable; survey finalized is a full lock.
+      _lockCopy = isSalesMoney(sourceViewKey)
+        ? { msg: LOCKED_MSG, hover: LOCK_HOVER_MSG }
+        : { msg: 'This item is locked because it has been finalized.',
+            hover: 'Locked — this item is finalized.' };
       lockCardFields(card);
       addLockedNote(card);
     }
