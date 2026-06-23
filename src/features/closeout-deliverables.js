@@ -1429,6 +1429,22 @@
   // "Open in tab" in the header.
   function renderViewerInto(viewerEl, doc) {
     viewerEl.innerHTML = '';
+    // Just-in-time raw-URL resolve. The closeout grid only exposes Knack's
+    // ROUTE url for the file (a #kn-asset/… hash) — embedding that in the
+    // iframe loads the WHOLE Knack app in the background instead of the PDF.
+    // The raw S3 url lives on the hidden DOC inline-edit grid's model
+    // (docSaveView), which may have rendered AFTER the card list was built.
+    // Re-scan now so the preview embeds the file directly (matching the view
+    // whose docSaveView was already loaded). If still missing, the docSaveView
+    // for THIS scene isn't projecting the file field — see fallback below.
+    if (doc && !doc.rawUrl && doc.id) {
+      rebuildFileMetaIndex();
+      var jitMeta = docFileMeta[doc.id];
+      if (jitMeta && jitMeta.url) {
+        doc.rawUrl = jitMeta.url;
+        if (!doc.thumbUrl) doc.thumbUrl = jitMeta.thumbUrl;
+      }
+    }
     // Prefer the raw S3 URL from view_3941's model — that gives the
     // browser a real application/pdf response so Chrome's PDF viewer
     // renders directly inside the iframe (no Knack app chrome).  Fall
