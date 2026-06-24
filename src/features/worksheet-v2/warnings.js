@@ -103,7 +103,28 @@
   // row is a transient false-negative we must not persist.
   var photoWarnCache = Object.create(null);   // recId -> bool
 
+  // Source-view <tr> map, rebuilt ONCE per analyze() pass. The photo scan and
+  // the presence check both need the record's source row; without a shared map
+  // each was doing view.querySelector('tr[id=…]') per record — a full O(rows)
+  // scan × O(records) = O(n²) (≈110k row-walks / 333 rows, the ~580ms cold
+  // cost). One querySelectorAll up front makes every per-record lookup O(1).
+  var _trMap = null;            // recId -> <tr>  (valid only during a pass)
+  function buildTrMap(viewKey) {
+    var map = Object.create(null);
+    try {
+      var v = document.getElementById(viewKey) || document.getElementById('view_3962');
+      if (!v) return map;
+      var rows = v.querySelectorAll('tbody > tr[id]');
+      for (var i = 0; i < rows.length; i++) {
+        var id = rows[i].id;
+        if (id) map[id] = rows[i];
+      }
+    } catch (e) { /* ignore */ }
+    return map;
+  }
+
   function sourceRowPresent(viewKey, recId) {
+    if (_trMap) return !!_trMap[recId];
     try {
       var v = document.getElementById(viewKey) || document.getElementById('view_3962');
       return !!(v && v.querySelector('tr[id="' + recId + '"]'));
@@ -120,9 +141,12 @@
   // no sort — an order of magnitude cheaper.
   function hasMissingRequiredPhotos(rec, viewKey) {
     try {
-      var view = document.getElementById(viewKey) || document.getElementById('view_3962');
-      if (!view) return false;
-      var tr = view.querySelector('tr[id="' + rec.id + '"]');
+      var tr = _trMap ? _trMap[rec.id] : null;
+      if (!tr) {
+        var view = document.getElementById(viewKey) || document.getElementById('view_3962');
+        if (!view) return false;
+        tr = view.querySelector('tr[id="' + rec.id + '"]');
+      }
       if (!tr) return false;
       var FF      = (ns.cfg && ns.cfg.fields(viewKey)) || {};
       var reqKey  = FF.photoRequired  || 'field_2446';
@@ -295,6 +319,11 @@
   function analyze(records, viewKey) {
     curView = viewKey || '';
     var byRecord = Object.create(null);
+    // Build the source-row lookup ONCE for this pass (kills the per-record
+    // O(n) tr scan the photo check used to do). Cleared in the finally so a
+    // stale map can never leak into a later pass against changed DOM.
+    _trMap = buildTrMap(viewKey);
+    try {
     var bracket = buildBracketMaps(viewKey);
     lastAccMismatch = bracket.byAccessory;
     var bracketParents = bracket.byParent;
@@ -312,6 +341,9 @@
     cache[viewKey] = byRecord;
     lastViewKey = viewKey;
     return byRecord;
+    } finally {
+      _trMap = null;   // never let the map outlive the pass
+    }
   }
 
   function getIssuesFor(viewKey, recordId) {

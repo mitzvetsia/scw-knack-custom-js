@@ -58,6 +58,103 @@
     return map;
   }
 
+  // Money-model flags + summary opts for a view. Used by both the full
+  // rebuild (grand + per-L1 summaries) and the in-place fast path, so the
+  // numbers stay identical across the two code paths.
+  function viewMoneyFlags(sourceViewKey) {
+    var f = { sales: false, survey: false, install: false };
+    try {
+      var vc = ns.cfg && typeof ns.cfg.viewCfg === 'function' && ns.cfg.viewCfg(sourceViewKey);
+      f.sales   = !!(vc && vc.moneyMode === 'sales');
+      f.survey  = !!(vc && vc.moneyMode === 'survey');
+      f.install = !!(vc && vc.moneyMode === 'install');
+    } catch (e) { /* default build-SOW */ }
+    return f;
+  }
+  function buildMoneyOpts(sourceViewKey, flags) {
+    flags = flags || viewMoneyFlags(sourceViewKey);
+    var o = flags.sales
+      ? { moneyField: 'field_2269', moneyLabel: 'Total' }
+      : (flags.survey ? { moneyField: 'field_2401', moneyLabel: 'Sub Bid' } : {});
+    if (flags.install) o.hideMoney = true;
+    if (flags.survey)  o.includeServices = true;
+    try {
+      o.fields = (ns.cfg && typeof ns.cfg.fields === 'function')
+        ? ns.cfg.fields(sourceViewKey) : null;
+    } catch (e) { o.fields = null; }
+    o.viewKey = sourceViewKey;
+    return o;
+  }
+
+  // Flat, in-order list of record ids the tree would render — used to detect
+  // whether an edit changed the visible STRUCTURE (group membership / sort /
+  // filter) vs. just a record's own fields. Same order the cards appear in.
+  function flatTreeIds(tree) {
+    var out = [];
+    for (var i = 0; i < tree.length; i++) {
+      var l1 = tree[i];
+      for (var j = 0; j < l1.l2.length; j++) {
+        var l2 = l1.l2[j];
+        if (l2.id === '__empty_l2') continue;
+        for (var k = 0; k < l2.records.length; k++) {
+          var r = l2.records[k];
+          if (r && r.id) out.push(r.id);
+        }
+      }
+    }
+    return out;
+  }
+
+  /**
+   * Fast in-place update. When an edit marks only specific records dirty AND
+   * the visible card order is unchanged (no group/sort/filter shift), replace
+   * just those card nodes and refresh the summaries in place — skipping the
+   * full tree teardown + re-append of every card (the per-edit lag). Returns
+   * true on success; false means "structure changed, do a full rebuild".
+   */
+  function tryInPlaceUpdate(body, tree, dirtyIds, sourceViewKey, openIds) {
+    var domCards = body.querySelectorAll('.scw-ws-v2-card[data-scw-ws-v2-record]');
+    var treeIds  = flatTreeIds(tree);
+    if (domCards.length !== treeIds.length) return false;
+
+    var byId = Object.create(null);
+    for (var d = 0; d < domCards.length; d++) {
+      var did = domCards[d].getAttribute('data-scw-ws-v2-record');
+      if (did !== treeIds[d]) return false;   // order differs → structural change
+      byId[did] = domCards[d];
+    }
+
+    // Record lookup from the tree.
+    var recById = Object.create(null);
+    for (var t = 0; t < tree.length; t++) {
+      var l1 = tree[t];
+      for (var j = 0; j < l1.l2.length; j++) {
+        var l2 = l1.l2[j];
+        for (var k = 0; k < l2.records.length; k++) {
+          var r = l2.records[k];
+          if (r && r.id) recById[r.id] = r;
+        }
+      }
+    }
+
+    // Validate every dirty record is present BEFORE mutating, so a fallthrough
+    // to the full rebuild never has to clean up a half-applied in-place pass.
+    var ids = Object.keys(dirtyIds);
+    for (var v = 0; v < ids.length; v++) {
+      if (!byId[ids[v]] || !recById[ids[v]]) return false;
+    }
+    for (var x = 0; x < ids.length; x++) {
+      var id  = ids[x];
+      var old = byId[id];
+      var fresh = ns.card.buildCard(recById[id], sourceViewKey);
+      if (!fresh) return false;   // (validated present; a build failure is rare)
+      try { fresh.setAttribute('data-scw-sig', cardSig(recById[id])); } catch (e) { /* ignore */ }
+      if (openIds[id] && fresh.classList) fresh.classList.add('scw-ws-v2-card--open');
+      if (old.parentNode) old.parentNode.replaceChild(fresh, old);
+    }
+    return true;
+  }
+
   // Defer renders while the user is mid-edit so typing isn't blown
   // away by a sibling-triggered re-notify.
   var pending = Object.create(null);
@@ -518,6 +615,70 @@
         if (_hr && _hr.id) healSet[_hr.id] = true;
       }
       _healOffset[sourceViewKey] = (_ho + HEAL_PER_RENDER) % records.length;
+    }
+
+    // ── Fast in-place update ────────────────────────────────────────────
+    // The common case is an edit that changes a handful of records without
+    // touching grouping / sort / filter. When that holds, swap just those
+    // card nodes and refresh the summaries in place — skipping the full tree
+    // teardown + re-append of all N cards (the per-edit lag: ~45-90ms even
+    // when only one card changed). Falls through to the full rebuild below if
+    // the structure shifted or a dirty record isn't currently visible.
+    if (!dirty.all && body.querySelector('.scw-ws-v2-card')) {
+      var _dids = Object.keys(dirty.ids);
+      if (_dids.length &&
+          tryInPlaceUpdate(body, tree, dirty.ids, sourceViewKey, openIds)) {
+        var _mOpts = buildMoneyOpts(sourceViewKey);
+        // Grand summary (totals may have shifted) — swap the node in place.
+        var _grandOld = body.querySelector('.scw-ws-v2-grand-summary');
+        if (_grandOld && ns.summary && ns.summary.buildGrandSummary) {
+          try {
+            var _grandNew = ns.summary.buildGrandSummary(tree, _mOpts);
+            if (_grandNew && _grandOld.parentNode) {
+              _grandOld.parentNode.replaceChild(_grandNew, _grandOld);
+            }
+          } catch (e) { /* keep old summary */ }
+        }
+        // Per-L1 summary + header (money/issue chips/count) in place.
+        var _blocks = body.querySelectorAll('.scw-ws-v2-l1');
+        var _blockById = Object.create(null);
+        for (var _bi = 0; _bi < _blocks.length; _bi++) {
+          _blockById[_blocks[_bi].getAttribute('data-scw-ws-v2-l1')] = _blocks[_bi];
+        }
+        for (var _li = 0; _li < tree.length; _li++) {
+          var _l1 = tree[_li];
+          var _block = _blockById[_l1.id];
+          if (!_block) continue;
+          var _sumOld = _block.querySelector('.scw-ws-v2-summary');
+          if (_sumOld && ns.summary && ns.summary.buildL1Summary) {
+            try {
+              var _sumNew = ns.summary.buildL1Summary(_l1, _mOpts);
+              if (_sumNew && _sumOld.parentNode) {
+                _sumOld.parentNode.replaceChild(_sumNew, _sumOld);
+              }
+            } catch (e) { /* keep old */ }
+          }
+          var _headOld = _block.querySelector('.scw-ws-v2-l1-head');
+          if (_headOld && _headOld.parentNode) {
+            _headOld.parentNode.replaceChild(buildL1Header(_l1, sourceViewKey), _headOld);
+          }
+        }
+        if (bannerChips) {
+          bannerChips.innerHTML =
+            (ns.summary && typeof ns.summary.grandIssueChips === 'function')
+              ? (ns.summary.grandIssueChips(tree) || '') : '';
+        }
+        if (_PF) {
+          var _totIP = SCW._now() - _pf0;
+          if (SCW.recordHandlerTiming) {
+            SCW.recordHandlerTiming('view ' + sourceViewKey + ' worksheetV2.renderView', _totIP);
+          }
+          console.log('[SCW perf] worksheetV2.renderView ' + sourceViewKey + ': ' +
+            _totIP.toFixed(1) + 'ms  (IN-PLACE  dirty=' + _dids.length +
+            '  records=' + records.length + ')');
+        }
+        return;
+      }
     }
 
     function makeCard(record, viewKey) {
