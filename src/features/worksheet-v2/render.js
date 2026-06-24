@@ -491,6 +491,10 @@
     var container = document.getElementById('scw-ws-v2-' + sourceViewKey);
     if (!container) return;
 
+    // New render cycle → invalidate card.js's per-render record indexes so a
+    // changed back-pointer (connection edit) can't be served stale from cache.
+    ns.idxGen = (ns.idxGen || 0) + 1;
+
     var body  = container.querySelector('.scw-ws-v2-body');
     var count = container.querySelector('.scw-ws-v2-count');
     var bannerChips = container.querySelector('.scw-ws-v2-banner-chips');

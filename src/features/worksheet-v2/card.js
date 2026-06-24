@@ -305,6 +305,62 @@
     } catch (e) { return {}; }
   }
 
+  // ── Per-render record indexes ─────────────────────────────────────────
+  // Connection rendering (Connected Devices, accessory chips) needs to find
+  // "every record whose back-pointer field points at THIS card's record".
+  // Done naively that's an all-records scan PER card → O(n²) on a big
+  // worksheet (the dominant cold-render cost). Instead build the lookup ONCE
+  // per render and reuse it for every card. data.js now hands back a stable
+  // records-array reference until the model structurally changes, so we key
+  // the cache on that reference — it auto-rebuilds exactly when the data does.
+  var _idx = { arr: null, gen: -1, byId: null, back: null };
+  function recordsArr(viewKey) {
+    return (ns.data && typeof ns.data.readRecords === 'function')
+      ? ns.data.readRecords(viewKey) : [];
+  }
+  function ensureIdx(viewKey) {
+    var arr = recordsArr(viewKey);
+    // Rebuild when the model array changes (structural) OR a new render starts
+    // (ns.idxGen, bumped by render.js). The latter matters because in-place
+    // edits mutate attributes WITHOUT swapping the array ref, so a changed
+    // back-pointer (field_2197 / field_2464) must invalidate the derived index.
+    var gen = ns.idxGen || 0;
+    if (_idx.arr !== arr || _idx.gen !== gen) {
+      _idx.arr = arr; _idx.gen = gen; _idx.byId = null; _idx.back = Object.create(null);
+    }
+    return arr;
+  }
+  /** id → record map for the current view's loaded records (cached/render). */
+  function recById(viewKey) {
+    ensureIdx(viewKey);
+    if (!_idx.byId) {
+      var m = Object.create(null), arr = _idx.arr;
+      for (var i = 0; i < arr.length; i++) { if (arr[i] && arr[i].id) m[arr[i].id] = arr[i]; }
+      _idx.byId = m;
+    }
+    return _idx.byId;
+  }
+  /** parentId → [childRecord] for records whose `recipKey`_raw points at it. */
+  function backIndex(viewKey, recipKey) {
+    ensureIdx(viewKey);
+    var m = _idx.back[recipKey];
+    if (m) return m;
+    m = Object.create(null);
+    var arr = _idx.arr;
+    for (var i = 0; i < arr.length; i++) {
+      var crec = arr[i];
+      if (!crec || !crec.id) continue;
+      var back = crec[recipKey + '_raw'];
+      if (!Array.isArray(back)) continue;
+      for (var b = 0; b < back.length; b++) {
+        var pid = back[b] && back[b].id;
+        if (pid) { (m[pid] || (m[pid] = [])).push(crec); }
+      }
+    }
+    _idx.back[recipKey] = m;
+    return m;
+  }
+
   /** Count on field_2586 ("associated survey line items"). >0 means a survey
    *  line-item record has been created for this SOW line item (i.e. it's an
    *  existing/committed item), vs a brand-new sales addition (0). */
@@ -1047,23 +1103,14 @@
     }
 
     // Authoritative: every child whose reciprocal points back at this record.
-    var allRecs = [];
-    try {
-      allRecs = (ns.data && typeof ns.data.readRecords === 'function')
-        ? ns.data.readRecords(viewKey) : [];
-    } catch (e) { allRecs = []; }
-    for (var r = 0; r < allRecs.length; r++) {
-      var crec = allRecs[r];
+    // O(1) lookup via the per-render back-pointer index (was an all-records
+    // scan per card → O(n²)).
+    var kids = backIndex(viewKey, recipKey)[rec.id] || [];
+    for (var r = 0; r < kids.length; r++) {
+      var crec = kids[r];
       if (!crec || !crec.id || crec.id === rec.id || seen[crec.id]) continue;
-      var back = crec[recipKey + '_raw'];
-      if (!Array.isArray(back)) continue;
-      for (var b = 0; b < back.length; b++) {
-        if (back[b] && back[b].id === rec.id) {
-          seen[crec.id] = true;
-          labels.push(readField(crec, F.displayLabel || 'field_1950') || crec.id);
-          break;
-        }
-      }
+      seen[crec.id] = true;
+      labels.push(readField(crec, F.displayLabel || 'field_1950') || crec.id);
     }
 
     var val = labels.length ? labels.join(', ') : '(none)';
@@ -1153,22 +1200,14 @@
 
     // accAttrsById doubles as the per-chip attrs lookup the render below
     // uses for the qty stepper.
-    var accAttrsById = Object.create(null);
-    var allRecs = [];
-    try {
-      allRecs = (ns.data && typeof ns.data.readRecords === 'function')
-        ? ns.data.readRecords(viewKey) : [];
-    } catch (e) { allRecs = []; }
-    for (var ri = 0; ri < allRecs.length; ri++) {
-      if (allRecs[ri] && allRecs[ri].id) accAttrsById[allRecs[ri].id] = allRecs[ri];
-    }
+    // id → attrs lookup (qty stepper) + this parent's accessory children both
+    // come from the per-render index — no per-card all-records rebuild/scan.
+    var accAttrsById = recById(viewKey);
+    var accKids = backIndex(viewKey, 'field_2464')[parentId] || [];
 
-    for (var ai = 0; ai < allRecs.length; ai++) {
-      var arec = allRecs[ai];
+    for (var ai = 0; ai < accKids.length; ai++) {
+      var arec = accKids[ai];
       if (!arec || !arec.id) continue;
-      var praw = arec['field_2464_raw'];
-      var ppid = (Array.isArray(praw) && praw[0] && praw[0].id) ? praw[0].id : '';
-      if (ppid !== parentId) continue;
       // Label = the accessory's connection identifier (its field_1950 display
       // label, e.g. "… (MDF)"), matching how Knack lists it under a parent;
       // fall back to labelLineItem's "drop · product" composite only when

@@ -24,8 +24,26 @@
   // with (sourceViewKey, records) on every change event.
   var subscribers = Object.create(null);
 
-  /** Read all records currently in the source view's model. */
+  // ── readRecords cache ─────────────────────────────────────────────────
+  // readRecords was rebuilding a full N-element array on EVERY call, and the
+  // card builder calls it once PER card that renders a connection (Connected
+  // Devices, accessories) — so a 333-row worksheet did 333× full-array
+  // rebuilds (O(n²)) just to render. Cache the array per view and hand back
+  // the SAME reference until the model structurally changes (add/remove/reset
+  // → invalidated in bindChangeTracking). In-place attribute edits keep the
+  // record object refs (Backbone mutates the attributes hash in place), so the
+  // cached array reflects them with no rebuild. The stable ref also lets the
+  // card layer memoize its back-pointer index against it (card.js).
+  var _recCache = Object.create(null);   // viewKey -> records array
+  function invalidateRecords(viewKey) {
+    if (viewKey) delete _recCache[viewKey];
+    else _recCache = Object.create(null);
+  }
+
+  /** Read all records currently in the source view's model (cached). */
   function readRecords(sourceViewKey) {
+    var cached = _recCache[sourceViewKey];
+    if (cached) return cached;
     try {
       var v = Knack.views[sourceViewKey];
       if (!v || !v.model || !v.model.data) return [];
@@ -40,6 +58,7 @@
         var attrs = m.attributes || (typeof m.toJSON === 'function' ? m.toJSON() : null);
         if (attrs) out.push(attrs);
       }
+      _recCache[sourceViewKey] = out;
       return out;
     } catch (e) {
       console.warn('[scw-ws-v2] readRecords failed for ' + sourceViewKey, e);
@@ -86,7 +105,10 @@
       if (!coll || typeof coll.on !== 'function') return;
       _changeBound[viewKey] = true;
       coll.on('change', function (m) { if (m && m.id) markDirty(viewKey, m.id); });
-      coll.on('add remove reset', function () { _dirtyAll[viewKey] = true; });
+      coll.on('add remove reset', function () {
+        _dirtyAll[viewKey] = true;
+        invalidateRecords(viewKey);   // model set changed → drop the cached array
+      });
     } catch (e) { /* ignore — render falls back to the full-sig path */ }
   }
   // Consumed by render.js at the start of a rebuild; returns what changed since
