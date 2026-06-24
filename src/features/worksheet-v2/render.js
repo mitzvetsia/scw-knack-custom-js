@@ -422,6 +422,7 @@
     var _PF  = !!(window.SCW && SCW.perfLog && SCW._now);
     var _pf0 = _PF ? SCW._now() : 0;
     var _pfW = 0, _pfG = 0, _pfS = 0, _pfC = 0;
+    var _built = 0, _reused = 0;   // keyed-card reuse tally (perf diagnostic)
     if (!ns.groups || typeof ns.groups.buildGroupTree !== 'function') {
       body.innerHTML = '<div class="scw-ws-v2-empty">groups.js not loaded.</div>';
       return;
@@ -503,9 +504,11 @@
         // same record somehow appears twice in the tree the second gets a fresh
         // build instead of stealing (and thus removing) the first.
         delete existingCards[id];
+        if (_PF) _reused++;
         return ex; // unchanged — reuse node verbatim (keeps open state, focus-safe)
       }
       var card = ns.card.buildCard(record, viewKey);
+      if (_PF) _built++;
       if (card && card.setAttribute) card.setAttribute('data-scw-sig', sig);
       return card;
     }
@@ -586,7 +589,8 @@
       }
       console.log('[SCW perf] worksheetV2.renderView ' + sourceViewKey + ': ' +
         _tot.toFixed(1) + 'ms  (records=' + records.length +
-        '  cards=' + _pfC.toFixed(1) + '  tree=' + _pfG.toFixed(1) +
+        '  cards=' + _pfC.toFixed(1) + ' [built=' + _built + ' reused=' + _reused + ']' +
+        '  tree=' + _pfG.toFixed(1) +
         '  warnings=' + _pfW.toFixed(1) + '  summary=' + _pfS.toFixed(1) + ')');
     }
   }
