@@ -79,7 +79,11 @@
     draftView:        'view_3841',  // editable view on the same page for SOW record API calls
 
     // ── Debug / styling ────────────────────────────────────
-    debug:            true,
+    // Gated on the global SCW.DEBUG flag — was hardcoded true, which
+    // spammed [SalesCR] activation diagnostics on EVERY worksheet render
+    // (and the module re-runs its activation gate per render even when
+    // inactive). Flip on with SCW.DEBUG = true to troubleshoot.
+    debug:            !!(window.SCW && window.SCW.DEBUG),
     eventNs:          '.scwSalesCR',
     cssId:            'scw-sales-cr-css',
     barId:            'scw-sales-cr-bar',

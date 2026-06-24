@@ -1306,6 +1306,13 @@
       var lineItemId = tr.getAttribute('id');
       if (!lineItemId) continue;
 
+      // Idempotency: if this data row already has its photo row injected
+      // (a partial re-render that didn't wipe it, or a debounced second
+      // pass), don't build and inject a duplicate.
+      var existingNext = tr.nextElementSibling;
+      if (existingNext && existingNext.classList &&
+          existingNext.classList.contains(ROW_CLS)) continue;
+
       // Get the label for alt text
       var labelCell = tr.querySelector('td.field_2364') || tr.querySelector('td.field_1642');
       var labelText = labelCell ? (labelCell.textContent || '').trim() : '';
@@ -1514,13 +1521,30 @@
     }
   });
 
+  // Debounced per-view processing. Knack re-renders a view several times
+  // for a single user action (inline edit → model.fetch → render, plus our
+  // own cascade refetches), and processView rebuilds every photo row from
+  // scratch (~10-40ms each) on every one of them. Coalescing the burst into
+  // a single rebuild is the dominant win — photo rows already vanish/reappear
+  // on each render, so the short delay is imperceptible, and the idempotency
+  // guard in processView keeps a surviving row from being duplicated.
+  var PROCESS_DEBOUNCE_MS = 50;
+  var _processTimers = {};
+  function scheduleProcess(vid) {
+    if (_processTimers[vid]) clearTimeout(_processTimers[vid]);
+    _processTimers[vid] = setTimeout(function () {
+      _processTimers[vid] = null;
+      var done = (window.SCW && SCW.perf)
+        ? SCW.perf('inline-photo-row ' + vid) : null;
+      processView(vid);
+      if (done) done();
+    }, PROCESS_DEBOUNCE_MS);
+  }
+
   for (var v = 0; v < TARGET_VIEWS.length; v++) {
     (function (vid) {
       $(document).on('knack-view-render.' + vid, function () {
-        var done = (window.SCW && SCW.perf)
-          ? SCW.perf('inline-photo-row ' + vid) : null;
-        processView(vid);
-        if (done) done();
+        scheduleProcess(vid);
       });
     })(TARGET_VIEWS[v]);
   }
