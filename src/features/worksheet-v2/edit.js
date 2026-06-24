@@ -28,25 +28,6 @@
 
   var FLASH_MS = 200;
   var ERR_CLS  = 'scw-ws-v2-input--error';
-
-  // Knack recomputes server-side CALC/equation fields (Applied Discount
-  // field_2303, line Total field_2269, Fee, the drop label, …) a beat AFTER
-  // the PUT that feeds them resolves, so the immediate post-save refetch can
-  // read STALE pre-recompute values — the input takes, but the dependent
-  // read-only cells look like nothing changed. After saving a recalc-feeder
-  // we fire ONE debounced follow-up refetch to pull the settled CALCs. Keyed
-  // per view + debounced so a burst of edits triggers a single late sweep.
-  var RECALC_SWEEP_MS = 1400;
-  var _recalcSweepTimers = Object.create(null);
-  function scheduleRecalcSweep(viewKey) {
-    if (_recalcSweepTimers[viewKey]) clearTimeout(_recalcSweepTimers[viewKey]);
-    _recalcSweepTimers[viewKey] = setTimeout(function () {
-      _recalcSweepTimers[viewKey] = null;
-      if (ns.data && typeof ns.data.refetchAndNotify === 'function') {
-        ns.data.refetchAndNotify(viewKey);
-      }
-    }, RECALC_SWEEP_MS);
-  }
   var SAV_CLS  = 'scw-ws-v2-input--saving';
 
   /** Send the PUT. Returns a thenable. */
@@ -295,12 +276,13 @@
         // pair atomically.
         if (RECALC_DEPS[fieldKey]) {
           if (ns.data && typeof ns.data.refetchAndNotify === 'function') {
+            // ONE refetch — it runs after the PUT has committed, so Knack has
+            // already recomputed the dependent CALCs (Applied Discount, Total,
+            // Fee, …). The pending-writes overlay (data.js) keeps this fetch
+            // from reverting concurrent in-flight edits. No second "sweep"
+            // refetch — that only bought a redundant full-grid rebuild (the
+            // post-discount responsiveness hitch).
             ns.data.refetchAndNotify(viewKey);
-            // The immediate refetch above can beat Knack's server-side
-            // recompute of the dependent CALCs (Applied Discount, Total,
-            // Fee, …); a single debounced follow-up refetch catches the
-            // settled values so the read-only cells actually update.
-            scheduleRecalcSweep(viewKey);
             return;
           }
         }
