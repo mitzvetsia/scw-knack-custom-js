@@ -4207,6 +4207,16 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
           attrs[key] = resp[key];
         }
       }
+
+      // This is a DIRECT attribute mutation — Backbone fires no 'change', so
+      // worksheet-v2's dirty tracking would miss it. Mark the record dirty so
+      // its v2 card rebuilds on the next render (the rest reuse without a sig).
+      try {
+        if (window.SCW && SCW.worksheetV2 && SCW.worksheetV2.data &&
+            typeof SCW.worksheetV2.data.markDirty === 'function') {
+          SCW.worksheetV2.data.markDirty(viewId, recordId);
+        }
+      } catch (e2) { /* ignore */ }
     } catch (ex) {
       // Silently ignore — model sync is best-effort
     }

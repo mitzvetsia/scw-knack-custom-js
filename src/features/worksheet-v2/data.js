@@ -62,9 +62,47 @@
   // notifies for a view that land in the same frame into ONE render.
   var notifyScheduled = Object.create(null);
 
+  // ── Dirty tracking (so render.js can skip JSON.stringify for unchanged rows) ─
+  // The keyed-card reuse check used to JSON.stringify EVERY record every render
+  // just to detect change — ~168× per render, even on idle polls. Instead track
+  // exactly what changed: Backbone fires 'change' on a model whose attributes a
+  // fetch/poll updated, and 'add'/'remove'/'reset' on structural changes; the
+  // optimistic edit path (SCW.syncKnackModel) calls markDirty directly (a direct
+  // attribute mutation fires no 'change'). render.js rebuilds only dirty/new
+  // records and reuses the rest with NO signature work.
+  var _dirtyIds    = Object.create(null);  // viewKey -> { recId: true }
+  var _dirtyAll    = Object.create(null);  // viewKey -> bool (structural → rebuild all)
+  var _changeBound = Object.create(null);  // viewKey -> bool
+
+  function markDirty(viewKey, recId) {
+    if (!viewKey || !recId) return;
+    (_dirtyIds[viewKey] || (_dirtyIds[viewKey] = Object.create(null)))[recId] = true;
+  }
+  function bindChangeTracking(viewKey) {
+    if (_changeBound[viewKey]) return;
+    try {
+      var v = Knack.views[viewKey];
+      var coll = v && v.model && v.model.data;
+      if (!coll || typeof coll.on !== 'function') return;
+      _changeBound[viewKey] = true;
+      coll.on('change', function (m) { if (m && m.id) markDirty(viewKey, m.id); });
+      coll.on('add remove reset', function () { _dirtyAll[viewKey] = true; });
+    } catch (e) { /* ignore — render falls back to the full-sig path */ }
+  }
+  // Consumed by render.js at the start of a rebuild; returns what changed since
+  // the last render and CLEARS it. all:true → rebuild everything (first render
+  // or structural change), so render falls back to the signature path.
+  function takeDirty(viewKey) {
+    var out = { all: !!_dirtyAll[viewKey], ids: _dirtyIds[viewKey] || Object.create(null) };
+    _dirtyIds[viewKey] = Object.create(null);
+    _dirtyAll[viewKey] = false;
+    return out;
+  }
+
   function runNotify(sourceViewKey) {
     var list = subscribers[sourceViewKey];
     if (!list || !list.length) return;
+    bindChangeTracking(sourceViewKey);
     var records = readRecords(sourceViewKey);
     for (var i = 0; i < list.length; i++) {
       try { list[i](sourceViewKey, records); }
@@ -271,6 +309,8 @@
     refetchAndNotify: refetchAndNotify,
     registerPendingWrite: registerPendingWrite,
     clearPendingWrite:    clearPendingWrite,
+    markDirty:       markDirty,
+    takeDirty:       takeDirty,
     attachListeners: attachListeners
   };
 })();

@@ -62,6 +62,13 @@
   // away by a sibling-triggered re-notify.
   var pending = Object.create(null);
 
+  // Self-heal: besides the dirty records, each render re-verifies a small
+  // ROTATING window of records (recompute sig, rebuild on mismatch) so a change
+  // the dirty tracker ever missed self-corrects within a few renders instead of
+  // persisting stale. Cheap insurance — ~16 sigs/render vs 168.
+  var HEAL_PER_RENDER = 16;
+  var _healOffset = Object.create(null);   // viewKey -> next window start index
+
   /**
    * Read every MDF/IDF location off the configured mdfSourceViewKey
    * (e.g. view_3358) so v2 can show an L1 group for each one even
@@ -496,12 +503,38 @@
     // (matched by id + signature), else build a fresh card. This is what
     // turns a one-field edit from "rebuild every card" into "rebuild one".
     var existingCards = indexExistingCards(body);
+
+    // What actually changed since the last render (Backbone change + add/remove
+    // + optimistic-edit markDirty). all:true → first render / structural change
+    // → verify everything via the signature path. Plus a rotating self-heal
+    // window so a missed change can't persist stale.
+    var dirty = (ns.data && typeof ns.data.takeDirty === 'function')
+      ? ns.data.takeDirty(sourceViewKey) : { all: true, ids: Object.create(null) };
+    var healSet = Object.create(null);
+    if (!dirty.all && records.length) {
+      var _ho = _healOffset[sourceViewKey] || 0;
+      for (var _hi = 0; _hi < HEAL_PER_RENDER && _hi < records.length; _hi++) {
+        var _hr = records[(_ho + _hi) % records.length];
+        if (_hr && _hr.id) healSet[_hr.id] = true;
+      }
+      _healOffset[sourceViewKey] = (_ho + HEAL_PER_RENDER) % records.length;
+    }
+
     function makeCard(record, viewKey) {
       var id  = record && record.id;
+      var ex  = id && existingCards[id];
+      // Fast path: a record we have a card for, that DIDN'T change and isn't in
+      // this render's self-heal window → reuse verbatim with NO JSON.stringify.
+      // This is the win — idle/unchanged rows cost nothing.
+      if (ex && !dirty.all && !dirty.ids[id] && !healSet[id]) {
+        delete existingCards[id];
+        if (_PF) _reused++;
+        return ex;
+      }
+      // Changed / new / heal-sampled → verify via signature.
       var _ss = _PF ? SCW._now() : 0;
       var sig = cardSig(record);
       if (_PF) _pfSig += SCW._now() - _ss;
-      var ex  = id && existingCards[id];
       if (ex && ex.getAttribute('data-scw-sig') === sig) {
         // A DOM node lives in one place only — drop it from the index so if the
         // same record somehow appears twice in the tree the second gets a fresh
