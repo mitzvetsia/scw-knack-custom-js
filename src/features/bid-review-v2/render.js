@@ -176,7 +176,9 @@
     if (ns.toolbar && typeof ns.toolbar.mount === 'function') ns.toolbar.mount();
   }
 
-  // Resume deferred render when focus leaves the panel.
+  // Resume deferred render when focus leaves the panel. Anchor it like the
+  // subscribe path (init.js) so the flush rebuild doesn't jump the page —
+  // this is the render that actually fires after an edit commits + blur.
   document.addEventListener('focusout', function () {
     setTimeout(function () {
       if (!_pendingSnapshot) return;
@@ -184,7 +186,12 @@
       if (!container || hasFocusInPanel(container)) return;
       var snap = _pendingSnapshot;
       _pendingSnapshot = null;
-      renderSnapshot(snap);
+      if (window.SCW.v2ScrollAnchor) {
+        SCW.v2ScrollAnchor.around('.scw-bid-review-v2__sow[data-sow-id]', 'data-sow-id',
+          function () { renderSnapshot(snap); });
+      } else {
+        renderSnapshot(snap);
+      }
     }, 0);
   }, true);
 

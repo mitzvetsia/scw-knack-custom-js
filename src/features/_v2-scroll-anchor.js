@@ -29,6 +29,13 @@
   var raf = window.requestAnimationFrame || function (f) { return setTimeout(f, 16); };
   var MAX_MS = 600;          // stop re-pinning after this — bounds the loop
   var STABLE_FRAMES = 2;     // consecutive no-op frames = settled
+  // Single-flight: a grid that fires SEVERAL renders per edit (e.g. bid-review-v2
+  // refetches multiple source views, each triggering a render) would otherwise
+  // spawn one settle loop per render — overlapping loops each chase a DIFFERENT
+  // captured anchor and fight, drifting the page (observed: edit scrolls to the
+  // bottom in several jumps). Each around() bumps this token; older loops see
+  // they're superseded and abort, so only the latest render's loop runs.
+  var _runToken = 0;
 
   function cssEsc(s) {
     if (window.CSS && CSS.escape) return CSS.escape(s);
@@ -40,6 +47,7 @@
   }
 
   function around(rowSelector, idAttr, run) {
+    var myToken = ++_runToken;   // supersede any in-flight settle loop
     var anchor = null;
     var prevY = scrollY();
     try {
@@ -74,7 +82,7 @@
     }
 
     function tick(ts) {
-      if (userScrolled) { cleanup(); return; }
+      if (userScrolled || myToken !== _runToken) { cleanup(); return; }
       if (startTs == null) startTs = ts || 0;
       var corrected = false;
       try {
