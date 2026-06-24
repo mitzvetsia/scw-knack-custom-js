@@ -608,6 +608,7 @@
 
       function refetchSoon() {
         setTimeout(function () {
+          if (ns.warnings && ns.warnings.invalidatePhotos) ns.warnings.invalidatePhotos();
           if (viewKey && ns.data && typeof ns.data.refetchAndNotify === 'function') {
             ns.data.refetchAndNotify(viewKey);
           }
@@ -702,6 +703,7 @@
     SCW.qaPopover.openAnchor(el, photoId, snapshot, function () {
       // Refetch the source view so the strip rebuilds from authoritative
       // data (the QA columns now reflect the save).
+      if (ns.warnings && ns.warnings.invalidatePhotos) ns.warnings.invalidatePhotos();
       if (viewKey && ns.data && typeof ns.data.refetchAndNotify === 'function') {
         setTimeout(function () { ns.data.refetchAndNotify(viewKey); }, 800);
       }
@@ -833,6 +835,7 @@
 
   function dispatchPhotoMove(detail, viewKey) {
     function refresh() {
+      if (ns.warnings && ns.warnings.invalidatePhotos) ns.warnings.invalidatePhotos();
       if (viewKey && ns.data && typeof ns.data.refetchAndNotify === 'function') {
         setTimeout(function () { ns.data.refetchAndNotify(viewKey); }, 1500);
       }

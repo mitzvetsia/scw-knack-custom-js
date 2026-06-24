@@ -93,6 +93,23 @@
     return s === 'yes' || s === 'true' || s === '1';
   }
 
+  // Cache of the photo-warning boolean per record id, persisted ACROSS renders.
+  // extractPhotoRecords (a source-view DOM scrape) is the dominant analyze()
+  // cost on large worksheets (~476ms for 334 records when the source DOM is
+  // present) and recurs on EVERY render — but photo state only changes on a
+  // photo add/remove/replace. Memoize it (photos.js invalidates on mutation),
+  // so a non-photo edit never re-scrapes. Only cache a result computed while
+  // the source row is actually present — a scrape against a not-yet-rendered
+  // row is a transient false-negative we must not persist.
+  var photoWarnCache = Object.create(null);   // recId -> bool
+
+  function sourceRowPresent(viewKey, recId) {
+    try {
+      var v = document.getElementById(viewKey) || document.getElementById('view_3962');
+      return !!(v && v.querySelector('tr[id="' + recId + '"]'));
+    } catch (e) { return false; }
+  }
+
   function hasMissingRequiredPhotos(rec, viewKey) {
     if (!ns.photos || typeof ns.photos.extractPhotoRecords !== 'function') return false;
     try {
@@ -114,9 +131,25 @@
     if (countKey) {
       var rawN = (rec[countKey + '_raw'] != null) ? rec[countKey + '_raw'] : rec[countKey];
       var n = parseFloat(String(rawN == null ? '' : rawN).replace(/[^0-9.\-]/g, ''));
-      if (isFinite(n)) return n > 0;   // count field present → trust it
+      if (isFinite(n)) return n > 0;   // count field present → trust it (cheap)
     }
-    return hasMissingRequiredPhotos(rec, viewKey);
+    // No count field (e.g. SOW view_3962) → scrape the photo DOM, but memoize:
+    // compute ONCE per record (when its source row is present) and reuse on
+    // every later render until photos.js invalidates it.
+    var id = rec && rec.id;
+    if (!id) return hasMissingRequiredPhotos(rec, viewKey);
+    if (id in photoWarnCache) return photoWarnCache[id];
+    if (!sourceRowPresent(viewKey, id)) return false;   // DOM not ready — don't cache
+    var v = hasMissingRequiredPhotos(rec, viewKey);
+    photoWarnCache[id] = v;
+    return v;
+  }
+
+  // Drop cached photo warnings so the next analyze() re-scrapes. Call after a
+  // photo add/remove/replace (photos.js). recId clears one record; no arg clears all.
+  function invalidatePhotos(recId) {
+    if (recId) delete photoWarnCache[recId];
+    else photoWarnCache = Object.create(null);
   }
 
   // Active source view for the current analyze() pass — lets the helpers
@@ -295,6 +328,7 @@
     LABELS:              LABELS,
     ICONS:               ICONS,
     analyze:             analyze,
+    invalidatePhotos:    invalidatePhotos,
     getIssuesFor:        getIssuesFor,
     getCountsForRecords: getCountsForRecords,
     isAccessoryMismatch: isAccessoryMismatch,
