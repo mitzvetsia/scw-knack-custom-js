@@ -95,14 +95,28 @@
     };
   } catch (e) { /* ignore */ }
 
-  // Direct scrollTop assignment on the scrolling element / body.
+  // Direct scrollTop assignment (e.g. jQuery $(window).scrollTop(pos) on some
+  // versions, or el.scrollTop = n) — window.scrollTo patching misses these.
+  // Wrap the shared prototype accessor and only log for the scroll roots.
   try {
-    [document.scrollingElement, document.documentElement, document.body].forEach(function (node) {
-      if (!node) return;
-      var proto = node === document.body ? HTMLBodyElement.prototype : Element.prototype;
-      // Can't cleanly intercept per-instance scrollTop without clobbering the
-      // shared prototype accessor; the watchdog below covers this path.
-    });
+    var desc = Object.getOwnPropertyDescriptor(Element.prototype, 'scrollTop');
+    if (desc && desc.set && desc.get) {
+      Object.defineProperty(Element.prototype, 'scrollTop', {
+        configurable: true,
+        enumerable: desc.enumerable,
+        get: desc.get,
+        set: function (v) {
+          if (active() &&
+              (this === document.scrollingElement ||
+               this === document.documentElement ||
+               this === document.body)) {
+            console.warn(P + ' set ' + describe(this) + '.scrollTop=' + v + ' from', y());
+            console.trace(P + ' scrollTop stack');
+          }
+          return desc.set.call(this, v);
+        }
+      });
+    }
   } catch (e) { /* ignore */ }
 
   // ── User-gesture tracker ────────────────────────────────────────────
