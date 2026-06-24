@@ -834,6 +834,15 @@
   var _needsFullRefresh     = false;
 
   function scheduleSilentRefresh(opts) {
+    // When bid-review-v2 owns the page (replaceV1), v1's matrix is hidden and
+    // v2 renders the live grid off the SAME source views. v1 refreshing its
+    // hidden matrix on every edit is pure background churn — worse, the 4-view
+    // model.fetch it does fires knack-view-render storms that make v2's grid
+    // JUMP and re-render twice per edit. Skip it: v1 stays a pure library here
+    // (its one-time initial render already populated _state for the functions
+    // v2 calls into). Reversible — flip replaceV1 to false to restore v1.
+    var v2cfg = window.SCW && SCW.bidReviewV2 && SCW.bidReviewV2.CONFIG;
+    if (v2cfg && v2cfg.enabled !== false && v2cfg.replaceV1) return;
     var rid = opts && opts.recordId;
     if (rid) {
       _pendingPatchIds[rid] = true;
