@@ -252,6 +252,79 @@
     }
   }
 
+  // ── Single-record refetch ────────────────────────────────────────────
+  // refetchAndNotify() above pulls the ENTIRE view model (all N records)
+  // back over the wire AND triggers Knack's native grid to re-render every
+  // row — on a 300+ row SOW that's a multi-second storm just to refresh ONE
+  // edited card's server-recomputed CALC fields (Fee, Applied Discount,
+  // Total, drop Label, survey Ext…).
+  //
+  // For an edit, only the EDITED record's derived fields changed, so we read
+  // back JUST that record via the same view-scoped session-token endpoint we
+  // PUT through (SCW.knackRecordUrl → /v1/pages/<scene>/views/<view>/records/
+  // <id>, authed with Knack.getUserToken() — NOT the exposed REST API key /
+  // objects API). syncKnackModel patches every field_NNNN from the response
+  // (including the recomputed CALCs) into the one Backbone record, markDirty
+  // flags it, and notify rebuilds only that card. No full fetch, no native
+  // grid re-render.
+  //
+  // Why a short delay: Knack equation fields that reference a CONNECTED
+  // record (e.g. install fee ← connected product price) settle a beat AFTER
+  // the PUT acknowledgment — a GET fired immediately can read the
+  // pre-recompute value. v1's scheduleFeeRefetch uses the same ~700ms wait.
+  // The optimistic syncKnackModel(resp) from the PUT already painted an
+  // approximate value instantly, so this only corrects the precise figure.
+  var _recFetchInFlight = Object.create(null);
+  var REC_REFETCH_DELAY_MS = 650;
+
+  function refetchRecordAndNotify(viewKey, recordId, fieldKey, value) {
+    try {
+      if (!viewKey || !recordId ||
+          !(window.SCW && typeof SCW.knackAjax === 'function' &&
+            typeof SCW.knackRecordUrl === 'function')) {
+        // No session-token endpoint available — fall back to the full refetch.
+        refetchAndNotify(viewKey);
+        return;
+      }
+      var inflightKey = viewKey + '|' + recordId;
+      if (_recFetchInFlight[inflightKey]) {
+        // A read for this exact record is already pending — it'll pull the
+        // freshest state, so just coalesce (a later notify will render it).
+        return;
+      }
+      _recFetchInFlight[inflightKey] = true;
+      setTimeout(function () {
+        SCW.knackAjax({
+          url:  SCW.knackRecordUrl(viewKey, recordId),
+          type: 'GET',
+          success: function (resp) {
+            _recFetchInFlight[inflightKey] = false;
+            try {
+              if (typeof SCW.syncKnackModel === 'function') {
+                SCW.syncKnackModel(viewKey, recordId, resp, fieldKey, value);
+              }
+            } catch (e) { /* ignore */ }
+            // Re-apply any still-live optimistic writes (other in-flight
+            // edits on this view) so the refresh can't roll them back.
+            applyPendingOverlay(viewKey);
+            notify(viewKey);
+          },
+          error: function (xhr) {
+            _recFetchInFlight[inflightKey] = false;
+            console.warn('[scw-ws-v2] record refetch failed', {
+              recordId: recordId, status: xhr && xhr.status
+            });
+            // Best-effort: render whatever the optimistic patch already set.
+            notify(viewKey);
+          }
+        });
+      }, REC_REFETCH_DELAY_MS);
+    } catch (e) {
+      _recFetchInFlight[viewKey + '|' + recordId] = false;
+      refetchAndNotify(viewKey);
+    }
+  }
+
   /** Wire the Knack event listeners that drive notify(). */
   function attachListeners() {
     if (!ns.CONFIG || !ns.CONFIG.enabled) return;
@@ -307,6 +380,7 @@
     notify:      notify,
     notifyNow:   notifyNow,
     refetchAndNotify: refetchAndNotify,
+    refetchRecordAndNotify: refetchRecordAndNotify,
     registerPendingWrite: registerPendingWrite,
     clearPendingWrite:    clearPendingWrite,
     markDirty:       markDirty,
