@@ -1044,6 +1044,75 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   }
 
   // ============================================================
+  // FEATURE: Heal orphaned camera ("drop") rows
+  // ============================================================
+  //
+  // Knack groups this view natively by MDF/bucket but the view is SORTED by
+  // a non-group field (field_2404). When that sort places a bucket's rows
+  // such that Knack never opens a group header for them, the rows render as
+  // raw "prefix" rows directly under the L1 header — with no L2 "Camera or
+  // Reader" header and no L3 drop header. The concat/reorder key off those
+  // headers, so the orphaned cameras get skipped entirely (observed: HEADEND
+  // cameras rendering ungrouped while every other MDF's cameras grouped fine).
+  //
+  // Self-heal: for each L1 section, gather the prefix DROP rows (rows before
+  // the first L2 header that carry a drop prefix), and splice them into a
+  // proper "Camera or Reader" L2+L3 block cloned from a working one so the
+  // existing pipeline (sort into position + concat) handles them identically.
+  function healOrphanDropGroups(ctx, $tbody, caches) {
+    const tbody = $tbody && $tbody[0];
+    if (!tbody || !ctx.features.concat?.enabled) return;
+    const dropCtx = ctx.features.concat.onlyContextKey; // 'drop'
+
+    // Locate a template drop L2 header + its following L3 header to clone.
+    let tmplL2 = null, tmplL3 = null;
+    const allL2 = tbody.querySelectorAll('tr.kn-table-group.kn-group-level-2');
+    for (const l2 of allL2) {
+      if (contextKeyFromLevel2Info(ctx, getLevel2InfoFromGroupRow($(l2))) !== dropCtx) continue;
+      const nxt = l2.nextElementSibling;
+      if (nxt && nxt.classList?.contains('kn-group-level-3')) { tmplL2 = l2; tmplL3 = nxt; break; }
+    }
+    if (!tmplL2 || !tmplL3) return; // nothing to clone from — can't heal safely
+
+    const l1Headers = Array.from(tbody.querySelectorAll('tr.kn-table-group.kn-group-level-1'));
+    for (let i = 0; i < l1Headers.length; i++) {
+      const l1El = l1Headers[i];
+      const nextL1El = i + 1 < l1Headers.length ? l1Headers[i + 1] : null;
+
+      // Walk to the first L2 header, collecting drop-prefix data rows on the way.
+      const prefixDrops = [];
+      let cur = l1El.nextElementSibling;
+      while (cur && cur !== nextL1El) {
+        if (cur.classList?.contains('kn-table-group')) {
+          const m = cur.className.match(/kn-group-level-(\d+)/);
+          if (m && parseInt(m[1], 10) <= 2) break; // reached the first L2 — stop
+        }
+        if (cur.id && cur.tagName === 'TR' && getRowCellText(caches, cur, ctx.keys.prefix)) {
+          prefixDrops.push(cur);
+        }
+        cur = cur.nextElementSibling;
+      }
+      if (!prefixDrops.length) continue;
+
+      // Build a fresh "Camera or Reader" L2 + L3 from the template.
+      const newL2 = tmplL2.cloneNode(true);
+      const newL3 = tmplL3.cloneNode(true);
+      $(newL2).removeData(); $(newL3).removeData();
+      newL2.classList.remove('scw-promoted-l2-as-l1'); // never promoted here
+      // Strip any injected camera-concat content so it re-injects fresh.
+      const cc = newL3.querySelector('.scw-concat-cameras');
+      if (cc) { while (cc.firstChild) cc.parentNode.insertBefore(cc.firstChild, cc); cc.remove(); }
+
+      const ref = prefixDrops[0];
+      ref.parentNode.insertBefore(newL2, ref);
+      newL2.parentNode.insertBefore(newL3, ref);
+      // Pull every drop-prefix row up directly under the new L3 (consecutive).
+      let after = newL3;
+      for (const r of prefixDrops) { after.parentNode.insertBefore(r, after.nextSibling); after = r; }
+    }
+  }
+
+  // ============================================================
   // FEATURE: Camera list builder
   // ============================================================
 
@@ -1728,6 +1797,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
       .removeClass(ctx.l2Specials.classOnLevel3);
 
     reorderLevel1Groups($tbody);
+    healOrphanDropGroups(ctx, $tbody, caches);
     reorderLevel2GroupsBySortField(ctx, $tbody, runId);
 
     const $firstDataRow = $tbody.find('tr[id]').first();
