@@ -142,21 +142,52 @@
     }
   }
 
+  // Leading + trailing debounce. Knack streams the 333 records in as a burst of
+  // add/reset/view-render events during load, and each marked the model dirty →
+  // each drove a FULL tree rebuild (measured: 17 renders / ~1s on a 333-row
+  // page, 16 of them rebuilding identical-but-for-more-rows data). We don't need
+  // 17 intermediate paints — one when the burst settles. So: fire promptly on
+  // the FIRST notify after a quiet gap (isolated edit stays responsive), but
+  // collapse any rapid follow-ups into a single TRAILING render after the burst.
+  var _notifyLeadTs = Object.create(null);   // viewKey -> last fire timestamp
+  var _notifyTrail  = Object.create(null);   // viewKey -> trailing timer id
+  var NOTIFY_BURST_MS = 150;
+
+  function fireNotify(sourceViewKey) {
+    notifyScheduled[sourceViewKey] = false;
+    _notifyLeadTs[sourceViewKey] = Date.now();
+    runNotify(sourceViewKey);
+  }
+
   function notify(sourceViewKey) {
-    if (notifyScheduled[sourceViewKey]) return;
-    notifyScheduled[sourceViewKey] = true;
-    var run = function () {
-      notifyScheduled[sourceViewKey] = false;
-      runNotify(sourceViewKey);
-    };
-    if (typeof window.requestAnimationFrame === 'function') window.requestAnimationFrame(run);
-    else setTimeout(run, 0);
+    var quiet = (Date.now() - (_notifyLeadTs[sourceViewKey] || 0)) >= NOTIFY_BURST_MS;
+    if (quiet && !_notifyTrail[sourceViewKey]) {
+      // Leading edge — render next frame (responsive for isolated edits + the
+      // first event of a load burst). rAF coalesces same-frame duplicates.
+      if (notifyScheduled[sourceViewKey]) return;
+      notifyScheduled[sourceViewKey] = true;
+      var run = function () { fireNotify(sourceViewKey); };
+      if (typeof window.requestAnimationFrame === 'function') window.requestAnimationFrame(run);
+      else setTimeout(run, 0);
+      return;
+    }
+    // Inside a burst — (re)arm a single trailing render after it settles.
+    if (_notifyTrail[sourceViewKey]) clearTimeout(_notifyTrail[sourceViewKey]);
+    _notifyTrail[sourceViewKey] = setTimeout(function () {
+      _notifyTrail[sourceViewKey] = null;
+      fireNotify(sourceViewKey);
+    }, NOTIFY_BURST_MS);
   }
 
   /** Synchronous notify — bypasses the frame coalescing. Reserved for the
    *  rare caller that must render before reading the DOM back. */
   function notifyNow(sourceViewKey) {
     notifyScheduled[sourceViewKey] = false;
+    if (_notifyTrail[sourceViewKey]) {
+      clearTimeout(_notifyTrail[sourceViewKey]);
+      _notifyTrail[sourceViewKey] = null;
+    }
+    _notifyLeadTs[sourceViewKey] = Date.now();
     runNotify(sourceViewKey);
   }
 
