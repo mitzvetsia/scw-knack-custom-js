@@ -164,14 +164,14 @@
     // sort / filter / bulk mounts below are idempotent (early-return when
     // already mounted) and must still run so the first notify after mount wires
     // them up.
+    //
+    // NOTE: scroll-anchoring now lives INSIDE renderView's full-rebuild path
+    // (the only path that empties + refills the body and can jump the page).
+    // An in-place edit replaces single card nodes without touching scroll, so
+    // wrapping every render in the anchor's 600ms settle loop was pure waste
+    // (and a heavy forced-reflow / rAF source) on the common edit case.
     if (!_skipRender) {
-      // Anchor the viewport across the rebuild so edits don't jump the page.
-      if (window.SCW.v2ScrollAnchor) {
-        SCW.v2ScrollAnchor.around('[data-scw-ws-v2-record]', 'data-scw-ws-v2-record',
-          function () { ns.render.renderView(key, records); });
-      } else {
-        ns.render.renderView(key, records);
-      }
+      ns.render.renderView(key, records);
     }
     if (vcfg.hideSourceAccordion) relocatePanelOutsideAccordion(key);
     // Mode/photos toolbar — mount idempotently above the L1 list.

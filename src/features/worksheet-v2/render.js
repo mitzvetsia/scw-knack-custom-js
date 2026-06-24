@@ -766,8 +766,22 @@
     }
     if (_PF) _pfC = SCW._now() - _ac;
 
-    body.innerHTML = '';
-    body.appendChild(frag);
+    // Full rebuild empties + refills the body, which resets window scroll and
+    // jumps the page. Anchor the viewport across JUST this swap (the in-place
+    // path above never empties the body, so it skips the anchor — and its
+    // 600ms settle loop — entirely). Only on a RE-render (body already had
+    // cards) — the initial paint has nothing to anchor, so skip the loop and
+    // its per-frame getBoundingClientRect cost on load. Falls back to a plain
+    // swap if the anchor module isn't present.
+    var _hadCards = !!body.querySelector('.scw-ws-v2-card');
+    if (_hadCards && window.SCW && SCW.v2ScrollAnchor &&
+        typeof SCW.v2ScrollAnchor.around === 'function') {
+      SCW.v2ScrollAnchor.around('[data-scw-ws-v2-record]', 'data-scw-ws-v2-record',
+        function () { body.innerHTML = ''; body.appendChild(frag); });
+    } else {
+      body.innerHTML = '';
+      body.appendChild(frag);
+    }
 
     // Whole-grid aggregate issue chips now live in the banner (always
     // visible, independent of the collapsible summary panel).
