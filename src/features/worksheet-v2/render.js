@@ -423,6 +423,7 @@
     var _pf0 = _PF ? SCW._now() : 0;
     var _pfW = 0, _pfG = 0, _pfS = 0, _pfC = 0;
     var _built = 0, _reused = 0;   // keyed-card reuse tally (perf diagnostic)
+    var _pfSig = 0;                // time spent in cardSig (JSON.stringify) — split from DOM
     if (!ns.groups || typeof ns.groups.buildGroupTree !== 'function') {
       body.innerHTML = '<div class="scw-ws-v2-empty">groups.js not loaded.</div>';
       return;
@@ -497,7 +498,9 @@
     var existingCards = indexExistingCards(body);
     function makeCard(record, viewKey) {
       var id  = record && record.id;
+      var _ss = _PF ? SCW._now() : 0;
       var sig = cardSig(record);
+      if (_PF) _pfSig += SCW._now() - _ss;
       var ex  = id && existingCards[id];
       if (ex && ex.getAttribute('data-scw-sig') === sig) {
         // A DOM node lives in one place only — drop it from the index so if the
@@ -589,7 +592,8 @@
       }
       console.log('[SCW perf] worksheetV2.renderView ' + sourceViewKey + ': ' +
         _tot.toFixed(1) + 'ms  (records=' + records.length +
-        '  cards=' + _pfC.toFixed(1) + ' [built=' + _built + ' reused=' + _reused + ']' +
+        '  cards=' + _pfC.toFixed(1) + ' [built=' + _built + ' reused=' + _reused +
+        ' sig=' + _pfSig.toFixed(1) + ']' +
         '  tree=' + _pfG.toFixed(1) +
         '  warnings=' + _pfW.toFixed(1) + '  summary=' + _pfS.toFixed(1) + ')');
     }
