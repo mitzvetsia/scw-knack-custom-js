@@ -110,6 +110,67 @@
   var _fetchInFlight   = Object.create(null);
   var _fetchWantFollow = Object.create(null);
 
+  // ── Pending-writes overlay ───────────────────────────────────────────
+  // model.fetch() REPLACES every record in the Backbone model with fresh
+  // server data, discarding the in-place optimistic patches (syncKnackModel)
+  // for any edit the server hasn't committed yet. That's why a discount edit
+  // (a RECALC field → it fires refetchAndNotify) reverts OTHER recent edits
+  // (notes, etc.) and can even revert itself, while notes-only edits — which
+  // never fetch — don't. Fix: remember each optimistic write and RE-APPLY it
+  // onto the model after every fetch, so a refetch can't roll back an edit
+  // the server is still catching up on. Entries expire after a TTL (the
+  // server has surely committed by then) and are cleared on PUT error.
+  var _pending = Object.create(null);   // viewKey -> recordId -> fieldKey -> {raw, ts}
+  var PENDING_TTL_MS = 12000;
+
+  function registerPendingWrite(viewKey, recordId, fieldKey, raw) {
+    if (!viewKey || !recordId || !fieldKey) return;
+    var v = _pending[viewKey] || (_pending[viewKey] = Object.create(null));
+    var r = v[recordId] || (v[recordId] = Object.create(null));
+    r[fieldKey] = { raw: raw, ts: Date.now() };
+  }
+
+  function clearPendingWrite(viewKey, recordId, fieldKey) {
+    var v = _pending[viewKey]; if (!v) return;
+    var r = v[recordId]; if (!r) return;
+    delete r[fieldKey];
+    if (Object.keys(r).length === 0) delete v[recordId];
+  }
+
+  // Re-apply still-live optimistic writes onto the freshly-fetched model.
+  // Only the user-edited INPUT field is re-applied — server-recomputed CALC
+  // fields (Applied Discount, Total, Fee, …) are intentionally left as the
+  // fetch returned them, so the recompute we refetched FOR still lands.
+  function applyPendingOverlay(viewKey) {
+    var v = _pending[viewKey]; if (!v) return;
+    var view = Knack.views[viewKey];
+    if (!view || !view.model || !view.model.data) return;
+    var models = view.model.data.models || [];
+    var byId = Object.create(null);
+    for (var i = 0; i < models.length; i++) {
+      if (models[i] && models[i].id) byId[models[i].id] = models[i];
+    }
+    var now = Date.now();
+    var recIds = Object.keys(v);
+    for (var ri = 0; ri < recIds.length; ri++) {
+      var rid = recIds[ri];
+      var fields = v[rid];
+      var fkeys = Object.keys(fields);
+      var rec = byId[rid];
+      for (var fi = 0; fi < fkeys.length; fi++) {
+        var fk = fkeys[fi];
+        var pw = fields[fk];
+        if (!pw || (now - pw.ts) > PENDING_TTL_MS) { delete fields[fk]; continue; }
+        if (!rec) continue;                       // record not in this fetch — keep entry
+        var attrs = rec.attributes || rec;
+        attrs[fk] = pw.raw;
+        attrs[fk + '_raw'] = pw.raw;
+      }
+      if (Object.keys(fields).length === 0) delete v[rid];
+    }
+    if (Object.keys(v).length === 0) delete _pending[viewKey];
+  }
+
   function refetchAndNotify(viewKey) {
     try {
       var v = Knack.views[viewKey];
@@ -126,6 +187,10 @@
       _fetchInFlight[viewKey] = true;
       var settle = function () {
         _fetchInFlight[viewKey] = false;
+        // Re-apply optimistic edits the fetch just clobbered BEFORE notify,
+        // so the rebuild renders the user's in-flight values, not stale
+        // pre-commit server data.
+        applyPendingOverlay(viewKey);
         notify(viewKey);
         if (_fetchWantFollow[viewKey]) {
           _fetchWantFollow[viewKey] = false;
@@ -204,6 +269,8 @@
     notify:      notify,
     notifyNow:   notifyNow,
     refetchAndNotify: refetchAndNotify,
+    registerPendingWrite: registerPendingWrite,
+    clearPendingWrite:    clearPendingWrite,
     attachListeners: attachListeners
   };
 })();

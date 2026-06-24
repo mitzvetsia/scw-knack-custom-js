@@ -219,6 +219,15 @@
       }
     } catch (e) { /* ignore */ }
 
+    // Register this write in the pending-overlay so a refetch fired by THIS
+    // (or any concurrent) edit can't revert it before the server commits.
+    // See data.js applyPendingOverlay. Cleared on error (revert is intended).
+    try {
+      if (ns.data && typeof ns.data.registerPendingWrite === 'function') {
+        ns.data.registerPendingWrite(viewKey, recordId, fieldKey, newValue);
+      }
+    } catch (e) { /* ignore */ }
+
     // Fields that feed a server-side formula — after saving any of them we
     // refetch the record so the dependent read-only cells refresh:
     //   - Fee / install fee (field_2028/2151) recompute from sub bid, +Hrs,
@@ -260,6 +269,16 @@
             SCW.syncKnackModel(viewKey, recordId, resp, fieldKey, newValue);
           }
         } catch (e) { /* ignore */ }
+        // Refresh the pending-overlay entry with the server's authoritative
+        // raw value so a later refetch re-applies the normalized form (and
+        // the TTL window restarts from the confirmed write).
+        try {
+          if (ns.data && typeof ns.data.registerPendingWrite === 'function') {
+            var confirmed = (resp && resp[fieldKey + '_raw'] != null)
+              ? resp[fieldKey + '_raw'] : newValue;
+            ns.data.registerPendingWrite(viewKey, recordId, fieldKey, confirmed);
+          }
+        } catch (e) { /* ignore */ }
         // Let external grids that embed this card (e.g. the bid-review-v2
         // comparison grid's expand-panel editor) know a record was saved so
         // they can refetch + rebuild. SCW.knackAjax fires no knack-cell-update,
@@ -289,6 +308,13 @@
       },
       function (xhr) {
         console.warn('[scw-ws-v2] save failed', { recordId: recordId, fieldKey: fieldKey, xhr: xhr });
+        // Drop the pending-overlay entry — the write didn't land, so the
+        // revert to prevValue must be allowed to stick.
+        try {
+          if (ns.data && typeof ns.data.clearPendingWrite === 'function') {
+            ns.data.clearPendingWrite(viewKey, recordId, fieldKey);
+          }
+        } catch (e) { /* ignore */ }
         // Revert the optimistic model patch + the input.
         try {
           if (typeof SCW.syncKnackModel === 'function') {
