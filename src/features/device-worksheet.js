@@ -243,7 +243,14 @@
         ]
       },
       {
-        viewIds: ['view_3559', 'view_3577', 'view_3617', 'view_3803', 'view_3932', 'view_4060'],
+        // view_3577 (MDF/IDF cards on the build-SOW scene) temporarily
+        // REMOVED — its V1 transformView was ~1100ms for 8 rows on that heavy
+        // page and we're isolating the remaining v2 worksheet lag. Dropping it
+        // from the config kills BOTH the transform binding AND the raw-row
+        // cloak (the cloak CSS is generated from this same list), so the
+        // native Knack table renders normally instead of going blank. Re-add
+        // once the v2-side perf work settles / it gets ported to v2.
+        viewIds: ['view_3559', 'view_3617', 'view_3803', 'view_3932', 'view_4060'],
         layout: { labelWidth: '400px' },
         fields: {
           label:            { key: 'field_1642', type: 'readOnly',   summary: true },
@@ -6323,6 +6330,21 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     var $view = $('#' + viewCfg.viewId);
     if (!$view.length) return;
 
+    // ── Phase timing (gated on SCW.perfLog) ──────────────────────────────
+    // transformView can dominate the main thread on a heavy page (it
+    // showed 1100ms for 8 cards on the build-SOW scene). Break the run into
+    // labeled phases so the slow one is obvious instead of guessed at. Free
+    // when perfLog is off.
+    var _XF = !!(window.SCW && SCW.perfLog && SCW._now);
+    var _xt = _XF ? SCW._now() : 0;
+    var _xmarks = [];
+    function _xmark(name) {
+      if (!_XF) return;
+      var _n = SCW._now();
+      _xmarks.push(name + '=' + (_n - _xt).toFixed(0));
+      _xt = _n;
+    }
+
     var table = $view.find('table.kn-table-table, table.kn-table')[0];
     if (!table) return;
 
@@ -6721,6 +6743,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       })();
     }
 
+    _xmark('phase1-read');
     // ── PHASE 2: BUILD — construct cards from collected data ──
     //
     // buildWorksheetCard reparents <td> elements into the card DOM,
@@ -6910,6 +6933,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       }
     }
 
+    _xmark('phase2-build');
     // ── PHASE 3: INSERT — batch all DOM insertions in one pass ──
     //
     // Batching avoids interleaving writes with the reads that happened
@@ -7229,9 +7253,11 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     // Group-collapse may have already run and set .scw-collapsed on
     // headers before these rows existed.  Explicitly re-enhance so
     // collapsed groups properly hide their new content rows.
+    _xmark('phase3-insert+synthetic');
     if (window.SCW && window.SCW.groupCollapse && window.SCW.groupCollapse.enhance) {
       window.SCW.groupCollapse.enhance();
     }
+    _xmark('groupCollapse');
 
     // ── RESTORE CACHED HEADER LABELS ──
     // If a trigger-field save caused this re-render, the rebuilt DOM
@@ -7246,6 +7272,11 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     document.dispatchEvent(new CustomEvent('scw-worksheet-ready', {
       detail: { viewId: viewCfg.viewId }
     }));
+    _xmark('finalize+ready');
+    if (_XF && _xmarks.length) {
+      console.log('[SCW perf] transformView ' + viewCfg.viewId +
+        ' phases: ' + _xmarks.join('  '));
+    }
   }
 
   // ============================================================

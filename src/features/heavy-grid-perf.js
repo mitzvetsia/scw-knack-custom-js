@@ -33,7 +33,10 @@
     'view_3512',
     'view_3559',
     'view_3575',
-    'view_3577',
+    // 'view_3577' — REMOVED: device-worksheet no longer owns this view (its
+    // V1 transform was disabled to isolate v2 perf), so it never emits
+    // scw-worksheet-ready. Masking it here would hide the tbody until the 5s
+    // safety timer fires. Let it render plainly.
     'view_3586',
     'view_3596',
     'view_3997',
