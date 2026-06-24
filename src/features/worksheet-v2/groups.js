@@ -221,41 +221,12 @@
       if (records[rb] && records[rb].id) recordByIdLocal[records[rb].id] = records[rb];
     }
 
-    // MDF/IDF label → canonical group id, built from records whose MDF
-    // connection _raw IS present. A record whose _raw is MISSING (Knack still
-    // renders the connection's display text in field_XXXX, but the parsed
-    // _raw array isn't on the model this pass) can then re-home into the right
-    // L1 by matching that display label — instead of dropping into the
-    // synthetic "Unassigned" group while its card still shows the MDF.
-    var mdfLabelToId = Object.create(null);
-    for (var ml = 0; ml < records.length; ml++) {
-      var mlc = readConn(records[ml], FIELD_MDF_IDF);
-      if (mlc.id && mlc.label && !mdfLabelToId[mlc.label]) mdfLabelToId[mlc.label] = mlc.id;
-    }
-
-    // ── DEBUG: enable with  SCW.worksheetV2.DEBUG_GROUPS = true  then
-    //    re-render (edit any cell, or toggle a group). Logs every record's
-    //    MDF id/label vs. the resolved L1 group id, flags duplicate L1
-    //    labels (same name → different id = a split group), and dumps the
-    //    Camera/Reader bucket on its own. Gated so it never spams normally.
-    var DEBUG = !!(window.SCW && window.SCW.worksheetV2 && window.SCW.worksheetV2.DEBUG_GROUPS);
-    var CAM_BUCKET = '6481e5ba38f283002898113c';
-    var _dbg = [];
-
     for (var i = 0; i < records.length; i++) {
       var rec = records[i];
       var inMountingBucket = bucketIdOf(rec) === MOUNTING_HARDWARE_BUCKET;
       // Attached accessory → hide. Authoritative test: this record's
       // id is referenced by SOME parent's field_1958_raw.
-      if (rec.id && attachedIds[rec.id]) {
-        if (DEBUG) _dbg.push({
-          rec: rec.id, label: readPlain(rec, FIELD_LABEL), bucket: bucketIdOf(rec),
-          status: 'HIDDEN (attached accessory)',
-          mdfRawId: '', mdfRawLabel: '', mdfDisplay: readPlain(rec, FIELD_MDF_IDF),
-          l1Id: '', l1Label: ''
-        });
-        continue;
-      }
+      if (rec.id && attachedIds[rec.id]) continue;
 
       var l1Conn   = readConn(rec, FIELD_MDF_IDF);
       var l2Conn   = readConn(rec, FIELD_BUCKET);
@@ -321,23 +292,14 @@
           l1Id    = '__synthetic__' + l1Label;
         }
         isSynthetic = !pMdf.label && !l1Conn.label;
+      } else if (l1Conn.label) {
+        l1Id        = l1Conn.id || l1Conn.label;
+        l1Label     = l1Conn.label;
+        isSynthetic = false;
       } else {
-        // Prefer the parsed connection (_raw). Fall back to the DISPLAY value
-        // (field_XXXX rendered text, HTML-stripped) when _raw is absent, so a
-        // record whose MDF shows on its card still groups under that MDF.
-        // Re-home to the canonical group id another record established for the
-        // same label, so the _raw-less record merges into the real group
-        // rather than forming a duplicate (or sinking to "Unassigned").
-        var mdfLabel = l1Conn.label || readPlain(rec, FIELD_MDF_IDF);
-        if (mdfLabel) {
-          l1Id        = l1Conn.id || mdfLabelToId[mdfLabel] || mdfLabel;
-          l1Label     = mdfLabel;
-          isSynthetic = false;
-        } else {
-          l1Label     = syntheticL1ForBucket(l2Conn.label);
-          l1Id        = '__synthetic__' + l1Label;
-          isSynthetic = true;
-        }
+        l1Label     = syntheticL1ForBucket(l2Conn.label);
+        l1Id        = '__synthetic__' + l1Label;
+        isSynthetic = true;
       }
 
       var l1 = l1Map[l1Id];
@@ -352,13 +314,6 @@
         };
         l1Map[l1Id] = l1;
       }
-      if (DEBUG) _dbg.push({
-        rec: rec.id, label: readPlain(rec, FIELD_LABEL), bucket: bucketIdOf(rec),
-        status: isSynthetic ? 'SYNTHETIC L1' : 'grouped',
-        mdfRawId: l1Conn.id || '(no _raw)', mdfRawLabel: l1Conn.label || '',
-        mdfDisplay: readPlain(rec, FIELD_MDF_IDF),
-        l1Id: l1Id, l1Label: l1Label
-      });
       l1.recordCount++;
       if (sortOrd != null && sortOrd < l1.sortOrder) l1.sortOrder = sortOrd;
 
@@ -376,36 +331,6 @@
       }
       if (sortOrd != null && sortOrd < l2.sortOrder) l2.sortOrder = sortOrd;
       l2.records.push(rec);
-    }
-
-    if (DEBUG) {
-      console.groupCollapsed('[scw-ws-v2] buildGroupTree — ' + records.length +
-        ' records in, ' + _dbg.length + ' placed/skipped  (MDF=' + FIELD_MDF_IDF +
-        ' bucket=' + FIELD_BUCKET + ')');
-      console.log('ALL records:'); console.table(_dbg);
-      var cams = _dbg.filter(function (d) { return d.bucket === CAM_BUCKET; });
-      console.log('CAMERA/READER bucket only (' + cams.length + '):'); console.table(cams);
-      // Same MDF label resolving to >1 L1 id = a split group (cards scattered
-      // across duplicate headers). Same MDF id under >1 label = relabeled.
-      var idsByLabel = {}, labelsById = {};
-      _dbg.forEach(function (d) {
-        if (!d.l1Label) return;
-        (idsByLabel[d.l1Label] = idsByLabel[d.l1Label] || {})[d.l1Id] = 1;
-        (labelsById[d.l1Id] = labelsById[d.l1Id] || {})[d.l1Label] = 1;
-      });
-      Object.keys(idsByLabel).forEach(function (lbl) {
-        var ids = Object.keys(idsByLabel[lbl]);
-        if (ids.length > 1) console.warn('SPLIT GROUP — label "' + lbl + '" → ' + ids.length + ' L1 ids:', ids);
-      });
-      // Records whose MDF DISPLAY is set but landed in a synthetic/other group.
-      _dbg.forEach(function (d) {
-        if (d.mdfDisplay && d.l1Label && d.mdfDisplay !== d.l1Label) {
-          console.warn('MDF MISMATCH —', d.label, '(', d.rec, ') shows MDF "' +
-            d.mdfDisplay + '" but grouped under "' + d.l1Label + '"  [rawId=' +
-            d.mdfRawId + ']');
-        }
-      });
-      console.groupEnd();
     }
 
     // Second pass: flatten l1Map / l2Map into ordered arrays
