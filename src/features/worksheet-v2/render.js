@@ -639,7 +639,9 @@
             }
           } catch (e) { /* keep old summary */ }
         }
-        // Per-L1 summary + header (money/issue chips/count) in place.
+        // Per-L1 summary + header (money/issue chips/count) in place — but
+        // ONLY for the L1(s) that actually contain an edited record. Rebuilding
+        // every group's summary aggregate was the bulk of the in-place cost.
         var _blocks = body.querySelectorAll('.scw-ws-v2-l1');
         var _blockById = Object.create(null);
         for (var _bi = 0; _bi < _blocks.length; _bi++) {
@@ -649,6 +651,16 @@
           var _l1 = tree[_li];
           var _block = _blockById[_l1.id];
           if (!_block) continue;
+          // Does this L1 hold a dirty record? If not, its summary/header are
+          // unchanged — skip the rebuild.
+          var _l1Affected = false;
+          for (var _l2i = 0; _l2i < _l1.l2.length && !_l1Affected; _l2i++) {
+            var _recs = _l1.l2[_l2i].records || [];
+            for (var _ri = 0; _ri < _recs.length; _ri++) {
+              if (_recs[_ri] && dirty.ids[_recs[_ri].id]) { _l1Affected = true; break; }
+            }
+          }
+          if (!_l1Affected) continue;
           var _sumOld = _block.querySelector('.scw-ws-v2-summary');
           if (_sumOld && ns.summary && ns.summary.buildL1Summary) {
             try {
