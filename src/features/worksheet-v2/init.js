@@ -87,6 +87,12 @@
       return;
     }
     var anchor = document.querySelector(vcfg.mountAfterSelector);
+    // Fallback anchor so deleting the primary mount view from the Knack scene
+    // (e.g. retiring the hidden v1 grid view_3610) can't orphan the panel —
+    // it then mounts after a stable surviving element (e.g. the v2 source view).
+    if (!anchor && vcfg.mountAfterFallback) {
+      anchor = document.querySelector(vcfg.mountAfterFallback);
+    }
     if (!anchor) return; // source view not on this scene
     var panel = buildPanel(vcfg);
     anchor.insertAdjacentElement('afterend', panel);

@@ -113,6 +113,10 @@
         // Build-SOW page (internal). The canonical deployment.
         sourceViewKey:    'view_3962',
         mountAfterSelector: '#view_3610',
+        // If view_3610 (the retired, hidden v1 grid) is deleted from the Knack
+        // scene, mount after the v2 source view instead so the panel still
+        // appears. Both are SOW Line Items grids in the same scene region.
+        mountAfterFallback: '#view_3962',
         label:            'SOW Line Items',
         mdfSourceViewKey: 'view_3577',
         mdfLabelField:    'field_1642',
