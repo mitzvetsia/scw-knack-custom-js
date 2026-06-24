@@ -86,7 +86,6 @@ cat \
   src/features/SOW-line-item-DTO-bucket-field-visibility.js \
   src/features/SOW-line-item-DTO-bucket-field-visibility_view_3451.js \
   src/features/highlight-duplicate-cells.js \
-  src/features/replace-content-with-icon.js \
   src/features/change-record-limit.js \
   src/features/SURVEY_lineitem_conditional-field-grayout.js \
   src/features/SOW_lineitem_conditional-field-grayout.js \
