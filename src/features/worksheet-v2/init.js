@@ -1635,7 +1635,7 @@
                 ids = ids.filter(function (x) { return x !== recordId; });
               }
               var body = JSON.stringify({ field_2207: ids });
-              console.log('[scw-ws-v2] cascade ' + mode + ' PUT', {
+              if (window.SCW && window.SCW.DEBUG) console.log('[scw-ws-v2] cascade ' + mode + ' PUT', {
                 url:  url,
                 body: body,
                 source: 'derived from field_2464_raw back-pointers'
@@ -1646,7 +1646,7 @@
                 data: body,
                 success: function (putResp) {
                   var rp = putResp && putResp.record ? putResp.record : putResp;
-                  console.log('[scw-ws-v2] cascade ' + mode + ' PUT OK', {
+                  if (window.SCW && window.SCW.DEBUG) console.log('[scw-ws-v2] cascade ' + mode + ' PUT OK', {
                     parent: parentId,
                     sent:           ids,
                     got_field_2207: rp && rp.field_2207,

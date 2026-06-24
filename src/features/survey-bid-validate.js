@@ -376,11 +376,13 @@
   }
 
   // ── TEMP DIAGNOSTICS ─────────────────────────────────────────
-  // Flip on to log every write whose body/URL mentions the Bid field or
-  // a gated view, across all three transports (fetch / XHR / jQuery), so
-  // we can see exactly what the subcontractor portal fires on a bid
-  // removal. Turn off (or remove) once the gate is confirmed working.
-  var SBV_DIAG = true;
+  // Logs every write whose body/URL mentions the Bid field or a gated
+  // view, across all three transports (fetch / XHR / jQuery). This is
+  // pure diagnostics — and wrapping all three transports + logging on
+  // every record write is real overhead on a busy worksheet page — so
+  // it's gated behind SCW.DEBUG. Flip on for troubleshooting:
+  //   SCW.DEBUG = true   (then reload).
+  var SBV_DIAG = !!(window.SCW && window.SCW.DEBUG);
   function bodyToStr(body) {
     if (body == null) return '';
     if (typeof body === 'string') return body;
