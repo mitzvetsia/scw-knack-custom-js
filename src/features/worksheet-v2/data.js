@@ -98,6 +98,16 @@
     _dirtyAll[viewKey] = false;
     return out;
   }
+  // Non-destructive peek — lets the notify-driven render path skip a wholesale
+  // DOM rebuild when nothing actually changed (Knack fires knack-view-render
+  // several times on load + on unrelated cross-view refreshes). Does NOT clear,
+  // so a later takeDirty in renderView still sees the real state.
+  function peekDirty(viewKey) {
+    return {
+      all:   !!_dirtyAll[viewKey],
+      count: Object.keys(_dirtyIds[viewKey] || {}).length
+    };
+  }
 
   function runNotify(sourceViewKey) {
     var list = subscribers[sourceViewKey];
@@ -385,6 +395,7 @@
     clearPendingWrite:    clearPendingWrite,
     markDirty:       markDirty,
     takeDirty:       takeDirty,
+    peekDirty:       peekDirty,
     attachListeners: attachListeners
   };
 })();

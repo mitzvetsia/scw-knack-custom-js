@@ -110,12 +110,43 @@
     } catch (e) { return false; }
   }
 
+  // Lean photo-warning scan. extractPhotoRecords (used by the photo STRIP)
+  // makes ~11 full passes over every cell in the row + builds a map + sorts —
+  // far more than a yes/no warning needs, and it dominated the cold render
+  // (~384ms for 333 rows). This reads ONLY the two cells that matter: the
+  // required (field_2446) and completed (field_2447) connection columns, both
+  // keyed per-photo by the PIC record id. Warning = any required="Yes" photo
+  // whose matching completed span isn't "Yes". One queryable cell pair, no map,
+  // no sort — an order of magnitude cheaper.
   function hasMissingRequiredPhotos(rec, viewKey) {
-    if (!ns.photos || typeof ns.photos.extractPhotoRecords !== 'function') return false;
     try {
-      var photos = ns.photos.extractPhotoRecords(viewKey, rec.id) || [];
-      for (var i = 0; i < photos.length; i++) {
-        if (photos[i].required && !photos[i].completed) return true;
+      var view = document.getElementById(viewKey) || document.getElementById('view_3962');
+      if (!view) return false;
+      var tr = view.querySelector('tr[id="' + rec.id + '"]');
+      if (!tr) return false;
+      var FF      = (ns.cfg && ns.cfg.fields(viewKey)) || {};
+      var reqKey  = FF.photoRequired  || 'field_2446';
+      var compKey = FF.photoCompleted || 'field_2447';
+      var reqCell = tr.querySelector('td[data-field-key="' + reqKey + '"]');
+      if (!reqCell) return false;
+      var reqSpans = reqCell.querySelectorAll('span[id][data-kn="connection-value"]');
+      if (!reqSpans.length) return false;
+      // Map of completed photo ids (only built if at least one is required).
+      var done = Object.create(null);
+      var compCell = tr.querySelector('td[data-field-key="' + compKey + '"]');
+      if (compCell) {
+        var compSpans = compCell.querySelectorAll('span[id][data-kn="connection-value"]');
+        for (var c = 0; c < compSpans.length; c++) {
+          if ((compSpans[c].textContent || '').trim().toLowerCase() === 'yes') {
+            done[compSpans[c].id] = true;
+          }
+        }
+      }
+      for (var r = 0; r < reqSpans.length; r++) {
+        if ((reqSpans[r].textContent || '').trim().toLowerCase() === 'yes' &&
+            !done[reqSpans[r].id]) {
+          return true;
+        }
       }
     } catch (e) { /* DOM not ready yet — skip */ }
     return false;

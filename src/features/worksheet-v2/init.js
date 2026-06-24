@@ -141,12 +141,37 @@
   }
 
   function applyRender(key, records, vcfg) {
-    // Anchor the viewport across the rebuild so edits don't jump the page.
-    if (window.SCW.v2ScrollAnchor) {
-      SCW.v2ScrollAnchor.around('[data-scw-ws-v2-record]', 'data-scw-ws-v2-record',
-        function () { ns.render.renderView(key, records); });
-    } else {
-      ns.render.renderView(key, records);
+    // Skip redundant notify-driven rebuilds. Knack fires knack-view-render
+    // several times on initial load (progressive paint, KTL re-wrap, per-page
+    // param echo) and again on unrelated cross-view refreshes — each one drives
+    // a notify → full DOM tree rebuild here, even when not one record changed
+    // (the "rebuilding while idle" churn). If the grid is already painted and
+    // nothing is dirty (no Backbone change/add/remove/reset, no optimistic
+    // markDirty since the last render), there is nothing to repaint — bail.
+    // Direct renders (sort / filter / mode / toolbar) call ns.render.renderView
+    // straight, bypassing applyRender, so a real user action always renders.
+    var _skipRender = false;
+    try {
+      var _grid = document.getElementById('scw-ws-v2-' + key);
+      var _painted = _grid && _grid.querySelector('.scw-ws-v2-card');
+      if (_painted && ns.data && typeof ns.data.peekDirty === 'function') {
+        var _pk = ns.data.peekDirty(key);
+        if (!_pk.all && _pk.count === 0) _skipRender = true;
+      }
+    } catch (e) { /* fall through and render */ }
+
+    // Skip ONLY the expensive DOM rebuild when nothing changed — the toolbar /
+    // sort / filter / bulk mounts below are idempotent (early-return when
+    // already mounted) and must still run so the first notify after mount wires
+    // them up.
+    if (!_skipRender) {
+      // Anchor the viewport across the rebuild so edits don't jump the page.
+      if (window.SCW.v2ScrollAnchor) {
+        SCW.v2ScrollAnchor.around('[data-scw-ws-v2-record]', 'data-scw-ws-v2-record',
+          function () { ns.render.renderView(key, records); });
+      } else {
+        ns.render.renderView(key, records);
+      }
     }
     if (vcfg.hideSourceAccordion) relocatePanelOutsideAccordion(key);
     // Mode/photos toolbar — mount idempotently above the L1 list.
