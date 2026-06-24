@@ -596,117 +596,6 @@
         }
       },
       {
-        viewId: 'view_3586',
-        layout: { productGroupWidth: 'flex', productGroupLayout: 'column', productEditable: true, identityWidth: '366px' },
-        stackedSummary: false,
-        photoAlwaysVisible: true,
-        hideDeleteWhenCountGtZero: 'field_2586',
-        fields: {
-          // ── Summary row ──
-          product:          { key: 'field_1949', type: 'readOnly',    summary: true, productStyle: true },
-          scwNotes:         { key: 'field_1953', type: 'directEdit',  summary: true, label: 'SCW Notes', group: 'fill', multiline: true },
-          lineItemTotal:    { key: 'field_2269', type: 'readOnly',    summary: true, label: 'Total',    group: 'right', groupCls: 'sum-group--total', readOnlySummary: true },
-          move:             { key: 'field_1946', type: 'moveIcon',    summary: true },
-
-          // ── Detail panel ──
-          retailPrice:      { key: 'field_1960', type: 'readOnly' },
-          quantity:         { key: 'field_1964', type: 'directEdit', feeTrigger: true },
-          customDiscPct:    { key: 'field_2261', type: 'directEdit', feeTrigger: true },
-          customDiscDlr:    { key: 'field_2262', type: 'directEdit', feeTrigger: true },
-          appliedDiscount:  { key: 'field_2303', type: 'readOnly' },
-          total:            { key: 'field_2269', type: 'readOnly' },
-          connectedDevice:  { key: 'field_1957', type: 'nativeEdit' },
-          mountingHardware: { key: 'field_1958', type: 'connectedRecords' },
-          laborDescription: { key: 'field_2020', type: 'directEdit',  notes: true }
-        },
-        summaryLayout: ['scwNotes', 'lineItemTotal'],
-        // Explicit thead column order. Raw field keys, left-to-right.
-        // Overrides the usual label/summaryLayout/quantity auto-build.
-        theadOrder: [
-          'field_1950', // Label
-          'field_1949', // Product
-          'field_1953', // SCW Notes
-          'field_2269'  // Total
-        ],
-        // Client-side row sort — device-worksheet always re-sorts rows at
-        // render time, so this dictates the visible order regardless of
-        // any server-side sort. field_2218 (sort order) is numeric,
-        // field_2240 (drop prefix) is text with natural numeric compare,
-        // field_1951 (drop number) is numeric.
-        rowSort: [
-          { field: 'field_2218', order: 'asc', type: 'number' },
-          { field: 'field_2240', order: 'asc', type: 'text'   },
-          { field: 'field_1951', order: 'asc', type: 'number' }
-        ],
-        sortPresets: [
-          { id: 'default',  label: 'Default' },
-          { id: 'label',    label: 'Label',   field: 'field_1950', type: 'text'   },
-          { id: 'total',    label: 'Total',   field: 'field_2269', type: 'number' },
-          { id: 'qty',      label: 'Qty',     field: 'field_1964', type: 'number' },
-          { id: 'product',  label: 'Product', field: 'field_1949', type: 'text'   }
-        ],
-        detailLayout: {
-          left:  ['retailPrice', 'quantity', 'customDiscPct', 'appliedDiscount', 'total'],
-          right: ['connectedDevice', 'mountingHardware', 'laborDescription']
-        },
-        bucketField: 'field_2219',
-        bucketRules: {
-          '6977caa7f246edf67b52cbcd': {           // Other Services
-            hideFields: ['field_1949', 'field_1953'],
-            label: '+fee',
-            summarySwapField: 'field_2020',       // replace scwNotes with laborDescription in summary
-            summarySwapReadOnly: true,
-            hideDetail: true,                     // suppress detail sections, keep photos only
-            rowClass: 'scw-row--services',
-          },
-          '697b7a023a31502ec68b3303': {           // Assumptions
-            hideFields: ['field_1949', 'field_1953', 'field_1964', 'field_2261', 'field_2262', 'field_2303', 'field_2269', 'field_1960'],
-            label: 'ASSUMPTION',
-            summarySwapField: 'field_2020',
-            summarySwapReadOnly: true,
-            hideDetail: true,
-            rowClass: 'scw-row--assumptions',
-          },
-        },
-        syntheticBucketGroups: [
-          { cls: 'scw-row--services',    label: 'Project Wide Services' },
-          { cls: 'scw-row--assumptions', label: 'Project Wide Assumptions' },
-        ],
-        // ── Override: cameras/readers rows use a dedicated field set ──
-        bucketOverride: {
-          overrideBuckets: ['6481e5ba38f283002898113c'],   // cameras or readers
-          fields: {
-            // ── Summary row ──
-            label:            { key: 'field_1950', type: 'readOnly',    summary: true },
-            product:          { key: 'field_1949', type: 'readOnly',    summary: true, productStyle: true },
-            scwNotes:         { key: 'field_1953', type: 'directEdit',  summary: true, label: 'SCW Notes', group: 'fill', multiline: true },
-            existingCabling:  { key: 'field_2461', type: 'toggleChit',  summary: true, feeTrigger: true },
-            exteriorChit:     { key: 'field_1984', type: 'toggleChit',  summary: true, feeTrigger: true, chitLabel: 'Exterior' },
-            lineItemTotal:    { key: 'field_2269', type: 'readOnly',    summary: true, label: 'Total',    group: 'right', groupCls: 'sum-group--total', readOnlySummary: true },
-            move:             { key: 'field_1946', type: 'moveIcon',    summary: true },
-
-            // ── Detail panel – left ──
-            retailPrice:      { key: 'field_1960', type: 'readOnly' },
-            discountDlr:      { key: 'field_2261', type: 'directEdit', feeTrigger: true },
-            appliedDiscount:  { key: 'field_2303', type: 'readOnly' },
-            total:            { key: 'field_2269', type: 'readOnly' },
-            dropPrefix:       { key: 'field_2240', type: 'nativeEdit' },
-            dropNumber:       { key: 'field_1951', type: 'directEdit' },
-
-            // ── Detail panel – right ──
-            connectedDevice:  { key: 'field_2197', type: 'nativeEdit' },
-            mountingHardware: { key: 'field_1958', type: 'connectedRecords' },
-            dropLength:       { key: 'field_1965', type: 'directEdit', skipEmpty: true },
-            laborDescription: { key: 'field_2020', type: 'directEdit', skipEmpty: true, notes: true }
-          },
-          summaryLayout: ['scwNotes', 'existingCabling', 'exteriorChit', 'lineItemTotal'],
-          detailLayout: {
-            left:   ['dropPrefix', 'dropNumber', 'retailPrice', 'discountDlr', 'appliedDiscount', 'total', 'dropLength'],
-            right:  ['connectedDevice', 'mountingHardware', 'laborDescription']
-          }
-        }
-      },
-      {
         // ── view_3450 — drops/cameras device worksheet (mirrors the
         //    cameras/readers shape from view_3586's bucketOverride). ──
         viewId: 'view_3450',
@@ -6445,10 +6334,10 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     // bail out of v1\'s transformView entirely — no card builds, no
     // group-collapse, no photo strips, no DOM thrash on a hidden
     // table. Keyed per v1 view: view_3610 is superseded by the
-    // view_3962-sourced v2 mount; view_3586 (sales) by its own
-    // view_3586-sourced v2 mount. Reversible: flip
-    // SCW.worksheetV2.CONFIG.enabled = false or comment out this block.
-    var V2_TAKEOVER = { view_3610: 'view_3962', view_3586: 'view_3586', view_3915: 'view_3915', view_3505: 'view_3505' };
+    // view_3962-sourced v2 mount. (view_3586/sales was fully removed —
+    // its v1 config block is gone entirely, so it never reaches here.)
+    // Reversible: flip SCW.worksheetV2.CONFIG.enabled = false.
+    var V2_TAKEOVER = { view_3610: 'view_3962', view_3915: 'view_3915', view_3505: 'view_3505' };
     var v2SourceKey = V2_TAKEOVER[viewCfg.viewId];
     if (v2SourceKey &&
         window.SCW && window.SCW.worksheetV2 &&

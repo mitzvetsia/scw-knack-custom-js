@@ -41,7 +41,7 @@
   }
 
   // Record count badge: list view IDs to enable
-  const RECORD_COUNT_VIEWS = ['view_3359', 'view_3313', 'view_3505', 'view_3512', 'view_3610', 'view_3586'];
+  const RECORD_COUNT_VIEWS = ['view_3359', 'view_3313', 'view_3505', 'view_3512', 'view_3610'];
 
   // Per-view configuration. `theme` is a named preset defined in
   // _design-tokens.js — it sets a `data-scw-l1-theme` attribute on the
@@ -71,7 +71,8 @@
     // `startAllCollapsed: true` suppresses the "auto-open first L1 when
     // none are open" branch of exclusive enforcement, so a fresh load
     // (no saved state) shows every group collapsed.
-    view_3586: { exclusive: true, startAllCollapsed: true },
+    // view_3586 (sales build SOW) removed — fully v2; worksheet-v2 owns
+    // grouping/collapse on that page.
     view_3610: { exclusive: true, startAllCollapsed: true },
     view_3921: { exclusive: true },
   };

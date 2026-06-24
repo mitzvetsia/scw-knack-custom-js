@@ -30,7 +30,12 @@
   'use strict';
 
   // ── Config ──────────────────────────────────────────────────────
-  var TARGET_VIEWS = ['view_3512', 'view_3505', 'view_3559', 'view_3577', 'view_3602', 'view_3313', 'view_3586', 'view_3596', 'view_3997', 'view_3608', 'view_3610', 'view_3617', 'view_3915', 'view_4056', 'view_3921', 'view_3800', 'view_3803'];
+  // NOTE: view_3586 (sales build SOW) removed — fully v2; worksheet-v2/
+  // photos.js renders that page's photo strips. Other v2-cutover views
+  // (view_3610/3505/3915/4056/3921) remain here for now but are inert via
+  // the offsetParent (display:none) guard in processView; they'll be pulled
+  // surface-by-surface as each is de-v1'd.
+  var TARGET_VIEWS = ['view_3512', 'view_3505', 'view_3559', 'view_3577', 'view_3602', 'view_3313', 'view_3596', 'view_3997', 'view_3608', 'view_3610', 'view_3617', 'view_3915', 'view_4056', 'view_3921', 'view_3800', 'view_3803'];
   var CSS_ID       = 'scw-inline-photo-row-css';
   var ROW_CLS      = 'scw-inline-photo-row';
   var STRIP_CLS    = 'scw-inline-photo-strip';
@@ -60,7 +65,6 @@
     'view_3915': 'add-photo-to-install-line-item',
     'view_4056': 'add-photo-to-install-line-item',
     'view_3921': 'add-photo-to-sow-line-item',
-    'view_3586': 'add-photo-to-sow-line-item',
     'view_3559': 'add-photo-to-mdf-idf',
     'view_3577': 'add-photo-to-mdf-idf2',
     'view_3602': 'add-photo-to-mdf-idf2',
@@ -490,14 +494,6 @@
       '#view_3921 td.field_2446,',
       '#view_3921 th.field_2447,',
       '#view_3921 td.field_2447,',
-      '#view_3586 th.field_114,',
-      '#view_3586 td.field_114,',
-      '#view_3586 th.field_2445,',
-      '#view_3586 td.field_2445,',
-      '#view_3586 th.field_2446,',
-      '#view_3586 td.field_2446,',
-      '#view_3586 th.field_2447,',
-      '#view_3586 td.field_2447,',
       '#view_3915 th.field_114,',
       '#view_3915 td.field_114,',
       '#view_3915 th.field_2445,',
@@ -601,7 +597,7 @@
   // Also covers the deploy page (view_3915) which uses the
   // same #team-calendar/project-dashboard/{id}/deploy/{id}/
   // base path — extracted by getBuildSowBasePath().
-  var SOW_VIEWS = { 'view_3313': true, 'view_3577': true, 'view_3602': true, 'view_3586': true, 'view_3610': true, 'view_3921': true, 'view_3596': true, 'view_3997': true, 'view_3915': true, 'view_4056': true };
+  var SOW_VIEWS = { 'view_3313': true, 'view_3577': true, 'view_3602': true, 'view_3610': true, 'view_3921': true, 'view_3596': true, 'view_3997': true, 'view_3915': true, 'view_4056': true };
 
   /** Build the edit-photo hash path for a photo record. */
   function editPhotoHash(photoRecordId, viewId) {

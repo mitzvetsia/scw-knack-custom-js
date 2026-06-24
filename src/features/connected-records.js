@@ -42,16 +42,9 @@
         itemSlug: 'edit-accessory-line-item2',
         warningField: 'field_2244',
         parentConnectionField: 'field_2464'
-      },
-      {
-        parentViewId: 'view_3586',
-        connectionField: 'field_1958',
-        label: 'Mounting\nHardware',
-        addSlug: 'add-accessory-line-item',
-        itemSlug: 'edit-accessory-line-item2',
-        warningField: 'field_2244',
-        parentConnectionField: 'field_2464'
       }
+      // view_3586 (sales build SOW) removed — fully v2; worksheet-v2 renders
+      // connected-records / accessory warnings on that page.
     ]
   };
 
