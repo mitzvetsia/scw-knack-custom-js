@@ -1018,6 +1018,76 @@
   }
 
   /**
+   * Connected Devices display, derived from the AUTHORITATIVE set rather than
+   * just the parent's forward connection. field_1957 (parent → children) and
+   * field_2197 (child → parent) are SEPARATE Knack fields kept aligned only by
+   * the cascade, so the forward list reads STALE/empty even while children ARE
+   * connected (their reciprocal still points here) — that's why the card showed
+   * "(none)" while the picker (which hardens the same way, init.js) showed the
+   * real selection. Union the forward list with every child whose reciprocal
+   * (F.connectedDevice) points back at this record. Renders the same editable
+   * button as detailConnection so the click handler opens the picker unchanged.
+   */
+  function detailConnectedDevices(rec, viewKey, fieldKey, label, warn) {
+    var F = fieldsFor(viewKey);
+    var recipKey = F.connectedDevice || 'field_2197';
+    var seen = Object.create(null);
+    var labels = [];
+
+    // Forward list (whatever the denormalized parent field carries).
+    var fwd = rec[fieldKey + '_raw'];
+    if (Array.isArray(fwd)) {
+      for (var i = 0; i < fwd.length; i++) {
+        var f = fwd[i];
+        if (f && f.id && !seen[f.id]) {
+          seen[f.id] = true;
+          labels.push(String(f.identifier || f.id));
+        }
+      }
+    }
+
+    // Authoritative: every child whose reciprocal points back at this record.
+    var allRecs = [];
+    try {
+      allRecs = (ns.data && typeof ns.data.readRecords === 'function')
+        ? ns.data.readRecords(viewKey) : [];
+    } catch (e) { allRecs = []; }
+    for (var r = 0; r < allRecs.length; r++) {
+      var crec = allRecs[r];
+      if (!crec || !crec.id || crec.id === rec.id || seen[crec.id]) continue;
+      var back = crec[recipKey + '_raw'];
+      if (!Array.isArray(back)) continue;
+      for (var b = 0; b < back.length; b++) {
+        if (back[b] && back[b].id === rec.id) {
+          seen[crec.id] = true;
+          labels.push(readField(crec, F.displayLabel || 'field_1950') || crec.id);
+          break;
+        }
+      }
+    }
+
+    var val = labels.length ? labels.join(', ') : '(none)';
+    var labelHtml = escapeHtml(label);
+    if (warn) {
+      var warnIc = (ns.warnings && ns.warnings.ICONS && ns.warnings.ICONS.disconnected) || '';
+      labelHtml = '<span class="scw-ws-v2-detail-warn-ic">' + warnIc + '</span>' + labelHtml;
+    }
+    return '<div class="scw-ws-v2-detail-field scw-ws-v2-detail-field--conn' +
+        (warn ? ' scw-ws-v2-detail-field--warn' : '') + '">' +
+      '<div class="scw-ws-v2-detail-label">' + labelHtml + '</div>' +
+      '<button type="button" class="scw-ws-v2-conn-btn" ' +
+        'data-scw-ws-v2-conn="' + escapeHtml(fieldKey) + '" ' +
+        'data-scw-ws-v2-record="' + escapeHtml(rec.id) + '" ' +
+        'data-scw-ws-v2-view="' + escapeHtml(viewKey) + '" ' +
+        'data-scw-ws-v2-conn-label="' + escapeHtml(label) + '" ' +
+        'title="Click to edit ' + escapeHtml(label) + '">' +
+        '<span class="scw-ws-v2-conn-btn-val">' + escapeHtml(val) + '</span>' +
+        '<span class="scw-ws-v2-conn-btn-edit">edit</span>' +
+      '</button>' +
+    '</div>';
+  }
+
+  /**
    * Build a base hash path for accessory edit/add URLs in the current
    * scene context. Mirrors getBuildSowBasePath() in inline-photo-row.js
    * + connected-records.js. Returns '#...path' or '' if no recognised
@@ -1274,7 +1344,7 @@
         '<div class="scw-ws-v2-detail-zone scw-ws-v2-detail-zone--connections">' +
           (showParent ? detailConnection(rec, viewKey, 'field_2464', 'Parent') : '') +
           detailMountingHardware(rec, viewKey) +
-          (showConnDevices ? detailConnection(rec, viewKey, 'field_1957', 'Connected Devices') : '') +
+          (showConnDevices ? detailConnectedDevices(rec, viewKey, 'field_1957', 'Connected Devices') : '') +
           detailConnection(rec,       viewKey, 'field_1946', 'MDF / IDF') +
         '</div>' +
       '</div>' +
@@ -1340,7 +1410,7 @@
                                 hasIssue(rec, 'disconnected'));
     } else if (cat === 'default') {
       if (isMapConnectionsRow(rec)) {
-        right += detailConnection(rec, viewKey, 'field_1957', 'Connected Devices');
+        right += detailConnectedDevices(rec, viewKey, 'field_1957', 'Connected Devices');
       } else if (readParentRef(rec) || bucketIdOf(rec) !== NETWORKING_BUCKET) {
         right += detailConnection(rec, viewKey, 'field_2464', 'Parent');
       }
@@ -1584,8 +1654,7 @@
       // (field_2374 / mapConn) is Yes — devices that don't map readers have
       // no Connected Devices to manage.
       if (readBool(rec, F.mapConn || 'field_2374') === 'Yes') {
-        items += sdItem(detailConnection(rec, viewKey, F.connectedDevices || 'field_2380',
-          'Connected Devices'), 'scw-ws-v2-sd--conn');
+        items += sdItem(detailConnectedDevices(rec, viewKey, F.connectedDevices || 'field_2380', 'Connected Devices'), 'scw-ws-v2-sd--conn');
       }
     }
 
@@ -1730,8 +1799,7 @@
       // Connected Devices (field_2820, multi) — EDITABLE, network devices only
       // (v1: showWhenFieldIsYes field_2795 / mapConn).
       if (readBool(rec, F.mapConn || 'field_2795') === 'Yes') {
-        items += sdItem(detailConnection(rec, viewKey, F.connectedDevices || 'field_2820',
-          'Connected Devices'), 'scw-ws-v2-sd--conn');
+        items += sdItem(detailConnectedDevices(rec, viewKey, F.connectedDevices || 'field_2820', 'Connected Devices'), 'scw-ws-v2-sd--conn');
       }
       items += sdItem(detailReadOnly(rec, F.laborDesc || 'field_2809', 'Labor description'),
         'scw-ws-v2-sd--wide');
