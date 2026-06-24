@@ -634,6 +634,14 @@
   // but manual collapses during the session are still persisted and respected.
   const thresholdCleared = new Set();
 
+  // True when bid-review-v2 owns a source view (replaceV1 active + the view is
+  // a v2 source, e.g. the hidden view_3921 on scene_1155).
+  function brV2OwnsView(viewId) {
+    var c = window.SCW && SCW.bidReviewV2 && SCW.bidReviewV2.CONFIG;
+    return !!(c && c.enabled !== false && c.replaceV1 &&
+      c.sourceViewKeys && c.sourceViewKeys.indexOf(viewId) !== -1);
+  }
+
   function enhanceAllGroupedGrids(sceneId) {
     if (!isEnabledScene(sceneId)) return;
 
@@ -652,6 +660,11 @@
       const viewId = $view.attr('id') || 'unknown_view';
 
       if (SKIP_VIEWS.has(viewId)) return;
+      // Skip a hidden view that bid-review-v2 owns (e.g. view_3921 on
+      // scene_1155): v2 renders the live grid + does its own group-collapse,
+      // so re-applying accordion state to the hidden v1 source on every edit
+      // refetch is pure waste. Reversible via replaceV1.
+      if (brV2OwnsView(viewId)) return;
 
       $view.addClass('scw-group-collapse-enabled');
 

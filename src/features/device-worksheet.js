@@ -6226,8 +6226,24 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     tb.style.visibility = '';
   }
 
+  // True when bid-review-v2 owns a source view (replaceV1 active + the view is
+  // one of v2's sources, e.g. the hidden view_3921 on scene_1155). Used to skip
+  // wasteful v1 processing of that hidden view on every edit's refetch.
+  function brV2OwnsView(viewId) {
+    var c = window.SCW && SCW.bidReviewV2 && SCW.bidReviewV2.CONFIG;
+    return !!(c && c.enabled !== false && c.replaceV1 &&
+      c.sourceViewKeys && c.sourceViewKeys.indexOf(viewId) !== -1);
+  }
+
   function transformView(viewCfg) {
     if (!viewCfg || viewCfg.disabled) return;
+    // Bid-review v2 cutover: on the comparison page (scene_1155) view_3921 is
+    // a HIDDEN data source — bid-review-v2 renders the live grid and its
+    // expand panel uses worksheet-v2 cards, not these v1 cards. So rebuilding
+    // v1 worksheet cards here on every edit's refetch is pure waste (and its
+    // scroll-preservation coordination was a prime cause of the post-edit
+    // page jump). Bail when v2 owns view_3921. Reversible via replaceV1.
+    if (viewCfg.viewId === 'view_3921' && brV2OwnsView('view_3921')) return;
     // V2 cutover kill-switch (Known Issue: v1→v2 migration). When v2 is
     // enabled AND has a CONFIG entry for the superseding source view,
     // bail out of v1\'s transformView entirely — no card builds, no
