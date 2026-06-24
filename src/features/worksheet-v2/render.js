@@ -414,6 +414,14 @@
       return;
     }
 
+    // ── Perf timing (gated on SCW.perfLog) ──────────────────────────────
+    // Phase breakdown of the worksheet rebuild — the dominant per-edit /
+    // per-load cost on a worksheet page. Logs a line per render AND feeds
+    // SCW.perfReport() (labels under "view_XXXX worksheetV2.renderView") so
+    // it shows alongside the per-feature handler costs. Free when perfLog off.
+    var _PF  = !!(window.SCW && SCW.perfLog && SCW._now);
+    var _pf0 = _PF ? SCW._now() : 0;
+    var _pfW = 0, _pfG = 0, _pfS = 0, _pfC = 0;
     if (!ns.groups || typeof ns.groups.buildGroupTree !== 'function') {
       body.innerHTML = '<div class="scw-ws-v2-empty">groups.js not loaded.</div>';
       return;
@@ -447,12 +455,15 @@
     // the cached analysis. Runs against the filtered records so the
     // counts reflect what\'s actually visible.
     if (ns.warnings && typeof ns.warnings.analyze === 'function') {
+      var _aw = _PF ? SCW._now() : 0;
       try { ns.warnings.analyze(effectiveRecords, sourceViewKey); }
       catch (e) { console.warn('[scw-ws-v2] warnings analyze failed', e); }
+      if (_PF) _pfW = SCW._now() - _aw;
     }
     var sortPreset = (ns.sort && typeof ns.sort.getActivePreset === 'function')
       ? ns.sort.getActivePreset(sourceViewKey)
       : null;
+    var _ag = _PF ? SCW._now() : 0;
     var tree = ns.groups.buildGroupTree(effectiveRecords, seedGroups, {
       sortPreset: sortPreset,
       // Per-view field map so L1 (MDF/IDF) / L2 (bucket) / sort resolve for
@@ -460,6 +471,7 @@
       fields: (ns.cfg && typeof ns.cfg.fields === 'function')
         ? ns.cfg.fields(sourceViewKey) : null
     });
+    if (_PF) _pfG = SCW._now() - _ag;
     if (ns.state && typeof ns.state.applyOpenState === 'function') {
       ns.state.applyOpenState(sourceViewKey, tree);
     } else {
@@ -522,6 +534,7 @@
     } catch (eGF) { grandMoneyOpts.fields = null; }
     grandMoneyOpts.viewKey = sourceViewKey;
     // Grand summary — rendered for every money model (install = no-money variant).
+    var _as = _PF ? SCW._now() : 0;
     if (ns.summary && typeof ns.summary.buildGrandSummary === 'function') {
       try {
         var grand = ns.summary.buildGrandSummary(tree, grandMoneyOpts);
@@ -530,9 +543,12 @@
         console.warn('[scw-ws-v2] grand summary failed', gErr);
       }
     }
+    if (_PF) _pfS = SCW._now() - _as;
+    var _ac = _PF ? SCW._now() : 0;
     for (var i = 0; i < tree.length; i++) {
       frag.appendChild(buildL1Block(tree[i], sourceViewKey, makeCard));
     }
+    if (_PF) _pfC = SCW._now() - _ac;
 
     body.innerHTML = '';
     body.appendChild(frag);
@@ -557,6 +573,22 @@
       );
       if (card) card.classList.add('scw-ws-v2-card--open');
     });
+
+    if (_PF) {
+      var _tot = SCW._now() - _pf0;
+      var _lbl = 'view ' + sourceViewKey + ' worksheetV2.renderView';
+      if (SCW.recordHandlerTiming) {
+        SCW.recordHandlerTiming(_lbl, _tot);
+        SCW.recordHandlerTiming(_lbl + '  ├ buildCards',     _pfC);
+        SCW.recordHandlerTiming(_lbl + '  ├ buildGroupTree', _pfG);
+        SCW.recordHandlerTiming(_lbl + '  ├ warnings',       _pfW);
+        SCW.recordHandlerTiming(_lbl + '  └ grandSummary',   _pfS);
+      }
+      console.log('[SCW perf] worksheetV2.renderView ' + sourceViewKey + ': ' +
+        _tot.toFixed(1) + 'ms  (records=' + records.length +
+        '  cards=' + _pfC.toFixed(1) + '  tree=' + _pfG.toFixed(1) +
+        '  warnings=' + _pfW.toFixed(1) + '  summary=' + _pfS.toFixed(1) + ')');
+    }
   }
 
   // Resume deferred renders when focus leaves the panel.
