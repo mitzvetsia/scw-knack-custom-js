@@ -117,6 +117,115 @@
     views.forEach(tryMount);
   }
 
+  // ── Defer full-grid rebuilds while the user is mid-edit ──────────────
+  // ns.render.renderView replaces the grid's DOM wholesale. If that runs
+  // while the user is focused in one of the grid's own inputs (typing a
+  // note, a discount, a labor value…) it DESTROYS that input: the field
+  // goes unresponsive / loses its in-progress value, and a rebuild kicked
+  // off by a PRIOR edit's background refetch looks like it "interrupted"
+  // the edit the user just started. So when a rebuild is requested while a
+  // grid input is focused, stash it and flush once focus leaves the grid
+  // (or via a re-arming safety tick). PUTs are NOT queued/blocked — every
+  // edit still saves immediately; we only delay the disruptive rebuild.
+  var _pendingRender = Object.create(null);   // viewKey -> vcfg (presence = pending)
+  var _flushTimer    = null;
+
+  function gridInputFocused(viewKey) {
+    var el = document.activeElement;
+    if (!el) return false;
+    var tag = (el.tagName || '').toLowerCase();
+    var editable = tag === 'input' || tag === 'textarea' || tag === 'select' || el.isContentEditable;
+    if (!editable) return false;
+    var grid = document.getElementById('scw-ws-v2-' + viewKey);
+    return !!(grid && grid.contains(el));
+  }
+
+  function applyRender(key, records, vcfg) {
+    // Anchor the viewport across the rebuild so edits don't jump the page.
+    if (window.SCW.v2ScrollAnchor) {
+      SCW.v2ScrollAnchor.around('[data-scw-ws-v2-record]', 'data-scw-ws-v2-record',
+        function () { ns.render.renderView(key, records); });
+    } else {
+      ns.render.renderView(key, records);
+    }
+    if (vcfg.hideSourceAccordion) relocatePanelOutsideAccordion(key);
+    // Mode/photos toolbar — mount idempotently above the L1 list.
+    if (ns.toolbar && typeof ns.toolbar.mount === 'function') {
+      ns.toolbar.mount(key);
+    }
+    if (ns.sort && typeof ns.sort.mount === 'function') {
+      ns.sort.mount(key);
+    }
+    if (ns.nativeFilter && typeof ns.nativeFilter.mount === 'function') {
+      ns.nativeFilter.mount(key);
+    }
+    var _vcSow = (ns.cfg && typeof ns.cfg.viewCfg === 'function')
+      ? ns.cfg.viewCfg(key) : null;
+    // Mount the pill strip when SOW isn't hidden, OR when the view
+    // configures its own filterPills (e.g. survey filters by Bid even
+    // though hideSow:true suppresses the SOW column).
+    if (ns.sowFilter && typeof ns.sowFilter.mount === 'function' &&
+        (!(_vcSow && _vcSow.hideSow) || (_vcSow && _vcSow.filterPills))) {
+      ns.sowFilter.mount(key);
+    }
+    // After every re-render, sync the bulk-select checkboxes to
+    // current selection state + refresh the floating toolbar. GUARD on the
+    // panel actually being mounted on THIS scene: bulk is a singleton, and
+    // the background poll fires notify() for EVERY configured view on every
+    // scene — without this guard the sales view's poll (view_3586) calls
+    // bulk.mount('view_3586') on the bid-review scene, clobbering
+    // _sourceViewKey to a SALES view so the bulk modal serves SALES fields
+    // (Custom Disc %, Label #) on the bid comparison grid.
+    if (ns.bulk && typeof ns.bulk.mount === 'function' &&
+        document.getElementById('scw-ws-v2-' + key)) {
+      ns.bulk.mount(key);
+    }
+  }
+
+  function flushPending() {
+    var keys = Object.keys(_pendingRender);
+    for (var i = 0; i < keys.length; i++) {
+      var key = keys[i];
+      if (gridInputFocused(key)) continue;     // still editing this grid — keep waiting
+      var vcfg = _pendingRender[key];
+      delete _pendingRender[key];
+      // Re-read the freshest records (a later refetch — e.g. the recalc
+      // sweep — may have landed in the model while we were deferred).
+      var recs = (ns.data && typeof ns.data.readRecords === 'function')
+        ? ns.data.readRecords(key) : [];
+      applyRender(key, recs, vcfg);
+    }
+    if (Object.keys(_pendingRender).length === 0 && _flushTimer) {
+      clearInterval(_flushTimer); _flushTimer = null;
+    }
+  }
+
+  function requestRender(key, records, vcfg) {
+    if (gridInputFocused(key)) {
+      _pendingRender[key] = vcfg;              // defer — flush on blur
+      if (!_flushTimer) {
+        // Re-arming safety tick in case a focusout is ever missed. It only
+        // flushes views the user is NOT currently focused in, so it can
+        // never rebuild mid-edit.
+        _flushTimer = setInterval(flushPending, 1500);
+      }
+      return;
+    }
+    applyRender(key, records, vcfg);
+  }
+
+  // Flush deferred rebuilds once the user leaves a grid input. focusout
+  // bubbles (blur doesn't); defer a tick so document.activeElement settles
+  // (focusout fires before the next focus target is assigned), so moving
+  // directly between two grid inputs keeps deferring instead of rebuilding
+  // in the gap.
+  if (!document.documentElement.hasAttribute('data-scw-ws-v2-flush-bound')) {
+    document.documentElement.setAttribute('data-scw-ws-v2-flush-bound', '1');
+    document.addEventListener('focusout', function () {
+      setTimeout(flushPending, 0);
+    }, true);
+  }
+
   // Wire data subscribers ONCE — they fire forever, regardless of
   // mount state. The render call short-circuits if the container
   // doesn't exist.
@@ -133,45 +242,10 @@
         ns.poll.start(vcfg.sourceViewKey);
       }
       ns.data.subscribe(vcfg.sourceViewKey, function (key, records) {
-        // Anchor the viewport across the rebuild so edits don't jump the page.
-        if (window.SCW.v2ScrollAnchor) {
-          SCW.v2ScrollAnchor.around('[data-scw-ws-v2-record]', 'data-scw-ws-v2-record',
-            function () { ns.render.renderView(key, records); });
-        } else {
-          ns.render.renderView(key, records);
-        }
-        if (vcfg.hideSourceAccordion) relocatePanelOutsideAccordion(key);
-        // Mode/photos toolbar — mount idempotently above the L1 list.
-        if (ns.toolbar && typeof ns.toolbar.mount === 'function') {
-          ns.toolbar.mount(key);
-        }
-        if (ns.sort && typeof ns.sort.mount === 'function') {
-          ns.sort.mount(key);
-        }
-        if (ns.nativeFilter && typeof ns.nativeFilter.mount === 'function') {
-          ns.nativeFilter.mount(key);
-        }
-        var _vcSow = (ns.cfg && typeof ns.cfg.viewCfg === 'function')
-          ? ns.cfg.viewCfg(key) : null;
-        // Mount the pill strip when SOW isn't hidden, OR when the view
-        // configures its own filterPills (e.g. survey filters by Bid even
-        // though hideSow:true suppresses the SOW column).
-        if (ns.sowFilter && typeof ns.sowFilter.mount === 'function' &&
-            (!(_vcSow && _vcSow.hideSow) || (_vcSow && _vcSow.filterPills))) {
-          ns.sowFilter.mount(key);
-        }
-        // After every re-render, sync the bulk-select checkboxes to
-        // current selection state + refresh the floating toolbar. GUARD on the
-        // panel actually being mounted on THIS scene: bulk is a singleton, and
-        // the background poll fires notify() for EVERY configured view on every
-        // scene — without this guard the sales view's poll (view_3586) calls
-        // bulk.mount('view_3586') on the bid-review scene, clobbering
-        // _sourceViewKey to a SALES view so the bulk modal serves SALES fields
-        // (Custom Disc %, Label #) on the bid comparison grid.
-        if (ns.bulk && typeof ns.bulk.mount === 'function' &&
-            document.getElementById('scw-ws-v2-' + key)) {
-          ns.bulk.mount(key);
-        }
+        // Defer the wholesale DOM rebuild while the user is mid-edit in this
+        // grid (see requestRender) — otherwise a background refetch destroys
+        // the focused input. Flushes on blur with the freshest records.
+        requestRender(key, records, vcfg);
       });
     });
     ns.data.attachListeners();
