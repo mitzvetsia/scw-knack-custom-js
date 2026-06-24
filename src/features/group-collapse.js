@@ -41,7 +41,7 @@
   }
 
   // Record count badge: list view IDs to enable
-  const RECORD_COUNT_VIEWS = ['view_3359', 'view_3313', 'view_3505', 'view_3512'];
+  const RECORD_COUNT_VIEWS = ['view_3359', 'view_3313', 'view_3512'];
 
   // Per-view configuration. `theme` is a named preset defined in
   // _design-tokens.js — it sets a `data-scw-l1-theme` attribute on the
@@ -59,7 +59,7 @@
     view_3997: { defaultOpen: true },
     // Device worksheet views — groups default expanded
     view_3512: { defaultOpen: true },
-    view_3505: { defaultOpen: true },
+    // view_3505 (survey worksheet) removed — fully v2.
     view_3313: { defaultOpen: true },
     view_3602: { defaultOpen: true },
     view_3575: { defaultOpen: true },

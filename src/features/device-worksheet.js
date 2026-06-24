@@ -102,113 +102,10 @@
           right: ['connections', 'exterior', 'mountingHeight', 'dropLength', 'conduitFeet', 'surveyNotes']
         }
       },
-      {
-        viewId: 'view_3505',
-        layout: { productGroupWidth: '300px', detailGrid: '455px 1fr', labelInProductGroup: true, productEditable: true },
-        hideDeleteWhenFieldNotBlank: 'field_2404',
-        // ── Main config: used for Cameras or Readers rows ──
-        fields: {
-          // ── Summary row ──
-          bid:              { key: 'field_2415', type: 'readOnly',   summary: true, label: 'Bid',   group: 'right', groupCls: 'sum-group--bid' },
-          move:             { key: 'field_2375', type: 'moveIcon',   summary: true },
-          label:            { key: 'field_2365', type: 'readOnly',   summary: true },
-          product:          { key: 'field_2627', type: 'nativeEdit', summary: true, productStyle: true },
-          laborDescription: { key: 'field_2409', type: 'directEdit', summary: true, label: 'Labor Desc', group: 'fill', multiline: true },
-          existingCabling:  { key: 'field_2370', type: 'toggleChit', summary: true, feeTrigger: true },
-          labor:            { key: 'field_2400', type: 'directEdit', summary: true, label: 'Labor', group: 'right', groupCls: 'sum-group--labor', feeTrigger: true },
-          quantity:         { key: 'field_2399', type: 'readOnly', label: 'Qty' },
-          warningCount:     { key: 'field_2454', type: 'warningChit' },
-
-          // ── Detail panel (matches view_3512 layout) ──
-          mounting:         { key: 'field_2463', type: 'readOnly' },
-          connections:      { key: 'field_2381', type: 'nativeEdit' },
-          scwNotes:         { key: 'field_2418', type: 'readOnly' },
-          surveyNotes:      { key: 'field_2412', type: 'directEdit', summary: true, label: 'Survey Notes', group: 'fill', multiline: true },
-          exteriorChit:     { key: 'field_2372', type: 'toggleChit', summary: true, feeTrigger: true, chitLabel: 'Exterior' },
-          plenumChit:       { key: 'field_2371', type: 'toggleChit', summary: true, feeTrigger: true, chitLabel: 'Plenum' },
-          mountingHeight:   { key: 'field_2455', type: 'singleChip', options: ["Under 16'", "16' - 24'", "Over 24'"] },
-          dropLength:       { key: 'field_2367', type: 'directEdit' },
-          conduitFeet:      { key: 'field_2368', type: 'directEdit' }
-        },
-        summaryLayout: ['surveyNotes', 'laborDescription', 'existingCabling', 'exteriorChit', 'plenumChit', 'labor', 'bid'],
-        // BID-object sort keys (this object's drop prefix/number are
-        // field_2361/field_2362 — the hardcoded SOW defaults 2240/1951
-        // never matched here). Equipment value = field_2382 (product
-        // price), DESC. Inert per-key when the column isn't exposed.
-        rowSort: [
-          { field: 'field_2218', order: 'asc',  type: 'number' },
-          { field: 'field_2361', order: 'asc',  type: 'text'   },
-          { field: 'field_2362', order: 'asc',  type: 'number' },
-          { field: 'field_2382', order: 'desc', type: 'number' }
-        ],
-        // Sort presets — exposed in the worksheet toolbar's "Sort ▾"
-        // dropdown. First preset = "Default", rule:null means "use
-        // viewCfg.rowSort or device-worksheet's hardcoded default".
-        sortPresets: [
-          { id: 'default',  label: 'Default' },
-          { id: 'label',    label: 'Label',   field: 'field_2365', type: 'text'   },
-          { id: 'labor',    label: 'Labor',   field: 'field_2400', type: 'number' },
-          { id: 'bid',      label: 'By bid',  rule: [{ field: 'field_2415', order: 'asc', type: 'text' },
-                                                     { field: 'field_2365', order: 'asc', type: 'text' }] }
-        ],
-        detailLayout: {
-          left:  ['mounting', 'scwNotes'],
-          right: ['connections', 'mountingHeight', 'dropLength', 'conduitFeet']
-        },
-        bucketField: 'field_2366',
-        // ── Override: used for all NON-camera/reader rows ──
-        bucketOverride: {
-          keepBuckets: ['6481e5ba38f283002898113c'],   // cameras or readers
-          fields: {
-            bid:              { key: 'field_2415', type: 'readOnly',   summary: true, label: 'Bid',   group: 'right', groupCls: 'sum-group--bid' },
-            move:             { key: 'field_2375', type: 'moveIcon',   summary: true },
-            product:          { key: 'field_2627', type: 'nativeEdit', summary: true, productStyle: true },
-            laborDescription: { key: 'field_2409', type: 'directEdit', summary: true, label: 'Labor Desc', group: 'fill', multiline: true, showWhenFieldIsYes: 'field_2478' },
-            labor:            { key: 'field_2400', type: 'directEdit', summary: true, label: 'Labor', group: 'right', groupCls: 'sum-group--labor', feeTrigger: true, showWhenFieldIsYes: 'field_2478' },
-            quantity:         { key: 'field_2399', type: 'directEdit', summary: true, label: 'Qty',   group: 'right', groupCls: 'sum-group--qty', feeTrigger: true, showWhenFieldIsYes: 'field_2478', orShowWhenFieldIsNo: 'field_2373' },
-            extended:         { key: 'field_2401', type: 'readOnly',   summary: true, label: 'Ext', group: 'right', groupCls: 'sum-group--ext', readOnlySummary: true, showWhenFieldIsYes: 'field_2478' },
-            warningCount:     { key: 'field_2454', type: 'warningChit' },
-
-            mounting:         { key: 'field_2463', type: 'readOnly' },
-            connections:      { key: 'field_2380', type: 'nativeEdit' },
-            scwNotes:         { key: 'field_2418', type: 'readOnly' },
-            surveyNotes:      { key: 'field_2412', type: 'directEdit', summary: true, label: 'Survey Notes', group: 'fill', multiline: true }
-          },
-          summaryLayout: ['surveyNotes', 'laborDescription', 'quantity', 'labor', 'extended', 'bid'],
-          detailLayout: {
-            left:  ['mounting', 'scwNotes'],
-            right: ['connections']
-          }
-        },
-        bucketRules: {
-          '6977caa7f246edf67b52cbcd': {           // Other Services
-            hideFields: ['field_2627', 'field_2463', 'field_2372', 'field_2371'],
-            label: '+fee',
-            descLabel: 'Service',
-            hideProduct: true,
-            rowClass: 'scw-row--services',
-          },
-          '697b7a023a31502ec68b3303': {           // Assumptions
-            hideFields: ['field_2627', 'field_2400', 'field_2399', 'field_2401'],
-            label: 'ASSUMPTION',
-            descLabel: 'Assumption',
-            hideProduct: true,
-            rowClass: 'scw-row--assumptions',
-          },
-          '6a14eee134e422f3769ada00': {           // Materials — sub-provided priced equipment
-            // descLabel doubles as the un-gate switch: device-worksheet
-            // skips the field_2478 (require sub bid) showWhenFieldIsYes
-            // guards for any bucket whose rule carries a descLabel, so
-            // Qty / Unit Price / Ext render regardless of that flag.
-            descLabel: 'Materials',
-            fieldLabelOverrides: { field_2400: 'Unit Price' },
-          },
-        },
-        syntheticBucketGroups: [
-          { cls: 'scw-row--services',    label: 'Project Wide Services' },
-          { cls: 'scw-row--assumptions', label: 'Project Wide Assumptions' },
-        ]
-      },
+      // view_3505 (survey worksheet) v1 config removed — fully v2 (cutover:
+      // worksheet-v2 view_3505 entry is the primary survey/bid surface, the
+      // native #view_3505 table is hidden by styles.js, and v1 bailed here
+      // via V2_TAKEOVER). See worksheet-v2/config.js view_3505 entry.
       {
         // ── INSTALL line items (Implementation page, scene_1311) ──
         // Mirrors view_3505's bucketing: Camera/Reader rows get the full
@@ -6335,12 +6232,12 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     // enabled AND has a CONFIG entry for the superseding source view,
     // bail out of v1\'s transformView entirely — no card builds, no
     // group-collapse, no photo strips, no DOM thrash on a hidden
-    // table. Now keyed for view_3915 (install) + view_3505 (survey), whose
-    // v1 config blocks still exist but bail here when v2 is enabled.
-    // (view_3586/sales + view_3610/ops were fully removed — their v1 config
-    // blocks are gone entirely, so they never reach here.)
+    // table. Now keyed for view_3915 (install) only — its v1 config block
+    // still exists but bails here when v2 is enabled.
+    // (view_3586/sales + view_3610/ops + view_3505/survey were fully removed —
+    // their v1 config blocks are gone entirely, so they never reach here.)
     // Reversible: flip SCW.worksheetV2.CONFIG.enabled = false.
-    var V2_TAKEOVER = { view_3915: 'view_3915', view_3505: 'view_3505' };
+    var V2_TAKEOVER = { view_3915: 'view_3915' };
     var v2SourceKey = V2_TAKEOVER[viewCfg.viewId];
     if (v2SourceKey &&
         window.SCW && window.SCW.worksheetV2 &&
@@ -6863,32 +6760,8 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         }
       }
 
-      // ── view_3505: lock product (field_2627) when row is adopted to SOW ──
-      // Editable only if field_2404 (REL_sow line item) is blank AND the
-      // row isn't finalized (field_2551 = Yes — handled above).
-      if (!isLocked && viewCfg.viewId === 'view_3505') {
-        var sowItemTd = tr.querySelector('td.field_2404');
-        var sowItemSet = false;
-        if (sowItemTd) {
-          if (sowItemTd.querySelector('span[data-kn="connection-value"]')) {
-            sowItemSet = true;
-          } else {
-            var sowText = (sowItemTd.textContent || '').replace(/ /g, '').trim();
-            if (sowText.length) sowItemSet = true;
-          }
-        }
-        if (sowItemSet) {
-          var prodTd = tr.querySelector('td.field_2627');
-          if (prodTd) {
-            prodTd.classList.remove('cell-edit', 'ktlInlineEditableCellsStyle');
-            prodTd.classList.add(P + '-td-locked');
-            prodTd.addEventListener('click', function (e) {
-              e.stopPropagation();
-              e.preventDefault();
-            }, true);
-          }
-        }
-      }
+      // (view_3505 product-lock-on-SOW-adopt removed with its v1 config —
+      // worksheet-v2 survey card owns that lock now.)
 
       var card = buildWorksheetCard(tr, effectiveCfg);
       if (isLocked) {
