@@ -2001,6 +2001,29 @@
     '}',
     '.scw-ws-v2-photo-req--ok { background: #16a34a !important; }',
 
+    /* Photo-level notes (field_114) — visible under the type/required labels
+       on every photo strip (v1 parity). Wraps but clamps to 3 lines; full
+       text in the title tooltip. */
+    '.scw-ws-v2-photo-note {',
+    '  margin-top: 3px !important;',
+    '  width: 100% !important;',
+    '  min-width: 80px !important;',
+    '  padding: 3px 6px !important;',
+    '  font: 500 10px/1.35 system-ui, sans-serif !important;',
+    '  color: #475569 !important;',
+    '  background: #f8fafc !important;',
+    '  border: 1px solid #e2e8f0 !important;',
+    '  border-radius: 3px !important;',
+    '  text-align: left !important;',
+    '  white-space: normal !important;',
+    '  overflow-wrap: anywhere !important;',
+    '  display: -webkit-box !important;',
+    '  -webkit-line-clamp: 3 !important;',
+    '  -webkit-box-orient: vertical !important;',
+    '  overflow: hidden !important;',
+    '  box-sizing: border-box !important;',
+    '}',
+
     /* ── Photo QA chit (install surface — see photos.js QA_CHIT_VIEWS).
        Sits under the type/required labels; click opens the photo QA panel
        (qa-popover.js). State colors mirror the QA panel\'s segmented control
