@@ -1187,7 +1187,10 @@
               if (lbl && prod) return lbl + ' · ' + prod;
               return lbl || prod || r.id;
             },
-            multi: _isCD, onSaved: surveyRefetch
+            multi: _isCD, onSaved: surveyRefetch,
+            // Keep the modal open + locked until the field_2380↔field_2381
+            // reciprocal cascade settles (mirror-connection-sync view_3505).
+            awaitCascade: true
           });
           return;
         }
@@ -1266,7 +1269,10 @@
               if (lbl && prod) return lbl + ' · ' + prod;
               return lbl || prod || r.id;
             },
-            multi: _iIsCD, onSaved: installRefetch
+            multi: _iIsCD, onSaved: installRefetch,
+            // Keep the modal open + locked until the field_2820↔field_2821
+            // reciprocal cascade settles (mirror-connection-sync view_3915/4056).
+            awaitCascade: true
           });
           return;
         }
@@ -1902,6 +1908,10 @@
         // Grouped by MDF/IDF + canonically sorted by the picker default.
         itemLabel:     itemLabel,
         multi:         isMulti,
+        // Keep the modal open + locked until the field_1957↔field_2197
+        // reciprocal cascade settles (mirror-connection-sync view_3962 et al.),
+        // so the user can't navigate or start another edit mid-sync.
+        awaitCascade:  true,
         onSaved:       function () {
           // notify() reads from the source view's Backbone model.
           // When the cascade kicks off in response to the PUT, the
