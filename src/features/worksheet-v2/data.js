@@ -98,6 +98,18 @@
    * server-side. A model.fetch() pulls it back into Knack's local
    * Backbone model, then notify re-renders v2's cards.
    */
+  // In-flight guard per view. A single user action can ask for a refetch
+  // from several places at once — edit.js (recalc field), the cascade's
+  // scw-cascade-idle handler, a sales-CR refresh — and each model.fetch()
+  // is BOTH a network round-trip AND a full knack-view-render storm through
+  // every feature on the view (this is the "fires 3x per interaction" churn).
+  // Collapse overlapping requests: while a fetch is pending, later callers
+  // don't start a second one — they flag a single follow-up notify (the
+  // in-flight fetch already pulls the freshest server state, so a re-render
+  // off it is enough; no extra fetch needed).
+  var _fetchInFlight   = Object.create(null);
+  var _fetchWantFollow = Object.create(null);
+
   function refetchAndNotify(viewKey) {
     try {
       var v = Knack.views[viewKey];
@@ -105,16 +117,34 @@
         notify(viewKey);
         return;
       }
+      if (_fetchInFlight[viewKey]) {
+        // Coalesce — a fetch is already running for this view. Just make
+        // sure we re-render once it lands.
+        _fetchWantFollow[viewKey] = true;
+        return;
+      }
+      _fetchInFlight[viewKey] = true;
+      var settle = function () {
+        _fetchInFlight[viewKey] = false;
+        notify(viewKey);
+        if (_fetchWantFollow[viewKey]) {
+          _fetchWantFollow[viewKey] = false;
+          // Another caller asked mid-flight — one more (coalesced) notify,
+          // NOT another fetch: the completed fetch is already current.
+          notify(viewKey);
+        }
+      };
       var p = v.model.fetch();
       if (p && typeof p.always === 'function') {
-        p.always(function () { notify(viewKey); });
+        p.always(settle);
       } else if (p && typeof p.then === 'function') {
-        p.then(function () { notify(viewKey); }, function () { notify(viewKey); });
+        p.then(settle, settle);
       } else {
         // Backbone returned no thenable — fall back to a small delay
-        setTimeout(function () { notify(viewKey); }, 400);
+        setTimeout(settle, 400);
       }
     } catch (e) {
+      _fetchInFlight[viewKey] = false;
       notify(viewKey);
     }
   }

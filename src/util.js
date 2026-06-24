@@ -78,6 +78,57 @@ window.SCW = window.SCW || {};
     return rows;
   };
   namespace.perfReset = function () { namespace._perfTotals = {}; };
+
+  // ── Render-churn tracer (DevTools helper) ────────────────────
+  // SCW.traceChurn('view_3586') instruments a view for ~8s (override with
+  // a 2nd arg in ms): logs every knack-view-render with a timestamp delta,
+  // and wraps the view's model.fetch() to log each call WITH its caller
+  // stack — so a single edit reveals exactly how many renders/fetches it
+  // triggers and WHO fired them. Prints a summary table on stop. Returns a
+  // stop() fn for early teardown. Behavior-inert until called.
+  namespace.traceChurn = function (viewId, windowMs) {
+    if (typeof $ === 'undefined' || typeof Knack === 'undefined') {
+      console.warn('[churn] jQuery/Knack not ready'); return function () {};
+    }
+    windowMs = windowMs || 8000;
+    var t0 = _now();
+    var renders = [];
+    var fetches = [];
+    var ev = 'knack-view-render.' + viewId + '.scwChurnTrace';
+    var v = Knack.views && Knack.views[viewId];
+    var origFetch = (v && v.model && typeof v.model.fetch === 'function') ? v.model.fetch : null;
+    if (origFetch) {
+      v.model.fetch = function () {
+        var at = (_now() - t0);
+        var stack = ((new Error()).stack || '').split('\n').slice(2, 7).join('\n');
+        fetches.push({ atMs: +at.toFixed(0), via: stack.split('\n')[0].trim() });
+        console.log('[churn] model.fetch(' + viewId + ') @' + at.toFixed(0) + 'ms\n' + stack);
+        return origFetch.apply(this, arguments);
+      };
+    } else {
+      console.warn('[churn] no model.fetch to wrap for ' + viewId + ' (fetch calls won\'t be traced)');
+    }
+    var onRender = function () {
+      var at = (_now() - t0);
+      renders.push(+at.toFixed(0));
+      console.log('[churn] knack-view-render ' + viewId + ' #' + renders.length + ' @' + at.toFixed(0) + 'ms');
+    };
+    $(document).on(ev, onRender);
+    var stopped = false;
+    function stop() {
+      if (stopped) return; stopped = true;
+      $(document).off(ev, onRender);
+      if (origFetch && v && v.model) { try { v.model.fetch = origFetch; } catch (e) {} }
+      console.log('[churn] SUMMARY ' + viewId + ': ' + renders.length +
+        ' knack-view-render, ' + fetches.length + ' model.fetch in ' +
+        windowMs + 'ms. render times(ms)=' + JSON.stringify(renders));
+      if (fetches.length && console.table) console.table(fetches);
+    }
+    setTimeout(stop, windowMs);
+    console.log('[churn] tracing ' + viewId + ' for ' + windowMs +
+      'ms — do ONE laggy interaction now (edit a cell / toggle a chip).');
+    return stop;
+  };
 })(window.SCW);
 
 
