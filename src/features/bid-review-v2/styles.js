@@ -16,6 +16,17 @@
   if (document.getElementById(ns.CONFIG.cssId)) return;
 
   var css = [
+    /* ── Kill browser scroll-anchoring on this page ──────────────
+       The grid renders multiple times as the 6 source views load; the
+       browser's overflow-anchor keeps shifting scroll DOWN to "hold"
+       content as the DOM mutates, compounding into a runaway jump to the
+       bottom on load (confirmed via scroll-spy: repeated ~288px drops with
+       NO scrollTo/scrollBy/scrollTop call). Disable it while the bid-review
+       page is active (body.scw-bid-review-active is set by v1's mount). */
+    'html:has(body.scw-bid-review-active), body.scw-bid-review-active {',
+    '  overflow-anchor: none !important;',
+    '}',
+    'body.scw-bid-review-active * { overflow-anchor: none !important; }',
     /* ── Container + WIP banner ─────────────────────────────── */
     '.scw-bid-review-v2 {',
     '  margin: 24px 0 32px;',

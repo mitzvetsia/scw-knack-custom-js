@@ -19,6 +19,7 @@ cat \
   src/features/_toolbar-registry.js \
   src/features/_v2-scroll-anchor.js \
   src/features/_scroll-spy.js \
+  src/features/disable-scroll-restoration.js \
   src/features/preserve-scroll-on-refresh.js \
   src/features/modal-refresh-redirect.js \
   src/features/modal-scroll-restore.js \
