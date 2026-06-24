@@ -987,14 +987,15 @@
     hookV1Rerender();
     if (ns.data && ns.render) {
       ns.data.subscribe(function (snapshot) {
-        // Anchor on the SOW section nearest the viewport top so the grid
-        // doesn't jump after an inline edit rebuilds the body.
-        if (window.SCW.v2ScrollAnchor) {
-          SCW.v2ScrollAnchor.around('.scw-bid-review-v2__sow[data-sow-id]', 'data-sow-id',
-            function () { ns.render.renderSnapshot(snapshot); });
-        } else {
-          ns.render.renderSnapshot(snapshot);
-        }
+        // NOTE: do NOT wrap this in SCW.v2ScrollAnchor.around. On this grid the
+        // anchor's window.scrollBy correction runs away: editing field_2150 in
+        // an expanded row's embedded worksheet-v2 card rebuilds the panel, the
+        // SOW section below it shifts, and the anchor scrollBy's DOWN by the
+        // delta — repeatedly — scrolling the page to the bottom in several
+        // jumps (confirmed via scroll-spy: scrollBy with no scrollTo trace).
+        // bid-review-v2's renderSnapshot already keyed-reuses unchanged
+        // sections + defers while focused, so a plain rebuild stays put.
+        ns.render.renderSnapshot(snapshot);
         mountBulk();
       });
     }

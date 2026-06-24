@@ -63,6 +63,17 @@
   } catch (e) { /* ignore */ }
 
   try {
+    var _scrollBy = window.scrollBy;
+    window.scrollBy = function () {
+      if (active()) {
+        console.warn(P + ' window.scrollBy(', arguments[0], arguments[1], ') from', y());
+        console.trace(P + ' scrollBy stack');
+      }
+      return _scrollBy.apply(window, arguments);
+    };
+  } catch (e) { /* ignore */ }
+
+  try {
     var _scroll = window.scroll;
     window.scroll = function () {
       if (active()) {

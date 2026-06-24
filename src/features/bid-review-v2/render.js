@@ -176,9 +176,9 @@
     if (ns.toolbar && typeof ns.toolbar.mount === 'function') ns.toolbar.mount();
   }
 
-  // Resume deferred render when focus leaves the panel. Anchor it like the
-  // subscribe path (init.js) so the flush rebuild doesn't jump the page —
-  // this is the render that actually fires after an edit commits + blur.
+  // Resume deferred render when focus leaves the panel. Plain rebuild — NOT
+  // anchored: SCW.v2ScrollAnchor's scrollBy runs away on this grid (see
+  // init.js), scrolling to the bottom. Keyed section reuse keeps it stable.
   document.addEventListener('focusout', function () {
     setTimeout(function () {
       if (!_pendingSnapshot) return;
@@ -186,12 +186,7 @@
       if (!container || hasFocusInPanel(container)) return;
       var snap = _pendingSnapshot;
       _pendingSnapshot = null;
-      if (window.SCW.v2ScrollAnchor) {
-        SCW.v2ScrollAnchor.around('.scw-bid-review-v2__sow[data-sow-id]', 'data-sow-id',
-          function () { renderSnapshot(snap); });
-      } else {
-        renderSnapshot(snap);
-      }
+      renderSnapshot(snap);
     }, 0);
   }, true);
 
