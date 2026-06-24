@@ -460,7 +460,9 @@
         lockExemptFields: ['field_1949', 'field_1958', 'field_1953', 'field_2634']
       },
       {
-        viewIds: ['view_3610', 'view_3921'],
+        // view_3610 (Ops build SOW) removed — fully v2 (view_3962 source).
+        // view_3921 (comparison grid) still listed here pending its own phase.
+        viewId: 'view_3921',
         layout: { productGroupWidth: 'flex', productGroupLayout: 'column', productEditable: true, identityWidth: '366px', labelWidth: '110px' },
         fields: {
           // ── Summary row ──
@@ -6333,11 +6335,12 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     // enabled AND has a CONFIG entry for the superseding source view,
     // bail out of v1\'s transformView entirely — no card builds, no
     // group-collapse, no photo strips, no DOM thrash on a hidden
-    // table. Keyed per v1 view: view_3610 is superseded by the
-    // view_3962-sourced v2 mount. (view_3586/sales was fully removed —
-    // its v1 config block is gone entirely, so it never reaches here.)
+    // table. Now keyed for view_3915 (install) + view_3505 (survey), whose
+    // v1 config blocks still exist but bail here when v2 is enabled.
+    // (view_3586/sales + view_3610/ops were fully removed — their v1 config
+    // blocks are gone entirely, so they never reach here.)
     // Reversible: flip SCW.worksheetV2.CONFIG.enabled = false.
-    var V2_TAKEOVER = { view_3610: 'view_3962', view_3915: 'view_3915', view_3505: 'view_3505' };
+    var V2_TAKEOVER = { view_3915: 'view_3915', view_3505: 'view_3505' };
     var v2SourceKey = V2_TAKEOVER[viewCfg.viewId];
     if (v2SourceKey &&
         window.SCW && window.SCW.worksheetV2 &&
