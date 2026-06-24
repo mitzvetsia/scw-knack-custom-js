@@ -17,6 +17,8 @@ cat \
   src/features/_design-tokens.js \
   src/features/_render-totals-guard.js \
   src/features/_toolbar-registry.js \
+  src/features/_v2-scroll-anchor.js \
+  src/features/disable-scroll-restoration.js \
   src/features/preserve-scroll-on-refresh.js \
   src/features/modal-refresh-redirect.js \
   src/features/modal-scroll-restore.js \
@@ -42,7 +44,6 @@ cat \
   src/features/ratking/scene-776-stub.js \
   src/features/proposal-grid.js \
   src/features/view-3341-loading-overlay.js \
-  src/features/view-3610-loading-overlay.js \
   src/features/survey-review-grid.js \
   src/features/proposal-pdf-export.js \
   src/features/proposal-preview-images.js \
@@ -70,6 +71,11 @@ cat \
   src/features/bid-review-v2/bulk-cr.js \
   src/features/bid-review-v2/render.js \
   src/features/bid-review-v2/init.js \
+  src/features/sub-bid-diff/config.js \
+  src/features/sub-bid-diff/styles.js \
+  src/features/sub-bid-diff/render.js \
+  src/features/sub-bid-diff/pdf-html.js \
+  src/features/sub-bid-diff/init.js \
   src/features/sales-revision-column.js \
   src/features/group-collapse.js \
   src/features/sow-filter-pills.js \
@@ -79,7 +85,6 @@ cat \
   src/features/SOW-line-item-DTO-bucket-field-visibility.js \
   src/features/SOW-line-item-DTO-bucket-field-visibility_view_3451.js \
   src/features/highlight-duplicate-cells.js \
-  src/features/replace-content-with-icon.js \
   src/features/change-record-limit.js \
   src/features/SURVEY_lineitem_conditional-field-grayout.js \
   src/features/SOW_lineitem_conditional-field-grayout.js \

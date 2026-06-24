@@ -73,6 +73,10 @@
     children:       'field_2207',   // mirror "my children" array
     parent:         'field_2464',   // accessory → parent line item
     // photo sub-records (DOC_photos object, connected to the line item)
+    warningCount:   'field_2949',   // SYS_incomplete photos count (SOW equiv of
+                                    // survey's field_2454) — lets warnings.js read
+                                    // the precomputed count instead of DOM-scraping
+                                    // every row each render (the 476ms hot spot)
     photoImage:     'field_771',
     photoType:      'field_2445',
     photoRequired:  'field_2446',
@@ -109,6 +113,10 @@
         // Build-SOW page (internal). The canonical deployment.
         sourceViewKey:    'view_3962',
         mountAfterSelector: '#view_3610',
+        // If view_3610 (the retired, hidden v1 grid) is deleted from the Knack
+        // scene, mount after the v2 source view instead so the panel still
+        // appears. Both are SOW Line Items grids in the same scene region.
+        mountAfterFallback: '#view_3962',
         label:            'SOW Line Items',
         mdfSourceViewKey: 'view_3577',
         mdfLabelField:    'field_1642',
@@ -135,6 +143,12 @@
         label:            'Install Line Items',
         independentFields: true,            // different object — no DEFAULT_FIELDS fallback
         moneyMode:        'install',        // no money columns at all — card.js install path
+        // Bulk photo upload context: the "+ Add Photos" toolbar button opens
+        // SCW.bulkUpload against the DEPLOYMENT (linkField 'deploymentID' +
+        // project/deployment id from the URL), NOT a SOW. See the
+        // 'view_3915_deploy' entry in bulk-upload.js CONFIG.VIEWS. The
+        // view_4056 clone below inherits this via the JSON deep-clone.
+        photoUploadView:  'view_3915_deploy',
         hideSow:          true,             // install groups by MDF/IDF, not SOW
         mdfSourceViewKey: '',               // TODO: empty-L1 seed source (analogue of view_3577)
         mdfLabelField:    '',               // TODO
@@ -339,6 +353,8 @@
           productName:    'field_2379',     // STORED product name (display)
           displayLabel:   'field_2365',     // label (E-001 …)
           labelAlt:       'field_2365',     // same — survey line item label
+          dropPrefix:     'field_2361',     // REL_drop prefix (Drop Prefix catalog — same as SOW's 2240)
+          dropNumber:     'field_2362',     // drop number (label recomputes from prefix + number)
           bucket:         'field_2366',     // proposal bucket (L2) — NOT SOW's 2219
           sortOrder:      'field_2218',     // CONFIG_sort order (shared key)
           mdfIdf:         'field_2375',     // MDF/IDF location (L1 grouping + move)
@@ -391,6 +407,8 @@
         //    cascade fires); Mounting Height (3-option chip, no bulk widget).
         bulkFields: {
           cam: [
+            { f: 'dropPrefix',   kind: 'conn-single', label: 'Prefix',      candSource: 'dropPrefix' },
+            { f: 'dropNumber',   kind: 'number',      label: 'Cam/Reader #' },
             { f: 'laborDesc',    kind: 'text',        label: 'Labor description' },
             { f: 'labor',        kind: 'number',      label: 'Labor' },
             { f: 'existCabling', kind: 'bool',        label: 'Existing cabling' },

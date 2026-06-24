@@ -956,6 +956,12 @@
       // across grids. Synthetic grid: include any package holding a bucket record.
       var packages = [];
       for (var ap = 0; ap < allPackages.length; ap++) {
+        // NOTE (merge 2026-06-23): this branch had blanket-CLEARED the
+        // sibling-SOW gate so bids show on every SOW they touch. quirky-fermat's
+        // version below is the refined superset — it keeps the gate ONLY when
+        // the package has no authoritative item on this SOW (field_2154 is the
+        // truth), so shared line items (field_2154 lists both SOWs) still show
+        // on both, while genuinely-other-SOW bids stay gated. Took quirky's.
         if (isSyn) {
           var _precs = pkgAllRecords[allPackages[ap].id] || [];
           var _hit = false;

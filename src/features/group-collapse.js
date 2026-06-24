@@ -41,7 +41,7 @@
   }
 
   // Record count badge: list view IDs to enable
-  const RECORD_COUNT_VIEWS = ['view_3359', 'view_3313', 'view_3505', 'view_3512', 'view_3610', 'view_3586'];
+  const RECORD_COUNT_VIEWS = ['view_3359', 'view_3313', 'view_3512'];
 
   // Per-view configuration. `theme` is a named preset defined in
   // _design-tokens.js — it sets a `data-scw-l1-theme` attribute on the
@@ -59,7 +59,7 @@
     view_3997: { defaultOpen: true },
     // Device worksheet views — groups default expanded
     view_3512: { defaultOpen: true },
-    view_3505: { defaultOpen: true },
+    // view_3505 (survey worksheet) removed — fully v2.
     view_3313: { defaultOpen: true },
     view_3602: { defaultOpen: true },
     view_3575: { defaultOpen: true },
@@ -71,8 +71,8 @@
     // `startAllCollapsed: true` suppresses the "auto-open first L1 when
     // none are open" branch of exclusive enforcement, so a fresh load
     // (no saved state) shows every group collapsed.
-    view_3586: { exclusive: true, startAllCollapsed: true },
-    view_3610: { exclusive: true, startAllCollapsed: true },
+    // view_3586 + view_3610 (sales/ops build SOW) removed — fully v2;
+    // worksheet-v2 owns grouping/collapse on those pages.
     view_3921: { exclusive: true },
   };
 
@@ -634,6 +634,14 @@
   // but manual collapses during the session are still persisted and respected.
   const thresholdCleared = new Set();
 
+  // True when bid-review-v2 owns a source view (replaceV1 active + the view is
+  // a v2 source, e.g. the hidden view_3921 on scene_1155).
+  function brV2OwnsView(viewId) {
+    var c = window.SCW && SCW.bidReviewV2 && SCW.bidReviewV2.CONFIG;
+    return !!(c && c.enabled !== false && c.replaceV1 &&
+      c.sourceViewKeys && c.sourceViewKeys.indexOf(viewId) !== -1);
+  }
+
   function enhanceAllGroupedGrids(sceneId) {
     if (!isEnabledScene(sceneId)) return;
 
@@ -652,6 +660,11 @@
       const viewId = $view.attr('id') || 'unknown_view';
 
       if (SKIP_VIEWS.has(viewId)) return;
+      // Skip a hidden view that bid-review-v2 owns (e.g. view_3921 on
+      // scene_1155): v2 renders the live grid + does its own group-collapse,
+      // so re-applying accordion state to the hidden v1 source on every edit
+      // refetch is pure waste. Reversible via replaceV1.
+      if (brV2OwnsView(viewId)) return;
 
       $view.addClass('scw-group-collapse-enabled');
 

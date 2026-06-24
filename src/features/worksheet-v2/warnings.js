@@ -93,12 +93,84 @@
     return s === 'yes' || s === 'true' || s === '1';
   }
 
-  function hasMissingRequiredPhotos(rec, viewKey) {
-    if (!ns.photos || typeof ns.photos.extractPhotoRecords !== 'function') return false;
+  // Cache of the photo-warning boolean per record id, persisted ACROSS renders.
+  // extractPhotoRecords (a source-view DOM scrape) is the dominant analyze()
+  // cost on large worksheets (~476ms for 334 records when the source DOM is
+  // present) and recurs on EVERY render — but photo state only changes on a
+  // photo add/remove/replace. Memoize it (photos.js invalidates on mutation),
+  // so a non-photo edit never re-scrapes. Only cache a result computed while
+  // the source row is actually present — a scrape against a not-yet-rendered
+  // row is a transient false-negative we must not persist.
+  var photoWarnCache = Object.create(null);   // recId -> bool
+
+  // Source-view <tr> map, rebuilt ONCE per analyze() pass. The photo scan and
+  // the presence check both need the record's source row; without a shared map
+  // each was doing view.querySelector('tr[id=…]') per record — a full O(rows)
+  // scan × O(records) = O(n²) (≈110k row-walks / 333 rows, the ~580ms cold
+  // cost). One querySelectorAll up front makes every per-record lookup O(1).
+  var _trMap = null;            // recId -> <tr>  (valid only during a pass)
+  function buildTrMap(viewKey) {
+    var map = Object.create(null);
     try {
-      var photos = ns.photos.extractPhotoRecords(viewKey, rec.id) || [];
-      for (var i = 0; i < photos.length; i++) {
-        if (photos[i].required && !photos[i].completed) return true;
+      var v = document.getElementById(viewKey) || document.getElementById('view_3962');
+      if (!v) return map;
+      var rows = v.querySelectorAll('tbody > tr[id]');
+      for (var i = 0; i < rows.length; i++) {
+        var id = rows[i].id;
+        if (id) map[id] = rows[i];
+      }
+    } catch (e) { /* ignore */ }
+    return map;
+  }
+
+  function sourceRowPresent(viewKey, recId) {
+    if (_trMap) return !!_trMap[recId];
+    try {
+      var v = document.getElementById(viewKey) || document.getElementById('view_3962');
+      return !!(v && v.querySelector('tr[id="' + recId + '"]'));
+    } catch (e) { return false; }
+  }
+
+  // Lean photo-warning scan. extractPhotoRecords (used by the photo STRIP)
+  // makes ~11 full passes over every cell in the row + builds a map + sorts —
+  // far more than a yes/no warning needs, and it dominated the cold render
+  // (~384ms for 333 rows). This reads ONLY the two cells that matter: the
+  // required (field_2446) and completed (field_2447) connection columns, both
+  // keyed per-photo by the PIC record id. Warning = any required="Yes" photo
+  // whose matching completed span isn't "Yes". One queryable cell pair, no map,
+  // no sort — an order of magnitude cheaper.
+  function hasMissingRequiredPhotos(rec, viewKey) {
+    try {
+      var tr = _trMap ? _trMap[rec.id] : null;
+      if (!tr) {
+        var view = document.getElementById(viewKey) || document.getElementById('view_3962');
+        if (!view) return false;
+        tr = view.querySelector('tr[id="' + rec.id + '"]');
+      }
+      if (!tr) return false;
+      var FF      = (ns.cfg && ns.cfg.fields(viewKey)) || {};
+      var reqKey  = FF.photoRequired  || 'field_2446';
+      var compKey = FF.photoCompleted || 'field_2447';
+      var reqCell = tr.querySelector('td[data-field-key="' + reqKey + '"]');
+      if (!reqCell) return false;
+      var reqSpans = reqCell.querySelectorAll('span[id][data-kn="connection-value"]');
+      if (!reqSpans.length) return false;
+      // Map of completed photo ids (only built if at least one is required).
+      var done = Object.create(null);
+      var compCell = tr.querySelector('td[data-field-key="' + compKey + '"]');
+      if (compCell) {
+        var compSpans = compCell.querySelectorAll('span[id][data-kn="connection-value"]');
+        for (var c = 0; c < compSpans.length; c++) {
+          if ((compSpans[c].textContent || '').trim().toLowerCase() === 'yes') {
+            done[compSpans[c].id] = true;
+          }
+        }
+      }
+      for (var r = 0; r < reqSpans.length; r++) {
+        if ((reqSpans[r].textContent || '').trim().toLowerCase() === 'yes' &&
+            !done[reqSpans[r].id]) {
+          return true;
+        }
       }
     } catch (e) { /* DOM not ready yet — skip */ }
     return false;
@@ -114,9 +186,25 @@
     if (countKey) {
       var rawN = (rec[countKey + '_raw'] != null) ? rec[countKey + '_raw'] : rec[countKey];
       var n = parseFloat(String(rawN == null ? '' : rawN).replace(/[^0-9.\-]/g, ''));
-      if (isFinite(n)) return n > 0;   // count field present → trust it
+      if (isFinite(n)) return n > 0;   // count field present → trust it (cheap)
     }
-    return hasMissingRequiredPhotos(rec, viewKey);
+    // No count field (e.g. SOW view_3962) → scrape the photo DOM, but memoize:
+    // compute ONCE per record (when its source row is present) and reuse on
+    // every later render until photos.js invalidates it.
+    var id = rec && rec.id;
+    if (!id) return hasMissingRequiredPhotos(rec, viewKey);
+    if (id in photoWarnCache) return photoWarnCache[id];
+    if (!sourceRowPresent(viewKey, id)) return false;   // DOM not ready — don't cache
+    var v = hasMissingRequiredPhotos(rec, viewKey);
+    photoWarnCache[id] = v;
+    return v;
+  }
+
+  // Drop cached photo warnings so the next analyze() re-scrapes. Call after a
+  // photo add/remove/replace (photos.js). recId clears one record; no arg clears all.
+  function invalidatePhotos(recId) {
+    if (recId) delete photoWarnCache[recId];
+    else photoWarnCache = Object.create(null);
   }
 
   // Active source view for the current analyze() pass — lets the helpers
@@ -231,6 +319,11 @@
   function analyze(records, viewKey) {
     curView = viewKey || '';
     var byRecord = Object.create(null);
+    // Build the source-row lookup ONCE for this pass (kills the per-record
+    // O(n) tr scan the photo check used to do). Cleared in the finally so a
+    // stale map can never leak into a later pass against changed DOM.
+    _trMap = buildTrMap(viewKey);
+    try {
     var bracket = buildBracketMaps(viewKey);
     lastAccMismatch = bracket.byAccessory;
     var bracketParents = bracket.byParent;
@@ -248,6 +341,9 @@
     cache[viewKey] = byRecord;
     lastViewKey = viewKey;
     return byRecord;
+    } finally {
+      _trMap = null;   // never let the map outlive the pass
+    }
   }
 
   function getIssuesFor(viewKey, recordId) {
@@ -295,6 +391,7 @@
     LABELS:              LABELS,
     ICONS:               ICONS,
     analyze:             analyze,
+    invalidatePhotos:    invalidatePhotos,
     getIssuesFor:        getIssuesFor,
     getCountsForRecords: getCountsForRecords,
     isAccessoryMismatch: isAccessoryMismatch,

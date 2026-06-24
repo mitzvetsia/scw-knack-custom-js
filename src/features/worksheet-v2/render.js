@@ -58,9 +58,113 @@
     return map;
   }
 
+  // Money-model flags + summary opts for a view. Used by both the full
+  // rebuild (grand + per-L1 summaries) and the in-place fast path, so the
+  // numbers stay identical across the two code paths.
+  function viewMoneyFlags(sourceViewKey) {
+    var f = { sales: false, survey: false, install: false };
+    try {
+      var vc = ns.cfg && typeof ns.cfg.viewCfg === 'function' && ns.cfg.viewCfg(sourceViewKey);
+      f.sales   = !!(vc && vc.moneyMode === 'sales');
+      f.survey  = !!(vc && vc.moneyMode === 'survey');
+      f.install = !!(vc && vc.moneyMode === 'install');
+    } catch (e) { /* default build-SOW */ }
+    return f;
+  }
+  function buildMoneyOpts(sourceViewKey, flags) {
+    flags = flags || viewMoneyFlags(sourceViewKey);
+    var o = flags.sales
+      ? { moneyField: 'field_2269', moneyLabel: 'Total' }
+      : (flags.survey ? { moneyField: 'field_2401', moneyLabel: 'Sub Bid' } : {});
+    if (flags.install) o.hideMoney = true;
+    if (flags.survey)  o.includeServices = true;
+    try {
+      o.fields = (ns.cfg && typeof ns.cfg.fields === 'function')
+        ? ns.cfg.fields(sourceViewKey) : null;
+    } catch (e) { o.fields = null; }
+    o.viewKey = sourceViewKey;
+    return o;
+  }
+
+  // Flat, in-order list of record ids the tree would render — used to detect
+  // whether an edit changed the visible STRUCTURE (group membership / sort /
+  // filter) vs. just a record's own fields. Same order the cards appear in.
+  function flatTreeIds(tree) {
+    var out = [];
+    for (var i = 0; i < tree.length; i++) {
+      var l1 = tree[i];
+      for (var j = 0; j < l1.l2.length; j++) {
+        var l2 = l1.l2[j];
+        if (l2.id === '__empty_l2') continue;
+        for (var k = 0; k < l2.records.length; k++) {
+          var r = l2.records[k];
+          if (r && r.id) out.push(r.id);
+        }
+      }
+    }
+    return out;
+  }
+
+  /**
+   * Fast in-place update. When an edit marks only specific records dirty AND
+   * the visible card order is unchanged (no group/sort/filter shift), replace
+   * just those card nodes and refresh the summaries in place — skipping the
+   * full tree teardown + re-append of every card (the per-edit lag). Returns
+   * true on success; false means "structure changed, do a full rebuild".
+   */
+  function tryInPlaceUpdate(body, tree, dirtyIds, sourceViewKey, openIds) {
+    var domCards = body.querySelectorAll('.scw-ws-v2-card[data-scw-ws-v2-record]');
+    var treeIds  = flatTreeIds(tree);
+    if (domCards.length !== treeIds.length) return false;
+
+    var byId = Object.create(null);
+    for (var d = 0; d < domCards.length; d++) {
+      var did = domCards[d].getAttribute('data-scw-ws-v2-record');
+      if (did !== treeIds[d]) return false;   // order differs → structural change
+      byId[did] = domCards[d];
+    }
+
+    // Record lookup from the tree.
+    var recById = Object.create(null);
+    for (var t = 0; t < tree.length; t++) {
+      var l1 = tree[t];
+      for (var j = 0; j < l1.l2.length; j++) {
+        var l2 = l1.l2[j];
+        for (var k = 0; k < l2.records.length; k++) {
+          var r = l2.records[k];
+          if (r && r.id) recById[r.id] = r;
+        }
+      }
+    }
+
+    // Validate every dirty record is present BEFORE mutating, so a fallthrough
+    // to the full rebuild never has to clean up a half-applied in-place pass.
+    var ids = Object.keys(dirtyIds);
+    for (var v = 0; v < ids.length; v++) {
+      if (!byId[ids[v]] || !recById[ids[v]]) return false;
+    }
+    for (var x = 0; x < ids.length; x++) {
+      var id  = ids[x];
+      var old = byId[id];
+      var fresh = ns.card.buildCard(recById[id], sourceViewKey);
+      if (!fresh) return false;   // (validated present; a build failure is rare)
+      try { fresh.setAttribute('data-scw-sig', cardSig(recById[id])); } catch (e) { /* ignore */ }
+      if (openIds[id] && fresh.classList) fresh.classList.add('scw-ws-v2-card--open');
+      if (old.parentNode) old.parentNode.replaceChild(fresh, old);
+    }
+    return true;
+  }
+
   // Defer renders while the user is mid-edit so typing isn't blown
   // away by a sibling-triggered re-notify.
   var pending = Object.create(null);
+
+  // Self-heal: besides the dirty records, each render re-verifies a small
+  // ROTATING window of records (recompute sig, rebuild on mismatch) so a change
+  // the dirty tracker ever missed self-corrects within a few renders instead of
+  // persisting stale. Cheap insurance — ~16 sigs/render vs 168.
+  var HEAL_PER_RENDER = 16;
+  var _healOffset = Object.create(null);   // viewKey -> next window start index
 
   /**
    * Read every MDF/IDF location off the configured mdfSourceViewKey
@@ -387,6 +491,10 @@
     var container = document.getElementById('scw-ws-v2-' + sourceViewKey);
     if (!container) return;
 
+    // New render cycle → invalidate card.js's per-render record indexes so a
+    // changed back-pointer (connection edit) can't be served stale from cache.
+    ns.idxGen = (ns.idxGen || 0) + 1;
+
     var body  = container.querySelector('.scw-ws-v2-body');
     var count = container.querySelector('.scw-ws-v2-count');
     var bannerChips = container.querySelector('.scw-ws-v2-banner-chips');
@@ -414,6 +522,16 @@
       return;
     }
 
+    // ── Perf timing (gated on SCW.perfLog) ──────────────────────────────
+    // Phase breakdown of the worksheet rebuild — the dominant per-edit /
+    // per-load cost on a worksheet page. Logs a line per render AND feeds
+    // SCW.perfReport() (labels under "view_XXXX worksheetV2.renderView") so
+    // it shows alongside the per-feature handler costs. Free when perfLog off.
+    var _PF  = !!(window.SCW && SCW.perfLog && SCW._now);
+    var _pf0 = _PF ? SCW._now() : 0;
+    var _pfW = 0, _pfG = 0, _pfS = 0, _pfC = 0;
+    var _built = 0, _reused = 0;   // keyed-card reuse tally (perf diagnostic)
+    var _pfSig = 0;                // time spent in cardSig (JSON.stringify) — split from DOM
     if (!ns.groups || typeof ns.groups.buildGroupTree !== 'function') {
       body.innerHTML = '<div class="scw-ws-v2-empty">groups.js not loaded.</div>';
       return;
@@ -447,12 +565,15 @@
     // the cached analysis. Runs against the filtered records so the
     // counts reflect what\'s actually visible.
     if (ns.warnings && typeof ns.warnings.analyze === 'function') {
+      var _aw = _PF ? SCW._now() : 0;
       try { ns.warnings.analyze(effectiveRecords, sourceViewKey); }
       catch (e) { console.warn('[scw-ws-v2] warnings analyze failed', e); }
+      if (_PF) _pfW = SCW._now() - _aw;
     }
     var sortPreset = (ns.sort && typeof ns.sort.getActivePreset === 'function')
       ? ns.sort.getActivePreset(sourceViewKey)
       : null;
+    var _ag = _PF ? SCW._now() : 0;
     var tree = ns.groups.buildGroupTree(effectiveRecords, seedGroups, {
       sortPreset: sortPreset,
       // Per-view field map so L1 (MDF/IDF) / L2 (bucket) / sort resolve for
@@ -460,6 +581,7 @@
       fields: (ns.cfg && typeof ns.cfg.fields === 'function')
         ? ns.cfg.fields(sourceViewKey) : null
     });
+    if (_PF) _pfG = SCW._now() - _ag;
     if (ns.state && typeof ns.state.applyOpenState === 'function') {
       ns.state.applyOpenState(sourceViewKey, tree);
     } else {
@@ -482,18 +604,124 @@
     // (matched by id + signature), else build a fresh card. This is what
     // turns a one-field edit from "rebuild every card" into "rebuild one".
     var existingCards = indexExistingCards(body);
+
+    // What actually changed since the last render (Backbone change + add/remove
+    // + optimistic-edit markDirty). all:true → first render / structural change
+    // → verify everything via the signature path. Plus a rotating self-heal
+    // window so a missed change can't persist stale.
+    var dirty = (ns.data && typeof ns.data.takeDirty === 'function')
+      ? ns.data.takeDirty(sourceViewKey) : { all: true, ids: Object.create(null) };
+    var healSet = Object.create(null);
+    if (!dirty.all && records.length) {
+      var _ho = _healOffset[sourceViewKey] || 0;
+      for (var _hi = 0; _hi < HEAL_PER_RENDER && _hi < records.length; _hi++) {
+        var _hr = records[(_ho + _hi) % records.length];
+        if (_hr && _hr.id) healSet[_hr.id] = true;
+      }
+      _healOffset[sourceViewKey] = (_ho + HEAL_PER_RENDER) % records.length;
+    }
+
+    // ── Fast in-place update ────────────────────────────────────────────
+    // The common case is an edit that changes a handful of records without
+    // touching grouping / sort / filter. When that holds, swap just those
+    // card nodes and refresh the summaries in place — skipping the full tree
+    // teardown + re-append of all N cards (the per-edit lag: ~45-90ms even
+    // when only one card changed). Falls through to the full rebuild below if
+    // the structure shifted or a dirty record isn't currently visible.
+    if (!dirty.all && body.querySelector('.scw-ws-v2-card')) {
+      var _dids = Object.keys(dirty.ids);
+      if (_dids.length &&
+          tryInPlaceUpdate(body, tree, dirty.ids, sourceViewKey, openIds)) {
+        var _mOpts = buildMoneyOpts(sourceViewKey);
+        // Grand summary (totals may have shifted) — swap the node in place.
+        var _grandOld = body.querySelector('.scw-ws-v2-grand-summary');
+        if (_grandOld && ns.summary && ns.summary.buildGrandSummary) {
+          try {
+            var _grandNew = ns.summary.buildGrandSummary(tree, _mOpts);
+            if (_grandNew && _grandOld.parentNode) {
+              _grandOld.parentNode.replaceChild(_grandNew, _grandOld);
+            }
+          } catch (e) { /* keep old summary */ }
+        }
+        // Per-L1 summary + header (money/issue chips/count) in place — but
+        // ONLY for the L1(s) that actually contain an edited record. Rebuilding
+        // every group's summary aggregate was the bulk of the in-place cost.
+        var _blocks = body.querySelectorAll('.scw-ws-v2-l1');
+        var _blockById = Object.create(null);
+        for (var _bi = 0; _bi < _blocks.length; _bi++) {
+          _blockById[_blocks[_bi].getAttribute('data-scw-ws-v2-l1')] = _blocks[_bi];
+        }
+        for (var _li = 0; _li < tree.length; _li++) {
+          var _l1 = tree[_li];
+          var _block = _blockById[_l1.id];
+          if (!_block) continue;
+          // Does this L1 hold a dirty record? If not, its summary/header are
+          // unchanged — skip the rebuild.
+          var _l1Affected = false;
+          for (var _l2i = 0; _l2i < _l1.l2.length && !_l1Affected; _l2i++) {
+            var _recs = _l1.l2[_l2i].records || [];
+            for (var _ri = 0; _ri < _recs.length; _ri++) {
+              if (_recs[_ri] && dirty.ids[_recs[_ri].id]) { _l1Affected = true; break; }
+            }
+          }
+          if (!_l1Affected) continue;
+          var _sumOld = _block.querySelector('.scw-ws-v2-summary');
+          if (_sumOld && ns.summary && ns.summary.buildL1Summary) {
+            try {
+              var _sumNew = ns.summary.buildL1Summary(_l1, _mOpts);
+              if (_sumNew && _sumOld.parentNode) {
+                _sumOld.parentNode.replaceChild(_sumNew, _sumOld);
+              }
+            } catch (e) { /* keep old */ }
+          }
+          var _headOld = _block.querySelector('.scw-ws-v2-l1-head');
+          if (_headOld && _headOld.parentNode) {
+            _headOld.parentNode.replaceChild(buildL1Header(_l1, sourceViewKey), _headOld);
+          }
+        }
+        if (bannerChips) {
+          bannerChips.innerHTML =
+            (ns.summary && typeof ns.summary.grandIssueChips === 'function')
+              ? (ns.summary.grandIssueChips(tree) || '') : '';
+        }
+        if (_PF) {
+          var _totIP = SCW._now() - _pf0;
+          if (SCW.recordHandlerTiming) {
+            SCW.recordHandlerTiming('view ' + sourceViewKey + ' worksheetV2.renderView', _totIP);
+          }
+          console.log('[SCW perf] worksheetV2.renderView ' + sourceViewKey + ': ' +
+            _totIP.toFixed(1) + 'ms  (IN-PLACE  dirty=' + _dids.length +
+            '  records=' + records.length + ')');
+        }
+        return;
+      }
+    }
+
     function makeCard(record, viewKey) {
       var id  = record && record.id;
-      var sig = cardSig(record);
       var ex  = id && existingCards[id];
+      // Fast path: a record we have a card for, that DIDN'T change and isn't in
+      // this render's self-heal window → reuse verbatim with NO JSON.stringify.
+      // This is the win — idle/unchanged rows cost nothing.
+      if (ex && !dirty.all && !dirty.ids[id] && !healSet[id]) {
+        delete existingCards[id];
+        if (_PF) _reused++;
+        return ex;
+      }
+      // Changed / new / heal-sampled → verify via signature.
+      var _ss = _PF ? SCW._now() : 0;
+      var sig = cardSig(record);
+      if (_PF) _pfSig += SCW._now() - _ss;
       if (ex && ex.getAttribute('data-scw-sig') === sig) {
         // A DOM node lives in one place only — drop it from the index so if the
         // same record somehow appears twice in the tree the second gets a fresh
         // build instead of stealing (and thus removing) the first.
         delete existingCards[id];
+        if (_PF) _reused++;
         return ex; // unchanged — reuse node verbatim (keeps open state, focus-safe)
       }
       var card = ns.card.buildCard(record, viewKey);
+      if (_PF) _built++;
       if (card && card.setAttribute) card.setAttribute('data-scw-sig', sig);
       return card;
     }
@@ -522,6 +750,7 @@
     } catch (eGF) { grandMoneyOpts.fields = null; }
     grandMoneyOpts.viewKey = sourceViewKey;
     // Grand summary — rendered for every money model (install = no-money variant).
+    var _as = _PF ? SCW._now() : 0;
     if (ns.summary && typeof ns.summary.buildGrandSummary === 'function') {
       try {
         var grand = ns.summary.buildGrandSummary(tree, grandMoneyOpts);
@@ -530,12 +759,29 @@
         console.warn('[scw-ws-v2] grand summary failed', gErr);
       }
     }
+    if (_PF) _pfS = SCW._now() - _as;
+    var _ac = _PF ? SCW._now() : 0;
     for (var i = 0; i < tree.length; i++) {
       frag.appendChild(buildL1Block(tree[i], sourceViewKey, makeCard));
     }
+    if (_PF) _pfC = SCW._now() - _ac;
 
-    body.innerHTML = '';
-    body.appendChild(frag);
+    // Full rebuild empties + refills the body, which resets window scroll and
+    // jumps the page. Anchor the viewport across JUST this swap (the in-place
+    // path above never empties the body, so it skips the anchor — and its
+    // 600ms settle loop — entirely). Only on a RE-render (body already had
+    // cards) — the initial paint has nothing to anchor, so skip the loop and
+    // its per-frame getBoundingClientRect cost on load. Falls back to a plain
+    // swap if the anchor module isn't present.
+    var _hadCards = !!body.querySelector('.scw-ws-v2-card');
+    if (_hadCards && window.SCW && SCW.v2ScrollAnchor &&
+        typeof SCW.v2ScrollAnchor.around === 'function') {
+      SCW.v2ScrollAnchor.around('[data-scw-ws-v2-record]', 'data-scw-ws-v2-record',
+        function () { body.innerHTML = ''; body.appendChild(frag); });
+    } else {
+      body.innerHTML = '';
+      body.appendChild(frag);
+    }
 
     // Whole-grid aggregate issue chips now live in the banner (always
     // visible, independent of the collapsible summary panel).
@@ -557,6 +803,24 @@
       );
       if (card) card.classList.add('scw-ws-v2-card--open');
     });
+
+    if (_PF) {
+      var _tot = SCW._now() - _pf0;
+      var _lbl = 'view ' + sourceViewKey + ' worksheetV2.renderView';
+      if (SCW.recordHandlerTiming) {
+        SCW.recordHandlerTiming(_lbl, _tot);
+        SCW.recordHandlerTiming(_lbl + '  ├ buildCards',     _pfC);
+        SCW.recordHandlerTiming(_lbl + '  ├ buildGroupTree', _pfG);
+        SCW.recordHandlerTiming(_lbl + '  ├ warnings',       _pfW);
+        SCW.recordHandlerTiming(_lbl + '  └ grandSummary',   _pfS);
+      }
+      console.log('[SCW perf] worksheetV2.renderView ' + sourceViewKey + ': ' +
+        _tot.toFixed(1) + 'ms  (records=' + records.length +
+        '  cards=' + _pfC.toFixed(1) + ' [built=' + _built + ' reused=' + _reused +
+        ' sig=' + _pfSig.toFixed(1) + ']' +
+        '  tree=' + _pfG.toFixed(1) +
+        '  warnings=' + _pfW.toFixed(1) + '  summary=' + _pfS.toFixed(1) + ')');
+    }
   }
 
   // Resume deferred renders when focus leaves the panel.

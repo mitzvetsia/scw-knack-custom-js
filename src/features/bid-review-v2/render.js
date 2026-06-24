@@ -16,6 +16,38 @@
 
   var _pendingSnapshot = null;
 
+  // ── Section reconciliation (keyed reuse) ───────────────────────────────
+  // The dominant cost of a re-render is rebuilding EVERY SOW section's DOM
+  // (each = a full line-items × bid-packages table). But a single-field edit
+  // only changes ONE SOW's data, so we keep the existing DOM node for any
+  // section whose inputs are byte-identical and rebuild only the ones that
+  // actually changed — mirrors worksheet-v2/render.js's keyed-card factory.
+  //
+  // Signature = hash(the section's sowGrid) + a global aux hash of the source
+  // arrays buildSowSection reads OUTSIDE its grid arg (change requests +
+  // DOC_files, surfaced through v1's buildSowStatusBar / changeRequests). A
+  // field edit busts only the edited SOW's grid → only that section rebuilds;
+  // a CR/docs change busts the aux hash → every section rebuilds (rare, but
+  // keeps those surfaces correct).
+  function hashStr(s) {
+    var h = 5381, i = s.length;
+    while (i) { h = (h * 33) ^ s.charCodeAt(--i); }
+    return (h >>> 0).toString(36);
+  }
+  function sigOf(obj) {
+    try { var s = JSON.stringify(obj); return s.length.toString(36) + '.' + hashStr(s); }
+    catch (e) { return 'x' + Math.random().toString(36).slice(2); }   // unparseable → always rebuild
+  }
+  function indexExistingSections(body) {
+    var map = Object.create(null);
+    var nodes = body.querySelectorAll('.scw-bid-review-v2__sow[data-sow-id]');
+    for (var i = 0; i < nodes.length; i++) {
+      var id = nodes[i].getAttribute('data-sow-id');
+      if (id) map[id] = nodes[i];
+    }
+    return map;
+  }
+
   function hasFocusInPanel(container) {
     var a = document.activeElement;
     if (!a || !container || !a.hasAttribute) return false;
@@ -87,12 +119,40 @@
     var v1ns = window.SCW && window.SCW.bidReview;
     if (v1ns && typeof v1ns.resetDocsIndex === 'function') v1ns.resetDocsIndex();
 
+    // Global aux signature — the bits buildSowSection renders that DON'T live
+    // in its grid arg (change requests + DOC_files). When these change every
+    // section is rebuilt; for a plain field edit they're stable, so only the
+    // edited SOW's section rebuilds.
+    var globalAuxSig;
+    try {
+      var crRecs  = (sourceKeys[4] && snapshot[sourceKeys[4]]) || [];
+      var docRecs = (sourceKeys[5] && snapshot[sourceKeys[5]]) || [];
+      globalAuxSig = hashStr(JSON.stringify(crRecs) + '|' + JSON.stringify(docRecs));
+    } catch (e) { globalAuxSig = 'aux'; }
+
+    var existing = indexExistingSections(body);
     var frag = document.createDocumentFragment();
+    var reused = 0;
     for (var i = 0; i < state.sowGrids.length; i++) {
+      var grid = state.sowGrids[i];
       try {
-        frag.appendChild(ns.card.buildSowSection(state.sowGrids[i]));
+        var sig = sigOf(grid) + '|' + globalAuxSig;
+        var sid = grid && grid.sowId;
+        var ex  = sid && existing[sid];
+        if (ex && ex.getAttribute('data-scw-sig') === sig) {
+          // Unchanged section — reuse its DOM node verbatim (keeps expanded
+          // rows, group-collapse state, focus-safe). Moving it into frag
+          // detaches it from body before the innerHTML wipe below.
+          delete existing[sid];
+          frag.appendChild(ex);
+          reused++;
+        } else {
+          var node = ns.card.buildSowSection(grid);
+          if (node && node.setAttribute) node.setAttribute('data-scw-sig', sig);
+          frag.appendChild(node);
+        }
       } catch (e) {
-        console.warn('[scw-br-v2] buildSowSection threw', state.sowGrids[i] && state.sowGrids[i].sowId, e);
+        console.warn('[scw-br-v2] buildSowSection threw', grid && grid.sowId, e);
       }
     }
     body.innerHTML = '';
@@ -116,7 +176,9 @@
     if (ns.toolbar && typeof ns.toolbar.mount === 'function') ns.toolbar.mount();
   }
 
-  // Resume deferred render when focus leaves the panel.
+  // Resume deferred render when focus leaves the panel. Plain rebuild — NOT
+  // anchored: SCW.v2ScrollAnchor's scrollBy runs away on this grid (see
+  // init.js), scrolling to the bottom. Keyed section reuse keeps it stable.
   document.addEventListener('focusout', function () {
     setTimeout(function () {
       if (!_pendingSnapshot) return;

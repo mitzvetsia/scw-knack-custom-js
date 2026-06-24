@@ -1087,9 +1087,23 @@
         ' kept=' + kept.length);
 
     if (!added.length && !removed.length) {
-      log('  no changes — done');
-      done();
-      return;
+      // No add/remove diff. In MODEL_ONLY a "resubmit" of an unchanged
+      // Connected Devices selection is the user's manual repair gesture —
+      // they hit Save again specifically to fix field_1957/field_2197 drift.
+      // Fall through so the reconcile pass runs: re-assert field_2197=[R] on
+      // every still-selected (kept) child + the post-fetch converging verify.
+      // Without this, a resubmit was a silent no-op (the original bug: an
+      // out-of-sync reciprocal could never be repaired by re-saving).
+      // Only bail outright when there's literally nothing selected to
+      // reconcile (or we're in v1 DOM mode, where the picker's own Stage-2
+      // repair already covers this).
+      if (!(MODEL_ONLY && kept.length)) {
+        log('  no changes — done');
+        done();
+        return;
+      }
+      log('  no add/remove diff — reconcile-only resubmit: re-asserting ' +
+          CONNECTIONS_FIELD + ' on ' + kept.length + ' still-selected child(ren)');
     }
 
     // --- 4. Resolve destination group for added children ---------------
@@ -1358,10 +1372,21 @@
       added.forEach(function (cid) { firePut(cid, buildAddedPut(rGroupId, R.id), onPutFinished); });
       removed.forEach(function (rid) { firePut(rid, buildRemovedPut(), onPutFinished); });
       accessoryPuts.forEach(function (ap) { fireAccessoryPut(ap.accId, ap.mdfId, onPutFinished); });
-      // If no PUTs were actually queued (e.g. nothing changed), the
-      // tracker never ticks and onPutFinished never fires — call done
-      // explicitly so the picker stage gate doesn't hang.
+      // If no add/remove/accessory PUTs were queued, the tracker never
+      // ticks and onPutFinished never fires. Two sub-cases:
+      //   (a) Reconcile-only resubmit (MODEL_ONLY, kept children, no diff):
+      //       the user re-saved to repair drift. Re-assert field_2197 on
+      //       every still-selected child, then refetch + converging verify.
+      //       Hold a batch guard so scw-cascade-idle fires exactly once at
+      //       the end (after the repair AND verify land), not mid-repair.
+      //   (b) Genuinely nothing to do: call done() so the picker stage
+      //       gate doesn't hang.
       if (totalPuts === 0) {
+        if (MODEL_ONLY && kept.length) {
+          batchGuardHeld = true; cascadeBegin();
+          fireKeptRepairs(finishWithFetch);
+          return;
+        }
         pendingPlan = null;
         if (planClearTimer) { clearTimeout(planClearTimer); planClearTimer = null; }
         done();

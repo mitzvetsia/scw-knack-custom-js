@@ -33,8 +33,15 @@
     'view_3512',
     'view_3559',
     'view_3575',
-    'view_3577',
+    // 'view_3577' — REMOVED: device-worksheet no longer owns this view (its
+    // V1 transform was disabled to isolate v2 perf), so it never emits
+    // scw-worksheet-ready. Masking it here would hide the tbody until the 5s
+    // safety timer fires. Let it render plainly.
     'view_3586',
+    // 'view_3610' — REMOVED: hidden + fully replaced by the v2 worksheet
+    // (source view_3962). device-worksheet no longer owns it, so it never
+    // emits scw-worksheet-ready; masking would hide its tbody until the 5s
+    // safety timer. Candidate for deletion from the Knack scene entirely.
     'view_3596',
     'view_3997',
     'view_3602',
@@ -45,7 +52,9 @@
     'view_3803',
     'view_3915',
     'view_4056',
-    'view_3921'
+    'view_3921',
+    'view_3932',
+    'view_4060'
   ];
 
   // Delay between scw-worksheet-ready firing and the tbody reveal.

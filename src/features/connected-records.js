@@ -19,17 +19,7 @@
         parentConnectionField: 'field_2464'   // connection FROM accessory back TO parent
       },
       {
-        parentViewId: 'view_3610',
-        connectionField: 'field_1958',
-        label: 'Mounting\nHardware',
-        addSlug: 'add-accessory-line-item',
-        editSlug: 'edit-scope-line-item2',
-        itemSlug: 'edit-accessory-line-item2',
-        warningField: 'field_2244',
-        parentConnectionField: 'field_2464'
-      },
-      {
-        // Same SOW Line Items source as view_3610. We surface this
+        // Same SOW Line Items object as the build-SOW worksheets. We surface this
         // config so the worksheet card injected into the bid-review
         // expand panel can render the mounting-hardware widget; URLs
         // resolve through getBuildSowBasePath\'s review-bids fallback
@@ -42,16 +32,9 @@
         itemSlug: 'edit-accessory-line-item2',
         warningField: 'field_2244',
         parentConnectionField: 'field_2464'
-      },
-      {
-        parentViewId: 'view_3586',
-        connectionField: 'field_1958',
-        label: 'Mounting\nHardware',
-        addSlug: 'add-accessory-line-item',
-        itemSlug: 'edit-accessory-line-item2',
-        warningField: 'field_2244',
-        parentConnectionField: 'field_2464'
       }
+      // view_3586 (sales build SOW) removed — fully v2; worksheet-v2 renders
+      // connected-records / accessory warnings on that page.
     ]
   };
 

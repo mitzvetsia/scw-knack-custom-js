@@ -246,6 +246,24 @@
       '  font-size: 12px; color: #64748b;',
       '}',
       '.scw-ws-v2-picker-status--err { color: #b45309; }',
+      // Blocking "syncing connected records" state — the modal stays open
+      // and locked until the reciprocal cascade settles so the user can\'t
+      // navigate or start another edit mid-sync.
+      '.scw-ws-v2-picker-status--sync {',
+      '  color: #07467c; font-weight: 700;',
+      '  display: inline-flex; align-items: center; gap: 8px;',
+      '}',
+      '.scw-ws-v2-picker-status--sync::before {',
+      '  content: ""; width: 13px; height: 13px; flex: 0 0 auto;',
+      '  border: 2px solid rgba(7,70,124,0.3); border-top-color: #07467c;',
+      '  border-radius: 50%; display: inline-block;',
+      '  animation: scwWsV2PickerSpin 0.8s linear infinite;',
+      '}',
+      '@keyframes scwWsV2PickerSpin { to { transform: rotate(360deg); } }',
+      '.scw-ws-v2-picker-overlay.is-syncing { cursor: wait; }',
+      '.scw-ws-v2-picker-overlay.is-syncing .scw-ws-v2-picker-bd {',
+      '  opacity: 0.5; pointer-events: none;',
+      '}',
       '.scw-ws-v2-picker-actions { display: flex; gap: 10px; align-items: center; }',
       '.scw-ws-v2-picker-count {',
       '  font: 600 12px system-ui, sans-serif; color: #475569;',
@@ -525,15 +543,26 @@
     var cancelBtn = hd.querySelector('.scw-ws-v2-picker-close');
     var confirmBtn = ft.querySelector('.scw-ws-v2-picker-btn--confirm');
 
-    function setStatus(msg, err) {
-      statusEl.className = 'scw-ws-v2-picker-status' + (err ? ' scw-ws-v2-picker-status--err' : '');
+    // While the reciprocal cascade is settling we lock the modal: no
+    // Escape, no outside-click, no X — the user must wait for the sync to
+    // finish before they can do anything else (prevents a mid-cascade
+    // navigation that cancels in-flight PUTs or a follow-up edit that
+    // diffs off a half-written baseline).
+    var syncing = false;
+
+    function setStatus(msg, err, sync) {
+      var cls = 'scw-ws-v2-picker-status';
+      if (err) cls += ' scw-ws-v2-picker-status--err';
+      if (sync) cls += ' scw-ws-v2-picker-status--sync';
+      statusEl.className = cls;
       statusEl.textContent = msg || '';
     }
 
-    function onKey(e) { if (e.key === 'Escape') close(overlay, onKey); }
+    function onKey(e) { if (e.key === 'Escape' && !syncing) close(overlay, onKey); }
     document.addEventListener('keydown', onKey);
-    cancelBtn.addEventListener('click', function () { close(overlay, onKey); });
+    cancelBtn.addEventListener('click', function () { if (!syncing) close(overlay, onKey); });
     overlay.addEventListener('click', function (e) {
+      if (syncing) return;
       if (e.target === overlay) close(overlay, onKey);
     });
 
@@ -675,6 +704,31 @@
               }
             } catch (eSync) {
               console.warn('[scw-ws-v2-picker] cascade trigger failed', eSync);
+            }
+
+            // For connection fields whose reciprocal cascade fires in the
+            // background (field_1957/2197, field_2380/2381, field_2820/2821),
+            // KEEP THE MODAL OPEN in a locked "syncing" state until every
+            // cascade PUT (incl. the converging verify pass) settles. The
+            // caller opts in with awaitCascade:true. This replaces the
+            // close-immediately + rely-on-toast flow so users can't navigate
+            // or start another edit while the sync is mid-flight.
+            if (opts.awaitCascade &&
+                window.SCW && window.SCW.mirrorConn &&
+                typeof window.SCW.mirrorConn.whenIdle === 'function') {
+              syncing = true;
+              overlay.classList.add('is-syncing');
+              setStatus('Syncing connected records — please wait, don’t close this.', false, true);
+              // confirm/cancel already disabled by doSave; keep them so.
+              confirmBtn.disabled = true;
+              cancelBtn.disabled  = true;
+              window.SCW.mirrorConn.whenIdle({ graceMs: 700, maxMs: 30000 })
+                .then(function () {
+                  syncing = false;
+                  close(overlay, onKey);
+                  if (typeof opts.onSaved === 'function') opts.onSaved(ids, resp);
+                });
+              return;
             }
 
             close(overlay, onKey);

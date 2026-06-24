@@ -531,7 +531,64 @@
       '}' +
       '.scw-ops-modal-list-empty {' +
       '  padding: 16px; text-align: center; color: #6b7280; font-size: 13px;' +
-      '}';
+      '}' +
+
+      /* ── Sub-bid review panel (internal — sits in the role-gated host) ── */
+      '.scw-ops-subbid {' +
+      '  margin: 4px 0 12px; border: 1px solid #e2e8f0; border-radius: 12px;' +
+      '  background: #fff; overflow: hidden; font-size: 13px; color: #1e293b;' +
+      '}' +
+      '.scw-ops-subbid__bar {' +
+      '  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;' +
+      '  padding: 9px 12px; background: #0f172a; color: #fff;' +
+      '}' +
+      '.scw-ops-subbid__t { font-weight: 700; font-size: 12px; letter-spacing: .03em; }' +
+      '.scw-ops-subbid__basis { color: #93c5fd; font-size: 12px; }' +
+      '.scw-ops-subbid__spacer { flex: 1 1 auto; }' +
+      '.scw-ops-subbid__ready {' +
+      '  font-size: 11px; font-weight: 700; padding: 2px 9px; border-radius: 999px;' +
+      '}' +
+      '.scw-ops-subbid__ready--ok { background: #052e1b; color: #6ee7b7; }' +
+      '.scw-ops-subbid__ready--warn { background: #3b1d05; color: #fbbf24; }' +
+      '.scw-ops-subbid__block {' +
+      '  display: flex; gap: 8px; align-items: flex-start; margin: 0;' +
+      '  padding: 10px 12px; background: #fff1f2; color: #be123c;' +
+      '  border-bottom: 1px solid #fecdd3; font-weight: 600; font-size: 12.5px;' +
+      '}' +
+      '.scw-ops-subbid__ok {' +
+      '  padding: 10px 12px; background: #f0fdf4; color: #047857;' +
+      '  border-bottom: 1px solid #bbf7d0; font-weight: 600; font-size: 12.5px;' +
+      '}' +
+      '.scw-ops-subbid__tally {' +
+      '  display: flex; gap: 6px; flex-wrap: wrap; padding: 10px 12px;' +
+      '  border-bottom: 1px solid #f1f5f9;' +
+      '}' +
+      '.scw-ops-subbid__stat {' +
+      '  font-size: 11px; padding: 3px 8px; border-radius: 999px;' +
+      '  background: #f1f5f9; color: #334155; font-weight: 600;' +
+      '}' +
+      '.scw-ops-subbid__stat b { font-weight: 800; }' +
+      '.scw-ops-subbid__delta { margin-left: auto; font-weight: 800; }' +
+      '.scw-ops-subbid__delta.pos { color: #be123c; }' +
+      '.scw-ops-subbid__delta.neg { color: #047857; }' +
+      '.scw-ops-subbid__ex { list-style: none; margin: 0; padding: 4px 0; }' +
+      '.scw-ops-subbid__ex li {' +
+      '  display: flex; align-items: baseline; gap: 8px;' +
+      '  padding: 5px 12px; border-bottom: 1px solid #f8fafc; font-size: 12.5px;' +
+      '}' +
+      '.scw-ops-subbid__badge {' +
+      '  flex: 0 0 auto; display: inline-block; padding: 1px 7px; border-radius: 999px;' +
+      '  font-size: 10px; font-weight: 700; color: #fff;' +
+      '}' +
+      '.scw-ops-subbid__exlabel { flex: 1 1 auto; color: #0f172a; }' +
+      '.scw-ops-subbid__exfields { color: #4f46e5; font-size: 11px; }' +
+      '.scw-ops-subbid__exnum { flex: 0 0 auto; font-variant-numeric: tabular-nums; color: #475569; }' +
+      '.scw-ops-subbid__note {' +
+      '  padding: 9px 12px; background: #fafbfc; border-top: 1px solid #f1f5f9;' +
+      '  font-size: 12.5px; color: #334155;' +
+      '}' +
+      '.scw-ops-subbid__note b { color: #0f172a; }' +
+      '.scw-ops-subbid__empty { padding: 12px; color: #94a3b8; font-size: 12.5px; }';
 
     var s = document.createElement('style');
     s.id = STYLE_ID;
@@ -562,6 +619,217 @@
     var cell = view.querySelector('.kn-detail.' + fieldKey + ' .kn-detail-body');
     if (cell) return (cell.textContent || '').replace(/ /g, ' ').trim();
     return '';
+  }
+
+  /** Is a field actually projected onto the source view? Used to "fail open"
+   *  — a gate keyed on a field that isn't on view_3861 stays inactive rather
+   *  than locking the action until the field is added to the view. */
+  function fieldPresent(fieldKey) {
+    var view = document.getElementById(SOURCE_VIEW);
+    return !!(view && view.querySelector('.kn-detail.' + fieldKey));
+  }
+
+  /** Raw field_2941 string, read from the Knack MODEL (verbatim stored value)
+   *  rather than the DOM. The snapshot embeds bidHtml/diffHtml fragments, and
+   *  Knack renders those as elements in the detail body — so DOM textContent
+   *  strips the tags and corrupts the JSON. The model holds the value exactly
+   *  as it was PUT, so it parses cleanly. DOM is the last-resort fallback. */
+  function rawSubBidJson() {
+    try {
+      var v = window.Knack && Knack.views && Knack.views[SOURCE_VIEW];
+      var a = v && v.model && v.model.attributes;
+      if (a) {
+        if (a.field_2941 != null && String(a.field_2941).trim() !== '') return String(a.field_2941);
+        if (a.field_2941_raw != null && String(a.field_2941_raw).trim() !== '') return String(a.field_2941_raw);
+      }
+    } catch (e) { /* fall through to DOM */ }
+    return readField('field_2941');
+  }
+
+  /** Tolerant JSON parse: direct, then HTML-entity-decoded, then tag-stripped
+   *  (covers a value that came back DOM-mangled). Returns null on total failure. */
+  function parseLooseJson(s) {
+    if (s == null) return null;
+    var t = String(s).trim();
+    if (!t) return null;
+    try { return JSON.parse(t); } catch (e) {}
+    try { var ta = document.createElement('textarea'); ta.innerHTML = t; return JSON.parse(ta.value.trim()); } catch (e) {}
+    try { return JSON.parse(t.replace(/<[^>]*>/g, '').trim()); } catch (e) {}
+    return null;
+  }
+
+  /** Parse the SOW's field_2941 sub-bid snapshot off view_3861. Returns null
+   *  when the field isn't projected (fail-open), { _empty:true } when present
+   *  but blank, { _bad:true } when unparseable, else the parsed snapshot. */
+  function readSubBidSnapshot() {
+    if (!fieldPresent('field_2941')) return null;
+    var raw = rawSubBidJson();
+    if (!raw || !String(raw).trim()) return { _empty: true };
+    return parseLooseJson(raw) || { _bad: true };
+  }
+
+  /** Sub-bid review gate for "Publish as Final". Returns '' when publishing is
+   *  allowed, or a human-readable reason string when it's blocked. Drives the
+   *  visible locked state, the panel banner, AND the click-time guard.
+   *  Rule: a basis bid must be chosen, and — only when the basis differs from
+   *  the SOW — a reviewer note must be present. Basis + note ⇒ unblocked.
+   *  Fails open when field_2941 isn't projected onto view_3861. */
+  function publishFinalBlockReason() {
+    // No subcontractor bids for this SOW → there's nothing to diff against, so
+    // the sub-bid review doesn't apply and Publish Final is free. field_2728 is
+    // the subcontractor survey/bid-request count — the same signal that gates
+    // the Request/Update Subcontractor Bid steps, and that the publish-final
+    // visibility gate used before it was disabled. Zero/absent ⇒ no bids.
+    if (!conditionMet({ field: 'field_2728', gt: 0 })) return '';
+    var snap = readSubBidSnapshot();
+
+    // The basis-bid CHOICE is the actual review decision, and it persists as a
+    // connection on the SOW (field_2942) independently of the diff snapshot
+    // (field_2941). The snapshot can read empty here when it isn't exposed on
+    // the Bid Review write view (view_3918) — Knack silently drops it on the
+    // PUT — but the basis still saved, so the review DID happen. Honor a
+    // persisted basis so a reviewed bid (especially a zero-difference one)
+    // isn't falsely blocked. When the snapshot IS present we still use it to
+    // require a reviewer note on a differing bid.
+    var hasBasis = !!(snap && snap.basisBidId) ||
+      (fieldPresent('field_2942') && String(readField('field_2942') || '').trim() !== '');
+
+    if (!hasBasis) {
+      if (snap === null) return '';                     // field not on the view → fail open
+      return 'Select the basis bid on the Bid Review page so the sub-bid diff ' +
+             'review is captured, then publish.';
+    }
+    if (snap && snap.basisBidId && Number(snap.total) > 0 &&
+        !(snap.note && String(snap.note).trim())) {
+      return 'The basis bid differs from this SOW (' + snap.total + ' difference' +
+             (Number(snap.total) === 1 ? '' : 's') + '). Add a reviewer note on ' +
+             'the Bid Review page explaining why, then publish.';
+    }
+    return '';
+  }
+
+  function escHtml(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[c];
+    });
+  }
+  function moneyFmt(n) {
+    var neg = (n || 0) < 0;
+    return (neg ? '-$' : '$') + Math.abs(n || 0)
+      .toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+  function signedMoneyFmt(n) {
+    if (Math.abs(n || 0) <= 0.005) return '$0.00';
+    return (n > 0 ? '+$' : '-$') + Math.abs(n)
+      .toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
+  // Tier → label/color, mirroring sub-bid-diff/config.js TIERS.
+  var SUBBID_TIERS = {
+    material: { label: 'Labor',   color: '#b45309' },
+    spec:     { label: 'Spec',    color: '#4f46e5' },
+    added:    { label: 'Not bid', color: '#be123c' },
+    orphan:   { label: 'Bid only',color: '#be123c' }
+  };
+
+  /** Build the internal sub-bid review panel from the SOW's field_2941
+   *  snapshot. Lives inside the role-gated ops host (view_3345), so it's
+   *  hidden from non-ops viewers. Surfaces the diff AND — when Publish-Final
+   *  is gated — a plain-language banner explaining why. Returns an element,
+   *  or null when there's nothing to show (field not projected). */
+  function buildSubBidPanel() {
+    var snap = readSubBidSnapshot();
+    if (snap === null) return null;             // field not on the view → show nothing
+    var reason = publishFinalBlockReason();
+
+    // No subcontractor bids → nothing to review. Show a concise N/A state
+    // instead of a "Review needed" / "choose a basis bid" prompt the user can
+    // never satisfy (there are no bids to pick).
+    var noBids = !conditionMet({ field: 'field_2728', gt: 0 });
+    // Basis chosen even when the snapshot didn't persist onto this view (see
+    // publishFinalBlockReason) — read the basis connection (field_2942) too.
+    var hasBasis = !!(snap && snap.basisBidId) ||
+      (fieldPresent('field_2942') && String(readField('field_2942') || '').trim() !== '');
+
+    var wrap = document.createElement('div');
+    wrap.className = 'scw-ops-subbid';
+    var html = '';
+
+    var basis = (snap && snap.basisBidId)
+      ? (snap.basisBidName || 'selected bid')
+      : (hasBasis ? (String(readField('field_2942') || '').trim() || 'selected bid') : '');
+    var readyCls = reason ? 'warn' : 'ok';
+    var readyTxt = reason ? 'Review needed' : (noBids ? 'Not required' : '✓ Reviewed');
+    html += '<div class="scw-ops-subbid__bar">' +
+            '<span class="scw-ops-subbid__t">SUB-BID REVIEW</span>' +
+            (basis ? '<span class="scw-ops-subbid__basis">' + escHtml(basis) + '</span>' : '') +
+            '<span class="scw-ops-subbid__spacer"></span>' +
+            '<span class="scw-ops-subbid__ready scw-ops-subbid__ready--' + readyCls + '">' +
+            readyTxt + '</span></div>';
+
+    // Why-blocked banner (the missing "communication about why").
+    if (reason) {
+      html += '<div class="scw-ops-subbid__block">⚠ Publish as Final is blocked — ' +
+              escHtml(reason) + '</div>';
+    } else if (snap && snap.basisBidId) {
+      html += '<div class="scw-ops-subbid__ok">✓ Ready to publish as final.</div>';
+    }
+
+    // No saved diff yet → nothing more to show.
+    if (!snap || snap._empty || snap._bad || !snap.basisBidId) {
+      var emptyMsg = noBids
+        ? 'No subcontractor bids for this SOW — sub-bid review isn’t required.'
+        : (hasBasis
+            ? 'Basis bid selected on the Bid Review page. The full diff isn’t projected onto ' +
+              'this view — open the Bid Review page for line detail.'
+            : 'No sub-bid diff saved for this SOW yet. Choose the basis bid on the Bid Review page.');
+      html += '<div class="scw-ops-subbid__empty">' + emptyMsg + '</div>';
+      wrap.innerHTML = html;
+      return wrap;
+    }
+
+    // Tally
+    var c = snap.counts || {};
+    var d = Number(snap.laborDelta) || 0;
+    var dCls = Math.abs(d) <= 0.005 ? '' : (d > 0 ? 'pos' : 'neg');
+    html += '<div class="scw-ops-subbid__tally">' +
+            '<span class="scw-ops-subbid__stat"><b>' + (c.material || 0) + '</b> labor</span>' +
+            '<span class="scw-ops-subbid__stat"><b>' + (c.spec || 0) + '</b> spec</span>' +
+            '<span class="scw-ops-subbid__stat"><b>' + (c.added || 0) + '</b> not bid</span>' +
+            '<span class="scw-ops-subbid__stat"><b>' + (c.orphan || 0) + '</b> bid only</span>' +
+            '<span class="scw-ops-subbid__delta ' + dCls + '">labor Δ ' + signedMoneyFmt(d) + '</span>' +
+            '</div>';
+
+    // Exceptions (cap to keep the panel compact)
+    var ex = (snap.exceptions || []);
+    if (ex.length) {
+      html += '<ul class="scw-ops-subbid__ex">';
+      var cap = Math.min(ex.length, 12);
+      for (var i = 0; i < cap; i++) {
+        var e = ex[i];
+        var t = SUBBID_TIERS[e.tier] || { label: e.tier, color: '#475569' };
+        var fields = (e.fields && e.fields.length)
+          ? ' <span class="scw-ops-subbid__exfields">(' + escHtml(e.fields.join(', ')) + ')</span>' : '';
+        html += '<li><span class="scw-ops-subbid__badge" style="background:' + t.color + '">' +
+                escHtml(t.label) + '</span>' +
+                '<span class="scw-ops-subbid__exlabel">' + escHtml(e.label) + fields + '</span>' +
+                '<span class="scw-ops-subbid__exnum">' + signedMoneyFmt(e.delta) + '</span></li>';
+      }
+      if (ex.length > cap) {
+        html += '<li><span class="scw-ops-subbid__exlabel" style="color:#94a3b8">' +
+                '+ ' + (ex.length - cap) + ' more…</span></li>';
+      }
+      html += '</ul>';
+    }
+
+    // Reviewer note
+    if (snap.note && String(snap.note).trim()) {
+      html += '<div class="scw-ops-subbid__note"><b>Reviewer note:</b> ' +
+              escHtml(snap.note) + '</div>';
+    }
+
+    wrap.innerHTML = html;
+    return wrap;
   }
 
   // Numeric comparison for `gt` / `gte` etc.
@@ -1360,6 +1628,18 @@
       return;
     }
 
+    // ── Final-publish gate: sub-bid review must be completed first ──────────
+    // The diff is only computable on the Bid Review page (orphans/bids aren't
+    // reachable from here), but it's stamped onto the SOW's field_2941 — a
+    // self-contained snapshot carrying the chosen basis bid + savedAt — which
+    // DOES travel to this page. So we gate "Publish as Final" on that snapshot
+    // being present + saved. Fail open: if field_2941 isn't projected onto
+    // view_3861 yet, the gate stays inactive (add the field to activate).
+    if (step.id === 'publish-final') {
+      var gateReason = publishFinalBlockReason();
+      if (gateReason) { alert('Can’t publish as final yet.\n\n' + gateReason); return; }
+    }
+
     // Steps that target a subset of surveys (Request Alt Bid) ask
     // the user to pick first, then fall through to the standard
     // notes prompt with the picked ids in scope.
@@ -1485,6 +1765,10 @@
     title.textContent = 'Ops Actions';
     block.appendChild(title);
 
+    // Internal sub-bid review panel (diff + why Publish-Final is gated).
+    var subBidPanel = buildSubBidPanel();
+    if (subBidPanel) block.appendChild(subBidPanel);
+
     // Render every step in fixed order. Three possible states per step:
     //   hideWhen  matches → skip rendering entirely (step is inapplicable)
     //   completed matches → render with green-check + is-completed (done, not clickable)
@@ -1497,6 +1781,12 @@
 
       var completed = step.completed ? conditionMet(step.completed) : false;
       var available = step.showWhen ? conditionMet(step.showWhen) : true;
+      // Final-publish is additionally gated on the sub-bid review snapshot.
+      var gateReason = '';
+      if (!completed && available && step.id === 'publish-final') {
+        gateReason = publishFinalBlockReason();
+        if (gateReason) available = false;
+      }
       var locked    = !completed && !available;
 
       var el = document.createElement('a');
@@ -1506,7 +1796,7 @@
       if (completed) cls += ' is-completed is-disabled';
       else if (locked) cls += ' is-disabled';
       el.className = cls;
-      if (locked) el.setAttribute('title', 'Not available for this SOW right now.');
+      if (locked) el.setAttribute('title', gateReason || 'Not available for this SOW right now.');
 
       var icon = document.createElement('span');
       icon.className = 'scw-step-icon';

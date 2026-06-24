@@ -384,6 +384,13 @@
                     (p.completed ? ' scw-ws-v2-photo-req--ok' : '') +
                   '">' + (p.completed ? 'REQUIRED &#10003;' : 'REQUIRED') + '</div>';
       }
+      // Photo-level notes (field_114) — shown under the type/required labels on
+      // every photo strip (v1 inline-photo-row parity). Clamped to a few lines
+      // with the full text in the tooltip.
+      var noteHtml = p.notes
+        ? '<div class="scw-ws-v2-photo-note" title="' + escapeHtml(p.notes) + '">' +
+            escapeHtml(p.notes) + '</div>'
+        : '';
       var openAttrs = href
         ? ' href="' + escapeHtml(href) + '"'
         : ' href="#" data-no-nav="1"';
@@ -443,7 +450,7 @@
       html +=
         '<a class="' + cls + '"' + openAttrs + dataAttrs + draggableAttr +
             ' title="' + escapeHtml((p.type || 'Photo') + (p.required ? ' (Required)' : '')) + '">' +
-          thumb + typeHtml + reqHtml + qaChit + delBtn +
+          thumb + typeHtml + reqHtml + noteHtml + qaChit + delBtn +
         '</a>';
     }
 
@@ -601,6 +608,7 @@
 
       function refetchSoon() {
         setTimeout(function () {
+          if (ns.warnings && ns.warnings.invalidatePhotos) ns.warnings.invalidatePhotos();
           if (viewKey && ns.data && typeof ns.data.refetchAndNotify === 'function') {
             ns.data.refetchAndNotify(viewKey);
           }
@@ -695,6 +703,7 @@
     SCW.qaPopover.openAnchor(el, photoId, snapshot, function () {
       // Refetch the source view so the strip rebuilds from authoritative
       // data (the QA columns now reflect the save).
+      if (ns.warnings && ns.warnings.invalidatePhotos) ns.warnings.invalidatePhotos();
       if (viewKey && ns.data && typeof ns.data.refetchAndNotify === 'function') {
         setTimeout(function () { ns.data.refetchAndNotify(viewKey); }, 800);
       }
@@ -826,6 +835,7 @@
 
   function dispatchPhotoMove(detail, viewKey) {
     function refresh() {
+      if (ns.warnings && ns.warnings.invalidatePhotos) ns.warnings.invalidatePhotos();
       if (viewKey && ns.data && typeof ns.data.refetchAndNotify === 'function') {
         setTimeout(function () { ns.data.refetchAndNotify(viewKey); }, 1500);
       }

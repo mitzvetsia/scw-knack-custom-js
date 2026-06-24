@@ -305,6 +305,62 @@
     } catch (e) { return {}; }
   }
 
+  // ── Per-render record indexes ─────────────────────────────────────────
+  // Connection rendering (Connected Devices, accessory chips) needs to find
+  // "every record whose back-pointer field points at THIS card's record".
+  // Done naively that's an all-records scan PER card → O(n²) on a big
+  // worksheet (the dominant cold-render cost). Instead build the lookup ONCE
+  // per render and reuse it for every card. data.js now hands back a stable
+  // records-array reference until the model structurally changes, so we key
+  // the cache on that reference — it auto-rebuilds exactly when the data does.
+  var _idx = { arr: null, gen: -1, byId: null, back: null };
+  function recordsArr(viewKey) {
+    return (ns.data && typeof ns.data.readRecords === 'function')
+      ? ns.data.readRecords(viewKey) : [];
+  }
+  function ensureIdx(viewKey) {
+    var arr = recordsArr(viewKey);
+    // Rebuild when the model array changes (structural) OR a new render starts
+    // (ns.idxGen, bumped by render.js). The latter matters because in-place
+    // edits mutate attributes WITHOUT swapping the array ref, so a changed
+    // back-pointer (field_2197 / field_2464) must invalidate the derived index.
+    var gen = ns.idxGen || 0;
+    if (_idx.arr !== arr || _idx.gen !== gen) {
+      _idx.arr = arr; _idx.gen = gen; _idx.byId = null; _idx.back = Object.create(null);
+    }
+    return arr;
+  }
+  /** id → record map for the current view's loaded records (cached/render). */
+  function recById(viewKey) {
+    ensureIdx(viewKey);
+    if (!_idx.byId) {
+      var m = Object.create(null), arr = _idx.arr;
+      for (var i = 0; i < arr.length; i++) { if (arr[i] && arr[i].id) m[arr[i].id] = arr[i]; }
+      _idx.byId = m;
+    }
+    return _idx.byId;
+  }
+  /** parentId → [childRecord] for records whose `recipKey`_raw points at it. */
+  function backIndex(viewKey, recipKey) {
+    ensureIdx(viewKey);
+    var m = _idx.back[recipKey];
+    if (m) return m;
+    m = Object.create(null);
+    var arr = _idx.arr;
+    for (var i = 0; i < arr.length; i++) {
+      var crec = arr[i];
+      if (!crec || !crec.id) continue;
+      var back = crec[recipKey + '_raw'];
+      if (!Array.isArray(back)) continue;
+      for (var b = 0; b < back.length; b++) {
+        var pid = back[b] && back[b].id;
+        if (pid) { (m[pid] || (m[pid] = [])).push(crec); }
+      }
+    }
+    _idx.back[recipKey] = m;
+    return m;
+  }
+
   /** Count on field_2586 ("associated survey line items"). >0 means a survey
    *  line-item record has been created for this SOW line item (i.e. it's an
    *  existing/committed item), vs a brand-new sales addition (0). */
@@ -1018,6 +1074,67 @@
   }
 
   /**
+   * Connected Devices display, derived from the AUTHORITATIVE set rather than
+   * just the parent's forward connection. field_1957 (parent → children) and
+   * field_2197 (child → parent) are SEPARATE Knack fields kept aligned only by
+   * the cascade, so the forward list reads STALE/empty even while children ARE
+   * connected (their reciprocal still points here) — that's why the card showed
+   * "(none)" while the picker (which hardens the same way, init.js) showed the
+   * real selection. Union the forward list with every child whose reciprocal
+   * (F.connectedDevice) points back at this record. Renders the same editable
+   * button as detailConnection so the click handler opens the picker unchanged.
+   */
+  function detailConnectedDevices(rec, viewKey, fieldKey, label, warn) {
+    var F = fieldsFor(viewKey);
+    var recipKey = F.connectedDevice || 'field_2197';
+    var seen = Object.create(null);
+    var labels = [];
+
+    // Forward list (whatever the denormalized parent field carries).
+    var fwd = rec[fieldKey + '_raw'];
+    if (Array.isArray(fwd)) {
+      for (var i = 0; i < fwd.length; i++) {
+        var f = fwd[i];
+        if (f && f.id && !seen[f.id]) {
+          seen[f.id] = true;
+          labels.push(String(f.identifier || f.id));
+        }
+      }
+    }
+
+    // Authoritative: every child whose reciprocal points back at this record.
+    // O(1) lookup via the per-render back-pointer index (was an all-records
+    // scan per card → O(n²)).
+    var kids = backIndex(viewKey, recipKey)[rec.id] || [];
+    for (var r = 0; r < kids.length; r++) {
+      var crec = kids[r];
+      if (!crec || !crec.id || crec.id === rec.id || seen[crec.id]) continue;
+      seen[crec.id] = true;
+      labels.push(readField(crec, F.displayLabel || 'field_1950') || crec.id);
+    }
+
+    var val = labels.length ? labels.join(', ') : '(none)';
+    var labelHtml = escapeHtml(label);
+    if (warn) {
+      var warnIc = (ns.warnings && ns.warnings.ICONS && ns.warnings.ICONS.disconnected) || '';
+      labelHtml = '<span class="scw-ws-v2-detail-warn-ic">' + warnIc + '</span>' + labelHtml;
+    }
+    return '<div class="scw-ws-v2-detail-field scw-ws-v2-detail-field--conn' +
+        (warn ? ' scw-ws-v2-detail-field--warn' : '') + '">' +
+      '<div class="scw-ws-v2-detail-label">' + labelHtml + '</div>' +
+      '<button type="button" class="scw-ws-v2-conn-btn" ' +
+        'data-scw-ws-v2-conn="' + escapeHtml(fieldKey) + '" ' +
+        'data-scw-ws-v2-record="' + escapeHtml(rec.id) + '" ' +
+        'data-scw-ws-v2-view="' + escapeHtml(viewKey) + '" ' +
+        'data-scw-ws-v2-conn-label="' + escapeHtml(label) + '" ' +
+        'title="Click to edit ' + escapeHtml(label) + '">' +
+        '<span class="scw-ws-v2-conn-btn-val">' + escapeHtml(val) + '</span>' +
+        '<span class="scw-ws-v2-conn-btn-edit">edit</span>' +
+      '</button>' +
+    '</div>';
+  }
+
+  /**
    * Build a base hash path for accessory edit/add URLs in the current
    * scene context. Mirrors getBuildSowBasePath() in inline-photo-row.js
    * + connected-records.js. Returns '#...path' or '' if no recognised
@@ -1083,22 +1200,14 @@
 
     // accAttrsById doubles as the per-chip attrs lookup the render below
     // uses for the qty stepper.
-    var accAttrsById = Object.create(null);
-    var allRecs = [];
-    try {
-      allRecs = (ns.data && typeof ns.data.readRecords === 'function')
-        ? ns.data.readRecords(viewKey) : [];
-    } catch (e) { allRecs = []; }
-    for (var ri = 0; ri < allRecs.length; ri++) {
-      if (allRecs[ri] && allRecs[ri].id) accAttrsById[allRecs[ri].id] = allRecs[ri];
-    }
+    // id → attrs lookup (qty stepper) + this parent's accessory children both
+    // come from the per-render index — no per-card all-records rebuild/scan.
+    var accAttrsById = recById(viewKey);
+    var accKids = backIndex(viewKey, 'field_2464')[parentId] || [];
 
-    for (var ai = 0; ai < allRecs.length; ai++) {
-      var arec = allRecs[ai];
+    for (var ai = 0; ai < accKids.length; ai++) {
+      var arec = accKids[ai];
       if (!arec || !arec.id) continue;
-      var praw = arec['field_2464_raw'];
-      var ppid = (Array.isArray(praw) && praw[0] && praw[0].id) ? praw[0].id : '';
-      if (ppid !== parentId) continue;
       // Label = the accessory's connection identifier (its field_1950 display
       // label, e.g. "… (MDF)"), matching how Knack lists it under a parent;
       // fall back to labelLineItem's "drop · product" composite only when
@@ -1274,7 +1383,7 @@
         '<div class="scw-ws-v2-detail-zone scw-ws-v2-detail-zone--connections">' +
           (showParent ? detailConnection(rec, viewKey, 'field_2464', 'Parent') : '') +
           detailMountingHardware(rec, viewKey) +
-          (showConnDevices ? detailConnection(rec, viewKey, 'field_1957', 'Connected Devices') : '') +
+          (showConnDevices ? detailConnectedDevices(rec, viewKey, 'field_1957', 'Connected Devices') : '') +
           detailConnection(rec,       viewKey, 'field_1946', 'MDF / IDF') +
         '</div>' +
       '</div>' +
@@ -1340,7 +1449,7 @@
                                 hasIssue(rec, 'disconnected'));
     } else if (cat === 'default') {
       if (isMapConnectionsRow(rec)) {
-        right += detailConnection(rec, viewKey, 'field_1957', 'Connected Devices');
+        right += detailConnectedDevices(rec, viewKey, 'field_1957', 'Connected Devices');
       } else if (readParentRef(rec) || bucketIdOf(rec) !== NETWORKING_BUCKET) {
         right += detailConnection(rec, viewKey, 'field_2464', 'Parent');
       }
@@ -1558,6 +1667,16 @@
       detailNotesReadOnly(rec, F.scwNotes || 'field_2418', 'SCW Notes'),
       'scw-ws-v2-sd--paragraph');
     if (cat === 'cam') {
+      // Drop Prefix (field_2361) — editable; same Drop Prefix catalog the SOW
+      // worksheet uses (field_2240), so the init.js picker reuses
+      // SCW.dropPrefixOptions. Changing it recomputes the drop label
+      // (field_2365) server-side, so the picker's onSaved refetches.
+      items += sdItem(detailConnection(rec, viewKey, F.dropPrefix || 'field_2361',
+        'Prefix'), 'scw-ws-v2-sd--conn');
+      // Cam/Reader number (field_2362) — the numeric part of the AC-001
+      // designation; editable plain number. Pairs with the Prefix above.
+      items += sdItem(detailField(rec, viewKey, F.dropNumber || 'field_2362',
+        'Cam/Reader #', 'number'), 'scw-ws-v2-sd--num');
       // Connected To (field_2381, single) — editable; cascade writes the
       // parent's field_2380. Picker candidates resolved in init.js.
       items += sdItem(detailConnection(rec, viewKey, F.connectedDevice || 'field_2381',
@@ -1574,8 +1693,7 @@
       // (field_2374 / mapConn) is Yes — devices that don't map readers have
       // no Connected Devices to manage.
       if (readBool(rec, F.mapConn || 'field_2374') === 'Yes') {
-        items += sdItem(detailConnection(rec, viewKey, F.connectedDevices || 'field_2380',
-          'Connected Devices'), 'scw-ws-v2-sd--conn');
+        items += sdItem(detailConnectedDevices(rec, viewKey, F.connectedDevices || 'field_2380', 'Connected Devices'), 'scw-ws-v2-sd--conn');
       }
     }
 
@@ -1720,8 +1838,7 @@
       // Connected Devices (field_2820, multi) — EDITABLE, network devices only
       // (v1: showWhenFieldIsYes field_2795 / mapConn).
       if (readBool(rec, F.mapConn || 'field_2795') === 'Yes') {
-        items += sdItem(detailConnection(rec, viewKey, F.connectedDevices || 'field_2820',
-          'Connected Devices'), 'scw-ws-v2-sd--conn');
+        items += sdItem(detailConnectedDevices(rec, viewKey, F.connectedDevices || 'field_2820', 'Connected Devices'), 'scw-ws-v2-sd--conn');
       }
       items += sdItem(detailReadOnly(rec, F.laborDesc || 'field_2809', 'Labor description'),
         'scw-ws-v2-sd--wide');

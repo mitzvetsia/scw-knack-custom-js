@@ -75,7 +75,12 @@
       },
     },
     {
-      viewId: 'view_3610',
+      // DISABLED: view_3610 (build-SOW SOW Line Items) is now hidden and fully
+      // replaced by the v2 worksheet (sourced from view_3962), which renders its
+      // own grayout/lock state. Graying 333 hidden rows on every render was
+      // wasted main-thread work. The '_disabled' suffix matches no real view so
+      // onViewRender never binds. Restore the id to re-enable if v1 is unhidden.
+      viewId: 'view_3610_disabled',
       detectField: 'field_2219',
       // sortField intentionally omitted — device-worksheet's rowSort
       // already sorts this view in transformView Phase 2b; doing it

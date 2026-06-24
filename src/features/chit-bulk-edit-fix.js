@@ -25,6 +25,16 @@
 (function () {
   'use strict';
 
+  // Diagnostic logger — gated behind SCW.DEBUG so the per-write "catch"
+  // lines don't spam the console on every record edit (the body-rewrite
+  // logic below always runs; only the logging is gated). Flip on with
+  // SCW.DEBUG = true to trace what each transport sends.
+  function clog() {
+    if (window.SCW && window.SCW.DEBUG) {
+      try { console.log.apply(console, arguments); } catch (e) {}
+    }
+  }
+
   // Known chit fields. Value declares the SHAPE the field's API
   // expects on PUT/POST:
   //   'yesno'   → string "Yes" / "No"   (Yes/No object field type)
@@ -150,16 +160,11 @@
       var write = isWriteMethod(this.__scwChitMethod);
       var rec   = isKnackRecordUrl(this.__scwChitUrl);
       if (write && rec) {
-        try {
-          console.log('[scw-chit-fix] XHR catch',
-            this.__scwChitMethod, this.__scwChitUrl,
-            'body:', body);
-        } catch (e) {}
+        clog('[scw-chit-fix] XHR catch',
+          this.__scwChitMethod, this.__scwChitUrl, 'body:', body);
         var result = coerceBody(body);
         if (result.body !== body) {
-          try {
-            console.log('[scw-chit-fix] XHR rewrote body →', result.body);
-          } catch (e) {}
+          clog('[scw-chit-fix] XHR rewrote body →', result.body);
           body = result.body;
         }
         if (result.hadChit) {
@@ -186,17 +191,13 @@
                   || (input && input.method)
                   || 'GET';
         if (isWriteMethod(method) && isKnackRecordUrl(url)) {
-          try {
-            console.log('[scw-chit-fix] fetch catch', method, url,
-              'body:', init && init.body);
-          } catch (e) {}
+          clog('[scw-chit-fix] fetch catch', method, url,
+            'body:', init && init.body);
           if (init && typeof init.body === 'string') {
             var result = coerceBody(init.body);
             hadChit = result.hadChit;
             if (result.body !== init.body) {
-              try {
-                console.log('[scw-chit-fix] fetch rewrote body →', result.body);
-              } catch (e) {}
+              clog('[scw-chit-fix] fetch rewrote body →', result.body);
               init = Object.assign({}, init, { body: result.body });
             }
           }

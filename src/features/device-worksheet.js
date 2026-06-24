@@ -102,113 +102,10 @@
           right: ['connections', 'exterior', 'mountingHeight', 'dropLength', 'conduitFeet', 'surveyNotes']
         }
       },
-      {
-        viewId: 'view_3505',
-        layout: { productGroupWidth: '300px', detailGrid: '455px 1fr', labelInProductGroup: true, productEditable: true },
-        hideDeleteWhenFieldNotBlank: 'field_2404',
-        // ── Main config: used for Cameras or Readers rows ──
-        fields: {
-          // ── Summary row ──
-          bid:              { key: 'field_2415', type: 'readOnly',   summary: true, label: 'Bid',   group: 'right', groupCls: 'sum-group--bid' },
-          move:             { key: 'field_2375', type: 'moveIcon',   summary: true },
-          label:            { key: 'field_2365', type: 'readOnly',   summary: true },
-          product:          { key: 'field_2627', type: 'nativeEdit', summary: true, productStyle: true },
-          laborDescription: { key: 'field_2409', type: 'directEdit', summary: true, label: 'Labor Desc', group: 'fill', multiline: true },
-          existingCabling:  { key: 'field_2370', type: 'toggleChit', summary: true, feeTrigger: true },
-          labor:            { key: 'field_2400', type: 'directEdit', summary: true, label: 'Labor', group: 'right', groupCls: 'sum-group--labor', feeTrigger: true },
-          quantity:         { key: 'field_2399', type: 'readOnly', label: 'Qty' },
-          warningCount:     { key: 'field_2454', type: 'warningChit' },
-
-          // ── Detail panel (matches view_3512 layout) ──
-          mounting:         { key: 'field_2463', type: 'readOnly' },
-          connections:      { key: 'field_2381', type: 'nativeEdit' },
-          scwNotes:         { key: 'field_2418', type: 'readOnly' },
-          surveyNotes:      { key: 'field_2412', type: 'directEdit', summary: true, label: 'Survey Notes', group: 'fill', multiline: true },
-          exteriorChit:     { key: 'field_2372', type: 'toggleChit', summary: true, feeTrigger: true, chitLabel: 'Exterior' },
-          plenumChit:       { key: 'field_2371', type: 'toggleChit', summary: true, feeTrigger: true, chitLabel: 'Plenum' },
-          mountingHeight:   { key: 'field_2455', type: 'singleChip', options: ["Under 16'", "16' - 24'", "Over 24'"] },
-          dropLength:       { key: 'field_2367', type: 'directEdit' },
-          conduitFeet:      { key: 'field_2368', type: 'directEdit' }
-        },
-        summaryLayout: ['surveyNotes', 'laborDescription', 'existingCabling', 'exteriorChit', 'plenumChit', 'labor', 'bid'],
-        // BID-object sort keys (this object's drop prefix/number are
-        // field_2361/field_2362 — the hardcoded SOW defaults 2240/1951
-        // never matched here). Equipment value = field_2382 (product
-        // price), DESC. Inert per-key when the column isn't exposed.
-        rowSort: [
-          { field: 'field_2218', order: 'asc',  type: 'number' },
-          { field: 'field_2361', order: 'asc',  type: 'text'   },
-          { field: 'field_2362', order: 'asc',  type: 'number' },
-          { field: 'field_2382', order: 'desc', type: 'number' }
-        ],
-        // Sort presets — exposed in the worksheet toolbar's "Sort ▾"
-        // dropdown. First preset = "Default", rule:null means "use
-        // viewCfg.rowSort or device-worksheet's hardcoded default".
-        sortPresets: [
-          { id: 'default',  label: 'Default' },
-          { id: 'label',    label: 'Label',   field: 'field_2365', type: 'text'   },
-          { id: 'labor',    label: 'Labor',   field: 'field_2400', type: 'number' },
-          { id: 'bid',      label: 'By bid',  rule: [{ field: 'field_2415', order: 'asc', type: 'text' },
-                                                     { field: 'field_2365', order: 'asc', type: 'text' }] }
-        ],
-        detailLayout: {
-          left:  ['mounting', 'scwNotes'],
-          right: ['connections', 'mountingHeight', 'dropLength', 'conduitFeet']
-        },
-        bucketField: 'field_2366',
-        // ── Override: used for all NON-camera/reader rows ──
-        bucketOverride: {
-          keepBuckets: ['6481e5ba38f283002898113c'],   // cameras or readers
-          fields: {
-            bid:              { key: 'field_2415', type: 'readOnly',   summary: true, label: 'Bid',   group: 'right', groupCls: 'sum-group--bid' },
-            move:             { key: 'field_2375', type: 'moveIcon',   summary: true },
-            product:          { key: 'field_2627', type: 'nativeEdit', summary: true, productStyle: true },
-            laborDescription: { key: 'field_2409', type: 'directEdit', summary: true, label: 'Labor Desc', group: 'fill', multiline: true, showWhenFieldIsYes: 'field_2478' },
-            labor:            { key: 'field_2400', type: 'directEdit', summary: true, label: 'Labor', group: 'right', groupCls: 'sum-group--labor', feeTrigger: true, showWhenFieldIsYes: 'field_2478' },
-            quantity:         { key: 'field_2399', type: 'directEdit', summary: true, label: 'Qty',   group: 'right', groupCls: 'sum-group--qty', feeTrigger: true, showWhenFieldIsYes: 'field_2478', orShowWhenFieldIsNo: 'field_2373' },
-            extended:         { key: 'field_2401', type: 'readOnly',   summary: true, label: 'Ext', group: 'right', groupCls: 'sum-group--ext', readOnlySummary: true, showWhenFieldIsYes: 'field_2478' },
-            warningCount:     { key: 'field_2454', type: 'warningChit' },
-
-            mounting:         { key: 'field_2463', type: 'readOnly' },
-            connections:      { key: 'field_2380', type: 'nativeEdit' },
-            scwNotes:         { key: 'field_2418', type: 'readOnly' },
-            surveyNotes:      { key: 'field_2412', type: 'directEdit', summary: true, label: 'Survey Notes', group: 'fill', multiline: true }
-          },
-          summaryLayout: ['surveyNotes', 'laborDescription', 'quantity', 'labor', 'extended', 'bid'],
-          detailLayout: {
-            left:  ['mounting', 'scwNotes'],
-            right: ['connections']
-          }
-        },
-        bucketRules: {
-          '6977caa7f246edf67b52cbcd': {           // Other Services
-            hideFields: ['field_2627', 'field_2463', 'field_2372', 'field_2371'],
-            label: '+fee',
-            descLabel: 'Service',
-            hideProduct: true,
-            rowClass: 'scw-row--services',
-          },
-          '697b7a023a31502ec68b3303': {           // Assumptions
-            hideFields: ['field_2627', 'field_2400', 'field_2399', 'field_2401'],
-            label: 'ASSUMPTION',
-            descLabel: 'Assumption',
-            hideProduct: true,
-            rowClass: 'scw-row--assumptions',
-          },
-          '6a14eee134e422f3769ada00': {           // Materials — sub-provided priced equipment
-            // descLabel doubles as the un-gate switch: device-worksheet
-            // skips the field_2478 (require sub bid) showWhenFieldIsYes
-            // guards for any bucket whose rule carries a descLabel, so
-            // Qty / Unit Price / Ext render regardless of that flag.
-            descLabel: 'Materials',
-            fieldLabelOverrides: { field_2400: 'Unit Price' },
-          },
-        },
-        syntheticBucketGroups: [
-          { cls: 'scw-row--services',    label: 'Project Wide Services' },
-          { cls: 'scw-row--assumptions', label: 'Project Wide Assumptions' },
-        ]
-      },
+      // view_3505 (survey worksheet) v1 config removed — fully v2 (cutover:
+      // worksheet-v2 view_3505 entry is the primary survey/bid surface, the
+      // native #view_3505 table is hidden by styles.js, and v1 bailed here
+      // via V2_TAKEOVER). See worksheet-v2/config.js view_3505 entry.
       {
         // ── INSTALL line items (Implementation page, scene_1311) ──
         // Mirrors view_3505's bucketing: Camera/Reader rows get the full
@@ -346,7 +243,14 @@
         ]
       },
       {
-        viewIds: ['view_3559', 'view_3577', 'view_3617', 'view_3803'],
+        // view_3577 (MDF/IDF cards on the build-SOW scene) temporarily
+        // REMOVED — its V1 transformView was ~1100ms for 8 rows on that heavy
+        // page and we're isolating the remaining v2 worksheet lag. Dropping it
+        // from the config kills BOTH the transform binding AND the raw-row
+        // cloak (the cloak CSS is generated from this same list), so the
+        // native Knack table renders normally instead of going blank. Re-add
+        // once the v2-side perf work settles / it gets ported to v2.
+        viewIds: ['view_3559', 'view_3617', 'view_3803', 'view_3932', 'view_4060'],
         layout: { labelWidth: '400px' },
         fields: {
           label:            { key: 'field_1642', type: 'readOnly',   summary: true },
@@ -460,7 +364,9 @@
         lockExemptFields: ['field_1949', 'field_1958', 'field_1953', 'field_2634']
       },
       {
-        viewIds: ['view_3610', 'view_3921'],
+        // view_3610 (Ops build SOW) removed — fully v2 (view_3962 source).
+        // view_3921 (comparison grid) still listed here pending its own phase.
+        viewId: 'view_3921',
         layout: { productGroupWidth: 'flex', productGroupLayout: 'column', productEditable: true, identityWidth: '366px', labelWidth: '110px' },
         fields: {
           // ── Summary row ──
@@ -592,117 +498,6 @@
             // intentionally omitted at user request.
             left:  ['dropPrefix', 'dropNumber', 'mountingHardware'],
             right: ['connectedDevice', 'dropLength', 'conduit', 'scwNotes']
-          }
-        }
-      },
-      {
-        viewId: 'view_3586',
-        layout: { productGroupWidth: 'flex', productGroupLayout: 'column', productEditable: true, identityWidth: '366px' },
-        stackedSummary: false,
-        photoAlwaysVisible: true,
-        hideDeleteWhenCountGtZero: 'field_2586',
-        fields: {
-          // ── Summary row ──
-          product:          { key: 'field_1949', type: 'readOnly',    summary: true, productStyle: true },
-          scwNotes:         { key: 'field_1953', type: 'directEdit',  summary: true, label: 'SCW Notes', group: 'fill', multiline: true },
-          lineItemTotal:    { key: 'field_2269', type: 'readOnly',    summary: true, label: 'Total',    group: 'right', groupCls: 'sum-group--total', readOnlySummary: true },
-          move:             { key: 'field_1946', type: 'moveIcon',    summary: true },
-
-          // ── Detail panel ──
-          retailPrice:      { key: 'field_1960', type: 'readOnly' },
-          quantity:         { key: 'field_1964', type: 'directEdit', feeTrigger: true },
-          customDiscPct:    { key: 'field_2261', type: 'directEdit', feeTrigger: true },
-          customDiscDlr:    { key: 'field_2262', type: 'directEdit', feeTrigger: true },
-          appliedDiscount:  { key: 'field_2303', type: 'readOnly' },
-          total:            { key: 'field_2269', type: 'readOnly' },
-          connectedDevice:  { key: 'field_1957', type: 'nativeEdit' },
-          mountingHardware: { key: 'field_1958', type: 'connectedRecords' },
-          laborDescription: { key: 'field_2020', type: 'directEdit',  notes: true }
-        },
-        summaryLayout: ['scwNotes', 'lineItemTotal'],
-        // Explicit thead column order. Raw field keys, left-to-right.
-        // Overrides the usual label/summaryLayout/quantity auto-build.
-        theadOrder: [
-          'field_1950', // Label
-          'field_1949', // Product
-          'field_1953', // SCW Notes
-          'field_2269'  // Total
-        ],
-        // Client-side row sort — device-worksheet always re-sorts rows at
-        // render time, so this dictates the visible order regardless of
-        // any server-side sort. field_2218 (sort order) is numeric,
-        // field_2240 (drop prefix) is text with natural numeric compare,
-        // field_1951 (drop number) is numeric.
-        rowSort: [
-          { field: 'field_2218', order: 'asc', type: 'number' },
-          { field: 'field_2240', order: 'asc', type: 'text'   },
-          { field: 'field_1951', order: 'asc', type: 'number' }
-        ],
-        sortPresets: [
-          { id: 'default',  label: 'Default' },
-          { id: 'label',    label: 'Label',   field: 'field_1950', type: 'text'   },
-          { id: 'total',    label: 'Total',   field: 'field_2269', type: 'number' },
-          { id: 'qty',      label: 'Qty',     field: 'field_1964', type: 'number' },
-          { id: 'product',  label: 'Product', field: 'field_1949', type: 'text'   }
-        ],
-        detailLayout: {
-          left:  ['retailPrice', 'quantity', 'customDiscPct', 'appliedDiscount', 'total'],
-          right: ['connectedDevice', 'mountingHardware', 'laborDescription']
-        },
-        bucketField: 'field_2219',
-        bucketRules: {
-          '6977caa7f246edf67b52cbcd': {           // Other Services
-            hideFields: ['field_1949', 'field_1953'],
-            label: '+fee',
-            summarySwapField: 'field_2020',       // replace scwNotes with laborDescription in summary
-            summarySwapReadOnly: true,
-            hideDetail: true,                     // suppress detail sections, keep photos only
-            rowClass: 'scw-row--services',
-          },
-          '697b7a023a31502ec68b3303': {           // Assumptions
-            hideFields: ['field_1949', 'field_1953', 'field_1964', 'field_2261', 'field_2262', 'field_2303', 'field_2269', 'field_1960'],
-            label: 'ASSUMPTION',
-            summarySwapField: 'field_2020',
-            summarySwapReadOnly: true,
-            hideDetail: true,
-            rowClass: 'scw-row--assumptions',
-          },
-        },
-        syntheticBucketGroups: [
-          { cls: 'scw-row--services',    label: 'Project Wide Services' },
-          { cls: 'scw-row--assumptions', label: 'Project Wide Assumptions' },
-        ],
-        // ── Override: cameras/readers rows use a dedicated field set ──
-        bucketOverride: {
-          overrideBuckets: ['6481e5ba38f283002898113c'],   // cameras or readers
-          fields: {
-            // ── Summary row ──
-            label:            { key: 'field_1950', type: 'readOnly',    summary: true },
-            product:          { key: 'field_1949', type: 'readOnly',    summary: true, productStyle: true },
-            scwNotes:         { key: 'field_1953', type: 'directEdit',  summary: true, label: 'SCW Notes', group: 'fill', multiline: true },
-            existingCabling:  { key: 'field_2461', type: 'toggleChit',  summary: true, feeTrigger: true },
-            exteriorChit:     { key: 'field_1984', type: 'toggleChit',  summary: true, feeTrigger: true, chitLabel: 'Exterior' },
-            lineItemTotal:    { key: 'field_2269', type: 'readOnly',    summary: true, label: 'Total',    group: 'right', groupCls: 'sum-group--total', readOnlySummary: true },
-            move:             { key: 'field_1946', type: 'moveIcon',    summary: true },
-
-            // ── Detail panel – left ──
-            retailPrice:      { key: 'field_1960', type: 'readOnly' },
-            discountDlr:      { key: 'field_2261', type: 'directEdit', feeTrigger: true },
-            appliedDiscount:  { key: 'field_2303', type: 'readOnly' },
-            total:            { key: 'field_2269', type: 'readOnly' },
-            dropPrefix:       { key: 'field_2240', type: 'nativeEdit' },
-            dropNumber:       { key: 'field_1951', type: 'directEdit' },
-
-            // ── Detail panel – right ──
-            connectedDevice:  { key: 'field_2197', type: 'nativeEdit' },
-            mountingHardware: { key: 'field_1958', type: 'connectedRecords' },
-            dropLength:       { key: 'field_1965', type: 'directEdit', skipEmpty: true },
-            laborDescription: { key: 'field_2020', type: 'directEdit', skipEmpty: true, notes: true }
-          },
-          summaryLayout: ['scwNotes', 'existingCabling', 'exteriorChit', 'lineItemTotal'],
-          detailLayout: {
-            left:   ['dropPrefix', 'dropNumber', 'retailPrice', 'discountDlr', 'appliedDiscount', 'total', 'dropLength'],
-            right:  ['connectedDevice', 'mountingHardware', 'laborDescription']
           }
         }
       },
@@ -4419,6 +4214,16 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
           attrs[key] = resp[key];
         }
       }
+
+      // This is a DIRECT attribute mutation — Backbone fires no 'change', so
+      // worksheet-v2's dirty tracking would miss it. Mark the record dirty so
+      // its v2 card rebuilds on the next render (the rest reuse without a sig).
+      try {
+        if (window.SCW && SCW.worksheetV2 && SCW.worksheetV2.data &&
+            typeof SCW.worksheetV2.data.markDirty === 'function') {
+          SCW.worksheetV2.data.markDirty(viewId, recordId);
+        }
+      } catch (e2) { /* ignore */ }
     } catch (ex) {
       // Silently ignore — model sync is best-effort
     }
@@ -6438,17 +6243,34 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     tb.style.visibility = '';
   }
 
+  // True when bid-review-v2 owns a source view (replaceV1 active + the view is
+  // one of v2's sources, e.g. the hidden view_3921 on scene_1155). Used to skip
+  // wasteful v1 processing of that hidden view on every edit's refetch.
+  function brV2OwnsView(viewId) {
+    var c = window.SCW && SCW.bidReviewV2 && SCW.bidReviewV2.CONFIG;
+    return !!(c && c.enabled !== false && c.replaceV1 &&
+      c.sourceViewKeys && c.sourceViewKeys.indexOf(viewId) !== -1);
+  }
+
   function transformView(viewCfg) {
     if (!viewCfg || viewCfg.disabled) return;
+    // Bid-review v2 cutover: on the comparison page (scene_1155) view_3921 is
+    // a HIDDEN data source — bid-review-v2 renders the live grid and its
+    // expand panel uses worksheet-v2 cards, not these v1 cards. So rebuilding
+    // v1 worksheet cards here on every edit's refetch is pure waste (and its
+    // scroll-preservation coordination was a prime cause of the post-edit
+    // page jump). Bail when v2 owns view_3921. Reversible via replaceV1.
+    if (viewCfg.viewId === 'view_3921' && brV2OwnsView('view_3921')) return;
     // V2 cutover kill-switch (Known Issue: v1→v2 migration). When v2 is
     // enabled AND has a CONFIG entry for the superseding source view,
     // bail out of v1\'s transformView entirely — no card builds, no
     // group-collapse, no photo strips, no DOM thrash on a hidden
-    // table. Keyed per v1 view: view_3610 is superseded by the
-    // view_3962-sourced v2 mount; view_3586 (sales) by its own
-    // view_3586-sourced v2 mount. Reversible: flip
-    // SCW.worksheetV2.CONFIG.enabled = false or comment out this block.
-    var V2_TAKEOVER = { view_3610: 'view_3962', view_3586: 'view_3586', view_3915: 'view_3915', view_3505: 'view_3505' };
+    // table. Now keyed for view_3915 (install) only — its v1 config block
+    // still exists but bails here when v2 is enabled.
+    // (view_3586/sales + view_3610/ops + view_3505/survey were fully removed —
+    // their v1 config blocks are gone entirely, so they never reach here.)
+    // Reversible: flip SCW.worksheetV2.CONFIG.enabled = false.
+    var V2_TAKEOVER = { view_3915: 'view_3915' };
     var v2SourceKey = V2_TAKEOVER[viewCfg.viewId];
     if (v2SourceKey &&
         window.SCW && window.SCW.worksheetV2 &&
@@ -6507,6 +6329,21 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     if (viewCfg.disabled) return;
     var $view = $('#' + viewCfg.viewId);
     if (!$view.length) return;
+
+    // ── Phase timing (gated on SCW.perfLog) ──────────────────────────────
+    // transformView can dominate the main thread on a heavy page (it
+    // showed 1100ms for 8 cards on the build-SOW scene). Break the run into
+    // labeled phases so the slow one is obvious instead of guessed at. Free
+    // when perfLog is off.
+    var _XF = !!(window.SCW && SCW.perfLog && SCW._now);
+    var _xt = _XF ? SCW._now() : 0;
+    var _xmarks = [];
+    function _xmark(name) {
+      if (!_XF) return;
+      var _n = SCW._now();
+      _xmarks.push(name + '=' + (_n - _xt).toFixed(0));
+      _xt = _n;
+    }
 
     var table = $view.find('table.kn-table-table, table.kn-table')[0];
     if (!table) return;
@@ -6906,6 +6743,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       })();
     }
 
+    _xmark('phase1-read');
     // ── PHASE 2: BUILD — construct cards from collected data ──
     //
     // buildWorksheetCard reparents <td> elements into the card DOM,
@@ -6971,32 +6809,8 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
         }
       }
 
-      // ── view_3505: lock product (field_2627) when row is adopted to SOW ──
-      // Editable only if field_2404 (REL_sow line item) is blank AND the
-      // row isn't finalized (field_2551 = Yes — handled above).
-      if (!isLocked && viewCfg.viewId === 'view_3505') {
-        var sowItemTd = tr.querySelector('td.field_2404');
-        var sowItemSet = false;
-        if (sowItemTd) {
-          if (sowItemTd.querySelector('span[data-kn="connection-value"]')) {
-            sowItemSet = true;
-          } else {
-            var sowText = (sowItemTd.textContent || '').replace(/ /g, '').trim();
-            if (sowText.length) sowItemSet = true;
-          }
-        }
-        if (sowItemSet) {
-          var prodTd = tr.querySelector('td.field_2627');
-          if (prodTd) {
-            prodTd.classList.remove('cell-edit', 'ktlInlineEditableCellsStyle');
-            prodTd.classList.add(P + '-td-locked');
-            prodTd.addEventListener('click', function (e) {
-              e.stopPropagation();
-              e.preventDefault();
-            }, true);
-          }
-        }
-      }
+      // (view_3505 product-lock-on-SOW-adopt removed with its v1 config —
+      // worksheet-v2 survey card owns that lock now.)
 
       var card = buildWorksheetCard(tr, effectiveCfg);
       if (isLocked) {
@@ -7119,6 +6933,7 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       }
     }
 
+    _xmark('phase2-build');
     // ── PHASE 3: INSERT — batch all DOM insertions in one pass ──
     //
     // Batching avoids interleaving writes with the reads that happened
@@ -7438,9 +7253,11 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     // Group-collapse may have already run and set .scw-collapsed on
     // headers before these rows existed.  Explicitly re-enhance so
     // collapsed groups properly hide their new content rows.
+    _xmark('phase3-insert+synthetic');
     if (window.SCW && window.SCW.groupCollapse && window.SCW.groupCollapse.enhance) {
       window.SCW.groupCollapse.enhance();
     }
+    _xmark('groupCollapse');
 
     // ── RESTORE CACHED HEADER LABELS ──
     // If a trigger-field save caused this re-render, the rebuilt DOM
@@ -7455,6 +7272,11 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     document.dispatchEvent(new CustomEvent('scw-worksheet-ready', {
       detail: { viewId: viewCfg.viewId }
     }));
+    _xmark('finalize+ready');
+    if (_XF && _xmarks.length) {
+      console.log('[SCW perf] transformView ' + viewCfg.viewId +
+        ' phases: ' + _xmarks.join('  '));
+    }
   }
 
   // ============================================================

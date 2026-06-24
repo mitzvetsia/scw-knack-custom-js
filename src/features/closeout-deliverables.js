@@ -38,7 +38,7 @@
   var DEPLOYMENTS = [
     { closeoutView: 'view_3940', docSaveView: 'view_3941',
       addSlug: 'add-file-to-closeout',  editSlug: 'edit-doc-file' },
-    { closeoutView: 'view_4058', docSaveView: 'view_4063',
+    { closeoutView: 'view_4058', docSaveView: 'view_4068',
       addSlug: 'add-file-to-closeout3', editSlug: 'edit-doc-file' }
   ];
   function depFor(closeoutView) {
@@ -1429,6 +1429,22 @@
   // "Open in tab" in the header.
   function renderViewerInto(viewerEl, doc) {
     viewerEl.innerHTML = '';
+    // Just-in-time raw-URL resolve. The closeout grid only exposes Knack's
+    // ROUTE url for the file (a #kn-asset/… hash) — embedding that in the
+    // iframe loads the WHOLE Knack app in the background instead of the PDF.
+    // The raw S3 url lives on the hidden DOC inline-edit grid's model
+    // (docSaveView), which may have rendered AFTER the card list was built.
+    // Re-scan now so the preview embeds the file directly (matching the view
+    // whose docSaveView was already loaded). If still missing, the docSaveView
+    // for THIS scene isn't projecting the file field — see fallback below.
+    if (doc && !doc.rawUrl && doc.id) {
+      rebuildFileMetaIndex();
+      var jitMeta = docFileMeta[doc.id];
+      if (jitMeta && jitMeta.url) {
+        doc.rawUrl = jitMeta.url;
+        if (!doc.thumbUrl) doc.thumbUrl = jitMeta.thumbUrl;
+      }
+    }
     // Prefer the raw S3 URL from view_3941's model — that gives the
     // browser a real application/pdf response so Chrome's PDF viewer
     // renders directly inside the iframe (no Knack app chrome).  Fall
@@ -1453,17 +1469,14 @@
       return;
     }
 
-    // PDF (or anything browser-renders inline). Append Chrome PDF-viewer
-    // hash params to hide the toolbar + thumbnail panel — they only
-    // take effect when the response is a real PDF, which is what the
-    // raw URL gives us. Knack's route URL ignores them.
-    var iframeSrc = src;
-    if (doc.rawUrl) {
-      iframeSrc = src + (src.indexOf('#') === -1 ? '#' : '&') +
-                  'toolbar=0&navpanes=0&scrollbar=0&view=FitH';
-    }
+    // PDF (or anything browser-renders inline). Embed the file directly and
+    // let the browser show its FULL native PDF viewer — toolbar, thumbnail
+    // panel, zoom — same interactive experience view_3940 gets from Knack's
+    // route URL. (We intentionally do NOT append #toolbar=0&navpanes=0&… —
+    // those would strip the viewer chrome on the raw-S3 path, which is the
+    // ONLY reason view_4058 used to render chrome-less while view_3940 didn't.)
     var iframe = document.createElement('iframe');
-    iframe.src = iframeSrc;
+    iframe.src = src;
     iframe.setAttribute('title', doc.fileName || 'Document preview');
     viewerEl.appendChild(iframe);
 

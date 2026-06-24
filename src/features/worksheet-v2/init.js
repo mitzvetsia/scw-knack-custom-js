@@ -87,6 +87,12 @@
       return;
     }
     var anchor = document.querySelector(vcfg.mountAfterSelector);
+    // Fallback anchor so deleting the primary mount view from the Knack scene
+    // (e.g. retiring the hidden v1 grid view_3610) can't orphan the panel —
+    // it then mounts after a stable surviving element (e.g. the v2 source view).
+    if (!anchor && vcfg.mountAfterFallback) {
+      anchor = document.querySelector(vcfg.mountAfterFallback);
+    }
     if (!anchor) return; // source view not on this scene
     var panel = buildPanel(vcfg);
     anchor.insertAdjacentElement('afterend', panel);
@@ -117,6 +123,140 @@
     views.forEach(tryMount);
   }
 
+  // ── Defer full-grid rebuilds while the user is mid-edit ──────────────
+  // ns.render.renderView replaces the grid's DOM wholesale. If that runs
+  // while the user is focused in one of the grid's own inputs (typing a
+  // note, a discount, a labor value…) it DESTROYS that input: the field
+  // goes unresponsive / loses its in-progress value, and a rebuild kicked
+  // off by a PRIOR edit's background refetch looks like it "interrupted"
+  // the edit the user just started. So when a rebuild is requested while a
+  // grid input is focused, stash it and flush once focus leaves the grid
+  // (or via a re-arming safety tick). PUTs are NOT queued/blocked — every
+  // edit still saves immediately; we only delay the disruptive rebuild.
+  var _pendingRender = Object.create(null);   // viewKey -> vcfg (presence = pending)
+  var _flushTimer    = null;
+
+  function gridInputFocused(viewKey) {
+    var el = document.activeElement;
+    if (!el) return false;
+    var tag = (el.tagName || '').toLowerCase();
+    var editable = tag === 'input' || tag === 'textarea' || tag === 'select' || el.isContentEditable;
+    if (!editable) return false;
+    var grid = document.getElementById('scw-ws-v2-' + viewKey);
+    return !!(grid && grid.contains(el));
+  }
+
+  function applyRender(key, records, vcfg) {
+    // Skip redundant notify-driven rebuilds. Knack fires knack-view-render
+    // several times on initial load (progressive paint, KTL re-wrap, per-page
+    // param echo) and again on unrelated cross-view refreshes — each one drives
+    // a notify → full DOM tree rebuild here, even when not one record changed
+    // (the "rebuilding while idle" churn). If the grid is already painted and
+    // nothing is dirty (no Backbone change/add/remove/reset, no optimistic
+    // markDirty since the last render), there is nothing to repaint — bail.
+    // Direct renders (sort / filter / mode / toolbar) call ns.render.renderView
+    // straight, bypassing applyRender, so a real user action always renders.
+    var _skipRender = false;
+    try {
+      var _grid = document.getElementById('scw-ws-v2-' + key);
+      var _painted = _grid && _grid.querySelector('.scw-ws-v2-card');
+      if (_painted && ns.data && typeof ns.data.peekDirty === 'function') {
+        var _pk = ns.data.peekDirty(key);
+        if (!_pk.all && _pk.count === 0) _skipRender = true;
+      }
+    } catch (e) { /* fall through and render */ }
+
+    // Skip ONLY the expensive DOM rebuild when nothing changed — the toolbar /
+    // sort / filter / bulk mounts below are idempotent (early-return when
+    // already mounted) and must still run so the first notify after mount wires
+    // them up.
+    //
+    // NOTE: scroll-anchoring now lives INSIDE renderView's full-rebuild path
+    // (the only path that empties + refills the body and can jump the page).
+    // An in-place edit replaces single card nodes without touching scroll, so
+    // wrapping every render in the anchor's 600ms settle loop was pure waste
+    // (and a heavy forced-reflow / rAF source) on the common edit case.
+    if (!_skipRender) {
+      ns.render.renderView(key, records);
+    }
+    if (vcfg.hideSourceAccordion) relocatePanelOutsideAccordion(key);
+    // Mode/photos toolbar — mount idempotently above the L1 list.
+    if (ns.toolbar && typeof ns.toolbar.mount === 'function') {
+      ns.toolbar.mount(key);
+    }
+    if (ns.sort && typeof ns.sort.mount === 'function') {
+      ns.sort.mount(key);
+    }
+    if (ns.nativeFilter && typeof ns.nativeFilter.mount === 'function') {
+      ns.nativeFilter.mount(key);
+    }
+    var _vcSow = (ns.cfg && typeof ns.cfg.viewCfg === 'function')
+      ? ns.cfg.viewCfg(key) : null;
+    // Mount the pill strip when SOW isn't hidden, OR when the view
+    // configures its own filterPills (e.g. survey filters by Bid even
+    // though hideSow:true suppresses the SOW column).
+    if (ns.sowFilter && typeof ns.sowFilter.mount === 'function' &&
+        (!(_vcSow && _vcSow.hideSow) || (_vcSow && _vcSow.filterPills))) {
+      ns.sowFilter.mount(key);
+    }
+    // After every re-render, sync the bulk-select checkboxes to
+    // current selection state + refresh the floating toolbar. GUARD on the
+    // panel actually being mounted on THIS scene: bulk is a singleton, and
+    // the background poll fires notify() for EVERY configured view on every
+    // scene — without this guard the sales view's poll (view_3586) calls
+    // bulk.mount('view_3586') on the bid-review scene, clobbering
+    // _sourceViewKey to a SALES view so the bulk modal serves SALES fields
+    // (Custom Disc %, Label #) on the bid comparison grid.
+    if (ns.bulk && typeof ns.bulk.mount === 'function' &&
+        document.getElementById('scw-ws-v2-' + key)) {
+      ns.bulk.mount(key);
+    }
+  }
+
+  function flushPending() {
+    var keys = Object.keys(_pendingRender);
+    for (var i = 0; i < keys.length; i++) {
+      var key = keys[i];
+      if (gridInputFocused(key)) continue;     // still editing this grid — keep waiting
+      var vcfg = _pendingRender[key];
+      delete _pendingRender[key];
+      // Re-read the freshest records (a later refetch — e.g. the recalc
+      // sweep — may have landed in the model while we were deferred).
+      var recs = (ns.data && typeof ns.data.readRecords === 'function')
+        ? ns.data.readRecords(key) : [];
+      applyRender(key, recs, vcfg);
+    }
+    if (Object.keys(_pendingRender).length === 0 && _flushTimer) {
+      clearInterval(_flushTimer); _flushTimer = null;
+    }
+  }
+
+  function requestRender(key, records, vcfg) {
+    if (gridInputFocused(key)) {
+      _pendingRender[key] = vcfg;              // defer — flush on blur
+      if (!_flushTimer) {
+        // Re-arming safety tick in case a focusout is ever missed. It only
+        // flushes views the user is NOT currently focused in, so it can
+        // never rebuild mid-edit.
+        _flushTimer = setInterval(flushPending, 1500);
+      }
+      return;
+    }
+    applyRender(key, records, vcfg);
+  }
+
+  // Flush deferred rebuilds once the user leaves a grid input. focusout
+  // bubbles (blur doesn't); defer a tick so document.activeElement settles
+  // (focusout fires before the next focus target is assigned), so moving
+  // directly between two grid inputs keeps deferring instead of rebuilding
+  // in the gap.
+  if (!document.documentElement.hasAttribute('data-scw-ws-v2-flush-bound')) {
+    document.documentElement.setAttribute('data-scw-ws-v2-flush-bound', '1');
+    document.addEventListener('focusout', function () {
+      setTimeout(flushPending, 0);
+    }, true);
+  }
+
   // Wire data subscribers ONCE — they fire forever, regardless of
   // mount state. The render call short-circuits if the container
   // doesn't exist.
@@ -133,39 +273,10 @@
         ns.poll.start(vcfg.sourceViewKey);
       }
       ns.data.subscribe(vcfg.sourceViewKey, function (key, records) {
-        ns.render.renderView(key, records);
-        if (vcfg.hideSourceAccordion) relocatePanelOutsideAccordion(key);
-        // Mode/photos toolbar — mount idempotently above the L1 list.
-        if (ns.toolbar && typeof ns.toolbar.mount === 'function') {
-          ns.toolbar.mount(key);
-        }
-        if (ns.sort && typeof ns.sort.mount === 'function') {
-          ns.sort.mount(key);
-        }
-        if (ns.nativeFilter && typeof ns.nativeFilter.mount === 'function') {
-          ns.nativeFilter.mount(key);
-        }
-        var _vcSow = (ns.cfg && typeof ns.cfg.viewCfg === 'function')
-          ? ns.cfg.viewCfg(key) : null;
-        // Mount the pill strip when SOW isn't hidden, OR when the view
-        // configures its own filterPills (e.g. survey filters by Bid even
-        // though hideSow:true suppresses the SOW column).
-        if (ns.sowFilter && typeof ns.sowFilter.mount === 'function' &&
-            (!(_vcSow && _vcSow.hideSow) || (_vcSow && _vcSow.filterPills))) {
-          ns.sowFilter.mount(key);
-        }
-        // After every re-render, sync the bulk-select checkboxes to
-        // current selection state + refresh the floating toolbar. GUARD on the
-        // panel actually being mounted on THIS scene: bulk is a singleton, and
-        // the background poll fires notify() for EVERY configured view on every
-        // scene — without this guard the sales view's poll (view_3586) calls
-        // bulk.mount('view_3586') on the bid-review scene, clobbering
-        // _sourceViewKey to a SALES view so the bulk modal serves SALES fields
-        // (Custom Disc %, Label #) on the bid comparison grid.
-        if (ns.bulk && typeof ns.bulk.mount === 'function' &&
-            document.getElementById('scw-ws-v2-' + key)) {
-          ns.bulk.mount(key);
-        }
+        // Defer the wholesale DOM rebuild while the user is mid-edit in this
+        // grid (see requestRender) — otherwise a background refetch destroys
+        // the focused input. Flushes on blur with the freshest records.
+        requestRender(key, records, vcfg);
       });
     });
     ns.data.attachListeners();
@@ -270,10 +381,35 @@
       if (!l1Id || !sourceKey) return;
 
       if (!ns.state || typeof ns.state.toggleL1 !== 'function') return;
-      ns.state.toggleL1(sourceKey, l1Id);
+      var _newState = ns.state.toggleL1(sourceKey, l1Id);
+      var _open = _newState && _newState[l1Id] === 'open';
 
-      // Re-render the affected view from its current data snapshot.
-      if (ns.data && ns.render) {
+      // Collapsing/expanding a group is a pure visibility flip — the cards,
+      // order, summaries and warnings are all unchanged. So toggle the open
+      // classes on the EXISTING L1 block instead of rebuilding the whole grid
+      // (a full renderView was ~60-90ms / 168 cards just to hide one section —
+      // the felt lag when collapsing MDF groups). The card chevron already
+      // works this way. v2's accordion is non-exclusive (toggleL1 flips only
+      // this L1), so no other block changes.
+      var _container = document.getElementById('scw-ws-v2-' + sourceKey);
+      var _block = null;
+      if (_container) {
+        var _blocks = _container.querySelectorAll('.scw-ws-v2-l1');
+        for (var _bi = 0; _bi < _blocks.length; _bi++) {
+          if (_blocks[_bi].getAttribute('data-scw-ws-v2-l1') === l1Id) {
+            _block = _blocks[_bi]; break;
+          }
+        }
+      }
+      if (_block) {
+        _block.classList.toggle('scw-ws-v2-l1--open', _open);
+        var _head = _block.querySelector('[data-scw-ws-v2-l1-toggle]');
+        if (_head) {
+          _head.classList.toggle('scw-ws-v2-l1-head--open', _open);
+          _head.setAttribute('aria-expanded', _open ? 'true' : 'false');
+        }
+      } else if (ns.data && ns.render) {
+        // Block not in the DOM (shouldn't happen) — fall back to a full render.
         ns.render.renderView(sourceKey, ns.data.readRecords(sourceKey));
       }
     });
@@ -1181,7 +1317,10 @@
               if (lbl && prod) return lbl + ' · ' + prod;
               return lbl || prod || r.id;
             },
-            multi: _isCD, onSaved: surveyRefetch
+            multi: _isCD, onSaved: surveyRefetch,
+            // Keep the modal open + locked until the field_2380↔field_2381
+            // reciprocal cascade settles (mirror-connection-sync view_3505).
+            awaitCascade: true
           });
           return;
         }
@@ -1260,7 +1399,10 @@
               if (lbl && prod) return lbl + ' · ' + prod;
               return lbl || prod || r.id;
             },
-            multi: _iIsCD, onSaved: installRefetch
+            multi: _iIsCD, onSaved: installRefetch,
+            // Keep the modal open + locked until the field_2820↔field_2821
+            // reciprocal cascade settles (mirror-connection-sync view_3915/4056).
+            awaitCascade: true
           });
           return;
         }
@@ -1623,7 +1765,7 @@
                 ids = ids.filter(function (x) { return x !== recordId; });
               }
               var body = JSON.stringify({ field_2207: ids });
-              console.log('[scw-ws-v2] cascade ' + mode + ' PUT', {
+              if (window.SCW && window.SCW.DEBUG) console.log('[scw-ws-v2] cascade ' + mode + ' PUT', {
                 url:  url,
                 body: body,
                 source: 'derived from field_2464_raw back-pointers'
@@ -1634,7 +1776,7 @@
                 data: body,
                 success: function (putResp) {
                   var rp = putResp && putResp.record ? putResp.record : putResp;
-                  console.log('[scw-ws-v2] cascade ' + mode + ' PUT OK', {
+                  if (window.SCW && window.SCW.DEBUG) console.log('[scw-ws-v2] cascade ' + mode + ' PUT OK', {
                     parent: parentId,
                     sent:           ids,
                     got_field_2207: rp && rp.field_2207,
@@ -1670,16 +1812,24 @@
         return;
       }
 
-      // MDF/IDF picker (field_1946) — candidates come from view_3577
-      // (the Network Locations grid on the same scene). Single-select.
-      // The MODEL_ONLY cascade in mirror-connection-sync handles
-      // accessory re-grouping when this changes.
+      // MDF/IDF picker (field_1946) — candidates come from this view's
+      // configured MDF/IDF locations grid. Single-select. The MODEL_ONLY
+      // cascade in mirror-connection-sync handles accessory re-grouping
+      // when this changes.
       if (fieldKey === 'field_1946') {
-        // view_3577 on the build-SOW scene; view_3822 (MDF/IDF locations)
-        // on the bid-review scene. Same MDF/IDF object (field_1642 label).
-        var mdfRecords = firstViewRecords(['view_3577', 'view_3822']);
+        // Source the candidates from the view's own mdfSourceViewKey
+        // (view_3577 on build-SOW, view_3602 on sales view_3586, …) so the
+        // picker opens on every deployment — NOT just the build/bid grids.
+        // Fall back to the known grids if config is absent. Same MDF/IDF
+        // object (field_1642 label) across all of them.
+        var _mdfCfg = ns.cfg && typeof ns.cfg.viewCfg === 'function' && ns.cfg.viewCfg(viewKey);
+        var _mdfViews = [];
+        if (_mdfCfg && _mdfCfg.mdfSourceViewKey) _mdfViews.push(_mdfCfg.mdfSourceViewKey);
+        _mdfViews.push('view_3577', 'view_3822');
+        var mdfRecords = firstViewRecords(_mdfViews);
         if (!mdfRecords || !mdfRecords.length) {
-          console.warn('[scw-ws-v2] view_3577/view_3822 model empty/missing — MDF picker can\'t open');
+          console.warn('[scw-ws-v2] MDF locations grid (' + _mdfViews.join('/') +
+            ') empty/missing — MDF picker can\'t open');
           return;
         }
         var mdfCandidates = [];
@@ -1723,13 +1873,14 @@
         return;
       }
 
-      // Drop Prefix picker (field_2240) — single-select from the Drop
-      // Prefix catalog loaded by the Builder snippet
-      // (window.SCW.dropPrefixOptions; see CLAUDE.md "Out-of-bundle Knack
-      // Builder snippets"). Each entry is { id: <24-hex>, identifier: '<label>' }.
-      // Changing the prefix recomputes the drop LABEL (field_1950, e.g.
-      // "E-001") server-side, so refetch on save.
-      if (fieldKey === 'field_2240') {
+      // Drop Prefix picker — single-select from the Drop Prefix catalog loaded
+      // by the Builder snippet (window.SCW.dropPrefixOptions; see CLAUDE.md
+      // "Out-of-bundle Knack Builder snippets"). Each entry is
+      // { id: <24-hex>, identifier: '<label>' }. SOW line items use field_2240;
+      // Survey line items (view_3505) use field_2361 — SAME catalog, so the
+      // picker is shared. Changing the prefix recomputes the drop LABEL
+      // (field_1950 on SOW / field_2365 on survey) server-side, so refetch on save.
+      if (fieldKey === 'field_2240' || fieldKey === 'field_2361') {
         var dpRaw = (window.SCW && window.SCW.dropPrefixOptions) || [];
         if (!dpRaw.length) {
           console.warn('[scw-ws-v2] SCW.dropPrefixOptions missing/empty — Builder snippet not loaded? Drop Prefix picker can\'t open');
@@ -1751,7 +1902,7 @@
           sourceViewKey: viewKey,
           putViewKey:    viewKey,
           recordId:      recordId,
-          fieldKey:      'field_2240',
+          fieldKey:      fieldKey,
           label:         label || 'Drop Prefix',
           selectedIds:   sel,
           candidates:    dpCandidates,
@@ -1887,6 +2038,10 @@
         // Grouped by MDF/IDF + canonically sorted by the picker default.
         itemLabel:     itemLabel,
         multi:         isMulti,
+        // Keep the modal open + locked until the field_1957↔field_2197
+        // reciprocal cascade settles (mirror-connection-sync view_3962 et al.),
+        // so the user can't navigate or start another edit mid-sync.
+        awaitCascade:  true,
         onSaved:       function () {
           // notify() reads from the source view's Backbone model.
           // When the cascade kicks off in response to the PUT, the

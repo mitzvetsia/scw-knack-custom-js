@@ -3921,6 +3921,67 @@
     return elements;
   }
 
+  // ── Sub-bid review (bid + diff) for the published-proposal record ──────
+  // The sub-bid diff is computed on the Bid Review page and stamped onto the
+  // SOW's field_2941 (JSON blob) by sub-bid-diff/pdf-html.js. That blob carries
+  // two PDF-ready HTML fragments — `bidHtml` (the basis bid) and `diffHtml`
+  // (what's off vs the SOW). On the proposal page (scene_1096) field_2941 is
+  // projected onto view_3861, so we can read it here and surface:
+  //   subBidBidHtml / subBidDiffHtml  — the raw fragments
+  //   subBidReviewHtml                — a standalone internal document
+  //                                     (getPdfCss + both fragments)
+  // This is INTERNAL — it exposes subcontractor cost data, so it is NOT
+  // spliced into the client-facing `html`/`htmlPdf`. Make should convert
+  // subBidReviewHtml to its own PDF and attach it to the published-proposal
+  // record (internal copy), not to the customer proposal.
+  function buildSubBidReview() {
+    var empty = { bidHtml: '', diffHtml: '', reviewHtml: '', basis: '', hasDiff: false, note: '' };
+    function finishSubBid(snap) {
+      if (!snap || (!snap.bidHtml && !snap.diffHtml)) return empty;
+      var b = snap.bidHtml || '', d = snap.diffHtml || '', rv = '';
+      if (b || d) {
+        rv = ['<!DOCTYPE html>', '<html><head><meta charset="utf-8">',
+          '<title>Sub-Bid Review — ' + esc(snap.basisBidName || '') + '</title>',
+          '<style>', getPdfCss(), '</style>', '</head><body>',
+          d, b, '</body></html>'].join('\n');
+      }
+      return { bidHtml: b, diffHtml: d, reviewHtml: rv,
+        basis: snap.basisBidName || '', hasDiff: Number(snap.total) > 0, note: snap.note || '' };
+    }
+    // Prefer the Knack MODEL value (verbatim JSON) — Knack renders the embedded
+    // HTML fragments as elements in the detail body, so DOM textContent strips
+    // the tags and corrupts the blob. The model holds it exactly as PUT.
+    try {
+      var mv = window.Knack && Knack.views && Knack.views.view_3861;
+      var ma = mv && mv.model && mv.model.attributes;
+      var mt = (ma && ma.field_2941 != null) ? String(ma.field_2941).trim() : '';
+      if (mt) { try { return finishSubBid(JSON.parse(mt)); } catch (e) {} }
+    } catch (e) { /* fall through to DOM */ }
+    var cell = document.querySelector('.kn-detail.field_2941 .kn-detail-body');
+    if (!cell) return empty;
+    var txt = (cell.textContent || '').replace(/ /g, ' ').replace(/<[^>]*>/g, '').trim();
+    if (!txt) return empty;
+    var snap;
+    try { snap = JSON.parse(txt); } catch (e) { return empty; }
+    if (!snap || (!snap.bidHtml && !snap.diffHtml)) return empty;
+    var bid  = snap.bidHtml || '';
+    var diff = snap.diffHtml || '';
+    var review = '';
+    if (bid || diff) {
+      review = [
+        '<!DOCTYPE html>', '<html><head><meta charset="utf-8">',
+        '<title>Sub-Bid Review — ' + esc(snap.basisBidName || '') + '</title>',
+        '<style>', getPdfCss(), '</style>', '</head><body>',
+        diff, bid, '</body></html>'
+      ].join('\n');
+    }
+    return {
+      bidHtml: bid, diffHtml: diff, reviewHtml: review,
+      basis: snap.basisBidName || '', hasDiff: Number(snap.total) > 0,
+      note: snap.note || ''
+    };
+  }
+
   function buildPublishPayload(sceneId, opts) {
     opts = opts || {};
     var cfg = resolveConfiguredScene(sceneId);
@@ -3939,6 +4000,7 @@
     var summary       = extractSummaryFields(payload);
     var jsonSnapshot  = buildJsonSnapshot(cfg.sceneId);
     var plaintextStr  = htmlToPlaintext(htmlStr);
+    var subBid        = buildSubBidReview();
 
     // Mint a public access token + URL at publish time so the new
     // proposal record is born sharable. mintProposalAccess returns
@@ -3975,6 +4037,18 @@
       // images — never broken, just bigger. See CLAUDE.md.
       html:                  buildSnapshotHtml(payload, htmlStr),
       htmlPdf:               htmlStr,
+      // ── Sub-bid review (INTERNAL — subcontractor cost data) ──────────
+      // Read from the SOW's field_2941 snapshot. NOT part of the
+      // client-facing html/htmlPdf. Make should convert subBidReviewHtml to
+      // its own PDF and attach it to the published-proposal record (internal
+      // copy). subBidBidHtml/subBidDiffHtml are the raw fragments if you'd
+      // rather compose them yourself.
+      subBidBidHtml:         subBid.bidHtml,
+      subBidDiffHtml:        subBid.diffHtml,
+      subBidReviewHtml:      subBid.reviewHtml,
+      subBidBasis:           subBid.basis,
+      subBidHasDiff:         subBid.hasDiff,
+      subBidNote:            subBid.note,
       plaintext:             plaintextStr,
       // Pre-escaped variant of `plaintext`, safe to drop directly between
       // double quotes in a JSON string template (e.g. an esignatures.com

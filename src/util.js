@@ -32,7 +32,14 @@ window.SCW = window.SCW || {};
 //   done('rows=' + n);
 // Flip on in the console: SCW.perfLog = true, then reload the page.
 (function (namespace) {
-  namespace.perfLog = namespace.perfLog || false;
+  // Persist perfLog across reloads via localStorage so LOAD-time handlers
+  // (which only fire on a fresh render — device-worksheet.transformView, etc.)
+  // can be profiled. Turn on once: localStorage.scwPerfLog = '1'; then reload
+  // and call SCW.perfReport(). Off: localStorage.removeItem('scwPerfLog').
+  namespace.perfLog = namespace.perfLog || (function () {
+    try { return window.localStorage && localStorage.scwPerfLog === '1'; }
+    catch (e) { return false; }
+  })();
   var _now = (typeof performance !== 'undefined' && performance.now)
     ? function () { return performance.now(); }
     : function () { return Date.now(); };
@@ -43,6 +50,91 @@ window.SCW = window.SCW || {};
       var ms = (_now() - t0).toFixed(1);
       console.log('[SCW perf] ' + label + ': ' + ms + 'ms' + (extra ? '  (' + extra + ')' : ''));
     };
+  };
+  namespace._now = _now;
+
+  // ── Per-handler render timing accumulator ────────────────────
+  // onViewRender / onSceneRender feed every feature handler through here
+  // (see recordHandlerTiming below). _perfTotals keeps cumulative cost
+  // PER label (e.g. "view_3962 .scwGroupCollapse") so you can see which
+  // feature dominates a single load AND the stacked cost across the burst
+  // of re-renders an interaction triggers. All free when perfLog is off.
+  namespace._perfTotals = namespace._perfTotals || {};
+  namespace.recordHandlerTiming = function (label, ms) {
+    var t = namespace._perfTotals;
+    var rec = t[label] || (t[label] = { calls: 0, totalMs: 0, maxMs: 0 });
+    rec.calls++;
+    rec.totalMs += ms;
+    if (ms > rec.maxMs) rec.maxMs = ms;
+  };
+  // Console helpers — call after reproducing the slow interaction:
+  //   SCW.perfReport()  → table sorted by cumulative ms (worst first)
+  //   SCW.perfReset()   → zero the totals (call before a fresh interaction)
+  namespace.perfReport = function () {
+    var rows = Object.keys(namespace._perfTotals).map(function (label) {
+      var r = namespace._perfTotals[label];
+      return {
+        handler:  label,
+        calls:    r.calls,
+        'total ms': +r.totalMs.toFixed(1),
+        'avg ms':   +(r.totalMs / r.calls).toFixed(1),
+        'max ms':   +r.maxMs.toFixed(1)
+      };
+    }).sort(function (a, b) { return b['total ms'] - a['total ms']; });
+    if (console.table) console.table(rows); else console.log(rows);
+    return rows;
+  };
+  namespace.perfReset = function () { namespace._perfTotals = {}; };
+
+  // ── Render-churn tracer (DevTools helper) ────────────────────
+  // SCW.traceChurn('view_3586') instruments a view for ~8s (override with
+  // a 2nd arg in ms): logs every knack-view-render with a timestamp delta,
+  // and wraps the view's model.fetch() to log each call WITH its caller
+  // stack — so a single edit reveals exactly how many renders/fetches it
+  // triggers and WHO fired them. Prints a summary table on stop. Returns a
+  // stop() fn for early teardown. Behavior-inert until called.
+  namespace.traceChurn = function (viewId, windowMs) {
+    if (typeof $ === 'undefined' || typeof Knack === 'undefined') {
+      console.warn('[churn] jQuery/Knack not ready'); return function () {};
+    }
+    windowMs = windowMs || 8000;
+    var t0 = _now();
+    var renders = [];
+    var fetches = [];
+    var ev = 'knack-view-render.' + viewId + '.scwChurnTrace';
+    var v = Knack.views && Knack.views[viewId];
+    var origFetch = (v && v.model && typeof v.model.fetch === 'function') ? v.model.fetch : null;
+    if (origFetch) {
+      v.model.fetch = function () {
+        var at = (_now() - t0);
+        var stack = ((new Error()).stack || '').split('\n').slice(2, 7).join('\n');
+        fetches.push({ atMs: +at.toFixed(0), via: stack.split('\n')[0].trim() });
+        console.log('[churn] model.fetch(' + viewId + ') @' + at.toFixed(0) + 'ms\n' + stack);
+        return origFetch.apply(this, arguments);
+      };
+    } else {
+      console.warn('[churn] no model.fetch to wrap for ' + viewId + ' (fetch calls won\'t be traced)');
+    }
+    var onRender = function () {
+      var at = (_now() - t0);
+      renders.push(+at.toFixed(0));
+      console.log('[churn] knack-view-render ' + viewId + ' #' + renders.length + ' @' + at.toFixed(0) + 'ms');
+    };
+    $(document).on(ev, onRender);
+    var stopped = false;
+    function stop() {
+      if (stopped) return; stopped = true;
+      $(document).off(ev, onRender);
+      if (origFetch && v && v.model) { try { v.model.fetch = origFetch; } catch (e) {} }
+      console.log('[churn] SUMMARY ' + viewId + ': ' + renders.length +
+        ' knack-view-render, ' + fetches.length + ' model.fetch in ' +
+        windowMs + 'ms. render times(ms)=' + JSON.stringify(renders));
+      if (fetches.length && console.table) console.table(fetches);
+    }
+    setTimeout(stop, windowMs);
+    console.log('[churn] tracing ' + viewId + ' for ' + windowMs +
+      'ms — do ONE laggy interaction now (edit a cell / toggle a chip).');
+    return stop;
   };
 })(window.SCW);
 
@@ -119,6 +211,31 @@ window.SCW = window.SCW || {};
   }
   namespace.showRenderError = showRenderErrorOverlay;
 
+  // ── Render-handler timing wrapper ──────────────────────────────
+  // Wraps a feature's render handler so that, when SCW.perfLog is on,
+  // each invocation records its elapsed ms under `timingLabel` (the
+  // view/scene id + namespace). This is the single choke point every
+  // feature flows through, so it gives a per-feature breakdown of a
+  // slow render with zero per-module instrumentation. Fully inert (a
+  // straight pass-through) when perfLog is off — no timing reads, no
+  // try/finally overhead beyond the function call.
+  function timedHandler(handler, timingLabel) {
+    return function scwTimedHandler() {
+      if (!namespace.perfLog) return handler.apply(this, arguments);
+      var t0 = namespace._now ? namespace._now() : Date.now();
+      try {
+        return handler.apply(this, arguments);
+      } finally {
+        var ms = (namespace._now ? namespace._now() : Date.now()) - t0;
+        if (typeof namespace.recordHandlerTiming === 'function') {
+          namespace.recordHandlerTiming(timingLabel, ms);
+        }
+        // Per-call line for live watching; SCW.perfReport() for the rollup.
+        console.log('[SCW perf] ' + timingLabel + ': ' + ms.toFixed(1) + 'ms');
+      }
+    };
+  }
+
   function safeHandler(handler, contextLabel) {
     return function scwSafeHandler() {
       try {
@@ -175,16 +292,20 @@ window.SCW = window.SCW || {};
 
   namespace.onViewRender = function onViewRender(viewId, handler, ns) {
     if (!viewId || typeof handler !== 'function') return;
-    var eventName = 'knack-view-render.' + viewId + normalizeNamespace(ns);
-    var wrapped  = safeHandler(handler, 'onViewRender(' + viewId + ', ns=' + (ns || '.scw') + ')');
+    var nsNorm = normalizeNamespace(ns);
+    var eventName = 'knack-view-render.' + viewId + nsNorm;
+    var timed = timedHandler(handler, viewId + ' ' + nsNorm);
+    var wrapped = safeHandler(timed, 'onViewRender(' + viewId + ', ns=' + (ns || '.scw') + ')');
     $(document).off(eventName).on(eventName, wrapped);
     scheduleCatchUp(eventName, viewId, 'view');
   };
 
   namespace.onSceneRender = function onSceneRender(sceneId, handler, ns) {
     if (!sceneId || typeof handler !== 'function') return;
-    var eventName = 'knack-scene-render.' + sceneId + normalizeNamespace(ns);
-    var wrapped  = safeHandler(handler, 'onSceneRender(' + sceneId + ', ns=' + (ns || '.scw') + ')');
+    var nsNorm = normalizeNamespace(ns);
+    var eventName = 'knack-scene-render.' + sceneId + nsNorm;
+    var timed = timedHandler(handler, sceneId + ' ' + nsNorm);
+    var wrapped = safeHandler(timed, 'onSceneRender(' + sceneId + ', ns=' + (ns || '.scw') + ')');
     $(document).off(eventName).on(eventName, wrapped);
     scheduleCatchUp(eventName, sceneId, 'scene');
   };

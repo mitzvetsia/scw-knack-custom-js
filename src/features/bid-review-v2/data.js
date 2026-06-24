@@ -56,16 +56,20 @@
     }
   }
 
-  // Debounce — multiple source views often render in the same tick on
-  // initial load (Knack fires them sequentially). One notify per
-  // animation frame is enough.
+  // Debounce — an edit refetches SEVERAL source views, and each one's fetch
+  // completes in its OWN frame, firing a separate knack-view-render. A
+  // per-frame (rAF) coalesce therefore still produced one render PER view =
+  // several rebuilds + several scroll-anchor passes per edit ("several jumps
+  // to the bottom"). Use a short TRAILING debounce so the whole burst of
+  // refetch renders collapses into ONE render (one rebuild, one anchor pass).
   var _notifyTimer = null;
+  var NOTIFY_DEBOUNCE_MS = 90;
   function notifyDebounced() {
-    if (_notifyTimer) return;
-    _notifyTimer = requestAnimationFrame(function () {
+    if (_notifyTimer) clearTimeout(_notifyTimer);
+    _notifyTimer = setTimeout(function () {
       _notifyTimer = null;
       notify();
-    });
+    }, NOTIFY_DEBOUNCE_MS);
   }
 
   /**
@@ -83,7 +87,9 @@
     function finish() {
       if (settled) return;
       settled = true;
-      notify();
+      // Coalesce with any knack-view-render notifies the same fetches fired,
+      // so the whole refetch settles into a single render.
+      notifyDebounced();
     }
     function oneDone() { if (--pending <= 0) finish(); }
     for (var i = 0; i < keys.length; i++) {

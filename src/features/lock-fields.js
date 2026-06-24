@@ -14,7 +14,12 @@
   // CONFIG
   // ============================================================
   const VIEWS = [
-    {
+    // view_3610 (build-SOW SOW Line Items) is now HIDDEN — the v2 worksheet
+    // (sourced from view_3962) is the only editable surface, and it renders its
+    // own locked-field state. Running these row locks across the hidden grid's
+    // 333 rows on every render was pure wasted main-thread work. Disabled.
+    // Re-enable by restoring the entry below if the v1 grid is ever unhidden.
+    /* {
       viewId: "view_3610",
       rules: [
         {
@@ -30,7 +35,7 @@
           message: "This field is locked until map connections = Yes"
         }
       ]
-    }
+    } */
   ];
 
   // ============================================================

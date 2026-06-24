@@ -30,7 +30,12 @@
   'use strict';
 
   // ── Config ──────────────────────────────────────────────────────
-  var TARGET_VIEWS = ['view_3512', 'view_3505', 'view_3559', 'view_3577', 'view_3602', 'view_3313', 'view_3586', 'view_3596', 'view_3997', 'view_3608', 'view_3610', 'view_3617', 'view_3915', 'view_4056', 'view_3921', 'view_3800', 'view_3803'];
+  // NOTE: view_3586 + view_3610 (sales/ops build SOW) + view_3505 (survey)
+  // removed — fully v2; worksheet-v2/photos.js renders those pages' photo
+  // strips. Other v2-cutover views (view_3915/4056/3921) remain here for now
+  // but are inert via the offsetParent (display:none) guard in processView;
+  // they'll be pulled surface-by-surface as each is de-v1'd.
+  var TARGET_VIEWS = ['view_3512', 'view_3559', 'view_3577', 'view_3602', 'view_3313', 'view_3596', 'view_3997', 'view_3608', 'view_3617', 'view_3915', 'view_4056', 'view_3921', 'view_3800', 'view_3803'];
   var CSS_ID       = 'scw-inline-photo-row-css';
   var ROW_CLS      = 'scw-inline-photo-row';
   var STRIP_CLS    = 'scw-inline-photo-strip';
@@ -56,11 +61,9 @@
   // View-specific add-photo URL path segments
   var ADD_PHOTO_PATHS = {
     'view_3313': 'add-photo-to-sow-line-item',
-    'view_3610': 'add-photo-to-sow-line-item',
     'view_3915': 'add-photo-to-install-line-item',
     'view_4056': 'add-photo-to-install-line-item',
     'view_3921': 'add-photo-to-sow-line-item',
-    'view_3586': 'add-photo-to-sow-line-item',
     'view_3559': 'add-photo-to-mdf-idf',
     'view_3577': 'add-photo-to-mdf-idf2',
     'view_3602': 'add-photo-to-mdf-idf2',
@@ -426,14 +429,6 @@
       '#view_3512 td.field_2446,',
       '#view_3512 th.field_2447,',
       '#view_3512 td.field_2447,',
-      '#view_3505 th.field_114,',
-      '#view_3505 td.field_114,',
-      '#view_3505 th.field_2445,',
-      '#view_3505 td.field_2445,',
-      '#view_3505 th.field_2446,',
-      '#view_3505 td.field_2446,',
-      '#view_3505 th.field_2447,',
-      '#view_3505 td.field_2447,',
       '#view_3559 th.field_114,',
       '#view_3559 td.field_114,',
       '#view_3559 th.field_2445,',
@@ -458,6 +453,14 @@
       '#view_3602 td.field_2446,',
       '#view_3602 th.field_2447,',
       '#view_3602 td.field_2447,',
+      '#view_3617 th.field_114,',
+      '#view_3617 td.field_114,',
+      '#view_3617 th.field_2445,',
+      '#view_3617 td.field_2445,',
+      '#view_3617 th.field_2446,',
+      '#view_3617 td.field_2446,',
+      '#view_3617 th.field_2447,',
+      '#view_3617 td.field_2447,',
       '#view_3313 th.field_114,',
       '#view_3313 td.field_114,',
       '#view_3313 th.field_2445,',
@@ -466,14 +469,6 @@
       '#view_3313 td.field_2446,',
       '#view_3313 th.field_2447,',
       '#view_3313 td.field_2447,',
-      '#view_3610 th.field_114,',
-      '#view_3610 td.field_114,',
-      '#view_3610 th.field_2445,',
-      '#view_3610 td.field_2445,',
-      '#view_3610 th.field_2446,',
-      '#view_3610 td.field_2446,',
-      '#view_3610 th.field_2447,',
-      '#view_3610 td.field_2447,',
       '#view_3921 th.field_114,',
       '#view_3921 td.field_114,',
       '#view_3921 th.field_2445,',
@@ -482,14 +477,6 @@
       '#view_3921 td.field_2446,',
       '#view_3921 th.field_2447,',
       '#view_3921 td.field_2447,',
-      '#view_3586 th.field_114,',
-      '#view_3586 td.field_114,',
-      '#view_3586 th.field_2445,',
-      '#view_3586 td.field_2445,',
-      '#view_3586 th.field_2446,',
-      '#view_3586 td.field_2446,',
-      '#view_3586 th.field_2447,',
-      '#view_3586 td.field_2447,',
       '#view_3915 th.field_114,',
       '#view_3915 td.field_114,',
       '#view_3915 th.field_2445,',
@@ -593,7 +580,7 @@
   // Also covers the deploy page (view_3915) which uses the
   // same #team-calendar/project-dashboard/{id}/deploy/{id}/
   // base path — extracted by getBuildSowBasePath().
-  var SOW_VIEWS = { 'view_3313': true, 'view_3577': true, 'view_3602': true, 'view_3586': true, 'view_3610': true, 'view_3921': true, 'view_3596': true, 'view_3997': true, 'view_3915': true, 'view_4056': true };
+  var SOW_VIEWS = { 'view_3313': true, 'view_3577': true, 'view_3602': true, 'view_3921': true, 'view_3596': true, 'view_3997': true, 'view_3915': true, 'view_4056': true };
 
   /** Build the edit-photo hash path for a photo record. */
   function editPhotoHash(photoRecordId, viewId) {
@@ -1281,6 +1268,17 @@
     var viewEl = document.getElementById(viewId);
     if (!viewEl) return;
 
+    // Skip hidden views entirely. On worksheet-v2 pages the native Knack
+    // table is `display:none !important` (v2 renders its own cards AND its
+    // own photo strips via worksheet-v2/photos.js), so building inline-
+    // photo-row strips in that hidden table is pure invisible work — it was
+    // the single heaviest handler on view_3586 (~10ms PER render) and the
+    // user never sees any of it. offsetParent is null whenever the element
+    // or any ancestor is display:none, so this one check covers every
+    // v2-cutover view (view_3586/3915/4056/3505/3610) automatically, and
+    // self-corrects on any scene where the view IS visible (v1 still primary).
+    if (viewEl.offsetParent === null) return;
+
     var table = viewEl.querySelector('table.kn-table');
     if (!table) return;
 
@@ -1297,6 +1295,13 @@
       // Skip rows without a record ID
       var lineItemId = tr.getAttribute('id');
       if (!lineItemId) continue;
+
+      // Idempotency: if this data row already has its photo row injected
+      // (a partial re-render that didn't wipe it, or a debounced second
+      // pass), don't build and inject a duplicate.
+      var existingNext = tr.nextElementSibling;
+      if (existingNext && existingNext.classList &&
+          existingNext.classList.contains(ROW_CLS)) continue;
 
       // Get the label for alt text
       var labelCell = tr.querySelector('td.field_2364') || tr.querySelector('td.field_1642');
@@ -1506,13 +1511,30 @@
     }
   });
 
+  // Debounced per-view processing. Knack re-renders a view several times
+  // for a single user action (inline edit → model.fetch → render, plus our
+  // own cascade refetches), and processView rebuilds every photo row from
+  // scratch (~10-40ms each) on every one of them. Coalescing the burst into
+  // a single rebuild is the dominant win — photo rows already vanish/reappear
+  // on each render, so the short delay is imperceptible, and the idempotency
+  // guard in processView keeps a surviving row from being duplicated.
+  var PROCESS_DEBOUNCE_MS = 50;
+  var _processTimers = {};
+  function scheduleProcess(vid) {
+    if (_processTimers[vid]) clearTimeout(_processTimers[vid]);
+    _processTimers[vid] = setTimeout(function () {
+      _processTimers[vid] = null;
+      var done = (window.SCW && SCW.perf)
+        ? SCW.perf('inline-photo-row ' + vid) : null;
+      processView(vid);
+      if (done) done();
+    }, PROCESS_DEBOUNCE_MS);
+  }
+
   for (var v = 0; v < TARGET_VIEWS.length; v++) {
     (function (vid) {
       $(document).on('knack-view-render.' + vid, function () {
-        var done = (window.SCW && SCW.perf)
-          ? SCW.perf('inline-photo-row ' + vid) : null;
-        processView(vid);
-        if (done) done();
+        scheduleProcess(vid);
       });
     })(TARGET_VIEWS[v]);
   }
