@@ -375,10 +375,35 @@
       if (!l1Id || !sourceKey) return;
 
       if (!ns.state || typeof ns.state.toggleL1 !== 'function') return;
-      ns.state.toggleL1(sourceKey, l1Id);
+      var _newState = ns.state.toggleL1(sourceKey, l1Id);
+      var _open = _newState && _newState[l1Id] === 'open';
 
-      // Re-render the affected view from its current data snapshot.
-      if (ns.data && ns.render) {
+      // Collapsing/expanding a group is a pure visibility flip — the cards,
+      // order, summaries and warnings are all unchanged. So toggle the open
+      // classes on the EXISTING L1 block instead of rebuilding the whole grid
+      // (a full renderView was ~60-90ms / 168 cards just to hide one section —
+      // the felt lag when collapsing MDF groups). The card chevron already
+      // works this way. v2's accordion is non-exclusive (toggleL1 flips only
+      // this L1), so no other block changes.
+      var _container = document.getElementById('scw-ws-v2-' + sourceKey);
+      var _block = null;
+      if (_container) {
+        var _blocks = _container.querySelectorAll('.scw-ws-v2-l1');
+        for (var _bi = 0; _bi < _blocks.length; _bi++) {
+          if (_blocks[_bi].getAttribute('data-scw-ws-v2-l1') === l1Id) {
+            _block = _blocks[_bi]; break;
+          }
+        }
+      }
+      if (_block) {
+        _block.classList.toggle('scw-ws-v2-l1--open', _open);
+        var _head = _block.querySelector('[data-scw-ws-v2-l1-toggle]');
+        if (_head) {
+          _head.classList.toggle('scw-ws-v2-l1-head--open', _open);
+          _head.setAttribute('aria-expanded', _open ? 'true' : 'false');
+        }
+      } else if (ns.data && ns.render) {
+        // Block not in the DOM (shouldn't happen) — fall back to a full render.
         ns.render.renderView(sourceKey, ns.data.readRecords(sourceKey));
       }
     });
