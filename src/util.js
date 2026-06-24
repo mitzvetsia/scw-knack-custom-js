@@ -32,7 +32,14 @@ window.SCW = window.SCW || {};
 //   done('rows=' + n);
 // Flip on in the console: SCW.perfLog = true, then reload the page.
 (function (namespace) {
-  namespace.perfLog = namespace.perfLog || false;
+  // Persist perfLog across reloads via localStorage so LOAD-time handlers
+  // (which only fire on a fresh render — device-worksheet.transformView, etc.)
+  // can be profiled. Turn on once: localStorage.scwPerfLog = '1'; then reload
+  // and call SCW.perfReport(). Off: localStorage.removeItem('scwPerfLog').
+  namespace.perfLog = namespace.perfLog || (function () {
+    try { return window.localStorage && localStorage.scwPerfLog === '1'; }
+    catch (e) { return false; }
+  })();
   var _now = (typeof performance !== 'undefined' && performance.now)
     ? function () { return performance.now(); }
     : function () { return Date.now(); };
