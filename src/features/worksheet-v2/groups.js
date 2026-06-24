@@ -233,12 +233,29 @@
       if (mlc.id && mlc.label && !mdfLabelToId[mlc.label]) mdfLabelToId[mlc.label] = mlc.id;
     }
 
+    // ── DEBUG: enable with  SCW.worksheetV2.DEBUG_GROUPS = true  then
+    //    re-render (edit any cell, or toggle a group). Logs every record's
+    //    MDF id/label vs. the resolved L1 group id, flags duplicate L1
+    //    labels (same name → different id = a split group), and dumps the
+    //    Camera/Reader bucket on its own. Gated so it never spams normally.
+    var DEBUG = !!(window.SCW && window.SCW.worksheetV2 && window.SCW.worksheetV2.DEBUG_GROUPS);
+    var CAM_BUCKET = '6481e5ba38f283002898113c';
+    var _dbg = [];
+
     for (var i = 0; i < records.length; i++) {
       var rec = records[i];
       var inMountingBucket = bucketIdOf(rec) === MOUNTING_HARDWARE_BUCKET;
       // Attached accessory → hide. Authoritative test: this record's
       // id is referenced by SOME parent's field_1958_raw.
-      if (rec.id && attachedIds[rec.id]) continue;
+      if (rec.id && attachedIds[rec.id]) {
+        if (DEBUG) _dbg.push({
+          rec: rec.id, label: readPlain(rec, FIELD_LABEL), bucket: bucketIdOf(rec),
+          status: 'HIDDEN (attached accessory)',
+          mdfRawId: '', mdfRawLabel: '', mdfDisplay: readPlain(rec, FIELD_MDF_IDF),
+          l1Id: '', l1Label: ''
+        });
+        continue;
+      }
 
       var l1Conn   = readConn(rec, FIELD_MDF_IDF);
       var l2Conn   = readConn(rec, FIELD_BUCKET);
@@ -335,6 +352,13 @@
         };
         l1Map[l1Id] = l1;
       }
+      if (DEBUG) _dbg.push({
+        rec: rec.id, label: readPlain(rec, FIELD_LABEL), bucket: bucketIdOf(rec),
+        status: isSynthetic ? 'SYNTHETIC L1' : 'grouped',
+        mdfRawId: l1Conn.id || '(no _raw)', mdfRawLabel: l1Conn.label || '',
+        mdfDisplay: readPlain(rec, FIELD_MDF_IDF),
+        l1Id: l1Id, l1Label: l1Label
+      });
       l1.recordCount++;
       if (sortOrd != null && sortOrd < l1.sortOrder) l1.sortOrder = sortOrd;
 
@@ -352,6 +376,36 @@
       }
       if (sortOrd != null && sortOrd < l2.sortOrder) l2.sortOrder = sortOrd;
       l2.records.push(rec);
+    }
+
+    if (DEBUG) {
+      console.groupCollapsed('[scw-ws-v2] buildGroupTree — ' + records.length +
+        ' records in, ' + _dbg.length + ' placed/skipped  (MDF=' + FIELD_MDF_IDF +
+        ' bucket=' + FIELD_BUCKET + ')');
+      console.log('ALL records:'); console.table(_dbg);
+      var cams = _dbg.filter(function (d) { return d.bucket === CAM_BUCKET; });
+      console.log('CAMERA/READER bucket only (' + cams.length + '):'); console.table(cams);
+      // Same MDF label resolving to >1 L1 id = a split group (cards scattered
+      // across duplicate headers). Same MDF id under >1 label = relabeled.
+      var idsByLabel = {}, labelsById = {};
+      _dbg.forEach(function (d) {
+        if (!d.l1Label) return;
+        (idsByLabel[d.l1Label] = idsByLabel[d.l1Label] || {})[d.l1Id] = 1;
+        (labelsById[d.l1Id] = labelsById[d.l1Id] || {})[d.l1Label] = 1;
+      });
+      Object.keys(idsByLabel).forEach(function (lbl) {
+        var ids = Object.keys(idsByLabel[lbl]);
+        if (ids.length > 1) console.warn('SPLIT GROUP — label "' + lbl + '" → ' + ids.length + ' L1 ids:', ids);
+      });
+      // Records whose MDF DISPLAY is set but landed in a synthetic/other group.
+      _dbg.forEach(function (d) {
+        if (d.mdfDisplay && d.l1Label && d.mdfDisplay !== d.l1Label) {
+          console.warn('MDF MISMATCH —', d.label, '(', d.rec, ') shows MDF "' +
+            d.mdfDisplay + '" but grouped under "' + d.l1Label + '"  [rawId=' +
+            d.mdfRawId + ']');
+        }
+      });
+      console.groupEnd();
     }
 
     // Second pass: flatten l1Map / l2Map into ordered arrays
