@@ -73,6 +73,10 @@
     children:       'field_2207',   // mirror "my children" array
     parent:         'field_2464',   // accessory → parent line item
     // photo sub-records (DOC_photos object, connected to the line item)
+    warningCount:   'field_2949',   // SYS_incomplete photos count (SOW equiv of
+                                    // survey's field_2454) — lets warnings.js read
+                                    // the precomputed count instead of DOM-scraping
+                                    // every row each render (the 476ms hot spot)
     photoImage:     'field_771',
     photoType:      'field_2445',
     photoRequired:  'field_2446',
