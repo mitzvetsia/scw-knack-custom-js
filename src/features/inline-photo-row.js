@@ -1289,6 +1289,17 @@
     var viewEl = document.getElementById(viewId);
     if (!viewEl) return;
 
+    // Skip hidden views entirely. On worksheet-v2 pages the native Knack
+    // table is `display:none !important` (v2 renders its own cards AND its
+    // own photo strips via worksheet-v2/photos.js), so building inline-
+    // photo-row strips in that hidden table is pure invisible work — it was
+    // the single heaviest handler on view_3586 (~10ms PER render) and the
+    // user never sees any of it. offsetParent is null whenever the element
+    // or any ancestor is display:none, so this one check covers every
+    // v2-cutover view (view_3586/3915/4056/3505/3610) automatically, and
+    // self-corrects on any scene where the view IS visible (v1 still primary).
+    if (viewEl.offsetParent === null) return;
+
     var table = viewEl.querySelector('table.kn-table');
     if (!table) return;
 
