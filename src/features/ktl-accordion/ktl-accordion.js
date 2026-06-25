@@ -351,8 +351,13 @@
          5) Hide duplicate KTL header and shrink link
          ══════════════════════════════════════════════════ */
 
-      /* Hide the view-header that contains the KTL button (duplicate title) */
-      '.scw-ktl-accordion .view-header:has(.ktlHideShowButton) {',
+      /* Hide the native Knack view-header (duplicate title + raw keyword
+         description like _hsv= / _scwmenu= / _hc=) — our own
+         .scw-ktl-accordion__header replaces it. Covers BOTH the KTL button
+         path and standalone (KTL-off) accordions, and unlike neutralizeHost()'s
+         inline style it survives Knack innerHTML re-renders that recreate a
+         fresh, un-hidden .view-header. */
+      '.scw-ktl-accordion .view-header {',
       '  display: none !important;',
       '}',
 
