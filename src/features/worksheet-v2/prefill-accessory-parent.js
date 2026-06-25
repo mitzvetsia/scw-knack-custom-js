@@ -29,6 +29,27 @@
     return matches && matches.length ? matches[matches.length - 1] : '';
   }
 
+  /** The LIVE Add-Accessory view element.
+   *
+   *  Why this exists: Knack does not always tear down the previous
+   *  Add-Accessory modal before rendering the next one, so the DOM can hold
+   *  TWO elements with id="view_3580" (and duplicate field ids inside them).
+   *  Global `#view_3580-field_XXXX` / getElementById lookups then resolve to
+   *  the STALE modal — which is exactly why prefill worked on the first add
+   *  but silently wrote to the wrong (dead) form on every subsequent one,
+   *  leaving the visible form with Knack's bare-id default (an unresolved
+   *  connection). querySelectorAll('#id') returns ALL duplicate-id nodes, so
+   *  pick the visible one (offsetParent set), else the last in DOM order
+   *  (most recently rendered). Every selector below is scoped INTO this. */
+  function activeView() {
+    var all = document.querySelectorAll('[id="' + ADD_ACCESSORY_VIEW + '"]');
+    if (!all.length) return null;
+    for (var i = all.length - 1; i >= 0; i--) {
+      if (all[i].offsetParent !== null) return all[i];   // visible wins
+    }
+    return all[all.length - 1];                          // else newest in DOM
+  }
+
   /** Find a record's attributes in view_3962's model. Iterates .models
    *  directly — Backbone Collection.get() is unreliable on Knack's
    *  model and can return nothing even when .models is populated
@@ -68,14 +89,18 @@
    *  the accessory product picker and rewrite the Chosen <select> in
    *  place. We rely on Chosen\'s native <optgroup> rendering — Knack\'s
    *  form submit just reads the selected value as before. */
-  function rewriteProductPicker(parentProductId) {
+  function rewriteProductPicker(viewEl, parentProductId) {
     // Without the parent\'s product id we can\'t compatibility-filter.
     // The catalog spans EVERY enabled product, so rewriting here would
     // REPLACE Knack\'s own query-filtered options with the full catalog
     // — leave the native picker untouched instead.
-    if (!parentProductId) return;
-    var $select = window.jQuery && jQuery('#' + ADD_ACCESSORY_VIEW + '-' + PRODUCT_FIELD);
-    if (!$select || !$select.length) return;
+    if (!parentProductId || !viewEl || !window.jQuery) return;
+    // Scope to THIS form so a lingering stale modal can't be rewritten
+    // instead of the live one (same duplicate-id hazard as prefill).
+    var $select = jQuery(viewEl).find(
+      '[id="' + ADD_ACCESSORY_VIEW + '-' + PRODUCT_FIELD + '"]'
+    ).first();
+    if (!$select.length) return;
     var catalog = (window.SCW && window.SCW.mountingBoxProducts) || [];
     if (!catalog.length) return; // snippet hasn\'t loaded yet — leave Knack\'s default
 
@@ -158,13 +183,19 @@
     $select.trigger('liszt:updated');
   }
 
-  function prefill() {
+  function prefill(viewEl) {
     var parentId = lastIdInHash();
-    if (!parentId) return;
-    var $select = window.jQuery && jQuery('#' + ADD_ACCESSORY_VIEW + '-' + PARENT_FIELD);
-    if (!$select || !$select.length) return;
-    // Skip if Knack already populated something.
-    if ($select.val() && $select.val().length) return;
+    if (!parentId || !viewEl || !window.jQuery) return;
+    // Scope to THIS form (not a global #id that can hit a stale modal).
+    var $select = jQuery(viewEl).find(
+      '[id="' + ADD_ACCESSORY_VIEW + '-' + PARENT_FIELD + '"]'
+    ).first();
+    if (!$select.length) return;
+    // Idempotent: only skip when THIS form already points at the right
+    // parent. The old guard ("skip if any value") mis-fired on a stale
+    // modal's leftover value and on a different parent's value — leaving
+    // the live form unprefilled. Re-derive from the current URL every time.
+    if ($select.val() === parentId) return;
 
     var label = lookupLabel(parentId) || parentId;
     // Inject the option (Knack\'s connection-picker normally lazy-loads
@@ -181,8 +212,13 @@
     // search-style connection picker expects a URL-encoded JSON array
     // (e.g. %5B%22<id>%22%5D), NOT the bare id — bare id makes submit
     // post the visible label as a string instead of resolving the
-    // connection. Match the format used by clone-sow-to-project.
-    var $hidden = jQuery('#kn-input-' + PARENT_FIELD + ' input.connection[name="' + PARENT_FIELD + '"]');
+    // connection. Match the format used by clone-sow-to-project. Scoped to
+    // THIS form so a lingering stale modal can't steal the write (the bug:
+    // the live form kept Knack's bare-id default → unresolved connection →
+    // the accessory product filter that keys off this parent broke).
+    var $hidden = jQuery(viewEl).find(
+      'input.connection[name="' + PARENT_FIELD + '"]'
+    );
     if ($hidden.length) {
       $hidden.val(encodeURIComponent(JSON.stringify([parentId])));
     }
@@ -297,10 +333,14 @@
   }
 
   function applyAll() {
-    prefill();
+    // Resolve the LIVE form once and thread it through — every write must
+    // target the same active modal, never a stale duplicate left in the DOM.
+    var viewEl = activeView();
+    if (!viewEl) return;
+    prefill(viewEl);
     var parentId = lastIdInHash();
     var parentProductId = parentId ? lookupParentProductId(parentId) : '';
-    rewriteProductPicker(parentProductId);
+    rewriteProductPicker(viewEl, parentProductId);
     // buildCustomShell(parentProductId);  // paused — verify parent prefill first
   }
 
