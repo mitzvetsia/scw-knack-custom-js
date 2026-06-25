@@ -43,6 +43,14 @@
     'view_3602': 'view_3654',           // MDF & IDFs ← menu
     'view_3586': 'view_3450',           // SOW Line Items ← menu
     'view_3471': 'view_3787',           // Licenses ← menu
+    // scene_1085 (Build SOWs). KTL is gated off on this scene, so the
+    // _scwMenu keyword is no longer in window.ktlKeywords — map explicitly
+    // (the most reliable lookup) so the Add buttons still absorb into the
+    // standalone accordions instead of sitting loose on the page.
+    'view_3325': 'view_3428',           // Scopes of Work ← Add New SOW
+    'view_3577': 'view_3436',           // Manage MDF/IDFs ← Add MDF/IDF
+    'view_3949': 'view_3964',           // Site Maps & Other Files ← Add Document
+    'view_3369': 'view_3877',           // Licenses ← Add License or Recurring Service
   };
 
   // ── State ──────────────────────────────────────────
@@ -236,8 +244,14 @@
     try {
       var model = getViewModel(viewKey);
       if (model) {
-        var attrs = model.attributes || model;
-        var sources = [attrs.description, attrs.title, attrs.name];
+        var attrs = model.attributes || {};
+        // Knack stores the keyword text on model.view.* (description/title);
+        // model.attributes.* is often empty for these, which is why the
+        // KTL-off fallback was silently missing. Read both, view.* first.
+        var mview = model.view || {};
+        var sources = [mview.description, mview.title, mview.name,
+                       attrs.description, attrs.title, attrs.name,
+                       model.description, model.title, model.name];
         for (var s = 0; s < sources.length; s++) {
           if (typeof sources[s] !== 'string') continue;
           var match = sources[s].match(/_scwMenu=([^\s<]+)/i);

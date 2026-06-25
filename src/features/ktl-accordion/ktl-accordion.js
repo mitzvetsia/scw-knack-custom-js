@@ -958,6 +958,20 @@
     } catch (e) { return ''; }
   }
 
+  /** Raw view title from the Knack model. Available as soon as the view
+   *  object exists — unlike the rendered `.kn-title`, it isn't subject to the
+   *  DOM-render race that left standalone headers stuck on the "Section"
+   *  fallback when KTL is gated off. Mirrors viewDescription()'s model paths. */
+  function viewTitle(viewKey) {
+    try {
+      var v = window.Knack && Knack.views && Knack.views[viewKey];
+      var m = v && v.model;
+      var t = m && ((m.view && m.view.title) ||
+                    (m.attributes && m.attributes.title));
+      return t ? String(t) : '';
+    } catch (e) { return ''; }
+  }
+
   /** Parse KTL's `_hsv` keyword. Returns null when the view is NOT a
    *  hide/show view, else { defaultExpanded } from `_hsv=1,<bool>` (second
    *  param false = collapsed by default). The `=` immediately after `_hsv`
@@ -980,13 +994,18 @@
   /** Title for a standalone accordion — the view's own header text, with any
    *  leftover KTL keyword tokens stripped (in case KTL isn't stripping them). */
   function nativeTitle(knView) {
+    function clean(s) {
+      return (s || '').replace(/_hsv\w*=\S+/gi, '').replace(/\s+/g, ' ').trim();
+    }
+    // Prefer the Knack model title (populated immediately); fall back to the
+    // rendered header only if the model isn't ready yet.
+    var fromModel = clean(viewTitle(knView && knView.id));
+    if (fromModel) return fromModel;
     var h = knView.querySelector(
       '.view-header .kn-title, .view-header h1, .view-header h2, .view-header h3, ' +
       'h1.kn-title, .kn-title'
     );
-    var t = (h && h.textContent) || '';
-    t = t.replace(/_hsv\w*=\S+/gi, '').replace(/\s+/g, ' ').trim();
-    return t || 'Section';
+    return clean((h && h.textContent) || '') || 'Section';
   }
 
   /** Neutralize legacy KTL/Knack chrome on the host .kn-view (same treatment
@@ -1067,6 +1086,13 @@
         knView.parentNode.insertBefore(orphanWrap, knView);
         ob.appendChild(knView);
         neutralizeHost(knView);
+        // Self-heal a placeholder title: the first build may have run before
+        // the model/header title was available, leaving "Section".
+        var ttlEl = orphanHdr.querySelector('.scw-acc-title');
+        if (ttlEl && (!ttlEl.textContent || ttlEl.textContent.trim() === 'Section')) {
+          var fresh = nativeTitle(knView);
+          if (fresh && fresh !== 'Section') ttlEl.textContent = fresh;
+        }
         knView.setAttribute(ENHANCED, '1');
         return;
       }
