@@ -461,24 +461,29 @@
   }
 
   // ── basis candidates ────────────────────────────────────────────────────
-  // The basis selector must offer EVERY bid that prices line items on THIS
-  // SOW — not just the bids the v2 comparison grid shows as COLUMNS. v2 applies
-  // a sibling-SOW gate (transform.js: field_2387 REL_SOW): a bid whose REL_SOW
-  // names only a sibling SOW is dropped from this SOW's columns so its items
-  // don't clutter the grid. But the basis is an EXPLICIT user designation — if
-  // a bid has items bucketed onto this SOW, the user must be able to pick it as
-  // the basis even when the gate hid its column. Keying the selector off
-  // grid.packages alone meant a SOW whose only touching bids were gated out
-  // showed an EMPTY dropdown ("no choices"), which is exactly what blocks
-  // picking different bids as the basis for different SOWs.
+  // The basis is an EXPLICIT user designation: "this SOW → proposal is built
+  // on THAT bid." So the selector must offer EVERY project bid, not just the
+  // bids the v2 comparison grid shows as COLUMNS for this SOW. There are three
+  // tiers of relevance, all offered, most-relevant first:
   //
-  // Recover the gated-out packages from the grid's OWN rows: buildRow fills
-  // row.cellsByPackage from each bid record's field_2415 (its packages),
-  // independent of the column gate — so any package with a cell on a row of
-  // this grid genuinely touches this SOW. Enrich with name/status from the
-  // bid-package view + a computed on-SOW count so the option reads identically
-  // to a column package. distill() already works off cellsByPackage, so the
-  // diff renders for a recovered basis with no further change.
+  //   1. Column packages (grid.packages) — bids v2 already shows as columns
+  //      here (they price ≥1 line item on this SOW and survived the gate).
+  //   2. Gated-out touching packages — bids that DO price line items on this
+  //      SOW but whose column v2 dropped via its sibling-SOW gate
+  //      (transform.js: field_2387 REL_SOW names only a sibling). Recovered
+  //      from the grid's OWN rows: buildRow fills row.cellsByPackage from each
+  //      bid record's field_2415 independent of the column gate, so any
+  //      package with a cell on a row here genuinely touches this SOW.
+  //   3. Every OTHER project bid (view_3573) — bids that price NO line item on
+  //      this SOW. Without these, a SOW whose bids all bucket onto a SIBLING
+  //      SOW shows an EMPTY dropdown ("no choices"), which is exactly what
+  //      blocks assigning different bids as the basis for different SOWs. They
+  //      carry a 0 on-SOW count so the option honestly reads "no items on this
+  //      SOW" — the user can still designate one (and the diff then correctly
+  //      reports the SOW's lines as un-bid).
+  //
+  // distill() works purely off cellsByPackage, so the diff renders for any
+  // tier with no further change (tier 3 simply has no cells → all-added diff).
   function stripTags(v) {
     return String(v == null ? '' : v).replace(/<[^>]*>/g, '').trim();
   }
@@ -508,8 +513,8 @@
         if (!rows[r].offSow) counts[pid]++;
       }
     }
-    var ids = Object.keys(counts);
-    if (!ids.length) return out;
+
+    // Name/status for any non-column package come from the bid-package view.
     var meta = Object.create(null);
     var pkgs = readView(C.bidPkgViewKey);
     var nameF = C.f && C.f.pkgName, statusF = C.f && C.f.pkgStatus;
@@ -521,23 +526,44 @@
         };
       }
     }
+
+    // Tier 2: gated-out touching packages (real on-SOW count).
+    var touching = Object.keys(counts);
     var extra = [];
-    for (var e = 0; e < ids.length; e++) {
-      var m = meta[ids[e]] || {};
+    for (var e = 0; e < touching.length; e++) {
+      seen[touching[e]] = true;
+      var m = meta[touching[e]] || {};
       extra.push({
-        id: ids[e], bidName: m.bidName || '', name: m.bidName || '',
-        bidStatus: m.bidStatus || '', onSowItemCount: counts[ids[e]], recovered: true
+        id: touching[e], bidName: m.bidName || '', name: m.bidName || '',
+        bidStatus: m.bidStatus || '', onSowItemCount: counts[touching[e]], recovered: true
       });
     }
     extra.sort(function (a, b) { return (a.bidName || '').localeCompare(b.bidName || ''); });
-    return out.concat(extra);
+
+    // Tier 3: every OTHER project bid — so a SOW with no touching bid can still
+    // designate one as its basis. Shown as "no items on this SOW", sorted last.
+    var rest = [];
+    for (var q = 0; q < pkgs.length; q++) {
+      var pk = pkgs[q];
+      if (!pk || !pk.id || seen[pk.id]) continue;
+      seen[pk.id] = true;
+      var mm = meta[pk.id] || {};
+      rest.push({
+        id: pk.id, bidName: mm.bidName || '', name: mm.bidName || '',
+        bidStatus: mm.bidStatus || '', onSowItemCount: 0, offSowOnly: true
+      });
+    }
+    rest.sort(function (a, b) { return (a.bidName || '').localeCompare(b.bidName || ''); });
+
+    return out.concat(extra).concat(rest);
   }
 
   // ── HTML builders ───────────────────────────────────────────────────────
   function pkgOption(p, selId) {
     var bits = [p.bidName || p.name || 'Bid'];
     if (p.bidStatus) bits.push(p.bidStatus);
-    bits.push((p.onSowItemCount || 0) + ' on SOW');
+    var n = p.onSowItemCount || 0;
+    bits.push(n ? (n + ' on SOW') : 'no items on this SOW');
     return '<option value="' + esc(p.id) + '"' + (p.id === selId ? ' selected' : '') +
       '>' + esc(bits.join(' · ')) + '</option>';
   }
