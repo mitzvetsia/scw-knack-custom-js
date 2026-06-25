@@ -88,6 +88,39 @@
     return stripHtml(rec[key] || '');
   }
 
+  // ── field_2404 is MULTI-VALUED ───────────────────────────────
+  // A bid line item's "related SOW line item" connection (field_2404,
+  // FK.relatedSowItem) can point at MORE THAN ONE SOW line item. Reading it
+  // through connectionId() (first id only) silently dropped every connection
+  // past the first — so a bid item linked to line items on two SOWs only ever
+  // registered against the first SOW, and the second SOW rendered "× 0 bids"
+  // even though bid items genuinely point at its line items. These helpers
+  // expose ALL the connected line items and pick the one relevant to a given
+  // SOW. For a single-valued connection they behave exactly like the old
+  // first-only reads (one id in, same id out), so 1:1 bids are unaffected.
+  function relatedSowItemIds(rec) {
+    var conns = connectionAll(rec, FK.relatedSowItem);
+    var out = [];
+    for (var i = 0; i < conns.length; i++) {
+      if (conns[i] && conns[i].id) out.push(conns[i].id);
+    }
+    return out;
+  }
+  // The SOW line item to key a row by, for the SOW currently being built:
+  // prefer the connected line item that belongs to `sowId`; fall back to the
+  // first (or '' when none) so off-SOW / no-context callers behave as before.
+  function pickSowItemForSow(rec, sowId, sowIdsByItem) {
+    var ids = relatedSowItemIds(rec);
+    if (!ids.length) return '';
+    if (sowId && sowIdsByItem) {
+      for (var i = 0; i < ids.length; i++) {
+        var m = sowIdsByItem[ids[i]];
+        if (m && m[sowId]) return ids[i];
+      }
+    }
+    return ids[0];
+  }
+
   // ── per-SOW pivot ────────────────────────────────────────────
 
   function extractSows(records) {
@@ -140,9 +173,15 @@
         if (conns[c] && conns[c].id) sowSet[conns[c].id] = true;
       }
       if (sowIdsByItem) {
-        var siId = connectionId(rec, FK.relatedSowItem);
-        if (siId && sowIdsByItem[siId]) {
-          for (var sk in sowIdsByItem[siId]) sowSet[sk] = true;
+        // field_2404 multi-valued: union the SOWs of EVERY related line item,
+        // not just the first, so a bid item priced against line items on two
+        // SOWs buckets into both grids.
+        var riConns = connectionAll(rec, FK.relatedSowItem);
+        for (var ri = 0; ri < riConns.length; ri++) {
+          var siId = riConns[ri] && riConns[ri].id;
+          if (siId && sowIdsByItem[siId]) {
+            for (var sk in sowIdsByItem[siId]) sowSet[sk] = true;
+          }
         }
       }
       for (var sid in sowSet) {
@@ -158,7 +197,7 @@
    * package (columns). Row identity is the relatedSowItem connection;
    * records without one get their own rec-keyed row.
    */
-  function buildRowsForSow(records) {
+  function buildRowsForSow(records, sowId, sowIdsByItem) {
     var rowMap = Object.create(null);
     var order  = [];
     for (var i = 0; i < records.length; i++) {
@@ -169,15 +208,18 @@
       var hasBid = connectionAll(rec, FK.bidPackage).length > 0;
       var hasSow = connectionAll(rec, FK.sow).length > 0;
       if (!hasBid && !hasSow) continue;
-      var sowItem = connectionId(rec, FK.relatedSowItem);
+      // field_2404 multi-valued: key by the related line item that belongs to
+      // THIS SOW (so the same bid record can be a matched row on each SOW it
+      // touches, keyed to that SOW's line item). No SOW context → first id.
+      var sowItem = pickSowItemForSow(rec, sowId, sowIdsByItem);
       var key = sowItem ? ('sow::' + sowItem) : ('rec::' + rec.id);
-      if (!rowMap[key]) { rowMap[key] = { meta: rec, cells: [] }; order.push(key); }
+      if (!rowMap[key]) { rowMap[key] = { meta: rec, cells: [], sowItem: sowItem }; order.push(key); }
       rowMap[key].cells.push(rec);
     }
     var rows = [];
     for (var j = 0; j < order.length; j++) {
       var bucket = rowMap[order[j]];
-      rows.push(buildRow(bucket.meta, bucket.cells));
+      rows.push(buildRow(bucket.meta, bucket.cells, bucket.sowItem));
     }
     rows.sort(function (a, b) {
       return (a.displayLabel || '').localeCompare(b.displayLabel || '');
@@ -185,7 +227,7 @@
     return rows;
   }
 
-  function buildRow(meta, cellRecords) {
+  function buildRow(meta, cellRecords, sowItemId) {
     var cellsByPackage = Object.create(null);
     for (var i = 0; i < cellRecords.length; i++) {
       var rec = cellRecords[i];
@@ -235,7 +277,9 @@
     }
     return {
       id:           meta.id,
-      sowItem:      connectionId(meta, FK.relatedSowItem),
+      // Resolved per-SOW by the caller (multi-valued field_2404); falls back to
+      // the first related line item for off-SOW / no-context callers.
+      sowItem:      (sowItemId != null) ? sowItemId : connectionId(meta, FK.relatedSowItem),
       parentId:     connectionId(meta, 'field_2464'),
       requireSubBidSow: raw(meta, 'field_2479'),
       displayLabel: raw(meta, FK.displayLabel),
@@ -618,9 +662,11 @@
         for (var x = 0; x < sc.length; x++) {
           if (sc[x] && sc[x].id && realSowSet[sc[x].id]) return true;
         }
-        var siId = connectionId(rec, FK.relatedSowItem);
-        if (siId && sowIdsByItem[siId]) {
-          for (var sk in sowIdsByItem[siId]) { if (realSowSet[sk]) return true; }
+        // field_2404 multi-valued: any related line item on any real SOW.
+        var ids = relatedSowItemIds(rec);
+        for (var i = 0; i < ids.length; i++) {
+          var m = sowIdsByItem[ids[i]];
+          if (m) { for (var sk in m) { if (realSowSet[sk]) return true; } }
         }
         return false;
       }
@@ -756,9 +802,12 @@
       for (var x = 0; x < sc.length; x++) {
         if (sc[x] && sc[x].id === sowId) return true;
       }
-      var siId = connectionId(rec, FK.relatedSowItem);
-      if (siId && sowItemIndex[siId] && sowItemIndex[siId].sowIds &&
-          sowItemIndex[siId].sowIds[sowId]) return true;
+      // field_2404 multi-valued: ANY related line item on this SOW counts.
+      var ids = relatedSowItemIds(rec);
+      for (var i = 0; i < ids.length; i++) {
+        var idx = sowItemIndex[ids[i]];
+        if (idx && idx.sowIds && idx.sowIds[sowId]) return true;
+      }
       return false;
     }
     function packageTouchesSow(pkgId, sowId) {
@@ -773,9 +822,14 @@
     // field_2154)? Used to narrow the sibling-SOW gate: a package whose items
     // genuinely belong to this SOW must show here regardless of field_2387.
     function recordItemOnSow(rec, sowId) {
-      var siId = connectionId(rec, FK.relatedSowItem);
-      return !!(siId && sowItemIndex[siId] && sowItemIndex[siId].sowIds &&
-                sowItemIndex[siId].sowIds[sowId]);
+      // field_2404 multi-valued: true if ANY related line item is
+      // authoritatively on this SOW (its own field_2154).
+      var ids = relatedSowItemIds(rec);
+      for (var i = 0; i < ids.length; i++) {
+        var idx = sowItemIndex[ids[i]];
+        if (idx && idx.sowIds && idx.sowIds[sowId]) return true;
+      }
+      return false;
     }
     function packageHasItemOnSow(pkgId, sowId) {
       var precs = pkgAllRecords[pkgId] || [];
@@ -829,8 +883,10 @@
     var bidItemIds = Object.create(null);   // SOW-item ids referenced by an on-bid record
     for (var bii = 0; bii < records.length; bii++) {
       if (!connectionAll(records[bii], FK.bidPackage).length) continue;
-      var bsi = connectionId(records[bii], FK.relatedSowItem);
-      if (bsi) bidItemIds[bsi] = true;
+      // field_2404 multi-valued: mark EVERY related line item as on-bid so a
+      // shared bid item doesn't leave its other line items looking "removed".
+      var bsiIds = relatedSowItemIds(records[bii]);
+      for (var bsk = 0; bsk < bsiIds.length; bsk++) bidItemIds[bsiIds[bsk]] = true;
     }
     var removedRows = [];
     var removedSeen = Object.create(null);   // dedupe by SOW-item id / rec id
@@ -995,7 +1051,7 @@
         }
         packages.push(pc);
       }
-      var rows = buildRowsForSow(bucket);
+      var rows = buildRowsForSow(bucket, sow.id, sowIdsByItem);
 
       // Merge in NO BID rows for this SOW — skip any whose SOW item is
       // already represented by a bid-side (view_3680) row.
