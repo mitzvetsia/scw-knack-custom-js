@@ -2663,9 +2663,34 @@
   // PUT + view_3926 refetch wouldn't surface fresh docs in the v2 header.
   ns.resetDocsIndex = function () { resetDocsIndex(); };
 
+  // True when the v2 comparison grid is configured to replace v1
+  // (bid-review-v2 CONFIG.replaceV1). In that mode v1 stays loaded purely
+  // as the change-request ENGINE + _state source that v2 delegates to —
+  // so v1 skips painting its (now CSS-hidden, redundant) matrix entirely
+  // instead of building a full grid into an invisible mount. Guarded so v1
+  // paints normally whenever v2 is absent or the flag is off.
+  function v2OwnsGrid() {
+    var v2 = window.SCW && window.SCW.bidReviewV2 && window.SCW.bidReviewV2.CONFIG;
+    return !!(v2 && v2.enabled && v2.replaceV1);
+  }
+
   ns.renderMatrix = function renderMatrix(state) {
     var mount = getOrCreateMount();
     if (!mount) return null;   // wrong scene — scene gate refused
+
+    // Headless cutover: when v2 owns the visible grid, do NOT paint v1's
+    // matrix. Return the (blanked) mount — never null — so runPipeline /
+    // rerender still run attachClickHandler + the CR rehydrate; a null
+    // return is read as a scene-gate refusal and skips both (see
+    // init.js runPipeline + rerender). _state is already built by the
+    // caller, so every dispatcher v2 forwards to keeps resolving rows.
+    if (v2OwnsGrid()) {
+      resetDocsIndex();
+      mount.innerHTML = '';
+      mount.className = 'scw-bid-review scw-bid-review--headless';
+      $(document).trigger('scw-bid-review-rendered');
+      return mount;
+    }
 
     bindUnloadPersist();
 
@@ -2727,6 +2752,8 @@
   ns.showLoading = function showLoading() {
     var mount = getOrCreateMount();
     if (!mount) return;   // wrong scene
+    // Headless cutover: v2 paints its own loading state; v1 shows nothing.
+    if (v2OwnsGrid()) { mount.innerHTML = ''; return mount; }
     mount.innerHTML = '';
     mount.className = 'scw-bid-review';
     mount.appendChild(el('div', 'scw-bid-review__loading', 'Loading comparison data'));
