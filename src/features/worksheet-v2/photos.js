@@ -1071,6 +1071,16 @@
       var prevSig = existing ? existing.getAttribute('data-scw-photo-sig')
                              : card.getAttribute('data-scw-photo-sig-empty');
       if (prevSig === sig) continue;   // unchanged → no DOM work
+      // SAFETY: never replace a photo-bearing strip with an EMPTY scrape.
+      // Knack renders connection-field images asynchronously, so a re-render
+      // can momentarily show zero photo cards even though the record has
+      // photos — clobbering the strip then would make photos vanish (the v1
+      // scraper guards the same way: it only overwrites its cache on a
+      // NON-EMPTY read, render.js scrapeRowPhotoUrls). A genuine "all photos
+      // removed" is handled by the data-driven buildCard rebuild, not here —
+      // so this refresh can only ADD photos back, never destroy them.
+      if (!photos.length && existing &&
+          existing.querySelector('.scw-ws-v2-photo-card')) continue;
       var fresh = buildStripFromPhotos(photos, id, sourceViewKey);
       if (fresh) {
         if (existing) card.replaceChild(fresh, existing);
