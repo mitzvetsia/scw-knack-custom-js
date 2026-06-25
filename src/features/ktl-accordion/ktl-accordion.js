@@ -49,8 +49,14 @@
   // whole standalone engine stays dormant), so this is safe to ship as-is.
   // The standalone pass also SKIPS any view that still has a live KTL button,
   // so a stray id here can't double-wrap a view KTL is still handling.
+  //
+  // Entry form: a bare 'view_XXXX' (defaults OPEN), or { view:'view_XXXX',
+  // collapsed:true } to start COLLAPSED — use the object form for any view
+  // that was `_hsv=1,false` (collapsed-by-default), since dropping `_hsv`
+  // removes that signal. Persisted user state still wins over the default.
   var STANDALONE_VIEWS = [
-    // 'view_XXXX',   // ← add piloted view ids here
+    // 'view_XXXX',                          // ← default-open
+    // { view: 'view_YYYY', collapsed: true } // ← default-collapsed
   ];
 
   // All-scenes cutover switch. While FALSE (pilot mode) only STANDALONE_VIEWS
@@ -1015,7 +1021,7 @@
     });
   }
 
-  function buildStandaloneAccordion(knView, viewKey) {
+  function buildStandaloneAccordion(knView, viewKey, opts) {
     if (!knView) return;
     if (knView.hasAttribute(OPT_OUT)) return;
     var knScene = knView.closest('.kn-scene');
@@ -1049,7 +1055,10 @@
     var accent = parseHsvColor(viewKey);
     var kw = hsvKeyword(viewKey);
     var persisted = loadPersistedState();
+    // Default: persisted user state wins; else an explicit per-view default
+    // from the config; else the `_hsv` keyword (if still present); else open.
     var open = (viewKey in persisted) ? !persisted[viewKey]
+             : (opts && opts.defaultCollapsed != null) ? !opts.defaultCollapsed
              : (kw ? kw.defaultExpanded : true);
 
     neutralizeHost(knView);
@@ -1091,11 +1100,15 @@
     // (1) Explicit pilot list. Cheap — one getElementById per listed id. Skip
     // any view KTL is still handling (live button) so we never double-wrap.
     for (var i = 0; i < STANDALONE_VIEWS.length; i++) {
-      var vk = STANDALONE_VIEWS[i];
+      var entry = STANDALONE_VIEWS[i];
+      var vk = (typeof entry === 'string') ? entry : (entry && entry.view);
       if (!vk) continue;
       if (document.getElementById('hideShow_' + vk + '_button')) continue;
       var el = document.getElementById(vk);
-      if (el) buildStandaloneAccordion(el, vk);
+      if (el) {
+        buildStandaloneAccordion(el, vk,
+          (entry && typeof entry === 'object') ? { defaultCollapsed: !!entry.collapsed } : null);
+      }
     }
 
     // (2) Keyword-driven cutover. Off during the pilot (no full-view scan).
