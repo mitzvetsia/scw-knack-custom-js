@@ -66,6 +66,25 @@
   var ENABLE_KEYWORD_DETECTION = false;
   var HSV_CHECK = 'data-scw-hsv-checked';   // per-view "is this an _hsv view?" memo
 
+  // Scenes where KTL is NOT loaded (you gated it out of the Builder loader for
+  // these scene keys). On these scenes our keyword path owns every `_hsv` view
+  // automatically — keep the `_hsv` keywords in the views; KTL isn't there to
+  // paint them, our code reads them. SAFE before you gate the loader: while KTL
+  // is still present its buttons exist, and the keyword path skips any view
+  // that has a button, so this stays dormant until KTL really is gone.
+  // MUST stay in sync with the loader gate (same scene keys).
+  var KTL_FREE_SCENES = ['scene_1085'];
+
+  /** The rendered KTL-free scene element on the page, if any (scopes the
+   *  keyword scan to just that scene — no document-wide work elsewhere). */
+  function ktlFreeSceneEl() {
+    for (var i = 0; i < KTL_FREE_SCENES.length; i++) {
+      var el = document.getElementById('kn-' + KTL_FREE_SCENES[i]);
+      if (el) return el;
+    }
+    return null;
+  }
+
   // Views where the record count pill is hidden (set to true to hide).
   // view_3869 (alternative SOWs on the project) always contains the
   // current SOW's own row, which hide-self-row.js hides via display:none.
@@ -1023,6 +1042,9 @@
 
   function buildStandaloneAccordion(knView, viewKey, opts) {
     if (!knView) return;
+    // Never take over a view KTL is still handling (defense-in-depth; the
+    // callers already skip buttoned views, this guards the race window).
+    if (document.getElementById('hideShow_' + viewKey + '_button')) return;
     if (knView.hasAttribute(OPT_OUT)) return;
     var knScene = knView.closest('.kn-scene');
     if (knScene) {
@@ -1111,9 +1133,11 @@
       }
     }
 
-    // (2) Keyword-driven cutover. Off during the pilot (no full-view scan).
-    if (!ENABLE_KEYWORD_DETECTION) return;
-    var views = document.querySelectorAll('.kn-view[id^="view_"]');
+    // (2) Keyword-driven. Runs for the all-scenes cutover (global flag) OR,
+    // scoped tight, on a designated KTL-free scene. Anywhere else: no scan.
+    var root = ENABLE_KEYWORD_DETECTION ? document : ktlFreeSceneEl();
+    if (!root) return;
+    var views = root.querySelectorAll('.kn-view[id^="view_"]');
     for (var j = 0; j < views.length; j++) {
       var knView = views[j];
       var vkey = knView.id;
