@@ -57,6 +57,16 @@
     '  padding: 9px 14px; background: #f8fafc; border-bottom: 1px solid #eef2f7; }',
     '.scw-sbd-inline-bar .scw-sbd-baseline { padding: 0; background: transparent; border: none; }',
     '.scw-sbd-inline-bar .scw-sbd-pill { background: #1e293b; color: #93c5fd; }',
+    /* independent collapse handle (chevron + pill) */
+    '.scw-sbd-collapse { display: inline-flex; align-items: center; gap: 8px; cursor: pointer;',
+    '  background: transparent; border: none; padding: 0; margin: 0; font: inherit; color: inherit; }',
+    '.scw-sbd-chevron { flex: none; color: #64748b; transition: transform .15s ease; }',
+    '.scw-sbd-collapse:hover .scw-sbd-pill { background: #0f172a; }',
+    '.scw-sbd-collapse:hover .scw-sbd-chevron { color: #0f172a; }',
+    '.scw-sbd-inline--collapsed .scw-sbd-chevron { transform: rotate(-90deg); }',
+    '.scw-sbd-inline--collapsed .scw-sbd-inline-body { display: none; }',
+    /* when collapsed, the bar is the panel\'s bottom edge — drop the heavy rule */
+    '.scw-sbd-inline--collapsed .scw-sbd-inline-bar { border-bottom: none; }',
     '.scw-sbd-inline .scw-sbd-tally { border-bottom: none; }',
     '.scw-sbd-exwrap { border-top: 1px solid #f1f5f9; }',
     '.scw-sbd-exwrap > summary { cursor: pointer; padding: 8px 14px; font-size: 12px;',

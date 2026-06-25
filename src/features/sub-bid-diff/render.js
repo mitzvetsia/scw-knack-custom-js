@@ -52,6 +52,22 @@
   var savedByGrid    = Object.create(null);  // sowId → true once PUT succeeds
   var savingGrid     = Object.create(null);  // sowId → true while a write is in flight
 
+  // Per-SOW collapse of the inline diff panel — INDEPENDENT of the v2 SOW
+  // section accordion (that hides the whole grid; this just folds our panel's
+  // body so the grid can stay open with the panel out of the way). Persisted
+  // across reloads, keyed by sowId. Survives render()'s innerHTML rebuilds via
+  // the class re-applied in render() from this map.
+  var COLLAPSE_LS = 'scwSbdInlineCollapsed';
+  function loadCollapsed() {
+    try { return JSON.parse(localStorage.getItem(COLLAPSE_LS)) || {}; }
+    catch (e) { return {}; }
+  }
+  var collapsedBySow = loadCollapsed();
+  function saveCollapsed() {
+    try { localStorage.setItem(COLLAPSE_LS, JSON.stringify(collapsedBySow)); }
+    catch (e) {}
+  }
+
   /** Persist the basis bid on the SOW (field_2942, single connection) via the
    *  SOW write view. Optimistic: caller updates selection + re-renders first. */
   function writeBasis(sowId, pkgId) {
@@ -705,17 +721,29 @@
       else                         rd = { state: 'ready',        label: '✓ Reviewed — auto-saved' };
     }
 
+    // Chevron + pill form the collapse handle (independent of the SOW
+    // accordion). The basis selector + readiness stay in the bar so they're
+    // reachable even while the body is folded.
+    var toggle = '<button type="button" class="scw-sbd-collapse" data-scw-sbd-collapse ' +
+      'data-sow-id="' + esc(sowId) + '" aria-label="Collapse or expand this diff panel" ' +
+      'title="Collapse / expand this diff panel">' +
+      '<svg class="scw-sbd-chevron" viewBox="0 0 24 24" width="13" height="13" fill="none" ' +
+        'stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">' +
+        '<polyline points="6 9 12 15 18 9"></polyline></svg>' +
+      '<span class="scw-sbd-pill">sub-bid diff</span></button>';
     var bar = '<div class="scw-sbd-inline-bar">' +
-      '<span class="scw-sbd-pill">sub-bid diff</span>' +
+      toggle +
       selector(grid, selId, persisted) +
       '<span class="scw-sbd-ready scw-sbd-ready--' + rd.state + '">' + esc(rd.label) + '</span>' +
       '</div>';
+    var body;
     if (!selId) {
-      return bar + '<div class="scw-sbd-empty">Choose the basis bid to see what differs vs this SOW.</div>';
+      body = '<div class="scw-sbd-empty">Choose the basis bid to see what differs vs this SOW.</div>';
+    } else {
+      var ex = res.total ? exDetail(res, sowId) : '';
+      body = tally(res) + flag(res) + ex + (res.total > 0 ? noteBar(sowId, needsNote) : '');
     }
-    var ex = res.total ? exDetail(res, sowId) : '';
-    return bar + tally(res) + flag(res) + ex +
-      (res.total > 0 ? noteBar(sowId, needsNote) : '');
+    return bar + '<div class="scw-sbd-inline-body">' + body + '</div>';
   }
 
   /** Reviewer note. Auto-saves with the diff (no Save button) — the note PUTs
@@ -779,6 +807,8 @@
         else sec.insertBefore(block, sec.firstChild);
       }
       block.innerHTML = inlineHtml(grid);
+      // Re-apply the independent collapse state (survives this rebuild).
+      block.classList.toggle('scw-sbd-inline--collapsed', !!collapsedBySow[sowId]);
 
       // Keep field_2941 in lockstep with whatever the diff currently shows —
       // any data change, basis pick, or note edit re-persists (debounced).
@@ -822,6 +852,19 @@
       if (sowId) noteByGrid[sowId] = n.value;
     });
     document.addEventListener('click', function (e) {
+      // Independent collapse toggle — fold just this SOW's diff panel, no
+      // re-render needed (CSS drives body visibility + chevron rotation).
+      var ct = e.target.closest && e.target.closest('[data-scw-sbd-collapse]');
+      if (ct) {
+        var csow = ct.getAttribute('data-sow-id');
+        if (csow) {
+          collapsedBySow[csow] = !collapsedBySow[csow];
+          saveCollapsed();
+          var blk = ct.closest('.scw-sbd-inline');
+          if (blk) blk.classList.toggle('scw-sbd-inline--collapsed', !!collapsedBySow[csow]);
+        }
+        return;
+      }
       var jr = e.target.closest && e.target.closest('[data-scw-sbd-jump-id]');
       if (jr) {
         jumpTo(jr.getAttribute('data-scw-sbd-jump-sow'),
