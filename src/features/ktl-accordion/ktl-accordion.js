@@ -38,6 +38,28 @@
   var BTN_SEL    = '.ktlHideShowButton[id^="hideShow_view_"][id$="_button"]';
   var DISABLED_ACCORDION_SCENES = { scene_828: true, scene_833: true, scene_873: true, scene_1149: true };
 
+  // ── KTL-independent ("standalone") accordions ──────────────────────────
+  // Views our own code turns into accordions WITHOUT KTL's hide/show. The
+  // collapse, state, title and (optional) accent are all ours — no KTL button
+  // is required or used. This is how we get off KTL: drop `_hsv` from a view
+  // in Knack (so KTL stops PAINTING it — that double-paint is the CLS/LCP
+  // cost) and add its id here; our code owns it from then on.
+  //
+  // PILOT: list the view ids you've converted. Empty = nothing changes (the
+  // whole standalone engine stays dormant), so this is safe to ship as-is.
+  // The standalone pass also SKIPS any view that still has a live KTL button,
+  // so a stray id here can't double-wrap a view KTL is still handling.
+  var STANDALONE_VIEWS = [
+    // 'view_XXXX',   // ← add piloted view ids here
+  ];
+
+  // All-scenes cutover switch. While FALSE (pilot mode) only STANDALONE_VIEWS
+  // is processed. Flip TRUE once KTL's hide/show is OFF GLOBALLY — then every
+  // view carrying the `_hsv` keyword (and no KTL button) auto-becomes one of
+  // our accordions, no per-view list needed.
+  var ENABLE_KEYWORD_DETECTION = false;
+  var HSV_CHECK = 'data-scw-hsv-checked';   // per-view "is this an _hsv view?" memo
+
   // Views where the record count pill is hidden (set to true to hide).
   // view_3869 (alternative SOWs on the project) always contains the
   // current SOW's own row, which hide-self-row.js hides via display:none.
@@ -429,7 +451,7 @@
   // ───────────────────────────────────────────────────
   //  Build accordion header
   // ───────────────────────────────────────────────────
-  function buildHeader(btn, viewKey) {
+  function buildHeader(btn, viewKey, titleOverride) {
     var header = document.createElement('div');
     header.className = 'scw-ktl-accordion__header';
     header.setAttribute('role', 'button');
@@ -444,7 +466,9 @@
 
     var titleWrap = document.createElement('span');
     titleWrap.className = 'scw-acc-title';
-    titleWrap.textContent = readTitle(btn);
+    // Standalone (KTL-independent) accordions pass an explicit title since
+    // there is no KTL button to read it from.
+    titleWrap.textContent = titleOverride || (btn ? readTitle(btn) : 'Section');
     header.appendChild(titleWrap);
 
     var countWrap = document.createElement('span');
@@ -886,6 +910,209 @@
           attributeFilter: ['style']   // catch row display:none toggles (e.g. hide-self-row)
         });
       })(wrapper, header, viewKey);
+    }
+
+    // KTL-independent pass — views WE own directly (no KTL button needed).
+    // Dormant unless STANDALONE_VIEWS is populated (or keyword detection is on).
+    enhanceStandalone();
+  }
+
+  // ───────────────────────────────────────────────────
+  //  Standalone (KTL-independent) accordions
+  // ───────────────────────────────────────────────────
+
+  /** Raw view description from the Knack model — retains `_hsv` / `_hsvcolor`
+   *  keywords even after KTL strips them from the rendered DOM. */
+  function viewDescription(viewKey) {
+    try {
+      var v = window.Knack && Knack.views && Knack.views[viewKey];
+      var m = v && v.model;
+      var d = m && ((m.view && m.view.description) ||
+                    (m.attributes && m.attributes.description));
+      return d ? String(d) : '';
+    } catch (e) { return ''; }
+  }
+
+  /** Parse KTL's `_hsv` keyword. Returns null when the view is NOT a
+   *  hide/show view, else { defaultExpanded } from `_hsv=1,<bool>` (second
+   *  param false = collapsed by default). The `=` immediately after `_hsv`
+   *  means `_hsvcolor=` never matches here. */
+  function hsvKeyword(viewKey) {
+    var t = viewDescription(viewKey).replace(/<br\s*\/?>/gi, ' ');
+    var m = t.match(/_hsv=([^\s<]+)/i);
+    if (!m) return null;
+    var second = (m[1].split(',')[1] || '').trim().toLowerCase();
+    return { defaultExpanded: second !== 'false' };
+  }
+
+  /** Optional per-view accent from `_hsvcolor=#hex`. Named-keyword colors
+   *  (e.g. `_hsvcolor=documentation`) are a follow-up — default slate else. */
+  function parseHsvColor(viewKey) {
+    var m = viewDescription(viewKey).match(/_hsvcolor=(#[0-9a-fA-F]{3,8})/);
+    return m ? m[1] : null;
+  }
+
+  /** Title for a standalone accordion — the view's own header text, with any
+   *  leftover KTL keyword tokens stripped (in case KTL isn't stripping them). */
+  function nativeTitle(knView) {
+    var h = knView.querySelector(
+      '.view-header .kn-title, .view-header h1, .view-header h2, .view-header h3, ' +
+      'h1.kn-title, .kn-title'
+    );
+    var t = (h && h.textContent) || '';
+    t = t.replace(/_hsv\w*=\S+/gi, '').replace(/\s+/g, ' ').trim();
+    return t || 'Section';
+  }
+
+  /** Neutralize legacy KTL/Knack chrome on the host .kn-view (same treatment
+   *  the button path applies) so only our card shows the visual. */
+  function neutralizeHost(knView) {
+    knView.classList.add('scw-ktl-accordion-host');
+    knView.style.setProperty('background', 'transparent', 'important');
+    knView.style.setProperty('background-color', 'transparent', 'important');
+    knView.style.setProperty('padding', '0', 'important');
+    knView.style.setProperty('border-radius', '0', 'important');
+    knView.style.setProperty('box-shadow', 'none', 'important');
+    knView.style.setProperty('margin', '0', 'important');
+    var nativeHdr = knView.querySelector('.view-header');
+    if (nativeHdr) nativeHdr.style.display = 'none';   // our header replaces it
+  }
+
+  /** Apply open/closed to a standalone wrapper (our body IS the collapse —
+   *  it contains the moved .kn-view, so display:none hides the content). */
+  function setOpen(wrap, hdr, open) {
+    wrap.classList.toggle('is-expanded', !!open);
+    if (hdr) hdr.setAttribute('aria-expanded', open ? 'true' : 'false');
+    var body = wrap.querySelector('.scw-ktl-accordion__body');
+    if (body) body.style.display = open ? '' : 'none';
+  }
+
+  function updateStandaloneCount(hdr, viewKey) {
+    var el = hdr.querySelector('.scw-acc-count');
+    if (!el) return;
+    if (HIDE_COUNT[viewKey]) { el.style.display = 'none'; return; }
+    var c = computeCount(viewKey);
+    if (c !== null) { el.textContent = c; el.style.display = ''; el.style.visibility = ''; }
+    else { el.textContent = '0'; el.style.display = ''; el.style.visibility = 'hidden'; }
+  }
+
+  function bindStandaloneHeader(wrap, hdr, viewKey) {
+    if (hdr.getAttribute('data-scw-bound') === '1') return;
+    hdr.setAttribute('data-scw-bound', '1');
+    function toggle() {
+      setOpen(wrap, hdr, !wrap.classList.contains('is-expanded'));
+      persistCurrentState();   // shared persistence — keyed by data-view-key
+    }
+    hdr.addEventListener('click', function (e) {
+      e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
+      toggle();
+    });
+    hdr.addEventListener('keydown', function (e) {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault(); e.stopPropagation(); e.stopImmediatePropagation();
+        toggle();
+      }
+    });
+  }
+
+  function buildStandaloneAccordion(knView, viewKey) {
+    if (!knView) return;
+    if (knView.hasAttribute(OPT_OUT)) return;
+    var knScene = knView.closest('.kn-scene');
+    if (knScene) {
+      var sid = (knScene.id || '').replace('kn-', '');
+      if (DISABLED_ACCORDION_SCENES[sid]) return;
+    }
+    // Already wrapped (Knack swapped innerHTML but kept our wrapper) → done.
+    if (knView.closest('.scw-ktl-accordion')) { knView.setAttribute(ENHANCED, '1'); return; }
+
+    // Re-adopt: Knack replaced the whole .kn-view element — move the fresh one
+    // into the existing wrapper rather than building a duplicate (mirrors the
+    // button path's re-adoption).
+    var orphanHdr = document.querySelector(
+      '.scw-ktl-accordion__header[data-view-key="' + viewKey + '"]'
+    );
+    var orphanWrap = orphanHdr && orphanHdr.closest('.scw-ktl-accordion');
+    if (orphanWrap) {
+      var ob = orphanWrap.querySelector('.scw-ktl-accordion__body');
+      if (ob) {
+        knView.parentNode.insertBefore(orphanWrap, knView);
+        ob.appendChild(knView);
+        neutralizeHost(knView);
+        knView.setAttribute(ENHANCED, '1');
+        return;
+      }
+    }
+
+    // Fresh build.
+    var title = nativeTitle(knView);
+    var accent = parseHsvColor(viewKey);
+    var kw = hsvKeyword(viewKey);
+    var persisted = loadPersistedState();
+    var open = (viewKey in persisted) ? !persisted[viewKey]
+             : (kw ? kw.defaultExpanded : true);
+
+    neutralizeHost(knView);
+    knView.setAttribute(ENHANCED, '1');
+
+    var wrapper = document.createElement('div');
+    wrapper.className = 'scw-ktl-accordion';
+    if (accent) {
+      wrapper.style.setProperty('--scw-accent', accent);
+      var rgb = parseRgb(accent);
+      if (rgb) wrapper.style.setProperty('--scw-accent-rgb', rgb);
+    }
+
+    var header = buildHeader(null, viewKey, title);
+    var body = document.createElement('div');
+    body.className = 'scw-ktl-accordion__body';
+
+    knView.parentNode.insertBefore(wrapper, knView);
+    wrapper.appendChild(header);
+    wrapper.appendChild(body);
+    body.appendChild(knView);
+
+    setOpen(wrapper, header, open);
+    bindStandaloneHeader(wrapper, header, viewKey);
+
+    updateStandaloneCount(header, viewKey);
+    (function (hdr, vk) {
+      var raf = 0;
+      var obs = new MutationObserver(function () {
+        if (raf) cancelAnimationFrame(raf);
+        raf = requestAnimationFrame(function () { raf = 0; updateStandaloneCount(hdr, vk); });
+      });
+      var el = document.getElementById(vk);
+      if (el) obs.observe(el, { childList: true, subtree: true });
+    })(header, viewKey);
+  }
+
+  function enhanceStandalone() {
+    // (1) Explicit pilot list. Cheap — one getElementById per listed id. Skip
+    // any view KTL is still handling (live button) so we never double-wrap.
+    for (var i = 0; i < STANDALONE_VIEWS.length; i++) {
+      var vk = STANDALONE_VIEWS[i];
+      if (!vk) continue;
+      if (document.getElementById('hideShow_' + vk + '_button')) continue;
+      var el = document.getElementById(vk);
+      if (el) buildStandaloneAccordion(el, vk);
+    }
+
+    // (2) Keyword-driven cutover. Off during the pilot (no full-view scan).
+    if (!ENABLE_KEYWORD_DETECTION) return;
+    var views = document.querySelectorAll('.kn-view[id^="view_"]');
+    for (var j = 0; j < views.length; j++) {
+      var knView = views[j];
+      var vkey = knView.id;
+      if (!vkey) continue;
+      if (document.getElementById('hideShow_' + vkey + '_button')) continue; // KTL owns it
+      // Classify once (description read is cheap but memoize anyway).
+      var flag = knView.getAttribute(HSV_CHECK);
+      if (flag == null) {
+        flag = hsvKeyword(vkey) ? '1' : '0';
+        knView.setAttribute(HSV_CHECK, flag);
+      }
+      if (flag === '1') buildStandaloneAccordion(knView, vkey);
     }
   }
 
