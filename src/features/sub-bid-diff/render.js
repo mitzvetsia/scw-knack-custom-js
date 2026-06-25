@@ -170,8 +170,9 @@
     if (!pkgId) return null;
     var res = distill(grid, pkgId);
     var pkg = null;
-    for (var p = 0; p < (grid.packages || []).length; p++) {
-      if (grid.packages[p].id === pkgId) { pkg = grid.packages[p]; break; }
+    var cands = basisCandidates(grid);   // includes gated-out touching packages
+    for (var p = 0; p < cands.length; p++) {
+      if (cands[p].id === pkgId) { pkg = cands[p]; break; }
     }
     var basisName = (pkg && (pkg.bidName || pkg.name)) || '';
     // PDF-ready HTML fragments (bid + diff) so the snapshot can be stamped onto
@@ -459,6 +460,79 @@
     };
   }
 
+  // ── basis candidates ────────────────────────────────────────────────────
+  // The basis selector must offer EVERY bid that prices line items on THIS
+  // SOW — not just the bids the v2 comparison grid shows as COLUMNS. v2 applies
+  // a sibling-SOW gate (transform.js: field_2387 REL_SOW): a bid whose REL_SOW
+  // names only a sibling SOW is dropped from this SOW's columns so its items
+  // don't clutter the grid. But the basis is an EXPLICIT user designation — if
+  // a bid has items bucketed onto this SOW, the user must be able to pick it as
+  // the basis even when the gate hid its column. Keying the selector off
+  // grid.packages alone meant a SOW whose only touching bids were gated out
+  // showed an EMPTY dropdown ("no choices"), which is exactly what blocks
+  // picking different bids as the basis for different SOWs.
+  //
+  // Recover the gated-out packages from the grid's OWN rows: buildRow fills
+  // row.cellsByPackage from each bid record's field_2415 (its packages),
+  // independent of the column gate — so any package with a cell on a row of
+  // this grid genuinely touches this SOW. Enrich with name/status from the
+  // bid-package view + a computed on-SOW count so the option reads identically
+  // to a column package. distill() already works off cellsByPackage, so the
+  // diff renders for a recovered basis with no further change.
+  function stripTags(v) {
+    return String(v == null ? '' : v).replace(/<[^>]*>/g, '').trim();
+  }
+  function pkgStatusOf(rec, fk) {
+    var r = rec[fk + '_raw'];
+    if (r == null) r = rec[fk];
+    if (Array.isArray(r)) r = r[0];
+    if (r && typeof r === 'object') r = r.identifier || r.id || '';
+    return stripTags(r);
+  }
+  function basisCandidates(grid) {
+    var out = [], seen = Object.create(null);
+    var cols = (grid && grid.packages) || [];
+    for (var i = 0; i < cols.length; i++) {
+      if (cols[i] && cols[i].id && !seen[cols[i].id]) { seen[cols[i].id] = true; out.push(cols[i]); }
+    }
+    // Packages that touch this SOW but were gated out of its columns —
+    // discovered from the rows' cells, counted by on-SOW (non-offSow) rows.
+    var counts = Object.create(null);
+    var rows = (grid && grid.rows) || [];
+    for (var r = 0; r < rows.length; r++) {
+      var cells = rows[r] && rows[r].cellsByPackage;
+      if (!cells) continue;
+      for (var pid in cells) {
+        if (!Object.prototype.hasOwnProperty.call(cells, pid) || seen[pid]) continue;
+        if (!(pid in counts)) counts[pid] = 0;
+        if (!rows[r].offSow) counts[pid]++;
+      }
+    }
+    var ids = Object.keys(counts);
+    if (!ids.length) return out;
+    var meta = Object.create(null);
+    var pkgs = readView(C.bidPkgViewKey);
+    var nameF = C.f && C.f.pkgName, statusF = C.f && C.f.pkgStatus;
+    for (var p = 0; p < pkgs.length; p++) {
+      if (pkgs[p] && pkgs[p].id) {
+        meta[pkgs[p].id] = {
+          bidName:   nameF ? stripTags(pkgs[p][nameF]) : '',
+          bidStatus: statusF ? pkgStatusOf(pkgs[p], statusF) : ''
+        };
+      }
+    }
+    var extra = [];
+    for (var e = 0; e < ids.length; e++) {
+      var m = meta[ids[e]] || {};
+      extra.push({
+        id: ids[e], bidName: m.bidName || '', name: m.bidName || '',
+        bidStatus: m.bidStatus || '', onSowItemCount: counts[ids[e]], recovered: true
+      });
+    }
+    extra.sort(function (a, b) { return (a.bidName || '').localeCompare(b.bidName || ''); });
+    return out.concat(extra);
+  }
+
   // ── HTML builders ───────────────────────────────────────────────────────
   function pkgOption(p, selId) {
     var bits = [p.bidName || p.name || 'Bid'];
@@ -469,7 +543,7 @@
   }
 
   function selector(grid, selId, persisted) {
-    var pkgs = grid.packages || [];
+    var pkgs = basisCandidates(grid);
     var opts = '<option value="">— choose the basis bid —</option>' +
       pkgs.map(function (p) { return pkgOption(p, selId); }).join('');
     var note;

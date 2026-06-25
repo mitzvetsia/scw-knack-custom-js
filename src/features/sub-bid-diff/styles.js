@@ -49,6 +49,10 @@
     /* per-SOW inline block (lives inside each v2 SOW section, under header) */
     '.scw-sbd-inline { border-bottom: 2px solid #e2e8f0; background: #fff;',
     '  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; }',
+    /* Fold the diff block away with the SOW section. v2 only hides its
+       .scw-bid-review-v2__table on collapse; our block is a sibling of the
+       header so it would otherwise stay open beneath a collapsed SOW. */
+    '.scw-bid-review-v2__sow--collapsed .scw-sbd-inline { display: none !important; }',
     '.scw-sbd-inline-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap;',
     '  padding: 9px 14px; background: #f8fafc; border-bottom: 1px solid #eef2f7; }',
     '.scw-sbd-inline-bar .scw-sbd-baseline { padding: 0; background: transparent; border: none; }',
