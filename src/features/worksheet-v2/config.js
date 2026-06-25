@@ -112,10 +112,13 @@
       {
         // Build-SOW page (internal). The canonical deployment.
         sourceViewKey:    'view_3962',
-        mountAfterSelector: '#view_3610',
-        // If view_3610 (the retired, hidden v1 grid) is deleted from the Knack
-        // scene, mount after the v2 source view instead so the panel still
-        // appears. Both are SOW Line Items grids in the same scene region.
+        // Mount directly after view_3369 so the panel lands as the last child
+        // of its layout group (group 7), where end users expect the worksheet.
+        // (view_3610, the retired v1 grid, has been removed from the scene.)
+        mountAfterSelector: '#view_3369',
+        // Fallback so a missing/renamed anchor can't orphan the panel — it then
+        // mounts after the (hidden) v2 source view, both SOW Line Items grids in
+        // the same scene region.
         mountAfterFallback: '#view_3962',
         label:            'SOW Line Items',
         mdfSourceViewKey: 'view_3577',
