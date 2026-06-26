@@ -102,6 +102,26 @@
       return ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' })[c];
     });
   }
+  // Currency as $#,###.## (always two decimals). Bare model numbers (e.g.
+  // Material "0") get the $ + cents treatment, not just the raw value.
+  function money(n) {
+    if (n == null || isNaN(n)) return '—';
+    var neg = n < 0;
+    return (neg ? '-$' : '$') + Math.abs(n)
+      .toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+  function moneyCell(tr, attrs, fk) { return money(moneyRaw(tr, attrs, fk)); }
+
+  // Per-card collapse — independent per SOW, persisted across reloads. Survives
+  // transform()'s rebuild because the class is re-applied from this map.
+  var COLLAPSE_LS = 'scwSowCardsCollapsed';
+  function loadCollapsed() {
+    try { return JSON.parse(localStorage.getItem(COLLAPSE_LS)) || {}; } catch (e) { return {}; }
+  }
+  var collapsedBySow = loadCollapsed();
+  function saveCollapsed() {
+    try { localStorage.setItem(COLLAPSE_LS, JSON.stringify(collapsedBySow)); } catch (e) {}
+  }
 
   // ── card pieces ─────────────────────────────────────────────
   function flagChip(label, on, kind) {
@@ -132,14 +152,14 @@
     return '' +
       '<div class="scw-sow-money">' +
         '<span class="scw-sow-money__l">Project total</span>' +
-        '<span class="scw-sow-money__v">' + esc(disp(tr, attrs, F.projTotal) || '—') + '</span>' +
+        '<span class="scw-sow-money__v">' + esc(moneyCell(tr, attrs, F.projTotal)) + '</span>' +
       '</div>' +
       '<div class="scw-sow-stats">' +
-        stat('Sub bid',   disp(tr, attrs, F.subBid)) +
-        stat('Install',   disp(tr, attrs, F.install)) +
-        stat('Equipment', disp(tr, attrs, F.equip)) +
+        stat('Sub bid',   moneyCell(tr, attrs, F.subBid)) +
+        stat('Install',   moneyCell(tr, attrs, F.install)) +
+        stat('Equipment', moneyCell(tr, attrs, F.equip)) +
         stat('Labor hrs', disp(tr, attrs, F.hrs)) +
-        stat('Material',  disp(tr, attrs, F.mat)) +
+        stat('Material',  moneyCell(tr, attrs, F.mat)) +
         stat('Margin', (marginPct != null ? marginPct.toFixed(1) + '%' : (disp(tr, attrs, F.margin) || '—')), marginCls) +
       '</div>' +
       '<label class="scw-sow-survey' + (surveyMissing ? ' scw-sow-survey--missing' : '') + '">' +
@@ -216,21 +236,32 @@
     var sowId = tr.id;
 
     var card = document.createElement('div');
-    card.className = 'scw-sow-card';
+    card.className = 'scw-sow-card' + (collapsedBySow[sowId] ? ' scw-sow-card--collapsed' : '');
     card.setAttribute('data-sow-id', sowId);
 
-    // Header — name + id + flag chips, actions on the right.
+    // Header — collapse toggle (chevron + heading + a collapsed-only project-
+    // total summary) on the left, actions on the right.
     var header = document.createElement('div');
     header.className = 'scw-sow-card__header';
     var idText = disp(tr, attrs, F.id);
+    var chevron = '<span class="scw-sow-chevron" aria-hidden="true">' +
+      '<svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" ' +
+      'stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">' +
+      '<polyline points="6 9 12 15 18 9"></polyline></svg></span>';
     header.innerHTML =
-      '<div class="scw-sow-card__heading">' +
-        '<div class="scw-sow-card__name">' + esc(disp(tr, attrs, F.name) || '(unnamed SOW)') + '</div>' +
-        '<div class="scw-sow-card__meta">' +
-          (idText ? '<span class="scw-sow-card__id">#' + esc(idText) + '</span>' : '') +
-          flagChip(isYes(tr, attrs, F.survey)   ? 'Survey requested' : 'Survey not requested', isYes(tr, attrs, F.survey),   'survey') +
-          flagChip(isYes(tr, attrs, F.released) ? 'Released to sales' : 'Not released',          isYes(tr, attrs, F.released), 'released') +
+      '<div class="scw-sow-card__headmain" role="button" tabindex="0" data-scw-sow-toggle ' +
+        'data-sow-id="' + esc(sowId) + '" aria-label="Collapse or expand this SOW">' +
+        chevron +
+        '<div class="scw-sow-card__heading">' +
+          '<div class="scw-sow-card__name">' + esc(disp(tr, attrs, F.name) || '(unnamed SOW)') + '</div>' +
+          '<div class="scw-sow-card__meta">' +
+            (idText ? '<span class="scw-sow-card__id">#' + esc(idText) + '</span>' : '') +
+            flagChip(isYes(tr, attrs, F.survey)   ? 'Survey requested' : 'Survey not requested', isYes(tr, attrs, F.survey),   'survey') +
+            flagChip(isYes(tr, attrs, F.released) ? 'Released to sales' : 'Not released',          isYes(tr, attrs, F.released), 'released') +
+          '</div>' +
         '</div>' +
+        '<span class="scw-sow-card__collapsed-total" title="Project total">' +
+          esc(moneyCell(tr, attrs, F.projTotal)) + '</span>' +
       '</div>';
     header.appendChild(actionsEl(tr));
     card.appendChild(header);
@@ -321,11 +352,45 @@
     if (btn) btn.textContent = (mode === 'table') ? '▤ Card view' : '▤ Table view';
   }
 
+  // Collapse / expand every card in the view at once + keep the toolbar
+  // button's label in sync with the current state.
+  function anyCardOpen(view) {
+    var cards = view.querySelectorAll('.scw-sow-card');
+    for (var i = 0; i < cards.length; i++) {
+      if (!cards[i].classList.contains('scw-sow-card--collapsed')) return true;
+    }
+    return false;
+  }
+  function setAllCollapsed(view, collapse) {
+    var cards = view.querySelectorAll('.scw-sow-card');
+    for (var i = 0; i < cards.length; i++) {
+      var id = cards[i].getAttribute('data-sow-id');
+      if (id) collapsedBySow[id] = collapse;
+      cards[i].classList.toggle('scw-sow-card--collapsed', collapse);
+    }
+    saveCollapsed();
+    updateCollapseAllLabel(view);
+  }
+  function updateCollapseAllLabel(view) {
+    var btn = view.querySelector('.scw-sow-cards-collapseall');
+    if (btn) btn.textContent = anyCardOpen(view) ? 'Collapse all' : 'Expand all';
+  }
+
   function ensureChrome(view, wrapper) {
     var toolbar = view.querySelector('.scw-sow-cards-toolbar');
     if (!toolbar) {
       toolbar = document.createElement('div');
       toolbar.className = 'scw-sow-cards-toolbar';
+
+      var collapseAll = document.createElement('button');
+      collapseAll.type = 'button';
+      collapseAll.className = 'scw-sow-cards-collapseall';
+      collapseAll.textContent = 'Collapse all';
+      collapseAll.addEventListener('click', function () {
+        setAllCollapsed(view, anyCardOpen(view));   // any open → collapse; all closed → expand
+      });
+      toolbar.appendChild(collapseAll);
+
       var btn = document.createElement('button');
       btn.type = 'button';
       btn.className = 'scw-sow-cards-toggle';
@@ -373,6 +438,7 @@
       container.appendChild(frag);
     }
     applyMode(view, currentMode());
+    updateCollapseAllLabel(view);
   }
 
   // ── styles ──────────────────────────────────────────────────
@@ -389,10 +455,11 @@
       '#' + VIEW_ID + ':not(.scw-sow-cards-on) .scw-sow-cards { display: none !important; }',
 
       '.scw-sow-cards-toolbar { display: flex; justify-content: flex-end; margin: 0 0 10px; }',
-      '.scw-sow-cards-toggle { background: #fff; border: 1px solid #cbd5e1; color: #475569;',
-      '  border-radius: 6px; padding: 4px 10px; font: 600 12px/1.2 system-ui, sans-serif;',
+      '.scw-sow-cards-toolbar { gap: 8px; }',
+      '.scw-sow-cards-toggle, .scw-sow-cards-collapseall { background: #fff; border: 1px solid #cbd5e1;',
+      '  color: #475569; border-radius: 6px; padding: 4px 10px; font: 600 12px/1.2 system-ui, sans-serif;',
       '  cursor: pointer; }',
-      '.scw-sow-cards-toggle:hover { background: #f1f5f9; }',
+      '.scw-sow-cards-toggle:hover, .scw-sow-cards-collapseall:hover { background: #f1f5f9; }',
 
       '.scw-sow-cards { display: flex; flex-direction: column; gap: 14px; }',
       '.scw-sow-cards-empty { padding: 28px; text-align: center; color: #94a3b8;',
@@ -409,6 +476,21 @@
       '.scw-sow-card__header { display: flex; align-items: flex-start; gap: 12px;',
       '  padding: 12px 16px; border-bottom: 1px solid #f1f5f9;',
       '  background: linear-gradient(0deg, #fff, rgba(var(--scw-accent-rgb, 47,95,145), .045)); }',
+      /* collapse toggle region (chevron + heading + collapsed-only total) */
+      '.scw-sow-card__headmain { flex: 1 1 auto; min-width: 0; display: flex; align-items: flex-start;',
+      '  gap: 10px; cursor: pointer; background: none; border: none; padding: 0; text-align: left; }',
+      '.scw-sow-card__headmain:focus-visible { outline: 2px solid ' + ACC + '; outline-offset: 2px; border-radius: 6px; }',
+      '.scw-sow-chevron { flex: none; margin-top: 1px; color: #94a3b8; transition: transform .15s ease; }',
+      '.scw-sow-card--collapsed .scw-sow-chevron { transform: rotate(-90deg); }',
+      '.scw-sow-card__headmain:hover .scw-sow-chevron { color: ' + ACC + '; }',
+      /* collapsed-only project-total chip pinned to the right of the heading */
+      '.scw-sow-card__collapsed-total { display: none; margin-left: auto; align-self: center;',
+      '  font: 800 16px/1 system-ui, sans-serif; color: ' + ACC + '; font-variant-numeric: tabular-nums;',
+      '  white-space: nowrap; }',
+      '.scw-sow-card--collapsed .scw-sow-card__collapsed-total { display: inline-block; }',
+      '.scw-sow-card--collapsed .scw-sow-card__body,',
+      '.scw-sow-card--collapsed .scw-sow-card__footer { display: none !important; }',
+      '.scw-sow-card--collapsed .scw-sow-card__header { border-bottom: none; }',
       '.scw-sow-card__heading { flex: 1 1 auto; min-width: 0; }',
       '.scw-sow-card__name { font-size: 15px; font-weight: 700; color: #0f172a; line-height: 1.3; }',
       '.scw-sow-card__meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-top: 5px; }',
@@ -520,6 +602,31 @@
       if (e.key !== 'Enter') return;
       var inp = e.target.closest && e.target.closest('.scw-sow-survey__input');
       if (inp) { e.preventDefault(); inp.blur(); }
+    });
+
+    // Per-card collapse toggle (chevron / header). Ignore clicks that land on
+    // the action buttons or any link/button/input so those still work.
+    function toggleCard(el) {
+      var sowId = el.getAttribute('data-sow-id');
+      if (!sowId) return;
+      var collapsed = !collapsedBySow[sowId];
+      collapsedBySow[sowId] = collapsed;
+      saveCollapsed();
+      var card = el.closest('.scw-sow-card');
+      if (card) card.classList.toggle('scw-sow-card--collapsed', collapsed);
+      var view = el.closest('.kn-view');
+      if (view) updateCollapseAllLabel(view);
+    }
+    // Only the headmain region carries the toggle hook; the action buttons are
+    // its siblings (not descendants), so they never trigger a collapse.
+    document.addEventListener('click', function (e) {
+      var head = e.target.closest && e.target.closest('[data-scw-sow-toggle]');
+      if (head) toggleCard(head);
+    });
+    document.addEventListener('keydown', function (e) {
+      if (e.key !== 'Enter' && e.key !== ' ') return;
+      var head = e.target.closest && e.target.closest('[data-scw-sow-toggle]');
+      if (head) { e.preventDefault(); toggleCard(head); }
     });
   }
 

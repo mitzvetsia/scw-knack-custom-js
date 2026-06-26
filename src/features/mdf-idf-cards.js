@@ -315,6 +315,14 @@
     return container;
   }
 
+  // Remove anything we injected and release the view (used when a worksheet
+  // turns out to own it).
+  function teardown(view) {
+    view.classList.remove('scw-mdf-cards-on');
+    var c = view.querySelector('.scw-mdf-cards'); if (c && c.parentNode) c.parentNode.removeChild(c);
+    var t = view.querySelector('.scw-mdf-toolbar'); if (t && t.parentNode) t.parentNode.removeChild(t);
+  }
+
   function transform(viewKey) {
     var view = document.getElementById(viewKey);
     if (!view) return;
@@ -322,6 +330,15 @@
     var wrapper = view.querySelector('.kn-table-wrapper');
     if (!table || !wrapper) return;
     if (!matchesSignature(table)) return;
+
+    // Defer to the device-worksheet / worksheet-v2 system. If it already turned
+    // this view's rows into cards (data-scw-worksheet / scw-ws-row), that system
+    // OWNS the view — stacking our cards on top double-renders it and leaves the
+    // worksheet's own expand/collapse fighting our hidden table (reported on
+    // view_3932). Tear down anything we built and bail. This runs on every
+    // knack-view-render.any, so even if our scan won the initial race, the
+    // worksheet's later render fires this and removes our cards.
+    if (view.querySelector('tr[data-scw-worksheet], tr.scw-ws-row')) { teardown(view); return; }
 
     // Don't clobber an input the user is mid-edit in.
     var ae = document.activeElement;
