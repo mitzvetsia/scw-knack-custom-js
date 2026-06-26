@@ -142,6 +142,7 @@ cat \
   src/features/published-quote-info.js \
   src/features/ops-review-pill.js \
   src/features/sow-grid-cards.js \
+  src/features/mdf-idf-cards.js \
   src/features/ops-stepper.js \
   src/features/sales-stepper.js \
   src/features/published-quote-on-proposal-page.js \
