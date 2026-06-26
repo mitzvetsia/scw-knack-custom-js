@@ -382,7 +382,10 @@
     var css = [
       /* mode switching — hide the raw table in card mode, hide cards in table mode */
       '#' + VIEW_ID + '.scw-sow-cards-on .kn-table-wrapper { display: none !important; }',
-      '#' + VIEW_ID + '.scw-sow-cards-on .bulkOpsControlsDiv { display: none !important; }',
+      /* Card mode hides the whole records-nav (Showing N-of-N, Add filters,
+         per-page, bulk-ops) — it's clutter once rows are cards. Table view
+         restores it. */
+      '#' + VIEW_ID + '.scw-sow-cards-on .kn-records-nav { display: none !important; }',
       '#' + VIEW_ID + ':not(.scw-sow-cards-on) .scw-sow-cards { display: none !important; }',
 
       '.scw-sow-cards-toolbar { display: flex; justify-content: flex-end; margin: 0 0 10px; }',

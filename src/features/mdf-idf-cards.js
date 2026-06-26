@@ -169,29 +169,34 @@
     card.className = 'scw-mdf-card' + (head ? ' scw-mdf-card--head' : ' scw-mdf-card--idf');
     card.setAttribute('data-rec-id', recId);
 
-    var numEditable = isEditable(tr, F.num);
-    var badge =
-      '<div class="scw-mdf-badge">' +
-        '<span class="scw-mdf-badge__type">' + esc(typeVal || (head ? 'HEADEND' : 'IDF')) + '</span>' +
-        (numEditable
-          ? input(viewKey, recId, F.num, numVal, 'scw-mdf-num', 'inputmode="numeric" placeholder="#" aria-label="Number"')
-          : (numVal ? '<span class="scw-mdf-badge__num">' + esc(numVal) + '</span>' : '')) +
-      '</div>';
+    // Type lives INSIDE the badge — as a select (styled to read as the badge
+    // label) when editable, else a static label. No separate type control, so
+    // the type isn't shown twice.
+    var typeEditable = isEditable(tr, F.type) && typeof typeOptions === 'function';
+    var typeInner = typeEditable
+      ? '<select class="scw-mdf-input scw-mdf-badge__type-sel" data-view="' + esc(viewKey) +
+          '" data-rec="' + esc(recId) + '" data-field="' + esc(F.type) +
+          '" data-scw-saved-val="' + esc(typeVal) + '" aria-label="Type">' + typeOptions(typeVal) + '</select>'
+      : '<span class="scw-mdf-badge__type">' + esc(typeVal || (head ? 'HEADEND' : 'IDF')) + '</span>';
 
-    var typeEditor = '';
-    if (isEditable(tr, F.type) && typeof typeOptions === 'function') {
-      typeEditor = '<select class="scw-mdf-input scw-mdf-type" data-view="' + esc(viewKey) +
-        '" data-rec="' + esc(recId) + '" data-field="' + esc(F.type) + '" ' +
-        'data-scw-saved-val="' + esc(typeVal) + '" aria-label="Type">' +
-        typeOptions(typeVal) + '</select>';
+    // Number: shown for IDFs (or anything that already has one). A HEADEND/MDF
+    // is singular, so no empty "#" box there.
+    var numEditable = isEditable(tr, F.num);
+    var numCell = '';
+    if (numVal || (numEditable && !head)) {
+      numCell = numEditable
+        ? input(viewKey, recId, F.num, numVal, 'scw-mdf-num', 'inputmode="numeric" placeholder="#" aria-label="Number"')
+        : '<span class="scw-mdf-badge__num">' + esc(numVal) + '</span>';
     }
+    var badge = '<div class="scw-mdf-badge">' + typeInner + numCell + '</div>';
+
     var nameField = isEditable(tr, F.name)
       ? input(viewKey, recId, F.name, nameVal, 'scw-mdf-name', 'placeholder="Location name" aria-label="Name"')
       : '<div class="scw-mdf-name scw-mdf-name--ro">' + esc(nameVal || '(unnamed)') + '</div>';
 
     var row1 = document.createElement('div');
     row1.className = 'scw-mdf-card__row1';
-    row1.innerHTML = badge + '<div class="scw-mdf-card__namewrap">' + typeEditor + nameField + '</div>';
+    row1.innerHTML = badge + '<div class="scw-mdf-card__namewrap">' + nameField + '</div>';
     row1.appendChild(buildAside(tr));
     card.appendChild(row1);
 
@@ -353,7 +358,7 @@
     var ACC = 'var(--scw-accent, #2f5f91)';
     var css = [
       '.scw-mdf-cards-on .kn-table-wrapper { display: none !important; }',
-      '.scw-mdf-cards-on .bulkOpsControlsDiv { display: none !important; }',
+      '.scw-mdf-cards-on .kn-records-nav { display: none !important; }',
       '.kn-view:not(.scw-mdf-cards-on) .scw-mdf-cards { display: none !important; }',
 
       '.scw-mdf-toolbar { display: flex; justify-content: flex-end; margin: 0 0 10px; }',
@@ -391,7 +396,12 @@
       '.scw-mdf-input--err { border-color: #dc2626; box-shadow: 0 0 0 2px rgba(220,38,38,.18); }',
       '.scw-mdf-name { flex: 1 1 220px; min-width: 160px; font-weight: 700; font-size: 14px; }',
       '.scw-mdf-name--ro { padding: 6px 0; color: #0f172a; font-weight: 700; font-size: 14px; }',
-      '.scw-mdf-type { flex: none; max-width: 130px; font-weight: 600; }',
+      /* type lives in the badge — styled to read as the badge label, not a 2nd control */
+      '.scw-mdf-badge__type-sel { border: none; background: transparent; margin: 0; padding: 0 2px 0 0;',
+      '  font: 800 11px/1 system-ui, sans-serif; letter-spacing: .4px; text-transform: uppercase;',
+      '  color: #475569; cursor: pointer; max-width: 120px; }',
+      '.scw-mdf-card--head .scw-mdf-badge__type-sel { color: ' + ACC + '; }',
+      '.scw-mdf-badge__type-sel:focus { outline: none; text-decoration: underline; }',
       '.scw-mdf-ro { color: #334155; font-size: 13px; padding: 6px 0; }',
 
       '.scw-mdf-card__row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 14px; margin-top: 8px;',
