@@ -1113,6 +1113,59 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   }
 
   // ============================================================
+  // FEATURE: Heal orphaned L3 data rows (blank L3-group value)
+  // ============================================================
+  //
+  // field_2409 is the L3 grouping field. Knack only opens a group header when
+  // the group value CHANGES — and "blank == blank" reads as unchanged even
+  // across an L2 boundary, so when two consecutive L3 groups both have a blank
+  // field_2409 (e.g. an NVR under "Networking or Headend" followed by a Rack
+  // under "Other Equipment"), Knack suppresses the SECOND group's L3 header.
+  // The pipeline hides every raw data row and surfaces equipment ONLY through
+  // L3 headers, so the headerless row disappears from the proposal entirely
+  // while still counting toward the totals (observed: a "$445 Rack added during
+  // survey" line vanishing). healOrphanDropGroups only covers camera/drop rows.
+  //
+  // Self-heal generally: walk the tbody; any data row sitting directly under an
+  // L2 header with no L3 in between gets a synthetic, empty L3 header spliced in
+  // before it. The normal pipeline then fills that header from the row's own
+  // data (product name from field_2365, rate/qty/cost), so the orphan renders
+  // identically to every other L3 line. Consecutive blank-group rows share the
+  // one synthesized header. Idempotent: on re-runs the row already has an L3
+  // above it, so nothing new is inserted.
+  function healOrphanLevel3(ctx, $tbody) {
+    const tbody = $tbody && $tbody[0];
+    if (!tbody) return;
+    function levelOf(tr) {
+      if (!tr.classList || !tr.classList.contains('kn-table-group')) return null;
+      const m = tr.className.match(/kn-group-level-(\d+)/);
+      return m ? parseInt(m[1], 10) : null;
+    }
+    function isDataRow(tr) {
+      return tr.tagName === 'TR' && tr.id &&
+        !tr.classList.contains('kn-table-group') &&
+        !tr.classList.contains('scw-level-total-row');
+    }
+    let lastHeaderLevel = 0;
+    const rows = Array.from(tbody.children);
+    for (let i = 0; i < rows.length; i++) {
+      const tr = rows[i];
+      const lvl = levelOf(tr);
+      if (lvl != null) { lastHeaderLevel = lvl; continue; }
+      // A data row whose nearest preceding header is the L2 (level 2) is an
+      // orphan — give it a synthetic L3. After that, the cluster is "under an
+      // L3", so siblings in the same blank group don't each get one.
+      if (isDataRow(tr) && lastHeaderLevel === 2) {
+        const synth = document.createElement('tr');
+        synth.className = 'kn-table-group kn-group-level-3 scw-l3-orphan-healed';
+        synth.appendChild(document.createElement('td'));
+        tr.parentNode.insertBefore(synth, tr);
+        lastHeaderLevel = 3;
+      }
+    }
+  }
+
+  // ============================================================
   // FEATURE: Camera list builder
   // ============================================================
 
@@ -1798,6 +1851,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
 
     reorderLevel1Groups($tbody);
     healOrphanDropGroups(ctx, $tbody, caches);
+    healOrphanLevel3(ctx, $tbody);
     reorderLevel2GroupsBySortField(ctx, $tbody, runId);
 
     const $firstDataRow = $tbody.find('tr[id]').first();
