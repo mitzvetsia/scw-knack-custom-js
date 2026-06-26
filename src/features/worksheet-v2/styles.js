@@ -996,7 +996,7 @@
     '.scw-ws-v2-detail {',
     '  display: none !important;',
     '  padding: 10px 14px 12px !important;',
-    '  background: #f8fafc !important;',   /* near-white neutral, not blue */
+    '  background: #fff !important;',   /* same as the header — one clean white card */
     '}',
     '.scw-ws-v2-card--open .scw-ws-v2-detail {',
     '  display: block !important;',
@@ -1013,9 +1013,9 @@
     '.scw-ws-v2-card--open:nth-child(even):hover {',
     '  background: #fff !important;',
     '  margin: 8px 6px !important;',
-    '  border: 1px solid #e2e8f0 !important;',   /* neutral gray, not blue */
+    '  border: 1px solid #e2e8f0 !important;',   /* neutral gray, no blue accent */
     '  border-radius: 10px !important;',
-    '  box-shadow: inset 3px 0 0 #2563eb, 0 1px 4px rgba(15,23,42,0.08) !important;',
+    '  box-shadow: 0 1px 4px rgba(15,23,42,0.08) !important;',
     '}',
     /* Round the tinted body (detail / photos = the card\'s last child) to the
        card\'s bottom corners so it sits cleanly inside the bounded card —
@@ -1945,8 +1945,8 @@
     '.scw-ws-v2-photos {',
     '  display: none !important;',
     '  padding: 10px 14px 14px 34px !important;',
-    '  background: #f8fafc !important;',  /* same near-white neutral as the detail */
-    '  border-top: 1px solid #e2e8f0 !important;',  /* divide photo strip from the detail above */
+    '  background: #fff !important;',  /* same as the header / detail — one white card */
+    '  border-top: 1px solid #eef2f7 !important;',  /* faint divider from the detail above */
     '}',
     '.scw-ws-v2-card--open .scw-ws-v2-photos { display: block !important; }',
     '.scw-ws-v2-photos-strip {',
