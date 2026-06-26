@@ -99,6 +99,10 @@
     // (hidden) link programmatically — see bid-review-v2/toolbar.js
     // handleAddSow. The link opens the view_4002 multi-add form.
     'view_4001',
+    // 'view_4068' — DOC save-target form; closeout-deliverables.js writes
+    // through it (docSaveView). Kept rendered so the PUT path works, hidden
+    // from the user.
+    'view_4068',
   ];
 
   // Views that must NEVER be hidden as collateral damage from the
