@@ -71,6 +71,16 @@
     '  display: block !important;',
     '  width: 100% !important;',
     '}',
+    /* view_4056 ("WHAT WE\'RE INSTALLING", sub deployment dashboard): users
+       don\'t want an inner scroll region trapping the wheel here. Drop the
+       viewport cap so the worksheet grows to its full height and scrolls with
+       the PAGE — no need to hover over the view. Scoped to this view\'s panel
+       (#scw-ws-v2-<sourceViewKey>) so every other v2 worksheet keeps its
+       capped-scroll body. */
+    '#scw-ws-v2-view_4056 > .scw-ws-v2-body {',
+    '  max-height: none !important;',
+    '  overflow: visible !important;',
+    '}',
     '.scw-ws-v2-empty {',
     '  padding: 20px !important;',
     '  text-align: center !important;',
