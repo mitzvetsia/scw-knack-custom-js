@@ -1001,15 +1001,28 @@
     '.scw-ws-v2-card--open .scw-ws-v2-detail {',
     '  display: block !important;',
     '}',
-    /* Expanded card — tint the whole card (row + detail) so it pops
-       from the zebra-striped list. Override hover/zebra so the open
-       state wins. */
+    /* Expanded card — becomes a DISCRETE bounded card: a white summary row
+       (header) over the tinted detail + photos body, wrapped in a bordered,
+       rounded box with margin around it. This stops an all-open list from
+       reading as one big blue mass, and visually binds each photo strip to its
+       line item — the strip sits INSIDE the same box as the header above it.
+       Override hover/zebra so the open state wins. */
     '.scw-ws-v2-card--open,',
     '.scw-ws-v2-card--open:hover,',
     '.scw-ws-v2-card--open:nth-child(even),',
     '.scw-ws-v2-card--open:nth-child(even):hover {',
-    '  background: #eef4fb !important;',
-    '  box-shadow: inset 3px 0 0 #2563eb !important;',
+    '  background: #fff !important;',
+    '  margin: 8px 6px !important;',
+    '  border: 1px solid #c5d9f1 !important;',
+    '  border-radius: 10px !important;',
+    '  box-shadow: inset 3px 0 0 #2563eb, 0 1px 4px rgba(15,23,42,0.08) !important;',
+    '}',
+    /* Round the tinted body (detail / photos = the card\'s last child) to the
+       card\'s bottom corners so it sits cleanly inside the bounded card —
+       without overflow:hidden, which would clip the photo drag-reorder ghost. */
+    '.scw-ws-v2-card--open > :last-child {',
+    '  border-bottom-left-radius: 9px !important;',
+    '  border-bottom-right-radius: 9px !important;',
     '}',
     '.scw-ws-v2-detail-grid {',
     '  display: grid !important;',
@@ -1933,6 +1946,7 @@
     '  display: none !important;',
     '  padding: 10px 14px 14px 34px !important;',
     '  background: #eef4fb !important;',  /* same tint as expanded detail */
+    '  border-top: 1px solid #dbe7f7 !important;',  /* divide photo strip from the detail above */
     '}',
     '.scw-ws-v2-card--open .scw-ws-v2-photos { display: block !important; }',
     '.scw-ws-v2-photos-strip {',
