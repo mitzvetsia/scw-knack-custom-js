@@ -1075,6 +1075,27 @@
     '  border-bottom-left-radius: 9px !important;',
     '  border-bottom-right-radius: 9px !important;',
     '}',
+    /* view_3505: FLATTEN — open cards become flat ROWS inside the single panel
+       box, not individually-boxed cards. Drop the per-card margin / border /
+       radius / shadow so an open card reads as a row divided from its neighbors
+       by the same thin bottom line as closed cards. One outer box, rows inside.
+       (Scoped to this view so the other v2 worksheets — which open one card at a
+       time — keep their boxed-card look.) */
+    '#scw-ws-v2-view_3505 .scw-ws-v2-card--open,',
+    '#scw-ws-v2-view_3505 .scw-ws-v2-card--open:hover,',
+    '#scw-ws-v2-view_3505 .scw-ws-v2-card--open:nth-child(even),',
+    '#scw-ws-v2-view_3505 .scw-ws-v2-card--open:nth-child(even):hover {',
+    '  margin: 0 !important;',
+    '  border: none !important;',
+    '  border-bottom: 1px solid #e2e8f0 !important;',
+    '  border-radius: 0 !important;',
+    '  box-shadow: none !important;',
+    '  background: #fff !important;',
+    '}',
+    '#scw-ws-v2-view_3505 .scw-ws-v2-card--open > :last-child {',
+    '  border-bottom-left-radius: 0 !important;',
+    '  border-bottom-right-radius: 0 !important;',
+    '}',
     '.scw-ws-v2-detail-grid {',
     '  display: grid !important;',
     '  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)) !important;',
