@@ -240,6 +240,12 @@
       view.insertBefore(card, view.firstChild);
     }
     card.className = 'scw-srq-card ' + cls;
+    // Only rebuild when the HTML actually changed. Knack re-renders these views
+    // several times on load; rebuilding identical content each time wipes any
+    // externally-injected children (e.g. the Regenerate PDF button), making
+    // them flicker and vanish.
+    if (card.getAttribute('data-scw-srq-html') === innerHtml) return;
+    card.setAttribute('data-scw-srq-html', innerHtml);
     card.innerHTML = innerHtml;
   }
 

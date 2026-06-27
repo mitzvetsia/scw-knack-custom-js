@@ -512,19 +512,33 @@
 
   // ── Button injection ──
 
+  // Actions footer inside the custom survey-request card (create if missing).
+  function cardActionsFooter(card) {
+    var a = card.querySelector('.scw-srq-actions');
+    if (!a) { a = document.createElement('div'); a.className = 'scw-srq-actions'; card.appendChild(a); }
+    return a;
+  }
+
   function injectButton() {
     var viewEl = document.getElementById(DETAIL_VIEW);
     if (!viewEl) return;
 
     // survey-request-header.js replaces view_3825's native details with a
     // custom card and HIDES the native content — which would hide this button
-    // too. When that card is present, mount the button into its actions
-    // footer instead of next to the (now hidden) native field row.
+    // too. When that card is present, the button must live INSIDE it.
     var card = viewEl.querySelector('.scw-srq-card');
+
+    // Already built? Make sure it's in the right place. If it was mounted into
+    // the native content BEFORE the card existed (then got hidden), move it
+    // into the card now — DON'T just bail (that's what stranded it, hidden).
+    var existingWrap = document.getElementById(WRAP_ID);
+    if (existingWrap) {
+      if (card && !card.contains(existingWrap)) cardActionsFooter(card).appendChild(existingWrap);
+      return;
+    }
+
     var detail = card ? null : viewEl.querySelector('.kn-detail.' + TARGET_FIELD);
     if (!card && !detail) return;
-
-    if (document.getElementById(BTN_ID)) return;
 
     injectStyles();
 
@@ -553,15 +567,7 @@
     });
 
     if (card) {
-      // Drop it into the card's actions footer (create one if the card has no
-      // native links of its own).
-      var actions = card.querySelector('.scw-srq-actions');
-      if (!actions) {
-        actions = document.createElement('div');
-        actions.className = 'scw-srq-actions';
-        card.appendChild(actions);
-      }
-      actions.appendChild(wrap);
+      cardActionsFooter(card).appendChild(wrap);
     } else if (detail.parentNode) {
       detail.parentNode.insertBefore(wrap, detail.nextSibling);
     }
