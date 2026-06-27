@@ -10,8 +10,9 @@
  *   view_3504  → header card: site title · Status chip · REQ_ID
  *   view_3825  → details card: Address · Edit button · Instructions /
  *                Other Notes / Survey Field Form (non-empty only)
- *   view_3826  → status card: Status chip · ClickUp link · a Requested →
- *                Scheduled → Completed → Bid Delivered date timeline
+ *   view_3826  → status card: a Requested → Scheduled → Completed → Bid
+ *                Delivered date timeline (Status + ClickUp ride in the header)
+ *   view_3568  → Survey POC card: Name · Cell (tel) · Email (mailto)
  *
  * Pure DOM scrape (the native content stays in the DOM, just display:none), so
  * there's no model-timing dependency. Idempotent on every render.
@@ -21,7 +22,7 @@
 
   var STYLE_ID = 'scw-srq-header-css';
   var EVENT_NS = '.scwSrqHeader';
-  var VIEWS = ['view_3504', 'view_3825', 'view_3826'];
+  var VIEWS = ['view_3504', 'view_3825', 'view_3826', 'view_3568'];
 
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
@@ -129,6 +130,48 @@
     return '<div class="scw-srq-timeline">' + tl + '</div>';
   }
 
+  // ── view_3568: Survey POC (kn-list) ─────────────────────────
+  function phoneIcon() {
+    return '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" ' +
+      'stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 16.92v3a2 2 0 0 ' +
+      '1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 ' +
+      '4.11 2h3a2 2 0 0 1 2 1.72c.13.96.36 1.9.7 2.81a2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 ' +
+      '2 0 0 1 2.11-.45c.91.34 1.85.57 2.81.7A2 2 0 0 1 22 16.92z"/></svg>';
+  }
+  function mailIcon() {
+    return '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" ' +
+      'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+      '<rect x="2" y="4" width="20" height="16" rx="2"></rect><path d="M22 7l-10 6L2 7"></path></svg>';
+  }
+  function fieldHtml(el, fk) {
+    var h = htmlOf(el, fk);
+    return h.replace(/<[^>]*>/g, '').trim() ? h : '';
+  }
+  function buildPoc(view) {
+    // kn-list: one POC per .kn-list-item-container (usually one). Read Name
+    // (field_198, text) + Cell (field_195) + Email (field_196), keeping the
+    // tel:/mailto: links from the native cell.
+    var items = view.querySelectorAll('.kn-list-item-container');
+    if (!items.length) items = [view];
+    var blocks = '';
+    for (var i = 0; i < items.length; i++) {
+      var it = items[i];
+      var name  = txt(it, 'field_198');
+      var phone = fieldHtml(it, 'field_195');
+      var email = fieldHtml(it, 'field_196');
+      if (!name && !phone && !email) continue;
+      blocks += '<div class="scw-srq-poc">' +
+        (name ? '<div class="scw-srq-poc-name">' + esc(name) + '</div>' : '') +
+        '<div class="scw-srq-poc-lines">' +
+          (phone ? '<div class="scw-srq-poc-line">' + phoneIcon() + '<span>' + phone + '</span></div>' : '') +
+          (email ? '<div class="scw-srq-poc-line">' + mailIcon() + '<span>' + email + '</span></div>' : '') +
+        '</div>' +
+      '</div>';
+    }
+    if (!blocks) return '';
+    return '<div class="scw-srq-card-title">Survey POC</div>' + blocks;
+  }
+
   // ── transform ───────────────────────────────────────────────
   function mountCard(view, cls, innerHtml) {
     if (!innerHtml) return;
@@ -145,6 +188,7 @@
     if (viewId === 'view_3504') mountCard(view, 'scw-srq-header', buildHeader(view));
     else if (viewId === 'view_3825') mountCard(view, 'scw-srq-details', buildDetails(view));
     else if (viewId === 'view_3826') mountCard(view, 'scw-srq-status', buildStatus(view));
+    else if (viewId === 'view_3568') mountCard(view, 'scw-srq-poc-card', buildPoc(view));
   }
   // The header (view_3504) shows view_3826's ClickUp link, so when view_3826
   // renders (its data lands in the DOM) re-run the header to pick it up.
@@ -170,15 +214,16 @@
       // More robust than hiding section.columns alone (kills leftover bits that
       // were bleeding through behind the card).
       '#view_3504 > *:not(.scw-srq-card), #view_3825 > *:not(.scw-srq-card),',
-      '#view_3826 > *:not(.scw-srq-card) { display: none !important; }',
-      '#view_3504, #view_3825, #view_3826 { background: transparent !important; box-shadow: none !important;',
-      '  border: none !important; border-radius: 0 !important; padding: 0 !important;',
-      '  margin: 0 0 12px !important; overflow: visible !important; }',
-      // The "pill-shaped outline" was a rounded border/box-shadow on the COLUMN /
-      // GROUP wrappers around the views (the views\' own native content is already
-      // hidden). Strip border / radius / shadow / outline off those wrappers.
-      '.view-column:has(> #view_3504), .view-column:has(> #view_3825), .view-column:has(> #view_3826),',
-      '.view-group:has(#view_3504), .view-group:has(#view_3825), .view-group:has(#view_3826) {',
+      '#view_3826 > *:not(.scw-srq-card), #view_3568 > *:not(.scw-srq-card) { display: none !important; }',
+      '#view_3504, #view_3825, #view_3826, #view_3568 { background: transparent !important;',
+      '  box-shadow: none !important; border: none !important; border-radius: 0 !important;',
+      '  padding: 0 !important; margin: 0 0 12px !important; overflow: visible !important; }',
+      // Strip border / radius / shadow / outline off the COLUMN / GROUP wrappers
+      // around the views (their own native content is already hidden).
+      '.view-column:has(> #view_3504), .view-column:has(> #view_3825),',
+      '.view-column:has(> #view_3826), .view-column:has(> #view_3568),',
+      '.view-group:has(#view_3504), .view-group:has(#view_3825),',
+      '.view-group:has(#view_3826), .view-group:has(#view_3568) {',
       '  border: none !important; border-radius: 0 !important; box-shadow: none !important;',
       '  outline: none !important; background: transparent !important; }',
 
@@ -239,7 +284,20 @@
       '.scw-srq-tl-label { font: 600 12.5px/1.2 system-ui, sans-serif; color: #64748b; }',
       '.scw-srq-tl-item--done .scw-srq-tl-label { color: #0f172a; }',
       '.scw-srq-tl-date { font-size: 12px; color: #475569; text-align: right; white-space: nowrap; }',
-      '.scw-srq-tl-item:not(.scw-srq-tl-item--done) .scw-srq-tl-date { color: #cbd5e1; font-style: italic; }'
+      '.scw-srq-tl-item:not(.scw-srq-tl-item--done) .scw-srq-tl-date { color: #cbd5e1; font-style: italic; }',
+
+      /* POC card (view_3568) */
+      '.scw-srq-card-title { font: 700 11px/1 system-ui, sans-serif; text-transform: uppercase;',
+      '  letter-spacing: .4px; color: #94a3b8; margin-bottom: 10px; }',
+      '.scw-srq-poc + .scw-srq-poc { margin-top: 12px; padding-top: 12px; border-top: 1px solid #f1f5f9; }',
+      '.scw-srq-poc-name { font-size: 15px; font-weight: 700; color: #0f172a; line-height: 1.2; }',
+      '.scw-srq-poc-lines { display: flex; flex-direction: column; gap: 6px; margin-top: 7px; }',
+      '.scw-srq-poc-line { display: flex; align-items: center; gap: 8px; font-size: 13.5px;',
+      '  color: #334155; min-width: 0; }',
+      '.scw-srq-poc-line svg { color: #2f5f91; flex: 0 0 auto; }',
+      '.scw-srq-poc-line span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }',
+      '.scw-srq-poc-line a { color: #1d4ed8; text-decoration: none; }',
+      '.scw-srq-poc-line a:hover { text-decoration: underline; }'
     ].join('\n');
     var s = document.createElement('style');
     s.id = STYLE_ID;
