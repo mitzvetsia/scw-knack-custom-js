@@ -1551,6 +1551,14 @@
   function sdItem(html, widthCls) {
     return '<div class="scw-ws-v2-sd-item ' + (widthCls || '') + '">' + html + '</div>';
   }
+  /** A cluster of related detail fields — clusters are separated by extra
+   *  whitespace so the panel reads as logical groups, and fields WITHIN a
+   *  cluster stay together (and wrap together) instead of every field wrapping
+   *  independently. Empty clusters render nothing. */
+  function sdGroup(itemsHtml, extraCls) {
+    if (!itemsHtml) return '';
+    return '<div class="scw-ws-v2-sd-group ' + (extraCls || '') + '">' + itemsHtml + '</div>';
+  }
 
   /** A fill (textarea) summary cell — survey notes / labor description. */
   function surveyFill(rec, viewKey, fieldKey, label, cls) {
@@ -1663,49 +1671,59 @@
     // paragraph. Order otherwise mirrors v1 detailLayout.
     // SCW Notes (field_2418) is READ-ONLY on the bid worksheet — owned
     // upstream, not editable while bidding. Render as a non-editable paragraph.
-    var items = sdItem(
-      detailNotesReadOnly(rec, F.scwNotes || 'field_2418', 'SCW Notes'),
-      'scw-ws-v2-sd--paragraph');
+    // Cluster fields into logical groups (instead of one wrapping row where
+    // nothing aligns). Clusters: Label parts · Mounting & cabling · Connection
+    // & location · Notes — each separated by extra whitespace, fields within a
+    // cluster staying together.
+    var groups = '';
+
     if (cat === 'cam') {
-      // Drop Prefix (field_2361) — editable; same Drop Prefix catalog the SOW
-      // worksheet uses (field_2240), so the init.js picker reuses
-      // SCW.dropPrefixOptions. Changing it recomputes the drop label
-      // (field_2365) server-side, so the picker's onSaved refetches.
-      items += sdItem(detailConnection(rec, viewKey, F.dropPrefix || 'field_2361',
-        'Prefix'), 'scw-ws-v2-sd--conn');
-      // Cam/Reader number (field_2362) — the numeric part of the AC-001
-      // designation; editable plain number. Pairs with the Prefix above.
-      items += sdItem(detailField(rec, viewKey, F.dropNumber || 'field_2362',
-        'Cam/Reader #', 'number'), 'scw-ws-v2-sd--num');
+      // Label parts: Prefix (field_2361) + Cam/Reader # (field_2362). These
+      // CONSTRUCT the read-only label shown in the row header — clustered so
+      // they read as "the label's editable parts", not two stray fields.
+      // Prefix reuses SCW.dropPrefixOptions; changing either recomputes the
+      // drop label (field_2365) server-side (the picker's onSaved refetches).
+      groups += sdGroup(
+        sdItem(detailConnection(rec, viewKey, F.dropPrefix || 'field_2361', 'Prefix'), 'scw-ws-v2-sd--conn') +
+        sdItem(detailField(rec, viewKey, F.dropNumber || 'field_2362', 'Cam/Reader #', 'number'), 'scw-ws-v2-sd--num'),
+        'scw-ws-v2-sd-group--label');
+
+      // Mounting & cabling: Mounting Height + Drop Length + Conduit together.
+      groups += sdGroup(
+        sdItem(singleChipField(rec, viewKey, F.mountingHeight || 'field_2455',
+          'Mounting Height', ["Under 16'", "16' - 24'", "Over 24'"]), 'scw-ws-v2-sd--chips') +
+        sdItem(detailField(rec, viewKey, F.dropLength || 'field_2367', 'Drop Length', 'number'), 'scw-ws-v2-sd--num') +
+        sdItem(detailField(rec, viewKey, F.conduit || 'field_2368', 'Conduit', 'number'), 'scw-ws-v2-sd--num'));
+
+      // Connection & location: Connected To + MDF/IDF + Mounting Hardware.
       // Connected To (field_2381, single) — editable; cascade writes the
-      // parent's field_2380. Picker candidates resolved in init.js.
-      items += sdItem(detailConnection(rec, viewKey, F.connectedDevice || 'field_2381',
-        'Connected To', hasIssue(rec, 'disconnected')), 'scw-ws-v2-sd--conn');
-      items += sdItem(singleChipField(rec, viewKey, F.mountingHeight || 'field_2455',
-        'Mounting Height', ["Under 16'", "16' - 24'", "Over 24'"]), 'scw-ws-v2-sd--chips');
-      items += sdItem(detailField(rec, viewKey, F.dropLength || 'field_2367', 'Drop Length', 'number'),
-        'scw-ws-v2-sd--num');
-      items += sdItem(detailField(rec, viewKey, F.conduit || 'field_2368', 'Conduit', 'number'),
-        'scw-ws-v2-sd--num');
-    } else if (cat === 'default') {
-      // Connected Devices (field_2380, multi, NVR/switch side) — editable.
-      // ONLY shown when this record's "map camera/reader connections" flag
-      // (field_2374 / mapConn) is Yes — devices that don't map readers have
-      // no Connected Devices to manage.
-      if (readBool(rec, F.mapConn || 'field_2374') === 'Yes') {
-        items += sdItem(detailConnectedDevices(rec, viewKey, F.connectedDevices || 'field_2380', 'Connected Devices'), 'scw-ws-v2-sd--conn');
-      }
+      // parent's field_2380. Candidates resolved in init.js.
+      groups += sdGroup(
+        sdItem(detailConnection(rec, viewKey, F.connectedDevice || 'field_2381',
+          'Connected To', hasIssue(rec, 'disconnected')), 'scw-ws-v2-sd--conn') +
+        sdItem(detailConnection(rec, viewKey, F.mdfIdf || 'field_2375', 'MDF / IDF'), 'scw-ws-v2-sd--conn') +
+        sdItem(detailReadOnly(rec, F.mounting || 'field_2463', 'Mounting Hardware'), 'scw-ws-v2-sd--wide'));
+    } else {
+      // default / hardware: Connected Devices (only when mapConn Yes) +
+      // MDF/IDF + Mounting Hardware.
+      var devItem = (cat === 'default' && readBool(rec, F.mapConn || 'field_2374') === 'Yes')
+        ? sdItem(detailConnectedDevices(rec, viewKey, F.connectedDevices || 'field_2380', 'Connected Devices'), 'scw-ws-v2-sd--conn')
+        : '';
+      groups += sdGroup(
+        devItem +
+        sdItem(detailConnection(rec, viewKey, F.mdfIdf || 'field_2375', 'MDF / IDF'), 'scw-ws-v2-sd--conn') +
+        sdItem(detailReadOnly(rec, F.mounting || 'field_2463', 'Mounting Hardware'), 'scw-ws-v2-sd--wide'));
     }
 
-    // MDF / IDF (field_2375) — editable on every bucket (re-home a line item).
-    items += sdItem(detailConnection(rec, viewKey, F.mdfIdf || 'field_2375', 'MDF / IDF'),
-      'scw-ws-v2-sd--conn');
-
-    items += sdItem(detailReadOnly(rec, F.mounting || 'field_2463', 'Mounting Hardware'),
-      'scw-ws-v2-sd--wide');
+    // SCW Notes (field_2418) — read-only, owned upstream; its own cluster last.
+    groups += sdGroup(
+      sdItem(detailNotesReadOnly(rec, F.scwNotes || 'field_2418', 'SCW Notes'), 'scw-ws-v2-sd--paragraph'),
+      'scw-ws-v2-sd-group--notes');
 
     return '<div class="scw-ws-v2-detail">' +
-      '<div class="scw-ws-v2-survey-detail">' + items + '</div>' +
+      '<div class="scw-ws-v2-survey-detail">' +
+        '<div class="scw-ws-v2-sd-groups">' + groups + '</div>' +
+      '</div>' +
     '</div>';
   }
 

@@ -337,6 +337,20 @@
     '.scw-ws-v2-sd--conn  { flex: 0 1 220px !important; min-width: 150px !important; }',
     '.scw-ws-v2-sd--notes { flex: 1 1 200px !important; min-width: 170px !important; max-width: 300px !important; }',
     '.scw-ws-v2-sd--wide  { flex: 2 1 280px !important; min-width: 220px !important; }',
+    /* Grouped survey detail: CLUSTERS of related fields, separated by extra
+       whitespace (34px between groups vs 12px within), so the panel reads as
+       logical groups and fields within a group wrap together. */
+    '.scw-ws-v2-survey-detail .scw-ws-v2-sd-groups {',
+    '  flex: 1 1 100% !important; display: flex !important; flex-wrap: wrap !important;',
+    '  gap: 14px 34px !important; align-items: flex-start !important;',
+    '}',
+    '.scw-ws-v2-sd-group {',
+    '  display: flex !important; flex-wrap: wrap !important; gap: 8px 16px !important;',
+    '  align-items: flex-start !important;',
+    '}',
+    /* Notes cluster: drop onto its own line, full width, below the field clusters. */
+    '.scw-ws-v2-sd-group--notes { flex: 1 1 100% !important; }',
+    '.scw-ws-v2-sd-group--notes .scw-ws-v2-sd--paragraph { flex: 1 1 100% !important; max-width: 640px !important; }',
     /* Sales detail — v1-style two columns: pricing/identity stacked on the
        left, connections + Labor Desc stacked on the right. */
     '.scw-ws-v2-sales-detail {',
@@ -1015,7 +1029,7 @@
     '  margin: 8px 6px !important;',
     '  border: 1px solid #e2e8f0 !important;',   /* neutral gray, no blue accent */
     '  border-radius: 10px !important;',
-    '  box-shadow: 0 1px 4px rgba(15,23,42,0.08) !important;',
+    '  box-shadow: 0 1px 2px rgba(15,23,42,0.05) !important;',   /* softer — less busy */
     '}',
     /* Round the tinted body (detail / photos = the card\'s last child) to the
        card\'s bottom corners so it sits cleanly inside the bounded card —
