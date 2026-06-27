@@ -1,38 +1,58 @@
-/*** FILES GALLERY — view_3531 ("Site Maps & Other Files") ******************
+/*** FILES / PHOTOS GALLERY *************************************************
  *
- * Turns the file-list table on the subcontractor survey-request page into a
- * thumbnail GALLERY. Each row is a file (a Knack File field, field_68) with a
- * Type (field_67) and Notes (field_588). The raw table just shows filename
- * links; a gallery is far easier to scan when the files are site-map images.
+ * Turns a file/photo-list table into a thumbnail GALLERY. Each row becomes a
+ * card with an image thumbnail (or a PDF / generic-file tile for non-image
+ * File fields), chips, and a notes caption. Clicking opens the asset in a new
+ * tab. Raw table tables only show filename links / tiny thumbs; a gallery is
+ * far easier to scan.
  *
- * Each card shows an image thumbnail (PNG/JPG/… — src is the model's direct
- * asset URL), or a PDF / generic file tile for non-images, with the type as a
- * chip and the notes as a caption. Clicking opens the file in a new tab.
+ * Config-driven over multiple views (VIEWS):
+ *   - view_3531 "Site Maps & Other Files" — Knack FILE field (field_68); ext-
+ *     sniffed so PDFs get a file tile. Type (field_67) chip + Notes (field_588).
+ *   - view_3530 "Additional Photos" — Knack IMAGE field (field_771; always an
+ *     image). BID (field_2420) + Line Items (field_2419) connection chips +
+ *     Notes (field_114).
  *
  * The original table is kept in the DOM (display:none) for the Knack model +
  * native links + inline edit; a persisted "Table view" toggle restores it.
- * Scoped to view_3531 only — no signature auto-detect.
  ***************************************************************************/
 (function () {
   'use strict';
 
-  var VIEW_ID  = 'view_3531';
   var STYLE_ID = 'scw-files-gallery-css';
   var EVENT_NS = '.scwFilesGallery';
-  var MODE_LS  = 'scwFilesGalleryMode';   // 'gallery' | 'table'
+  var MODE_LS  = 'scwFilesGalleryMode';   // 'gallery' | 'table' (shared)
 
-  var F = {
-    file:  'field_68',   // FILE (Knack File field)
-    type:  'field_67',   // TYPE  (Site Plan / Other / …)
-    notes: 'field_588'   // NOTES
-  };
+  // Per-view configs. kind:'file' = Knack File field (PDF/image, ext-sniffed);
+  // kind:'image' = Knack Image field (always rendered as an image).
+  var VIEWS = [
+    {
+      id: 'view_3531', kind: 'file',
+      media: 'field_68', type: 'field_67', notes: 'field_588',
+      empty: 'No files yet.'
+    },
+    {
+      id: 'view_3530', kind: 'image',
+      media: 'field_771', notes: 'field_114',
+      chips: [
+        { key: 'field_2420', cls: 'bid' },    // BID
+        { key: 'field_2419', cls: 'line' }     // Line Items
+      ],
+      empty: 'No photos yet.'
+    }
+  ];
+
+  function cfgFor(viewId) {
+    for (var i = 0; i < VIEWS.length; i++) if (VIEWS[i].id === viewId) return VIEWS[i];
+    return null;
+  }
 
   // ── reads ───────────────────────────────────────────────────
-  function rowAttrs(tr) {
+  function rowAttrs(viewId, tr) {
     try {
       var id = tr && tr.id;
       if (!id) return null;
-      var v = Knack && Knack.views && Knack.views[VIEW_ID];
+      var v = Knack && Knack.views && Knack.views[viewId];
       var models = v && v.model && v.model.data && v.model.data.models;
       if (!models) return null;
       for (var i = 0; i < models.length; i++) {
@@ -47,29 +67,42 @@
       return ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' })[c];
     });
   }
+  // Display value for type / notes / connection chips. Connection fields carry a
+  // _raw ARRAY of {id, identifier} — join the identifiers; plain fields use the
+  // scalar _raw or the cell text.
   function disp(tr, attrs, fk) {
     if (attrs) {
       var rawv = attrs[fk + '_raw'];
-      if (rawv != null && typeof rawv !== 'object') return String(rawv);
+      if (Array.isArray(rawv)) {
+        var ids = [];
+        for (var k = 0; k < rawv.length; k++) {
+          var it = rawv[k];
+          if (it && typeof it === 'object') ids.push(String(it.identifier != null ? it.identifier : (it.id || '')));
+          else if (it != null) ids.push(String(it));
+        }
+        if (ids.length) return ids.join(', ');
+      } else if (rawv != null && typeof rawv !== 'object') {
+        return String(rawv);
+      }
       var v = attrs[fk];
       if (v != null && typeof v !== 'object') return stripTags(v);
     }
     var td = tr && tr.querySelector('td.' + fk + ', td[data-field-key="' + fk + '"]');
     return td ? stripTags(td.textContent) : '';
   }
-  // The File field's direct asset URL (for the <img> src) + filename — from the
-  // model's _raw object (the DOM link's href is an in-app route, not a usable
-  // image src).
-  function fileRaw(attrs) {
+  // Media (File or Image field) → {url, filename}. File fields store an object
+  // {url, filename}; image fields may store an object OR a bare URL string. The
+  // DOM link's href is an in-app route (not a usable <img> src), so prefer raw.
+  function mediaRaw(attrs, cfg) {
     if (!attrs) return null;
-    var raw = attrs[F.file + '_raw'];
+    var raw = attrs[cfg.media + '_raw'];
     if (raw == null) return null;
     if (Array.isArray(raw)) raw = raw[0];
-    if (!raw || typeof raw !== 'object') return null;
-    return {
-      url:      raw.url || raw.thumb_url || '',
-      filename: raw.filename || ''
-    };
+    if (raw && typeof raw === 'object') {
+      return { url: raw.url || raw.thumb_url || '', filename: raw.filename || '' };
+    }
+    if (typeof raw === 'string') return { url: raw, filename: '' };
+    return null;
   }
   function extOf(name) {
     var m = /\.([a-z0-9]+)\s*$/i.exec(String(name || ''));
@@ -90,48 +123,64 @@
       'stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">' + (paths[kind] || paths.file) + '</svg>';
   }
 
-  function buildCard(tr) {
-    var attrs = rowAttrs(tr);
+  function buildCard(cfg, tr) {
+    var attrs = rowAttrs(cfg.id, tr);
     var link  = tr.querySelector('a.kn-view-asset');
     var assetHref = link ? (link.getAttribute('href') || '') : '';
-    var fr = fileRaw(attrs);
-    var fileName = (fr && fr.filename) || (link && link.getAttribute('data-file-name')) ||
-                   (link && stripTags(link.textContent)) || 'File';
-    var directUrl = (fr && fr.url) || '';
+    var mr = mediaRaw(attrs, cfg);
+    var fileName = (mr && mr.filename) || (link && link.getAttribute('data-file-name')) ||
+                   (link && stripTags(link.textContent)) || '';
+    var directUrl = (mr && mr.url) || '';
+    // Image-field fallback: the rendered thumbnail <img> in the cell.
+    if (!directUrl) {
+      var imgEl = tr.querySelector('td.' + cfg.media + ' img, td[data-field-key="' + cfg.media + '"] img');
+      if (imgEl) directUrl = imgEl.getAttribute('src') || '';
+    }
     var href = directUrl || assetHref;
 
-    var type  = disp(tr, attrs, F.type);
-    var notes = disp(tr, attrs, F.notes);
+    var notes = disp(tr, attrs, cfg.notes);
     var e = extOf(fileName);
+    var treatAsImage = (cfg.kind === 'image') || (directUrl && isImageExt(e));
 
     var thumb;
-    if (directUrl && isImageExt(e)) {
+    if (directUrl && treatAsImage) {
       thumb = '<span class="scw-gallery-thumb"><img class="scw-gallery-img" loading="lazy" ' +
-        'src="' + esc(directUrl) + '" alt="' + esc(fileName) + '"></span>';
+        'src="' + esc(directUrl) + '" alt="' + esc(fileName || 'Photo') + '"></span>';
     } else {
       var kind = isPdfExt(e) ? 'pdf' : 'file';
       thumb = '<span class="scw-gallery-thumb scw-gallery-thumb--icon scw-gallery-thumb--' + kind + '">' +
         fileIcon(kind) + '<span class="scw-gallery-ext">' + esc(e ? e.toUpperCase() : 'FILE') + '</span></span>';
     }
 
-    var typeChip = type
-      ? '<span class="scw-gallery-type scw-gallery-type--' +
-          (/site\s*plan/i.test(type) ? 'plan' : 'other') + '">' + esc(type) + '</span>'
-      : '';
+    // Chips: a single Type chip (file gallery) or one chip per configured
+    // connection field (photo gallery).
+    var chips = '';
+    if (cfg.type) {
+      var type = disp(tr, attrs, cfg.type);
+      if (type) chips += '<span class="scw-gallery-type scw-gallery-type--' +
+        (/site\s*plan/i.test(type) ? 'plan' : 'other') + '">' + esc(type) + '</span>';
+    }
+    if (cfg.chips) {
+      for (var c = 0; c < cfg.chips.length; c++) {
+        var val = disp(tr, attrs, cfg.chips[c].key);
+        if (val) chips += '<span class="scw-gallery-type scw-gallery-type--' + cfg.chips[c].cls + '">' +
+          esc(val) + '</span>';
+      }
+    }
+
+    var titleAttr = (fileName || 'Photo') + (notes ? ' — ' + notes : '');
+    var meta =
+      (fileName ? '<span class="scw-gallery-name">' + esc(fileName) + '</span>' : '') +
+      (chips || notes
+        ? '<span class="scw-gallery-sub">' + chips +
+            (notes ? '<span class="scw-gallery-notes">' + esc(notes) + '</span>' : '') + '</span>'
+        : '');
 
     var a = document.createElement('a');
     a.className = 'scw-gallery-card';
     if (href) { a.setAttribute('href', href); a.setAttribute('target', '_blank'); a.setAttribute('rel', 'noopener'); }
-    a.setAttribute('title', fileName + (notes ? ' — ' + notes : ''));
-    a.innerHTML =
-      thumb +
-      '<span class="scw-gallery-meta">' +
-        '<span class="scw-gallery-name">' + esc(fileName) + '</span>' +
-        (typeChip || notes
-          ? '<span class="scw-gallery-sub">' + typeChip +
-              (notes ? '<span class="scw-gallery-notes">' + esc(notes) + '</span>' : '') + '</span>'
-          : '') +
-      '</span>';
+    a.setAttribute('title', titleAttr);
+    a.innerHTML = thumb + (meta ? '<span class="scw-gallery-meta">' + meta + '</span>' : '');
     return a;
   }
 
@@ -169,8 +218,8 @@
     return grid;
   }
 
-  function transform() {
-    var view = document.getElementById(VIEW_ID);
+  function transform(cfg) {
+    var view = document.getElementById(cfg.id);
     if (!view) return;
     var table = view.querySelector('table.kn-table-table');
     var wrapper = view.querySelector('.kn-table-wrapper');
@@ -184,14 +233,14 @@
       var tr = rows[i];
       if (tr.classList.contains('kn-tr-nodata')) continue;
       if (!/^[a-f0-9]{24}$/i.test(tr.id || '')) continue;
-      frag.appendChild(buildCard(tr));
+      frag.appendChild(buildCard(cfg, tr));
       n++;
     }
     grid.innerHTML = '';
     if (n === 0) {
       var empty = document.createElement('div');
       empty.className = 'scw-gallery-empty';
-      empty.textContent = 'No files yet.';
+      empty.textContent = cfg.empty || 'Nothing here yet.';
       grid.appendChild(empty);
     } else {
       grid.appendChild(frag);
@@ -203,11 +252,14 @@
   function injectStyles() {
     if (document.getElementById(STYLE_ID)) return;
     var ACC = 'var(--scw-accent, #2f5f91)';
-    var css = [
-      '#' + VIEW_ID + '.scw-files-gallery-on .kn-table-wrapper { display: none !important; }',
-      '#' + VIEW_ID + '.scw-files-gallery-on .kn-records-nav { display: none !important; }',
-      '#' + VIEW_ID + ':not(.scw-files-gallery-on) .scw-gallery { display: none !important; }',
-
+    var viewScoped = [];
+    for (var i = 0; i < VIEWS.length; i++) {
+      var id = VIEWS[i].id;
+      viewScoped.push('#' + id + '.scw-files-gallery-on .kn-table-wrapper { display: none !important; }');
+      viewScoped.push('#' + id + '.scw-files-gallery-on .kn-records-nav { display: none !important; }');
+      viewScoped.push('#' + id + ':not(.scw-files-gallery-on) .scw-gallery { display: none !important; }');
+    }
+    var css = viewScoped.concat([
       '.scw-files-gallery-toolbar { display: flex; justify-content: flex-end; margin: 0 0 10px; }',
       '.scw-files-gallery-toggle { background: #fff; border: 1px solid #cbd5e1; color: #475569;',
       '  border-radius: 6px; padding: 4px 10px; font: 600 12px/1.2 system-ui, sans-serif; cursor: pointer; }',
@@ -244,9 +296,12 @@
       '  letter-spacing: .3px; padding: 3px 7px; border-radius: 999px; white-space: nowrap; }',
       '.scw-gallery-type--plan { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }',
       '.scw-gallery-type--other { background: #f8fafc; color: #64748b; border: 1px solid #e2e8f0; }',
-      '.scw-gallery-notes { font-size: 11.5px; color: #64748b; line-height: 1.35;',
-      '  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }'
-    ].join('\n');
+      '.scw-gallery-type--bid { background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; }',
+      '.scw-gallery-type--line { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }',
+      /* notes caption — clamp to two lines so longer captions stay readable */
+      '.scw-gallery-notes { font-size: 11.5px; color: #64748b; line-height: 1.35; min-width: 0;',
+      '  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }'
+    ]).join('\n');
     var s = document.createElement('style');
     s.id = STYLE_ID;
     s.textContent = css;
@@ -254,18 +309,22 @@
   }
 
   // ── bindings ────────────────────────────────────────────────
-  function bind() {
+  function bindView(cfg) {
     if (window.SCW && typeof SCW.onViewRender === 'function') {
-      SCW.onViewRender(VIEW_ID, function () { setTimeout(transform, 120); }, EVENT_NS);
+      SCW.onViewRender(cfg.id, function () { setTimeout(function () { transform(cfg); }, 120); }, EVENT_NS);
     } else {
       $(document)
-        .off('knack-view-render.' + VIEW_ID + EVENT_NS)
-        .on('knack-view-render.' + VIEW_ID + EVENT_NS, function () { setTimeout(transform, 120); });
+        .off('knack-view-render.' + cfg.id + EVENT_NS)
+        .on('knack-view-render.' + cfg.id + EVENT_NS, function () { setTimeout(function () { transform(cfg); }, 120); });
     }
   }
 
   injectStyles();
-  bind();
-  if (document.getElementById(VIEW_ID)) setTimeout(transform, 150);
+  for (var v = 0; v < VIEWS.length; v++) {
+    bindView(VIEWS[v]);
+    if (document.getElementById(VIEWS[v].id)) {
+      (function (cfg) { setTimeout(function () { transform(cfg); }, 150); })(VIEWS[v]);
+    }
+  }
 })();
-/*** END FILES GALLERY ******************************************************/
+/*** END FILES / PHOTOS GALLERY *********************************************/
