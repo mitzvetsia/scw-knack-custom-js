@@ -393,12 +393,20 @@
     '}',
     /* Place each group into the header columns it should align under. */
     '.scw-ws-v2-sd-group--label { grid-column: 1 / 3 !important; }',
+    /* Prefix + Cam/Reader # boxes are kept NARROW (left-aligned in the label
+       span) so they don\'t crowd the Notes / Mounting Hardware column to their
+       right. */
+    '.scw-ws-v2-sd-group--label .scw-ws-v2-sd-item { max-width: 64px !important; }',
     /* Center the Prefix value so it lines up under the centered Cam/Reader #
        number below it (both stack in the narrow Label column). */
     '.scw-ws-v2-sd-group--label .scw-ws-v2-conn-btn-val { text-align: center !important; }',
     '.scw-ws-v2-sd-group--notes { grid-column: 3 / 5 !important; }',
     '.scw-ws-v2-sd-group--conn  { grid-column: 5 / 6 !important; }',
     '.scw-ws-v2-sd-group--mount { grid-column: 6 / -1 !important; }',
+    /* Non-cam rows have no Label column and the header lets the product span
+       grid-column 2 — so start the Notes column at col 2 too, keeping SCW Notes
+       / Mounting Hardware aligned under the product box. */
+    '.scw-ws-v2-sd-groups--no-label .scw-ws-v2-sd-group--notes { grid-column: 2 / 5 !important; }',
     /* Mounting & cabling column: the two number inputs stay narrow (left-aligned)
        inside the wider span instead of stretching full-width. */
     '.scw-ws-v2-sd-group--mount .scw-ws-v2-sd--num { width: 96px !important; }',

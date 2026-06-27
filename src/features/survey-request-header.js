@@ -158,10 +158,15 @@
     // Hide native content from first paint (kills the thrash) — our card sits
     // before it. The rich-text (view_3538) keeps its content, just restyled.
     var css = [
-      '#view_3504 > section.columns, #view_3825 > section.columns, #view_3826 > section.columns {',
-      '  display: none !important; }',
+      // Hide EVERY native child of these views (section.columns, the view
+      // header, and any stray Knack element) — leave only our injected card.
+      // More robust than hiding section.columns alone (kills leftover bits that
+      // were bleeding through behind the card).
+      '#view_3504 > *:not(.scw-srq-card), #view_3825 > *:not(.scw-srq-card),',
+      '#view_3826 > *:not(.scw-srq-card) { display: none !important; }',
       '#view_3504, #view_3825, #view_3826 { background: transparent !important; box-shadow: none !important;',
-      '  border: none !important; padding: 0 !important; margin: 0 0 12px !important; }',
+      '  border: none !important; border-radius: 0 !important; padding: 0 !important;',
+      '  margin: 0 0 12px !important; overflow: visible !important; }',
 
       '.scw-srq-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px;',
       '  box-shadow: 0 1px 2px rgba(15,23,42,.04); padding: 16px 18px;',

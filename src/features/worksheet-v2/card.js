@@ -1759,9 +1759,14 @@
         'scw-ws-v2-sd-group--conn');
     }
 
+    // Non-cam rows have NO Label column (Prefix/Cam#), and the summary header
+    // collapses the blank label cell so the PRODUCT spans into it (grid-col 2).
+    // Tag the groups so CSS shifts the Notes column left to start under the
+    // product box too (otherwise Notes sits one column right of the product).
+    var groupsCls = 'scw-ws-v2-sd-groups' + (cat === 'cam' ? '' : ' scw-ws-v2-sd-groups--no-label');
     return '<div class="scw-ws-v2-detail">' +
       '<div class="scw-ws-v2-survey-detail">' +
-        '<div class="scw-ws-v2-sd-groups">' + groups + '</div>' +
+        '<div class="' + groupsCls + '">' + groups + '</div>' +
       '</div>' +
     '</div>';
   }
