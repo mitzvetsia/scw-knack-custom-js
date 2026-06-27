@@ -235,6 +235,20 @@
     '.scw-ws-v2-card--survey .scw-ws-v2-row--assumptions > .scw-ws-v2-cell--survey-ext {',
     '  display: none !important;',
     '}',
+    /* Labor cell when Require Sub Bid is No — read-only (no sub bid needed). The
+       input reads as static text, not an editable field: white bg, no border,
+       muted, non-interactive (CLAUDE.md locked-field convention). */
+    '.scw-ws-v2-cell--labor-na .scw-ws-v2-input {',
+    '  background: #fff !important;',
+    '  border-color: transparent !important;',
+    '  box-shadow: none !important;',
+    '  pointer-events: none !important;',
+    '  color: #94a3b8 !important;',
+    '}',
+    '.scw-ws-v2-card:hover .scw-ws-v2-cell--labor-na .scw-ws-v2-input {',
+    '  border-color: transparent !important;',
+    '}',
+    '.scw-ws-v2-cell--labor-na .scw-ws-v2-currency-glyph { color: #cbd5e1 !important; }',
     /* Install money model (moneyMode:"install", view_3915). No money cells at
        all — header is chevron · label · product · flag chits (RO, show-when-
        true) · SCW Notes (editable) · warn · trash. 7-track grid (replaces the
@@ -1978,9 +1992,12 @@
        mirrors v1\'s inline-photo-row.js — ~200px-tall thumbnails. */
     '.scw-ws-v2-photos {',
     '  display: none !important;',
-    '  padding: 10px 14px 14px 34px !important;',
+    '  padding: 2px 14px 14px 44px !important;',
     '  background: #fff !important;',  /* same as the header / detail — one white card */
-    '  border-top: 1px solid #eef2f7 !important;',  /* faint divider from the detail above */
+    /* No divider/edge from the detail above — de-nest: the detail panel and the
+       photo strip read as ONE flush region inside the card, not stacked
+       sub-boxes. padding-left matches .scw-ws-v2-detail (44px) so content aligns
+       to the same gutter as the header/detail above it. */
     '}',
     '.scw-ws-v2-card--open .scw-ws-v2-photos { display: block !important; }',
     '.scw-ws-v2-photos-strip {',

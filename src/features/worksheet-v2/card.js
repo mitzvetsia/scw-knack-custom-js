@@ -1634,13 +1634,29 @@
     // Money: Labor (editable; blank for assumptions) · Ext (read-only;
     // blank for cam + assumptions, matching v1) · Bid (read-only conn).
     // v1 parity: Labor ("sub bid") empty → danger (red), zero → warning.
-    var laborWarn = surveyWarnClass(rec, F.labor || 'field_2400', 'danger', 'warning');
-    var laborCell = (cat === 'assumptions')
-      ? empty('scw-ws-v2-cell--num scw-ws-v2-cell--survey-labor')
-      : '<div class="scw-ws-v2-cell scw-ws-v2-cell--num scw-ws-v2-cell--survey-labor scw-ws-v2-cell--currency ' + laborWarn + '">' +
+    // BUT when FLAG_require sub bid (field_2478) is No, this line item needs no
+    // sub bid at all — so Labor is NOT required: render it read-only (white,
+    // non-interactive) and drop the empty=danger flag entirely.
+    var subBidNo  = readBool(rec, F.requireSubBid || 'field_2478') === 'No';
+    var laborCell;
+    if (cat === 'assumptions') {
+      laborCell = empty('scw-ws-v2-cell--num scw-ws-v2-cell--survey-labor');
+    } else if (subBidNo) {
+      var laborVal = readNum(rec, F.labor || 'field_2400');
+      laborCell = '<div class="scw-ws-v2-cell scw-ws-v2-cell--num scw-ws-v2-cell--survey-labor scw-ws-v2-cell--currency scw-ws-v2-cell--labor-na" ' +
+          'title="Require Sub Bid is No — no sub bid needed for this item">' +
+          '<span class="scw-ws-v2-currency-glyph">$</span>' +
+          '<input type="number" step="any" class="scw-ws-v2-input scw-ws-v2-input--num" ' +
+            'readonly tabindex="-1" aria-label="Labor (no sub bid required)" ' +
+            'value="' + escapeHtml(laborVal) + '">' +
+        '</div>';
+    } else {
+      var laborWarn = surveyWarnClass(rec, F.labor || 'field_2400', 'danger', 'warning');
+      laborCell = '<div class="scw-ws-v2-cell scw-ws-v2-cell--num scw-ws-v2-cell--survey-labor scw-ws-v2-cell--currency ' + laborWarn + '">' +
           '<span class="scw-ws-v2-currency-glyph">$</span>' +
           numInput(rec, viewKey, F.labor || 'field_2400', readNum(rec, F.labor || 'field_2400'), 'Labor') +
         '</div>';
+    }
     var extCell = (isCam || cat === 'assumptions')
       ? empty('scw-ws-v2-cell--survey-ext')
       : ro(readField(rec, F.extended || 'field_2401'), 'scw-ws-v2-cell--survey-ext', 'Extended');
