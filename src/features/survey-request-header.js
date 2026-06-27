@@ -44,13 +44,37 @@
     if (/request|pending|new|await/.test(s))         return 'pending';
     return 'neutral';
   }
-  // ClickUp link lives on view_3826 (field_2632); we surface it in the header
-  // (next to REQ #), so read it from that view's (hidden) native DOM.
+  // ClickUp link (field_2632) — surfaced in the header next to REQ #. It may
+  // live on view_3826 OR (if moved) view_3504, so read from either's DOM.
   function clickupHref() {
-    var v = document.getElementById('view_3826');
-    if (!v) return '';
-    var a = v.querySelector('.kn-detail.field_2632 a, .field_2632 a');
+    var sel = '.kn-detail.field_2632 a, .field_2632 a';
+    var a = document.querySelector('#view_3504 ' + sel) ||
+            document.querySelector('#view_3826 ' + sel);
     return a ? (a.getAttribute('href') || '') : '';
+  }
+  // Render every OTHER detail field on the view (beyond the ones the header
+  // lays out explicitly) as a styled label/value row — so fields MOVED onto
+  // view_3504 get the same card treatment automatically, no per-field code.
+  function extraDetailRows(view, skipFields) {
+    var skip = Object.create(null);
+    for (var i = 0; i < skipFields.length; i++) skip[skipFields[i]] = true;
+    var out = '';
+    var dets = view.querySelectorAll('.kn-detail');
+    for (var d = 0; d < dets.length; d++) {
+      var det = dets[d];
+      var fk = '', parts = (det.className || '').split(/\s+/);
+      for (var c = 0; c < parts.length; c++) {
+        if (/^field_\d+$/.test(parts[c])) { fk = parts[c]; break; }
+      }
+      if (!fk || skip[fk]) continue;
+      var lab = det.querySelector('.kn-detail-label');
+      var bod = det.querySelector('.kn-detail-body');
+      var label   = lab ? lab.textContent.trim() : '';
+      var valHtml = bod ? bod.innerHTML.trim() : '';
+      if (!valHtml.replace(/<[^>]*>/g, '').trim()) continue;   // skip blanks
+      out += noteRow(label, valHtml);
+    }
+    return out;
   }
   function buildHeader(view) {
     // Title (field_666 connection). The auto-identifier reads
@@ -60,6 +84,9 @@
     var status = txt(view, 'field_2349');
     var reqId  = txt(view, 'field_2345');
     var cu     = clickupHref();
+    // Any other field the user dropped onto view_3504 (skip the ones already
+    // shown: Status, REQ #, ClickUp).
+    var extra  = extraDetailRows(view, ['field_2349', 'field_2345', 'field_2632']);
     return '' +
       '<div class="scw-srq-title">' + esc(title || 'Survey Request') + '</div>' +
       '<div class="scw-srq-meta">' +
@@ -68,7 +95,8 @@
         (reqId ? '<span class="scw-srq-reqid">REQ ' + esc(reqId) + '</span>' : '') +
         (cu ? '<a class="scw-srq-clickup" href="' + esc(cu) + '" target="_blank" ' +
           'rel="noopener">ClickUp Task &#8599;</a>' : '') +
-      '</div>';
+      '</div>' +
+      (extra ? '<div class="scw-srq-rows">' + extra + '</div>' : '');
   }
 
   // ── view_3825: details card ─────────────────────────────────
@@ -89,21 +117,22 @@
     var instr = htmlOf(view, 'field_2355');
     var other = htmlOf(view, 'field_2357');
     var form  = htmlOf(view, 'field_2356');
-    var editA = view.querySelector('.kn-details-link a.kn-link-page, .kn-details-link a');
-    var editHref = editA ? (editA.getAttribute('href') || '') : '';
 
     // strip empty-span shells Knack leaves for blank fields
     function clean(h) {
       var t = h.replace(/<[^>]*>/g, '').trim();
       return t ? h : '';
     }
+    // Any OTHER field on this view (beyond Address + the three notes) gets a
+    // generic styled row, so nothing disappears if a field is moved/added.
+    var extra = extraDetailRows(view, ['field_2410', 'field_2355', 'field_2357', 'field_2356']);
     return '' +
-      (editHref ? '<a class="scw-srq-edit" href="' + esc(editHref) + '">Edit</a>' : '') +
       (addr ? '<div class="scw-srq-addr">' + pin() + '<span>' + addr + '</span></div>' : '') +
       '<div class="scw-srq-rows">' +
         noteRow('Instructions', clean(instr)) +
         noteRow('Other Notes', clean(other)) +
         noteRow('Survey Field Form', clean(form)) +
+        extra +
       '</div>';
   }
 
@@ -172,6 +201,29 @@
     return '<div class="scw-srq-card-title">Survey POC</div>' + blocks;
   }
 
+  // Native action / page links (Edit, Regenerate Survey Documents, a PDF link,
+  // …) live inside .kn-details-link and would be hidden along with the rest of
+  // the native content — re-render them as buttons so they survive the card
+  // replacement. Deduped by href+text.
+  function cap(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
+  function actionLinks(view) {
+    var out = '', seen = Object.create(null);
+    var links = view.querySelectorAll('.kn-details-link a[href]');
+    for (var i = 0; i < links.length; i++) {
+      var a = links[i];
+      var href = a.getAttribute('href') || '';
+      var text = (a.textContent || '').trim();
+      if (!href || !text) continue;
+      var k = href + '|' + text;
+      if (seen[k]) continue;
+      seen[k] = true;
+      var ext = /^https?:/i.test(href) || a.getAttribute('target') === '_blank';
+      out += '<a class="scw-srq-action" href="' + esc(href) + '"' +
+        (ext ? ' target="_blank" rel="noopener"' : '') + '>' + esc(cap(text)) + '</a>';
+    }
+    return out;
+  }
+
   // ── transform ───────────────────────────────────────────────
   function mountCard(view, cls, innerHtml) {
     if (!innerHtml) return;
@@ -185,10 +237,17 @@
   }
 
   function transformEl(viewId, view) {
-    if (viewId === 'view_3504') mountCard(view, 'scw-srq-header', buildHeader(view));
-    else if (viewId === 'view_3825') mountCard(view, 'scw-srq-details', buildDetails(view));
-    else if (viewId === 'view_3826') mountCard(view, 'scw-srq-status', buildStatus(view));
-    else if (viewId === 'view_3568') mountCard(view, 'scw-srq-poc-card', buildPoc(view));
+    var cls = '', inner = '';
+    if (viewId === 'view_3504')      { cls = 'scw-srq-header';    inner = buildHeader(view); }
+    else if (viewId === 'view_3825') { cls = 'scw-srq-details';   inner = buildDetails(view); }
+    else if (viewId === 'view_3826') { cls = 'scw-srq-status';    inner = buildStatus(view); }
+    else if (viewId === 'view_3568') { cls = 'scw-srq-poc-card';  inner = buildPoc(view); }
+    else return;
+    // Preserve native action/page links (Edit, Regenerate Survey Documents,
+    // PDF link, …) that the card replacement would otherwise hide.
+    var acts = actionLinks(view);
+    if (acts) inner = (inner || '') + '<div class="scw-srq-actions">' + acts + '</div>';
+    mountCard(view, cls, inner);
   }
   // The header (view_3504) shows view_3826's ClickUp link, so when view_3826
   // renders (its data lands in the DOM) re-run the header to pick it up.
@@ -250,13 +309,17 @@
       /* ClickUp link sits at the far right of the header meta row. */
       '.scw-srq-meta .scw-srq-clickup { margin-left: auto; }',
 
-      /* details */
-      '.scw-srq-edit { position: absolute; top: 14px; right: 16px; background: #fff;',
-      '  border: 1px solid #cbd5e1; color: #334155; border-radius: 7px; padding: 5px 12px;',
-      '  font: 600 12px/1.2 system-ui, sans-serif; text-decoration: none; }',
-      '.scw-srq-edit:hover { background: #f1f5f9; border-color: #94a3b8; color: #0f172a; }',
+      /* native action / page links re-rendered as buttons (Edit, Regenerate
+         Survey Documents, PDF link, …) — sit in a footer row on the card. */
+      '.scw-srq-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px;',
+      '  padding-top: 12px; border-top: 1px solid #f1f5f9; }',
+      '.scw-srq-action { font: 600 12px/1.2 system-ui, sans-serif; text-decoration: none;',
+      '  color: #334155; background: #fff; border: 1px solid #cbd5e1; border-radius: 7px;',
+      '  padding: 6px 12px; white-space: nowrap; }',
+      '.scw-srq-action:hover { background: #f1f5f9; border-color: #94a3b8; color: #0f172a; }',
+      '/* details */',
       '.scw-srq-addr { display: flex; align-items: flex-start; gap: 8px; font-size: 14px;',
-      '  font-weight: 600; color: #0f172a; line-height: 1.4; padding-right: 64px; }',
+      '  font-weight: 600; color: #0f172a; line-height: 1.4; }',
       '.scw-srq-addr .scw-srq-pin { color: #2f5f91; flex: 0 0 auto; margin-top: 2px; }',
       '.scw-srq-rows { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }',
       '.scw-srq-rows:empty { margin-top: 0; }',
