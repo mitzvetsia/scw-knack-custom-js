@@ -34,10 +34,6 @@
   }
   function txt(view, fk) { var el = bodyEl(view, fk); return el ? el.textContent.trim() : ''; }
   function htmlOf(view, fk) { var el = bodyEl(view, fk); return el ? el.innerHTML.trim() : ''; }
-  function linkHref(view, fk) {
-    var el = bodyEl(view, fk); var a = el && el.querySelector('a');
-    return a ? (a.getAttribute('href') || '') : '';
-  }
 
   // ── view_3504: header card ──────────────────────────────────
   function statusMod(status) {
@@ -47,6 +43,14 @@
     if (/request|pending|new|await/.test(s))         return 'pending';
     return 'neutral';
   }
+  // ClickUp link lives on view_3826 (field_2632); we surface it in the header
+  // (next to REQ #), so read it from that view's (hidden) native DOM.
+  function clickupHref() {
+    var v = document.getElementById('view_3826');
+    if (!v) return '';
+    var a = v.querySelector('.kn-detail.field_2632 a, .field_2632 a');
+    return a ? (a.getAttribute('href') || '') : '';
+  }
   function buildHeader(view) {
     // Title (field_666 connection). The auto-identifier reads
     // "Account : Account - Location" — keep the part after the last " : ".
@@ -54,12 +58,15 @@
     var title = rawTitle.indexOf(' : ') >= 0 ? rawTitle.split(' : ').pop().trim() : rawTitle;
     var status = txt(view, 'field_2349');
     var reqId  = txt(view, 'field_2345');
+    var cu     = clickupHref();
     return '' +
       '<div class="scw-srq-title">' + esc(title || 'Survey Request') + '</div>' +
       '<div class="scw-srq-meta">' +
         (status ? '<span class="scw-srq-status scw-srq-status--' + statusMod(status) + '">' +
           esc(status) + '</span>' : '') +
         (reqId ? '<span class="scw-srq-reqid">REQ ' + esc(reqId) + '</span>' : '') +
+        (cu ? '<a class="scw-srq-clickup" href="' + esc(cu) + '" target="_blank" ' +
+          'rel="noopener">ClickUp Task &#8599;</a>' : '') +
       '</div>';
   }
 
@@ -100,11 +107,10 @@
   }
 
   // ── view_3826: status timeline card ─────────────────────────
-  // NOTE: the Status value is deliberately NOT repeated here — it already
-  // leads the header card (view_3504) right above. This card is just the
-  // Requested → Bid Delivered timeline + a ClickUp link in the footer.
+  // Just the Requested → Bid Delivered timeline. Status is NOT repeated here
+  // (it leads the header above) and the ClickUp link now lives in the header
+  // next to REQ #.
   function buildStatus(view) {
-    var clickup = linkHref(view, 'field_2632');
     var steps = [
       { fk: 'field_2351', label: 'Requested' },
       { fk: 'field_2352', label: 'Scheduled' },
@@ -120,12 +126,7 @@
         '<span class="scw-srq-tl-date">' + (d ? esc(d) : 'Pending') + '</span>' +
       '</div>';
     }
-    return '' +
-      '<div class="scw-srq-timeline">' + tl + '</div>' +
-      (clickup ? '<div class="scw-srq-footer">' +
-        '<a class="scw-srq-clickup" href="' + esc(clickup) + '" target="_blank" rel="noopener">' +
-          'ClickUp Task ↗</a>' +
-      '</div>' : '');
+    return '<div class="scw-srq-timeline">' + tl + '</div>';
   }
 
   // ── transform ───────────────────────────────────────────────
@@ -145,11 +146,17 @@
     else if (viewId === 'view_3825') mountCard(view, 'scw-srq-details', buildDetails(view));
     else if (viewId === 'view_3826') mountCard(view, 'scw-srq-status', buildStatus(view));
   }
+  // The header (view_3504) shows view_3826's ClickUp link, so when view_3826
+  // renders (its data lands in the DOM) re-run the header to pick it up.
+  function afterTransform(viewId) {
+    if (viewId === 'view_3826') transform('view_3504');
+  }
   // Knack occasionally renders the same view id twice in the DOM — handle every
   // matching element, not just document.getElementById's first hit.
   function transform(viewId) {
     var els = document.querySelectorAll('#' + viewId);
     for (var i = 0; i < els.length; i++) transformEl(viewId, els[i]);
+    afterTransform(viewId);
   }
 
   // ── styles ──────────────────────────────────────────────────
@@ -185,14 +192,18 @@
       '.scw-srq-title { font-size: 22px; font-weight: 750; letter-spacing: -.01em; color: #0f172a;',
       '  line-height: 1.2; }',
       '.scw-srq-meta { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-top: 10px; }',
+      /* Flat status badge — NO border (a border + 999px radius was the stray */
+      /* "pill outline"). Subtle tinted background, lightly rounded. */
       '.scw-srq-status { font: 700 11px/1 system-ui, sans-serif; text-transform: uppercase;',
-      '  letter-spacing: .4px; padding: 5px 10px; border-radius: 999px; white-space: nowrap; }',
-      '.scw-srq-status--pending { background: #fffbeb; color: #b45309; border: 1px solid #fde68a; }',
-      '.scw-srq-status--active  { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }',
-      '.scw-srq-status--done    { background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; }',
-      '.scw-srq-status--neutral { background: #f8fafc; color: #475569; border: 1px solid #e2e8f0; }',
+      '  letter-spacing: .4px; padding: 5px 9px; border-radius: 5px; white-space: nowrap; }',
+      '.scw-srq-status--pending { background: #fef3c7; color: #b45309; }',
+      '.scw-srq-status--active  { background: #dbeafe; color: #1d4ed8; }',
+      '.scw-srq-status--done    { background: #d1fae5; color: #047857; }',
+      '.scw-srq-status--neutral { background: #f1f5f9; color: #475569; }',
       '.scw-srq-reqid { font: 600 11.5px/1 ui-monospace, SFMono-Regular, Menlo, monospace;',
-      '  color: #64748b; background: #f1f5f9; padding: 5px 9px; border-radius: 6px; }',
+      '  color: #64748b; background: #f1f5f9; padding: 5px 9px; border-radius: 5px; }',
+      /* ClickUp link sits at the far right of the header meta row. */
+      '.scw-srq-meta .scw-srq-clickup { margin-left: auto; }',
 
       /* details */
       '.scw-srq-edit { position: absolute; top: 14px; right: 16px; background: #fff;',
@@ -211,14 +222,12 @@
       '.scw-srq-row-val { font-size: 13.5px; color: #334155; line-height: 1.45; min-width: 0; }',
       '.scw-srq-row-val a { color: #1d4ed8; }',
 
-      /* status card (view_3826): just the date timeline + a ClickUp footer link.
-         (Status is NOT repeated here — it leads the header card above.) */
-      '.scw-srq-footer { display: flex; justify-content: flex-end; margin-top: 14px;',
-      '  padding-top: 12px; border-top: 1px solid #f1f5f9; }',
-      '.scw-srq-clickup { font: 600 12px/1.2 system-ui, sans-serif; text-decoration: none;',
-      '  color: #5a3df0; background: #f1effe; border: 1px solid #ddd6fe; border-radius: 7px;',
-      '  padding: 5px 11px; white-space: nowrap; }',
-      '.scw-srq-clickup:hover { background: #e9e4fd; border-color: #c4b5fd; }',
+      /* ClickUp link (in the header meta row) — flat, borderless chip. */
+      '.scw-srq-clickup { font: 600 11.5px/1 system-ui, sans-serif; text-decoration: none;',
+      '  color: #5a3df0; background: #f1effe; border-radius: 5px;',
+      '  padding: 5px 9px; white-space: nowrap; }',
+      '.scw-srq-clickup:hover { background: #e6e1fb; }',
+      /* status card (view_3826): just the date timeline. */
       '.scw-srq-timeline { position: relative; }',
       '.scw-srq-timeline::before { content: ""; position: absolute; left: 6px; top: 13px; bottom: 13px;',
       '  width: 2px; background: #e2e8f0; }',
