@@ -1594,6 +1594,10 @@
     var F     = fieldsFor(viewKey);
     var isCam = (cat === 'cam');
     var label = readField(rec, F.displayLabel || 'field_2365');
+    // FLAG_require sub bid (field_2478) = No → this line item needs no sub bid,
+    // so NONE of the sub-bid inputs are required: Labor is locked read-only and
+    // the empty=danger flag is dropped from BOTH Labor and the work Description.
+    var subBidNo = readBool(rec, F.requireSubBid || 'field_2478') === 'No';
 
     var labelSlot = isCam
       ? ro(label, 'scw-ws-v2-cell--label', label)
@@ -1608,8 +1612,9 @@
     // lives in the detail panel (first/leftmost field).
     var surveyNotesCell = surveyFill(rec, viewKey, F.surveyNotes || 'field_2412',
       'Survey notes', 'scw-ws-v2-cell--survey-notes');
-    // v1 parity: empty Labor Description → danger (red).
-    var laborDescWarn = surveyWarnClass(rec, F.laborDesc || 'field_2409', 'danger', null);
+    // v1 parity: empty Labor Description → danger (red) — UNLESS no sub bid is
+    // required here, in which case the description isn't required either.
+    var laborDescWarn = subBidNo ? '' : surveyWarnClass(rec, F.laborDesc || 'field_2409', 'danger', null);
     var laborDescCell   = surveyFill(rec, viewKey, F.laborDesc || 'field_2409',
       isCam ? 'Labor description' : 'Description of Work', laborDescWarn);
 
@@ -1636,8 +1641,8 @@
     // v1 parity: Labor ("sub bid") empty → danger (red), zero → warning.
     // BUT when FLAG_require sub bid (field_2478) is No, this line item needs no
     // sub bid at all — so Labor is NOT required: render it read-only (white,
-    // non-interactive) and drop the empty=danger flag entirely.
-    var subBidNo  = readBool(rec, F.requireSubBid || 'field_2478') === 'No';
+    // non-interactive) and drop the empty=danger flag entirely. (subBidNo
+    // computed at the top of this builder.)
     var laborCell;
     if (cat === 'assumptions') {
       laborCell = empty('scw-ws-v2-cell--num scw-ws-v2-cell--survey-labor');
@@ -1682,10 +1687,12 @@
 
     // Survey detail = a row of VERTICAL COLUMNS, each a logical group whose
     // fields stack (label-over-value). Columns (cam): Label (Prefix / Cam·Reader
-    // #) · Notes (SCW Notes over Mounting Hardware) · Mounting & cabling (Height
-    // / Drop Length / Conduit) · Connection (Connected To / MDF·IDF). Fixed
-    // per-column widths (styles.js .scw-ws-v2-sd-group--*) keep fields aligned
-    // column-to-column instead of every field wrapping independently.
+    // #) · Notes (SCW Notes over Mounting Hardware) · Connection (MDF·IDF over
+    // Connected To) · Mounting & cabling (Height / Drop Length / Conduit). The
+    // Connection column comes BEFORE Mounting & cabling because MDF/IDF is on
+    // EVERY card, and MDF/IDF sits ON TOP of Connected To / Connected Devices.
+    // Fixed per-column widths (styles.js .scw-ws-v2-sd-group--*) keep fields
+    // aligned column-to-column instead of every field wrapping independently.
     // SCW Notes (field_2418) + Mounting Hardware (field_2463) are READ-ONLY —
     // owned upstream, not editable while bidding. Connections render via the
     // editable detailConnection button (picker wired in init.js).
@@ -1698,6 +1705,10 @@
       sdItem(detailReadOnly(rec, F.mounting || 'field_2463', 'Mounting Hardware'), 'scw-ws-v2-sd--paragraph'),
       'scw-ws-v2-sd-group--notes');
 
+    // MDF/IDF (field_2375) — present on EVERY card; rendered FIRST in the
+    // Connection column so it sits on top of Connected To / Connected Devices.
+    var mdfItem = sdItem(detailConnection(rec, viewKey, F.mdfIdf || 'field_2375', 'MDF / IDF'), 'scw-ws-v2-sd--conn');
+
     if (cat === 'cam') {
       // Col 1 — Label parts: Prefix (field_2361) over Cam/Reader # (field_2362),
       // matched width (they CONSTRUCT the read-only label in the row header).
@@ -1708,36 +1719,37 @@
         sdItem(detailField(rec, viewKey, F.dropNumber || 'field_2362', 'Cam/Reader #', 'number'), 'scw-ws-v2-sd--num'),
         'scw-ws-v2-sd-group--label');
 
-      // Col 2 — SCW Notes over Mounting Hardware (before the mounting column).
+      // Col 2 — SCW Notes over Mounting Hardware.
       groups += notesCol;
 
-      // Col 3 — Mounting & cabling: Mounting Height + Drop Length + Conduit.
+      // Col 3 — Connection & location: MDF/IDF (top) over Connected To.
+      // Connected To (field_2381, single) — editable; cascade writes the
+      // parent's field_2380. Candidates resolved in init.js.
+      groups += sdGroup(
+        mdfItem +
+        sdItem(detailConnection(rec, viewKey, F.connectedDevice || 'field_2381',
+          'Connected To', hasIssue(rec, 'disconnected')), 'scw-ws-v2-sd--conn'),
+        'scw-ws-v2-sd-group--conn');
+
+      // Col 4 — Mounting & cabling: Mounting Height + Drop Length + Conduit.
       groups += sdGroup(
         sdItem(singleChipField(rec, viewKey, F.mountingHeight || 'field_2455',
           'Mounting Height', ["Under 16'", "16' - 24'", "Over 24'"]), 'scw-ws-v2-sd--chips') +
         sdItem(detailField(rec, viewKey, F.dropLength || 'field_2367', 'Drop Length', 'number'), 'scw-ws-v2-sd--num') +
         sdItem(detailField(rec, viewKey, F.conduit || 'field_2368', 'Conduit', 'number'), 'scw-ws-v2-sd--num'),
         'scw-ws-v2-sd-group--mount');
-
-      // Col 4 — Connection & location: Connected To + MDF/IDF.
-      // Connected To (field_2381, single) — editable; cascade writes the
-      // parent's field_2380. Candidates resolved in init.js.
-      groups += sdGroup(
-        sdItem(detailConnection(rec, viewKey, F.connectedDevice || 'field_2381',
-          'Connected To', hasIssue(rec, 'disconnected')), 'scw-ws-v2-sd--conn') +
-        sdItem(detailConnection(rec, viewKey, F.mdfIdf || 'field_2375', 'MDF / IDF'), 'scw-ws-v2-sd--conn'),
-        'scw-ws-v2-sd-group--conn');
     } else {
       // default / hardware: Notes column (SCW Notes + Mounting Hardware), then a
-      // connection column — Connected Devices (only when mapConn Yes) + MDF/IDF.
+      // connection column — MDF/IDF (top) over Connected Devices (only when
+      // mapConn Yes).
       groups += notesCol;
 
       var devItem = (cat === 'default' && readBool(rec, F.mapConn || 'field_2374') === 'Yes')
         ? sdItem(detailConnectedDevices(rec, viewKey, F.connectedDevices || 'field_2380', 'Connected Devices'), 'scw-ws-v2-sd--conn')
         : '';
       groups += sdGroup(
-        devItem +
-        sdItem(detailConnection(rec, viewKey, F.mdfIdf || 'field_2375', 'MDF / IDF'), 'scw-ws-v2-sd--conn'),
+        mdfItem +
+        devItem,
         'scw-ws-v2-sd-group--conn');
     }
 

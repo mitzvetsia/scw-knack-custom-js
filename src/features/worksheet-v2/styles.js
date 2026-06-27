@@ -379,6 +379,9 @@
        + Cam/Reader # match; Notes grows most (paragraph); Mounting & Connection
        share the rest. */
     '.scw-ws-v2-sd-group--label { flex: 0 0 118px !important; }',
+    /* Center the Prefix value so it lines up under the centered Cam/Reader #
+       number below it (both stack in the narrow Label column). */
+    '.scw-ws-v2-sd-group--label .scw-ws-v2-conn-btn-val { text-align: center !important; }',
     '.scw-ws-v2-sd-group--notes { flex: 2 1 240px !important; }',
     '.scw-ws-v2-sd-group--mount { flex: 1 1 170px !important; }',
     '.scw-ws-v2-sd-group--conn  { flex: 1.3 1 200px !important; }',
