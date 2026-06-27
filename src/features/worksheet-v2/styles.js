@@ -132,7 +132,9 @@
     '    28px                  /* kebab */ !important;',
     '  gap: 6px !important;',
     '  align-items: center !important;',
-    '  padding: 4px 10px !important;',
+    /* 10px all around (the .scw-ws-v2-row padding-left:44px override keeps the
+       checkbox/chevron gutter on the left). */
+    '  padding: 10px !important;',
     '  min-height: 40px !important;',
     '}',
     /* Sales money model (moneyMode:"sales", e.g. view_3586): no Sub Bid /
