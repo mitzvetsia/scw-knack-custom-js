@@ -357,9 +357,25 @@
        Mounting & cabling (Height / Drop Length / Conduit) · Connection
        (Connected To / MDF·IDF). Fixed per-column widths so fields line up
        column-to-column instead of every field wrapping independently. */
+    /* Lay the detail groups on the SAME grid as the summary header row, so each
+       detail column lines up directly under its header column:
+         Label (Prefix / Cam·Reader #)            → label/drop column
+         Notes (SCW Notes / Mounting Hardware)    → starts under Product
+         Connection (MDF·IDF / Connected To·Dev.) → starts under Labor Description
+         Mounting & cabling (Height/Drop/Conduit) → starts under Existing/Exterior/Plenum
+       The template is byte-identical to the survey header grid (.scw-ws-v2-card
+       --survey .scw-ws-v2-row--*) and the detail container is padded to the same
+       left (44px) + right (10px) gutter, so the fractional tracks resolve to the
+       same widths and everything aligns column-to-column. */
+    '.scw-ws-v2-card--survey .scw-ws-v2-detail { padding-right: 10px !important; }',
     '.scw-ws-v2-survey-detail .scw-ws-v2-sd-groups {',
-    '  flex: 1 1 100% !important; display: flex !important; flex-wrap: wrap !important;',
-    '  gap: 16px 30px !important; align-items: flex-start !important;',
+    '  flex: 1 1 100% !important;',
+    '  display: grid !important;',
+    '  grid-template-columns:',
+    '    20px 64px minmax(140px, 1.1fr) minmax(150px, 1.3fr) minmax(150px, 1.3fr)',
+    '    72px 74px 60px 62px 28px 28px !important;',
+    '  column-gap: 6px !important; row-gap: 12px !important;',
+    '  align-items: start !important;',
     '}',
     '.scw-ws-v2-sd-group {',
     '  display: flex !important; flex-direction: column !important; gap: 10px !important;',
@@ -367,26 +383,22 @@
     '}',
     /* Each item fills its column. CRITICAL: reset min-width to 0 — the width-hint
        classes (--conn min-width:150px, --paragraph min-width:220px) would
-       otherwise force an item WIDER than its column and overlap the next one
-       (that was the Prefix-into-SCW-Notes overlap). The detail-field inside
-       stretches its input/button/display to match (label-over-value stacks). */
+       otherwise force an item WIDER than its grid track and overflow it. The
+       detail-field inside stretches its input/button/display to match. */
     '.scw-ws-v2-sd-group .scw-ws-v2-sd-item {',
     '  flex: 0 0 auto !important; width: 100% !important;',
     '  min-width: 0 !important; max-width: none !important;',
     '}',
-    /* Columns GROW to fill the full card width (so the panel isn\'t crammed on the
-       left with the right half empty). Label stays a fixed narrow track so Prefix
-       + Cam/Reader # match; Notes grows most (paragraph); Mounting & Connection
-       share the rest. */
-    '.scw-ws-v2-sd-group--label { flex: 0 0 118px !important; }',
+    /* Place each group into the header columns it should align under. */
+    '.scw-ws-v2-sd-group--label { grid-column: 1 / 3 !important; }',
     /* Center the Prefix value so it lines up under the centered Cam/Reader #
        number below it (both stack in the narrow Label column). */
     '.scw-ws-v2-sd-group--label .scw-ws-v2-conn-btn-val { text-align: center !important; }',
-    '.scw-ws-v2-sd-group--notes { flex: 2 1 240px !important; }',
-    '.scw-ws-v2-sd-group--mount { flex: 1 1 170px !important; }',
-    '.scw-ws-v2-sd-group--conn  { flex: 1.3 1 200px !important; }',
+    '.scw-ws-v2-sd-group--notes { grid-column: 3 / 5 !important; }',
+    '.scw-ws-v2-sd-group--conn  { grid-column: 5 / 6 !important; }',
+    '.scw-ws-v2-sd-group--mount { grid-column: 6 / -1 !important; }',
     /* Mounting & cabling column: the two number inputs stay narrow (left-aligned)
-       inside the wider column instead of stretching full-width. */
+       inside the wider span instead of stretching full-width. */
     '.scw-ws-v2-sd-group--mount .scw-ws-v2-sd--num { width: 96px !important; }',
     /* Sales detail — v1-style two columns: pricing/identity stacked on the
        left, connections + Labor Desc stacked on the right. */

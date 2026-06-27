@@ -1612,11 +1612,17 @@
     // lives in the detail panel (first/leftmost field).
     var surveyNotesCell = surveyFill(rec, viewKey, F.surveyNotes || 'field_2412',
       'Survey notes', 'scw-ws-v2-cell--survey-notes');
-    // v1 parity: empty Labor Description → danger (red) — UNLESS no sub bid is
-    // required here, in which case the description isn't required either.
-    var laborDescWarn = subBidNo ? '' : surveyWarnClass(rec, F.laborDesc || 'field_2409', 'danger', null);
-    var laborDescCell   = surveyFill(rec, viewKey, F.laborDesc || 'field_2409',
-      isCam ? 'Labor description' : 'Description of Work', laborDescWarn);
+    // Description of Work (field_2409): when no sub bid is required here, the
+    // field is HIDDEN entirely (an empty grid cell keeps the columns aligned).
+    // Otherwise v1 parity — empty Description → danger (red).
+    var laborDescCell;
+    if (subBidNo) {
+      laborDescCell = empty('scw-ws-v2-cell--labor-desc');
+    } else {
+      var laborDescWarn = surveyWarnClass(rec, F.laborDesc || 'field_2409', 'danger', null);
+      laborDescCell = surveyFill(rec, viewKey, F.laborDesc || 'field_2409',
+        isCam ? 'Labor description' : 'Description of Work', laborDescWarn);
+    }
 
     // Slot 5 (qty/chips): cam → cabling chips; assumptions → blank;
     // qty-locked (FLAG_limit to quantity one = Yes) → blank (qty implicit 1,
