@@ -407,18 +407,20 @@
         //    are editable in the survey card UI + on the Survey Line Item
         //    object. Excluded: product/ext/mounting hardware (read-only on the
         //    card); Connected Devices/To (edit per-row so the field_2380↔2381
-        //    cascade fires); Mounting Height (3-option chip, no bulk widget).
+        //    cascade fires). Mounting Height is a 3-option chip → bulk 'select'.
         bulkFields: {
           cam: [
-            { f: 'dropPrefix',   kind: 'conn-single', label: 'Prefix',      candSource: 'dropPrefix' },
-            { f: 'dropNumber',   kind: 'number',      label: 'Cam/Reader #' },
-            { f: 'laborDesc',    kind: 'text',        label: 'Labor description' },
-            { f: 'labor',        kind: 'number',      label: 'Labor' },
-            { f: 'existCabling', kind: 'bool',        label: 'Existing cabling' },
-            { f: 'exterior',     kind: 'bool',        label: 'Exterior' },
-            { f: 'plenum',       kind: 'bool',        label: 'Plenum' },
-            { f: 'dropLength',   kind: 'number',      label: 'Drop length' },
-            { f: 'conduit',      kind: 'number',      label: 'Conduit' },
+            { f: 'dropPrefix',     kind: 'conn-single', label: 'Prefix',      candSource: 'dropPrefix' },
+            { f: 'dropNumber',     kind: 'number',      label: 'Cam/Reader #' },
+            { f: 'laborDesc',      kind: 'text',        label: 'Labor description' },
+            { f: 'labor',          kind: 'number',      label: 'Labor' },
+            { f: 'existCabling',   kind: 'bool',        label: 'Existing cabling' },
+            { f: 'exterior',       kind: 'bool',        label: 'Exterior' },
+            { f: 'plenum',         kind: 'bool',        label: 'Plenum' },
+            { f: 'mountingHeight', kind: 'select',      label: 'Mounting Height',
+              options: ["Under 16'", "16' - 24'", "Over 24'"] },
+            { f: 'dropLength',     kind: 'number',      label: 'Drop length' },
+            { f: 'conduit',        kind: 'number',      label: 'Conduit' },
             { f: 'surveyNotes',  kind: 'text',        label: 'Survey notes' },
             // SCW Notes (field_2418) is READ-ONLY on the bid worksheet — omitted.
             { f: 'mdfIdf',       kind: 'conn-single', label: 'MDF / IDF', candSource: 'mdf' },

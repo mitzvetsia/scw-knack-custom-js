@@ -164,6 +164,7 @@
             label:      spec.label || spec.f,
             kind:       spec.kind || 'text',
             candSource: spec.candSource,
+            options:    spec.options,                // for kind:'select'
             // Hide on a row when this (resolved) gate field is Yes — e.g. Qty
             // hidden when "limit to quantity one" (qtyOne) is Yes.
             gateNoKey:  spec.gateNo ? (F[spec.gateNo] || spec.gateNo) : null
@@ -1614,6 +1615,51 @@
     document.head.appendChild(s);
   }
 
+  /** Short display label for a selected record — drop label, then product
+   *  name, then product connection identifier; DOM card text as a fallback;
+   *  last-5 of the id if nothing resolves. */
+  function recordLabel(id, idx, F) {
+    function clean(v) { return v == null ? '' : String(v).replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim(); }
+    var a = idx[id];
+    if (a) {
+      var l = clean(a[F.displayLabel || 'field_2365']) || clean(a[F.productName || 'field_2379']);
+      if (!l) {
+        var pr = a[(F.product || 'field_1949') + '_raw'];
+        if (Array.isArray(pr) && pr[0]) l = clean(pr[0].identifier);
+      }
+      if (l) return l;
+    }
+    try {
+      var card = document.querySelector('.scw-ws-v2-card[data-scw-ws-v2-record="' + id + '"]');
+      if (card) {
+        var le = card.querySelector('.scw-ws-v2-cell--label');
+        var t = le ? clean(le.textContent) : '';
+        if (!t) { var pe = card.querySelector('.scw-ws-v2-product-name'); t = pe ? clean(pe.textContent) : ''; }
+        if (t) return t;
+      }
+    } catch (e) {}
+    return '…' + String(id).slice(-5);
+  }
+
+  /** Chip strip of the selected rows for the modal head. Caps at MAX chips
+   *  (+"N more") so a huge selection can't blow up the DOM, and the strip is a
+   *  fixed-height scroll region (CSS) so it never crowds out the fields. */
+  function selectedRowsHtml(ids, sourceViewKey) {
+    var MAX = 40;
+    var idx = attrsIndex(sourceViewKey);
+    var F = (ns.cfg && typeof ns.cfg.fields === 'function' && ns.cfg.fields(sourceViewKey)) || {};
+    var chips = '';
+    var shown = Math.min(ids.length, MAX);
+    for (var i = 0; i < shown; i++) {
+      chips += '<span class="scw-ws-v2-bulk-chip">' + escapeHtml(recordLabel(ids[i], idx, F)) + '</span>';
+    }
+    if (ids.length > MAX) {
+      chips += '<span class="scw-ws-v2-bulk-chip scw-ws-v2-bulk-chip--more">+' +
+        (ids.length - MAX) + ' more</span>';
+    }
+    return '<div class="scw-ws-v2-bulk-selected-chips">' + chips + '</div>';
+  }
+
   function openBulkModal(ids, sourceViewKey) {
     // If any selected row is locked (survey-associated sales item), only the
     // lock whitelist (Product / SCW Notes / Custom Disc %) is bulk-editable —
@@ -1696,6 +1742,7 @@
         '<div class="scw-ws-v2-bulk-modal-head">' +
           '<div class="scw-ws-v2-bulk-modal-title">Edit ' + ids.length + ' selected</div>' +
           '<div class="scw-ws-v2-bulk-modal-sub">' + subHtml + '</div>' +
+          selectedRowsHtml(ids, sourceViewKey) +
         '</div>' +
         '<div class="scw-ws-v2-bulk-modal-body"></div>' +
         '<div class="scw-ws-v2-bulk-modal-status"></div>' +
@@ -1757,6 +1804,25 @@
             '<option value="Yes">Yes</option>' +
             '<option value="No">No</option>' +
           '</select>';
+        slot.querySelector('select').addEventListener('change', function (e) {
+          if (!e.target.value) {
+            rowState[f.key].apply = false;
+            applyCb.checked = false;
+          } else {
+            rowState[f.key].value = e.target.value;
+            rowState[f.key].apply = true;
+            applyCb.checked = true;
+          }
+        });
+      } else if (f.kind === 'select') {
+        // Single-select from a fixed option list (e.g. Mounting Height chips).
+        var optsHtml = '<option value="">(no change)</option>';
+        var optList = f.options || [];
+        for (var oi = 0; oi < optList.length; oi++) {
+          optsHtml += '<option value="' + escapeHtml(optList[oi]) + '">' +
+            escapeHtml(optList[oi]) + '</option>';
+        }
+        slot.innerHTML = '<select class="scw-ws-v2-bulk-input">' + optsHtml + '</select>';
         slot.querySelector('select').addEventListener('change', function (e) {
           if (!e.target.value) {
             rowState[f.key].apply = false;
