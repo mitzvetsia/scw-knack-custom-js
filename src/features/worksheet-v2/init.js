@@ -1181,7 +1181,7 @@
         // worksheet display exactly), then the view's label field, then id.
         // Falls back to in-use-only (collectConnValues) if the grid isn't
         // loaded on the page.
-        var surveyCandidates = function (viewKeys, labelField, connF) {
+        var surveyCandidates = function (viewKeys, labelField, connF, nameField) {
           var recs = firstViewRecords(viewKeys) || [];
           if (!recs.length) return collectConnValues(connF);
           var inUse = Object.create(null);
@@ -1202,6 +1202,12 @@
               (a[labelField] != null ? String(a[labelField]).replace(/<[^>]*>/g, '').trim() : '') ||
               (a.identifier != null ? String(a.identifier).replace(/<[^>]*>/g, '').trim() : '') ||
               a.id;
+            // Append a friendly name (e.g. the Bid's field_2636) so the option
+            // reads "141 — White Storage Shelf…", not just the bare number.
+            if (nameField) {
+              var fn = (a[nameField] != null) ? String(a[nameField]).replace(/<[^>]*>/g, '').trim() : '';
+              if (fn && String(lbl).indexOf(fn) === -1) lbl = String(lbl) + ' — ' + fn;
+            }
             out.push({ id: a.id, name: String(lbl) });
           }
           out.sort(function (x, y) {
@@ -1225,7 +1231,7 @@
           ns.picker.open({
             sourceViewKey: viewKey, putViewKey: viewKey, recordId: recordId,
             fieldKey: fieldKey, label: 'Bid', selectedIds: sel,
-            candidates: surveyCandidates(['view_3507'], 'field_2414', fieldKey), groupBy: false,
+            candidates: surveyCandidates(['view_3507'], 'field_2414', fieldKey, 'field_2636'), groupBy: false,
             itemLabel: function (r) { return r.name || r.id; },
             multi: true, onSaved: surveyRefetch,
             // Clearing every bid requires a survey note written in the SAME

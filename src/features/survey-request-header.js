@@ -99,9 +99,11 @@
       '</div>';
   }
 
-  // ── view_3826: status + timeline card ───────────────────────
+  // ── view_3826: status timeline card ─────────────────────────
+  // NOTE: the Status value is deliberately NOT repeated here — it already
+  // leads the header card (view_3504) right above. This card is just the
+  // Requested → Bid Delivered timeline + a ClickUp link in the footer.
   function buildStatus(view) {
-    var status  = txt(view, 'field_2349');
     var clickup = linkHref(view, 'field_2632');
     var steps = [
       { fk: 'field_2351', label: 'Requested' },
@@ -119,13 +121,11 @@
       '</div>';
     }
     return '' +
-      '<div class="scw-srq-status-top">' +
-        (status ? '<span class="scw-srq-status scw-srq-status--' + statusMod(status) + '">' +
-          esc(status) + '</span>' : '') +
-        (clickup ? '<a class="scw-srq-clickup" href="' + esc(clickup) + '" target="_blank" rel="noopener">' +
-          'ClickUp ↗</a>' : '') +
-      '</div>' +
-      '<div class="scw-srq-timeline">' + tl + '</div>';
+      '<div class="scw-srq-timeline">' + tl + '</div>' +
+      (clickup ? '<div class="scw-srq-footer">' +
+        '<a class="scw-srq-clickup" href="' + esc(clickup) + '" target="_blank" rel="noopener">' +
+          'ClickUp Task ↗</a>' +
+      '</div>' : '');
   }
 
   // ── transform ───────────────────────────────────────────────
@@ -167,6 +167,13 @@
       '#view_3504, #view_3825, #view_3826 { background: transparent !important; box-shadow: none !important;',
       '  border: none !important; border-radius: 0 !important; padding: 0 !important;',
       '  margin: 0 0 12px !important; overflow: visible !important; }',
+      // The "pill-shaped outline" was a rounded border/box-shadow on the COLUMN /
+      // GROUP wrappers around the views (the views\' own native content is already
+      // hidden). Strip border / radius / shadow / outline off those wrappers.
+      '.view-column:has(> #view_3504), .view-column:has(> #view_3825), .view-column:has(> #view_3826),',
+      '.view-group:has(#view_3504), .view-group:has(#view_3825), .view-group:has(#view_3826) {',
+      '  border: none !important; border-radius: 0 !important; box-shadow: none !important;',
+      '  outline: none !important; background: transparent !important; }',
 
       '.scw-srq-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px;',
       '  box-shadow: 0 1px 2px rgba(15,23,42,.04); padding: 16px 18px;',
@@ -204,14 +211,15 @@
       '.scw-srq-row-val { font-size: 13.5px; color: #334155; line-height: 1.45; min-width: 0; }',
       '.scw-srq-row-val a { color: #1d4ed8; }',
 
-      /* status card (view_3826): status chip + ClickUp link, then a date timeline */
-      '.scw-srq-status-top { display: flex; align-items: center; justify-content: space-between;',
-      '  gap: 10px; flex-wrap: wrap; }',
+      /* status card (view_3826): just the date timeline + a ClickUp footer link.
+         (Status is NOT repeated here — it leads the header card above.) */
+      '.scw-srq-footer { display: flex; justify-content: flex-end; margin-top: 14px;',
+      '  padding-top: 12px; border-top: 1px solid #f1f5f9; }',
       '.scw-srq-clickup { font: 600 12px/1.2 system-ui, sans-serif; text-decoration: none;',
       '  color: #5a3df0; background: #f1effe; border: 1px solid #ddd6fe; border-radius: 7px;',
       '  padding: 5px 11px; white-space: nowrap; }',
       '.scw-srq-clickup:hover { background: #e9e4fd; border-color: #c4b5fd; }',
-      '.scw-srq-timeline { position: relative; margin-top: 14px; }',
+      '.scw-srq-timeline { position: relative; }',
       '.scw-srq-timeline::before { content: ""; position: absolute; left: 6px; top: 13px; bottom: 13px;',
       '  width: 2px; background: #e2e8f0; }',
       '.scw-srq-tl-item { position: relative; display: grid; grid-template-columns: 16px 1fr auto;',

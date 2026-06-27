@@ -1480,7 +1480,12 @@
         }
       }
       var bidCands = bidAttrs.map(function (a) {
-        return { id: a.id, identifier: inUseBid[a.id] || stripHtml(a.field_2414) || stripHtml(a.identifier) || a.id };
+        var base = inUseBid[a.id] || stripHtml(a.field_2414) || stripHtml(a.identifier) || a.id;
+        // Append the friendly bid name (field_2636) so the option reads
+        // "141 — White Storage Shelf…" instead of the bare number.
+        var fn = stripHtml(a.field_2636);
+        var label = (fn && String(base).indexOf(fn) === -1) ? (base + ' — ' + fn) : base;
+        return { id: a.id, identifier: label };
       }).filter(function (c) { return c.identifier; });
       bidCands.sort(function (a, b) {
         return String(a.identifier).localeCompare(String(b.identifier), undefined,
