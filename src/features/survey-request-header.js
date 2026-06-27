@@ -10,7 +10,8 @@
  *   view_3504  → header card: site title · Status chip · REQ_ID
  *   view_3825  → details card: Address · Edit button · Instructions /
  *                Other Notes / Survey Field Form (non-empty only)
- *   view_3538  → "BIDs" rich-text restyled as a clean section heading
+ *   view_3826  → status card: Status chip · ClickUp link · a Requested →
+ *                Scheduled → Completed → Bid Delivered date timeline
  *
  * Pure DOM scrape (the native content stays in the DOM, just display:none), so
  * there's no model-timing dependency. Idempotent on every render.
@@ -20,7 +21,7 @@
 
   var STYLE_ID = 'scw-srq-header-css';
   var EVENT_NS = '.scwSrqHeader';
-  var VIEWS = ['view_3504', 'view_3825', 'view_3538'];
+  var VIEWS = ['view_3504', 'view_3825', 'view_3826'];
 
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
@@ -33,6 +34,10 @@
   }
   function txt(view, fk) { var el = bodyEl(view, fk); return el ? el.textContent.trim() : ''; }
   function htmlOf(view, fk) { var el = bodyEl(view, fk); return el ? el.innerHTML.trim() : ''; }
+  function linkHref(view, fk) {
+    var el = bodyEl(view, fk); var a = el && el.querySelector('a');
+    return a ? (a.getAttribute('href') || '') : '';
+  }
 
   // ── view_3504: header card ──────────────────────────────────
   function statusMod(status) {
@@ -94,6 +99,35 @@
       '</div>';
   }
 
+  // ── view_3826: status + timeline card ───────────────────────
+  function buildStatus(view) {
+    var status  = txt(view, 'field_2349');
+    var clickup = linkHref(view, 'field_2632');
+    var steps = [
+      { fk: 'field_2351', label: 'Requested' },
+      { fk: 'field_2352', label: 'Scheduled' },
+      { fk: 'field_2353', label: 'Completed' },
+      { fk: 'field_2354', label: 'Bid Delivered' }
+    ];
+    var tl = '';
+    for (var i = 0; i < steps.length; i++) {
+      var d = txt(view, steps[i].fk);
+      tl += '<div class="scw-srq-tl-item' + (d ? ' scw-srq-tl-item--done' : '') + '">' +
+        '<span class="scw-srq-tl-dot"></span>' +
+        '<span class="scw-srq-tl-label">' + esc(steps[i].label) + '</span>' +
+        '<span class="scw-srq-tl-date">' + (d ? esc(d) : 'Pending') + '</span>' +
+      '</div>';
+    }
+    return '' +
+      '<div class="scw-srq-status-top">' +
+        (status ? '<span class="scw-srq-status scw-srq-status--' + statusMod(status) + '">' +
+          esc(status) + '</span>' : '') +
+        (clickup ? '<a class="scw-srq-clickup" href="' + esc(clickup) + '" target="_blank" rel="noopener">' +
+          'ClickUp ↗</a>' : '') +
+      '</div>' +
+      '<div class="scw-srq-timeline">' + tl + '</div>';
+  }
+
   // ── transform ───────────────────────────────────────────────
   function mountCard(view, cls, innerHtml) {
     if (!innerHtml) return;
@@ -109,7 +143,7 @@
   function transformEl(viewId, view) {
     if (viewId === 'view_3504') mountCard(view, 'scw-srq-header', buildHeader(view));
     else if (viewId === 'view_3825') mountCard(view, 'scw-srq-details', buildDetails(view));
-    else if (viewId === 'view_3538') view.classList.add('scw-srq-section');
+    else if (viewId === 'view_3826') mountCard(view, 'scw-srq-status', buildStatus(view));
   }
   // Knack occasionally renders the same view id twice in the DOM — handle every
   // matching element, not just document.getElementById's first hit.
@@ -124,8 +158,9 @@
     // Hide native content from first paint (kills the thrash) — our card sits
     // before it. The rich-text (view_3538) keeps its content, just restyled.
     var css = [
-      '#view_3504 > section.columns, #view_3825 > section.columns { display: none !important; }',
-      '#view_3504, #view_3825 { background: transparent !important; box-shadow: none !important;',
+      '#view_3504 > section.columns, #view_3825 > section.columns, #view_3826 > section.columns {',
+      '  display: none !important; }',
+      '#view_3504, #view_3825, #view_3826 { background: transparent !important; box-shadow: none !important;',
       '  border: none !important; padding: 0 !important; margin: 0 0 12px !important; }',
 
       '.scw-srq-card { background: #fff; border: 1px solid #e5e7eb; border-radius: 12px;',
@@ -164,13 +199,25 @@
       '.scw-srq-row-val { font-size: 13.5px; color: #334155; line-height: 1.45; min-width: 0; }',
       '.scw-srq-row-val a { color: #1d4ed8; }',
 
-      /* section heading (view_3538 "BIDs") */
-      '#view_3538.scw-srq-section { margin: 18px 0 10px !important; padding: 0 !important;',
-      '  background: transparent !important; box-shadow: none !important; border: none !important; }',
-      '#view_3538.scw-srq-section .kn-rich_text__content h1 { font-size: 15px !important;',
-      '  font-weight: 700 !important; text-transform: uppercase !important; letter-spacing: .5px !important;',
-      '  color: #64748b !important; margin: 0 !important; padding: 0 0 7px !important;',
-      '  border-bottom: 2px solid #e2e8f0 !important; }'
+      /* status card (view_3826): status chip + ClickUp link, then a date timeline */
+      '.scw-srq-status-top { display: flex; align-items: center; justify-content: space-between;',
+      '  gap: 10px; flex-wrap: wrap; }',
+      '.scw-srq-clickup { font: 600 12px/1.2 system-ui, sans-serif; text-decoration: none;',
+      '  color: #5a3df0; background: #f1effe; border: 1px solid #ddd6fe; border-radius: 7px;',
+      '  padding: 5px 11px; white-space: nowrap; }',
+      '.scw-srq-clickup:hover { background: #e9e4fd; border-color: #c4b5fd; }',
+      '.scw-srq-timeline { position: relative; margin-top: 14px; }',
+      '.scw-srq-timeline::before { content: ""; position: absolute; left: 6px; top: 13px; bottom: 13px;',
+      '  width: 2px; background: #e2e8f0; }',
+      '.scw-srq-tl-item { position: relative; display: grid; grid-template-columns: 16px 1fr auto;',
+      '  align-items: center; gap: 0 10px; padding: 6px 0; }',
+      '.scw-srq-tl-dot { width: 12px; height: 12px; border-radius: 50%; border: 2px solid #cbd5e1;',
+      '  background: #fff; box-sizing: border-box; position: relative; z-index: 1; }',
+      '.scw-srq-tl-item--done .scw-srq-tl-dot { border-color: #047857; background: #047857; }',
+      '.scw-srq-tl-label { font: 600 12.5px/1.2 system-ui, sans-serif; color: #64748b; }',
+      '.scw-srq-tl-item--done .scw-srq-tl-label { color: #0f172a; }',
+      '.scw-srq-tl-date { font-size: 12px; color: #475569; text-align: right; white-space: nowrap; }',
+      '.scw-srq-tl-item:not(.scw-srq-tl-item--done) .scw-srq-tl-date { color: #cbd5e1; font-style: italic; }'
     ].join('\n');
     var s = document.createElement('style');
     s.id = STYLE_ID;
