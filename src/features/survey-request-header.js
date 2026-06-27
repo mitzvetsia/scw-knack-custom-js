@@ -106,12 +106,16 @@
     card.innerHTML = innerHtml;
   }
 
-  function transform(viewId) {
-    var view = document.getElementById(viewId);
-    if (!view) return;
+  function transformEl(viewId, view) {
     if (viewId === 'view_3504') mountCard(view, 'scw-srq-header', buildHeader(view));
     else if (viewId === 'view_3825') mountCard(view, 'scw-srq-details', buildDetails(view));
     else if (viewId === 'view_3538') view.classList.add('scw-srq-section');
+  }
+  // Knack occasionally renders the same view id twice in the DOM — handle every
+  // matching element, not just document.getElementById's first hit.
+  function transform(viewId) {
+    var els = document.querySelectorAll('#' + viewId);
+    for (var i = 0; i < els.length; i++) transformEl(viewId, els[i]);
   }
 
   // ── styles ──────────────────────────────────────────────────
