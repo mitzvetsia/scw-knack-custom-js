@@ -199,6 +199,11 @@
         (!(_vcSow && _vcSow.hideSow) || (_vcSow && _vcSow.filterPills))) {
       ns.sowFilter.mount(key);
     }
+    // Free-text search box (above the pills) — narrows records by product /
+    // label / MDF-IDF / notes. Mounts idempotently on every render.
+    if (ns.search && typeof ns.search.mount === 'function') {
+      ns.search.mount(key);
+    }
     // After every re-render, sync the bulk-select checkboxes to
     // current selection state + refresh the floating toolbar. GUARD on the
     // panel actually being mounted on THIS scene: bulk is a singleton, and

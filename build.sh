@@ -190,6 +190,7 @@ cat \
   src/features/worksheet-v2/toolbar.js \
   src/features/worksheet-v2/sort.js \
   src/features/worksheet-v2/sow-filter.js \
+  src/features/worksheet-v2/search.js \
   src/features/worksheet-v2/native-filter.js \
   src/features/worksheet-v2/bulk.js \
   src/features/worksheet-v2/prefill-accessory-parent.js \

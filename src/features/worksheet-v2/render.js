@@ -569,6 +569,11 @@
         typeof ns.sowFilter.filterRecords === 'function')
       ? ns.sowFilter.filterRecords(sourceViewKey, records)
       : records;
+    // Free-text search narrows further (after the SOW/Bid filter) so grouping,
+    // summary counts and cards all rebuild from the searched subset.
+    if (ns.search && typeof ns.search.filterRecords === 'function') {
+      effectiveRecords = ns.search.filterRecords(sourceViewKey, effectiveRecords);
+    }
     // Detect issues once per render — cards + summary chips read from
     // the cached analysis. Runs against the filtered records so the
     // counts reflect what\'s actually visible.
