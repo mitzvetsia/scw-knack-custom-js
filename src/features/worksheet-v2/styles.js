@@ -1108,6 +1108,13 @@
     '  border-bottom-left-radius: 0 !important;',
     '  border-bottom-right-radius: 0 !important;',
     '}',
+    /* A little vertical breathing room at the top + bottom of an OPEN row (only
+       when open — closed rows stay compact). Also widens the gap between
+       adjacent open rows, which helps tell them apart now that they\'re flat. */
+    '#scw-ws-v2-view_3505 .scw-ws-v2-card--open {',
+    '  padding-top: 10px !important;',
+    '  padding-bottom: 12px !important;',
+    '}',
     '.scw-ws-v2-detail-grid {',
     '  display: grid !important;',
     '  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)) !important;',
