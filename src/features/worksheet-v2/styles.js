@@ -81,23 +81,6 @@
     '  max-height: none !important;',
     '  overflow: visible !important;',
     '}',
-    /* view_3505: drop the OUTER panel box (border / shadow / radius) so the only
-       remaining boxes are the cards themselves. The user found the panel box
-       wrapping the whole v2 section PLUS the per-card box "too many boxes" — the
-       card separation is the one worth keeping. The banner keeps its own
-       bottom border as the header divider. */
-    '#scw-ws-v2-view_3505 {',
-    '  border: none !important;',
-    '  border-radius: 0 !important;',
-    '  box-shadow: none !important;',
-    '  margin: 12px 0 !important;',
-    '}',
-    /* With the panel border gone the banner\'s grey fill reads as a floating
-       bar; make it transparent so the header sits flush on the page. */
-    '#scw-ws-v2-view_3505 > .scw-ws-v2-banner {',
-    '  background: transparent !important;',
-    '  padding-left: 4px !important; padding-right: 4px !important;',
-    '}',
     '.scw-ws-v2-empty {',
     '  padding: 20px !important;',
     '  text-align: center !important;',
@@ -366,19 +349,27 @@
     '}',
     '.scw-ws-v2-sd-group {',
     '  display: flex !important; flex-direction: column !important; gap: 10px !important;',
-    '  align-items: stretch !important; flex: 0 0 auto !important;',
+    '  align-items: stretch !important; min-width: 0 !important;',
     '}',
-    /* Each item fills its column; the detail-field inside stretches its input/',
-    /* button/display to match (label-over-value already stacks vertically). */
-    '.scw-ws-v2-sd-group .scw-ws-v2-sd-item { flex: 0 0 auto !important; width: 100% !important; }',
-    /* Per-column widths. Prefix + Cam/Reader # share ONE narrow width so they
-       align (they construct the read-only label). */
-    '.scw-ws-v2-sd-group--label { width: 104px !important; }',
-    '.scw-ws-v2-sd-group--notes { width: 280px !important; }',
-    '.scw-ws-v2-sd-group--conn  { width: 210px !important; }',
-    '.scw-ws-v2-sd-group--mount { width: 210px !important; }',
+    /* Each item fills its column. CRITICAL: reset min-width to 0 — the width-hint
+       classes (--conn min-width:150px, --paragraph min-width:220px) would
+       otherwise force an item WIDER than its column and overlap the next one
+       (that was the Prefix-into-SCW-Notes overlap). The detail-field inside
+       stretches its input/button/display to match (label-over-value stacks). */
+    '.scw-ws-v2-sd-group .scw-ws-v2-sd-item {',
+    '  flex: 0 0 auto !important; width: 100% !important;',
+    '  min-width: 0 !important; max-width: none !important;',
+    '}',
+    /* Columns GROW to fill the full card width (so the panel isn\'t crammed on the
+       left with the right half empty). Label stays a fixed narrow track so Prefix
+       + Cam/Reader # match; Notes grows most (paragraph); Mounting & Connection
+       share the rest. */
+    '.scw-ws-v2-sd-group--label { flex: 0 0 118px !important; }',
+    '.scw-ws-v2-sd-group--notes { flex: 2 1 240px !important; }',
+    '.scw-ws-v2-sd-group--mount { flex: 1 1 170px !important; }',
+    '.scw-ws-v2-sd-group--conn  { flex: 1.3 1 200px !important; }',
     /* Mounting & cabling column: the two number inputs stay narrow (left-aligned)
-       while the Mounting-Height chips wrap across the full column width. */
+       inside the wider column instead of stretching full-width. */
     '.scw-ws-v2-sd-group--mount .scw-ws-v2-sd--num { width: 96px !important; }',
     /* Sales detail — v1-style two columns: pricing/identity stacked on the
        left, connections + Labor Desc stacked on the right. */
