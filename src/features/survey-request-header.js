@@ -208,9 +208,16 @@
   function cap(s) { return s ? s.charAt(0).toUpperCase() + s.slice(1) : s; }
   function actionLinks(view) {
     var out = '', seen = Object.create(null);
-    var links = view.querySelectorAll('.kn-details-link a[href]');
+    // Action / page / menu links (Edit, Regenerate Survey Documents, a PDF
+    // link, …) — Knack renders these in several shapes, so cast a wide net.
+    var links = view.querySelectorAll(
+      '.kn-details-link a[href], .kn-menu a[href], .kn-action-link a[href], ' +
+      'a.kn-link-page[href], a.kn-link.kn-button[href], a.kn-link-action[href]');
     for (var i = 0; i < links.length; i++) {
       var a = links[i];
+      // Skip links that are a FIELD VALUE (inside a .kn-detail body — e.g. an
+      // email/phone/file value); those belong in their field row, not here.
+      if (a.closest && a.closest('.kn-detail') && !a.closest('.kn-details-link')) continue;
       var href = a.getAttribute('href') || '';
       var text = (a.textContent || '').trim();
       if (!href || !text) continue;
