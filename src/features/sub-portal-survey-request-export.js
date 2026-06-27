@@ -387,9 +387,15 @@
   // yet. Check for the .scw-ws-row card shells device-worksheet
   // creates after its transform completes.
   function worksheetReady() {
+    // v1 device-worksheet: native #view_3505 grows tr.scw-ws-row card shells.
     var view = document.getElementById(WORKSHEET_VIEW);
-    if (!view) return false;
-    return !!view.querySelector('tr.scw-ws-row');
+    if (view && view.querySelector('tr.scw-ws-row')) return true;
+    // worksheet-v2 (what the survey worksheet actually uses): the native
+    // table is replaced by #scw-ws-v2-<viewId> whose device rows are
+    // .scw-ws-v2-card[data-scw-ws-v2-record]. Treat that as ready too.
+    var v2 = document.getElementById('scw-ws-v2-' + WORKSHEET_VIEW);
+    if (v2 && v2.querySelector('[data-scw-ws-v2-record]')) return true;
+    return false;
   }
 
   function sendPayload(btn) {

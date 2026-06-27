@@ -445,6 +445,153 @@
   }
 
   // ══════════════════════════════════════════════════════════════
+  // WORKSHEET-V2 SCRAPER
+  // The survey worksheet (view_3505) is rendered by worksheet-v2,
+  // which replaces Knack's native table with a #scw-ws-v2-<viewId>
+  // card grid — so the v1 tbody walk below finds zero rows there.
+  // Scrape the v2 cards into the SAME row shape buildHtml expects:
+  // values keyed by field_XXXX so the existing PDF layout, flags,
+  // measure band and camera spreadsheet all pick them up unchanged.
+  // card.raw still comes from the (untouched) Knack model via
+  // buildRecordMap, so bucket classification keeps working.
+  // ══════════════════════════════════════════════════════════════
+
+  // Read-only detail displays in v2 carry no field key (just a label),
+  // so map the ones the PDF layout cares about by their label text.
+  var V2_RO_LABEL_TO_FIELD = {
+    'scw notes': 'field_1953',
+    'mounting hardware': 'field_2463'
+  };
+
+  function v2Text(el) { return el ? norm(el.textContent) : ''; }
+
+  function scrapeV2Card(card) {
+    var recordId = card.getAttribute('data-scw-ws-v2-record') || '';
+    var product  = v2Text(card.querySelector('.scw-ws-v2-product-name'));
+    var label    = v2Text(card.querySelector('.scw-ws-v2-cell--label'));
+
+    var detailValues = {};
+    function setVal(k, v) {
+      if (!k) return;
+      detailValues[k] = (v == null ? '' : String(v)).replace(/\s+/g, ' ').trim();
+    }
+
+    // Inputs / textareas / selects (data-scw-ws-v2-field).
+    var fields = card.querySelectorAll('[data-scw-ws-v2-field]');
+    for (var i = 0; i < fields.length; i++) {
+      var el = fields[i], tag = el.tagName, v = '';
+      if (tag === 'SELECT') {
+        var opt = el.options && el.options[el.selectedIndex];
+        v = opt ? opt.text : (el.value || '');
+      } else if (tag === 'INPUT' || tag === 'TEXTAREA') {
+        v = el.value || '';
+      } else {
+        v = el.textContent || '';
+      }
+      setVal(el.getAttribute('data-scw-ws-v2-field'), v);
+    }
+
+    // Mounting-height radio chips: value = the selected option.
+    var radios = card.querySelectorAll('[data-scw-ws-v2-radio-field]');
+    for (var r = 0; r < radios.length; r++) {
+      var grp = radios[r];
+      var sel = grp.querySelector('.scw-ws-v2-radiochip.is-selected');
+      setVal(grp.getAttribute('data-scw-ws-v2-radio-field'),
+             sel ? (sel.getAttribute('data-scw-ws-v2-option') || v2Text(sel)) : '');
+    }
+
+    // Yes/No flag chips: value rides on data-scw-ws-v2-bool ("Yes"/"No").
+    var chips = card.querySelectorAll('[data-scw-ws-v2-chip]');
+    for (var c = 0; c < chips.length; c++) {
+      setVal(chips[c].getAttribute('data-scw-ws-v2-chip'),
+             chips[c].getAttribute('data-scw-ws-v2-bool') || '');
+    }
+
+    // Connection buttons (product, prefix, MDF/IDF, bid, connected-to/-devices).
+    var conns = card.querySelectorAll('[data-scw-ws-v2-conn]');
+    for (var n = 0; n < conns.length; n++) {
+      var btn = conns[n];
+      var valEl = btn.querySelector('.scw-ws-v2-conn-btn-val') ||
+                  btn.querySelector('.scw-ws-v2-sow-value') ||
+                  btn.querySelector('.scw-ws-v2-product-name');
+      var cv = valEl ? v2Text(valEl) : v2Text(btn);
+      cv = cv.replace(/\s*edit\s*$/i, '');
+      if (/^\(none\)$/i.test(cv) || cv === '—') cv = '';
+      setVal(btn.getAttribute('data-scw-ws-v2-conn'), cv);
+    }
+
+    // Read-only displays (no field key) — map known labels into their key.
+    var dfs = card.querySelectorAll('.scw-ws-v2-detail-field');
+    for (var d = 0; d < dfs.length; d++) {
+      var disp = dfs[d].querySelector('.scw-ws-v2-display');
+      if (!disp) continue;
+      var dv = v2Text(disp);
+      if (!dv) continue;
+      var lblEl = dfs[d].querySelector('.scw-ws-v2-detail-label');
+      var lbl = lblEl ? v2Text(lblEl).replace(/[·•]?\s*read-?only\s*$/i, '').trim().toLowerCase() : '';
+      var mapped = V2_RO_LABEL_TO_FIELD[lbl];
+      if (mapped && !detailValues[mapped]) setVal(mapped, dv);
+    }
+
+    var warnAttr  = card.getAttribute('data-scw-ws-v2-warnings') || '';
+    var warnCount = warnAttr ? warnAttr.split(/[\s,]+/).filter(Boolean).length : 0;
+
+    return {
+      type: 'card',
+      label: label,
+      product: product || label,
+      warnCount: warnCount,
+      summaryFields: [],
+      detailValues: detailValues,
+      laborText: detailValues.field_2409 || detailValues.field_2020 || '',
+      scwText: detailValues.field_2418 || detailValues.field_1953 || '',
+      connectedText: '',                 // resolveConnections fills this from raw
+      photos: [],
+      showDetail: true,
+      showPhotos: false,
+      recordId: recordId,
+      raw: null,                         // set by caller from buildRecordMap
+      rowClasses: card.className || ''
+    };
+  }
+
+  // Walk the v2 L1 groups (MDF/IDF + synthetic Services/Assumptions)
+  // and their cards into the row list buildHtml consumes. A seen-set
+  // guards against any double-count from overlapping selectors.
+  function scrapeV2Rows(v2root, viewId) {
+    var out = [];
+    var seen = {};
+    var recordMap = buildRecordMap(viewId);
+
+    function pushCard(card, l1) {
+      var id = card.getAttribute('data-scw-ws-v2-record') || '';
+      if (id && seen[id]) return;
+      if (id) seen[id] = true;
+      var row = scrapeV2Card(card);
+      row.groupL1 = l1;
+      row.groupL2 = '';
+      row.raw = id ? (recordMap[id] || null) : null;
+      out.push(row);
+    }
+
+    var l1blocks = v2root.querySelectorAll('.scw-ws-v2-l1');
+    if (l1blocks.length) {
+      for (var i = 0; i < l1blocks.length; i++) {
+        var blk = l1blocks[i];
+        var l1 = v2Text(blk.querySelector('.scw-ws-v2-l1-label')).replace(/[:\s]+$/, '');
+        if (l1) out.push({ type: 'group', level: 1, label: l1 });
+        var body = blk.querySelector('.scw-ws-v2-l1-body') || blk;
+        var cards = body.querySelectorAll('.scw-ws-v2-card');
+        for (var j = 0; j < cards.length; j++) pushCard(cards[j], l1);
+      }
+    } else {
+      var flat = v2root.querySelectorAll('.scw-ws-v2-card');
+      for (var k = 0; k < flat.length; k++) pushCard(flat[k], '');
+    }
+    return out;
+  }
+
+  // ══════════════════════════════════════════════════════════════
   // SCRAPER
   // ══════════════════════════════════════════════════════════════
 
@@ -470,6 +617,34 @@
     // views (client + site) rather than view_3800's own header.
     var title = buildSurveyTitle(page1Sections);
     var surveyId = getPage1FieldValue(SURVEY_ID_FIELD);
+
+    // ── worksheet-v2 path ──────────────────────────────────────
+    // view_3505 (and any other v2 worksheet) renders into
+    // #scw-ws-v2-<viewId>; the v1 tbody walk below finds nothing
+    // there. Scrape the v2 cards instead, then run the SAME
+    // post-processing (connections, L1 notes, assumptions-to-end)
+    // and return the identical payload shape.
+    var v2root = document.getElementById('scw-ws-v2-' + viewId);
+    if (v2root) {
+      var v2rows = scrapeV2Rows(v2root, viewId);
+      resolveConnections(v2rows);
+      console.log('[SCW survey-pdf] scrape v2', {
+        viewId: viewId,
+        cardCount:  v2rows.filter(function (r) { return r.type === 'card'; }).length,
+        groupCount: v2rows.filter(function (r) { return r.type === 'group'; }).length
+      });
+      v2rows = insertL1NotesBlocks(v2rows);
+      v2rows = pushGroupToEnd(v2rows, 'Project Wide Assumptions');
+      return {
+        viewId: viewId,
+        title: title,
+        surveyId: surveyId,
+        rows: v2rows,
+        page1Sections: page1Sections,
+        coverImageSections: coverImageSections,
+        trailingImageSections: trailingImageSections
+      };
+    }
 
     // Scope to Knack's standard table class — `table tbody` was
     // ambiguous once mdf-summary-panel started injecting its own
