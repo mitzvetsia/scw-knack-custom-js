@@ -399,5 +399,17 @@
       (function (vid) { setTimeout(function () { transform(vid); }, 50); })(VIEWS[i]);
     }
   }
+
+  // Public refresh hook — lets other features force the cards to
+  // re-scrape the native DOM after they write a new field value (e.g.
+  // the sub-portal survey PDF export updating Survey Field Form /
+  // field_2356). mountCard's change-detection means a no-op refresh is
+  // cheap; it only rebuilds when the scraped HTML actually changed.
+  window.SCW = window.SCW || {};
+  SCW.srqHeader = SCW.srqHeader || {};
+  SCW.srqHeader.refresh = function (viewId) {
+    if (viewId) { transform(viewId); return; }
+    for (var k = 0; k < VIEWS.length; k++) transform(VIEWS[k]);
+  };
 })();
 /*** END SURVEY REQUEST HEADER **********************************************/
