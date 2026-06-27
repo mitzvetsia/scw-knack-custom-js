@@ -81,6 +81,23 @@
     '  max-height: none !important;',
     '  overflow: visible !important;',
     '}',
+    /* view_3505: drop the OUTER panel box (border / shadow / radius) so the only
+       remaining boxes are the cards themselves. The user found the panel box
+       wrapping the whole v2 section PLUS the per-card box "too many boxes" — the
+       card separation is the one worth keeping. The banner keeps its own
+       bottom border as the header divider. */
+    '#scw-ws-v2-view_3505 {',
+    '  border: none !important;',
+    '  border-radius: 0 !important;',
+    '  box-shadow: none !important;',
+    '  margin: 12px 0 !important;',
+    '}',
+    /* With the panel border gone the banner\'s grey fill reads as a floating
+       bar; make it transparent so the header sits flush on the page. */
+    '#scw-ws-v2-view_3505 > .scw-ws-v2-banner {',
+    '  background: transparent !important;',
+    '  padding-left: 4px !important; padding-right: 4px !important;',
+    '}',
     '.scw-ws-v2-empty {',
     '  padding: 20px !important;',
     '  text-align: center !important;',
@@ -337,20 +354,32 @@
     '.scw-ws-v2-sd--conn  { flex: 0 1 220px !important; min-width: 150px !important; }',
     '.scw-ws-v2-sd--notes { flex: 1 1 200px !important; min-width: 170px !important; max-width: 300px !important; }',
     '.scw-ws-v2-sd--wide  { flex: 2 1 280px !important; min-width: 220px !important; }',
-    /* Grouped survey detail: CLUSTERS of related fields, separated by extra
-       whitespace (34px between groups vs 12px within), so the panel reads as
-       logical groups and fields within a group wrap together. */
+    /* Grouped survey detail: each group is a VERTICAL COLUMN of related fields;
+       columns flow left-to-right and wrap on narrow screens. Column order (cam):
+       Label (Prefix / Cam·Reader #) · Notes (SCW Notes over Mounting Hardware) ·
+       Mounting & cabling (Height / Drop Length / Conduit) · Connection
+       (Connected To / MDF·IDF). Fixed per-column widths so fields line up
+       column-to-column instead of every field wrapping independently. */
     '.scw-ws-v2-survey-detail .scw-ws-v2-sd-groups {',
     '  flex: 1 1 100% !important; display: flex !important; flex-wrap: wrap !important;',
-    '  gap: 14px 34px !important; align-items: flex-start !important;',
+    '  gap: 16px 30px !important; align-items: flex-start !important;',
     '}',
     '.scw-ws-v2-sd-group {',
-    '  display: flex !important; flex-wrap: wrap !important; gap: 8px 16px !important;',
-    '  align-items: flex-start !important;',
+    '  display: flex !important; flex-direction: column !important; gap: 10px !important;',
+    '  align-items: stretch !important; flex: 0 0 auto !important;',
     '}',
-    /* Notes cluster: drop onto its own line, full width, below the field clusters. */
-    '.scw-ws-v2-sd-group--notes { flex: 1 1 100% !important; }',
-    '.scw-ws-v2-sd-group--notes .scw-ws-v2-sd--paragraph { flex: 1 1 100% !important; max-width: 640px !important; }',
+    /* Each item fills its column; the detail-field inside stretches its input/',
+    /* button/display to match (label-over-value already stacks vertically). */
+    '.scw-ws-v2-sd-group .scw-ws-v2-sd-item { flex: 0 0 auto !important; width: 100% !important; }',
+    /* Per-column widths. Prefix + Cam/Reader # share ONE narrow width so they
+       align (they construct the read-only label). */
+    '.scw-ws-v2-sd-group--label { width: 104px !important; }',
+    '.scw-ws-v2-sd-group--notes { width: 280px !important; }',
+    '.scw-ws-v2-sd-group--conn  { width: 210px !important; }',
+    '.scw-ws-v2-sd-group--mount { width: 210px !important; }',
+    /* Mounting & cabling column: the two number inputs stay narrow (left-aligned)
+       while the Mounting-Height chips wrap across the full column width. */
+    '.scw-ws-v2-sd-group--mount .scw-ws-v2-sd--num { width: 96px !important; }',
     /* Sales detail — v1-style two columns: pricing/identity stacked on the
        left, connections + Labor Desc stacked on the right. */
     '.scw-ws-v2-sales-detail {',

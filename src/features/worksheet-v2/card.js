@@ -1664,23 +1664,27 @@
   function buildDetail_survey(rec, viewKey, cat) {
     var F = fieldsFor(viewKey);
 
-    // Survey detail = one flex-wrap row; each field is sized to its expected
-    // value width (numbers narrow, the connection medium, the mounting-
-    // hardware list wide). Connections render READ-ONLY (SOW-specific picker
-    // not wired). SCW Notes is the first/leftmost field — a clear multi-line
-    // paragraph. Order otherwise mirrors v1 detailLayout.
-    // SCW Notes (field_2418) is READ-ONLY on the bid worksheet — owned
-    // upstream, not editable while bidding. Render as a non-editable paragraph.
-    // Cluster fields into logical groups (instead of one wrapping row where
-    // nothing aligns). Clusters: Label parts · Mounting & cabling · Connection
-    // & location · Notes — each separated by extra whitespace, fields within a
-    // cluster staying together.
+    // Survey detail = a row of VERTICAL COLUMNS, each a logical group whose
+    // fields stack (label-over-value). Columns (cam): Label (Prefix / Cam·Reader
+    // #) · Notes (SCW Notes over Mounting Hardware) · Mounting & cabling (Height
+    // / Drop Length / Conduit) · Connection (Connected To / MDF·IDF). Fixed
+    // per-column widths (styles.js .scw-ws-v2-sd-group--*) keep fields aligned
+    // column-to-column instead of every field wrapping independently.
+    // SCW Notes (field_2418) + Mounting Hardware (field_2463) are READ-ONLY —
+    // owned upstream, not editable while bidding. Connections render via the
+    // editable detailConnection button (picker wired in init.js).
     var groups = '';
 
+    // SCW Notes (field_2418) over Mounting Hardware (field_2463) — both
+    // read-only, owned upstream. They share column 2 (after the Label column).
+    var notesCol = sdGroup(
+      sdItem(detailNotesReadOnly(rec, F.scwNotes || 'field_2418', 'SCW Notes'), 'scw-ws-v2-sd--paragraph') +
+      sdItem(detailReadOnly(rec, F.mounting || 'field_2463', 'Mounting Hardware'), 'scw-ws-v2-sd--paragraph'),
+      'scw-ws-v2-sd-group--notes');
+
     if (cat === 'cam') {
-      // Label parts: Prefix (field_2361) + Cam/Reader # (field_2362). These
-      // CONSTRUCT the read-only label shown in the row header — clustered so
-      // they read as "the label's editable parts", not two stray fields.
+      // Col 1 — Label parts: Prefix (field_2361) over Cam/Reader # (field_2362),
+      // matched width (they CONSTRUCT the read-only label in the row header).
       // Prefix reuses SCW.dropPrefixOptions; changing either recomputes the
       // drop label (field_2365) server-side (the picker's onSaved refetches).
       groups += sdGroup(
@@ -1688,37 +1692,38 @@
         sdItem(detailField(rec, viewKey, F.dropNumber || 'field_2362', 'Cam/Reader #', 'number'), 'scw-ws-v2-sd--num'),
         'scw-ws-v2-sd-group--label');
 
-      // Mounting & cabling: Mounting Height + Drop Length + Conduit together.
+      // Col 2 — SCW Notes over Mounting Hardware (before the mounting column).
+      groups += notesCol;
+
+      // Col 3 — Mounting & cabling: Mounting Height + Drop Length + Conduit.
       groups += sdGroup(
         sdItem(singleChipField(rec, viewKey, F.mountingHeight || 'field_2455',
           'Mounting Height', ["Under 16'", "16' - 24'", "Over 24'"]), 'scw-ws-v2-sd--chips') +
         sdItem(detailField(rec, viewKey, F.dropLength || 'field_2367', 'Drop Length', 'number'), 'scw-ws-v2-sd--num') +
-        sdItem(detailField(rec, viewKey, F.conduit || 'field_2368', 'Conduit', 'number'), 'scw-ws-v2-sd--num'));
+        sdItem(detailField(rec, viewKey, F.conduit || 'field_2368', 'Conduit', 'number'), 'scw-ws-v2-sd--num'),
+        'scw-ws-v2-sd-group--mount');
 
-      // Connection & location: Connected To + MDF/IDF + Mounting Hardware.
+      // Col 4 — Connection & location: Connected To + MDF/IDF.
       // Connected To (field_2381, single) — editable; cascade writes the
       // parent's field_2380. Candidates resolved in init.js.
       groups += sdGroup(
         sdItem(detailConnection(rec, viewKey, F.connectedDevice || 'field_2381',
           'Connected To', hasIssue(rec, 'disconnected')), 'scw-ws-v2-sd--conn') +
-        sdItem(detailConnection(rec, viewKey, F.mdfIdf || 'field_2375', 'MDF / IDF'), 'scw-ws-v2-sd--conn') +
-        sdItem(detailReadOnly(rec, F.mounting || 'field_2463', 'Mounting Hardware'), 'scw-ws-v2-sd--wide'));
+        sdItem(detailConnection(rec, viewKey, F.mdfIdf || 'field_2375', 'MDF / IDF'), 'scw-ws-v2-sd--conn'),
+        'scw-ws-v2-sd-group--conn');
     } else {
-      // default / hardware: Connected Devices (only when mapConn Yes) +
-      // MDF/IDF + Mounting Hardware.
+      // default / hardware: Notes column (SCW Notes + Mounting Hardware), then a
+      // connection column — Connected Devices (only when mapConn Yes) + MDF/IDF.
+      groups += notesCol;
+
       var devItem = (cat === 'default' && readBool(rec, F.mapConn || 'field_2374') === 'Yes')
         ? sdItem(detailConnectedDevices(rec, viewKey, F.connectedDevices || 'field_2380', 'Connected Devices'), 'scw-ws-v2-sd--conn')
         : '';
       groups += sdGroup(
         devItem +
-        sdItem(detailConnection(rec, viewKey, F.mdfIdf || 'field_2375', 'MDF / IDF'), 'scw-ws-v2-sd--conn') +
-        sdItem(detailReadOnly(rec, F.mounting || 'field_2463', 'Mounting Hardware'), 'scw-ws-v2-sd--wide'));
+        sdItem(detailConnection(rec, viewKey, F.mdfIdf || 'field_2375', 'MDF / IDF'), 'scw-ws-v2-sd--conn'),
+        'scw-ws-v2-sd-group--conn');
     }
-
-    // SCW Notes (field_2418) — read-only, owned upstream; its own cluster last.
-    groups += sdGroup(
-      sdItem(detailNotesReadOnly(rec, F.scwNotes || 'field_2418', 'SCW Notes'), 'scw-ws-v2-sd--paragraph'),
-      'scw-ws-v2-sd-group--notes');
 
     return '<div class="scw-ws-v2-detail">' +
       '<div class="scw-ws-v2-survey-detail">' +
