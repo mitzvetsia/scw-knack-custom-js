@@ -796,7 +796,7 @@
         '<div class="scw-bid-review-v2__cell-conn scw-bid-review-v2__field-diff"' +
           ' data-scw-diff-field="mdfIdf" title="Bid MDF/IDF: ' +
           escapeHtml(cell.mdfIdf || '(none)') + ' — SOW: ' +
-          escapeHtml(row.mdfIdf || '(none)') + '">' +
+          escapeHtml((row.sowItemData && row.sowItemData.mdfIdf) || '(none)') + '">' +
           '<label>MDF&nbsp;/&nbsp;IDF</label>' +
           escapeHtml(cell.mdfIdf || '(none)') +
         '</div>' : '') +

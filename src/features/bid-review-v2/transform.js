@@ -1366,16 +1366,20 @@
     }
     var sowDesc = (row.sowItemData && row.sowItemData.laborDesc) || row.sowLaborDesc;
     var bConduit = cnum(cell.conduit), bDrop = cnum(cell.dropLength);
-    // MDF/IDF diff: the row is grouped under the SOW item's MDF (row.mdfIdfId
-    // after buildState's overwrite); flag when the BID placed the item under a
-    // different MDF/IDF (cell.mdfIdfId, from field_2375). Anchor on BOTH sides
-    // carrying a location — a bid that simply didn't set field_2375 must not
-    // flag every row — and confirm by id AND label so the same location
-    // referenced via different records doesn't read as a difference.
-    var sowMdfId = row.mdfIdfId || '', bidMdfId = cell.mdfIdfId || '';
+    // MDF/IDF diff: flag when the BID placed the item under a different
+    // MDF/IDF (cell.mdfIdfId, from field_2375) than the SOW LINE ITEM
+    // (sd.mdfIdfId, field_1946). Read the SOW side off sowItemData (sd) — NOT
+    // row.mdfIdfId — because buildState only overwrites row.mdfIdf to the SOW's
+    // value for MATCHED rows; on off-SOW / other-bid rows row.mdfIdf is still
+    // the bid's copy, so comparing against it would compare the bid to itself
+    // and never flag. sd is the SOW item's MDF for every row that has one.
+    // Anchor on BOTH sides carrying a location (a bid that simply didn't set
+    // field_2375 must not flag every row) and confirm by id AND label so the
+    // same location referenced via different records doesn't read as a diff.
+    var sowMdfId = (sd && sd.mdfIdfId) || '', bidMdfId = cell.mdfIdfId || '';
     var mdfDiff = false;
     if (sowMdfId && bidMdfId && sowMdfId !== bidMdfId) {
-      var sowMdfLbl = norm(row.mdfIdf), bidMdfLbl = norm(cell.mdfIdf);
+      var sowMdfLbl = norm(sd && sd.mdfIdf), bidMdfLbl = norm(cell.mdfIdf);
       mdfDiff = !(sowMdfLbl && bidMdfLbl && sowMdfLbl === bidMdfLbl);
     }
     // Cabling diffs anchor on the BID carrying a value (incl. 0), so a bid that
