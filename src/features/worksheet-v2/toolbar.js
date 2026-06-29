@@ -683,23 +683,40 @@
         triggeredBy:     getTriggeredBy()
       };
 
+      // Refresh after Make creates the accessory record. The worksheet-v2
+      // pipeline auto-updates via its own refetch; but the bid-review-v2
+      // comparison grid (which reuses this same modal) is a SEPARATE pipeline
+      // that never sees the new server-side record — Make fires no
+      // knack-view-render — so it would stay stale until a manual refresh.
+      // ALSO emit scw-cascade-idle, the shared "records changed, re-read"
+      // signal both pipelines already subscribe to (mirror-connection-sync
+      // emits it too), so the comparison grid refetches + rebuilds itself. Both
+      // pipelines coalesce/guard their own refetches, so the extra signal is
+      // cheap on the worksheet and the only path to a refresh on the bid grid.
+      function refreshAfterAdd() {
+        setTimeout(function () {
+          if (ns.data && typeof ns.data.refetchAndNotify === 'function') {
+            ns.data.refetchAndNotify(viewKey);
+          }
+          if (ns.poll && ns.poll.triggerBurst) ns.poll.triggerBurst(viewKey);
+          try { document.dispatchEvent(new CustomEvent('scw-cascade-idle')); }
+          catch (e) { /* CustomEvent unsupported → worksheet path still refreshed */ }
+        }, 1500);
+      }
+
       $.ajax({
         url: url, type: 'POST', contentType: 'application/json',
         data: JSON.stringify(payload), crossDomain: true, timeout: 60000,
         success: function () {
           close();
           status.textContent = '';
-          if (ns.data && typeof ns.data.refetchAndNotify === 'function') {
-            setTimeout(function () { ns.data.refetchAndNotify(viewKey); if (ns.poll && ns.poll.triggerBurst) ns.poll.triggerBurst(viewKey); }, 1500);
-          }
+          refreshAfterAdd();
         },
         error: function (xhr, st) {
           // Make webhooks often blocked by CORS but the scenario fires.
           if (xhr && xhr.status === 0) {
             close();
-            if (ns.data && typeof ns.data.refetchAndNotify === 'function') {
-              setTimeout(function () { ns.data.refetchAndNotify(viewKey); if (ns.poll && ns.poll.triggerBurst) ns.poll.triggerBurst(viewKey); }, 1500);
-            }
+            refreshAfterAdd();
             return;
           }
           submit.disabled = false;
