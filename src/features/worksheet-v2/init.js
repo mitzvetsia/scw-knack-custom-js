@@ -499,17 +499,31 @@
       e.stopPropagation();
       var parentId = link.getAttribute('data-scw-ws-v2-add-accessory') || '';
       if (!parentId) return;
-      // Sales scenes have no add-accessory child page in Builder, so
-      // navigating to the add-accessory-line-item slug dead-ends there.
-      // Route the per-item add through the custom accessory modal
-      // instead — it posts the same Make webhook the bulk add uses,
-      // scoped to this one row.
       var v2Container = link.closest('[id^="scw-ws-v2-view_"]');
       var v2ViewKey = v2Container ? v2Container.id.replace(/^scw-ws-v2-/, '') : '';
-      var v2Cfg = (v2ViewKey && ns.cfg && typeof ns.cfg.viewCfg === 'function')
-        ? ns.cfg.viewCfg(v2ViewKey) : null;
-      if (v2Cfg && v2Cfg.moneyMode === 'sales' &&
-          ns.toolbar && typeof ns.toolbar.openAddAccessories === 'function') {
+
+      // Unify the per-item "+ Add" with the bulk "Add accessories" flow:
+      // open the SAME modal, and in the background CHECK this row's box (and
+      // clear any other selection) so adding one accessory feels identical to
+      // adding many — same modal, the row simply pre-selected. The modal posts
+      // the same Make webhook the bulk add uses. We fall through to the native
+      // Knack add-accessory page ONLY when that modal isn't available.
+      if (ns.toolbar && typeof ns.toolbar.openAddAccessories === 'function') {
+        // Reflect the target as a checked row, matching what the bulk
+        // selection would look like. Clear every other box so the checkbox
+        // state matches what the modal acts on, and fire `change` (only on
+        // boxes that actually flip) so bulk.js updates its selection + the
+        // toolbar count.
+        var boxes = document.querySelectorAll('[data-scw-ws-v2-select]');
+        for (var bi = 0; bi < boxes.length; bi++) {
+          var box  = boxes[bi];
+          var want = box.getAttribute('data-scw-ws-v2-select') === parentId;
+          if (box.checked !== want) {
+            box.checked = want;
+            box.dispatchEvent(new Event('change', { bubbles: true }));
+          }
+        }
+        // Friendly label for the modal's affected-rows list.
         var addCard = link.closest('.scw-ws-v2-card');
         var addLabelEl = addCard && addCard.querySelector('.scw-ws-v2-cell--label');
         var addLabel = addLabelEl ? (addLabelEl.textContent || '').trim() : '';
@@ -517,16 +531,19 @@
           var addProdEl = addCard && addCard.querySelector('.scw-ws-v2-product-name');
           addLabel = addProdEl ? (addProdEl.textContent || '').trim() : '';
         }
+        // presetSel keeps the modal scoped to this row even if the checkbox
+        // sync above found no box (e.g. a surface without row selects).
         ns.toolbar.openAddAccessories(v2ViewKey, {
           ids:    [parentId],
           labels: [addLabel || parentId]
         });
         return;
       }
-      // Build the URL deterministically from the same base path the
-      // chip edit links use. resolveAddAccessoryBase() matches against
-      // the current hash; if it returns nothing we surface an alert
-      // rather than silently bouncing to home.
+
+      // Fallback (modal unavailable): native Knack add-accessory page. Build
+      // the URL deterministically from the same base path the chip edit links
+      // use. resolveAddAccessoryBase() matches against the current hash; if it
+      // returns nothing we surface an alert rather than silently bouncing home.
       var base = resolveAddAccessoryBase(link);
       if (!base) {
         if (window.console) {
