@@ -302,6 +302,12 @@
         var mode = view.classList.contains('scw-mdf-cards-on') ? 'table' : 'cards';
         try { localStorage.setItem(MODE_LS, mode); } catch (e) {}
         applyMode(view, mode);
+        // Re-inject photo strips into whichever surface is now visible —
+        // the cards (cards mode) or the native table rows (table mode).
+        if (window.SCW && SCW.inlinePhotoRow &&
+            typeof SCW.inlinePhotoRow.refresh === 'function') {
+          SCW.inlinePhotoRow.refresh(view.id);
+        }
       });
       toolbar.appendChild(btn);
       wrapper.parentNode.insertBefore(toolbar, wrapper);
@@ -367,6 +373,16 @@
       container.appendChild(frag);
     }
     applyMode(view, currentMode());
+
+    // Let inline-photo-row inject its photo strip into each card we just
+    // built. Its own render pass targets the (now display:none) native
+    // table, so without this re-trigger the strip never reaches the visible
+    // cards — it rebuilds the container.innerHTML here, wiping any strip, so
+    // we repaint right after.
+    if (window.SCW && SCW.inlinePhotoRow &&
+        typeof SCW.inlinePhotoRow.refresh === 'function') {
+      SCW.inlinePhotoRow.refresh(viewKey);
+    }
   }
 
   // ── styles ──────────────────────────────────────────────────
@@ -437,7 +453,14 @@
       '.scw-mdf-photos__thumb { width: 22px; height: 22px; object-fit: cover; border-radius: 4px; }',
       '.scw-mdf-del { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px;',
       '  border: 1px solid #fecaca; border-radius: 6px; background: #fff; color: #b91c1c; cursor: pointer; }',
-      '.scw-mdf-del:hover { background: #fef2f2; }'
+      '.scw-mdf-del:hover { background: #fef2f2; }',
+
+      /* Photo strip injected by inline-photo-row.js (SCW.inlinePhotoRow.refresh).
+         Full-width row beneath the card body, separated like row2. The strip
+         itself (.scw-inline-photo-field / cards) is styled globally by
+         inline-photo-row.js — we only frame the holder. */
+      '.scw-mdf-card__photos { margin-top: 8px; padding-top: 8px;',
+      '  border-top: 1px solid #f1f5f9; }'
     ].join('\n');
     var s = document.createElement('style');
     s.id = STYLE_ID;
