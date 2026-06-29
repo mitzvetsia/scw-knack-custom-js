@@ -531,11 +531,19 @@
           var addProdEl = addCard && addCard.querySelector('.scw-ws-v2-product-name');
           addLabel = addProdEl ? (addProdEl.textContent || '').trim() : '';
         }
+        // On the bid-review-v2 comparison grid the review-bids hash carries the
+        // PROJECT id, not the SOW id, so the modal's getSowIdFromHash() would
+        // tag the new accessory with the wrong SOW. Pass the SOW id from the
+        // section wrapping the clicked row (data-sow-id). On the worksheet
+        // there's no such wrapper, so the modal falls back to the hash.
+        var sowSection = link.closest('[data-sow-id]');
+        var explicitSowId = sowSection ? (sowSection.getAttribute('data-sow-id') || '') : '';
         // presetSel keeps the modal scoped to this row even if the checkbox
         // sync above found no box (e.g. a surface without row selects).
         ns.toolbar.openAddAccessories(v2ViewKey, {
           ids:    [parentId],
-          labels: [addLabel || parentId]
+          labels: [addLabel || parentId],
+          sowId:  explicitSowId || undefined
         });
         return;
       }

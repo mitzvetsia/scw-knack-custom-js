@@ -468,6 +468,22 @@
           absorb(ns.CONFIG.views[vi].sourceViewKey);
         }
       }
+      // Still missing? On the bid-review-v2 comparison grid (a different scene
+      // that REUSES this modal) the selected rows are SOW line items living in
+      // bid-review-v2's source views (view_3921), not any worksheet-v2 view —
+      // none of which exist on that scene. view_3921 carries field_1949
+      // (product), so sweeping bid-review-v2's sources resolves the selection's
+      // product for the compatibility filter (otherwise: "Couldn't read the
+      // selected rows' products").
+      missing = false;
+      for (var mb = 0; mb < sel.ids.length; mb++) {
+        if (!idx[sel.ids[mb]]) { missing = true; break; }
+      }
+      if (missing && window.SCW && SCW.bidReviewV2 && SCW.bidReviewV2.CONFIG &&
+          Array.isArray(SCW.bidReviewV2.CONFIG.sourceViewKeys)) {
+        var brKeys = SCW.bidReviewV2.CONFIG.sourceViewKeys;
+        for (var bk = 0; bk < brKeys.length; bk++) absorb(brKeys[bk]);
+      }
       return idx;
     })();
 
@@ -674,7 +690,10 @@
       submit.textContent = 'Submitting…';
 
       var payload = {
-        sowId:           getSowIdFromHash(),
+        // presetSel.sowId is set by callers whose hash doesn't pin the SOW —
+        // e.g. the bid-review-v2 grid, whose review-bids hash carries the
+        // PROJECT id, not the SOW id. Fall back to the hash for the worksheet.
+        sowId:           (presetSel && presetSel.sowId) || getSowIdFromHash(),
         productId:       productId || '',
         productName:     productName,
         parentRecordIds: sel.ids,
