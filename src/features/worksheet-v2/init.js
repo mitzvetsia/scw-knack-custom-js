@@ -326,6 +326,11 @@
       var nowOpen = !panel.classList.contains('scw-ws-v2-summary--open');
       panel.classList.toggle('scw-ws-v2-summary--open', nowOpen);
       head.setAttribute('aria-expanded', nowOpen ? 'true' : 'false');
+      // Persist so the choice survives the next rebuild (e.g. the Bid
+      // filter) instead of snapping back to closed.
+      if (ns.summary && typeof ns.summary.persistOpen === 'function') {
+        ns.summary.persistOpen(panel, nowOpen);
+      }
     });
   }
 
