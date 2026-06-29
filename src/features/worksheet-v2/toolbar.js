@@ -146,7 +146,11 @@
       '</div>' +
       '<div class="scw-ws-v2-toolbar-spacer"></div>' +
       '<div class="scw-ws-v2-toolbar-group scw-ws-v2-toolbar-group--cta">' +
-        actionBtn('add-sow',      addLabel,               'Add a new line item') +
+        // "+ Add to SOW" is suppressed on views flagged noAddItem — the
+        // deploy/install grids (view_3915/view_4056), where you can't add to
+        // the scope without a change order.
+        ((_vc && _vc.noAddItem) ? '' :
+          actionBtn('add-sow',    addLabel,               'Add a new line item')) +
         actionBtn('add-photos',   '+ Add Photos',         'Bulk upload photos') +
         // "+ Add Accessories" lives in the floating bulk panel (bulk.js)
         // now — it only applies to a row selection, same as Remove.

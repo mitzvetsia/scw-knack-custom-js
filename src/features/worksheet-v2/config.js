@@ -153,6 +153,9 @@
         // view_4056 clone below inherits this via the JSON deep-clone.
         photoUploadView:  'view_3915_deploy',
         hideSow:          true,             // install groups by MDF/IDF, not SOW
+        noAddItem:        true,             // can't add to a deployment scope without a
+                                            // change order — suppress the "+ Add to SOW"
+                                            // toolbar CTA (view_4056 clone inherits this)
         mdfSourceViewKey: '',               // TODO: empty-L1 seed source (analogue of view_3577)
         mdfLabelField:    '',               // TODO
         hideMoneyColumns: true,             // no subBid/fee/hrs/mat/installFee on this object
