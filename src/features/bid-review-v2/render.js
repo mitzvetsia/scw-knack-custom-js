@@ -127,7 +127,19 @@
     try {
       var crRecs  = (sourceKeys[4] && snapshot[sourceKeys[4]]) || [];
       var docRecs = (sourceKeys[5] && snapshot[sourceKeys[5]]) || [];
-      globalAuxSig = hashStr(JSON.stringify(crRecs) + '|' + JSON.stringify(docRecs));
+      // Pending (not-yet-submitted) change requests live ONLY in v1's
+      // client-side state (changeRequests.getPending), never in a Knack view —
+      // so a freshly added/edited/removed CR leaves crRecs unchanged and the
+      // keyed-section reuse below would skip the rebuild, leaving the pending
+      // CR card invisible until a full page refresh. Fold the pending state
+      // into the signature so the affected sections actually repaint.
+      var pendingSig = '';
+      var v1cr = v1ns && v1ns.changeRequests;
+      if (v1cr && typeof v1cr.getPending === 'function') {
+        pendingSig = JSON.stringify(v1cr.getPending() || {});
+      }
+      globalAuxSig = hashStr(JSON.stringify(crRecs) + '|' + JSON.stringify(docRecs) +
+        '|' + pendingSig);
     } catch (e) { globalAuxSig = 'aux'; }
 
     var existing = indexExistingSections(body);
