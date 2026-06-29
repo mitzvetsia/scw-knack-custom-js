@@ -271,7 +271,13 @@
           // field_2380 Connected Devices, field_2381 Connected To.
           connDevice:   connectionAll(rec, FK.bidConnDevice),
           connTo:       connectionLabel(rec, FK.bidConnTo),
-          connToId:     connectionId(rec, FK.bidConnTo)
+          connToId:     connectionId(rec, FK.bidConnTo),
+          // Bid record's own MDF/IDF (field_2375). The row is GROUPED by the
+          // SOW line item's MDF (field_1946); capturing the bid's copy here
+          // lets the bid cell surface + diff the location the BID assigned
+          // when it placed the item under a different MDF/IDF than the SOW.
+          mdfIdf:       connectionLabel(rec, FK.mdfIdf),
+          mdfIdfId:     connectionId(rec, FK.mdfIdf)
         };
       }
     }
@@ -1360,6 +1366,18 @@
     }
     var sowDesc = (row.sowItemData && row.sowItemData.laborDesc) || row.sowLaborDesc;
     var bConduit = cnum(cell.conduit), bDrop = cnum(cell.dropLength);
+    // MDF/IDF diff: the row is grouped under the SOW item's MDF (row.mdfIdfId
+    // after buildState's overwrite); flag when the BID placed the item under a
+    // different MDF/IDF (cell.mdfIdfId, from field_2375). Anchor on BOTH sides
+    // carrying a location — a bid that simply didn't set field_2375 must not
+    // flag every row — and confirm by id AND label so the same location
+    // referenced via different records doesn't read as a difference.
+    var sowMdfId = row.mdfIdfId || '', bidMdfId = cell.mdfIdfId || '';
+    var mdfDiff = false;
+    if (sowMdfId && bidMdfId && sowMdfId !== bidMdfId) {
+      var sowMdfLbl = norm(row.mdfIdf), bidMdfLbl = norm(cell.mdfIdf);
+      mdfDiff = !(sowMdfLbl && bidMdfLbl && sowMdfLbl === bidMdfLbl);
+    }
     // Cabling diffs anchor on the BID carrying a value (incl. 0), so a bid that
     // simply didn't capture conduit/drop (blank) doesn't flag every row against
     // a spec that has one. Booleans flag on any true≠false delta.
@@ -1377,11 +1395,12 @@
       exterior:   !!sd.exterior !== !!cell.exterior,
       existing:   !!sd.existCabling !== !!cell.existCabling,
       connDevice: connDeviceDiff,
-      connTo:     connToDiff
+      connTo:     connToDiff,
+      mdfIdf:     mdfDiff
     };
     m.any = m.product || m.laborDesc || m.qty || m.fee || m.conduit ||
             m.dropLength || m.plenum || m.exterior || m.existing ||
-            m.connDevice || m.connTo;
+            m.connDevice || m.connTo || m.mdfIdf;
     return m;
   }
 

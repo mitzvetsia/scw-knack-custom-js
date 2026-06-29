@@ -788,6 +788,18 @@
       connLineHtml(cell.connDevice, cell.connTo,
         { side: 'bid', deviceDiff: diffs && diffs.connDevice, toDiff: diffs && diffs.connTo }) +
       cablingLineHtml(cell, { side: 'bid', diffs: diffs }) +
+      // Bid MDF/IDF — surfaced ONLY when the bid placed this item under a
+      // different MDF/IDF than the SOW (the row's group). The row still sits in
+      // its SOW MDF group; this line flags that the bid's location disagrees,
+      // with both locations in the tooltip. Reuses the connection-line styling.
+      ((diffs && diffs.mdfIdf) ?
+        '<div class="scw-bid-review-v2__cell-conn scw-bid-review-v2__field-diff"' +
+          ' data-scw-diff-field="mdfIdf" title="Bid MDF/IDF: ' +
+          escapeHtml(cell.mdfIdf || '(none)') + ' — SOW: ' +
+          escapeHtml(row.mdfIdf || '(none)') + '">' +
+          '<label>MDF&nbsp;/&nbsp;IDF</label>' +
+          escapeHtml(cell.mdfIdf || '(none)') +
+        '</div>' : '') +
       // Survey note (field_2412) on the bid record — v1 parity: populated
       // cells render the sub's note too, not just the no-bid cutouts.
       surveyNoteHtml(cell.notes) +
