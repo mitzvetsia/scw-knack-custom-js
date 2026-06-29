@@ -297,7 +297,7 @@
   // "different" when it doesn't match at least one displayed bid).
   function aggregateMismatch(row) {
     if (!row || !row.cellsByPackage || !ns.transform.getMismatches) return null;
-    var agg = { product: false, laborDesc: false, fee: false, any: false };
+    var agg = { product: false, laborDesc: false, fee: false, mdfIdf: false, any: false };
     for (var pid in row.cellsByPackage) {
       if (!Object.prototype.hasOwnProperty.call(row.cellsByPackage, pid)) continue;
       var m = ns.transform.getMismatches(row, row.cellsByPackage[pid]);
@@ -305,6 +305,7 @@
       if (m.product)   agg.product = true;
       if (m.laborDesc) agg.laborDesc = true;
       if (m.fee)       agg.fee = true;
+      if (m.mdfIdf)    agg.mdfIdf = true;
       if (m.any)       agg.any = true;
     }
     return agg;
@@ -494,6 +495,17 @@
         '</div>' : '') +
       connLineHtml(sowItemData.connDevice, sowItemData.connTo, { side: 'sow' }) +
       cablingLineHtml(sowItemData, { side: 'sow' }) +
+      // SOW MDF/IDF — shown when a bid overrides it (diff.mdfIdf) so the
+      // override reads as a side-by-side: the SOW's location here, the bid's
+      // (highlighted) in the bid cell. data-scw-sow-field is the hover target
+      // the bid-cell MDF line lights up. (Off-SOW rows sit under the BID's MDF
+      // group, so the SOW's own location is otherwise invisible without this.)
+      ((diff && diff.mdfIdf) ?
+        '<div class="scw-bid-review-v2__cell-conn" data-scw-sow-field="mdfIdf" title="SOW MDF/IDF: ' +
+          escapeHtml((sowItemData && sowItemData.mdfIdf) || '(none)') + '">' +
+          '<label>MDF&nbsp;/&nbsp;IDF</label>' +
+          escapeHtml((sowItemData && sowItemData.mdfIdf) || '(none)') +
+        '</div>' : '') +
       // "belongs to another SOW" rows note which SOW(s) the item is on.
       ((row && row.otherKind === 'other-sow' && row.otherSowNames && row.otherSowNames.length) ?
         '<div class="scw-bid-review-v2__sow-elsewhere">on ' +
