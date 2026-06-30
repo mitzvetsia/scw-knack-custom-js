@@ -721,6 +721,9 @@
             _totIP.toFixed(1) + 'ms  (IN-PLACE  dirty=' + _dids.length +
             '  records=' + records.length + ')');
         }
+        if (ns.sowFilter && typeof ns.sowFilter.applyRowColors === 'function') {
+          ns.sowFilter.applyRowColors(sourceViewKey);
+        }
         return;
       }
     }
@@ -831,6 +834,12 @@
       );
       if (card) card.classList.add('scw-ws-v2-card--open');
     });
+
+    // SOW/Bid row color coding — paint each card with its SOW(s)/Bid(s)
+    // color(s). Runs after the full rebuild (cards were just replaced).
+    if (ns.sowFilter && typeof ns.sowFilter.applyRowColors === 'function') {
+      ns.sowFilter.applyRowColors(sourceViewKey);
+    }
 
     if (_PF) {
       var _tot = SCW._now() - _pf0;

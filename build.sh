@@ -15,6 +15,7 @@ cat \
   src/config.js \
   src/util.js \
   src/features/_design-tokens.js \
+  src/features/sow-color.js \
   src/features/_render-totals-guard.js \
   src/features/_toolbar-registry.js \
   src/features/_v2-scroll-anchor.js \

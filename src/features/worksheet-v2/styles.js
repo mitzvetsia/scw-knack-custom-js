@@ -105,6 +105,28 @@
     '.scw-ws-v2-card:nth-child(even):hover {',
     '  background: var(--scw-surface-muted, #f1f5f9) !important;',
     '}',
+    /* ── SOW/Bid color coding (sow-filter.js applyRowColors) ──────────
+       A left-edge bar carries the SOW/Bid color(s) — one segment per
+       SOW/Bid (via --scw-sow-bar gradient) so a row on more than one
+       shows every color. The faint wash is set inline (background-color
+       !important) on the card. The bar is a ::before so the card's own
+       !important background can't clobber it. */
+    '.scw-ws-v2-card[data-scw-sow-colored] { position: relative !important; }',
+    '.scw-ws-v2-card[data-scw-sow-colored]::before {',
+    '  content: "" !important;',
+    '  position: absolute !important; left: 0 !important; top: 0 !important; bottom: 0 !important;',
+    '  width: 7px !important;',
+    '  background: var(--scw-sow-bar, transparent) !important;',
+    '  z-index: 1 !important; pointer-events: none !important;',
+    '}',
+    /* Multi-SOW/Bid rows get a slightly wider bar so the segments read. */
+    '.scw-ws-v2-card[data-scw-sow-colored="multi"]::before { width: 9px !important; }',
+    /* Pill swatch matching each SOW/Bid's row color. */
+    '.scw-ws-v2-sow-pill-dot {',
+    '  display: inline-block !important; width: 9px !important; height: 9px !important;',
+    '  border-radius: 50% !important; margin-right: 6px !important;',
+    '  vertical-align: middle !important; flex: 0 0 auto !important;',
+    '}',
 
     /* ── Row grid ───────────────────────────────────────────── */
     /* Shared column template across default / cam / services so that

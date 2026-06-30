@@ -223,15 +223,20 @@
         '<span class="scw-ws-v2-sow-pills-label">' + esc(spec.label) + '</span>' +
         '<button type="button" class="scw-ws-v2-sow-pill" ' +
           'data-scw-ws-v2-sow-pill="__all">Show All</button>' +
-        sows.map(function (s) {
+        sows.map(function (s, i) {
           // Tooltip always shows "label — name". When the spec opts in via
           // appendName (e.g. the Bid filter), the friendly name is also shown
           // ON the pill (label — name); otherwise the pill stays terse.
           var tip = s.name ? (s.label + ' — ' + s.name) : s.label;
           var text = (spec.appendName && s.name) ? (s.label + ' — ' + s.name) : s.label;
+          // Color swatch tying this pill to the row tint/bar of the same SOW/Bid.
+          var dot = (window.SCW && SCW.sowColor)
+            ? '<span class="scw-ws-v2-sow-pill-dot" style="background:' +
+                SCW.sowColor.dot(i) + '"></span>'
+            : '';
           return '<button type="button" class="scw-ws-v2-sow-pill" ' +
             'title="' + esc(tip) + '" ' +
-            'data-scw-ws-v2-sow-pill="' + esc(s.id) + '">' + esc(text) + '</button>';
+            'data-scw-ws-v2-sow-pill="' + esc(s.id) + '">' + dot + esc(text) + '</button>';
         }).join('') +
         '<button type="button" class="scw-ws-v2-sow-pill scw-ws-v2-sow-pill--blank" ' +
           'data-scw-ws-v2-sow-pill="' + BLANK + '">(blank)</button>' +
@@ -271,10 +276,65 @@
     }
   }
 
+  // ── Row color coding ────────────────────────────────────────────────
+  // Assign each SOW/Bid a stable color (by its sorted position in the
+  // pill list) and paint every line-item card with the color(s) of the
+  // SOW(s)/Bid(s) it's connected to: a left-edge bar (one segment per
+  // SOW/Bid, so a row on several shows all of them) plus a faint wash.
+  // Re-run after every render (cards are rebuilt) via render.js.
+  function applyRowColors(viewKey) {
+    if (!window.SCW || !SCW.sowColor) return;
+    var container = document.getElementById('scw-ws-v2-' + viewKey);
+    if (!container) return;
+    var list = collectSowList(viewKey);
+    var spec = filterSpec(viewKey);
+    var SOWK = spec.fieldKey + '_raw';
+    var cards = container.querySelectorAll('.scw-ws-v2-card[data-scw-ws-v2-record]');
+
+    function clear(card) {
+      card.style.removeProperty('background-color');
+      card.style.removeProperty('--scw-sow-bar');
+      card.removeAttribute('data-scw-sow-colored');
+    }
+    if (!list.length) {
+      for (var z = 0; z < cards.length; z++) clear(cards[z]);
+      return;
+    }
+
+    var colorMap = SCW.sowColor.buildMap(list.map(function (s) { return s.id; }));
+    var records = (ns.data && typeof ns.data.readRecords === 'function')
+      ? ns.data.readRecords(viewKey) : [];
+    var byId = Object.create(null);
+    for (var r = 0; r < records.length; r++) {
+      if (records[r] && records[r].id) byId[records[r].id] = records[r];
+    }
+
+    for (var c = 0; c < cards.length; c++) {
+      var card = cards[c];
+      var rec = byId[card.getAttribute('data-scw-ws-v2-record')];
+      var raw = rec && rec[SOWK];
+      var idxs = [];
+      if (Array.isArray(raw)) {
+        for (var j = 0; j < raw.length; j++) {
+          var id = raw[j] && raw[j].id;
+          if (id != null && colorMap[id] != null) idxs.push(colorMap[id]);
+        }
+      }
+      idxs = SCW.sowColor.normIndices(idxs);
+      if (!idxs.length) { clear(card); continue; }
+      card.style.setProperty('--scw-sow-bar', SCW.sowColor.barFor(idxs));
+      // Inline !important beats the card's `background: #fff !important`
+      // zebra/base rule, so the tint actually shows.
+      card.style.setProperty('background-color', SCW.sowColor.tintFor(idxs, 0.13), 'important');
+      card.setAttribute('data-scw-sow-colored', idxs.length > 1 ? 'multi' : '1');
+    }
+  }
+
   ns.sowFilter = {
     mount:          mount,
     loadActive:     loadActive,
-    filterRecords:  filterRecords
+    filterRecords:  filterRecords,
+    applyRowColors: applyRowColors
   };
 })();
 /*** END WORKSHEET V2 — SOW FILTER PILLS **************************************/
