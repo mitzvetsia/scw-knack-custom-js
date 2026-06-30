@@ -71,6 +71,16 @@
     '  display: block !important;',
     '  width: 100% !important;',
     '}',
+    /* view_3505 (subcontractor SURVEY device worksheet): users don\'t want an
+       inner scroll region trapping the wheel here. Drop the viewport cap so the
+       worksheet grows to its full height and scrolls with the PAGE — no need to
+       hover over the view. Scoped to this view\'s panel
+       (#scw-ws-v2-<sourceViewKey>) so every other v2 worksheet keeps its
+       capped-scroll body. */
+    '#scw-ws-v2-view_3505 > .scw-ws-v2-body {',
+    '  max-height: none !important;',
+    '  overflow: visible !important;',
+    '}',
     '.scw-ws-v2-empty {',
     '  padding: 20px !important;',
     '  text-align: center !important;',
@@ -122,7 +132,9 @@
     '    28px                  /* kebab */ !important;',
     '  gap: 6px !important;',
     '  align-items: center !important;',
-    '  padding: 4px 10px !important;',
+    /* 10px all around (the .scw-ws-v2-row padding-left:44px override keeps the
+       checkbox/chevron gutter on the left). */
+    '  padding: 10px !important;',
     '  min-height: 40px !important;',
     '}',
     /* Sales money model (moneyMode:"sales", e.g. view_3586): no Sub Bid /
@@ -225,6 +237,20 @@
     '.scw-ws-v2-card--survey .scw-ws-v2-row--assumptions > .scw-ws-v2-cell--survey-ext {',
     '  display: none !important;',
     '}',
+    /* Labor cell when Require Sub Bid is No — read-only (no sub bid needed). The
+       input reads as static text, not an editable field: white bg, no border,
+       muted, non-interactive (CLAUDE.md locked-field convention). */
+    '.scw-ws-v2-cell--labor-na .scw-ws-v2-input {',
+    '  background: #fff !important;',
+    '  border-color: transparent !important;',
+    '  box-shadow: none !important;',
+    '  pointer-events: none !important;',
+    '  color: #94a3b8 !important;',
+    '}',
+    '.scw-ws-v2-card:hover .scw-ws-v2-cell--labor-na .scw-ws-v2-input {',
+    '  border-color: transparent !important;',
+    '}',
+    '.scw-ws-v2-cell--labor-na .scw-ws-v2-currency-glyph { color: #cbd5e1 !important; }',
     /* Install money model (moneyMode:"install", view_3915). No money cells at
        all — header is chevron · label · product · flag chits (RO, show-when-
        true) · SCW Notes (editable) · warn · trash. 7-track grid (replaces the
@@ -327,6 +353,63 @@
     '.scw-ws-v2-sd--conn  { flex: 0 1 220px !important; min-width: 150px !important; }',
     '.scw-ws-v2-sd--notes { flex: 1 1 200px !important; min-width: 170px !important; max-width: 300px !important; }',
     '.scw-ws-v2-sd--wide  { flex: 2 1 280px !important; min-width: 220px !important; }',
+    /* Grouped survey detail: each group is a VERTICAL COLUMN of related fields;
+       columns flow left-to-right and wrap on narrow screens. Column order (cam):
+       Label (Prefix / Cam·Reader #) · Notes (SCW Notes over Mounting Hardware) ·
+       Mounting & cabling (Height / Drop Length / Conduit) · Connection
+       (Connected To / MDF·IDF). Fixed per-column widths so fields line up
+       column-to-column instead of every field wrapping independently. */
+    /* Lay the detail groups on the SAME grid as the summary header row, so each
+       detail column lines up directly under its header column:
+         Label (Prefix / Cam·Reader #)            → label/drop column
+         Notes (SCW Notes / Mounting Hardware)    → starts under Product
+         Connection (MDF·IDF / Connected To·Dev.) → starts under Labor Description
+         Mounting & cabling (Height/Drop/Conduit) → starts under Existing/Exterior/Plenum
+       The template is byte-identical to the survey header grid (.scw-ws-v2-card
+       --survey .scw-ws-v2-row--*) and the detail container is padded to the same
+       left (44px) + right (10px) gutter, so the fractional tracks resolve to the
+       same widths and everything aligns column-to-column. */
+    '.scw-ws-v2-card--survey .scw-ws-v2-detail { padding-right: 10px !important; }',
+    '.scw-ws-v2-survey-detail .scw-ws-v2-sd-groups {',
+    '  flex: 1 1 100% !important;',
+    '  display: grid !important;',
+    '  grid-template-columns:',
+    '    20px 64px minmax(140px, 1.1fr) minmax(150px, 1.3fr) minmax(150px, 1.3fr)',
+    '    72px 74px 60px 62px 28px 28px !important;',
+    '  column-gap: 6px !important; row-gap: 12px !important;',
+    '  align-items: start !important;',
+    '}',
+    '.scw-ws-v2-sd-group {',
+    '  display: flex !important; flex-direction: column !important; gap: 10px !important;',
+    '  align-items: stretch !important; min-width: 0 !important;',
+    '}',
+    /* Each item fills its column. CRITICAL: reset min-width to 0 — the width-hint
+       classes (--conn min-width:150px, --paragraph min-width:220px) would
+       otherwise force an item WIDER than its grid track and overflow it. The
+       detail-field inside stretches its input/button/display to match. */
+    '.scw-ws-v2-sd-group .scw-ws-v2-sd-item {',
+    '  flex: 0 0 auto !important; width: 100% !important;',
+    '  min-width: 0 !important; max-width: none !important;',
+    '}',
+    /* Place each group into the header columns it should align under. */
+    '.scw-ws-v2-sd-group--label { grid-column: 1 / 3 !important; }',
+    /* Prefix + Cam/Reader # boxes are kept NARROW (left-aligned in the label
+       span) so they don\'t crowd the Notes / Mounting Hardware column to their
+       right. */
+    '.scw-ws-v2-sd-group--label .scw-ws-v2-sd-item { max-width: 64px !important; }',
+    /* Center the Prefix value so it lines up under the centered Cam/Reader #
+       number below it (both stack in the narrow Label column). */
+    '.scw-ws-v2-sd-group--label .scw-ws-v2-conn-btn-val { text-align: center !important; }',
+    '.scw-ws-v2-sd-group--notes { grid-column: 3 / 5 !important; }',
+    '.scw-ws-v2-sd-group--conn  { grid-column: 5 / 6 !important; }',
+    '.scw-ws-v2-sd-group--mount { grid-column: 6 / -1 !important; }',
+    /* Non-cam rows have no Label column and the header lets the product span
+       grid-column 2 — so start the Notes column at col 2 too, keeping SCW Notes
+       / Mounting Hardware aligned under the product box. */
+    '.scw-ws-v2-sd-groups--no-label .scw-ws-v2-sd-group--notes { grid-column: 2 / 5 !important; }',
+    /* Mounting & cabling column: the two number inputs stay narrow (left-aligned)
+       inside the wider span instead of stretching full-width. */
+    '.scw-ws-v2-sd-group--mount .scw-ws-v2-sd--num { width: 96px !important; }',
     /* Sales detail — v1-style two columns: pricing/identity stacked on the
        left, connections + Labor Desc stacked on the right. */
     '.scw-ws-v2-sales-detail {',
@@ -986,20 +1069,61 @@
     '.scw-ws-v2-detail {',
     '  display: none !important;',
     '  padding: 10px 14px 12px !important;',
-    '  background: #eef4fb !important;',
+    '  background: #fff !important;',   /* same as the header — one clean white card */
     '}',
     '.scw-ws-v2-card--open .scw-ws-v2-detail {',
     '  display: block !important;',
     '}',
-    /* Expanded card — tint the whole card (row + detail) so it pops
-       from the zebra-striped list. Override hover/zebra so the open
-       state wins. */
+    /* Expanded card — becomes a DISCRETE bounded card: a white summary row
+       (header) over the tinted detail + photos body, wrapped in a bordered,
+       rounded box with margin around it. This stops an all-open list from
+       reading as one big blue mass, and visually binds each photo strip to its
+       line item — the strip sits INSIDE the same box as the header above it.
+       Override hover/zebra so the open state wins. */
     '.scw-ws-v2-card--open,',
     '.scw-ws-v2-card--open:hover,',
     '.scw-ws-v2-card--open:nth-child(even),',
     '.scw-ws-v2-card--open:nth-child(even):hover {',
-    '  background: #eef4fb !important;',
-    '  box-shadow: inset 3px 0 0 #2563eb !important;',
+    '  background: #fff !important;',
+    '  margin: 8px 6px !important;',
+    '  border: 1px solid #e2e8f0 !important;',   /* neutral gray, no blue accent */
+    '  border-radius: 10px !important;',
+    '  box-shadow: 0 1px 2px rgba(15,23,42,0.05) !important;',   /* softer — less busy */
+    '}',
+    /* Round the tinted body (detail / photos = the card\'s last child) to the
+       card\'s bottom corners so it sits cleanly inside the bounded card —
+       without overflow:hidden, which would clip the photo drag-reorder ghost. */
+    '.scw-ws-v2-card--open > :last-child {',
+    '  border-bottom-left-radius: 9px !important;',
+    '  border-bottom-right-radius: 9px !important;',
+    '}',
+    /* view_3505: FLATTEN — open cards become flat ROWS inside the single panel
+       box, not individually-boxed cards. Drop the per-card margin / border /
+       radius / shadow so an open card reads as a row divided from its neighbors
+       by the same thin bottom line as closed cards. One outer box, rows inside.
+       (Scoped to this view so the other v2 worksheets — which open one card at a
+       time — keep their boxed-card look.) */
+    '#scw-ws-v2-view_3505 .scw-ws-v2-card--open,',
+    '#scw-ws-v2-view_3505 .scw-ws-v2-card--open:hover,',
+    '#scw-ws-v2-view_3505 .scw-ws-v2-card--open:nth-child(even),',
+    '#scw-ws-v2-view_3505 .scw-ws-v2-card--open:nth-child(even):hover {',
+    '  margin: 0 !important;',
+    '  border: none !important;',
+    '  border-bottom: 1px solid #e2e8f0 !important;',
+    '  border-radius: 0 !important;',
+    '  box-shadow: none !important;',
+    '  background: #fff !important;',
+    '}',
+    '#scw-ws-v2-view_3505 .scw-ws-v2-card--open > :last-child {',
+    '  border-bottom-left-radius: 0 !important;',
+    '  border-bottom-right-radius: 0 !important;',
+    '}',
+    /* A little vertical breathing room at the top + bottom of an OPEN row (only
+       when open — closed rows stay compact). Also widens the gap between
+       adjacent open rows, which helps tell them apart now that they\'re flat. */
+    '#scw-ws-v2-view_3505 .scw-ws-v2-card--open {',
+    '  padding-top: 10px !important;',
+    '  padding-bottom: 12px !important;',
     '}',
     '.scw-ws-v2-detail-grid {',
     '  display: grid !important;',
@@ -1754,6 +1878,24 @@
     '  color: #64748b !important;',
     '  margin-top: 4px !important;',
     '}',
+    /* Selected-rows chip strip in the modal head — a fixed-height scroll region
+       so a big selection (the "tons of rows" case) stays contained instead of
+       pushing the editable fields off-screen. */
+    '.scw-ws-v2-bulk-selected-chips {',
+    '  display: flex !important; flex-wrap: wrap !important; gap: 5px !important;',
+    '  margin-top: 10px !important; max-height: 92px !important; overflow-y: auto !important;',
+    '  padding: 2px !important;',
+    '}',
+    '.scw-ws-v2-bulk-chip {',
+    '  font: 600 11px/1.3 system-ui, sans-serif !important;',
+    '  color: #334155 !important; background: #f1f5f9 !important;',
+    '  border: 1px solid #e2e8f0 !important; border-radius: 6px !important;',
+    '  padding: 2px 8px !important; white-space: nowrap !important;',
+    '  max-width: 220px !important; overflow: hidden !important; text-overflow: ellipsis !important;',
+    '}',
+    '.scw-ws-v2-bulk-chip--more {',
+    '  background: #fff !important; color: #64748b !important; font-style: italic !important;',
+    '}',
     '.scw-ws-v2-bulk-modal-body {',
     '  padding: 12px 20px !important;',
     '  overflow-y: auto !important;',
@@ -1921,8 +2063,12 @@
        mirrors v1\'s inline-photo-row.js — ~200px-tall thumbnails. */
     '.scw-ws-v2-photos {',
     '  display: none !important;',
-    '  padding: 10px 14px 14px 34px !important;',
-    '  background: #eef4fb !important;',  /* same tint as expanded detail */
+    '  padding: 2px 14px 14px 44px !important;',
+    '  background: #fff !important;',  /* same as the header / detail — one white card */
+    /* No divider/edge from the detail above — de-nest: the detail panel and the
+       photo strip read as ONE flush region inside the card, not stacked
+       sub-boxes. padding-left matches .scw-ws-v2-detail (44px) so content aligns
+       to the same gutter as the header/detail above it. */
     '}',
     '.scw-ws-v2-card--open .scw-ws-v2-photos { display: block !important; }',
     '.scw-ws-v2-photos-strip {',

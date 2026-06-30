@@ -52,6 +52,22 @@
   var savedByGrid    = Object.create(null);  // sowId → true once PUT succeeds
   var savingGrid     = Object.create(null);  // sowId → true while a write is in flight
 
+  // Per-SOW collapse of the inline diff panel — INDEPENDENT of the v2 SOW
+  // section accordion (that hides the whole grid; this just folds our panel's
+  // body so the grid can stay open with the panel out of the way). Persisted
+  // across reloads, keyed by sowId. Survives render()'s innerHTML rebuilds via
+  // the class re-applied in render() from this map.
+  var COLLAPSE_LS = 'scwSbdInlineCollapsed';
+  function loadCollapsed() {
+    try { return JSON.parse(localStorage.getItem(COLLAPSE_LS)) || {}; }
+    catch (e) { return {}; }
+  }
+  var collapsedBySow = loadCollapsed();
+  function saveCollapsed() {
+    try { localStorage.setItem(COLLAPSE_LS, JSON.stringify(collapsedBySow)); }
+    catch (e) {}
+  }
+
   /** Persist the basis bid on the SOW (field_2942, single connection) via the
    *  SOW write view. Optimistic: caller updates selection + re-renders first. */
   function writeBasis(sowId, pkgId) {
@@ -170,8 +186,9 @@
     if (!pkgId) return null;
     var res = distill(grid, pkgId);
     var pkg = null;
-    for (var p = 0; p < (grid.packages || []).length; p++) {
-      if (grid.packages[p].id === pkgId) { pkg = grid.packages[p]; break; }
+    var cands = basisCandidates(grid);   // includes gated-out touching packages
+    for (var p = 0; p < cands.length; p++) {
+      if (cands[p].id === pkgId) { pkg = cands[p]; break; }
     }
     var basisName = (pkg && (pkg.bidName || pkg.name)) || '';
     // PDF-ready HTML fragments (bid + diff) so the snapshot can be stamped onto
@@ -459,17 +476,116 @@
     };
   }
 
+  // ── basis candidates ────────────────────────────────────────────────────
+  // The basis is an EXPLICIT user designation: "this SOW → proposal is built
+  // on THAT bid." So the selector must offer EVERY project bid, not just the
+  // bids the v2 comparison grid shows as COLUMNS for this SOW. There are three
+  // tiers of relevance, all offered, most-relevant first:
+  //
+  //   1. Column packages (grid.packages) — bids v2 already shows as columns
+  //      here (they price ≥1 line item on this SOW and survived the gate).
+  //   2. Gated-out touching packages — bids that DO price line items on this
+  //      SOW but whose column v2 dropped via its sibling-SOW gate
+  //      (transform.js: field_2387 REL_SOW names only a sibling). Recovered
+  //      from the grid's OWN rows: buildRow fills row.cellsByPackage from each
+  //      bid record's field_2415 independent of the column gate, so any
+  //      package with a cell on a row here genuinely touches this SOW.
+  //   3. Every OTHER project bid (view_3573) — bids that price NO line item on
+  //      this SOW. Without these, a SOW whose bids all bucket onto a SIBLING
+  //      SOW shows an EMPTY dropdown ("no choices"), which is exactly what
+  //      blocks assigning different bids as the basis for different SOWs. They
+  //      carry a 0 on-SOW count so the option honestly reads "no items on this
+  //      SOW" — the user can still designate one (and the diff then correctly
+  //      reports the SOW's lines as un-bid).
+  //
+  // distill() works purely off cellsByPackage, so the diff renders for any
+  // tier with no further change (tier 3 simply has no cells → all-added diff).
+  function stripTags(v) {
+    return String(v == null ? '' : v).replace(/<[^>]*>/g, '').trim();
+  }
+  function pkgStatusOf(rec, fk) {
+    var r = rec[fk + '_raw'];
+    if (r == null) r = rec[fk];
+    if (Array.isArray(r)) r = r[0];
+    if (r && typeof r === 'object') r = r.identifier || r.id || '';
+    return stripTags(r);
+  }
+  function basisCandidates(grid) {
+    var out = [], seen = Object.create(null);
+    var cols = (grid && grid.packages) || [];
+    for (var i = 0; i < cols.length; i++) {
+      if (cols[i] && cols[i].id && !seen[cols[i].id]) { seen[cols[i].id] = true; out.push(cols[i]); }
+    }
+    // Packages that touch this SOW but were gated out of its columns —
+    // discovered from the rows' cells, counted by on-SOW (non-offSow) rows.
+    var counts = Object.create(null);
+    var rows = (grid && grid.rows) || [];
+    for (var r = 0; r < rows.length; r++) {
+      var cells = rows[r] && rows[r].cellsByPackage;
+      if (!cells) continue;
+      for (var pid in cells) {
+        if (!Object.prototype.hasOwnProperty.call(cells, pid) || seen[pid]) continue;
+        if (!(pid in counts)) counts[pid] = 0;
+        if (!rows[r].offSow) counts[pid]++;
+      }
+    }
+
+    // Name/status for any non-column package come from the bid-package view.
+    var meta = Object.create(null);
+    var pkgs = readView(C.bidPkgViewKey);
+    var nameF = C.f && C.f.pkgName, statusF = C.f && C.f.pkgStatus;
+    for (var p = 0; p < pkgs.length; p++) {
+      if (pkgs[p] && pkgs[p].id) {
+        meta[pkgs[p].id] = {
+          bidName:   nameF ? stripTags(pkgs[p][nameF]) : '',
+          bidStatus: statusF ? pkgStatusOf(pkgs[p], statusF) : ''
+        };
+      }
+    }
+
+    // Tier 2: gated-out touching packages (real on-SOW count).
+    var touching = Object.keys(counts);
+    var extra = [];
+    for (var e = 0; e < touching.length; e++) {
+      seen[touching[e]] = true;
+      var m = meta[touching[e]] || {};
+      extra.push({
+        id: touching[e], bidName: m.bidName || '', name: m.bidName || '',
+        bidStatus: m.bidStatus || '', onSowItemCount: counts[touching[e]], recovered: true
+      });
+    }
+    extra.sort(function (a, b) { return (a.bidName || '').localeCompare(b.bidName || ''); });
+
+    // Tier 3: every OTHER project bid — so a SOW with no touching bid can still
+    // designate one as its basis. Shown as "no items on this SOW", sorted last.
+    var rest = [];
+    for (var q = 0; q < pkgs.length; q++) {
+      var pk = pkgs[q];
+      if (!pk || !pk.id || seen[pk.id]) continue;
+      seen[pk.id] = true;
+      var mm = meta[pk.id] || {};
+      rest.push({
+        id: pk.id, bidName: mm.bidName || '', name: mm.bidName || '',
+        bidStatus: mm.bidStatus || '', onSowItemCount: 0, offSowOnly: true
+      });
+    }
+    rest.sort(function (a, b) { return (a.bidName || '').localeCompare(b.bidName || ''); });
+
+    return out.concat(extra).concat(rest);
+  }
+
   // ── HTML builders ───────────────────────────────────────────────────────
   function pkgOption(p, selId) {
     var bits = [p.bidName || p.name || 'Bid'];
     if (p.bidStatus) bits.push(p.bidStatus);
-    bits.push((p.onSowItemCount || 0) + ' on SOW');
+    var n = p.onSowItemCount || 0;
+    bits.push(n ? (n + ' on SOW') : 'no items on this SOW');
     return '<option value="' + esc(p.id) + '"' + (p.id === selId ? ' selected' : '') +
       '>' + esc(bits.join(' · ')) + '</option>';
   }
 
   function selector(grid, selId, persisted) {
-    var pkgs = grid.packages || [];
+    var pkgs = basisCandidates(grid);
     var opts = '<option value="">— choose the basis bid —</option>' +
       pkgs.map(function (p) { return pkgOption(p, selId); }).join('');
     var note;
@@ -605,17 +721,29 @@
       else                         rd = { state: 'ready',        label: '✓ Reviewed — auto-saved' };
     }
 
+    // Chevron + pill form the collapse handle (independent of the SOW
+    // accordion). The basis selector + readiness stay in the bar so they're
+    // reachable even while the body is folded.
+    var toggle = '<button type="button" class="scw-sbd-collapse" data-scw-sbd-collapse ' +
+      'data-sow-id="' + esc(sowId) + '" aria-label="Collapse or expand this diff panel" ' +
+      'title="Collapse / expand this diff panel">' +
+      '<svg class="scw-sbd-chevron" viewBox="0 0 24 24" width="13" height="13" fill="none" ' +
+        'stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">' +
+        '<polyline points="6 9 12 15 18 9"></polyline></svg>' +
+      '<span class="scw-sbd-pill">sub-bid diff</span></button>';
     var bar = '<div class="scw-sbd-inline-bar">' +
-      '<span class="scw-sbd-pill">sub-bid diff</span>' +
+      toggle +
       selector(grid, selId, persisted) +
       '<span class="scw-sbd-ready scw-sbd-ready--' + rd.state + '">' + esc(rd.label) + '</span>' +
       '</div>';
+    var body;
     if (!selId) {
-      return bar + '<div class="scw-sbd-empty">Choose the basis bid to see what differs vs this SOW.</div>';
+      body = '<div class="scw-sbd-empty">Choose the basis bid to see what differs vs this SOW.</div>';
+    } else {
+      var ex = res.total ? exDetail(res, sowId) : '';
+      body = tally(res) + flag(res) + ex + (res.total > 0 ? noteBar(sowId, needsNote) : '');
     }
-    var ex = res.total ? exDetail(res, sowId) : '';
-    return bar + tally(res) + flag(res) + ex +
-      (res.total > 0 ? noteBar(sowId, needsNote) : '');
+    return bar + '<div class="scw-sbd-inline-body">' + body + '</div>';
   }
 
   /** Reviewer note. Auto-saves with the diff (no Save button) — the note PUTs
@@ -679,6 +807,8 @@
         else sec.insertBefore(block, sec.firstChild);
       }
       block.innerHTML = inlineHtml(grid);
+      // Re-apply the independent collapse state (survives this rebuild).
+      block.classList.toggle('scw-sbd-inline--collapsed', !!collapsedBySow[sowId]);
 
       // Keep field_2941 in lockstep with whatever the diff currently shows —
       // any data change, basis pick, or note edit re-persists (debounced).
@@ -722,6 +852,19 @@
       if (sowId) noteByGrid[sowId] = n.value;
     });
     document.addEventListener('click', function (e) {
+      // Independent collapse toggle — fold just this SOW's diff panel, no
+      // re-render needed (CSS drives body visibility + chevron rotation).
+      var ct = e.target.closest && e.target.closest('[data-scw-sbd-collapse]');
+      if (ct) {
+        var csow = ct.getAttribute('data-sow-id');
+        if (csow) {
+          collapsedBySow[csow] = !collapsedBySow[csow];
+          saveCollapsed();
+          var blk = ct.closest('.scw-sbd-inline');
+          if (blk) blk.classList.toggle('scw-sbd-inline--collapsed', !!collapsedBySow[csow]);
+        }
+        return;
+      }
       var jr = e.target.closest && e.target.closest('[data-scw-sbd-jump-id]');
       if (jr) {
         jumpTo(jr.getAttribute('data-scw-sbd-jump-sow'),

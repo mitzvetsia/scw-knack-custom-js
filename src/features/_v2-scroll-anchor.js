@@ -29,6 +29,13 @@
   var raf = window.requestAnimationFrame || function (f) { return setTimeout(f, 16); };
   var MAX_MS = 600;          // stop re-pinning after this — bounds the loop
   var STABLE_FRAMES = 2;     // consecutive no-op frames = settled
+  // Don't CHASE a large DOWNWARD shift of the anchor row. A big positive delta
+  // (row pushed down) means content grew ABOVE the viewport — a photo decoding,
+  // or a NEW photo added by a file upload / Make-webhook refresh. Scrolling the
+  // page to follow it is itself the visible "jump" (scroll-spy caught a lone
+  // scrollBy(+243) after a webhook on view_3505). Small reflows still re-pin,
+  // and UPWARD shifts (rebuild clamp / shrink → negative delta) still restore.
+  var BIG_DOWN = 100;
   // Single-flight: a grid that fires SEVERAL renders per edit (e.g. bid-review-v2
   // refetches multiple source views, each triggering a render) would otherwise
   // spawn one settle loop per render — overlapping loops each chase a DIFFERENT
@@ -90,9 +97,15 @@
           ? document.querySelector('[' + idAttr + '="' + cssEsc(anchor.key) + '"]')
           : null;
         if (el) {
-          // Precise anchor: keep the captured row at its original viewport top.
+          // Precise anchor: keep the captured row at its original viewport top —
+          // but never CHASE a big downward shift (content added above = a jump).
           var delta = el.getBoundingClientRect().top - anchor.top;
-          if (Math.abs(delta) > 1) { window.scrollBy(0, delta); corrected = true; }
+          if (delta > BIG_DOWN) {
+            // Hold position; let the newly-added content reflow below us instead
+            // of auto-scrolling the page to follow the anchor row.
+          } else if (Math.abs(delta) > 1) {
+            window.scrollBy(0, delta); corrected = true;
+          }
         } else {
           // Anchor row not resolvable (no anchor captured, or its row isn't in
           // the rebuilt DOM yet / at all). Don't let the browser clamp to the

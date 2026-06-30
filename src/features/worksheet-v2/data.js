@@ -47,6 +47,16 @@
     try {
       var v = Knack.views[sourceViewKey];
       if (!v || !v.model || !v.model.data) return [];
+      // Bind change tracking the moment the model is first reachable — NOT
+      // lazily on the first notify. Knack streams records into the model
+      // (add/reset) while the page loads; if those fire before we subscribe,
+      // this cache never invalidates and _dirtyAll never gets set, so a stale
+      // empty/partial snapshot can freeze the grid. That surfaces as a blank /
+      // half-loaded worksheet when you click into v2 mid-load (the click does
+      // an early direct render off the stale snapshot, then applyRender's
+      // "painted + nothing dirty → skip" guard suppresses the real render).
+      // bindChangeTracking is idempotent.
+      bindChangeTracking(sourceViewKey);
       var models = v.model.data.models || [];
       var out = [];
       for (var i = 0; i < models.length; i++) {

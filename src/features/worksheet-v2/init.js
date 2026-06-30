@@ -199,6 +199,11 @@
         (!(_vcSow && _vcSow.hideSow) || (_vcSow && _vcSow.filterPills))) {
       ns.sowFilter.mount(key);
     }
+    // Free-text search box (above the pills) — narrows records by product /
+    // label / MDF-IDF / notes. Mounts idempotently on every render.
+    if (ns.search && typeof ns.search.mount === 'function') {
+      ns.search.mount(key);
+    }
     // After every re-render, sync the bulk-select checkboxes to
     // current selection state + refresh the floating toolbar. GUARD on the
     // panel actually being mounted on THIS scene: bulk is a singleton, and
@@ -321,6 +326,11 @@
       var nowOpen = !panel.classList.contains('scw-ws-v2-summary--open');
       panel.classList.toggle('scw-ws-v2-summary--open', nowOpen);
       head.setAttribute('aria-expanded', nowOpen ? 'true' : 'false');
+      // Persist so the choice survives the next rebuild (e.g. the Bid
+      // filter) instead of snapping back to closed.
+      if (ns.summary && typeof ns.summary.persistOpen === 'function') {
+        ns.summary.persistOpen(panel, nowOpen);
+      }
     });
   }
 
@@ -489,17 +499,31 @@
       e.stopPropagation();
       var parentId = link.getAttribute('data-scw-ws-v2-add-accessory') || '';
       if (!parentId) return;
-      // Sales scenes have no add-accessory child page in Builder, so
-      // navigating to the add-accessory-line-item slug dead-ends there.
-      // Route the per-item add through the custom accessory modal
-      // instead — it posts the same Make webhook the bulk add uses,
-      // scoped to this one row.
       var v2Container = link.closest('[id^="scw-ws-v2-view_"]');
       var v2ViewKey = v2Container ? v2Container.id.replace(/^scw-ws-v2-/, '') : '';
-      var v2Cfg = (v2ViewKey && ns.cfg && typeof ns.cfg.viewCfg === 'function')
-        ? ns.cfg.viewCfg(v2ViewKey) : null;
-      if (v2Cfg && v2Cfg.moneyMode === 'sales' &&
-          ns.toolbar && typeof ns.toolbar.openAddAccessories === 'function') {
+
+      // Unify the per-item "+ Add" with the bulk "Add accessories" flow:
+      // open the SAME modal, and in the background CHECK this row's box (and
+      // clear any other selection) so adding one accessory feels identical to
+      // adding many — same modal, the row simply pre-selected. The modal posts
+      // the same Make webhook the bulk add uses. We fall through to the native
+      // Knack add-accessory page ONLY when that modal isn't available.
+      if (ns.toolbar && typeof ns.toolbar.openAddAccessories === 'function') {
+        // Reflect the target as a checked row, matching what the bulk
+        // selection would look like. Clear every other box so the checkbox
+        // state matches what the modal acts on, and fire `change` (only on
+        // boxes that actually flip) so bulk.js updates its selection + the
+        // toolbar count.
+        var boxes = document.querySelectorAll('[data-scw-ws-v2-select]');
+        for (var bi = 0; bi < boxes.length; bi++) {
+          var box  = boxes[bi];
+          var want = box.getAttribute('data-scw-ws-v2-select') === parentId;
+          if (box.checked !== want) {
+            box.checked = want;
+            box.dispatchEvent(new Event('change', { bubbles: true }));
+          }
+        }
+        // Friendly label for the modal's affected-rows list.
         var addCard = link.closest('.scw-ws-v2-card');
         var addLabelEl = addCard && addCard.querySelector('.scw-ws-v2-cell--label');
         var addLabel = addLabelEl ? (addLabelEl.textContent || '').trim() : '';
@@ -507,16 +531,27 @@
           var addProdEl = addCard && addCard.querySelector('.scw-ws-v2-product-name');
           addLabel = addProdEl ? (addProdEl.textContent || '').trim() : '';
         }
+        // On the bid-review-v2 comparison grid the review-bids hash carries the
+        // PROJECT id, not the SOW id, so the modal's getSowIdFromHash() would
+        // tag the new accessory with the wrong SOW. Pass the SOW id from the
+        // section wrapping the clicked row (data-sow-id). On the worksheet
+        // there's no such wrapper, so the modal falls back to the hash.
+        var sowSection = link.closest('[data-sow-id]');
+        var explicitSowId = sowSection ? (sowSection.getAttribute('data-sow-id') || '') : '';
+        // presetSel keeps the modal scoped to this row even if the checkbox
+        // sync above found no box (e.g. a surface without row selects).
         ns.toolbar.openAddAccessories(v2ViewKey, {
           ids:    [parentId],
-          labels: [addLabel || parentId]
+          labels: [addLabel || parentId],
+          sowId:  explicitSowId || undefined
         });
         return;
       }
-      // Build the URL deterministically from the same base path the
-      // chip edit links use. resolveAddAccessoryBase() matches against
-      // the current hash; if it returns nothing we surface an alert
-      // rather than silently bouncing to home.
+
+      // Fallback (modal unavailable): native Knack add-accessory page. Build
+      // the URL deterministically from the same base path the chip edit links
+      // use. resolveAddAccessoryBase() matches against the current hash; if it
+      // returns nothing we surface an alert rather than silently bouncing home.
       var base = resolveAddAccessoryBase(link);
       if (!base) {
         if (window.console) {
@@ -1176,7 +1211,7 @@
         // worksheet display exactly), then the view's label field, then id.
         // Falls back to in-use-only (collectConnValues) if the grid isn't
         // loaded on the page.
-        var surveyCandidates = function (viewKeys, labelField, connF) {
+        var surveyCandidates = function (viewKeys, labelField, connF, nameField) {
           var recs = firstViewRecords(viewKeys) || [];
           if (!recs.length) return collectConnValues(connF);
           var inUse = Object.create(null);
@@ -1197,6 +1232,12 @@
               (a[labelField] != null ? String(a[labelField]).replace(/<[^>]*>/g, '').trim() : '') ||
               (a.identifier != null ? String(a.identifier).replace(/<[^>]*>/g, '').trim() : '') ||
               a.id;
+            // Append a friendly name (e.g. the Bid's field_2636) so the option
+            // reads "141 — White Storage Shelf…", not just the bare number.
+            if (nameField) {
+              var fn = (a[nameField] != null) ? String(a[nameField]).replace(/<[^>]*>/g, '').trim() : '';
+              if (fn && String(lbl).indexOf(fn) === -1) lbl = String(lbl) + ' — ' + fn;
+            }
             out.push({ id: a.id, name: String(lbl) });
           }
           out.sort(function (x, y) {
@@ -1220,7 +1261,7 @@
           ns.picker.open({
             sourceViewKey: viewKey, putViewKey: viewKey, recordId: recordId,
             fieldKey: fieldKey, label: 'Bid', selectedIds: sel,
-            candidates: surveyCandidates(['view_3507'], 'field_2414', fieldKey), groupBy: false,
+            candidates: surveyCandidates(['view_3507'], 'field_2414', fieldKey, 'field_2636'), groupBy: false,
             itemLabel: function (r) { return r.name || r.id; },
             multi: true, onSaved: surveyRefetch,
             // Clearing every bid requires a survey note written in the SAME

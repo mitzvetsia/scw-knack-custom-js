@@ -112,10 +112,13 @@
       {
         // Build-SOW page (internal). The canonical deployment.
         sourceViewKey:    'view_3962',
-        mountAfterSelector: '#view_3610',
-        // If view_3610 (the retired, hidden v1 grid) is deleted from the Knack
-        // scene, mount after the v2 source view instead so the panel still
-        // appears. Both are SOW Line Items grids in the same scene region.
+        // Mount directly after view_3369 so the panel lands as the last child
+        // of its layout group (group 7), where end users expect the worksheet.
+        // (view_3610, the retired v1 grid, has been removed from the scene.)
+        mountAfterSelector: '#view_3369',
+        // Fallback so a missing/renamed anchor can't orphan the panel — it then
+        // mounts after the (hidden) v2 source view, both SOW Line Items grids in
+        // the same scene region.
         mountAfterFallback: '#view_3962',
         label:            'SOW Line Items',
         mdfSourceViewKey: 'view_3577',
@@ -150,6 +153,9 @@
         // view_4056 clone below inherits this via the JSON deep-clone.
         photoUploadView:  'view_3915_deploy',
         hideSow:          true,             // install groups by MDF/IDF, not SOW
+        noAddItem:        true,             // can't add to a deployment scope without a
+                                            // change order — suppress the "+ Add to SOW"
+                                            // toolbar CTA (view_4056 clone inherits this)
         mdfSourceViewKey: '',               // TODO: empty-L1 seed source (analogue of view_3577)
         mdfLabelField:    '',               // TODO
         hideMoneyColumns: true,             // no subBid/fee/hrs/mat/installFee on this object
@@ -404,18 +410,20 @@
         //    are editable in the survey card UI + on the Survey Line Item
         //    object. Excluded: product/ext/mounting hardware (read-only on the
         //    card); Connected Devices/To (edit per-row so the field_2380↔2381
-        //    cascade fires); Mounting Height (3-option chip, no bulk widget).
+        //    cascade fires). Mounting Height is a 3-option chip → bulk 'select'.
         bulkFields: {
           cam: [
-            { f: 'dropPrefix',   kind: 'conn-single', label: 'Prefix',      candSource: 'dropPrefix' },
-            { f: 'dropNumber',   kind: 'number',      label: 'Cam/Reader #' },
-            { f: 'laborDesc',    kind: 'text',        label: 'Labor description' },
-            { f: 'labor',        kind: 'number',      label: 'Labor' },
-            { f: 'existCabling', kind: 'bool',        label: 'Existing cabling' },
-            { f: 'exterior',     kind: 'bool',        label: 'Exterior' },
-            { f: 'plenum',       kind: 'bool',        label: 'Plenum' },
-            { f: 'dropLength',   kind: 'number',      label: 'Drop length' },
-            { f: 'conduit',      kind: 'number',      label: 'Conduit' },
+            { f: 'dropPrefix',     kind: 'conn-single', label: 'Prefix',      candSource: 'dropPrefix' },
+            { f: 'dropNumber',     kind: 'number',      label: 'Cam/Reader #' },
+            { f: 'laborDesc',      kind: 'text',        label: 'Labor description' },
+            { f: 'labor',          kind: 'number',      label: 'Labor' },
+            { f: 'existCabling',   kind: 'bool',        label: 'Existing cabling' },
+            { f: 'exterior',       kind: 'bool',        label: 'Exterior' },
+            { f: 'plenum',         kind: 'bool',        label: 'Plenum' },
+            { f: 'mountingHeight', kind: 'select',      label: 'Mounting Height',
+              options: ["Under 16'", "16' - 24'", "Over 24'"] },
+            { f: 'dropLength',     kind: 'number',      label: 'Drop length' },
+            { f: 'conduit',        kind: 'number',      label: 'Conduit' },
             { f: 'surveyNotes',  kind: 'text',        label: 'Survey notes' },
             // SCW Notes (field_2418) is READ-ONLY on the bid worksheet — omitted.
             { f: 'mdfIdf',       kind: 'conn-single', label: 'MDF / IDF', candSource: 'mdf' },

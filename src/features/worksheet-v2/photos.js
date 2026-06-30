@@ -45,6 +45,24 @@
     return out;
   }
 
+  // Index a row's <td>s by data-field-key ONCE, so a single extractPhotoRecords
+  // pass does one getElementsByTagName('td') walk instead of one per field
+  // (~6 fields × 334 rows was the per-render scrape hot spot). Returns a small
+  // accessor pair scoped to the row.
+  function indexRowCells(tr) {
+    var byField = Object.create(null);
+    var cells = tr.getElementsByTagName('td');
+    for (var i = 0; i < cells.length; i++) {
+      var fk = cells[i].getAttribute('data-field-key');
+      if (!fk) continue;
+      (byField[fk] || (byField[fk] = [])).push(cells[i]);
+    }
+    return {
+      first: function (fk) { var a = byField[fk]; return (a && a[0]) || null; },
+      all:   function (fk) { return byField[fk] || []; }
+    };
+  }
+
   /** Walk the source-view <tr> for this record and pull a list of
    *  attached photo records: { id, imgUrl, type, required, completed, notes } */
   function extractPhotoRecords(sourceViewKey, recordId) {
@@ -53,6 +71,7 @@
     var tr = view.querySelector('tr[id="' + recordId + '"]');
     if (!tr) return [];
 
+    var rowCells = indexRowCells(tr);
     var map = Object.create(null);
     function ensure(rid) {
       if (!map[rid]) {
@@ -86,7 +105,7 @@
     var FK_QA_DATE     = F.photoQaCompletedDate || 'field_2863';
     var FK_QA_HISTORY  = F.photoQaHistory       || 'field_2865';
 
-    var imgCells = findAllCellsByFieldKey(tr, FK_IMG);
+    var imgCells = rowCells.all(FK_IMG);
     for (var ic = 0; ic < imgCells.length; ic++) {
       var imgSpans = imgCells[ic].querySelectorAll('span[id][data-kn="connection-value"]');
       for (var i = 0; i < imgSpans.length; i++) {
@@ -101,7 +120,7 @@
       }
     }
 
-    var typeCell = findCellByFieldKey(tr, FK_TYPE);
+    var typeCell = rowCells.first(FK_TYPE);
     if (typeCell) {
       var outerSpans = typeCell.querySelectorAll('span[id][data-kn="connection-value"]');
       for (var j = 0; j < outerSpans.length; j++) {
@@ -112,7 +131,7 @@
       }
     }
 
-    var reqCell = findCellByFieldKey(tr, FK_REQ);
+    var reqCell = rowCells.first(FK_REQ);
     if (reqCell) {
       var reqSpans = reqCell.querySelectorAll('span[id][data-kn="connection-value"]');
       for (var r = 0; r < reqSpans.length; r++) {
@@ -123,7 +142,7 @@
       }
     }
 
-    var compCell = findCellByFieldKey(tr, FK_COMP);
+    var compCell = rowCells.first(FK_COMP);
     if (compCell) {
       var compSpans = compCell.querySelectorAll('span[id][data-kn="connection-value"]');
       for (var c = 0; c < compSpans.length; c++) {
@@ -134,7 +153,7 @@
       }
     }
 
-    var notesCell = findCellByFieldKey(tr, FK_NOTE);
+    var notesCell = rowCells.first(FK_NOTE);
     if (notesCell) {
       var notesSpans = notesCell.querySelectorAll('span[id][data-kn="connection-value"]');
       for (var n = 0; n < notesSpans.length; n++) {
@@ -150,7 +169,7 @@
     // reads off the worksheet <tr>. Connection fields (status/client/by)
     // nest an inner connection-value span carrying the display text.
     function eachQaSpan(fieldKey, apply) {
-      var cell = findCellByFieldKey(tr, fieldKey);
+      var cell = rowCells.first(fieldKey);
       if (!cell) return false;
       var spans = cell.querySelectorAll('span[id][data-kn="connection-value"]');
       for (var i = 0; i < spans.length; i++) {
@@ -334,10 +353,32 @@
       '</span>';
   }
 
+  // Cheap content signature for a scraped photo set — id + image-url per photo.
+  // refreshStrips() compares this against the strip's stored sig so an idle
+  // re-render where nothing changed does ZERO DOM work (the scrape is the only
+  // cost). Crucially it captures whether each photo has an image yet, so the
+  // empty→populated transition (Knack renders connection images async after a
+  // reload) registers as a change and forces a rebuild.
+  function stripSig(photos) {
+    var s = photos.length + ':';
+    for (var i = 0; i < photos.length; i++) {
+      s += photos[i].id + '#' + (photos[i].imgUrl ? '1' : '0') + '|';
+    }
+    return s;
+  }
+
+  // Public wrapper — scrape then build. Keeps the (rec, sourceViewKey)
+  // signature card.js's buildCard already calls.
   function buildStrip(rec, sourceViewKey) {
-    var photos = extractPhotoRecords(sourceViewKey, rec.id);
+    return buildStripFromPhotos(
+      extractPhotoRecords(sourceViewKey, rec.id), rec.id, sourceViewKey);
+  }
+
+  // Build the strip DOM from an ALREADY-scraped photos array. Split out so
+  // refreshStrips can reuse one scrape for both the sig check and the rebuild.
+  function buildStripFromPhotos(photos, recordId, sourceViewKey) {
     var qaEnabled = !!QA_CHIT_VIEWS[sourceViewKey];
-    var addHref = addPhotoHref(rec.id);
+    var addHref = addPhotoHref(recordId);
     // When there are no photos AND no add route, there's nothing to
     // render. Otherwise keep the strip so the user always has a way
     // to attach the first photo from the card.
@@ -346,7 +387,9 @@
     var strip = document.createElement('div');
     strip.className = 'scw-ws-v2-photos' +
       (photos.length ? '' : ' scw-ws-v2-photos--add-only');
-    strip.setAttribute('data-scw-ws-v2-photos', rec.id);
+    strip.setAttribute('data-scw-ws-v2-photos', recordId);
+    // Stored so refreshStrips() can detect an unchanged strip and skip it.
+    strip.setAttribute('data-scw-photo-sig', stripSig(photos));
 
     // SVG picture icon — used in the add button and (eventually) anywhere
     // we need an "image" affordance. Outline-style so it sits well on
@@ -997,9 +1040,94 @@
     }, true);
   }
 
+  /* ── Decoupled photo-strip refresh (reload self-heal) ─────────────────
+   * Knack renders connection-IMAGE columns (field_771 thumbnails) into the
+   * source view's DOM ASYNCHRONOUSLY. On a model reload (model.fetch → reset),
+   * v2's full card rebuild can scrape the photo row BEFORE those thumbnails
+   * land, baking an EMPTY strip into the card — and yesterday's keyed card
+   * reuse then keeps that empty card on every subsequent render, so the photos
+   * never come back. v1 (inline-photo-row.js) sidesteps this by rebuilding its
+   * photo rows on EVERY knack-view-render; the strips "vanish/reappear" but
+   * always self-correct once the DOM settles.
+   *
+   * This mirrors v1: bound to knack-view-render of the source view (which fires
+   * AFTER Knack finishes (re)rendering the rows, thumbnails included), debounced
+   * past renderView's own settle so it runs LAST. It re-scrapes each card's
+   * strip and rebuilds ONLY the ones whose photo set actually changed (cheap sig
+   * compare), so an idle re-render costs one scrape and zero DOM churn. */
+  function refreshStrips(sourceViewKey) {
+    var container = document.getElementById('scw-ws-v2-' + sourceViewKey);
+    if (!container) return;
+    var cards = container.querySelectorAll('.scw-ws-v2-card[data-scw-ws-v2-record]');
+    for (var i = 0; i < cards.length; i++) {
+      var card = cards[i];
+      var id = card.getAttribute('data-scw-ws-v2-record');
+      if (!id) continue;
+      var existing = card.querySelector('.scw-ws-v2-photos');
+      var photos = extractPhotoRecords(sourceViewKey, id);
+      var sig = stripSig(photos);
+      // Prior sig lives on the strip (carded) or on the card (strip-less, so a
+      // photo-less row that later GAINS a photo still registers as a change).
+      var prevSig = existing ? existing.getAttribute('data-scw-photo-sig')
+                             : card.getAttribute('data-scw-photo-sig-empty');
+      if (prevSig === sig) continue;   // unchanged → no DOM work
+      // SAFETY: never replace a photo-bearing strip with an EMPTY scrape.
+      // Knack renders connection-field images asynchronously, so a re-render
+      // can momentarily show zero photo cards even though the record has
+      // photos — clobbering the strip then would make photos vanish (the v1
+      // scraper guards the same way: it only overwrites its cache on a
+      // NON-EMPTY read, render.js scrapeRowPhotoUrls). A genuine "all photos
+      // removed" is handled by the data-driven buildCard rebuild, not here —
+      // so this refresh can only ADD photos back, never destroy them.
+      if (!photos.length && existing &&
+          existing.querySelector('.scw-ws-v2-photo-card')) continue;
+      var fresh = buildStripFromPhotos(photos, id, sourceViewKey);
+      if (fresh) {
+        if (existing) card.replaceChild(fresh, existing);
+        else card.appendChild(fresh);
+        card.removeAttribute('data-scw-photo-sig-empty');
+      } else {
+        if (existing && existing.parentNode) existing.parentNode.removeChild(existing);
+        card.setAttribute('data-scw-photo-sig-empty', sig);
+      }
+    }
+  }
+
+  // Debounced per-view scheduler. knack-view-render can fire several times for
+  // one user action (filter, fetch, async image fill); coalesce into one pass.
+  // The delay sits past render.js's NOTIFY_BURST_MS (150) so the strip refresh
+  // runs after renderView's rebuild/reuse — otherwise a trailing full rebuild
+  // could re-empty the strips we just fixed.
+  var STRIP_REFRESH_DEBOUNCE_MS = 220;
+  var _stripTimers = Object.create(null);
+  function scheduleStripRefresh(viewKey) {
+    if (_stripTimers[viewKey]) clearTimeout(_stripTimers[viewKey]);
+    _stripTimers[viewKey] = setTimeout(function () {
+      _stripTimers[viewKey] = null;
+      try { refreshStrips(viewKey); }
+      catch (e) { console.warn('[scw-ws-v2] refreshStrips failed for ' + viewKey, e); }
+    }, STRIP_REFRESH_DEBOUNCE_MS);
+  }
+
+  if (ns.CONFIG && ns.CONFIG.views &&
+      !document.documentElement.hasAttribute('data-scw-ws-v2-photo-strip-bound')) {
+    document.documentElement.setAttribute('data-scw-ws-v2-photo-strip-bound', '1');
+    ns.CONFIG.views.forEach(function (vcfg) {
+      var key = vcfg && vcfg.sourceViewKey;
+      if (!key) return;
+      $(document)
+        .off('knack-view-render.' + key + '.scwWsV2Photos')
+        .on('knack-view-render.' + key + '.scwWsV2Photos', function () {
+          scheduleStripRefresh(key);
+        });
+    });
+  }
+
   ns.photos = {
     buildStrip:           buildStrip,
+    buildStripFromPhotos: buildStripFromPhotos,
     extractPhotoRecords:  extractPhotoRecords,
+    refreshStrips:        refreshStrips,
     openLightbox:         openLightbox
   };
 })();

@@ -27,6 +27,39 @@
       return ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[c];
     });
   }
+
+  // ── Per-summary open/closed persistence ──────────────────────
+  // The summary head is a collapse toggle (default closed). Every rebuild
+  // — notably the survey Bid filter — regenerates the summary, which
+  // otherwise reset it to closed and lost the user's choice. Persist the
+  // open state per scene+view+summary id and re-apply it at build time
+  // (same pattern as group/column collapse). id = 'grand' for the grand
+  // summary, 'l1:<id>' per MDF/IDF group.
+  function sumScene() {
+    var m = (document.body.id || '').match(/scene_\d+/);
+    return m ? m[0] : 'default';
+  }
+  function sumOpenKey(viewKey, id) {
+    return 'scw:wsv2:sumopen:' + sumScene() + ':' + (viewKey || '') + ':' + (id || '');
+  }
+  function isSumOpen(viewKey, id) {
+    try { return localStorage.getItem(sumOpenKey(viewKey, id)) === '1'; }
+    catch (e) { return false; }
+  }
+  function setSumOpen(viewKey, id, open) {
+    try {
+      if (open) localStorage.setItem(sumOpenKey(viewKey, id), '1');
+      else localStorage.removeItem(sumOpenKey(viewKey, id));
+    } catch (e) {}
+  }
+  // Persist from a built panel element (reads the data-attrs set on build).
+  function persistOpen(panelEl, open) {
+    if (!panelEl || !panelEl.getAttribute) return;
+    var id = panelEl.getAttribute('data-scw-ws-v2-summary-id');
+    if (!id) return;
+    setSumOpen(panelEl.getAttribute('data-scw-ws-v2-summary-view') || '', id, open);
+  }
+
   function stripHtml(s) {
     return String(s == null ? '' : s).replace(/<[^>]*>/g, '').trim();
   }
@@ -425,11 +458,16 @@
       '</table>';
 
     // Issue chips now live in the MDF/IDF header bar (render.js), not here.
+    var l1Id = 'l1:' + (l1.id || l1.label || '');
+    var l1ViewKey = opts.viewKey || '';
+    var l1Open = isSumOpen(l1ViewKey, l1Id);
     var wrap = document.createElement('div');
-    wrap.className = 'scw-ws-v2-summary';
+    wrap.className = 'scw-ws-v2-summary' + (l1Open ? ' scw-ws-v2-summary--open' : '');
+    wrap.setAttribute('data-scw-ws-v2-summary-id', l1Id);
+    wrap.setAttribute('data-scw-ws-v2-summary-view', l1ViewKey);
     wrap.innerHTML =
       '<button type="button" class="scw-ws-v2-summary-head" ' +
-        'data-scw-ws-v2-summary-toggle aria-expanded="false">' +
+        'data-scw-ws-v2-summary-toggle aria-expanded="' + (l1Open ? 'true' : 'false') + '">' +
         '<span class="scw-ws-v2-summary-chev">' + CHEV_SVG + '</span>' +
         '<span class="scw-ws-v2-summary-title">Summary</span>' +
         '<span class="scw-ws-v2-summary-stats">' + esc(fmtSummaryStat(agg.totals)) + '</span>' +
@@ -463,11 +501,15 @@
 
     // Aggregate issue chips no longer live in the summary head — they're
     // rendered up in the panel banner (render.js → grandIssueChips).
+    var grandViewKey = opts.viewKey || '';
+    var grandOpen = isSumOpen(grandViewKey, 'grand');
     var wrap = document.createElement('div');
-    wrap.className = 'scw-ws-v2-grand-summary';
+    wrap.className = 'scw-ws-v2-grand-summary' + (grandOpen ? ' scw-ws-v2-summary--open' : '');
+    wrap.setAttribute('data-scw-ws-v2-summary-id', 'grand');
+    wrap.setAttribute('data-scw-ws-v2-summary-view', grandViewKey);
     wrap.innerHTML =
       '<button type="button" class="scw-ws-v2-summary-head scw-ws-v2-summary-head--grand" ' +
-        'data-scw-ws-v2-summary-toggle aria-expanded="false">' +
+        'data-scw-ws-v2-summary-toggle aria-expanded="' + (grandOpen ? 'true' : 'false') + '">' +
         '<span class="scw-ws-v2-summary-chev">' + CHEV_SVG + '</span>' +
         '<span class="scw-ws-v2-summary-title">Summary</span>' +
         '<span class="scw-ws-v2-summary-stats">' +
@@ -506,7 +548,8 @@
     issueChipsForL1:   issueChipsForL1,
     grandIssueChips:   grandIssueChips,
     l1MoneyTotal:      l1MoneyTotal,
-    fmtMoney:          fmtMoney
+    fmtMoney:          fmtMoney,
+    persistOpen:       persistOpen
   };
 })();
 /*** END WORKSHEET V2 — SUMMARY ***********************************************/

@@ -1065,6 +1065,49 @@
     '  font-size: 14px; line-height: 1.5; font-weight: 500; color: #0f172a;',
     '  white-space: pre-wrap; word-break: break-word;',
     '}',
+    /* MDF/IDF detail row under each L1 header — photos (field_771) + SCW
+       notes (field_1643) for the matching view_3822 record, the same data
+       view_3577 displays. Built only when there's something to show; the
+       L1 collapse toggle folds it with the rest of the group. */
+    '.scw-bid-review-v2__l1-detail-row > td {',
+    '  background: #f8fafc;',
+    '  border-bottom: 1px solid #cbd5e1;',
+    '  padding: 0;',
+    '}',
+    '.scw-bid-review-v2__l1-detail-wrap {',
+    '  padding: 14px 18px;',
+    '  display: flex; flex-wrap: wrap; gap: 18px; align-items: flex-start;',
+    '}',
+    '.scw-bid-review-v2__l1-detail-section { flex: 1 1 280px; min-width: 0; }',
+    '.scw-bid-review-v2__l1-detail-label {',
+    '  font-size: 10px; font-weight: 700; text-transform: uppercase;',
+    '  letter-spacing: 0.06em; color: #64748b; margin-bottom: 6px;',
+    '}',
+    '.scw-bid-review-v2__l1-detail-text {',
+    '  font-size: 12px; line-height: 1.5; color: #1e293b;',
+    '  white-space: pre-wrap; word-break: break-word;',
+    '}',
+    /* Photo strip — natural-width, 200px-capped-height thumbs that wrap
+       and click through to the full-size image (matches the inline-photo
+       strip on device worksheets). */
+    '.scw-bid-review-v2__l1-detail-photos {',
+    '  display: flex; flex-wrap: wrap; gap: 8px;',
+    '}',
+    '.scw-bid-review-v2__l1-detail-photo {',
+    '  display: block; flex: 0 0 auto; border-radius: 6px;',
+    '  border: 1px solid #ddd; background: #fff;',
+    '  box-shadow: 0 1px 4px rgba(0,0,0,.08);',
+    '  transition: transform 120ms ease, box-shadow 120ms ease;',
+    '  overflow: hidden;',
+    '}',
+    '.scw-bid-review-v2__l1-detail-photo:hover {',
+    '  transform: scale(1.03); box-shadow: 0 3px 12px rgba(0,0,0,.15);',
+    '}',
+    /* Override Knack default ".kn-content img { max-width: 100% }". */
+    '.scw-bid-review-v2__l1-detail-photo img,',
+    '.kn-content .scw-bid-review-v2__l1-detail-photo img {',
+    '  display: block; width: auto; height: 200px; max-width: none;',
+    '}',
     /* "On these bids — belong to another SOW" group header. */
     '.scw-bid-review-v2__group-header--other .scw-bid-review-v2__grp-inner {',
     '  background: #eef2f7; color: #475569;',

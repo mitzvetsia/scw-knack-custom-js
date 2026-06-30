@@ -306,31 +306,42 @@
   // iframe / img inside the target field so the click goes to a fresh
   // copy without forcing a full page reload.
   function finishWithFieldReload() {
-    stopPolling({ msg: 'Survey Field PDF updated.', variant: 'success' });
+    stopPolling({ msg: 'Survey Field Form updated.', variant: 'success' });
 
-    // Last-chance field refresh — picks up any write Make landed
-    // between our last poll tick and the change-detection render.
-    try {
-      if (typeof Knack !== 'undefined' && Knack.views && Knack.views[DETAIL_VIEW]) {
-        var model = Knack.views[DETAIL_VIEW].model;
-        if (model && typeof model.fetch === 'function') model.fetch();
-      }
-    } catch (e) {}
-
-    // Cache-bust the asset URLs once the re-render lands. Knack triggers
-    // knack-view-render after model.fetch resolves; do it then so we\'re
-    // working with the FRESH DOM (the old <a> tags get nuked on render).
-    var BUST_NS = EVENT_NS + '.bust';
-    $(document).off('knack-view-render.' + DETAIL_VIEW + BUST_NS);
-    $(document).on('knack-view-render.' + DETAIL_VIEW + BUST_NS, function () {
-      $(document).off('knack-view-render.' + DETAIL_VIEW + BUST_NS);
+    // Pull the freshly generated field_2356 in and SHOW it. Knack does
+    // not reliably re-render a detail view on model.fetch alone (KTL can
+    // intercept — see CLAUDE.md Known Issue #2), so once the fetch
+    // resolves we force the native view to re-render from the new model,
+    // cache-bust its asset URLs, then push the value into the custom
+    // card via survey-request-header's refresh hook.
+    function applyFresh() {
       bustFieldAssetCache();
-    });
+      if (window.SCW && SCW.srqHeader && typeof SCW.srqHeader.refresh === 'function') {
+        SCW.srqHeader.refresh(DETAIL_VIEW);
+      }
+    }
 
-    // Belt: also bust immediately in case the re-render already happened
-    // (the polling tick that detected the change may have been triggered
-    // by the very render that landed the new value).
-    bustFieldAssetCache();
+    var view = (typeof Knack !== 'undefined' && Knack.views) ? Knack.views[DETAIL_VIEW] : null;
+    if (view && view.model && typeof view.model.fetch === 'function') {
+      try {
+        view.model.fetch({
+          success: function () {
+            // Force the native DOM to redraw from the new model so the
+            // card has a fresh field_2356 to scrape (model.fetch alone
+            // often doesn't re-render this detail view).
+            if (typeof view.render === 'function') { try { view.render(); } catch (e) {} }
+            applyFresh();
+          },
+          error: applyFresh
+        });
+      } catch (e) { applyFresh(); }
+    } else {
+      applyFresh();
+    }
+
+    // Belt: refresh again shortly after, in case the fetch resolved
+    // before its callback wired up or the render landed on its own.
+    setTimeout(applyFresh, 600);
   }
 
   // Append a cache-busting query param to every asset URL inside the
@@ -387,9 +398,15 @@
   // yet. Check for the .scw-ws-row card shells device-worksheet
   // creates after its transform completes.
   function worksheetReady() {
+    // v1 device-worksheet: native #view_3505 grows tr.scw-ws-row card shells.
     var view = document.getElementById(WORKSHEET_VIEW);
-    if (!view) return false;
-    return !!view.querySelector('tr.scw-ws-row');
+    if (view && view.querySelector('tr.scw-ws-row')) return true;
+    // worksheet-v2 (what the survey worksheet actually uses): the native
+    // table is replaced by #scw-ws-v2-<viewId> whose device rows are
+    // .scw-ws-v2-card[data-scw-ws-v2-record]. Treat that as ready too.
+    var v2 = document.getElementById('scw-ws-v2-' + WORKSHEET_VIEW);
+    if (v2 && v2.querySelector('[data-scw-ws-v2-record]')) return true;
+    return false;
   }
 
   function sendPayload(btn) {
@@ -452,13 +469,8 @@
         var informative = (resp != null && resp !== '' &&
           (typeof resp === 'object' || String(resp).length > 0));
         if (informative) {
-          console.log('[SCW sub-portal survey] informative response → stopping poll');
-          // Kick a model.fetch so the on-page <a> updates to the new file.
-          if (typeof Knack !== 'undefined' && Knack.views && Knack.views[DETAIL_VIEW]) {
-            var v = Knack.views[DETAIL_VIEW].model;
-            if (v && typeof v.fetch === 'function') v.fetch();
-          }
-          stopPolling({ msg: 'Survey Field PDF updated.', variant: 'success' });
+          console.log('[SCW sub-portal survey] informative response → finishing + refreshing field');
+          finishWithFieldReload();
           return;
         }
 
@@ -493,11 +505,7 @@
         var httpOk = xhr && xhr.status >= 200 && xhr.status < 300;
         if (httpOk && raw) {
           console.log('[SCW sub-portal survey] HTTP OK with body → treating as success');
-          if (typeof Knack !== 'undefined' && Knack.views && Knack.views[DETAIL_VIEW]) {
-            var vm = Knack.views[DETAIL_VIEW].model;
-            if (vm && typeof vm.fetch === 'function') vm.fetch();
-          }
-          stopPolling({ msg: 'Survey Field PDF updated.', variant: 'success' });
+          finishWithFieldReload();
           return;
         }
 
@@ -512,14 +520,33 @@
 
   // ── Button injection ──
 
+  // Actions footer inside the custom survey-request card (create if missing).
+  function cardActionsFooter(card) {
+    var a = card.querySelector('.scw-srq-actions');
+    if (!a) { a = document.createElement('div'); a.className = 'scw-srq-actions'; card.appendChild(a); }
+    return a;
+  }
+
   function injectButton() {
     var viewEl = document.getElementById(DETAIL_VIEW);
     if (!viewEl) return;
 
-    var detail = viewEl.querySelector('.kn-detail.' + TARGET_FIELD);
-    if (!detail) return;
+    // survey-request-header.js replaces view_3825's native details with a
+    // custom card and HIDES the native content — which would hide this button
+    // too. When that card is present, the button must live INSIDE it.
+    var card = viewEl.querySelector('.scw-srq-card');
 
-    if (document.getElementById(BTN_ID)) return;
+    // Already built? Make sure it's in the right place. If it was mounted into
+    // the native content BEFORE the card existed (then got hidden), move it
+    // into the card now — DON'T just bail (that's what stranded it, hidden).
+    var existingWrap = document.getElementById(WRAP_ID);
+    if (existingWrap) {
+      if (card && !card.contains(existingWrap)) cardActionsFooter(card).appendChild(existingWrap);
+      return;
+    }
+
+    var detail = card ? null : viewEl.querySelector('.kn-detail.' + TARGET_FIELD);
+    if (!card && !detail) return;
 
     injectStyles();
 
@@ -547,7 +574,9 @@
       sendPayload(btn);
     });
 
-    if (detail.parentNode) {
+    if (card) {
+      cardActionsFooter(card).appendChild(wrap);
+    } else if (detail.parentNode) {
       detail.parentNode.insertBefore(wrap, detail.nextSibling);
     }
 
@@ -596,13 +625,53 @@
     api.refreshImageCache(cfg.viewId, cfg.label, maxDim, quality, autoCrop);
   }
 
+  // ── Button presence: survive card rebuilds & cold-load races ──
+  // survey-request-header.js rebuilds view_3825's custom card whenever
+  // its scraped HTML changes, which wipes this injected button; and on
+  // a cold refresh the single knack-view-render event can land before
+  // the card exists. Both surface as "the button is sometimes missing
+  // on refresh". Fix: re-inject (debounced) after each render AND watch
+  // view_3825 with a MutationObserver that re-injects the moment the
+  // button goes missing/stranded. injectButton is idempotent, so this
+  // settles immediately once the button lives in the card.
+  var _injectTimer = null;
+  function scheduleInject(delay) {
+    if (_injectTimer) clearTimeout(_injectTimer);
+    _injectTimer = setTimeout(function () { _injectTimer = null; injectButton(); },
+      delay == null ? 80 : delay);
+  }
+
+  // Healthy = button lives inside the card (or there's no card yet, in
+  // which case injectButton's native-detail fallback owns it).
+  function buttonHealthy() {
+    var viewEl = document.getElementById(DETAIL_VIEW);
+    if (!viewEl) return true;
+    var card = viewEl.querySelector('.scw-srq-card');
+    var wrap = document.getElementById(WRAP_ID);
+    if (!card) return !!wrap;
+    return !!(wrap && card.contains(wrap));
+  }
+
+  function installButtonObserver() {
+    var viewEl = document.getElementById(DETAIL_VIEW);
+    if (!viewEl || viewEl.getAttribute('data-scw-sx-obs') === '1') return;
+    viewEl.setAttribute('data-scw-sx-obs', '1');
+    var obs = new MutationObserver(function () {
+      // Only act when the button is actually missing/misplaced — avoids
+      // re-injecting (and re-triggering this observer) on our own insert.
+      if (!buttonHealthy()) scheduleInject(60);
+    });
+    obs.observe(viewEl, { childList: true, subtree: true });
+  }
+
   // ── Bindings ──
 
   $(document)
     .off('knack-view-render.' + DETAIL_VIEW + EVENT_NS)
     .on('knack-view-render.' + DETAIL_VIEW + EVENT_NS, function () {
       applySceneOverrides();
-      setTimeout(injectButton, 80);
+      installButtonObserver();   // re-attach if Knack replaced the view el
+      scheduleInject(80);
     });
 
   // Prime the image caches whenever the cover / trailing image views
@@ -623,4 +692,13 @@
         primeImageCacheFor(cfg, false);
       });
   });
+
+  // Cold-load kicker: if view_3825 already rendered before this module
+  // bound its handler (fast scene / slow bundle), the render event won't
+  // fire again. Try once and install the observer so later rebuilds —
+  // and the missed first paint — are caught.
+  if (document.getElementById(DETAIL_VIEW)) {
+    installButtonObserver();
+    scheduleInject(120);
+  }
 })();

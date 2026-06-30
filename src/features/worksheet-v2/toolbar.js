@@ -146,7 +146,11 @@
       '</div>' +
       '<div class="scw-ws-v2-toolbar-spacer"></div>' +
       '<div class="scw-ws-v2-toolbar-group scw-ws-v2-toolbar-group--cta">' +
-        actionBtn('add-sow',      addLabel,               'Add a new line item') +
+        // "+ Add to SOW" is suppressed on views flagged noAddItem — the
+        // deploy/install grids (view_3915/view_4056), where you can't add to
+        // the scope without a change order.
+        ((_vc && _vc.noAddItem) ? '' :
+          actionBtn('add-sow',    addLabel,               'Add a new line item')) +
         actionBtn('add-photos',   '+ Add Photos',         'Bulk upload photos') +
         // "+ Add Accessories" lives in the floating bulk panel (bulk.js)
         // now — it only applies to a row selection, same as Remove.
@@ -468,6 +472,22 @@
           absorb(ns.CONFIG.views[vi].sourceViewKey);
         }
       }
+      // Still missing? On the bid-review-v2 comparison grid (a different scene
+      // that REUSES this modal) the selected rows are SOW line items living in
+      // bid-review-v2's source views (view_3921), not any worksheet-v2 view —
+      // none of which exist on that scene. view_3921 carries field_1949
+      // (product), so sweeping bid-review-v2's sources resolves the selection's
+      // product for the compatibility filter (otherwise: "Couldn't read the
+      // selected rows' products").
+      missing = false;
+      for (var mb = 0; mb < sel.ids.length; mb++) {
+        if (!idx[sel.ids[mb]]) { missing = true; break; }
+      }
+      if (missing && window.SCW && SCW.bidReviewV2 && SCW.bidReviewV2.CONFIG &&
+          Array.isArray(SCW.bidReviewV2.CONFIG.sourceViewKeys)) {
+        var brKeys = SCW.bidReviewV2.CONFIG.sourceViewKeys;
+        for (var bk = 0; bk < brKeys.length; bk++) absorb(brKeys[bk]);
+      }
       return idx;
     })();
 
@@ -674,7 +694,10 @@
       submit.textContent = 'Submitting…';
 
       var payload = {
-        sowId:           getSowIdFromHash(),
+        // presetSel.sowId is set by callers whose hash doesn't pin the SOW —
+        // e.g. the bid-review-v2 grid, whose review-bids hash carries the
+        // PROJECT id, not the SOW id. Fall back to the hash for the worksheet.
+        sowId:           (presetSel && presetSel.sowId) || getSowIdFromHash(),
         productId:       productId || '',
         productName:     productName,
         parentRecordIds: sel.ids,
@@ -683,23 +706,40 @@
         triggeredBy:     getTriggeredBy()
       };
 
+      // Refresh after Make creates the accessory record. The worksheet-v2
+      // pipeline auto-updates via its own refetch; but the bid-review-v2
+      // comparison grid (which reuses this same modal) is a SEPARATE pipeline
+      // that never sees the new server-side record — Make fires no
+      // knack-view-render — so it would stay stale until a manual refresh.
+      // ALSO emit scw-cascade-idle, the shared "records changed, re-read"
+      // signal both pipelines already subscribe to (mirror-connection-sync
+      // emits it too), so the comparison grid refetches + rebuilds itself. Both
+      // pipelines coalesce/guard their own refetches, so the extra signal is
+      // cheap on the worksheet and the only path to a refresh on the bid grid.
+      function refreshAfterAdd() {
+        setTimeout(function () {
+          if (ns.data && typeof ns.data.refetchAndNotify === 'function') {
+            ns.data.refetchAndNotify(viewKey);
+          }
+          if (ns.poll && ns.poll.triggerBurst) ns.poll.triggerBurst(viewKey);
+          try { document.dispatchEvent(new CustomEvent('scw-cascade-idle')); }
+          catch (e) { /* CustomEvent unsupported → worksheet path still refreshed */ }
+        }, 1500);
+      }
+
       $.ajax({
         url: url, type: 'POST', contentType: 'application/json',
         data: JSON.stringify(payload), crossDomain: true, timeout: 60000,
         success: function () {
           close();
           status.textContent = '';
-          if (ns.data && typeof ns.data.refetchAndNotify === 'function') {
-            setTimeout(function () { ns.data.refetchAndNotify(viewKey); if (ns.poll && ns.poll.triggerBurst) ns.poll.triggerBurst(viewKey); }, 1500);
-          }
+          refreshAfterAdd();
         },
         error: function (xhr, st) {
           // Make webhooks often blocked by CORS but the scenario fires.
           if (xhr && xhr.status === 0) {
             close();
-            if (ns.data && typeof ns.data.refetchAndNotify === 'function') {
-              setTimeout(function () { ns.data.refetchAndNotify(viewKey); if (ns.poll && ns.poll.triggerBurst) ns.poll.triggerBurst(viewKey); }, 1500);
-            }
+            refreshAfterAdd();
             return;
           }
           submit.disabled = false;

@@ -297,7 +297,7 @@
   // "different" when it doesn't match at least one displayed bid).
   function aggregateMismatch(row) {
     if (!row || !row.cellsByPackage || !ns.transform.getMismatches) return null;
-    var agg = { product: false, laborDesc: false, fee: false, any: false };
+    var agg = { product: false, laborDesc: false, fee: false, mdfIdf: false, any: false };
     for (var pid in row.cellsByPackage) {
       if (!Object.prototype.hasOwnProperty.call(row.cellsByPackage, pid)) continue;
       var m = ns.transform.getMismatches(row, row.cellsByPackage[pid]);
@@ -305,6 +305,7 @@
       if (m.product)   agg.product = true;
       if (m.laborDesc) agg.laborDesc = true;
       if (m.fee)       agg.fee = true;
+      if (m.mdfIdf)    agg.mdfIdf = true;
       if (m.any)       agg.any = true;
     }
     return agg;
@@ -494,6 +495,17 @@
         '</div>' : '') +
       connLineHtml(sowItemData.connDevice, sowItemData.connTo, { side: 'sow' }) +
       cablingLineHtml(sowItemData, { side: 'sow' }) +
+      // SOW MDF/IDF — shown when a bid overrides it (diff.mdfIdf) so the
+      // override reads as a side-by-side: the SOW's location here, the bid's
+      // (highlighted) in the bid cell. data-scw-sow-field is the hover target
+      // the bid-cell MDF line lights up. (Off-SOW rows sit under the BID's MDF
+      // group, so the SOW's own location is otherwise invisible without this.)
+      ((diff && diff.mdfIdf) ?
+        '<div class="scw-bid-review-v2__cell-conn" data-scw-sow-field="mdfIdf" title="SOW MDF/IDF: ' +
+          escapeHtml((sowItemData && sowItemData.mdfIdf) || '(none)') + '">' +
+          '<label>MDF&nbsp;/&nbsp;IDF</label>' +
+          escapeHtml((sowItemData && sowItemData.mdfIdf) || '(none)') +
+        '</div>' : '') +
       // "belongs to another SOW" rows note which SOW(s) the item is on.
       ((row && row.otherKind === 'other-sow' && row.otherSowNames && row.otherSowNames.length) ?
         '<div class="scw-bid-review-v2__sow-elsewhere">on ' +
@@ -788,6 +800,18 @@
       connLineHtml(cell.connDevice, cell.connTo,
         { side: 'bid', deviceDiff: diffs && diffs.connDevice, toDiff: diffs && diffs.connTo }) +
       cablingLineHtml(cell, { side: 'bid', diffs: diffs }) +
+      // Bid MDF/IDF — surfaced ONLY when the bid placed this item under a
+      // different MDF/IDF than the SOW (the row's group). The row still sits in
+      // its SOW MDF group; this line flags that the bid's location disagrees,
+      // with both locations in the tooltip. Reuses the connection-line styling.
+      ((diffs && diffs.mdfIdf) ?
+        '<div class="scw-bid-review-v2__cell-conn scw-bid-review-v2__field-diff"' +
+          ' data-scw-diff-field="mdfIdf" title="Bid MDF/IDF: ' +
+          escapeHtml(cell.mdfIdf || '(none)') + ' — SOW: ' +
+          escapeHtml((row.sowItemData && row.sowItemData.mdfIdf) || '(none)') + '">' +
+          '<label>MDF&nbsp;/&nbsp;IDF</label>' +
+          escapeHtml(cell.mdfIdf || '(none)') +
+        '</div>' : '') +
       // Survey note (field_2412) on the bid record — v1 parity: populated
       // cells render the sub's note too, not just the no-bid cutouts.
       surveyNoteHtml(cell.notes) +
@@ -1145,6 +1169,103 @@
     return tr;
   }
 
+  // ── L1 detail row: photos + SCW Notes (ported from v1) ───────
+  // Mirrors v1's buildL1DetailRow. Surfaces the MDF/IDF record's
+  // field_771 photos and field_1643 SCW notes (the survey-notes
+  // field_2457 is handled separately above with more weight) so the
+  // reviewer sees each headend's reference photos in the same place
+  // view_3577 displays them. Source row is the live (hidden) view_3822
+  // DOM, located by record id with a label fallback — same lookup the
+  // survey-notes callout uses. Returns null when there's nothing to show
+  // so groups with no MDF photos/notes don't get an empty band.
+  function buildL1PhotosRow(group, colspan) {
+    var mdfIdfId = group && group.mdfIdfId;
+    var label    = group && group.label;
+    if (!mdfIdfId && !label) return null;
+
+    var viewKey = (window.SCW.bidReview && window.SCW.bidReview.CONFIG &&
+      window.SCW.bidReview.CONFIG.mdfIdfViewKey) || 'view_3822';
+    var view = document.getElementById(viewKey);
+    var sourceTr = findMdfIdfSourceRow(view, mdfIdfId, label);
+    if (!sourceTr) return null;
+
+    var wrap = document.createElement('div');
+    wrap.className = 'scw-bid-review-v2__l1-detail-wrap';
+
+    // Photos (field_771) — gallery thumb strip. Each connection-value
+    // span carries an <img data-kn-img-gallery> with the full-size URL;
+    // surface that as the click-through target (opens full image in a
+    // new tab) and as the thumb src.
+    var photoCell = sourceTr.querySelector(
+      'td.field_771, td[data-field-key="field_771"]');
+    var imgUrls = [];
+    if (photoCell) {
+      var imgSpans = photoCell.querySelectorAll(
+        'span[id][data-kn="connection-value"]');
+      for (var si = 0; si < imgSpans.length; si++) {
+        var img = imgSpans[si].querySelector('img[data-kn-img-gallery], img');
+        if (!img) continue;
+        var url = img.getAttribute('data-kn-img-gallery') ||
+                  img.getAttribute('src') || '';
+        if (url) imgUrls.push(url);
+      }
+    }
+    if (imgUrls.length) {
+      var photoSection = document.createElement('div');
+      photoSection.className = 'scw-bid-review-v2__l1-detail-section';
+      var pLabel = document.createElement('div');
+      pLabel.className = 'scw-bid-review-v2__l1-detail-label';
+      pLabel.textContent = 'Photos';
+      photoSection.appendChild(pLabel);
+      var photoStrip = document.createElement('div');
+      photoStrip.className = 'scw-bid-review-v2__l1-detail-photos';
+      for (var pi = 0; pi < imgUrls.length; pi++) {
+        var a = document.createElement('a');
+        a.href = imgUrls[pi];
+        a.target = '_blank';
+        a.rel = 'noopener';
+        a.className = 'scw-bid-review-v2__l1-detail-photo';
+        var thumb = document.createElement('img');
+        thumb.src = imgUrls[pi];
+        thumb.alt = '';
+        thumb.loading = 'lazy';
+        a.appendChild(thumb);
+        photoStrip.appendChild(a);
+      }
+      photoSection.appendChild(photoStrip);
+      wrap.appendChild(photoSection);
+    }
+
+    // SCW Notes (field_1643).
+    var scwText = readSourceFieldText(sourceTr, 'field_1643');
+    if (scwText) {
+      var s2 = document.createElement('div');
+      s2.className = 'scw-bid-review-v2__l1-detail-section';
+      var sLabel = document.createElement('div');
+      sLabel.className = 'scw-bid-review-v2__l1-detail-label';
+      sLabel.textContent = 'SCW Notes';
+      s2.appendChild(sLabel);
+      var sText = document.createElement('div');
+      sText.className = 'scw-bid-review-v2__l1-detail-text';
+      sText.textContent = scwText;
+      s2.appendChild(sText);
+      wrap.appendChild(s2);
+    }
+
+    if (!wrap.children.length) return null;
+
+    var tr = document.createElement('tr');
+    // Tag as a __row so the L1 collapse toggle (init.js) folds it with
+    // the rest of the group, same as the survey-notes callout above.
+    tr.className = 'scw-bid-review-v2__row scw-bid-review-v2__l1-detail-row';
+    var td = document.createElement('td');
+    td.colSpan = colspan;
+    td.className = 'scw-bid-review-v2__l1-detail-cell';
+    td.appendChild(wrap);
+    tr.appendChild(td);
+    return tr;
+  }
+
   function appendGroup(tbody, group, packages, colspan, sowId) {
     // Default-collapsed groups (e.g. "Removed items") render their rows
     // pre-hidden; the L1 collapse toggle in init.js flips them back.
@@ -1162,6 +1283,9 @@
       // MDF/IDF survey-notes callout immediately under the L1 header.
       var snRow = buildL1SurveyNotesRow(group, colspan);
       if (snRow) addRow(snRow);
+      // MDF/IDF photos + SCW notes detail row (same data view_3577 shows).
+      var phRow = buildL1PhotosRow(group, colspan);
+      if (phRow) addRow(phRow);
     }
     // Direct rows (when there are no subgroups).
     for (var i = 0; i < group.rows.length; i++) {

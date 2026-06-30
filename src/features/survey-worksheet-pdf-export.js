@@ -445,6 +445,153 @@
   }
 
   // ══════════════════════════════════════════════════════════════
+  // WORKSHEET-V2 SCRAPER
+  // The survey worksheet (view_3505) is rendered by worksheet-v2,
+  // which replaces Knack's native table with a #scw-ws-v2-<viewId>
+  // card grid — so the v1 tbody walk below finds zero rows there.
+  // Scrape the v2 cards into the SAME row shape buildHtml expects:
+  // values keyed by field_XXXX so the existing PDF layout, flags,
+  // measure band and camera spreadsheet all pick them up unchanged.
+  // card.raw still comes from the (untouched) Knack model via
+  // buildRecordMap, so bucket classification keeps working.
+  // ══════════════════════════════════════════════════════════════
+
+  // Read-only detail displays in v2 carry no field key (just a label),
+  // so map the ones the PDF layout cares about by their label text.
+  var V2_RO_LABEL_TO_FIELD = {
+    'scw notes': 'field_1953',
+    'mounting hardware': 'field_2463'
+  };
+
+  function v2Text(el) { return el ? norm(el.textContent) : ''; }
+
+  function scrapeV2Card(card) {
+    var recordId = card.getAttribute('data-scw-ws-v2-record') || '';
+    var product  = v2Text(card.querySelector('.scw-ws-v2-product-name'));
+    var label    = v2Text(card.querySelector('.scw-ws-v2-cell--label'));
+
+    var detailValues = {};
+    function setVal(k, v) {
+      if (!k) return;
+      detailValues[k] = (v == null ? '' : String(v)).replace(/\s+/g, ' ').trim();
+    }
+
+    // Inputs / textareas / selects (data-scw-ws-v2-field).
+    var fields = card.querySelectorAll('[data-scw-ws-v2-field]');
+    for (var i = 0; i < fields.length; i++) {
+      var el = fields[i], tag = el.tagName, v = '';
+      if (tag === 'SELECT') {
+        var opt = el.options && el.options[el.selectedIndex];
+        v = opt ? opt.text : (el.value || '');
+      } else if (tag === 'INPUT' || tag === 'TEXTAREA') {
+        v = el.value || '';
+      } else {
+        v = el.textContent || '';
+      }
+      setVal(el.getAttribute('data-scw-ws-v2-field'), v);
+    }
+
+    // Mounting-height radio chips: value = the selected option.
+    var radios = card.querySelectorAll('[data-scw-ws-v2-radio-field]');
+    for (var r = 0; r < radios.length; r++) {
+      var grp = radios[r];
+      var sel = grp.querySelector('.scw-ws-v2-radiochip.is-selected');
+      setVal(grp.getAttribute('data-scw-ws-v2-radio-field'),
+             sel ? (sel.getAttribute('data-scw-ws-v2-option') || v2Text(sel)) : '');
+    }
+
+    // Yes/No flag chips: value rides on data-scw-ws-v2-bool ("Yes"/"No").
+    var chips = card.querySelectorAll('[data-scw-ws-v2-chip]');
+    for (var c = 0; c < chips.length; c++) {
+      setVal(chips[c].getAttribute('data-scw-ws-v2-chip'),
+             chips[c].getAttribute('data-scw-ws-v2-bool') || '');
+    }
+
+    // Connection buttons (product, prefix, MDF/IDF, bid, connected-to/-devices).
+    var conns = card.querySelectorAll('[data-scw-ws-v2-conn]');
+    for (var n = 0; n < conns.length; n++) {
+      var btn = conns[n];
+      var valEl = btn.querySelector('.scw-ws-v2-conn-btn-val') ||
+                  btn.querySelector('.scw-ws-v2-sow-value') ||
+                  btn.querySelector('.scw-ws-v2-product-name');
+      var cv = valEl ? v2Text(valEl) : v2Text(btn);
+      cv = cv.replace(/\s*edit\s*$/i, '');
+      if (/^\(none\)$/i.test(cv) || cv === '—') cv = '';
+      setVal(btn.getAttribute('data-scw-ws-v2-conn'), cv);
+    }
+
+    // Read-only displays (no field key) — map known labels into their key.
+    var dfs = card.querySelectorAll('.scw-ws-v2-detail-field');
+    for (var d = 0; d < dfs.length; d++) {
+      var disp = dfs[d].querySelector('.scw-ws-v2-display');
+      if (!disp) continue;
+      var dv = v2Text(disp);
+      if (!dv) continue;
+      var lblEl = dfs[d].querySelector('.scw-ws-v2-detail-label');
+      var lbl = lblEl ? v2Text(lblEl).replace(/[·•]?\s*read-?only\s*$/i, '').trim().toLowerCase() : '';
+      var mapped = V2_RO_LABEL_TO_FIELD[lbl];
+      if (mapped && !detailValues[mapped]) setVal(mapped, dv);
+    }
+
+    var warnAttr  = card.getAttribute('data-scw-ws-v2-warnings') || '';
+    var warnCount = warnAttr ? warnAttr.split(/[\s,]+/).filter(Boolean).length : 0;
+
+    return {
+      type: 'card',
+      label: label,
+      product: product || label,
+      warnCount: warnCount,
+      summaryFields: [],
+      detailValues: detailValues,
+      laborText: detailValues.field_2409 || detailValues.field_2020 || '',
+      scwText: detailValues.field_2418 || detailValues.field_1953 || '',
+      connectedText: '',                 // resolveConnections fills this from raw
+      photos: [],
+      showDetail: true,
+      showPhotos: false,
+      recordId: recordId,
+      raw: null,                         // set by caller from buildRecordMap
+      rowClasses: card.className || ''
+    };
+  }
+
+  // Walk the v2 L1 groups (MDF/IDF + synthetic Services/Assumptions)
+  // and their cards into the row list buildHtml consumes. A seen-set
+  // guards against any double-count from overlapping selectors.
+  function scrapeV2Rows(v2root, viewId) {
+    var out = [];
+    var seen = {};
+    var recordMap = buildRecordMap(viewId);
+
+    function pushCard(card, l1) {
+      var id = card.getAttribute('data-scw-ws-v2-record') || '';
+      if (id && seen[id]) return;
+      if (id) seen[id] = true;
+      var row = scrapeV2Card(card);
+      row.groupL1 = l1;
+      row.groupL2 = '';
+      row.raw = id ? (recordMap[id] || null) : null;
+      out.push(row);
+    }
+
+    var l1blocks = v2root.querySelectorAll('.scw-ws-v2-l1');
+    if (l1blocks.length) {
+      for (var i = 0; i < l1blocks.length; i++) {
+        var blk = l1blocks[i];
+        var l1 = v2Text(blk.querySelector('.scw-ws-v2-l1-label')).replace(/[:\s]+$/, '');
+        if (l1) out.push({ type: 'group', level: 1, label: l1 });
+        var body = blk.querySelector('.scw-ws-v2-l1-body') || blk;
+        var cards = body.querySelectorAll('.scw-ws-v2-card');
+        for (var j = 0; j < cards.length; j++) pushCard(cards[j], l1);
+      }
+    } else {
+      var flat = v2root.querySelectorAll('.scw-ws-v2-card');
+      for (var k = 0; k < flat.length; k++) pushCard(flat[k], '');
+    }
+    return out;
+  }
+
+  // ══════════════════════════════════════════════════════════════
   // SCRAPER
   // ══════════════════════════════════════════════════════════════
 
@@ -470,6 +617,34 @@
     // views (client + site) rather than view_3800's own header.
     var title = buildSurveyTitle(page1Sections);
     var surveyId = getPage1FieldValue(SURVEY_ID_FIELD);
+
+    // ── worksheet-v2 path ──────────────────────────────────────
+    // view_3505 (and any other v2 worksheet) renders into
+    // #scw-ws-v2-<viewId>; the v1 tbody walk below finds nothing
+    // there. Scrape the v2 cards instead, then run the SAME
+    // post-processing (connections, L1 notes, assumptions-to-end)
+    // and return the identical payload shape.
+    var v2root = document.getElementById('scw-ws-v2-' + viewId);
+    if (v2root) {
+      var v2rows = scrapeV2Rows(v2root, viewId);
+      resolveConnections(v2rows);
+      console.log('[SCW survey-pdf] scrape v2', {
+        viewId: viewId,
+        cardCount:  v2rows.filter(function (r) { return r.type === 'card'; }).length,
+        groupCount: v2rows.filter(function (r) { return r.type === 'group'; }).length
+      });
+      v2rows = insertL1NotesBlocks(v2rows);
+      v2rows = pushGroupToEnd(v2rows, 'Project Wide Assumptions');
+      return {
+        viewId: viewId,
+        title: title,
+        surveyId: surveyId,
+        rows: v2rows,
+        page1Sections: page1Sections,
+        coverImageSections: coverImageSections,
+        trailingImageSections: trailingImageSections
+      };
+    }
 
     // Scope to Knack's standard table class — `table tbody` was
     // ambiguous once mdf-summary-panel started injecting its own
@@ -1242,78 +1417,69 @@
       '</div>'
     );
 
-    // Walk rows with two buffers per MDF/IDF group:
-    //   • pendingCams   — consecutive camera/reader cards, flushed as
-    //                     one inline spreadsheet table inside the group.
-    //   • pendingNoBid  — non-cam cards whose product doesn't require a
-    //                     sub bid (field_2479 != Yes). Subs don't quote
-    //                     these so they get demoted: rendered compact
-    //                     and pushed to the bottom of the MDF/IDF.
-    // Both buffers flush at level-1 group headers and at the end of the
-    // document so demoted items stay scoped to their own MDF/IDF.
-    var pendingCams = [];
-    var pendingNoBid = [];
-    function flushCamBatch() {
-      if (!pendingCams.length) return;
-      html.push(renderCameraReaderBatchTable(pendingCams));
-      pendingCams = [];
-    }
-    function flushNoBidBatch() {
-      if (!pendingNoBid.length) return;
-      html.push('<div class="ws-nobid-stack">');
-      for (var n = 0; n < pendingNoBid.length; n++) {
-        html.push(renderCard(pendingNoBid[n]));
-      }
-      html.push('</div>');
-      pendingNoBid = [];
-    }
+    // ── LAYOUT ─────────────────────────────────────────────────────
+    // MDF/IDF assignment checklists FIRST (each location's distribution
+    // gear + a compact "which cameras run here" checklist with gray
+    // best-guess pre-selection), THEN one consolidated camera/reader
+    // detail table for the whole survey. Cameras are listed in detail
+    // exactly once instead of being split per group.
+    var allCams = [];      // every camera/reader in a real MDF/IDF group
+    var mdfGroups = [];    // ordered real MDF/IDF groups: { label, nonCam:[] }
+    var projectWide = [];  // project-wide rows, rendered verbatim at the end
+    var curMdf = null, inPW = false;
     for (var i = 0; i < payload.rows.length; i++) {
       var row = payload.rows[i];
-
-      // Cameras/readers go in the spreadsheet buffer (skip project-wide
-      // rows — they belong in the global section at the doc end).
-      if (row.type === 'card' && isCamerasReadersBucket(row) &&
-          !/project wide/i.test(row.groupL1 || '')) {
-        pendingCams.push(row);
-        continue;
-      }
-
-      // Non-cam cards whose product doesn't require a sub bid get
-      // demoted to the bottom of the current MDF/IDF group. Flush the
-      // cam spreadsheet first so it stays at the natural insertion
-      // point, then defer this card.
-      if (row.type === 'card' && !isNoBidProduct.skip(row) && isNoBidProduct(row) &&
-          !/project wide/i.test(row.groupL1 || '')) {
-        flushCamBatch();
-        pendingNoBid.push(row);
-        continue;
-      }
-
-      // Anything else: flush the cam batch first so the spreadsheet
-      // sits in-place. Group headers at level 1 also flush the demoted
-      // no-bid stack so it lands at the bottom of the OUTGOING group.
       if (row.type === 'group' && (row.level || 1) === 1) {
-        flushCamBatch();
-        flushNoBidBatch();
-        html.push(renderGroupHeader(row));
-      } else if (row.type === 'group') {
-        flushCamBatch();
-        html.push(renderGroupHeader(row));
-      } else if (row.type === 'card') {
-        flushCamBatch();
-        html.push(renderCard(row));
-      } else if (row.type === 'l1-notes') {
-        flushCamBatch();
-        html.push(renderL1Notes(row));
+        inPW = /project wide/i.test(row.label || '');
+        if (inPW) { projectWide.push(row); curMdf = null; }
+        else { curMdf = { label: row.label, nonCam: [] }; mdfGroups.push(curMdf); }
+        continue;
+      }
+      if (inPW) { projectWide.push(row); continue; }
+      if (row.type === 'l1-notes') continue;   // big per-L1 notes blocks dropped (denser sheet)
+      if (row.type === 'group') { (curMdf ? curMdf.nonCam : projectWide).push(row); continue; }
+      if (row.type === 'card') {
+        if (isCamerasReadersBucket(row)) allCams.push(row);
+        else (curMdf ? curMdf.nonCam : projectWide).push(row);
       }
     }
-    // Tail of the loop — flush any remaining buffers in the right order.
-    flushCamBatch();
-    flushNoBidBatch();
+    allCams.sort(function (a, b) { return natCompare(a.label || '', b.label || ''); });
 
-    // ── Connection Map pivot (cameras/readers × distribution devices) ──
-    var pivotHtml = renderConnectionPivot(payload);
-    if (pivotHtml) html.push(pivotHtml);
+    // (1) MDF/IDF assignments — each location's gear + a camera checklist.
+    if (mdfGroups.length) {
+      html.push('<h2 class="ws-sec-title">MDF / IDF Assignments</h2>');
+      html.push('<div class="ws-sec-note">For each location, check the cameras / readers that ' +
+        'run to it. Gray marks are the current file assignment — our best guess.</div>');
+      for (var gi = 0; gi < mdfGroups.length; gi++) {
+        var grp = mdfGroups[gi];
+        html.push('<section class="ws-idf">');
+        html.push('<div class="ws-idf-head">' + esc(grp.label) + '</div>');
+        html.push('<div class="ws-idf-body">');
+        for (var nci = 0; nci < grp.nonCam.length; nci++) {
+          var nc = grp.nonCam[nci];
+          if (nc.type === 'card') html.push(renderCard(nc));
+          else if (nc.type === 'group') html.push(renderGroupHeader(nc));
+        }
+        html.push(renderIdfCameraChecklist(allCams, grp.label));
+        html.push('</div></section>');
+      }
+    }
+
+    // (2) Consolidated camera / reader detail — listed once for the job.
+    if (allCams.length) {
+      html.push('<h2 class="ws-sec-title">All Cameras &amp; Readers ' +
+        '<span class="ws-sec-count">' + allCams.length + ' device' +
+        (allCams.length === 1 ? '' : 's') + '</span></h2>');
+      html.push(renderCameraReaderBatchTable(allCams));
+    }
+
+    // (3) Project-wide services / assumptions — rendered verbatim at the end.
+    for (var pwi = 0; pwi < projectWide.length; pwi++) {
+      var prow = projectWide[pwi];
+      if (prow.type === 'group') html.push(renderGroupHeader(prow));
+      else if (prow.type === 'card') html.push(renderCard(prow));
+      else if (prow.type === 'l1-notes') html.push(renderL1Notes(prow));
+    }
 
     // ── Trailing image sections (e.g. Additional Photos from view_3805) ──
     if (payload.trailingImageSections && payload.trailingImageSections.length) {
@@ -1662,6 +1828,38 @@
     return isCamerasReadersBucket(card);
   };
 
+  // Natural label sort so E-1, E-2 … E-10 order correctly (not E-1, E-10, E-2).
+  function natCompare(a, b) {
+    try { return String(a).localeCompare(String(b), undefined, { numeric: true, sensitivity: 'base' }); }
+    catch (e) { return String(a) < String(b) ? -1 : (String(a) > String(b) ? 1 : 0); }
+  }
+
+  // Compact per-MDF/IDF camera checklist. Lists EVERY camera/reader on the
+  // survey (so a tech can re-home any of them in the field), pre-checking
+  // the ones whose MDF/IDF assignment (field_2375 — i.e. the group they
+  // were scraped under) matches THIS location, in soft gray = best guess.
+  function renderIdfCameraChecklist(cams, groupLabel) {
+    if (!cams || !cams.length) {
+      return '<div class="ws-idf-chk-empty">No cameras / readers on this survey yet.</div>';
+    }
+    var h = ['<div class="ws-idf-checklist">'];
+    h.push('<div class="ws-idf-chk-title">Cameras / readers running to this MDF/IDF</div>');
+    h.push('<div class="ws-idf-chk-grid">');
+    for (var i = 0; i < cams.length; i++) {
+      var cam = cams[i];
+      var pre = !!(cam.groupL1 && groupLabel && cam.groupL1 === groupLabel);
+      h.push(
+        '<div class="ws-idf-chk-row' + (pre ? ' is-pre' : '') + '">' +
+          '<span class="ws-box' + (pre ? ' is-on' : '') + '">' + (pre ? '☒' : '☐') + '</span>' +
+          '<span class="ws-chk-lbl">' + esc(cam.label || '') + '</span>' +
+          '<span class="ws-chk-nm">' + esc(cam.product || '') + '</span>' +
+        '</div>'
+      );
+    }
+    h.push('</div></div>');
+    return h.join('');
+  }
+
   function renderCameraReaderBatchTable(cards) {
     if (!cards || !cards.length) return '';
     var h = [];
@@ -1687,7 +1885,7 @@
       var card = cards[ri];
       h.push('<tr>');
       h.push('<td class="cr-cell-id">' + esc(card.label || '') + '</td>');
-      h.push('<td class="cr-cell-id">' + esc(card.product || '') + '</td>');
+      h.push('<td class="cr-cell-prod">' + esc(card.product || '') + '</td>');
       h.push('<td>' + esc(pickDetail(card, ['field_2463'])) + '</td>');
       h.push('<td class="cr-cell-yn">' + renderSheetYn(card, ['field_2370', 'field_2461']) + '</td>');
       h.push('<td class="cr-cell-yn">' + renderSheetYn(card, ['field_2372', 'field_1984', 'field_2739']) + '</td>');
@@ -2751,7 +2949,7 @@
       '}',
       '.cr-sheet-table {',
       '  width: 100%; border-collapse: collapse; table-layout: fixed;',
-      '  font-size: 7.7px; line-height: 1.2;',
+      '  font-size: 8.2px; line-height: 1.2;',
       '}',
       '.cr-sheet-table th, .cr-sheet-table td {',
       '  border: 1px solid #94a3b8;',
@@ -2761,7 +2959,7 @@
       '}',
       // Body rows get a 2-line floor so techs have room to mark up and
       // write in the Notes column. table-cell `height` acts as min-height.
-      '.cr-sheet-table tbody td { height: 28px; }',
+      '.cr-sheet-table tbody td { height: 20px; }',
       '.cr-sheet-table thead th {',
       '  background: #07467c; color: #fff;',
       '  font-size: 6.5px; font-weight: 700;',
@@ -2772,13 +2970,17 @@
       // Column width hints — sum to ~100%. Y/N cols share width; the
       // notes column gets the remainder for write-in space.
       '.cr-col-label   { width: 6%; }',
-      '.cr-col-product { width: 20%; }',
-      '.cr-col-mount   { width: 12%; }',
+      '.cr-col-product { width: 26%; }',
+      '.cr-col-mount   { width: 13%; }',
       '.cr-col-yn      { width: 6%; }',
       '.cr-col-height  { width: 11%; }',
       '.cr-col-drop    { width: 5%; }',
-      '.cr-col-notes   { width: 23%; }',
+      '.cr-col-notes   { width: 16%; }',
       '.cr-cell-id { font-weight: 600; }',
+      // Product — the user wanted it bigger; left-aligned reads better
+      // than the table-default centering for a multi-word product name.
+      '.cr-cell-prod { font-weight: 700; font-size: 9.4px; text-align: left;',
+      '  line-height: 1.18; }',
       '.cr-cell-yn { white-space: nowrap; }',
       '.cr-cell-yn .ws-box { font-size: 8px; margin-right: 0; }',
       '.cr-yn-sep { display: inline-block; width: 3px; }',
@@ -2792,6 +2994,41 @@
       // Write-in cells (Drop, Conduit) — give the tech an underline-y',
       // floor to scribble on rather than a blank cell.',
       '.cr-cell-fill { background: #fdfdfe; }',
+      '',
+      '/* ── MDF/IDF assignment sections + camera checklist ───────── */',
+      '.ws-sec-title {',
+      '  font-size: 13px; font-weight: 800; color: #0f172a; letter-spacing: -.01em;',
+      '  margin: 14px 0 4px; padding-bottom: 4px; border-bottom: 2px solid #0f172a;',
+      '  page-break-after: avoid; break-after: avoid;',
+      '}',
+      '.ws-sec-count { font-size: 9px; font-weight: 600; color: #64748b; margin-left: 6px; }',
+      '.ws-sec-note  { font-size: 9px; color: #64748b; margin: 0 0 8px; }',
+      '.ws-idf {',
+      '  border: 1px solid #e2e8f0; border-radius: 6px; overflow: hidden;',
+      '  margin: 0 0 9px; page-break-inside: avoid;',
+      '}',
+      '.ws-idf-head {',
+      '  background: #0f172a; color: #fff; padding: 5px 10px;',
+      '  font-size: 11px; font-weight: 700;',
+      '}',
+      '.ws-idf-body { padding: 7px 10px; }',
+      '.ws-idf-chk-title {',
+      '  font-size: 8px; text-transform: uppercase; letter-spacing: .4px;',
+      '  color: #64748b; font-weight: 700; margin: 5px 0 4px;',
+      '}',
+      '.ws-idf-chk-grid { column-count: 2; column-gap: 18px; }',
+      '.ws-idf-chk-row {',
+      '  display: flex; align-items: center; gap: 5px; padding: 1.5px 0;',
+      '  font-size: 9px; break-inside: avoid; -webkit-column-break-inside: avoid;',
+      '}',
+      '.ws-idf-chk-row .ws-box { font-size: 11px; flex: 0 0 auto; }',
+      '.ws-chk-lbl { font-weight: 700; white-space: nowrap; color: #0f172a; }',
+      '.ws-chk-nm {',
+      '  color: #64748b; font-size: 8px; overflow: hidden;',
+      '  text-overflow: ellipsis; white-space: nowrap;',
+      '}',
+      '.ws-idf-chk-row.is-pre .ws-chk-nm { color: #334155; }',
+      '.ws-idf-chk-empty { font-size: 9px; color: #94a3b8; padding: 4px 0; }',
       '',
       '/* Connection Map pivot table — landscape page so we get more  */',
       '/* horizontal room for column headers and avoid vertical text. */',

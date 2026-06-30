@@ -18,6 +18,7 @@ cat \
   src/features/_render-totals-guard.js \
   src/features/_toolbar-registry.js \
   src/features/_v2-scroll-anchor.js \
+  src/features/_scroll-spy.js \
   src/features/disable-scroll-restoration.js \
   src/features/preserve-scroll-on-refresh.js \
   src/features/modal-refresh-redirect.js \
@@ -141,6 +142,10 @@ cat \
   src/features/proposal-type-chip.js \
   src/features/published-quote-info.js \
   src/features/ops-review-pill.js \
+  src/features/sow-grid-cards.js \
+  src/features/mdf-idf-cards.js \
+  src/features/files-gallery.js \
+  src/features/survey-request-header.js \
   src/features/ops-stepper.js \
   src/features/sales-stepper.js \
   src/features/published-quote-on-proposal-page.js \
@@ -185,6 +190,7 @@ cat \
   src/features/worksheet-v2/toolbar.js \
   src/features/worksheet-v2/sort.js \
   src/features/worksheet-v2/sow-filter.js \
+  src/features/worksheet-v2/search.js \
   src/features/worksheet-v2/native-filter.js \
   src/features/worksheet-v2/bulk.js \
   src/features/worksheet-v2/prefill-accessory-parent.js \

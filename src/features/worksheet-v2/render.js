@@ -487,6 +487,14 @@
     return block;
   }
 
+  // Views whose line-item cards default to OPEN (expanded) on first render —
+  // the field-facing survey/install worksheets, where you're filling in each
+  // device's detail, not scanning a list. Later re-renders preserve whatever
+  // the user has since collapsed (via the openIds DOM snapshot). Other v2
+  // worksheets (build-SOW, sales) keep the default-collapsed behavior.
+  var CARDS_DEFAULT_OPEN = { view_3505: 1, view_3915: 1, view_4056: 1 };
+  var _cardsSeeded = Object.create(null);   // sourceViewKey → true once defaulted-open
+
   function renderView(sourceViewKey, records) {
     var container = document.getElementById('scw-ws-v2-' + sourceViewKey);
     if (!container) return;
@@ -561,6 +569,11 @@
         typeof ns.sowFilter.filterRecords === 'function')
       ? ns.sowFilter.filterRecords(sourceViewKey, records)
       : records;
+    // Free-text search narrows further (after the SOW/Bid filter) so grouping,
+    // summary counts and cards all rebuild from the searched subset.
+    if (ns.search && typeof ns.search.filterRecords === 'function') {
+      effectiveRecords = ns.search.filterRecords(sourceViewKey, effectiveRecords);
+    }
     // Detect issues once per render — cards + summary chips read from
     // the cached analysis. Runs against the filtered records so the
     // counts reflect what\'s actually visible.
@@ -598,6 +611,16 @@
     for (var oi = 0; oi < openNodes.length; oi++) {
       var rid = openNodes[oi].getAttribute('data-scw-ws-v2-record');
       if (rid) openIds[rid] = true;
+    }
+    // Default-open views: on the FIRST render that actually has records, seed
+    // every card into the open set so they all start expanded. The per-view
+    // flag means later re-renders fall back to the DOM snapshot above, so a
+    // card the user has since collapsed stays collapsed.
+    if (CARDS_DEFAULT_OPEN[sourceViewKey] && !_cardsSeeded[sourceViewKey] && records.length) {
+      _cardsSeeded[sourceViewKey] = true;
+      for (var _so = 0; _so < records.length; _so++) {
+        if (records[_so] && records[_so].id) openIds[records[_so].id] = true;
+      }
     }
 
     // Keyed card factory: reuse an unchanged record's existing DOM node

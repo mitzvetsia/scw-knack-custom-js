@@ -1551,6 +1551,14 @@
   function sdItem(html, widthCls) {
     return '<div class="scw-ws-v2-sd-item ' + (widthCls || '') + '">' + html + '</div>';
   }
+  /** A cluster of related detail fields — clusters are separated by extra
+   *  whitespace so the panel reads as logical groups, and fields WITHIN a
+   *  cluster stay together (and wrap together) instead of every field wrapping
+   *  independently. Empty clusters render nothing. */
+  function sdGroup(itemsHtml, extraCls) {
+    if (!itemsHtml) return '';
+    return '<div class="scw-ws-v2-sd-group ' + (extraCls || '') + '">' + itemsHtml + '</div>';
+  }
 
   /** A fill (textarea) summary cell — survey notes / labor description. */
   function surveyFill(rec, viewKey, fieldKey, label, cls) {
@@ -1586,6 +1594,10 @@
     var F     = fieldsFor(viewKey);
     var isCam = (cat === 'cam');
     var label = readField(rec, F.displayLabel || 'field_2365');
+    // FLAG_require sub bid (field_2478) = No → this line item needs no sub bid,
+    // so NONE of the sub-bid inputs are required: Labor is locked read-only and
+    // the empty=danger flag is dropped from BOTH Labor and the work Description.
+    var subBidNo = readBool(rec, F.requireSubBid || 'field_2478') === 'No';
 
     var labelSlot = isCam
       ? ro(label, 'scw-ws-v2-cell--label', label)
@@ -1600,10 +1612,17 @@
     // lives in the detail panel (first/leftmost field).
     var surveyNotesCell = surveyFill(rec, viewKey, F.surveyNotes || 'field_2412',
       'Survey notes', 'scw-ws-v2-cell--survey-notes');
-    // v1 parity: empty Labor Description → danger (red).
-    var laborDescWarn = surveyWarnClass(rec, F.laborDesc || 'field_2409', 'danger', null);
-    var laborDescCell   = surveyFill(rec, viewKey, F.laborDesc || 'field_2409',
-      isCam ? 'Labor description' : 'Description of Work', laborDescWarn);
+    // Description of Work (field_2409): when no sub bid is required here, the
+    // field is HIDDEN entirely (an empty grid cell keeps the columns aligned).
+    // Otherwise v1 parity — empty Description → danger (red).
+    var laborDescCell;
+    if (subBidNo) {
+      laborDescCell = empty('scw-ws-v2-cell--labor-desc');
+    } else {
+      var laborDescWarn = surveyWarnClass(rec, F.laborDesc || 'field_2409', 'danger', null);
+      laborDescCell = surveyFill(rec, viewKey, F.laborDesc || 'field_2409',
+        isCam ? 'Labor description' : 'Description of Work', laborDescWarn);
+    }
 
     // Slot 5 (qty/chips): cam → cabling chips; assumptions → blank;
     // qty-locked (FLAG_limit to quantity one = Yes) → blank (qty implicit 1,
@@ -1626,13 +1645,29 @@
     // Money: Labor (editable; blank for assumptions) · Ext (read-only;
     // blank for cam + assumptions, matching v1) · Bid (read-only conn).
     // v1 parity: Labor ("sub bid") empty → danger (red), zero → warning.
-    var laborWarn = surveyWarnClass(rec, F.labor || 'field_2400', 'danger', 'warning');
-    var laborCell = (cat === 'assumptions')
-      ? empty('scw-ws-v2-cell--num scw-ws-v2-cell--survey-labor')
-      : '<div class="scw-ws-v2-cell scw-ws-v2-cell--num scw-ws-v2-cell--survey-labor scw-ws-v2-cell--currency ' + laborWarn + '">' +
+    // BUT when FLAG_require sub bid (field_2478) is No, this line item needs no
+    // sub bid at all — so Labor is NOT required: render it read-only (white,
+    // non-interactive) and drop the empty=danger flag entirely. (subBidNo
+    // computed at the top of this builder.)
+    var laborCell;
+    if (cat === 'assumptions') {
+      laborCell = empty('scw-ws-v2-cell--num scw-ws-v2-cell--survey-labor');
+    } else if (subBidNo) {
+      var laborVal = readNum(rec, F.labor || 'field_2400');
+      laborCell = '<div class="scw-ws-v2-cell scw-ws-v2-cell--num scw-ws-v2-cell--survey-labor scw-ws-v2-cell--currency scw-ws-v2-cell--labor-na" ' +
+          'title="Require Sub Bid is No — no sub bid needed for this item">' +
+          '<span class="scw-ws-v2-currency-glyph">$</span>' +
+          '<input type="number" step="any" class="scw-ws-v2-input scw-ws-v2-input--num" ' +
+            'readonly tabindex="-1" aria-label="Labor (no sub bid required)" ' +
+            'value="' + escapeHtml(laborVal) + '">' +
+        '</div>';
+    } else {
+      var laborWarn = surveyWarnClass(rec, F.labor || 'field_2400', 'danger', 'warning');
+      laborCell = '<div class="scw-ws-v2-cell scw-ws-v2-cell--num scw-ws-v2-cell--survey-labor scw-ws-v2-cell--currency ' + laborWarn + '">' +
           '<span class="scw-ws-v2-currency-glyph">$</span>' +
           numInput(rec, viewKey, F.labor || 'field_2400', readNum(rec, F.labor || 'field_2400'), 'Labor') +
         '</div>';
+    }
     var extCell = (isCam || cat === 'assumptions')
       ? empty('scw-ws-v2-cell--survey-ext')
       : ro(readField(rec, F.extended || 'field_2401'), 'scw-ws-v2-cell--survey-ext', 'Extended');
@@ -1656,56 +1691,83 @@
   function buildDetail_survey(rec, viewKey, cat) {
     var F = fieldsFor(viewKey);
 
-    // Survey detail = one flex-wrap row; each field is sized to its expected
-    // value width (numbers narrow, the connection medium, the mounting-
-    // hardware list wide). Connections render READ-ONLY (SOW-specific picker
-    // not wired). SCW Notes is the first/leftmost field — a clear multi-line
-    // paragraph. Order otherwise mirrors v1 detailLayout.
-    // SCW Notes (field_2418) is READ-ONLY on the bid worksheet — owned
-    // upstream, not editable while bidding. Render as a non-editable paragraph.
-    var items = sdItem(
-      detailNotesReadOnly(rec, F.scwNotes || 'field_2418', 'SCW Notes'),
-      'scw-ws-v2-sd--paragraph');
+    // Survey detail = a row of VERTICAL COLUMNS, each a logical group whose
+    // fields stack (label-over-value). Columns (cam): Label (Prefix / Cam·Reader
+    // #) · Notes (SCW Notes over Mounting Hardware) · Connection (MDF·IDF over
+    // Connected To) · Mounting & cabling (Height / Drop Length / Conduit). The
+    // Connection column comes BEFORE Mounting & cabling because MDF/IDF is on
+    // EVERY card, and MDF/IDF sits ON TOP of Connected To / Connected Devices.
+    // Fixed per-column widths (styles.js .scw-ws-v2-sd-group--*) keep fields
+    // aligned column-to-column instead of every field wrapping independently.
+    // SCW Notes (field_2418) + Mounting Hardware (field_2463) are READ-ONLY —
+    // owned upstream, not editable while bidding. Connections render via the
+    // editable detailConnection button (picker wired in init.js).
+    var groups = '';
+
+    // SCW Notes (field_2418) over Mounting Hardware (field_2463) — both
+    // read-only, owned upstream. They share column 2 (after the Label column).
+    var notesCol = sdGroup(
+      sdItem(detailNotesReadOnly(rec, F.scwNotes || 'field_2418', 'SCW Notes'), 'scw-ws-v2-sd--paragraph') +
+      sdItem(detailReadOnly(rec, F.mounting || 'field_2463', 'Mounting Hardware'), 'scw-ws-v2-sd--paragraph'),
+      'scw-ws-v2-sd-group--notes');
+
+    // MDF/IDF (field_2375) — present on EVERY card; rendered FIRST in the
+    // Connection column so it sits on top of Connected To / Connected Devices.
+    var mdfItem = sdItem(detailConnection(rec, viewKey, F.mdfIdf || 'field_2375', 'MDF / IDF'), 'scw-ws-v2-sd--conn');
+
     if (cat === 'cam') {
-      // Drop Prefix (field_2361) — editable; same Drop Prefix catalog the SOW
-      // worksheet uses (field_2240), so the init.js picker reuses
-      // SCW.dropPrefixOptions. Changing it recomputes the drop label
-      // (field_2365) server-side, so the picker's onSaved refetches.
-      items += sdItem(detailConnection(rec, viewKey, F.dropPrefix || 'field_2361',
-        'Prefix'), 'scw-ws-v2-sd--conn');
-      // Cam/Reader number (field_2362) — the numeric part of the AC-001
-      // designation; editable plain number. Pairs with the Prefix above.
-      items += sdItem(detailField(rec, viewKey, F.dropNumber || 'field_2362',
-        'Cam/Reader #', 'number'), 'scw-ws-v2-sd--num');
+      // Col 1 — Label parts: Prefix (field_2361) over Cam/Reader # (field_2362),
+      // matched width (they CONSTRUCT the read-only label in the row header).
+      // Prefix reuses SCW.dropPrefixOptions; changing either recomputes the
+      // drop label (field_2365) server-side (the picker's onSaved refetches).
+      groups += sdGroup(
+        sdItem(detailConnection(rec, viewKey, F.dropPrefix || 'field_2361', 'Prefix'), 'scw-ws-v2-sd--conn') +
+        sdItem(detailField(rec, viewKey, F.dropNumber || 'field_2362', 'Cam/Reader #', 'number'), 'scw-ws-v2-sd--num'),
+        'scw-ws-v2-sd-group--label');
+
+      // Col 2 — SCW Notes over Mounting Hardware.
+      groups += notesCol;
+
+      // Col 3 — Connection & location: MDF/IDF (top) over Connected To.
       // Connected To (field_2381, single) — editable; cascade writes the
-      // parent's field_2380. Picker candidates resolved in init.js.
-      items += sdItem(detailConnection(rec, viewKey, F.connectedDevice || 'field_2381',
-        'Connected To', hasIssue(rec, 'disconnected')), 'scw-ws-v2-sd--conn');
-      items += sdItem(singleChipField(rec, viewKey, F.mountingHeight || 'field_2455',
-        'Mounting Height', ["Under 16'", "16' - 24'", "Over 24'"]), 'scw-ws-v2-sd--chips');
-      items += sdItem(detailField(rec, viewKey, F.dropLength || 'field_2367', 'Drop Length', 'number'),
-        'scw-ws-v2-sd--num');
-      items += sdItem(detailField(rec, viewKey, F.conduit || 'field_2368', 'Conduit', 'number'),
-        'scw-ws-v2-sd--num');
-    } else if (cat === 'default') {
-      // Connected Devices (field_2380, multi, NVR/switch side) — editable.
-      // ONLY shown when this record's "map camera/reader connections" flag
-      // (field_2374 / mapConn) is Yes — devices that don't map readers have
-      // no Connected Devices to manage.
-      if (readBool(rec, F.mapConn || 'field_2374') === 'Yes') {
-        items += sdItem(detailConnectedDevices(rec, viewKey, F.connectedDevices || 'field_2380', 'Connected Devices'), 'scw-ws-v2-sd--conn');
-      }
+      // parent's field_2380. Candidates resolved in init.js.
+      groups += sdGroup(
+        mdfItem +
+        sdItem(detailConnection(rec, viewKey, F.connectedDevice || 'field_2381',
+          'Connected To', hasIssue(rec, 'disconnected')), 'scw-ws-v2-sd--conn'),
+        'scw-ws-v2-sd-group--conn');
+
+      // Col 4 — Mounting & cabling: Mounting Height + Drop Length + Conduit.
+      groups += sdGroup(
+        sdItem(singleChipField(rec, viewKey, F.mountingHeight || 'field_2455',
+          'Mounting Height', ["Under 16'", "16' - 24'", "Over 24'"]), 'scw-ws-v2-sd--chips') +
+        sdItem(detailField(rec, viewKey, F.dropLength || 'field_2367', 'Drop Length', 'number'), 'scw-ws-v2-sd--num') +
+        sdItem(detailField(rec, viewKey, F.conduit || 'field_2368', 'Conduit', 'number'), 'scw-ws-v2-sd--num'),
+        'scw-ws-v2-sd-group--mount');
+    } else {
+      // default / hardware: Notes column (SCW Notes + Mounting Hardware), then a
+      // connection column — MDF/IDF (top) over Connected Devices (only when
+      // mapConn Yes).
+      groups += notesCol;
+
+      var devItem = (cat === 'default' && readBool(rec, F.mapConn || 'field_2374') === 'Yes')
+        ? sdItem(detailConnectedDevices(rec, viewKey, F.connectedDevices || 'field_2380', 'Connected Devices'), 'scw-ws-v2-sd--conn')
+        : '';
+      groups += sdGroup(
+        mdfItem +
+        devItem,
+        'scw-ws-v2-sd-group--conn');
     }
 
-    // MDF / IDF (field_2375) — editable on every bucket (re-home a line item).
-    items += sdItem(detailConnection(rec, viewKey, F.mdfIdf || 'field_2375', 'MDF / IDF'),
-      'scw-ws-v2-sd--conn');
-
-    items += sdItem(detailReadOnly(rec, F.mounting || 'field_2463', 'Mounting Hardware'),
-      'scw-ws-v2-sd--wide');
-
+    // Non-cam rows have NO Label column (Prefix/Cam#), and the summary header
+    // collapses the blank label cell so the PRODUCT spans into it (grid-col 2).
+    // Tag the groups so CSS shifts the Notes column left to start under the
+    // product box too (otherwise Notes sits one column right of the product).
+    var groupsCls = 'scw-ws-v2-sd-groups' + (cat === 'cam' ? '' : ' scw-ws-v2-sd-groups--no-label');
     return '<div class="scw-ws-v2-detail">' +
-      '<div class="scw-ws-v2-survey-detail">' + items + '</div>' +
+      '<div class="scw-ws-v2-survey-detail">' +
+        '<div class="' + groupsCls + '">' + groups + '</div>' +
+      '</div>' +
     '</div>';
   }
 

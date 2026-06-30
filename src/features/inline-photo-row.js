@@ -1282,6 +1282,13 @@
     var table = viewEl.querySelector('table.kn-table');
     if (!table) return;
 
+    // When mdf-idf-cards owns this view (view_3577 + MDF/IDF siblings) the
+    // native table is display:none and the visible surface is .scw-mdf-card
+    // nodes. In that mode we inject the strip INTO the matching card instead
+    // of the hidden table; mdf-idf-cards re-calls SCW.inlinePhotoRow.refresh()
+    // after it rebuilds cards so the strip survives its innerHTML reset.
+    var cardsMode = viewEl.classList.contains('scw-mdf-cards-on');
+
     var cols = colCount(table);
     var rows = table.querySelectorAll('tbody tr');
 
@@ -1298,10 +1305,14 @@
 
       // Idempotency: if this data row already has its photo row injected
       // (a partial re-render that didn't wipe it, or a debounced second
-      // pass), don't build and inject a duplicate.
-      var existingNext = tr.nextElementSibling;
-      if (existingNext && existingNext.classList &&
-          existingNext.classList.contains(ROW_CLS)) continue;
+      // pass), don't build and inject a duplicate. Skipped in cards mode —
+      // there the strip lives in the location card (rebuilt idempotently
+      // below), not as a sibling <tr>.
+      if (!cardsMode) {
+        var existingNext = tr.nextElementSibling;
+        if (existingNext && existingNext.classList &&
+            existingNext.classList.contains(ROW_CLS)) continue;
+      }
 
       // Get the label for alt text
       var labelCell = tr.querySelector('td.field_2364') || tr.querySelector('td.field_1642');
@@ -1309,12 +1320,6 @@
 
       // Extract all connected photo records
       var photos = extractPhotoRecords(tr);
-
-      // Build the injected row
-      var photoTr = document.createElement('tr');
-      photoTr.className = ROW_CLS;
-      var td = document.createElement('td');
-      td.setAttribute('colspan', String(cols));
 
       var strip = document.createElement('div');
       strip.className = STRIP_CLS;
@@ -1465,9 +1470,31 @@
       fieldWrapper.appendChild(photoLabel);
       fieldWrapper.appendChild(strip);
 
-      td.appendChild(fieldWrapper);
-      photoTr.appendChild(td);
-      tr.parentNode.insertBefore(photoTr, tr.nextSibling);
+      if (cardsMode) {
+        // mdf-idf-cards mode: drop the strip into the matching location card
+        // (the native table it lives in is hidden). Idempotent — replace any
+        // strip a prior pass left so re-renders don't stack duplicates.
+        var ownerCard = viewEl.querySelector(
+          '.scw-mdf-card[data-rec-id="' + lineItemId + '"]');
+        if (ownerCard) {
+          var prevHolder = ownerCard.querySelector('.scw-mdf-card__photos');
+          if (prevHolder) ownerCard.removeChild(prevHolder);
+          var holder = document.createElement('div');
+          holder.className = 'scw-mdf-card__photos';
+          holder.appendChild(fieldWrapper);
+          ownerCard.appendChild(holder);
+        }
+        // No matching card yet (cards not built this pass) → discard; the
+        // refresh() call from mdf-idf-cards rebuilds once cards exist.
+      } else {
+        var photoTr = document.createElement('tr');
+        photoTr.className = ROW_CLS;
+        var td = document.createElement('td');
+        td.setAttribute('colspan', String(cols));
+        td.appendChild(fieldWrapper);
+        photoTr.appendChild(td);
+        tr.parentNode.insertBefore(photoTr, tr.nextSibling);
+      }
     }
   }
 
@@ -1538,5 +1565,15 @@
       });
     })(TARGET_VIEWS[v]);
   }
+
+  // Synchronous refresh hook so mdf-idf-cards can re-inject the photo strip
+  // into the location cards immediately after it rebuilds them — its
+  // container.innerHTML reset wipes any strip we injected, so it calls this
+  // right after to repaint. See processView's cardsMode branch.
+  window.SCW = window.SCW || {};
+  SCW.inlinePhotoRow = SCW.inlinePhotoRow || {};
+  SCW.inlinePhotoRow.refresh = function (viewKey) {
+    try { processView(viewKey); } catch (e) {}
+  };
 })();
 /*************  Inline Photo Rows – view_3512  **********************/

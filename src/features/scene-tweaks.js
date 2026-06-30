@@ -197,6 +197,28 @@
 #kn-scene_1085 .scw-ktl-accordion:has(> .scw-ktl-accordion__header[data-view-key="view_3610"]).is-expanded > .scw-ktl-accordion__header {
   background: rgba(33, 76, 116, 0.18) !important;
 }
+
+/* Hide the dev scratch marker (view_3898 "MICAH's SHIT") and EVERYTHING
+   below it on this page. Per the layout, view_3898 + view_3884 ("for MICAH")
+   share view-group-8's column, and view-groups 9-12 follow it:
+     • view_3888  Mounting Hardware grid   (kept as model/REST source only —
+                                            mirror-connection-sync reads its
+                                            model; display:none is safe)
+     • view_3584  Photos grid              (REST-DELETE fallback endpoint for
+                                            worksheet-v2 photos; URL-based, so
+                                            display:none is safe)
+     • view_3961  Orphaned Mounting Brackets
+     • view_3962  hidden v2 source grid    (already display:none; the v2 panel
+                                            scrapes its DOM, which survives
+                                            display:none)
+     • view_3964  Add Document menu
+   The v2 SOW worksheet panel (#scw-ws-v2-view_3962) mounts after view_3369 in
+   group 7 — ABOVE view_3898 — so it is unaffected by this rule.            */
+#kn-scene_1085 #view_3898,
+#kn-scene_1085 #view_3898 ~ .kn-view,
+#kn-scene_1085 .view-group:has(#view_3898) ~ .view-group {
+  display: none !important;
+}
 `;
 
     var style = document.createElement('style');

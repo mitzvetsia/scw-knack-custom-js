@@ -1160,6 +1160,35 @@
       }
     }
 
+    // SOW-items source view (view_3921) native <tr> — the wsTr +
+    // .scw-inline-photo-card path above is INACTIVE when bid-review-v2 owns the
+    // hidden view_3921: device-worksheet bails on the transform and
+    // inline-photo-row skips off-screen views, so the card path yields nothing.
+    // The native field_771 image cells are still in the (display:none) DOM, so
+    // scrape them directly — same selector inline-photo-row / worksheet-v2 use,
+    // keyed by the SOW item id (rowId). This is what restores SOW-side photos in
+    // the v2 comparison grid's Photos column.
+    if (!urls.length && rowId) {
+      var sowItemsView = CFG.sowItemsViewKey || 'view_3921';
+      var sowTr = document.querySelector('#' + sowItemsView + ' tr[id="' + rowId + '"]');
+      if (sowTr) {
+        var sowImgCells = sowTr.querySelectorAll('td[data-field-key="field_771"]');
+        for (var sc = 0; sc < sowImgCells.length; sc++) {
+          var sowSpans = sowImgCells[sc].querySelectorAll(
+            'span[id][data-kn="connection-value"]'
+          );
+          for (var ss = 0; ss < sowSpans.length; ss++) {
+            var sowImg = sowSpans[ss].querySelector('img[data-kn-img-gallery]') ||
+                         sowSpans[ss].querySelector('img');
+            if (!sowImg) continue;
+            var sowU = sowImg.getAttribute('data-kn-img-gallery') ||
+                       sowImg.getAttribute('src') || '';
+            if (sowU) urls.push(sowU);
+          }
+        }
+      }
+    }
+
     // Fallback — bid records that have no matching SOW item (the
     // "+ Add to SOW" rows) have no wsTr because view_3921 never
     // produced one. The bid grid (view_3680) now carries its own
