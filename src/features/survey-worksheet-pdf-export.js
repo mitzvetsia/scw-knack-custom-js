@@ -1525,23 +1525,26 @@
           }
         }
       }
-
-      // (3) MDF/IDF ASSIGNMENT GRID — cameras/readers (rows) × distribution
-      // devices that accept incoming connects (columns, grouped by MDF/IDF).
-      // Rendered AFTER the equipment breakdown.
-      html.push('<h2 class="ws-sec-title">MDF / IDF Assignments</h2>');
-      html.push('<div class="ws-sec-note">Check which distribution device each camera / reader ' +
-        'connects to. Devices are grouped by MDF/IDF; blank columns are for write-ins. ' +
-        'Gray marks are the current file assignment — our best guess.</div>');
-      html.push(renderAssignmentGrid(mdfGroups, allCams));
     }
 
-    // (3) Project-wide services / assumptions — rendered verbatim at the end.
+    // (3) Project-wide services / assumptions — grouped WITH the equipment
+    // sections (above), BEFORE the MDF/IDF assignments grid.
     for (var pwi = 0; pwi < projectWide.length; pwi++) {
       var prow = projectWide[pwi];
       if (prow.type === 'group') html.push(renderGroupHeader(prow));
       else if (prow.type === 'card') html.push(renderCard(prow));
       else if (prow.type === 'l1-notes') html.push(renderL1Notes(prow));
+    }
+
+    // (4) MDF/IDF ASSIGNMENT GRID — cameras/readers (rows) × distribution
+    // devices that accept incoming connects (columns, grouped by MDF/IDF).
+    // Rendered LAST, after the equipment + project-wide sections.
+    if (mdfGroups.length && allCams.length) {
+      html.push('<h2 class="ws-sec-title">MDF / IDF Assignments</h2>');
+      html.push('<div class="ws-sec-note">Check which distribution device each camera / reader ' +
+        'connects to. Devices are grouped by MDF/IDF; blank columns are for write-ins. ' +
+        'Gray marks are the current file assignment — our best guess.</div>');
+      html.push(renderAssignmentGrid(mdfGroups, allCams));
     }
 
     // ── Trailing image sections (e.g. Additional Photos from view_3805) ──
@@ -1782,6 +1785,14 @@
     var h = [];
     h.push('<section class="assign-grid">');
     h.push('<table class="pivot-table">');
+
+    // Fixed column widths so every device/check column is the SAME width
+    // (Label + Product take a set share, the device columns split the
+    // rest equally \u2014 table-layout:fixed distributes unsized cols evenly).
+    h.push('<colgroup>');
+    h.push('<col class="ag-col-label"><col class="ag-col-product">');
+    for (var cg = 0; cg < totalCols; cg++) h.push('<col class="ag-col-dev">');
+    h.push('</colgroup>');
 
     // \u2500\u2500 header: MDF/IDF group row + device row \u2500\u2500
     h.push('<thead>');
@@ -3314,7 +3325,17 @@
       '/* Reuses the pivot-table cell styling; flows inline (no forced  */',
       '/* page break) since the whole doc is already landscape.         */',
       '.assign-grid { margin: 2px 0 10px; }',
-      '.assign-grid .pivot-table { page-break-inside: auto; }',
+      // Fixed layout so the device columns are all equal width (auto layout
+      // sized each to its content, which made them uneven). Label + Product
+      // take a set share; the remaining width splits evenly across the
+      // unsized device cols.
+      '.assign-grid .pivot-table { page-break-inside: auto; table-layout: fixed; width: 100%; }',
+      '.assign-grid .ag-col-label   { width: 5%; }',
+      '.assign-grid .ag-col-product { width: 23%; }',
+      // ag-col-dev intentionally has no width → fixed layout shares the
+      // leftover space equally among every device column.
+      '.assign-grid .pivot-corner { width: auto; white-space: normal; }',
+      '.assign-grid .pivot-row { width: auto; white-space: normal; word-break: break-word; }',
       // MDF/IDF column-group header band spanning that group's device cols.
       '.pivot-grp {',
       '  background: #dbe9f6; color: #07467c; font-weight: 800;',
