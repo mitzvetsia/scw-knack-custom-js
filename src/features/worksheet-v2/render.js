@@ -148,7 +148,14 @@
       var old = byId[id];
       var fresh = ns.card.buildCard(recById[id], sourceViewKey);
       if (!fresh) return false;   // (validated present; a build failure is rare)
-      try { fresh.setAttribute('data-scw-sig', cardSig(recById[id])); } catch (e) { /* ignore */ }
+      try {
+        var _ipSig = cardSig(recById[id]);
+        if (ns.card && typeof ns.card.connDevicesSig === 'function') {
+          var _ipCd = ns.card.connDevicesSig(recById[id], sourceViewKey);
+          if (_ipCd) _ipSig += '|cd:' + _ipCd;
+        }
+        fresh.setAttribute('data-scw-sig', _ipSig);
+      } catch (e) { /* ignore */ }
       if (openIds[id] && fresh.classList) fresh.classList.add('scw-ws-v2-card--open');
       if (old.parentNode) old.parentNode.replaceChild(fresh, old);
     }
@@ -739,9 +746,17 @@
         if (_PF) _reused++;
         return ex;
       }
-      // Changed / new / heal-sampled → verify via signature.
+      // Changed / new / heal-sampled → verify via signature. The signature
+      // also folds in the reciprocal Connected-Devices fingerprint so a
+      // PARENT rebuilds when one of its children's Connected To changes
+      // (its own JSON wouldn't change, so it'd otherwise serve a stale
+      // "Connected Devices" display until a full reload).
       var _ss = _PF ? SCW._now() : 0;
       var sig = cardSig(record);
+      if (ns.card && typeof ns.card.connDevicesSig === 'function') {
+        var _cd = ns.card.connDevicesSig(record, viewKey);
+        if (_cd) sig += '|cd:' + _cd;
+      }
       if (_PF) _pfSig += SCW._now() - _ss;
       if (ex && ex.getAttribute('data-scw-sig') === sig) {
         // A DOM node lives in one place only — drop it from the index so if the

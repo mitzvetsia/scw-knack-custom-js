@@ -1308,6 +1308,27 @@
         if (fieldKey === _CD || fieldKey === _CT) {
           var _camBucket = ns.card && ns.card.CAM_READER_BUCKET;
           var _isCD = (fieldKey === _CD);
+          // ── Connected Devices pre-selection hardening ──
+          // The forward field_2380 list (what `sel` is read from above) can
+          // read STALE — the field_2380↔field_2381 pair is kept aligned only
+          // by the cascade, so the parent's forward list lags while children
+          // ARE connected (their Connected To / field_2381 already points
+          // here). The CARD DISPLAY already works around this by deriving the
+          // set from the reciprocal back-pointers (card.js detailConnected-
+          // Devices); the picker must match, or it opens with the real
+          // children unchecked. Union into `sel` every cam/reader whose
+          // field_2381 points back at THIS device.
+          if (_isCD) {
+            for (var _hi = 0; _hi < records.length; _hi++) {
+              var _hrec = records[_hi];
+              if (!_hrec || !_hrec.id || _hrec.id === recordId) continue;
+              var _hraw = _hrec[_CT + '_raw'];
+              if (Array.isArray(_hraw) && _hraw[0] && _hraw[0].id === recordId &&
+                  sel.indexOf(_hrec.id) === -1) {
+                sel.push(_hrec.id);
+              }
+            }
+          }
           // Cam/readers already connected to THIS device — keep them offered
           // (so they stay checked) even though their Connected To is populated.
           var _selSet = {};

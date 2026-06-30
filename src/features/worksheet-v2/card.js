@@ -361,6 +361,30 @@
     return m;
   }
 
+  /** Connected-Devices reciprocal fingerprint for a record — the sorted ids
+   *  of every child whose Connected To (recipKey) points back at it. Folded
+   *  into the card's render signature (render.js) so a parent card REBUILDS
+   *  when a child connects/disconnects. Without it the parent's signature
+   *  (its own JSON) is unchanged by a child edit, so the keyed-reuse path
+   *  serves the stale Connected Devices display until a full page reload.
+   *  Returns '' for views with no reciprocal field or records with no
+   *  children (no signature impact → reuse path unaffected). */
+  function connDevicesSig(rec, viewKey) {
+    try {
+      if (!rec || !rec.id) return '';
+      var recipKey = fieldsFor(viewKey).connectedDevice;
+      if (!recipKey) return '';
+      var kids = backIndex(viewKey, recipKey)[rec.id];
+      if (!kids || !kids.length) return '';
+      var ids = [];
+      for (var i = 0; i < kids.length; i++) {
+        if (kids[i] && kids[i].id) ids.push(kids[i].id);
+      }
+      ids.sort();
+      return ids.join(',');
+    } catch (e) { return ''; }
+  }
+
   /** Count on field_2586 ("associated survey line items"). >0 means a survey
    *  line-item record has been created for this SOW line item (i.e. it's an
    *  existing/committed item), vs a brand-new sales addition (0). */
@@ -2079,7 +2103,10 @@
     LOCK_WHITELIST:      LOCK_WHITELIST,
     // Survey-link delete block — consumed by bulk delete to drop records
     // that aren't deletable.
-    isDeleteBlocked:     isDeleteBlocked
+    isDeleteBlocked:     isDeleteBlocked,
+    // Reciprocal Connected-Devices fingerprint — folded into the render
+    // signature so a parent rebuilds when a child's Connected To changes.
+    connDevicesSig:      connDevicesSig
   };
 })();
 /*** END WORKSHEET V2 — CARD **************************************************/
