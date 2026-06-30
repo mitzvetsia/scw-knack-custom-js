@@ -1471,11 +1471,21 @@
     }
     allCams.sort(function (a, b) { return natCompare(a.label || '', b.label || ''); });
 
-    // (1) MDF/IDF assignments — ONE grid: cameras/readers (rows, grouped
-    // by MDF/IDF) × distribution devices that accept incoming connects
-    // (columns, grouped by MDF/IDF). Replaces the old per-headend
-    // checklists (which repeated every camera once per location and
-    // orphaned each header onto its own near-blank page).
+    // (1) Consolidated camera / reader detail — listed once for the job.
+    // Comes BEFORE the MDF/IDF assignment grid (the tech walks the device
+    // list first, then records where each one runs).
+    if (allCams.length) {
+      html.push('<h2 class="ws-sec-title">All Cameras &amp; Readers ' +
+        '<span class="ws-sec-count">' + allCams.length + ' device' +
+        (allCams.length === 1 ? '' : 's') + '</span></h2>');
+      html.push(renderCameraReaderBatchTable(allCams));
+    }
+
+    // (2) MDF/IDF assignments — ONE grid: cameras/readers (rows) ×
+    // distribution devices that accept incoming connects (columns,
+    // grouped by MDF/IDF). Replaces the old per-headend checklists
+    // (which repeated every camera once per location and orphaned each
+    // header onto its own near-blank page).
     if (mdfGroups.length && allCams.length) {
       html.push('<h2 class="ws-sec-title">MDF / IDF Assignments</h2>');
       html.push('<div class="ws-sec-note">Check which distribution device each camera / reader ' +
@@ -1508,14 +1518,6 @@
           else if (ex.type === 'group') html.push(renderGroupHeader(ex));
         }
       }
-    }
-
-    // (2) Consolidated camera / reader detail — listed once for the job.
-    if (allCams.length) {
-      html.push('<h2 class="ws-sec-title">All Cameras &amp; Readers ' +
-        '<span class="ws-sec-count">' + allCams.length + ' device' +
-        (allCams.length === 1 ? '' : 's') + '</span></h2>');
-      html.push(renderCameraReaderBatchTable(allCams));
     }
 
     // (3) Project-wide services / assumptions — rendered verbatim at the end.
@@ -1754,21 +1756,6 @@
     }
     if (!columns.length) return '';
 
-    // Group the cameras by MDF/IDF, preserving the worksheet group order.
-    var camsByGroup = {};
-    var groupOrder = [];
-    for (var gj = 0; gj < mdfGroups.length; gj++) {
-      camsByGroup[mdfGroups[gj].label] = [];
-      groupOrder.push(mdfGroups[gj].label);
-    }
-    var OTHER = 'Unassigned';
-    for (var ci = 0; ci < allCams.length; ci++) {
-      var cam = allCams[ci];
-      var key = cam.groupL1 && camsByGroup[cam.groupL1] ? cam.groupL1 : OTHER;
-      if (!camsByGroup[key]) { camsByGroup[key] = []; groupOrder.push(key); }
-      camsByGroup[key].push(cam);
-    }
-
     var totalCols = columns.length;
 
     function boxCell(on) {
@@ -1806,27 +1793,39 @@
     h.push('</tr>');
     h.push('</thead>');
 
-    // \u2500\u2500 body: cameras grouped by MDF/IDF \u2500\u2500
+    // \u2500\u2500 body: one flat row per camera/reader (no group divider rows \u2014
+    // a camera's MDF/IDF is conveyed by the gray pre-check landing in
+    // the device column of its own MDF/IDF group). A cell is gray-checked
+    // when the camera's existing connection points at that device
+    // (exact) OR the column is a real device in the camera's own MDF/IDF
+    // (location best-guess). \u2500\u2500
     h.push('<tbody>');
-    for (var go = 0; go < groupOrder.length; go++) {
-      var glabel = groupOrder[go];
-      var cams = camsByGroup[glabel] || [];
-      if (!cams.length) continue;
-      h.push('<tr class="pivot-grp-row"><th colspan="' + (totalCols + 2) +
-             '" scope="rowgroup">' + esc(cleanGroupLabel(glabel)) + '</th></tr>');
-      for (var k = 0; k < cams.length; k++) {
-        var row = cams[k];
-        h.push('<tr>');
-        h.push('<th class="pivot-row pivot-row--label" scope="row">' +
-               esc(row.label || '') + '</th>');
-        h.push('<td class="pivot-row pivot-row--product">' +
-               esc(row.product || '') + '</td>');
-        for (var c2 = 0; c2 < totalCols; c2++) {
-          var on = !!(row.recordId && columns[c2].childIds[row.recordId]);
-          h.push(boxCell(on));
-        }
-        h.push('</tr>');
+    for (var k = 0; k < allCams.length; k++) {
+      var row = allCams[k];
+      h.push('<tr>');
+      h.push('<th class="pivot-row pivot-row--label" scope="row">' +
+             esc(row.label || '') + '</th>');
+      h.push('<td class="pivot-row pivot-row--product">' +
+             esc(row.product || '') + '</td>');
+      // Precise wins: if the camera has a known connection to a specific
+      // device, check only that column. Otherwise fall back to the
+      // MDF/IDF location best-guess (check the device(s) in its group).
+      var hasExact = false;
+      for (var ce = 0; ce < totalCols; ce++) {
+        if (row.recordId && columns[ce].childIds[row.recordId]) { hasExact = true; break; }
       }
+      for (var c2 = 0; c2 < totalCols; c2++) {
+        var col2 = columns[c2];
+        var on;
+        if (hasExact) {
+          on = !!(row.recordId && col2.childIds[row.recordId]);
+        } else {
+          on = !!(col2.device && col2.group && row.groupL1 &&
+                  col2.group === row.groupL1);
+        }
+        h.push(boxCell(on));
+      }
+      h.push('</tr>');
     }
     h.push('</tbody></table>');
     h.push('</section>');
@@ -2252,10 +2251,17 @@
   function renderCard(card) {
     var h = [];
     var isSvcOrAssump = isServiceOrAssumptionBucket(card);
-    var isAssumption  = card.rowClasses && /\bscw-row--assumptions\b/.test(card.rowClasses);
+    var isProjectWide = /project wide/i.test(card.groupL1 || '');
+    // Assumption detection must work for worksheet-v2 cards too — those
+    // carry no scw-row--assumptions class, so also accept the bucket
+    // match and the "Project Wide Assumptions" group label. Without this
+    // a v2 assumption falls through to isService and wrongly shows a
+    // "Service" tag.
+    var isAssumption  = (card.rowClasses && /\bscw-row--assumptions\b/.test(card.rowClasses)) ||
+      bucketMatches(card, ASSUMPTIONS_BUCKET, /assumption/i) ||
+      (isProjectWide && /assumption/i.test(card.groupL1 || ''));
     var isService     = isSvcOrAssump && !isAssumption;
-    var isProjectWideAssumption = isAssumption &&
-      /project wide/i.test(card.groupL1 || '');
+    var isProjectWideAssumption = isAssumption && isProjectWide;
 
     // Two-column writing body lights up for normal detail cards
     // (cameras/readers, NVRs, switches). SERVICE rows force a compact
@@ -2285,10 +2291,15 @@
     // from real devices. Project-wide assumptions need no tag — the
     // "Project Wide Assumptions" group header already identifies them,
     // and the row is pure reference text.
-    if (isService) {
-      h.push('<span class="ws-tag ws-tag--service">Service</span>');
-    } else if (isAssumption && !isProjectWideAssumption) {
-      h.push('<span class="ws-tag ws-tag--assumption">Assumption</span>');
+    // No bucket pill inside Project Wide sections — the group header
+    // ("Project Wide Services" / "Project Wide Assumptions") already
+    // says what they are, so the per-card tag is redundant noise.
+    if (!isProjectWide) {
+      if (isService) {
+        h.push('<span class="ws-tag ws-tag--service">Service</span>');
+      } else if (isAssumption) {
+        h.push('<span class="ws-tag ws-tag--assumption">Assumption</span>');
+      }
     }
 
     // Identity line.
@@ -2786,9 +2797,9 @@
       '.ws-id-product {',
       // Match the label styling (bold + blue) so the device reads as',
       // one unified identifier line instead of label-then-graytext.',
-      // Shrunk ~35% from the original 10.5px — the product name is */
-      // useful context but doesn\'t need to compete with the label.   */',
-      '  font-weight: 700; color: #07467c; font-size: 5px;',
+      // Sized to match the SCW-notes body (the product is the primary  */
+      // identifier; SCW notes are now the smaller secondary text).     */',
+      '  font-weight: 700; color: #07467c; font-size: 10px;',
       '}',
       '',
       '/* ── Reference items (Mount / SCW) — same shape as ws-line ── */',
@@ -2909,6 +2920,10 @@
       '  white-space: pre-wrap; word-break: break-word;',
       '}',
       '.ws-labor--scw { margin-bottom: 3px; color: inherit; }',
+      // SCW notes are secondary context next to the product identifier,
+      // so the note text is sized down to the old product size (the two
+      // were swapped per request — product up, notes down).
+      '.ws-labor--scw .ws-labor-value { font-size: 5px; }',
       '.ws-labor-label {',
       '  font-weight: 700; color: #6b7280;',
       '  font-size: 7.5px; letter-spacing: 0.4px;',
@@ -3213,14 +3228,7 @@
       '  font-size: 7px; text-transform: uppercase; letter-spacing: .3px;',
       '  text-align: center; padding: 2px 3px; border: 1px solid #94a3b8;',
       '  white-space: nowrap;',
-      '}',
-      // Row-group separator inside the body — one dark band per MDF/IDF.
-      '.pivot-grp-row th {',
-      '  background: #0f172a; color: #fff; text-align: left;',
-      '  font-size: 8px; font-weight: 700; padding: 3px 6px;',
-      '  border: 1px solid #0f172a; letter-spacing: .2px;',
-      '}',
-      '.pivot-grp-row { break-inside: avoid; page-break-inside: avoid; }'
+      '}'
     ].join('\n');
   }
 
