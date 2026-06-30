@@ -185,6 +185,22 @@
       '  display: inline-flex; align-items: center; justify-content: center;',
       '}',
       '.scw-ws-v2-picker-close:hover { background: #fee2e2; color: #b91c1c; }',
+      '.scw-ws-v2-picker-search {',
+      '  padding: 10px 18px; border-bottom: 1px solid #e5e7eb; background: #fff;',
+      '  flex: 0 0 auto;',
+      '}',
+      '.scw-ws-v2-picker-search-input {',
+      '  width: 100%; box-sizing: border-box;',
+      '  padding: 8px 12px; font-size: 13px;',
+      '  border: 1px solid #cbd5e1; border-radius: 7px;',
+      '  outline: none; color: #1f2937;',
+      '}',
+      '.scw-ws-v2-picker-search-input:focus {',
+      '  border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37,99,235,0.15);',
+      '}',
+      '.scw-ws-v2-picker-search-empty {',
+      '  padding: 18px; text-align: center; color: #64748b; font-style: italic;',
+      '}',
       '.scw-ws-v2-picker-item--none {',
       '  background: #f8fafc;',
       '  border-bottom: 1px solid #e2e8f0;',
@@ -748,7 +764,63 @@
       }
     }
 
+    // ── Search filter ───────────────────────────────────────────────
+    // Sizable lists (the product picker especially) get a type-to-filter
+    // box between the header and the scrolling list. Matches each option's
+    // text (name + any SOW line); group headers hide when none of their
+    // items match. The "Clear all / (no selection)" row is never filtered.
+    var searchInput = null;
+    if (candidates.length >= 8) {
+      var searchWrap = document.createElement('div');
+      searchWrap.className = 'scw-ws-v2-picker-search';
+      searchWrap.innerHTML = '<input type="text" class="scw-ws-v2-picker-search-input" ' +
+        'placeholder="Search…" autocomplete="off" spellcheck="false">';
+      card.insertBefore(searchWrap, bd);
+      searchInput = searchWrap.querySelector('input');
+
+      var noMatchEl = document.createElement('div');
+      noMatchEl.className = 'scw-ws-v2-picker-search-empty';
+      noMatchEl.textContent = 'No matches.';
+      noMatchEl.style.display = 'none';
+      bd.appendChild(noMatchEl);
+
+      var searchItems = Array.prototype.slice.call(bd.querySelectorAll(
+        '.scw-ws-v2-picker-item:not(.scw-ws-v2-picker-item--none)'));
+      var searchGroups = Array.prototype.slice.call(
+        bd.querySelectorAll('.scw-ws-v2-picker-group'));
+
+      var applySearch = function () {
+        var q = (searchInput.value || '').trim().toLowerCase();
+        var anyVisible = false;
+        for (var i = 0; i < searchItems.length; i++) {
+          var it = searchItems[i];
+          var show = !q || (it.textContent || '').toLowerCase().indexOf(q) !== -1;
+          it.style.display = show ? '' : 'none';
+          if (show) anyVisible = true;
+        }
+        for (var g = 0; g < searchGroups.length; g++) {
+          var head = searchGroups[g];
+          var vis = false;
+          var sib = head.nextElementSibling;
+          while (sib && !(sib.classList && sib.classList.contains('scw-ws-v2-picker-group'))) {
+            if (sib.classList &&
+                sib.classList.contains('scw-ws-v2-picker-item') &&
+                !sib.classList.contains('scw-ws-v2-picker-item--none') &&
+                sib.style.display !== 'none') { vis = true; break; }
+            sib = sib.nextElementSibling;
+          }
+          head.style.display = vis ? '' : 'none';
+        }
+        noMatchEl.style.display = anyVisible ? 'none' : '';
+      };
+      searchInput.addEventListener('input', applySearch);
+    }
+
     document.body.appendChild(overlay);
+
+    // Focus the search box so the user can type immediately (after the
+    // node is in the document, or focus() is a no-op).
+    if (searchInput) { try { searchInput.focus(); } catch (e) {} }
   }
 
   ns.picker = {
