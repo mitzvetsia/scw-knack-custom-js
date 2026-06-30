@@ -23,6 +23,14 @@
   var DEFAULT_OPEN_THRESHOLD = 30;
   var STORAGE_PREFIX = 'scw:ws-v2-collapse:';
 
+  // Views whose MDF/IDF (L1) groups ALWAYS default open, regardless of
+  // record count — overrides the DEFAULT_OPEN_THRESHOLD. The survey/bid
+  // worksheet (view_3505) is a fill-in-the-field doc: techs want every
+  // MDF/IDF expanded so they can scan all locations at once (the
+  // line-item CARDS default collapsed instead — see render.js
+  // CARDS_DEFAULT_OPEN). Persisted user state still wins over this.
+  var GROUPS_DEFAULT_OPEN = { view_3505: 1 };
+
   function getSceneId() {
     var bodyId = document.body && document.body.id;
     if (bodyId) {
@@ -71,7 +79,8 @@
 
     var total = 0;
     for (var i = 0; i < l1List.length; i++) total += l1List[i].recordCount || 0;
-    var defaultOpen = total < DEFAULT_OPEN_THRESHOLD;
+    var defaultOpen = GROUPS_DEFAULT_OPEN[sourceViewKey] ||
+                      total < DEFAULT_OPEN_THRESHOLD;
 
     for (var j = 0; j < l1List.length; j++) {
       var l1 = l1List[j];

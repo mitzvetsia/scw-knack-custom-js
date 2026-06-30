@@ -488,11 +488,16 @@
   }
 
   // Views whose line-item cards default to OPEN (expanded) on first render —
-  // the field-facing survey/install worksheets, where you're filling in each
+  // the field-facing install worksheets, where you're filling in each
   // device's detail, not scanning a list. Later re-renders preserve whatever
   // the user has since collapsed (via the openIds DOM snapshot). Other v2
-  // worksheets (build-SOW, sales) keep the default-collapsed behavior.
-  var CARDS_DEFAULT_OPEN = { view_3505: 1, view_3915: 1, view_4056: 1 };
+  // worksheets keep the default-collapsed behavior.
+  //
+  // NOTE: the survey/bid worksheet (view_3505) is intentionally NOT here —
+  // its line-item cards default COLLAPSED while its MDF/IDF groups default
+  // OPEN (see state.js GROUPS_DEFAULT_OPEN), so techs scan locations first
+  // and expand individual devices on demand.
+  var CARDS_DEFAULT_OPEN = { view_3915: 1, view_4056: 1 };
   var _cardsSeeded = Object.create(null);   // sourceViewKey → true once defaulted-open
 
   function renderView(sourceViewKey, records) {
