@@ -1308,6 +1308,10 @@
         if (fieldKey === _CD || fieldKey === _CT) {
           var _camBucket = ns.card && ns.card.CAM_READER_BUCKET;
           var _isCD = (fieldKey === _CD);
+          // Cam/readers already connected to THIS device — keep them offered
+          // (so they stay checked) even though their Connected To is populated.
+          var _selSet = {};
+          for (var si = 0; si < sel.length; si++) _selSet[sel[si]] = true;
           var connCands = [];
           for (var ci = 0; ci < records.length; ci++) {
             var crec = records[ci];
@@ -1316,14 +1320,16 @@
               ? ns.card.bucketIdOf(crec, viewKey) : '';
             if (_isCD) {
               if (cbid !== _camBucket) continue;            // devices → connect cam/readers
-              // Offer EVERY cam/reader (grouped by MDF/IDF), including ones
-              // already connected to another device. On a finalized survey/bid
-              // every camera's Connected To (field_2381) is already populated,
-              // so the old "skip anything spoken for" filter emptied the list
-              // and the picker came up blank. Cameras connected elsewhere stay
-              // pickable so they can be reviewed / re-homed here (the
-              // field_2380↔field_2381 cascade moves them on save); only the
-              // current children (in `sel`) are pre-checked.
+              // Only offer cam/readers that AREN'T already connected to another
+              // device — mirrors the other worksheets. Their Connected To
+              // (field_2381) being populated (and not already ours) means
+              // they're spoken for; skip them.
+              if (!_selSet[crec.id]) {
+                var _ctRaw = crec[_CT + '_raw'];
+                var _ctPop = (Array.isArray(_ctRaw) && _ctRaw.length && _ctRaw[0] && _ctRaw[0].id) ||
+                  (typeof crec[_CT] === 'string' && /[0-9a-f]{24}/i.test(crec[_CT]));
+                if (_ctPop) continue;
+              }
             } else {
               if (cbid === _camBucket) continue;            // cam → connect to non-cam network gear
               var ccat = (ns.card && typeof ns.card.bucketCategoryOf === 'function')
