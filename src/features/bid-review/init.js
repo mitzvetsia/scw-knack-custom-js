@@ -3110,7 +3110,39 @@
     for (var i = 0; i < grid.rows.length; i++) {
       if (grid.rows[i].id === rowId) { row = grid.rows[i]; break; }
     }
-    if (!row) return;
+    // v1 drops rows that are on NO SOW and NO bid (buildState:
+    // `if (!hasBid && !hasSow) continue`) — exactly the bid-review-v2
+    // "Removed — no longer on any SOW or bid" rows that show "+ Add to bid".
+    // The SOW grid still exists (only the row was dropped), so synthesize the
+    // missing row from the prefill attrs v2 stamps on the button, then let the
+    // normal add flow run. Without this the click was a silent no-op.
+    if (!row) {
+      var attr = function (n) { return button.getAttribute(n) || ''; };
+      var pName = attr('data-product-name');
+      var pLabel = attr('data-display-label');
+      if (!pName && !pLabel) return;   // no v2 prefill → genuinely nothing to add
+      var mId = attr('data-mdf-idf-id');
+      row = {
+        id:               rowId,
+        sowItem:          attr('data-sow-item-id'),
+        displayLabel:     pLabel,
+        productName:      pName,
+        proposalBucket:   attr('data-proposal-bucket'),
+        proposalBucketId: attr('data-proposal-bucket-id'),
+        sortOrder:        parseFloat(attr('data-sort-order')) || 0,
+        mdfIdf:           attr('data-mdf-idf'),
+        mdfIdfIds:        mId ? [mId] : [],
+        // SOW-side snapshot for the modal's pre-fill.
+        sowProduct:       pName,
+        sowQty:           parseFloat(attr('data-add-qty')) || '',
+        sowFee:           parseFloat(attr('data-add-fee')) || '',
+        sowLaborDesc:     attr('data-add-desc'),
+        // Unknown for a fully-removed item — leave blank (modal fields default).
+        sowMapConn: '', bidMapConn: '',
+        sowExistCabling: '', sowPlenum: '', sowExterior: '',
+        sowDropLength: '', sowConduit: ''
+      };
+    }
 
     // Derive visibility from proposal bucket (same logic as render.js)
     var isCamReader = row.proposalBucketId === CAM_READER_BUCKET_ID;

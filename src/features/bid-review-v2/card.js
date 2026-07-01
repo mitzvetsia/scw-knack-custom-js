@@ -711,11 +711,37 @@
                 '>+ Reinstate</button>' +
             '</div>';
         } else {
+          // Prefill attrs: v1's handleAddToBid re-finds the row in v1's OWN
+          // grid state to source the modal's SOW snapshot — but v1 DROPS rows
+          // that are on no SOW and no bid (transform.js: `if (!hasBid && !hasSow)
+          // continue`), which is exactly the "Removed — no longer on any SOW or
+          // bid" rows this button appears on. Without the row v1 returned
+          // silently ("+ Add to bid does nothing"). Emit the snapshot v2 already
+          // has so v1 can synthesize the row from these attrs instead.
+          var addDet = (row.detail && row.detail.side === 'SOW') ? row.detail : (row.detail || {});
+          var addQty = (addDet.qty != null) ? addDet.qty
+                     : (row.sowItemData && row.sowItemData.qty != null ? row.sowItemData.qty : '');
+          var addFee = (addDet.fee != null) ? addDet.fee
+                     : (row.sowItemData && row.sowItemData.fee != null ? row.sowItemData.fee : '');
+          var addDesc = ns.transform.stripHtml(
+            (addDet.desc || (row.sowItemData && row.sowItemData.laborDesc) || ''));
           actions =
             '<div class="scw-bid-review-v2__cell-actions">' +
               '<button type="button" class="scw-bid-review__cell-action ' +
                 'scw-bid-review__cell-action--add scw-bid-review-v2__cell-action" ' +
-                crAttrs('cell_add_to_bid', row.id, pkgId, sowId) + '>+ Add to bid</button>' +
+                crAttrs('cell_add_to_bid', row.id, pkgId, sowId) +
+                ' data-sow-item-id="' + escapeHtml(row.sowItem || '') + '"' +
+                ' data-display-label="' + escapeHtml(row.displayLabel || '') + '"' +
+                ' data-product-name="' + escapeHtml((addDet.product) || row.productName || '') + '"' +
+                ' data-add-qty="' + escapeHtml(addQty != null ? addQty : '') + '"' +
+                ' data-add-fee="' + escapeHtml(addFee != null ? addFee : '') + '"' +
+                ' data-add-desc="' + escapeHtml(addDesc) + '"' +
+                ' data-proposal-bucket="' + escapeHtml(row.proposalBucket || '') + '"' +
+                ' data-proposal-bucket-id="' + escapeHtml(row.proposalBucketId || '') + '"' +
+                ' data-sort-order="' + escapeHtml(row.sortOrder != null ? row.sortOrder : '') + '"' +
+                ' data-mdf-idf="' + escapeHtml(row.mdfIdf || '') + '"' +
+                ' data-mdf-idf-id="' + escapeHtml(row.mdfIdfId || '') + '"' +
+                '>+ Add to bid</button>' +
           '</div>';
         }
       }
@@ -1417,9 +1443,15 @@
     // Reuse v1's handlers via SCW.bidReview.dispatchHeaderAction; buttons keep
     // the v1 data-* attrs + .scw-bid-review__btn classes v1's setBusy expects.
     var isSubmitted = /^submitted$/i.test(String(pkg.bidStatus || '').trim());
-    // The no-SOW grid surfaces draft / in-progress bids, so show the bid-column
-    // action buttons there regardless of submitted status.
+    // SOW-adoption actions (Create new SOW / Update SOW to match Bid) stay
+    // gated to submitted bids (or the no-SOW grid) — you don't build a SOW off
+    // an in-progress draft. The no-SOW grid surfaces draft / in-progress bids,
+    // so it shows those there regardless of submitted status.
     var showActions = isSubmitted || isNoSowGrid(sowId);
+    // Change Requests, however, ARE available on DRAFT bids — a reviewer may
+    // want to request changes before the sub formally submits. Decoupled from
+    // showActions so the CR group + bulk button render regardless of status.
+    var allowCr = true;
 
     var sowGroup = '';
     if (showActions) {
@@ -1443,8 +1475,8 @@
     var crCount = (bucket && bucket.items) ? bucket.items.length : 0;
 
     var crGroup = '';
-    if (showActions || crCount) {
-      var bulkBtn = showActions
+    if (allowCr || crCount) {
+      var bulkBtn = allowCr
         ? '<button type="button" class="scw-bid-review__btn scw-bid-review-v2__head-btn ' +
             'scw-bid-review-v2__head-btn--cr-bulk" data-action="cr_bulk_selected" ' +
             'data-pkg-id="' + escapeHtml(pkg.id) + '" data-package-id="' + escapeHtml(pkg.id) + '" ' +
