@@ -748,48 +748,66 @@
         if (card && card.parentNode) card.parentNode.removeChild(card);
       }
 
-      // Path 1 — the photo record's row in the photos source grid, if the
-      // grid is on the page AND the row is on its current pagination page.
-      // Photo ids are 24-hex and unique, so a page-wide lookup is safe.
-      var link = document.querySelector(
-        'tr[id="' + photoId + '"] a.kn-link-delete'
-      );
-      if (link) {
-        pendingPhotoDeletes[photoId] = Date.now();
-        dropCard();
-        if (typeof ns.autoConfirmKnackDelete === 'function') ns.autoConfirmKnackDelete();
-        link.click();
-        refetchSoon();
-        return;
+      // The actual delete — run only after the user confirms (below).
+      function doDelete() {
+        // Path 1 — the photo record's row in the photos source grid, if the
+        // grid is on the page AND the row is on its current pagination page.
+        // Photo ids are 24-hex and unique, so a page-wide lookup is safe.
+        var link = document.querySelector(
+          'tr[id="' + photoId + '"] a.kn-link-delete'
+        );
+        if (link) {
+          pendingPhotoDeletes[photoId] = Date.now();
+          dropCard();
+          if (typeof ns.autoConfirmKnackDelete === 'function') ns.autoConfirmKnackDelete();
+          link.click();
+          refetchSoon();
+          return;
+        }
+
+        // Path 2 — view-scoped REST DELETE through the photos grid. Covers
+        // the common case where the grid is paginated and the photo's row
+        // isn't in the DOM. Works for any delete-enabled view on the
+        // CURRENT scene (knackRecordUrl is pages/<current scene>/views/…).
+        var gridKey = PHOTO_GRID_FALLBACK_VIEWS[viewKey] || '';
+        if (gridKey && window.SCW && typeof SCW.knackAjax === 'function' &&
+            typeof SCW.knackRecordUrl === 'function') {
+          pendingPhotoDeletes[photoId] = Date.now();
+          dropCard();
+          SCW.knackAjax({
+            url:  SCW.knackRecordUrl(gridKey, photoId),
+            type: 'DELETE',
+            success: function () { refetchSoon(); },
+            error: function (xhr) {
+              console.warn('[scw-ws-v2] photo delete: REST DELETE via ' + gridKey +
+                ' failed for ' + photoId, xhr && xhr.status, xhr && xhr.responseText);
+              // Let the card come back — the delete didn't land.
+              delete pendingPhotoDeletes[photoId];
+              refetchSoon();
+            }
+          });
+          return;
+        }
+
+        console.warn('[scw-ws-v2] photo delete: no kn-link-delete row for ' +
+          photoId + ' and no fallback grid configured for ' + viewKey +
+          ' — is the DOC_photos grid (with Delete enabled) on this page?');
       }
 
-      // Path 2 — view-scoped REST DELETE through the photos grid. Covers
-      // the common case where the grid is paginated and the photo's row
-      // isn't in the DOM. Works for any delete-enabled view on the
-      // CURRENT scene (knackRecordUrl is pages/<current scene>/views/…).
-      var gridKey = PHOTO_GRID_FALLBACK_VIEWS[viewKey] || '';
-      if (gridKey && window.SCW && typeof SCW.knackAjax === 'function' &&
-          typeof SCW.knackRecordUrl === 'function') {
-        pendingPhotoDeletes[photoId] = Date.now();
-        dropCard();
-        SCW.knackAjax({
-          url:  SCW.knackRecordUrl(gridKey, photoId),
-          type: 'DELETE',
-          success: function () { refetchSoon(); },
-          error: function (xhr) {
-            console.warn('[scw-ws-v2] photo delete: REST DELETE via ' + gridKey +
-              ' failed for ' + photoId, xhr && xhr.status, xhr && xhr.responseText);
-            // Let the card come back — the delete didn't land.
-            delete pendingPhotoDeletes[photoId];
-            refetchSoon();
-          }
-        });
-        return;
+      // Confirm first — deleting a photo is destructive and can't be undone.
+      // Reuse the shared confirm modal (Cancel | Delete photo); fall back to a
+      // native confirm if it isn't available.
+      if (ns.confirmModal && typeof ns.confirmModal === 'function') {
+        ns.confirmModal({
+          title: 'Delete this photo?',
+          body: 'This permanently removes the photo from this line item and ' +
+                'can’t be undone.',
+          okLabel: 'Delete photo',
+          cancelLabel: 'Cancel'
+        }).then(function (ok) { if (ok) doDelete(); });
+      } else if (window.confirm('Delete this photo? This can’t be undone.')) {
+        doDelete();
       }
-
-      console.warn('[scw-ws-v2] photo delete: no kn-link-delete row for ' +
-        photoId + ' and no fallback grid configured for ' + viewKey +
-        ' — is the DOC_photos grid (with Delete enabled) on this page?');
     }, true);
   }
 
