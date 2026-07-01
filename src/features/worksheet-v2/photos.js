@@ -252,6 +252,16 @@
     return '#' + base + '/' + addSlug + '/' + lineItemId + '/';
   }
 
+  // Line-item-scoped linkField for the identity-aware bulk-upload modal —
+  // mirrors addPhotoHref's scene routing (survey / deploy / SOW). Returns ''
+  // off a recognized scene so the caller falls back to the Knack add page.
+  function bulkLinkFieldV2() {
+    if (surveyBasePath()) return 'surveyLineItemID';
+    var base = buildSowBasePath();
+    if (!base) return '';
+    return (base.indexOf('/deploy/') !== -1) ? 'installLineItemID' : 'sowLineItemID';
+  }
+
   /** Survey-scene base path. Returns '' off the survey scene so the
    *  SOW/sales/deploy callers above fall through to buildSowBasePath. */
   function surveyBasePath() {
@@ -498,9 +508,15 @@
     }
 
     if (addHref) {
+      // data-* let the delegated click handler open the identity-aware bulk
+      // modal (seeded with this line item id + view) instead of navigating to
+      // Knack's add page; the href stays as the graceful fallback.
       html += '<a class="scw-ws-v2-photo-add' +
                 (photos.length ? '' : ' scw-ws-v2-photo-add--solo') +
-                '" href="' + escapeHtml(addHref) + '" title="Add photo" aria-label="Add photo">' +
+                '" href="' + escapeHtml(addHref) + '"' +
+                ' data-scw-line-id="' + escapeHtml(recordId) + '"' +
+                ' data-scw-ws-v2-photo-view="' + escapeHtml(sourceViewKey) + '"' +
+                ' title="Add photo" aria-label="Add photo">' +
                 PIC_SVG +
               '</a>';
     }
@@ -636,6 +652,38 @@
   // delete rides the native kn-link-delete on the photo's own row in
   // whatever DOC_photos grid is on the page — same auto-confirmed
   // two-click-to-one-click pattern as the per-row line-item trash.
+  // Identity-aware bulk upload from the v2 "+ Add photo" pill. Intercept the
+  // add link's click and open the bulk-upload modal seeded with THIS line
+  // item's id + a line-item-scoped linkField, so uploaded photos POST
+  // { recordId: <lineItemId>, linkField: <type> } for Make to connect. Falls
+  // through to the native href (Knack add page) when the modal isn't
+  // applicable — CONFIG off, module absent, unknown scene, or no line id.
+  if (!document.documentElement.hasAttribute('data-scw-ws-v2-photo-add-bound')) {
+    document.documentElement.setAttribute('data-scw-ws-v2-photo-add-bound', '1');
+    document.addEventListener('click', function (e) {
+      var addBtn = e.target && e.target.closest &&
+                   e.target.closest('.scw-ws-v2-photo-add');
+      if (!addBtn) return;
+      if (!(window.SCW && SCW.CONFIG && SCW.CONFIG.PHOTO_ADD_BULK_MODAL)) return;
+      if (!(window.SCW && SCW.bulkUpload && typeof SCW.bulkUpload.open === 'function')) return;
+      var lineId = addBtn.getAttribute('data-scw-line-id');
+      if (!lineId) return;
+      var linkField = bulkLinkFieldV2();
+      if (!linkField) return;   // unknown scene → let the native href navigate
+      e.preventDefault();
+      e.stopPropagation();
+      var viewKey = addBtn.getAttribute('data-scw-ws-v2-photo-view') || '';
+      SCW.bulkUpload.open({
+        linkField:            linkField,
+        refreshRecordInViews: [],
+        // Full refetch of the worksheet's source view on close so newly
+        // connected photos surface in the strip.
+        refreshViews:         viewKey ? [viewKey] : [],
+        reloadOnClose:        false
+      }, lineId);
+    });
+  }
+
   if (!document.documentElement.hasAttribute('data-scw-ws-v2-photo-del-bound')) {
     document.documentElement.setAttribute('data-scw-ws-v2-photo-del-bound', '1');
     document.addEventListener('click', function (e) {
