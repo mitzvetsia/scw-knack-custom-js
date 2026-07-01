@@ -861,22 +861,61 @@
     return td;
   }
 
-  // Append v1's pending-CR summary card (if any) into a cell + flag the
-  // cell so it reads as "has a pending change". Clicking the card EXPANDS the
-  // row (bubbles to the row's expand handler) rather than re-opening the edit
-  // modal — the cell's own Revise button still covers editing the CR. (The
-  // card's × dismiss button stops propagation, so it still dismisses.)
+  // Append v1's pending-CR summary card (if any) into a cell + flag the cell
+  // so it reads as "has a pending change". Clicking the card re-opens the CR
+  // EDITOR (prefilled from the pending item — openChangeModal/openRemove detect
+  // it via findPendingItem). The card had regressed into a row-expand trigger,
+  // but expanding HIDES the data row + card + its × dismiss (init.js: "the data
+  // row is hidden while expanded"), leaving the CR impossible to edit OR delete.
+  // The card gets its OWN click handler that stops propagation before the click
+  // reaches the row-expand document listener; the × dismiss keeps its own
+  // handler (and stops propagation too, so it never triggers the editor).
   function appendPendingCard(td, pendingItem, row, pkg, sowId) {
     if (!pendingItem) return;
     var api = crApi();
     if (!api || !api.buildSummaryCard) return;
     try {
       var card = api.buildSummaryCard(pendingItem, pkg && pkg.id, pkg && pkg.label);
-      if (card) {
-        card.classList.add('scw-bid-review-v2__cell-cr-card');
-        td.classList.add('scw-bid-review-v2__cell--has-cr');
-        td.appendChild(card);
+      if (!card) return;
+      card.classList.add('scw-bid-review-v2__cell-cr-card');
+      td.classList.add('scw-bid-review-v2__cell--has-cr');
+
+      // Re-dispatch the pending item's own action to re-open its editor.
+      var reAction = pendingItem.removeFromBid ? 'cell_remove_from_bid'
+                   : pendingItem.reinstate     ? 'cell_reinstate'
+                   : pendingItem.addToBid       ? 'cell_add_to_bid'
+                   : 'cell_request_change';
+      card.setAttribute('data-action', reAction);
+      card.setAttribute('data-row-id', pendingItem.rowId || (row && row.id) || '');
+      card.setAttribute('data-package-id', (pkg && pkg.id) || '');
+      card.setAttribute('data-sow-id', sowId || '');
+      // An add-to-bid item may sit on a "Removed" row that v1's grid drops
+      // (`!hasBid && !hasSow`) — so handleAddToBid can't re-find it. Mirror the
+      // "+ Add to bid" button's prefill attrs so it can synthesize the row and
+      // still re-open the editor.
+      if (pendingItem.addToBid) {
+        var req = pendingItem.requested || {};
+        card.setAttribute('data-display-label', pendingItem.displayLabel || (row && row.displayLabel) || '');
+        card.setAttribute('data-product-name', req.productName || (row && row.productName) || '');
+        card.setAttribute('data-add-qty', req.qty != null ? req.qty : '');
+        card.setAttribute('data-add-fee', req.rate != null ? req.rate : '');
+        card.setAttribute('data-add-desc', req.laborDesc || '');
+        card.setAttribute('data-proposal-bucket', (row && row.proposalBucket) || '');
+        card.setAttribute('data-proposal-bucket-id', (row && row.proposalBucketId) || '');
+        card.setAttribute('data-sort-order', (row && row.sortOrder != null) ? row.sortOrder : '');
+        card.setAttribute('data-mdf-idf', (row && row.mdfIdf) || '');
+        card.setAttribute('data-mdf-idf-id', (row && row.mdfIdfId) || '');
       }
+      card.addEventListener('click', function (e) {
+        // The × dismiss button handles itself (and stops propagation).
+        if (e.target && e.target.closest && e.target.closest('.scw-bid-cr-card__dismiss')) return;
+        e.preventDefault();
+        e.stopPropagation();   // don't let the row-expand listener also fire
+        var v1 = window.SCW.bidReview;
+        if (v1 && typeof v1.dispatchCRAction === 'function') v1.dispatchCRAction(card);
+      });
+
+      td.appendChild(card);
     } catch (e) { /* ignore */ }
   }
 
