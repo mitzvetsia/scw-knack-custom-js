@@ -524,6 +524,19 @@
       M + ' .scw-bu-info p { margin:0 0 6px 0; }',
       M + ' .scw-bu-info p:last-child { margin-bottom:0; }',
       M + ' .scw-bu-info strong { color:#0c4a6e; }',
+      // Line-item scope callout — amber so it reads as a scope notice distinct
+      // from the blue info box, making "this line item only" unmissable.
+      M + ' .scw-bu-context {',
+      '  margin:0 0 10px; padding:10px 14px; border-radius:8px;',
+      '  background:#fffbeb; border:1px solid #fcd34d; color:#78350f;',
+      '}',
+      M + ' .scw-bu-context-title { font-weight:700; font-size:13.5px; }',
+      M + ' .scw-bu-context-target {',
+      '  margin-top:3px; font-weight:600; font-size:13px; color:#92400e;',
+      '  word-break:break-word;',
+      '}',
+      M + ' .scw-bu-context-note { margin-top:4px; font-size:12px; line-height:1.45; }',
+      M + ' .scw-bu-context-note strong { color:#78350f; }',
       M + ' .scw-bu-list { margin-top:10px; }',
       M + ' .scw-bu-row {',
       '  display:flex; align-items:center; gap:10px;',
@@ -576,16 +589,52 @@
       refreshRecordIds: {}    // Set of record ids — harvested from response.refreshRecords
     };
 
+    // Line-item scope — opened from a photo strip's "Add photo" button. The
+    // upload targets ONE line item (not the parent SOW), so the header +
+    // messaging change and the parent-SOW auto-match blurb is dropped (it only
+    // applies when photos attach to the whole SOW and match device labels).
+    var LINE_ITEM_KINDS = {
+      surveyLineItemID:  'survey line item',
+      sowLineItemID:     'SOW line item',
+      installLineItemID: 'install line item'
+    };
+    var isLineItem  = !!(viewCfg && viewCfg.lineItemUpload);
+    var kindLabel   = (viewCfg && LINE_ITEM_KINDS[viewCfg.linkField]) || 'line item';
+    var targetLabel = (viewCfg && viewCfg.targetLabel) || '';
+
+    var titleText = isLineItem ? 'Add Photos to This ' +
+      kindLabel.replace(/\b\w/, function (c) { return c.toUpperCase(); }) : 'Bulk Upload Files';
+
+    var contextHtml = isLineItem
+      ? '<div class="scw-bu-context">' +
+          '<div class="scw-bu-context-title">Uploading to this ' + escapeHtml(kindLabel) + '</div>' +
+          (targetLabel
+            ? '<div class="scw-bu-context-target">' + escapeHtml(targetLabel) + '</div>' : '') +
+          '<div class="scw-bu-context-note">These photos attach to <strong>this line item only</strong>' +
+            ' — not the whole SOW.</div>' +
+        '</div>'
+      : '';
+
+    var infoHtml = isLineItem
+      ? '<div class="scw-bu-info"><p>Photos you add here connect directly to this ' +
+          escapeHtml(kindLabel) + '.</p></div>'
+      : '<div class="scw-bu-info">' +
+          '<p><strong>Optional Auto-Match:</strong> Name the file to match a camera or reader label (ex: E-001 or RA-E-02) and the photo will automatically connect to that device during upload.</p>' +
+          '<p>Matches are flexible (E1, e-1, etc. will still match E-001). If no match is found, the photo will still upload and attach to the SOW.</p>' +
+          '<p>Only use one device label per file name.</p>' +
+        '</div>';
+
     var backdrop = document.createElement('div');
     backdrop.id = MODAL_ID + '-backdrop';
     backdrop.innerHTML =
       '<div id="' + MODAL_ID + '" role="dialog" aria-modal="true">' +
         '<div id="' + MODAL_ID + '-header">' +
-          '<div class="title">Bulk Upload Files</div>' +
+          '<div class="title">' + escapeHtml(titleText) + '</div>' +
           '<button class="close" title="Close">×</button>' +
         '</div>' +
         '<div id="' + MODAL_ID + '-body">' +
           '<div class="scw-bu-banner-slot"></div>' +
+          contextHtml +
           '<div class="scw-bu-drop" tabindex="0">' +
             '<div><strong>Drop files here</strong> or click to choose</div>' +
             '<span class="scw-bu-drop-hint">Any type · max ' +
@@ -593,11 +642,7 @@
               ' per file · larger images are resized automatically</span>' +
             '<input type="file" multiple style="display:none">' +
           '</div>' +
-          '<div class="scw-bu-info">' +
-            '<p><strong>Optional Auto-Match:</strong> Name the file to match a camera or reader label (ex: E-001 or RA-E-02) and the photo will automatically connect to that device during upload.</p>' +
-            '<p>Matches are flexible (E1, e-1, etc. will still match E-001). If no match is found, the photo will still upload and attach to the SOW.</p>' +
-            '<p>Only use one device label per file name.</p>' +
-          '</div>' +
+          infoHtml +
           '<div class="scw-bu-list"></div>' +
         '</div>' +
         '<div id="' + MODAL_ID + '-footer">' +

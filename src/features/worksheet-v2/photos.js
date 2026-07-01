@@ -673,8 +673,21 @@
       e.preventDefault();
       e.stopPropagation();
       var viewKey = addBtn.getAttribute('data-scw-ws-v2-photo-view') || '';
+      // Best-effort label from the card so the modal can name the target line
+      // item; blank (e.g. assumptions rows) → modal shows the generic notice.
+      var card = addBtn.closest && addBtn.closest('.scw-ws-v2-card');
+      var lbl = '';
+      if (card) {
+        var lc = card.querySelector('.scw-ws-v2-cell--label');
+        var pc = card.querySelector('.scw-ws-v2-cell--product');
+        lbl = (lc && lc.textContent.trim()) || (pc && pc.textContent.trim()) || '';
+      }
       SCW.bulkUpload.open({
         linkField:            linkField,
+        // Scope flag → modal shows a "this line item only" callout and drops
+        // the parent-SOW auto-match copy.
+        lineItemUpload:       true,
+        targetLabel:          lbl,
         refreshRecordInViews: [],
         // Full refetch of the worksheet's source view on close so newly
         // connected photos surface in the strip.

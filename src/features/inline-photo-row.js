@@ -90,6 +90,24 @@
     return '';   // mdf-idf (and anything else) — not wired to the bulk modal
   }
 
+  // Best-effort human label for a line item (its Knack display identifier),
+  // used purely to reassure the user which item they're uploading to. Returns
+  // '' when unknown — the modal then shows the generic "this line item" notice.
+  function lineItemLabelFor(lineItemId, viewId) {
+    try {
+      var v = window.Knack && Knack.views && Knack.views[viewId];
+      var models = (v && v.model && v.model.data && v.model.data.models) || [];
+      for (var i = 0; i < models.length; i++) {
+        if (models[i] && models[i].id === lineItemId) {
+          var a = models[i].attributes || {};
+          var id = a.identifier || a.name || '';
+          return String(id).replace(/<[^>]*>/g, '').trim();
+        }
+      }
+    } catch (e) { /* ignore */ }
+    return '';
+  }
+
   // Open the bulk-photos modal seeded with THIS line item's identity so every
   // uploaded photo POSTs { recordId: <lineItemId>, linkField: <type> } and
   // Make connects it to the correct line item. Returns true when it opened
@@ -102,6 +120,11 @@
     if (!linkField) return false;
     SCW.bulkUpload.open({
       linkField:            linkField,
+      // Scope flag → modal shows a "this line item only" callout and drops the
+      // parent-SOW auto-match copy (which doesn't apply to a per-line-item
+      // upload). targetLabel: best-effort row label, else the generic notice.
+      lineItemUpload:       true,
+      targetLabel:          lineItemLabelFor(lineItemId, viewId),
       // Refresh this line item in its own photo-strip view on modal close so
       // the newly-connected photos surface without a manual reload.
       refreshRecordInViews: [viewId],
