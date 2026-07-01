@@ -174,6 +174,51 @@
     return null;
   }
 
+  // Resolve the { grid, row, cell, pkgId } a CR button targets. The button's
+  // data-row-id is matched first (within the button's SOW grid, then any
+  // grid), but a bid item whose "source of truth" SOW line item lives on a
+  // DIFFERENT SOW than the panel it's rendered in (an off-SOW row) can carry a
+  // row identity that diverges between v2's render and v1's _state — so we ALSO
+  // match by the specific bid record id (data-bid-record-id), which uniquely
+  // identifies the cell (or a stacked duplicate). Without this, Revise/Remove
+  // on off-SOW rows silently no-op because the row lookup misses.
+  function resolveBidTarget(rowId, pkgId, sowId, bidRecordId) {
+    if (!_state || !_state.sowGrids) return null;
+    var grids = _state.sowGrids;
+    var primary = findSowGrid(sowId);
+    var order = [];
+    if (primary) order.push(primary);
+    for (var g = 0; g < grids.length; g++) if (grids[g] !== primary) order.push(grids[g]);
+
+    for (var oi = 0; oi < order.length; oi++) {
+      var grid = order[oi];
+      var rows = grid.rows || [];
+      for (var i = 0; i < rows.length; i++) {
+        var row = rows[i];
+        if (rowId && row.id === rowId) {
+          return { grid: grid, row: row, cell: (pkgId ? row.cellsByPackage[pkgId] : null), pkgId: pkgId };
+        }
+        if (bidRecordId) {
+          var cbp = row.cellsByPackage || {};
+          for (var pk in cbp) {
+            if (!Object.prototype.hasOwnProperty.call(cbp, pk)) continue;
+            var c = cbp[pk];
+            if (!c) continue;
+            if (c.id === bidRecordId) return { grid: grid, row: row, cell: c, pkgId: pk };
+            if (c.dupes) {
+              for (var d = 0; d < c.dupes.length; d++) {
+                if (c.dupes[d] && c.dupes[d].id === bidRecordId) {
+                  return { grid: grid, row: row, cell: c, pkgId: pk };
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    return null;
+  }
+
   // Project record id — scene_1155 is reached via a nested nav path
   // (#team-calendar/project-dashboard/<projectId>/review-bids/<projectId>).
   // Pull the id that follows project-dashboard, falling back to the first
@@ -2479,18 +2524,28 @@
     var rowId = button.getAttribute('data-row-id');
     var pkgId = button.getAttribute('data-package-id');
     var sowId = button.getAttribute('data-sow-id');
+    var bidRecordId = button.getAttribute('data-bid-record-id') || '';
 
-    var grid = findSowGrid(sowId);
+    // Resolve grid/row/cell robustly (matches by bid record id too, so
+    // off-SOW rows whose identity diverges from v1's _state still resolve).
+    var t = resolveBidTarget(rowId, pkgId, sowId, bidRecordId);
+    // Fall back to the button's SOW grid so the noBid branch below (which
+    // needs a grid even with no matched row/cell) still has one.
+    var grid = (t && t.grid) || findSowGrid(sowId);
     if (!grid) return;
-
-    // Find the row
-    var row = null;
-    for (var i = 0; i < grid.rows.length; i++) {
-      if (grid.rows[i].id === rowId) { row = grid.rows[i]; break; }
+    var row = t && t.row;
+    // No matched row at all → nothing to revise (noBid add-editing is keyed
+    // off the row, so without one there's nothing to open).
+    if (!row) {
+      // Still allow the noBid add-edit path when a bare row exists in the grid.
+      for (var i = 0; i < grid.rows.length; i++) {
+        if (grid.rows[i].id === rowId) { row = grid.rows[i]; break; }
+      }
+      if (!row) return;
     }
-    if (!row) return;
+    if (t && t.pkgId) pkgId = t.pkgId;
 
-    var cell = row.cellsByPackage[pkgId];
+    var cell = (t && t.cell) || row.cellsByPackage[pkgId];
     if (!cell) {
       // noBid or surveyNoBid row — re-open add modal for editing the pending add-to-bid item
       if ((row.noBid || row.surveyNoBid) && ns.changeRequests && ns.changeRequests.openAddItem) {
@@ -2691,17 +2746,14 @@
     var rowId = button.getAttribute('data-row-id');
     var pkgId = button.getAttribute('data-package-id');
     var sowId = button.getAttribute('data-sow-id');
+    var bidRecordId = button.getAttribute('data-bid-record-id') || '';
 
-    var grid = findSowGrid(sowId);
-    if (!grid) return;
-
-    var row = null;
-    for (var i = 0; i < grid.rows.length; i++) {
-      if (grid.rows[i].id === rowId) { row = grid.rows[i]; break; }
-    }
-    if (!row) return;
-
-    var cell = row.cellsByPackage[pkgId];
+    var t = resolveBidTarget(rowId, pkgId, sowId, bidRecordId);
+    if (!t || !t.row) return;
+    var grid = t.grid;
+    var row  = t.row;
+    var cell = t.cell;
+    pkgId = t.pkgId || pkgId;
     if (!cell) return;
 
     // v2 stacked-duplicate override: when two bid line items on one bid
@@ -2709,20 +2761,23 @@
     // cellsByPackage[pkgId] is only the FIRST. The v2 Remove button on a
     // stacked duplicate carries data-bid-record-id for the SPECIFIC bid
     // record the user clicked — act on that record, not the kept one.
-    var overrideBid = button.getAttribute('data-bid-record-id');
-    if (overrideBid && overrideBid !== cell.id) {
+    // (The PRIMARY Remove now also carries data-bid-record-id === cell.id;
+    // the mismatch check keeps this a no-op there.)
+    if (bidRecordId && bidRecordId !== cell.id) {
       cell = {
-        id:          overrideBid,
+        id:          bidRecordId,
         productName: button.getAttribute('data-bid-product') || cell.productName
       };
     }
 
     ns.changeRequests.openRemove({
+      // Key the pending item by the button's data-row-id so v2's pending-card
+      // lookup (findPendingItem by its own row.id) still matches.
       rowId:        rowId,
       pkgId:        pkgId,
       pkgName:      findPackageName(grid, pkgId),
       surveyId:     findPackageSurveyId(grid, pkgId),
-      sowId:        sowId,
+      sowId:        grid.sowId,
       sowName:      grid.sowName,
       sowItemId:    row.sowItem || '',
       displayLabel: row.displayLabel,

@@ -529,12 +529,19 @@
     }
     return null;
   }
-  // Shared data-* attrs string for a cell CR button.
-  function crAttrs(action, rowId, pkgId, sowId) {
+  // Shared data-* attrs string for a cell CR button. `bidRecordId` (the
+  // specific view_3680 record behind THIS cell) lets v1's CR handlers resolve
+  // the target by bid record even when the row identity diverges between v2's
+  // render and v1's _state — the case for a bid item whose "source of truth"
+  // SOW line item lives on a DIFFERENT SOW than the panel it's shown in
+  // (off-SOW rows), where matching by data-row-id alone silently misses and
+  // the Revise/Remove buttons no-op.
+  function crAttrs(action, rowId, pkgId, sowId, bidRecordId) {
     return 'data-action="' + escapeHtml(action) + '" ' +
       'data-row-id="' + escapeHtml(rowId || '') + '" ' +
       'data-package-id="' + escapeHtml(pkgId || '') + '" ' +
-      'data-sow-id="' + escapeHtml(sowId || '') + '"';
+      'data-sow-id="' + escapeHtml(sowId || '') + '"' +
+      (bidRecordId ? ' data-bid-record-id="' + escapeHtml(bidRecordId) + '"' : '');
   }
   // Revise + Remove stack for a populated bid cell. CR buttons require
   // sub-bid to be wanted on EITHER side: the bid record (field_2478 →
@@ -542,7 +549,7 @@
   // row.requireSubBidSow). Suppress ONLY when both are explicitly No — a
   // lone "No" on the bid record no longer hides the buttons if the SOW
   // still wants the item priced.
-  function cellActionStack(row, pkgId, sowId, diffs) {
+  function cellActionStack(row, pkgId, sowId, diffs, bidRecordId) {
     var isNoFlag = function (v) {
       if (v === false) return true;
       if (v == null) return false;
@@ -572,22 +579,22 @@
             '<span class="scw-bid-review-v2__overflow-dots">⋮</span> Revise</button>' +
           '<div class="scw-bid-review-v2__overflow-menu">' +
             '<button type="button" class="scw-bid-review-v2__overflow-item scw-bid-review-v2__cell-action" ' +
-              crAttrs('cell_request_change', row.id, pkgId, sowId) + '>Edit bid values</button>' +
+              crAttrs('cell_request_change', row.id, pkgId, sowId, bidRecordId) + '>Edit bid values</button>' +
             '<button type="button" class="scw-bid-review-v2__overflow-item scw-bid-review-v2__cell-action" ' +
-              crAttrs('cell_request_change_from_sow', row.id, pkgId, sowId) + '>Match SOW values</button>' +
+              crAttrs('cell_request_change_from_sow', row.id, pkgId, sowId, bidRecordId) + '>Match SOW values</button>' +
           '</div>' +
         '</div>';
     } else {
       revise =
         '<button type="button" class="scw-bid-review__cell-action ' +
           'scw-bid-review__cell-action--revise scw-bid-review-v2__cell-action" ' +
-          crAttrs('cell_request_change', row.id, pkgId, sowId) + '>Revise</button>';
+          crAttrs('cell_request_change', row.id, pkgId, sowId, bidRecordId) + '>Revise</button>';
     }
     return '<div class="scw-bid-review-v2__cell-actions">' +
       revise +
       '<button type="button" class="scw-bid-review__cell-action ' +
         'scw-bid-review__cell-action--remove scw-bid-review-v2__cell-action" ' +
-        crAttrs('cell_remove_from_bid', row.id, pkgId, sowId) + '>Remove</button>' +
+        crAttrs('cell_remove_from_bid', row.id, pkgId, sowId, bidRecordId) + '>Remove</button>' +
     '</div>';
   }
 
@@ -760,7 +767,7 @@
         ? '<div class="scw-bid-review-v2__cell-desc" title="' +
             escapeHtml(descTxt) + '">' + escapeHtml(descTxt) + '</div>'
         : '<span class="scw-bid-review-v2__cell-empty-mark">—</span>';
-      td.innerHTML += cellActionStack(row, pkgId, sowId);
+      td.innerHTML += cellActionStack(row, pkgId, sowId, null, cell && cell.id);
       appendPendingCard(td, pendingItem, row, pkg, sowId);
       return td;
     }
@@ -841,7 +848,7 @@
       // Survey note (field_2412) on the bid record — v1 parity: populated
       // cells render the sub's note too, not just the no-bid cutouts.
       surveyNoteHtml(cell.notes) +
-      cellActionStack(row, pkgId, sowId, diffs);
+      cellActionStack(row, pkgId, sowId, diffs, cell.id);
 
     // When 2+ bid line items on THIS bid map to the same SOW item, show
     // each stacked (they may differ in product / price / desc). The SOW
