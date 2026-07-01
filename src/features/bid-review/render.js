@@ -2686,6 +2686,15 @@
     return buildSowStatusBar(sowGridLike);
   };
 
+  // Public so v2 can surface the editable SOW Name (field_2126, the friendly
+  // name) beside the SOW # in its reconcile-grid expand/collapse bar — same
+  // source as v1's own SOW header (the next-step view row). Returns '' when no
+  // friendly name is set (or it just duplicates the SOW #), so the caller can
+  // skip rendering it.
+  ns.sowFriendlyName = function sowFriendlyName(sowId) {
+    return readRowFieldText(findNextStepRow(sowId), CFG.sowNameField) || '';
+  };
+
   // Public so v2 can drop the cached DOC_files index before re-rendering its
   // header (v2 calls buildSowStatusBar directly, never v1's renderMatrix,
   // which is where the cache is normally reset). Without this, a link/unlink

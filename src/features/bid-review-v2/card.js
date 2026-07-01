@@ -1596,9 +1596,20 @@
     // Aggregate issue chips across every SOW item in this SOW.
     var sowWarn = (ns.warnings && typeof ns.warnings.summaryChipsHtml === 'function')
       ? ns.warnings.summaryChipsHtml(collectSowItemIds(grid)) : '';
+    // Friendly SOW name (field_2126) beside the SOW # — same source as v1's
+    // header. Skipped when unset or identical to the SOW # so it never just
+    // echoes the number.
+    var v1r = window.SCW && window.SCW.bidReview;
+    var friendly = (v1r && typeof v1r.sowFriendlyName === 'function')
+      ? v1r.sowFriendlyName(grid.sowId) : '';
+    var friendlyHtml = (friendly && friendly !== grid.sowName)
+      ? '<span class="scw-bid-review-v2__sow-friendly" title="' + escapeHtml(friendly) + '">' +
+          escapeHtml(friendly) + '</span>'
+      : '';
     header.innerHTML =
       SOW_CARET +
       '<span class="scw-bid-review-v2__sow-name">' + escapeHtml(grid.sowName) + '</span>' +
+      friendlyHtml +
       sowWarn +
       '<span class="scw-bid-review-v2__sow-meta">' +
         grid.rows.length + ' line item' + (grid.rows.length === 1 ? '' : 's') +

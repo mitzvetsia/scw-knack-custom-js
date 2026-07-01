@@ -104,6 +104,16 @@
     '  letter-spacing: 0.06em; text-transform: uppercase;',
     '  color: rgba(255,255,255,0.6); margin-right: 5px;',
     '}',
+    /* Friendly SOW name (field_2126) beside the SOW # — lighter than the # so
+       the number still reads as primary. Truncates on narrow headers. */
+    '.scw-bid-review-v2__sow-friendly {',
+    '  flex: 0 1 auto; min-width: 0; font-size: 13px; font-weight: 600;',
+    '  color: rgba(255,255,255,0.82); white-space: nowrap; overflow: hidden;',
+    '  text-overflow: ellipsis;',
+    '}',
+    '.scw-bid-review-v2__sow-friendly::before {',
+    '  content: "\\2014"; margin-right: 6px; color: rgba(255,255,255,0.45);',
+    '}',
     '.scw-bid-review-v2__sow-meta {',
     '  margin-left: auto !important;',
     '  font-size: 11px; font-weight: 500;',
