@@ -287,17 +287,31 @@
   // scene's photos grid is unconfirmed — native-link path still works
   // there when the row is present.
   //
-  // view_3505 (subcontractor SURVEY worksheet): survey line-item photos now
-  // get a delete button. The handler first tries the native kn-link-delete on
-  // any DOC_photos grid on the survey scene (Path 1); if none is present it
-  // falls back to a view-scoped REST DELETE through the grid named here (Path
-  // 2). Set SURVEY_PHOTO_GRID to a delete-enabled DOC_photos grid view on the
-  // survey scene (mirror view_3584 on build-SOW). Left '' until confirmed — the
-  // native-link path still deletes when a DOC_photos grid is on the page.
-  var SURVEY_PHOTO_GRID = '';
+  // view_3505 (subcontractor SURVEY worksheet): survey line-item photos get a
+  // delete button. The handler first tries the native kn-link-delete on the
+  // DOC_photos grid on the survey scene (Path 1); if the photo's row isn't
+  // rendered (paginated) it falls back to a view-scoped REST DELETE through the
+  // grid named here (Path 2). view_4070 is the delete-enabled DOC_photos grid
+  // added to the survey scene for exactly this — it's hidden from view below
+  // (it exists only to supply the delete link + REST endpoint).
+  var SURVEY_PHOTO_GRID = 'view_4070';
   var PHOTO_GRID_FALLBACK_VIEWS = {
     view_3962: 'view_3584', view_3921: '', view_3505: SURVEY_PHOTO_GRID
   };
+
+  // Hide the survey-scene DOC_photos helper grid — it's a delete-plumbing view
+  // only (its rows + delete links stay in the DOM so Path 1 can click them, and
+  // Path 2's REST DELETE doesn't need it visible). display:none keeps it out of
+  // the user's way without removing it from the page.
+  (function hideSurveyPhotoGrid() {
+    if (!SURVEY_PHOTO_GRID) return;
+    var ID = 'scw-ws-v2-hide-survey-photo-grid';
+    if (document.getElementById(ID)) return;
+    var s = document.createElement('style');
+    s.id = ID;
+    s.textContent = '#' + SURVEY_PHOTO_GRID + ' { display: none !important; }';
+    (document.head || document.documentElement).appendChild(s);
+  })();
 
   // Photo-delete settling registry. Between the optimistic card removal and
   // the authoritative refetch, Knack re-renders rebuild the strip from the
