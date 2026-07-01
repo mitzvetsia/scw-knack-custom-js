@@ -30,6 +30,18 @@
   var ns = window.SCW.worksheetV2;
   if (!ns) return;
 
+  // Connection fields whose optimistic write must NOT be protected by the
+  // pending-writes overlay after a save. These are the mirror-connection-sync
+  // cascade fields (field_1957↔field_2197, field_2380↔field_2381, accessory
+  // field_2464 / field_1958 / field_2207): their reconciliation diffs against
+  // the SERVER truth on refetch, so re-applying a client overlay would mask a
+  // legitimate cascade correction. Every OTHER connection (bid field_2415,
+  // MDF/IDF field_2375, product, SOW …) is safe to overlay.
+  var CASCADE_OVERLAY_SKIP = {
+    field_1957: 1, field_2197: 1, field_2380: 1, field_2381: 1,
+    field_1958: 1, field_2207: 1, field_2464: 1
+  };
+
   function escapeHtml(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
       return ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[c];
@@ -788,11 +800,36 @@
                 // sync's cascades read entry.id off each _raw element. An
                 // array of bare strings made them see "no children" and clear
                 // the reciprocal (Connected To) instead of re-pointing it.
+                // Candidate id → display label, so the overlay _raw carries a
+                // readable identifier (not a bare hex id) if it has to render
+                // before the refetch re-projects the connection.
+                var _candName = Object.create(null);
+                if (Array.isArray(opts.candidates)) {
+                  for (var _ci = 0; _ci < opts.candidates.length; _ci++) {
+                    var _c = opts.candidates[_ci];
+                    if (_c && _c.id) _candName[_c.id] = _c.name;
+                  }
+                }
                 var rawObjs = (body[opts.fieldKey] || []).map(function (v) {
-                  return (v && typeof v === 'object') ? v : { id: v };
+                  var id = (v && typeof v === 'object') ? v.id : v;
+                  var o  = (v && typeof v === 'object') ? v : { id: id };
+                  if (o.identifier == null && _candName[id] != null) o.identifier = _candName[id];
+                  return o;
                 });
                 SCW.syncKnackModel(putKey, opts.recordId, resp,
                   opts.fieldKey, rawObjs);
+                // Protect the just-saved selection from the follow-up refetch
+                // (onSaved → refetchAndNotify) racing Knack's connection
+                // projection: register it as a pending write so
+                // applyPendingOverlay re-applies it after the fetch reset —
+                // otherwise the card reverts to blank until a LATER fetch
+                // finally reads the committed value (reported: a set survey Bid
+                // showing '—' on the card while the data was actually saved).
+                // Cascade fields are excluded (they must read server truth).
+                if (!CASCADE_OVERLAY_SKIP[opts.fieldKey] &&
+                    ns.data && typeof ns.data.registerPendingWrite === 'function') {
+                  ns.data.registerPendingWrite(putKey, opts.recordId, opts.fieldKey, rawObjs);
+                }
               }
               var view = Knack.views[putKey];
               if (view && view.model && view.model.data) {
