@@ -1029,6 +1029,17 @@
     '  text-overflow: ellipsis !important;',
     '  text-align: center !important;',
     '}',
+    /* SOW/Bid value chip — colored per SOW/Bid by sow-filter.js
+       applyRowColors (bg/border-color/color set inline). Base rule gives
+       it the pill shape so those inline colors read as a chip. */
+    '.scw-ws-v2-cell--sow .scw-ws-v2-sow-value[data-scw-sow-chip] {',
+    '  border: 1px solid transparent !important;',
+    '  border-radius: 999px !important;',
+    '  padding: 0 6px !important;',
+    '  margin: 1px auto !important;',
+    '  font-weight: 700 !important;',
+    '  max-width: 100% !important;',
+    '}',
     '.scw-ws-v2-cell--stack {',
     '  display: flex !important;',
     '  flex-direction: column !important;',

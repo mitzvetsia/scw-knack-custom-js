@@ -276,57 +276,56 @@
     }
   }
 
-  // ── Row color coding ────────────────────────────────────────────────
+  // ── SOW/Bid chip color coding ───────────────────────────────────────
   // Assign each SOW/Bid a stable color (by its sorted position in the
-  // pill list) and paint every line-item card with the color(s) of the
-  // SOW(s)/Bid(s) it's connected to: a left-edge bar (one segment per
-  // SOW/Bid, so a row on several shows all of them) plus a faint wash.
+  // pill list) and color-code ONLY the SOW/Bid value chip(s) shown on each
+  // line item — not the whole row. This keeps the color association
+  // (chip hue ↔ pill swatch) without the overwhelming full-row wash. A
+  // line item on several SOWs/Bids shows one colored chip per SOW/Bid.
   // Re-run after every render (cards are rebuilt) via render.js.
   function applyRowColors(viewKey) {
     if (!window.SCW || !SCW.sowColor) return;
     var container = document.getElementById('scw-ws-v2-' + viewKey);
     if (!container) return;
     var list = collectSowList(viewKey);
-    var spec = filterSpec(viewKey);
-    var SOWK = spec.fieldKey + '_raw';
     var cards = container.querySelectorAll('.scw-ws-v2-card[data-scw-ws-v2-record]');
 
-    function clear(card) {
+    // Clear any legacy full-row wash/bar left over from the previous
+    // (whole-row) coloring scheme or a stale cached DOM.
+    function clearCard(card) {
       card.style.removeProperty('background-color');
       card.style.removeProperty('--scw-sow-bar');
       card.removeAttribute('data-scw-sow-colored');
     }
-    if (!list.length) {
-      for (var z = 0; z < cards.length; z++) clear(cards[z]);
-      return;
+    function clearChip(el) {
+      el.style.removeProperty('background');
+      el.style.removeProperty('border-color');
+      el.style.removeProperty('color');
+      el.removeAttribute('data-scw-sow-chip');
     }
 
-    var colorMap = SCW.sowColor.buildMap(list.map(function (s) { return s.id; }));
-    var records = (ns.data && typeof ns.data.readRecords === 'function')
-      ? ns.data.readRecords(viewKey) : [];
-    var byId = Object.create(null);
-    for (var r = 0; r < records.length; r++) {
-      if (records[r] && records[r].id) byId[records[r].id] = records[r];
-    }
+    // Map each SOW/Bid *label* → color index. The value chips carry the
+    // label text (SW-1001 / Bid identifier), so we match on that — robust
+    // across the SOW cell (comma-split string) and the survey Bid cell
+    // (per-line _raw), which order their values differently.
+    var labelIdx = Object.create(null);
+    for (var li = 0; li < list.length; li++) labelIdx[list[li].label] = li;
 
     for (var c = 0; c < cards.length; c++) {
       var card = cards[c];
-      var rec = byId[card.getAttribute('data-scw-ws-v2-record')];
-      var raw = rec && rec[SOWK];
-      var idxs = [];
-      if (Array.isArray(raw)) {
-        for (var j = 0; j < raw.length; j++) {
-          var id = raw[j] && raw[j].id;
-          if (id != null && colorMap[id] != null) idxs.push(colorMap[id]);
-        }
+      clearCard(card);
+      var vals = card.querySelectorAll('.scw-ws-v2-cell--sow .scw-ws-v2-sow-value');
+      for (var vi = 0; vi < vals.length; vi++) {
+        var el = vals[vi];
+        var label = (el.textContent || '').trim();
+        var idx = labelIdx[label];
+        if (idx == null) { clearChip(el); continue; }
+        var st = SCW.sowColor.chipStyle(idx);
+        el.style.setProperty('background', st.bg, 'important');
+        el.style.setProperty('border-color', st.border, 'important');
+        el.style.setProperty('color', st.text, 'important');
+        el.setAttribute('data-scw-sow-chip', '1');
       }
-      idxs = SCW.sowColor.normIndices(idxs);
-      if (!idxs.length) { clear(card); continue; }
-      card.style.setProperty('--scw-sow-bar', SCW.sowColor.barFor(idxs));
-      // Inline !important beats the card's `background: #fff !important`
-      // zebra/base rule, so the tint actually shows.
-      card.style.setProperty('background-color', SCW.sowColor.tintFor(idxs, 0.13), 'important');
-      card.setAttribute('data-scw-sow-colored', idxs.length > 1 ? 'multi' : '1');
     }
   }
 

@@ -1329,11 +1329,30 @@
               }
             }
           }
+          var _lblF  = SF.displayLabel || 'field_2365';
+          var _prodF = SF.productName  || 'field_2379';
+          var _mdfF  = SF.mdfIdf       || 'field_2375';
+          // Worksheet-style label ("E-005 · NVR 16ch") for an owning device,
+          // used in the "Connected to …" lock note. Falls back to the raw
+          // connection identifier, then the id.
+          var _ownerLabel = function (ownerId, ident) {
+            for (var oi = 0; oi < records.length; oi++) {
+              var orec = records[oi];
+              if (!orec || orec.id !== ownerId) continue;
+              var l = (orec[_lblF]  || '').toString().replace(/<[^>]*>/g, '').trim();
+              var p = (orec[_prodF] || '').toString().replace(/<[^>]*>/g, '').trim();
+              if (l && p) return l + ' · ' + p;
+              return l || p || ownerId;
+            }
+            var id2 = (ident != null) ? String(ident).replace(/<[^>]*>/g, '').trim() : '';
+            return id2 || ownerId;
+          };
           // Cam/readers already connected to THIS device — keep them offered
           // (so they stay checked) even though their Connected To is populated.
           var _selSet = {};
           for (var si = 0; si < sel.length; si++) _selSet[sel[si]] = true;
           var connCands = [];
+          var _lockedBy = {};   // camId → owning-device label (for the lock note)
           for (var ci = 0; ci < records.length; ci++) {
             var crec = records[ci];
             if (!crec || !crec.id || crec.id === recordId) continue;
@@ -1341,15 +1360,21 @@
               ? ns.card.bucketIdOf(crec, viewKey) : '';
             if (_isCD) {
               if (cbid !== _camBucket) continue;            // devices → connect cam/readers
-              // Only offer cam/readers that AREN'T already connected to another
-              // device — mirrors the other worksheets. Their Connected To
-              // (field_2381) being populated (and not already ours) means
-              // they're spoken for; skip them.
+              // Cam/readers already connected to ANOTHER device: don't hide
+              // them. Offer them LOCKED (grayed + "Take over") so the user
+              // sees why they aren't free and can deliberately steal them.
               if (!_selSet[crec.id]) {
                 var _ctRaw = crec[_CT + '_raw'];
-                var _ctPop = (Array.isArray(_ctRaw) && _ctRaw.length && _ctRaw[0] && _ctRaw[0].id) ||
-                  (typeof crec[_CT] === 'string' && /[0-9a-f]{24}/i.test(crec[_CT]));
-                if (_ctPop) continue;
+                var _ownerId = (Array.isArray(_ctRaw) && _ctRaw[0] && _ctRaw[0].id)
+                  ? _ctRaw[0].id : null;
+                if (!_ownerId && typeof crec[_CT] === 'string') {
+                  var _m = crec[_CT].match(/[0-9a-f]{24}/i);
+                  if (_m) _ownerId = _m[0];
+                }
+                if (_ownerId) {
+                  var _ident = (Array.isArray(_ctRaw) && _ctRaw[0]) ? _ctRaw[0].identifier : '';
+                  _lockedBy[crec.id] = _ownerLabel(_ownerId, _ident);
+                }
               }
             } else {
               if (cbid === _camBucket) continue;            // cam → connect to non-cam network gear
@@ -1359,13 +1384,14 @@
             }
             connCands.push(crec);
           }
-          var _lblF  = SF.displayLabel || 'field_2365';
-          var _prodF = SF.productName  || 'field_2379';
-          var _mdfF  = SF.mdfIdf       || 'field_2375';
           ns.picker.open({
             sourceViewKey: viewKey, putViewKey: viewKey, recordId: recordId,
             fieldKey: fieldKey, label: label, selectedIds: sel,
             candidates: connCands,
+            itemState: function (r) {
+              var owner = _lockedBy[r.id];
+              return owner ? { locked: true, note: 'Connected to ' + owner } : null;
+            },
             groupBy: function (r) {
               var raw = r[_mdfF + '_raw'];
               if (Array.isArray(raw) && raw[0] && raw[0].id) {

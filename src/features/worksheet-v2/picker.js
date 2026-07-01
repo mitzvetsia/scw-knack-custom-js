@@ -252,6 +252,32 @@
       '.scw-ws-v2-picker-item input[type=radio] {',
       '  width: 16px; height: 16px; cursor: pointer;',
       '}',
+      // Locked item — claimed by another device. Grayed, non-selectable
+      // until the user clicks "Take over".
+      '.scw-ws-v2-picker-item--locked {',
+      '  color: #94a3b8; cursor: default;',
+      '}',
+      '.scw-ws-v2-picker-item--locked:hover { background: transparent; }',
+      '.scw-ws-v2-picker-item--locked .scw-ws-v2-picker-item-name { color: #94a3b8; }',
+      '.scw-ws-v2-picker-item--locked input { cursor: not-allowed; }',
+      '.scw-ws-v2-picker-item-lock {',
+      '  display: inline-flex; align-items: center; gap: 4px;',
+      '  font-size: 11px; font-weight: 600; color: #b45309; line-height: 1.2;',
+      '}',
+      '.scw-ws-v2-picker-takeover {',
+      '  flex: 0 0 auto; margin-left: auto;',
+      '  appearance: none; cursor: pointer;',
+      '  padding: 3px 10px; border-radius: 999px;',
+      '  font: 600 11px system-ui, sans-serif;',
+      '  color: #b45309; background: #fff; border: 1px solid #f0c489;',
+      '}',
+      '.scw-ws-v2-picker-takeover:hover { background: #fffbeb; border-color: #d97706; }',
+      // Once stealing, the row re-lights and the button flips to "Undo".
+      '.scw-ws-v2-picker-item--stealing { color: #1f2937; }',
+      '.scw-ws-v2-picker-item--stealing .scw-ws-v2-picker-item-name { color: #07467c; }',
+      '.scw-ws-v2-picker-item--stealing .scw-ws-v2-picker-takeover {',
+      '  color: #fff; background: #d97706; border-color: #b45309;',
+      '}',
       '.scw-ws-v2-picker-ft {',
       '  padding: 12px 18px;',
       '  border-top: 1px solid #e5e7eb;',
@@ -347,6 +373,7 @@
     var itemLabel  = (typeof opts.itemLabel === 'function')
       ? opts.itemLabel
       : function (r) { return (r.identifier || r.id) || ''; };
+    var stateFn    = (typeof opts.itemState === 'function') ? opts.itemState : null;
 
     // Canonical item order — same as the worksheet devices: field_2218
     // (sortOrder) asc, then display label (natural/numeric), then id. Keeps
@@ -419,13 +446,38 @@
           var sowHtml = sowText
             ? '<span class="scw-ws-v2-picker-item-sow"><b>SOW:</b> ' + escapeHtml(sowText) + '</span>'
             : '';
+          // Per-item "locked" state (opts.itemState). Used by the Connected
+          // Devices picker to SHOW cam/readers already claimed by another
+          // device — grayed + a "Take over" button — instead of hiding them,
+          // so the user sees WHY a device isn't freely available and can
+          // deliberately steal it. An already-selected (ours) item is never
+          // locked. `note` (e.g. "Connected to E-005 · NVR 16ch") is shown
+          // beneath the label.
+          var st = stateFn ? (stateFn(rec) || {}) : {};
+          var locked = !!st.locked && !isChecked;
+          if (locked) row.className += ' scw-ws-v2-picker-item--locked';
+          var lockHtml = (locked && st.note)
+            ? '<span class="scw-ws-v2-picker-item-lock">' +
+                '<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" ' +
+                  'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+                  '<rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>' +
+                  '<path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>' +
+                escapeHtml(st.note) +
+              '</span>'
+            : '';
+          var takeoverHtml = locked
+            ? '<button type="button" class="scw-ws-v2-picker-takeover">Take over</button>'
+            : '';
           row.innerHTML =
             '<input type="' + inputType + '" name="' + inputName + '" value="' +
-              escapeHtml(rec.id) + '"' + (isChecked ? ' checked' : '') + '>' +
+              escapeHtml(rec.id) + '"' + (isChecked ? ' checked' : '') +
+              (locked ? ' disabled' : '') + '>' +
             '<span class="scw-ws-v2-picker-item-text">' +
               '<span class="scw-ws-v2-picker-item-name">' + escapeHtml(labelText) + '</span>' +
+              lockHtml +
               sowHtml +
-            '</span>';
+            '</span>' +
+            takeoverHtml;
           bd.appendChild(row);
         });
       });
@@ -464,12 +516,63 @@
           if (e.shiftKey && lastIdx !== null && lastIdx !== idx) {
             var lo = Math.min(lastIdx, idx), hi = Math.max(lastIdx, idx);
             var state = box.checked; // the just-clicked box's new state
-            for (var k = lo; k <= hi; k++) optBoxes[k].checked = state;
+            // Never toggle a locked (disabled) box via range-select — those
+            // are claimed by another device and must be stolen explicitly.
+            for (var k = lo; k <= hi; k++) {
+              if (!optBoxes[k].disabled) optBoxes[k].checked = state;
+            }
           }
           // Selecting any option clears the "Clear all" sentinel.
           if (box.checked && noneBox) noneBox.checked = false;
           lastIdx = idx;
         });
+      });
+    }
+
+    // ── "Take over" (steal a locked item) ────────────────────────────
+    // Locked items (claimed by another device) render a disabled checkbox
+    // + a "Take over" button. Clicking it enables + checks the box and
+    // flags the row as stealing; clicking again releases it. Explicit, so
+    // reassigning a cam/reader away from its current device is deliberate.
+    if (candidates.length) {
+      bd.addEventListener('click', function (e) {
+        var tb = e.target && e.target.closest &&
+          e.target.closest('.scw-ws-v2-picker-takeover');
+        if (!tb) return;
+        // Inside a <label>: stop the click from toggling the (disabled) input
+        // and from bubbling to the row.
+        e.preventDefault();
+        e.stopPropagation();
+        var row = tb.closest('.scw-ws-v2-picker-item');
+        if (!row) return;
+        var box = row.querySelector('input[type="checkbox"], input[type="radio"]');
+        if (!box) return;
+        var stealing = row.classList.toggle('scw-ws-v2-picker-item--stealing');
+        if (stealing) {
+          box.disabled = false;
+          box.checked  = true;
+          tb.textContent = 'Undo';
+          // For single-select, taking one over clears the others.
+          if (!multi) {
+            var others = bd.querySelectorAll(
+              'input[name="scw-ws-v2-pick-' + opts.fieldKey + '"]');
+            for (var o = 0; o < others.length; o++) {
+              if (others[o] !== box) others[o].checked = false;
+            }
+          }
+          var noneNow = bd.querySelector(
+            '.scw-ws-v2-picker-item--none input');
+          if (noneNow) noneNow.checked = false;
+        } else {
+          box.checked  = false;
+          box.disabled = true;
+          tb.textContent = 'Take over';
+        }
+        // Nudge the count / note listeners bound on bd's change event.
+        var ev;
+        try { ev = new Event('change', { bubbles: true }); }
+        catch (_e) { ev = document.createEvent('Event'); ev.initEvent('change', true, true); }
+        bd.dispatchEvent(ev);
       });
     }
 

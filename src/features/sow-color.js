@@ -80,6 +80,24 @@
     return rgba(colorAt(indices[0]), alpha == null ? 0.13 : alpha);
   }
 
+  // A darkened form of a palette color (channels × factor), for chip text
+  // that must stay legible on a faint tint of the same hue.
+  function rgbDark(c, factor) {
+    var f = factor == null ? 0.55 : factor;
+    return 'rgb(' + Math.round(c[0] * f) + ',' +
+                    Math.round(c[1] * f) + ',' +
+                    Math.round(c[2] * f) + ')';
+  }
+
+  // Style bundle for a single SOW/Bid *value chip* on a line item (the
+  // subtle alternative to washing the whole row): faint tinted background,
+  // a solid colored border, and darkened text of the same hue. Ties each
+  // value visually to its pill swatch without shouting.
+  function chipStyle(i) {
+    var c = colorAt(i);
+    return { bg: rgba(c, 0.14), border: rgba(c, 0.55), text: rgbDark(c, 0.55) };
+  }
+
   // De-dupe + ascending sort so a row's bar segments are in a stable order.
   function normIndices(indices) {
     var seen = Object.create(null), out = [];
@@ -102,6 +120,8 @@
     dot:         dot,
     barFor:      barFor,
     tintFor:     tintFor,
+    rgbDark:     rgbDark,
+    chipStyle:   chipStyle,
     normIndices: normIndices
   };
 })();
