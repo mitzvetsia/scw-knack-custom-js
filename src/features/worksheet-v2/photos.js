@@ -279,14 +279,25 @@
   // every other surface stay delete-free. The delete itself rides the
   // native kn-link-delete on the photo's row in whatever DOC_photos grid
   // is on the page (see the delegated handler below).
-  var PHOTO_DELETE_VIEWS = { view_3962: 1, view_3921: 1 };
+  var PHOTO_DELETE_VIEWS = { view_3962: 1, view_3921: 1, view_3505: 1 };
 
   // Per-surface DOC_photos grid used for the REST-DELETE fallback when the
   // photo's row isn't in the DOM (paginated grid). view_3584 is the
   // delete-enabled photos grid on the build-SOW scene. The review-bids
   // scene's photos grid is unconfirmed — native-link path still works
   // there when the row is present.
-  var PHOTO_GRID_FALLBACK_VIEWS = { view_3962: 'view_3584', view_3921: '' };
+  //
+  // view_3505 (subcontractor SURVEY worksheet): survey line-item photos now
+  // get a delete button. The handler first tries the native kn-link-delete on
+  // any DOC_photos grid on the survey scene (Path 1); if none is present it
+  // falls back to a view-scoped REST DELETE through the grid named here (Path
+  // 2). Set SURVEY_PHOTO_GRID to a delete-enabled DOC_photos grid view on the
+  // survey scene (mirror view_3584 on build-SOW). Left '' until confirmed — the
+  // native-link path still deletes when a DOC_photos grid is on the page.
+  var SURVEY_PHOTO_GRID = '';
+  var PHOTO_GRID_FALLBACK_VIEWS = {
+    view_3962: 'view_3584', view_3921: '', view_3505: SURVEY_PHOTO_GRID
+  };
 
   // Photo-delete settling registry. Between the optimistic card removal and
   // the authoritative refetch, Knack re-renders rebuild the strip from the
