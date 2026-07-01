@@ -7265,20 +7265,6 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     // (populated from the PUT response) now that the DOM is stable.
     restoreCachedLabels(viewCfg.viewId);
 
-    // ── RE-ASSERT INLINE PHOTO STRIPS ──
-    // inline-photo-row runs on its own ~50ms debounce after knack-view-render;
-    // transformView runs later (~150ms). On the first render that 50ms pass can
-    // fire while THIS view is still hidden (e.g. the OPS_MDF-IDFs accordion,
-    // view_3617, not yet expanded) — processView bails on offsetParent === null,
-    // so no "+ Add photo" strip is injected, and our absorb pass above finds
-    // nothing to pull into the cards. Now that the cards are built and the view
-    // is visible, re-run it. processView is idempotent (it skips any card that
-    // already has its photo row), so this only fills in the missing strips.
-    if (window.SCW && SCW.inlinePhotoRow &&
-        typeof SCW.inlinePhotoRow.refresh === 'function') {
-      try { SCW.inlinePhotoRow.refresh(viewCfg.viewId); } catch (e) {}
-    }
-
     // ── NOTIFY DEPENDENT MODULES ──
     // Dispatch a custom event so modules like select-all-checkboxes can
     // run exactly once after the worksheet DOM is stable, instead of
