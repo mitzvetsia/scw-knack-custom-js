@@ -302,14 +302,19 @@
       el.style.removeProperty('border-color');
       el.style.removeProperty('color');
       el.removeAttribute('data-scw-sow-chip');
+      el.removeAttribute('title');
     }
 
-    // Map each SOW/Bid *label* → color index. The value chips carry the
-    // label text (SW-1001 / Bid identifier), so we match on that — robust
-    // across the SOW cell (comma-split string) and the survey Bid cell
+    // Map each SOW/Bid *label* → color index + friendly name. The value chips
+    // carry the label text (SW-1001 / Bid identifier), so we match on that —
+    // robust across the SOW cell (comma-split string) and the survey Bid cell
     // (per-line _raw), which order their values differently.
-    var labelIdx = Object.create(null);
-    for (var li = 0; li < list.length; li++) labelIdx[list[li].label] = li;
+    var labelIdx  = Object.create(null);
+    var labelName = Object.create(null);
+    for (var li = 0; li < list.length; li++) {
+      labelIdx[list[li].label] = li;
+      if (list[li].name) labelName[list[li].label] = list[li].name;
+    }
 
     for (var c = 0; c < cards.length; c++) {
       var card = cards[c];
@@ -325,6 +330,10 @@
         el.style.setProperty('border-color', st.border, 'important');
         el.style.setProperty('color', st.text, 'important');
         el.setAttribute('data-scw-sow-chip', '1');
+        // Friendly name on hover (e.g. "SW-1001 — North Building CCTV"). The
+        // name comes from the filter spec's name grids; absent → just the label.
+        var nm = labelName[label];
+        el.title = nm ? (label + ' — ' + nm) : label;
       }
     }
   }

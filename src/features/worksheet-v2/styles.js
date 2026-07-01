@@ -149,7 +149,7 @@
     '    64px                  /* +Hrs    */',
     '    64px                  /* +Mat    */',
     '    72px                  /* fee     */',
-    '    52px                  /* sow     */',
+    '    72px                  /* sow (widened so SW-#### chips aren\'t clipped) */',
     '    28px                  /* warning (stacked icon chips) */',
     '    28px                  /* kebab */ !important;',
     '  gap: 6px !important;',
@@ -522,7 +522,7 @@
     '  display: grid !important;',
     '  grid-template-columns:',
     '    20px 64px minmax(160px, 1.4fr) minmax(160px, 1.6fr)',
-    '    72px 78px 64px 64px 72px 52px 28px 28px !important;',
+    '    72px 78px 64px 64px 72px 72px 28px 28px !important;',
     '  gap: 6px !important;',
     '  align-items: center !important;',
     '  padding: 8px 10px 4px 44px !important;', /* match row padding-left */
