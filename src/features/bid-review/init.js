@@ -3163,6 +3163,21 @@
       connOpts.bidConnTo     = addConn.bidConnTo;
     }
 
+    // Re-opening an EXISTING pending add-to-bid CR (click its card) must
+    // prefill from the pending edits, not a blank SOW form. Look it up and
+    // pass it as `existing` (mirrors handleChangeRequest's noBid branch); a
+    // fresh add finds nothing here and stays SOW-prefilled.
+    var addPend = null;
+    if (typeof ns.changeRequests.getPending === 'function') {
+      var addPendData = ns.changeRequests.getPending() || {};
+      if (addPendData[pkgId] && addPendData[pkgId].items) {
+        var apItems = addPendData[pkgId].items;
+        for (var ap = 0; ap < apItems.length; ap++) {
+          if (apItems[ap].rowId === rowId) { addPend = apItems[ap]; break; }
+        }
+      }
+    }
+
     if (ns.changeRequests.openAddItem) {
       ns.changeRequests.openAddItem({
         rowId:        rowId,
@@ -3193,6 +3208,10 @@
         connOptions:      connOpts,
         gridRows:         grid.rows,
         visibility:       vis,
+        // Prefill from the pending CR when re-editing (null on a fresh add).
+        existing:         addPend,
+        reinstate:        !!(addPend && addPend.reinstate),
+        bidRecordId:      (addPend && addPend.bidRecordId) || ''
       });
     } else {
       ns.renderToast('Add to Bid not yet implemented', 'info');
