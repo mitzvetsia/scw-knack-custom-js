@@ -1032,8 +1032,14 @@
       // for auto-created add-to-bid items from connection field selections)
       var pendingItem = null;
       if (pending[cpkg.id] && pending[cpkg.id].items) {
+        // Match by row id (add/revise/normal rows) OR the bid cell's own
+        // record id — a removal CR is keyed by the exact bid record, which on
+        // an off-SOW row shared across bids differs from the row's meta id.
         for (var pi = 0; pi < pending[cpkg.id].items.length; pi++) {
-          if (pending[cpkg.id].items[pi].rowId === row.id) { pendingItem = pending[cpkg.id].items[pi]; break; }
+          var _pit = pending[cpkg.id].items[pi];
+          if (_pit.rowId === row.id || (ccell && ccell.id && _pit.rowId === ccell.id)) {
+            pendingItem = _pit; break;
+          }
         }
       }
 

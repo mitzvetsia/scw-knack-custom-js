@@ -3603,13 +3603,22 @@
 
   ns.lookupCell = function (rowId, pkgId) {
     if (!_state) return null;
+    // Primary: match the row by id. Fallback: match the package cell whose own
+    // bid record id equals rowId — a removal CR is keyed by the exact bid
+    // record (cell.id), which on an off-SOW row shared across bids differs from
+    // the row's meta id, so a plain row-id match would miss the cell.
+    var fallback = null;
     for (var g = 0; g < _state.sowGrids.length; g++) {
       var rows = _state.sowGrids[g].rows;
       for (var r = 0; r < rows.length; r++) {
         if (rows[r].id === rowId) return rows[r].cellsByPackage[pkgId] || null;
+        if (!fallback) {
+          var c = rows[r].cellsByPackage && rows[r].cellsByPackage[pkgId];
+          if (c && c.id === rowId) fallback = c;
+        }
       }
     }
-    return null;
+    return fallback;
   };
 
   /**

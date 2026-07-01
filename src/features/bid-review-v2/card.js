@@ -655,7 +655,13 @@
     td.className = 'scw-bid-review-v2__cell scw-bid-review-v2__pkg-col';
     var pkgId = pkg && pkg.id;
     if (pkgId) td.setAttribute('data-pkg-id', pkgId);
+    // Pending CR lookup: a removal CR is now keyed by the exact bid record
+    // (cell.id), which on an off-SOW row shared across bids differs from the
+    // row's meta id. Try the row id first (add/revise/normal rows), then the
+    // cell's own record id (off-SOW removal) so the pending card still shows
+    // on the right cell.
     var pendingItem = row ? findPendingItem(row.id, pkgId) : null;
+    if (!pendingItem && cell && cell.id) pendingItem = findPendingItem(cell.id, pkgId);
 
     if (!cell) {
       td.classList.add('scw-bid-review-v2__cell--empty');
@@ -896,6 +902,12 @@
       card.setAttribute('data-row-id', pendingItem.rowId || (row && row.id) || '');
       card.setAttribute('data-package-id', (pkg && pkg.id) || '');
       card.setAttribute('data-sow-id', sowId || '');
+      // Carry the bid record id so re-opening the editor resolves the target
+      // via resolveBidTarget's bid-record fallback — needed when the removal's
+      // rowId is the cell's own record (off-SOW row) and doesn't match row.id.
+      if (pendingItem.bidRecordId) {
+        card.setAttribute('data-bid-record-id', pendingItem.bidRecordId);
+      }
       // An add-to-bid item may sit on a "Removed" row that v1's grid drops
       // (`!hasBid && !hasSow`) — so handleAddToBid can't re-find it. Mirror the
       // "+ Add to bid" button's prefill attrs so it can synthesize the row and
