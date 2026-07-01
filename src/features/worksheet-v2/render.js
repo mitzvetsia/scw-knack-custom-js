@@ -881,8 +881,18 @@
       Object.keys(pending).forEach(function (key) {
         var container = document.getElementById('scw-ws-v2-' + key);
         if (!container || hasFocusInPanel(container)) return;
-        var records = pending[key];
+        var snapshot = pending[key];
         delete pending[key];
+        // Re-read the CURRENT model rather than replaying the records snapshot
+        // captured when the render was deferred. Between defer and flush the
+        // model can advance — most importantly an inline edit committed on THIS
+        // same blur (optimistic patch) — and replaying the stale snapshot would
+        // repaint the card with the pre-edit value (the "flash green then clear,
+        // but the save actually landed" report). Reading fresh always reflects
+        // the just-committed value; renderView re-applies the SOW + search
+        // filters internally, so the deferred paint stays correctly narrowed.
+        var records = (ns.data && typeof ns.data.readRecords === 'function')
+          ? ns.data.readRecords(key) : snapshot;
         renderView(key, records);
       });
     }, 0);
