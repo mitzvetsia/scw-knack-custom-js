@@ -18,6 +18,20 @@
   if (document.getElementById(STYLE_ID)) return;
 
   var css = [
+    /* ── Kill browser scroll-anchoring while a v2 worksheet is on the page ──
+       worksheet-v2 rebuilds its whole card list on every edit/notify and
+       anchors the viewport across that swap itself (SCW.v2ScrollAnchor.around
+       in render.js). The BROWSER's own overflow-anchor runs concurrently and,
+       when the rebuilt content changes height above the viewport, shifts
+       window scroll DOWN to "hold" it — a no-gesture jump (scroll-spy: "JUMP
+       DOWN 71px, no scrollTo/scrollBy") that fights the JS anchor. Disable it
+       so the JS anchor is the sole scroll manager. Self-scoped via :has to
+       only apply when a worksheet-v2 body is mounted (same fix bid-review-v2
+       uses). */
+    'html:has(.scw-ws-v2-body), body:has(.scw-ws-v2-body) {',
+    '  overflow-anchor: none !important;',
+    '}',
+    'body:has(.scw-ws-v2-body) * { overflow-anchor: none !important; }',
     /* ── Container ──────────────────────────────────────────── */
     '.scw-ws-v2 {',
     '  margin: 24px 0 !important;',
