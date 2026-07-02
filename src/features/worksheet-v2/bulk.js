@@ -520,7 +520,10 @@
       crossDomain: true, timeout: 120000
     }).always(function () {
       if (toolbar) toolbar.classList.remove('scw-ws-v2-bulk-toolbar--saving');
-      clearAll(); syncDomFromState(); refreshToolbar();
+      // Keep the selection after a bulk op so the user can chain actions on the
+      // same rows — only the explicit Clear button (or a delete, whose rows are
+      // gone) clears it. syncDomFromState re-checks the still-selected rows.
+      syncDomFromState(); refreshToolbar();
       // Refetch so the new duplicates appear (staggered for Make-write lag).
       refetch();
       setTimeout(refetch, 3000);
@@ -2196,7 +2199,10 @@
             '</div>';
           setTimeout(function () {
             close();
-            clearAll();
+            // Keep the checkbox selection after a bulk edit so the user can run
+            // another bulk action on the same rows — only the explicit Clear
+            // button clears it. The refetch → rebuild → mount() re-applies the
+            // selection to the new DOM via syncDomFromState.
             try {
               if (ns.data && typeof ns.data.refetchAndNotify === 'function') {
                 ns.data.refetchAndNotify(sourceViewKey);
