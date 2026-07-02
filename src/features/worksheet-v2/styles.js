@@ -75,25 +75,18 @@
     '}',
 
     /* ── Body / card list ───────────────────────────────────── */
+    /* NO inner-scroll viewport cap on ANY v2 worksheet. The body grows to its
+       full height and scrolls with the PAGE — users don't want the wheel
+       trapped in an inner scroll region, and don't want to hover over the view
+       to scroll. This was proven on the survey worksheet (view_3505) and is now
+       the default everywhere (build-SOW / install / sales / survey). Also keeps
+       the window-based scroll anchor honest: it anchors PAGE scroll, which now
+       matches where the worksheet actually scrolls. */
     '.scw-ws-v2-body {',
     '  padding: 0 !important;',
-    /* Grow the scroll body to the screen: viewport height minus the chrome
-       above it (toolbar + banner + SOW pills + page header), with the old
-       680px as the FLOOR so short laptops never get less than before. */
-    '  max-height: max(680px, calc(100vh - 180px)) !important;',
-    '  overflow: auto !important;',
+    '  overflow: visible !important;',
     '  display: block !important;',
     '  width: 100% !important;',
-    '}',
-    /* view_3505 (subcontractor SURVEY device worksheet): users don\'t want an
-       inner scroll region trapping the wheel here. Drop the viewport cap so the
-       worksheet grows to its full height and scrolls with the PAGE — no need to
-       hover over the view. Scoped to this view\'s panel
-       (#scw-ws-v2-<sourceViewKey>) so every other v2 worksheet keeps its
-       capped-scroll body. */
-    '#scw-ws-v2-view_3505 > .scw-ws-v2-body {',
-    '  max-height: none !important;',
-    '  overflow: visible !important;',
     '}',
     '.scw-ws-v2-empty {',
     '  padding: 20px !important;',
