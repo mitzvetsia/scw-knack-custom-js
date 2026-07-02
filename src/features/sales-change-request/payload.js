@@ -41,6 +41,51 @@
   }
 
   // ═══════════════════════════════════════════════════════════
+  //  SOW DISPLAY LABEL
+  // ═══════════════════════════════════════════════════════════
+
+  /**
+   * Human-readable label for the SOW this request targets (its number,
+   * e.g. "1105"). A project can have several SOWs in play, so every
+   * plain-text rendering says WHICH SOW the request is for. Resolved
+   * from the worksheet grid already on the page: each line item's SOW
+   * connection (field_2154) carries {id, identifier} — match on the
+   * page's SOW record id. DOM connection spans are the fallback; the
+   * raw record id is the last resort.
+   */
+  function sowDisplayLabel() {
+    var sowId = S.sowRecordId();
+    if (!sowId) return '';
+    try {
+      var v = typeof Knack !== 'undefined' && Knack.views && Knack.views[CFG.worksheetView];
+      var models = v && v.model && v.model.data && v.model.data.models;
+      if (models) {
+        for (var i = 0; i < models.length; i++) {
+          var raw = models[i].attributes && models[i].attributes.field_2154_raw;
+          if (!Array.isArray(raw)) continue;
+          for (var j = 0; j < raw.length; j++) {
+            if (raw[j] && raw[j].id === sowId && raw[j].identifier) {
+              return String(raw[j].identifier).replace(/<[^>]*>/g, '').trim();
+            }
+          }
+        }
+      }
+    } catch (e) { /* fall through */ }
+    try {
+      var span = document.querySelector(
+        'span[data-kn="connection-value"][class~="' + sowId + '"]');
+      if (span && span.textContent.trim()) return span.textContent.trim();
+    } catch (e) { /* fall through */ }
+    return sowId;
+  }
+
+  /** " — for SOW 1105" suffix (empty string when unresolvable). */
+  function forSowSuffix() {
+    var lbl = sowDisplayLabel();
+    return lbl ? ' — for SOW ' + lbl : '';
+  }
+
+  // ═══════════════════════════════════════════════════════════
   //  PER-ITEM HELPERS
   // ═══════════════════════════════════════════════════════════
 
@@ -193,6 +238,9 @@
     if (prodName && item.displayLabel && prodName !== displayName) {
       header += ' (' + prodName + ')';
     }
+    // Name the SOW on every item — with several SOWs in play, a bare
+    // "REVISE — E-011" is ambiguous wherever the item text travels alone.
+    header += forSowSuffix();
     lines.push(header);
 
     if (action === 'REMOVE') {
@@ -285,6 +333,7 @@
       isDraft:    isDraft,
       timestamp:  new Date().toISOString(),
       sowId:      S.sowRecordId() || '',
+      sowLabel:   sowDisplayLabel(),
       user:       getUser(),
       itemCount:  items.length,
       items:      items,
@@ -302,6 +351,8 @@
 
     var lines = [];
     lines.push('SALES CHANGE REQUEST');
+    var sowLbl = sowDisplayLabel();
+    if (sowLbl) lines.push('For SOW: ' + sowLbl);
     lines.push(ids.length + ' item(s) — ' + new Date().toLocaleString());
     lines.push('────────────────────');
     lines.push('');
