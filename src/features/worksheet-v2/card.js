@@ -607,8 +607,15 @@
     return null;
   }
 
-  function readParentRef(rec) {
-    var raw = rec && rec['field_2464_raw'];
+  // Clean display for a connection to ANOTHER LINE ITEM (accessory→parent
+  // field_2464, cam→device field_2197). The line-item object's auto-built
+  // Knack identifier degenerates to "<recordId> (<mdfLabel>)" for records
+  // with no real drop label (networking/headend, accessory-created rows) —
+  // that string comes FROM THE SERVER, so no refetch ever fixes it. Resolve
+  // the target record in the model and print its real drop/product label;
+  // fall back to stripping the "<24-hex> (label)" wrapper off the identifier.
+  function readConnRef(rec, fieldKey) {
+    var raw = rec && rec[fieldKey + '_raw'];
     if (!Array.isArray(raw) || !raw.length || !raw[0]) return '';
     var parentId = raw[0].id || '';
 
@@ -642,10 +649,14 @@
       // model lookup above didn\'t find anything cleaner.
       var m = s.match(/^[a-f0-9]{24}\s*\(([^)]+)\)\s*$/);
       if (m) return m[1].trim();
+      // Bare 24-hex identifier (no wrapper) — never print a record id.
+      if (/^[a-f0-9]{24}$/i.test(s)) return '';
       return s;
     }
     return '';
   }
+
+  function readParentRef(rec) { return readConnRef(rec, 'field_2464'); }
 
   /** Label slot — for non-cam rows (default/services) the slot is
    *  normally blank. We keep it blank here regardless of parent-ref,
@@ -1063,12 +1074,18 @@
    * opens the picker modal.
    */
   function detailConnection(rec, viewKey, fieldKey, label, warn) {
-    // Special-case the Parent connection: the line-item object\'s auto
-    // identifier is "<recordId> (<mdfLabel>)", which reads like garbage.
-    // readParentRef does a proper product/drop lookup — reuse it.
+    // Special-case connections that point at ANOTHER LINE ITEM (Parent
+    // field_2464, Connected Device field_2197): the line-item object\'s auto
+    // identifier degenerates to "<recordId> (<mdfLabel>)" server-side for
+    // records with no drop label, which reads like garbage. readConnRef does
+    // a proper product/drop model lookup (and strips the wrapper as a last
+    // resort). A connection that exists but resolves no printable label shows
+    // '(unnamed device)' — never a raw record id.
     var val;
-    if (fieldKey === 'field_2464') {
-      val = readParentRef(rec) || '(none)';
+    if (fieldKey === 'field_2464' || fieldKey === 'field_2197') {
+      var _refRaw = rec && rec[fieldKey + '_raw'];
+      var _hasRef = Array.isArray(_refRaw) && _refRaw.length && _refRaw[0] && _refRaw[0].id;
+      val = readConnRef(rec, fieldKey) || (_hasRef ? '(unnamed device)' : '(none)');
     } else {
       val = readField(rec, fieldKey) || '(none)';
     }
