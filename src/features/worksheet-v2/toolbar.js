@@ -178,6 +178,16 @@
       var m = hash.match(patterns[i]);
       if (m) return m[1];
     }
+    // Same fallback as photos.js buildSowBasePath: an unrecognized route
+    // (page reached through a nav chain the patterns don't know) otherwise
+    // kills the bulk-upload record-id resolution ("Could not determine
+    // record id from URL"). The live hash is a valid base when it's
+    // record-scoped — Knack child routes append to the current chain.
+    var live = hash.replace(/^#/, '').split('?')[0].replace(/\/+$/, '');
+    if (/(^|\/)[a-f0-9]{24}$/.test(live)) {
+      console.warn('[scw-ws-v2] toolbar: unrecognized route — using live hash as base:', live);
+      return live;
+    }
     return '';
   }
   function getSowIdFromHash() {

@@ -223,6 +223,18 @@
       var m = hash.match(patterns[i]);
       if (m) return m[1];
     }
+    // FALLBACK — none of the known nav chains matched (the page was reached
+    // through a route these patterns don't know). Knack resolves child pages
+    // against whatever the CURRENT chain is, so the live hash itself is a
+    // valid base as long as it's record-scoped (ends with a 24-hex record
+    // id). Without this, an unrecognized route silently killed the photo
+    // strip (no add-only strip → no "+ Add" pill) and the add/bulk-upload
+    // identity. Warn so the unmatched route is visible in the console.
+    var live = hash.replace(/^#/, '').split('?')[0].replace(/\/+$/, '');
+    if (/(^|\/)[a-f0-9]{24}$/.test(live)) {
+      console.warn('[scw-ws-v2] photos: unrecognized route — using live hash as base:', live);
+      return live;
+    }
     return '';
   }
 
