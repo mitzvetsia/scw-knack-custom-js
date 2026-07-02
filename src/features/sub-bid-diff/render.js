@@ -346,6 +346,8 @@
       }
     }
     if (!el) { console.warn('[scw-sub-bid-diff] jump target not found:', sel, 'in SOW', sowId); return; }
+    console.log('[scw-sub-bid-diff] jump →', attr, id,
+      flashEl ? '(dupe block in host row ' + (el.getAttribute('data-row-id') || '') + ')' : '');
     // Expand collapsed group/subgroup headers the row sits inside. A row can
     // be hidden by BOTH a collapsed subgroup and a collapsed L1 group — keep
     // walking up and clicking collapsed headers until the row is visible.
@@ -368,11 +370,16 @@
       if (!clicked) break;
     }
     el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    var fl = flashEl || el;
-    fl.classList.remove('scw-sbd-flash');
-    void fl.offsetWidth;            // restart the animation
-    fl.classList.add('scw-sbd-flash');
-    setTimeout(function () { fl.classList.remove('scw-sbd-flash'); }, 2000);
+    // Flash the host row AND (when the target is a dupe sub-item) the dupe
+    // block itself — the row-level flash is the visible cue, the block-level
+    // one pinpoints which stacked bid item was meant.
+    var targets = flashEl ? [el, flashEl] : [el];
+    targets.forEach(function (fl) {
+      fl.classList.remove('scw-sbd-flash');
+      void fl.offsetWidth;          // restart the animation
+      fl.classList.add('scw-sbd-flash');
+      setTimeout(function () { fl.classList.remove('scw-sbd-flash'); }, 2000);
+    });
   }
 
   // ── distill one SOW grid against the chosen basis package ───────────────
@@ -983,13 +990,39 @@
         }
         return;
       }
-      var jr = e.target.closest && e.target.closest('[data-scw-sbd-jump-id]');
-      if (jr) {
-        jumpTo(jr.getAttribute('data-scw-sbd-jump-sow'),
-               jr.getAttribute('data-scw-sbd-jump-attr'),
-               jr.getAttribute('data-scw-sbd-jump-id'));
-      }
     });
+    // Jump rows — bound in CAPTURE phase so no intermediate handler (Knack,
+    // KTL, or our own grid listeners) can swallow the click before it lands.
+    // The panel is also re-rendered on every data tick (block.innerHTML), so
+    // a tick between mousedown and mouseup destroys the pressed row and the
+    // browser retargets (or drops) the click — remember what was pressed and
+    // honor it when the click itself no longer resolves to a jump row.
+    var pressedJump = null, pressedAt = 0;
+    function jumpAttrsOf(el) {
+      return {
+        sow:  el.getAttribute('data-scw-sbd-jump-sow'),
+        attr: el.getAttribute('data-scw-sbd-jump-attr'),
+        id:   el.getAttribute('data-scw-sbd-jump-id')
+      };
+    }
+    document.addEventListener('mousedown', function (e) {
+      var jr = e.target.closest && e.target.closest('[data-scw-sbd-jump-id]');
+      pressedJump = jr ? jumpAttrsOf(jr) : null;
+      pressedAt = jr ? Date.now() : 0;
+    }, true);
+    document.addEventListener('click', function (e) {
+      var jr = e.target.closest && e.target.closest('[data-scw-sbd-jump-id]');
+      var j = jr ? jumpAttrsOf(jr) : null;
+      if (!j && pressedJump && (Date.now() - pressedAt) < 800 &&
+          e.target.closest &&
+          e.target.closest('.scw-sbd-inline, .scw-bid-review-v2__sow')) {
+        // Mid-press rebuild ate the row — use what was pressed.
+        console.log('[scw-sub-bid-diff] jump row replaced mid-click — using pressed row');
+        j = pressedJump;
+      }
+      pressedJump = null;
+      if (j) jumpTo(j.sow, j.attr, j.id);
+    }, true);
   }
 
   ns.render = { render: render, bindOnce: bindOnce, distill: distill };
