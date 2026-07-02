@@ -2594,7 +2594,11 @@
           sowMapConn:       row.sowMapConn || '',
           connOptions:      addConnOpts2,
           gridRows:         grid.rows,
-          visibility:       { qty: row.sowQty > 1, cabling: isCR2, connDevice: showConn2 },
+          // Qty: the limit-to-quantity-one flag lives on the bid record
+          // (field_2373) and this is a no-bid-record row — nothing to read,
+          // so default visible. (The old sowQty > 1 gate blocked requesting
+          // a quantity bump on a qty-1 line item.)
+          visibility:       { qty: true, cabling: isCR2, connDevice: showConn2 },
           existing:         pendItem,
           // Preserve reinstate identity when re-editing a pending reinstate
           // CR. Without these, re-saving drops the reinstate marker + the bid
@@ -2730,11 +2734,26 @@
       sourceFromSow: !!opts.sourceFromSow,
       connOptions:  { bidConnDevice: connDevOpts, bidConnTo: connToOpts, bidMdfIdf: buildMdfIdfOptions() },
       gridRows:     grid.rows,
-      visibility: {
-        qty:        button.getAttribute('data-vis-qty') === '1',
-        cabling:    button.getAttribute('data-vis-cabling') === '1',
-        connDevice: button.getAttribute('data-vis-conn') === '1',
-      },
+      // Field visibility DERIVES from the record — not from data-vis-*
+      // attrs on the button that opened the modal (v2's comparison-grid
+      // buttons carry none, which used to compute all-false and hide Qty +
+      // the cabling group entirely). Rules:
+      //   • cabling group (Existing / Plenum / Exterior / Drop / Conduit)
+      //     → proposal bucket is Camera or Reader (render.js showCabling).
+      //   • qty → hidden only when the bid record's FLAG_limit-to-quantity-
+      //     one (field_2373 → cell.limitQtyOne) is set.
+      //   • connected devices → map-connection flag Yes on either side.
+      visibility: (function () {
+        var isCamReaderBkt = row.proposalBucketId === CAM_READER_BUCKET_ID ||
+          /^(cameras?|readers?)$/i.test(String(row.proposalBucket || '').trim());
+        var yes = function (v) { return v && /^yes$/i.test(String(v).trim()); };
+        return {
+          qty:        !(cell && cell.limitQtyOne),
+          cabling:    isCamReaderBkt,
+          connDevice: yes(row.sowMapConn) || yes(row.bidMapConn) ||
+                      yes(cell && cell.bidMapConn),
+        };
+      })(),
     });
   }
 
@@ -3205,7 +3224,10 @@
                    || /^yes$/i.test(String(row.bidMapConn || '').trim());
     var showConn = hasMapConn && !isCamReader;
     var vis = {
-      qty:        row.sowQty > 1,
+      // No bid record here to read FLAG_limit-to-quantity-one from →
+      // default visible. (Was gated on sowQty > 1, which blocked
+      // requesting a quantity bump on a qty-1 item.)
+      qty:        true,
       cabling:    isCamReader,
       connDevice: showConn,
     };
@@ -3322,7 +3344,7 @@
       proposalBucketId: '',
       sortOrder:        0,
       connOptions:      { bidMdfIdf: buildMdfIdfOptions() },
-      visibility:       {},
+      visibility:       { qty: true },
     });
   }
 
