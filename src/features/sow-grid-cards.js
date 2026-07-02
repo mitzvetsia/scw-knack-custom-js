@@ -253,7 +253,22 @@
         'data-sow-id="' + esc(sowId) + '" aria-label="Collapse or expand this SOW">' +
         chevron +
         '<div class="scw-sow-card__heading">' +
-          '<div class="scw-sow-card__name">' + esc(disp(tr, attrs, F.name) || '(unnamed SOW)') + '</div>' +
+          // Friendly name — click-to-edit. The pencil (hover affordance) swaps
+          // the text for an input; Enter/blur PUTs field_2126 through this view
+          // (same path as the survey-cost input), Escape cancels. data-sow-name
+          // carries the raw current value so the editor prefills without
+          // re-reading the model.
+          '<div class="scw-sow-card__name" data-scw-sow-name data-sow-id="' + esc(sowId) + '" ' +
+            'data-sow-name="' + esc(disp(tr, attrs, F.name) || '') + '">' +
+            '<span class="scw-sow-card__name-text">' + esc(disp(tr, attrs, F.name) || '(unnamed SOW)') + '</span>' +
+            '<button type="button" class="scw-sow-name-edit" title="Rename this SOW" aria-label="Rename this SOW">' +
+              '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" ' +
+                'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+                '<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>' +
+                '<path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>' +
+              '</svg>' +
+            '</button>' +
+          '</div>' +
           '<div class="scw-sow-card__meta">' +
             (idText ? '<span class="scw-sow-card__id">#' + esc(idText) + '</span>' : '') +
             flagChip(isYes(tr, attrs, F.survey)   ? 'Survey requested' : 'Survey not requested', isYes(tr, attrs, F.survey),   'survey') +
@@ -329,6 +344,68 @@
     }).always(function () {
       // Refetch so the margin + pill gate recompute, then the view re-renders
       // → cards rebuild with fresh data.
+      try {
+        var v = Knack && Knack.views && Knack.views[VIEW_ID];
+        if (v && v.model && typeof v.model.fetch === 'function') v.model.fetch();
+      } catch (e) {}
+    });
+  }
+
+  // ── friendly-name inline edit ───────────────────────────────
+  // Swap the heading text for an input. Enter/blur commits (PUT field_2126
+  // through this view, then refetch so the card + ops pill rebuild with the
+  // new name), Escape restores the text without saving.
+  function openNameEditor(nameEl) {
+    if (nameEl.querySelector('.scw-sow-card__name-input')) return;   // already editing
+    var sowId = nameEl.getAttribute('data-sow-id');
+    if (!sowId) return;
+    var current = nameEl.getAttribute('data-sow-name') || '';
+    nameEl.classList.add('scw-sow-card__name--editing');
+    nameEl.innerHTML = '<input type="text" class="scw-sow-card__name-input" ' +
+      'data-sow-id="' + esc(sowId) + '" data-sow-prev="' + esc(current) + '" ' +
+      'aria-label="SOW name" placeholder="SOW name">';
+    var input = nameEl.querySelector('.scw-sow-card__name-input');
+    input.value = current;
+    setTimeout(function () { input.focus(); input.select(); }, 0);
+  }
+  function commitNameEditor(input, cancel) {
+    // One-shot: Escape triggers a restore that removes the input, which fires
+    // a focusout on it — without this guard that second call would double-run.
+    if (input._scwNameDone) return;
+    input._scwNameDone = true;
+    var nameEl = input.closest('[data-scw-sow-name]');
+    var sowId  = input.getAttribute('data-sow-id');
+    var prev   = input.getAttribute('data-sow-prev') || '';
+    var next   = String(input.value == null ? '' : input.value).trim();
+    function restore(text) {
+      if (!nameEl) return;
+      nameEl.classList.remove('scw-sow-card__name--editing');
+      nameEl.setAttribute('data-sow-name', text);
+      nameEl.innerHTML =
+        '<span class="scw-sow-card__name-text">' + esc(text || '(unnamed SOW)') + '</span>' +
+        '<button type="button" class="scw-sow-name-edit" title="Rename this SOW" aria-label="Rename this SOW">' +
+          '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" ' +
+            'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+            '<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>' +
+            '<path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>' +
+          '</svg>' +
+        '</button>';
+    }
+    if (cancel || next === prev || !sowId) { restore(prev); return; }
+    if (!(window.SCW && typeof SCW.knackAjax === 'function' && typeof SCW.knackRecordUrl === 'function')) {
+      restore(prev); return;
+    }
+    // Optimistic: show the new name immediately; the refetch re-renders with
+    // server truth (and reverts visually if the PUT failed).
+    restore(next);
+    var body = {};
+    body[F.name] = next;
+    SCW.knackAjax({
+      url:  SCW.knackRecordUrl(VIEW_ID, sowId),
+      type: 'PUT',
+      data: JSON.stringify(body),
+      dataType: 'json'
+    }).always(function () {
       try {
         var v = Knack && Knack.views && Knack.views[VIEW_ID];
         if (v && v.model && typeof v.model.fetch === 'function') v.model.fetch();
@@ -492,7 +569,23 @@
       '.scw-sow-card--collapsed .scw-sow-card__footer { display: none !important; }',
       '.scw-sow-card--collapsed .scw-sow-card__header { border-bottom: none; }',
       '.scw-sow-card__heading { flex: 1 1 auto; min-width: 0; }',
-      '.scw-sow-card__name { font-size: 15px; font-weight: 700; color: #0f172a; line-height: 1.3; }',
+      '.scw-sow-card__name { font-size: 15px; font-weight: 700; color: #0f172a; line-height: 1.3;',
+      '  display: flex; align-items: center; gap: 6px; min-width: 0; }',
+      '.scw-sow-card__name-text { overflow-wrap: anywhere; }',
+      /* Rename pencil — hidden until the heading is hovered so the header stays
+         clean; always reachable via keyboard focus. */
+      '.scw-sow-name-edit { display: inline-flex; align-items: center; justify-content: center;',
+      '  flex: none; width: 22px; height: 22px; border: none; border-radius: 5px;',
+      '  background: transparent; color: #94a3b8; cursor: pointer; padding: 0;',
+      '  opacity: 0; transition: opacity .12s, background .12s; }',
+      '.scw-sow-card__headmain:hover .scw-sow-name-edit,',
+      '.scw-sow-name-edit:focus-visible { opacity: 1; }',
+      '.scw-sow-name-edit:hover { background: #e2e8f0; color: #334155; }',
+      '.scw-sow-card__name-input { width: 100%; max-width: 420px; box-sizing: border-box;',
+      '  font: 700 15px/1.3 system-ui, -apple-system, sans-serif; color: #0f172a; padding: 3px 8px;',
+      '  border: 1px solid ' + ACC + '; border-radius: 6px; background: #fff; }',
+      '.scw-sow-card__name-input:focus { outline: none;',
+      '  box-shadow: 0 0 0 2px rgba(var(--scw-accent-rgb,47,95,145),.18); }',
       '.scw-sow-card__meta { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px; margin-top: 5px; }',
       '.scw-sow-card__id { font-size: 11.5px; color: #94a3b8; font-weight: 600;',
       '  letter-spacing: .2px; font-variant-numeric: tabular-nums; }',
@@ -603,6 +696,36 @@
       var inp = e.target.closest && e.target.closest('.scw-sow-survey__input');
       if (inp) { e.preventDefault(); inp.blur(); }
     });
+
+    // Friendly-name inline edit (delegated). The pencil (or the name text
+    // itself) opens the editor; commits on blur / Enter, cancels on Escape.
+    document.addEventListener('click', function (e) {
+      var pencil = e.target.closest && e.target.closest('.scw-sow-name-edit');
+      var nameEl = e.target.closest && e.target.closest('[data-scw-sow-name]');
+      if (!pencil && !nameEl) return;
+      if (nameEl && nameEl.querySelector('.scw-sow-card__name-input')) {
+        e.stopPropagation();   // mid-edit — clicks inside must not toggle collapse
+        return;
+      }
+      if (pencil) {
+        e.preventDefault();
+        e.stopPropagation();   // never toggle collapse from the pencil
+        openNameEditor(pencil.closest('[data-scw-sow-name]'));
+      }
+    }, true);   // capture — run BEFORE the collapse-toggle click handler below
+    document.addEventListener('focusout', function (e) {
+      var inp = e.target.closest && e.target.closest('.scw-sow-card__name-input');
+      if (inp) commitNameEditor(inp, false);
+    });
+    document.addEventListener('keydown', function (e) {
+      var inp = e.target.closest && e.target.closest('.scw-sow-card__name-input');
+      if (!inp) return;
+      // The input lives inside the headmain toggle region — keep Enter/Space/
+      // Escape from reaching the collapse-toggle keydown handler.
+      e.stopPropagation();
+      if (e.key === 'Enter')  { e.preventDefault(); inp.blur(); }
+      if (e.key === 'Escape') { e.preventDefault(); commitNameEditor(inp, true); }
+    }, true);
 
     // Per-card collapse toggle (chevron / header). Ignore clicks that land on
     // the action buttons or any link/button/input so those still work.
