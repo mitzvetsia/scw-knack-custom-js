@@ -1014,14 +1014,14 @@
     /* On-bid-but-not-on-this-SOW: blue dashed cut-out on the SOW cell. */
     '.scw-bid-review-v2__sow-cell--off-sow {',
     '  border: 1.5px dashed #2563eb !important;',
-    '  background: repeating-linear-gradient(135deg,rgba(80,102,134,.35),rgba(80,102,134,.35) 8px,#fff 8px,#fff 16px) !important;',
+    '  background: repeating-linear-gradient(135deg,rgba(94,129,172,.35),rgba(94,129,172,.35) 8px,#fff 8px,#fff 16px) !important;',
     '  position: relative; z-index: 1;',
     '}',
     /* On-SOW-but-not-on-bid (noBid / surveyNoBid): same cut-out on the
        bid cell, with a centered badge + action. */
     '.scw-bid-review-v2__cell--no-bid-cutout {',
     '  border: 1.5px dashed #2563eb !important;',
-    '  background: repeating-linear-gradient(135deg,rgba(80,102,134,.35),rgba(80,102,134,.35) 8px,#fff 8px,#fff 16px) !important;',
+    '  background: repeating-linear-gradient(135deg,rgba(94,129,172,.35),rgba(94,129,172,.35) 8px,#fff 8px,#fff 16px) !important;',
     '  text-align: center;',
     /* lift above the neighbouring SOW cell\'s 2px right border so the
        dashed left edge isn\'t painted over */
