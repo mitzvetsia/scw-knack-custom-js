@@ -582,6 +582,15 @@
       if (!accId || !dir) return;
       var container = step.closest('[id^="scw-ws-v2-"]');
       var viewKey = container ? container.id.replace(/^scw-ws-v2-/, '') : '';
+      if (!viewKey) {
+        // Embedded card (bid-review-v2 expand panel) — the card mounts
+        // OUTSIDE any #scw-ws-v2-<view> container, so fall back to the
+        // source view stamped on the card's own editable elements. Without
+        // this the stepper silently no-oped on the bid review page.
+        var stepCard = step.closest('.scw-ws-v2-card');
+        var stepViewNode = stepCard && stepCard.querySelector('[data-scw-ws-v2-view]');
+        viewKey = (stepViewNode && stepViewNode.getAttribute('data-scw-ws-v2-view')) || '';
+      }
       if (!viewKey) return;
       // Read current qty from the model so we don\'t race the DOM.
       var records = (ns.data && typeof ns.data.readRecords === 'function')
@@ -660,7 +669,15 @@
       if (!accId) return;
 
       var container = btn.closest('[id^="scw-ws-v2-"]');
-      var viewKey = container ? container.id.replace(/^scw-ws-v2-/, '') : 'view_3962';
+      var viewKey = container ? container.id.replace(/^scw-ws-v2-/, '') : '';
+      if (!viewKey) {
+        // Same embedded-card fallback as the qty stepper: on the bid-review
+        // page the card mounts outside any #scw-ws-v2-<view> container, and
+        // the old blind 'view_3962' default isn't on that scene (PUT 403s).
+        var unlCard = btn.closest('.scw-ws-v2-card');
+        var unlViewNode = unlCard && unlCard.querySelector('[data-scw-ws-v2-view]');
+        viewKey = (unlViewNode && unlViewNode.getAttribute('data-scw-ws-v2-view')) || 'view_3962';
+      }
 
       // Optimistic: patch the local model's back-pointer (chips are
       // back-pointer-sourced, so the chip won't resurrect on rebuilds)

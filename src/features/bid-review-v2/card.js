@@ -662,6 +662,19 @@
     // on the right cell.
     var pendingItem = row ? findPendingItem(row.id, pkgId) : null;
     if (!pendingItem && cell && cell.id) pendingItem = findPendingItem(cell.id, pkgId);
+    // Stacked duplicates: a CR raised from a dupe block ("2nd bid item →
+    // same SOW item") is keyed by the DUPE's own bid record id — invisible
+    // to both lookups above, so the pending card never rendered anywhere.
+    // Collect dupe-keyed items separately; they render on the host cell
+    // alongside (not instead of) any primary-cell card.
+    var dupePendingItems = [];
+    if (cell && cell.dupes) {
+      for (var dpi = 0; dpi < cell.dupes.length; dpi++) {
+        var dpItem = (cell.dupes[dpi] && cell.dupes[dpi].id)
+          ? findPendingItem(cell.dupes[dpi].id, pkgId) : null;
+        if (dpItem && dpItem !== pendingItem) dupePendingItems.push(dpItem);
+      }
+    }
 
     if (!cell) {
       td.classList.add('scw-bid-review-v2__cell--empty');
@@ -886,6 +899,9 @@
       td.innerHTML = primaryHtml;
     }
     appendPendingCard(td, pendingItem, row, pkg, sowId);
+    for (var dpc = 0; dpc < dupePendingItems.length; dpc++) {
+      appendPendingCard(td, dupePendingItems[dpc], row, pkg, sowId);
+    }
     return td;
   }
 

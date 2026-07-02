@@ -332,19 +332,37 @@
       var hdr = sec.querySelector('.scw-bid-review-v2__sow-header');
       if (hdr && hdr.getAttribute('aria-expanded') === 'false') hdr.click();
     }
-    var el = (sec && sec.querySelector(sel)) || document.querySelector(sel);
-    // A bid record with no row of its own may render as a dupe sub-item
+    // Only accept ACTUAL grid rows. data-row-id / data-sow-item-id also ride
+    // on other elements around the page — dupe-block action buttons, pending
+    // change-request cards (data-row-id = the bid record id!), v1 leftovers —
+    // and a raw document-wide querySelector can land on one of those instead:
+    // the jump then scrolls/flashes an invisible card and looks like a dead
+    // click. Resolve every candidate through closest('.__row') and take the
+    // first that is a real row.
+    function findRow(root) {
+      if (!root) return null;
+      var cands = root.querySelectorAll(sel);
+      for (var c = 0; c < cands.length; c++) {
+        var r = cands[c].closest('.scw-bid-review-v2__row');
+        if (r) return r;
+      }
+      return null;
+    }
+    var el = findRow(sec);
+    // A bid record with no row of its own renders as a dupe sub-item
     // ("2nd bid item → same SOW item") inside its host row — find any
     // element tagged with its bid record id and jump to the host row,
     // flashing the dupe block itself when there is one.
     var flashEl = null;
     if (!el && attr === 'bid') {
-      var tagged = (sec || document).querySelector('[data-bid-record-id="' + id + '"]');
+      var tagged = (sec || document).querySelector(
+        '.scw-bid-review-v2__bid-item--dupe [data-bid-record-id="' + id + '"]');
       if (tagged) {
         el = tagged.closest('.scw-bid-review-v2__row');
         flashEl = tagged.closest('.scw-bid-review-v2__bid-item--dupe');
       }
     }
+    if (!el) el = findRow(document);
     if (!el) { console.warn('[scw-sub-bid-diff] jump target not found:', sel, 'in SOW', sowId); return; }
     console.log('[scw-sub-bid-diff] jump →', attr, id,
       flashEl ? '(dupe block in host row ' + (el.getAttribute('data-row-id') || '') + ')' : '');
@@ -991,73 +1009,17 @@
         return;
       }
     });
-    // Jump rows — triggered from POINTERDOWN at WINDOW capture, the earliest
-    // interception point that exists: window is the first node in the capture
-    // path and pointerdown precedes mousedown/click, so no other handler on
-    // the page (Knack, KTL, ours) can swallow or retarget it first. The
-    // actual jump still prefers the click (normal UX); the pointerdown arms a
-    // fallback timer so the jump fires even when the click never arrives
-    // (suppressed, retargeted, or the panel re-rendered mid-press). Every
-    // press inside the panel logs its real target, so an overlay stealing
-    // hits is identifiable from the console.
-    var pressedJump = null, pressedAt = 0, pressedTimer = null;
-    var pressX = 0, pressY = 0;
-    function jumpAttrsOf(el) {
-      return {
-        sow:  el.getAttribute('data-scw-sbd-jump-sow'),
-        attr: el.getAttribute('data-scw-sbd-jump-attr'),
-        id:   el.getAttribute('data-scw-sbd-jump-id')
-      };
-    }
-    function clearPressed() {
-      pressedJump = null;
-      if (pressedTimer) { clearTimeout(pressedTimer); pressedTimer = null; }
-    }
-    function firePressed(why) {
-      var j = pressedJump;
-      clearPressed();
-      if (!j) return;
-      console.log('[scw-sub-bid-diff] jump via ' + why + ':', j.attr, j.id);
-      jumpTo(j.sow, j.attr, j.id);
-    }
-    window.addEventListener('pointerdown', function (e) {
-      var t = e.target;
-      if (!t || !t.closest) { clearPressed(); return; }
-      var jr = t.closest('[data-scw-sbd-jump-id]');
-      if (t.closest('.scw-sbd-inline')) {
-        var cls = (t.getAttribute && t.getAttribute('class')) || t.tagName || '?';
-        console.log('[scw-sub-bid-diff] pointerdown in panel on <' + t.tagName +
-          ' class="' + cls + '">' + (jr ? ' → jump row' : ' → not a jump row'));
-      }
-      clearPressed();
-      if (!jr) return;
-      pressedJump = jumpAttrsOf(jr);
-      pressedAt = Date.now();
-      pressX = e.clientX; pressY = e.clientY;
-      // Self-healing: if no click consumes this press, jump anyway.
-      pressedTimer = setTimeout(function () {
-        pressedTimer = null;
-        firePressed('pointerdown fallback — no click arrived');
-      }, 450);
-    }, true);
-    // A real drag/scroll (not a click) cancels the armed jump.
-    window.addEventListener('pointermove', function (e) {
-      if (!pressedJump) return;
-      if (Math.abs(e.clientX - pressX) + Math.abs(e.clientY - pressY) > 12) clearPressed();
-    }, true);
-    window.addEventListener('click', function (e) {
+    // Jump rows — plain delegated click. (The dead-click bug was never the
+    // event path: jumpTo's document-wide fallback could match a NON-row
+    // element carrying the same data-row-id — see findRow in jumpTo.)
+    document.addEventListener('click', function (e) {
       var jr = e.target && e.target.closest && e.target.closest('[data-scw-sbd-jump-id]');
-      var j = jr ? jumpAttrsOf(jr) : null;
-      if (!j && pressedJump && (Date.now() - pressedAt) < 800) {
-        console.log('[scw-sub-bid-diff] click retargeted mid-press — using pressed row');
-        j = pressedJump;
+      if (jr) {
+        jumpTo(jr.getAttribute('data-scw-sbd-jump-sow'),
+               jr.getAttribute('data-scw-sbd-jump-attr'),
+               jr.getAttribute('data-scw-sbd-jump-id'));
       }
-      clearPressed();
-      if (j) {
-        console.log('[scw-sub-bid-diff] jump via click:', j.attr, j.id);
-        jumpTo(j.sow, j.attr, j.id);
-      }
-    }, true);
+    });
   }
 
   ns.render = { render: render, bindOnce: bindOnce, distill: distill };
