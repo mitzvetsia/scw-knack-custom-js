@@ -42,6 +42,14 @@
     else delete selectedIds[id];
   }
   function clearAll() { selectedIds = Object.create(null); }
+  // Drop specific ids from the selection. Used after a delete so ONLY the
+  // deleted rows leave the selection — bulk "remove accessories" deletes child
+  // accessory records that were never selected, so the selected PARENTS must
+  // stay checked (the user can chain another action on the same rows).
+  function deselect(ids) {
+    if (!ids) return;
+    for (var i = 0; i < ids.length; i++) delete selectedIds[ids[i]];
+  }
 
   // ── Field registry by bucket category ────────────────────────
   // kind: 'text' | 'number' | 'bool' | 'conn-single' | 'conn-multi'
@@ -1257,9 +1265,10 @@
       if (bar) bar.style.width = pct + '%';
       if (label) label.textContent = 'Deleting ' + done + ' of ' + total + '… (' + pct + '%)';
     }).then(function (results) {
-      var ok = 0, fail = 0;
+      var ok = 0, fail = 0, deleted = [];
       for (var r = 0; r < results.length; r++) {
-        if (results[r].ok) ok++; else fail++;
+        if (results[r].ok) { ok++; if (results[r].recordId) deleted.push(results[r].recordId); }
+        else fail++;
       }
       overlay.classList.remove('scw-ws-v2-bulk-overlay--saving');
       if (fail === 0) {
@@ -1268,7 +1277,11 @@
           'Deleted ' + ok + ' records. Refreshing…</div>';
         setTimeout(function () {
           close();
-          clearAll();
+          // Deselect ONLY the rows we deleted. For a bulk delete that's the
+          // selected parents (selection empties, as before); for "remove
+          // accessories" only the child accessories were deleted, so the
+          // selected parents stay checked.
+          deselect(deleted);
           if (ns.data && typeof ns.data.refetchAndNotify === 'function') {
             ns.data.refetchAndNotify(sourceViewKey);
           }
