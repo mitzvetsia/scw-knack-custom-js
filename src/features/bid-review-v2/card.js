@@ -816,6 +816,20 @@
     var descHover = (diffs && diffs.laborDesc) ? ' data-scw-diff-field="desc"' : '';
     var qtyDiff   = (diffs && diffs.qty) ? DIFF : '';
     var qtyHover  = (diffs && diffs.qty) ? ' data-scw-diff-field="qty"' : '';
+    // Label drift — the bid record's copy of the display label (field_2365)
+    // no longer matches the SOW line item's authoritative label (field_1950,
+    // swapped onto row.displayLabel by the transform). Surface the bid's
+    // stale label as a flagged line so the drift is visible instead of the
+    // bid label silently winning the row title.
+    var sowLblN = String(row.displayLabel || '').replace(/\s+/g, ' ').trim().toLowerCase();
+    var bidLblN = String(cell.label || '').replace(/\s+/g, ' ').trim().toLowerCase();
+    var labelDriftHtml = (bidLblN && sowLblN && bidLblN !== sowLblN)
+      ? '<div class="scw-bid-review-v2__cell-conn scw-bid-review-v2__field-diff"' +
+          ' data-scw-diff-field="label" title="Bid label: ' +
+          escapeHtml(cell.label) + ' — SOW: ' + escapeHtml(row.displayLabel) + '">' +
+          '<label>Label</label>' + escapeHtml(cell.label) +
+        '</div>'
+      : '';
 
     var primaryHtml =
       (cell.productName ?
@@ -851,6 +865,7 @@
           '<label>MDF&nbsp;/&nbsp;IDF</label>' +
           escapeHtml(cell.mdfIdf || '(none)') +
         '</div>' : '') +
+      labelDriftHtml +
       // Survey note (field_2412) on the bid record — v1 parity: populated
       // cells render the sub's note too, not just the no-bid cutouts.
       surveyNoteHtml(cell.notes) +
