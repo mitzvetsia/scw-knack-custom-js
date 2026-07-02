@@ -2102,8 +2102,20 @@
       function itemLabel(rec) {
         var lbl  = (rec.field_1950 || '').toString().replace(/<[^>]*>/g, '').trim();
         var prod = (rec.field_1949 || '').toString().replace(/<[^>]*>/g, '').trim();
+        // The drop label (field_1950) degenerates SERVER-SIDE to
+        // "<recordId> (<mdfLabel>)" for rows with no real drop label
+        // (networking/headend) — same quirk card.js readConnRef handles.
+        // Never show a record id in the picker: keep only the "(mdf)" part
+        // as a location hint, prefer the product name as the label.
+        var hexWrap = lbl.match(/^[a-f0-9]{24}\s*\(([^)]+)\)\s*$/i);
+        if (hexWrap) lbl = '';
+        else if (/^[a-f0-9]{24}(\s|\b|$)/i.test(lbl)) lbl = '';
+        if (/^[a-f0-9]{24}(\s|\b|$)/i.test(prod)) prod = '';
+        var loc = hexWrap ? ' (' + hexWrap[1].trim() + ')' : '';
         if (lbl && prod) return lbl + ' · ' + prod;
-        return lbl || prod || rec.id;
+        if (prod) return prod + loc;
+        if (lbl)  return lbl;
+        return hexWrap ? '(unnamed device)' + loc : rec.id;
       }
 
       // mirror-connection-sync has a createMirror() instance bound to

@@ -1717,6 +1717,58 @@
       }
     });
 
+  /** Rewrite a parent's forward TRIGGER_FIELD list after a child's
+   *  CONNECTIONS_FIELD was edited directly. The two are SEPARATE mirrored
+   *  fields — the child-side edit does NOT update the parent's array, so
+   *  without this the forward list drifts (the v2 card looks right because
+   *  it derives Connected Devices from back-pointers, but the stored array
+   *  that v1, PDFs, pickers and Make read goes stale).
+   *
+   *  The new list is the UNION of the parent's current forward list and the
+   *  authoritative back-pointers (children whose CONNECTIONS_FIELD point at
+   *  it) — so a stale forward list can never drop still-connected siblings —
+   *  with the edited child explicitly added (include=true) or removed
+   *  (include=false). No-op when the set is unchanged. */
+  function syncParentForward(parentId, childId, include) {
+    var attrs = getModelAttrs(parentId);
+    if (!attrs) {
+      log('forward-sync: parent ' + parentId + ' not in model — skipping');
+      return;
+    }
+    var byId = Object.create(null);   // id → raw obj (keeps identifiers)
+    var before = [];
+    var fRaw = attrs[TRIGGER_FIELD + '_raw'];
+    if (Array.isArray(fRaw)) {
+      for (var i = 0; i < fRaw.length; i++) {
+        if (fRaw[i] && fRaw[i].id) { byId[fRaw[i].id] = fRaw[i]; before.push(fRaw[i].id); }
+      }
+    }
+    var back = findRowsPointingTo(parentId);
+    for (var b = 0; b < back.length; b++) {
+      if (!byId[back[b]]) byId[back[b]] = { id: back[b] };
+    }
+    if (include) { if (!byId[childId]) byId[childId] = { id: childId }; }
+    else delete byId[childId];
+
+    var afterIds = Object.keys(byId);
+    if (before.length === afterIds.length &&
+        before.slice().sort().join(',') === afterIds.slice().sort().join(',')) {
+      return;   // set unchanged — no PUT
+    }
+
+    log('forward-sync: parent ' + parentId + ' ' + TRIGGER_FIELD + ' ' +
+        (include ? '+' : '−') + ' child ' + childId + ' → [' + afterIds.join(',') + ']');
+    var newRaw = afterIds.map(function (id) { return byId[id]; });
+    syncModelChild(parentId, (function () {
+      var p = {};
+      p[TRIGGER_FIELD + '_raw'] = newRaw;
+      return p;
+    })());
+    var body = {};
+    body[TRIGGER_FIELD] = afterIds;
+    firePut(parentId, body);
+  }
+
   $(document).on('knack-cell-update.' + VIEW_ID + EVENT_NS + '-recip',
     function (event, view, record, editedFieldKey) {
       try {
@@ -1739,6 +1791,26 @@
         var curr = serializeReciprocal(record);
         if (prev === curr) return;
         lastReciprocalSeen[record.id] = curr;
+
+        // ── Push the edit UP into the parents' forward arrays ──────────
+        // A direct CONNECTIONS_FIELD (field_2197) edit re-parents the child,
+        // but the old and new parents' TRIGGER_FIELD (field_1957) arrays are
+        // separate mirrored fields that nothing else rewrites on this path.
+        // Remove the child from the old parent's list and add it to the new
+        // parent's — runs for disconnects too (old parent must still drop
+        // the child even when no new parent is chosen).
+        var prevParentId = prev ? prev.split(',')[0] : '';
+        var rawNow = record[CONNECTIONS_FIELD + '_raw'];
+        var currParentId = (Array.isArray(rawNow) && rawNow[0] && rawNow[0].id)
+          ? rawNow[0].id : '';
+        if (prevParentId !== currParentId) {
+          try {
+            if (prevParentId) syncParentForward(prevParentId, record.id, false);
+            if (currParentId) syncParentForward(currParentId, record.id, true);
+          } catch (fsErr) {
+            console.warn(LOG_PREFIX, 'forward-sync threw', fsErr);
+          }
+        }
 
         // No new parent → nothing to cascade. (Disconnect doesn't
         // implicitly relocate the child's accessories; they keep the
