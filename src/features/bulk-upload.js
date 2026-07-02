@@ -135,7 +135,14 @@
             // the sowID pattern.
             contexts: [
               { linkField: 'projectID', hashPattern: /project-dashboard\/([a-f0-9]{24})/ },
-              { linkField: 'sowID',     hashPattern: /(?:scope-of-work-details|build-sow)\/([a-f0-9]{24})/ }
+              // The id after build-sow/ is the PROJECT record (the page is
+              // project-scoped). On the canonical team-calendar chain the
+              // project-dashboard context above matched first, so lumping
+              // build-sow in with the sowID pattern below never fired — but
+              // on the top-level #build-sow/<projectId> route it labeled
+              // the project id as sowID. Own context, right label.
+              { linkField: 'projectID', hashPattern: /build-sow\/([a-f0-9]{24})/ },
+              { linkField: 'sowID',     hashPattern: /scope-of-work-details\/([a-f0-9]{24})/ }
             ]
           }
         ]
