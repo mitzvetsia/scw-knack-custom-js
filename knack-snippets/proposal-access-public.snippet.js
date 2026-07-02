@@ -116,6 +116,34 @@
   // Implementation. Shouldn't need editing below this line.
   // -----------------------------------------------------------------------
 
+  // ── Boot-time URL-filter priming ───────────────────────────────────────
+  // The lookup view's source criteria has no token rule, so Knack's FIRST
+  // fetch would pull a full page of published proposals (each with its
+  // multi-MB field_2680 snapshot) and render them into hidden DOM before
+  // our runtime filter refetches the right one — the "link takes 30s+ to
+  // open" problem. New links carry the token as a native Knack URL filter
+  // (view_3952_filters=…) so that first fetch is already server-filtered;
+  // this shim rewrites OLD-format links (?token= only) to the new format
+  // BEFORE Knack's router boots, so every link ever sent gets the fast
+  // path. location.replace keeps it out of history (back button works).
+  (function primeUrlFilter() {
+    try {
+      var hash = window.location.hash || '';
+      var routeRe = new RegExp('^#' + HASH_ROUTE + '(?:/|$)');
+      if (!routeRe.test(hash)) return;
+      if (hash.indexOf(LOOKUP_VIEW_ID + '_filters=') !== -1) return;  // already primed
+      var m = hash.match(/[?&]token=([0-9a-fA-F]{16,})/);
+      if (!m) return;
+      var f = encodeURIComponent(JSON.stringify([
+        { field: TOKEN_FIELD, operator: 'is', value: m[1] }
+      ]));
+      var glue = hash.indexOf('?') === -1 ? '?' : '&';
+      window.location.replace(
+        window.location.pathname + window.location.search +
+        hash + glue + LOOKUP_VIEW_ID + '_filters=' + f);
+    } catch (e) { /* fall through — page still works, just slower */ }
+  })();
+
   var STYLE_ID  = 'scw-proposal-access-css';
   var IFRAME_ID = 'scw-proposal-access-frame';
   var FALLBACK_ID = 'scw-proposal-access-fallback';
