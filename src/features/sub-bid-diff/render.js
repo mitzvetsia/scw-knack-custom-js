@@ -991,13 +991,17 @@
         return;
       }
     });
-    // Jump rows — bound in CAPTURE phase so no intermediate handler (Knack,
-    // KTL, or our own grid listeners) can swallow the click before it lands.
-    // The panel is also re-rendered on every data tick (block.innerHTML), so
-    // a tick between mousedown and mouseup destroys the pressed row and the
-    // browser retargets (or drops) the click — remember what was pressed and
-    // honor it when the click itself no longer resolves to a jump row.
-    var pressedJump = null, pressedAt = 0;
+    // Jump rows — triggered from POINTERDOWN at WINDOW capture, the earliest
+    // interception point that exists: window is the first node in the capture
+    // path and pointerdown precedes mousedown/click, so no other handler on
+    // the page (Knack, KTL, ours) can swallow or retarget it first. The
+    // actual jump still prefers the click (normal UX); the pointerdown arms a
+    // fallback timer so the jump fires even when the click never arrives
+    // (suppressed, retargeted, or the panel re-rendered mid-press). Every
+    // press inside the panel logs its real target, so an overlay stealing
+    // hits is identifiable from the console.
+    var pressedJump = null, pressedAt = 0, pressedTimer = null;
+    var pressX = 0, pressY = 0;
     function jumpAttrsOf(el) {
       return {
         sow:  el.getAttribute('data-scw-sbd-jump-sow'),
@@ -1005,23 +1009,54 @@
         id:   el.getAttribute('data-scw-sbd-jump-id')
       };
     }
-    document.addEventListener('mousedown', function (e) {
-      var jr = e.target.closest && e.target.closest('[data-scw-sbd-jump-id]');
-      pressedJump = jr ? jumpAttrsOf(jr) : null;
-      pressedAt = jr ? Date.now() : 0;
+    function clearPressed() {
+      pressedJump = null;
+      if (pressedTimer) { clearTimeout(pressedTimer); pressedTimer = null; }
+    }
+    function firePressed(why) {
+      var j = pressedJump;
+      clearPressed();
+      if (!j) return;
+      console.log('[scw-sub-bid-diff] jump via ' + why + ':', j.attr, j.id);
+      jumpTo(j.sow, j.attr, j.id);
+    }
+    window.addEventListener('pointerdown', function (e) {
+      var t = e.target;
+      if (!t || !t.closest) { clearPressed(); return; }
+      var jr = t.closest('[data-scw-sbd-jump-id]');
+      if (t.closest('.scw-sbd-inline')) {
+        var cls = (t.getAttribute && t.getAttribute('class')) || t.tagName || '?';
+        console.log('[scw-sub-bid-diff] pointerdown in panel on <' + t.tagName +
+          ' class="' + cls + '">' + (jr ? ' → jump row' : ' → not a jump row'));
+      }
+      clearPressed();
+      if (!jr) return;
+      pressedJump = jumpAttrsOf(jr);
+      pressedAt = Date.now();
+      pressX = e.clientX; pressY = e.clientY;
+      // Self-healing: if no click consumes this press, jump anyway.
+      pressedTimer = setTimeout(function () {
+        pressedTimer = null;
+        firePressed('pointerdown fallback — no click arrived');
+      }, 450);
     }, true);
-    document.addEventListener('click', function (e) {
-      var jr = e.target.closest && e.target.closest('[data-scw-sbd-jump-id]');
+    // A real drag/scroll (not a click) cancels the armed jump.
+    window.addEventListener('pointermove', function (e) {
+      if (!pressedJump) return;
+      if (Math.abs(e.clientX - pressX) + Math.abs(e.clientY - pressY) > 12) clearPressed();
+    }, true);
+    window.addEventListener('click', function (e) {
+      var jr = e.target && e.target.closest && e.target.closest('[data-scw-sbd-jump-id]');
       var j = jr ? jumpAttrsOf(jr) : null;
-      if (!j && pressedJump && (Date.now() - pressedAt) < 800 &&
-          e.target.closest &&
-          e.target.closest('.scw-sbd-inline, .scw-bid-review-v2__sow')) {
-        // Mid-press rebuild ate the row — use what was pressed.
-        console.log('[scw-sub-bid-diff] jump row replaced mid-click — using pressed row');
+      if (!j && pressedJump && (Date.now() - pressedAt) < 800) {
+        console.log('[scw-sub-bid-diff] click retargeted mid-press — using pressed row');
         j = pressedJump;
       }
-      pressedJump = null;
-      if (j) jumpTo(j.sow, j.attr, j.id);
+      clearPressed();
+      if (j) {
+        console.log('[scw-sub-bid-diff] jump via click:', j.attr, j.id);
+        jumpTo(j.sow, j.attr, j.id);
+      }
     }, true);
   }
 
