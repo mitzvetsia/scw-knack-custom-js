@@ -2078,6 +2078,7 @@
     // the Backbone model, not the DOM, and route through PUT-only +
     // scw-cascade-idle refetch — same as the view_3962 deployment — so the
     // field_1957 → field_2197 reciprocal cascade fires reliably.
+    LABEL_FIELD:              'field_1950',   // SOW line-item display label
     MODEL_ONLY:          true,
     PUBLIC_API_NAME:     'silentRegroupView3586'
   });
