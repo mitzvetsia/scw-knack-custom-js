@@ -124,6 +124,7 @@ cat \
   src/features/device-worksheet-toolbar.js \
   src/features/device-worksheet-sort.js \
   src/features/install-config-subpanel.js \
+  src/features/install-as-quoted-panel.js \
   src/features/qa-popover.js \
   src/features/config-qa-popover.js \
   src/features/closeout-deliverables.js \
