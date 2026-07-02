@@ -73,7 +73,7 @@
   // is still present its buttons exist, and the keyword path skips any view
   // that has a button, so this stays dormant until KTL really is gone.
   // MUST stay in sync with the loader gate (same scene keys).
-  var KTL_FREE_SCENES = ['scene_1085', 'scene_1116', 'scene_1140', 'scene_1155', 'scene_1311'];
+  var KTL_FREE_SCENES = ['scene_1085', 'scene_1096', 'scene_1116', 'scene_1140', 'scene_1155', 'scene_1311'];
 
   /** The rendered KTL-free scene element on the page, if any (scopes the
    *  keyword scan to just that scene — no document-wide work elsewhere). */
