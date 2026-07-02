@@ -389,6 +389,17 @@
         return;
       }
 
+      // Margin-recovery buttons (Add PM & Mobilization / Increase project
+      // margin) — same story as the docs controls: v1 renders them inside the
+      // SOW status bar v2 injects into its header, so v1's mount-bound
+      // listener never sees the click here. Route to v1's margin dispatcher.
+      var marginBtn = e.target.closest('.scw-ops-margin-warning__btn[data-action]');
+      if (marginBtn) {
+        e.preventDefault(); e.stopPropagation();
+        if (v1.dispatchMarginAction) v1.dispatchMarginAction(marginBtn);
+        return;
+      }
+
       // Header buttons — package_* go to dispatchHeaderAction, cr_* fall
       // through to dispatchCRAction.
       var headBtn = e.target.closest('.scw-bid-review-v2__head-btn[data-action]');

@@ -3547,6 +3547,21 @@
   // (not document), so these buttons never fire on the v2 reconcile page.
   // v2's document-level listener calls this verbatim. Returns true if
   // dispatched.
+  // Public dispatcher for the margin-recovery buttons (Add PM & Mobilization /
+  // Increase project margin) v1 renders inside the SOW status bar. Same story
+  // as dispatchDocsAction: v2 injects that status bar into its own header DOM,
+  // but v1's click listener is bound to v1's grid mount — so on the v2
+  // comparison grid these buttons rendered but did nothing. v2's document-
+  // level listener routes them here. Returns true if dispatched.
+  ns.dispatchMarginAction = function dispatchMarginAction(button) {
+    if (!button) return false;
+    var action = button.getAttribute('data-action');
+    if (!action) return false;
+    if (action === 'add_pm_mobilization') { handleAddPmMobilization(button); return true; }
+    if (action === 'set_project_margin')  { handleSetProjectMargin(button);  return true; }
+    return false;
+  };
+
   ns.dispatchDocsAction = function dispatchDocsAction(button) {
     if (!button) return false;
     var action = button.getAttribute('data-action');
