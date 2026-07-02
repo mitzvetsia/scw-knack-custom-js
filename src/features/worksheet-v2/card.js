@@ -1193,6 +1193,10 @@
       var m = hash.match(patterns[i]);
       if (m) return '#' + m[1];
     }
+    // Unrecognized route (e.g. top-level #build-sow/<projectId>): if the
+    // hash is record-scoped, accept it as the base rather than bailing.
+    var live = hash.replace(/^#/, '').split('?')[0].replace(/\/+$/, '');
+    if (/(^|\/)[a-f0-9]{24}$/.test(live)) return '#' + live;
     return '';
   }
 
