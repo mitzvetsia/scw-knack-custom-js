@@ -333,21 +333,46 @@
       if (hdr && hdr.getAttribute('aria-expanded') === 'false') hdr.click();
     }
     var el = (sec && sec.querySelector(sel)) || document.querySelector(sel);
+    // A bid record with no row of its own may render as a dupe sub-item
+    // ("2nd bid item → same SOW item") inside its host row — find any
+    // element tagged with its bid record id and jump to the host row,
+    // flashing the dupe block itself when there is one.
+    var flashEl = null;
+    if (!el && attr === 'bid') {
+      var tagged = (sec || document).querySelector('[data-bid-record-id="' + id + '"]');
+      if (tagged) {
+        el = tagged.closest('.scw-bid-review-v2__row');
+        flashEl = tagged.closest('.scw-bid-review-v2__bid-item--dupe');
+      }
+    }
     if (!el) { console.warn('[scw-sub-bid-diff] jump target not found:', sel, 'in SOW', sowId); return; }
-    // Expand a collapsed group/subgroup the row sits inside.
-    if (el.classList.contains('scw-bid-review-v2__row--hidden')) {
+    // Expand collapsed group/subgroup headers the row sits inside. A row can
+    // be hidden by BOTH a collapsed subgroup and a collapsed L1 group — keep
+    // walking up and clicking collapsed headers until the row is visible.
+    var guard = 0;
+    while (el.classList.contains('scw-bid-review-v2__row--hidden') && guard++ < 3) {
       var prev = el.previousElementSibling;
-      while (prev && !prev.classList.contains('scw-bid-review-v2__subgroup-header') &&
-             !prev.classList.contains('scw-bid-review-v2__group-header')) {
+      var clicked = false;
+      while (prev) {
+        var isSub = prev.classList.contains('scw-bid-review-v2__subgroup-header');
+        var isGrp = prev.classList.contains('scw-bid-review-v2__group-header');
+        if (isSub || isGrp) {
+          var collapsed = isSub
+            ? prev.classList.contains('scw-bid-review-v2__subgroup-header--collapsed')
+            : prev.classList.contains('scw-bid-review-v2__group-header--collapsed');
+          if (collapsed) { prev.click(); clicked = true; break; }
+          if (isGrp) break;   // reached an already-open L1 — nothing left to expand
+        }
         prev = prev.previousElementSibling;
       }
-      if (prev) prev.click();
+      if (!clicked) break;
     }
     el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    el.classList.remove('scw-sbd-flash');
-    void el.offsetWidth;            // restart the animation
-    el.classList.add('scw-sbd-flash');
-    setTimeout(function () { el.classList.remove('scw-sbd-flash'); }, 2000);
+    var fl = flashEl || el;
+    fl.classList.remove('scw-sbd-flash');
+    void fl.offsetWidth;            // restart the animation
+    fl.classList.add('scw-sbd-flash');
+    setTimeout(function () { fl.classList.remove('scw-sbd-flash'); }, 2000);
   }
 
   // ── distill one SOW grid against the chosen basis package ───────────────
