@@ -1448,11 +1448,14 @@
   // inline in most browsers for PDF/image MIME types. If the browser
   // rejects inline (download instead of render), the user can still hit
   // "Open in tab" in the header.
-  /** In-popover add-file pane for an empty slot: click → native picker,
-   *  or drag a file straight onto it. Dispatches through the existing
-   *  Make upload path (card pending state + polling), closing the popover
-   *  so the grid's progress feedback takes over. No-webhook fallback links
-   *  to Knack's edit form. */
+  /** In-popover add-file pane for an empty slot. Fills the whole viewer
+   *  as one big drop target: click → native picker, or drag a file onto
+   *  it. The popover STAYS OPEN — the upload dispatches through the
+   *  existing Make path (grid card still gets its pending state), a
+   *  watcher waits for the file metadata to land (pendingUploads /
+   *  docFileMeta, same signals as the grid poll), then the viewer swaps
+   *  to the file preview in place. No-webhook fallback links to Knack's
+   *  edit form. */
   function buildAddFilePane(doc) {
     var canUpload = !!(window.SCW && window.SCW.CONFIG &&
                        window.SCW.CONFIG.MAKE_DOC_UPLOAD_WEBHOOK);
@@ -1473,38 +1476,109 @@
       return pane;
     }
     pane.innerHTML =
-      '<strong>No file uploaded yet</strong><br>' +
-      'Click to choose a PDF/doc, or drag one here.';
+      '<div class="' + POPOVER_ID + '__drop-inner">' +
+        '<strong>No file uploaded yet</strong><br>' +
+        '<span class="' + POPOVER_ID + '__drop-hint">Click to choose a PDF/doc, or drag one anywhere in this box.</span>' +
+        '<div class="' + POPOVER_ID + '__drop-status" style="display:none"></div>' +
+      '</div>';
     if (!document.getElementById('scw-cd-addfile-css')) {
       var st = document.createElement('style');
       st.id = 'scw-cd-addfile-css';
-      st.textContent =
-        '.' + POPOVER_ID + '__viewer-empty--drop { cursor: pointer;' +
-        ' border: 2px dashed #6b7280; border-radius: 10px; margin: 24px;' +
-        ' padding: 40px 24px; transition: border-color .15s, color .15s; }' +
-        '.' + POPOVER_ID + '__viewer-empty--drop:hover,' +
-        '.' + POPOVER_ID + '__viewer-empty--drop.is-over {' +
-        ' border-color: #60a5fa; color: #e5e7eb; }';
+      st.textContent = [
+        // The pane IS the viewer surface — one big drop/click target.
+        '.' + POPOVER_ID + '__viewer-empty--drop { cursor: pointer;',
+        '  flex: 1 1 auto; align-self: stretch; margin: 16px;',
+        '  display: flex; align-items: center; justify-content: center;',
+        '  border: 2px dashed #6b7280; border-radius: 12px;',
+        '  transition: border-color .15s, color .15s; }',
+        '.' + POPOVER_ID + '__viewer-empty--drop:hover,',
+        '.' + POPOVER_ID + '__viewer-empty--drop.is-over {',
+        '  border-color: #60a5fa; color: #e5e7eb; }',
+        '.' + POPOVER_ID + '__viewer-empty--drop.is-uploading { cursor: default;',
+        '  border-style: solid; border-color: #60a5fa; }',
+        '.' + POPOVER_ID + '__drop-inner { text-align: center; padding: 24px;',
+        '  font: 14px/1.5 system-ui, sans-serif; }',
+        '.' + POPOVER_ID + '__drop-hint { font-size: 12.5px; }',
+        '.' + POPOVER_ID + '__drop-status { margin-top: 12px;',
+        '  font: 600 13px/1.4 system-ui, sans-serif; color: #60a5fa; }',
+        '.' + POPOVER_ID + '__drop-status.is-err { color: #f87171; }'
+      ].join('\n');
       document.head.appendChild(st);
     }
+
+    var statusEl = pane.querySelector('.' + POPOVER_ID + '__drop-status');
+    var uploading = false;
+    function setStatus(msg, isErr) {
+      statusEl.style.display = '';
+      statusEl.textContent = msg;
+      statusEl.classList.toggle('is-err', !!isErr);
+    }
+
+    function watchForArrival(viewerEl) {
+      var startedAt = Date.now();
+      (function check() {
+        // Popover closed / re-rendered → stop silently (grid feedback owns it).
+        if (!document.contains(pane) && !document.contains(viewerEl)) return;
+        var meta = docFileMeta[doc.id];
+        if (meta && meta.url) {
+          doc.rawUrl   = meta.url;
+          doc.thumbUrl = doc.thumbUrl || meta.thumbUrl;
+          doc.fileUrl  = doc.fileUrl || meta.url;
+          // Swap the pane for the real preview in place.
+          if (viewerEl && document.contains(viewerEl)) renderViewerInto(viewerEl, doc);
+          return;
+        }
+        if (!pendingUploads[doc.id] && Date.now() - startedAt > 3000) {
+          // Poll pipeline gave up (error/timeout) — surface it here too.
+          uploading = false;
+          pane.classList.remove('is-uploading');
+          setStatus('Upload failed or timed out — try again.', true);
+          return;
+        }
+        if (Date.now() - startedAt > 95000) return;
+        setTimeout(check, 600);
+      })();
+    }
+
+    function startUpload(file) {
+      if (!file || uploading) return;
+      if (isImageFile(file)) { setStatus('PDFs/docs only — not images.', true); return; }
+      if (file.size > 25 * 1024 * 1024) { setStatus('File too large (25 MB max).', true); return; }
+      uploading = true;
+      pane.classList.add('is-uploading');
+      setStatus('Uploading ' + (file.name || 'file') + '…');
+      var viewerEl = pane.parentNode;
+      // Grid card keeps its pending state so both surfaces agree.
+      dispatchDocUpload(_popoverCard, doc.id, _popoverCloseoutId, file);
+      watchForArrival(viewerEl);
+    }
+
     pane.addEventListener('click', function () {
-      var card = _popoverCard, coId = _popoverCloseoutId;
-      closeQAPopover();
-      openDocFilePicker(card, doc.id, coId);
+      if (uploading) return;
+      var input = document.createElement('input');
+      input.type = 'file';
+      input.accept = '.pdf,.doc,.docx,.xls,.xlsx,application/pdf';
+      input.style.display = 'none';
+      input.addEventListener('change', function () {
+        var f = input.files && input.files[0];
+        document.body.removeChild(input);
+        startUpload(f);
+      });
+      document.body.appendChild(input);
+      input.click();
     });
     pane.addEventListener('dragover', function (ev) {
       ev.preventDefault();
-      pane.classList.add('is-over');
+      if (!uploading) pane.classList.add('is-over');
     });
-    pane.addEventListener('dragleave', function () { pane.classList.remove('is-over'); });
+    pane.addEventListener('dragleave', function (ev) {
+      if (pane.contains(ev.relatedTarget)) return;
+      pane.classList.remove('is-over');
+    });
     pane.addEventListener('drop', function (ev) {
       ev.preventDefault();
       pane.classList.remove('is-over');
-      var file = ev.dataTransfer && ev.dataTransfer.files && ev.dataTransfer.files[0];
-      if (!file) return;
-      var card = _popoverCard, coId = _popoverCloseoutId;
-      closeQAPopover();
-      if (card) dispatchDocUpload(card, doc.id, coId, file);
+      startUpload(ev.dataTransfer && ev.dataTransfer.files && ev.dataTransfer.files[0]);
     });
     return pane;
   }
