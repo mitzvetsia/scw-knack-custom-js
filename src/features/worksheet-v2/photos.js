@@ -238,6 +238,15 @@
     return '';
   }
 
+  // True when the base path is the deploy scene. Anchored (^|/) because the
+  // page is reachable both through the full nav chain (…/deploy/<id>) AND
+  // directly as #deploy/<id> — buildSowBasePath's live-hash fallback returns
+  // the latter with NO leading slash, which a plain indexOf('/deploy/')
+  // missed, mislabeling install line items as SOW line items.
+  function isDeployBase(base) {
+    return /(^|\/)deploy\/[a-f0-9]{24}/.test(base);
+  }
+
   function editPhotoHref(photoRecordId) {
     // Survey scene (view_3505): #subcontractor-portal/site-survey-request-
     // details/<id>/edit-doc-photo/<photoId> — matches v1 inline-photo-row.
@@ -247,7 +256,7 @@
     if (!base) return '';
     // Deploy scene (install line items, view_3915) uses edit-doc-photo3;
     // sales scope-of-work-details uses edit-doc-photo2; build-SOW uses edit-photo.
-    var slug = (base.indexOf('/deploy/') !== -1) ? 'edit-doc-photo3'
+    var slug = isDeployBase(base) ? 'edit-doc-photo3'
       : (base.indexOf('scope-of-work-details') !== -1) ? 'edit-doc-photo2'
       : 'edit-photo';
     return '#' + base + '/' + slug + '/' + photoRecordId + '/';
@@ -259,7 +268,7 @@
     var base = buildSowBasePath();
     if (!base) return '';
     // Deploy scene → install line item; everywhere else → SOW line item.
-    var addSlug = (base.indexOf('/deploy/') !== -1)
+    var addSlug = isDeployBase(base)
       ? 'add-photo-to-install-line-item' : 'add-photo-to-sow-line-item';
     return '#' + base + '/' + addSlug + '/' + lineItemId + '/';
   }
@@ -271,7 +280,7 @@
     if (surveyBasePath()) return 'surveyLineItemID';
     var base = buildSowBasePath();
     if (!base) return '';
-    return (base.indexOf('/deploy/') !== -1) ? 'installLineItemID' : 'sowLineItemID';
+    return isDeployBase(base) ? 'installLineItemID' : 'sowLineItemID';
   }
 
   /** Survey-scene base path. Returns '' off the survey scene so the
