@@ -168,28 +168,6 @@
     });
   }
 
-  // field_2445 is a connection (→ CONFIG_photo type). Every rendered cell
-  // carries <span class="<typeRecordId>" data-kn="connection-value">Label
-  // </span> — collect {id,label} pairs from every view on the scene.
-  function collectTypeOptions() {
-    var map = Object.create(null);
-    var cells = document.querySelectorAll(
-      'td[data-field-key="' + F.type + '"], td.' + F.type);
-    for (var c = 0; c < cells.length; c++) {
-      var spans = cells[c].querySelectorAll('span[data-kn="connection-value"]');
-      for (var s = 0; s < spans.length; s++) {
-        var cls = (spans[s].className || '').trim();
-        if (!/^[a-f0-9]{24}$/i.test(cls)) continue;
-        var label = (spans[s].textContent || '').trim();
-        if (label) map[cls] = label;
-      }
-    }
-    var out = [];
-    for (var id in map) out.push({ id: id, label: map[id] });
-    out.sort(function (a, b) { return a.label.localeCompare(b.label); });
-    return out;
-  }
-
   window.SCW = window.SCW || {};
   SCW.photoEditPanel = {
     SAVE_VIEWS: SAVE_VIEWS,
@@ -198,7 +176,6 @@
       uploadImage: uploadImage,
       putRecord: putRecord,
       clearFileField: clearFileField,
-      collectTypeOptions: collectTypeOptions,
       FIELDS: F
     }
   };

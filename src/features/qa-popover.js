@@ -268,20 +268,10 @@
       '.scw-qa-modal__upstatus { margin-top: 8px; font: 600 12.5px/1.3 system-ui, sans-serif;',
       '  color: #60a5fa; text-align: center; }',
       '.scw-qa-modal__upstatus.is-err { color: #f87171; }',
-      '.scw-qa-modal__details { width: 100%; max-width: 420px; background: #fff;',
       '  border-radius: 8px; padding: 10px 12px; flex: 0 0 auto; }',
-      '.scw-qa-modal__details-row { display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap; }',
-      '.scw-qa-modal__details-fld { flex: 1 1 140px; min-width: 120px; }',
-      '.scw-qa-modal__typesel { width: 100%; padding: 6px 8px; border: 1px solid #cbd5e1;',
       '  border-radius: 6px; font: 12.5px/1.3 system-ui, sans-serif; background: #fff; }',
-      '.scw-qa-modal__seg { display: inline-flex; border: 1px solid #cbd5e1; border-radius: 7px; overflow: hidden; }',
-      '.scw-qa-modal__seg button { background: #fff; border: 0; padding: 7px 14px; cursor: pointer;',
       '  font: 600 12px/1 system-ui, sans-serif; color: #64748b; }',
-      '.scw-qa-modal__seg button + button { border-left: 1px solid #cbd5e1; }',
-      '.scw-qa-modal__seg button.is-on { background: #0f4c75; color: #fff; }',
-      '.scw-qa-modal__details-save { background: #0f4c75; color: #fff; border: 0; border-radius: 6px;',
       '  padding: 8px 14px; font: 600 12.5px/1 system-ui, sans-serif; cursor: pointer; }',
-      '.scw-qa-modal__details-save:disabled { background: #cbd5e1; cursor: not-allowed; }',
       '.scw-qa-modal__sidebar {',
       '  flex: 0 0 340px; border-left: 1px solid #e5e7eb;',
       '  display: flex; flex-direction: column; background: #fff;',
@@ -740,175 +730,6 @@
     return wrap;
   }
 
-  /** Photo Type + Required editors — rendered when the record has no type
-   *  yet, so untyped/unset photos can be classified in place. Returns null
-   *  when not applicable (already typed, or machinery missing). */
-  function buildDetailsPane(photo) {
-    if (photo.hasType) return null;
-    var u = pepUtil();
-    var saveView = pepSaveView(photo.viewKey);
-    if (!u || !saveView) return null;
-
-    var types = u.collectTypeOptions();
-    var sec = document.createElement('div');
-    sec.className = 'scw-qa-modal__details';
-    var optHtml = '<option value="">— No type —</option>';
-    for (var o = 0; o < types.length; o++) {
-      optHtml += '<option value="' + types[o].id + '">' +
-        String(types[o].label).replace(/[&<>"]/g, function (c) {
-          return ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' })[c];
-        }) + '</option>';
-    }
-    sec.innerHTML =
-      '<div class="scw-qa-modal__details-row">' +
-        '<div class="scw-qa-modal__details-fld">' +
-          '<div class="scw-qa-popover__label">Photo Type</div>' +
-          '<select class="scw-qa-modal__typesel">' + optHtml + '</select>' +
-        '</div>' +
-        '<div class="scw-qa-modal__details-fld">' +
-          '<div class="scw-qa-popover__label">Required</div>' +
-          '<span class="scw-qa-modal__seg">' +
-            '<button type="button" data-req="No"' + (!photo.required ? ' class="is-on"' : '') + '>No</button>' +
-            '<button type="button" data-req="Yes"' + (photo.required ? ' class="is-on"' : '') + '>Yes</button>' +
-          '</span>' +
-        '</div>' +
-        '<button type="button" class="scw-qa-modal__details-save" disabled>Save</button>' +
-      '</div>';
-
-    var select  = sec.querySelector('.scw-qa-modal__typesel');
-    var segBtns = sec.querySelectorAll('.scw-qa-modal__seg button');
-    var saveBtn = sec.querySelector('.scw-qa-modal__details-save');
-    var reqVal  = photo.required ? 'Yes' : 'No';
-    function markDirty() { saveBtn.disabled = false; }
-    select.addEventListener('change', markDirty);
-    for (var sb = 0; sb < segBtns.length; sb++) {
-      segBtns[sb].addEventListener('click', function () {
-        reqVal = this.getAttribute('data-req');
-        for (var k = 0; k < segBtns.length; k++) segBtns[k].classList.remove('is-on');
-        this.classList.add('is-on');
-        markDirty();
-      });
-    }
-    saveBtn.addEventListener('click', function () {
-      saveBtn.disabled = true;
-      saveBtn.textContent = 'Saving…';
-      var body = {};
-      body[F.photoType] = select.value ? [select.value] : [];
-      body[F.required]  = reqVal;
-      u.putRecord(saveView, photo.id, body).then(function () {
-        saveBtn.textContent = 'Saved ✓';
-        photo.required = (reqVal === 'Yes');
-        notifyHostSaved(photo);
-      }).catch(function (err) {
-        saveBtn.disabled = false;
-        saveBtn.textContent = 'Save';
-        alert('Save failed: ' + ((err && err.message) || 'unknown') +
-              '\nMake sure the photo fields are editable on ' + saveView + '.');
-      });
-    });
-    return sec;
-  }
-
-  /** Viewer-top action bar for a photo that HAS an image: Replace photo
-   *  (downsample → asset upload → PUT) and Remove photo (clears field_771,
-   *  keeps the record — viewer swaps to the upload pane in place, modal
-   *  stays open). Locked once QA is signed off, same rule as the files
-   *  popover. Returns null when the save machinery isn't available. */
-  function buildPhotoViewerBar(viewerEl, photo) {
-    var u = pepUtil();
-    var saveView = pepSaveView(photo.viewKey);
-    if (!u || !saveView) return null;
-
-    var bar = document.createElement('div');
-    bar.className = 'scw-qa-modal__viewer-bar';
-
-    var locked = photo.needsQa !== false && isFullyComplete(photo.status, photo.client);
-    var lockTitle = 'QA is signed off — set it back to Pending or Fail first.';
-
-    function swapToUploadPane() {
-      viewerEl.innerHTML = '';
-      viewerEl.appendChild(buildUploadPane(photo));
-      var dp = buildDetailsPane(photo);
-      if (dp) viewerEl.appendChild(dp);
-    }
-    function pickImage(onFile) {
-      var input = document.createElement('input');
-      input.type = 'file';
-      input.accept = 'image/*';
-      input.style.display = 'none';
-      input.addEventListener('change', function () {
-        var f = input.files && input.files[0];
-        document.body.removeChild(input);
-        if (f) onFile(f);
-      });
-      document.body.appendChild(input);
-      input.click();
-    }
-
-    var repB = document.createElement('button');
-    repB.type = 'button';
-    repB.textContent = 'Replace photo';
-    if (locked) { repB.disabled = true; repB.title = lockTitle; }
-    repB.addEventListener('click', function () {
-      if (repB.disabled) return;
-      pickImage(function (file) {
-        if ((file.type || '').indexOf('image/') !== 0) { alert('Not an image file.'); return; }
-        repB.disabled = true;
-        repB.textContent = 'Replacing…';
-        u.downscale(file).then(function (blob) {
-          if (!blob) throw new Error('image too large to resize');
-          var name = (file.name || 'photo').replace(/\.[a-z0-9]+$/i, '') + '.jpg';
-          return u.uploadImage(blob, name).then(function (assetId) {
-            var body = {}; body[F.img] = assetId;
-            return u.putRecord(saveView, photo.id, body);
-          }).then(function () {
-            var url = URL.createObjectURL(blob);
-            var imgEl = viewerEl.querySelector('img');
-            if (imgEl) imgEl.src = url;
-            photo.imgUrl = url;
-            repB.disabled = locked;
-            repB.textContent = 'Replace photo';
-            notifyHostSaved(photo);
-          });
-        }).catch(function (err) {
-          repB.disabled = false;
-          repB.textContent = 'Replace photo';
-          alert('Replace failed: ' + ((err && err.message) || 'unknown error'));
-        });
-      });
-    });
-    bar.appendChild(repB);
-
-    var remB = document.createElement('button');
-    remB.type = 'button';
-    remB.className = 'is-danger';
-    remB.textContent = 'Remove photo';
-    if (locked) { remB.disabled = true; remB.title = lockTitle; }
-    remB.addEventListener('click', function () {
-      if (remB.disabled) return;
-      if (!window.confirm('Remove this photo from ' + (photo.type || 'this record') + '?\n\n' +
-            'The photo slot stays — only the image is cleared.')) return;
-      remB.disabled = true;
-      remB.textContent = 'Removing…';
-      var extra = {};
-      extra[F.completed] = 'No';
-      // clearFileField verifies against the PUT response and retries with ''
-      // when null is silently ignored (Knack file-field quirk).
-      u.clearFileField(saveView, photo.id, F.img, extra).then(function () {
-        photo.imgUrl = '';
-        photo.completed = false;
-        swapToUploadPane();
-        notifyHostSaved(photo);
-      }).catch(function (err) {
-        remB.disabled = false;
-        remB.textContent = 'Remove photo';
-        alert('Remove failed: ' + ((err && err.message) || 'unknown error'));
-      });
-    });
-    bar.appendChild(remB);
-    return bar;
-  }
-
   /**
    * Modal shell (openForAnchor path). Reuses buildPopover to build the
    * exact same QA controls, then transplants its scrollable body + action
@@ -996,10 +817,6 @@
     } else {
       viewer.appendChild(buildUploadPane(photo));
     }
-    // Photo Type / Required editors — shown for untyped records so they can
-    // be classified without leaving the QA modal (with or without a photo).
-    var detailsPane = buildDetailsPane(photo);
-    if (detailsPane) viewer.appendChild(detailsPane);
     splitBody.appendChild(viewer);
 
     // QA sidebar — only when the photo needs QA. When omitted the viewer
@@ -1571,10 +1388,8 @@
       // photos that don't get QA served. Default true for backward compat
       // (existing callers, e.g. the install QA chit, expect the sidebar).
       needsQa:       (snapshot.needsQa != null) ? !!snapshot.needsQa : true,
-      // Photo-add + classify support (photo-edit-panel.js machinery):
-      // hasType=false → show the Photo Type / Required editors; viewKey
-      // resolves the per-scene DOC_photos save view for those PUTs.
-      hasType:       !!snapshot.type,
+      // Photo-add support (photo-edit-panel.js machinery): viewKey
+      // resolves the per-scene DOC_photos save view for upload/clear PUTs.
       required:      !!snapshot.required,
       viewKey:       snapshot.viewKey || ''
     };
