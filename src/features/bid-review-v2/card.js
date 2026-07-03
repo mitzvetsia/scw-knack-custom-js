@@ -1124,10 +1124,12 @@
     td.innerHTML =
       '<div class="scw-bid-review-v2__grp-inner">' +
         '<span class="scw-bid-review-v2__grp-chevron">' + GROUP_CHEVRON_SVG + '</span>' +
+        // Gear sits LEFT of the title — the warning chips/count pin to the
+        // right edge and overlay anything placed there.
+        manageBtn +
         '<span class="scw-bid-review-v2__grp-title">' + escapeHtml(group.label) + '</span>' +
         summaryChips +
         '<span class="scw-bid-review-v2__grp-count">' + rowCount + '</span>' +
-        manageBtn +   // after the chips/count so they can never overlap it
       '</div>';
     tr.appendChild(td);
     return tr;
@@ -1341,7 +1343,10 @@
         if (url) imgUrls.push(url);
       }
     }
-    if (imgUrls.length) {
+    // Render the Photos section whenever there are photos OR the group has
+    // a real location record to attach photos to — the "+ Add" tile keeps
+    // upload one click away right where the photos live.
+    if (imgUrls.length || mdfIdfId) {
       var photoSection = document.createElement('div');
       photoSection.className = 'scw-bid-review-v2__l1-detail-section';
       var pLabel = document.createElement('div');
@@ -1362,6 +1367,19 @@
         thumb.loading = 'lazy';
         a.appendChild(thumb);
         photoStrip.appendChild(a);
+      }
+      if (mdfIdfId) {
+        var addTile = document.createElement('button');
+        addTile.type = 'button';
+        addTile.className = 'scw-brv2-mdf-addphoto';
+        addTile.setAttribute('data-scw-mdf-addphoto', mdfIdfId);
+        addTile.title = 'Add photos to this MDF/IDF location';
+        addTile.innerHTML =
+          '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" ' +
+          'stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
+          '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="1.8"/>' +
+          '<path d="M21 16l-5-5-9 9"/></svg><span>+ Add</span>';
+        photoStrip.appendChild(addTile);
       }
       photoSection.appendChild(photoStrip);
       wrap.appendChild(photoSection);
