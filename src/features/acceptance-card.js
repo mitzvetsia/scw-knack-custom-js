@@ -61,16 +61,12 @@
   function injectCss() {
     if (document.getElementById(STYLE_ID)) return;
     var css = [
-      // Hide the raw grid chrome — the card replaces it. The table wrapper is
-      // moved OFF-SCREEN rather than display:none'd: the edit proxy clicks its
-      // cells to open Knack's inline editor, and a display:none anchor makes
-      // the (Vue/Popper-positioned) editor treat the reference as hidden and
-      // suppress itself. Off-screen keeps real layout boxes + live handlers.
+      // Hide the raw grid chrome — the card replaces it. (Editing no longer
+      // proxies Knack's cell editor; the card has its own editors, so the
+      // table can be plain display:none again.)
       '#' + VIEW + ' .view-header,',
-      '#' + VIEW + ' .kn-records-nav { display: none !important; }',
-      '#' + VIEW + ' .kn-table-wrapper { position: absolute !important;',
-      '  left: -99999px !important; top: 0 !important; width: 1100px;',
-      '  pointer-events: none; }',
+      '#' + VIEW + ' .kn-records-nav,',
+      '#' + VIEW + ' .kn-table-wrapper { display: none !important; }',
       '.scw-acpt-card {',
       '  background: #fff; border: 1px solid #e5e7eb; border-radius: 10px;',
       '  box-shadow: 0 1px 2px rgba(15,23,42,.04); padding: 16px 18px; margin-top: 8px;',
@@ -103,16 +99,28 @@
       '.scw-acpt-btn--add { background: #fff; border: 1px dashed #cbd5e1; color: #64748b; }',
       '.scw-acpt-btn--add:hover { background: #f8fafc; border-color: #94a3b8; color: #334155; }',
       '.scw-acpt-group { display: inline-flex; align-items: center; gap: 2px; }',
-      // While an acceptance-card edit is open, Knack\'s inline cell editor is
-      // anchored to the off-screen td — recenter it on screen, and defeat any
-      // popper "reference hidden" auto-hide (visibility + display overrides).
-      'body.scw-acpt-cell-editing .kn-popover, body.scw-acpt-cell-editing #cell-editor {',
-      '  position: fixed !important; top: 18% !important; left: 50% !important;',
-      '  transform: translateX(-50%); right: auto !important; bottom: auto !important;',
-      '  z-index: 10000; visibility: visible !important; opacity: 1 !important;',
-      '  display: block !important; pointer-events: auto !important; }',
-      'body.scw-acpt-cell-editing .kn-popover [data-popper-reference-hidden],',
-      'body.scw-acpt-cell-editing .kn-popover .arrow { visibility: visible !important; }'
+      // Own mini-modal (link editor / upload progress).
+      '.scw-acpt-m-backdrop { position: fixed; inset: 0; background: rgba(15,23,42,.55);',
+      '  z-index: 100000; display: flex; align-items: center; justify-content: center; padding: 18px; }',
+      '.scw-acpt-m { background: #fff; color: #0f172a; border-radius: 10px; width: 100%;',
+      '  max-width: 420px; box-shadow: 0 20px 50px rgba(0,0,0,.35); overflow: hidden;',
+      '  font: 13px/1.45 system-ui, -apple-system, sans-serif; }',
+      '.scw-acpt-m__head { padding: 12px 16px; background: #0f4c75; color: #fff;',
+      '  font-weight: 700; font-size: 13.5px; }',
+      '.scw-acpt-m__body { padding: 14px 16px; }',
+      '.scw-acpt-m__input { width: 100%; padding: 8px 10px; border: 1px solid #cbd5e1;',
+      '  border-radius: 6px; font: inherit; box-sizing: border-box; }',
+      '.scw-acpt-m__input:focus { outline: none; border-color: #0f4c75;',
+      '  box-shadow: 0 0 0 3px rgba(15,76,117,.15); }',
+      '.scw-acpt-m__status { margin-top: 10px; font-weight: 600; color: #0f4c75; }',
+      '.scw-acpt-m__status.is-err { color: #be123c; }',
+      '.scw-acpt-m__foot { padding: 11px 16px; border-top: 1px solid #e2e8f0;',
+      '  display: flex; justify-content: flex-end; gap: 8px; background: #f8fafc; }',
+      '.scw-acpt-m__btn { padding: 7px 14px; border-radius: 5px; cursor: pointer;',
+      '  font: 600 12.5px/1.2 system-ui, sans-serif; border: 1px solid transparent; }',
+      '.scw-acpt-m__btn--cancel { background: #fff; color: #475569; border-color: #cbd5e1; }',
+      '.scw-acpt-m__btn--ok { background: #0f4c75; color: #fff; }',
+      '.scw-acpt-m__btn--ok:disabled { background: #cbd5e1; cursor: not-allowed; }'
     ].join('\n');
     var s = document.createElement('style');
     s.id = STYLE_ID; s.textContent = css;
@@ -134,70 +142,160 @@
     'stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">' +
     '<line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>';
 
-  // ── native cell-editor proxy ─────────────────────────────────
-  // The raw table is hidden but its td.cell-edit cells are still live —
-  // clicking one opens Knack's own inline editor (URL editor for the Xero
-  // link, file uploader for the signed agreement). The popover would anchor
-  // to the hidden cell at 0,0, so a body class recenters it while open; a
-  // watchdog clears the class once the popover is gone. Saves fire
-  // knack-cell-update → view re-render → this card rebuilds with the new
-  // value automatically.
-  var _editWatch = null;
-  function stopEditWatch() {
-    document.body.classList.remove('scw-acpt-cell-editing');
-    if (_editWatch) { clearInterval(_editWatch); _editWatch = null; }
-  }
-  // Full native event sequence — Knack's newer Vue tables listen with
-  // native handlers, which jQuery's .trigger('click') alone can miss.
-  function fireNativeClick(el) {
-    var seq = ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click'];
-    for (var i = 0; i < seq.length; i++) {
-      var t = seq[i];
-      var ev;
-      try {
-        ev = (t.indexOf('pointer') === 0 && window.PointerEvent)
-          ? new PointerEvent(t, { bubbles: true, cancelable: true, view: window })
-          : new MouseEvent(t, { bubbles: true, cancelable: true, view: window });
-      } catch (e) {
-        ev = new MouseEvent(t, { bubbles: true, cancelable: true, view: window });
-      }
-      el.dispatchEvent(ev);
-    }
-  }
+  // ── Own editors (view-based PUT through view_3914) ──────────────
+  // The Knack cell-editor proxy proved unreliable against the Vue table
+  // renderer, so the card edits directly: a small URL modal for the Xero
+  // link, and a file picker + Knack asset upload for the signed agreement.
+  // Both PUT through this view with the user's session and refetch so the
+  // card rebuilds with the fresh value.
 
-  function openCellEditor(fieldKey) {
+  function acptRecordId() {
     var viewEl = document.getElementById(VIEW);
     var row = viewEl && viewEl.querySelector('tbody tr[id]');
-    var td = row && row.querySelector('td.cell-edit[data-field-key="' + fieldKey + '"]');
-    if (!td) {
-      console.warn('[scw-acpt] no editable cell for', fieldKey, '— is inline edit enabled on ' + VIEW + '?');
-      return;
-    }
-    stopEditWatch();
-    document.body.classList.add('scw-acpt-cell-editing');
-    // Click the innermost content span (Knack's handler target), then the td,
-    // then jQuery as a legacy-table fallback.
-    var target = td.querySelector('span[class^="col-"]') || td;
-    fireNativeClick(target);
-    var started = Date.now();
-    _editWatch = setInterval(function () {
-      var open = document.querySelector('body > .kn-popover, #cell-editor');
-      if (!open) {
-        if (Date.now() - started < 700) return;   // still mounting
-        // One retry through jQuery (legacy handler path), then give up.
-        if (!openCellEditor._retried) {
-          openCellEditor._retried = true;
-          $(td).trigger('click');
-          started = Date.now();
-          return;
-        }
-        console.warn('[scw-acpt] cell editor never opened for', fieldKey);
-        openCellEditor._retried = false;
-        stopEditWatch();
-      } else {
-        openCellEditor._retried = false;
+    return row ? row.id : '';
+  }
+  function refreshAcptView() {
+    try {
+      var v = window.Knack && Knack.views && Knack.views[VIEW];
+      if (v && v.model && typeof v.model.fetch === 'function') v.model.fetch();
+    } catch (e) { /* best-effort */ }
+  }
+  function putAcceptance(fields) {
+    return new Promise(function (resolve, reject) {
+      var recId = acptRecordId();
+      if (!recId) return reject(new Error('no acceptance record on the page'));
+      if (!(window.SCW && typeof SCW.knackAjax === 'function')) {
+        return reject(new Error('SCW.knackAjax unavailable'));
       }
-    }, 250);
+      SCW.knackAjax({
+        url:  SCW.knackRecordUrl(VIEW, recId),
+        type: 'PUT',
+        data: JSON.stringify(fields),
+        success: resolve,
+        error: function (xhr) { reject(new Error('save failed (' + (xhr && xhr.status) + ')')); }
+      });
+    });
+  }
+
+  /** Minimal modal shell. body is an element; returns {backdrop, foot, close}. */
+  function acptModal(title, bodyEl, okLabel) {
+    var backdrop = document.createElement('div');
+    backdrop.className = 'scw-acpt-m-backdrop';
+    backdrop.innerHTML =
+      '<div class="scw-acpt-m">' +
+        '<div class="scw-acpt-m__head"></div>' +
+        '<div class="scw-acpt-m__body"></div>' +
+        '<div class="scw-acpt-m__foot">' +
+          '<button type="button" class="scw-acpt-m__btn scw-acpt-m__btn--cancel">Cancel</button>' +
+          '<button type="button" class="scw-acpt-m__btn scw-acpt-m__btn--ok"></button>' +
+        '</div>' +
+      '</div>';
+    backdrop.querySelector('.scw-acpt-m__head').textContent = title;
+    backdrop.querySelector('.scw-acpt-m__body').appendChild(bodyEl);
+    var ok = backdrop.querySelector('.scw-acpt-m__btn--ok');
+    ok.textContent = okLabel || 'Save';
+    function close() { if (backdrop.parentNode) backdrop.parentNode.removeChild(backdrop); }
+    backdrop.querySelector('.scw-acpt-m__btn--cancel').addEventListener('click', close);
+    backdrop.addEventListener('click', function (e) { if (e.target === backdrop) close(); });
+    document.body.appendChild(backdrop);
+    return { backdrop: backdrop, ok: ok, close: close };
+  }
+
+  /** Xero invoice link (field_1847, Link field) — URL input modal. */
+  function openXeroEditor(currentUrl) {
+    var body = document.createElement('div');
+    body.innerHTML =
+      '<input type="url" class="scw-acpt-m__input" placeholder="https://…">' +
+      '<div class="scw-acpt-m__status" style="display:none"></div>';
+    var input = body.querySelector('input');
+    input.value = currentUrl || '';
+    var m = acptModal('Xero invoice link', body, 'Save link');
+    setTimeout(function () { input.focus(); input.select(); }, 30);
+    var status = body.querySelector('.scw-acpt-m__status');
+    function fail(msg) {
+      status.style.display = '';
+      status.classList.add('is-err');
+      status.textContent = msg;
+      m.ok.disabled = false;
+    }
+    input.addEventListener('keydown', function (e) { if (e.key === 'Enter') m.ok.click(); });
+    m.ok.addEventListener('click', function () {
+      var url = input.value.trim();
+      if (url && !/^https?:\/\//i.test(url)) url = 'https://' + url;
+      m.ok.disabled = true;
+      status.style.display = '';
+      status.classList.remove('is-err');
+      status.textContent = 'Saving…';
+      var fields = {};
+      fields[F.xero] = url;   // empty string clears the link
+      putAcceptance(fields).then(function () {
+        m.close();
+        refreshAcptView();
+      }).catch(function (err) { fail((err && err.message) || 'Save failed'); });
+    });
+  }
+
+  /** Signed agreement (field_2767, File field) — picker → Knack asset
+   *  upload with the session token → PUT the asset id. */
+  function openAgreementUpload() {
+    var input = document.createElement('input');
+    input.type = 'file';
+    input.accept = '.pdf,.doc,.docx,image/*,application/pdf';
+    input.style.display = 'none';
+    input.addEventListener('change', function () {
+      var file = input.files && input.files[0];
+      document.body.removeChild(input);
+      if (!file) return;
+      var body = document.createElement('div');
+      body.innerHTML = '<div class="scw-acpt-m__status">Uploading ' +
+        esc(file.name || 'file') + '…</div>';
+      var m = acptModal('Signed agreement', body, 'Close');
+      m.ok.disabled = true;
+      var status = body.querySelector('.scw-acpt-m__status');
+
+      var fd = new FormData();
+      fd.append('files', file, file.name || 'agreement.pdf');
+      $.ajax({
+        url: Knack.api_url + '/v1/applications/' + Knack.application_id + '/assets/file/upload',
+        type: 'POST',
+        data: fd,
+        processData: false,
+        contentType: false,
+        headers: {
+          'X-Knack-Application-Id': Knack.application_id,
+          'x-knack-rest-api-key': 'knack',
+          'Authorization': Knack.getUserToken()
+        },
+        success: function (res) {
+          var assetId = res && (res.id || (res.asset && res.asset.id));
+          if (!assetId) {
+            status.classList.add('is-err');
+            status.textContent = 'Upload failed — no asset id returned.';
+            m.ok.disabled = false;
+            return;
+          }
+          status.textContent = 'Saving…';
+          var fields = {};
+          fields[F.agreement] = assetId;
+          putAcceptance(fields).then(function () {
+            m.close();
+            refreshAcptView();
+          }).catch(function (err) {
+            status.classList.add('is-err');
+            status.textContent = (err && err.message) || 'Save failed';
+            m.ok.disabled = false;
+          });
+        },
+        error: function (xhr) {
+          status.classList.add('is-err');
+          status.textContent = 'Upload failed (' + (xhr && xhr.status) + ')';
+          m.ok.disabled = false;
+        }
+      });
+      m.ok.addEventListener('click', m.close);
+    });
+    document.body.appendChild(input);
+    input.click();
   }
 
   function render() {
@@ -260,11 +358,16 @@
     var actBtn = card.querySelector('[data-proxy="action"]');
     if (actBtn && actionA) actBtn.addEventListener('click', function () { actionA.click(); });
 
-    // Edit / add affordances → open Knack's inline cell editor for the field.
+    // Edit / add affordances → the card's own editors (view-based PUT).
     var editBtns = card.querySelectorAll('[data-edit-field]');
     for (var eb = 0; eb < editBtns.length; eb++) {
       editBtns[eb].addEventListener('click', function () {
-        openCellEditor(this.getAttribute('data-edit-field'));
+        var fk = this.getAttribute('data-edit-field');
+        if (fk === F.xero) {
+          openXeroEditor(xeroA ? (xeroA.getAttribute('href') || '') : '');
+        } else if (fk === F.agreement) {
+          openAgreementUpload();
+        }
       });
     }
   }
@@ -274,9 +377,5 @@
   }
   $(document).off('knack-scene-render.any' + EVENT_NS)
     .on('knack-scene-render.any' + EVENT_NS, function () { setTimeout(render, 150); });
-  // A committed inline edit means the editor is closing — drop the recenter
-  // class right away (the watchdog would catch it, this is just snappier).
-  $(document).off('knack-cell-update.' + VIEW + EVENT_NS)
-    .on('knack-cell-update.' + VIEW + EVENT_NS, function () { stopEditWatch(); });
 })();
 /*** END FEATURE: Acceptance summary card **********************************/
