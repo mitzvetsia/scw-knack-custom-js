@@ -362,7 +362,34 @@
       if (laborIdx < 0) laborIdx = tds.findIndex((td) => td.classList && td.classList.contains(ctx.keys.labor));
     }
 
-    return { colCount: Math.max(colCount, 0), qtyIdx, laborIdx };
+    // Visible-column variants. Columns hidden per-cell by CSS class
+    // (field_2409, field_2478) or KTL column-hiding never render — but a
+    // colspan can't skip them, so footer rows built with LOGICAL counts lay
+    // out wider than the data rows and their value cell drifts one column
+    // right of Cost. Count only ths that actually render.
+    let visibleColCount = 0;
+    let visibleQtyIdx = -1;
+    let visibleLaborIdx = -1;
+    for (let i = 0; i < ths.length; i++) {
+      let hidden = false;
+      try { hidden = window.getComputedStyle(ths[i]).display === 'none'; } catch (e) { /* count as visible */ }
+      if (hidden) continue;
+      if (i === qtyIdx) visibleQtyIdx = visibleColCount;
+      if (i === laborIdx) visibleLaborIdx = visibleColCount;
+      visibleColCount++;
+    }
+    // Whole table hidden mid-render → every th reads display:none and the
+    // visible metrics are meaningless. Fall back to the logical ones.
+    if (!visibleColCount) {
+      visibleColCount = colCount;
+      visibleQtyIdx = qtyIdx;
+      visibleLaborIdx = laborIdx;
+    }
+
+    return {
+      colCount: Math.max(colCount, 0), qtyIdx, laborIdx,
+      visibleColCount: Math.max(visibleColCount, 0), visibleQtyIdx, visibleLaborIdx,
+    };
   }
 
   // ============================================================
@@ -1561,12 +1588,15 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     groupLabel,
   }) {
     const meta = computeColumnMeta(ctx);
-    const cols = Math.max(meta.colCount || 0, 1);
+    // Visible metrics only: these rows are laid out with colspans, which
+    // can't skip CSS-hidden columns — logical counts push the value cell
+    // right of the Cost column (the "offset subtotal" bug).
+    const cols = Math.max(meta.visibleColCount || 0, 1);
 
     // Use actual column indices so values land under the correct headers.
     // Fallback: assume qty is 3rd-to-last, labor is 2nd-to-last (old behaviour).
-    const safeQtyIdx = Number.isFinite(meta.qtyIdx) && meta.qtyIdx >= 1 ? meta.qtyIdx : Math.max(cols - 3, 1);
-    const safeLaborIdx = Number.isFinite(meta.laborIdx) && meta.laborIdx >= 1 ? meta.laborIdx : Math.max(cols - 2, safeQtyIdx + 1);
+    const safeQtyIdx = Number.isFinite(meta.visibleQtyIdx) && meta.visibleQtyIdx >= 1 ? meta.visibleQtyIdx : Math.max(cols - 3, 1);
+    const safeLaborIdx = Number.isFinite(meta.visibleLaborIdx) && meta.visibleLaborIdx >= 1 ? meta.visibleLaborIdx : Math.max(cols - 2, safeQtyIdx + 1);
 
     function makeTrBase(extraClasses) {
       return $(`
@@ -1660,9 +1690,11 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     const grandTotal = sumField(caches, $billableRows, laborKey);
 
     const meta = computeColumnMeta(ctx);
-    const cols = Math.max(meta.colCount || 0, 1);
-    const safeQtyIdx = Number.isFinite(meta.qtyIdx) && meta.qtyIdx >= 1 ? meta.qtyIdx : Math.max(cols - 3, 1);
-    const safeLaborIdx = Number.isFinite(meta.laborIdx) && meta.laborIdx >= 1 ? meta.laborIdx : Math.max(cols - 2, safeQtyIdx + 1);
+    // Visible metrics — same colspan-vs-hidden-columns reasoning as
+    // buildLevel1FooterRows.
+    const cols = Math.max(meta.visibleColCount || 0, 1);
+    const safeQtyIdx = Number.isFinite(meta.visibleQtyIdx) && meta.visibleQtyIdx >= 1 ? meta.visibleQtyIdx : Math.max(cols - 3, 1);
+    const safeLaborIdx = Number.isFinite(meta.visibleLaborIdx) && meta.visibleLaborIdx >= 1 ? meta.visibleLaborIdx : Math.max(cols - 2, safeQtyIdx + 1);
 
     function makeTr(extraClasses) {
       return $(`
@@ -1824,6 +1856,74 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   }
 
   // ============================================================
+  // FEATURE: Split L3 (labor-description) groups by rate
+  // ============================================================
+  // The grid is Knack-grouped at L3 by field_2409 alone, so items with the
+  // same labor description but DIFFERENT rates land in one group — the
+  // header then shows an averaged rate against a summed cost, which reads
+  // as a wrong bill line to the subcontractor. Split such groups so every
+  // rendered L3 line is one (labor description + rate) pair: qty and cost
+  // are summed within the pair, and the rate shown is the pair's actual
+  // rate. Split headers are tagged .scw-l3-rate-split and rebuilt from
+  // scratch on every pipeline run (idempotent under re-renders).
+  function splitLevel3GroupsByRate(ctx, $tbody, caches) {
+    const rateKey = ctx.keys.rate;
+    if (!rateKey || !$tbody.length) return;
+
+    // Fresh slate — re-derive the splits from the data rows every run.
+    $tbody.find('tr.kn-table-group.kn-group-level-3.scw-l3-rate-split').remove();
+
+    const l3Headers = $tbody.find('tr.kn-table-group.kn-group-level-3').get();
+    for (const headerEl of l3Headers) {
+      // Skip sections whose L3 money is hidden (Services / Assumptions) —
+      // rate has no meaning there and splits would just duplicate headers.
+      let l2El = headerEl.previousElementSibling;
+      while (l2El && !(l2El.classList.contains('kn-table-group') &&
+                       l2El.classList.contains('kn-group-level-2'))) {
+        l2El = l2El.previousElementSibling;
+      }
+      if (l2El) {
+        const rule = getLevel2Rule(ctx, getLevel2InfoFromGroupRow($(l2El)));
+        if (rule && rule.hideLevel3Summary) continue;
+      }
+
+      const rows = getGroupBlock($(headerEl), 3).filter('tr[id]').get();
+      if (rows.length < 2) continue;
+
+      // Partition billable rows by rate (first-seen order). No-sub-bid rows
+      // carry no money — keep them with the first partition so the product
+      // list / associated-equipment features still see them.
+      const freeRows = [];
+      const byRate = new Map();
+      const partitions = [];
+      for (const row of rows) {
+        if (rowIsIncluded(ctx, row)) { freeRows.push(row); continue; }
+        const key = getRowNumericValue(caches, row, rateKey).toFixed(2);
+        let part = byRate.get(key);
+        if (!part) { part = []; byRate.set(key, part); partitions.push(part); }
+        part.push(row);
+      }
+      if (partitions.length < 2) continue;   // one rate (or all free) — no split
+      partitions[0] = freeRows.concat(partitions[0]);
+
+      // Reflow: original header keeps partition 0; each further partition
+      // gets a fresh bare L3 header (the pipeline enhances it like any
+      // other — cells template, field_2409 label injection, sums).
+      let anchor = headerEl;
+      partitions.forEach((partRows, idx) => {
+        if (idx > 0) {
+          const head = document.createElement('tr');
+          head.className = 'kn-table-group kn-group-level-3 scw-l3-rate-split';
+          head.appendChild(document.createElement('td'));
+          anchor.after(head);
+          anchor = head;
+        }
+        for (const row of partRows) { anchor.after(row); anchor = row; }
+      });
+    }
+  }
+
+  // ============================================================
   // MAIN PROCESSOR
   // ============================================================
 
@@ -1853,6 +1953,9 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     healOrphanDropGroups(ctx, $tbody, caches);
     healOrphanLevel3(ctx, $tbody);
     reorderLevel2GroupsBySortField(ctx, $tbody, runId);
+    // After heal/reorder, before group processing: one rendered L3 line
+    // per (labor description + rate) pair.
+    splitLevel3GroupsByRate(ctx, $tbody, caches);
 
     const $firstDataRow = $tbody.find('tr[id]').first();
     if (!$firstDataRow.length) return;

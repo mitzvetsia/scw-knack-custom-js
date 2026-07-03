@@ -162,7 +162,7 @@
       trigger: { type: 'formSubmit', formViewId: 'view_3679', recordIdInput: 'id' },
       skipViews: { view_3679: true, view_3770: true, view_3552: true },
       hideEmptyGrids: [],
-      gridKeys: { qty: 'field_2399', cost: 'field_2401' },
+      gridKeys: { qty: 'field_2399', cost: 'field_2401', rate: 'field_2400' },
       payloadType: 'subcontractor bid',
       pollViewOnReturn: 'view_3507',
       pollField: 'field_2626',
@@ -499,6 +499,9 @@
         var hideCost = hideQtyCost || tr.classList.contains('scw-hide-cost');
         var l3Qty = hideQtyCost ? 0 : parseMoney(norm((tr.querySelector('td.' + keys.qty) || {}).textContent || ''));
         var l3Cost = hideCost ? '' : norm((tr.querySelector('td.' + keys.cost) || {}).textContent || '');
+        // Rate (unit price) — only scenes that declare gridKeys.rate (the
+        // subcontractor bid scene) capture it; feeds the named bidLines block.
+        var l3Rate = (keys.rate && !hideCost) ? norm((tr.querySelector('td.' + keys.rate) || {}).textContent || '') : '';
 
         var connDevSpan = tr.querySelector('.scw-l3-connected-devices');
         var connDevices = [];
@@ -526,7 +529,7 @@
         var isMounting = tr.classList.contains('scw-level3--mounting-hardware');
 
         currentL3 = {
-          level: 3, label: l3Label, qty: l3Qty, cost: l3Cost, hideCost: hideCost,
+          level: 3, label: l3Label, qty: l3Qty, cost: l3Cost, rate: l3Rate, hideCost: hideCost,
           connectedDevices: connDevices, isMountingHardware: isMounting, lineItems: [],
         };
 
@@ -3982,6 +3985,40 @@
     };
   }
 
+  // Flat, explicitly-named projection of the scraped bid sections for the
+  // submit-bid webhook. Make maps bidLines[].rate / .qty / .cost instead of
+  // decoding raw field_XXXX keys out of `json`. One entry per rendered bid
+  // line — the preview grid splits labor-description groups by rate
+  // (bid-items-grid.js splitLevel3GroupsByRate), so a line is always a
+  // single (description, rate) pair with qty and cost summed within it.
+  function buildBidLines(payload) {
+    var lines = [];
+    var views = (payload && payload.views) || [];
+    for (var v = 0; v < views.length; v++) {
+      var sections = views[v].sections || [];
+      for (var s = 0; s < sections.length; s++) {
+        var l1 = sections[s];
+        var buckets = l1.buckets || [];
+        for (var b = 0; b < buckets.length; b++) {
+          var l2 = buckets[b];
+          var products = l2.products || [];
+          for (var p = 0; p < products.length; p++) {
+            var l3 = products[p];
+            lines.push({
+              mdfIdf:      l1.label || '',
+              bucket:      l2.label || '',
+              description: l3.label || '',
+              qty:         l3.qty != null ? l3.qty : '',
+              rate:        l3.rate || '',
+              cost:        l3.cost || ''
+            });
+          }
+        }
+      }
+    }
+    return lines;
+  }
+
   function buildPublishPayload(sceneId, opts) {
     opts = opts || {};
     var cfg = resolveConfiguredScene(sceneId);
@@ -4014,6 +4051,9 @@
       hash:                  window.location.hash || '',
       sceneId:               cfg.sceneId,
       type:                  cfg.payloadType,
+      // Named line-item projection for the subcontractor-bid scenario only
+      // (undefined elsewhere → dropped by JSON.stringify). See buildBidLines.
+      bidLines:              cfg.payloadType === 'subcontractor bid' ? buildBidLines(payload) : undefined,
       sowId:                 summary.sowId,
       equipmentTotal:        summary.equipmentTotal,
       installationTotal:     summary.installationTotal,
