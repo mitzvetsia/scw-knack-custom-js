@@ -244,6 +244,32 @@
       '  max-width: 100%; max-height: 100%; object-fit: contain; cursor: zoom-in;',
       '}',
       '.scw-qa-modal__viewer-empty { color: #9ca3af; padding: 40px; text-align: center; font-size: 14px; }',
+      /* Upload + classify panes live in the viewer column — stack them. */
+      '.scw-qa-modal__viewer { flex-direction: column; gap: 12px; padding: 14px; }',
+      '.scw-qa-modal__uploadwrap { width: 100%; max-width: 420px; }',
+      '.scw-qa-modal__drop { display: flex; flex-direction: column; align-items: center; gap: 8px;',
+      '  justify-content: center; min-height: 150px; border: 2px dashed #6b7280; border-radius: 10px;',
+      '  background: #111827; color: #9ca3af; cursor: pointer; text-align: center; padding: 16px;',
+      '  font: 13px/1.4 system-ui, sans-serif; transition: border-color .15s, color .15s; }',
+      '.scw-qa-modal__drop:hover, .scw-qa-modal__drop.is-over { border-color: #60a5fa; color: #e5e7eb; }',
+      '.scw-qa-modal__drop-sub { font-size: 11.5px; }',
+      '.scw-qa-modal__upstatus { margin-top: 8px; font: 600 12.5px/1.3 system-ui, sans-serif;',
+      '  color: #60a5fa; text-align: center; }',
+      '.scw-qa-modal__upstatus.is-err { color: #f87171; }',
+      '.scw-qa-modal__details { width: 100%; max-width: 420px; background: #fff;',
+      '  border-radius: 8px; padding: 10px 12px; flex: 0 0 auto; }',
+      '.scw-qa-modal__details-row { display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap; }',
+      '.scw-qa-modal__details-fld { flex: 1 1 140px; min-width: 120px; }',
+      '.scw-qa-modal__typesel { width: 100%; padding: 6px 8px; border: 1px solid #cbd5e1;',
+      '  border-radius: 6px; font: 12.5px/1.3 system-ui, sans-serif; background: #fff; }',
+      '.scw-qa-modal__seg { display: inline-flex; border: 1px solid #cbd5e1; border-radius: 7px; overflow: hidden; }',
+      '.scw-qa-modal__seg button { background: #fff; border: 0; padding: 7px 14px; cursor: pointer;',
+      '  font: 600 12px/1 system-ui, sans-serif; color: #64748b; }',
+      '.scw-qa-modal__seg button + button { border-left: 1px solid #cbd5e1; }',
+      '.scw-qa-modal__seg button.is-on { background: #0f4c75; color: #fff; }',
+      '.scw-qa-modal__details-save { background: #0f4c75; color: #fff; border: 0; border-radius: 6px;',
+      '  padding: 8px 14px; font: 600 12.5px/1 system-ui, sans-serif; cursor: pointer; }',
+      '.scw-qa-modal__details-save:disabled { background: #cbd5e1; cursor: not-allowed; }',
       '.scw-qa-modal__sidebar {',
       '  flex: 0 0 340px; border-left: 1px solid #e5e7eb;',
       '  display: flex; flex-direction: column; background: #fff;',
@@ -618,6 +644,159 @@
     return pop;
   }
 
+  // ── Photo-add + classify sections (machinery: photo-edit-panel.js) ──
+  function pepUtil() {
+    return (window.SCW && SCW.photoEditPanel && SCW.photoEditPanel.util) || null;
+  }
+  function pepSaveView(viewKey) {
+    var sv = window.SCW && SCW.photoEditPanel && SCW.photoEditPanel.SAVE_VIEWS;
+    return (sv && viewKey && sv[viewKey]) || PIC_SAVE_VIEW;
+  }
+  function notifyHostSaved(photo) {
+    if (_refreshHandler) { try { _refreshHandler({}, photo); } catch (e) {} }
+  }
+
+  /** Upload dropzone for a photo record with no image. Downsamples, uploads
+   *  to Knack assets with the session token, PUTs field_771 through the
+   *  scene's save view, then swaps itself for a live preview. Falls back to
+   *  the old static "No photo uploaded yet." if the machinery is absent. */
+  function buildUploadPane(photo) {
+    var u = pepUtil();
+    var saveView = pepSaveView(photo.viewKey);
+    if (!u || !saveView) {
+      var empty = document.createElement('div');
+      empty.className = 'scw-qa-modal__viewer-empty';
+      empty.textContent = 'No photo uploaded yet.';
+      return empty;
+    }
+    var wrap = document.createElement('div');
+    wrap.className = 'scw-qa-modal__uploadwrap';
+    wrap.innerHTML =
+      '<label class="scw-qa-modal__drop">' +
+        '<svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" ' +
+          'stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">' +
+          '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="1.8"/>' +
+          '<path d="M21 16l-5-5-9 9"/></svg>' +
+        '<span><strong>Add a photo</strong> — click to choose or drag one here.<br>' +
+        '<span class="scw-qa-modal__drop-sub">Large images are resized automatically.</span></span>' +
+        '<input type="file" accept="image/*" style="display:none">' +
+      '</label>' +
+      '<div class="scw-qa-modal__upstatus" style="display:none"></div>';
+    var drop   = wrap.querySelector('.scw-qa-modal__drop');
+    var input  = wrap.querySelector('input[type="file"]');
+    var status = wrap.querySelector('.scw-qa-modal__upstatus');
+    function setStatus(msg, isErr) {
+      status.style.display = '';
+      status.textContent = msg;
+      status.classList.toggle('is-err', !!isErr);
+    }
+    function handleFile(file) {
+      if (!file) return;
+      if ((file.type || '').indexOf('image/') !== 0) { setStatus('Not an image file.', true); return; }
+      setStatus('Resizing…');
+      u.downscale(file).then(function (blob) {
+        if (!blob) { setStatus('Image too large and could not be resized.', true); return null; }
+        setStatus('Uploading…');
+        var name = (file.name || 'photo').replace(/\.[a-z0-9]+$/i, '') + '.jpg';
+        return u.uploadImage(blob, name).then(function (assetId) {
+          setStatus('Saving…');
+          var body = {}; body[F.img] = assetId;
+          return u.putRecord(saveView, photo.id, body);
+        }).then(function () {
+          setStatus('Photo saved ✓');
+          var url = URL.createObjectURL(blob);
+          var img = document.createElement('img');
+          img.src = url;
+          img.alt = photo.type || 'Photo';
+          drop.parentNode.replaceChild(img, drop);
+          photo.imgUrl = url;
+          photo.completed = true;
+          notifyHostSaved(photo);
+        });
+      }).catch(function (err) {
+        setStatus((err && err.message) || 'Upload failed — try again.', true);
+      });
+    }
+    input.addEventListener('change', function () { handleFile(this.files && this.files[0]); });
+    drop.addEventListener('dragover', function (e) { e.preventDefault(); drop.classList.add('is-over'); });
+    drop.addEventListener('dragleave', function () { drop.classList.remove('is-over'); });
+    drop.addEventListener('drop', function (e) {
+      e.preventDefault();
+      drop.classList.remove('is-over');
+      handleFile(e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0]);
+    });
+    return wrap;
+  }
+
+  /** Photo Type + Required editors — rendered when the record has no type
+   *  yet, so untyped/unset photos can be classified in place. Returns null
+   *  when not applicable (already typed, or machinery missing). */
+  function buildDetailsPane(photo) {
+    if (photo.hasType) return null;
+    var u = pepUtil();
+    var saveView = pepSaveView(photo.viewKey);
+    if (!u || !saveView) return null;
+
+    var types = u.collectTypeOptions();
+    var sec = document.createElement('div');
+    sec.className = 'scw-qa-modal__details';
+    var optHtml = '<option value="">— No type —</option>';
+    for (var o = 0; o < types.length; o++) {
+      optHtml += '<option value="' + types[o].id + '">' +
+        String(types[o].label).replace(/[&<>"]/g, function (c) {
+          return ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;' })[c];
+        }) + '</option>';
+    }
+    sec.innerHTML =
+      '<div class="scw-qa-modal__details-row">' +
+        '<div class="scw-qa-modal__details-fld">' +
+          '<div class="scw-qa-popover__label">Photo Type</div>' +
+          '<select class="scw-qa-modal__typesel">' + optHtml + '</select>' +
+        '</div>' +
+        '<div class="scw-qa-modal__details-fld">' +
+          '<div class="scw-qa-popover__label">Required</div>' +
+          '<span class="scw-qa-modal__seg">' +
+            '<button type="button" data-req="No"' + (!photo.required ? ' class="is-on"' : '') + '>No</button>' +
+            '<button type="button" data-req="Yes"' + (photo.required ? ' class="is-on"' : '') + '>Yes</button>' +
+          '</span>' +
+        '</div>' +
+        '<button type="button" class="scw-qa-modal__details-save" disabled>Save</button>' +
+      '</div>';
+
+    var select  = sec.querySelector('.scw-qa-modal__typesel');
+    var segBtns = sec.querySelectorAll('.scw-qa-modal__seg button');
+    var saveBtn = sec.querySelector('.scw-qa-modal__details-save');
+    var reqVal  = photo.required ? 'Yes' : 'No';
+    function markDirty() { saveBtn.disabled = false; }
+    select.addEventListener('change', markDirty);
+    for (var sb = 0; sb < segBtns.length; sb++) {
+      segBtns[sb].addEventListener('click', function () {
+        reqVal = this.getAttribute('data-req');
+        for (var k = 0; k < segBtns.length; k++) segBtns[k].classList.remove('is-on');
+        this.classList.add('is-on');
+        markDirty();
+      });
+    }
+    saveBtn.addEventListener('click', function () {
+      saveBtn.disabled = true;
+      saveBtn.textContent = 'Saving…';
+      var body = {};
+      body[F.photoType] = select.value ? [select.value] : [];
+      body[F.required]  = reqVal;
+      u.putRecord(saveView, photo.id, body).then(function () {
+        saveBtn.textContent = 'Saved ✓';
+        photo.required = (reqVal === 'Yes');
+        notifyHostSaved(photo);
+      }).catch(function (err) {
+        saveBtn.disabled = false;
+        saveBtn.textContent = 'Save';
+        alert('Save failed: ' + ((err && err.message) || 'unknown') +
+              '\nMake sure the photo fields are editable on ' + saveView + '.');
+      });
+    });
+    return sec;
+  }
+
   /**
    * Modal shell (openForAnchor path). Reuses buildPopover to build the
    * exact same QA controls, then transplants its scrollable body + action
@@ -701,11 +880,12 @@
       img.addEventListener('click', function () { window.open(photo.imgUrl, '_blank'); });
       viewer.appendChild(img);
     } else {
-      var empty = document.createElement('div');
-      empty.className = 'scw-qa-modal__viewer-empty';
-      empty.textContent = 'No photo uploaded yet.';
-      viewer.appendChild(empty);
+      viewer.appendChild(buildUploadPane(photo));
     }
+    // Photo Type / Required editors — shown for untyped records so they can
+    // be classified without leaving the QA modal (with or without a photo).
+    var detailsPane = buildDetailsPane(photo);
+    if (detailsPane) viewer.appendChild(detailsPane);
     splitBody.appendChild(viewer);
 
     // QA sidebar — only when the photo needs QA. When omitted the viewer
@@ -1276,7 +1456,13 @@
       // plain big-photo viewer (preview only) — e.g. non-required install
       // photos that don't get QA served. Default true for backward compat
       // (existing callers, e.g. the install QA chit, expect the sidebar).
-      needsQa:       (snapshot.needsQa != null) ? !!snapshot.needsQa : true
+      needsQa:       (snapshot.needsQa != null) ? !!snapshot.needsQa : true,
+      // Photo-add + classify support (photo-edit-panel.js machinery):
+      // hasType=false → show the Photo Type / Required editors; viewKey
+      // resolves the per-scene DOC_photos save view for those PUTs.
+      hasType:       !!snapshot.type,
+      required:      !!snapshot.required,
+      viewKey:       snapshot.viewKey || ''
     };
 
     _photoId = photoId;

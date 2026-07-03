@@ -462,6 +462,19 @@
   }
 
   window.SCW = window.SCW || {};
-  SCW.photoEditPanel = { open: open, SAVE_VIEWS: SAVE_VIEWS };
+  SCW.photoEditPanel = {
+    open: open,               // standalone panel — fallback when qa-popover is absent
+    SAVE_VIEWS: SAVE_VIEWS,
+    // Machinery exports — qa-popover.js embeds the upload + classify
+    // sections directly in the QA modal (the primary photo UX) and drives
+    // them through these.
+    util: {
+      downscale: downscale,
+      uploadImage: uploadImage,
+      putRecord: putRecord,
+      collectTypeOptions: collectTypeOptions,
+      FIELDS: F
+    }
+  };
 })();
 /*** END PHOTO EDIT PANEL *****************************************************/

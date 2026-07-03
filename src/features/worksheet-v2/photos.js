@@ -848,17 +848,21 @@
                 el.closest('.scw-ws-v2-card').querySelector('[data-scw-ws-v2-view]'));
     if (host) viewKey = host.getAttribute('data-scw-ws-v2-view') || '';
 
+    var resolvedImg = imgUrl || el.getAttribute('data-qa-img') || '';
     var snapshot = {
-      type:          type || el.getAttribute('data-qa-type') || 'Photo',
-      imgUrl:        imgUrl || el.getAttribute('data-qa-img') || '',
+      type:          type || el.getAttribute('data-qa-type') || '',
+      imgUrl:        resolvedImg,
       status:        el.getAttribute('data-qa-status')   || 'Pending',
       client:        el.getAttribute('data-qa-client')   || 'N/A',
       notes:         el.getAttribute('data-qa-notes')    || '',
       history:       el.getAttribute('data-qa-history')  || '',
       completedBy:   el.getAttribute('data-qa-by')       || '',
       completedDate: el.getAttribute('data-qa-date')     || '',
-      completed:     true,
-      needsQa:       !!needsQa
+      completed:     !!resolvedImg,
+      needsQa:       !!needsQa,
+      // Photo-add + classify support in the QA modal (qa-popover.js):
+      required:      el.getAttribute('data-photo-required') === 'true',
+      viewKey:       viewKey
     };
 
     SCW.qaPopover.openAnchor(el, photoId, snapshot, function () {
@@ -933,33 +937,44 @@
     document.addEventListener('click', function (e) {
       var card = e.target.closest && e.target.closest('a.scw-ws-v2-photo-card');
       if (!card) return;
-      // No image yet → unified edit panel (upload + type/required + QA when
-      // required). Falls back to the old edit-page navigation if the panel
-      // can't run on this scene (no save view configured).
+      // The FILES QA modal (qa-popover.js) is the basis of all photo
+      // interactions: it now embeds the upload dropzone (empty field_771)
+      // and the Photo Type / Required editors (untyped records) alongside
+      // the QA sidebar (required photos).
+      // No image yet → QA modal with the upload pane. QA sidebar shows for
+      // required photos. Falls back to the standalone edit panel, then the
+      // old edit-page navigation.
       if (!card.getAttribute('data-scw-ws-v2-photo-url')) {
-        if (openEditPanelFromCard(card)) { e.preventDefault(); e.stopPropagation(); }
+        var reqd = card.getAttribute('data-photo-required') === 'true';
+        var openedEmpty = openPhotoQaModal(
+          card,
+          card.getAttribute('data-scw-ws-v2-photo-id'),
+          card.getAttribute('data-scw-ws-v2-photo-type') || '',
+          '',
+          reqd
+        );
+        if (!openedEmpty) openedEmpty = openEditPanelFromCard(card);
+        if (openedEmpty) { e.preventDefault(); e.stopPropagation(); }
         return;
       }
 
       // Install surface (QA_CHIT_VIEWS marks cards with the needsqa attr):
-      // clicking a filled photo opens the SAME unified panel (photo preview +
-      // type/required + QA button). The QA chit stays the one-click route
-      // straight into the QA modal. Other surfaces (bid-review/sales/etc.)
-      // fall through to the lightbox below unchanged.
+      // clicking a filled photo opens the QA modal — required photos with
+      // the QA sidebar, others as the big-photo viewer. Other surfaces
+      // (bid-review/sales/etc.) fall through to the lightbox unchanged.
       if (card.hasAttribute('data-scw-ws-v2-photo-needsqa')) {
-        if (openEditPanelFromCard(card)) { e.preventDefault(); e.stopPropagation(); return; }
-        // Panel unavailable — old behavior: QA modal, then lightbox fallback.
         var needsQa = card.getAttribute('data-scw-ws-v2-photo-needsqa') === '1';
         var opened = openPhotoQaModal(
           card,
           card.getAttribute('data-scw-ws-v2-photo-id'),
-          card.getAttribute('data-scw-ws-v2-photo-type') || 'Photo',
+          card.getAttribute('data-scw-ws-v2-photo-type') || '',
           card.getAttribute('data-scw-ws-v2-photo-url') || '',
           needsQa
         );
+        if (!opened) opened = openEditPanelFromCard(card);
         if (opened) { e.preventDefault(); e.stopPropagation(); return; }
-        // openPhotoQaModal failed (qaPopover unavailable) — fall through to
-        // the lightbox so the user can still see the photo.
+        // Neither modal available — fall through to the lightbox so the
+        // user can still see the photo.
       }
 
       var stripEl = card.closest('.scw-ws-v2-photos-strip');
