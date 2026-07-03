@@ -336,13 +336,11 @@
   }
   function photoStripHtml(list) {
     return '<div class="' + PREFIX + '-photos">' +
-      '<div class="' + PREFIX + '-photos-l">Photos</div>' +
-      '<div class="' + PREFIX + '-photos-strip">' +
       list.map(function (p) {
         return '<button type="button" class="' + PREFIX + '-photo" data-full="' + esc(p.full) + '">' +
           '<img src="' + esc(p.thumb) + '" alt="" loading="lazy"></button>';
       }).join('') +
-      '</div></div>';
+      '</div>';
   }
   /** Insert / refresh the photo strip on every mounted card. Runs on each
    *  render of either view (cards persist across renders, and PHOTO_VIEW's
@@ -358,6 +356,9 @@
       card.setAttribute('data-scw-photos', sig);
       var old = card.querySelector('.' + PREFIX + '-photos');
       if (old) old.parentNode.removeChild(old);
+      // Photos rail sits LEFT of the card content (grid layout kicks in via
+      // the --photos modifier; without photos the card stays a plain block).
+      card.classList.toggle(PREFIX + '-card--photos', list.length > 0);
       if (list.length) card.insertAdjacentHTML('beforeend', photoStripHtml(list));
     }
   }
@@ -840,14 +841,22 @@
       '.' + PREFIX + '-chip:hover{border-color:#94a3b8;}' +
       '.' + PREFIX + '-chip.is-on{background:#2563eb;border-color:#2563eb;color:#fff;}' +
       '.' + PREFIX + '-empty{padding:24px;text-align:center;color:#94a3b8;font:500 13px system-ui,sans-serif;}' +
-      // Photo strip (read-only thumbnails from PHOTO_VIEW) + lightbox
-      '.' + PREFIX + '-photos{display:flex;gap:12px;align-items:flex-start;margin-top:14px;' +
-        'padding-top:12px;border-top:1px solid #eef2f6;}' +
-      '.' + PREFIX + '-photos-l{flex:0 0 auto;padding-top:4px;font:700 10px/1.2 system-ui,sans-serif;' +
-        'text-transform:uppercase;letter-spacing:.05em;color:#64748b;}' +
-      '.' + PREFIX + '-photos-strip{display:flex;flex-wrap:wrap;gap:8px;}' +
-      '.' + PREFIX + '-photo{width:86px;height:86px;padding:0;border:1px solid #e2e8f0;' +
-        'border-radius:8px;overflow:hidden;background:#f8fafc;cursor:zoom-in;}' +
+      // Photos rail — left of the card content, no label, larger thumbs.
+      // The --photos modifier turns the card into a two-column grid with
+      // the vertical thumb stack spanning both content rows.
+      '.' + PREFIX + '-card--photos{display:grid;grid-template-columns:132px 1fr;column-gap:18px;}' +
+      '.' + PREFIX + '-card--photos .' + PREFIX + '-photos{grid-column:1;grid-row:1/span 2;}' +
+      '.' + PREFIX + '-card--photos .' + PREFIX + '-card-head{grid-column:2;}' +
+      '.' + PREFIX + '-card--photos .' + PREFIX + '-grid{grid-column:2;}' +
+      '.' + PREFIX + '-photos{display:flex;flex-direction:column;gap:8px;align-content:flex-start;}' +
+      '.' + PREFIX + '-photo{width:132px;height:132px;padding:0;border:1px solid #e2e8f0;' +
+        'border-radius:8px;overflow:hidden;background:#f8fafc;cursor:zoom-in;flex:0 0 auto;}' +
+      // Narrow screens: rail collapses to a wrapped row under the fields.
+      '@media (max-width:640px){' +
+        '.' + PREFIX + '-card--photos{display:block;}' +
+        '.' + PREFIX + '-photos{flex-direction:row;flex-wrap:wrap;margin-top:12px;}' +
+        '.' + PREFIX + '-photo{width:100px;height:100px;}' +
+      '}' +
       '.' + PREFIX + '-photo img{display:block;width:100%;height:100%;object-fit:cover;}' +
       '.' + PREFIX + '-lightbox{position:fixed;inset:0;z-index:100001;background:rgba(15,23,42,.9);' +
         'display:flex;align-items:center;justify-content:center;padding:24px;cursor:zoom-out;}' +
