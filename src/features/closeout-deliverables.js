@@ -1660,26 +1660,28 @@
             'The deliverable slot stays — only the file is cleared.')) return;
       remB.disabled = true;
       remB.textContent = 'Removing…';
-      var fields = {};
-      fields[F.file] = null;
-      fields[F.completed] = 'No';
-      SCW.knackAjax({
-        url:  SCW.knackRecordUrl(activeDep().docSaveView, doc.id),
-        type: 'PUT',
-        data: JSON.stringify(fields),
-        success: function () {
-          // Stay open: clear the file off the working doc and swap the
-          // viewer to the add-file pane so a replacement can go right in.
-          doc.rawUrl = ''; doc.fileUrl = ''; doc.thumbUrl = ''; doc.fileName = '';
-          if (docFileMeta[doc.id]) delete docFileMeta[doc.id];
-          if (document.contains(viewerEl)) renderViewerInto(viewerEl, doc);
-          refetchCloseoutViews();
-        },
-        error: function (xhr) {
-          remB.disabled = false;
-          remB.textContent = 'Remove file';
-          alert('Remove failed (' + xhr.status + ')');
-        }
+      // clearFileField (photo-edit-panel machinery) PUTs null, VERIFIES the
+      // response actually dropped the asset, and retries with '' when Knack
+      // silently ignores null — the "remove looked like it worked but the
+      // file came back on refresh" quirk.
+      var clearFile = window.SCW && SCW.photoEditPanel && SCW.photoEditPanel.util &&
+                      SCW.photoEditPanel.util.clearFileField;
+      var extra = {};
+      extra[F.completed] = 'No';
+      var p = clearFile
+        ? clearFile(activeDep().docSaveView, doc.id, F.file, extra)
+        : Promise.reject(new Error('clear helper unavailable'));
+      p.then(function () {
+        // Stay open: clear the file off the working doc and swap the
+        // viewer to the add-file pane so a replacement can go right in.
+        doc.rawUrl = ''; doc.fileUrl = ''; doc.thumbUrl = ''; doc.fileName = '';
+        if (docFileMeta[doc.id]) delete docFileMeta[doc.id];
+        if (document.contains(viewerEl)) renderViewerInto(viewerEl, doc);
+        refetchCloseoutViews();
+      }).catch(function (err) {
+        remB.disabled = false;
+        remB.textContent = 'Remove file';
+        alert('Remove failed: ' + ((err && err.message) || 'unknown error'));
       });
     });
     bar.appendChild(remB);

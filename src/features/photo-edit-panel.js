@@ -138,6 +138,36 @@
     });
   }
 
+  /** Clear a file/image field. Knack is inconsistent about what empties an
+   *  asset field — some fields treat null as "no change" (the PUT 200s but
+   *  the file survives). So: PUT null, VERIFY against the response record,
+   *  and if the asset is still there retry with '' before giving up. */
+  function clearFileField(saveView, recordId, fieldKey, extraFields) {
+    function stillThere(resp) {
+      var rec = (resp && (resp.record || resp)) || {};
+      var raw = rec[fieldKey + '_raw'];
+      if (raw && (raw.url || raw.id || raw.filename)) return true;
+      var plain = rec[fieldKey];
+      if (typeof plain === 'string' && plain.trim() &&
+          /asset|<img|<a /i.test(plain)) return true;
+      return false;   // absent from the response counts as cleared
+    }
+    function attempt(value) {
+      var body = {};
+      body[fieldKey] = value;
+      if (extraFields) for (var k in extraFields) body[k] = extraFields[k];
+      return putRecord(saveView, recordId, body);
+    }
+    return attempt(null).then(function (resp) {
+      if (!stillThere(resp)) return resp;
+      console.warn('[scw-pep] null did not clear ' + fieldKey + ' — retrying with ""');
+      return attempt('').then(function (resp2) {
+        if (!stillThere(resp2)) return resp2;
+        throw new Error(fieldKey + ' would not clear (null and "" both ignored)');
+      });
+    });
+  }
+
   // field_2445 is a connection (→ CONFIG_photo type). Every rendered cell
   // carries <span class="<typeRecordId>" data-kn="connection-value">Label
   // </span> — collect {id,label} pairs from every view on the scene.
@@ -167,6 +197,7 @@
       downscale: downscale,
       uploadImage: uploadImage,
       putRecord: putRecord,
+      clearFileField: clearFileField,
       collectTypeOptions: collectTypeOptions,
       FIELDS: F
     }

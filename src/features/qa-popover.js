@@ -890,10 +890,11 @@
             'The photo slot stays — only the image is cleared.')) return;
       remB.disabled = true;
       remB.textContent = 'Removing…';
-      var body = {};
-      body[F.img] = null;
-      body[F.completed] = 'No';
-      u.putRecord(saveView, photo.id, body).then(function () {
+      var extra = {};
+      extra[F.completed] = 'No';
+      // clearFileField verifies against the PUT response and retries with ''
+      // when null is silently ignored (Knack file-field quirk).
+      u.clearFileField(saveView, photo.id, F.img, extra).then(function () {
         photo.imgUrl = '';
         photo.completed = false;
         swapToUploadPane();
