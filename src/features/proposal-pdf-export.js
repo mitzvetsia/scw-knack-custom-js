@@ -172,10 +172,10 @@
         // form's hidden `id` input feeds extra.recordId from. URL-based
         // extraction missed it when the bid-submit URL didn't end in a
         // 24-hex segment.
-        { name: 'bidId', source: 'recordId' },
+        { name: 'bidRecordID', source: 'recordId' },
         { field: 'field_666',  name: 'clientSite' },
         { field: 'field_2410', name: 'projectAddress' },
-        { field: 'field_2633', name: 'field_2633' },
+        { field: 'field_2633', name: 'bidVersionCounter' },   // SYS_bid version counter
         { field: 'field_2631', name: 'cuTaskId', sourceView: 'view_3552', hide: true }
       ],
     },
@@ -500,7 +500,7 @@
         var l3Qty = hideQtyCost ? 0 : parseMoney(norm((tr.querySelector('td.' + keys.qty) || {}).textContent || ''));
         var l3Cost = hideCost ? '' : norm((tr.querySelector('td.' + keys.cost) || {}).textContent || '');
         // Rate (unit price) — only scenes that declare gridKeys.rate (the
-        // subcontractor bid scene) capture it; feeds the named bidLines block.
+        // subcontractor bid scene) capture it; feeds the named bidLineItems block.
         var l3Rate = (keys.rate && !hideCost) ? norm((tr.querySelector('td.' + keys.rate) || {}).textContent || '') : '';
 
         var connDevSpan = tr.querySelector('.scw-l3-connected-devices');
@@ -2195,7 +2195,40 @@
   // out at 180s (matches the proposal-publish path) — Make holds the
   // HTTP connection open until the scenario's final Webhook Response
   // module fires, which can take 90+s for big PDFs.
+  // The bid-submit webhook body, shaped. The unified payload builder is
+  // shared with the proposal publish flow, which used to make the bid
+  // payload a confusing superset: duplicate ids (recordId + bidId), and a
+  // dozen proposal-only keys that are always empty on scene_1149. Contract
+  // (agreed 2026-07-03; Make's scenario maps THESE names):
+  //   bidRecordID          — the bid record (single id key)
+  //   bidLineItems[]       — named {mdfIdf,bucket,description,qty,rate,cost}
+  //   html                 — the rendered bid document (renders the PDF;
+  //                          htmlPdf dropped — identical on this scene)
+  //   json / jsonString    — full record snapshot (record ids + every
+  //                          field), for Make's downstream Knack writes
+  //   grandTotal           — the bid total
+  //   surveyRequestId, clientSite, projectAddress, bidVersionCounter,
+  //   cuTaskId, triggeredBy, sceneId, type
+  var BID_SUBMIT_DROP_KEYS = [
+    'recordId', 'hash', 'sowId', 'htmlPdf',
+    'equipmentTotal', 'installationTotal', 'expirationDate',
+    'invoiceItems', 'invoiceItemsString',
+    'proposalAccessToken', 'proposalAccessUrl',
+    'plaintext', 'plaintextJsonEscaped',
+    'scopeOfWorkDocumentElements', 'scopeOfWorkDocumentElementsString',
+    'tokens', 'publishAsTbd',
+    'subBidBidHtml', 'subBidDiffHtml', 'subBidReviewHtml',
+    'subBidBasis', 'subBidBasisId', 'subBidBasisSubId',
+    'subBidBasisSubName', 'subBidHasDiff', 'subBidNote'
+  ];
+  function shapeBidSubmitPayload(data) {
+    if (!data.bidRecordID && data.recordId) data.bidRecordID = data.recordId;
+    for (var i = 0; i < BID_SUBMIT_DROP_KEYS.length; i++) delete data[BID_SUBMIT_DROP_KEYS[i]];
+    return data;
+  }
+
   function sendToWebhook(data, cfg) {
+    if (cfg.payloadType === 'subcontractor bid') data = shapeBidSubmitPayload(data);
     var url = resolveWebhookUrl(cfg);
     console.log('[SCW PDF Webhook] POST', { url: url, payloadType: cfg.payloadType });
     return $.ajax({
@@ -3979,12 +4012,12 @@
   }
 
   // Flat, explicitly-named projection of the scraped bid sections for the
-  // submit-bid webhook. Make maps bidLines[].rate / .qty / .cost instead of
+  // submit-bid webhook. Make maps bidLineItems[].rate / .qty / .cost instead of
   // decoding raw field_XXXX keys out of `json`. One entry per rendered bid
   // line — the preview grid splits labor-description groups by rate
   // (bid-items-grid.js splitLevel3GroupsByRate), so a line is always a
   // single (description, rate) pair with qty and cost summed within it.
-  function buildBidLines(payload) {
+  function buildBidLineItems(payload) {
     var lines = [];
     var views = (payload && payload.views) || [];
     for (var v = 0; v < views.length; v++) {
@@ -4045,8 +4078,8 @@
       sceneId:               cfg.sceneId,
       type:                  cfg.payloadType,
       // Named line-item projection for the subcontractor-bid scenario only
-      // (undefined elsewhere → dropped by JSON.stringify). See buildBidLines.
-      bidLines:              cfg.payloadType === 'subcontractor bid' ? buildBidLines(payload) : undefined,
+      // (undefined elsewhere → dropped by JSON.stringify). See buildBidLineItems.
+      bidLineItems:          cfg.payloadType === 'subcontractor bid' ? buildBidLineItems(payload) : undefined,
       sowId:                 summary.sowId,
       equipmentTotal:        summary.equipmentTotal,
       installationTotal:     summary.installationTotal,
