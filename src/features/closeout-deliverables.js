@@ -650,26 +650,18 @@
       card.appendChild(del);
     }
 
-    // Click behaviour:
-    //   No file              → file picker (or Knack edit form if webhook off)
-    //   File, any QA state   → open QA popover (which has a "View file"
-    //                          button to dispatch to Knack's preview).
+    // Click behaviour: ALWAYS open the QA popover — filed docs get the
+    // viewer + QA sidebar, empty slots get the in-popover add-file pane
+    // (renderViewerInto's dropzone) instead of being dumped straight into
+    // a file picker. Knack's edit form stays reachable only as the
+    // no-webhook fallback inside the popover pane.
     var uploadEnabled = !hasFile && !!(
       window.SCW && window.SCW.CONFIG && window.SCW.CONFIG.MAKE_DOC_UPLOAD_WEBHOOK
     );
     card.addEventListener('click', function (e) {
       if (card.classList.contains('is-pending')) return;
-      if (hasFile) {
-        e.stopPropagation();
-        openQAPopover(card, doc, closeoutId);
-        return;
-      }
-      if (uploadEnabled) {
-        openDocFilePicker(card, doc.id, closeoutId);
-        return;
-      }
-      var h = editDocHash(doc.id);
-      if (h) navigate(h);
+      e.stopPropagation();
+      openQAPopover(card, doc, closeoutId);
     });
 
     // Drag-and-drop from desktop. Bound on every card (filed and empty)
@@ -1275,6 +1267,35 @@
         }
       });
       headActions.appendChild(openBtn);
+
+      // Remove file — clears field_68 but KEEPS the deliverable slot (unlike
+      // the sidebar Delete, which removes the whole DOC record). The slot
+      // flips back to empty and can take a fresh upload from the same panel.
+      var rmBtn = document.createElement('button');
+      rmBtn.type = 'button';
+      rmBtn.className = POPOVER_ID + '__head-btn';
+      rmBtn.textContent = 'Remove file';
+      rmBtn.addEventListener('click', function () {
+        var label = doc.type || 'this deliverable';
+        if (!window.confirm('Remove the uploaded file from ' + label + '?\n\n' +
+              'The deliverable slot stays — only the file is cleared.')) return;
+        var popEl = document.getElementById(POPOVER_ID);
+        if (popEl) popEl.classList.add(POPOVER_ID + '__saving');
+        var fields = {};
+        fields[F.file] = null;
+        fields[F.completed] = 'No';
+        SCW.knackAjax({
+          url:  SCW.knackRecordUrl(activeDep().docSaveView, doc.id),
+          type: 'PUT',
+          data: JSON.stringify(fields),
+          success: function () { closeQAPopover(); refetchCloseoutViews(); },
+          error: function (xhr) {
+            if (popEl) popEl.classList.remove(POPOVER_ID + '__saving');
+            alert('Remove failed (' + xhr.status + ')');
+          }
+        });
+      });
+      headActions.appendChild(rmBtn);
     }
     var closeBtn = document.createElement('button');
     closeBtn.type = 'button';
@@ -1427,6 +1448,67 @@
   // inline in most browsers for PDF/image MIME types. If the browser
   // rejects inline (download instead of render), the user can still hit
   // "Open in tab" in the header.
+  /** In-popover add-file pane for an empty slot: click → native picker,
+   *  or drag a file straight onto it. Dispatches through the existing
+   *  Make upload path (card pending state + polling), closing the popover
+   *  so the grid's progress feedback takes over. No-webhook fallback links
+   *  to Knack's edit form. */
+  function buildAddFilePane(doc) {
+    var canUpload = !!(window.SCW && window.SCW.CONFIG &&
+                       window.SCW.CONFIG.MAKE_DOC_UPLOAD_WEBHOOK);
+    var pane = document.createElement('div');
+    pane.className = POPOVER_ID + '__viewer-empty' +
+      (canUpload ? ' ' + POPOVER_ID + '__viewer-empty--drop' : '');
+    if (!canUpload) {
+      pane.innerHTML = 'No file uploaded yet.<br>';
+      var link = document.createElement('a');
+      link.href = 'javascript:void(0)';
+      link.textContent = 'Upload via the edit form →';
+      link.addEventListener('click', function () {
+        var h = editDocHash(doc.id);
+        closeQAPopover();
+        if (h) navigate(h);
+      });
+      pane.appendChild(link);
+      return pane;
+    }
+    pane.innerHTML =
+      '<strong>No file uploaded yet</strong><br>' +
+      'Click to choose a PDF/doc, or drag one here.';
+    if (!document.getElementById('scw-cd-addfile-css')) {
+      var st = document.createElement('style');
+      st.id = 'scw-cd-addfile-css';
+      st.textContent =
+        '.' + POPOVER_ID + '__viewer-empty--drop { cursor: pointer;' +
+        ' border: 2px dashed #6b7280; border-radius: 10px; margin: 24px;' +
+        ' padding: 40px 24px; transition: border-color .15s, color .15s; }' +
+        '.' + POPOVER_ID + '__viewer-empty--drop:hover,' +
+        '.' + POPOVER_ID + '__viewer-empty--drop.is-over {' +
+        ' border-color: #60a5fa; color: #e5e7eb; }';
+      document.head.appendChild(st);
+    }
+    pane.addEventListener('click', function () {
+      var card = _popoverCard, coId = _popoverCloseoutId;
+      closeQAPopover();
+      openDocFilePicker(card, doc.id, coId);
+    });
+    pane.addEventListener('dragover', function (ev) {
+      ev.preventDefault();
+      pane.classList.add('is-over');
+    });
+    pane.addEventListener('dragleave', function () { pane.classList.remove('is-over'); });
+    pane.addEventListener('drop', function (ev) {
+      ev.preventDefault();
+      pane.classList.remove('is-over');
+      var file = ev.dataTransfer && ev.dataTransfer.files && ev.dataTransfer.files[0];
+      if (!file) return;
+      var card = _popoverCard, coId = _popoverCloseoutId;
+      closeQAPopover();
+      if (card) dispatchDocUpload(card, doc.id, coId, file);
+    });
+    return pane;
+  }
+
   function renderViewerInto(viewerEl, doc) {
     viewerEl.innerHTML = '';
     // Just-in-time raw-URL resolve. The closeout grid only exposes Knack's
@@ -1452,10 +1534,7 @@
     // got the raw URL from the model.
     var src = doc.rawUrl || doc.fileUrl;
     if (!src) {
-      var empty = document.createElement('div');
-      empty.className = POPOVER_ID + '__viewer-empty';
-      empty.textContent = 'No file uploaded yet.';
-      viewerEl.appendChild(empty);
+      viewerEl.appendChild(buildAddFilePane(doc));
       return;
     }
     var ext = ((doc.fileName || src).toLowerCase().match(/\.([a-z0-9]+)(?:\?|$)/) || [])[1] || '';

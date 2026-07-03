@@ -898,38 +898,6 @@
     }, true);
   }
 
-  // Open the unified photo edit panel (photo-edit-panel.js) off a strip
-  // card's data attributes. Returns true when the panel opened.
-  function openEditPanelFromCard(card) {
-    if (!(window.SCW && SCW.photoEditPanel &&
-          typeof SCW.photoEditPanel.open === 'function')) return false;
-    var viewKey = getViewKeyFor(card);
-    var photoId = card.getAttribute('data-scw-ws-v2-photo-id');
-    var hasQaAttrs = card.hasAttribute('data-qa-status');
-    return SCW.photoEditPanel.open({
-      photoId:  photoId,
-      viewKey:  viewKey,
-      hasImage: card.getAttribute('data-photo-has-image') === 'true',
-      imgUrl:   card.getAttribute('data-scw-ws-v2-photo-url') || '',
-      type:     card.getAttribute('data-scw-ws-v2-photo-type') || '',
-      required: card.getAttribute('data-photo-required') === 'true',
-      qa: hasQaAttrs ? {
-        status:  card.getAttribute('data-qa-status')  || 'Pending',
-        client:  card.getAttribute('data-qa-client')  || 'N/A',
-        notes:   card.getAttribute('data-qa-notes')   || '',
-        history: card.getAttribute('data-qa-history') || '',
-        by:      card.getAttribute('data-qa-by')      || '',
-        date:    card.getAttribute('data-qa-date')    || ''
-      } : null,
-      onSaved: function () {
-        if (ns.warnings && ns.warnings.invalidatePhotos) ns.warnings.invalidatePhotos();
-        if (viewKey && ns.data && typeof ns.data.refetchAndNotify === 'function') {
-          setTimeout(function () { ns.data.refetchAndNotify(viewKey); }, 800);
-        }
-      }
-    });
-  }
-
   // Delegated: intercept thumbnail clicks → open the unified edit panel /
   // viewer instead of navigating to Knack's edit page. Bound once.
   if (!document.documentElement.hasAttribute('data-scw-ws-v2-photo-viewer-bound')) {
@@ -942,8 +910,8 @@
       // and the Photo Type / Required editors (untyped records) alongside
       // the QA sidebar (required photos).
       // No image yet → QA modal with the upload pane. QA sidebar shows for
-      // required photos. Falls back to the standalone edit panel, then the
-      // old edit-page navigation.
+      // required photos. Falls back to the old edit-page navigation only
+      // if qa-popover isn't loaded.
       if (!card.getAttribute('data-scw-ws-v2-photo-url')) {
         var reqd = card.getAttribute('data-photo-required') === 'true';
         var openedEmpty = openPhotoQaModal(
@@ -953,7 +921,6 @@
           '',
           reqd
         );
-        if (!openedEmpty) openedEmpty = openEditPanelFromCard(card);
         if (openedEmpty) { e.preventDefault(); e.stopPropagation(); }
         return;
       }
@@ -971,9 +938,8 @@
           card.getAttribute('data-scw-ws-v2-photo-url') || '',
           needsQa
         );
-        if (!opened) opened = openEditPanelFromCard(card);
         if (opened) { e.preventDefault(); e.stopPropagation(); return; }
-        // Neither modal available — fall through to the lightbox so the
+        // qa-popover unavailable — fall through to the lightbox so the
         // user can still see the photo.
       }
 
