@@ -4110,6 +4110,23 @@
     var jsonSnapshot  = buildJsonSnapshot(cfg.sceneId);
     var plaintextStr  = htmlToPlaintext(htmlStr);
     var subBid        = buildSubBidReview();
+    // Tech group — SOW's field_2954 connection, exposed on view_3861.
+    // Publish-time read, authoritative over the review-snapshot copy
+    // (basisSubId only exists in snapshots taken after pkgSub landed).
+    try {
+      var tgv = window.Knack && Knack.views && Knack.views.view_3861;
+      var tga = tgv && tgv.model && tgv.model.attributes;
+      var tgRaw = tga && tga.field_2954_raw;
+      var tgOne = Array.isArray(tgRaw) ? tgRaw[0] : tgRaw;
+      if (!(tgOne && tgOne.id)) {
+        var tgEl = document.querySelector('#view_3861 .kn-detail.field_2954 span[data-kn="connection-value"]');
+        if (tgEl) tgOne = { id: (tgEl.className || '').trim(), identifier: tgEl.textContent };
+      }
+      if (tgOne && tgOne.id && /^[0-9a-f]{24}$/i.test(tgOne.id)) {
+        subBid.subId = tgOne.id;
+        subBid.subName = String(tgOne.identifier || '').trim();
+      }
+    } catch (e) { /* keep snapshot values */ }
 
     // Mint a public access token + URL at publish time so the new
     // proposal record is born sharable. mintProposalAccess returns
