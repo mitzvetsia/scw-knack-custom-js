@@ -362,25 +362,44 @@
       if (laborIdx < 0) laborIdx = tds.findIndex((td) => td.classList && td.classList.contains(ctx.keys.labor));
     }
 
-    // Visible-column variants. Columns hidden per-cell by CSS class
-    // (field_2409, field_2478) or KTL column-hiding never render — but a
-    // colspan can't skip them, so footer rows built with LOGICAL counts lay
-    // out wider than the data rows and their value cell drifts one column
-    // right of Cost. Count only ths that actually render.
-    let visibleColCount = 0;
-    let visibleQtyIdx = -1;
-    let visibleLaborIdx = -1;
-    for (let i = 0; i < ths.length; i++) {
+    // Rendered-column variants. display:none cells drop out of table layout
+    // entirely, so the rows that actually paint the grid — GROUP rows, built
+    // as [unclassed label td] + [cells template = first data row's td:gt(0)]
+    // — render (1 + visible template cells) columns. Footer rows built from
+    // colspans must match THAT count exactly: logical counts overshoot
+    // (value drifts right of Cost), thead-visible counts undershoot (the
+    // hidden field_2409 th maps to the group rows' always-visible label td;
+    // value lands under Qty). Per-column visibility is read off the THEAD by
+    // field class, because the data rows themselves are display:none (the
+    // grid shows only group/total rows) and their tds compute as hidden.
+    const thHiddenByClass = {};
+    let hiddenThCount = 0;
+    for (const th of ths) {
+      const cls = Array.from(th.classList || []).find((c) => /^field_\d+$/.test(c));
+      if (!cls) continue;
       let hidden = false;
-      try { hidden = window.getComputedStyle(ths[i]).display === 'none'; } catch (e) { /* count as visible */ }
-      if (hidden) continue;
-      if (i === qtyIdx) visibleQtyIdx = visibleColCount;
-      if (i === laborIdx) visibleLaborIdx = visibleColCount;
-      visibleColCount++;
+      try { hidden = window.getComputedStyle(th).display === 'none'; } catch (e) { /* visible */ }
+      thHiddenByClass[cls] = hidden;
+      if (hidden) hiddenThCount++;
     }
     // Whole table hidden mid-render → every th reads display:none and the
-    // visible metrics are meaningless. Fall back to the logical ones.
-    if (!visibleColCount) {
+    // map is meaningless. Treat all columns as visible (logical fallback).
+    const allThsHidden = ths.length > 0 && hiddenThCount === ths.length;
+
+    let visibleColCount = 1;   // the group rows' label column, always visible
+    let visibleQtyIdx = -1;
+    let visibleLaborIdx = -1;
+    if (firstRow) {
+      const tds = Array.from(firstRow.querySelectorAll('td'));
+      for (let i = 1; i < tds.length; i++) {   // td[0] ↔ the label column
+        const cls = Array.from(tds[i].classList || []).find((c) => /^field_\d+$/.test(c));
+        if (!allThsHidden && cls && thHiddenByClass[cls]) continue;
+        if (cls === ctx.keys.qty) visibleQtyIdx = visibleColCount;
+        if (cls === ctx.keys.labor) visibleLaborIdx = visibleColCount;
+        visibleColCount++;
+      }
+    }
+    if (visibleColCount <= 1) {
       visibleColCount = colCount;
       visibleQtyIdx = qtyIdx;
       visibleLaborIdx = laborIdx;
@@ -1270,14 +1289,15 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   // Multi-TD rows (e.g. L1 with explicit Rate/Qty/Cost cells) already
   // span all columns by virtue of having one TD per column — skip
   // those to avoid clobbering the per-cell layout.
-  function extendGroupRowToFullWidth($tbody, $groupRow) {
+  function extendGroupRowToFullWidth(ctx, $tbody, $groupRow) {
     const $cells = $groupRow.children('td');
     if ($cells.length !== 1) return;
-    const $table = $tbody.closest('table');
-    const total = $table.find('thead th').length;
+    // Span the RENDERED column count (group rows' label + visible template
+    // cells), not the thead th count: hidden columns drop out of table
+    // layout, so a thead-count colspan demands phantom columns that widen
+    // the table past Cost and misalign every colspan-built row.
+    const total = Math.max(computeColumnMeta(ctx).visibleColCount || 0, 1);
     if (!total) return;
-    const current = parseInt($cells.attr('colspan') || '1', 10);
-    if (current >= total) return;
     $cells.attr('colspan', total);
   }
 
@@ -1410,7 +1430,8 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     tbody.querySelectorAll('tr.' + SECT).forEach((el) => el.remove());
 
     const meta = computeColumnMeta(ctx);
-    const cols = Math.max(meta.colCount || 0, 1);
+    // Rendered column count — see extendGroupRowToFullWidth.
+    const cols = Math.max(meta.visibleColCount || 0, 1);
 
     const l1Headers = Array.from(tbody.querySelectorAll('tr.kn-table-group.kn-group-level-1'));
     l1Headers.forEach((l1El, idx) => {
@@ -1993,7 +2014,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         // ice-blue header background paints across the FULL row width
         // instead of stopping at the Knack-default colspan (which
         // omits the trailing Rate / Qty / Cost columns).
-        extendGroupRowToFullWidth($tbody, $groupRow);
+        extendGroupRowToFullWidth(ctx, $tbody, $groupRow);
 
         const info = getLevel2InfoFromGroupRow($groupRow);
         sectionContext.level2 = info;
