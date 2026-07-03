@@ -173,6 +173,19 @@ window.SCW=window.SCW||{},typeof window.SCW.init!="function"&&(window.SCW.init=f
     /* TEMP: view_3896 left visible for invoiceItems debugging.
        Re-add to the hidden block above when done. */
 
+    /* TEMP: force view_3920 visible (bid-review proposal source view on
+       scene_1155). It's hidden Builder-side, not by the bundle \u2014 this
+       override outranks that CSS because our style tag loads later.
+       Delete this rule to re-hide. */
+    #view_3920 {
+      display: block !important;
+      position: static !important;
+      width: auto !important;
+      height: auto !important;
+      overflow: visible !important;
+      clip: auto !important;
+    }
+
     /* \u2500\u2500\u2500 Instructions & description callout \u2500\u2500\u2500 */
     .kn-instructions,
     .kn-description {
