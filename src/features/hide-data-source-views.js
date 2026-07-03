@@ -30,10 +30,9 @@
   // viewId → consumer note. Comment is the documentation, not used
   // by the CSS — but keep it close to the id for grep-discovery.
   var HIDDEN_VIEWS = [
-    // 'view_4073' — bid identity/expiration details on scene_1149
-    // (field_2638 bid label, field_2635 expiration). Data source for the
-    // bid document header — proposal-pdf-export reads it from the DOM;
-    // users never see it.
+    // 'view_4073' — pending change requests data source on scene_1149.
+    // Read from the DOM by the bid page enhancements; users never see it
+    // (and proposal-pdf-export skips it so it never enters the bid PDF).
     'view_4073',
     // 'view_3827' — SOW kn-details: workflow-stepper SOURCE_VIEW,
     // create-sow-option-btn / preview-proposal-btn / import-unique-

@@ -163,10 +163,12 @@
       skipViews: { view_3679: true, view_3770: true, view_3552: true, view_4073: true },
       hideEmptyGrids: [],
       gridKeys: { qty: 'field_2399', cost: 'field_2401', rate: 'field_2400' },
-      // Bid identity banner at the top of the rendered bid document:
+      // Bid identity header at the top of the rendered bid document:
       // field_2638 designates WHICH survey request + which bid + the
-      // friendly name; field_2635 is the bid expiration date. Both read
-      // from view_4073 (user-hidden data source on this scene).
+      // friendly name; field_2635 is the bid expiration date. Both live on
+      // view_3552 (skipped from the scrape as PDF content, but its DOM is
+      // on the scene and readable). NOTE field_2638 renders as
+      // .kn-label-none, not .kn-detail.
       bidHeaderField:  'field_2638',
       bidExpiresField: 'field_2635',
       payloadType: 'subcontractor bid',
@@ -1295,10 +1297,14 @@
       var readSceneField = function (fk) {
         if (!fk || !sceneEl) return '';
         var el = sceneEl.querySelector('.kn-detail.' + fk + ' .kn-detail-body') ||
+                 sceneEl.querySelector('.kn-label-none.' + fk + ' .kn-detail-body') ||
                  sceneEl.querySelector('.kn-detail.' + fk) ||
+                 sceneEl.querySelector('.kn-label-none.' + fk) ||
                  sceneEl.querySelector('td.' + fk) ||
                  sceneEl.querySelector('[data-field-key="' + fk + '"]');
-        return el ? norm(el.textContent || '') : '';
+        // Trim a trailing "|" (the field_2638 label template ends with a
+        // separator when no friendly name follows).
+        return el ? norm(el.textContent || '').replace(/[|\s]+$/, '') : '';
       };
       result.bidHeader = {
         label:   readSceneField(cfg.bidHeaderField),
@@ -1592,16 +1598,17 @@
     html.push('</style>');
     html.push('</head><body>');
 
-    // Bid identity banner — WHICH survey request / bid / friendly name
-    // (field_2638) + expiration date (field_2635), rendered prominently at
-    // the very top of the subcontractor bid document.
+    // Bid identity header — WHICH survey request / bid / friendly name
+    // (field_2638) + expiration date (field_2635) at the top of the
+    // subcontractor bid document. Understated: a header line with a thin
+    // rule, not a callout.
     if (payload.bidHeader && (payload.bidHeader.label || payload.bidHeader.expires)) {
-      html.push('<div class="bid-id-header" style="margin:0 0 20px;padding:14px 18px;border:2px solid #07467c;border-radius:8px;background:#f0f7ff;">');
+      html.push('<div class="bid-id-header" style="margin:0 0 16px;padding:0 0 10px;border-bottom:2px solid #e2e8f0;">');
       if (payload.bidHeader.label) {
-        html.push('<div style="font-weight:800;font-size:20px;line-height:1.25;color:#07467c;">' + esc(payload.bidHeader.label) + '</div>');
+        html.push('<div style="font-weight:700;font-size:16px;line-height:1.3;color:#07467c;">' + esc(payload.bidHeader.label) + '</div>');
       }
       if (payload.bidHeader.expires) {
-        html.push('<div style="margin-top:5px;font-weight:700;font-size:13px;color:#b45309;">Bid expires: ' + esc(payload.bidHeader.expires) + '</div>');
+        html.push('<div style="margin-top:2px;font-size:12px;color:#64748b;">Bid expires: ' + esc(payload.bidHeader.expires) + '</div>');
       }
       html.push('</div>');
     }
