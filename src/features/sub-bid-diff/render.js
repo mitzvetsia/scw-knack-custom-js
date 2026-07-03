@@ -69,12 +69,29 @@
   }
 
   /** Persist the basis bid on the SOW (field_2942, single connection) via the
-   *  SOW write view. Optimistic: caller updates selection + re-renders first. */
+   *  SOW write view. The diff snapshot (field_2941) rides in the SAME PUT so
+   *  the two fields can never diverge: relying on the debounced auto-save to
+   *  follow up meant a basis change whose snapshot write never landed (user
+   *  navigated away inside the 400ms window, or a stale tab re-saved later)
+   *  left field_2941 describing the PREVIOUS bid while field_2942 pointed at
+   *  the new one — and every snapshot reader (ops stepper, publish payload)
+   *  showed the wrong bid. Optimistic: caller updates selection first. */
   function writeBasis(sowId, pkgId) {
     if (!C.basisBidField || !sowId) return;
     if (!(window.SCW && typeof SCW.knackAjax === 'function' && SCW.knackRecordUrl)) return;
     var body = {};
     body[C.basisBidField] = pkgId ? [pkgId] : [];
+    var blob = null, sig = '';
+    if (C.snapshotField) {
+      // Cancel any pending debounced snapshot write — it would describe the
+      // OLD basis. The fresh blob (or the clear) goes in this PUT instead.
+      if (autoTimers[sowId]) { clearTimeout(autoTimers[sowId]); autoTimers[sowId] = null; }
+      blob = pkgId ? buildBlob(sowId) : null;
+      if (blob) { sig = blobSig(blob); body[C.snapshotField] = JSON.stringify(blob); }
+      else if (!pkgId) body[C.snapshotField] = '';
+      // pkgId set but blob unresolvable → leave field_2941 out of the body;
+      // the next auto-save will catch it up.
+    }
     savingGrid[sowId] = true; render();
     SCW.knackAjax({
       url: SCW.knackRecordUrl(C.basisBidView, sowId),
@@ -83,6 +100,10 @@
     }).then(function () {
       savingGrid[sowId] = false;
       if (pkgId) savedByGrid[sowId] = true; else delete savedByGrid[sowId];
+      if (C.snapshotField) {
+        if (blob) { savedSnap[sowId] = true; lastWrittenSig[sowId] = sig; }
+        else if (!pkgId) { savedSnap[sowId] = false; delete lastWrittenSig[sowId]; }
+      }
       render();
     }, function (xhr) {
       savingGrid[sowId] = false;
@@ -282,12 +303,17 @@
     if (!sig) sig = blobSig(blob);
     var body = {};
     body[C.snapshotField] = JSON.stringify(blob);
+    // field_2942 rides in the same PUT, set to the basis this blob was built
+    // for — snapshot and basis connection stay consistent no matter which
+    // write path (or which tab) lands last.
+    if (C.basisBidField && blob.basisBidId) body[C.basisBidField] = [blob.basisBidId];
     savingSnap[sowId] = true; render();
     SCW.knackAjax({
       url: SCW.knackRecordUrl(C.basisBidView, sowId),
       type: 'PUT', data: JSON.stringify(body)
     }).then(function () {
       savingSnap[sowId] = false; savedSnap[sowId] = true;
+      if (C.basisBidField && blob.basisBidId) savedByGrid[sowId] = true;
       lastWrittenSig[sowId] = sig; render();
     }, function (xhr) {
       savingSnap[sowId] = false;
@@ -317,27 +343,6 @@
       autoTimers[sowId] = null;
       writeSnapshotWith(grid, sig);
     }, 400);
-  }
-
-  /** Clear the persisted snapshot (called when the basis is cleared). */
-  function clearSnapshot(sowId) {
-    if (!C.snapshotField || !sowId) return;
-    if (!(window.SCW && typeof SCW.knackAjax === 'function' && SCW.knackRecordUrl)) return;
-    delete lastWrittenSig[sowId];
-    if (autoTimers[sowId]) { clearTimeout(autoTimers[sowId]); autoTimers[sowId] = null; }
-    var body = {};
-    body[C.snapshotField] = '';
-    savingSnap[sowId] = true; render();
-    SCW.knackAjax({
-      url: SCW.knackRecordUrl(C.basisBidView, sowId),
-      type: 'PUT', data: JSON.stringify(body)
-    }).then(function () {
-      savingSnap[sowId] = false; savedSnap[sowId] = false; render();
-    }, function (xhr) {
-      savingSnap[sowId] = false;
-      console.warn('[scw-sub-bid-diff] snapshot clear failed', sowId, xhr && xhr.status);
-      render();
-    });
   }
 
   /** Scroll to + flash the matching v2 grid row for an exception. */
@@ -845,13 +850,10 @@
         if (!bsow) return;
         var pkgId = sel.value || '';
         selectedByGrid[bsow] = pkgId;          // optimistic — diff shows immediately
-        if (pkgId) {
-          if (C.basisBidField) writeBasis(bsow, pkgId);  // persist basis (re-renders → autoSave writes snapshot)
-          else render();
-        } else {
-          if (C.basisBidField) writeBasis(bsow, '');      // clear basis
-          clearSnapshot(bsow);                            // and the snapshot it gated
-        }
+        // ONE PUT persists basis + snapshot together (set or cleared) — see
+        // writeBasis. Never split across writes, so they can't drift apart.
+        if (C.basisBidField) writeBasis(bsow, pkgId);
+        else render();
         return;
       }
       // Reviewer note committed (blur / Enter on the field) → re-persist.

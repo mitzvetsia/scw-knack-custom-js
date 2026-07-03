@@ -629,6 +629,23 @@
     return !!(view && view.querySelector('.kn-detail.' + fieldKey));
   }
 
+  /** Record id of the SOW's basis-bid connection (field_2942) as rendered on
+   *  view_3861 — the 24-hex class on the connection-value span. '' when the
+   *  field isn't on the view or is blank. Used to cross-check the field_2941
+   *  snapshot: the blob embeds the basis it was built for, and if the SOW's
+   *  actual basis connection has since moved to a different bid the snapshot
+   *  is stale and must not be trusted (or published from). */
+  function basisConnectionId() {
+    var view = document.getElementById(SOURCE_VIEW);
+    if (!view) return '';
+    var els = view.querySelectorAll('.kn-detail.field_2942 span[data-kn="connection-value"]');
+    for (var i = 0; i < els.length; i++) {
+      var cls = String(els[i].className || '').trim();
+      if (/^[0-9a-f]{24}$/.test(cls)) return cls;
+    }
+    return '';
+  }
+
   /** Raw field_2941 string, read from the Knack MODEL (verbatim stored value)
    *  rather than the DOM. The snapshot embeds bidHtml/diffHtml fragments, and
    *  Knack renders those as elements in the detail body — so DOM textContent
@@ -699,6 +716,16 @@
       return 'Select the basis bid on the Bid Review page so the sub-bid diff ' +
              'review is captured, then publish.';
     }
+    // Snapshot ↔ basis consistency. The blob records which bid it was built
+    // for; if the SOW's basis connection (field_2942) now points at a
+    // DIFFERENT bid, the saved review (diff, note, HTML) describes the wrong
+    // bid — block until the Bid Review page re-saves it (automatic on load).
+    var basisId = basisConnectionId();
+    if (snap && snap.basisBidId && basisId && snap.basisBidId !== basisId) {
+      return 'The saved sub-bid review describes a different bid than the current ' +
+             'basis selection. Open the Bid Review page — the review re-saves ' +
+             'automatically — then publish.';
+    }
     if (snap && snap.basisBidId && Number(snap.total) > 0 &&
         !(snap.note && String(snap.note).trim())) {
       return 'The basis bid differs from this SOW (' + snap.total + ' difference' +
@@ -755,9 +782,17 @@
     wrap.className = 'scw-ops-subbid';
     var html = '';
 
-    var basis = (snap && snap.basisBidId)
-      ? (snap.basisBidName || 'selected bid')
-      : (hasBasis ? (String(readField('field_2942') || '').trim() || 'selected bid') : '');
+    // Stale snapshot: the blob was built for a different bid than the SOW's
+    // current basis connection. field_2942 is authoritative — label with it,
+    // and don't render the wrong bid's numbers below.
+    var basisId = basisConnectionId();
+    var snapStale = !!(snap && snap.basisBidId && basisId && snap.basisBidId !== basisId);
+
+    var basis = snapStale
+      ? (String(readField('field_2942') || '').trim() || 'selected bid')
+      : ((snap && snap.basisBidId)
+          ? (snap.basisBidName || 'selected bid')
+          : (hasBasis ? (String(readField('field_2942') || '').trim() || 'selected bid') : ''));
     var readyCls = reason ? 'warn' : 'ok';
     var readyTxt = reason ? 'Review needed' : (noBids ? 'Not required' : '✓ Reviewed');
     html += '<div class="scw-ops-subbid__bar">' +
@@ -773,6 +808,14 @@
               escHtml(reason) + '</div>';
     } else if (snap && snap.basisBidId) {
       html += '<div class="scw-ops-subbid__ok">✓ Ready to publish as final.</div>';
+    }
+
+    if (snapStale) {
+      html += '<div class="scw-ops-subbid__empty">The saved diff was captured for “' +
+              escHtml((snap && snap.basisBidName) || 'another bid') +
+              '” — open the Bid Review page to refresh it.</div>';
+      wrap.innerHTML = html;
+      return wrap;
     }
 
     // No saved diff yet → nothing more to show.
