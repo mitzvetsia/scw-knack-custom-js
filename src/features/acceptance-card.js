@@ -61,10 +61,16 @@
   function injectCss() {
     if (document.getElementById(STYLE_ID)) return;
     var css = [
-      // Hide the raw grid chrome — the card replaces it.
+      // Hide the raw grid chrome — the card replaces it. The table wrapper is
+      // moved OFF-SCREEN rather than display:none'd: the edit proxy clicks its
+      // cells to open Knack's inline editor, and a display:none anchor makes
+      // the (Vue/Popper-positioned) editor treat the reference as hidden and
+      // suppress itself. Off-screen keeps real layout boxes + live handlers.
       '#' + VIEW + ' .view-header,',
-      '#' + VIEW + ' .kn-records-nav,',
-      '#' + VIEW + ' .kn-table-wrapper { display: none !important; }',
+      '#' + VIEW + ' .kn-records-nav { display: none !important; }',
+      '#' + VIEW + ' .kn-table-wrapper { position: absolute !important;',
+      '  left: -99999px !important; top: 0 !important; width: 1100px;',
+      '  pointer-events: none; }',
       '.scw-acpt-card {',
       '  background: #fff; border: 1px solid #e5e7eb; border-radius: 10px;',
       '  box-shadow: 0 1px 2px rgba(15,23,42,.04); padding: 16px 18px; margin-top: 8px;',
@@ -98,10 +104,15 @@
       '.scw-acpt-btn--add:hover { background: #f8fafc; border-color: #94a3b8; color: #334155; }',
       '.scw-acpt-group { display: inline-flex; align-items: center; gap: 2px; }',
       // While an acceptance-card edit is open, Knack\'s inline cell editor is
-      // anchored to a hidden td (0,0) — recenter it on screen instead.
-      'body.scw-acpt-cell-editing .kn-popover { position: fixed !important;',
-      '  top: 22% !important; left: 50% !important; transform: translateX(-50%);',
-      '  right: auto !important; bottom: auto !important; z-index: 10000; }'
+      // anchored to the off-screen td — recenter it on screen, and defeat any
+      // popper "reference hidden" auto-hide (visibility + display overrides).
+      'body.scw-acpt-cell-editing .kn-popover, body.scw-acpt-cell-editing #cell-editor {',
+      '  position: fixed !important; top: 18% !important; left: 50% !important;',
+      '  transform: translateX(-50%); right: auto !important; bottom: auto !important;',
+      '  z-index: 10000; visibility: visible !important; opacity: 1 !important;',
+      '  display: block !important; pointer-events: auto !important; }',
+      'body.scw-acpt-cell-editing .kn-popover [data-popper-reference-hidden],',
+      'body.scw-acpt-cell-editing .kn-popover .arrow { visibility: visible !important; }'
     ].join('\n');
     var s = document.createElement('style');
     s.id = STYLE_ID; s.textContent = css;
@@ -136,19 +147,56 @@
     document.body.classList.remove('scw-acpt-cell-editing');
     if (_editWatch) { clearInterval(_editWatch); _editWatch = null; }
   }
+  // Full native event sequence — Knack's newer Vue tables listen with
+  // native handlers, which jQuery's .trigger('click') alone can miss.
+  function fireNativeClick(el) {
+    var seq = ['pointerdown', 'mousedown', 'pointerup', 'mouseup', 'click'];
+    for (var i = 0; i < seq.length; i++) {
+      var t = seq[i];
+      var ev;
+      try {
+        ev = (t.indexOf('pointer') === 0 && window.PointerEvent)
+          ? new PointerEvent(t, { bubbles: true, cancelable: true, view: window })
+          : new MouseEvent(t, { bubbles: true, cancelable: true, view: window });
+      } catch (e) {
+        ev = new MouseEvent(t, { bubbles: true, cancelable: true, view: window });
+      }
+      el.dispatchEvent(ev);
+    }
+  }
+
   function openCellEditor(fieldKey) {
     var viewEl = document.getElementById(VIEW);
     var row = viewEl && viewEl.querySelector('tbody tr[id]');
     var td = row && row.querySelector('td.cell-edit[data-field-key="' + fieldKey + '"]');
-    if (!td) return;
+    if (!td) {
+      console.warn('[scw-acpt] no editable cell for', fieldKey, '— is inline edit enabled on ' + VIEW + '?');
+      return;
+    }
     stopEditWatch();
     document.body.classList.add('scw-acpt-cell-editing');
-    $(td).trigger('click');
+    // Click the innermost content span (Knack's handler target), then the td,
+    // then jQuery as a legacy-table fallback.
+    var target = td.querySelector('span[class^="col-"]') || td;
+    fireNativeClick(target);
     var started = Date.now();
     _editWatch = setInterval(function () {
       var open = document.querySelector('body > .kn-popover, #cell-editor');
-      // Give Knack a moment to mount the popover before watching for close.
-      if (!open && Date.now() - started > 800) stopEditWatch();
+      if (!open) {
+        if (Date.now() - started < 700) return;   // still mounting
+        // One retry through jQuery (legacy handler path), then give up.
+        if (!openCellEditor._retried) {
+          openCellEditor._retried = true;
+          $(td).trigger('click');
+          started = Date.now();
+          return;
+        }
+        console.warn('[scw-acpt] cell editor never opened for', fieldKey);
+        openCellEditor._retried = false;
+        stopEditWatch();
+      } else {
+        openCellEditor._retried = false;
+      }
     }, 250);
   }
 
