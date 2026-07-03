@@ -844,7 +844,12 @@
       // Photos rail — left of the card content, no label, larger thumbs.
       // The --photos modifier turns the card into a two-column grid with
       // the vertical thumb stack spanning both content rows.
-      '.' + PREFIX + '-card--photos{display:grid;grid-template-columns:132px 1fr;column-gap:18px;}' +
+      // Rows are auto + 1fr: a photo rail TALLER than the fields would
+      // otherwise distribute its excess height across both rows, inflating
+      // the title row (divider pushed way down). With row 2 flexible, the
+      // head keeps its natural height and the surplus lands below the grid.
+      '.' + PREFIX + '-card--photos{display:grid;grid-template-columns:132px 1fr;' +
+        'grid-template-rows:auto 1fr;column-gap:18px;align-items:start;}' +
       '.' + PREFIX + '-card--photos .' + PREFIX + '-photos{grid-column:1;grid-row:1/span 2;}' +
       '.' + PREFIX + '-card--photos .' + PREFIX + '-card-head{grid-column:2;}' +
       '.' + PREFIX + '-card--photos .' + PREFIX + '-grid{grid-column:2;}' +
