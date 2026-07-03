@@ -6,7 +6,8 @@
  * MDF/IDF L1 group header carries a pencil (rendered by card.js
  * buildL1HeaderRow); clicking it expands a panel row under the header with:
  *
- *   - type/number badge (HEADEND accented apart from IDFs, number in-badge)
+ *   - editable type/number badge (designator select — HEADEND/IDF/… — and
+ *     a renumber input, HEADEND accented apart from IDFs)
  *   - editable Name (field_1943) + Notes (field_1643)
  *   - Add photos (identity-aware bulk uploader, linkField mdfIdfID)
  *
@@ -22,9 +23,9 @@
  * (never a blank prefill), then update the header title in place and
  * quietly refetch view_3822 so the model agrees.
  *
- * ⚠ Builder dependency: view_3822 must accept edits on field_1943 /
- * field_1643 (inline editing on those columns) or the PUT is rejected —
- * surfaced as an explicit error in the panel.
+ * ⚠ Builder dependency: view_3822 must accept edits on field_1641 /
+ * field_2458 / field_1943 / field_1643 (inline editing on those columns)
+ * or the PUT is rejected — surfaced as an explicit error in the panel.
  ****************************************************************************/
 (function () {
   'use strict';
@@ -69,8 +70,7 @@
     return { type: '', num: '', name: dn.trim() };
   }
 
-  /** Resolve the location record for a group — by id, then by label. */
-  function findRecord(mdfIdfId, label) {
+  function allRecords() {
     var recs = [];
     try {
       if (ns.data && ns.data.readRecords) recs = ns.data.readRecords(mdfViewKey()) || [];
@@ -79,6 +79,12 @@
       var v1 = window.SCW.bidReview;
       if (v1 && typeof v1.getMdfIdfRecords === 'function') recs = v1.getMdfIdfRecords() || [];
     }
+    return recs;
+  }
+
+  /** Resolve the location record for a group — by id, then by label. */
+  function findRecord(mdfIdfId, label) {
+    var recs = allRecords();
     var target = label ? stripTags(label).toLowerCase() : '';
     var byLabel = null;
     for (var i = 0; i < recs.length; i++) {
@@ -93,6 +99,29 @@
     if (!rec) return '';
     var raw = rec[fk + '_raw'];
     return stripTags(raw != null ? raw : rec[fk]);
+  }
+
+  /** Designator <option> markup: HEADEND/IDF always offered, plus any other
+   *  type seen across the loaded location records (dedicated column first,
+   *  parsed display name as fallback), plus the current value so the select
+   *  never invents a change. */
+  function typeOptionsHtml(cur) {
+    var types = ['HEADEND', 'IDF'];
+    var seen = { headend: true, idf: true };
+    var recs = allRecords();
+    for (var i = 0; i < recs.length; i++) {
+      var t = fieldText(recs[i], F.type) ||
+              parseDisplayName(fieldText(recs[i], F.displayName)).type;
+      if (t && !seen[t.toLowerCase()]) { seen[t.toLowerCase()] = true; types.push(t); }
+    }
+    if (cur && !seen[cur.toLowerCase()]) types.push(cur);
+    var html = '';
+    for (var j = 0; j < types.length; j++) {
+      var isCur = cur && types[j].toLowerCase() === cur.toLowerCase();
+      html += '<option value="' + esc(types[j]) + '"' + (isCur ? ' selected' : '') + '>' +
+        esc(types[j]) + '</option>';
+    }
+    return html;
   }
 
   function injectCss() {
@@ -138,11 +167,16 @@
       '  padding: 5px 9px; border-radius: 8px; background: #f1f5f9;',
       '  min-width: 78px; justify-content: center; margin-top: 17px; }',
       '.' + P + '-badge--head { background: rgba(var(--scw-accent-rgb,47,95,145),.12); }',
-      '.' + P + '-badge__type { font: 800 11px/1 system-ui, sans-serif; letter-spacing: .4px;',
-      '  text-transform: uppercase; color: #475569; }',
-      '.' + P + '-badge--head .' + P + '-badge__type { color: ' + ACC + '; }',
-      '.' + P + '-badge__num { font: 800 14px/1 system-ui, sans-serif; color: #1e293b;',
-      '  font-variant-numeric: tabular-nums; }',
+      // Designator select styled to read as the badge label (cards parity);
+      // renumber input as the in-badge ## box.
+      '.' + P + '-badge__type-sel { border: none; background: transparent; margin: 0;',
+      '  padding: 0 2px 0 0; font: 800 11px/1 system-ui, sans-serif; letter-spacing: .4px;',
+      '  text-transform: uppercase; color: #475569; cursor: pointer; max-width: 120px; }',
+      '.' + P + '-badge--head .' + P + '-badge__type-sel { color: ' + ACC + '; }',
+      '.' + P + '-badge__type-sel:focus { outline: none; text-decoration: underline; }',
+      '.' + P + '-badge__num-in { width: 38px; padding: 3px 4px; text-align: center;',
+      '  border: 1px solid #cbd5e1; border-radius: 5px; background: #fff;',
+      '  font: 700 13px/1 system-ui, sans-serif; font-variant-numeric: tabular-nums; }',
       '.' + P + '-fld { flex: 1 1 180px; min-width: 160px; }',
       '.' + P + '-fld--wide { flex: 2 1 260px; }',
       '.' + P + '-lbl { font: 700 10px/1.2 system-ui, sans-serif; text-transform: uppercase;',
@@ -237,6 +271,8 @@
     var isMdf   = /headend|mdf/i.test(type);
 
     var initial = {};
+    initial[F.type]  = type;
+    initial[F.num]   = num;
     initial[F.name]  = name;
     initial[F.notes] = notes;
 
@@ -247,9 +283,13 @@
     td.colSpan = headerTr.firstChild ? (headerTr.firstChild.colSpan || 1) : 1;
     td.innerHTML =
       '<div class="' + P + '-panel' + (isMdf ? ' ' + P + '-panel--head' : '') + '">' +
+        // Editable badge, mirroring mdf-idf-cards: the designator is a select
+        // styled to read as the badge label, the ## an in-badge renumber input.
         '<span class="' + P + '-badge' + (isMdf ? ' ' + P + '-badge--head' : '') + '">' +
-          '<span class="' + P + '-badge__type">' + esc(type || 'IDF') + '</span>' +
-          (num ? '<span class="' + P + '-badge__num">' + esc(num) + '</span>' : '') +
+          '<select data-fk="' + F.type + '" class="' + P + '-badge__type-sel" ' +
+            'aria-label="Type">' + typeOptionsHtml(type || 'IDF') + '</select>' +
+          '<input type="text" data-fk="' + F.num + '" class="' + P + '-badge__num-in" ' +
+            'value="' + esc(num) + '" inputmode="numeric" placeholder="#" aria-label="Number">' +
         '</span>' +
         '<div class="' + P + '-fld ' + P + '-fld--name">' +
           '<div class="' + P + '-lbl">Name</div>' +
@@ -273,9 +313,20 @@
     var saveBtn = td.querySelector('.' + P + '-btn--save');
     var status  = td.querySelector('.' + P + '-status');
     var inputs  = td.querySelectorAll('[data-fk]');
+    function markDirty() { saveBtn.disabled = false; }
     for (var i = 0; i < inputs.length; i++) {
-      inputs[i].addEventListener('input', function () { saveBtn.disabled = false; });
+      inputs[i].addEventListener('input', markDirty);
+      inputs[i].addEventListener('change', markDirty);   // selects fire change
     }
+    // Live badge/panel retint when the designator flips HEADEND ↔ IDF.
+    var typeSel = td.querySelector('.' + P + '-badge__type-sel');
+    typeSel.addEventListener('change', function () {
+      var head  = /headend|mdf/i.test(typeSel.value);
+      var panel = td.querySelector('.' + P + '-panel');
+      var badge = td.querySelector('.' + P + '-badge');
+      panel.classList.toggle(P + '-panel--head', head);
+      badge.classList.toggle(P + '-badge--head', head);
+    });
     td.querySelector('.' + P + '-btn--cancel').addEventListener('click', closePanels);
 
     // Add photos — same identity-aware bulk uploader the line-item photo
@@ -306,17 +357,17 @@
         data: JSON.stringify(fields),
         success: function () {
           status.textContent = 'Saved ✓';
-          // In-place refresh of the header title when the name changed.
-          var newName = fields[F.name];
-          if (newName && newName !== name) {
-            var title = headerTr.querySelector('.scw-bid-review-v2__grp-title');
-            // Display label = "TYPE: ## : name" shape; safest in-place move is
-            // swapping the old name substring when present, else append.
-            if (title) {
-              var t = title.textContent;
-              title.textContent = (name && t.indexOf(name) !== -1)
-                ? t.replace(name, newName) : t + ' — ' + newName;
-            }
+          // In-place header refresh: rebuild the "TYPE: ## : name" display
+          // label from the saved values (unchanged fields keep their old
+          // value), collapsing the blank-## double colon like card.js does.
+          var own = Object.prototype.hasOwnProperty;
+          var newType = own.call(fields, F.type) ? fields[F.type] : type;
+          var newNum  = own.call(fields, F.num)  ? fields[F.num]  : num;
+          var newName = own.call(fields, F.name) ? fields[F.name] : name;
+          var title = headerTr.querySelector('.scw-bid-review-v2__grp-title');
+          if (title) {
+            title.textContent =
+              (newType + ': ' + newNum + ' : ' + newName).replace(/:\s*:/g, ':');
           }
           // Quiet model sync so the next rebuild reads fresh values.
           try {
