@@ -170,12 +170,30 @@
   // Build the public URL. Uses window.location.origin + the current
   // Knack app slug so the same code works in any Knack environment
   // (preview vs production, custom domains, etc.) without hardcoding.
+  //
+  // The URL also carries the token as a NATIVE Knack view filter
+  // (view_3952_filters) so the public page's very FIRST fetch of the
+  // lookup view is already server-filtered to the one matching proposal.
+  // Without it, Knack's initial load pulls a full page of published
+  // proposals — each with its multi-MB field_2680 HTML snapshot — renders
+  // them all into (hidden) DOM, and only THEN does the access snippet's
+  // runtime filter refetch the right record. That unfiltered first load
+  // is what made tokenized links take 30s+ to open (and leaked every
+  // proposal's HTML to the visitor's network tab). Old-format links
+  // (?token= only) still work — the snippet refetches with the same
+  // filter — they're just slower.
+  var PUBLIC_LOOKUP_VIEW = 'view_3952';   // lookup list on the public scene
   function buildPublicUrl(token) {
     var origin = window.location.origin;
     // Knack hash routes follow the path part. The path up to "#" is the
     // app's base. e.g.  https://scw.knack.com/proposals#some-route/...
     var pathPart = window.location.pathname || '/';
-    return origin + pathPart + '#' + CONFIG.PUBLIC_HASH_ROUTE + '/?token=' + encodeURIComponent(token);
+    var urlFilters = encodeURIComponent(JSON.stringify([
+      { field: CONFIG.TOKEN_FIELD, operator: 'is', value: token }
+    ]));
+    return origin + pathPart + '#' + CONFIG.PUBLIC_HASH_ROUTE +
+      '/?token=' + encodeURIComponent(token) +
+      '&' + PUBLIC_LOOKUP_VIEW + '_filters=' + urlFilters;
   }
 
   // ── Knack model access ───────────────────────────────────────

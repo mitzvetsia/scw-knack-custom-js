@@ -1032,8 +1032,14 @@
       // for auto-created add-to-bid items from connection field selections)
       var pendingItem = null;
       if (pending[cpkg.id] && pending[cpkg.id].items) {
+        // Match by row id (add/revise/normal rows) OR the bid cell's own
+        // record id — a removal CR is keyed by the exact bid record, which on
+        // an off-SOW row shared across bids differs from the row's meta id.
         for (var pi = 0; pi < pending[cpkg.id].items.length; pi++) {
-          if (pending[cpkg.id].items[pi].rowId === row.id) { pendingItem = pending[cpkg.id].items[pi]; break; }
+          var _pit = pending[cpkg.id].items[pi];
+          if (_pit.rowId === row.id || (ccell && ccell.id && _pit.rowId === ccell.id)) {
+            pendingItem = _pit; break;
+          }
         }
       }
 
@@ -2684,6 +2690,15 @@
   // exact renderer. Takes any object with { sowId, sowName }.
   ns.buildSowStatusBar = function (sowGridLike) {
     return buildSowStatusBar(sowGridLike);
+  };
+
+  // Public so v2 can surface the editable SOW Name (field_2126, the friendly
+  // name) beside the SOW # in its reconcile-grid expand/collapse bar — same
+  // source as v1's own SOW header (the next-step view row). Returns '' when no
+  // friendly name is set (or it just duplicates the SOW #), so the caller can
+  // skip rendering it.
+  ns.sowFriendlyName = function sowFriendlyName(sowId) {
+    return readRowFieldText(findNextStepRow(sowId), CFG.sowNameField) || '';
   };
 
   // Public so v2 can drop the cached DOC_files index before re-rendering its

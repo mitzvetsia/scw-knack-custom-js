@@ -223,7 +223,28 @@
       var m = hash.match(patterns[i]);
       if (m) return m[1];
     }
+    // FALLBACK — none of the known nav chains matched (the page was reached
+    // through a route these patterns don't know). Knack resolves child pages
+    // against whatever the CURRENT chain is, so the live hash itself is a
+    // valid base as long as it's record-scoped (ends with a 24-hex record
+    // id). Without this, an unrecognized route silently killed the photo
+    // strip (no add-only strip → no "+ Add" pill) and the add/bulk-upload
+    // identity. Warn so the unmatched route is visible in the console.
+    var live = hash.replace(/^#/, '').split('?')[0].replace(/\/+$/, '');
+    if (/(^|\/)[a-f0-9]{24}$/.test(live)) {
+      console.warn('[scw-ws-v2] photos: unrecognized route — using live hash as base:', live);
+      return live;
+    }
     return '';
+  }
+
+  // True when the base path is the deploy scene. Anchored (^|/) because the
+  // page is reachable both through the full nav chain (…/deploy/<id>) AND
+  // directly as #deploy/<id> — buildSowBasePath's live-hash fallback returns
+  // the latter with NO leading slash, which a plain indexOf('/deploy/')
+  // missed, mislabeling install line items as SOW line items.
+  function isDeployBase(base) {
+    return /(^|\/)deploy\/[a-f0-9]{24}/.test(base);
   }
 
   function editPhotoHref(photoRecordId) {
@@ -235,7 +256,7 @@
     if (!base) return '';
     // Deploy scene (install line items, view_3915) uses edit-doc-photo3;
     // sales scope-of-work-details uses edit-doc-photo2; build-SOW uses edit-photo.
-    var slug = (base.indexOf('/deploy/') !== -1) ? 'edit-doc-photo3'
+    var slug = isDeployBase(base) ? 'edit-doc-photo3'
       : (base.indexOf('scope-of-work-details') !== -1) ? 'edit-doc-photo2'
       : 'edit-photo';
     return '#' + base + '/' + slug + '/' + photoRecordId + '/';
@@ -247,9 +268,19 @@
     var base = buildSowBasePath();
     if (!base) return '';
     // Deploy scene → install line item; everywhere else → SOW line item.
-    var addSlug = (base.indexOf('/deploy/') !== -1)
+    var addSlug = isDeployBase(base)
       ? 'add-photo-to-install-line-item' : 'add-photo-to-sow-line-item';
     return '#' + base + '/' + addSlug + '/' + lineItemId + '/';
+  }
+
+  // Line-item-scoped linkField for the identity-aware bulk-upload modal —
+  // mirrors addPhotoHref's scene routing (survey / deploy / SOW). Returns ''
+  // off a recognized scene so the caller falls back to the Knack add page.
+  function bulkLinkFieldV2() {
+    if (surveyBasePath()) return 'surveyLineItemID';
+    var base = buildSowBasePath();
+    if (!base) return '';
+    return isDeployBase(base) ? 'installLineItemID' : 'sowLineItemID';
   }
 
   /** Survey-scene base path. Returns '' off the survey scene so the
@@ -269,14 +300,39 @@
   // every other surface stay delete-free. The delete itself rides the
   // native kn-link-delete on the photo's row in whatever DOC_photos grid
   // is on the page (see the delegated handler below).
-  var PHOTO_DELETE_VIEWS = { view_3962: 1, view_3921: 1 };
+  var PHOTO_DELETE_VIEWS = { view_3962: 1, view_3921: 1, view_3505: 1 };
 
   // Per-surface DOC_photos grid used for the REST-DELETE fallback when the
   // photo's row isn't in the DOM (paginated grid). view_3584 is the
   // delete-enabled photos grid on the build-SOW scene. The review-bids
   // scene's photos grid is unconfirmed — native-link path still works
   // there when the row is present.
-  var PHOTO_GRID_FALLBACK_VIEWS = { view_3962: 'view_3584', view_3921: '' };
+  //
+  // view_3505 (subcontractor SURVEY worksheet): survey line-item photos get a
+  // delete button. The handler first tries the native kn-link-delete on the
+  // DOC_photos grid on the survey scene (Path 1); if the photo's row isn't
+  // rendered (paginated) it falls back to a view-scoped REST DELETE through the
+  // grid named here (Path 2). view_4070 is the delete-enabled DOC_photos grid
+  // added to the survey scene for exactly this — it's hidden from view below
+  // (it exists only to supply the delete link + REST endpoint).
+  var SURVEY_PHOTO_GRID = 'view_4070';
+  var PHOTO_GRID_FALLBACK_VIEWS = {
+    view_3962: 'view_3584', view_3921: '', view_3505: SURVEY_PHOTO_GRID
+  };
+
+  // Hide the survey-scene DOC_photos helper grid — it's a delete-plumbing view
+  // only (its rows + delete links stay in the DOM so Path 1 can click them, and
+  // Path 2's REST DELETE doesn't need it visible). display:none keeps it out of
+  // the user's way without removing it from the page.
+  (function hideSurveyPhotoGrid() {
+    if (!SURVEY_PHOTO_GRID) return;
+    var ID = 'scw-ws-v2-hide-survey-photo-grid';
+    if (document.getElementById(ID)) return;
+    var s = document.createElement('style');
+    s.id = ID;
+    s.textContent = '#' + SURVEY_PHOTO_GRID + ' { display: none !important; }';
+    (document.head || document.documentElement).appendChild(s);
+  })();
 
   // Photo-delete settling registry. Between the optimistic card removal and
   // the authoritative refetch, Knack re-renders rebuild the strip from the
@@ -446,7 +502,9 @@
       // the THUMBNAIL can open the same QA modal as the chit — without
       // re-scraping the source view. needsQa drives whether the modal shows
       // the QA sidebar (true) or opens as a plain big-photo viewer (false).
-      var qaCardAttrs = (qaEnabled && p.id && p.imgUrl)
+      // (No p.imgUrl requirement — empty required photos need the QA
+      // snapshot too so the edit panel's QA button can open qa-popover.)
+      var qaCardAttrs = (qaEnabled && p.id)
         ? ' data-scw-ws-v2-photo-needsqa="' + (needsQa ? '1' : '0') + '"' +
           ' data-qa-status="'  + escapeHtml(p.qaStatus || 'Pending') + '"' +
           ' data-qa-client="'  + escapeHtml(p.qaClient || 'N/A')     + '"' +
@@ -498,9 +556,15 @@
     }
 
     if (addHref) {
+      // data-* let the delegated click handler open the identity-aware bulk
+      // modal (seeded with this line item id + view) instead of navigating to
+      // Knack's add page; the href stays as the graceful fallback.
       html += '<a class="scw-ws-v2-photo-add' +
                 (photos.length ? '' : ' scw-ws-v2-photo-add--solo') +
-                '" href="' + escapeHtml(addHref) + '" title="Add photo" aria-label="Add photo">' +
+                '" href="' + escapeHtml(addHref) + '"' +
+                ' data-scw-line-id="' + escapeHtml(recordId) + '"' +
+                ' data-scw-ws-v2-photo-view="' + escapeHtml(sourceViewKey) + '"' +
+                ' title="Add photo" aria-label="Add photo">' +
                 PIC_SVG +
               '</a>';
     }
@@ -636,6 +700,51 @@
   // delete rides the native kn-link-delete on the photo's own row in
   // whatever DOC_photos grid is on the page — same auto-confirmed
   // two-click-to-one-click pattern as the per-row line-item trash.
+  // Identity-aware bulk upload from the v2 "+ Add photo" pill. Intercept the
+  // add link's click and open the bulk-upload modal seeded with THIS line
+  // item's id + a line-item-scoped linkField, so uploaded photos POST
+  // { recordId: <lineItemId>, linkField: <type> } for Make to connect. Falls
+  // through to the native href (Knack add page) when the modal isn't
+  // applicable — CONFIG off, module absent, unknown scene, or no line id.
+  if (!document.documentElement.hasAttribute('data-scw-ws-v2-photo-add-bound')) {
+    document.documentElement.setAttribute('data-scw-ws-v2-photo-add-bound', '1');
+    document.addEventListener('click', function (e) {
+      var addBtn = e.target && e.target.closest &&
+                   e.target.closest('.scw-ws-v2-photo-add');
+      if (!addBtn) return;
+      if (!(window.SCW && SCW.CONFIG && SCW.CONFIG.PHOTO_ADD_BULK_MODAL)) return;
+      if (!(window.SCW && SCW.bulkUpload && typeof SCW.bulkUpload.open === 'function')) return;
+      var lineId = addBtn.getAttribute('data-scw-line-id');
+      if (!lineId) return;
+      var linkField = bulkLinkFieldV2();
+      if (!linkField) return;   // unknown scene → let the native href navigate
+      e.preventDefault();
+      e.stopPropagation();
+      var viewKey = addBtn.getAttribute('data-scw-ws-v2-photo-view') || '';
+      // Best-effort label from the card so the modal can name the target line
+      // item; blank (e.g. assumptions rows) → modal shows the generic notice.
+      var card = addBtn.closest && addBtn.closest('.scw-ws-v2-card');
+      var lbl = '';
+      if (card) {
+        var lc = card.querySelector('.scw-ws-v2-cell--label');
+        var pc = card.querySelector('.scw-ws-v2-cell--product');
+        lbl = (lc && lc.textContent.trim()) || (pc && pc.textContent.trim()) || '';
+      }
+      SCW.bulkUpload.open({
+        linkField:            linkField,
+        // Scope flag → modal shows a "this line item only" callout and drops
+        // the parent-SOW auto-match copy.
+        lineItemUpload:       true,
+        targetLabel:          lbl,
+        refreshRecordInViews: [],
+        // Full refetch of the worksheet's source view on close so newly
+        // connected photos surface in the strip.
+        refreshViews:         viewKey ? [viewKey] : [],
+        reloadOnClose:        false
+      }, lineId);
+    });
+  }
+
   if (!document.documentElement.hasAttribute('data-scw-ws-v2-photo-del-bound')) {
     document.documentElement.setAttribute('data-scw-ws-v2-photo-del-bound', '1');
     document.addEventListener('click', function (e) {
@@ -662,48 +771,66 @@
         if (card && card.parentNode) card.parentNode.removeChild(card);
       }
 
-      // Path 1 — the photo record's row in the photos source grid, if the
-      // grid is on the page AND the row is on its current pagination page.
-      // Photo ids are 24-hex and unique, so a page-wide lookup is safe.
-      var link = document.querySelector(
-        'tr[id="' + photoId + '"] a.kn-link-delete'
-      );
-      if (link) {
-        pendingPhotoDeletes[photoId] = Date.now();
-        dropCard();
-        if (typeof ns.autoConfirmKnackDelete === 'function') ns.autoConfirmKnackDelete();
-        link.click();
-        refetchSoon();
-        return;
+      // The actual delete — run only after the user confirms (below).
+      function doDelete() {
+        // Path 1 — the photo record's row in the photos source grid, if the
+        // grid is on the page AND the row is on its current pagination page.
+        // Photo ids are 24-hex and unique, so a page-wide lookup is safe.
+        var link = document.querySelector(
+          'tr[id="' + photoId + '"] a.kn-link-delete'
+        );
+        if (link) {
+          pendingPhotoDeletes[photoId] = Date.now();
+          dropCard();
+          if (typeof ns.autoConfirmKnackDelete === 'function') ns.autoConfirmKnackDelete();
+          link.click();
+          refetchSoon();
+          return;
+        }
+
+        // Path 2 — view-scoped REST DELETE through the photos grid. Covers
+        // the common case where the grid is paginated and the photo's row
+        // isn't in the DOM. Works for any delete-enabled view on the
+        // CURRENT scene (knackRecordUrl is pages/<current scene>/views/…).
+        var gridKey = PHOTO_GRID_FALLBACK_VIEWS[viewKey] || '';
+        if (gridKey && window.SCW && typeof SCW.knackAjax === 'function' &&
+            typeof SCW.knackRecordUrl === 'function') {
+          pendingPhotoDeletes[photoId] = Date.now();
+          dropCard();
+          SCW.knackAjax({
+            url:  SCW.knackRecordUrl(gridKey, photoId),
+            type: 'DELETE',
+            success: function () { refetchSoon(); },
+            error: function (xhr) {
+              console.warn('[scw-ws-v2] photo delete: REST DELETE via ' + gridKey +
+                ' failed for ' + photoId, xhr && xhr.status, xhr && xhr.responseText);
+              // Let the card come back — the delete didn't land.
+              delete pendingPhotoDeletes[photoId];
+              refetchSoon();
+            }
+          });
+          return;
+        }
+
+        console.warn('[scw-ws-v2] photo delete: no kn-link-delete row for ' +
+          photoId + ' and no fallback grid configured for ' + viewKey +
+          ' — is the DOC_photos grid (with Delete enabled) on this page?');
       }
 
-      // Path 2 — view-scoped REST DELETE through the photos grid. Covers
-      // the common case where the grid is paginated and the photo's row
-      // isn't in the DOM. Works for any delete-enabled view on the
-      // CURRENT scene (knackRecordUrl is pages/<current scene>/views/…).
-      var gridKey = PHOTO_GRID_FALLBACK_VIEWS[viewKey] || '';
-      if (gridKey && window.SCW && typeof SCW.knackAjax === 'function' &&
-          typeof SCW.knackRecordUrl === 'function') {
-        pendingPhotoDeletes[photoId] = Date.now();
-        dropCard();
-        SCW.knackAjax({
-          url:  SCW.knackRecordUrl(gridKey, photoId),
-          type: 'DELETE',
-          success: function () { refetchSoon(); },
-          error: function (xhr) {
-            console.warn('[scw-ws-v2] photo delete: REST DELETE via ' + gridKey +
-              ' failed for ' + photoId, xhr && xhr.status, xhr && xhr.responseText);
-            // Let the card come back — the delete didn't land.
-            delete pendingPhotoDeletes[photoId];
-            refetchSoon();
-          }
-        });
-        return;
+      // Confirm first — deleting a photo is destructive and can't be undone.
+      // Reuse the shared confirm modal (Cancel | Delete photo); fall back to a
+      // native confirm if it isn't available.
+      if (ns.confirmModal && typeof ns.confirmModal === 'function') {
+        ns.confirmModal({
+          title: 'Delete this photo?',
+          body: 'This permanently removes the photo from this line item and ' +
+                'can’t be undone.',
+          okLabel: 'Delete photo',
+          cancelLabel: 'Cancel'
+        }).then(function (ok) { if (ok) doDelete(); });
+      } else if (window.confirm('Delete this photo? This can’t be undone.')) {
+        doDelete();
       }
-
-      console.warn('[scw-ws-v2] photo delete: no kn-link-delete row for ' +
-        photoId + ' and no fallback grid configured for ' + viewKey +
-        ' — is the DOC_photos grid (with Delete enabled) on this page?');
     }, true);
   }
 
@@ -730,17 +857,21 @@
                 el.closest('.scw-ws-v2-card').querySelector('[data-scw-ws-v2-view]'));
     if (host) viewKey = host.getAttribute('data-scw-ws-v2-view') || '';
 
+    var resolvedImg = imgUrl || el.getAttribute('data-qa-img') || '';
     var snapshot = {
-      type:          type || el.getAttribute('data-qa-type') || 'Photo',
-      imgUrl:        imgUrl || el.getAttribute('data-qa-img') || '',
+      type:          type || el.getAttribute('data-qa-type') || '',
+      imgUrl:        resolvedImg,
       status:        el.getAttribute('data-qa-status')   || 'Pending',
       client:        el.getAttribute('data-qa-client')   || 'N/A',
       notes:         el.getAttribute('data-qa-notes')    || '',
       history:       el.getAttribute('data-qa-history')  || '',
       completedBy:   el.getAttribute('data-qa-by')       || '',
       completedDate: el.getAttribute('data-qa-date')     || '',
-      completed:     true,
-      needsQa:       !!needsQa
+      completed:     !!resolvedImg,
+      needsQa:       !!needsQa,
+      // Photo-add + classify support in the QA modal (qa-popover.js):
+      required:      el.getAttribute('data-photo-required') === 'true',
+      viewKey:       viewKey
     };
 
     SCW.qaPopover.openAnchor(el, photoId, snapshot, function () {
@@ -776,34 +907,49 @@
     }, true);
   }
 
-  // Delegated: intercept thumbnail clicks → open the viewer instead of
-  // navigating to Knack's edit page. Placeholder cards (no image) and the
-  // "+ Add" pill fall through to their default hash navigation. Bound once.
+  // Delegated: intercept thumbnail clicks → open the unified edit panel /
+  // viewer instead of navigating to Knack's edit page. Bound once.
   if (!document.documentElement.hasAttribute('data-scw-ws-v2-photo-viewer-bound')) {
     document.documentElement.setAttribute('data-scw-ws-v2-photo-viewer-bound', '1');
     document.addEventListener('click', function (e) {
       var card = e.target.closest && e.target.closest('a.scw-ws-v2-photo-card');
       if (!card) return;
-      // No image to view → let it navigate to the edit page as before.
-      if (!card.getAttribute('data-scw-ws-v2-photo-url')) return;
+      // The FILES QA modal (qa-popover.js) is the basis of all photo
+      // interactions: it now embeds the upload dropzone (empty field_771)
+      // and the Photo Type / Required editors (untyped records) alongside
+      // the QA sidebar (required photos).
+      // No image yet → QA modal with the upload pane. QA sidebar shows for
+      // required photos. Falls back to the old edit-page navigation only
+      // if qa-popover isn't loaded.
+      if (!card.getAttribute('data-scw-ws-v2-photo-url')) {
+        var reqd = card.getAttribute('data-photo-required') === 'true';
+        var openedEmpty = openPhotoQaModal(
+          card,
+          card.getAttribute('data-scw-ws-v2-photo-id'),
+          card.getAttribute('data-scw-ws-v2-photo-type') || '',
+          '',
+          reqd
+        );
+        if (openedEmpty) { e.preventDefault(); e.stopPropagation(); }
+        return;
+      }
 
-      // Install surface (QA_CHIT_VIEWS): clicking the photo opens the SAME QA
-      // modal as the chit — unifying the entry point. The needsqa attr is only
-      // emitted on those views, so other surfaces (bid-review/sales/etc.) fall
-      // through to the lightbox below unchanged. Required photos open with the
-      // QA sidebar; non-required open as a plain big-photo viewer (needsQa=0).
+      // Install surface (QA_CHIT_VIEWS marks cards with the needsqa attr):
+      // clicking a filled photo opens the QA modal — required photos with
+      // the QA sidebar, others as the big-photo viewer. Other surfaces
+      // (bid-review/sales/etc.) fall through to the lightbox unchanged.
       if (card.hasAttribute('data-scw-ws-v2-photo-needsqa')) {
         var needsQa = card.getAttribute('data-scw-ws-v2-photo-needsqa') === '1';
         var opened = openPhotoQaModal(
           card,
           card.getAttribute('data-scw-ws-v2-photo-id'),
-          card.getAttribute('data-scw-ws-v2-photo-type') || 'Photo',
+          card.getAttribute('data-scw-ws-v2-photo-type') || '',
           card.getAttribute('data-scw-ws-v2-photo-url') || '',
           needsQa
         );
         if (opened) { e.preventDefault(); e.stopPropagation(); return; }
-        // openPhotoQaModal failed (qaPopover unavailable) — fall through to
-        // the lightbox so the user can still see the photo.
+        // qa-popover unavailable — fall through to the lightbox so the
+        // user can still see the photo.
       }
 
       var stripEl = card.closest('.scw-ws-v2-photos-strip');

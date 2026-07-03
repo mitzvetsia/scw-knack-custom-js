@@ -95,7 +95,21 @@
       '}',
       'tr.' + HIDE_CLS + ' {',
       '  display: none !important;',
-      '}'
+      '}',
+      // ── SOW/Bid color coding ──
+      '.' + STRIP_CLS + '__dot {',
+      '  display: inline-block; width: 9px; height: 9px; border-radius: 50%;',
+      '  flex: 0 0 auto;',
+      '}',
+      // Left-edge color bar on each device card — one segment per SOW/Bid
+      // (via --scw-sow-bar) so a card on more than one shows every color.
+      '.scw-ws-card[data-scw-sow-colored] { position: relative; }',
+      '.scw-ws-card[data-scw-sow-colored]::before {',
+      '  content: ""; position: absolute; left: 0; top: 0; bottom: 0;',
+      '  width: 7px; background: var(--scw-sow-bar, transparent);',
+      '  z-index: 1; pointer-events: none; border-radius: 4px 0 0 4px;',
+      '}',
+      '.scw-ws-card[data-scw-sow-colored="multi"]::before { width: 9px; }'
     ].join('\n');
     document.head.appendChild(s);
   }
@@ -300,6 +314,14 @@
       if (opts.active) pill.classList.add('is-active');
       pill.setAttribute('data-conn-id', opts.connId || '');
 
+      // Color swatch tying the pill to its SOW/Bid row color.
+      if (opts.dotColor) {
+        var dot = document.createElement('span');
+        dot.className = STRIP_CLS + '__dot';
+        dot.style.background = opts.dotColor;
+        pill.appendChild(dot);
+      }
+
       var text = document.createElement('span');
       text.textContent = opts.label;
       pill.appendChild(text);
@@ -321,15 +343,51 @@
       extraCls: STRIP_CLS + '__pill--all'
     });
 
-    data.items.forEach(function (item) {
+    data.items.forEach(function (item, i) {
       addPill({
-        connId: item.id,
-        label:  item.label,
-        count:  item.count,
-        active: selectedId === item.id
+        connId:   item.id,
+        label:    item.label,
+        count:    item.count,
+        active:   selectedId === item.id,
+        dotColor: (window.SCW && SCW.sowColor) ? SCW.sowColor.dot(i) : ''
       });
     });
     return strip;
+  }
+
+  // ── Row color coding ────────────────────────────────────
+  // Paint each device card with the color(s) of the SOW(s)/Bid(s) it's
+  // connected to — a left-edge bar (one segment per connection). Stable
+  // color per SOW/Bid by its sorted position in the pill list (the same
+  // index the pill dots use).
+  function colorRows(target, data) {
+    if (!window.SCW || !SCW.sowColor) return;
+    if (!data) data = collectConnections(target);
+    if (!data) return;
+    var view = document.getElementById(target.viewId);
+    if (!view) return;
+    var colorMap = SCW.sowColor.buildMap(data.items.map(function (it) { return it.id; }));
+    var rows = view.querySelectorAll('tr.scw-ws-row[id]');
+    for (var i = 0; i < rows.length; i++) {
+      var tr = rows[i];
+      var cardEl = tr.querySelector('.scw-ws-card');
+      if (!cardEl) continue;
+      var conns = data.recordConns[tr.id];
+      var idxs = [];
+      if (conns) {
+        for (var cid in conns) {
+          if (conns.hasOwnProperty(cid) && colorMap[cid] != null) idxs.push(colorMap[cid]);
+        }
+      }
+      idxs = SCW.sowColor.normIndices(idxs);
+      if (!idxs.length) {
+        cardEl.style.removeProperty('--scw-sow-bar');
+        cardEl.removeAttribute('data-scw-sow-colored');
+        continue;
+      }
+      cardEl.style.setProperty('--scw-sow-bar', SCW.sowColor.barFor(idxs));
+      cardEl.setAttribute('data-scw-sow-colored', idxs.length > 1 ? 'multi' : '1');
+    }
   }
 
   // Idempotent strip mount used by the toolbar registry. Builds if
@@ -356,11 +414,15 @@
         var connId = pills[i].getAttribute('data-conn-id') || '';
         pills[i].classList.toggle('is-active', connId === selected);
       }
+      // Re-apply row colors — a worksheet re-render may have rebuilt the
+      // cards (wiping the inline bar) since the strip was last mounted.
+      colorRows(target, data);
       return;
     }
 
     nav.appendChild(buildStrip(target, data, selected));
     applyFilter(target, selected, data);
+    colorRows(target, data);
   }
 
   // Full rebuild — used when underlying data may have changed (cell
@@ -406,12 +468,22 @@
 
     var data = collectConnections(target);
     applyFilter(target, connId, data);
+    colorRows(target, data);
   });
 
   // ── Bindings ────────────────────────────────────────────
   injectStyles();
 
   TARGETS.forEach(function (target) {
+    // Re-color after every worksheet render (cards get rebuilt on edits,
+    // filter changes, group toggles). Debounced to absorb bursts.
+    var colorTimer = null;
+    $(document)
+      .off('knack-view-render.' + target.viewId + EVENT_NS + 'Color')
+      .on('knack-view-render.' + target.viewId + EVENT_NS + 'Color', function () {
+        if (colorTimer) clearTimeout(colorTimer);
+        colorTimer = setTimeout(function () { colorRows(target); }, 150);
+      });
     SCW.toolbar.register({
       id:    'filter-pills-' + target.viewId,
       slot:  SCW.toolbar.SLOTS.filter,

@@ -440,6 +440,14 @@
     //   - PUTs still fire normally; cascade-idle still emits when they
     //     settle, so v2's data layer picks up fresh data via refetch
     var MODEL_ONLY        = config.MODEL_ONLY === true;
+    // LABEL_FIELD: the record's own display-label field on THIS instance's
+    // object — the last-resort source for a parent's connection identifier in
+    // sampleIdentifierForParent. Defaults to the survey label (field_2365),
+    // which the original MODEL_ONLY branch hardcoded; SOW instances must pass
+    // field_1950 and install instances field_2802, or the identifier resolves
+    // empty and the optimistic child patch renders a raw record id in
+    // Connected To (the "cascade writes an ID" bug).
+    var LABEL_FIELD       = config.LABEL_FIELD || 'field_2365';
     var LOG_PREFIX        = '[scw-silent-regroup.' + VIEW_ID + ']';
 
     function log() {
@@ -573,35 +581,26 @@
   function sampleIdentifierForParent(parentId) {
     if (!parentId) return '';
 
-    // MODEL_ONLY: skip the DOM scrape — no .scw-ws-row on this view.
-    // Drop straight to the model lookup below.
-    if (MODEL_ONLY) {
-      var arr0 = getModelRecords();
-      for (var ii = 0; ii < arr0.length; ii++) {
-        var a0 = arr0[ii] && (arr0[ii].attributes || arr0[ii]);
-        if (a0 && a0.id === parentId) {
-          // GROUPING_FIELD's _raw on R itself has the identifier we
-          // want; fall back to a record-pointing-to-R if not present.
-          // Use the record's own field_2365 / label as a last resort.
-          return String(a0.field_2365 || a0.identifier || '').trim();
+    // 1. DOM scrape (v1 worksheets only) — an existing card cell already
+    //    shows the exact identifier Knack rendered for this parent.
+    if (!MODEL_ONLY) {
+      var view = document.getElementById(VIEW_ID);
+      if (view) {
+        // Same CSS-class-starts-with-digit gotcha as findRowsPointingTo —
+        // iterate all spans and compare class attribute manually.
+        var spans = view.querySelectorAll(
+          'tr.scw-ws-row td.' + CONNECTIONS_FIELD + ' span[data-kn="connection-value"]'
+        );
+        for (var si = 0; si < spans.length; si++) {
+          var cls = (spans[si].getAttribute('class') || '').trim();
+          if (cls === parentId) return (spans[si].textContent || '').trim();
         }
       }
-      return '';
     }
 
-    var view = document.getElementById(VIEW_ID);
-    if (view) {
-      // Same CSS-class-starts-with-digit gotcha as findRowsPointingTo —
-      // iterate all spans and compare class attribute manually.
-      var spans = view.querySelectorAll(
-        'tr.scw-ws-row td.' + CONNECTIONS_FIELD + ' span[data-kn="connection-value"]'
-      );
-      for (var si = 0; si < spans.length; si++) {
-        var cls = (spans[si].getAttribute('class') || '').trim();
-        if (cls === parentId) return (spans[si].textContent || '').trim();
-      }
-    }
-    // Last-ditch: model
+    // 2. Model-wide _raw sample (BOTH modes) — any record whose back-pointer
+    //    already lists this parent carries the true connection identifier.
+    //    Most faithful source: it's exactly what a server refetch would show.
     var arr = getModelRecords();
     for (var i = 0; i < arr.length; i++) {
       var attrs = arr[i] && (arr[i].attributes || arr[i]);
@@ -611,6 +610,24 @@
         if (raw[j] && raw[j].id === parentId && raw[j].identifier) {
           return String(raw[j].identifier);
         }
+      }
+    }
+
+    // 3. Last resort: the parent record's own display label (LABEL_FIELD,
+    //    per-instance — SOW field_1950 / survey field_2365 / install
+    //    field_2802). Covers a parent gaining its FIRST child, where no
+    //    back-pointer exists yet to sample from. The old code hardcoded
+    //    field_2365 here, which is survey-only — on the MODEL_ONLY SOW
+    //    instances (view_3962/view_3586) it resolved '', so the optimistic
+    //    child patch shipped an empty identifier and Connected To displayed
+    //    the raw record id.
+    for (var pi = 0; pi < arr.length; pi++) {
+      var pa = arr[pi] && (arr[pi].attributes || arr[pi]);
+      if (pa && pa.id === parentId) {
+        var lbl = pa[LABEL_FIELD];
+        var lblRaw = pa[LABEL_FIELD + '_raw'];
+        if (lbl == null && lblRaw != null && typeof lblRaw !== 'object') lbl = lblRaw;
+        return String(lbl == null ? '' : lbl).replace(/<[^>]*>/g, '').trim();
       }
     }
     return '';
@@ -1700,6 +1717,58 @@
       }
     });
 
+  /** Rewrite a parent's forward TRIGGER_FIELD list after a child's
+   *  CONNECTIONS_FIELD was edited directly. The two are SEPARATE mirrored
+   *  fields — the child-side edit does NOT update the parent's array, so
+   *  without this the forward list drifts (the v2 card looks right because
+   *  it derives Connected Devices from back-pointers, but the stored array
+   *  that v1, PDFs, pickers and Make read goes stale).
+   *
+   *  The new list is the UNION of the parent's current forward list and the
+   *  authoritative back-pointers (children whose CONNECTIONS_FIELD point at
+   *  it) — so a stale forward list can never drop still-connected siblings —
+   *  with the edited child explicitly added (include=true) or removed
+   *  (include=false). No-op when the set is unchanged. */
+  function syncParentForward(parentId, childId, include) {
+    var attrs = getModelAttrs(parentId);
+    if (!attrs) {
+      log('forward-sync: parent ' + parentId + ' not in model — skipping');
+      return;
+    }
+    var byId = Object.create(null);   // id → raw obj (keeps identifiers)
+    var before = [];
+    var fRaw = attrs[TRIGGER_FIELD + '_raw'];
+    if (Array.isArray(fRaw)) {
+      for (var i = 0; i < fRaw.length; i++) {
+        if (fRaw[i] && fRaw[i].id) { byId[fRaw[i].id] = fRaw[i]; before.push(fRaw[i].id); }
+      }
+    }
+    var back = findRowsPointingTo(parentId);
+    for (var b = 0; b < back.length; b++) {
+      if (!byId[back[b]]) byId[back[b]] = { id: back[b] };
+    }
+    if (include) { if (!byId[childId]) byId[childId] = { id: childId }; }
+    else delete byId[childId];
+
+    var afterIds = Object.keys(byId);
+    if (before.length === afterIds.length &&
+        before.slice().sort().join(',') === afterIds.slice().sort().join(',')) {
+      return;   // set unchanged — no PUT
+    }
+
+    log('forward-sync: parent ' + parentId + ' ' + TRIGGER_FIELD + ' ' +
+        (include ? '+' : '−') + ' child ' + childId + ' → [' + afterIds.join(',') + ']');
+    var newRaw = afterIds.map(function (id) { return byId[id]; });
+    syncModelChild(parentId, (function () {
+      var p = {};
+      p[TRIGGER_FIELD + '_raw'] = newRaw;
+      return p;
+    })());
+    var body = {};
+    body[TRIGGER_FIELD] = afterIds;
+    firePut(parentId, body);
+  }
+
   $(document).on('knack-cell-update.' + VIEW_ID + EVENT_NS + '-recip',
     function (event, view, record, editedFieldKey) {
       try {
@@ -1722,6 +1791,26 @@
         var curr = serializeReciprocal(record);
         if (prev === curr) return;
         lastReciprocalSeen[record.id] = curr;
+
+        // ── Push the edit UP into the parents' forward arrays ──────────
+        // A direct CONNECTIONS_FIELD (field_2197) edit re-parents the child,
+        // but the old and new parents' TRIGGER_FIELD (field_1957) arrays are
+        // separate mirrored fields that nothing else rewrites on this path.
+        // Remove the child from the old parent's list and add it to the new
+        // parent's — runs for disconnects too (old parent must still drop
+        // the child even when no new parent is chosen).
+        var prevParentId = prev ? prev.split(',')[0] : '';
+        var rawNow = record[CONNECTIONS_FIELD + '_raw'];
+        var currParentId = (Array.isArray(rawNow) && rawNow[0] && rawNow[0].id)
+          ? rawNow[0].id : '';
+        if (prevParentId !== currParentId) {
+          try {
+            if (prevParentId) syncParentForward(prevParentId, record.id, false);
+            if (currParentId) syncParentForward(currParentId, record.id, true);
+          } catch (fsErr) {
+            console.warn(LOG_PREFIX, 'forward-sync threw', fsErr);
+          }
+        }
 
         // No new parent → nothing to cascade. (Disconnect doesn't
         // implicitly relocate the child's accessories; they keep the
@@ -2035,6 +2124,7 @@
     TRIGGER_FIELD:     'field_2380',
     CONNECTIONS_FIELD: 'field_2381',
     GROUPING_FIELD:    'field_2375',
+    LABEL_FIELD:       'field_2365',   // survey line-item display label
     PUBLIC_API_NAME:   'silentRegroupView3505'
   });
 
@@ -2060,6 +2150,7 @@
     // the Backbone model, not the DOM, and route through PUT-only +
     // scw-cascade-idle refetch — same as the view_3962 deployment — so the
     // field_1957 → field_2197 reciprocal cascade fires reliably.
+    LABEL_FIELD:              'field_1950',   // SOW line-item display label
     MODEL_ONLY:          true,
     PUBLIC_API_NAME:     'silentRegroupView3586'
   });
@@ -2078,6 +2169,7 @@
     ACCESSORIES_VIEW_ID:      'view_3888',
     ACCESSORIES_PARENT_FIELD: 'field_2464',
     SOW_FIELD:                'field_2154',
+    LABEL_FIELD:              'field_1950',   // SOW line-item display label
     PUBLIC_API_NAME:     'silentRegroupView3610'
   });
 
@@ -2104,6 +2196,7 @@
     ACCESSORIES_VIEW_ID:      'view_3888',
     ACCESSORIES_PARENT_FIELD: 'field_2464',
     SOW_FIELD:                'field_2154',
+    LABEL_FIELD:              'field_1950',   // SOW line-item display label
     MODEL_ONLY:          true,
     PUBLIC_API_NAME:     'silentRegroupView3962'
   });
@@ -2128,6 +2221,7 @@
     ACCESSORIES_VIEW_ID:      'view_3927',
     ACCESSORIES_PARENT_FIELD: 'field_2464',
     SOW_FIELD:                'field_2154',
+    LABEL_FIELD:              'field_1950',   // SOW line-item display label
     PUBLIC_API_NAME:     'silentRegroupView3921'
   });
 
@@ -2144,6 +2238,7 @@
     TRIGGER_FIELD:     'field_2820',
     CONNECTIONS_FIELD: 'field_2821',
     GROUPING_FIELD:    'field_2818',
+    LABEL_FIELD:       'field_2802',   // install line-item display label
     PUBLIC_API_NAME:   'silentRegroupView3915'
   });
 
@@ -2155,6 +2250,7 @@
     TRIGGER_FIELD:     'field_2820',
     CONNECTIONS_FIELD: 'field_2821',
     GROUPING_FIELD:    'field_2818',
+    LABEL_FIELD:       'field_2802',   // install line-item display label
     PUBLIC_API_NAME:   'silentRegroupView4056'
   });
 

@@ -174,6 +174,51 @@
     return null;
   }
 
+  // Resolve the { grid, row, cell, pkgId } a CR button targets. The button's
+  // data-row-id is matched first (within the button's SOW grid, then any
+  // grid), but a bid item whose "source of truth" SOW line item lives on a
+  // DIFFERENT SOW than the panel it's rendered in (an off-SOW row) can carry a
+  // row identity that diverges between v2's render and v1's _state — so we ALSO
+  // match by the specific bid record id (data-bid-record-id), which uniquely
+  // identifies the cell (or a stacked duplicate). Without this, Revise/Remove
+  // on off-SOW rows silently no-op because the row lookup misses.
+  function resolveBidTarget(rowId, pkgId, sowId, bidRecordId) {
+    if (!_state || !_state.sowGrids) return null;
+    var grids = _state.sowGrids;
+    var primary = findSowGrid(sowId);
+    var order = [];
+    if (primary) order.push(primary);
+    for (var g = 0; g < grids.length; g++) if (grids[g] !== primary) order.push(grids[g]);
+
+    for (var oi = 0; oi < order.length; oi++) {
+      var grid = order[oi];
+      var rows = grid.rows || [];
+      for (var i = 0; i < rows.length; i++) {
+        var row = rows[i];
+        if (rowId && row.id === rowId) {
+          return { grid: grid, row: row, cell: (pkgId ? row.cellsByPackage[pkgId] : null), pkgId: pkgId };
+        }
+        if (bidRecordId) {
+          var cbp = row.cellsByPackage || {};
+          for (var pk in cbp) {
+            if (!Object.prototype.hasOwnProperty.call(cbp, pk)) continue;
+            var c = cbp[pk];
+            if (!c) continue;
+            if (c.id === bidRecordId) return { grid: grid, row: row, cell: c, pkgId: pk };
+            if (c.dupes) {
+              for (var d = 0; d < c.dupes.length; d++) {
+                if (c.dupes[d] && c.dupes[d].id === bidRecordId) {
+                  return { grid: grid, row: row, cell: c, pkgId: pk };
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+    return null;
+  }
+
   // Project record id — scene_1155 is reached via a nested nav path
   // (#team-calendar/project-dashboard/<projectId>/review-bids/<projectId>).
   // Pull the id that follows project-dashboard, falling back to the first
@@ -2479,18 +2524,28 @@
     var rowId = button.getAttribute('data-row-id');
     var pkgId = button.getAttribute('data-package-id');
     var sowId = button.getAttribute('data-sow-id');
+    var bidRecordId = button.getAttribute('data-bid-record-id') || '';
 
-    var grid = findSowGrid(sowId);
+    // Resolve grid/row/cell robustly (matches by bid record id too, so
+    // off-SOW rows whose identity diverges from v1's _state still resolve).
+    var t = resolveBidTarget(rowId, pkgId, sowId, bidRecordId);
+    // Fall back to the button's SOW grid so the noBid branch below (which
+    // needs a grid even with no matched row/cell) still has one.
+    var grid = (t && t.grid) || findSowGrid(sowId);
     if (!grid) return;
-
-    // Find the row
-    var row = null;
-    for (var i = 0; i < grid.rows.length; i++) {
-      if (grid.rows[i].id === rowId) { row = grid.rows[i]; break; }
+    var row = t && t.row;
+    // No matched row at all → nothing to revise (noBid add-editing is keyed
+    // off the row, so without one there's nothing to open).
+    if (!row) {
+      // Still allow the noBid add-edit path when a bare row exists in the grid.
+      for (var i = 0; i < grid.rows.length; i++) {
+        if (grid.rows[i].id === rowId) { row = grid.rows[i]; break; }
+      }
+      if (!row) return;
     }
-    if (!row) return;
+    if (t && t.pkgId) pkgId = t.pkgId;
 
-    var cell = row.cellsByPackage[pkgId];
+    var cell = (t && t.cell) || row.cellsByPackage[pkgId];
     if (!cell) {
       // noBid or surveyNoBid row — re-open add modal for editing the pending add-to-bid item
       if ((row.noBid || row.surveyNoBid) && ns.changeRequests && ns.changeRequests.openAddItem) {
@@ -2539,7 +2594,11 @@
           sowMapConn:       row.sowMapConn || '',
           connOptions:      addConnOpts2,
           gridRows:         grid.rows,
-          visibility:       { qty: row.sowQty > 1, cabling: isCR2, connDevice: showConn2 },
+          // Qty: the limit-to-quantity-one flag lives on the bid record
+          // (field_2373) and this is a no-bid-record row — nothing to read,
+          // so default visible. (The old sowQty > 1 gate blocked requesting
+          // a quantity bump on a qty-1 line item.)
+          visibility:       { qty: true, cabling: isCR2, connDevice: showConn2 },
           existing:         pendItem,
           // Preserve reinstate identity when re-editing a pending reinstate
           // CR. Without these, re-saving drops the reinstate marker + the bid
@@ -2675,11 +2734,26 @@
       sourceFromSow: !!opts.sourceFromSow,
       connOptions:  { bidConnDevice: connDevOpts, bidConnTo: connToOpts, bidMdfIdf: buildMdfIdfOptions() },
       gridRows:     grid.rows,
-      visibility: {
-        qty:        button.getAttribute('data-vis-qty') === '1',
-        cabling:    button.getAttribute('data-vis-cabling') === '1',
-        connDevice: button.getAttribute('data-vis-conn') === '1',
-      },
+      // Field visibility DERIVES from the record — not from data-vis-*
+      // attrs on the button that opened the modal (v2's comparison-grid
+      // buttons carry none, which used to compute all-false and hide Qty +
+      // the cabling group entirely). Rules:
+      //   • cabling group (Existing / Plenum / Exterior / Drop / Conduit)
+      //     → proposal bucket is Camera or Reader (render.js showCabling).
+      //   • qty → hidden only when the bid record's FLAG_limit-to-quantity-
+      //     one (field_2373 → cell.limitQtyOne) is set.
+      //   • connected devices → map-connection flag Yes on either side.
+      visibility: (function () {
+        var isCamReaderBkt = row.proposalBucketId === CAM_READER_BUCKET_ID ||
+          /^(cameras?|readers?)$/i.test(String(row.proposalBucket || '').trim());
+        var yes = function (v) { return v && /^yes$/i.test(String(v).trim()); };
+        return {
+          qty:        !(cell && cell.limitQtyOne),
+          cabling:    isCamReaderBkt,
+          connDevice: yes(row.sowMapConn) || yes(row.bidMapConn) ||
+                      yes(cell && cell.bidMapConn),
+        };
+      })(),
     });
   }
 
@@ -2691,17 +2765,14 @@
     var rowId = button.getAttribute('data-row-id');
     var pkgId = button.getAttribute('data-package-id');
     var sowId = button.getAttribute('data-sow-id');
+    var bidRecordId = button.getAttribute('data-bid-record-id') || '';
 
-    var grid = findSowGrid(sowId);
-    if (!grid) return;
-
-    var row = null;
-    for (var i = 0; i < grid.rows.length; i++) {
-      if (grid.rows[i].id === rowId) { row = grid.rows[i]; break; }
-    }
-    if (!row) return;
-
-    var cell = row.cellsByPackage[pkgId];
+    var t = resolveBidTarget(rowId, pkgId, sowId, bidRecordId);
+    if (!t || !t.row) return;
+    var grid = t.grid;
+    var row  = t.row;
+    var cell = t.cell;
+    pkgId = t.pkgId || pkgId;
     if (!cell) return;
 
     // v2 stacked-duplicate override: when two bid line items on one bid
@@ -2709,20 +2780,23 @@
     // cellsByPackage[pkgId] is only the FIRST. The v2 Remove button on a
     // stacked duplicate carries data-bid-record-id for the SPECIFIC bid
     // record the user clicked — act on that record, not the kept one.
-    var overrideBid = button.getAttribute('data-bid-record-id');
-    if (overrideBid && overrideBid !== cell.id) {
+    // (The PRIMARY Remove now also carries data-bid-record-id === cell.id;
+    // the mismatch check keeps this a no-op there.)
+    if (bidRecordId && bidRecordId !== cell.id) {
       cell = {
-        id:          overrideBid,
+        id:          bidRecordId,
         productName: button.getAttribute('data-bid-product') || cell.productName
       };
     }
 
     ns.changeRequests.openRemove({
+      // Key the pending item by the button's data-row-id so v2's pending-card
+      // lookup (findPendingItem by its own row.id) still matches.
       rowId:        rowId,
       pkgId:        pkgId,
       pkgName:      findPackageName(grid, pkgId),
       surveyId:     findPackageSurveyId(grid, pkgId),
-      sowId:        sowId,
+      sowId:        grid.sowId,
       sowName:      grid.sowName,
       sowItemId:    row.sowItem || '',
       displayLabel: row.displayLabel,
@@ -3110,7 +3184,39 @@
     for (var i = 0; i < grid.rows.length; i++) {
       if (grid.rows[i].id === rowId) { row = grid.rows[i]; break; }
     }
-    if (!row) return;
+    // v1 drops rows that are on NO SOW and NO bid (buildState:
+    // `if (!hasBid && !hasSow) continue`) — exactly the bid-review-v2
+    // "Removed — no longer on any SOW or bid" rows that show "+ Add to bid".
+    // The SOW grid still exists (only the row was dropped), so synthesize the
+    // missing row from the prefill attrs v2 stamps on the button, then let the
+    // normal add flow run. Without this the click was a silent no-op.
+    if (!row) {
+      var attr = function (n) { return button.getAttribute(n) || ''; };
+      var pName = attr('data-product-name');
+      var pLabel = attr('data-display-label');
+      if (!pName && !pLabel) return;   // no v2 prefill → genuinely nothing to add
+      var mId = attr('data-mdf-idf-id');
+      row = {
+        id:               rowId,
+        sowItem:          attr('data-sow-item-id'),
+        displayLabel:     pLabel,
+        productName:      pName,
+        proposalBucket:   attr('data-proposal-bucket'),
+        proposalBucketId: attr('data-proposal-bucket-id'),
+        sortOrder:        parseFloat(attr('data-sort-order')) || 0,
+        mdfIdf:           attr('data-mdf-idf'),
+        mdfIdfIds:        mId ? [mId] : [],
+        // SOW-side snapshot for the modal's pre-fill.
+        sowProduct:       pName,
+        sowQty:           parseFloat(attr('data-add-qty')) || '',
+        sowFee:           parseFloat(attr('data-add-fee')) || '',
+        sowLaborDesc:     attr('data-add-desc'),
+        // Unknown for a fully-removed item — leave blank (modal fields default).
+        sowMapConn: '', bidMapConn: '',
+        sowExistCabling: '', sowPlenum: '', sowExterior: '',
+        sowDropLength: '', sowConduit: ''
+      };
+    }
 
     // Derive visibility from proposal bucket (same logic as render.js)
     var isCamReader = row.proposalBucketId === CAM_READER_BUCKET_ID;
@@ -3118,7 +3224,10 @@
                    || /^yes$/i.test(String(row.bidMapConn || '').trim());
     var showConn = hasMapConn && !isCamReader;
     var vis = {
-      qty:        row.sowQty > 1,
+      // No bid record here to read FLAG_limit-to-quantity-one from →
+      // default visible. (Was gated on sowQty > 1, which blocked
+      // requesting a quantity bump on a qty-1 item.)
+      qty:        true,
       cabling:    isCamReader,
       connDevice: showConn,
     };
@@ -3129,6 +3238,21 @@
       var addConn = buildAddConnOptions(grid);
       connOpts.bidConnDevice = addConn.bidConnDevice;
       connOpts.bidConnTo     = addConn.bidConnTo;
+    }
+
+    // Re-opening an EXISTING pending add-to-bid CR (click its card) must
+    // prefill from the pending edits, not a blank SOW form. Look it up and
+    // pass it as `existing` (mirrors handleChangeRequest's noBid branch); a
+    // fresh add finds nothing here and stays SOW-prefilled.
+    var addPend = null;
+    if (typeof ns.changeRequests.getPending === 'function') {
+      var addPendData = ns.changeRequests.getPending() || {};
+      if (addPendData[pkgId] && addPendData[pkgId].items) {
+        var apItems = addPendData[pkgId].items;
+        for (var ap = 0; ap < apItems.length; ap++) {
+          if (apItems[ap].rowId === rowId) { addPend = apItems[ap]; break; }
+        }
+      }
     }
 
     if (ns.changeRequests.openAddItem) {
@@ -3161,6 +3285,10 @@
         connOptions:      connOpts,
         gridRows:         grid.rows,
         visibility:       vis,
+        // Prefill from the pending CR when re-editing (null on a fresh add).
+        existing:         addPend,
+        reinstate:        !!(addPend && addPend.reinstate),
+        bidRecordId:      (addPend && addPend.bidRecordId) || ''
       });
     } else {
       ns.renderToast('Add to Bid not yet implemented', 'info');
@@ -3216,7 +3344,7 @@
       proposalBucketId: '',
       sortOrder:        0,
       connOptions:      { bidMdfIdf: buildMdfIdfOptions() },
-      visibility:       {},
+      visibility:       { qty: true },
     });
   }
 
@@ -3441,6 +3569,21 @@
   // (not document), so these buttons never fire on the v2 reconcile page.
   // v2's document-level listener calls this verbatim. Returns true if
   // dispatched.
+  // Public dispatcher for the margin-recovery buttons (Add PM & Mobilization /
+  // Increase project margin) v1 renders inside the SOW status bar. Same story
+  // as dispatchDocsAction: v2 injects that status bar into its own header DOM,
+  // but v1's click listener is bound to v1's grid mount — so on the v2
+  // comparison grid these buttons rendered but did nothing. v2's document-
+  // level listener routes them here. Returns true if dispatched.
+  ns.dispatchMarginAction = function dispatchMarginAction(button) {
+    if (!button) return false;
+    var action = button.getAttribute('data-action');
+    if (!action) return false;
+    if (action === 'add_pm_mobilization') { handleAddPmMobilization(button); return true; }
+    if (action === 'set_project_margin')  { handleSetProjectMargin(button);  return true; }
+    return false;
+  };
+
   ns.dispatchDocsAction = function dispatchDocsAction(button) {
     if (!button) return false;
     var action = button.getAttribute('data-action');
@@ -3497,13 +3640,22 @@
 
   ns.lookupCell = function (rowId, pkgId) {
     if (!_state) return null;
+    // Primary: match the row by id. Fallback: match the package cell whose own
+    // bid record id equals rowId — a removal CR is keyed by the exact bid
+    // record (cell.id), which on an off-SOW row shared across bids differs from
+    // the row's meta id, so a plain row-id match would miss the cell.
+    var fallback = null;
     for (var g = 0; g < _state.sowGrids.length; g++) {
       var rows = _state.sowGrids[g].rows;
       for (var r = 0; r < rows.length; r++) {
         if (rows[r].id === rowId) return rows[r].cellsByPackage[pkgId] || null;
+        if (!fallback) {
+          var c = rows[r].cellsByPackage && rows[r].cellsByPackage[pkgId];
+          if (c && c.id === rowId) fallback = c;
+        }
       }
     }
-    return null;
+    return fallback;
   };
 
   /**

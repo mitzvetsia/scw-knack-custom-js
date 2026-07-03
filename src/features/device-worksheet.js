@@ -243,14 +243,19 @@
         ]
       },
       {
-        // view_3577 (MDF/IDF cards on the build-SOW scene) temporarily
-        // REMOVED — its V1 transformView was ~1100ms for 8 rows on that heavy
-        // page and we're isolating the remaining v2 worksheet lag. Dropping it
-        // from the config kills BOTH the transform binding AND the raw-row
-        // cloak (the cloak CSS is generated from this same list), so the
-        // native Knack table renders normally instead of going blank. Re-add
-        // once the v2-side perf work settles / it gets ported to v2.
-        viewIds: ['view_3559', 'view_3617', 'view_3803', 'view_3932', 'view_4060'],
+        // view_3577 (build-SOW scene) and view_3617 (survey scene) MDF/IDF
+        // grids are REMOVED from this V1 config so `mdf-idf-cards.js` owns them
+        // and renders the newer compact `.scw-mdf-card` layout instead. When
+        // both systems claim a view they RACE — device-worksheet builds
+        // scw-ws-row cards, mdf-idf-cards sees them and tears its own cards
+        // down (see its defer-to-worksheet guard), so the view "flashes" the
+        // new cards then reverts to the old worksheet. Dropping a view from
+        // this list kills BOTH the transform binding AND the raw-row cloak (the
+        // cloak CSS is generated from this same list), so the native Knack
+        // table renders normally and mdf-idf-cards transforms it in place.
+        // (view_3577 was also pulled for a perf reason — its V1 transformView
+        // was ~1100ms for 8 rows on that heavy page.)
+        viewIds: ['view_3559', 'view_3803', 'view_3932', 'view_4060'],
         layout: { labelWidth: '400px' },
         fields: {
           label:            { key: 'field_1642', type: 'readOnly',   summary: true },

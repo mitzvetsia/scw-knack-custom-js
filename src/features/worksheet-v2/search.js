@@ -103,7 +103,15 @@
     meta.textContent = n + ' match' + (n === 1 ? '' : 'es');
   }
 
+  // Re-render through the shared notify path rather than calling renderView
+  // directly. notify coalesces with edit-driven renders (rAF/burst) and reads
+  // the current model at paint time — so a search re-render can't fire an
+  // extra, uncoordinated render that races an in-flight inline edit (the
+  // reported "edit a filtered row's notes → flashes saved then clears" glitch).
+  // renderView still re-applies this search's filterRecords internally, so the
+  // list stays narrowed. Falls back to a direct render if notify is absent.
   function rerender(viewKey) {
+    if (ns.data && typeof ns.data.notify === 'function') { ns.data.notify(viewKey); return; }
     if (ns.data && ns.render) ns.render.renderView(viewKey, ns.data.readRecords(viewKey));
   }
 

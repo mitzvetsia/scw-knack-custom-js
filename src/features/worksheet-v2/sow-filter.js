@@ -223,15 +223,20 @@
         '<span class="scw-ws-v2-sow-pills-label">' + esc(spec.label) + '</span>' +
         '<button type="button" class="scw-ws-v2-sow-pill" ' +
           'data-scw-ws-v2-sow-pill="__all">Show All</button>' +
-        sows.map(function (s) {
+        sows.map(function (s, i) {
           // Tooltip always shows "label — name". When the spec opts in via
           // appendName (e.g. the Bid filter), the friendly name is also shown
           // ON the pill (label — name); otherwise the pill stays terse.
           var tip = s.name ? (s.label + ' — ' + s.name) : s.label;
           var text = (spec.appendName && s.name) ? (s.label + ' — ' + s.name) : s.label;
+          // Color swatch tying this pill to the row tint/bar of the same SOW/Bid.
+          var dot = (window.SCW && SCW.sowColor)
+            ? '<span class="scw-ws-v2-sow-pill-dot" style="background:' +
+                SCW.sowColor.dot(i) + '"></span>'
+            : '';
           return '<button type="button" class="scw-ws-v2-sow-pill" ' +
             'title="' + esc(tip) + '" ' +
-            'data-scw-ws-v2-sow-pill="' + esc(s.id) + '">' + esc(text) + '</button>';
+            'data-scw-ws-v2-sow-pill="' + esc(s.id) + '">' + dot + esc(text) + '</button>';
         }).join('') +
         '<button type="button" class="scw-ws-v2-sow-pill scw-ws-v2-sow-pill--blank" ' +
           'data-scw-ws-v2-sow-pill="' + BLANK + '">(blank)</button>' +
@@ -271,10 +276,73 @@
     }
   }
 
+  // ── SOW/Bid chip color coding ───────────────────────────────────────
+  // Assign each SOW/Bid a stable color (by its sorted position in the
+  // pill list) and color-code ONLY the SOW/Bid value chip(s) shown on each
+  // line item — not the whole row. This keeps the color association
+  // (chip hue ↔ pill swatch) without the overwhelming full-row wash. A
+  // line item on several SOWs/Bids shows one colored chip per SOW/Bid.
+  // Re-run after every render (cards are rebuilt) via render.js.
+  function applyRowColors(viewKey) {
+    if (!window.SCW || !SCW.sowColor) return;
+    var container = document.getElementById('scw-ws-v2-' + viewKey);
+    if (!container) return;
+    var list = collectSowList(viewKey);
+    var cards = container.querySelectorAll('.scw-ws-v2-card[data-scw-ws-v2-record]');
+
+    // Clear any legacy full-row wash/bar left over from the previous
+    // (whole-row) coloring scheme or a stale cached DOM.
+    function clearCard(card) {
+      card.style.removeProperty('background-color');
+      card.style.removeProperty('--scw-sow-bar');
+      card.removeAttribute('data-scw-sow-colored');
+    }
+    function clearChip(el) {
+      el.style.removeProperty('background');
+      el.style.removeProperty('border-color');
+      el.style.removeProperty('color');
+      el.removeAttribute('data-scw-sow-chip');
+      el.removeAttribute('title');
+    }
+
+    // Map each SOW/Bid *label* → color index + friendly name. The value chips
+    // carry the label text (SW-1001 / Bid identifier), so we match on that —
+    // robust across the SOW cell (comma-split string) and the survey Bid cell
+    // (per-line _raw), which order their values differently.
+    var labelIdx  = Object.create(null);
+    var labelName = Object.create(null);
+    for (var li = 0; li < list.length; li++) {
+      labelIdx[list[li].label] = li;
+      if (list[li].name) labelName[list[li].label] = list[li].name;
+    }
+
+    for (var c = 0; c < cards.length; c++) {
+      var card = cards[c];
+      clearCard(card);
+      var vals = card.querySelectorAll('.scw-ws-v2-cell--sow .scw-ws-v2-sow-value');
+      for (var vi = 0; vi < vals.length; vi++) {
+        var el = vals[vi];
+        var label = (el.textContent || '').trim();
+        var idx = labelIdx[label];
+        if (idx == null) { clearChip(el); continue; }
+        var st = SCW.sowColor.chipStyle(idx);
+        el.style.setProperty('background', st.bg, 'important');
+        el.style.setProperty('border-color', st.border, 'important');
+        el.style.setProperty('color', st.text, 'important');
+        el.setAttribute('data-scw-sow-chip', '1');
+        // Friendly name on hover (e.g. "SW-1001 — North Building CCTV"). The
+        // name comes from the filter spec's name grids; absent → just the label.
+        var nm = labelName[label];
+        el.title = nm ? (label + ' — ' + nm) : label;
+      }
+    }
+  }
+
   ns.sowFilter = {
     mount:          mount,
     loadActive:     loadActive,
-    filterRecords:  filterRecords
+    filterRecords:  filterRecords,
+    applyRowColors: applyRowColors
   };
 })();
 /*** END WORKSHEET V2 — SOW FILTER PILLS **************************************/

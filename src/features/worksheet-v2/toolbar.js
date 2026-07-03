@@ -178,6 +178,16 @@
       var m = hash.match(patterns[i]);
       if (m) return m[1];
     }
+    // Same fallback as photos.js buildSowBasePath: an unrecognized route
+    // (page reached through a nav chain the patterns don't know) otherwise
+    // kills the bulk-upload record-id resolution ("Could not determine
+    // record id from URL"). The live hash is a valid base when it's
+    // record-scoped — Knack child routes append to the current chain.
+    var live = hash.replace(/^#/, '').split('?')[0].replace(/\/+$/, '');
+    if (/(^|\/)[a-f0-9]{24}$/.test(live)) {
+      console.warn('[scw-ws-v2] toolbar: unrecognized route — using live hash as base:', live);
+      return live;
+    }
     return '';
   }
   function getSowIdFromHash() {
@@ -335,8 +345,17 @@
     var ids = [];
     var labels = [];
     var boxes = document.querySelectorAll('[data-scw-ws-v2-select]:checked');
+    // Dedupe by record id: the SAME record's select box can exist in several
+    // DOM places at once (bid-review-v2 grid row + the worksheet card inside
+    // its expand panel + stale panel copies left by poll-driven rebuilds), and
+    // syncDomFromState checks EVERY copy. Counting boxes instead of unique ids
+    // made one selected row read as "3 rows" and created one accessory PER
+    // COPY — the intermittent duplicate-accessory bug.
+    var seen = Object.create(null);
     for (var i = 0; i < boxes.length; i++) {
       var rid = boxes[i].getAttribute('data-scw-ws-v2-select');
+      if (!rid || seen[rid]) continue;
+      seen[rid] = true;
       var card = boxes[i].closest('.scw-ws-v2-card');
       // Prefer the drop label (E-001 etc.), then fall back to the
       // product name — non-cam rows don\'t have a label cell, so the

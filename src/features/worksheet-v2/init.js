@@ -582,6 +582,15 @@
       if (!accId || !dir) return;
       var container = step.closest('[id^="scw-ws-v2-"]');
       var viewKey = container ? container.id.replace(/^scw-ws-v2-/, '') : '';
+      if (!viewKey) {
+        // Embedded card (bid-review-v2 expand panel) — the card mounts
+        // OUTSIDE any #scw-ws-v2-<view> container, so fall back to the
+        // source view stamped on the card's own editable elements. Without
+        // this the stepper silently no-oped on the bid review page.
+        var stepCard = step.closest('.scw-ws-v2-card');
+        var stepViewNode = stepCard && stepCard.querySelector('[data-scw-ws-v2-view]');
+        viewKey = (stepViewNode && stepViewNode.getAttribute('data-scw-ws-v2-view')) || '';
+      }
       if (!viewKey) return;
       // Read current qty from the model so we don\'t race the DOM.
       var records = (ns.data && typeof ns.data.readRecords === 'function')
@@ -660,7 +669,15 @@
       if (!accId) return;
 
       var container = btn.closest('[id^="scw-ws-v2-"]');
-      var viewKey = container ? container.id.replace(/^scw-ws-v2-/, '') : 'view_3962';
+      var viewKey = container ? container.id.replace(/^scw-ws-v2-/, '') : '';
+      if (!viewKey) {
+        // Same embedded-card fallback as the qty stepper: on the bid-review
+        // page the card mounts outside any #scw-ws-v2-<view> container, and
+        // the old blind 'view_3962' default isn't on that scene (PUT 403s).
+        var unlCard = btn.closest('.scw-ws-v2-card');
+        var unlViewNode = unlCard && unlCard.querySelector('[data-scw-ws-v2-view]');
+        viewKey = (unlViewNode && unlViewNode.getAttribute('data-scw-ws-v2-view')) || 'view_3962';
+      }
 
       // Optimistic: patch the local model's back-pointer (chips are
       // back-pointer-sourced, so the chip won't resurrect on rebuilds)
@@ -1308,11 +1325,51 @@
         if (fieldKey === _CD || fieldKey === _CT) {
           var _camBucket = ns.card && ns.card.CAM_READER_BUCKET;
           var _isCD = (fieldKey === _CD);
+          // ── Connected Devices pre-selection hardening ──
+          // The forward field_2380 list (what `sel` is read from above) can
+          // read STALE — the field_2380↔field_2381 pair is kept aligned only
+          // by the cascade, so the parent's forward list lags while children
+          // ARE connected (their Connected To / field_2381 already points
+          // here). The CARD DISPLAY already works around this by deriving the
+          // set from the reciprocal back-pointers (card.js detailConnected-
+          // Devices); the picker must match, or it opens with the real
+          // children unchecked. Union into `sel` every cam/reader whose
+          // field_2381 points back at THIS device.
+          if (_isCD) {
+            for (var _hi = 0; _hi < records.length; _hi++) {
+              var _hrec = records[_hi];
+              if (!_hrec || !_hrec.id || _hrec.id === recordId) continue;
+              var _hraw = _hrec[_CT + '_raw'];
+              if (Array.isArray(_hraw) && _hraw[0] && _hraw[0].id === recordId &&
+                  sel.indexOf(_hrec.id) === -1) {
+                sel.push(_hrec.id);
+              }
+            }
+          }
+          var _lblF  = SF.displayLabel || 'field_2365';
+          var _prodF = SF.productName  || 'field_2379';
+          var _mdfF  = SF.mdfIdf       || 'field_2375';
+          // Worksheet-style label ("E-005 · NVR 16ch") for an owning device,
+          // used in the "Connected to …" lock note. Falls back to the raw
+          // connection identifier, then the id.
+          var _ownerLabel = function (ownerId, ident) {
+            for (var oi = 0; oi < records.length; oi++) {
+              var orec = records[oi];
+              if (!orec || orec.id !== ownerId) continue;
+              var l = (orec[_lblF]  || '').toString().replace(/<[^>]*>/g, '').trim();
+              var p = (orec[_prodF] || '').toString().replace(/<[^>]*>/g, '').trim();
+              if (l && p) return l + ' · ' + p;
+              return l || p || ownerId;
+            }
+            var id2 = (ident != null) ? String(ident).replace(/<[^>]*>/g, '').trim() : '';
+            return id2 || ownerId;
+          };
           // Cam/readers already connected to THIS device — keep them offered
           // (so they stay checked) even though their Connected To is populated.
           var _selSet = {};
           for (var si = 0; si < sel.length; si++) _selSet[sel[si]] = true;
           var connCands = [];
+          var _lockedBy = {};   // camId → owning-device label (for the lock note)
           for (var ci = 0; ci < records.length; ci++) {
             var crec = records[ci];
             if (!crec || !crec.id || crec.id === recordId) continue;
@@ -1320,15 +1377,21 @@
               ? ns.card.bucketIdOf(crec, viewKey) : '';
             if (_isCD) {
               if (cbid !== _camBucket) continue;            // devices → connect cam/readers
-              // Only offer cam/readers that AREN'T already connected to another
-              // device — mirrors the other worksheets. Their Connected To
-              // (field_2381) being populated (and not already ours) means
-              // they're spoken for; skip them.
+              // Cam/readers already connected to ANOTHER device: don't hide
+              // them. Offer them LOCKED (grayed + "Take over") so the user
+              // sees why they aren't free and can deliberately steal them.
               if (!_selSet[crec.id]) {
                 var _ctRaw = crec[_CT + '_raw'];
-                var _ctPop = (Array.isArray(_ctRaw) && _ctRaw.length && _ctRaw[0] && _ctRaw[0].id) ||
-                  (typeof crec[_CT] === 'string' && /[0-9a-f]{24}/i.test(crec[_CT]));
-                if (_ctPop) continue;
+                var _ownerId = (Array.isArray(_ctRaw) && _ctRaw[0] && _ctRaw[0].id)
+                  ? _ctRaw[0].id : null;
+                if (!_ownerId && typeof crec[_CT] === 'string') {
+                  var _m = crec[_CT].match(/[0-9a-f]{24}/i);
+                  if (_m) _ownerId = _m[0];
+                }
+                if (_ownerId) {
+                  var _ident = (Array.isArray(_ctRaw) && _ctRaw[0]) ? _ctRaw[0].identifier : '';
+                  _lockedBy[crec.id] = _ownerLabel(_ownerId, _ident);
+                }
               }
             } else {
               if (cbid === _camBucket) continue;            // cam → connect to non-cam network gear
@@ -1338,13 +1401,14 @@
             }
             connCands.push(crec);
           }
-          var _lblF  = SF.displayLabel || 'field_2365';
-          var _prodF = SF.productName  || 'field_2379';
-          var _mdfF  = SF.mdfIdf       || 'field_2375';
           ns.picker.open({
             sourceViewKey: viewKey, putViewKey: viewKey, recordId: recordId,
             fieldKey: fieldKey, label: label, selectedIds: sel,
             candidates: connCands,
+            itemState: function (r) {
+              var owner = _lockedBy[r.id];
+              return owner ? { locked: true, note: 'Connected to ' + owner } : null;
+            },
             groupBy: function (r) {
               var raw = r[_mdfF + '_raw'];
               if (Array.isArray(raw) && raw[0] && raw[0].id) {
@@ -2055,8 +2119,20 @@
       function itemLabel(rec) {
         var lbl  = (rec.field_1950 || '').toString().replace(/<[^>]*>/g, '').trim();
         var prod = (rec.field_1949 || '').toString().replace(/<[^>]*>/g, '').trim();
+        // The drop label (field_1950) degenerates SERVER-SIDE to
+        // "<recordId> (<mdfLabel>)" for rows with no real drop label
+        // (networking/headend) — same quirk card.js readConnRef handles.
+        // Never show a record id in the picker: keep only the "(mdf)" part
+        // as a location hint, prefer the product name as the label.
+        var hexWrap = lbl.match(/^[a-f0-9]{24}\s*\(([^)]+)\)\s*$/i);
+        if (hexWrap) lbl = '';
+        else if (/^[a-f0-9]{24}(\s|\b|$)/i.test(lbl)) lbl = '';
+        if (/^[a-f0-9]{24}(\s|\b|$)/i.test(prod)) prod = '';
+        var loc = hexWrap ? ' (' + hexWrap[1].trim() + ')' : '';
         if (lbl && prod) return lbl + ' · ' + prod;
-        return lbl || prod || rec.id;
+        if (prod) return prod + loc;
+        if (lbl)  return lbl;
+        return hexWrap ? '(unnamed device)' + loc : rec.id;
       }
 
       // mirror-connection-sync has a createMirror() instance bound to

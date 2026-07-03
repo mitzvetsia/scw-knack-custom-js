@@ -104,6 +104,16 @@
     '  letter-spacing: 0.06em; text-transform: uppercase;',
     '  color: rgba(255,255,255,0.6); margin-right: 5px;',
     '}',
+    /* Friendly SOW name (field_2126) beside the SOW # — lighter than the # so
+       the number still reads as primary. Truncates on narrow headers. */
+    '.scw-bid-review-v2__sow-friendly {',
+    '  flex: 0 1 auto; min-width: 0; font-size: 13px; font-weight: 600;',
+    '  color: rgba(255,255,255,0.82); white-space: nowrap; overflow: hidden;',
+    '  text-overflow: ellipsis;',
+    '}',
+    '.scw-bid-review-v2__sow-friendly::before {',
+    '  content: "\\2014"; margin-right: 6px; color: rgba(255,255,255,0.45);',
+    '}',
     '.scw-bid-review-v2__sow-meta {',
     '  margin-left: auto !important;',
     '  font-size: 11px; font-weight: 500;',
@@ -765,10 +775,16 @@
     '  color: #b45309; background: #fffbeb; border-color: #fcd34d;',
     '}',
     /* Aggregate (summary) chips in the MDF/IDF group header — icon + count
-       + label, auto-width pill. Sits between the title and the row count. */
+       + label, auto-width pill. Sits between the title and the row count.
+       CRITICAL: the base __warn-chips rule above is an absolutely-positioned
+       overlay (top/right-pinned, z-index 1) for the SOW cell. The summary
+       variant must be a NORMAL flex child of the header row — without this
+       reset it escapes flex flow and paints over whatever header content
+       sits underneath it (this is what kept covering the Manage pencil). */
     '.scw-bid-review-v2__warn-chips--sum {',
+    '  position: static; top: auto; right: auto; z-index: auto;',
     '  display: inline-flex; align-items: center; gap: 6px;',
-    '  margin-left: auto; flex: 0 0 auto;',
+    '  margin-left: auto; flex: 0 0 auto; flex-wrap: nowrap;',
     '}',
     '.scw-bid-review-v2__warn-chip--sum {',
     '  width: auto; height: auto; border-radius: 999px;',
@@ -1004,14 +1020,16 @@
     /* On-bid-but-not-on-this-SOW: blue dashed cut-out on the SOW cell. */
     '.scw-bid-review-v2__sow-cell--off-sow {',
     '  border: 1.5px dashed #2563eb !important;',
-    '  background: repeating-linear-gradient(135deg,#eff6ff,#eff6ff 8px,#fff 8px,#fff 16px) !important;',
+    '  background: linear-gradient(#fff,#fff) no-repeat 25px 25px / calc(100% - 50px) calc(100% - 50px),',
+'    repeating-linear-gradient(135deg,rgba(94,129,172,.35),rgba(94,129,172,.35) 8px,#fff 8px,#fff 16px) !important;',
     '  position: relative; z-index: 1;',
     '}',
     /* On-SOW-but-not-on-bid (noBid / surveyNoBid): same cut-out on the
        bid cell, with a centered badge + action. */
     '.scw-bid-review-v2__cell--no-bid-cutout {',
     '  border: 1.5px dashed #2563eb !important;',
-    '  background: repeating-linear-gradient(135deg,#eff6ff,#eff6ff 8px,#fff 8px,#fff 16px) !important;',
+    '  background: linear-gradient(#fff,#fff) no-repeat 25px 25px / calc(100% - 50px) calc(100% - 50px),',
+'    repeating-linear-gradient(135deg,rgba(94,129,172,.35),rgba(94,129,172,.35) 8px,#fff 8px,#fff 16px) !important;',
     '  text-align: center;',
     /* lift above the neighbouring SOW cell\'s 2px right border so the
        dashed left edge isn\'t painted over */

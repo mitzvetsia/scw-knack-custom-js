@@ -45,6 +45,27 @@
   var TITLE_SITE_LABEL_HINTS   = ['site name', 'location name', 'site', 'location', 'property', 'project name', 'project'];
   var SURVEY_ID_FIELD          = 'field_2345';
 
+  // Page-1 detail views expose Knack's internal field labels verbatim
+  // (REQ_ID, INPUT_address, SYS_CU Task Link …). Map the known ones to
+  // human-readable labels for the printed cover; anything else gets a
+  // light generic tidy (strip internal prefixes, underscores → spaces).
+  var PAGE1_LABEL_REMAP = {
+    'req_id': 'Request ID',
+    'input_address': 'Site Address',
+    'sys_cu task link': 'ClickUp Task'
+  };
+  function friendlyLabel(label) {
+    var t = norm(label);
+    if (!t) return '';
+    var key = t.toLowerCase();
+    if (PAGE1_LABEL_REMAP[key]) return PAGE1_LABEL_REMAP[key];
+    if (/_/.test(t) || /^(INPUT|SYS|REQ|OUT|TMP)\b/i.test(t)) {
+      t = t.replace(/^(INPUT|SYS|REQ|OUT|TMP)[_\s-]+/i, '');
+      t = t.replace(/_/g, ' ').replace(/\s+/g, ' ').trim();
+    }
+    return t;
+  }
+
   // Worksheet bucket field on the survey line item object (view_3800).
   // The bucket record ID matches the SOW bid-item schema (same bucket
   // table), but the field key is different from the form-side
@@ -80,12 +101,6 @@
   // Distribution-device flag on a survey line item. Cards/records
   // with this field truthy become columns in the connection-map pivot.
   var DISTRIBUTION_DEVICE_FIELD = 'field_2374';
-
-  // Pivot padding targets — the connection map lives on its own page
-  // and we want it to feel like a full worksheet: blank checkbox
-  // columns and blank rows are padded in to fill remaining space.
-  var TARGET_PIVOT_COLS = 22;
-  var TARGET_PIVOT_ROWS = 28;
 
   // Views whose image attachments render as full-page covers
   // BEFORE the survey worksheet items. Each image is labeled with
@@ -146,6 +161,17 @@
     var d = document.createElement('div');
     d.appendChild(document.createTextNode(String(s == null ? '' : s)));
     return d.innerHTML;
+  }
+
+  // MDF/IDF group identifiers come straight from the Knack connection
+  // identifier (field_2375) and sometimes carry a doubled separator,
+  // e.g. "HEADEND: : 2nd Floor MDF". Collapse runs of ": :" / "::" to a
+  // single ": " and tidy stray leading/trailing punctuation.
+  function cleanGroupLabel(s) {
+    var t = norm(s);
+    t = t.replace(/\s*:\s*(?::\s*)+/g, ': ');   // ": :" / ":  :" / "::" → ": "
+    t = t.replace(/^[\s:.\-–—]+/, '').replace(/[\s:.\-–—]+$/, '');
+    return t;
   }
 
   function textOf(el) {
@@ -221,7 +247,7 @@
     for (var i = 0; i < drops.length; i++) {
       drops[i].parentNode && drops[i].parentNode.removeChild(drops[i]);
     }
-    return norm(clone.textContent || '');
+    return cleanGroupLabel(clone.textContent || '');
   }
 
   /** Read the effective value of a detail/summary field cell. Handles
@@ -578,7 +604,7 @@
     if (l1blocks.length) {
       for (var i = 0; i < l1blocks.length; i++) {
         var blk = l1blocks[i];
-        var l1 = v2Text(blk.querySelector('.scw-ws-v2-l1-label')).replace(/[:\s]+$/, '');
+        var l1 = cleanGroupLabel(v2Text(blk.querySelector('.scw-ws-v2-l1-label')).replace(/[:\s]+$/, ''));
         if (l1) out.push({ type: 'group', level: 1, label: l1 });
         var body = blk.querySelector('.scw-ws-v2-l1-body') || blk;
         var cards = body.querySelectorAll('.scw-ws-v2-card');
@@ -1081,7 +1107,7 @@
       if (!value || value === '-' || value === '—') continue;
       var label = '';
       if (labelEl && !item.classList.contains('kn-label-none')) {
-        label = norm(labelEl.textContent || '');
+        label = friendlyLabel(labelEl.textContent || '');
       }
       fields.push({ label: label, value: value });
     }
@@ -1445,27 +1471,9 @@
     }
     allCams.sort(function (a, b) { return natCompare(a.label || '', b.label || ''); });
 
-    // (1) MDF/IDF assignments — each location's gear + a camera checklist.
-    if (mdfGroups.length) {
-      html.push('<h2 class="ws-sec-title">MDF / IDF Assignments</h2>');
-      html.push('<div class="ws-sec-note">For each location, check the cameras / readers that ' +
-        'run to it. Gray marks are the current file assignment — our best guess.</div>');
-      for (var gi = 0; gi < mdfGroups.length; gi++) {
-        var grp = mdfGroups[gi];
-        html.push('<section class="ws-idf">');
-        html.push('<div class="ws-idf-head">' + esc(grp.label) + '</div>');
-        html.push('<div class="ws-idf-body">');
-        for (var nci = 0; nci < grp.nonCam.length; nci++) {
-          var nc = grp.nonCam[nci];
-          if (nc.type === 'card') html.push(renderCard(nc));
-          else if (nc.type === 'group') html.push(renderGroupHeader(nc));
-        }
-        html.push(renderIdfCameraChecklist(allCams, grp.label));
-        html.push('</div></section>');
-      }
-    }
-
-    // (2) Consolidated camera / reader detail — listed once for the job.
+    // (1) Consolidated camera / reader detail — listed once for the job.
+    // Comes BEFORE the MDF/IDF assignment grid (the tech walks the device
+    // list first, then records where each one runs).
     if (allCams.length) {
       html.push('<h2 class="ws-sec-title">All Cameras &amp; Readers ' +
         '<span class="ws-sec-count">' + allCams.length + ' device' +
@@ -1473,12 +1481,70 @@
       html.push(renderCameraReaderBatchTable(allCams));
     }
 
-    // (3) Project-wide services / assumptions — rendered verbatim at the end.
+    if (mdfGroups.length && allCams.length) {
+      // (2) MDF/IDF EQUIPMENT BREAKDOWN — the non-camera, non-distribution
+      // gear (PoE converters, racks, UPS, …) per MDF/IDF, plus any service
+      // / assumption rows that live in an MDF/IDF. Equipment renders as a
+      // compact two-column block (gear list on the left, one shared notes
+      // box on the right) to kill the per-card wasted space; services /
+      // assumptions keep their full card (description + writing area).
+      // Distribution devices are skipped here — they're grid columns below.
+      var perGroup = [];
+      for (var gi = 0; gi < mdfGroups.length; gi++) {
+        var grp = mdfGroups[gi];
+        var equipment = [], other = [];
+        for (var nci = 0; nci < grp.nonCam.length; nci++) {
+          var nc = grp.nonCam[nci];
+          if (nc.type === 'card') {
+            if (acceptsIncomingConnections(nc)) continue;        // grid column
+            if (isServiceOrAssumptionBucket(nc)) other.push(nc); // full card
+            else equipment.push(nc);                             // compact list
+          } else if (nc.type === 'group') {
+            other.push(nc);
+          }
+        }
+        var otherHasCard = false;
+        for (var oi = 0; oi < other.length; oi++) {
+          if (other[oi].type === 'card') { otherHasCard = true; break; }
+        }
+        if (equipment.length || otherHasCard) {
+          perGroup.push({ grp: grp, equipment: equipment, other: other });
+        }
+      }
+      if (perGroup.length) {
+        html.push('<h2 class="ws-sec-title">MDF / IDF Equipment</h2>');
+        for (var pg = 0; pg < perGroup.length; pg++) {
+          var ent = perGroup[pg];
+          html.push('<div class="group-header group-level-1">' +
+            esc(cleanGroupLabel(ent.grp.label)) + '</div>');
+          if (ent.equipment.length) html.push(renderEquipmentBlock(ent.equipment));
+          for (var xi = 0; xi < ent.other.length; xi++) {
+            var ex = ent.other[xi];
+            if (ex.type === 'card') html.push(renderCard(ex));
+            else if (ex.type === 'group') html.push(renderGroupHeader(ex));
+          }
+        }
+      }
+    }
+
+    // (3) Project-wide services / assumptions — grouped WITH the equipment
+    // sections (above), BEFORE the MDF/IDF assignments grid.
     for (var pwi = 0; pwi < projectWide.length; pwi++) {
       var prow = projectWide[pwi];
       if (prow.type === 'group') html.push(renderGroupHeader(prow));
       else if (prow.type === 'card') html.push(renderCard(prow));
       else if (prow.type === 'l1-notes') html.push(renderL1Notes(prow));
+    }
+
+    // (4) MDF/IDF ASSIGNMENT GRID — cameras/readers (rows) × distribution
+    // devices that accept incoming connects (columns, grouped by MDF/IDF).
+    // Rendered LAST, after the equipment + project-wide sections.
+    if (mdfGroups.length && allCams.length) {
+      html.push('<h2 class="ws-sec-title">MDF / IDF Assignments</h2>');
+      html.push('<div class="ws-sec-note">Check which distribution device each camera / reader ' +
+        'connects to. Devices are grouped by MDF/IDF; blank columns are for write-ins. ' +
+        'Gray marks are the current file assignment — our best guess.</div>');
+      html.push(renderAssignmentGrid(mdfGroups, allCams));
     }
 
     // ── Trailing image sections (e.g. Additional Photos from view_3805) ──
@@ -1638,55 +1704,153 @@
     return isYesish(card.raw, DISTRIBUTION_DEVICE_FIELD);
   }
 
-  function renderConnectionPivot(payload) {
-    var cols = [];
-    var rows = [];
-    for (var i = 0; i < payload.rows.length; i++) {
-      var r = payload.rows[i];
-      if (!r || r.type !== 'card') continue;
-      if (isDistributionDevice(r)) cols.push(r);
-      if (isCamerasReadersBucket(r)) rows.push(r);
-    }
-    if (!rows.length) {
-      SCW.debug('[SCW survey-pdf] connection pivot: skipped (no camera/reader rows)');
-      return '';
-    }
+  // A line item "accepts incoming connections" \u2014 i.e. it's a headend /
+  // distribution device that cameras/readers cable back to \u2014 when it's
+  // flagged a distribution device (field_2374), already lists children
+  // (field_2380 = Connected Devices), or lives in a networking/headend
+  // bucket. Any of these makes it a column in the assignment grid.
+  function acceptsIncomingConnections(card) {
+    if (!card || card.type !== 'card') return false;
+    if (isDistributionDevice(card)) return true;
+    if (card.raw && Array.isArray(card.raw.field_2380_raw) &&
+        card.raw.field_2380_raw.length) return true;
+    return isHeadendOrNetworking(card);
+  }
 
-    var blankColCount = Math.max(0, TARGET_PIVOT_COLS - cols.length);
-    var blankRowCount = Math.max(0, TARGET_PIVOT_ROWS - rows.length);
-    var totalCols = cols.length + blankColCount;
+  // Set of child record IDs a distribution device currently serves
+  // (field_2380 = Connected Devices). Used to pre-check the assignment
+  // grid cell where a camera's existing connection matches the device.
+  function deviceChildIdSet(card) {
+    var ids = {};
+    var raw = card && card.raw && card.raw.field_2380_raw;
+    if (Array.isArray(raw)) {
+      for (var i = 0; i < raw.length; i++) {
+        if (raw[i] && raw[i].id) ids[raw[i].id] = true;
+      }
+    }
+    return ids;
+  }
+
+  // \u2500\u2500 SINGLE MDF/IDF ASSIGNMENT GRID \u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500\u2500
+  // Rows    = every camera / reader, grouped by its MDF/IDF.
+  // Columns = the distribution devices that accept incoming connects,
+  //           grouped under their MDF/IDF (plus blank write-in columns
+  //           so the tech can record devices found on-site).
+  // Cells   = checkbox; gray \u2612 pre-fill where the camera's existing
+  //           connection (field_2380/field_2381) already points at that
+  //           device. This replaces the old one-checklist-per-headend
+  //           layout (which repeated all cameras N times and orphaned
+  //           each header onto its own page).
+  function renderAssignmentGrid(mdfGroups, allCams) {
+    if (!allCams || !allCams.length) return '';
+
+    // Build the ordered column list: walk each MDF/IDF group, take its
+    // real distribution devices, then pad with blank write-in slots.
+    var columns = [];          // [{ device|null, group, childIds }]
+    var groupSpans = [];       // [{ label, span }] for the top header row
+    for (var gi = 0; gi < mdfGroups.length; gi++) {
+      var grp = mdfGroups[gi];
+      var devices = [];
+      for (var ni = 0; ni < grp.nonCam.length; ni++) {
+        var nc = grp.nonCam[ni];
+        if (acceptsIncomingConnections(nc)) devices.push(nc);
+      }
+      devices.sort(function (a, b) {
+        return natCompare(a.label || a.product || '', b.label || b.product || '');
+      });
+      // Blank write-in columns: one when devices already exist, two
+      // when the group has none yet (room to note what's installed).
+      var blanks = devices.length ? 1 : 2;
+      var span = 0;
+      for (var di = 0; di < devices.length; di++) {
+        columns.push({ device: devices[di], group: grp.label,
+                       childIds: deviceChildIdSet(devices[di]) });
+        span++;
+      }
+      for (var bi = 0; bi < blanks; bi++) {
+        columns.push({ device: null, group: grp.label, childIds: {} });
+        span++;
+      }
+      if (span) groupSpans.push({ label: grp.label, span: span });
+    }
+    if (!columns.length) return '';
+
+    var totalCols = columns.length;
+
+    function boxCell(on) {
+      return '<td class="pivot-cell">' +
+        (on ? '<span class="ws-box is-on">\u2612</span>' : '\u2610') + '</td>';
+    }
 
     var h = [];
-    h.push('<section class="pivot">');
-    h.push('<h2 class="pivot-title">Connection Map</h2>');
-    h.push('<table class="pivot-table"><thead><tr>');
-    h.push('<th class="pivot-corner pivot-corner--label">Label</th>');
-    h.push('<th class="pivot-corner pivot-corner--product">Product</th>');
-    for (var c = 0; c < cols.length; c++) {
-      var col = cols[c];
-      var colHead = col.product || col.label || '';
-      h.push('<th class="pivot-col"><div class="pivot-col-text">' + esc(colHead) + '</div></th>');
+    h.push('<section class="assign-grid">');
+    h.push('<table class="pivot-table">');
+
+    // Fixed column widths so every device/check column is the SAME width
+    // (Label + Product take a set share, the device columns split the
+    // rest equally \u2014 table-layout:fixed distributes unsized cols evenly).
+    h.push('<colgroup>');
+    h.push('<col class="ag-col-label"><col class="ag-col-product">');
+    for (var cg = 0; cg < totalCols; cg++) h.push('<col class="ag-col-dev">');
+    h.push('</colgroup>');
+
+    // \u2500\u2500 header: MDF/IDF group row + device row \u2500\u2500
+    h.push('<thead>');
+    h.push('<tr>');
+    h.push('<th class="pivot-corner pivot-corner--label" rowspan="2">Label</th>');
+    h.push('<th class="pivot-corner pivot-corner--product" rowspan="2">Product</th>');
+    for (var gs = 0; gs < groupSpans.length; gs++) {
+      h.push('<th class="pivot-grp" colspan="' + groupSpans[gs].span + '">' +
+             esc(cleanGroupLabel(groupSpans[gs].label)) + '</th>');
     }
-    for (var bc = 0; bc < blankColCount; bc++) {
-      h.push('<th class="pivot-col pivot-col--blank"><div class="pivot-col-text">&nbsp;</div></th>');
-    }
-    h.push('</tr></thead><tbody>');
-    for (var r2 = 0; r2 < rows.length; r2++) {
-      var row = rows[r2];
-      h.push('<tr>');
-      h.push('<th class="pivot-row pivot-row--label" scope="row">' + esc(row.label || '') + '</th>');
-      h.push('<td class="pivot-row pivot-row--product">' + esc(row.product || '') + '</td>');
-      for (var c2 = 0; c2 < totalCols; c2++) {
-        h.push('<td class="pivot-cell">\u2610</td>');
+    h.push('</tr>');
+    h.push('<tr>');
+    for (var co = 0; co < columns.length; co++) {
+      var col = columns[co];
+      if (col.device) {
+        var dlabel = col.device.label || '';
+        var dprod  = col.device.product || '';
+        var head = dlabel && dprod ? (dlabel + ' \u2014 ' + dprod) : (dlabel || dprod);
+        h.push('<th class="pivot-col"><div class="pivot-col-text">' +
+               esc(head) + '</div></th>');
+      } else {
+        h.push('<th class="pivot-col pivot-col--blank"><div class="pivot-col-text">&nbsp;</div></th>');
       }
-      h.push('</tr>');
     }
-    for (var br = 0; br < blankRowCount; br++) {
-      h.push('<tr class="pivot-blank-row">');
-      h.push('<th class="pivot-row pivot-row--label" scope="row">&nbsp;</th>');
-      h.push('<td class="pivot-row pivot-row--product">&nbsp;</td>');
-      for (var c3 = 0; c3 < totalCols; c3++) {
-        h.push('<td class="pivot-cell">\u2610</td>');
+    h.push('</tr>');
+    h.push('</thead>');
+
+    // \u2500\u2500 body: one flat row per camera/reader (no group divider rows \u2014
+    // a camera's MDF/IDF is conveyed by the gray pre-check landing in
+    // the device column of its own MDF/IDF group). A cell is gray-checked
+    // when the camera's existing connection points at that device
+    // (exact) OR the column is a real device in the camera's own MDF/IDF
+    // (location best-guess). \u2500\u2500
+    h.push('<tbody>');
+    for (var k = 0; k < allCams.length; k++) {
+      var row = allCams[k];
+      h.push('<tr>');
+      h.push('<th class="pivot-row pivot-row--label" scope="row">' +
+             esc(row.label || '') + '</th>');
+      h.push('<td class="pivot-row pivot-row--product">' +
+             esc(row.product || '') + '</td>');
+      // Precise wins: if the camera has a known connection to a specific
+      // device, check only that column. Otherwise fall back to the
+      // MDF/IDF location best-guess (check the device(s) in its group).
+      var hasExact = false;
+      for (var ce = 0; ce < totalCols; ce++) {
+        if (row.recordId && columns[ce].childIds[row.recordId]) { hasExact = true; break; }
+      }
+      for (var c2 = 0; c2 < totalCols; c2++) {
+        var col2 = columns[c2];
+        var on;
+        if (hasExact) {
+          on = !!(row.recordId && col2.childIds[row.recordId]);
+        } else {
+          on = !!(col2.device && col2.group && row.groupL1 &&
+                  col2.group === row.groupL1);
+        }
+        h.push(boxCell(on));
       }
       h.push('</tr>');
     }
@@ -1734,8 +1898,9 @@
         var isWide = /\n/.test(fld.value) || fld.value.length > 80;
         var cls = 'info-cover-field' + (isWide ? ' info-cover-field--wide' : '');
         h.push('<div class="' + cls + '">');
-        if (fld.label) {
-          h.push('<dt>' + esc(fld.label) + '</dt>');
+        var dispLabel = friendlyLabel(fld.label);
+        if (dispLabel) {
+          h.push('<dt>' + esc(dispLabel) + '</dt>');
         }
         h.push('<dd>' + esc(fld.value) + '</dd>');
         h.push('</div>');
@@ -1834,29 +1999,32 @@
     catch (e) { return String(a) < String(b) ? -1 : (String(a) > String(b) ? 1 : 0); }
   }
 
-  // Compact per-MDF/IDF camera checklist. Lists EVERY camera/reader on the
-  // survey (so a tech can re-home any of them in the field), pre-checking
-  // the ones whose MDF/IDF assignment (field_2375 — i.e. the group they
-  // were scraped under) matches THIS location, in soft gray = best guess.
-  function renderIdfCameraChecklist(cams, groupLabel) {
-    if (!cams || !cams.length) {
-      return '<div class="ws-idf-chk-empty">No cameras / readers on this survey yet.</div>';
+
+  // Compact MDF/IDF equipment block: a two-column layout — the gear list
+  // (one item per line: name + its SCW note) on the LEFT, and ONE shared
+  // blank notes box on the RIGHT for the whole group's equipment. Replaces
+  // the old one-tall-card-per-item layout that left a big empty writing
+  // square under every PoE converter / rack / UPS.
+  function renderEquipmentBlock(cards) {
+    if (!cards || !cards.length) return '';
+    var h = ['<div class="ws-equip-grid">'];
+    h.push('<div class="ws-equip-col">');
+    for (var i = 0; i < cards.length; i++) {
+      var card = cards[i];
+      var name = card.product || card.label || '';
+      var scw  = card.scwText ||
+                 firstKeyValue(card.detailValues, ['field_2418', 'field_1953']);
+      h.push('<div class="ws-equip-item">');
+      h.push('<div class="ws-equip-name">' + esc(name) + '</div>');
+      if (hasMeaningfulText(scw)) {
+        h.push('<div class="ws-equip-scw"><span class="ws-equip-scw-label">SCW Notes</span> ' +
+          esc(scw) + '</div>');
+      }
+      h.push('</div>');
     }
-    var h = ['<div class="ws-idf-checklist">'];
-    h.push('<div class="ws-idf-chk-title">Cameras / readers running to this MDF/IDF</div>');
-    h.push('<div class="ws-idf-chk-grid">');
-    for (var i = 0; i < cams.length; i++) {
-      var cam = cams[i];
-      var pre = !!(cam.groupL1 && groupLabel && cam.groupL1 === groupLabel);
-      h.push(
-        '<div class="ws-idf-chk-row' + (pre ? ' is-pre' : '') + '">' +
-          '<span class="ws-box' + (pre ? ' is-on' : '') + '">' + (pre ? '☒' : '☐') + '</span>' +
-          '<span class="ws-chk-lbl">' + esc(cam.label || '') + '</span>' +
-          '<span class="ws-chk-nm">' + esc(cam.product || '') + '</span>' +
-        '</div>'
-      );
-    }
-    h.push('</div></div>');
+    h.push('</div>');
+    h.push('<div class="ws-equip-notes"><span class="ws-equip-notes-label">Notes</span></div>');
+    h.push('</div>');
     return h.join('');
   }
 
@@ -1886,7 +2054,7 @@
       h.push('<tr>');
       h.push('<td class="cr-cell-id">' + esc(card.label || '') + '</td>');
       h.push('<td class="cr-cell-prod">' + esc(card.product || '') + '</td>');
-      h.push('<td>' + esc(pickDetail(card, ['field_2463'])) + '</td>');
+      h.push('<td class="cr-cell-mount">' + esc(cleanMountText(pickDetail(card, ['field_2463']))) + '</td>');
       h.push('<td class="cr-cell-yn">' + renderSheetYn(card, ['field_2370', 'field_2461']) + '</td>');
       h.push('<td class="cr-cell-yn">' + renderSheetYn(card, ['field_2372', 'field_1984', 'field_2739']) + '</td>');
       h.push('<td class="cr-cell-yn">' + renderSheetYn(card, ['field_2371', 'field_1983', 'field_2740']) + '</td>');
@@ -1932,6 +2100,59 @@
       );
     }
     return bits.join('');
+  }
+
+  // The survey "Mount" column reads the line item's mounting-hardware
+  // display (field_2463), which the v2 worksheet renders as a run-on of
+  // accessory names with their MDF/IDF location and "[special order]"
+  // tags appended — e.g.
+  //   "bosch ds150i series (door position) (2nd floor mdf), [special
+  //    order] request-to-exit dps (2nd floor mdf)"
+  // For a compact spreadsheet cell that location/tag noise is just
+  // clutter, so strip the "(… mdf/idf)" parentheticals and "[special
+  // order]" markers, collapse whitespace, and de-dupe the remaining
+  // comma-separated hardware names.
+  function cleanMountText(s) {
+    var t = String(s == null ? '' : s);
+    if (!t) return '';
+    t = t.replace(/\(([^()]*\b(?:mdf|idf)\b[^()]*)\)/gi, ' '); // (2nd floor mdf)
+    t = t.replace(/\[[^\]]*special\s*order[^\]]*\]/gi, ' ');   // [special order]
+    t = t.replace(/\(\s*\)|\[\s*\]/g, ' ');                    // empty leftovers
+    t = t.replace(/\s*,\s*/g, ', ').replace(/\s+/g, ' ').trim();
+    t = t.replace(/^[,\s]+|[,\s]+$/g, '');
+    var parts = t.split(',');
+    var seen = {}, out = [];
+    for (var i = 0; i < parts.length; i++) {
+      var p = parts[i].trim();
+      if (!p) continue;
+      var key = p.toLowerCase();
+      if (seen[key]) continue;
+      seen[key] = true;
+      out.push(p);
+    }
+    return out.join(', ');
+  }
+
+  // Service / assumption description text. The on-screen worksheet only
+  // renders the description textarea (field_2409 on the survey object,
+  // field_2020 on SOW) when the row needs a sub bid — so for an MDF/IDF
+  // service/assumption with "Require Sub Bid = No" the DOM scrape comes
+  // back empty even though the text exists. Fall back to the Knack model
+  // (card.raw) so the description always prints, matching project-wide
+  // service/assumption cards.
+  var LABOR_DESC_KEYS = ['field_2409', 'field_2020'];
+  function laborTextOf(card) {
+    if (hasMeaningfulText(card.laborText)) return card.laborText;
+    var raw = card && card.raw;
+    if (raw) {
+      for (var i = 0; i < LABOR_DESC_KEYS.length; i++) {
+        var k = LABOR_DESC_KEYS[i];
+        var v = raw[k];
+        if (!hasMeaningfulText(v)) v = raw[k + '_raw'];
+        if (hasMeaningfulText(v)) return String(v);
+      }
+    }
+    return '';
   }
 
   // First non-empty detailValues hit across a list of field keys.
@@ -2107,10 +2328,17 @@
   function renderCard(card) {
     var h = [];
     var isSvcOrAssump = isServiceOrAssumptionBucket(card);
-    var isAssumption  = card.rowClasses && /\bscw-row--assumptions\b/.test(card.rowClasses);
+    var isProjectWide = /project wide/i.test(card.groupL1 || '');
+    // Assumption detection must work for worksheet-v2 cards too — those
+    // carry no scw-row--assumptions class, so also accept the bucket
+    // match and the "Project Wide Assumptions" group label. Without this
+    // a v2 assumption falls through to isService and wrongly shows a
+    // "Service" tag.
+    var isAssumption  = (card.rowClasses && /\bscw-row--assumptions\b/.test(card.rowClasses)) ||
+      bucketMatches(card, ASSUMPTIONS_BUCKET, /assumption/i) ||
+      (isProjectWide && /assumption/i.test(card.groupL1 || ''));
     var isService     = isSvcOrAssump && !isAssumption;
-    var isProjectWideAssumption = isAssumption &&
-      /project wide/i.test(card.groupL1 || '');
+    var isProjectWideAssumption = isAssumption && isProjectWide;
 
     // Two-column writing body lights up for normal detail cards
     // (cameras/readers, NVRs, switches). SERVICE rows force a compact
@@ -2140,10 +2368,15 @@
     // from real devices. Project-wide assumptions need no tag — the
     // "Project Wide Assumptions" group header already identifies them,
     // and the row is pure reference text.
-    if (isService) {
-      h.push('<span class="ws-tag ws-tag--service">Service</span>');
-    } else if (isAssumption && !isProjectWideAssumption) {
-      h.push('<span class="ws-tag ws-tag--assumption">Assumption</span>');
+    // No bucket pill inside Project Wide sections — the group header
+    // ("Project Wide Services" / "Project Wide Assumptions") already
+    // says what they are, so the per-card tag is redundant noise.
+    if (!isProjectWide) {
+      if (isService) {
+        h.push('<span class="ws-tag ws-tag--service">Service</span>');
+      } else if (isAssumption) {
+        h.push('<span class="ws-tag ws-tag--assumption">Assumption</span>');
+      }
     }
 
     // Identity line.
@@ -2198,9 +2431,10 @@
     // classification — if a service row has a residual chip-host
     // field, it'll classify as showDetail=true but we still want the
     // service description rendered prominently.
-    if (isSvcOrAssump && hasMeaningfulText(card.laborText)) {
+    var svcLaborText = laborTextOf(card);
+    if (isSvcOrAssump && hasMeaningfulText(svcLaborText)) {
       h.push('<div class="ws-brief-labor">' +
-        esc(htmlToPlainText(card.laborText)) + '</div>');
+        esc(htmlToPlainText(svcLaborText)) + '</div>');
     }
 
     // ── Two-column body (camera/reader/NVR cards only) ──
@@ -2641,9 +2875,9 @@
       '.ws-id-product {',
       // Match the label styling (bold + blue) so the device reads as',
       // one unified identifier line instead of label-then-graytext.',
-      // Shrunk ~35% from the original 10.5px — the product name is */
-      // useful context but doesn\'t need to compete with the label.   */',
-      '  font-weight: 700; color: #07467c; font-size: 5px;',
+      // Sized to match the SCW-notes body (the product is the primary  */
+      // identifier; SCW notes are now the smaller secondary text).     */',
+      '  font-weight: 700; color: #07467c; font-size: 10px;',
       '}',
       '',
       '/* ── Reference items (Mount / SCW) — same shape as ws-line ── */',
@@ -2764,6 +2998,10 @@
       '  white-space: pre-wrap; word-break: break-word;',
       '}',
       '.ws-labor--scw { margin-bottom: 3px; color: inherit; }',
+      // SCW notes are secondary context next to the product identifier,
+      // so the note text is sized down to the old product size (the two
+      // were swapped per request — product up, notes down).
+      '.ws-labor--scw .ws-labor-value { font-size: 5px; }',
       '.ws-labor-label {',
       '  font-weight: 700; color: #6b7280;',
       '  font-size: 7.5px; letter-spacing: 0.4px;',
@@ -3003,32 +3241,32 @@
       '}',
       '.ws-sec-count { font-size: 9px; font-weight: 600; color: #64748b; margin-left: 6px; }',
       '.ws-sec-note  { font-size: 9px; color: #64748b; margin: 0 0 8px; }',
-      '.ws-idf {',
-      '  border: 1px solid #e2e8f0; border-radius: 6px; overflow: hidden;',
-      '  margin: 0 0 9px; page-break-inside: avoid;',
+      '',
+      '/* ── Compact MDF/IDF equipment block (gear list + one notes box) ── */',
+      '.ws-equip-grid {',
+      '  display: grid; grid-template-columns: 1fr 1fr; gap: 8px;',
+      '  margin: 0 0 9px; align-items: stretch;',
+      '  page-break-inside: avoid; break-inside: avoid;',
       '}',
-      '.ws-idf-head {',
-      '  background: #0f172a; color: #fff; padding: 5px 10px;',
-      '  font-size: 11px; font-weight: 700;',
+      '.ws-equip-col { display: flex; flex-direction: column; gap: 3px; }',
+      '.ws-equip-item {',
+      '  border: 1px solid #e5e7eb; border-radius: 4px; padding: 3px 7px;',
+      '  break-inside: avoid;',
       '}',
-      '.ws-idf-body { padding: 7px 10px; }',
-      '.ws-idf-chk-title {',
-      '  font-size: 8px; text-transform: uppercase; letter-spacing: .4px;',
-      '  color: #64748b; font-weight: 700; margin: 5px 0 4px;',
+      '.ws-equip-name { font-weight: 700; color: #07467c; font-size: 10px; line-height: 1.2; }',
+      '.ws-equip-scw { font-size: 8px; color: #374151; line-height: 1.25; margin-top: 1px; }',
+      '.ws-equip-scw-label {',
+      '  font-weight: 700; color: #6b7280; text-transform: uppercase;',
+      '  font-size: 6.5px; letter-spacing: 0.4px; margin-right: 3px;',
       '}',
-      '.ws-idf-chk-grid { column-count: 2; column-gap: 18px; }',
-      '.ws-idf-chk-row {',
-      '  display: flex; align-items: center; gap: 5px; padding: 1.5px 0;',
-      '  font-size: 9px; break-inside: avoid; -webkit-column-break-inside: avoid;',
+      '.ws-equip-notes {',
+      '  border: 1px solid #cbd5e1; border-radius: 4px; background: #fff;',
+      '  padding: 3px 6px; min-height: 60px;',
       '}',
-      '.ws-idf-chk-row .ws-box { font-size: 11px; flex: 0 0 auto; }',
-      '.ws-chk-lbl { font-weight: 700; white-space: nowrap; color: #0f172a; }',
-      '.ws-chk-nm {',
-      '  color: #64748b; font-size: 8px; overflow: hidden;',
-      '  text-overflow: ellipsis; white-space: nowrap;',
+      '.ws-equip-notes-label {',
+      '  font-weight: 700; color: #6b7280; text-transform: uppercase;',
+      '  font-size: 6.5px; letter-spacing: 0.4px;',
       '}',
-      '.ws-idf-chk-row.is-pre .ws-chk-nm { color: #334155; }',
-      '.ws-idf-chk-empty { font-size: 9px; color: #94a3b8; padding: 4px 0; }',
       '',
       '/* Connection Map pivot table — landscape page so we get more  */',
       '/* horizontal room for column headers and avoid vertical text. */',
@@ -3081,7 +3319,30 @@
       '  text-align: center; font-size: 12px; color: #111827;',
       '  height: 18px;',
       '}',
-      '.pivot-blank-row .pivot-row { background: #fff; }'
+      '.pivot-blank-row .pivot-row { background: #fff; }',
+      '',
+      '/* ── Single MDF/IDF assignment grid ─────────────────────────── */',
+      '/* Reuses the pivot-table cell styling; flows inline (no forced  */',
+      '/* page break) since the whole doc is already landscape.         */',
+      '.assign-grid { margin: 2px 0 10px; }',
+      // Fixed layout so the device columns are all equal width (auto layout
+      // sized each to its content, which made them uneven). Label + Product
+      // take a set share; the remaining width splits evenly across the
+      // unsized device cols.
+      '.assign-grid .pivot-table { page-break-inside: auto; table-layout: fixed; width: 100%; }',
+      '.assign-grid .ag-col-label   { width: 5%; }',
+      '.assign-grid .ag-col-product { width: 23%; }',
+      // ag-col-dev intentionally has no width → fixed layout shares the
+      // leftover space equally among every device column.
+      '.assign-grid .pivot-corner { width: auto; white-space: normal; }',
+      '.assign-grid .pivot-row { width: auto; white-space: normal; word-break: break-word; }',
+      // MDF/IDF column-group header band spanning that group's device cols.
+      '.pivot-grp {',
+      '  background: #dbe9f6; color: #07467c; font-weight: 800;',
+      '  font-size: 7px; text-transform: uppercase; letter-spacing: .3px;',
+      '  text-align: center; padding: 2px 3px; border: 1px solid #94a3b8;',
+      '  white-space: nowrap;',
+      '}'
     ].join('\n');
   }
 

@@ -153,6 +153,8 @@
     /* flash the target row in the v2 grid */
     '@keyframes scwSbdFlash { 0% { background: #fde68a; } 100% { background: transparent; } }',
     '.scw-sbd-flash > td, tr.scw-sbd-flash > td { animation: scwSbdFlash 2s ease-out; }',
+    /* dupe bid-item block (a div, not a tr) flashes directly */
+    'div.scw-sbd-flash { animation: scwSbdFlash 2s ease-out; border-radius: 6px; }',
 
     /* reviewer note (auto-saves — no Save button) */
     '.scw-sbd-notebar { padding: 12px 14px; border-top: 1px solid #f1f5f9; background: #fafbfc; }',

@@ -15,6 +15,7 @@ cat \
   src/config.js \
   src/util.js \
   src/features/_design-tokens.js \
+  src/features/sow-color.js \
   src/features/_render-totals-guard.js \
   src/features/_toolbar-registry.js \
   src/features/_v2-scroll-anchor.js \
@@ -67,8 +68,10 @@ cat \
   src/features/bid-review-v2/warnings.js \
   src/features/bid-review-v2/column-collapse.js \
   src/features/bid-review-v2/toolbar.js \
+  src/features/bid-review-v2/search.js \
   src/features/bid-review-v2/edit.js \
   src/features/bid-review-v2/card.js \
+  src/features/bid-review-v2/mdf-manage.js \
   src/features/bid-review-v2/bulk-cr.js \
   src/features/bid-review-v2/render.js \
   src/features/bid-review-v2/init.js \
@@ -122,7 +125,9 @@ cat \
   src/features/device-worksheet-toolbar.js \
   src/features/device-worksheet-sort.js \
   src/features/install-config-subpanel.js \
+  src/features/install-as-quoted-panel.js \
   src/features/qa-popover.js \
+  src/features/photo-edit-panel.js \
   src/features/config-qa-popover.js \
   src/features/closeout-deliverables.js \
   src/features/chit-bulk-edit-fix.js \
@@ -145,6 +150,7 @@ cat \
   src/features/sow-grid-cards.js \
   src/features/mdf-idf-cards.js \
   src/features/files-gallery.js \
+  src/features/photo-grid-manager.js \
   src/features/survey-request-header.js \
   src/features/ops-stepper.js \
   src/features/sales-stepper.js \
@@ -160,6 +166,7 @@ cat \
   src/features/hide-views-below-bom.js \
   src/features/survey-worksheet-pdf-export.js \
   src/features/sub-portal-survey-request-export.js \
+  src/features/sub-bid-submit-gate.js \
   src/features/sow-pdf-stepper.js \
   src/features/connected-device-bid-check.js \
   src/features/missing-connection-warn.js \
