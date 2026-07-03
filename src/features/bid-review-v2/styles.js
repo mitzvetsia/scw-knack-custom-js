@@ -775,10 +775,16 @@
     '  color: #b45309; background: #fffbeb; border-color: #fcd34d;',
     '}',
     /* Aggregate (summary) chips in the MDF/IDF group header — icon + count
-       + label, auto-width pill. Sits between the title and the row count. */
+       + label, auto-width pill. Sits between the title and the row count.
+       CRITICAL: the base __warn-chips rule above is an absolutely-positioned
+       overlay (top/right-pinned, z-index 1) for the SOW cell. The summary
+       variant must be a NORMAL flex child of the header row — without this
+       reset it escapes flex flow and paints over whatever header content
+       sits underneath it (this is what kept covering the Manage pencil). */
     '.scw-bid-review-v2__warn-chips--sum {',
+    '  position: static; top: auto; right: auto; z-index: auto;',
     '  display: inline-flex; align-items: center; gap: 6px;',
-    '  margin-left: auto; flex: 0 0 auto;',
+    '  margin-left: auto; flex: 0 0 auto; flex-wrap: nowrap;',
     '}',
     '.scw-bid-review-v2__warn-chip--sum {',
     '  width: auto; height: auto; border-radius: 999px;',

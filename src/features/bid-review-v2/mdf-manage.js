@@ -81,12 +81,17 @@
     var s = document.createElement('style');
     s.id = STYLE_ID;
     s.textContent = [
-      '.scw-brv2-mdf-gear { display: inline-flex; align-items: center; gap: 5px;',
-      '  padding: 3px 10px; border-radius: 999px; cursor: pointer; flex: none;',
-      '  background: #fff; border: 1px solid #94a3b8; color: #295f91;',
-      '  font: 600 11px/1.4 system-ui, sans-serif;',
-      '  position: relative; z-index: 6; }',
-      '.scw-brv2-mdf-gear:hover { background: #eff6ff; border-color: #295f91; }',
+      // Subtle pencil affordance next to the L1 title — same circular chip
+      // language as the row/panel carets. (The old z-index/pill hack is
+      // gone: the header summary warn-chips were inheriting the base rule's
+      // absolute positioning and painting over the header; styles.js now
+      // keeps the --sum variant in normal flex flow, so nothing covers this.)
+      '.scw-brv2-mdf-gear { display: inline-flex; align-items: center;',
+      '  justify-content: center; width: 22px; height: 22px; padding: 0;',
+      '  border: none; border-radius: 50%; cursor: pointer; flex: none;',
+      '  background: rgba(41,95,145,0.10); color: #295f91;',
+      '  transition: background .15s, color .15s; }',
+      '.scw-brv2-mdf-gear:hover { background: rgba(41,95,145,0.22); color: #1e4e85; }',
 
       // "+ Add" photo tile in the L1 detail Photos strip.
       '.scw-brv2-mdf-addphoto { display: inline-flex; flex-direction: column;',
