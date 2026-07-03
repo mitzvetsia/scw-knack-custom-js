@@ -1,21 +1,30 @@
 /*** BID REVIEW V2 — MDF/IDF MANAGE PANEL *************************************
  *
- * Inline location management on the comparison grid, mirroring the
- * mdf-idf-cards.js edit surface. Each real MDF/IDF L1 group header carries
- * a pencil (rendered by card.js buildL1HeaderRow); clicking it expands a
- * panel row directly under the header with:
+ * Inline location management on the comparison grid, sharing the visual
+ * language of mdf-idf-cards.js (the location cards on the survey / sales /
+ * sub pages) so MDF/IDF interaction looks the same everywhere. Each real
+ * MDF/IDF L1 group header carries a pencil (rendered by card.js
+ * buildL1HeaderRow); clicking it expands a panel row under the header with:
  *
- *   - type/number badge (HEADEND accented apart from IDFs)
- *   - editable Name (field_1943), Notes (field_1643), Survey Notes (field_2457)
+ *   - type/number badge (HEADEND accented apart from IDFs, number in-badge)
+ *   - editable Name (field_1943) + Notes (field_1643)
+ *   - Add photos (identity-aware bulk uploader, linkField mdfIdfID)
  *
- * Saves PUT through view_3822 (the MDF/IDF records view already on
- * scene_1155) with the user's session, then update the header title and
- * the L1 survey-notes callout IN PLACE (no grid rebuild, no refetch
- * flash) and quietly refetch view_3822 so the model agrees.
+ * Survey Notes (field_2457) are deliberately NOT editable here — they're
+ * the subs' territory. The read-only L1 survey-notes callout remains the
+ * display surface on this grid.
+ *
+ * view_3822 (the MDF/IDF records view on scene_1155) often exposes only
+ * the computed display name (field_1642, "TYPE: ## : name") — not the
+ * individual type/##/name columns — so prefill parses the display name
+ * when the dedicated fields come back empty. Saves PUT through view_3822
+ * with the user's session and send ONLY the fields the user changed
+ * (never a blank prefill), then update the header title in place and
+ * quietly refetch view_3822 so the model agrees.
  *
  * ⚠ Builder dependency: view_3822 must accept edits on field_1943 /
- * field_1643 / field_2457 (inline editing on those columns) or the PUT
- * is rejected — surfaced as an explicit error in the panel.
+ * field_1643 (inline editing on those columns) or the PUT is rejected —
+ * surfaced as an explicit error in the panel.
  ****************************************************************************/
 (function () {
   'use strict';
@@ -32,7 +41,6 @@
     num:         'field_2458',
     name:        'field_1943',
     notes:       'field_1643',
-    surveyNotes: 'field_2457',
     displayName: 'field_1642'
   };
 
@@ -48,6 +56,17 @@
     return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
       return ({ '&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;' })[c];
     });
+  }
+
+  /** field_1642 is the computed "TYPE: ## : name" label. Split on the first
+   *  two colons; degrade gracefully when the ## segment is missing. */
+  function parseDisplayName(dn) {
+    dn = String(dn == null ? '' : dn);
+    var m = /^([^:]*):([^:]*):([\s\S]*)$/.exec(dn);
+    if (m) return { type: m[1].trim(), num: m[2].trim(), name: m[3].trim() };
+    m = /^([^:]*):([\s\S]*)$/.exec(dn);
+    if (m) return { type: m[1].trim(), num: '', name: m[2].trim() };
+    return { type: '', num: '', name: dn.trim() };
   }
 
   /** Resolve the location record for a group — by id, then by label. */
@@ -78,6 +97,7 @@
 
   function injectCss() {
     if (document.getElementById(STYLE_ID)) return;
+    var ACC = 'var(--scw-accent, #2f5f91)';
     var s = document.createElement('style');
     s.id = STYLE_ID;
     s.textContent = [
@@ -104,15 +124,25 @@
       '  background: #eff6ff; }',
 
       '.' + ROW_CLS + ' td { padding: 0 !important; }',
-      '.' + P + '-panel { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-start;',
+      // Panel chrome mirrors mdf-idf-cards' .scw-mdf-card: white card,
+      // type-tinted left border, HEADEND gets the accent wash.
+      '.' + P + '-panel { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-start;',
       '  margin: 8px 10px 10px; padding: 12px 14px; background: #fff;',
-      '  border: 1px solid #cbd5e1; border-left: 4px solid #0f4c75; border-radius: 8px;',
+      '  border: 1px solid #e2e8f0; border-left: 4px solid #94a3b8; border-radius: 10px;',
+      '  box-shadow: 0 1px 2px rgba(15,23,42,.04);',
       '  font: 12.5px/1.45 system-ui, -apple-system, sans-serif; color: #0f172a; }',
+      '.' + P + '-panel--head { border-left-color: ' + ACC + ';',
+      '  background: linear-gradient(0deg,#fff,rgba(var(--scw-accent-rgb,47,95,145),.05)); }',
+      // Badge — same shape/typography as .scw-mdf-badge in mdf-idf-cards.
       '.' + P + '-badge { display: inline-flex; align-items: center; gap: 6px; flex: none;',
-      '  padding: 6px 10px; border-radius: 7px; font: 800 12px/1 system-ui, sans-serif;',
-      '  letter-spacing: .04em; }',
-      '.' + P + '-badge--mdf { background: #fff7ed; color: #c2410c; border: 1px solid #fdba74; }',
-      '.' + P + '-badge--idf { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }',
+      '  padding: 5px 9px; border-radius: 8px; background: #f1f5f9;',
+      '  min-width: 78px; justify-content: center; margin-top: 17px; }',
+      '.' + P + '-badge--head { background: rgba(var(--scw-accent-rgb,47,95,145),.12); }',
+      '.' + P + '-badge__type { font: 800 11px/1 system-ui, sans-serif; letter-spacing: .4px;',
+      '  text-transform: uppercase; color: #475569; }',
+      '.' + P + '-badge--head .' + P + '-badge__type { color: ' + ACC + '; }',
+      '.' + P + '-badge__num { font: 800 14px/1 system-ui, sans-serif; color: #1e293b;',
+      '  font-variant-numeric: tabular-nums; }',
       '.' + P + '-fld { flex: 1 1 180px; min-width: 160px; }',
       '.' + P + '-fld--wide { flex: 2 1 260px; }',
       '.' + P + '-lbl { font: 700 10px/1.2 system-ui, sans-serif; text-transform: uppercase;',
@@ -120,11 +150,17 @@
       '.' + P + '-fld input, .' + P + '-fld textarea { width: 100%; box-sizing: border-box;',
       '  padding: 6px 9px; border: 1px solid #cbd5e1; border-radius: 6px; font: inherit;',
       '  background: #fff; resize: vertical; }',
+      '.' + P + '-fld--name input { font-weight: 700; font-size: 14px; }',
       '.' + P + '-fld textarea { min-height: 52px; }',
       '.' + P + '-fld input:focus, .' + P + '-fld textarea:focus { outline: none;',
-      '  border-color: #0f4c75; box-shadow: 0 0 0 3px rgba(15,76,117,.13); }',
+      '  border-color: ' + ACC + '; box-shadow: 0 0 0 3px rgba(var(--scw-accent-rgb,47,95,145),.15); }',
       '.' + P + '-actions { flex: 1 1 100%; display: flex; justify-content: flex-end;',
       '  align-items: center; gap: 8px; }',
+      // Photos affordance — same bordered chip as mdf-idf-cards' .scw-mdf-photos.
+      '.' + P + '-photos { display: inline-flex; align-items: center; gap: 6px; padding: 5px 9px;',
+      '  border: 1px solid #e2e8f0; border-radius: 6px; background: #fff; color: #475569;',
+      '  font: 600 12px/1 system-ui, sans-serif; cursor: pointer; }',
+      '.' + P + '-photos:hover { background: #f8fafc; }',
       '.' + P + '-status { margin-right: auto; font-weight: 600; color: #0f4c75; }',
       '.' + P + '-status.is-err { color: #be123c; }',
       '.' + P + '-btn { padding: 7px 14px; border-radius: 6px; cursor: pointer;',
@@ -136,9 +172,15 @@
     document.head.appendChild(s);
   }
 
+  var CAMERA_SVG =
+    '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" ' +
+      'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+      '<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>' +
+      '<circle cx="12" cy="13" r="4"/></svg>';
+
   /** Open the identity-aware bulk photo uploader against an MDF/IDF
    *  location record (linkField mdfIdfID). Shared by the manage panel's
-   *  Add Photos button and the L1 detail strip's "+ Add" tile. */
+   *  Add photos button and the L1 detail strip's "+ Add" tile. */
   function openMdfBulkUpload(mdfIdfId, label) {
     var bu = window.SCW && window.SCW.bulkUpload;
     if (!bu || typeof bu.open !== 'function' || !bu.config) {
@@ -186,12 +228,17 @@
       return;
     }
 
-    var type    = fieldText(rec, F.type);
-    var isMdf   = /headend|mdf/i.test(type);
-    var num     = fieldText(rec, F.num);
-    var name    = fieldText(rec, F.name);
+    // Dedicated columns first; computed display name as fallback (see header).
+    var dn      = parseDisplayName(fieldText(rec, F.displayName) || label);
+    var type    = fieldText(rec, F.type) || dn.type;
+    var num     = fieldText(rec, F.num)  || dn.num;
+    var name    = fieldText(rec, F.name) || dn.name;
     var notes   = fieldText(rec, F.notes);
-    var svNotes = fieldText(rec, F.surveyNotes);
+    var isMdf   = /headend|mdf/i.test(type);
+
+    var initial = {};
+    initial[F.name]  = name;
+    initial[F.notes] = notes;
 
     var tr = document.createElement('tr');
     // __row so the L1 collapse toggle hides it with the group.
@@ -199,24 +246,22 @@
     var td = document.createElement('td');
     td.colSpan = headerTr.firstChild ? (headerTr.firstChild.colSpan || 1) : 1;
     td.innerHTML =
-      '<div class="' + P + '-panel">' +
-        '<span class="' + P + '-badge ' + P + '-badge--' + (isMdf ? 'mdf' : 'idf') + '">' +
-          esc(type || 'IDF') + (num ? ' · ' + esc(num) : '') + '</span>' +
-        '<div class="' + P + '-fld">' +
+      '<div class="' + P + '-panel' + (isMdf ? ' ' + P + '-panel--head' : '') + '">' +
+        '<span class="' + P + '-badge' + (isMdf ? ' ' + P + '-badge--head' : '') + '">' +
+          '<span class="' + P + '-badge__type">' + esc(type || 'IDF') + '</span>' +
+          (num ? '<span class="' + P + '-badge__num">' + esc(num) + '</span>' : '') +
+        '</span>' +
+        '<div class="' + P + '-fld ' + P + '-fld--name">' +
           '<div class="' + P + '-lbl">Name</div>' +
-          '<input type="text" data-fk="' + F.name + '" value="' + esc(name) + '">' +
+          '<input type="text" data-fk="' + F.name + '" value="' + esc(name) + '" placeholder="Location name">' +
         '</div>' +
         '<div class="' + P + '-fld ' + P + '-fld--wide">' +
           '<div class="' + P + '-lbl">Notes</div>' +
           '<textarea data-fk="' + F.notes + '">' + esc(notes) + '</textarea>' +
         '</div>' +
-        '<div class="' + P + '-fld ' + P + '-fld--wide">' +
-          '<div class="' + P + '-lbl">Survey Notes</div>' +
-          '<textarea data-fk="' + F.surveyNotes + '">' + esc(svNotes) + '</textarea>' +
-        '</div>' +
         '<div class="' + P + '-actions">' +
-          '<button type="button" class="' + P + '-btn ' + P + '-btn--cancel ' + P + '-btn--photos">' +
-            '+ Add Photos</button>' +
+          '<button type="button" class="' + P + '-photos">' + CAMERA_SVG +
+            '<span>Add photos</span></button>' +
           '<span class="' + P + '-status"></span>' +
           '<button type="button" class="' + P + '-btn ' + P + '-btn--cancel">Cancel</button>' +
           '<button type="button" class="' + P + '-btn ' + P + '-btn--save" disabled>Save</button>' +
@@ -231,31 +276,37 @@
     for (var i = 0; i < inputs.length; i++) {
       inputs[i].addEventListener('input', function () { saveBtn.disabled = false; });
     }
-    td.querySelector('.' + P + '-actions > .' + P + '-btn--cancel:not(.' + P + '-btn--photos)')
-      .addEventListener('click', closePanels);
+    td.querySelector('.' + P + '-btn--cancel').addEventListener('click', closePanels);
 
-    // Add Photos — same identity-aware bulk uploader the line-item photo
+    // Add photos — same identity-aware bulk uploader the line-item photo
     // pills use, but the record shipped is THIS MDF/IDF location, labeled
     // mdfIdfID. (Make's router needs an mdfIdfID branch to land these.)
-    td.querySelector('.' + P + '-btn--photos').addEventListener('click', function () {
+    td.querySelector('.' + P + '-photos').addEventListener('click', function () {
       openMdfBulkUpload(rec.id, gearLabelOf(rec));
     });
 
     saveBtn.addEventListener('click', function () {
+      // Diff-only PUT: never send an unchanged field. Critical because the
+      // prefill can be a parsed fallback (or blank when the view hides a
+      // column) — blindly PUTting every input could wipe real values.
+      var fields = {};
+      var changed = 0;
+      for (var k = 0; k < inputs.length; k++) {
+        var fk = inputs[k].getAttribute('data-fk');
+        var v  = inputs[k].value.trim();
+        if (v !== (initial[fk] || '')) { fields[fk] = v; changed++; }
+      }
+      if (!changed) { closePanels(); return; }
       saveBtn.disabled = true;
       status.classList.remove('is-err');
       status.textContent = 'Saving…';
-      var fields = {};
-      for (var k = 0; k < inputs.length; k++) {
-        fields[inputs[k].getAttribute('data-fk')] = inputs[k].value.trim();
-      }
       SCW.knackAjax({
         url:  SCW.knackRecordUrl(mdfViewKey(), rec.id),
         type: 'PUT',
         data: JSON.stringify(fields),
         success: function () {
           status.textContent = 'Saved ✓';
-          // In-place refresh: header title + survey-notes callout text.
+          // In-place refresh of the header title when the name changed.
           var newName = fields[F.name];
           if (newName && newName !== name) {
             var title = headerTr.querySelector('.scw-bid-review-v2__grp-title');
@@ -266,15 +317,6 @@
               title.textContent = (name && t.indexOf(name) !== -1)
                 ? t.replace(name, newName) : t + ' — ' + newName;
             }
-          }
-          var sv = fields[F.surveyNotes];
-          var callout = tr.nextElementSibling;
-          while (callout && !callout.classList.contains('scw-bid-review-v2__l1-survey-notes-row') &&
-                 callout.classList.contains(ROW_CLS)) callout = callout.nextElementSibling;
-          if (callout && callout.classList.contains('scw-bid-review-v2__l1-survey-notes-row')) {
-            var body = callout.querySelector('.scw-bid-review-v2__l1-survey-notes-body');
-            if (body && sv) body.textContent = sv;
-            if (!sv) callout.style.display = 'none';
           }
           // Quiet model sync so the next rebuild reads fresh values.
           try {

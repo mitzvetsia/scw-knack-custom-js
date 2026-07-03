@@ -1125,7 +1125,11 @@
       '<div class="scw-bid-review-v2__grp-inner">' +
         '<span class="scw-bid-review-v2__grp-chevron">' + GROUP_CHEVRON_SVG + '</span>' +
         manageBtn +
-        '<span class="scw-bid-review-v2__grp-title">' + escapeHtml(group.label) + '</span>' +
+        // The computed display name ("TYPE: ## : name") leaves a stray
+        // "TYPE: :" when the ## segment is blank — collapse it for display
+        // only (data-scw-mdf-label above keeps the raw label for matching).
+        '<span class="scw-bid-review-v2__grp-title">' +
+          escapeHtml(String(group.label || '').replace(/:\s*:/g, ':')) + '</span>' +
         summaryChips +
         '<span class="scw-bid-review-v2__grp-count">' + rowCount + '</span>' +
       '</div>';
