@@ -71,6 +71,7 @@ cat \
   src/features/bid-review-v2/search.js \
   src/features/bid-review-v2/edit.js \
   src/features/bid-review-v2/card.js \
+  src/features/bid-review-v2/mdf-manage.js \
   src/features/bid-review-v2/bulk-cr.js \
   src/features/bid-review-v2/render.js \
   src/features/bid-review-v2/init.js \
