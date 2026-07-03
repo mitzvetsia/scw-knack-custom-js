@@ -88,7 +88,20 @@
       '.scw-acpt-btn--ghost:hover { background: #eef2f7; border-color: #94a3b8; }',
       '.scw-acpt-btn--primary { background: #0f4c75; border: 1px solid #0a3a63; color: #fff;',
       '  margin-left: auto; }',
-      '.scw-acpt-btn--primary:hover { background: #0a3a63; }'
+      '.scw-acpt-btn--primary:hover { background: #0a3a63; }',
+      // Edit pencil beside a populated value + "add" ghost when empty.
+      '.scw-acpt-edit { display: inline-flex; align-items: center; justify-content: center;',
+      '  width: 26px; height: 26px; border-radius: 6px; cursor: pointer; color: #64748b;',
+      '  background: transparent; border: 1px solid transparent; padding: 0; }',
+      '.scw-acpt-edit:hover { background: #eef2f7; border-color: #cbd5e1; color: #0f4c75; }',
+      '.scw-acpt-btn--add { background: #fff; border: 1px dashed #cbd5e1; color: #64748b; }',
+      '.scw-acpt-btn--add:hover { background: #f8fafc; border-color: #94a3b8; color: #334155; }',
+      '.scw-acpt-group { display: inline-flex; align-items: center; gap: 2px; }',
+      // While an acceptance-card edit is open, Knack\'s inline cell editor is
+      // anchored to a hidden td (0,0) — recenter it on screen instead.
+      'body.scw-acpt-cell-editing .kn-popover { position: fixed !important;',
+      '  top: 22% !important; left: 50% !important; transform: translateX(-50%);',
+      '  right: auto !important; bottom: auto !important; z-index: 10000; }'
     ].join('\n');
     var s = document.createElement('style');
     s.id = STYLE_ID; s.textContent = css;
@@ -98,6 +111,45 @@
   function pill(label, yes) {
     return '<span class="scw-acpt-pill ' + (yes ? 'is-yes' : 'is-no') + '">' +
       (yes ? CHECK_SVG : CLOCK_SVG) + '<span>' + esc(label) + '</span></span>';
+  }
+
+  var PENCIL_SVG =
+    '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" ' +
+    'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+    '<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>' +
+    '<path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>';
+  var PLUS_SVG =
+    '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" ' +
+    'stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">' +
+    '<line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>';
+
+  // ── native cell-editor proxy ─────────────────────────────────
+  // The raw table is hidden but its td.cell-edit cells are still live —
+  // clicking one opens Knack's own inline editor (URL editor for the Xero
+  // link, file uploader for the signed agreement). The popover would anchor
+  // to the hidden cell at 0,0, so a body class recenters it while open; a
+  // watchdog clears the class once the popover is gone. Saves fire
+  // knack-cell-update → view re-render → this card rebuilds with the new
+  // value automatically.
+  var _editWatch = null;
+  function stopEditWatch() {
+    document.body.classList.remove('scw-acpt-cell-editing');
+    if (_editWatch) { clearInterval(_editWatch); _editWatch = null; }
+  }
+  function openCellEditor(fieldKey) {
+    var viewEl = document.getElementById(VIEW);
+    var row = viewEl && viewEl.querySelector('tbody tr[id]');
+    var td = row && row.querySelector('td.cell-edit[data-field-key="' + fieldKey + '"]');
+    if (!td) return;
+    stopEditWatch();
+    document.body.classList.add('scw-acpt-cell-editing');
+    $(td).trigger('click');
+    var started = Date.now();
+    _editWatch = setInterval(function () {
+      var open = document.querySelector('body > .kn-popover, #cell-editor');
+      // Give Knack a moment to mount the popover before watching for close.
+      if (!open && Date.now() - started > 800) stopEditWatch();
+    }, 250);
   }
 
   function render() {
@@ -133,8 +185,18 @@
         pill(signed ? 'Agreement signed'         : 'Agreement not signed',    signed) +
       '</div>' +
       '<div class="scw-acpt-actions">' +
-        (fileA  ? '<a class="scw-acpt-btn scw-acpt-btn--ghost" data-proxy="file" href="javascript:void(0)">' + FILE_SVG + 'Signed agreement</a>' : '') +
-        (xeroA  ? '<a class="scw-acpt-btn scw-acpt-btn--ghost" target="_blank" rel="noopener" href="' + esc(xeroA.getAttribute('href') || '') + '">' + LINK_SVG + 'Xero invoice</a>' : '') +
+        (fileA
+          ? '<span class="scw-acpt-group">' +
+              '<a class="scw-acpt-btn scw-acpt-btn--ghost" data-proxy="file" href="javascript:void(0)">' + FILE_SVG + 'Signed agreement</a>' +
+              '<button type="button" class="scw-acpt-edit" data-edit-field="' + F.agreement + '" title="Replace signed agreement">' + PENCIL_SVG + '</button>' +
+            '</span>'
+          : '<button type="button" class="scw-acpt-btn scw-acpt-btn--add" data-edit-field="' + F.agreement + '">' + PLUS_SVG + 'Signed agreement</button>') +
+        (xeroA
+          ? '<span class="scw-acpt-group">' +
+              '<a class="scw-acpt-btn scw-acpt-btn--ghost" target="_blank" rel="noopener" href="' + esc(xeroA.getAttribute('href') || '') + '">' + LINK_SVG + 'Xero invoice</a>' +
+              '<button type="button" class="scw-acpt-edit" data-edit-field="' + F.xero + '" title="Edit Xero invoice link">' + PENCIL_SVG + '</button>' +
+            '</span>'
+          : '<button type="button" class="scw-acpt-btn scw-acpt-btn--add" data-edit-field="' + F.xero + '">' + PLUS_SVG + 'Xero invoice link</button>') +
         (actionA ? '<button type="button" class="scw-acpt-btn scw-acpt-btn--primary" data-proxy="action">Create Questionnaire</button>' : '') +
       '</div>';
 
@@ -149,6 +211,14 @@
     if (fileBtn && fileA) fileBtn.addEventListener('click', function (e) { e.preventDefault(); fileA.click(); });
     var actBtn = card.querySelector('[data-proxy="action"]');
     if (actBtn && actionA) actBtn.addEventListener('click', function () { actionA.click(); });
+
+    // Edit / add affordances → open Knack's inline cell editor for the field.
+    var editBtns = card.querySelectorAll('[data-edit-field]');
+    for (var eb = 0; eb < editBtns.length; eb++) {
+      editBtns[eb].addEventListener('click', function () {
+        openCellEditor(this.getAttribute('data-edit-field'));
+      });
+    }
   }
 
   if (window.SCW && typeof SCW.onViewRender === 'function') {
@@ -156,5 +226,9 @@
   }
   $(document).off('knack-scene-render.any' + EVENT_NS)
     .on('knack-scene-render.any' + EVENT_NS, function () { setTimeout(render, 150); });
+  // A committed inline edit means the editor is closing — drop the recenter
+  // class right away (the watchdog would catch it, this is just snappier).
+  $(document).off('knack-cell-update.' + VIEW + EVENT_NS)
+    .on('knack-cell-update.' + VIEW + EVENT_NS, function () { stopEditWatch(); });
 })();
 /*** END FEATURE: Acceptance summary card **********************************/
