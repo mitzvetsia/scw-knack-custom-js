@@ -603,7 +603,8 @@
     var LINE_ITEM_KINDS = {
       surveyLineItemID:  'survey line item',
       sowLineItemID:     'SOW line item',
-      installLineItemID: 'install line item'
+      installLineItemID: 'install line item',
+      mdfIdfID:          'MDF/IDF location'
     };
     var isLineItem  = !!(viewCfg && viewCfg.lineItemUpload);
     var kindLabel   = (viewCfg && LINE_ITEM_KINDS[viewCfg.linkField]) || 'line item';
@@ -617,8 +618,8 @@
           '<div class="scw-bu-context-title">Uploading to this ' + escapeHtml(kindLabel) + '</div>' +
           (targetLabel
             ? '<div class="scw-bu-context-target">' + escapeHtml(targetLabel) + '</div>' : '') +
-          '<div class="scw-bu-context-note">These photos attach to <strong>this line item only</strong>' +
-            ' — not the whole SOW.</div>' +
+          '<div class="scw-bu-context-note">These photos attach to <strong>this ' +
+            escapeHtml(kindLabel) + ' only</strong> — not the whole SOW.</div>' +
         '</div>'
       : '';
 

@@ -81,12 +81,12 @@
     var s = document.createElement('style');
     s.id = STYLE_ID;
     s.textContent = [
-      '.scw-brv2-mdf-gear { display: inline-flex; align-items: center; justify-content: center;',
-      '  width: 22px; height: 22px; margin-left: 6px; border-radius: 5px; cursor: pointer;',
-      '  background: transparent; border: 1px solid transparent; color: inherit; opacity: .55;',
-      '  padding: 0; flex: none; position: relative; z-index: 4; }',
-      '.scw-brv2-mdf-gear:hover { opacity: 1; background: rgba(255,255,255,.18);',
-      '  border-color: rgba(255,255,255,.35); }',
+      '.scw-brv2-mdf-gear { display: inline-flex; align-items: center; gap: 5px;',
+      '  padding: 3px 10px; border-radius: 999px; cursor: pointer; flex: none;',
+      '  background: #fff; border: 1px solid #94a3b8; color: #295f91;',
+      '  font: 600 11px/1.4 system-ui, sans-serif;',
+      '  position: relative; z-index: 6; }',
+      '.scw-brv2-mdf-gear:hover { background: #eff6ff; border-color: #295f91; }',
 
       // "+ Add" photo tile in the L1 detail Photos strip.
       '.scw-brv2-mdf-addphoto { display: inline-flex; flex-direction: column;',
@@ -134,7 +134,7 @@
   /** Open the identity-aware bulk photo uploader against an MDF/IDF
    *  location record (linkField mdfIdfID). Shared by the manage panel's
    *  Add Photos button and the L1 detail strip's "+ Add" tile. */
-  function openMdfBulkUpload(mdfIdfId) {
+  function openMdfBulkUpload(mdfIdfId, label) {
     var bu = window.SCW && window.SCW.bulkUpload;
     if (!bu || typeof bu.open !== 'function' || !bu.config) {
       alert('Bulk upload is not loaded. Refresh the page and try again.');
@@ -146,7 +146,17 @@
       if (views[vi].menuViewId === 'view_3482') { viewCfg = views[vi]; break; }
     }
     if (!viewCfg) { alert('Bulk upload config not found.'); return; }
-    bu.open($.extend({}, viewCfg, { linkField: 'mdfIdfID' }), mdfIdfId);
+    // lineItemUpload flips the modal into targeted copy ("Uploading to this
+    // MDF/IDF location", no SOW auto-match blurb); targetLabel names it.
+    bu.open($.extend({}, viewCfg, {
+      linkField: 'mdfIdfID',
+      lineItemUpload: true,
+      targetLabel: label || ''
+    }), mdfIdfId);
+  }
+
+  function gearLabelOf(rec) {
+    return stripTags(rec && rec[F.displayName]) || '';
   }
 
   function closePanels() {
@@ -223,7 +233,7 @@
     // pills use, but the record shipped is THIS MDF/IDF location, labeled
     // mdfIdfID. (Make's router needs an mdfIdfID branch to land these.)
     td.querySelector('.' + P + '-btn--photos').addEventListener('click', function () {
-      openMdfBulkUpload(rec.id);
+      openMdfBulkUpload(rec.id, gearLabelOf(rec));
     });
 
     saveBtn.addEventListener('click', function () {
@@ -295,7 +305,8 @@
       if (add) {
         e.preventDefault();
         e.stopPropagation();
-        openMdfBulkUpload(add.getAttribute('data-scw-mdf-addphoto'));
+        openMdfBulkUpload(add.getAttribute('data-scw-mdf-addphoto'),
+                          add.getAttribute('data-mdf-label') || '');
       }
     }, true);
   }
