@@ -84,7 +84,7 @@
       '.scw-brv2-mdf-gear { display: inline-flex; align-items: center; justify-content: center;',
       '  width: 22px; height: 22px; margin-left: 6px; border-radius: 5px; cursor: pointer;',
       '  background: transparent; border: 1px solid transparent; color: inherit; opacity: .55;',
-      '  padding: 0; flex: none; }',
+      '  padding: 0; flex: none; position: relative; z-index: 4; }',
       '.scw-brv2-mdf-gear:hover { opacity: 1; background: rgba(255,255,255,.18);',
       '  border-color: rgba(255,255,255,.35); }',
 
@@ -172,6 +172,8 @@
           '<textarea data-fk="' + F.surveyNotes + '">' + esc(svNotes) + '</textarea>' +
         '</div>' +
         '<div class="' + P + '-actions">' +
+          '<button type="button" class="' + P + '-btn ' + P + '-btn--cancel ' + P + '-btn--photos">' +
+            '+ Add Photos</button>' +
           '<span class="' + P + '-status"></span>' +
           '<button type="button" class="' + P + '-btn ' + P + '-btn--cancel">Cancel</button>' +
           '<button type="button" class="' + P + '-btn ' + P + '-btn--save" disabled>Save</button>' +
@@ -186,7 +188,26 @@
     for (var i = 0; i < inputs.length; i++) {
       inputs[i].addEventListener('input', function () { saveBtn.disabled = false; });
     }
-    td.querySelector('.' + P + '-btn--cancel').addEventListener('click', closePanels);
+    td.querySelector('.' + P + '-actions > .' + P + '-btn--cancel:not(.' + P + '-btn--photos)')
+      .addEventListener('click', closePanels);
+
+    // Add Photos — same identity-aware bulk uploader the line-item photo
+    // pills use, but the record shipped is THIS MDF/IDF location, labeled
+    // mdfIdfID. (Make's router needs an mdfIdfID branch to land these.)
+    td.querySelector('.' + P + '-btn--photos').addEventListener('click', function () {
+      var bu = window.SCW && window.SCW.bulkUpload;
+      if (!bu || typeof bu.open !== 'function' || !bu.config) {
+        alert('Bulk upload is not loaded. Refresh the page and try again.');
+        return;
+      }
+      var views = bu.config.VIEWS || [];
+      var viewCfg = null;
+      for (var vi = 0; vi < views.length; vi++) {
+        if (views[vi].menuViewId === 'view_3482') { viewCfg = views[vi]; break; }
+      }
+      if (!viewCfg) { alert('Bulk upload config not found.'); return; }
+      bu.open($.extend({}, viewCfg, { linkField: 'mdfIdfID' }), rec.id);
+    });
 
     saveBtn.addEventListener('click', function () {
       saveBtn.disabled = true;

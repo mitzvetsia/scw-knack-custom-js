@@ -1125,9 +1125,9 @@
       '<div class="scw-bid-review-v2__grp-inner">' +
         '<span class="scw-bid-review-v2__grp-chevron">' + GROUP_CHEVRON_SVG + '</span>' +
         '<span class="scw-bid-review-v2__grp-title">' + escapeHtml(group.label) + '</span>' +
-        manageBtn +
         summaryChips +
         '<span class="scw-bid-review-v2__grp-count">' + rowCount + '</span>' +
+        manageBtn +   // after the chips/count so they can never overlap it
       '</div>';
     tr.appendChild(td);
     return tr;
