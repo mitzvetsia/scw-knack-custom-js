@@ -1252,51 +1252,9 @@
     var headActions = document.createElement('div');
     headActions.className = POPOVER_ID + '__head-actions';
 
-    // "Open in tab" — escape hatch so users can pop the file out to a
-    // full window if the embedded viewer is awkward for what they need.
-    if (doc.fileUrl) {
-      var openBtn = document.createElement('button');
-      openBtn.type = 'button';
-      openBtn.className = POPOVER_ID + '__head-btn';
-      openBtn.textContent = 'Open in tab';
-      openBtn.addEventListener('click', function () {
-        if (doc.fileAnchor && document.contains(doc.fileAnchor)) {
-          doc.fileAnchor.click();
-        } else if (doc.fileUrl) {
-          window.open(doc.fileUrl, '_blank');
-        }
-      });
-      headActions.appendChild(openBtn);
-
-      // Remove file — clears field_68 but KEEPS the deliverable slot (unlike
-      // the sidebar Delete, which removes the whole DOC record). The slot
-      // flips back to empty and can take a fresh upload from the same panel.
-      var rmBtn = document.createElement('button');
-      rmBtn.type = 'button';
-      rmBtn.className = POPOVER_ID + '__head-btn';
-      rmBtn.textContent = 'Remove file';
-      rmBtn.addEventListener('click', function () {
-        var label = doc.type || 'this deliverable';
-        if (!window.confirm('Remove the uploaded file from ' + label + '?\n\n' +
-              'The deliverable slot stays — only the file is cleared.')) return;
-        var popEl = document.getElementById(POPOVER_ID);
-        if (popEl) popEl.classList.add(POPOVER_ID + '__saving');
-        var fields = {};
-        fields[F.file] = null;
-        fields[F.completed] = 'No';
-        SCW.knackAjax({
-          url:  SCW.knackRecordUrl(activeDep().docSaveView, doc.id),
-          type: 'PUT',
-          data: JSON.stringify(fields),
-          success: function () { closeQAPopover(); refetchCloseoutViews(); },
-          error: function (xhr) {
-            if (popEl) popEl.classList.remove(POPOVER_ID + '__saving');
-            alert('Remove failed (' + xhr.status + ')');
-          }
-        });
-      });
-      headActions.appendChild(rmBtn);
-    }
+    // "Open in tab" / "Remove file" live in the viewer-top bar (see
+    // renderViewerInto) so they sit with the file itself, not up in the
+    // popover header away from it.
     var closeBtn = document.createElement('button');
     closeBtn.type = 'button';
     closeBtn.className = POPOVER_ID + '__head-btn ' + POPOVER_ID + '__head-btn--close';
@@ -1583,6 +1541,88 @@
     return pane;
   }
 
+  /** Slim action bar pinned to the top of the file square: Open in tab +
+   *  Remove file. Remove clears field_68 (+ completed=No) but KEEPS the
+   *  deliverable slot — the viewer swaps to the add-file pane in place,
+   *  the popover stays open. Locked once QA is signed off (Pass). */
+  function buildViewerBar(viewerEl, doc, src) {
+    if (!document.getElementById('scw-cd-viewerbar-css')) {
+      var st = document.createElement('style');
+      st.id = 'scw-cd-viewerbar-css';
+      st.textContent = [
+        '.' + POPOVER_ID + '__viewer { flex-direction: column; }',
+        '.' + POPOVER_ID + '__viewer iframe, .' + POPOVER_ID + '__viewer > img {',
+        '  flex: 1 1 auto; min-height: 0; }',
+        '.' + POPOVER_ID + '__viewer-bar { flex: 0 0 auto; align-self: stretch;',
+        '  display: flex; gap: 8px; justify-content: flex-end; align-items: center;',
+        '  padding: 8px 12px; background: #0b1220; border-bottom: 1px solid #1f2937;',
+        '  order: -1; }',
+        '.' + POPOVER_ID + '__viewer-bar button {',
+        '  background: rgba(30,41,59,.85); color: #e5e7eb; border: 1px solid #475569;',
+        '  border-radius: 6px; padding: 6px 12px; cursor: pointer;',
+        '  font: 600 12px/1 system-ui, sans-serif; }',
+        '.' + POPOVER_ID + '__viewer-bar button:hover { background: #334155; color: #fff; }',
+        '.' + POPOVER_ID + '__viewer-bar button.is-danger { color: #fca5a5; border-color: #7f1d1d; }',
+        '.' + POPOVER_ID + '__viewer-bar button.is-danger:hover { background: #450a0a; }',
+        '.' + POPOVER_ID + '__viewer-bar button:disabled { opacity: .5; cursor: not-allowed; }'
+      ].join('\n');
+      document.head.appendChild(st);
+    }
+
+    var bar = document.createElement('div');
+    bar.className = POPOVER_ID + '__viewer-bar';
+
+    var openB = document.createElement('button');
+    openB.type = 'button';
+    openB.textContent = 'Open in tab';
+    openB.addEventListener('click', function () {
+      if (doc.fileAnchor && document.contains(doc.fileAnchor)) doc.fileAnchor.click();
+      else window.open(src, '_blank');
+    });
+    bar.appendChild(openB);
+
+    var remB = document.createElement('button');
+    remB.type = 'button';
+    remB.className = 'is-danger';
+    remB.textContent = 'Remove file';
+    var signedOff = !!doc.required && (doc.qaStatus === 'Pass');
+    if (signedOff) {
+      remB.disabled = true;
+      remB.title = 'QA is signed off — set it back to Pending or Fail first.';
+    }
+    remB.addEventListener('click', function () {
+      if (remB.disabled) return;
+      var label = doc.type || 'this deliverable';
+      if (!window.confirm('Remove the uploaded file from ' + label + '?\n\n' +
+            'The deliverable slot stays — only the file is cleared.')) return;
+      remB.disabled = true;
+      remB.textContent = 'Removing…';
+      var fields = {};
+      fields[F.file] = null;
+      fields[F.completed] = 'No';
+      SCW.knackAjax({
+        url:  SCW.knackRecordUrl(activeDep().docSaveView, doc.id),
+        type: 'PUT',
+        data: JSON.stringify(fields),
+        success: function () {
+          // Stay open: clear the file off the working doc and swap the
+          // viewer to the add-file pane so a replacement can go right in.
+          doc.rawUrl = ''; doc.fileUrl = ''; doc.thumbUrl = ''; doc.fileName = '';
+          if (docFileMeta[doc.id]) delete docFileMeta[doc.id];
+          if (document.contains(viewerEl)) renderViewerInto(viewerEl, doc);
+          refetchCloseoutViews();
+        },
+        error: function (xhr) {
+          remB.disabled = false;
+          remB.textContent = 'Remove file';
+          alert('Remove failed (' + xhr.status + ')');
+        }
+      });
+    });
+    bar.appendChild(remB);
+    return bar;
+  }
+
   function renderViewerInto(viewerEl, doc) {
     viewerEl.innerHTML = '';
     // Just-in-time raw-URL resolve. The closeout grid only exposes Knack's
@@ -1611,6 +1651,7 @@
       viewerEl.appendChild(buildAddFilePane(doc));
       return;
     }
+    viewerEl.appendChild(buildViewerBar(viewerEl, doc, src));
     var ext = ((doc.fileName || src).toLowerCase().match(/\.([a-z0-9]+)(?:\?|$)/) || [])[1] || '';
     var isImage = /^(png|jpe?g|gif|bmp|webp|heic|heif|tiff?|svg)$/.test(ext);
 
@@ -1689,18 +1730,9 @@
       }
     }
 
-    // Destructive action first (leftmost) — deletes the file/document.
-    // Hidden once QA is signed off (Pass) so a completed deliverable can't be
-    // deleted out from under the sign-off; flip QA back to Pending/Fail first.
-    var signedOff = !!_popoverDoc.required && (status === 'Pass');
-    if (!signedOff) {
-      var del = document.createElement('button');
-      del.type = 'button';
-      del.className = POPOVER_ID + '__btn ' + POPOVER_ID + '__btn--danger';
-      del.textContent = 'Delete file';
-      del.addEventListener('click', function () { deleteDoc(); });
-      footer.appendChild(del);
-    }
+    // No record-delete in the popover — removing the FILE from the field is
+    // the viewer bar's "Remove file"; deleting the whole DOC slot stays on
+    // the empty-card × only.
 
     var closeBtn = document.createElement('button');
     closeBtn.type = 'button';
@@ -1822,17 +1854,6 @@
         console.error('[SCW] doc delete error:', xhr.status, xhr.responseText);
         if (onError) onError(xhr);
       }
-    });
-  }
-  function deleteDoc() {   // popover (filed doc)
-    if (!_popover || !_popoverDoc) return;
-    var label = _popoverDoc.type || 'this file';
-    if (!window.confirm('Delete ' + label + '?\n\nThis permanently removes the document from this closeout.')) return;
-    var pop = _popover.querySelector('.' + POPOVER_ID);
-    if (pop) pop.classList.add(POPOVER_ID + '__saving');
-    performDocDelete(_popoverDoc.id, function () { closeQAPopover(); }, function (xhr) {
-      if (pop) pop.classList.remove(POPOVER_ID + '__saving');
-      alert('Delete failed (' + xhr.status + ')');
     });
   }
 
