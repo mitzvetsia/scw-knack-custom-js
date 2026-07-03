@@ -785,14 +785,58 @@
     return /\.(jpe?g|png|gif|bmp|webp|heic|heif|tiff?|svg)$/.test(name);
   }
 
-  function dispatchDocUpload(card, docId, closeoutId, file) {
-    var webhookUrl = window.SCW && window.SCW.CONFIG &&
-                     window.SCW.CONFIG.MAKE_DOC_UPLOAD_WEBHOOK;
-    if (!webhookUrl) {
-      console.error('[SCW] MAKE_DOC_UPLOAD_WEBHOOK not configured');
-      setCardError(card, 'Upload not configured');
-      return;
+  // ── DIRECT upload (primary path — no Make hop) ──────────────────────
+  // Uploads the binary to Knack's file-asset endpoint with the user's own
+  // session token, then PUTs the asset id onto field_68 through the
+  // docSaveView, stamping the same upload-audit fields Make used to set
+  // (field_2902 uploaded-by, field_2903 uploaded-date). The file lands
+  // synchronously — the existing poll pipeline then finds it on its first
+  // tick and does the grid rebuild + success flash.
+  function directDocUpload(docId, file) {
+    if (!(window.SCW && typeof SCW.knackAjax === 'function' &&
+          typeof SCW.knackRecordUrl === 'function' &&
+          window.Knack && Knack.getUserToken)) {
+      return Promise.reject(new Error('direct upload unavailable'));
     }
+    var fd = new FormData();
+    fd.append('files', file, file.name || 'document.pdf');
+    return new Promise(function (resolve, reject) {
+      $.ajax({
+        url: Knack.api_url + '/v1/applications/' + Knack.application_id + '/assets/file/upload',
+        type: 'POST',
+        data: fd,
+        processData: false,
+        contentType: false,
+        headers: {
+          'X-Knack-Application-Id': Knack.application_id,
+          'x-knack-rest-api-key': 'knack',
+          'Authorization': Knack.getUserToken()
+        },
+        success: function (res) {
+          var id = res && (res.id || (res.asset && res.asset.id));
+          id ? resolve(id) : reject(new Error('no asset id in upload response'));
+        },
+        error: function (xhr) { reject(new Error('asset upload failed (' + (xhr && xhr.status) + ')')); }
+      });
+    }).then(function (assetId) {
+      var who = getTriggeredBy();
+      var fields = {};
+      fields[F.file] = assetId;
+      if (who.id) fields[F.uploadedBy] = who.id;
+      fields[F.uploadedDate] = todayUS();
+      return new Promise(function (resolve, reject) {
+        SCW.knackAjax({
+          url:  SCW.knackRecordUrl(activeDep().docSaveView, docId),
+          type: 'PUT',
+          data: JSON.stringify(fields),
+          success: resolve,
+          error: function (xhr) { reject(new Error('record PUT failed (' + (xhr && xhr.status) + ')')); }
+        });
+      });
+    });
+  }
+
+  function dispatchDocUpload(card, docId, closeoutId, file) {
     if (isImageFile(file)) {
       // Deliverables are forms/PDFs, not photos. Photos belong on the
       // line-item photo strip — sending one through here would land in
@@ -808,6 +852,25 @@
     pendingUploads[docId] = true;
     setCardPending(card);
 
+    // Direct first; the Make webhook stays as the automatic fallback (and
+    // the only path if the direct upload is ever blocked).
+    directDocUpload(docId, file).then(function () {
+      startDocUploadPolling(docId);
+    }).catch(function (err) {
+      console.warn('[SCW] direct doc upload failed — falling back to webhook:', err && err.message);
+      webhookDocUpload(card, docId, closeoutId, file);
+    });
+  }
+
+  function webhookDocUpload(card, docId, closeoutId, file) {
+    var webhookUrl = window.SCW && window.SCW.CONFIG &&
+                     window.SCW.CONFIG.MAKE_DOC_UPLOAD_WEBHOOK;
+    if (!webhookUrl) {
+      console.error('[SCW] MAKE_DOC_UPLOAD_WEBHOOK not configured');
+      delete pendingUploads[docId];
+      setCardError(card, 'Upload failed');
+      return;
+    }
     readFileAsBase64(file).then(function (b64) {
       return fetch(webhookUrl, {
         method: 'POST',
