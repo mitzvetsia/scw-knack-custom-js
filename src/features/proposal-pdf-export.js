@@ -4110,24 +4110,33 @@
     var jsonSnapshot  = buildJsonSnapshot(cfg.sceneId);
     var plaintextStr  = htmlToPlaintext(htmlStr);
     var subBid        = buildSubBidReview();
-    // Tech group — field_2954 lives on the BID record; view_3861 displays
-    // it THROUGH the SOW's basis connection (field_2942), so the read is
-    // live: it always reflects whichever bid is currently the basis, with
-    // nothing to stamp. Knack keys connected-field projections as
-    // 'field_2942.field_2954' in the model — try both shapes, then DOM.
+    // Tech group — field_2954 lives on the BID; view_3861 shows it through
+    // a chain (SOW -> bids -> tech group), which renders NESTED
+    // connection spans fanned out per intermediate record:
+    //   <span id="<bid id>" data-kn="connection-value">
+    //     <span class="<tech group id>" ...>Sub Name</span></span>
+    // The OUTER span's id attribute is the intermediate (a bid), the
+    // INNER span's class is the actual tech group. And with several bids
+    // the list can carry several tech groups — this view cannot say which
+    // belongs to the BASIS bid, so only a UNANIMOUS value is trusted.
+    // (Make should hop subBidBasisId -> bid.field_2954 for the
+    // authoritative stamp; this payload copy covers the common
+    // one-sub case.)
     try {
-      var tgv = window.Knack && Knack.views && Knack.views.view_3861;
-      var tga = tgv && tgv.model && tgv.model.attributes;
-      var tgRaw = tga && (tga['field_2942.field_2954_raw'] || tga.field_2954_raw);
-      var tgOne = Array.isArray(tgRaw) ? tgRaw[0] : tgRaw;
-      if (!(tgOne && tgOne.id)) {
-        var tgEl = document.querySelector('#view_3861 .kn-detail[class*="field_2954"] span[data-kn="connection-value"]');
-        if (tgEl) tgOne = { id: (tgEl.className || tgEl.id || '').trim(), identifier: tgEl.textContent };
+      var tgEls = document.querySelectorAll(
+        '#view_3861 .kn-detail.field_2954 span[data-kn="connection-value"]');
+      var tgSeen = {}, tgDistinct = 0, tgId = '', tgName = '';
+      for (var tgi = 0; tgi < tgEls.length; tgi++) {
+        // Real tech-group spans carry the record id as their CLASS;
+        // intermediate wrappers carry theirs in the id attribute instead.
+        var tcand = (tgEls[tgi].className || '').trim();
+        if (!/^[0-9a-f]{24}$/i.test(tcand)) continue;
+        if (!tgSeen[tcand]) {
+          tgSeen[tcand] = true; tgDistinct++;
+          tgId = tcand; tgName = String(tgEls[tgi].textContent || '').trim();
+        }
       }
-      if (tgOne && tgOne.id && /^[0-9a-f]{24}$/i.test(tgOne.id)) {
-        subBid.subId = tgOne.id;
-        subBid.subName = String(tgOne.identifier || '').trim();
-      }
+      if (tgDistinct === 1) { subBid.subId = tgId; subBid.subName = tgName; }
     } catch (e) { /* keep snapshot values */ }
 
     // Mint a public access token + URL at publish time so the new
