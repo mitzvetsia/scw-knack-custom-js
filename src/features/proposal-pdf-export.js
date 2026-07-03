@@ -4040,20 +4040,27 @@
     function finishSubBid(snap) {
       if (!snap) return empty;
       var b = snap.bidHtml || '', d = snap.diffHtml || '', rv = '', dd = '';
+      // Hard page break so whatever follows the diff (the bid section) starts
+      // on a fresh page. Harmless mid-document; if the diff doc is rendered
+      // ALONE it may add one trailing blank page — acceptable, since its
+      // primary use is DIFF-then-BID composition.
+      var PAGEBREAK = '<div style="page-break-after:always;break-after:page;"></div>';
       if (b || d) {
         rv = ['<!DOCTYPE html>', '<html><head><meta charset="utf-8">',
           '<title>Sub-Bid Review — ' + esc(snap.basisBidName || '') + '</title>',
           '<style>', getPdfCss(), '</style>', '</head><body>', bodyLevelCss(),
-          d, b, '</body></html>'].join('\n');
+          d, (d && b ? PAGEBREAK : ''), b, '</body></html>'].join('\n');
       }
       if (d) {
-        // Diff ALONE as a complete styled document — for scenarios that
-        // pair it with the official bid PDF (field_2626) via a PDF merge
-        // instead of splicing the fragment into the bid document's body.
+        // Diff ALONE as a complete styled document — Make either merges the
+        // resulting PDF with the official bid PDF (field_2626), or feeds
+        // this doc concatenated with the bid record's stored html into one
+        // HTML→PDF step ({{subBidDiffDocHtml}}{{bid html}}). The trailing
+        // page break makes the bid start on a fresh page in that pattern.
         dd = ['<!DOCTYPE html>', '<html><head><meta charset="utf-8">',
           '<title>Sub-Bid Diff — ' + esc(snap.basisBidName || '') + '</title>',
           '<style>', getPdfCss(), '</style>', '</head><body>', bodyLevelCss(),
-          d, '</body></html>'].join('\n');
+          d, PAGEBREAK, '</body></html>'].join('\n');
       }
       return { bidHtml: b, diffHtml: d, diffDocHtml: dd, reviewHtml: rv,
         basis: snap.basisBidName || '', basisId: snap.basisBidId || '',

@@ -181,6 +181,11 @@
     return (snap && snap.note) || '';
   }
 
+  // Bump when the bidHtml/diffHtml RENDER changes (pdf-html.js) — the
+  // signature below only covers the diff DATA, so without a version bump an
+  // improved render would never re-persist onto already-saved blobs.
+  var PDF_RENDER_VERSION = 2;
+
   /** Stable signature of a blob's MEANINGFUL content (excludes savedAt, which
    *  always changes) — so auto-save only fires when the diff/note actually
    *  changed, never in a loop. */
@@ -192,6 +197,7 @@
     }).join(';');
     var c = b.counts || {};
     return [
+      (b.rv || 0),
       b.basisBidId || '', b.total || 0, Math.round((b.laborDelta || 0) * 100),
       [c.material || 0, c.spec || 0, c.added || 0, c.orphan || 0].join(','),
       String(b.note || '').trim(), exSig
@@ -240,7 +246,7 @@
       try { diffHtml = pdf.buildDiff(grid, pkgId, basisName) || ''; } catch (e) { diffHtml = ''; }
     }
     return {
-      v: 1, sowId: sowId, sowName: grid.sowName || '',
+      v: 1, rv: PDF_RENDER_VERSION, sowId: sowId, sowName: grid.sowName || '',
       basisBidId: pkgId, basisBidName: basisName,
       basisSubId: basisSubId, basisSubName: basisSubName,
       savedAt: new Date().toISOString(),
