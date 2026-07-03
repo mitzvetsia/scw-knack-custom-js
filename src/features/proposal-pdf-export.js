@@ -4110,17 +4110,19 @@
     var jsonSnapshot  = buildJsonSnapshot(cfg.sceneId);
     var plaintextStr  = htmlToPlaintext(htmlStr);
     var subBid        = buildSubBidReview();
-    // Tech group — SOW's field_2954 connection, exposed on view_3861.
-    // Publish-time read, authoritative over the review-snapshot copy
-    // (basisSubId only exists in snapshots taken after pkgSub landed).
+    // Tech group — field_2954 lives on the BID record; view_3861 displays
+    // it THROUGH the SOW's basis connection (field_2942), so the read is
+    // live: it always reflects whichever bid is currently the basis, with
+    // nothing to stamp. Knack keys connected-field projections as
+    // 'field_2942.field_2954' in the model — try both shapes, then DOM.
     try {
       var tgv = window.Knack && Knack.views && Knack.views.view_3861;
       var tga = tgv && tgv.model && tgv.model.attributes;
-      var tgRaw = tga && tga.field_2954_raw;
+      var tgRaw = tga && (tga['field_2942.field_2954_raw'] || tga.field_2954_raw);
       var tgOne = Array.isArray(tgRaw) ? tgRaw[0] : tgRaw;
       if (!(tgOne && tgOne.id)) {
-        var tgEl = document.querySelector('#view_3861 .kn-detail.field_2954 span[data-kn="connection-value"]');
-        if (tgEl) tgOne = { id: (tgEl.className || '').trim(), identifier: tgEl.textContent };
+        var tgEl = document.querySelector('#view_3861 .kn-detail[class*="field_2954"] span[data-kn="connection-value"]');
+        if (tgEl) tgOne = { id: (tgEl.className || tgEl.id || '').trim(), identifier: tgEl.textContent };
       }
       if (tgOne && tgOne.id && /^[0-9a-f]{24}$/i.test(tgOne.id)) {
         subBid.subId = tgOne.id;
