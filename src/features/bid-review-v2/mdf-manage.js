@@ -288,7 +288,9 @@
         '<span class="' + P + '-badge' + (isMdf ? ' ' + P + '-badge--head' : '') + '">' +
           '<select data-fk="' + F.type + '" class="' + P + '-badge__type-sel" ' +
             'aria-label="Type">' + typeOptionsHtml(type || 'IDF') + '</select>' +
+          // HEADENDs never carry a ## — only IDFs are numbered.
           '<input type="text" data-fk="' + F.num + '" class="' + P + '-badge__num-in" ' +
+            (isMdf ? 'hidden ' : '') +
             'value="' + esc(num) + '" inputmode="numeric" placeholder="#" aria-label="Number">' +
         '</span>' +
         '<div class="' + P + '-fld ' + P + '-fld--name">' +
@@ -318,14 +320,20 @@
       inputs[i].addEventListener('input', markDirty);
       inputs[i].addEventListener('change', markDirty);   // selects fire change
     }
-    // Live badge/panel retint when the designator flips HEADEND ↔ IDF.
+    // Live badge/panel retint when the designator flips HEADEND ↔ IDF —
+    // and enforce the numbering rule: HEADENDs never carry a ##, only IDFs.
+    // Flipping to HEADEND hides + clears the ## (the diff-only save then
+    // clears field_2458 in Knack); flipping back restores the original.
     var typeSel = td.querySelector('.' + P + '-badge__type-sel');
+    var numIn   = td.querySelector('.' + P + '-badge__num-in');
     typeSel.addEventListener('change', function () {
       var head  = /headend|mdf/i.test(typeSel.value);
       var panel = td.querySelector('.' + P + '-panel');
       var badge = td.querySelector('.' + P + '-badge');
       panel.classList.toggle(P + '-panel--head', head);
       badge.classList.toggle(P + '-badge--head', head);
+      numIn.hidden = head;
+      numIn.value  = head ? '' : (numIn.value || initial[F.num] || '');
     });
     td.querySelector('.' + P + '-btn--cancel').addEventListener('click', closePanels);
 
