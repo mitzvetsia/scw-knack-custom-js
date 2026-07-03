@@ -1582,6 +1582,17 @@
   // has been removed in favor of a detail-table row above SOW ID, so
   // the buildHtml flow no longer needs a post-process injector for it.)
 
+  // Body-level copy of the PDF stylesheet. Some HTML-to-PDF modules wrap
+  // the input in their OWN document template, which turns our <head> into
+  // stray mid-body tags — the stylesheet is dropped and the <title> leaks
+  // as visible text (the tell). A <style> at the top of <body> survives
+  // that wrapping and is honored by browsers and PDF engines alike. The
+  // Google Fonts @import is stripped from this copy: offline engines can
+  // choke on it, and the font stack falls back cleanly.
+  function bodyLevelCss() {
+    return '<style>' + getPdfCss().replace(/@import[^;]+;/g, '') + '</style>';
+  }
+
   function buildPdfHtml(payload) {
     if (!payload.views.length) return '';
 
@@ -1597,6 +1608,7 @@
     html.push(getPdfCss());
     html.push('</style>');
     html.push('</head><body>');
+    html.push(bodyLevelCss());
 
     // Bid identity header — WHICH survey request / bid / friendly name
     // (field_2638) + expiration date (field_2635) at the top of the
@@ -4031,7 +4043,7 @@
       if (b || d) {
         rv = ['<!DOCTYPE html>', '<html><head><meta charset="utf-8">',
           '<title>Sub-Bid Review — ' + esc(snap.basisBidName || '') + '</title>',
-          '<style>', getPdfCss(), '</style>', '</head><body>',
+          '<style>', getPdfCss(), '</style>', '</head><body>', bodyLevelCss(),
           d, b, '</body></html>'].join('\n');
       }
       if (d) {
@@ -4040,7 +4052,7 @@
         // instead of splicing the fragment into the bid document's body.
         dd = ['<!DOCTYPE html>', '<html><head><meta charset="utf-8">',
           '<title>Sub-Bid Diff — ' + esc(snap.basisBidName || '') + '</title>',
-          '<style>', getPdfCss(), '</style>', '</head><body>',
+          '<style>', getPdfCss(), '</style>', '</head><body>', bodyLevelCss(),
           d, '</body></html>'].join('\n');
       }
       return { bidHtml: b, diffHtml: d, diffDocHtml: dd, reviewHtml: rv,
