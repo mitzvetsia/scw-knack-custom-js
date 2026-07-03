@@ -148,6 +148,7 @@ cat \
   src/features/sow-grid-cards.js \
   src/features/mdf-idf-cards.js \
   src/features/files-gallery.js \
+  src/features/photo-grid-manager.js \
   src/features/survey-request-header.js \
   src/features/ops-stepper.js \
   src/features/sales-stepper.js \
