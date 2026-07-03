@@ -35,6 +35,12 @@
       tooltip:   'field_2938'   // paragraph — field explanation (shown under the label)
     },
     CUSTOMER_FLAG: 'field_2933', // INPUT_included on questionnaire (Yes = show to customer)
+    // Hidden DOC_photos grid on the same scene (records connected to the
+    // install line items shown here). Read-only: thumbnails render in a
+    // strip on each card, click → lightbox. The connection field back to
+    // the line item is auto-detected (see detectPhotoLinkField).
+    PHOTO_VIEW:      'view_4075',
+    PHOTO_IMG_FIELD: 'field_771',
     // Friendly token name -> line-item field key for {token} defaults. Empty:
     // raw {field_###} tokens resolve against this view's model with no config.
     DEFAULT_TOKENS: {},
@@ -274,6 +280,101 @@
     });
   }
 
+  /* ── photos: DOC_photos records from PHOTO_VIEW, matched to line items ── */
+  var _photoLinkField = null;
+  /** The DOC_photos → install-line-item connection field isn't hardcoded:
+   *  find the _raw connection array on the photo records whose ids
+   *  intersect this view's line-item record ids. (field_771_raw is an
+   *  object, photo-type raw ids point at the type object — neither can
+   *  false-positive.) Cached after first hit. */
+  function detectPhotoLinkField(photoRecs, lineIdSet) {
+    if (_photoLinkField) return _photoLinkField;
+    for (var i = 0; i < photoRecs.length; i++) {
+      var rec = photoRecs[i];
+      for (var k in rec) {
+        var m = /^(field_\d+)_raw$/.exec(k);
+        if (!m) continue;
+        var v = rec[k];
+        var arr = Array.isArray(v) ? v : (v && v.id ? [v] : null);
+        if (!arr) continue;
+        for (var j = 0; j < arr.length; j++) {
+          if (arr[j] && arr[j].id && lineIdSet[arr[j].id]) {
+            _photoLinkField = m[1];
+            return _photoLinkField;
+          }
+        }
+      }
+    }
+    return null;
+  }
+  function photoUrls(rec) {
+    var raw = rec[CONFIG.PHOTO_IMG_FIELD + '_raw'];
+    if (raw && raw.url) return { full: raw.url, thumb: raw.thumb_url || raw.url };
+    var m = /src="([^"]+)"/.exec(String(rec[CONFIG.PHOTO_IMG_FIELD] || ''));
+    return m ? { full: m[1], thumb: m[1] } : null;
+  }
+  /** lineItemId → [{id, full, thumb}] for every photo in PHOTO_VIEW. */
+  function photosByLineItem(lineRecords) {
+    var photoRecs = getViewRecords(CONFIG.PHOTO_VIEW);
+    if (!photoRecs.length) return {};
+    var lineIdSet = {};
+    lineRecords.forEach(function (r) { lineIdSet[r.id] = true; });
+    var linkField = detectPhotoLinkField(photoRecs, lineIdSet);
+    if (!linkField) return {};
+    var map = {};
+    photoRecs.forEach(function (rec) {
+      var urls = photoUrls(rec);
+      if (!urls) return;
+      var raw = rec[linkField + '_raw'];
+      var conns = Array.isArray(raw) ? raw : (raw && raw.id ? [raw] : []);
+      conns.forEach(function (c) {
+        if (!c || !c.id || !lineIdSet[c.id]) return;
+        (map[c.id] = map[c.id] || []).push({ id: rec.id, full: urls.full, thumb: urls.thumb });
+      });
+    });
+    return map;
+  }
+  function photoStripHtml(list) {
+    return '<div class="' + PREFIX + '-photos">' +
+      '<div class="' + PREFIX + '-photos-l">Photos</div>' +
+      '<div class="' + PREFIX + '-photos-strip">' +
+      list.map(function (p) {
+        return '<button type="button" class="' + PREFIX + '-photo" data-full="' + esc(p.full) + '">' +
+          '<img src="' + esc(p.thumb) + '" alt="" loading="lazy"></button>';
+      }).join('') +
+      '</div></div>';
+  }
+  /** Insert / refresh the photo strip on every mounted card. Runs on each
+   *  render of either view (cards persist across renders, and PHOTO_VIEW's
+   *  model may populate after the cards were first built). */
+  function syncPhotos(container, lineRecords) {
+    var map = photosByLineItem(lineRecords);
+    var cards = container.querySelectorAll('.' + PREFIX + '-card');
+    for (var i = 0; i < cards.length; i++) {
+      var card = cards[i];
+      var list = map[card.getAttribute('data-record-id')] || [];
+      var sig = list.map(function (p) { return p.id; }).join(',');
+      if (card.getAttribute('data-scw-photos') === sig) continue;
+      card.setAttribute('data-scw-photos', sig);
+      var old = card.querySelector('.' + PREFIX + '-photos');
+      if (old) old.parentNode.removeChild(old);
+      if (list.length) card.insertAdjacentHTML('beforeend', photoStripHtml(list));
+    }
+  }
+  function openLightbox(url) {
+    var box = document.createElement('div');
+    box.className = PREFIX + '-lightbox';
+    box.innerHTML = '<img src="' + esc(url) + '" alt="">';
+    function close() {
+      if (box.parentNode) box.parentNode.removeChild(box);
+      document.removeEventListener('keydown', onKey);
+    }
+    function onKey(e) { if (e.key === 'Escape') close(); }
+    box.addEventListener('click', close);
+    document.addEventListener('keydown', onKey);
+    document.body.appendChild(box);
+  }
+
   /* ── build / collect / save ── */
   function buildCard(rec, fields, values) {
     var labelTxt   = String(rawVal(rec, CONFIG.LABEL_FIELD) || '').trim();
@@ -457,6 +558,11 @@
       renderBar(container);
     });
     container.addEventListener('click', function (e) {
+      var photo = e.target.closest('.' + PREFIX + '-photo');
+      if (photo) {
+        openLightbox(photo.getAttribute('data-full'));
+        return;
+      }
       if (e.target.closest('.' + PREFIX + '-bulkbar-clear')) {
         _selected = Object.create(null);
         syncSelectionUI(container);
@@ -670,6 +776,9 @@
       empty.parentNode.removeChild(empty);
     }
 
+    // Photo strips from the hidden DOC_photos grid (idempotent per card).
+    syncPhotos(container, records);
+
     // Selection + bulk-edit bar (delegated handlers bound once).
     wireContainer(container, viewId);
     syncSelectionUI(container);
@@ -731,6 +840,19 @@
       '.' + PREFIX + '-chip:hover{border-color:#94a3b8;}' +
       '.' + PREFIX + '-chip.is-on{background:#2563eb;border-color:#2563eb;color:#fff;}' +
       '.' + PREFIX + '-empty{padding:24px;text-align:center;color:#94a3b8;font:500 13px system-ui,sans-serif;}' +
+      // Photo strip (read-only thumbnails from PHOTO_VIEW) + lightbox
+      '.' + PREFIX + '-photos{display:flex;gap:12px;align-items:flex-start;margin-top:14px;' +
+        'padding-top:12px;border-top:1px solid #eef2f6;}' +
+      '.' + PREFIX + '-photos-l{flex:0 0 auto;padding-top:4px;font:700 10px/1.2 system-ui,sans-serif;' +
+        'text-transform:uppercase;letter-spacing:.05em;color:#64748b;}' +
+      '.' + PREFIX + '-photos-strip{display:flex;flex-wrap:wrap;gap:8px;}' +
+      '.' + PREFIX + '-photo{width:86px;height:86px;padding:0;border:1px solid #e2e8f0;' +
+        'border-radius:8px;overflow:hidden;background:#f8fafc;cursor:zoom-in;}' +
+      '.' + PREFIX + '-photo img{display:block;width:100%;height:100%;object-fit:cover;}' +
+      '.' + PREFIX + '-lightbox{position:fixed;inset:0;z-index:100001;background:rgba(15,23,42,.9);' +
+        'display:flex;align-items:center;justify-content:center;padding:24px;cursor:zoom-out;}' +
+      '.' + PREFIX + '-lightbox img{max-width:95%;max-height:95%;object-fit:contain;border-radius:8px;' +
+        'box-shadow:0 8px 40px rgba(0,0,0,.5);}' +
       // Select checkbox + selected card highlight
       '.' + PREFIX + '-select{width:17px;height:17px;flex:0 0 auto;cursor:pointer;accent-color:#2563eb;margin-top:2px;}' +
       '.' + PREFIX + '-card.is-selected{border-color:#2563eb;box-shadow:0 0 0 2px rgba(37,99,235,.18);}' +
@@ -771,6 +893,12 @@
 
   /* ── bind ── */
   SCW.onViewRender(CONFIG.WORKSHEET_VIEW, function () {
+    injectCss();
+    render(CONFIG.WORKSHEET_VIEW);
+  }, NS);
+  // PHOTO_VIEW may populate after the cards were first built — re-render
+  // (cards persist; only the photo strips sync) when it lands.
+  SCW.onViewRender(CONFIG.PHOTO_VIEW, function () {
     injectCss();
     render(CONFIG.WORKSHEET_VIEW);
   }, NS);
