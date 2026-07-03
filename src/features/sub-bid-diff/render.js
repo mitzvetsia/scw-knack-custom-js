@@ -191,6 +191,24 @@
       if (cands[p].id === pkgId) { pkg = cands[p]; break; }
     }
     var basisName = (pkg && (pkg.bidName || pkg.name)) || '';
+    // Basis subcontractor identity — read off the raw bid-package record
+    // (the candidates above are transformed objects without raw fields).
+    // Dormant until C.f.pkgSub names the package -> sub connection field.
+    var basisSubId = '', basisSubName = '';
+    if (C.f && C.f.pkgSub) {
+      var pkgRecs = readView(C.bidPkgViewKey);
+      for (var pr = 0; pr < pkgRecs.length; pr++) {
+        if (pkgRecs[pr] && pkgRecs[pr].id === pkgId) {
+          var subRaw = pkgRecs[pr][C.f.pkgSub + '_raw'];
+          var subOne = Array.isArray(subRaw) ? subRaw[0] : subRaw;
+          if (subOne && subOne.id) {
+            basisSubId = subOne.id;
+            basisSubName = String(subOne.identifier || '').trim();
+          }
+          break;
+        }
+      }
+    }
     // PDF-ready HTML fragments (bid + diff) so the snapshot can be stamped onto
     // the published proposal. Built with the bid-PDF class names — see
     // sub-bid-diff/pdf-html.js. Guarded: absent module → empty strings.
@@ -203,6 +221,7 @@
     return {
       v: 1, sowId: sowId, sowName: grid.sowName || '',
       basisBidId: pkgId, basisBidName: basisName,
+      basisSubId: basisSubId, basisSubName: basisSubName,
       savedAt: new Date().toISOString(),
       laborDelta: res.laborDelta, counts: res.counts, coverageGaps: res.coverageGaps,
       total: res.total,

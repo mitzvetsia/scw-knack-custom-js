@@ -3938,9 +3938,16 @@
   // subBidReviewHtml to its own PDF and attach it to the published-proposal
   // record (internal copy), not to the customer proposal.
   function buildSubBidReview() {
-    var empty = { bidHtml: '', diffHtml: '', reviewHtml: '', basis: '', hasDiff: false, note: '' };
+    // basisId / subId / subName are the STRUCTURED identity of the basis bid
+    // — Make stamps these onto the published-proposal record (connection to
+    // the bid package + subcontractor) so a greenlit project traces back to
+    // the exact bid it was quoted from. basisId comes from the field_2941
+    // blob (stamped at bid review); subId/subName ride the same blob once
+    // sub-bid-diff's pkgSub config key is set (bid package → sub connection).
+    var empty = { bidHtml: '', diffHtml: '', reviewHtml: '', basis: '', basisId: '',
+      subId: '', subName: '', hasDiff: false, note: '' };
     function finishSubBid(snap) {
-      if (!snap || (!snap.bidHtml && !snap.diffHtml)) return empty;
+      if (!snap) return empty;
       var b = snap.bidHtml || '', d = snap.diffHtml || '', rv = '';
       if (b || d) {
         rv = ['<!DOCTYPE html>', '<html><head><meta charset="utf-8">',
@@ -3949,7 +3956,9 @@
           d, b, '</body></html>'].join('\n');
       }
       return { bidHtml: b, diffHtml: d, reviewHtml: rv,
-        basis: snap.basisBidName || '', hasDiff: Number(snap.total) > 0, note: snap.note || '' };
+        basis: snap.basisBidName || '', basisId: snap.basisBidId || '',
+        subId: snap.basisSubId || '', subName: snap.basisSubName || '',
+        hasDiff: Number(snap.total) > 0, note: snap.note || '' };
     }
     // Prefer the Knack MODEL value (verbatim JSON) — Knack renders the embedded
     // HTML fragments as elements in the detail body, so DOM textContent strips
@@ -3966,23 +3975,7 @@
     if (!txt) return empty;
     var snap;
     try { snap = JSON.parse(txt); } catch (e) { return empty; }
-    if (!snap || (!snap.bidHtml && !snap.diffHtml)) return empty;
-    var bid  = snap.bidHtml || '';
-    var diff = snap.diffHtml || '';
-    var review = '';
-    if (bid || diff) {
-      review = [
-        '<!DOCTYPE html>', '<html><head><meta charset="utf-8">',
-        '<title>Sub-Bid Review — ' + esc(snap.basisBidName || '') + '</title>',
-        '<style>', getPdfCss(), '</style>', '</head><body>',
-        diff, bid, '</body></html>'
-      ].join('\n');
-    }
-    return {
-      bidHtml: bid, diffHtml: diff, reviewHtml: review,
-      basis: snap.basisBidName || '', hasDiff: Number(snap.total) > 0,
-      note: snap.note || ''
-    };
+    return finishSubBid(snap);
   }
 
   // Flat, explicitly-named projection of the scraped bid sections for the
@@ -4087,6 +4080,15 @@
       subBidDiffHtml:        subBid.diffHtml,
       subBidReviewHtml:      subBid.reviewHtml,
       subBidBasis:           subBid.basis,
+      // Structured basis identity — Make should stamp these on the published
+      // proposal record (connection → bid package, connection → subcontractor)
+      // so a greenlit project traces to the exact bid it was quoted from.
+      // basisId is the bid package record id (from the field_2941 blob; also
+      // readable as field_2942_raw on the SOW). SubId/SubName populate once
+      // the bid-review snapshot carries them (sub-bid-diff pkgSub config).
+      subBidBasisId:         subBid.basisId,
+      subBidBasisSubId:      subBid.subId,
+      subBidBasisSubName:    subBid.subName,
       subBidHasDiff:         subBid.hasDiff,
       subBidNote:            subBid.note,
       plaintext:             plaintextStr,

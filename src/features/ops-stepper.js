@@ -1003,7 +1003,16 @@
             // step that publishes (or snapshots) a quote needs Make to
             // see these so the new SOW_published_proposals record is
             // born with field_2904 (token) and field_2908 (URL).
-            'proposalAccessToken', 'proposalAccessUrl'
+            'proposalAccessToken', 'proposalAccessUrl',
+            // Sub-bid review + structured basis identity. These were built
+            // by buildPublishPayload but silently DROPPED here (only the
+            // standalone publish button shipped them), so the publish
+            // scenarios never received the internal sub-bid fragments or
+            // the basis bid id needed to stamp the proposal record with
+            // the bid/subcontractor it was quoted from.
+            'subBidBidHtml', 'subBidDiffHtml', 'subBidReviewHtml',
+            'subBidBasis', 'subBidBasisId', 'subBidBasisSubId',
+            'subBidBasisSubName', 'subBidHasDiff', 'subBidNote'
           ];
           for (var pi = 0; pi < PUBLISH_KEYS.length; pi++) {
             var pk = PUBLISH_KEYS[pi];
