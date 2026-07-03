@@ -308,8 +308,13 @@
     return null;
   }
   function photoUrls(rec) {
+    // NOTE: deliberately NOT raw.thumb_url — Knack pads its generated
+    // "300x300" thumbs to exact size with white bars baked into the JPEG,
+    // so cover-cropping them still shows a letterboxed image. The original
+    // + CSS object-fit:cover is what makes the tiles true squares (same as
+    // the bid comparison grid's photos column).
     var raw = rec[CONFIG.PHOTO_IMG_FIELD + '_raw'];
-    if (raw && raw.url) return { full: raw.url, thumb: raw.thumb_url || raw.url };
+    if (raw && raw.url) return { full: raw.url, thumb: raw.url };
     var m = /src="([^"]+)"/.exec(String(rec[CONFIG.PHOTO_IMG_FIELD] || ''));
     return m ? { full: m[1], thumb: m[1] } : null;
   }
