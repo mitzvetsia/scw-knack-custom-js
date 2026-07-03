@@ -266,6 +266,43 @@
     pump();
   }
 
+  /** Optimistic UI update after deletes land: drop the deleted rows from
+   *  the DOM right away and fix the counts, instead of trusting
+   *  model.fetch() to re-render (it doesn't always — KTL accordion hosts
+   *  are known to swallow the re-render, see Known Issue #2 in CLAUDE.md). */
+  function removeDeletedRows(cfg, deletedIds) {
+    var view = document.getElementById(cfg.id);
+    if (!view) return;
+    for (var i = 0; i < deletedIds.length; i++) {
+      var tr = view.querySelector('tbody tr[id="' + deletedIds[i] + '"]');
+      if (tr && tr.parentNode) tr.parentNode.removeChild(tr);
+    }
+    // Also drop them from the Backbone collection so anything reading the
+    // model (counts, other features) agrees with the DOM.
+    try {
+      var v = Knack.views && Knack.views[cfg.id];
+      var data = v && v.model && v.model.data;
+      if (data && typeof data.remove === 'function') {
+        for (var r = 0; r < deletedIds.length; r++) {
+          var m = (typeof data.get === 'function') ? data.get(deletedIds[r]) : null;
+          if (m) data.remove(m);
+        }
+      }
+    } catch (e) { /* model sync best-effort */ }
+
+    var remaining = view.querySelectorAll('tbody tr[id]').length;
+    // "Showing 1-N of N" summary.
+    var summary = view.querySelector('.kn-entries-summary');
+    if (summary) {
+      summary.innerHTML = '<span class="light">Showing</span> ' +
+        (remaining ? '1-' + remaining : '0') + ' <span class="light">of</span> ' + remaining;
+    }
+    // KTL-accordion count badge (the view may be hosted in one).
+    var acc = view.closest && view.closest('.scw-ktl-accordion');
+    var badge = acc && acc.querySelector('.scw-acc-count');
+    if (badge) badge.textContent = String(remaining);
+  }
+
   function runBulkDelete(cfg) {
     var ids = Object.keys(selSet(cfg.id));
     if (!ids.length) return;
@@ -273,15 +310,21 @@
       deleteRecords(cfg.id, ids, function (results) {
         closeModal();
         var failed = results.filter(function (r) { return !r.ok; });
+        var deleted = results.filter(function (r) { return r.ok; })
+                             .map(function (r) { return r.recordId; });
         _selected[cfg.id] = {};
+        removeDeletedRows(cfg, deleted);
+        syncSelectionUi(cfg);
         if (!failed.length) {
           toast(ids.length + ' photo' + (ids.length !== 1 ? 's' : '') + ' deleted.');
         } else if (failed.length === ids.length) {
           toast('Delete failed — no photos were removed. Try again.', 5000);
         } else {
-          toast((ids.length - failed.length) + ' deleted, ' + failed.length +
+          toast((deleted.length) + ' deleted, ' + failed.length +
                 ' failed — refresh and retry the rest.', 6000);
         }
+        // Background refetch keeps pagination / totals honest; the DOM is
+        // already correct even if this doesn't trigger a re-render.
         try {
           var v = Knack.views && Knack.views[cfg.id];
           if (v && v.model && typeof v.model.fetch === 'function') v.model.fetch();
