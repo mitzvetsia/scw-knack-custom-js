@@ -583,6 +583,16 @@ ${sel('> div.kn-records-nav > div.level > div.level-left > div.kn-entries-summar
 /* This hides all data rows (leaves only group headers + totals rows) */
 ${sel('.kn-table tbody tr[id]')} { display: none !important; }
 
+/* Hide the thead: every column label is blank (the real Rate/Qty/Cost
+   headers are injected into the L1 band), so the empty header row just
+   renders as a stray gray bar across the top of the grid.
+   visibility:collapse, NOT display:none — computeColumnMeta reads each
+   th's computed display to tell hidden columns apart; display:none on the
+   whole thead would make every column read hidden and break the footer
+   colspan math. Collapse removes the row but leaves th styles readable. */
+${sel('.kn-table thead')} { visibility: collapse !important; }
+${sel('.kn-table thead th')} { padding: 0 !important; border: none !important; }
+
 /* Hide vertical borders in the grid */
 ${sel('.kn-table th')},
 ${sel('.kn-table td')} { border-left: none !important; border-right: none !important; }
