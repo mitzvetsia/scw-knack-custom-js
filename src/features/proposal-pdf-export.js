@@ -160,9 +160,15 @@
       // the proposal publish scenario.
       webhookUrl: SUBCONTRACTOR_BID_WEBHOOK,
       trigger: { type: 'formSubmit', formViewId: 'view_3679', recordIdInput: 'id' },
-      skipViews: { view_3679: true, view_3770: true, view_3552: true },
+      skipViews: { view_3679: true, view_3770: true, view_3552: true, view_4073: true },
       hideEmptyGrids: [],
       gridKeys: { qty: 'field_2399', cost: 'field_2401', rate: 'field_2400' },
+      // Bid identity banner at the top of the rendered bid document:
+      // field_2638 designates WHICH survey request + which bid + the
+      // friendly name; field_2635 is the bid expiration date. Both read
+      // from view_4073 (user-hidden data source on this scene).
+      bidHeaderField:  'field_2638',
+      bidExpiresField: 'field_2635',
       payloadType: 'subcontractor bid',
       pollViewOnReturn: 'view_3507',
       pollField: 'field_2626',
@@ -1283,6 +1289,23 @@
       }
     }
 
+    // Bid identity header (subcontractor bid scene) — read from the
+    // user-hidden view_4073; hidden views still have readable DOM.
+    if (cfg.bidHeaderField || cfg.bidExpiresField) {
+      var readSceneField = function (fk) {
+        if (!fk || !sceneEl) return '';
+        var el = sceneEl.querySelector('.kn-detail.' + fk + ' .kn-detail-body') ||
+                 sceneEl.querySelector('.kn-detail.' + fk) ||
+                 sceneEl.querySelector('td.' + fk) ||
+                 sceneEl.querySelector('[data-field-key="' + fk + '"]');
+        return el ? norm(el.textContent || '') : '';
+      };
+      result.bidHeader = {
+        label:   readSceneField(cfg.bidHeaderField),
+        expires: readSceneField(cfg.bidExpiresField)
+      };
+    }
+
     // Stamp TBD into every install-labor surface if the bid hasn't
     // been validated (field_2725 != Yes). Only applies to proposal
     // payloads — subcontractor bids have different semantics.
@@ -1568,6 +1591,20 @@
     html.push(getPdfCss());
     html.push('</style>');
     html.push('</head><body>');
+
+    // Bid identity banner — WHICH survey request / bid / friendly name
+    // (field_2638) + expiration date (field_2635), rendered prominently at
+    // the very top of the subcontractor bid document.
+    if (payload.bidHeader && (payload.bidHeader.label || payload.bidHeader.expires)) {
+      html.push('<div class="bid-id-header" style="margin:0 0 20px;padding:14px 18px;border:2px solid #07467c;border-radius:8px;background:#f0f7ff;">');
+      if (payload.bidHeader.label) {
+        html.push('<div style="font-weight:800;font-size:20px;line-height:1.25;color:#07467c;">' + esc(payload.bidHeader.label) + '</div>');
+      }
+      if (payload.bidHeader.expires) {
+        html.push('<div style="margin-top:5px;font-weight:700;font-size:13px;color:#b45309;">Bid expires: ' + esc(payload.bidHeader.expires) + '</div>');
+      }
+      html.push('</div>');
+    }
 
     // Split views into project vs. recurring vs. report
     var projectViews = [];
@@ -2207,6 +2244,8 @@
   //   json / jsonString    — full record snapshot (record ids + every
   //                          field), for Make's downstream Knack writes
   //   grandTotal           — the bid total
+  //   bidLabel             — field_2638 (survey request + bid + friendly name)
+  //   bidExpirationDate    — field_2635
   //   surveyRequestId, clientSite, projectAddress, bidVersionCounter,
   //   cuTaskId, triggeredBy, sceneId, type
   var BID_SUBMIT_DROP_KEYS = [
@@ -4080,6 +4119,8 @@
       // Named line-item projection for the subcontractor-bid scenario only
       // (undefined elsewhere → dropped by JSON.stringify). See buildBidLineItems.
       bidLineItems:          cfg.payloadType === 'subcontractor bid' ? buildBidLineItems(payload) : undefined,
+      bidLabel:              cfg.payloadType === 'subcontractor bid' ? ((payload.bidHeader || {}).label || '') : undefined,
+      bidExpirationDate:     cfg.payloadType === 'subcontractor bid' ? ((payload.bidHeader || {}).expires || '') : undefined,
       sowId:                 summary.sowId,
       equipmentTotal:        summary.equipmentTotal,
       installationTotal:     summary.installationTotal,
