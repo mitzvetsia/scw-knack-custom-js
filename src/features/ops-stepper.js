@@ -1010,7 +1010,7 @@
             // scenarios never received the internal sub-bid fragments or
             // the basis bid id needed to stamp the proposal record with
             // the bid/subcontractor it was quoted from.
-            'subBidBidHtml', 'subBidDiffHtml', 'subBidReviewHtml',
+            'subBidBidHtml', 'subBidDiffHtml', 'subBidDiffDocHtml', 'subBidReviewHtml',
             'subBidBasis', 'subBidBasisId', 'subBidBasisSubId',
             'subBidBasisSubName', 'subBidHasDiff', 'subBidNote'
           ];

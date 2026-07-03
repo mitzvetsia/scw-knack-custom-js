@@ -2263,7 +2263,7 @@
     'plaintext', 'plaintextJsonEscaped',
     'scopeOfWorkDocumentElements', 'scopeOfWorkDocumentElementsString',
     'tokens', 'publishAsTbd',
-    'subBidBidHtml', 'subBidDiffHtml', 'subBidReviewHtml',
+    'subBidBidHtml', 'subBidDiffHtml', 'subBidDiffDocHtml', 'subBidReviewHtml',
     'subBidBasis', 'subBidBasisId', 'subBidBasisSubId',
     'subBidBasisSubName', 'subBidHasDiff', 'subBidNote'
   ];
@@ -4023,18 +4023,27 @@
     // the exact bid it was quoted from. basisId comes from the field_2941
     // blob (stamped at bid review); subId/subName ride the same blob once
     // sub-bid-diff's pkgSub config key is set (bid package → sub connection).
-    var empty = { bidHtml: '', diffHtml: '', reviewHtml: '', basis: '', basisId: '',
-      subId: '', subName: '', hasDiff: false, note: '' };
+    var empty = { bidHtml: '', diffHtml: '', diffDocHtml: '', reviewHtml: '',
+      basis: '', basisId: '', subId: '', subName: '', hasDiff: false, note: '' };
     function finishSubBid(snap) {
       if (!snap) return empty;
-      var b = snap.bidHtml || '', d = snap.diffHtml || '', rv = '';
+      var b = snap.bidHtml || '', d = snap.diffHtml || '', rv = '', dd = '';
       if (b || d) {
         rv = ['<!DOCTYPE html>', '<html><head><meta charset="utf-8">',
           '<title>Sub-Bid Review — ' + esc(snap.basisBidName || '') + '</title>',
           '<style>', getPdfCss(), '</style>', '</head><body>',
           d, b, '</body></html>'].join('\n');
       }
-      return { bidHtml: b, diffHtml: d, reviewHtml: rv,
+      if (d) {
+        // Diff ALONE as a complete styled document — for scenarios that
+        // pair it with the official bid PDF (field_2626) via a PDF merge
+        // instead of splicing the fragment into the bid document's body.
+        dd = ['<!DOCTYPE html>', '<html><head><meta charset="utf-8">',
+          '<title>Sub-Bid Diff — ' + esc(snap.basisBidName || '') + '</title>',
+          '<style>', getPdfCss(), '</style>', '</head><body>',
+          d, '</body></html>'].join('\n');
+      }
+      return { bidHtml: b, diffHtml: d, diffDocHtml: dd, reviewHtml: rv,
         basis: snap.basisBidName || '', basisId: snap.basisBidId || '',
         subId: snap.basisSubId || '', subName: snap.basisSubName || '',
         hasDiff: Number(snap.total) > 0, note: snap.note || '' };
@@ -4187,6 +4196,10 @@
       // rather compose them yourself.
       subBidBidHtml:         subBid.bidHtml,
       subBidDiffHtml:        subBid.diffHtml,
+      // Complete standalone diff document (CSS inlined) — render to PDF
+      // and merge with the official bid PDF (field_2626), or splice
+      // subBidDiffHtml after <body> in the pristine bid html instead.
+      subBidDiffDocHtml:     subBid.diffDocHtml,
       subBidReviewHtml:      subBid.reviewHtml,
       subBidBasis:           subBid.basis,
       // Structured basis identity — Make should stamp these on the published
