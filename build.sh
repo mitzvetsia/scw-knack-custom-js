@@ -163,6 +163,7 @@ cat \
   src/features/hide-views-below-bom.js \
   src/features/survey-worksheet-pdf-export.js \
   src/features/sub-portal-survey-request-export.js \
+  src/features/sub-bid-submit-gate.js \
   src/features/sow-pdf-stepper.js \
   src/features/connected-device-bid-check.js \
   src/features/missing-connection-warn.js \
