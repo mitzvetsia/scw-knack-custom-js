@@ -854,18 +854,21 @@
       '.' + PREFIX + '-card--photos .' + PREFIX + '-card-head{grid-column:2;}' +
       '.' + PREFIX + '-card--photos .' + PREFIX + '-grid{grid-column:2;}' +
       '.' + PREFIX + '-photos{display:flex;flex-direction:column;gap:8px;align-content:flex-start;}' +
-      '.' + PREFIX + '-photo{width:132px;height:132px;padding:0;border:1px solid #e2e8f0;' +
+      // The panel mounts INSIDE #view_4031 (a .kn-table view), where Knack /
+      // KTL img+button sizing rules outrank plain class selectors — the
+      // .kn-content duplicate that suffices on the bid grid loses here.
+      // !important on the size-critical props ends the argument.
+      '.' + PREFIX + '-photo{width:132px !important;height:132px !important;' +
+        'aspect-ratio:1/1;padding:0;border:1px solid #e2e8f0;' +
         'border-radius:8px;overflow:hidden;background:#f8fafc;cursor:zoom-in;flex:0 0 auto;}' +
-      // .kn-content-prefixed duplicate outranks Knack's global img sizing
-      // (same trick as bid-review-v2's photo thumbs) so cover actually
-      // applies and the square fills edge to edge.
       '.' + PREFIX + '-photo img,.kn-content .' + PREFIX + '-photo img{display:block;' +
-        'width:100%;height:100%;object-fit:cover;max-width:none;}' +
+        'width:100% !important;height:100% !important;object-fit:cover !important;' +
+        'max-width:none !important;max-height:none !important;border:0;}' +
       // Narrow screens: rail collapses to a wrapped row under the fields.
       '@media (max-width:640px){' +
         '.' + PREFIX + '-card--photos{display:block;}' +
         '.' + PREFIX + '-photos{flex-direction:row;flex-wrap:wrap;margin-top:12px;}' +
-        '.' + PREFIX + '-photo{width:100px;height:100px;}' +
+        '.' + PREFIX + '-photo{width:100px !important;height:100px !important;}' +
       '}' +
       '.' + PREFIX + '-lightbox{position:fixed;inset:0;z-index:100001;background:rgba(15,23,42,.9);' +
         'display:flex;align-items:center;justify-content:center;padding:24px;cursor:zoom-out;}' +
