@@ -114,8 +114,11 @@
   // see a visible view disappear because it happens to share a column
   // or KTL accordion with one of HIDDEN_VIEWS.
   var NEVER_HIDE = {
-    'view_3885': 1   // published-proposal lookup on the ops-list scene
+    'view_3885': 1,  // published-proposal lookup on the ops-list scene
                      // (shares chrome with view_3841 SOW edit-form).
+    'view_3920': 1   // published-proposal source on scene_1155 — shares
+                     // layout with several hidden bid-review source views;
+                     // must stay visible.
   };
 
   if (!document.getElementById(STYLE_ID)) {
