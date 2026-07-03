@@ -126,6 +126,7 @@ cat \
   src/features/install-config-subpanel.js \
   src/features/install-as-quoted-panel.js \
   src/features/qa-popover.js \
+  src/features/photo-edit-panel.js \
   src/features/config-qa-popover.js \
   src/features/closeout-deliverables.js \
   src/features/chit-bulk-edit-fix.js \

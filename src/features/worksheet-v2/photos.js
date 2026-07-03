@@ -493,7 +493,9 @@
       // the THUMBNAIL can open the same QA modal as the chit — without
       // re-scraping the source view. needsQa drives whether the modal shows
       // the QA sidebar (true) or opens as a plain big-photo viewer (false).
-      var qaCardAttrs = (qaEnabled && p.id && p.imgUrl)
+      // (No p.imgUrl requirement — empty required photos need the QA
+      // snapshot too so the edit panel's QA button can open qa-popover.)
+      var qaCardAttrs = (qaEnabled && p.id)
         ? ' data-scw-ws-v2-photo-needsqa="' + (needsQa ? '1' : '0') + '"' +
           ' data-qa-status="'  + escapeHtml(p.qaStatus || 'Pending') + '"' +
           ' data-qa-client="'  + escapeHtml(p.qaClient || 'N/A')     + '"' +
@@ -892,23 +894,61 @@
     }, true);
   }
 
-  // Delegated: intercept thumbnail clicks → open the viewer instead of
-  // navigating to Knack's edit page. Placeholder cards (no image) and the
-  // "+ Add" pill fall through to their default hash navigation. Bound once.
+  // Open the unified photo edit panel (photo-edit-panel.js) off a strip
+  // card's data attributes. Returns true when the panel opened.
+  function openEditPanelFromCard(card) {
+    if (!(window.SCW && SCW.photoEditPanel &&
+          typeof SCW.photoEditPanel.open === 'function')) return false;
+    var viewKey = getViewKeyFor(card);
+    var photoId = card.getAttribute('data-scw-ws-v2-photo-id');
+    var hasQaAttrs = card.hasAttribute('data-qa-status');
+    return SCW.photoEditPanel.open({
+      photoId:  photoId,
+      viewKey:  viewKey,
+      hasImage: card.getAttribute('data-photo-has-image') === 'true',
+      imgUrl:   card.getAttribute('data-scw-ws-v2-photo-url') || '',
+      type:     card.getAttribute('data-scw-ws-v2-photo-type') || '',
+      required: card.getAttribute('data-photo-required') === 'true',
+      qa: hasQaAttrs ? {
+        status:  card.getAttribute('data-qa-status')  || 'Pending',
+        client:  card.getAttribute('data-qa-client')  || 'N/A',
+        notes:   card.getAttribute('data-qa-notes')   || '',
+        history: card.getAttribute('data-qa-history') || '',
+        by:      card.getAttribute('data-qa-by')      || '',
+        date:    card.getAttribute('data-qa-date')    || ''
+      } : null,
+      onSaved: function () {
+        if (ns.warnings && ns.warnings.invalidatePhotos) ns.warnings.invalidatePhotos();
+        if (viewKey && ns.data && typeof ns.data.refetchAndNotify === 'function') {
+          setTimeout(function () { ns.data.refetchAndNotify(viewKey); }, 800);
+        }
+      }
+    });
+  }
+
+  // Delegated: intercept thumbnail clicks → open the unified edit panel /
+  // viewer instead of navigating to Knack's edit page. Bound once.
   if (!document.documentElement.hasAttribute('data-scw-ws-v2-photo-viewer-bound')) {
     document.documentElement.setAttribute('data-scw-ws-v2-photo-viewer-bound', '1');
     document.addEventListener('click', function (e) {
       var card = e.target.closest && e.target.closest('a.scw-ws-v2-photo-card');
       if (!card) return;
-      // No image to view → let it navigate to the edit page as before.
-      if (!card.getAttribute('data-scw-ws-v2-photo-url')) return;
+      // No image yet → unified edit panel (upload + type/required + QA when
+      // required). Falls back to the old edit-page navigation if the panel
+      // can't run on this scene (no save view configured).
+      if (!card.getAttribute('data-scw-ws-v2-photo-url')) {
+        if (openEditPanelFromCard(card)) { e.preventDefault(); e.stopPropagation(); }
+        return;
+      }
 
-      // Install surface (QA_CHIT_VIEWS): clicking the photo opens the SAME QA
-      // modal as the chit — unifying the entry point. The needsqa attr is only
-      // emitted on those views, so other surfaces (bid-review/sales/etc.) fall
-      // through to the lightbox below unchanged. Required photos open with the
-      // QA sidebar; non-required open as a plain big-photo viewer (needsQa=0).
+      // Install surface (QA_CHIT_VIEWS marks cards with the needsqa attr):
+      // clicking a filled photo opens the SAME unified panel (photo preview +
+      // type/required + QA button). The QA chit stays the one-click route
+      // straight into the QA modal. Other surfaces (bid-review/sales/etc.)
+      // fall through to the lightbox below unchanged.
       if (card.hasAttribute('data-scw-ws-v2-photo-needsqa')) {
+        if (openEditPanelFromCard(card)) { e.preventDefault(); e.stopPropagation(); return; }
+        // Panel unavailable — old behavior: QA modal, then lightbox fallback.
         var needsQa = card.getAttribute('data-scw-ws-v2-photo-needsqa') === '1';
         var opened = openPhotoQaModal(
           card,
