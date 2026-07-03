@@ -115,13 +115,20 @@
         ' border-radius: 5px; background: #fff; }');
       rules.push(on + ' tbody tr > td.kn-table-link a.kn-link-delete:hover { background: #fff1f2; }');
 
-      // Table-mode: hide grid chrome.
-      rules.push('#' + v.id + ':not(.scw-pgm-on) .scw-pgm-check { display: none; }');
+      // Selection cell — grid mode: absolute overlay on the thumbnail.
+      rules.push(on + ' tbody tr > td.scw-pgm-checkcell { position: absolute; top: 8px; left: 8px;' +
+        ' padding: 0 !important; z-index: 3; }');
+      // Table mode: a normal narrow first column.
+      var off = '#' + v.id + ':not(.scw-pgm-on)';
+      rules.push(off + ' td.scw-pgm-checkcell, ' + off + ' th.scw-pgm-checkcell-h {' +
+        ' width: 34px; min-width: 34px; text-align: center; vertical-align: middle; }');
+      rules.push(off + ' td.scw-pgm-checkcell .scw-pgm-check { margin: 0 auto; }');
+      rules.push(off + ' tbody tr.scw-pgm-selected td { background: #eff6ff !important; }');
     }
     rules = rules.concat([
-      // Selection checkbox — overlays the image, top-left.
-      '.scw-pgm-check { position: absolute; top: 8px; left: 8px; z-index: 3;',
-      '  display: flex; align-items: center; justify-content: center;',
+      // Selection checkbox box (positioning comes from the cell / mode).
+      'td.scw-pgm-checkcell { user-select: none; -webkit-user-select: none; }',
+      '.scw-pgm-check { display: flex; align-items: center; justify-content: center;',
       '  width: 24px; height: 24px; border-radius: 6px; cursor: pointer;',
       '  background: rgba(255,255,255,.92); border: 1px solid #cbd5e1;',
       '  box-shadow: 0 1px 3px rgba(15,23,42,.25); }',
@@ -347,27 +354,69 @@
   }
 
   // ── per-row enhancement (idempotent, re-runs each render) ───
+  var _lastAnchor = {};   // viewId -> record id of the last checkbox clicked
+
+  /** Ordered list of selectable record-row ids, DOM order. */
+  function rowIds(view) {
+    var out = [];
+    var rows = view.querySelectorAll('tbody tr[id]');
+    for (var i = 0; i < rows.length; i++) {
+      if (/^[a-f0-9]{24}$/i.test(rows[i].id)) out.push(rows[i].id);
+    }
+    return out;
+  }
+
+  /** Apply a checkbox click: plain toggles one; shift+click applies the
+   *  clicked box's new state to the whole range since the last click. */
+  function applySelection(cfg, view, recordId, checked, shiftKey) {
+    var set = selSet(cfg.id);
+    var ids = rowIds(view);
+    var a = ids.indexOf(_lastAnchor[cfg.id]);
+    var b = ids.indexOf(recordId);
+    if (shiftKey && a !== -1 && b !== -1 && a !== b) {
+      var lo = Math.min(a, b), hi = Math.max(a, b);
+      for (var i = lo; i <= hi; i++) {
+        if (checked) set[ids[i]] = true;
+        else delete set[ids[i]];
+      }
+    } else {
+      if (checked) set[recordId] = true;
+      else delete set[recordId];
+    }
+    _lastAnchor[cfg.id] = recordId;
+    syncSelectionUi(cfg);
+  }
+
   function enhanceRows(cfg, view) {
+    // Header cell for the selection column (table mode).
+    var headRow = view.querySelector('thead tr');
+    if (headRow && !headRow.querySelector('th.scw-pgm-checkcell-h')) {
+      var th = document.createElement('th');
+      th.className = 'scw-pgm-checkcell-h';
+      headRow.insertBefore(th, headRow.firstChild);
+    }
+
     var rows = view.querySelectorAll('tbody tr[id]');
     for (var i = 0; i < rows.length; i++) {
       var tr = rows[i];
       if (!/^[a-f0-9]{24}$/i.test(tr.id)) continue;
 
-      // Selection checkbox (once per rendered row).
+      // Selection cell (once per rendered row) — a real first <td> so it
+      // renders as a normal column in table mode; grid mode absolutely
+      // positions it over the thumbnail via CSS.
       if (!tr.querySelector('.scw-pgm-check')) {
-        var lbl = document.createElement('label');
-        lbl.className = 'scw-pgm-check';
-        lbl.innerHTML = '<input type="checkbox">';
-        lbl.addEventListener('click', function (e) { e.stopPropagation(); });
-        lbl.querySelector('input').addEventListener('change', (function (recordId) {
-          return function () {
-            var set = selSet(cfg.id);
-            if (this.checked) set[recordId] = true;
-            else delete set[recordId];
-            syncSelectionUi(cfg);
+        var cell = document.createElement('td');
+        cell.className = 'scw-pgm-checkcell';
+        cell.innerHTML = '<label class="scw-pgm-check"><input type="checkbox"></label>';
+        cell.addEventListener('click', function (e) { e.stopPropagation(); });
+        // click (not change) so shiftKey is readable; the checkbox's
+        // checked state has already flipped by the time click fires.
+        cell.querySelector('input').addEventListener('click', (function (recordId) {
+          return function (e) {
+            applySelection(cfg, view, recordId, this.checked, e.shiftKey);
           };
         })(tr.id));
-        tr.appendChild(lbl);
+        tr.insertBefore(cell, tr.firstChild);
       }
 
       // Mark empty field cells so CSS can show a "—" placeholder.
