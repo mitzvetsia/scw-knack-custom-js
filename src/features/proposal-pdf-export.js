@@ -2277,7 +2277,7 @@
     'tokens', 'publishAsTbd',
     'subBidBidHtml', 'subBidDiffHtml', 'subBidDiffDocHtml', 'subBidReviewHtml',
     'subBidBasis', 'subBidBasisId', 'subBidBasisSubId',
-    'subBidBasisSubName', 'subBidHasDiff', 'subBidNote'
+    'subBidBasisSubName', 'subBidHasDiff', 'subBidNote', 'subBidIsK1'
   ];
   function shapeBidSubmitPayload(data) {
     if (!data.bidRecordID && data.recordId) data.bidRecordID = data.recordId;
@@ -4289,6 +4289,11 @@
       subBidBasisId:         subBid.basisId,
       subBidBasisSubId:      subBid.subId,
       subBidBasisSubName:    subBid.subName,
+      // "K1 Bid" sentinel — the reviewer explicitly designated that NO
+      // subcontractor bid exists for this SOW (self-perform). basisId is the
+      // literal string 'K1' (not a 24-hex record id); this flag lets Make
+      // branch without string-sniffing.
+      subBidIsK1:            subBid.basisId === 'K1',
       subBidHasDiff:         subBid.hasDiff,
       subBidNote:            subBid.note,
       plaintext:             plaintextStr,

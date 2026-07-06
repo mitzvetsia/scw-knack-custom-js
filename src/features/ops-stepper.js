@@ -831,6 +831,20 @@
       return wrap;
     }
 
+    // "K1 Bid" sentinel — reviewer designated that NO subcontractor bid
+    // exists for this SOW. Zero-count tally rows would just look broken;
+    // state it plainly instead.
+    if (snap.basisBidId === 'K1') {
+      html += '<div class="scw-ops-subbid__empty">K1 Bid — no subcontractor bid ' +
+              'applies to this SOW (self-perform).</div>';
+      if (snap.note && String(snap.note).trim()) {
+        html += '<div class="scw-ops-subbid__note"><b>Reviewer note:</b> ' +
+                escHtml(String(snap.note).trim()) + '</div>';
+      }
+      wrap.innerHTML = html;
+      return wrap;
+    }
+
     // Tally
     var c = snap.counts || {};
     var d = Number(snap.laborDelta) || 0;
