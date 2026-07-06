@@ -3549,6 +3549,13 @@
       }
       return true;
     }
+    if (action === 'cr_preview') {
+      var pvPkgId = button.getAttribute('data-pkg-id');
+      if (ns.changeRequests && ns.changeRequests.preview) {
+        ns.changeRequests.preview(pvPkgId);
+      }
+      return true;
+    }
     if (action === 'cr_clear_all') {
       if (ns.changeRequests && ns.changeRequests.clear &&
           window.confirm('Clear all pending change requests?')) {

@@ -280,6 +280,13 @@
       '.scw-bid-cr-modal__btn--cancel { background: #e2e8f0; color: #475569; }',
       '.scw-bid-cr-modal__btn--add { background: #0891b2; color: #fff; }',
       '.scw-bid-cr-modal__btn--remove { background: #dc2626; color: #fff; }',
+      '.scw-bid-cr-modal__btn--submit { background: #16a34a; color: #fff; }',
+      /* Submit-preview body — the injected document is self-styled (inline
+         styles); just give it breathing room and a subtle frame. */
+      '.scw-bid-cr-preview {',
+      '  background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;',
+      '  padding: 14px 16px;',
+      '}',
       '.scw-bid-cr-modal__checkbox-list {',
       '  display: flex; flex-direction: column; gap: 4px;',
       '  padding: 6px 10px; border: 1px solid #cbd5e1; border-radius: 5px;',
@@ -2014,6 +2021,65 @@
     return deferred.promise();
   }
 
+  // ── Preview before submit ───────────────────────────────
+  // Renders the EXACT payload HTML (buildSubmitHtml — the same self-contained
+  // document that goes across to the subcontractor / lands on the revision
+  // request detail page) in a modal so the ops user can eyeball the change
+  // request before sending it. Footer: Cancel | Submit — submitting from here
+  // skips the extra window.confirm (the preview IS the confirmation).
+  function openSubmitPreview(pkgId) {
+    var pkg = _pending[pkgId];
+    if (!pkg || !pkg.items.length) return;
+    injectCrStyles();
+    closeModal();
+
+    var overlay = el('div', 'scw-bid-cr-overlay');
+    overlay.id = OVERLAY_ID;
+    overlay.addEventListener('click', function (e) { if (e.target === overlay) closeModal(); });
+
+    var modal = el('div', 'scw-bid-cr-modal');
+    modal.style.width = '780px';
+
+    var header = el('div', 'scw-bid-cr-modal__header');
+    var hLeft = el('div');
+    hLeft.appendChild(el('div', 'scw-bid-cr-modal__title', 'Preview Change Request'));
+    hLeft.appendChild(el('div', 'scw-bid-cr-modal__subtitle',
+      pkg.pkgName + (pkg.sowName ? ' — ' + pkg.sowName : '') +
+      ' · this is exactly what the subcontractor will receive'));
+    header.appendChild(hLeft);
+    var closeBtn = el('button', 'scw-bid-cr-modal__close', '×');
+    closeBtn.addEventListener('click', closeModal);
+    header.appendChild(closeBtn);
+    modal.appendChild(header);
+
+    var body = el('div', 'scw-bid-cr-modal__body');
+    var doc = el('div', 'scw-bid-cr-preview');
+    var html = '';
+    try { html = buildSubmitHtml(pkgId); }
+    catch (e) { console.error('[BidReview CR] buildSubmitHtml failed in preview', e); }
+    if (html) doc.innerHTML = html;
+    else doc.textContent = 'Preview unavailable — see console for details.';
+    body.appendChild(doc);
+    modal.appendChild(body);
+
+    var footer = el('div', 'scw-bid-cr-modal__footer');
+    var cancelBtn = el('button', 'scw-bid-cr-modal__btn scw-bid-cr-modal__btn--cancel', 'Cancel');
+    cancelBtn.addEventListener('click', closeModal);
+    footer.appendChild(cancelBtn);
+    var submitBtn = el('button', 'scw-bid-cr-modal__btn scw-bid-cr-modal__btn--submit',
+      'Submit Change Request (' + pkg.items.length + ')');
+    submitBtn.addEventListener('click', function () {
+      submitBtn.disabled = true;
+      closeModal();
+      submitChangeRequest(pkgId, { silent: true });
+    });
+    footer.appendChild(submitBtn);
+    modal.appendChild(footer);
+
+    overlay.appendChild(modal);
+    document.body.appendChild(overlay);
+  }
+
   // ── Remove from Bid ─────────────────────────────────────
   function openRemoveModal(params) {
     injectCrStyles();
@@ -2420,6 +2486,9 @@
     summarizeItem:    summarizeChanges,
     buildSummaryCard: buildSummaryCard,
     submitForPackage: submitChangeRequest,
+    /** Preview the exact submit HTML (what the sub receives) with a
+     *  Cancel | Submit footer. */
+    preview:          openSubmitPreview,
     clear:            function () { _pending = {}; sclear(); saveToKnack(); triggerRerender(); },
     /** Silently add a pending item (no modal). Used by Convert All. */
     addSilent:        function (pkgId, pkgName, sowId, sowName, item, surveyId) {

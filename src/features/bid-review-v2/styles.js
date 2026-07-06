@@ -326,6 +326,11 @@
     '  background: #295f91; color: #fff; border-color: #1f4a73;',
     '}',
     '.scw-bid-review-v2__head-btn--cr-submit:hover { background: #1f4a73; }',
+    /* Preview what the sub will receive — quiet outline next to Submit. */
+    '.scw-bid-review-v2__head-btn--cr-preview {',
+    '  background: #fff; color: #295f91; border-color: #b6cde2;',
+    '}',
+    '.scw-bid-review-v2__head-btn--cr-preview:hover { background: #eff6ff; }',
     '.scw-bid-review-v2__head-btn--cr-clear {',
     '  background: #fff; color: #b45309; border-color: #f0d4a3;',
     '}',
