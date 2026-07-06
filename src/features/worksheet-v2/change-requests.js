@@ -1335,6 +1335,19 @@
 
   var _barSig = '';
 
+  // The three change-request types the summary panel groups by. Anything
+  // that isn't an explicit add/remove (revise, reinstate, …) buckets under
+  // Revisions.
+  var REV_TYPE_GROUPS = [
+    { key: 'add',    label: 'Additions', noun: 'addition' },
+    { key: 'remove', label: 'Removals',  noun: 'removal'  },
+    { key: 'revise', label: 'Revisions', noun: 'revision' }
+  ];
+  function revTypeOf(rev) {
+    var a = actionOf([rev]);
+    return (a === 'add' || a === 'remove') ? a : 'revise';
+  }
+
   function buildSummaryPanel(container, revMap, orphaned) {
     var all = [];
     Object.keys(revMap).forEach(function (k) { revMap[k].forEach(function (e) { all.push(e); }); });
@@ -1342,6 +1355,11 @@
 
     var existing = container.querySelector('.' + BAR_CLS);
     if (!all.length) { if (existing) existing.remove(); _barSig = ''; return; }
+
+    // Bucket by type once — drives the head chips, the grouped panel
+    // sections, and the per-type Accept/Reject All buttons.
+    var byType = { add: [], remove: [], revise: [] };
+    for (var bi = 0; bi < all.length; bi++) byType[revTypeOf(all[bi])].push(all[bi]);
 
     // Rebuild only when the revision set changes — otherwise keep the live bar
     // (and its click handler) so frequent re-injects don't swallow clicks.
@@ -1365,8 +1383,19 @@
     head.appendChild(count);
     var lbl = document.createElement('span');
     lbl.className = P + '-bar-title';
-    lbl.textContent = ' pending revision' + (all.length === 1 ? '' : 's');
+    lbl.textContent = ' pending change request' + (all.length === 1 ? '' : 's');
     head.appendChild(lbl);
+    // Per-type count chips so the add/remove/revise mix is visible without
+    // opening the panel.
+    for (var chi = 0; chi < REV_TYPE_GROUPS.length; chi++) {
+      var cg = REV_TYPE_GROUPS[chi];
+      var cn = byType[cg.key].length;
+      if (!cn) continue;
+      var chip = document.createElement('span');
+      chip.className = P + '-bar-chip ' + P + '-bar-chip--' + cg.key;
+      chip.textContent = cn + ' ' + cg.noun + (cn === 1 ? '' : 's');
+      head.appendChild(chip);
+    }
     var spacer = document.createElement('span');
     spacer.style.flex = '1';
     head.appendChild(spacer);
@@ -1377,7 +1406,7 @@
     rejectAll.textContent = 'Reject All';
     rejectAll.addEventListener('click', function (e) {
       e.stopPropagation();
-      if (!window.confirm('Reject all ' + all.length + ' revision(s)?')) return;
+      if (!window.confirm('Reject all ' + all.length + ' change request(s)?')) return;
       fireBulkAction('reject', all, rejectAll);
     });
     var acceptAll = document.createElement('button');
@@ -1386,7 +1415,7 @@
     acceptAll.textContent = 'Accept All';
     acceptAll.addEventListener('click', function (e) {
       e.stopPropagation();
-      if (!window.confirm('Accept all ' + all.length + ' revision(s)?')) return;
+      if (!window.confirm('Accept all ' + all.length + ' change request(s)?')) return;
       fireBulkAction('accept', all, acceptAll);
     });
     head.appendChild(rejectAll);
@@ -1402,8 +1431,7 @@
       chev.className = P + '-bar-chev' + (_barOpen ? ' is-open' : '');
     });
 
-    for (var i = 0; i < all.length; i++) {
-      var rev = all[i];
+    function makeBarCard(rev) {
       var card = document.createElement('div');
       card.className = P + '-bar-card';
       card.title = 'Click to jump to this item in the worksheet';
@@ -1420,7 +1448,54 @@
           navigateToRev(container, siId, revId);
         });
       })(rev.surveyItemId, rev.id);
-      panel.appendChild(card);
+      return card;
+    }
+
+    // Per-type Accept/Reject All — same bulk path as the global buttons,
+    // scoped to one type's revisions.
+    function makeTypeBtn(action, grp, revs) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = P + '-bar-btn ' + P + '-bar-btn--' + action + ' ' + P + '-bar-btn--sm';
+      b.textContent = (action === 'accept' ? 'Accept' : 'Reject') + ' All ' + grp.label;
+      b.addEventListener('click', function (e) {
+        e.stopPropagation();
+        if (!window.confirm((action === 'accept' ? 'Accept' : 'Reject') + ' all ' +
+            revs.length + ' ' + grp.noun + (revs.length === 1 ? '' : 's') + '?')) return;
+        fireBulkAction(action, revs, b);
+      });
+      return b;
+    }
+
+    // Grouped sections: Additions / Removals / Revisions, each with its own
+    // Accept All / Reject All pair (destructive first, primary last).
+    for (var gi = 0; gi < REV_TYPE_GROUPS.length; gi++) {
+      var grp = REV_TYPE_GROUPS[gi];
+      var revsOfType = byType[grp.key];
+      if (!revsOfType.length) continue;
+
+      var sec = document.createElement('div');
+      sec.className = P + '-bar-sec ' + P + '-bar-sec--' + grp.key;
+
+      var secHead = document.createElement('div');
+      secHead.className = P + '-bar-sec-head';
+      var secTitle = document.createElement('span');
+      secTitle.className = P + '-bar-sec-title';
+      secTitle.textContent = grp.label + ' (' + revsOfType.length + ')';
+      secHead.appendChild(secTitle);
+      var secSpacer = document.createElement('span');
+      secSpacer.style.flex = '1';
+      secHead.appendChild(secSpacer);
+      secHead.appendChild(makeTypeBtn('reject', grp, revsOfType));
+      secHead.appendChild(makeTypeBtn('accept', grp, revsOfType));
+      sec.appendChild(secHead);
+
+      var secBody = document.createElement('div');
+      secBody.className = P + '-bar-sec-body';
+      for (var ri3 = 0; ri3 < revsOfType.length; ri3++) secBody.appendChild(makeBarCard(revsOfType[ri3]));
+      sec.appendChild(secBody);
+
+      panel.appendChild(sec);
     }
 
     bar.appendChild(head);
@@ -1674,10 +1749,35 @@
       '.' + P + '-bar-btn[disabled] { opacity: 0.6; cursor: not-allowed; }',
       '.' + P + '-bar-btn--accept { background: #16a34a; }',
       '.' + P + '-bar-btn--reject { background: #dc2626; }',
+      '.' + P + '-bar-btn--sm { padding: 4px 10px; font-size: 11px; }',
+      /* Per-type count chips in the bar head */
+      '.' + P + '-bar-chip {',
+      '  display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 10px;',
+      '  font: 700 10.5px system-ui, sans-serif; text-transform: uppercase; letter-spacing: 0.03em;',
+      '}',
+      '.' + P + '-bar-chip--add    { background: #dcfce7; color: #166534; }',
+      '.' + P + '-bar-chip--remove { background: #fee2e2; color: #991b1b; }',
+      '.' + P + '-bar-chip--revise { background: #dbeafe; color: #1e40af; }',
       '.' + P + '-bar-panel {',
       '  border-top: 1px solid #e2e8f0; padding: 8px 14px 12px;',
-      '  max-height: 50vh; overflow-y: auto; display: flex; flex-direction: column; gap: 6px;',
+      '  max-height: 50vh; overflow-y: auto; display: flex; flex-direction: column; gap: 8px;',
       '}',
+      /* Type sections inside the panel (Additions / Removals / Revisions) */
+      '.' + P + '-bar-sec { border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; }',
+      '.' + P + '-bar-sec-head {',
+      '  display: flex; align-items: center; gap: 8px; padding: 7px 10px;',
+      '  border-bottom: 1px solid #e2e8f0;',
+      '}',
+      '.' + P + '-bar-sec--add    .' + P + '-bar-sec-head { background: #f0fdf4; border-bottom-color: #bbf7d0; }',
+      '.' + P + '-bar-sec--remove .' + P + '-bar-sec-head { background: #fef2f2; border-bottom-color: #fecaca; }',
+      '.' + P + '-bar-sec--revise .' + P + '-bar-sec-head { background: #eff6ff; border-bottom-color: #bfdbfe; }',
+      '.' + P + '-bar-sec-title {',
+      '  font: 700 11.5px system-ui, sans-serif; text-transform: uppercase; letter-spacing: 0.04em;',
+      '}',
+      '.' + P + '-bar-sec--add    .' + P + '-bar-sec-title { color: #166534; }',
+      '.' + P + '-bar-sec--remove .' + P + '-bar-sec-title { color: #991b1b; }',
+      '.' + P + '-bar-sec--revise .' + P + '-bar-sec-title { color: #1e40af; }',
+      '.' + P + '-bar-sec-body { display: flex; flex-direction: column; gap: 6px; padding: 8px; }',
       '.' + P + '-bar-card {',
       '  border: 1px solid #e2e8f0; border-radius: 6px; padding: 8px 10px; cursor: pointer;',
       '  background: #fff;',
