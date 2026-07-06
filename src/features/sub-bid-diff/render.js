@@ -148,6 +148,58 @@
     return persistedBasis(sowId) || '';
   }
 
+  /** True once the SOW's record is actually present in the basis view's
+   *  model — distinguishes "basis is empty" from "model not loaded yet". */
+  function sowRecordLoaded(sowId) {
+    var sows = readView(C.basisBidView);
+    for (var i = 0; i < sows.length; i++) {
+      if (sows[i] && sows[i].id === sowId) return true;
+    }
+    return false;
+  }
+
+  // ── Auto-pick: exact-match basis ────────────────────────────────────────
+  // "No default — the user must choose" has one carve-out: when a bid EXACTLY
+  // matches the SOW (zero diff exceptions AND zero raw total delta), there is
+  // nothing to review, so reviewers routinely never touch the selector — the
+  // basis never persisted and everything downstream (ops stepper, publish
+  // gate) stayed blocked. If exactly ONE column bid is a perfect match and no
+  // basis is set, designate + save it automatically through the same
+  // single-PUT path as a manual pick. Ambiguous cases (two matching bids, or
+  // no match) still require the human.
+  var autoPickTried  = Object.create(null);  // sowId → true once evaluated
+  var autoPickedBySow = Object.create(null); // sowId → true when we auto-saved
+  function maybeAutoPickBasis(grid) {
+    if (!C.basisBidField || !grid) return;
+    var sowId = grid.sowId;
+    if (autoPickTried[sowId]) return;
+    // An explicit session choice — including the cleared '' — is the user's;
+    // never auto-override it.
+    if (sowId in selectedByGrid) { autoPickTried[sowId] = true; return; }
+    if (savingGrid[sowId]) return;
+    // Don't decide off an unloaded model: persistedBasis() reads '' both when
+    // the basis is genuinely empty and when the SOW view hasn't populated yet.
+    // Auto-picking in the latter window could clobber a real saved basis.
+    if (!sowRecordLoaded(sowId)) return;       // retry on a later render
+    if (persistedBasis(sowId)) { autoPickTried[sowId] = true; return; }
+
+    var cols = (grid.packages || []);
+    var matches = [];
+    for (var i = 0; i < cols.length && matches.length < 2; i++) {
+      if (!cols[i] || !cols[i].id) continue;
+      var res;
+      try { res = distill(grid, cols[i].id); } catch (e) { continue; }
+      if (res.total === 0 && Math.abs(res.totalDelta || 0) <= C.moneyEps) {
+        matches.push(cols[i].id);
+      }
+    }
+    autoPickTried[sowId] = true;
+    if (matches.length !== 1) return;
+    autoPickedBySow[sowId] = true;
+    selectedByGrid[sowId] = matches[0];
+    writeBasis(sowId, matches[0]);
+  }
+
   // ── snapshot (field_2941): reviewer note + frozen diff ──────────────────
   var noteByGrid = Object.create(null);  // sowId → in-progress note text
   var savedSnap  = Object.create(null);  // sowId → true after a successful save
@@ -719,7 +771,9 @@
     if (savingGrid[grid.sowId]) {
       note = '<span class="scw-sbd-baseline__meta">saving…</span>';
     } else if (selId && (persisted || savedByGrid[grid.sowId])) {
-      note = '<span class="scw-sbd-baseline__meta scw-sbd-baseline__meta--saved">✓ saved as the basis for this SOW → proposal</span>';
+      note = autoPickedBySow[grid.sowId]
+        ? '<span class="scw-sbd-baseline__meta scw-sbd-baseline__meta--saved">✓ auto-selected — this bid matches the SOW · saved</span>'
+        : '<span class="scw-sbd-baseline__meta scw-sbd-baseline__meta--saved">✓ saved as the basis for this SOW → proposal</span>';
     } else if (selId) {
       note = '<span class="scw-sbd-baseline__meta">not saved yet</span>';
     } else {
@@ -986,6 +1040,9 @@
       // Keep field_2941 in lockstep with whatever the diff currently shows —
       // any data change, basis pick, or note edit re-persists (debounced).
       autoSave(grid);
+      // No basis yet + exactly one perfectly-matching bid → save it
+      // automatically (guards + once-per-session inside).
+      maybeAutoPickBasis(grid);
     }
   }
 
