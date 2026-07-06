@@ -229,10 +229,16 @@
     if (!viewCfg) { alert('Bulk upload config not found.'); return; }
     // lineItemUpload flips the modal into targeted copy ("Uploading to this
     // MDF/IDF location", no SOW auto-match blurb); targetLabel names it.
+    // refreshViews: the borrowed view_3482 config refreshes NOTHING on close,
+    // so new MDF photos stayed invisible until a full page reload. Refetch the
+    // (hidden) MDF/IDF locations grid — the L1 photo strip scrapes ITS DOM,
+    // and v2 subscribes to its knack-view-render, so the refetch re-renders
+    // the grid with the fresh photos after Make's async write lands.
     bu.open($.extend({}, viewCfg, {
       linkField: 'mdfIdfID',
       lineItemUpload: true,
-      targetLabel: label || ''
+      targetLabel: label || '',
+      refreshViews: [mdfViewKey()]
     }), mdfIdfId);
   }
 
