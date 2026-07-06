@@ -4083,22 +4083,65 @@
         subId: snap.basisSubId || '', subName: snap.basisSubName || '',
         hasDiff: Number(snap.total) > 0, note: snap.note || '' };
     }
-    // Prefer the Knack MODEL value (verbatim JSON) — Knack renders the embedded
-    // HTML fragments as elements in the detail body, so DOM textContent strips
-    // the tags and corrupts the blob. The model holds it exactly as PUT.
-    try {
-      var mv = window.Knack && Knack.views && Knack.views.view_3861;
-      var ma = mv && mv.model && mv.model.attributes;
-      var mt = (ma && ma.field_2941 != null) ? String(ma.field_2941).trim() : '';
-      if (mt) { try { return finishSubBid(JSON.parse(mt)); } catch (e) {} }
-    } catch (e) { /* fall through to DOM */ }
-    var cell = document.querySelector('.kn-detail.field_2941 .kn-detail-body');
-    if (!cell) return empty;
-    var txt = (cell.textContent || '').replace(/ /g, ' ').replace(/<[^>]*>/g, '').trim();
-    if (!txt) return empty;
-    var snap;
-    try { snap = JSON.parse(txt); } catch (e) { return empty; }
-    return finishSubBid(snap);
+    function readSnapshotReview() {
+      // Prefer the Knack MODEL value (verbatim JSON) — Knack renders the embedded
+      // HTML fragments as elements in the detail body, so DOM textContent strips
+      // the tags and corrupts the blob. The model holds it exactly as PUT.
+      try {
+        var mv = window.Knack && Knack.views && Knack.views.view_3861;
+        var ma = mv && mv.model && mv.model.attributes;
+        var mt = (ma && ma.field_2941 != null) ? String(ma.field_2941).trim() : '';
+        if (mt) { try { return finishSubBid(JSON.parse(mt)); } catch (e) {} }
+      } catch (e) { /* fall through to DOM */ }
+      var cell = document.querySelector('.kn-detail.field_2941 .kn-detail-body');
+      if (!cell) return empty;
+      var txt = (cell.textContent || '').replace(/ /g, ' ').replace(/<[^>]*>/g, '').trim();
+      if (!txt) return empty;
+      var snap;
+      try { snap = JSON.parse(txt); } catch (e) { return empty; }
+      return finishSubBid(snap);
+    }
+
+    // field_2942 — the SAVED basis-bid connection on the SOW, shown on
+    // view_3861. This is the CANONICAL "which bid is this proposal built on"
+    // answer; the field_2941 blob is just the review snapshot. Deriving
+    // subBidBasisId only from the blob meant a SOW with a saved basis but a
+    // missing/unparseable snapshot (typically a perfect-match bid — nothing
+    // to review, so no blob) published with an EMPTY subBidBasisId. Read the
+    // connection directly and let it own basisId; the blob keeps supplying
+    // the HTML fragments / diff flag / note.
+    function basisFromConnection() {
+      var out = { id: '', name: '' };
+      try {
+        var spans = document.querySelectorAll(
+          '#view_3861 .kn-detail.field_2942 span[data-kn="connection-value"]');
+        for (var i = 0; i < spans.length; i++) {
+          var cls = (spans[i].className || '').trim();
+          if (/^[0-9a-f]{24}$/i.test(cls)) {
+            out.id = cls;
+            out.name = (spans[i].textContent || '').trim();
+            return out;
+          }
+        }
+        var mv2 = window.Knack && Knack.views && Knack.views.view_3861;
+        var ma2 = mv2 && mv2.model && mv2.model.attributes;
+        var raw = ma2 && ma2.field_2942_raw;
+        if (Array.isArray(raw)) raw = raw[0];
+        if (raw && raw.id) {
+          out.id = raw.id;
+          out.name = String(raw.identifier || '').replace(/<[^>]*>/g, '').trim();
+        }
+      } catch (e) { /* leave empty */ }
+      return out;
+    }
+
+    var res = readSnapshotReview();
+    var conn = basisFromConnection();
+    if (conn.id) {
+      res.basisId = conn.id;
+      if (!res.basis && conn.name) res.basis = conn.name;
+    }
+    return res;
   }
 
   // Flat, explicitly-named projection of the scraped bid sections for the
