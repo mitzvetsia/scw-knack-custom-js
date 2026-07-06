@@ -28,6 +28,10 @@
     // mirrors the role view_3885 plays for the ops list page. Same
     // field projection (field_2658/2659/2665/2666/2681).
     proposalSourceView:   'view_3920',
+    // Internal sub-bid review PDF (diff + basis bid, written by Make at
+    // publish) on the published-proposal record — projected on view_3920.
+    // Surfaced as a second PDF icon next to the proposal PDF.
+    proposalReviewPdfField: 'field_2945',
     // SOW record fields surfaced in the SOW section header.
     surveyCostsField:     'field_2750',  // INPUT_survey costs (editable)
     marginField:          'field_2749',  // SOW margin % (read-only display)
