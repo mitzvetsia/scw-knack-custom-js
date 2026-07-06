@@ -79,7 +79,14 @@
       '}',
       '.scw-br-v2-bulkcr-btn--cancel { background: #fff; border-color: #cbd5e1; color: #475569; }',
       '.scw-br-v2-bulkcr-btn--save { background: #07467c; color: #fff; }',
-      '.scw-br-v2-bulkcr-btn--save:disabled { opacity: .55; cursor: default; }'
+      '.scw-br-v2-bulkcr-btn--save:disabled { opacity: .55; cursor: default; }',
+      '.scw-br-v2-bulkcr-btn--save.scw-br-v2-bulkcr-btn--remove { background: #dc2626; }',
+      '.scw-br-v2-bulkcr-or { text-align: center; color: #94a3b8; font-size: 11px; margin: 10px 0 8px; }',
+      '.scw-br-v2-bulkcr-remove {',
+      '  background: #fef2f2; border: 1px solid #fecaca; border-radius: 8px; padding: 8px 10px;',
+      '}',
+      '.scw-br-v2-bulkcr-remove > label { color: #991b1b; margin-bottom: 0; }',
+      '.scw-br-v2-bulkcr-remove-hint { font-size: 11px; color: #b91c1c; margin-top: 3px; }'
     ].join('\n');
     var style = document.createElement('style');
     style.id = STYLE_ID;
@@ -137,6 +144,12 @@
             'requested on every selected item that has a bid on this package. Connections &amp; ' +
             'cabling aren’t bulk-editable — use Revise on the cell for those.</div>' +
           FIELDS.map(fieldRow).join('') +
+          '<div class="scw-br-v2-bulkcr-or">&mdash; or &mdash;</div>' +
+          '<div class="scw-br-v2-bulkcr-field scw-br-v2-bulkcr-remove">' +
+            '<label><input type="checkbox" data-remove> Remove from bid</label>' +
+            '<div class="scw-br-v2-bulkcr-remove-hint">Queues a removal request for every ' +
+              'selected item that has a bid on this package. Field changes above are ignored.</div>' +
+          '</div>' +
           '<div class="scw-br-v2-bulkcr-field">' +
             '<label>Note to bidder (optional)</label>' +
             '<textarea data-note placeholder="Add an instruction the bidder will see"></textarea>' +
@@ -155,16 +168,63 @@
     overlay.querySelector('.scw-br-v2-bulkcr-close').addEventListener('click', close);
     overlay.querySelector('.scw-br-v2-bulkcr-btn--cancel').addEventListener('click', close);
 
-    // Enable a field's input only when its apply box is ticked.
+    // Enable a field's input only when its apply box is ticked. The
+    // "Remove from bid" box is a MODE toggle — it locks the field section
+    // (removal ignores field values) and restyles the primary button.
     overlay.addEventListener('change', function (e) {
-      var ab = e.target.getAttribute && e.target.getAttribute('data-apply');
+      var t = e.target;
+      if (t.hasAttribute && t.hasAttribute('data-remove')) {
+        var rm = t.checked;
+        for (var i = 0; i < FIELDS.length; i++) {
+          var ap  = overlay.querySelector('[data-apply="' + FIELDS[i].key + '"]');
+          var inp = overlay.querySelector('[data-f="' + FIELDS[i].key + '"]');
+          if (ap)  ap.disabled  = rm;
+          if (inp) inp.disabled = rm || !(ap && ap.checked);
+        }
+        var saveBtn = overlay.querySelector('.scw-br-v2-bulkcr-btn--save');
+        saveBtn.textContent = rm
+          ? 'Request removal of ' + ids.length
+          : 'Apply to ' + ids.length;
+        saveBtn.classList.toggle('scw-br-v2-bulkcr-btn--remove', rm);
+        var noteTa = overlay.querySelector('[data-note]');
+        noteTa.placeholder = rm
+          ? 'Why should these items be removed…'
+          : 'Add an instruction the bidder will see';
+        return;
+      }
+      var ab = t.getAttribute && t.getAttribute('data-apply');
       if (!ab) return;
       var input = overlay.querySelector('[data-f="' + ab + '"]');
-      if (input) { input.disabled = !e.target.checked; if (e.target.checked) input.focus(); }
+      if (input) { input.disabled = !t.checked; if (t.checked) input.focus(); }
     });
 
     var status = overlay.querySelector('.scw-br-v2-bulkcr-status');
     overlay.querySelector('.scw-br-v2-bulkcr-btn--save').addEventListener('click', function () {
+      var note = (overlay.querySelector('[data-note]').value || '').trim();
+
+      // Removal mode — queue a remove-from-bid CR on every selected item.
+      var removeChk = overlay.querySelector('[data-remove]');
+      if (removeChk && removeChk.checked) {
+        if (typeof v1.addBulkRemoveFromBid !== 'function') {
+          status.textContent = 'Bulk removal unavailable — refresh the page.';
+          return;
+        }
+        var rres = v1.addBulkRemoveFromBid(opts.pkgId, ids, note);
+        var rApplied = (rres && rres.applied) || 0;
+        var rSkipped = (rres && rres.skipped) || 0;
+        if (v1.renderToast) {
+          if (rApplied) {
+            v1.renderToast('Removal queued on ' + rApplied + ' item' + (rApplied === 1 ? '' : 's') +
+              (rSkipped ? ' (' + rSkipped + ' skipped — no bid on this package)' : ''), 'success');
+          } else {
+            v1.renderToast('No removals queued' +
+              (rSkipped ? ' — ' + rSkipped + ' selected have no bid on this package' : ''), 'info');
+          }
+        }
+        close();
+        return;
+      }
+
       var requested = {};
       for (var i = 0; i < FIELDS.length; i++) {
         var f = FIELDS[i];
@@ -175,7 +235,6 @@
         if (f.type === 'number') requested[f.key] = raw ? parseFloat(raw) : 0;
         else requested[f.key] = raw;
       }
-      var note = (overlay.querySelector('[data-note]').value || '').trim();
 
       var hasField = false;
       for (var k in requested) { if (Object.prototype.hasOwnProperty.call(requested, k)) { hasField = true; break; } }

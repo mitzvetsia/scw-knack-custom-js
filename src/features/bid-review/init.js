@@ -3532,6 +3532,49 @@
     return { applied: applied, skipped: skipped };
   };
 
+  // Bulk Removal: queue a remove-from-bid CR on EVERY selected SOW line item
+  // that has a bid record on `pkgId`. Same row walk as addBulkChangeRequest;
+  // same pending-item shape as openRemoveModal — in particular the item is
+  // keyed by the BID RECORD id (cell.id), not the grid row's meta id, so an
+  // off-SOW row shared across bids targets the right bid record. Returns
+  // { applied, skipped }. Driven by bid-review-v2's bulk-CR modal.
+  ns.addBulkRemoveFromBid = function (pkgId, sowItemIds, changeNotes) {
+    if (!_state || !_state.sowGrids || !ns.changeRequests) return { applied: 0, skipped: 0 };
+
+    var want = Object.create(null);
+    for (var i = 0; i < (sowItemIds || []).length; i++) want[sowItemIds[i]] = true;
+
+    var applied = 0, skipped = 0, seenRows = Object.create(null);
+    for (var g = 0; g < _state.sowGrids.length; g++) {
+      var grid = _state.sowGrids[g];
+      var pkgName  = findPackageName(grid, pkgId);
+      var surveyId = findPackageSurveyId(grid, pkgId);
+      for (var r = 0; r < grid.rows.length; r++) {
+        var row = grid.rows[r];
+        if (!row || !row.sowItem || !want[row.sowItem] || seenRows[row.id]) continue;
+        var cell = row.cellsByPackage && row.cellsByPackage[pkgId];
+        if (!cell || !cell.id) { skipped++; continue; }   // no bid on this package
+        seenRows[row.id] = true;
+
+        ns.changeRequests.addSilent(pkgId, pkgName, grid.sowId, grid.sowName, {
+          rowId:            cell.id,
+          bidRecordId:      cell.id,
+          sowItemId:        row.sowItem,
+          displayLabel:     row.displayLabel,
+          productName:      cell.productName || row.productName,
+          proposalBucket:   row.proposalBucket || '',
+          proposalBucketId: row.proposalBucketId || '',
+          removeFromBid:    true,
+          current:          {},
+          requested:        {},
+          changeNotes:      (changeNotes || '').trim()
+        }, surveyId);
+        applied++;
+      }
+    }
+    return { applied: applied, skipped: skipped };
+  };
+
   ns.dispatchCRAction = function dispatchCRAction(button) {
     if (!button) return false;
     var action = button.getAttribute('data-action');
