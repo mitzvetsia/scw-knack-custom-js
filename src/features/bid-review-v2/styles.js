@@ -637,16 +637,11 @@
     '.scw-bid-review-v2__panel-col--card .scw-ws-v2-detail-notes {',
     '  grid-template-columns: 1fr !important;',
     '}',
-    /* SCW Notes is READ-ONLY on the bid comparison page. Repo locked-field
-       convention: fully readable, white background (editable inputs are
-       light-gray), no pointer interaction, no opacity/graying. The "Read-only"
-       tag in the label makes the non-editable state explicit. */
-    '.scw-bid-review-v2__panel-col--card .scw-br-v2-scwnotes-ro {',
-    '  background: #fff !important; pointer-events: none; cursor: default;',
-    '  color: #1f2937 !important;',
-    '}',
-    '.scw-bid-review-v2__panel-col--card .scw-ws-v2-detail-notes .scw-ws-v2-detail-label::after {',
-    '  content: " \\00B7 Read-only"; font-weight: 600; color: #9ca3af;',
+    /* SCW Notes — editable textarea (swapped in by makeScwNotesTextarea);
+       inherits the standard editable-input look, just needs some height so
+       multi-line notes are workable. */
+    '.scw-bid-review-v2__panel-col--card .scw-br-v2-scwnotes {',
+    '  min-height: 54px; resize: vertical;',
     '}',
     '.scw-bid-review-v2__panel-col--card .scw-ws-v2-input--num { width: 72px !important; }',
     '.scw-bid-review-v2__panel-col--card .scw-ws-v2-cell--blank { display: none !important; }',
