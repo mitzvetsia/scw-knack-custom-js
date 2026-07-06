@@ -4039,7 +4039,23 @@
       basis: '', basisId: '', subId: '', subName: '', hasDiff: false, note: '' };
     function finishSubBid(snap) {
       if (!snap) return empty;
-      var b = snap.bidHtml || '', d = snap.diffHtml || '', rv = '', dd = '';
+      // The blob's embedded HTML fragments can come back TAG-STRIPPED: when
+      // the field_2941 read falls back to the rendered DOM, Knack has parsed
+      // the embedded markup into real elements, so textContent still yields
+      // parseable JSON but bidHtml/diffHtml lose every tag (the "wall of
+      // text" diff PDF). The diff is therefore REGENERATED here from the
+      // blob's structured data (counts/exceptions are plain text and survive
+      // any read path); the stored fragment is only a fallback. The bid
+      // fragment can't be rebuilt from the blob — but the official bid PDF /
+      // stored bid HTML is the preferred bid source anyway.
+      var regenDiff = '';
+      try {
+        var ph = window.SCW.subBidDiff && SCW.subBidDiff.pdfHtml;
+        if (ph && typeof ph.renderDiffFromSnapshot === 'function') {
+          regenDiff = ph.renderDiffFromSnapshot(snap) || '';
+        }
+      } catch (e) { regenDiff = ''; }
+      var b = snap.bidHtml || '', d = regenDiff || snap.diffHtml || '', rv = '', dd = '';
       // Hard page break so whatever follows the diff (the bid section) starts
       // on a fresh page. Harmless mid-document; if the diff doc is rendered
       // ALONE it may add one trailing blank page — acceptable, since its

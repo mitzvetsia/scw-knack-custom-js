@@ -141,7 +141,16 @@
   }
   function buildDiff(grid, pkgId, pkgName) {
     if (!grid || !pkgId || !ns.render || typeof ns.render.distill !== 'function') return '';
-    var res = ns.render.distill(grid, pkgId);
+    return renderDiffData(ns.render.distill(grid, pkgId), pkgName);
+  }
+
+  /** Diff render from an already-distilled result — also reachable from a
+   *  parsed field_2941 snapshot via renderDiffFromSnapshot below, so the
+   *  publish payload can REBUILD the diff HTML from the blob's structured
+   *  data instead of trusting the stored fragment (which comes back
+   *  tag-stripped when the blob read falls back to DOM textContent). */
+  function renderDiffData(res, pkgName) {
+    if (!res) return '';
     var T = C.TIERS || {};
     var h = [];
     h.push('<div class="sbd-pdf" style="' + FONT + 'color:' + INK + ';">');
@@ -217,6 +226,36 @@
     return h.join('\n');
   }
 
-  ns.pdfHtml = { buildBid: buildBid, buildDiff: buildDiff };
+  /** Rebuild the diff HTML from a parsed field_2941 snapshot blob. The
+   *  blob's structured data (counts / exceptions / laborDelta) survives any
+   *  read-path mangling because it's plain text — unlike the embedded
+   *  bidHtml/diffHtml fragments, which lose their tags when the blob is
+   *  recovered from the rendered DOM. Per-exception notes aren't stored on
+   *  the blob; the coverage-tier ones are derivable. */
+  function renderDiffFromSnapshot(snap) {
+    if (!snap || !snap.basisBidId) return '';
+    var res = {
+      total: Number(snap.total) || 0,
+      counts: snap.counts || {},
+      laborDelta: Number(snap.laborDelta) || 0,
+      exceptions: (snap.exceptions || []).map(function (e) {
+        return {
+          tier: e.tier, label: e.label, product: e.product,
+          fields: e.fields || [], sowFee: e.sowFee, bidLabor: e.bidLabor,
+          delta: e.delta,
+          note: e.tier === 'added' ? 'not on basis bid'
+              : (e.tier === 'orphan' ? 'not on this SOW' : '')
+        };
+      })
+    };
+    return renderDiffData(res, snap.basisBidName || '');
+  }
+
+  ns.pdfHtml = {
+    buildBid: buildBid,
+    buildDiff: buildDiff,
+    renderDiffData: renderDiffData,
+    renderDiffFromSnapshot: renderDiffFromSnapshot
+  };
 })();
 /*** END SUB-BID DIFF — PDF HTML RENDERS *************************************/
