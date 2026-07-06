@@ -183,20 +183,39 @@
     if (!sowRecordLoaded(sowId)) return;       // retry on a later render
     if (persistedBasis(sowId)) { autoPickTried[sowId] = true; return; }
 
-    var cols = (grid.packages || []);
+    // Grid not populated yet (rows/bids still loading) → DON'T latch the
+    // tried flag; retry on a later render once the data is actually there.
+    if (!grid.rows || !grid.rows.length) return;
+    // Candidates that genuinely price line items on this SOW: the column
+    // packages plus the gated-out "touching" tier basisCandidates recovers.
+    // Tier 3 (offSowOnly — prices nothing here) can never be a match.
+    var cands = [];
+    var all = basisCandidates(grid);
+    for (var c = 0; c < all.length; c++) {
+      if (all[c] && all[c].id && !all[c].offSowOnly) cands.push(all[c]);
+    }
+    if (!cands.length) return;                 // bids not loaded yet — retry
     var matches = [];
-    for (var i = 0; i < cols.length && matches.length < 2; i++) {
-      if (!cols[i] || !cols[i].id) continue;
+    for (var i = 0; i < cands.length && matches.length < 2; i++) {
       var res;
-      try { res = distill(grid, cols[i].id); } catch (e) { continue; }
-      if (res.total === 0 && Math.abs(res.totalDelta || 0) <= C.moneyEps) {
-        matches.push(cols[i].id);
-      }
+      try { res = distill(grid, cands[i].id); } catch (e) { continue; }
+      // "Match" = zero diff line items AND the bid actually prices this SOW.
+      // totalDelta is deliberately NOT required to be zero — it counts
+      // Require-Sub-Bid=No rows that the exception scan (and the reviewer's
+      // "diff line items" view) intentionally ignores, so demanding a zero
+      // raw delta rejected bids the panel itself reports as clean.
+      if (res.total === 0 && (res.basisTotal || 0) > 0) matches.push(cands[i].id);
     }
     autoPickTried[sowId] = true;
-    if (matches.length !== 1) return;
+    if (matches.length !== 1) {
+      if (window.SCW && SCW.DEBUG) console.log('[scw-sub-bid-diff] auto-pick: ' +
+        matches.length + ' matching bid(s) for', sowId, '— leaving to the user');
+      return;
+    }
     autoPickedBySow[sowId] = true;
     selectedByGrid[sowId] = matches[0];
+    if (window.SCW && SCW.DEBUG) console.log('[scw-sub-bid-diff] auto-pick: saving',
+      matches[0], 'as basis for', sowId);
     writeBasis(sowId, matches[0]);
   }
 
