@@ -107,13 +107,16 @@
       '}',
       '.' + P + '-card-dismiss:hover { opacity: 1; }',
 
-      /* ── Sticky action bar (inside accordion body) ── */
+      /* ── Sticky action bar — TOP of the worksheet builder ──
+         Sticks to the viewport top so it stays reachable while scrolling
+         the long worksheet; accent + shadow flipped to read as a header
+         bar instead of a footer. */
       '#' + CFG.barId + ' {',
-      '  position: sticky; bottom: 0; z-index: 100;',
-      '  background: #fff; border-top: 2px solid #3b82f6;',
-      '  box-shadow: 0 -4px 12px rgba(0,0,0,.1);',
+      '  position: sticky; top: 0; z-index: 100;',
+      '  background: #fff; border-bottom: 2px solid #3b82f6;',
+      '  box-shadow: 0 4px 12px rgba(0,0,0,.1);',
       '  font: 13px/1.3 system-ui, -apple-system, sans-serif;',
-      '  margin-top: 8px;',
+      '  margin-bottom: 8px;',
       '}',
       '.' + P + '-bar-top {',
       '  display: flex; align-items: center; gap: 12px;',
