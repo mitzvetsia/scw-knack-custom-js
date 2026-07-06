@@ -36,6 +36,15 @@
   // scrollBy(+243) after a webhook on view_3505). Small reflows still re-pin,
   // and UPWARD shifts (rebuild clamp / shrink → negative delta) still restore.
   var BIG_DOWN = 100;
+  // Symmetric guard for the OTHER direction. A big UPWARD shift of the anchor
+  // row (large NEGATIVE delta) means content above the viewport SHRANK mid-
+  // settle — a group re-applying its collapsed state after the rebuild, a tall
+  // photo swapping short, an image that hadn't reserved height. Chasing it with
+  // scrollBy(negativeDelta) yanks the page toward the top — the "bounce back to
+  // the top on edit" users hit on the survey/bid grid (scroll-spy caught a lone
+  // scrollBy(-6526)). Don't chase it; hold the pre-edit scroll and let the
+  // precise re-pin below take over once the layout settles (delta shrinks).
+  var BIG_UP = 100;
   // Single-flight: a grid that fires SEVERAL renders per edit (e.g. bid-review-v2
   // refetches multiple source views, each triggering a render) would otherwise
   // spawn one settle loop per render — overlapping loops each chase a DIFFERENT
@@ -101,8 +110,13 @@
           // but never CHASE a big downward shift (content added above = a jump).
           var delta = el.getBoundingClientRect().top - anchor.top;
           if (delta > BIG_DOWN) {
-            // Hold position; let the newly-added content reflow below us instead
-            // of auto-scrolling the page to follow the anchor row.
+            // Content added ABOVE (row pushed down) — hold the pre-edit scroll;
+            // let the new content reflow below us instead of chasing the row.
+            if (Math.abs(scrollY() - prevY) > 1) { window.scrollTo(0, prevY); corrected = true; }
+          } else if (delta < -BIG_UP) {
+            // Content removed/shrunk ABOVE (row yanked up) — same: hold the
+            // pre-edit scroll rather than scrolling the page toward the top.
+            if (Math.abs(scrollY() - prevY) > 1) { window.scrollTo(0, prevY); corrected = true; }
           } else if (Math.abs(delta) > 1) {
             window.scrollBy(0, delta); corrected = true;
           }

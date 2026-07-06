@@ -362,22 +362,72 @@
       var hdr = sec.querySelector('.scw-bid-review-v2__sow-header');
       if (hdr && hdr.getAttribute('aria-expanded') === 'false') hdr.click();
     }
-    var el = (sec && sec.querySelector(sel)) || document.querySelector(sel);
+    // Only accept ACTUAL grid rows. data-row-id / data-sow-item-id also ride
+    // on other elements around the page — dupe-block action buttons, pending
+    // change-request cards (data-row-id = the bid record id!), v1 leftovers —
+    // and a raw document-wide querySelector can land on one of those instead:
+    // the jump then scrolls/flashes an invisible card and looks like a dead
+    // click. Resolve every candidate through closest('.__row') and take the
+    // first that is a real row.
+    function findRow(root) {
+      if (!root) return null;
+      var cands = root.querySelectorAll(sel);
+      for (var c = 0; c < cands.length; c++) {
+        var r = cands[c].closest('.scw-bid-review-v2__row');
+        if (r) return r;
+      }
+      return null;
+    }
+    var el = findRow(sec);
+    // A bid record with no row of its own renders as a dupe sub-item
+    // ("2nd bid item → same SOW item") inside its host row — find any
+    // element tagged with its bid record id and jump to the host row,
+    // flashing the dupe block itself when there is one.
+    var flashEl = null;
+    if (!el && attr === 'bid') {
+      var tagged = (sec || document).querySelector(
+        '.scw-bid-review-v2__bid-item--dupe [data-bid-record-id="' + id + '"]');
+      if (tagged) {
+        el = tagged.closest('.scw-bid-review-v2__row');
+        flashEl = tagged.closest('.scw-bid-review-v2__bid-item--dupe');
+      }
+    }
+    if (!el) el = findRow(document);
     if (!el) { console.warn('[scw-sub-bid-diff] jump target not found:', sel, 'in SOW', sowId); return; }
-    // Expand a collapsed group/subgroup the row sits inside.
-    if (el.classList.contains('scw-bid-review-v2__row--hidden')) {
+    console.log('[scw-sub-bid-diff] jump →', attr, id,
+      flashEl ? '(dupe block in host row ' + (el.getAttribute('data-row-id') || '') + ')' : '');
+    // Expand collapsed group/subgroup headers the row sits inside. A row can
+    // be hidden by BOTH a collapsed subgroup and a collapsed L1 group — keep
+    // walking up and clicking collapsed headers until the row is visible.
+    var guard = 0;
+    while (el.classList.contains('scw-bid-review-v2__row--hidden') && guard++ < 3) {
       var prev = el.previousElementSibling;
-      while (prev && !prev.classList.contains('scw-bid-review-v2__subgroup-header') &&
-             !prev.classList.contains('scw-bid-review-v2__group-header')) {
+      var clicked = false;
+      while (prev) {
+        var isSub = prev.classList.contains('scw-bid-review-v2__subgroup-header');
+        var isGrp = prev.classList.contains('scw-bid-review-v2__group-header');
+        if (isSub || isGrp) {
+          var collapsed = isSub
+            ? prev.classList.contains('scw-bid-review-v2__subgroup-header--collapsed')
+            : prev.classList.contains('scw-bid-review-v2__group-header--collapsed');
+          if (collapsed) { prev.click(); clicked = true; break; }
+          if (isGrp) break;   // reached an already-open L1 — nothing left to expand
+        }
         prev = prev.previousElementSibling;
       }
-      if (prev) prev.click();
+      if (!clicked) break;
     }
     el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-    el.classList.remove('scw-sbd-flash');
-    void el.offsetWidth;            // restart the animation
-    el.classList.add('scw-sbd-flash');
-    setTimeout(function () { el.classList.remove('scw-sbd-flash'); }, 2000);
+    // Flash the host row AND (when the target is a dupe sub-item) the dupe
+    // block itself — the row-level flash is the visible cue, the block-level
+    // one pinpoints which stacked bid item was meant.
+    var targets = flashEl ? [el, flashEl] : [el];
+    targets.forEach(function (fl) {
+      fl.classList.remove('scw-sbd-flash');
+      void fl.offsetWidth;          // restart the animation
+      fl.classList.add('scw-sbd-flash');
+      setTimeout(function () { fl.classList.remove('scw-sbd-flash'); }, 2000);
+    });
   }
 
   // ── distill one SOW grid against the chosen basis package ───────────────
@@ -489,6 +539,49 @@
       }
     }
 
+    // ── Reconcile against the v2 column-header total ────────────────────
+    // The column header shows deltaVsSow = Σ(basis cell labor) − Σ(SOW fee) —
+    // a RAW total that counts SOW items flagged Require-Sub-Bid = No. The
+    // exception scan above deliberately SKIPS those (they don't need a bid),
+    // so its laborDelta can read $0 while the column shows a real gap (the
+    // "panel says no differences but the column says −$125" confusion). Recompute
+    // the SAME raw totals here — with the SAME row set + formula the column uses
+    // (transform.js: sowSub over non-offSow sowItemData.fee; pkgTotal over every
+    // row's basis cell.labor) — so the panel's headline can't contradict the
+    // column, then collect the No-required items behind the residual so the
+    // reviewer sees exactly what it is.
+    var sowSubAll = 0, basisTotal = 0;
+    for (var t = 0; t < rows.length; t++) {
+      var trow = rows[t];
+      if (!trow) continue;
+      var tcell = trow.cellsByPackage && trow.cellsByPackage[pkgId];
+      if (tcell) basisTotal += Number(tcell.labor) || 0;
+      if (trow.sowItemData && !trow.offSow) sowSubAll += Number(trow.sowItemData.fee) || 0;
+    }
+    var totalDelta  = sowSubAll - basisTotal;   // SOW − sub (panel sign; = −deltaVsSow)
+    var nonBidDelta = totalDelta - laborDelta;  // residual = the No-required items
+    var nonBidItems = [];
+    if (Math.abs(nonBidDelta) > C.moneyEps) {
+      for (var nb = 0; nb < rows.length; nb++) {
+        var nrow = rows[nb];
+        if (!nrow || nrow.offSow || !isReqNo(nrow.requireSubBidSow)) continue;
+        var nfee = (nrow.sowItemData && Number(nrow.sowItemData.fee)) ||
+                   Number(nrow.sowFee) || 0;
+        var ncell = nrow.cellsByPackage && nrow.cellsByPackage[pkgId];
+        var nbid  = ncell ? (Number(ncell.labor) || 0) : 0;
+        if (moneyEq(nfee, nbid)) continue;      // covered — not part of the gap
+        nonBidItems.push({
+          label:   nrow.displayLabel ||
+                   (nrow.sowItemData && nrow.sowItemData.productName) ||
+                   nrow.productName || '(line item)',
+          product: (nrow.sowItemData && nrow.sowItemData.productName) ||
+                   nrow.productName || '',
+          sowFee: nfee, bidLabor: nbid, delta: nfee - nbid, onBasis: !!ncell
+        });
+      }
+      nonBidItems.sort(function (a, b) { return Math.abs(b.delta) - Math.abs(a.delta); });
+    }
+
     // Order MOST important first: coverage gaps (a SOW line nobody bid, a bid
     // line off this SOW) lead, then labor changes, then model/spec diffs (the
     // least actionable — same scope, attributes reworded). Within a tier, by
@@ -502,7 +595,11 @@
     return {
       exceptions: ex, counts: counts, laborDelta: laborDelta,
       coverageGaps: counts.added + counts.orphan,
-      total: ex.length
+      total: ex.length,
+      // Column-consistent reconciliation (drives the headline + the
+      // "no sub-bid required" explanation block).
+      sowSubAll: sowSubAll, basisTotal: basisTotal,
+      totalDelta: totalDelta, nonBidDelta: nonBidDelta, nonBidItems: nonBidItems
     };
   }
 
@@ -640,7 +737,11 @@
       return '<div class="scw-sbd-stat"><span class="scw-sbd-stat__n">' + n +
         '</span><span class="scw-sbd-stat__l">' + esc(label) + '</span></div>';
     }
-    var d = res.laborDelta;
+    // Headline uses the column-consistent RAW total (SOW − sub) so the panel
+    // can't disagree with the v2 column header. It includes the labor-coverage
+    // delta PLUS any "no sub-bid required" items the exception scan suppresses
+    // (explained in their own block below).
+    var d = (res.totalDelta != null ? res.totalDelta : res.laborDelta);
     var dCls = Math.abs(d) <= C.moneyEps ? 'zero' : (d > 0 ? 'pos' : 'neg');
     return '<div class="scw-sbd-tally">' +
       stat(res.counts.added, 'Not bid') +
@@ -648,7 +749,7 @@
       stat(res.counts.material, 'Labor change') +
       stat(res.counts.spec, 'Spec change') +
       '<div class="scw-sbd-stat scw-sbd-stat--delta"><span class="scw-sbd-stat__n ' + dCls +
-        '">' + signedMoney(d) + '</span><span class="scw-sbd-stat__l">labor Δ (SOW − sub)</span></div>' +
+        '">' + signedMoney(d) + '</span><span class="scw-sbd-stat__l">total Δ (SOW − sub)</span></div>' +
       '</div>';
   }
 
@@ -657,6 +758,18 @@
       return '<div class="scw-sbd-flag scw-sbd-flag--gap">⚠️ ' + res.coverageGaps +
         ' coverage gap' + (res.coverageGaps === 1 ? '' : 's') +
         ' — SOW lines needing a bid, or bid lines off this SOW.</div>';
+    }
+    var td = (res.totalDelta != null ? res.totalDelta : res.laborDelta);
+    // No coverage/labor exceptions, but the RAW SOW↔bid total still differs —
+    // entirely from "no sub-bid required" items that aren't on this bid (or
+    // priced differently). Explain it instead of falsely claiming a match, so
+    // the panel never contradicts the column header's "vs SOW" delta.
+    if (res.total === 0 && Math.abs(td) > C.moneyEps) {
+      var n = (res.nonBidItems && res.nonBidItems.length) || 0;
+      return '<div class="scw-sbd-flag scw-sbd-flag--gap">' + signedMoney(td) +
+        ' total vs SOW' + (n ? ' from ' + n + ' item' + (n === 1 ? '' : 's') +
+        ' marked “no sub-bid required”' : '') +
+        ' — not a coverage gap, but it’s why this bid’s total differs from the SOW.</div>';
     }
     if (res.total === 0) {
       return '<div class="scw-sbd-flag scw-sbd-flag--ok">✓ Basis bid matches the SOW — no labor or coverage differences.</div>';
@@ -728,6 +841,35 @@
     return html;
   }
 
+  /** "No sub-bid required" reconciliation — the items that make the raw
+   *  SOW↔bid total differ but which the coverage scan intentionally skips.
+   *  Collapsed by default (informational), it's what explains the headline
+   *  total when there are no coverage/labor exceptions. */
+  function nonBidDetail(res) {
+    var items = (res && res.nonBidItems) || [];
+    if (!items.length) return '';
+    var body = items.map(function (r) {
+      return '<tr class="scw-sbd-row scw-sbd-row--nonbid">' +
+        '<td><span class="scw-sbd-badge" style="background:#94a3b8">No bid req’d</span></td>' +
+        '<td><div class="scw-sbd-label">' + esc(r.label) + '</div>' +
+          (r.product ? '<div class="scw-sbd-product">' + esc(r.product) + '</div>' : '') +
+          '<div class="scw-sbd-mdf">' +
+            (r.onBasis ? 'on this bid — different amount' : 'not on this bid') +
+          '</div></td>' +
+        '<td class="scw-sbd-num">' + money(r.sowFee) + '</td>' +
+        '<td class="scw-sbd-num">' + (r.onBasis ? money(r.bidLabor) : '—') + '</td>' +
+        deltaCell(r.delta) + '</tr>';
+    }).join('');
+    return '<details class="scw-sbd-exwrap scw-sbd-exwrap--minor"><summary>' +
+      items.length + ' item' + (items.length === 1 ? '' : 's') +
+      ' marked “no sub-bid required” differ from the SOW (' + signedMoney(res.nonBidDelta) +
+      ') — informational, not a coverage gap</summary>' +
+      '<table class="scw-sbd-table"><thead><tr>' +
+        '<th>Status</th><th>Line item</th>' +
+        '<th class="scw-sbd-num">SOW labor</th><th class="scw-sbd-num">Sub bid</th>' +
+        '<th class="scw-sbd-num">Δ</th></tr></thead><tbody>' + body + '</tbody></table></details>';
+  }
+
   /** Compact per-SOW diff block, injected INTO that SOW's section in the v2
    *  grid (under its header). Exceptions collapse behind a <details> since the
    *  grid itself shows them — the block leads with the decision: basis bid +
@@ -771,7 +913,8 @@
       body = '<div class="scw-sbd-empty">Choose the basis bid to see what differs vs this SOW.</div>';
     } else {
       var ex = res.total ? exDetail(res, sowId) : '';
-      body = tally(res) + flag(res) + ex + (res.total > 0 ? noteBar(sowId, needsNote) : '');
+      body = tally(res) + flag(res) + ex + nonBidDetail(res) +
+        (res.total > 0 ? noteBar(sowId, needsNote) : '');
     }
     return bar + '<div class="scw-sbd-inline-body">' + body + '</div>';
   }
@@ -892,7 +1035,12 @@
         }
         return;
       }
-      var jr = e.target.closest && e.target.closest('[data-scw-sbd-jump-id]');
+    });
+    // Jump rows — plain delegated click. (The dead-click bug was never the
+    // event path: jumpTo's document-wide fallback could match a NON-row
+    // element carrying the same data-row-id — see findRow in jumpTo.)
+    document.addEventListener('click', function (e) {
+      var jr = e.target && e.target.closest && e.target.closest('[data-scw-sbd-jump-id]');
       if (jr) {
         jumpTo(jr.getAttribute('data-scw-sbd-jump-sow'),
                jr.getAttribute('data-scw-sbd-jump-attr'),

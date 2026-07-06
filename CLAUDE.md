@@ -318,6 +318,16 @@ with no `field_1946`) collapse to a single flat list automatically, or opt out
 explicitly with `groupBy: false`. The canonical sort still applies (it falls
 back to label when `field_2218` is absent), so those lists stay alphabetical.
 
+### MDF/IDF location numbering rule
+
+On the MDF/IDF location object (type `field_1641`, ## `field_2458`, name
+`field_1943`, notes `field_1643`, survey notes `field_2457`, computed display
+name `field_1642`): **HEADENDs never carry a ## — only IDFs are numbered.**
+Any UI that edits locations must hide the number input for HEADENDs and clear
+`field_2458` when a location is converted to HEADEND. Reference
+implementations: `mdf-idf-cards.js` (number box omitted for HEADEND) and
+`bid-review-v2/mdf-manage.js` (## hidden + cleared on designator flip).
+
 ### Warning Icons in Card Headers
 
 All warnings in device-worksheet card headers use the same pattern:

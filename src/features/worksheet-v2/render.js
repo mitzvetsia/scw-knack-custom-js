@@ -148,7 +148,14 @@
       var old = byId[id];
       var fresh = ns.card.buildCard(recById[id], sourceViewKey);
       if (!fresh) return false;   // (validated present; a build failure is rare)
-      try { fresh.setAttribute('data-scw-sig', cardSig(recById[id])); } catch (e) { /* ignore */ }
+      try {
+        var _ipSig = cardSig(recById[id]);
+        if (ns.card && typeof ns.card.connDevicesSig === 'function') {
+          var _ipCd = ns.card.connDevicesSig(recById[id], sourceViewKey);
+          if (_ipCd) _ipSig += '|cd:' + _ipCd;
+        }
+        fresh.setAttribute('data-scw-sig', _ipSig);
+      } catch (e) { /* ignore */ }
       if (openIds[id] && fresh.classList) fresh.classList.add('scw-ws-v2-card--open');
       if (old.parentNode) old.parentNode.replaceChild(fresh, old);
     }
@@ -488,11 +495,16 @@
   }
 
   // Views whose line-item cards default to OPEN (expanded) on first render —
-  // the field-facing survey/install worksheets, where you're filling in each
+  // the field-facing install worksheets, where you're filling in each
   // device's detail, not scanning a list. Later re-renders preserve whatever
   // the user has since collapsed (via the openIds DOM snapshot). Other v2
-  // worksheets (build-SOW, sales) keep the default-collapsed behavior.
-  var CARDS_DEFAULT_OPEN = { view_3505: 1, view_3915: 1, view_4056: 1 };
+  // worksheets keep the default-collapsed behavior.
+  //
+  // NOTE: the survey/bid worksheet (view_3505) is intentionally NOT here —
+  // its line-item cards default COLLAPSED while its MDF/IDF groups default
+  // OPEN (see state.js GROUPS_DEFAULT_OPEN), so techs scan locations first
+  // and expand individual devices on demand.
+  var CARDS_DEFAULT_OPEN = { view_3915: 1, view_4056: 1 };
   var _cardsSeeded = Object.create(null);   // sourceViewKey → true once defaulted-open
 
   function renderView(sourceViewKey, records) {
@@ -716,6 +728,9 @@
             _totIP.toFixed(1) + 'ms  (IN-PLACE  dirty=' + _dids.length +
             '  records=' + records.length + ')');
         }
+        if (ns.sowFilter && typeof ns.sowFilter.applyRowColors === 'function') {
+          ns.sowFilter.applyRowColors(sourceViewKey);
+        }
         return;
       }
     }
@@ -731,9 +746,17 @@
         if (_PF) _reused++;
         return ex;
       }
-      // Changed / new / heal-sampled → verify via signature.
+      // Changed / new / heal-sampled → verify via signature. The signature
+      // also folds in the reciprocal Connected-Devices fingerprint so a
+      // PARENT rebuilds when one of its children's Connected To changes
+      // (its own JSON wouldn't change, so it'd otherwise serve a stale
+      // "Connected Devices" display until a full reload).
       var _ss = _PF ? SCW._now() : 0;
       var sig = cardSig(record);
+      if (ns.card && typeof ns.card.connDevicesSig === 'function') {
+        var _cd = ns.card.connDevicesSig(record, viewKey);
+        if (_cd) sig += '|cd:' + _cd;
+      }
       if (_PF) _pfSig += SCW._now() - _ss;
       if (ex && ex.getAttribute('data-scw-sig') === sig) {
         // A DOM node lives in one place only — drop it from the index so if the
@@ -827,6 +850,12 @@
       if (card) card.classList.add('scw-ws-v2-card--open');
     });
 
+    // SOW/Bid row color coding — paint each card with its SOW(s)/Bid(s)
+    // color(s). Runs after the full rebuild (cards were just replaced).
+    if (ns.sowFilter && typeof ns.sowFilter.applyRowColors === 'function') {
+      ns.sowFilter.applyRowColors(sourceViewKey);
+    }
+
     if (_PF) {
       var _tot = SCW._now() - _pf0;
       var _lbl = 'view ' + sourceViewKey + ' worksheetV2.renderView';
@@ -852,8 +881,18 @@
       Object.keys(pending).forEach(function (key) {
         var container = document.getElementById('scw-ws-v2-' + key);
         if (!container || hasFocusInPanel(container)) return;
-        var records = pending[key];
+        var snapshot = pending[key];
         delete pending[key];
+        // Re-read the CURRENT model rather than replaying the records snapshot
+        // captured when the render was deferred. Between defer and flush the
+        // model can advance — most importantly an inline edit committed on THIS
+        // same blur (optimistic patch) — and replaying the stale snapshot would
+        // repaint the card with the pre-edit value (the "flash green then clear,
+        // but the save actually landed" report). Reading fresh always reflects
+        // the just-committed value; renderView re-applies the SOW + search
+        // filters internally, so the deferred paint stays correctly narrowed.
+        var records = (ns.data && typeof ns.data.readRecords === 'function')
+          ? ns.data.readRecords(key) : snapshot;
         renderView(key, records);
       });
     }, 0);

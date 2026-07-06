@@ -80,23 +80,7 @@
           'Make sure the Knack details/menu link is enabled on the scene.');
   }
 
-  // ── + Add Photos — SCW.bulkUpload modal (SOW context) ─────────
-  function buildSowBasePath() {
-    var hash = window.location.hash || '';
-    var patterns = [
-      /(team-calendar\/project-dashboard\/[a-f0-9]{24}\/build-(?:sow|quote)\/[a-f0-9]{24})/,
-      /(team-calendar\/project-dashboard\/[a-f0-9]{24}\/review-bids\/[a-f0-9]{24})/,
-      /(team-calendar\/project-dashboard\/[a-f0-9]{24}\/deploy\/[a-f0-9]{24})/,
-      /(sales-portal\/company-details\/[a-f0-9]{24}\/scope-of-work-details\/[a-f0-9]{24})/,
-      /(proposals\/scope-of-work\/[a-f0-9]{24})/
-    ];
-    for (var i = 0; i < patterns.length; i++) {
-      var m = hash.match(patterns[i]);
-      if (m) return m[1];
-    }
-    return '';
-  }
-
+  // ── + Add Photos — SCW.bulkUpload modal (project context) ─────
   function handleAddPhotos() {
     var bu = window.SCW && window.SCW.bulkUpload;
     if (!bu || typeof bu.open !== 'function' || !bu.config) {
@@ -110,26 +94,20 @@
     }
     if (!viewCfg) { alert('Bulk upload config for SOW photos not found.'); return; }
 
-    var hash = window.location.hash || '';
-    var contexts = [
-      { linkField: 'projectID', hashPattern: /project-dashboard\/([a-f0-9]{24})/ },
-      { linkField: 'sowID',     hashPattern: /(?:scope-of-work-details|build-sow)\/([a-f0-9]{24})/ }
-    ];
-    var recordId = '', linkField = '';
-    for (var c = 0; c < contexts.length; c++) {
-      var m = hash.match(contexts[c].hashPattern);
-      if (m && m[1]) { recordId = m[1]; linkField = contexts[c].linkField; break; }
-    }
-    if (!recordId) {
-      var base = buildSowBasePath();
-      var fb = base && base.match(/\/([a-f0-9]{24})\/?$/);
-      if (fb) { recordId = fb[1]; linkField = viewCfg.linkField || 'sowID'; }
-    }
+    // The bid-review comparison grid (scene_1155) is always PROJECT-scoped:
+    // canonical route #team-calendar/project-dashboard/<projectId>/review-bids/
+    // <projectId>, top-level routes carry the project id as the only 24-hex
+    // segment. Resolve like v1's getProjectId and always label it projectID.
+    var hash = (window.location.hash || '').split('?')[0];
+    var recordId = '';
+    var m = hash.match(/project-dashboard\/([a-f0-9]{24})/i);
+    if (m) recordId = m[1];
+    else { m = hash.match(/[a-f0-9]{24}/i); if (m) recordId = m[0]; }
     if (!recordId) {
       alert('Could not determine record id from URL — open the bulk-photo modal from a SOW or project page.');
       return;
     }
-    bu.open($.extend({}, viewCfg, { linkField: linkField }), recordId);
+    bu.open($.extend({}, viewCfg, { linkField: 'projectID' }), recordId);
   }
 
   /** Mount the toolbar once, between the banner and the grid body. The bar

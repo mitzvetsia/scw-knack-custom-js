@@ -2056,7 +2056,16 @@
     var removeBtn = el('button', 'scw-bid-cr-modal__btn scw-bid-cr-modal__btn--remove', 'Remove from Bid');
     removeBtn.addEventListener('click', function () {
       var rmItem = {
-        rowId:         params.rowId,
+        // A removal MUST identify the exact bid record being removed. The
+        // pending item's rowId doubles as an identity that Make maps to the
+        // revision's surveyItemId and the acceptance flow reads back — so for a
+        // removal it has to be the bid record itself (cell.id), NOT the grid
+        // row's meta id. Those are the SAME record for a normal row, but on an
+        // off-SOW row shared across bids (bid item whose SOW item lives on
+        // another SOW), the row's meta id is the FIRST bid's record while the
+        // cell is a DIFFERENT bid's record. Keying off the row id there made
+        // the CR target the wrong bid ("remove" hit the first column's record).
+        rowId:         params.cell.id || params.rowId,
         bidRecordId:   params.cell.id,
         sowItemId:     params.sowItemId || '',
         displayLabel:  params.displayLabel,

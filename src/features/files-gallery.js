@@ -32,6 +32,13 @@
       empty: 'No files yet.'
     },
     {
+      // "Site Maps & Other Files" on the sales scope-of-work-details page
+      // (scene_1116) — same DOC_files object/fields as view_3531.
+      id: 'view_3476', kind: 'file',
+      media: 'field_68', type: 'field_67', notes: 'field_588',
+      empty: 'No files yet.'
+    },
+    {
       id: 'view_3530', kind: 'image',
       media: 'field_771', notes: 'field_114',
       chips: [

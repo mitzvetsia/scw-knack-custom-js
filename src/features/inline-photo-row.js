@@ -75,6 +75,65 @@
   };
   var DEFAULT_ADD_PATH = 'add-photo-to-survey-line-item';
 
+  // ── Identity-aware bulk upload from the "Add photo" button ──────────
+  // Map a photo-strip view to the line-item-scoped linkField the bulk-upload
+  // modal ships to Make, derived from the view's add-photo path segment so a
+  // new view added to ADD_PHOTO_PATHS is covered automatically. Make branches
+  // on this value to connect the uploaded photo to the right line-item object.
+  // MDF/IDF views return '' (not a line item) → the caller falls back to the
+  // Knack add-photo edit page.
+  function bulkLinkFieldFor(viewId) {
+    var path = ADD_PHOTO_PATHS[viewId] || DEFAULT_ADD_PATH;
+    if (path.indexOf('survey-line-item')  !== -1) return 'surveyLineItemID';
+    if (path.indexOf('install-line-item') !== -1) return 'installLineItemID';
+    if (path.indexOf('sow-line-item')     !== -1) return 'sowLineItemID';
+    return '';   // mdf-idf (and anything else) — not wired to the bulk modal
+  }
+
+  // Best-effort human label for a line item (its Knack display identifier),
+  // used purely to reassure the user which item they're uploading to. Returns
+  // '' when unknown — the modal then shows the generic "this line item" notice.
+  function lineItemLabelFor(lineItemId, viewId) {
+    try {
+      var v = window.Knack && Knack.views && Knack.views[viewId];
+      var models = (v && v.model && v.model.data && v.model.data.models) || [];
+      for (var i = 0; i < models.length; i++) {
+        if (models[i] && models[i].id === lineItemId) {
+          var a = models[i].attributes || {};
+          var id = a.identifier || a.name || '';
+          return String(id).replace(/<[^>]*>/g, '').trim();
+        }
+      }
+    } catch (e) { /* ignore */ }
+    return '';
+  }
+
+  // Open the bulk-photos modal seeded with THIS line item's identity so every
+  // uploaded photo POSTs { recordId: <lineItemId>, linkField: <type> } and
+  // Make connects it to the correct line item. Returns true when it opened
+  // (caller then skips the edit-page navigation). Gated by CONFIG so uploads
+  // don't route to Make before the scenario handles the new linkFields.
+  function openBulkForLineItem(lineItemId, viewId) {
+    if (!(window.SCW && SCW.CONFIG && SCW.CONFIG.PHOTO_ADD_BULK_MODAL)) return false;
+    if (!(window.SCW && SCW.bulkUpload && typeof SCW.bulkUpload.open === 'function')) return false;
+    var linkField = bulkLinkFieldFor(viewId);
+    if (!linkField) return false;
+    SCW.bulkUpload.open({
+      linkField:            linkField,
+      // Scope flag → modal shows a "this line item only" callout and drops the
+      // parent-SOW auto-match copy (which doesn't apply to a per-line-item
+      // upload). targetLabel: best-effort row label, else the generic notice.
+      lineItemUpload:       true,
+      targetLabel:          lineItemLabelFor(lineItemId, viewId),
+      // Refresh this line item in its own photo-strip view on modal close so
+      // the newly-connected photos surface without a manual reload.
+      refreshRecordInViews: [viewId],
+      refreshViews:         [],
+      reloadOnClose:        false
+    }, lineItemId);
+    return true;
+  }
+
   // ── CSS ─────────────────────────────────────────────────────────
   function injectCss() {
     if (document.getElementById(CSS_ID)) return;
@@ -1528,6 +1587,10 @@
     if (action === 'add') {
       var lineId = target.getAttribute('data-scw-line-id');
       if (!lineId) return;
+      // Identity-aware bulk upload first; fall back to the Knack add-photo
+      // edit page when the modal isn't applicable (MDF/IDF view, module not
+      // loaded, or CONFIG.PHOTO_ADD_BULK_MODAL off).
+      if (openBulkForLineItem(lineId, viewEl.id)) return;
       var addH = addPhotoHash(lineId, viewEl.id);
       if (addH) navigateToHash(addH);
     } else if (action === 'edit') {

@@ -256,6 +256,9 @@
         }
         cellsByPackage[pid] = {
           id:           rec.id,
+          // Bid record's own display label (field_2365) — diffed against the
+          // SOW line item's authoritative label so drift is visible per cell.
+          label:        raw(rec, FK.displayLabel),
           productName:  raw(rec, FK.productName),
           qty:          num(rec, FK.qty),
           rate:         num(rec, FK.rate),
@@ -1083,6 +1086,19 @@
         var sidx = sid ? (sowItemIndex[sid] || null) : null;
         rows[r].sowItemData   = sidx;
         rows[r].sowFullRecord = sid ? (sowFullByItem[sid] || null) : null;
+        // The SOW line item's own label (field_1950) is authoritative — the
+        // bid record's copy (field_2365) can drift after worksheet edits.
+        // Swap it in for the row label / panel title / diff naming, keeping
+        // the bid-side value on bidDisplayLabel so cells can flag the drift.
+        // Skip degenerate labels (Knack's formula collapses to
+        // "<recordId> (<mdf>)" when the drop label is empty).
+        var sowLbl = sidx && sidx.displayLabel;
+        if (sowLbl && !/^[a-f0-9]{24}(\s|$)/i.test(sowLbl)) {
+          if (rows[r].displayLabel && rows[r].displayLabel !== sowLbl) {
+            rows[r].bidDisplayLabel = rows[r].displayLabel;
+          }
+          rows[r].displayLabel = sowLbl;
+        }
         // Group by the SOW LINE ITEM's own MDF/IDF (field_1946) — the value
         // the worksheet edits and the authoritative location — rather than the
         // bid record's copied field_2375 that buildRow read. Clearing/moving
@@ -1143,6 +1159,14 @@
         var oIdx = oid ? (sowItemIndex[oid] || null) : null;
         orr.sowItemData   = oIdx;
         orr.sowFullRecord = oid ? (sowFullByItem[oid] || null) : null;
+        // SOW label is authoritative here too (see matched-row loop above).
+        var oLbl = oIdx && oIdx.displayLabel;
+        if (oLbl && !/^[a-f0-9]{24}(\s|$)/i.test(oLbl)) {
+          if (orr.displayLabel && orr.displayLabel !== oLbl) {
+            orr.bidDisplayLabel = orr.displayLabel;
+          }
+          orr.displayLabel = oLbl;
+        }
         // keepRow must run AFTER sowFullRecord is attached so its child-only
         // test reads the SOW line item (not the bid record, whose field_2464
         // is often empty). Otherwise a child-only accessory that the matched

@@ -252,6 +252,27 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   MAKE_BULK_UPLOAD_WEBHOOK: "https://hook.us1.make.com/vspokcrqp41hqqoi9ywxh5sc6qo26xnb",
 
   // ─────────────────────────────────────────────────────────────
+  // Photo-strip "Add photo" → identity-aware bulk-upload modal
+  // ─────────────────────────────────────────────────────────────
+  // When true, clicking the "Add photo" button on an inline photo strip
+  // (inline-photo-row.js) opens the bulk-upload modal (bulk-upload.js)
+  // seeded with THAT line item's record id + a line-item-scoped linkField,
+  // instead of deep-linking to Knack's add-photo edit page. Every uploaded
+  // photo then POSTs { recordId: <lineItemId>, linkField: <type> } to
+  // MAKE_BULK_UPLOAD_WEBHOOK.
+  //
+  // ⚠️ Make dependency: the bulk-upload scenario MUST branch on the NEW
+  // line-item linkField values and connect the photo to the correct object:
+  //     surveyLineItemID   → Survey Line Item  (field_771 photo connection)
+  //     sowLineItemID      → SOW Line Item     (field_771 photo connection)
+  //     installLineItemID  → Install Line Item (field_771 photo connection)
+  // Until those branches exist, photos upload but don't connect. Flip this
+  // OFF to fall back to the Knack edit-page navigation in the meantime.
+  // (MDF/IDF photo views are intentionally NOT routed here — they keep the
+  // edit-page nav until an mdfIdf linkField is added.)
+  PHOTO_ADD_BULK_MODAL: true,
+
+  // ─────────────────────────────────────────────────────────────
   // Bulk Add Mounting Box (device-worksheet → Add Mount Box button)
   // ─────────────────────────────────────────────────────────────
   // Fires when the user checks N rows on a device worksheet, clicks

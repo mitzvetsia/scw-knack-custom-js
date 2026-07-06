@@ -18,6 +18,20 @@
   if (document.getElementById(STYLE_ID)) return;
 
   var css = [
+    /* ── Kill browser scroll-anchoring while a v2 worksheet is on the page ──
+       worksheet-v2 rebuilds its whole card list on every edit/notify and
+       anchors the viewport across that swap itself (SCW.v2ScrollAnchor.around
+       in render.js). The BROWSER's own overflow-anchor runs concurrently and,
+       when the rebuilt content changes height above the viewport, shifts
+       window scroll DOWN to "hold" it — a no-gesture jump (scroll-spy: "JUMP
+       DOWN 71px, no scrollTo/scrollBy") that fights the JS anchor. Disable it
+       so the JS anchor is the sole scroll manager. Self-scoped via :has to
+       only apply when a worksheet-v2 body is mounted (same fix bid-review-v2
+       uses). */
+    'html:has(.scw-ws-v2-body), body:has(.scw-ws-v2-body) {',
+    '  overflow-anchor: none !important;',
+    '}',
+    'body:has(.scw-ws-v2-body) * { overflow-anchor: none !important; }',
     /* ── Container ──────────────────────────────────────────── */
     '.scw-ws-v2 {',
     '  margin: 24px 0 !important;',
@@ -61,25 +75,18 @@
     '}',
 
     /* ── Body / card list ───────────────────────────────────── */
+    /* NO inner-scroll viewport cap on ANY v2 worksheet. The body grows to its
+       full height and scrolls with the PAGE — users don't want the wheel
+       trapped in an inner scroll region, and don't want to hover over the view
+       to scroll. This was proven on the survey worksheet (view_3505) and is now
+       the default everywhere (build-SOW / install / sales / survey). Also keeps
+       the window-based scroll anchor honest: it anchors PAGE scroll, which now
+       matches where the worksheet actually scrolls. */
     '.scw-ws-v2-body {',
     '  padding: 0 !important;',
-    /* Grow the scroll body to the screen: viewport height minus the chrome
-       above it (toolbar + banner + SOW pills + page header), with the old
-       680px as the FLOOR so short laptops never get less than before. */
-    '  max-height: max(680px, calc(100vh - 180px)) !important;',
-    '  overflow: auto !important;',
+    '  overflow: visible !important;',
     '  display: block !important;',
     '  width: 100% !important;',
-    '}',
-    /* view_3505 (subcontractor SURVEY device worksheet): users don\'t want an
-       inner scroll region trapping the wheel here. Drop the viewport cap so the
-       worksheet grows to its full height and scrolls with the PAGE — no need to
-       hover over the view. Scoped to this view\'s panel
-       (#scw-ws-v2-<sourceViewKey>) so every other v2 worksheet keeps its
-       capped-scroll body. */
-    '#scw-ws-v2-view_3505 > .scw-ws-v2-body {',
-    '  max-height: none !important;',
-    '  overflow: visible !important;',
     '}',
     '.scw-ws-v2-empty {',
     '  padding: 20px !important;',
@@ -105,6 +112,28 @@
     '.scw-ws-v2-card:nth-child(even):hover {',
     '  background: var(--scw-surface-muted, #f1f5f9) !important;',
     '}',
+    /* ── SOW/Bid color coding (sow-filter.js applyRowColors) ──────────
+       A left-edge bar carries the SOW/Bid color(s) — one segment per
+       SOW/Bid (via --scw-sow-bar gradient) so a row on more than one
+       shows every color. The faint wash is set inline (background-color
+       !important) on the card. The bar is a ::before so the card's own
+       !important background can't clobber it. */
+    '.scw-ws-v2-card[data-scw-sow-colored] { position: relative !important; }',
+    '.scw-ws-v2-card[data-scw-sow-colored]::before {',
+    '  content: "" !important;',
+    '  position: absolute !important; left: 0 !important; top: 0 !important; bottom: 0 !important;',
+    '  width: 7px !important;',
+    '  background: var(--scw-sow-bar, transparent) !important;',
+    '  z-index: 1 !important; pointer-events: none !important;',
+    '}',
+    /* Multi-SOW/Bid rows get a slightly wider bar so the segments read. */
+    '.scw-ws-v2-card[data-scw-sow-colored="multi"]::before { width: 9px !important; }',
+    /* Pill swatch matching each SOW/Bid's row color. */
+    '.scw-ws-v2-sow-pill-dot {',
+    '  display: inline-block !important; width: 9px !important; height: 9px !important;',
+    '  border-radius: 50% !important; margin-right: 6px !important;',
+    '  vertical-align: middle !important; flex: 0 0 auto !important;',
+    '}',
 
     /* ── Row grid ───────────────────────────────────────────── */
     /* Shared column template across default / cam / services so that
@@ -119,7 +148,7 @@
     '  display: grid !important;',
     '  grid-template-columns:',
     '    20px                  /* expand chevron (now on the LEFT) */',
-    '    64px                  /* label / drop label */',
+    '    88px                  /* label / drop label (wider so RA-E-### / RA-I-### aren\'t clipped) */',
     '    minmax(160px, 1.4fr)  /* product or Service tag */',
     '    minmax(160px, 1.6fr)  /* labor desc */',
     '    72px                  /* qty input OR chip stack */',
@@ -127,7 +156,7 @@
     '    64px                  /* +Hrs    */',
     '    64px                  /* +Mat    */',
     '    72px                  /* fee     */',
-    '    52px                  /* sow     */',
+    '    72px                  /* sow (widened so SW-#### chips aren\'t clipped) */',
     '    28px                  /* warning (stacked icon chips) */',
     '    28px                  /* kebab */ !important;',
     '  gap: 6px !important;',
@@ -184,7 +213,7 @@
     '.scw-ws-v2-col-header.scw-ws-v2-col-header--survey {',
     '  grid-template-columns:',
     '    20px                  /* chevron */',
-    '    64px                  /* label / drop */',
+    '    88px                  /* label / drop (wider so RA-E-### / RA-I-### labels aren\'t clipped) */',
     '    minmax(140px, 1.1fr)  /* product */',
     '    minmax(150px, 1.3fr)  /* survey notes */',
     '    minmax(150px, 1.3fr)  /* labor description */',
@@ -499,8 +528,8 @@
     '.scw-ws-v2-col-header {',
     '  display: grid !important;',
     '  grid-template-columns:',
-    '    20px 64px minmax(160px, 1.4fr) minmax(160px, 1.6fr)',
-    '    72px 78px 64px 64px 72px 52px 28px 28px !important;',
+    '    20px 88px minmax(160px, 1.4fr) minmax(160px, 1.6fr)',
+    '    72px 78px 64px 64px 72px 72px 28px 28px !important;',
     '  gap: 6px !important;',
     '  align-items: center !important;',
     '  padding: 8px 10px 4px 44px !important;', /* match row padding-left */
@@ -1006,6 +1035,17 @@
     '  overflow: hidden !important;',
     '  text-overflow: ellipsis !important;',
     '  text-align: center !important;',
+    '}',
+    /* SOW/Bid value chip — colored per SOW/Bid by sow-filter.js
+       applyRowColors (bg/border-color/color set inline). Base rule gives
+       it the pill shape so those inline colors read as a chip. */
+    '.scw-ws-v2-cell--sow .scw-ws-v2-sow-value[data-scw-sow-chip] {',
+    '  border: 1px solid transparent !important;',
+    '  border-radius: 999px !important;',
+    '  padding: 0 6px !important;',
+    '  margin: 1px auto !important;',
+    '  font-weight: 700 !important;',
+    '  max-width: 100% !important;',
     '}',
     '.scw-ws-v2-cell--stack {',
     '  display: flex !important;',

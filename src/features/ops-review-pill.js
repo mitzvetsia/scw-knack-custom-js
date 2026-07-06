@@ -1245,7 +1245,21 @@
     var pill = buildPillForRow(tr);
     if (pill) container.appendChild(pill);
 
-    var warning = buildMarginWarningForRow(tr, opts);
+    // Margin warning. When the caller supplies no explicit marginButton
+    // (e.g. sow-grid-cards calls buildBlockForRow(tr) bare), default to the
+    // FULL recovery buttons + click bindings — the same affordances the old
+    // view_3325 table cell rendered. Without this default, the SOW-cards
+    // transition silently dropped the "Add Project Management & Mobilization
+    // line item" / "Increase project margin" buttons (warning text only), so
+    // the PM webhook could never fire from that page. Callers that pass
+    // marginButton (bid-review) keep full control.
+    var warning;
+    if (opts.marginButton === undefined) {
+      warning = buildMarginWarningForRow(tr, { marginButton: buildMarginRecoveryButtons(tr) });
+      bindMarginRecoveryClicks(warning, tr);
+    } else {
+      warning = buildMarginWarningForRow(tr, opts);
+    }
     if (warning) container.appendChild(warning);
 
     if (opts.includeProposalBlock !== false) {

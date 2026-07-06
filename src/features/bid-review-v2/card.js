@@ -529,12 +529,19 @@
     }
     return null;
   }
-  // Shared data-* attrs string for a cell CR button.
-  function crAttrs(action, rowId, pkgId, sowId) {
+  // Shared data-* attrs string for a cell CR button. `bidRecordId` (the
+  // specific view_3680 record behind THIS cell) lets v1's CR handlers resolve
+  // the target by bid record even when the row identity diverges between v2's
+  // render and v1's _state — the case for a bid item whose "source of truth"
+  // SOW line item lives on a DIFFERENT SOW than the panel it's shown in
+  // (off-SOW rows), where matching by data-row-id alone silently misses and
+  // the Revise/Remove buttons no-op.
+  function crAttrs(action, rowId, pkgId, sowId, bidRecordId) {
     return 'data-action="' + escapeHtml(action) + '" ' +
       'data-row-id="' + escapeHtml(rowId || '') + '" ' +
       'data-package-id="' + escapeHtml(pkgId || '') + '" ' +
-      'data-sow-id="' + escapeHtml(sowId || '') + '"';
+      'data-sow-id="' + escapeHtml(sowId || '') + '"' +
+      (bidRecordId ? ' data-bid-record-id="' + escapeHtml(bidRecordId) + '"' : '');
   }
   // Revise + Remove stack for a populated bid cell. CR buttons require
   // sub-bid to be wanted on EITHER side: the bid record (field_2478 →
@@ -542,7 +549,7 @@
   // row.requireSubBidSow). Suppress ONLY when both are explicitly No — a
   // lone "No" on the bid record no longer hides the buttons if the SOW
   // still wants the item priced.
-  function cellActionStack(row, pkgId, sowId, diffs) {
+  function cellActionStack(row, pkgId, sowId, diffs, bidRecordId) {
     var isNoFlag = function (v) {
       if (v === false) return true;
       if (v == null) return false;
@@ -572,22 +579,22 @@
             '<span class="scw-bid-review-v2__overflow-dots">⋮</span> Revise</button>' +
           '<div class="scw-bid-review-v2__overflow-menu">' +
             '<button type="button" class="scw-bid-review-v2__overflow-item scw-bid-review-v2__cell-action" ' +
-              crAttrs('cell_request_change', row.id, pkgId, sowId) + '>Edit bid values</button>' +
+              crAttrs('cell_request_change', row.id, pkgId, sowId, bidRecordId) + '>Edit bid values</button>' +
             '<button type="button" class="scw-bid-review-v2__overflow-item scw-bid-review-v2__cell-action" ' +
-              crAttrs('cell_request_change_from_sow', row.id, pkgId, sowId) + '>Match SOW values</button>' +
+              crAttrs('cell_request_change_from_sow', row.id, pkgId, sowId, bidRecordId) + '>Match SOW values</button>' +
           '</div>' +
         '</div>';
     } else {
       revise =
         '<button type="button" class="scw-bid-review__cell-action ' +
           'scw-bid-review__cell-action--revise scw-bid-review-v2__cell-action" ' +
-          crAttrs('cell_request_change', row.id, pkgId, sowId) + '>Revise</button>';
+          crAttrs('cell_request_change', row.id, pkgId, sowId, bidRecordId) + '>Revise</button>';
     }
     return '<div class="scw-bid-review-v2__cell-actions">' +
       revise +
       '<button type="button" class="scw-bid-review__cell-action ' +
         'scw-bid-review__cell-action--remove scw-bid-review-v2__cell-action" ' +
-        crAttrs('cell_remove_from_bid', row.id, pkgId, sowId) + '>Remove</button>' +
+        crAttrs('cell_remove_from_bid', row.id, pkgId, sowId, bidRecordId) + '>Remove</button>' +
     '</div>';
   }
 
@@ -648,7 +655,26 @@
     td.className = 'scw-bid-review-v2__cell scw-bid-review-v2__pkg-col';
     var pkgId = pkg && pkg.id;
     if (pkgId) td.setAttribute('data-pkg-id', pkgId);
+    // Pending CR lookup: a removal CR is now keyed by the exact bid record
+    // (cell.id), which on an off-SOW row shared across bids differs from the
+    // row's meta id. Try the row id first (add/revise/normal rows), then the
+    // cell's own record id (off-SOW removal) so the pending card still shows
+    // on the right cell.
     var pendingItem = row ? findPendingItem(row.id, pkgId) : null;
+    if (!pendingItem && cell && cell.id) pendingItem = findPendingItem(cell.id, pkgId);
+    // Stacked duplicates: a CR raised from a dupe block ("2nd bid item →
+    // same SOW item") is keyed by the DUPE's own bid record id — invisible
+    // to both lookups above, so the pending card never rendered anywhere.
+    // Collect dupe-keyed items separately; they render on the host cell
+    // alongside (not instead of) any primary-cell card.
+    var dupePendingItems = [];
+    if (cell && cell.dupes) {
+      for (var dpi = 0; dpi < cell.dupes.length; dpi++) {
+        var dpItem = (cell.dupes[dpi] && cell.dupes[dpi].id)
+          ? findPendingItem(cell.dupes[dpi].id, pkgId) : null;
+        if (dpItem && dpItem !== pendingItem) dupePendingItems.push(dpItem);
+      }
+    }
 
     if (!cell) {
       td.classList.add('scw-bid-review-v2__cell--empty');
@@ -711,11 +737,37 @@
                 '>+ Reinstate</button>' +
             '</div>';
         } else {
+          // Prefill attrs: v1's handleAddToBid re-finds the row in v1's OWN
+          // grid state to source the modal's SOW snapshot — but v1 DROPS rows
+          // that are on no SOW and no bid (transform.js: `if (!hasBid && !hasSow)
+          // continue`), which is exactly the "Removed — no longer on any SOW or
+          // bid" rows this button appears on. Without the row v1 returned
+          // silently ("+ Add to bid does nothing"). Emit the snapshot v2 already
+          // has so v1 can synthesize the row from these attrs instead.
+          var addDet = (row.detail && row.detail.side === 'SOW') ? row.detail : (row.detail || {});
+          var addQty = (addDet.qty != null) ? addDet.qty
+                     : (row.sowItemData && row.sowItemData.qty != null ? row.sowItemData.qty : '');
+          var addFee = (addDet.fee != null) ? addDet.fee
+                     : (row.sowItemData && row.sowItemData.fee != null ? row.sowItemData.fee : '');
+          var addDesc = ns.transform.stripHtml(
+            (addDet.desc || (row.sowItemData && row.sowItemData.laborDesc) || ''));
           actions =
             '<div class="scw-bid-review-v2__cell-actions">' +
               '<button type="button" class="scw-bid-review__cell-action ' +
                 'scw-bid-review__cell-action--add scw-bid-review-v2__cell-action" ' +
-                crAttrs('cell_add_to_bid', row.id, pkgId, sowId) + '>+ Add to bid</button>' +
+                crAttrs('cell_add_to_bid', row.id, pkgId, sowId) +
+                ' data-sow-item-id="' + escapeHtml(row.sowItem || '') + '"' +
+                ' data-display-label="' + escapeHtml(row.displayLabel || '') + '"' +
+                ' data-product-name="' + escapeHtml((addDet.product) || row.productName || '') + '"' +
+                ' data-add-qty="' + escapeHtml(addQty != null ? addQty : '') + '"' +
+                ' data-add-fee="' + escapeHtml(addFee != null ? addFee : '') + '"' +
+                ' data-add-desc="' + escapeHtml(addDesc) + '"' +
+                ' data-proposal-bucket="' + escapeHtml(row.proposalBucket || '') + '"' +
+                ' data-proposal-bucket-id="' + escapeHtml(row.proposalBucketId || '') + '"' +
+                ' data-sort-order="' + escapeHtml(row.sortOrder != null ? row.sortOrder : '') + '"' +
+                ' data-mdf-idf="' + escapeHtml(row.mdfIdf || '') + '"' +
+                ' data-mdf-idf-id="' + escapeHtml(row.mdfIdfId || '') + '"' +
+                '>+ Add to bid</button>' +
           '</div>';
         }
       }
@@ -734,7 +786,7 @@
         ? '<div class="scw-bid-review-v2__cell-desc" title="' +
             escapeHtml(descTxt) + '">' + escapeHtml(descTxt) + '</div>'
         : '<span class="scw-bid-review-v2__cell-empty-mark">—</span>';
-      td.innerHTML += cellActionStack(row, pkgId, sowId);
+      td.innerHTML += cellActionStack(row, pkgId, sowId, null, cell && cell.id);
       appendPendingCard(td, pendingItem, row, pkg, sowId);
       return td;
     }
@@ -777,6 +829,20 @@
     var descHover = (diffs && diffs.laborDesc) ? ' data-scw-diff-field="desc"' : '';
     var qtyDiff   = (diffs && diffs.qty) ? DIFF : '';
     var qtyHover  = (diffs && diffs.qty) ? ' data-scw-diff-field="qty"' : '';
+    // Label drift — the bid record's copy of the display label (field_2365)
+    // no longer matches the SOW line item's authoritative label (field_1950,
+    // swapped onto row.displayLabel by the transform). Surface the bid's
+    // stale label as a flagged line so the drift is visible instead of the
+    // bid label silently winning the row title.
+    var sowLblN = String(row.displayLabel || '').replace(/\s+/g, ' ').trim().toLowerCase();
+    var bidLblN = String(cell.label || '').replace(/\s+/g, ' ').trim().toLowerCase();
+    var labelDriftHtml = (bidLblN && sowLblN && bidLblN !== sowLblN)
+      ? '<div class="scw-bid-review-v2__cell-conn scw-bid-review-v2__field-diff"' +
+          ' data-scw-diff-field="label" title="Bid label: ' +
+          escapeHtml(cell.label) + ' — SOW: ' + escapeHtml(row.displayLabel) + '">' +
+          '<label>Label</label>' + escapeHtml(cell.label) +
+        '</div>'
+      : '';
 
     var primaryHtml =
       (cell.productName ?
@@ -812,10 +878,11 @@
           '<label>MDF&nbsp;/&nbsp;IDF</label>' +
           escapeHtml(cell.mdfIdf || '(none)') +
         '</div>' : '') +
+      labelDriftHtml +
       // Survey note (field_2412) on the bid record — v1 parity: populated
       // cells render the sub's note too, not just the no-bid cutouts.
       surveyNoteHtml(cell.notes) +
-      cellActionStack(row, pkgId, sowId, diffs);
+      cellActionStack(row, pkgId, sowId, diffs, cell.id);
 
     // When 2+ bid line items on THIS bid map to the same SOW item, show
     // each stacked (they may differ in product / price / desc). The SOW
@@ -832,25 +899,73 @@
       td.innerHTML = primaryHtml;
     }
     appendPendingCard(td, pendingItem, row, pkg, sowId);
+    for (var dpc = 0; dpc < dupePendingItems.length; dpc++) {
+      appendPendingCard(td, dupePendingItems[dpc], row, pkg, sowId);
+    }
     return td;
   }
 
-  // Append v1's pending-CR summary card (if any) into a cell + flag the
-  // cell so it reads as "has a pending change". Clicking the card EXPANDS the
-  // row (bubbles to the row's expand handler) rather than re-opening the edit
-  // modal — the cell's own Revise button still covers editing the CR. (The
-  // card's × dismiss button stops propagation, so it still dismisses.)
+  // Append v1's pending-CR summary card (if any) into a cell + flag the cell
+  // so it reads as "has a pending change". Clicking the card re-opens the CR
+  // EDITOR (prefilled from the pending item — openChangeModal/openRemove detect
+  // it via findPendingItem). The card had regressed into a row-expand trigger,
+  // but expanding HIDES the data row + card + its × dismiss (init.js: "the data
+  // row is hidden while expanded"), leaving the CR impossible to edit OR delete.
+  // The card gets its OWN click handler that stops propagation before the click
+  // reaches the row-expand document listener; the × dismiss keeps its own
+  // handler (and stops propagation too, so it never triggers the editor).
   function appendPendingCard(td, pendingItem, row, pkg, sowId) {
     if (!pendingItem) return;
     var api = crApi();
     if (!api || !api.buildSummaryCard) return;
     try {
       var card = api.buildSummaryCard(pendingItem, pkg && pkg.id, pkg && pkg.label);
-      if (card) {
-        card.classList.add('scw-bid-review-v2__cell-cr-card');
-        td.classList.add('scw-bid-review-v2__cell--has-cr');
-        td.appendChild(card);
+      if (!card) return;
+      card.classList.add('scw-bid-review-v2__cell-cr-card');
+      td.classList.add('scw-bid-review-v2__cell--has-cr');
+
+      // Re-dispatch the pending item's own action to re-open its editor.
+      var reAction = pendingItem.removeFromBid ? 'cell_remove_from_bid'
+                   : pendingItem.reinstate     ? 'cell_reinstate'
+                   : pendingItem.addToBid       ? 'cell_add_to_bid'
+                   : 'cell_request_change';
+      card.setAttribute('data-action', reAction);
+      card.setAttribute('data-row-id', pendingItem.rowId || (row && row.id) || '');
+      card.setAttribute('data-package-id', (pkg && pkg.id) || '');
+      card.setAttribute('data-sow-id', sowId || '');
+      // Carry the bid record id so re-opening the editor resolves the target
+      // via resolveBidTarget's bid-record fallback — needed when the removal's
+      // rowId is the cell's own record (off-SOW row) and doesn't match row.id.
+      if (pendingItem.bidRecordId) {
+        card.setAttribute('data-bid-record-id', pendingItem.bidRecordId);
       }
+      // An add-to-bid item may sit on a "Removed" row that v1's grid drops
+      // (`!hasBid && !hasSow`) — so handleAddToBid can't re-find it. Mirror the
+      // "+ Add to bid" button's prefill attrs so it can synthesize the row and
+      // still re-open the editor.
+      if (pendingItem.addToBid) {
+        var req = pendingItem.requested || {};
+        card.setAttribute('data-display-label', pendingItem.displayLabel || (row && row.displayLabel) || '');
+        card.setAttribute('data-product-name', req.productName || (row && row.productName) || '');
+        card.setAttribute('data-add-qty', req.qty != null ? req.qty : '');
+        card.setAttribute('data-add-fee', req.rate != null ? req.rate : '');
+        card.setAttribute('data-add-desc', req.laborDesc || '');
+        card.setAttribute('data-proposal-bucket', (row && row.proposalBucket) || '');
+        card.setAttribute('data-proposal-bucket-id', (row && row.proposalBucketId) || '');
+        card.setAttribute('data-sort-order', (row && row.sortOrder != null) ? row.sortOrder : '');
+        card.setAttribute('data-mdf-idf', (row && row.mdfIdf) || '');
+        card.setAttribute('data-mdf-idf-id', (row && row.mdfIdfId) || '');
+      }
+      card.addEventListener('click', function (e) {
+        // The × dismiss button handles itself (and stops propagation).
+        if (e.target && e.target.closest && e.target.closest('.scw-bid-cr-card__dismiss')) return;
+        e.preventDefault();
+        e.stopPropagation();   // don't let the row-expand listener also fire
+        var v1 = window.SCW.bidReview;
+        if (v1 && typeof v1.dispatchCRAction === 'function') v1.dispatchCRAction(card);
+      });
+
+      td.appendChild(card);
     } catch (e) { /* ignore */ }
   }
 
@@ -991,10 +1106,30 @@
     var sowIds = collectGroupSowIds(group);
     var summaryChips = (ns.warnings && typeof ns.warnings.summaryChipsHtml === 'function')
       ? ns.warnings.summaryChipsHtml(sowIds) : '';
+    // Manage gear — only for real MDF/IDF groups (synthetic groups like
+    // "Other bid items" have no location record to edit). Click handled by
+    // mdf-manage.js (capture phase, so the header collapse toggle doesn't fire).
+    var manageBtn = (group.mdfIdfId || group.label) &&
+        !group.otherBidItems && !group.bidOnlyItems && !group.removedItems
+      ? '<button type="button" class="scw-brv2-mdf-gear" ' +
+          'data-scw-mdf-manage="' + escapeHtml(group.mdfIdfId || '') + '" ' +
+          'data-scw-mdf-label="' + escapeHtml(group.label || '') + '" ' +
+          'title="Manage this MDF/IDF location">' +
+          '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" ' +
+            'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+            '<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>' +
+            '<path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>' +
+        '</button>'
+      : '';
     td.innerHTML =
       '<div class="scw-bid-review-v2__grp-inner">' +
         '<span class="scw-bid-review-v2__grp-chevron">' + GROUP_CHEVRON_SVG + '</span>' +
-        '<span class="scw-bid-review-v2__grp-title">' + escapeHtml(group.label) + '</span>' +
+        manageBtn +
+        // The computed display name ("TYPE: ## : name") leaves a stray
+        // "TYPE: :" when the ## segment is blank — collapse it for display
+        // only (data-scw-mdf-label above keeps the raw label for matching).
+        '<span class="scw-bid-review-v2__grp-title">' +
+          escapeHtml(String(group.label || '').replace(/:\s*:/g, ':')) + '</span>' +
         summaryChips +
         '<span class="scw-bid-review-v2__grp-count">' + rowCount + '</span>' +
       '</div>';
@@ -1210,7 +1345,10 @@
         if (url) imgUrls.push(url);
       }
     }
-    if (imgUrls.length) {
+    // Render the Photos section whenever there are photos OR the group has
+    // a real location record to attach photos to — the "+ Add" tile keeps
+    // upload one click away right where the photos live.
+    if (imgUrls.length || mdfIdfId) {
       var photoSection = document.createElement('div');
       photoSection.className = 'scw-bid-review-v2__l1-detail-section';
       var pLabel = document.createElement('div');
@@ -1231,6 +1369,20 @@
         thumb.loading = 'lazy';
         a.appendChild(thumb);
         photoStrip.appendChild(a);
+      }
+      if (mdfIdfId) {
+        var addTile = document.createElement('button');
+        addTile.type = 'button';
+        addTile.className = 'scw-brv2-mdf-addphoto';
+        addTile.setAttribute('data-scw-mdf-addphoto', mdfIdfId);
+        addTile.setAttribute('data-mdf-label', label || '');
+        addTile.title = 'Add photos to this MDF/IDF location';
+        addTile.innerHTML =
+          '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" ' +
+          'stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">' +
+          '<rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="1.8"/>' +
+          '<path d="M21 16l-5-5-9 9"/></svg><span>+ Add</span>';
+        photoStrip.appendChild(addTile);
       }
       photoSection.appendChild(photoStrip);
       wrap.appendChild(photoSection);
@@ -1417,9 +1569,15 @@
     // Reuse v1's handlers via SCW.bidReview.dispatchHeaderAction; buttons keep
     // the v1 data-* attrs + .scw-bid-review__btn classes v1's setBusy expects.
     var isSubmitted = /^submitted$/i.test(String(pkg.bidStatus || '').trim());
-    // The no-SOW grid surfaces draft / in-progress bids, so show the bid-column
-    // action buttons there regardless of submitted status.
+    // SOW-adoption actions (Create new SOW / Update SOW to match Bid) stay
+    // gated to submitted bids (or the no-SOW grid) — you don't build a SOW off
+    // an in-progress draft. The no-SOW grid surfaces draft / in-progress bids,
+    // so it shows those there regardless of submitted status.
     var showActions = isSubmitted || isNoSowGrid(sowId);
+    // Change Requests, however, ARE available on DRAFT bids — a reviewer may
+    // want to request changes before the sub formally submits. Decoupled from
+    // showActions so the CR group + bulk button render regardless of status.
+    var allowCr = true;
 
     var sowGroup = '';
     if (showActions) {
@@ -1443,8 +1601,8 @@
     var crCount = (bucket && bucket.items) ? bucket.items.length : 0;
 
     var crGroup = '';
-    if (showActions || crCount) {
-      var bulkBtn = showActions
+    if (allowCr || crCount) {
+      var bulkBtn = allowCr
         ? '<button type="button" class="scw-bid-review__btn scw-bid-review-v2__head-btn ' +
             'scw-bid-review-v2__head-btn--cr-bulk" data-action="cr_bulk_selected" ' +
             'data-pkg-id="' + escapeHtml(pkg.id) + '" data-package-id="' + escapeHtml(pkg.id) + '" ' +
@@ -1518,9 +1676,20 @@
     // Aggregate issue chips across every SOW item in this SOW.
     var sowWarn = (ns.warnings && typeof ns.warnings.summaryChipsHtml === 'function')
       ? ns.warnings.summaryChipsHtml(collectSowItemIds(grid)) : '';
+    // Friendly SOW name (field_2126) beside the SOW # — same source as v1's
+    // header. Skipped when unset or identical to the SOW # so it never just
+    // echoes the number.
+    var v1r = window.SCW && window.SCW.bidReview;
+    var friendly = (v1r && typeof v1r.sowFriendlyName === 'function')
+      ? v1r.sowFriendlyName(grid.sowId) : '';
+    var friendlyHtml = (friendly && friendly !== grid.sowName)
+      ? '<span class="scw-bid-review-v2__sow-friendly" title="' + escapeHtml(friendly) + '">' +
+          escapeHtml(friendly) + '</span>'
+      : '';
     header.innerHTML =
       SOW_CARET +
       '<span class="scw-bid-review-v2__sow-name">' + escapeHtml(grid.sowName) + '</span>' +
+      friendlyHtml +
       sowWarn +
       '<span class="scw-bid-review-v2__sow-meta">' +
         grid.rows.length + ' line item' + (grid.rows.length === 1 ? '' : 's') +

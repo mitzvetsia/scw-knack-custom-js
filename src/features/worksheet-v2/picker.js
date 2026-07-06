@@ -30,6 +30,18 @@
   var ns = window.SCW.worksheetV2;
   if (!ns) return;
 
+  // Connection fields whose optimistic write must NOT be protected by the
+  // pending-writes overlay after a save. These are the mirror-connection-sync
+  // cascade fields (field_1957↔field_2197, field_2380↔field_2381, accessory
+  // field_2464 / field_1958 / field_2207): their reconciliation diffs against
+  // the SERVER truth on refetch, so re-applying a client overlay would mask a
+  // legitimate cascade correction. Every OTHER connection (bid field_2415,
+  // MDF/IDF field_2375, product, SOW …) is safe to overlay.
+  var CASCADE_OVERLAY_SKIP = {
+    field_1957: 1, field_2197: 1, field_2380: 1, field_2381: 1,
+    field_1958: 1, field_2207: 1, field_2464: 1
+  };
+
   function escapeHtml(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
       return ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[c];
@@ -185,6 +197,22 @@
       '  display: inline-flex; align-items: center; justify-content: center;',
       '}',
       '.scw-ws-v2-picker-close:hover { background: #fee2e2; color: #b91c1c; }',
+      '.scw-ws-v2-picker-search {',
+      '  padding: 10px 18px; border-bottom: 1px solid #e5e7eb; background: #fff;',
+      '  flex: 0 0 auto;',
+      '}',
+      '.scw-ws-v2-picker-search-input {',
+      '  width: 100%; box-sizing: border-box;',
+      '  padding: 8px 12px; font-size: 13px;',
+      '  border: 1px solid #cbd5e1; border-radius: 7px;',
+      '  outline: none; color: #1f2937;',
+      '}',
+      '.scw-ws-v2-picker-search-input:focus {',
+      '  border-color: #2563eb; box-shadow: 0 0 0 3px rgba(37,99,235,0.15);',
+      '}',
+      '.scw-ws-v2-picker-search-empty {',
+      '  padding: 18px; text-align: center; color: #64748b; font-style: italic;',
+      '}',
       '.scw-ws-v2-picker-item--none {',
       '  background: #f8fafc;',
       '  border-bottom: 1px solid #e2e8f0;',
@@ -235,6 +263,32 @@
       '.scw-ws-v2-picker-item input[type=checkbox],',
       '.scw-ws-v2-picker-item input[type=radio] {',
       '  width: 16px; height: 16px; cursor: pointer;',
+      '}',
+      // Locked item — claimed by another device. Grayed, non-selectable
+      // until the user clicks "Take over".
+      '.scw-ws-v2-picker-item--locked {',
+      '  color: #94a3b8; cursor: default;',
+      '}',
+      '.scw-ws-v2-picker-item--locked:hover { background: transparent; }',
+      '.scw-ws-v2-picker-item--locked .scw-ws-v2-picker-item-name { color: #94a3b8; }',
+      '.scw-ws-v2-picker-item--locked input { cursor: not-allowed; }',
+      '.scw-ws-v2-picker-item-lock {',
+      '  display: inline-flex; align-items: center; gap: 4px;',
+      '  font-size: 11px; font-weight: 600; color: #b45309; line-height: 1.2;',
+      '}',
+      '.scw-ws-v2-picker-takeover {',
+      '  flex: 0 0 auto; margin-left: auto;',
+      '  appearance: none; cursor: pointer;',
+      '  padding: 3px 10px; border-radius: 999px;',
+      '  font: 600 11px system-ui, sans-serif;',
+      '  color: #b45309; background: #fff; border: 1px solid #f0c489;',
+      '}',
+      '.scw-ws-v2-picker-takeover:hover { background: #fffbeb; border-color: #d97706; }',
+      // Once stealing, the row re-lights and the button flips to "Undo".
+      '.scw-ws-v2-picker-item--stealing { color: #1f2937; }',
+      '.scw-ws-v2-picker-item--stealing .scw-ws-v2-picker-item-name { color: #07467c; }',
+      '.scw-ws-v2-picker-item--stealing .scw-ws-v2-picker-takeover {',
+      '  color: #fff; background: #d97706; border-color: #b45309;',
       '}',
       '.scw-ws-v2-picker-ft {',
       '  padding: 12px 18px;',
@@ -331,6 +385,7 @@
     var itemLabel  = (typeof opts.itemLabel === 'function')
       ? opts.itemLabel
       : function (r) { return (r.identifier || r.id) || ''; };
+    var stateFn    = (typeof opts.itemState === 'function') ? opts.itemState : null;
 
     // Canonical item order — same as the worksheet devices: field_2218
     // (sortOrder) asc, then display label (natural/numeric), then id. Keeps
@@ -403,13 +458,38 @@
           var sowHtml = sowText
             ? '<span class="scw-ws-v2-picker-item-sow"><b>SOW:</b> ' + escapeHtml(sowText) + '</span>'
             : '';
+          // Per-item "locked" state (opts.itemState). Used by the Connected
+          // Devices picker to SHOW cam/readers already claimed by another
+          // device — grayed + a "Take over" button — instead of hiding them,
+          // so the user sees WHY a device isn't freely available and can
+          // deliberately steal it. An already-selected (ours) item is never
+          // locked. `note` (e.g. "Connected to E-005 · NVR 16ch") is shown
+          // beneath the label.
+          var st = stateFn ? (stateFn(rec) || {}) : {};
+          var locked = !!st.locked && !isChecked;
+          if (locked) row.className += ' scw-ws-v2-picker-item--locked';
+          var lockHtml = (locked && st.note)
+            ? '<span class="scw-ws-v2-picker-item-lock">' +
+                '<svg viewBox="0 0 24 24" width="11" height="11" fill="none" stroke="currentColor" ' +
+                  'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+                  '<rect x="3" y="11" width="18" height="11" rx="2" ry="2"/>' +
+                  '<path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>' +
+                escapeHtml(st.note) +
+              '</span>'
+            : '';
+          var takeoverHtml = locked
+            ? '<button type="button" class="scw-ws-v2-picker-takeover">Take over</button>'
+            : '';
           row.innerHTML =
             '<input type="' + inputType + '" name="' + inputName + '" value="' +
-              escapeHtml(rec.id) + '"' + (isChecked ? ' checked' : '') + '>' +
+              escapeHtml(rec.id) + '"' + (isChecked ? ' checked' : '') +
+              (locked ? ' disabled' : '') + '>' +
             '<span class="scw-ws-v2-picker-item-text">' +
               '<span class="scw-ws-v2-picker-item-name">' + escapeHtml(labelText) + '</span>' +
+              lockHtml +
               sowHtml +
-            '</span>';
+            '</span>' +
+            takeoverHtml;
           bd.appendChild(row);
         });
       });
@@ -448,12 +528,63 @@
           if (e.shiftKey && lastIdx !== null && lastIdx !== idx) {
             var lo = Math.min(lastIdx, idx), hi = Math.max(lastIdx, idx);
             var state = box.checked; // the just-clicked box's new state
-            for (var k = lo; k <= hi; k++) optBoxes[k].checked = state;
+            // Never toggle a locked (disabled) box via range-select — those
+            // are claimed by another device and must be stolen explicitly.
+            for (var k = lo; k <= hi; k++) {
+              if (!optBoxes[k].disabled) optBoxes[k].checked = state;
+            }
           }
           // Selecting any option clears the "Clear all" sentinel.
           if (box.checked && noneBox) noneBox.checked = false;
           lastIdx = idx;
         });
+      });
+    }
+
+    // ── "Take over" (steal a locked item) ────────────────────────────
+    // Locked items (claimed by another device) render a disabled checkbox
+    // + a "Take over" button. Clicking it enables + checks the box and
+    // flags the row as stealing; clicking again releases it. Explicit, so
+    // reassigning a cam/reader away from its current device is deliberate.
+    if (candidates.length) {
+      bd.addEventListener('click', function (e) {
+        var tb = e.target && e.target.closest &&
+          e.target.closest('.scw-ws-v2-picker-takeover');
+        if (!tb) return;
+        // Inside a <label>: stop the click from toggling the (disabled) input
+        // and from bubbling to the row.
+        e.preventDefault();
+        e.stopPropagation();
+        var row = tb.closest('.scw-ws-v2-picker-item');
+        if (!row) return;
+        var box = row.querySelector('input[type="checkbox"], input[type="radio"]');
+        if (!box) return;
+        var stealing = row.classList.toggle('scw-ws-v2-picker-item--stealing');
+        if (stealing) {
+          box.disabled = false;
+          box.checked  = true;
+          tb.textContent = 'Undo';
+          // For single-select, taking one over clears the others.
+          if (!multi) {
+            var others = bd.querySelectorAll(
+              'input[name="scw-ws-v2-pick-' + opts.fieldKey + '"]');
+            for (var o = 0; o < others.length; o++) {
+              if (others[o] !== box) others[o].checked = false;
+            }
+          }
+          var noneNow = bd.querySelector(
+            '.scw-ws-v2-picker-item--none input');
+          if (noneNow) noneNow.checked = false;
+        } else {
+          box.checked  = false;
+          box.disabled = true;
+          tb.textContent = 'Take over';
+        }
+        // Nudge the count / note listeners bound on bd's change event.
+        var ev;
+        try { ev = new Event('change', { bubbles: true }); }
+        catch (_e) { ev = document.createEvent('Event'); ev.initEvent('change', true, true); }
+        bd.dispatchEvent(ev);
       });
     }
 
@@ -669,11 +800,36 @@
                 // sync's cascades read entry.id off each _raw element. An
                 // array of bare strings made them see "no children" and clear
                 // the reciprocal (Connected To) instead of re-pointing it.
+                // Candidate id → display label, so the overlay _raw carries a
+                // readable identifier (not a bare hex id) if it has to render
+                // before the refetch re-projects the connection.
+                var _candName = Object.create(null);
+                if (Array.isArray(opts.candidates)) {
+                  for (var _ci = 0; _ci < opts.candidates.length; _ci++) {
+                    var _c = opts.candidates[_ci];
+                    if (_c && _c.id) _candName[_c.id] = _c.name;
+                  }
+                }
                 var rawObjs = (body[opts.fieldKey] || []).map(function (v) {
-                  return (v && typeof v === 'object') ? v : { id: v };
+                  var id = (v && typeof v === 'object') ? v.id : v;
+                  var o  = (v && typeof v === 'object') ? v : { id: id };
+                  if (o.identifier == null && _candName[id] != null) o.identifier = _candName[id];
+                  return o;
                 });
                 SCW.syncKnackModel(putKey, opts.recordId, resp,
                   opts.fieldKey, rawObjs);
+                // Protect the just-saved selection from the follow-up refetch
+                // (onSaved → refetchAndNotify) racing Knack's connection
+                // projection: register it as a pending write so
+                // applyPendingOverlay re-applies it after the fetch reset —
+                // otherwise the card reverts to blank until a LATER fetch
+                // finally reads the committed value (reported: a set survey Bid
+                // showing '—' on the card while the data was actually saved).
+                // Cascade fields are excluded (they must read server truth).
+                if (!CASCADE_OVERLAY_SKIP[opts.fieldKey] &&
+                    ns.data && typeof ns.data.registerPendingWrite === 'function') {
+                  ns.data.registerPendingWrite(putKey, opts.recordId, opts.fieldKey, rawObjs);
+                }
               }
               var view = Knack.views[putKey];
               if (view && view.model && view.model.data) {
@@ -748,7 +904,63 @@
       }
     }
 
+    // ── Search filter ───────────────────────────────────────────────
+    // Sizable lists (the product picker especially) get a type-to-filter
+    // box between the header and the scrolling list. Matches each option's
+    // text (name + any SOW line); group headers hide when none of their
+    // items match. The "Clear all / (no selection)" row is never filtered.
+    var searchInput = null;
+    if (candidates.length >= 8) {
+      var searchWrap = document.createElement('div');
+      searchWrap.className = 'scw-ws-v2-picker-search';
+      searchWrap.innerHTML = '<input type="text" class="scw-ws-v2-picker-search-input" ' +
+        'placeholder="Search…" autocomplete="off" spellcheck="false">';
+      card.insertBefore(searchWrap, bd);
+      searchInput = searchWrap.querySelector('input');
+
+      var noMatchEl = document.createElement('div');
+      noMatchEl.className = 'scw-ws-v2-picker-search-empty';
+      noMatchEl.textContent = 'No matches.';
+      noMatchEl.style.display = 'none';
+      bd.appendChild(noMatchEl);
+
+      var searchItems = Array.prototype.slice.call(bd.querySelectorAll(
+        '.scw-ws-v2-picker-item:not(.scw-ws-v2-picker-item--none)'));
+      var searchGroups = Array.prototype.slice.call(
+        bd.querySelectorAll('.scw-ws-v2-picker-group'));
+
+      var applySearch = function () {
+        var q = (searchInput.value || '').trim().toLowerCase();
+        var anyVisible = false;
+        for (var i = 0; i < searchItems.length; i++) {
+          var it = searchItems[i];
+          var show = !q || (it.textContent || '').toLowerCase().indexOf(q) !== -1;
+          it.style.display = show ? '' : 'none';
+          if (show) anyVisible = true;
+        }
+        for (var g = 0; g < searchGroups.length; g++) {
+          var head = searchGroups[g];
+          var vis = false;
+          var sib = head.nextElementSibling;
+          while (sib && !(sib.classList && sib.classList.contains('scw-ws-v2-picker-group'))) {
+            if (sib.classList &&
+                sib.classList.contains('scw-ws-v2-picker-item') &&
+                !sib.classList.contains('scw-ws-v2-picker-item--none') &&
+                sib.style.display !== 'none') { vis = true; break; }
+            sib = sib.nextElementSibling;
+          }
+          head.style.display = vis ? '' : 'none';
+        }
+        noMatchEl.style.display = anyVisible ? 'none' : '';
+      };
+      searchInput.addEventListener('input', applySearch);
+    }
+
     document.body.appendChild(overlay);
+
+    // Focus the search box so the user can type immediately (after the
+    // node is in the document, or focus() is a no-op).
+    if (searchInput) { try { searchInput.focus(); } catch (e) {} }
   }
 
   ns.picker = {

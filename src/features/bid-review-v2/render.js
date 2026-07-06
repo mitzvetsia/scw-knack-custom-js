@@ -186,6 +186,13 @@
 
     // Ensure the toolbar is present (idempotent — survives body rebuilds).
     if (ns.toolbar && typeof ns.toolbar.mount === 'function') ns.toolbar.mount();
+
+    // Top-level search bar (idempotent) + re-apply the active query to the
+    // freshly-rebuilt rows so a filter survives edits / refetches.
+    if (ns.search) {
+      if (typeof ns.search.mount === 'function') ns.search.mount();
+      if (typeof ns.search.apply === 'function') ns.search.apply();
+    }
   }
 
   // Resume deferred render when focus leaves the panel. Plain rebuild — NOT

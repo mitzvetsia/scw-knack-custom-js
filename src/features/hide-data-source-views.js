@@ -107,6 +107,10 @@
     // through it (docSaveView). Kept rendered so the PUT path works, hidden
     // from the user.
     'view_4068',
+    // 'view_4075' — DOC_photos connected to install line items on the
+    // customer questionnaire scene; customer-questionnaire.js reads its
+    // model to inject photo strips into the questionnaire cards.
+    'view_4075',
   ];
 
   // Views that must NEVER be hidden as collateral damage from the
