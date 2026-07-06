@@ -1246,10 +1246,31 @@
   var _barOpen = false;
 
   /** Jump to a revision's card (matched survey item or orphan), expanding any
-   *  collapsed L1 group + the card itself, then scroll it into view. */
-  function navigateToRev(container, siId, revId) {
-    var target = siId ? findCard(container, siId)
-                      : container.querySelector('[data-rev-id="' + revId + '"]');
+   *  collapsed L1 group + the card itself, then scroll it into view. Tries
+   *  every record id the revision carries (surveyItemId, then the change
+   *  JSON's rowId / bidRecordId / sowItemId — on this page bid records ARE
+   *  survey line items, so any of them can be the card's record id). If the
+   *  row is filtered OUT by the Bid pill strip (filtered rows aren't rendered
+   *  at all), resets the filter to Show All and retries. */
+  function navigateToRev(container, siId, revId, rev) {
+    var ids = [];
+    if (siId) ids.push(siId);
+    var cr = (rev && rev.changeJson) || {};
+    ['rowId', 'bidRecordId', 'sowItemId'].forEach(function (k) {
+      if (cr[k] && ids.indexOf(cr[k]) === -1) ids.push(cr[k]);
+    });
+    function locate() {
+      for (var i = 0; i < ids.length; i++) {
+        var c = findCard(container, ids[i]);
+        if (c) return c;
+      }
+      return revId ? container.querySelector('[data-rev-id="' + revId + '"]') : null;
+    }
+    var target = locate();
+    if (!target && container.hasAttribute('data-scw-ws-v2-sow-filter')) {
+      var allPill = container.querySelector('[data-scw-ws-v2-sow-pill="__all"]');
+      if (allPill) { allPill.click(); target = locate(); }
+    }
     if (!target) return;
     var l1 = target.closest ? target.closest('.scw-ws-v2-l1') : null;
     if (l1 && !l1.classList.contains('scw-ws-v2-l1--open')) {
@@ -1262,6 +1283,8 @@
     }
     setTimeout(function () {
       try { target.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) { target.scrollIntoView(); }
+      target.classList.add(P + '-nav-flash');
+      setTimeout(function () { target.classList.remove(P + '-nav-flash'); }, 1800);
     }, 80);
   }
 
@@ -1334,6 +1357,10 @@
   }
 
   var _barSig = '';
+
+  // Per-type section open/closed state — survives panel rebuilds while the
+  // page is up (module-scoped, not persisted). All open by default.
+  var _secOpen = { add: true, remove: true, revise: true };
 
   // The three change-request types the summary panel groups by. Anything
   // that isn't an explicit add/remove (revise, reinstate, …) buckets under
@@ -1442,12 +1469,12 @@
         var j = rev.changeJson || {};
         card.textContent = j.displayLabel || j.productName || 'Revision';
       }
-      (function (siId, revId) {
+      (function (siId, revId, revRef) {
         card.addEventListener('click', function (e) {
           if (e.target.closest && e.target.closest('a,button,input,textarea,select')) return;
-          navigateToRev(container, siId, revId);
+          navigateToRev(container, siId, revId, revRef);
         });
-      })(rev.surveyItemId, rev.id);
+      })(rev.surveyItemId, rev.id, rev);
       return card;
     }
 
@@ -1477,8 +1504,14 @@
       var sec = document.createElement('div');
       sec.className = P + '-bar-sec ' + P + '-bar-sec--' + grp.key;
 
+      var secOpen = _secOpen[grp.key] !== false;
+
       var secHead = document.createElement('div');
       secHead.className = P + '-bar-sec-head';
+      var secChev = document.createElement('span');
+      secChev.className = P + '-bar-chev' + (secOpen ? ' is-open' : '');
+      secChev.innerHTML = '<svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 2 8 6 4 10"></polyline></svg>';
+      secHead.appendChild(secChev);
       var secTitle = document.createElement('span');
       secTitle.className = P + '-bar-sec-title';
       secTitle.textContent = grp.label + ' (' + revsOfType.length + ')';
@@ -1492,8 +1525,20 @@
 
       var secBody = document.createElement('div');
       secBody.className = P + '-bar-sec-body';
+      secBody.style.display = secOpen ? '' : 'none';
       for (var ri3 = 0; ri3 < revsOfType.length; ri3++) secBody.appendChild(makeBarCard(revsOfType[ri3]));
       sec.appendChild(secBody);
+
+      // Collapsible per section — the Accept/Reject buttons stopPropagation,
+      // so a head click anywhere else toggles.
+      (function (key, bodyEl, chevEl) {
+        secHead.addEventListener('click', function () {
+          var open = _secOpen[key] === false;   // toggling: closed → open
+          _secOpen[key] = open;
+          bodyEl.style.display = open ? '' : 'none';
+          chevEl.className = P + '-bar-chev' + (open ? ' is-open' : '');
+        });
+      })(grp.key, secBody, secChev);
 
       panel.appendChild(sec);
     }
@@ -1766,8 +1811,11 @@
       '.' + P + '-bar-sec { border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; }',
       '.' + P + '-bar-sec-head {',
       '  display: flex; align-items: center; gap: 8px; padding: 7px 10px;',
-      '  border-bottom: 1px solid #e2e8f0;',
+      '  border-bottom: 1px solid #e2e8f0; cursor: pointer; user-select: none;',
       '}',
+      '.' + P + '-bar-sec--add    .' + P + '-bar-chev { color: #166534; }',
+      '.' + P + '-bar-sec--remove .' + P + '-bar-chev { color: #991b1b; }',
+      '.' + P + '-bar-sec--revise .' + P + '-bar-chev { color: #1e40af; }',
       '.' + P + '-bar-sec--add    .' + P + '-bar-sec-head { background: #f0fdf4; border-bottom-color: #bbf7d0; }',
       '.' + P + '-bar-sec--remove .' + P + '-bar-sec-head { background: #fef2f2; border-bottom-color: #fecaca; }',
       '.' + P + '-bar-sec--revise .' + P + '-bar-sec-head { background: #eff6ff; border-bottom-color: #bfdbfe; }',
@@ -1783,6 +1831,15 @@
       '  background: #fff;',
       '}',
       '.' + P + '-bar-card:hover { background: #f8fafc; border-color: #bfdbfe; }',
+      /* Flash highlight on the worksheet card a summary click lands on */
+      '.' + P + '-nav-flash {',
+      '  outline: 3px solid #2563eb; outline-offset: 2px; border-radius: 6px;',
+      '  animation: scwWsV2NavFlash 1.8s ease forwards;',
+      '}',
+      '@keyframes scwWsV2NavFlash {',
+      '  0%, 55% { outline-color: #2563eb; }',
+      '  100% { outline-color: transparent; }',
+      '}',
       /* Edit modal */
       '.' + P + '-modal-overlay {',
       '  position: fixed; inset: 0; background: rgba(15,23,42,0.45); z-index: 100000;',
