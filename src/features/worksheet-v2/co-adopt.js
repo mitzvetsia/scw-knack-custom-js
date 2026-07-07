@@ -162,6 +162,29 @@
       '  align-items: stretch !important;',
       '}',
 
+      // Non-cam product/tag placement — re-pin for the checkbox-shifted
+      // template. The stock rule (styles.js) spans the product/Service tag
+      // over `grid-column: 2 / span 2` — correct for the un-shifted grid
+      // (label col 2 + product col 3) but WRONG here: our leading checkbox
+      // pushes chevron→2, label→3, product→4, so 2/span 2 lands the product
+      // on the chevron+label region (collides with the chevron) and shoves
+      // qty/subBid/+Hrs/… one track left. Re-pin to cols 3-4 (label +
+      // product) so the desc-stacked product absorbs the empty label slot
+      // and every money cell after it flows back into its own track.
+      // Higher specificity (0,4,0 with the attribute) + later load beats the
+      // stock 0,2,0 !important rule.
+      '.scw-ws-v2--readonly .scw-ws-v2-row--default[data-scw-co-adopt-row] > .scw-ws-v2-cell--product,',
+      '.scw-ws-v2--readonly .scw-ws-v2-row--services[data-scw-co-adopt-row] > .scw-ws-v2-cell--tag {',
+      '  grid-column: 3 / span 2 !important;',
+      '}',
+      // Promoted-accessory rows keep their attached-to chip in the label
+      // slot (col 3), so the product must NOT absorb it — flow it naturally
+      // into the product track (col 4). Mirrors the stock :has() reset.
+      '.scw-ws-v2--readonly .scw-ws-v2-row--default[data-scw-co-adopt-row]:has(.scw-ws-v2-cell--attached) > .scw-ws-v2-cell--product,',
+      '.scw-ws-v2--readonly .scw-ws-v2-row--services[data-scw-co-adopt-row]:has(.scw-ws-v2-cell--attached) > .scw-ws-v2-cell--tag {',
+      '  grid-column: auto !important;',
+      '}',
+
       // Assumptions rows keep the desc as a DIRECT child (see
       // restructureRow) — re-pin the stock 3/10 span to the new
       // checkbox-shifted template: cols 4 (product track) through 9
