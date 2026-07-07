@@ -437,8 +437,13 @@
   }
   var COLLAPSE_KEY = 'scwCoAdoptCollapsed:';
   function isCollapsed(viewKey) {
-    try { return localStorage.getItem(COLLAPSE_KEY + viewKey) === '1'; }
-    catch (e) { return false; }
+    // Default COLLAPSED (no stored preference) so the CO Line Items worksheet
+    // is the focus on load — this source panel expands only when the user
+    // wants to add items. Once toggled, the stored choice wins.
+    try {
+      var v = localStorage.getItem(COLLAPSE_KEY + viewKey);
+      return v === null ? true : v === '1';
+    } catch (e) { return true; }
   }
   function setCollapsed(viewKey, val) {
     try { localStorage.setItem(COLLAPSE_KEY + viewKey, val ? '1' : '0'); }
