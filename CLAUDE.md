@@ -441,6 +441,44 @@ Notes:
 - The API key in the snippet is the live one. Treat the snippet
   contents as a secret; don't paste it into public PRs/issues.
 
+## Change Orders (design locked 2026-07-03 — full reference: docs/change-orders.md)
+
+Install-phase change orders: ops (or the sub) proposes **adds and removes**
+against the install scope (view_4056); the CO is priced by the sub, e-signed by
+the client (esignatures.com), and on signature Make invoices (Xero) and applies
+the changes. **Read `docs/change-orders.md` before touching anything CO-related**
+— every decision below is locked there with rationale:
+
+- **Adds + removes only, no field-level MODIFY** (qty change = add/remove;
+  config change = swap pair with a `replaces` link; price-only = adjustment
+  line). Never mutate live install records client-side.
+- **A CO is a SOW subtype** — SOW `field_2952` Type (`base scope` /
+  `change order`), NOT a new object. CO line items are ordinary SOW Line Item
+  records (connected via `field_2154`). All SOW-consuming surfaces need a
+  "Type **is not** change order" filter (blank fails safe).
+- **CO Status is a NEW separate field** (8 options: Draft, Pending Sub Pricing,
+  Ops Review, Issued, Accepted, Applied, Declined, Void — each with exactly one
+  writer). Do NOT add options to the existing SOW status field.
+- **A CO rides the full chain** SOW → Proposal snapshot → Acceptance → apply.
+  The verb is "Issue" (creates snapshot + acceptance in one gesture); invoice
+  defers to the SIGNED webhook; the apply gate is **signature alone**; the
+  Acceptance Type field is the switch the criteria automation branches on.
+- **Nothing mutates install scope until signature.** Removes flip a
+  `Removed by CO` connection on the install record — never delete.
+- **One sub per CO; the sub travels with the money** (bid basis `field_2942` →
+  Proposal → Acceptance → CO auto-assign), not with the project.
+- **The CO scene (shipped 2026-07-07, PR #98)**: `view_4079` = the worksheet-v2
+  CO drafting surface (same object as view_3962 — config-only deployment);
+  `view_4084` = MDF/IDFs; `view_4086` = project install items (removal
+  source); `view_4088` = other project SOW/proposal items (adoption source).
+  view_4079 has its own `createMirror` instance (the field_1957 ↔ field_2197
+  cascade is mandatory on every view that edits this object).
+- **Not built yet**: CO add/adopt/remove flows (add CTA is suppressed via
+  `noAddItem`), the remaining Builder fields (CO Status, CO Action, Target
+  install item, Removed-by-CO, Proposal/Acceptance Type), all Make scenarios,
+  and the sub-facing view (⚠️ gated on Known Issue #17 — no worksheet-v2
+  surface to sub logins while the REST-key Builder snippet ships).
+
 ## Security & External Services
 
 ### ⚠️ Third-party image-resize proxy (proposal PDF Site Maps)

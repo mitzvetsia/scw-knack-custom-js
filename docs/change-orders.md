@@ -1,0 +1,354 @@
+# Change Orders — Design & Implementation Reference
+
+Design locked 2026-07-03 (planning session). First implementation phase shipped
+2026-07-07 (branch `claude/change-order-line-items-mt7w8f`, PR #98). This doc is
+the durable record of every decision, the current build state, and what's next.
+The compact version lives in CLAUDE.md ("Change Orders" section) — this is the
+full reference.
+
+## What this is
+
+Install-phase change orders: SCW ops (or the subcontractor) proposes **adds and
+removes** against the install scope ("What we're installing", view_4056). The CO
+is priced by the sub, sent to the client through **esignatures.com**, and on
+signature Make creates the **Xero invoice** and applies the changes to the
+install line items.
+
+## Locked decisions
+
+1. **Adds + removes only. No field-level MODIFY.** Modifications decompose:
+   - qty change → add/remove records (install items are ~one record per device;
+     each carries its own photos/QA/connections)
+   - config change (e.g. existing → with cabling) → a **swap**: linked remove +
+     add pair. On acceptance, Make copies carry-over state (photos connection,
+     MDF/IDF, connected-to, QA) from the removed record to its replacement via a
+     `replaces` link on the add line.
+   - price-only change → a money-only **adjustment** line (also needed for
+     invoice credits), not a record mutation.
+   Rationale: invoice math becomes trivial (adds = charges, removes = credits —
+   how Xero represents changes anyway); no client-side mutation of live install
+   records (avoids adding writers near the field_1957/field_2197 cascade,
+   Known Issue #12); adds reuse the entire existing line-item machinery; clean
+   audit trail. If true MODIFY is ever needed, the bid-revision pattern
+   (`action` + `current`/`requested` JSON + Make-applies-on-accept) bolts on
+   later without redesign.
+
+2. **A Change Order is a SOW subtype, not a new object.**
+   - CO header = a SOW record with `field_2952` Type (`base scope` /
+     `change order` — the first option was created as "proposal" and renamed
+     2026-07-03 because it collided with the Proposal snapshot object) plus CO
+     fields (CO Status, sub connection; Origin deferred — commercial fields
+     live on the Proposal/Acceptance chain, see decision 5).
+   - CO line items = the existing **SOW Line Item object**, connected via the
+     existing multi-SOW connection `field_2154`. ADDs are plain line items with
+     everything that implies (bucket rules, cabling, pickers, pricing,
+     accessories, the mirror cascade).
+   - Drafting a CO **is the build-SOW worksheet-v2 experience** on the CO's own
+     child page — NOT change-request badges/strips on view_4056. A new view of
+     the same object is nearly free in worksheet-v2; a new object would be
+     another Hybrid card fork (Known Issue #15).
+   - Cost accepted: every SOW-consuming surface (steppers, totals, SOW grids,
+     publish flows) needs a `Type ≠ Change Order` filter. Builder audit, one
+     time, mechanical. Write filters as **"is not change order"** so blank
+     Type fails safe; default `base scope`, backfill blanks.
+
+3. **The sub interacts directly with the CO's SOW line items.** No shadow
+   bid-item object for COs. The separate bid-item object existed for
+   competitive multi-sub bidding; a CO has one counterparty (the sub already on
+   the job) and merging their numbers back IS the job. Guardrails replacing the
+   shadow object:
+   - **Status machine gates edit windows** (see lifecycle) instead of separate
+     records handling concurrency.
+   - **Field exposure = write permission.** The sub-facing CO worksheet view
+     exposes only sub-editable fields (`subBid` field_2150, labor/notes).
+     Knack view-based PUTs only accept fields present on the view, so this is
+     enforcement, not cosmetics. Client money columns hidden via the existing
+     per-view `moneyMode`/`hideMoneyColumns` config.
+   - Accepted tradeoff: no immutable snapshot of the sub's quote. The signed CO
+     PDF is the durable artifact. If it matters later: lock `subBid` after a
+     "sub submitted" status flip.
+
+4. **One sub per CO.** A change spanning two subs = two COs. Per-line sub
+   assignment is rejected (infects visibility, pricing windows, the signed doc).
+
+5. **A CO rides the FULL existing acceptance chain: SOW → Proposal snapshot →
+   Acceptance record → apply.** (The real model: SOW → Proposal record
+   preserving scope + commercial terms → Acceptance record (accepted by/date,
+   agreement signed?, invoice paid?) → criteria met → install line items
+   created; all connected up to a Project.)
+   - Each CO send creates a **Proposal record** (the freeze — the client signs
+     a specific version; also buys the decline→revise→re-send loop, since the
+     working CO lines stay editable while sent snapshots are immutable).
+   - Each CO send creates an **Acceptance record** — the CO apply rides the
+     same criteria-met trigger as the original conversion. The apply is a
+     BRANCH of that scenario, not a clone: convert Add lines (+ swap
+     carry-over), stamp Removed-by-CO on Remove targets, invoice with credits.
+   - **The verb is "Issue", the record is still an Acceptance.** Sales Ops
+     "Issue Change Order" (from Ops Review, or Draft when no sub pricing is
+     needed) creates the Proposal snapshot (type=CO) + the Acceptance
+     (type=CO) in one gesture (the client deliberates AFTER send, so
+     publish/accept collapse), then the acceptance-created automation branches
+     on Type to send the CO agreement via esignatures.
+   - **Invoice timing: the CO branch defers Xero invoice creation to the
+     SIGNED webhook.** (Proposal flow invoices at acceptance-creation because
+     the client already committed; a CO at issue time is not yet agreed —
+     Declined is a live path.)
+   - **Apply gate: signature ALONE.** Original conversion keeps signed + paid;
+     the CO apply fires at signature so field work never stalls on payment
+     terms. The Acceptance **Type field is the SWITCH** the criteria automation
+     branches on (base scope → signed+paid → convert all; change order →
+     signed → apply branch + invoice). For a CO, "applied" and "complete" are
+     two milestones: signature → Applied + invoice created; payment-received
+     then closes the record as pure AR bookkeeping, gating nothing.
+   - **Type-stamp all three objects** (SOW field_2952 + a Type field on
+     Proposal and on Acceptance, stamped at creation): Knack view filters
+     can't see connected-record fields, so the "is not change order" audit
+     extends to Proposal- and Acceptance-listing surfaces.
+   - **No new commercial fields on the SOW.** Contract id / signed agreement /
+     Xero link already live on the acceptance surface (field_2766 agreement
+     signed, field_2765 payment received, field_2767 signed file, field_1847
+     Xero link).
+   - **CO Status on the SOW = operational rollup only.** Authoritative through
+     Ops Review (no Proposal exists yet); from Issued onward the
+     Proposal/Acceptance records are truth and Make advances the rollup.
+   - Install items created by a CO connect to the CO's Acceptance; with
+     Removed-by-CO on the flip side, every install-scope mutation traces to a
+     signed acceptance. The Project's Acceptance list thereby becomes the
+     complete commercial history: original + every CO.
+
+6. **Nothing mutates install scope until signature.** The CO lives entirely as
+   draft records on the side. The esignatures "contract signed" webhook → Make
+   does all state changes: convert adds → install line items (existing
+   proposal→install path, scoped to the CO; carry-over copy for swaps), flip
+   removed install records to `Removed by CO-###` (never delete), create the
+   Xero invoice from CO lines, mark CO Accepted, attach signed PDF.
+
+## Lifecycle
+
+```
+[ops]  Draft ─ Send to Sub → Pending Sub Pricing ─ sub submits pricing ─┐
+[ops]  Draft ─ (no sub pricing needed, e.g. pure removals) ─ Issue ─────┼─┐
+[sub]  Draft (origin: sub, priced while drafting) ─ sub submits CO ─────┘ │
+                                                                          ▼
+        Ops Review ─ Issue ─→ Issued ─ e-signed ─→ Accepted ─→ Applied
+        (or send back to        │
+         Pending Sub Pricing)   └─→ Declined (revise → re-issue) / Void
+```
+
+- Ops-originated COs that need no sub pricing (e.g. pure removals) are Issued
+  straight from Draft.
+- Both paths converge at **Ops Review — the UNIVERSAL pre-issue stage**
+  (replacing the dropped "Ready to Issue" hold state): ops vets the
+  fully-priced CO, may set client pricing / strike lines (safe — the client
+  freeze is the Proposal snapshot at Issue), exit = Issue or send back to
+  Pending Sub Pricing.
+- Edit windows: `Draft` = originator edits; `Pending Sub Pricing` = sub edits
+  sub fields only; `Ops Review` = ops edits, sub locked; `Issued` onward =
+  locked for both.
+- The two sub-facing buttons stay distinct: "Submit Pricing" (path A) vs
+  "Submit Change Order" (path B) — both write Ops Review.
+
+### Status discipline
+
+- **CO Status is a NEW, SEPARATE field — do NOT add options to the existing
+  SOW status field.** The two lifecycles are disjoint; merging creates options
+  whose validity depends on Type (unenforceable). A blank extra field on
+  base-scope SOWs costs nothing.
+- **`Sub Proposed` was dropped from the enum**: a sub-originated CO in
+  drafting is just `Draft` + `Origin = Subcontractor` — status = stage,
+  Origin = who started it. 8 options, each with exactly ONE writer:
+
+| Status | One writer | Means |
+|---|---|---|
+| Draft | record creation (either origin) | originator editing |
+| Pending Sub Pricing | ops "Send to Sub" | sub's window — subBid fields only |
+| Ops Review | the sub's submit (either path) | ops vets the priced CO; sub locked; exit = Issue or send back |
+| Issued | the Issue action | snapshot + acceptance created, e-sign sent |
+| Accepted | signed webhook (apply START) | signed; apply in flight — stuck here = apply failed |
+| Applied | apply branch END | install scope updated, invoice created |
+| Declined | esignatures decline webhook | revise working lines → re-issue |
+| Void | ops manual action | cancelled |
+
+- **Flags vs enum**: milestone-event facts stay FLAGS (agreement signed /
+  payment received — already on the Acceptance, already what automations
+  trigger on). The enum exists because drafting stages are mutually exclusive
+  AND the decline loop moves state backward, which flag combinations handle
+  badly. The enum is the display / stage rollup; the flags remain the triggers.
+
+## Where it lives (navigation / IA)
+
+- **No new main page.** The main-page trio (Build SOW → Reconcile Bids →
+  Manage Deployment) is phase-shaped; a CO is a side-loop hanging off Manage
+  Deployment, not a phase.
+- **The CO build surface is a drill-in child page** under Manage Deployment
+  (and later under the sub portal's deployment page for the sub-facing
+  variant).
+- **Manage Deployment gets a lightweight footprint only:** compact CO list
+  (number, status pill, origin, net amount, click-through), "New Change Order"
+  button, and later "Pending CO-###" chips on view_4056 cards.
+- **Cross-project CO queue**: NOT in v1. Day-one substitute is a Make
+  notification on sub-proposed submission.
+
+## Sub assignment chain
+
+**Rule: the sub travels with the money, not the project.** The project's sub
+connection is a routing default (survey requests); the commercial sub is
+decided when the team selects the BID BASIS at final quote, and flows forward:
+
+```
+Bid (a sub's priced offer)
+  └─ selected as bid basis at final quote      ← the award moment
+     └─ Proposal carries the sub
+        └─ Acceptance carries the sub          ← replaces today's project lookup
+           └─ apply stamps the awarded sub for the deployment
+              └─ COs auto-assign from the awarded sub (overridable in Draft)
+                 └─ CO's Proposal + Acceptance inherit the CO's sub
+```
+
+- SOW.sub = operative sub, **blank until known**: COs fill it at Draft;
+  base-scope SOWs stay blank during bidding (multiple bidders).
+- CO sub stays **editable in Draft** (specialty-work override); one sub per CO.
+- Auto-assign mechanic still to DECIDE: an **Awarded Subcontractor** connection
+  on the Project stamped by the original apply scenario, vs. v1 fallback of
+  filtering the add-CO form's sub dropdown to the project's subs.
+
+### Supporting bid-basis machinery (built during this work, 2026-07)
+
+The chain above is fed by the bid pipeline, which was hardened alongside the CO
+design:
+
+- **`field_2942`** (SOW → bid package) = the bid-basis connection, written by
+  `sub-bid-diff` on the Bid Review page (scene_1155) via view_3918.
+  **`field_2941`** = the SOW's review-snapshot JSON blob (basisBidId, diff data,
+  note, savedAt). Both are written in ONE PUT (atomicity — they previously
+  drifted via independent PUTs) and the publish gate blocks on blob-vs-field
+  mismatch.
+- **"Submitted is a ceremony" invariant**: bid-record artifact fields
+  (html/PDF/version counter) are only written by the sub's Finalize & Submit —
+  so anything stamped FROM the bid record was officially submitted, never a
+  draft-state comparison-grid read.
+- **`field_2954`** (tech group) lives on the BID record, stamped at bid
+  create; the publish payload reads it through the field_2942 basis connection
+  (view_3861). **`field_2955`** = DATE first bid submitted.
+- **"K1 Bid" sentinel**: every basis dropdown offers "K1 Bid" for SOWs with
+  genuinely no sub bid; selecting it ungates Publish Final and rides the
+  webhook so Make can branch on it.
+- Publish payload carries `subBidBasisId` (read from the saved field_2942
+  connection), sub identity, tech group, and the diff artifacts
+  (`subBidDiffDocHtml` etc. — internal-only; never spliced into client-facing
+  html/htmlPdf because it exposes subcontractor cost data).
+
+## Knack Builder state
+
+**Done (2026-07-03 → 07):**
+- SOW `field_2952` Type (`base scope` / `change order`) — created, option
+  renamed from "proposal", defaults/backfill/filter guidance issued.
+- The CO child page exists with: **view_4079** (CO line items), **view_4084**
+  (MDF/IDF locations), **view_4086** (project install line items), **view_4088**
+  (other project SOW/proposal line items). See "Implementation state".
+
+**Remaining Builder work:**
+- SOW: `CO Status` field (8 options per the table), connection → subcontractor.
+- SOW `Origin` (SCW / Subcontractor) — **DEFERRED to the sub-portal phase**
+  (no consumer in ops-only v1; blank never matches "Origin is Subcontractor",
+  so no backfill trap).
+- **No new Project connection** (SOW already connects to Project) and **no
+  "Original SOW" self-connection** (lineage is derivable per-line; a single
+  original is ill-defined on multi-SOW projects — field_2154 is multi).
+- Proposal object: `Type` (base scope / change order), stamped at creation.
+- Acceptance object: `Type` (same treatment); verify existing agreement /
+  payment / invoice fields cover the CO (expected: yes).
+- SOW Line Item object: `CO Action` (Add / Remove / Adjustment; **default
+  Add** — existing records are Adds with no backfill) + `Target install item`
+  connection (single) → install line item object. One field, action-dependent
+  meaning: on Remove = what gets removed; on Add = what this replaces (swap
+  link driving Make's carry-over copy). Blank on ordinary adds.
+- Install line item object: `Removed by Change Order` connection (single) →
+  SOW object; blank = active. Filter view_4056/view_3915 (+ install reports)
+  to "Removed by CO is blank".
+- App-wide `Type ≠ Change Order` filter audit on every SOW-consuming surface.
+- Confirm how Proposal + Acceptance records get created today (Make vs record
+  rules) — that's where the type stamp and the CO apply branch live.
+
+## Make scenarios (not started)
+
+1. **Send to sub** — notify sub, flip status.
+2. **Send to client (Issue)** — build the CO agreement (adds table +
+   removes/credits table + net change) via the existing esignatures
+   `document_elements` builder in `proposal-pdf-export.js` (~line 3645);
+   create the contract; flip status; store contract id.
+3. **Contract signed webhook** — the apply step (decision 6). Also handles
+   Declined.
+4. Confirm the existing proposal→install conversion can take "only items
+   connected to CO-###" as input — it's the acceptance hook.
+
+## Implementation state (bundle, as of 2026-07-07)
+
+Shipped in commit `2150b90a` (branch `claude/change-order-line-items-mt7w8f`,
+PR #98) — **the CO drafting worksheet renders; CO-specific flows are not
+built yet:**
+
+- **`worksheet-v2/config.js`** — deployment entry for `view_4079` (SAME SOW
+  Line Items object as view_3962/view_3586 → inherits `DEFAULT_FIELDS`
+  verbatim, build-SOW money model). `mdfSourceViewKey: 'view_4084'`
+  (label field_1642), `hideSow: true` (CO items group by MDF/IDF; SOW pills
+  are noise), `hideSourceAccordion: true` (full cutover), `noAddItem: true`
+  (add CTA suppressed until the CO add flow exists).
+- **`mirror-connection-sync.js`** — MODEL_ONLY `createMirror` instance for
+  view_4079 so Connected Devices edits through the CO worksheet fire the
+  mandatory field_1957 ↔ field_2197 cascade. No ACCESSORIES_* wired — the CO
+  scene has no hidden accessories grid yet (add a view_3888 analogue + config
+  if accessory regroups are needed there).
+- **`change-record-limit.js`** — view_4079/4084/4086/4088 forced to 1000
+  rows/page + pagination hidden (all read whole via the Backbone model).
+- **`worksheet-v2/styles.js`** — hides the native view_4079 grid/accordion and
+  the three data grids; all keep loading for their models.
+
+### The CO scene's view contract
+
+| View | Object | Role |
+|---|---|---|
+| view_4079 | SOW Line Items (same as view_3962/3586) | the CO worksheet — the ONLY write surface; needs every card column + inline editing, mirroring view_3962's column setup |
+| view_4084 | MDF/IDF locations | L1 group seeding (label field_1642) |
+| view_4086 | Install line items (project-connected) | read-only; **removal source** + "already installed" exclusion set |
+| view_4088 | Other SOW/proposal line items (project-connected) | read-only; **adopt-from-proposed-scope picker source** — items previously created/surveyed but never part of a greenlit SOW |
+
+The **adoption** concept (view_4088) was added 2026-07-07: besides brand-new
+adds, ops can pull in proposal line items that already exist on the project
+but never got installed (not part of a greenlit SOW).
+
+## Next build phases (in order)
+
+1. **CO add flows** — "add new line item" (native Knack add link the v2
+   toolbar clicks — see worksheet-v2/toolbar.js `handleAction 'add-sow'`) +
+   **adopt-from-proposal picker** sourcing view_4088 (canonical
+   `ns.picker.open`, default MDF/IDF grouping applies) + **remove picker**
+   sourcing view_4086 (creates Remove lines pointing at their Target install
+   item). Remove/adjustment lines need a small render branch: red-tinted
+   read-only card sourcing display data from the target install record.
+2. Make: send-to-client (Issue) + signed-webhook apply. First signable CO,
+   ops-only, skipping sub pricing.
+3. **Known Issue #17 migration on sub-reachable scenes** — ⚠️ PREREQUISITE
+   before any worksheet-v2 surface is served to subcontractor logins: the
+   `window.SCW.productBucketMap` Builder snippet ships the full-access REST
+   key to the browser. Same check for `dropPrefixOptions` (also carries the
+   role-filter TODO #11).
+4. Sub-facing CO view + status-window locking + sub-originated entry point.
+5. view_4056 chips ("Pending CO-###") + toolbar/card entry points ("New
+   Change Order" in the suppressed toolbar slot — worksheet-v2/toolbar.js:151
+   `noAddItem` comment anticipates this; "Remove via CO" on the card menu).
+6. Invoice wiring + adjustment lines + credit policy.
+
+## Open questions
+
+1. **Removal credit policy** — credit at original price, other amount, or $0 +
+   demob fee? Decides what money fields a Remove line carries and how the
+   client doc renders credits.
+2. **One open Draft CO per deployment?** Needed as the target for the
+   "Remove via CO" gesture from view_4056. Recommended: yes.
+3. **Proposal→install conversion trigger** — confirm what invokes it today and
+   that it can scope to a CO's items.
+4. **CO numbering** (CO-001 per deployment vs global) — display label on
+   documents, statuses, and chips.
+5. **Awarded-sub auto-assign mechanic** (Project connection stamped at apply
+   vs filtered dropdown) — see Sub assignment chain.
