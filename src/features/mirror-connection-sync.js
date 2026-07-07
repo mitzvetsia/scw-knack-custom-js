@@ -92,13 +92,32 @@
   //   2. A loud toast + a beforeunload prompt while count > 0 so the
   //      user notices and (hopefully) pauses before navigating.
   //
+  // Layer 2 applies ONLY to user-initiated cascades. Background repairs
+  // (the accessory-SOW reconcile sweep, which fires on page render) pass
+  // silent=true to cascadeBegin/cascadeEnd: they still count toward
+  // _cascadeInFlight so isCascadeInFlight() and the scw-cascade-idle
+  // broadcast stay correct, but they never show the toast or arm the
+  // unload prompt — "Saving changes" appearing on page load with zero
+  // user action was a reported bug.
+  //
   // The connection-picker has its own stage gate that keeps the modal
   // open until everything settles. But native inline edits and form
   // submits don't go through the picker, so the cascade fires-and-
   // forgets with no UI feedback at all without this tracker.
   // ======================================================================
 
-  var _cascadeInFlight   = 0;
+  var _cascadeInFlight   = 0;   // ALL in-flight cascade PUTs — drives
+                                // isCascadeInFlight() + the scw-cascade-idle
+                                // broadcast, so sweeps/refetches still gate
+                                // correctly on silent writes.
+  var _cascadeLoud       = 0;   // user-initiated subset — the ONLY writes
+                                // that show the toast + beforeunload prompt.
+                                // Background reconcile-sweep repairs are
+                                // silent: they're keepalive + idempotent and
+                                // simply re-run on the next load, so there's
+                                // nothing for the user to wait on ("Saving
+                                // changes" appearing on page load with zero
+                                // user action was the bug).
   var _cascadeToastEl    = null;
   var _cascadeUnloadBound = false;
   var CASCADE_TOAST_CSS_ID = 'scw-cascade-toast-css';
@@ -156,7 +175,7 @@
   }
 
   function cascadeUnloadHandler(e) {
-    if (_cascadeInFlight <= 0) return;
+    if (_cascadeLoud <= 0) return;
     // Modern browsers ignore the custom string but still show a generic
     // "Are you sure you want to leave?" prompt as long as we set
     // returnValue. The actual writes are protected by keepalive:true on
@@ -315,9 +334,11 @@
     window.removeEventListener('beforeunload', cascadeUnloadHandler);
   }
 
-  function cascadeBegin() {
+  function cascadeBegin(silent) {
     _cascadeInFlight++;
-    if (_cascadeInFlight === 1) {
+    if (silent) return;
+    _cascadeLoud++;
+    if (_cascadeLoud === 1) {
       showCascadeToast();
       bindCascadeUnloadGuard();
     }
@@ -327,10 +348,21 @@
   // Resolved + cleared when _cascadeInFlight hits 0.
   var _idleSubscribers = [];
 
-  function cascadeEnd() {
+  function cascadeEnd(silent) {
+    if (!silent) {
+      _cascadeLoud--;
+      if (_cascadeLoud <= 0) {
+        _cascadeLoud = 0;
+        hideCascadeToast();
+        unbindCascadeUnloadGuard();
+      }
+    }
     _cascadeInFlight--;
     if (_cascadeInFlight <= 0) {
       _cascadeInFlight = 0;
+      // Belt-and-braces: no writes of any kind left, so the loud UI must
+      // be gone even if a loud/silent pairing was ever mismatched.
+      _cascadeLoud = 0;
       hideCascadeToast();
       unbindCascadeUnloadGuard();
 
@@ -1917,8 +1949,12 @@
 
   /** PUT SOW_FIELD = sowIds on an accessory record (lives on
    *  ACCESSORIES_VIEW_ID, not VIEW_ID). Best-effort, mirrors
-   *  fireAccessoryPut. */
-  function fireAccessorySowPut(accessoryId, sowIds, onDone) {
+   *  fireAccessoryPut.
+   *  `silent` = background reconcile-sweep repair: still tracked in
+   *  _cascadeInFlight (idle event / sweep re-entry guard) but no toast
+   *  and no beforeunload prompt — the write is keepalive + idempotent
+   *  and re-runs on the next load if it's lost. */
+  function fireAccessorySowPut(accessoryId, sowIds, onDone, silent) {
     if (!ACCESSORIES_VIEW_ID || !accessoryId) {
       if (typeof onDone === 'function') onDone();
       return;
@@ -1929,13 +1965,14 @@
     }
     var body = {};
     body[SOW_FIELD] = sowIds || [];
-    log('  PUT(accessory SOW) → ' + accessoryId + ' SOW=' + JSON.stringify(sowIds));
-    cascadeBegin();
+    log('  PUT(accessory SOW) → ' + accessoryId + ' SOW=' + JSON.stringify(sowIds) +
+        (silent ? ' [silent sweep repair]' : ''));
+    cascadeBegin(silent);
     knackPutKeepalive(
       window.SCW.knackRecordUrl(ACCESSORIES_VIEW_ID, accessoryId),
       body,
       function (err) {
-        cascadeEnd();
+        cascadeEnd(silent);
         if (err) console.warn(LOG_PREFIX, 'accessory SOW PUT failed ' + accessoryId, err);
         else log('  PUT(accessory SOW) ok ' + accessoryId);
         if (typeof onDone === 'function') onDone(err);
@@ -2066,7 +2103,9 @@
         console.warn(LOG_PREFIX, 'accessory-SOW reconcile: accessory ' + attrs.id +
           ' SOWs [' + accSet + '] ≠ parent ' + parentId + ' [' + parentSet +
           '] — re-aligning to the parent\'s set');
-        fireAccessorySowPut(attrs.id, sowIdsFromAttrs(parentAttrs));
+        // silent=true: background repair on page render, NOT a user save —
+        // must not raise the "Saving changes — please don't leave" toast.
+        fireAccessorySowPut(attrs.id, sowIdsFromAttrs(parentAttrs), null, true);
         repaired++;
       }
       if (repaired) log('accessory-SOW sweep: ' + repaired + ' repair PUT(s) queued');
