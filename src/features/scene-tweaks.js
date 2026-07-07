@@ -721,6 +721,13 @@
     if (!document.getElementById('scw-ws-v2-view_3586')) return false;
     // accordion wrapping has run (the most visible transform)
     if (!scene.querySelector('.scw-ktl-accordion')) return false;
+    // workflow stepper applied — its applySteps pass runs on a delay
+    // (500ms after view_3827 / 800ms after scene render), later than the
+    // other transforms, and restyles the step accordions + forms. Without
+    // this gate the veil lifted first and the raw step forms flashed.
+    // #scw-step-initiate-install has no showWhen condition, so it exists
+    // on every SOW once applySteps has run.
+    if (!document.getElementById('scw-step-initiate-install')) return false;
     return true;
   }
   function scheduleReveal() {
