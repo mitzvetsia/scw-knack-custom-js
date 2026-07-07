@@ -365,8 +365,9 @@
     if (!panel) return;
     var banner = panel.querySelector('.scw-ws-v2-banner');
     if (!banner) return;
-    if (!banner.hasAttribute('data-scw-co-remove-collapsible')) {
-      banner.setAttribute('data-scw-co-remove-collapsible', '1');
+    // Caret + markers only; the click is DELEGATED (below) so it survives any
+    // banner rebuild. Idempotent via the caret guard.
+    if (!banner.querySelector('.scw-co-remove-caret')) {
       banner.classList.add('scw-co-remove-collapsible');
       banner.setAttribute('role', 'button');
       banner.setAttribute('tabindex', '0');
@@ -374,16 +375,29 @@
       caret.className = 'scw-co-remove-caret';
       caret.innerHTML = caretSvg();
       banner.insertBefore(caret, banner.firstChild);
-      banner.addEventListener('click', function () {
-        var collapsed = panel.classList.toggle('scw-ws-v2--co-remove-collapsed');
-        setCollapsed(viewKey, collapsed);
-      });
-      banner.addEventListener('keydown', function (e) {
-        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); banner.click(); }
-      });
     }
     panel.classList.toggle('scw-ws-v2--co-remove-collapsed', isCollapsed(viewKey));
   }
+
+  // Delegated collapse toggle — survives any banner rebuild.
+  function toggleCollapseFromEvent(e) {
+    var banner = e.target && e.target.closest &&
+      e.target.closest('.scw-ws-v2-banner.scw-co-remove-collapsible');
+    if (!banner) return;
+    var panel = banner.closest('.scw-ws-v2');
+    if (!panel || !panel.id) return;
+    var viewKey = panel.id.replace(/^scw-ws-v2-/, '');
+    var collapsed = panel.classList.toggle('scw-ws-v2--co-remove-collapsed');
+    setCollapsed(viewKey, collapsed);
+  }
+  document.addEventListener('click', toggleCollapseFromEvent);
+  document.addEventListener('keydown', function (e) {
+    if ((e.key === 'Enter' || e.key === ' ') && e.target &&
+        e.target.classList && e.target.classList.contains('scw-co-remove-collapsible')) {
+      e.preventDefault();
+      toggleCollapseFromEvent(e);
+    }
+  });
 
   function decorate(vcfg) {
     var viewKey = vcfg.sourceViewKey;

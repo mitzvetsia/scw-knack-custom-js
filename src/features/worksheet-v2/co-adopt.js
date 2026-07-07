@@ -449,8 +449,11 @@
     if (!panel) return;
     var banner = panel.querySelector('.scw-ws-v2-banner');
     if (!banner) return;
-    if (!banner.hasAttribute('data-scw-co-collapsible')) {
-      banner.setAttribute('data-scw-co-collapsible', '1');
+    // Caret + affordance markers only. The click is handled by a DELEGATED
+    // listener (below) rather than bound here — an element-bound handler is
+    // silently lost if the banner is ever rebuilt/replaced, which reads as
+    // "the collapse stopped working". Idempotent via the caret guard.
+    if (!banner.querySelector('.scw-co-adopt-caret')) {
       banner.classList.add('scw-co-adopt-collapsible');
       banner.setAttribute('role', 'button');
       banner.setAttribute('tabindex', '0');
@@ -458,18 +461,32 @@
       caret.className = 'scw-co-adopt-caret';
       caret.innerHTML = caretSvg();
       banner.insertBefore(caret, banner.firstChild);
-      banner.addEventListener('click', function () {
-        var collapsed = panel.classList.toggle('scw-ws-v2--co-collapsed');
-        setCollapsed(viewKey, collapsed);
-      });
-      banner.addEventListener('keydown', function (e) {
-        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); banner.click(); }
-      });
     }
     // Re-apply the persisted state on every render (the panel body is
     // rebuilt underneath us; the collapsed class rides on the panel root).
     panel.classList.toggle('scw-ws-v2--co-collapsed', isCollapsed(viewKey));
   }
+
+  // Delegated collapse toggle — survives any banner rebuild. Clicking anywhere
+  // on the adopt panel's banner toggles its collapsed state (persisted).
+  function toggleCollapseFromEvent(e) {
+    var banner = e.target && e.target.closest &&
+      e.target.closest('.scw-ws-v2-banner.scw-co-adopt-collapsible');
+    if (!banner) return;
+    var panel = banner.closest('.scw-ws-v2');
+    if (!panel || !panel.id) return;
+    var viewKey = panel.id.replace(/^scw-ws-v2-/, '');
+    var collapsed = panel.classList.toggle('scw-ws-v2--co-collapsed');
+    setCollapsed(viewKey, collapsed);
+  }
+  document.addEventListener('click', toggleCollapseFromEvent);
+  document.addEventListener('keydown', function (e) {
+    if ((e.key === 'Enter' || e.key === ' ') && e.target &&
+        e.target.classList && e.target.classList.contains('scw-co-adopt-collapsible')) {
+      e.preventDefault();
+      toggleCollapseFromEvent(e);
+    }
+  });
 
   function decorate(vcfg) {
     var viewKey = vcfg.sourceViewKey;

@@ -106,10 +106,10 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   //                    removal: true, triggeredBy: {...} }
   //   Response body: { success: true, created?: <count>, message?: "..." }
   //             or:  { success: false, error: "<message>" }
-  // PLACEHOLDER until the Make scenario + Builder fields (CO Action, Target
-  // install item, Removed by CO) exist — co-remove.js reports "not configured"
-  // while this contains PLACEHOLDER.
-  MAKE_CO_REMOVE_ITEMS_WEBHOOK: "PLACEHOLDER_CO_REMOVE_WEBHOOK_URL",
+  // Single-item and bulk removal fire the SAME payload shape (co-remove.js
+  // fireRemove builds it once): installItemIds is ALWAYS an array (one id or
+  // many), so Make can parse one way regardless of how many were selected.
+  MAKE_CO_REMOVE_ITEMS_WEBHOOK: "https://hook.us1.make.com/yw3x0othv8k4guke6qx91iyo3q5hgnyy",
   // Fires on the "Request Alternative Proposal" stepper action. Expects:
   //   Request body:  { sourceRecordId: <current SOW id>, notes: "<user input>", triggeredBy: {...} }
   //   Response body: { success: true, message?: "..." }
