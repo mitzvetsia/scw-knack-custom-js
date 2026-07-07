@@ -2325,6 +2325,25 @@
     PUBLIC_API_NAME:   'silentRegroupView4056'
   });
 
+  // view_4079 (Change Order line items — SAME SOW Line Items object as
+  // view_3962/view_3586, rendered by worksheet-v2 on the CO scene). The
+  // field_1957 ↔ field_2197 pair MUST cascade on every view that edits this
+  // object (CLAUDE.md) — without this instance, connection edits through the
+  // CO worksheet would drift the reciprocal side. MODEL_ONLY like view_3962
+  // (v2 renders; the native grid is hidden). No ACCESSORIES_* wired — the CO
+  // scene has no hidden accessories grid yet; add one (view_3888 analogue)
+  // + the ACCESSORIES_* config if accessory regroups are needed there.
+  createMirror({
+    VIEW_ID:             'view_4079',
+    TRIGGER_FIELD:       'field_1957',
+    CONNECTIONS_FIELD:   'field_2197',
+    GROUPING_FIELD:      'field_1946',
+    SOW_FIELD:           'field_2154',
+    LABEL_FIELD:         'field_1950',
+    MODEL_ONLY:          true,
+    PUBLIC_API_NAME:     'silentRegroupView4079'
+  });
+
   // Backward-compat alias for any lingering DevTools snippets that
   // referenced the old "silentPoll" name.
   window.SCW = window.SCW || {};

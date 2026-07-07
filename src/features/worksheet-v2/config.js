@@ -457,6 +457,34 @@
         }
       }
 
+      // ── Change Order line items (view_4079) ─────────────────────────
+      // SAME object as view_3962 / view_3586 (SOW Line Items) — inherits
+      // DEFAULT_FIELDS verbatim, build-SOW money model. The CO scene hosts:
+      //   view_4079 — line items connected to the CO (this worksheet — the
+      //               ONLY write surface; needs every card column + inline
+      //               editing, mirror view_3962's column setup)
+      //   view_4086 — install line items on the project (read-only; removal
+      //               source + "already installed" exclusion set)
+      //   view_4084 — MDF/IDF locations (L1 seeding, field_1642 label)
+      //   view_4088 — other SOW/proposal line items on the project
+      //               (read-only; adopt-from-proposed-scope picker source)
+      // view_4086/4088 are model-only (hidden by styles.js). The CO-specific
+      // flows (removals against view_4086, adoption from view_4088) are the
+      // next build phase — this entry lights up the worksheet itself.
+      ,{
+        enabled:            true,
+        sourceViewKey:      'view_4079',
+        mountAfterSelector: '#view_4079',
+        label:              'Change Order Line Items',
+        mdfSourceViewKey:   'view_4084',
+        mdfLabelField:      'field_1642',
+        hideSow:            true,   // CO items group by MDF/IDF; SOW pills are noise here
+        hideSourceAccordion: true,  // full cutover — hide the native grid + accordion
+        noAddItem:          true,   // CO add flow (new item / adopt-from-proposal) TBD
+        fields:  {},
+        buckets: {}
+      }
+
       // ── TEMPLATE (not yet enabled) — sales build-SOW page ───────────
       // Deploy target derived from view_3450. Fill in only the fields that
       // DIFFER from DEFAULT_FIELDS, the mount anchor, and the mdf source.
