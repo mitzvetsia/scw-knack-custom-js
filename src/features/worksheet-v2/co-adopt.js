@@ -136,13 +136,54 @@
       '}',
 
       // Description stacked beneath the product — compact caption styling.
+      // The transform/spacing resets also shield the desc from the tag
+      // cell's chip styling on services rows (uppercase/letter-spacing).
       '.scw-co-adopt-stacked-desc { margin-top: 3px; }',
       '.scw-co-adopt-stacked-desc textarea {',
-      '  font-size: 11px !important; line-height: 1.35 !important;',
+      '  font: 400 11px/1.35 system-ui, -apple-system, sans-serif !important;',
       '  color: #64748b !important;',
+      '  text-transform: none !important; letter-spacing: normal !important;',
       '  min-height: 0 !important; height: auto !important;',
       '  max-height: 4.2em !important; overflow: hidden !important;',
       '  padding: 0 !important; width: 100% !important;',
+      '}',
+      // Hide fully-empty stacked descriptions so default rows without a
+      // labor description don\'t reserve dead space under the product.
+      '.scw-co-adopt-stacked-desc[data-scw-co-adopt-empty] { display: none !important; }',
+
+      // Services rows: unbox the "Service" tag chip when the description
+      // stacks inside it — the purple box was wrapping both. The word
+      // keeps its stock small-caps look; the desc resets above.
+      '.scw-ws-v2--readonly .scw-ws-v2-row[data-scw-co-adopt-row] > .scw-co-adopt-tagstack {',
+      '  background: transparent !important;',
+      '  border: none !important;',
+      '  padding: 0 !important;',
+      '  display: flex !important; flex-direction: column !important;',
+      '  align-items: stretch !important;',
+      '}',
+
+      // Assumptions rows keep the desc as a DIRECT child (see
+      // restructureRow) — re-pin the stock 3/10 span to the new
+      // checkbox-shifted template: cols 4 (product track) through 9
+      // (fee), SOW stays at 10. Loaded after styles.js, so this later
+      // equal-importance rule wins.
+      '.scw-ws-v2--readonly .scw-ws-v2-row--assumptions[data-scw-co-adopt-row] > .scw-ws-v2-cell--labor-desc {',
+      '  grid-column: 4 / 10 !important;',
+      '}',
+
+      // Empty money cells (no Sub Bid / +Hrs / +Mat value): the borderless
+      // read-only input is invisible, which left orphan "$" glyphs and a
+      // strange dead zone. Hide the glyph/input/total and show a faint
+      // dash so the column reads as deliberately empty.
+      '.scw-ws-v2--readonly [data-scw-co-adopt-row] .scw-ws-v2-cell--stack[data-scw-co-adopt-empty] .scw-ws-v2-currency-glyph,',
+      '.scw-ws-v2--readonly [data-scw-co-adopt-row] .scw-ws-v2-cell--stack[data-scw-co-adopt-empty] input,',
+      '.scw-ws-v2--readonly [data-scw-co-adopt-row] .scw-ws-v2-cell--stack[data-scw-co-adopt-empty] .scw-ws-v2-stack-total {',
+      '  display: none !important;',
+      '}',
+      '.scw-ws-v2--readonly [data-scw-co-adopt-row] .scw-ws-v2-cell--stack[data-scw-co-adopt-empty]::after {',
+      '  content: \'—\';',
+      '  display: block; text-align: center;',
+      '  color: #cbd5e1; font-size: 11px;',
       '}',
 
       // Inline action column (rightmost)
@@ -223,11 +264,27 @@
   function restructureRow(row, rid, viewKey) {
     if (row.hasAttribute('data-scw-co-adopt-row')) return;
 
-    var prod = row.querySelector('.scw-ws-v2-cell--product, .scw-ws-v2-cell--tag');
-    var desc = row.querySelector('.scw-ws-v2-cell--labor-desc');
-    if (prod && desc) {
-      desc.classList.add('scw-co-adopt-stacked-desc');
-      prod.appendChild(desc);
+    // Variant-aware description stacking:
+    //  - default/cam rows: move the desc cell INSIDE the (real) product
+    //    cell so they share the wide track.
+    //  - services rows: same move into the "Service" tag cell, plus a
+    //    class that unboxes the tag chip (otherwise the desc inherits
+    //    purple/uppercase chip styling).
+    //  - assumptions rows: DON'T move. Their product cell is a hidden
+    //    blank (stock CSS display:none) — moving the desc there made the
+    //    text vanish and the surviving cells auto-flow into the wrong
+    //    tracks. The desc stays a direct child; injectStyles re-pins its
+    //    stock span (3/10) to the checkbox-shifted template (4/10).
+    if (!row.classList.contains('scw-ws-v2-row--assumptions')) {
+      var prod = row.querySelector('.scw-ws-v2-cell--product, .scw-ws-v2-cell--tag');
+      var desc = row.querySelector('.scw-ws-v2-cell--labor-desc');
+      if (prod && desc) {
+        desc.classList.add('scw-co-adopt-stacked-desc');
+        prod.appendChild(desc);
+        if (prod.classList.contains('scw-ws-v2-cell--tag')) {
+          prod.classList.add('scw-co-adopt-tagstack');
+        }
+      }
     }
 
     var check = document.createElement('label');
@@ -290,6 +347,32 @@
     }
   }
 
+  // Tag empty money stacks + empty stacked descriptions so the CSS can
+  // swap invisible inputs / orphan "$" glyphs for a faint dash (or hide
+  // the dead space entirely). Values are read-only here, so a per-render
+  // classification stays accurate.
+  function markEmptyCells(row) {
+    var stacks = row.querySelectorAll('.scw-ws-v2-cell--stack');
+    for (var i = 0; i < stacks.length; i++) {
+      var input = stacks[i].querySelector('input');
+      var val = input ? String(input.value || '').trim() : '';
+      if (!input || val === '' ) {
+        stacks[i].setAttribute('data-scw-co-adopt-empty', '1');
+      } else {
+        stacks[i].removeAttribute('data-scw-co-adopt-empty');
+      }
+    }
+    var desc = row.querySelector('.scw-co-adopt-stacked-desc');
+    if (desc) {
+      var ta = desc.querySelector('textarea');
+      if (ta && String(ta.value || '').trim() === '') {
+        desc.setAttribute('data-scw-co-adopt-empty', '1');
+      } else {
+        desc.removeAttribute('data-scw-co-adopt-empty');
+      }
+    }
+  }
+
   function decorate(vcfg) {
     var viewKey = vcfg.sourceViewKey;
     var container = document.getElementById('scw-ws-v2-' + viewKey);
@@ -315,6 +398,7 @@
       if (!row || !rec) continue;
       restructureRow(row, rid, viewKey);
       setRowState(row, rid, viewKey, isOnCo(rec, coId));
+      markEmptyCells(row);
     }
 
     // Keyboard belt for the readOnly lockdown: pointer-events CSS blocks
