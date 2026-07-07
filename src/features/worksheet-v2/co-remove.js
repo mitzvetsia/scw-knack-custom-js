@@ -222,6 +222,55 @@
     return byId;
   }
 
+  // ── TEMPORARY DIAGNOSTIC ─────────────────────────────────────────────
+  // The removal cards render through the shared install card path (same as the
+  // deploy page view_4093). Cards can only show fields the VIEW loads as
+  // columns — so if view_4086 is set up with a narrower column set, fields
+  // (Exterior / Existing / Plenum, and critically the bucket field that drives
+  // cam classification) come back undefined and render blank. This logs, once
+  // per page load, exactly which expected install fields view_4086 did NOT
+  // load, so the Builder view can be brought to parity. Remove once view_4086
+  // mirrors view_4093's columns.
+  var DIAG = true;
+  var _diagDone = {};
+  function diagnoseMissingFields(viewKey) {
+    if (!DIAG || _diagDone[viewKey]) return;
+    var recs = (ns.data && typeof ns.data.readRecords === 'function')
+      ? ns.data.readRecords(viewKey) : [];
+    if (!recs.length) return;   // no data yet — try again next render
+    _diagDone[viewKey] = true;
+
+    // Union of every key present across the loaded records = the view's
+    // column set (Knack view models carry only the exposed columns).
+    var present = {};
+    for (var i = 0; i < recs.length; i++) {
+      for (var k in recs[i]) present[k] = true;
+    }
+
+    var F = (ns.cfg && typeof ns.cfg.fields === 'function')
+      ? ns.cfg.fields(viewKey) : {};
+    var missing = [];
+    var seen = {};
+    for (var logical in F) {
+      var fk = F[logical];
+      if (!fk || seen[fk]) continue;
+      seen[fk] = true;
+      if (!present[fk] && !present[fk + '_raw']) {
+        missing.push(fk + '  (' + logical + ')');
+      }
+    }
+
+    if (missing.length) {
+      console.warn('[scw-co-remove] ' + viewKey + ' is missing ' + missing.length +
+        ' column(s) the install card reads — add these to ' + viewKey +
+        ' to match view_4093 (removal cards render blank for them):\n  ' +
+        missing.join('\n  '));
+    } else {
+      console.log('[scw-co-remove] ' + viewKey +
+        ' exposes every expected install field. ✓');
+    }
+  }
+
   // Whether an install item is ALREADY flagged for removal on this CO. Needs
   // the (not-yet-created) SOW Line Item → install "Target install item" field
   // to be reliable; view_4086 carries no back-pointer to it. Until that field
@@ -348,6 +397,8 @@
         'removal controls suppressed this render');
       return;
     }
+
+    diagnoseMissingFields(viewKey);   // TEMP: log columns view_4086 didn't load
 
     restructureHeaders(container);
 
