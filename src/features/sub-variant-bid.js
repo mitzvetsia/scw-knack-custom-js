@@ -36,6 +36,12 @@
     bidGridView:    'view_3507',   // BIDs accordion table
     itemGridView:   'view_3505',   // Survey line items / device worksheets
 
+    // TEMPORARILY DISABLED (2026-07-07, user request): hide the per-card
+    // "+ Variant" button on the survey/bid worksheet. Flip back to true to
+    // restore. Feature A (per-bid "Create Variant Bid" on view_3507) is
+    // unaffected.
+    itemVariantEnabled: false,
+
     // Make webhook URLs.
     // Bid-level variant (per-bid button on view_3507): full payload
     // with the array of originating line item ids — Make duplicates
@@ -904,6 +910,7 @@
   // ── FEATURE B — PER-CARD BUTTON ─────────────────────────
 
   function injectItemButtons() {
+    if (!CONFIG.itemVariantEnabled) return;
     var $view = $('#' + CONFIG.itemGridView);
     if (!$view.length) return;
     $view.find('tr.scw-ws-row').each(function () {
@@ -952,6 +959,7 @@
   var BID_STACK_CLASS = 'scw-svb-bid-stack';
   var _v2Mutating = false;
   function injectItemButtonsV2() {
+    if (!CONFIG.itemVariantEnabled) return;
     var container = document.getElementById(V2_PANEL_ID);
     if (!container) return;
     var cards = container.querySelectorAll('.scw-ws-v2-card[data-scw-ws-v2-record]');
