@@ -264,12 +264,12 @@
     // replaced by the v2 worksheet, which renders its own L1/grand
     // summaries. The v1 panel keyed off tr.scw-ws-row rows that no
     // longer exist there.
-    // Deploy / Install Line Items — view_3915. Install records have one
+    // Deploy / Install Line Items — view_4093. Install records have one
     // device per row with no quantity field, so qtyMode:'count' makes
     // each row contribute 1 to the Qty aggregation. No sub-bid field on
     // this object — the subbid column lands at 0 (the "Total Sub Bid"
     // header is misleading on this view but acceptable for v1).
-    'view_3915': {
+    'view_4093': {
       product:  'field_2790',
       qty:      'field_2819',   // unused when qtyMode='count'; harmless placeholder
       qtyMode:  'count',
@@ -284,8 +284,8 @@
   };
 
   // "WHAT WE'RE INSTALLING" (view_4056) shares the install line-item schema
-  // with view_3915 — alias rather than duplicate the field map.
-  FIELD_MAPS['view_4056'] = FIELD_MAPS['view_3915'];
+  // with view_4093 — alias rather than duplicate the field map.
+  FIELD_MAPS['view_4056'] = FIELD_MAPS['view_4093'];
 
   // Views that share another view\'s schema. Add an alias here instead
   // of duplicating the field map.
@@ -314,7 +314,7 @@
     return Object.prototype.hasOwnProperty.call(FIELD_MAPS, viewId) ||
            Object.prototype.hasOwnProperty.call(FIELD_ALIASES, viewId) ||
            viewId === 'view_3610' || viewId === 'view_3921';
-    // Note: view_3915 already has an explicit FIELD_MAPS entry, so it's
+    // Note: view_4093 already has an explicit FIELD_MAPS entry, so it's
     // matched by the first hasOwnProperty check.
   }
 
@@ -731,7 +731,7 @@
 
       // Qty column sums the per-row quantity, not record count. Rows
       // with a missing/zero qty contribute 0. Views whose underlying
-      // object has no quantity field (e.g. install records on view_3915,
+      // object has no quantity field (e.g. install records on view_4093,
       // one device per row) set qtyMode='count' to contribute 1/row.
       var qty = (fields.qtyMode === 'count')
         ? 1
@@ -860,7 +860,7 @@
   function buildPanelHtml(data, fields) {
     if (!data || !data.products.length) return '';
     // Views without a sub-bid field on their underlying object (e.g.
-    // view_3915 install records) suppress the Total Sub Bid column
+    // view_4093 install records) suppress the Total Sub Bid column
     // entirely — it'd just render as "$0.00" everywhere, which is
     // misleading.
     var hideSubbid = !!(fields && !fields.subbid);

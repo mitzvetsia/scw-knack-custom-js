@@ -112,7 +112,7 @@
         // install card; Mounting Hardware + Assumptions get simpler rows.
         // Field map mirrors the SOW/Survey worksheet concepts so the UI
         // is recognizable to anyone who's used the survey/SOW pages.
-        viewId: 'view_3915',
+        viewId: 'view_4093',
         layout: { productGroupWidth: '300px', detailGrid: '455px 1fr', labelInProductGroup: true, productEditable: false },
         // ── Main config: used for Camera or Reader rows ──
         fields: {
@@ -125,7 +125,7 @@
           // check = captured, amber warning = missing. Photo data is
           // scraped from the same field_2445/2446/2447 connection cells
           // that inline-photo-row reads, so they must remain as columns
-          // on view_3915 in the Builder.
+          // on view_4093 in the Builder.
           requiredPhotos:   { type: 'requiredPhotos', summary: true, label: 'QA', group: 'right', groupCls: 'sum-group--req-photos' },
           existingCabling:  { key: 'field_2807', type: 'readOnly', label: 'Existing cabling', showWhenFieldIsYes: 'field_2807' },
           exteriorChit:     { key: 'field_2805', type: 'readOnly', label: 'Exterior',         showWhenFieldIsYes: 'field_2805' },
@@ -170,13 +170,13 @@
         //   2. field_2819  – source-line label (E-001 …) so a camera
         //                    and its accessories stay adjacent within
         //                    the same bucket-sort tier
-        // Requires field_2218 to be exposed as a column on view_3915
+        // Requires field_2218 to be exposed as a column on view_4093
         // in Knack Builder so the worksheet can read each row's td.
         rowSort: [
           { field: 'field_2218', order: 'asc', type: 'number' },
           { field: 'field_2819', order: 'asc', type: 'text'   }
         ],
-        // Knack Builder's default table sort on view_3915 is field_2816
+        // Knack Builder's default table sort on view_4093 is field_2816
         // (SYS_auto increment) asc.  Without this flag, device-worksheet
         // detects th.sorted-asc on field_2816 and uses THAT as the sole
         // sort rule — silently overriding our rowSort.  forceRowSort:
@@ -6270,12 +6270,12 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
     // enabled AND has a CONFIG entry for the superseding source view,
     // bail out of v1\'s transformView entirely — no card builds, no
     // group-collapse, no photo strips, no DOM thrash on a hidden
-    // table. Now keyed for view_3915 (install) only — its v1 config block
+    // table. Now keyed for view_4093 (install) only — its v1 config block
     // still exists but bails here when v2 is enabled.
     // (view_3586/sales + view_3610/ops + view_3505/survey were fully removed —
     // their v1 config blocks are gone entirely, so they never reach here.)
     // Reversible: flip SCW.worksheetV2.CONFIG.enabled = false.
-    var V2_TAKEOVER = { view_3915: 'view_3915' };
+    var V2_TAKEOVER = { view_4093: 'view_4093' };
     var v2SourceKey = V2_TAKEOVER[viewCfg.viewId];
     if (v2SourceKey &&
         window.SCW && window.SCW.worksheetV2 &&

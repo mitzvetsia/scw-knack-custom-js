@@ -259,7 +259,7 @@
   }
 
   /** True when the deployment uses the install money model (moneyMode:'install',
-   *  view_3915 — Deploy / Install Line Items). The install object is a DIFFERENT
+   *  view_4093 — Deploy / Install Line Items). The install object is a DIFFERENT
    *  Knack object from the SOW line item and has NO money columns at all (no Sub
    *  Bid / +Hrs / +Mat / Fee / Labor / Ext / Bid). The summary row is just
    *  chevron · label (cam) · product (read-only) · labor-desc fill · warn ·
@@ -1816,8 +1816,8 @@
     '</div>';
   }
 
-  // ── Install card path (moneyMode:'install', view_3915) ─────────
-  // Mirrors the v1 device-worksheet (view_3915) config. The install object
+  // ── Install card path (moneyMode:'install', view_4093) ─────────
+  // Mirrors the v1 device-worksheet (view_4093) config. The install object
   // (Deploy / Install Line Items) has NO money columns — no Sub Bid/+Hrs/
   // +Mat/Fee/Labor/Ext/Bid — so the money region is fully suppressed. The
   // summary row is just:
@@ -1828,7 +1828,7 @@
   // config-qa-popover.js inject those into the card post-render. We only
   // produce a normal .scw-ws-v2-detail panel they can hook into.
   //
-  // Detail panel per bucket category (mirrors v1 view_3915 detailLayout):
+  // Detail panel per bucket category (mirrors v1 view_4093 detailLayout):
   //   cam:         Connected To (field_2821) + Existing/Exterior/Plenum
   //                chips (field_2807/2805/2806) + Drop Length (field_2804) +
   //                Conduit (field_2803) + Labor Desc (field_2809) +
@@ -1853,7 +1853,7 @@
   }
 
   // Read-only flag chit — rendered ONLY when the boolean is Yes (hidden when
-  // No; v1 view_3915 shows Existing/Exterior/Plenum as show-when-true READ-ONLY
+  // No; v1 view_4093 shows Existing/Exterior/Plenum as show-when-true READ-ONLY
   // chits, never editable). Not interactive (no data-scw-ws-v2-chip hook).
   function installFlagChit(rec, fieldKey, label) {
     if (readBool(rec, fieldKey) !== 'Yes') return '';
@@ -1924,14 +1924,14 @@
   function buildDetail_install(rec, viewKey, cat) {
     var F = fieldsFor(viewKey);
 
-    // Install detail = READ-ONLY info (per v1 view_3915). The ONLY editable
+    // Install detail = READ-ONLY info (per v1 view_4093). The ONLY editable
     // items are SCW Notes (header) and Connected Devices (network devices).
     // Connected To (field_2821) is read-only display (v1: connectedTo readOnly).
     var items = '';
 
     if (cat === 'cam') {
       // Connected To (field_2821, single → network device) — EDITABLE; the
-      // field_2820↔field_2821 cascade (createMirror VIEW_ID view_3915) keeps
+      // field_2820↔field_2821 cascade (createMirror VIEW_ID view_4093) keeps
       // the NVR/switch's Connected Devices in sync.
       items += sdItem(detailConnection(rec, viewKey, F.connectedDevice || 'field_2821',
         'Connected To', hasIssue(rec, 'disconnected')), 'scw-ws-v2-sd--conn');
@@ -2003,7 +2003,7 @@
     var sales   = isSalesMoney(sourceViewKey);
     var survey  = isSurveyMoney(sourceViewKey);
     var install = isInstallMoney(sourceViewKey);
-    // Survey object (view_3505) and install object (view_3915) each take a
+    // Survey object (view_3505) and install object (view_4093) each take a
     // dedicated row/detail path for every bucket category — their keys +
     // money model differ from the SOW object (install has NO money columns).
     if (survey) {

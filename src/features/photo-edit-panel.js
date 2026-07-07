@@ -25,7 +25,7 @@
   'use strict';
 
   var SAVE_VIEWS = {
-    view_3915: 'view_3937',   // deploy / implementation (scene_1311)
+    view_4093: 'view_3937',   // deploy / implementation (scene_1311)
     view_4056: 'view_3937',   // "WHAT WE'RE INSTALLING" (same scene)
     view_3962: 'view_3584',   // build-SOW scene DOC_photos grid
     view_3505: 'view_4070'    // survey scene DOC_photos grid

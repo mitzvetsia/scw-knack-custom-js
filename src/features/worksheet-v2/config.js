@@ -128,30 +128,30 @@
         buckets: {}
       }
 
-      // ── Deploy / Install Line Items (view_3915) ─────────────────────
+      // ── Deploy / Install Line Items (view_4093) ─────────────────────
       // DIFFERENT object from the SOW line item — install + QA records on
       // the deploy scene. independentFields:true means this `fields` map is
       // used AS-IS (no SOW fallback), so any omitted logical name resolves
       // undefined and its feature no-ops here (intended for the money
       // columns this object doesn't have). CUTOVER: v2 is now the primary
       // surface on the deploy scene — v1 device-worksheet bails via its
-      // V2_TAKEOVER entry, and styles.js hides the native #view_3915 table +
+      // V2_TAKEOVER entry, and styles.js hides the native #view_4093 table +
       // accordion. The install card path lives in card.js (moneyMode:'install');
       // Camera Config + QA fold in via install-config-subpanel/config-qa-popover
       // (dual-host). Reverse by flipping enabled:false here.
       ,{
         enabled:          true,
-        sourceViewKey:    'view_3915',
-        mountAfterSelector: '#view_3915',
+        sourceViewKey:    'view_4093',
+        mountAfterSelector: '#view_4093',
         label:            'Install Line Items',
         independentFields: true,            // different object — no DEFAULT_FIELDS fallback
         moneyMode:        'install',        // no money columns at all — card.js install path
         // Bulk photo upload context: the "+ Add Photos" toolbar button opens
         // SCW.bulkUpload against the DEPLOYMENT (linkField 'deploymentID' +
         // project/deployment id from the URL), NOT a SOW. See the
-        // 'view_3915_deploy' entry in bulk-upload.js CONFIG.VIEWS. The
+        // 'view_4093_deploy' entry in bulk-upload.js CONFIG.VIEWS. The
         // view_4056 clone below inherits this via the JSON deep-clone.
-        photoUploadView:  'view_3915_deploy',
+        photoUploadView:  'view_4093_deploy',
         hideSow:          true,             // install groups by MDF/IDF, not SOW
         noAddItem:        true,             // can't add to a deployment scope without a
                                             // change order — suppress the "+ Add to SOW"
@@ -539,8 +539,8 @@
   };
 
   // ── view_4056 ("WHAT WE'RE INSTALLING") — SAME object + field map as the
-  //    view_3915 install worksheet. Rather than duplicate the ~80-line install
-  //    config (and let the two drift), clone the view_3915 entry verbatim and
+  //    view_4093 install worksheet. Rather than duplicate the ~80-line install
+  //    config (and let the two drift), clone the view_4093 entry verbatim and
   //    swap only the source view key + mount anchor. Any future change to the
   //    install card config then applies to BOTH surfaces automatically. The
   //    install entry is pure data (no functions), so a JSON deep-clone is safe.
@@ -548,7 +548,7 @@
     var views = SCW.worksheetV2.CONFIG.views || [];
     var src = null;
     for (var i = 0; i < views.length; i++) {
-      if (views[i] && views[i].sourceViewKey === 'view_3915') { src = views[i]; break; }
+      if (views[i] && views[i].sourceViewKey === 'view_4093') { src = views[i]; break; }
     }
     if (!src) return;
     var clone = JSON.parse(JSON.stringify(src));
@@ -559,7 +559,7 @@
 
   // ── CO REMOVAL panel: project install line items (view_4086) ──────────
   //    The removal source on the CO drafting scene — SAME install object +
-  //    field map as view_3915, so clone that entry (keeps the two in sync)
+  //    field map as view_4093, so clone that entry (keeps the two in sync)
   //    and layer the read-only / removal overrides on top. Renders the
   //    project's active install line items as READ-ONLY cards with a per-
   //    card "− Remove" button + multi-select bulk (worksheet-v2/co-remove.js,
@@ -578,7 +578,7 @@
     var views = SCW.worksheetV2.CONFIG.views || [];
     var src = null;
     for (var i = 0; i < views.length; i++) {
-      if (views[i] && views[i].sourceViewKey === 'view_3915') { src = views[i]; break; }
+      if (views[i] && views[i].sourceViewKey === 'view_4093') { src = views[i]; break; }
     }
     if (!src) return;
     var clone = JSON.parse(JSON.stringify(src));

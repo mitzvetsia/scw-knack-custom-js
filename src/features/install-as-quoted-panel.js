@@ -1,7 +1,7 @@
 /*****  Install "As Quoted" Panel  *****************************************/
 /**
  * On the manage-deployment page (scene_1311), each install line item
- * (view_3915 / view_4056) was created from an "OG" proposed line item now
+ * (view_4093 / view_4056) was created from an "OG" proposed line item now
  * surfaced in the hidden grid view_4072. The install record points back to
  * its proposed record via field_2819 (holds the proposed record id).
  *
@@ -24,10 +24,10 @@
 (function () {
   'use strict';
 
-  // view_3915 = Implementation install worksheet; view_4056 = "WHAT WE'RE
+  // view_4093 = Implementation install worksheet; view_4056 = "WHAT WE'RE
   // INSTALLING" (same install object). No-ops on any scene where view_4072
   // isn't present (the proposed index comes back empty).
-  var INSTALL_VIEWS = ['view_3915', 'view_4056'];
+  var INSTALL_VIEWS = ['view_4093', 'view_4056'];
   var PROPOSED_VIEW = 'view_4072';     // hidden grid of the OG proposed line items
   var LINK_FIELD    = 'field_2819';    // on the install record → proposed record id
 

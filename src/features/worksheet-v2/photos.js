@@ -254,7 +254,7 @@
     if (survey) return '#' + survey + '/edit-doc-photo/' + photoRecordId + '/';
     var base = buildSowBasePath();
     if (!base) return '';
-    // Deploy scene (install line items, view_3915) uses edit-doc-photo3;
+    // Deploy scene (install line items, view_4093) uses edit-doc-photo3;
     // sales scope-of-work-details uses edit-doc-photo2; build-SOW uses edit-photo.
     var slug = isDeployBase(base) ? 'edit-doc-photo3'
       : (base.indexOf('scope-of-work-details') !== -1) ? 'edit-doc-photo2'
@@ -362,8 +362,8 @@
   // panel (qa-popover.js openForAnchor) on click. Mirrors the chit-state
   // model qa-popover.js uses (computeChitState). Only rendered when the
   // source view exposed QA columns (p.qaPresent) — i.e. the install
-  // worksheet (view_3915). Other surfaces render no chit.
-  var QA_CHIT_VIEWS = { view_3915: 1, view_4056: 1 };
+  // worksheet (view_4093). Other surfaces render no chit.
+  var QA_CHIT_VIEWS = { view_4093: 1, view_4056: 1 };
 
   function qaChitState(p) {
     if (!p.completed) return 'missing';

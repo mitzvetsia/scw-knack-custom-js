@@ -2335,7 +2335,7 @@
     PUBLIC_API_NAME:     'silentRegroupView3921'
   });
 
-  // view_3915 (INSTALL line items on the Implementation page).
+  // view_4093 (INSTALL line items on the Implementation page).
   // Same regroup semantics as the SOW/Survey worksheets, just bound
   // to the install-line-item field map:
   //   TRIGGER_FIELD     = field_2820  (REL_networking device → connection device)
@@ -2344,7 +2344,7 @@
   // No accessory cascade wired yet — add ACCESSORIES_* if/when mounting
   // hardware on the install side needs its MDF cascaded from the parent.
   createMirror({
-    VIEW_ID:           'view_3915',
+    VIEW_ID:           'view_4093',
     TRIGGER_FIELD:     'field_2820',
     CONNECTIONS_FIELD: 'field_2821',
     GROUPING_FIELD:    'field_2818',
@@ -2353,7 +2353,7 @@
   });
 
   // view_4056 ("WHAT WE'RE INSTALLING") — SAME install object + field map as
-  // view_3915, so it needs its own mirror instance to fire the field_2820↔2821
+  // view_4093, so it needs its own mirror instance to fire the field_2820↔2821
   // cascade when Connected Devices/To are edited through that view's pickers.
   createMirror({
     VIEW_ID:           'view_4056',

@@ -123,6 +123,48 @@ install line items.
    removed install records to `Removed by CO-###` (never delete), create the
    Xero invoice from CO lines, mark CO Accepted, attach signed PDF.
 
+7. **A removal is a Remove CO-line that TARGETS THE INSTALL RECORD; install
+   items never connect to a SOW.** (Decided 2026-07-07.) The concern "install
+   line items don't connect to a SOW, so how does a CO say it removes one?" is
+   answered by the join record, not a new install→SOW link:
+   - The removal is a **new SOW Line Item** (an ordinary CO line, `CO Action =
+     Remove`) carrying THREE links that together answer everything: → CO header
+     via `field_2154` ("which CO"); → the install record via `Target install
+     item` ("what gets un-installed"); and its own carried-over money ("the
+     credit"). The install object stays deployment-connected; the SOW↔install
+     relationship lives entirely on this CO-line + one back-stamp.
+   - **`Target install item` points at the INSTALL record, never the original
+     SOW line.** Removal is physically about un-installing a real thing, and the
+     install record is the on-site source of truth (it can have drifted from
+     what was quoted). Lineage to the original quote is **free**: the install
+     record already stores its originating SOW-line id in **`field_2819`** (used
+     by `install-as-quoted-panel.js`), so Make walks `Target install item →
+     field_2819 → original SOW line` for the quoted price. No second connection.
+   - **Model the install's SOW-side relationships as SEPARATE single-purpose
+     one-to-one fields — NEVER one multi-connection field.** From the install's
+     side: (a) `field_2819` → original SOW line (provenance, already exists);
+     (b) `Removed by Change Order` → CO header (scope flag, NEW). The
+     install→remove-LINE link needs **no new field** — it's the automatic
+     reciprocal of the CO-line's `Target install item`. Reasons not to merge:
+     the roles differ (provenance vs removal), the "blank = active" scope filter
+     REQUIRES the removal link to be its own field (a shared multi-field is
+     never blank), and removal is terminal/single (one CO removes an item — the
+     single-connection also guards against two COs claiming the same item).
+   - **Credit is flexible; default = original price, editable per line.**
+     (Resolves open question 1.) Because a Remove line IS a SOW Line Item on the
+     CO worksheet (view_4079), it already has editable money + inline editing.
+     Make seeds the default credit from `field_2819`'s original price (negated);
+     **sales ops adjusts the amount right on the CO worksheet** and records why
+     in `CO adjustment reason`. No special adjustment surface — it's just
+     editing the line.
+   - **Timing subtlety.** `Removed by Change Order` (header) flips at signature,
+     so it does NOT drive the draft panel's "already flagged" state — that reads
+     the reciprocal of `Target install item` from the CO side (a Remove line
+     already exists targeting this install on this CO). Post-signature, the
+     header flag drives the active-scope filter. (co-remove.js's
+     `remove.targetField` config hook is the seam for the draft-side read once
+     the field exists.)
+
 ## Lifecycle
 
 ```
@@ -261,11 +303,18 @@ design:
 - SOW Line Item object: `CO Action` (Add / Remove / Adjustment; **default
   Add** — existing records are Adds with no backfill) + `Target install item`
   connection (single) → install line item object. One field, action-dependent
-  meaning: on Remove = what gets removed; on Add = what this replaces (swap
-  link driving Make's carry-over copy). Blank on ordinary adds.
+  meaning: on Remove = **the install RECORD** that gets removed (NOT the
+  original SOW line — see decision 7); on Add = what this replaces (swap link
+  driving Make's carry-over copy). Blank on ordinary adds.
+- SOW Line Item object: `CO adjustment reason` (text) — why the removal credit
+  (or adjustment amount) was overridden away from the default. Blank on
+  unadjusted lines; filled by ops when they change the seeded credit. Rides
+  into the client doc + invoice. (See decision 7 / resolved open question 1.)
 - Install line item object: `Removed by Change Order` connection (single) →
-  SOW object; blank = active. Filter view_4056/view_3915 (+ install reports)
-  to "Removed by CO is blank".
+  **SOW object (the CO header)**; blank = active. Flips at **signature**, not at
+  draft. Filter view_4056/view_4093 (+ install reports) to "Removed by CO is
+  blank". (The draft-time "already flagged" state is read from the CO side —
+  the reciprocal of `Target install item` — NOT this field; see decision 7.)
 - App-wide `Type ≠ Change Order` filter audit on every SOW-consuming surface.
 - Confirm how Proposal + Acceptance records get created today (Make vs record
   rules) — that's where the type stamp and the CO apply branch live.
@@ -341,9 +390,13 @@ but never got installed (not part of a greenlit SOW).
 
 ## Open questions
 
-1. **Removal credit policy** — credit at original price, other amount, or $0 +
-   demob fee? Decides what money fields a Remove line carries and how the
-   client doc renders credits.
+1. ~~**Removal credit policy** — credit at original price, other amount, or $0 +
+   demob fee?~~ **RESOLVED 2026-07-07 (decision 7): flexible, default = original
+   price.** Make seeds the Remove line's credit from `field_2819`'s original
+   price (negated); ops can override the amount right on the CO worksheet
+   (view_4079) and records the why in `CO adjustment reason`. No fixed policy —
+   the Remove line is an editable SOW Line Item, so any of original / override /
+   $0-plus-demob is just what ops types.
 2. **One open Draft CO per deployment?** Needed as the target for the
    "Remove via CO" gesture from view_4056. Recommended: yes.
 3. **Proposal→install conversion trigger** — confirm what invokes it today and

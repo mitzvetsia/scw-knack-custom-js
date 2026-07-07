@@ -147,7 +147,7 @@
       '<div class="scw-ws-v2-toolbar-spacer"></div>' +
       '<div class="scw-ws-v2-toolbar-group scw-ws-v2-toolbar-group--cta">' +
         // "+ Add to SOW" is suppressed on views flagged noAddItem — the
-        // deploy/install grids (view_3915/view_4056), where you can't add to
+        // deploy/install grids (view_4093/view_4056), where you can't add to
         // the scope without a change order.
         ((_vc && _vc.noAddItem) ? '' :
           actionBtn('add-sow',    addLabel,               'Add a new line item')) +

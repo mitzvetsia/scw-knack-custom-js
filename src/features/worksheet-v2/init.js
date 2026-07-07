@@ -1441,11 +1441,11 @@
         }
       }
 
-      // ── Install object pickers (view_3915) ──────────────────────────
+      // ── Install object pickers (view_4093) ──────────────────────────
       // Connected Devices (field_2820, multi, NVR/switch side) + Connected To
       // (field_2821, single, cam/reader side). Candidates come from the loaded
-      // install records; PUT through view_3915 so mirror-connection-sync's
-      // field_2820↔field_2821 cascade fires (createMirror VIEW_ID view_3915).
+      // install records; PUT through view_4093 so mirror-connection-sync's
+      // field_2820↔field_2821 cascade fires (createMirror VIEW_ID view_4093).
       var _vcfgInstall = (ns.cfg && typeof ns.cfg.viewCfg === 'function')
         ? ns.cfg.viewCfg(viewKey) : null;
       if (_vcfgInstall && _vcfgInstall.moneyMode === 'install') {
@@ -1516,7 +1516,7 @@
             },
             multi: _iIsCD, onSaved: installRefetch,
             // Keep the modal open + locked until the field_2820↔field_2821
-            // reciprocal cascade settles (mirror-connection-sync view_3915/4056).
+            // reciprocal cascade settles (mirror-connection-sync view_4093/4056).
             awaitCascade: true
           });
           return;
