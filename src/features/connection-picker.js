@@ -617,11 +617,10 @@
   //                list and written by mirror-connection-sync on save)
   //   IDENTIFIER — human-readable label field for each candidate row
   var VIEW_CONFIGS = {
-    view_3586: {
-      TARGET: 'field_1957', RECIPROCAL: 'field_2197',
-      BUCKET: 'field_2219', GROUPING: 'field_1946',
-      IDENTIFIER: 'field_1950'
-    },
+    // view_3586 removed — hidden + fully replaced by the v2 worksheet,
+    // which has its own picker (worksheet-v2/picker.js) and drives the
+    // mirror cascade directly. The v1 picker only fires on native-table
+    // cell clicks, which can't happen on the hidden table.
     view_3610: {
       TARGET: 'field_1957', RECIPROCAL: 'field_2197',
       BUCKET: 'field_2219', GROUPING: 'field_1946',

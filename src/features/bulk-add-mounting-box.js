@@ -30,7 +30,9 @@
     'view_3505',
     'view_3512',
     'view_3313',
-    'view_3586',
+    // view_3586 removed — hidden + fully replaced by the v2 worksheet,
+    // which has its own bulk add-accessory flow (no KTL row checkboxes
+    // on the hidden native table anyway).
     'view_3610',
     'view_3921'
   ];

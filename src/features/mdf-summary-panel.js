@@ -260,26 +260,10 @@
       plenum:   'field_2371',
       subbid:   'field_2401'
     },
-    // SOW Line Items — sales portal (view_3586). Same schema as the
-    // 3610 family for product/qty/label/bucket/cabling/exterior, but
-    // the aggregation column reads field_2269 (line item total) since
-    // view_3586 doesn't expose field_2151 (sub bid total). Plenum
-    // (field_1983) may not appear on every row — aggregation treats
-    // missing cells as 0 which is correct here.
-    'view_3586': {
-      product:  'field_1949',
-      qty:      'field_1964',
-      label:    'field_1950',
-      bucket:   'field_2219',
-      sort:     'field_2218',
-      cabling:  'field_2461',
-      exterior: 'field_1984',
-      plenum:   'field_1983',
-      subbid:   'field_2269',
-      // view_3586 aggregates line-item totals (field_2269) rather than
-      // a sub-bid figure, so the column reads "Total" not "Total Sub Bid".
-      subbidLabel: 'Total'
-    },
+    // view_3586 (sales portal SOW Line Items) removed — hidden + fully
+    // replaced by the v2 worksheet, which renders its own L1/grand
+    // summaries. The v1 panel keyed off tr.scw-ws-row rows that no
+    // longer exist there.
     // Deploy / Install Line Items — view_3915. Install records have one
     // device per row with no quantity field, so qtyMode:'count' makes
     // each row contribute 1 to the Qty aggregation. No sub-bid field on
@@ -330,8 +314,8 @@
     return Object.prototype.hasOwnProperty.call(FIELD_MAPS, viewId) ||
            Object.prototype.hasOwnProperty.call(FIELD_ALIASES, viewId) ||
            viewId === 'view_3610' || viewId === 'view_3921';
-    // Note: view_3586 and view_3915 already have explicit FIELD_MAPS
-    // entries, so they're matched by the first hasOwnProperty check.
+    // Note: view_3915 already has an explicit FIELD_MAPS entry, so it's
+    // matched by the first hasOwnProperty check.
   }
 
   // Bucket id for cameras OR readers — only rows in this bucket

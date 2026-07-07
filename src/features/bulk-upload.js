@@ -121,7 +121,9 @@
         // handler walks contexts in order and uses the first that matches
         // the current URL.
         injectTargets: [
-          { viewId: 'view_3586', beforeText: 'Add to Scope of Work' },
+          // view_3586 target removed — the v1 surface is hidden by the v2
+          // cutover; the sales page opens this modal through worksheet-v2's
+          // toolbar (openBulkPhotoUpload → menuViewId view_3482) instead.
           {
             viewId: 'view_3610',
             beforeText: 'Add to Scope',
