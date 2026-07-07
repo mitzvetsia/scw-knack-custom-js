@@ -147,6 +147,7 @@ cat \
   src/features/proposal-type-chip.js \
   src/features/published-quote-info.js \
   src/features/ops-review-pill.js \
+  src/features/pq-expiration-edit.js \
   src/features/sow-grid-cards.js \
   src/features/mdf-idf-cards.js \
   src/features/files-gallery.js \
