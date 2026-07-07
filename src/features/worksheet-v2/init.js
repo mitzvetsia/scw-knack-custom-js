@@ -44,6 +44,10 @@
     var panel = document.createElement('div');
     panel.id = 'scw-ws-v2-' + vcfg.sourceViewKey;
     panel.className = 'scw-ws-v2';
+    // Read-only deployments (e.g. the CO adoption panel view_4088): the
+    // class drives styles.js's edit-affordance lockdown; co-adopt.js adds
+    // the keyboard belt (hard-disables inputs after each render).
+    if (vcfg.readOnly) panel.className += ' scw-ws-v2--readonly';
 
     var banner = document.createElement('div');
     banner.className = 'scw-ws-v2-banner';
@@ -181,13 +185,18 @@
     }
     if (vcfg.hideSourceAccordion) relocatePanelOutsideAccordion(key);
     // Mode/photos toolbar — mount idempotently above the L1 list.
-    if (ns.toolbar && typeof ns.toolbar.mount === 'function') {
+    // readOnly panels (CO adoption view_4088) skip the toolbar (its CTAs
+    // are all write actions), sort (persists prefs), native filters, and
+    // — critically — bulk below: bulk is a singleton keyed to ONE view, and
+    // a second panel on the same scene would clobber _sourceViewKey so the
+    // bulk modal served the wrong view's fields.
+    if (!vcfg.readOnly && ns.toolbar && typeof ns.toolbar.mount === 'function') {
       ns.toolbar.mount(key);
     }
-    if (ns.sort && typeof ns.sort.mount === 'function') {
+    if (!vcfg.readOnly && ns.sort && typeof ns.sort.mount === 'function') {
       ns.sort.mount(key);
     }
-    if (ns.nativeFilter && typeof ns.nativeFilter.mount === 'function') {
+    if (!vcfg.readOnly && ns.nativeFilter && typeof ns.nativeFilter.mount === 'function') {
       ns.nativeFilter.mount(key);
     }
     var _vcSow = (ns.cfg && typeof ns.cfg.viewCfg === 'function')
@@ -212,7 +221,8 @@
     // bulk.mount('view_3586') on the bid-review scene, clobbering
     // _sourceViewKey to a SALES view so the bulk modal serves SALES fields
     // (Custom Disc %, Label #) on the bid comparison grid.
-    if (ns.bulk && typeof ns.bulk.mount === 'function' &&
+    if (!vcfg.readOnly &&
+        ns.bulk && typeof ns.bulk.mount === 'function' &&
         document.getElementById('scw-ws-v2-' + key)) {
       ns.bulk.mount(key);
     }

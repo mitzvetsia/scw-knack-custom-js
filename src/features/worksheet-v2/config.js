@@ -480,7 +480,40 @@
         mdfLabelField:      'field_1642',
         hideSow:            true,   // CO items group by MDF/IDF; SOW pills are noise here
         hideSourceAccordion: true,  // full cutover — hide the native grid + accordion
-        noAddItem:          true,   // CO add flow (new item / adopt-from-proposal) TBD
+        noAddItem:          true,   // CO add flow (new item) TBD — adoption ships below
+        fields:  {},
+        buckets: {}
+      }
+
+      // ── CO adoption panel: previously quoted line items (view_4088) ──
+      // Second v2 panel on the CO scene (decision 2026-07-07: show adoptable
+      // items in the full device-worksheet style, NOT a modal picker). Renders
+      // the project's other SOW/proposal line items — quoted but never part of
+      // a greenlit SOW — as READ-ONLY cards with a per-card "+ Add to Change
+      // Order" button (worksheet-v2/co-adopt.js). Clicking connects the item
+      // to the CO by unioning field_2154 (Make webhook — same scenario as
+      // import-unique-items). Cards already connected to this CO hide
+      // automatically.
+      //
+      // readOnly:true (new flag): buildPanel stamps .scw-ws-v2--readonly
+      // (styles.js kills every edit affordance), init.js skips the toolbar /
+      // sort / native-filter / bulk mounts, and co-adopt.js hard-disables
+      // inputs after each render (keyboard belt). SOW pills + search stay —
+      // they're how ops finds items in a long quoted list.
+      ,{
+        enabled:            true,
+        sourceViewKey:      'view_4088',
+        mountAfterSelector: '#view_4088',
+        // If the hidden native grid is ever removed from the scene, mount
+        // after the CO worksheet instead of orphaning the panel.
+        mountAfterFallback: '#view_4079',
+        label:              'Previously Quoted Items — available to add',
+        mdfSourceViewKey:   'view_4084',
+        mdfLabelField:      'field_1642',
+        hideSourceAccordion: true,
+        noAddItem:          true,
+        readOnly:           true,
+        adopt:              { label: 'Add to Change Order' },
         fields:  {},
         buckets: {}
       }

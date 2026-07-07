@@ -1556,6 +1556,41 @@
     '.scw-ktl-accordion:has(#view_4088) { display: none !important; }',
     '#view_4088 { display: none !important; }',
 
+    /* ── Read-only panels (viewCfg.readOnly — e.g. the CO adoption panel
+       view_4088) ─────────────────────────────────────────────────────────
+       Every edit affordance is disabled but the cards stay fully readable
+       (repo locked-field convention: white inputs, no graying). Mouse path
+       killed here; co-adopt.js hard-disables the inputs after each render
+       so keyboard tab-and-type can\'t commit either. The card expand
+       chevron and the adopt button stay live. */
+    '.scw-ws-v2--readonly .scw-ws-v2-card input,',
+    '.scw-ws-v2--readonly .scw-ws-v2-card textarea,',
+    '.scw-ws-v2--readonly .scw-ws-v2-card select,',
+    '.scw-ws-v2--readonly .scw-ws-v2-card [data-scw-ws-v2-conn],',
+    '.scw-ws-v2--readonly .scw-ws-v2-card [data-scw-ws-v2-chip],',
+    '.scw-ws-v2--readonly .scw-ws-v2-card [data-scw-ws-v2-radiochip],',
+    '.scw-ws-v2--readonly .scw-ws-v2-card [data-scw-ws-v2-option],',
+    '.scw-ws-v2--readonly .scw-ws-v2-card [data-scw-ws-v2-bool] {',
+    '  pointer-events: none !important;',
+    '}',
+    '.scw-ws-v2--readonly .scw-ws-v2-card input,',
+    '.scw-ws-v2--readonly .scw-ws-v2-card textarea {',
+    '  background: #fff !important;',
+    '}',
+    /* Write-action affordances have no read value — remove them outright:
+       kebab menu (delete), add-accessory, mounting-hardware actions, and
+       the bulk-select checkbox (bulk never mounts on readOnly panels). */
+    '.scw-ws-v2--readonly [data-scw-ws-v2-kebab],',
+    '.scw-ws-v2--readonly [data-scw-ws-v2-add-accessory],',
+    '.scw-ws-v2--readonly [data-scw-ws-v2-mh-del],',
+    '.scw-ws-v2--readonly [data-scw-ws-v2-mh-unlink],',
+    '.scw-ws-v2--readonly [data-scw-ws-v2-mh-uparent],',
+    '.scw-ws-v2--readonly [data-scw-ws-v2-mh-parent],',
+    '.scw-ws-v2--readonly [data-scw-ws-v2-acc-step],',
+    '.scw-ws-v2--readonly [data-scw-ws-v2-select] {',
+    '  display: none !important;',
+    '}',
+
     '.scw-ws-v2-mh-step {',
     '  width: 16px !important; height: 18px !important;',
     '  padding: 0 !important;',
