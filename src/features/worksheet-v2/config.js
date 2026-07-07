@@ -599,13 +599,25 @@
     delete clone.questionnaire;
     delete clone.bulkFields;
     // Removal marker (co-remove.js selects views by this flag, mirroring the
-    // `adopt` flag on view_4088). targetField = the future SOW-Line-Item
-    // "Target install item" connection a Remove line points back through.
-    // It doesn't exist in the Builder yet, so leave it null — co-remove.js
-    // then can't detect already-flagged items and instead flips the row to a
-    // "✓ Flagged" pill optimistically after firing. Set this to the real
-    // field key once created to make the flagged state survive reloads.
-    clone.remove = { label: 'Remove from Change Order', targetField: null };
+    // `adopt` flag on view_4088).
+    //   targetField    = field_2966 "Target install item" — on the SOW Line
+    //                    Item (the Remove CO-line), single → install record.
+    //                    Make WRITES this when it creates the Remove line; it
+    //                    lives on the SOW-line object, NOT on the install
+    //                    record, so co-remove never reads it (kept here as the
+    //                    Make-contract reference).
+    //   removedByField = field_2967 "Removed by Change Order" — on the INSTALL
+    //                    record, single → SOW (CO header). Flips at signature.
+    //                    co-remove reads THIS to show the "✓ Flagged" pill /
+    //                    treat an item as already removed. (Draft-time "flagged
+    //                    on this unsigned CO" still relies on the optimistic
+    //                    post-fire flip until the field_2966 reciprocal is
+    //                    exposed on view_4086 — see docs/change-orders.md #7.)
+    clone.remove = {
+      label:          'Remove from Change Order',
+      targetField:    'field_2966',
+      removedByField: 'field_2967'
+    };
     views.push(clone);
   })();
 

@@ -302,19 +302,22 @@ design:
   payment / invoice fields cover the CO (expected: yes).
 - SOW Line Item object: `CO Action` (Add / Remove / Adjustment; **default
   Add** — existing records are Adds with no backfill) + `Target install item`
-  connection (single) → install line item object. One field, action-dependent
-  meaning: on Remove = **the install RECORD** that gets removed (NOT the
-  original SOW line — see decision 7); on Add = what this replaces (swap link
-  driving Make's carry-over copy). Blank on ordinary adds.
+  connection (single) → install line item object (**created: `field_2966`**).
+  One field, action-dependent meaning: on Remove = **the install RECORD** that
+  gets removed (NOT the original SOW line — see decision 7); on Add = what this
+  replaces (swap link driving Make's carry-over copy). Blank on ordinary adds.
 - SOW Line Item object: `CO adjustment reason` (text) — why the removal credit
   (or adjustment amount) was overridden away from the default. Blank on
   unadjusted lines; filled by ops when they change the seeded credit. Rides
   into the client doc + invoice. (See decision 7 / resolved open question 1.)
 - Install line item object: `Removed by Change Order` connection (single) →
-  **SOW object (the CO header)**; blank = active. Flips at **signature**, not at
-  draft. Filter view_4056/view_4093 (+ install reports) to "Removed by CO is
-  blank". (The draft-time "already flagged" state is read from the CO side —
-  the reciprocal of `Target install item` — NOT this field; see decision 7.)
+  **SOW object (the CO header)** (**created: `field_2967`**); blank = active.
+  Flips at **signature**, not at draft. Filter view_4056/view_4093 (+ install
+  reports) AND the removal source view_4086 to "Removed by CO is blank". (The
+  draft-time "already flagged" state is read from the CO side — the reciprocal
+  of `Target install item` — NOT this field; see decision 7.) co-remove.js
+  reads `field_2967` as its `remove.removedByField` for the flagged/exclusion
+  signal.
 - App-wide `Type ≠ Change Order` filter audit on every SOW-consuming surface.
 - Confirm how Proposal + Acceptance records get created today (Make vs record
   rules) — that's where the type stamp and the CO apply branch live.

@@ -271,18 +271,19 @@
     }
   }
 
-  // Whether an install item is ALREADY flagged for removal on this CO. Needs
-  // the (not-yet-created) SOW Line Item → install "Target install item" field
-  // to be reliable; view_4086 carries no back-pointer to it. Until that field
-  // exists (config remove.targetField), this can't tell — return false and let
-  // the optimistic post-fire flip carry the state within the session.
+  // Whether an install item is ALREADY removed by a change order. Reads the
+  // install record's `Removed by Change Order` (field_2967, remove.removedByField)
+  // — the one removal signal that lives ON the install record. It flips at
+  // SIGNATURE, so an item freshly flagged on the CURRENT unsigned CO won't read
+  // as removed here yet; the optimistic post-fire flip carries that within the
+  // session (durable draft-time detection needs the field_2966 reciprocal
+  // exposed on view_4086 — see docs/change-orders.md #7). view_4086 SHOULD also
+  // filter these out server-side ("Removed by CO is blank"); this is the belt.
   function isFlagged(rec, vcfg) {
-    var tf = vcfg && vcfg.remove && vcfg.remove.targetField;
-    if (!tf || !rec) return false;
-    var raw = rec[tf + '_raw'];
-    // If some future install-side "removed by CO" field is mapped here, a
-    // truthy value means flagged. Kept permissive so a single-connection or a
-    // yes/no both read as flagged.
+    var rb = vcfg && vcfg.remove && vcfg.remove.removedByField;
+    if (!rb || !rec) return false;
+    var raw = rec[rb + '_raw'];
+    // Permissive: a single-connection value or a yes/no both read as removed.
     if (Array.isArray(raw)) return raw.length > 0;
     return !!(raw && (raw.id || raw === true || raw === 'Yes'));
   }
