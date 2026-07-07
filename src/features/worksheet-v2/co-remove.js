@@ -189,7 +189,9 @@
       '}',
       '.scw-co-remove-caret svg { width: 12px; height: 12px; }',
       '.scw-ws-v2--co-remove-collapsed .scw-co-remove-caret { transform: rotate(-90deg); }',
-      '.scw-ws-v2--co-remove-collapsed .scw-ws-v2-body { display: none !important; }',
+      // Collapsed = ONLY the banner shows (search/filter strips are siblings
+      // of the body, so hide every panel child except the banner).
+      '.scw-ws-v2--co-remove-collapsed > *:not(.scw-ws-v2-banner) { display: none !important; }',
 
       // Bulk toolbar — reuses bulk.js's floating bottom-center classes for UI
       // continuity. Rose action + ghost Clear (destructive palette).

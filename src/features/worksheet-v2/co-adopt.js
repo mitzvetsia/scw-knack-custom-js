@@ -151,15 +151,21 @@
       // labor description don\'t reserve dead space under the product.
       '.scw-co-adopt-stacked-desc[data-scw-co-adopt-empty] { display: none !important; }',
 
-      // Services rows: unbox the "Service" tag chip when the description
-      // stacks inside it — the purple box was wrapping both. The word
-      // keeps its stock small-caps look; the desc resets above.
+      // Services rows: the "Service" label should READ AS THE PRODUCT (design
+      // request 2026-07-07) — not a centered purple chip. Unbox the tag and
+      // restyle the word to match a product name: left-aligned, normal case,
+      // dark product weight. The stacked desc keeps its own caption reset.
       '.scw-ws-v2--readonly .scw-ws-v2-row[data-scw-co-adopt-row] > .scw-co-adopt-tagstack {',
       '  background: transparent !important;',
       '  border: none !important;',
       '  padding: 0 !important;',
       '  display: flex !important; flex-direction: column !important;',
       '  align-items: stretch !important;',
+      '  text-align: left !important;',
+      '  text-transform: none !important;',
+      '  letter-spacing: normal !important;',
+      '  color: #0f172a !important;',
+      '  font: 600 13px/1.3 system-ui, -apple-system, sans-serif !important;',
       '}',
 
       // Non-cam product/tag placement — re-pin for the checkbox-shifted
@@ -264,7 +270,10 @@
       '}',
       '.scw-co-adopt-caret svg { width: 12px; height: 12px; }',
       '.scw-ws-v2--co-collapsed .scw-co-adopt-caret { transform: rotate(-90deg); }',
-      '.scw-ws-v2--co-collapsed .scw-ws-v2-body { display: none !important; }',
+      // Collapsed = ONLY the banner shows. The search bar + SOW filter pills
+      // mount as siblings of the body (direct children of the panel), so hide
+      // every panel child except the banner — not just the card body.
+      '.scw-ws-v2--co-collapsed > *:not(.scw-ws-v2-banner) { display: none !important; }',
 
       // Bulk toolbar — reuses bulk.js's floating bottom-center classes
       // (.scw-ws-v2-bulk-toolbar / --active) for UI continuity with the
