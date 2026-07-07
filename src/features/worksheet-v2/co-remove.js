@@ -132,6 +132,29 @@
       '  grid-column: 7 / 8 !important;',
       '}',
 
+      // ── Read-only design parity with the adoption panel ─────────────────
+      // The shared .scw-ws-v2--readonly rules flatten input bg/border, but the
+      // install card's SCW Notes is a full-column textarea (the ONE editable
+      // field on the deploy card) that still READS as a data-entry box: an
+      // empty one reserves a fixed 2-row area, so the panel looks fillable.
+      // Present it as plain wrapped read-only text like the adoption panel —
+      // natural height (empty collapses to nothing), no resize, muted color.
+      '.scw-ws-v2--readonly .scw-ws-v2-card--install .scw-ws-v2-input--textarea,',
+      '.scw-ws-v2--readonly .scw-ws-v2-card--install .scw-ws-v2-cell--install-scwnotes .scw-ws-v2-input--textarea {',
+      '  height: auto !important;',
+      '  min-height: 0 !important;',
+      '  field-sizing: content !important;',
+      '  resize: none !important;',
+      '  padding: 0 !important;',
+      '  color: #475569 !important;',
+      '  cursor: default !important;',
+      '}',
+      // The Notes cell no longer needs to stretch to fill the row height now
+      // that its textarea reads as text — keep it top-aligned like the others.
+      '.scw-ws-v2--readonly .scw-ws-v2-card--install .scw-ws-v2-cell--install-scwnotes {',
+      '  align-self: center !important;',
+      '}',
+
       // Checkbox column
       '.scw-co-remove-checkcell {',
       '  display: flex; align-items: center; justify-content: center;',
