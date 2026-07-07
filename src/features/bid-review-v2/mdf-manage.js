@@ -249,6 +249,13 @@
   function closePanels() {
     var rows = document.querySelectorAll('tr.' + ROW_CLS);
     for (var i = 0; i < rows.length; i++) rows[i].parentNode.removeChild(rows[i]);
+    // Restore the read-only surfaces a panel hid while it was open (header
+    // title, SCW Notes callout) — see the de-dupe block in openPanel.
+    var hid = document.querySelectorAll('[data-scw-mdf-dup-hidden]');
+    for (var h = 0; h < hid.length; h++) {
+      hid[h].style.display = '';
+      hid[h].removeAttribute('data-scw-mdf-dup-hidden');
+    }
   }
 
   function openPanel(gear) {
@@ -317,6 +324,31 @@
       '</div>';
     tr.appendChild(td);
     headerTr.parentNode.insertBefore(tr, headerTr.nextSibling);
+
+    // De-dupe while editing: the panel's inputs REPLACE the read-only display
+    // of the same values, so hide those for this group while the panel is
+    // open — the header's "TYPE: ## : name" title (the badge + Name input
+    // show the same thing editable) and the L1 detail band's SCW Notes
+    // callout (the Notes textarea edits it). Both are marked and restored
+    // by closePanels; a v2 grid rebuild recreates them fresh anyway.
+    function hideDup(el) {
+      if (!el) return;
+      el.setAttribute('data-scw-mdf-dup-hidden', '');
+      el.style.display = 'none';
+    }
+    hideDup(headerTr.querySelector('.scw-bid-review-v2__grp-title'));
+    var sib = tr.nextElementSibling;
+    while (sib && !sib.classList.contains('scw-bid-review-v2__group-header')) {
+      if (sib.classList.contains('scw-bid-review-v2__l1-detail-row')) {
+        var dSecs = sib.querySelectorAll('.scw-bid-review-v2__l1-detail-section');
+        for (var ds = 0; ds < dSecs.length; ds++) {
+          var dLbl = dSecs[ds].querySelector('.scw-bid-review-v2__l1-detail-label');
+          if (dLbl && /^scw notes$/i.test((dLbl.textContent || '').trim())) hideDup(dSecs[ds]);
+        }
+        break;
+      }
+      sib = sib.nextElementSibling;
+    }
 
     var saveBtn = td.querySelector('.' + P + '-btn--save');
     var status  = td.querySelector('.' + P + '-status');
