@@ -406,35 +406,65 @@
               return (er && (er.message || er.msg)) || (typeof er === 'string' ? er : '');
             }).filter(Boolean).join('; ');
           } catch (e) { /* not JSON */ }
-          // Definitive column check: a view's records carry an attribute for
-          // every column on the grid (even when blank). A sent field with NO
-          // attribute on the view's records isn't a column on this view at
-          // all — inline editing can't be enabled on a column that isn't there.
-          var missing = [];
+          // Introspect the view's LIVE schema — Knack ships it to the browser
+          // (Knack.views[k].model.view), so we can say exactly which
+          // precondition for a view-scoped PUT fails instead of guessing:
+          //   1. view type must be 'table' (lists/details can't take PUTs)
+          //   2. the view-level cell editor (inline editing) must be on
+          //   3. each sent field must be a column, without ignore_edit
+          var vinfo = null;
           try {
-            var vrecs = (ns.data && ns.data.readRecords)
-              ? (ns.data.readRecords(mdfViewKey()) || []) : [];
-            if (vrecs.length) {
-              var a0 = vrecs[0];
-              for (var mk in fields) {
-                if (!Object.prototype.hasOwnProperty.call(fields, mk)) continue;
-                if (!(mk in a0) && !((mk + '_raw') in a0)) missing.push(mk);
+            var kv = window.Knack && Knack.views && Knack.views[mdfViewKey()];
+            var vv = kv && kv.model && kv.model.view;
+            if (vv) {
+              vinfo = {
+                type: vv.type || '',
+                cellEditor: !!(vv.options && vv.options.cell_editor),
+                columns: {}
+              };
+              var cols = vv.columns || [];
+              for (var ci = 0; ci < cols.length; ci++) {
+                var col = cols[ci] || {};
+                var cf = (col.field && col.field.key) || col.id;
+                if (cf) vinfo.columns[cf] = { ignoreEdit: !!col.ignore_edit };
               }
             }
           } catch (e) { /* best-effort */ }
+          var problems = [];
+          if (vinfo) {
+            if (vinfo.type && vinfo.type !== 'table') {
+              problems.push(mdfViewKey() + ' is a "' + vinfo.type + '" view — record ' +
+                'PUTs need an inline-editable grid (table). Use/add a grid of MDF/IDF ' +
+                'locations on this scene instead.');
+            } else if (!vinfo.cellEditor) {
+              problems.push('inline editing (cell editor) is OFF on ' + mdfViewKey() +
+                ' as this page loaded it — enable it in Builder, then hard-refresh.');
+            } else {
+              for (var pk in fields) {
+                if (!Object.prototype.hasOwnProperty.call(fields, pk)) continue;
+                var colInfo = vinfo.columns[pk];
+                if (!colInfo) {
+                  problems.push(pk + ' is not a column on ' + mdfViewKey() +
+                    ' — add it to the grid in Builder.');
+                } else if (colInfo.ignoreEdit) {
+                  problems.push(pk + '’s column on ' + mdfViewKey() +
+                    ' has inline editing disabled (column setting).');
+                }
+              }
+            }
+          }
           console.warn('[scw-brv2-mdf] save failed', {
             view: mdfViewKey(), recordId: rec.id, sent: fields,
             status: xhr && xhr.status, response: xhr && xhr.responseText,
-            fieldsNotOnView: missing
+            viewSchema: vinfo, problems: problems
           });
           var msg = 'Save failed (' + (xhr && xhr.status) + ')';
           if (srvMsg) msg += ': ' + srvMsg;
-          if (missing.length) {
-            msg += ' — ' + missing.join(', ') + ' is not a column on ' + mdfViewKey() +
-              '. Add it to that grid in Builder with inline editing enabled.';
-          } else if (!srvMsg) {
-            msg += ' — check that each edited column on ' + mdfViewKey() +
-              ' has its own inline-edit toggle enabled (see console for the sent fields).';
+          if (problems.length) {
+            msg += ' — ' + problems.join(' ');
+          } else if (!srvMsg || /invalid request/i.test(srvMsg)) {
+            msg += ' — view schema looks editable from here; see console ' +
+              '([scw-brv2-mdf]) for the sent fields + view schema snapshot.';
           }
           status.textContent = msg;
         }
