@@ -2025,6 +2025,16 @@ td.${P}-field-value--notes {
   border-color: #fca5a5 !important;
   box-shadow: 0 0 0 2px rgba(252, 165, 165, 0.25);
 }
+/* Calculated cell recalculating after a feeTrigger edit — a gentle pulse so
+   the totals visibly "register" while Knack recomputes them server-side. */
+.${P}-recalc {
+  animation: scwWsRecalcPulse 0.9s ease-in-out infinite;
+  border-radius: 4px;
+}
+@keyframes scwWsRecalcPulse {
+  0%, 100% { background-color: rgba(99, 102, 241, 0.06); }
+  50%      { background-color: rgba(99, 102, 241, 0.18); }
+}
 .${P}-direct-error {
   font-size: 11px;
   color: #dc2626;
@@ -3805,6 +3815,15 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
       var desc = f[name];
       var fk = desc.key;
 
+      // Deferred fee refetch (opts.readOnlyOnly): patch ONLY calculated
+      // (readOnly) cells. The user's editable fields are authoritative from
+      // their own typing + the PUT that already saved them. A refetch that
+      // races ahead of Knack's async server-side commit/recalc would return a
+      // STALE editable value and write it back over what the user just typed —
+      // that's the "custom discount won't stick / have to refresh a lot" bug
+      // (field_2261, feeTrigger). Skip every non-readOnly field here.
+      if (opts.readOnlyOnly && desc.type !== 'readOnly') return;
+
       // ── readOnly fields: patch ALL matching tds (summary + detail) ──
       if (desc.type === 'readOnly') {
         var txt = displayText(fk);
@@ -4099,18 +4118,53 @@ ${WORKSHEET_CONFIG.views.map(function (v) {
   var FEE_REFETCH_DELAY_MS = 700;
   function scheduleFeeRefetch(viewId, recordId) {
     if (typeof Knack === 'undefined') return;
+    // Feedback: the calculated cells (applied discount, total, …) recompute
+    // server-side and land ~700ms later. Mark them "recalculating" now so the
+    // edit visibly registers instead of looking like it didn't take.
+    markRecalculating(viewId, recordId, true);
     setTimeout(function () {
       SCW.knackAjax({
         url: SCW.knackRecordUrl(viewId, recordId),
         type: 'GET',
         success: function (resp) {
-          patchCardFromResponse(viewId, recordId, resp);
+          // readOnlyOnly: refresh ONLY the calculated cells. Never re-write the
+          // user's editable fields from this deferred GET — see the guard in
+          // patchCardFromResponse ("won't stick" bug).
+          patchCardFromResponse(viewId, recordId, resp, { readOnlyOnly: true });
+          markRecalculating(viewId, recordId, false);
         },
         error: function (xhr) {
+          markRecalculating(viewId, recordId, false);
           console.warn('[scw-ws-fee] Refetch failed for ' + recordId, xhr && xhr.status);
         }
       });
     }, FEE_REFETCH_DELAY_MS);
+  }
+
+  /** Toggle a "recalculating" shimmer on a record's calculated (readOnly)
+   *  cells while the fee refetch is in flight. Purely visual feedback that the
+   *  downstream numbers are updating after a feeTrigger edit. */
+  function markRecalculating(viewId, recordId, on) {
+    var cfg = viewCfgFor(viewId);
+    if (!cfg || !cfg.fields) return;
+    var viewEl = document.getElementById(viewId);
+    var card = null;
+    var scope = viewEl || document;
+    var cards = scope.querySelectorAll('.' + P + '-card');
+    for (var ci = 0; ci < cards.length; ci++) {
+      var row = cards[ci].closest('tr');
+      if (row && getRecordId(row) === recordId) { card = cards[ci]; break; }
+    }
+    if (!card) return;
+    Object.keys(cfg.fields).forEach(function (name) {
+      var desc = cfg.fields[name];
+      if (desc.type !== 'readOnly') return;      // only calculated/derived cells
+      var tds = card.querySelectorAll('td.' + desc.key +
+        ', td[data-field-key="' + desc.key + '"]');
+      for (var ti = 0; ti < tds.length; ti++) {
+        tds[ti].classList.toggle(P + '-recalc', !!on);
+      }
+    });
   }
 
   /** Patch the label td text for a single record in the DOM. */
