@@ -1541,6 +1541,20 @@
        these rules + the view_3505 V2_TAKEOVER entry + hideSourceAccordion. */
     '.scw-ktl-accordion:has(#view_3505) { display: none !important; }',
     '#view_3505 { display: none !important; }',
+    /* Change Order scene — full cutover for the CO worksheet source
+       (view_4079, SOW Line Items connected to the CO) plus the scene\'s
+       model-only data grids: view_4084 (MDF/IDF locations — L1 seeding),
+       view_4086 (project install items — removal source), view_4088
+       (project SOW/proposal items — adoption source). All keep loading;
+       only their rendered areas are hidden. */
+    '.scw-ktl-accordion:has(#view_4079) { display: none !important; }',
+    '#view_4079 { display: none !important; }',
+    '.scw-ktl-accordion:has(#view_4084) { display: none !important; }',
+    '#view_4084 { display: none !important; }',
+    '.scw-ktl-accordion:has(#view_4086) { display: none !important; }',
+    '#view_4086 { display: none !important; }',
+    '.scw-ktl-accordion:has(#view_4088) { display: none !important; }',
+    '#view_4088 { display: none !important; }',
 
     '.scw-ws-v2-mh-step {',
     '  width: 16px !important; height: 18px !important;',

@@ -359,8 +359,19 @@
       bar.id = CFG.barId;
     }
 
-    // Move bar into the accordion body if not already there
-    if (bar.parentNode !== container) {
+    // Mount at the TOP of the worksheet builder (was pinned to the bottom):
+    // in the v2 container the bar sits above the grid body — before
+    // .scw-ws-v2-body when present (so the v2 toolbar stays first), else as
+    // the container's first child. The v1 accordion fallback keeps the old
+    // bottom placement.
+    if (v2c) {
+      var v2body = container.querySelector('.scw-ws-v2-body');
+      var anchor = (v2body && v2body.parentNode === container)
+        ? v2body : container.firstChild;
+      if (bar.parentNode !== container || bar.nextSibling !== anchor) {
+        container.insertBefore(bar, anchor);
+      }
+    } else if (bar.parentNode !== container) {
       container.appendChild(bar);
     }
 

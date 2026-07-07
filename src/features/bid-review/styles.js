@@ -200,6 +200,9 @@
       '  font-size: 0;', /* hides any trailing text node */
       '}',
       '.scw-bid-review__sow-status .scw-pq-pdf:hover { opacity: 1; }',
+      /* Internal sub-bid review PDF — indigo tint so it reads as a
+         different document than the client proposal PDF beside it. */
+      '.scw-bid-review__sow-status .scw-pq-pdf--review { color: #4f46e5; }',
       '.scw-bid-review__sow-metric-input:focus {',
       '  outline: none; border-color: #0d9488;',
       '  box-shadow: 0 0 0 2px rgba(13, 148, 136, 0.2);',

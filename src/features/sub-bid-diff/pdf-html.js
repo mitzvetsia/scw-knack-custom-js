@@ -124,50 +124,138 @@
     return h.join('\n');
   }
 
-  /** Diff render — distilled exceptions in the bid-PDF visual language. */
+  /** Diff render — SELF-STYLED: every visual attribute is inline, so the
+   *  fragment renders identically wherever it lands (spliced into the bid
+   *  document, the standalone diff doc, or a Make-side concatenation where
+   *  the PDF module strips <head> CSS). Class names stay for contexts where
+   *  getPdfCss IS in scope, but nothing here depends on it. Mirrors the
+   *  review-page panel: Status badge column, product sub-line, changed-field
+   *  chips, tally strip, colored Δ (pos → rose, neg → green — same
+   *  convention as sub-bid-diff/styles.js). */
+  var FONT  = 'font-family:Arial,Helvetica,sans-serif;';
+  var NAVY  = '#0f4c75', INK = '#0f172a', MUTED = '#64748b', LINE = '#e2e8f0';
+  function deltaColor(n) {
+    if (Math.abs(n || 0) <= (C.moneyEps || 0.005)) return '#475569';
+    if (n > 0) return (C.TIERS && C.TIERS.added && C.TIERS.added.color) || '#be123c';
+    return '#047857';
+  }
   function buildDiff(grid, pkgId, pkgName) {
     if (!grid || !pkgId || !ns.render || typeof ns.render.distill !== 'function') return '';
-    var res = ns.render.distill(grid, pkgId);
+    return renderDiffData(ns.render.distill(grid, pkgId), pkgName);
+  }
+
+  /** Diff render from an already-distilled result — also reachable from a
+   *  parsed field_2941 snapshot via renderDiffFromSnapshot below, so the
+   *  publish payload can REBUILD the diff HTML from the blob's structured
+   *  data instead of trusting the stored fragment (which comes back
+   *  tag-stripped when the blob read falls back to DOM textContent). */
+  function renderDiffData(res, pkgName) {
+    if (!res) return '';
     var T = C.TIERS || {};
     var h = [];
-    h.push('<div class="view-title">Sub-Bid Diff — ' + esc(pkgName || '') + '</div>');
-    h.push('<div class="l1-section">');
+    h.push('<div class="sbd-pdf" style="' + FONT + 'color:' + INK + ';">');
+    h.push('<div class="view-title" style="font-size:17px;font-weight:800;color:' + NAVY +
+           ';padding:0 0 8px;border-bottom:2px solid ' + NAVY + ';margin:0 0 12px;">' +
+           'Sub-Bid Diff — ' + esc(pkgName || '') + '</div>');
     if (!res.total) {
-      h.push('<div class="l2-header">✓ Basis bid matches the SOW — no labor or coverage differences.</div>');
+      h.push('<div style="font-size:12px;font-weight:600;color:#047857;">' +
+             '✓ Basis bid matches the SOW — no labor or coverage differences.</div>');
       h.push('</div>');
       return h.join('\n');
     }
     var c = res.counts || {};
-    h.push('<div class="l2-header">' +
-           (c.material || 0) + ' labor · ' + (c.spec || 0) + ' spec · ' +
-           (c.added || 0) + ' not bid · ' + (c.orphan || 0) + ' bid only · ' +
-           'labor Δ ' + signedMoney(res.laborDelta) + '</div>');
-    h.push('<table class="product-table">');
-    h.push('<thead><tr><th class="col-desc">Line item</th>' +
-           '<th class="col-qty">SOW labor</th><th class="col-cost">Sub bid</th>' +
-           '<th class="col-cost">Δ</th></tr></thead><tbody>');
+    function stat(n, label) {
+      return '<span style="display:inline-block;margin:0 18px 0 0;white-space:nowrap;">' +
+        '<span style="font-size:15px;font-weight:800;">' + n + '</span> ' +
+        '<span style="font-size:9.5px;font-weight:600;color:' + MUTED +
+        ';text-transform:uppercase;letter-spacing:.04em;">' + esc(label) + '</span></span>';
+    }
+    h.push('<div style="margin:0 0 12px;">' +
+      stat(c.added || 0, 'Not bid') +
+      stat(c.orphan || 0, 'Bid only') +
+      stat(c.material || 0, 'Labor change') +
+      stat(c.spec || 0, 'Spec change') +
+      '<span style="display:inline-block;white-space:nowrap;">' +
+        '<span style="font-size:15px;font-weight:800;color:' + deltaColor(res.laborDelta) + ';">' +
+          signedMoney(res.laborDelta) + '</span> ' +
+        '<span style="font-size:9.5px;font-weight:600;color:' + MUTED +
+        ';text-transform:uppercase;letter-spacing:.04em;">labor Δ (SOW − sub)</span></span>' +
+      '</div>');
+    var TH  = 'padding:6px 8px;font-size:9px;font-weight:700;text-transform:uppercase;' +
+              'letter-spacing:.05em;color:' + MUTED + ';border-bottom:2px solid ' + NAVY + ';';
+    var TD  = 'padding:6px 8px;border-bottom:1px solid ' + LINE + ';vertical-align:top;font-size:11px;';
+    var NUM = TD + 'text-align:right;white-space:nowrap;';
+    h.push('<table class="product-table" style="width:100%;border-collapse:collapse;">');
+    h.push('<thead><tr>' +
+      '<th style="' + TH + 'text-align:left;width:74px;">Status</th>' +
+      '<th style="' + TH + 'text-align:left;">Line item</th>' +
+      '<th style="' + TH + 'text-align:right;width:78px;">SOW labor</th>' +
+      '<th style="' + TH + 'text-align:right;width:78px;">Sub bid</th>' +
+      '<th style="' + TH + 'text-align:right;width:78px;">Δ</th>' +
+      '</tr></thead><tbody>');
     for (var i = 0; i < res.exceptions.length; i++) {
       var e = res.exceptions[i];
       var def = T[e.tier] || {};
-      var badge = '<span style="display:inline-block;padding:1px 7px;border-radius:999px;' +
-                  'font-size:9px;font-weight:700;color:#fff;background:' + (def.color || '#475569') +
-                  '">' + esc(def.label || e.tier) + '</span>';
-      var fields = (e.fields && e.fields.length)
-        ? ' <span style="color:#4f46e5;font-size:10px;">(' + esc(e.fields.join(', ')) + ')</span>' : '';
-      var note = e.note ? ' <span style="color:#94a3b8;font-size:10px;">' + esc(e.note) + '</span>' : '';
-      h.push('<tr class="l3-row"><td>' + badge + ' ' + esc(e.label) + fields + note + '</td>' +
-             '<td class="col-qty">' + (e.tier === 'orphan' ? '—' : money(e.sowFee)) + '</td>' +
-             '<td class="col-cost">' + (e.tier === 'added' ? '—' : money(e.bidLabor)) + '</td>' +
-             '<td class="col-cost">' + signedMoney(e.delta) + '</td></tr>');
+      var badge = '<span style="display:inline-block;padding:2px 8px;border-radius:999px;' +
+                  'font-size:9px;font-weight:700;color:#fff;white-space:nowrap;background:' +
+                  (def.color || '#475569') + ';">' + esc(def.label || e.tier) + '</span>';
+      var meta = '';
+      if (e.product) meta += '<div style="font-size:10px;color:' + MUTED + ';margin-top:1px;">' +
+                             esc(e.product) + '</div>';
+      if (e.fields && e.fields.length) {
+        meta += '<div style="font-size:9.5px;color:#4f46e5;margin-top:1px;">changed: ' +
+                esc(e.fields.join(', ')) + '</div>';
+      }
+      if (e.note) meta += '<div style="font-size:9.5px;color:#94a3b8;margin-top:1px;">' +
+                          esc(e.note) + '</div>';
+      h.push('<tr class="l3-row" style="page-break-inside:avoid;">' +
+        '<td style="' + TD + '">' + badge + '</td>' +
+        '<td style="' + TD + '"><div style="font-weight:600;">' + esc(e.label) + '</div>' + meta + '</td>' +
+        '<td style="' + NUM + '">' + (e.tier === 'orphan' ? '—' : money(e.sowFee)) + '</td>' +
+        '<td style="' + NUM + '">' + (e.tier === 'added' ? '—' : money(e.bidLabor)) + '</td>' +
+        '<td style="' + NUM + 'font-weight:700;color:' + deltaColor(e.delta) + ';">' +
+          signedMoney(e.delta) + '</td></tr>');
     }
     h.push('</tbody></table>');
-    h.push('<div class="l1-footer"><div class="l1-footer-line l1-line--final">' +
-           '<span class="l1-footer-label">Labor Δ (SOW − sub)</span>' +
-           '<span class="l1-footer-value">' + signedMoney(res.laborDelta) + '</span></div></div>');
+    h.push('<div style="margin:10px 0 0;padding:8px 10px;background:#f8fafc;border:1px solid ' +
+           LINE + ';text-align:right;font-size:12px;page-break-inside:avoid;">' +
+      '<span style="font-weight:700;">Labor Δ (SOW − sub)&nbsp;&nbsp;</span>' +
+      '<span style="font-weight:800;color:' + deltaColor(res.laborDelta) + ';">' +
+        signedMoney(res.laborDelta) + '</span></div>');
     h.push('</div>');
     return h.join('\n');
   }
 
-  ns.pdfHtml = { buildBid: buildBid, buildDiff: buildDiff };
+  /** Rebuild the diff HTML from a parsed field_2941 snapshot blob. The
+   *  blob's structured data (counts / exceptions / laborDelta) survives any
+   *  read-path mangling because it's plain text — unlike the embedded
+   *  bidHtml/diffHtml fragments, which lose their tags when the blob is
+   *  recovered from the rendered DOM. Per-exception notes aren't stored on
+   *  the blob; the coverage-tier ones are derivable. */
+  function renderDiffFromSnapshot(snap) {
+    if (!snap || !snap.basisBidId) return '';
+    var res = {
+      total: Number(snap.total) || 0,
+      counts: snap.counts || {},
+      laborDelta: Number(snap.laborDelta) || 0,
+      exceptions: (snap.exceptions || []).map(function (e) {
+        return {
+          tier: e.tier, label: e.label, product: e.product,
+          fields: e.fields || [], sowFee: e.sowFee, bidLabor: e.bidLabor,
+          delta: e.delta,
+          note: e.tier === 'added' ? 'not on basis bid'
+              : (e.tier === 'orphan' ? 'not on this SOW' : '')
+        };
+      })
+    };
+    return renderDiffData(res, snap.basisBidName || '');
+  }
+
+  ns.pdfHtml = {
+    buildBid: buildBid,
+    buildDiff: buildDiff,
+    renderDiffData: renderDiffData,
+    renderDiffFromSnapshot: renderDiffFromSnapshot
+  };
 })();
 /*** END SUB-BID DIFF — PDF HTML RENDERS *************************************/

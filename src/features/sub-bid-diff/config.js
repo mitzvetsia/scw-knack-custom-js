@@ -59,7 +59,13 @@
       pkgName:       'field_2636',  // friendly name (BD-1, BD-2…)
       pkgStatus:     'field_2550',  // Bid status (free text — no enum)
       pkgToSow:      'field_2387',  // REL_SOW
-      pkgPdf:        'field_2626'   // Current Bid PDF (file)
+      pkgPdf:        'field_2626',  // Current Bid PDF (file)
+      // Bid package -> subcontractor connection. SET THIS once the field
+      // exists on the bid object AND is exposed as a column on view_3573:
+      // the field_2941 snapshot then carries basisSubId/basisSubName, and
+      // the publish payload's subBidBasisSubId/subBidBasisSubName populate
+      // so Make can stamp the proposal with the quoted subcontractor.
+      pkgSub:        ''
     },
 
     // ── Explicit "basis bid" designation ──────────────────────────────

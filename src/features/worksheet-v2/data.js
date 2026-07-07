@@ -145,6 +145,15 @@
     var list = subscribers[sourceViewKey];
     if (!list || !list.length) return;
     bindChangeTracking(sourceViewKey);
+    // Re-assert still-live optimistic writes on EVERY render, not only the
+    // data-layer's own refetch paths. Plenty of OTHER features call
+    // model.fetch() on a source view directly (revision polling, bid-gate
+    // refresh, record-limit bump, mirror-sync resync…) — each ends in a
+    // knack-view-render → notify → rebuild that used to bypass the overlay,
+    // so a fetch whose response predated a just-committed PUT would repaint
+    // the stale value ("edit flashes green then reverts"). Applying the
+    // overlay here makes every rebuild honor writes newer than the TTL.
+    applyPendingOverlay(sourceViewKey);
     var records = readRecords(sourceViewKey);
     for (var i = 0; i < list.length; i++) {
       try { list[i](sourceViewKey, records); }
@@ -274,8 +283,17 @@
         if (!pw || (now - pw.ts) > PENDING_TTL_MS) { delete fields[fk]; continue; }
         if (!rec) continue;                       // record not in this fetch — keep entry
         var attrs = rec.attributes || rec;
-        attrs[fk] = pw.raw;
-        attrs[fk + '_raw'] = pw.raw;
+        // Only touch (and dirty-flag) records a fetch actually reverted —
+        // same-ref values mean the optimistic patch is still in place.
+        if (attrs[fk] !== pw.raw || attrs[fk + '_raw'] !== pw.raw) {
+          attrs[fk] = pw.raw;
+          attrs[fk + '_raw'] = pw.raw;
+          markDirty(viewKey, rid);
+          if (window.SCW && SCW.DEBUG) {
+            console.log('[scw-ws-v2] pending-write overlay re-applied (a stale ' +
+              'fetch tried to revert an in-flight edit)', viewKey, rid, fk);
+          }
+        }
       }
       if (Object.keys(fields).length === 0) delete v[rid];
     }

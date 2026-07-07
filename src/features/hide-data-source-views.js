@@ -30,6 +30,10 @@
   // viewId → consumer note. Comment is the documentation, not used
   // by the CSS — but keep it close to the id for grep-discovery.
   var HIDDEN_VIEWS = [
+    // 'view_4073' — pending change requests data source on scene_1149.
+    // Read from the DOM by the bid page enhancements; users never see it
+    // (and proposal-pdf-export skips it so it never enters the bid PDF).
+    'view_4073',
     // 'view_3827' — SOW kn-details: workflow-stepper SOURCE_VIEW,
     // create-sow-option-btn / preview-proposal-btn / import-unique-
     // items-btn read field_1199 / record id from this view's model.
@@ -114,8 +118,11 @@
   // see a visible view disappear because it happens to share a column
   // or KTL accordion with one of HIDDEN_VIEWS.
   var NEVER_HIDE = {
-    'view_3885': 1   // published-proposal lookup on the ops-list scene
+    'view_3885': 1,  // published-proposal lookup on the ops-list scene
                      // (shares chrome with view_3841 SOW edit-form).
+    'view_3920': 1   // published-proposal source on scene_1155 — shares
+                     // layout with several hidden bid-review source views;
+                     // must stay visible.
   };
 
   if (!document.getElementById(STYLE_ID)) {

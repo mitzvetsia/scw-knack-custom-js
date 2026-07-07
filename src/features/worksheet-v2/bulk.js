@@ -360,12 +360,9 @@
 
   // Fields that are READ-ONLY in a given source-view context, so they must not
   // appear as bulk-edit options even though they live in the field registry.
-  // SCW Notes (field_1953) is owned upstream (build-SOW) and is read-only on
-  // the bid-review comparison grid (view_3921) — see bid-review-v2's
-  // makeScwNotesReadOnly, which locks the per-card field too.
-  var READONLY_FIELDS_BY_VIEW = {
-    view_3921: { field_1953: true }
-  };
+  // (Empty since 2026-07: SCW Notes on view_3921 was unlocked — the bid-review
+  // comparison grid is fully editable. Keep the map for future per-view locks.)
+  var READONLY_FIELDS_BY_VIEW = {};
 
   /** Build an id→attributes index from the source view's loaded records.
    *  Uses ns.data.readRecords (the .models read path that render.js draws

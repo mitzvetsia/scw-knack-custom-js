@@ -145,7 +145,9 @@
       { fk: 'field_2351', label: 'Requested' },
       { fk: 'field_2352', label: 'Scheduled' },
       { fk: 'field_2353', label: 'Completed' },
-      { fk: 'field_2354', label: 'Bid Delivered' }
+      // field_2955 DATE_first bid submitted (was field_2354, the
+      // deliverables-submitted date — that concept may be deprecated).
+      { fk: 'field_2955', label: 'Bid Delivered' }
     ];
     var tl = '';
     for (var i = 0; i < steps.length; i++) {

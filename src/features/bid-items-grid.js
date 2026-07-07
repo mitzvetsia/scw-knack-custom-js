@@ -362,7 +362,53 @@
       if (laborIdx < 0) laborIdx = tds.findIndex((td) => td.classList && td.classList.contains(ctx.keys.labor));
     }
 
-    return { colCount: Math.max(colCount, 0), qtyIdx, laborIdx };
+    // Rendered-column variants. display:none cells drop out of table layout
+    // entirely, so the rows that actually paint the grid — GROUP rows, built
+    // as [unclassed label td] + [cells template = first data row's td:gt(0)]
+    // — render (1 + visible template cells) columns. Footer rows built from
+    // colspans must match THAT count exactly: logical counts overshoot
+    // (value drifts right of Cost), thead-visible counts undershoot (the
+    // hidden field_2409 th maps to the group rows' always-visible label td;
+    // value lands under Qty). Per-column visibility is read off the THEAD by
+    // field class, because the data rows themselves are display:none (the
+    // grid shows only group/total rows) and their tds compute as hidden.
+    const thHiddenByClass = {};
+    let hiddenThCount = 0;
+    for (const th of ths) {
+      const cls = Array.from(th.classList || []).find((c) => /^field_\d+$/.test(c));
+      if (!cls) continue;
+      let hidden = false;
+      try { hidden = window.getComputedStyle(th).display === 'none'; } catch (e) { /* visible */ }
+      thHiddenByClass[cls] = hidden;
+      if (hidden) hiddenThCount++;
+    }
+    // Whole table hidden mid-render → every th reads display:none and the
+    // map is meaningless. Treat all columns as visible (logical fallback).
+    const allThsHidden = ths.length > 0 && hiddenThCount === ths.length;
+
+    let visibleColCount = 1;   // the group rows' label column, always visible
+    let visibleQtyIdx = -1;
+    let visibleLaborIdx = -1;
+    if (firstRow) {
+      const tds = Array.from(firstRow.querySelectorAll('td'));
+      for (let i = 1; i < tds.length; i++) {   // td[0] ↔ the label column
+        const cls = Array.from(tds[i].classList || []).find((c) => /^field_\d+$/.test(c));
+        if (!allThsHidden && cls && thHiddenByClass[cls]) continue;
+        if (cls === ctx.keys.qty) visibleQtyIdx = visibleColCount;
+        if (cls === ctx.keys.labor) visibleLaborIdx = visibleColCount;
+        visibleColCount++;
+      }
+    }
+    if (visibleColCount <= 1) {
+      visibleColCount = colCount;
+      visibleQtyIdx = qtyIdx;
+      visibleLaborIdx = laborIdx;
+    }
+
+    return {
+      colCount: Math.max(colCount, 0), qtyIdx, laborIdx,
+      visibleColCount: Math.max(visibleColCount, 0), visibleQtyIdx, visibleLaborIdx,
+    };
   }
 
   // ============================================================
@@ -536,6 +582,16 @@ ${sel('> div.kn-records-nav > div.level > div.level-left > div.kn-entries-summar
 
 /* This hides all data rows (leaves only group headers + totals rows) */
 ${sel('.kn-table tbody tr[id]')} { display: none !important; }
+
+/* Hide the thead: every column label is blank (the real Rate/Qty/Cost
+   headers are injected into the L1 band), so the empty header row just
+   renders as a stray gray bar across the top of the grid.
+   visibility:collapse, NOT display:none — computeColumnMeta reads each
+   th's computed display to tell hidden columns apart; display:none on the
+   whole thead would make every column read hidden and break the footer
+   colspan math. Collapse removes the row but leaves th styles readable. */
+${sel('.kn-table thead')} { visibility: collapse !important; }
+${sel('.kn-table thead th')} { padding: 0 !important; border: none !important; }
 
 /* Hide vertical borders in the grid */
 ${sel('.kn-table th')},
@@ -1243,14 +1299,15 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   // Multi-TD rows (e.g. L1 with explicit Rate/Qty/Cost cells) already
   // span all columns by virtue of having one TD per column — skip
   // those to avoid clobbering the per-cell layout.
-  function extendGroupRowToFullWidth($tbody, $groupRow) {
+  function extendGroupRowToFullWidth(ctx, $tbody, $groupRow) {
     const $cells = $groupRow.children('td');
     if ($cells.length !== 1) return;
-    const $table = $tbody.closest('table');
-    const total = $table.find('thead th').length;
+    // Span the RENDERED column count (group rows' label + visible template
+    // cells), not the thead th count: hidden columns drop out of table
+    // layout, so a thead-count colspan demands phantom columns that widen
+    // the table past Cost and misalign every colspan-built row.
+    const total = Math.max(computeColumnMeta(ctx).visibleColCount || 0, 1);
     if (!total) return;
-    const current = parseInt($cells.attr('colspan') || '1', 10);
-    if (current >= total) return;
     $cells.attr('colspan', total);
   }
 
@@ -1383,7 +1440,8 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     tbody.querySelectorAll('tr.' + SECT).forEach((el) => el.remove());
 
     const meta = computeColumnMeta(ctx);
-    const cols = Math.max(meta.colCount || 0, 1);
+    // Rendered column count — see extendGroupRowToFullWidth.
+    const cols = Math.max(meta.visibleColCount || 0, 1);
 
     const l1Headers = Array.from(tbody.querySelectorAll('tr.kn-table-group.kn-group-level-1'));
     l1Headers.forEach((l1El, idx) => {
@@ -1561,12 +1619,15 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     groupLabel,
   }) {
     const meta = computeColumnMeta(ctx);
-    const cols = Math.max(meta.colCount || 0, 1);
+    // Visible metrics only: these rows are laid out with colspans, which
+    // can't skip CSS-hidden columns — logical counts push the value cell
+    // right of the Cost column (the "offset subtotal" bug).
+    const cols = Math.max(meta.visibleColCount || 0, 1);
 
     // Use actual column indices so values land under the correct headers.
     // Fallback: assume qty is 3rd-to-last, labor is 2nd-to-last (old behaviour).
-    const safeQtyIdx = Number.isFinite(meta.qtyIdx) && meta.qtyIdx >= 1 ? meta.qtyIdx : Math.max(cols - 3, 1);
-    const safeLaborIdx = Number.isFinite(meta.laborIdx) && meta.laborIdx >= 1 ? meta.laborIdx : Math.max(cols - 2, safeQtyIdx + 1);
+    const safeQtyIdx = Number.isFinite(meta.visibleQtyIdx) && meta.visibleQtyIdx >= 1 ? meta.visibleQtyIdx : Math.max(cols - 3, 1);
+    const safeLaborIdx = Number.isFinite(meta.visibleLaborIdx) && meta.visibleLaborIdx >= 1 ? meta.visibleLaborIdx : Math.max(cols - 2, safeQtyIdx + 1);
 
     function makeTrBase(extraClasses) {
       return $(`
@@ -1660,9 +1721,11 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     const grandTotal = sumField(caches, $billableRows, laborKey);
 
     const meta = computeColumnMeta(ctx);
-    const cols = Math.max(meta.colCount || 0, 1);
-    const safeQtyIdx = Number.isFinite(meta.qtyIdx) && meta.qtyIdx >= 1 ? meta.qtyIdx : Math.max(cols - 3, 1);
-    const safeLaborIdx = Number.isFinite(meta.laborIdx) && meta.laborIdx >= 1 ? meta.laborIdx : Math.max(cols - 2, safeQtyIdx + 1);
+    // Visible metrics — same colspan-vs-hidden-columns reasoning as
+    // buildLevel1FooterRows.
+    const cols = Math.max(meta.visibleColCount || 0, 1);
+    const safeQtyIdx = Number.isFinite(meta.visibleQtyIdx) && meta.visibleQtyIdx >= 1 ? meta.visibleQtyIdx : Math.max(cols - 3, 1);
+    const safeLaborIdx = Number.isFinite(meta.visibleLaborIdx) && meta.visibleLaborIdx >= 1 ? meta.visibleLaborIdx : Math.max(cols - 2, safeQtyIdx + 1);
 
     function makeTr(extraClasses) {
       return $(`
@@ -1824,6 +1887,74 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
   }
 
   // ============================================================
+  // FEATURE: Split L3 (labor-description) groups by rate
+  // ============================================================
+  // The grid is Knack-grouped at L3 by field_2409 alone, so items with the
+  // same labor description but DIFFERENT rates land in one group — the
+  // header then shows an averaged rate against a summed cost, which reads
+  // as a wrong bill line to the subcontractor. Split such groups so every
+  // rendered L3 line is one (labor description + rate) pair: qty and cost
+  // are summed within the pair, and the rate shown is the pair's actual
+  // rate. Split headers are tagged .scw-l3-rate-split and rebuilt from
+  // scratch on every pipeline run (idempotent under re-renders).
+  function splitLevel3GroupsByRate(ctx, $tbody, caches) {
+    const rateKey = ctx.keys.rate;
+    if (!rateKey || !$tbody.length) return;
+
+    // Fresh slate — re-derive the splits from the data rows every run.
+    $tbody.find('tr.kn-table-group.kn-group-level-3.scw-l3-rate-split').remove();
+
+    const l3Headers = $tbody.find('tr.kn-table-group.kn-group-level-3').get();
+    for (const headerEl of l3Headers) {
+      // Skip sections whose L3 money is hidden (Services / Assumptions) —
+      // rate has no meaning there and splits would just duplicate headers.
+      let l2El = headerEl.previousElementSibling;
+      while (l2El && !(l2El.classList.contains('kn-table-group') &&
+                       l2El.classList.contains('kn-group-level-2'))) {
+        l2El = l2El.previousElementSibling;
+      }
+      if (l2El) {
+        const rule = getLevel2Rule(ctx, getLevel2InfoFromGroupRow($(l2El)));
+        if (rule && rule.hideLevel3Summary) continue;
+      }
+
+      const rows = getGroupBlock($(headerEl), 3).filter('tr[id]').get();
+      if (rows.length < 2) continue;
+
+      // Partition billable rows by rate (first-seen order). No-sub-bid rows
+      // carry no money — keep them with the first partition so the product
+      // list / associated-equipment features still see them.
+      const freeRows = [];
+      const byRate = new Map();
+      const partitions = [];
+      for (const row of rows) {
+        if (rowIsIncluded(ctx, row)) { freeRows.push(row); continue; }
+        const key = getRowNumericValue(caches, row, rateKey).toFixed(2);
+        let part = byRate.get(key);
+        if (!part) { part = []; byRate.set(key, part); partitions.push(part); }
+        part.push(row);
+      }
+      if (partitions.length < 2) continue;   // one rate (or all free) — no split
+      partitions[0] = freeRows.concat(partitions[0]);
+
+      // Reflow: original header keeps partition 0; each further partition
+      // gets a fresh bare L3 header (the pipeline enhances it like any
+      // other — cells template, field_2409 label injection, sums).
+      let anchor = headerEl;
+      partitions.forEach((partRows, idx) => {
+        if (idx > 0) {
+          const head = document.createElement('tr');
+          head.className = 'kn-table-group kn-group-level-3 scw-l3-rate-split';
+          head.appendChild(document.createElement('td'));
+          anchor.after(head);
+          anchor = head;
+        }
+        for (const row of partRows) { anchor.after(row); anchor = row; }
+      });
+    }
+  }
+
+  // ============================================================
   // MAIN PROCESSOR
   // ============================================================
 
@@ -1853,6 +1984,9 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
     healOrphanDropGroups(ctx, $tbody, caches);
     healOrphanLevel3(ctx, $tbody);
     reorderLevel2GroupsBySortField(ctx, $tbody, runId);
+    // After heal/reorder, before group processing: one rendered L3 line
+    // per (labor description + rate) pair.
+    splitLevel3GroupsByRate(ctx, $tbody, caches);
 
     const $firstDataRow = $tbody.find('tr[id]').first();
     if (!$firstDataRow.length) return;
@@ -1890,7 +2024,7 @@ ${sel('tr.kn-table-group.kn-group-level-3.scw-level3--mounting-hardware td:first
         // ice-blue header background paints across the FULL row width
         // instead of stopping at the Knack-default colspan (which
         // omits the trailing Rate / Qty / Cost columns).
-        extendGroupRowToFullWidth($tbody, $groupRow);
+        extendGroupRowToFullWidth(ctx, $tbody, $groupRow);
 
         const info = getLevel2InfoFromGroupRow($groupRow);
         sectionContext.level2 = info;

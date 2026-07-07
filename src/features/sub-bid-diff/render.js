@@ -69,12 +69,30 @@
   }
 
   /** Persist the basis bid on the SOW (field_2942, single connection) via the
-   *  SOW write view. Optimistic: caller updates selection + re-renders first. */
+   *  SOW write view. The diff snapshot (field_2941) rides in the SAME PUT so
+   *  the two fields can never diverge: relying on the debounced auto-save to
+   *  follow up meant a basis change whose snapshot write never landed (user
+   *  navigated away inside the 400ms window, or a stale tab re-saved later)
+   *  left field_2941 describing the PREVIOUS bid while field_2942 pointed at
+   *  the new one — and every snapshot reader (ops stepper, publish payload)
+   *  showed the wrong bid. Optimistic: caller updates selection first. */
   function writeBasis(sowId, pkgId) {
     if (!C.basisBidField || !sowId) return;
     if (!(window.SCW && typeof SCW.knackAjax === 'function' && SCW.knackRecordUrl)) return;
     var body = {};
-    body[C.basisBidField] = pkgId ? [pkgId] : [];
+    // K1 is a sentinel, not a record — never write it into the connection.
+    body[C.basisBidField] = (pkgId && pkgId !== K1_ID) ? [pkgId] : [];
+    var blob = null, sig = '';
+    if (C.snapshotField) {
+      // Cancel any pending debounced snapshot write — it would describe the
+      // OLD basis. The fresh blob (or the clear) goes in this PUT instead.
+      if (autoTimers[sowId]) { clearTimeout(autoTimers[sowId]); autoTimers[sowId] = null; }
+      blob = pkgId ? buildBlob(sowId) : null;
+      if (blob) { sig = blobSig(blob); body[C.snapshotField] = JSON.stringify(blob); }
+      else if (!pkgId) body[C.snapshotField] = '';
+      // pkgId set but blob unresolvable → leave field_2941 out of the body;
+      // the next auto-save will catch it up.
+    }
     savingGrid[sowId] = true; render();
     SCW.knackAjax({
       url: SCW.knackRecordUrl(C.basisBidView, sowId),
@@ -83,6 +101,10 @@
     }).then(function () {
       savingGrid[sowId] = false;
       if (pkgId) savedByGrid[sowId] = true; else delete savedByGrid[sowId];
+      if (C.snapshotField) {
+        if (blob) { savedSnap[sowId] = true; lastWrittenSig[sowId] = sig; }
+        else if (!pkgId) { savedSnap[sowId] = false; delete lastWrittenSig[sowId]; }
+      }
       render();
     }, function (xhr) {
       savingGrid[sowId] = false;
@@ -119,12 +141,97 @@
     return '';
   }
 
+  // Sentinel basis choice: "K1 Bid" = there genuinely is NO subcontractor
+  // bid for this SOW (K1 self-performs). Not a Knack record, so it can't
+  // live in the field_2942 connection — writeBasis CLEARS field_2942 and the
+  // choice persists via the field_2941 snapshot blob (basisBidId: 'K1').
+  // Downstream: the ops-stepper publish gate accepts it (snap.basisBidId is
+  // truthy, no mismatch since field_2942 is empty), and the publish payload
+  // ships subBidBasisId 'K1' + subBidIsK1 true so Make can branch on it.
+  var K1_ID = 'K1';
+
   function basisFor(sowId) {
     // An explicit session choice — INCLUDING the cleared '' option — wins over
     // the persisted value, so toggling back to "— choose —" actually clears
     // the diff (and the field_2942 write below clears the connection).
     if (sowId in selectedByGrid) return selectedByGrid[sowId];
-    return persistedBasis(sowId) || '';
+    var pb = persistedBasis(sowId);
+    if (pb) return pb;
+    // K1 persists only in the snapshot blob (no connection to read).
+    var snap = persistedSnapshot(sowId);
+    if (snap && snap.basisBidId === K1_ID) return K1_ID;
+    return '';
+  }
+
+  /** True once the SOW's record is actually present in the basis view's
+   *  model — distinguishes "basis is empty" from "model not loaded yet". */
+  function sowRecordLoaded(sowId) {
+    var sows = readView(C.basisBidView);
+    for (var i = 0; i < sows.length; i++) {
+      if (sows[i] && sows[i].id === sowId) return true;
+    }
+    return false;
+  }
+
+  // ── Auto-pick: exact-match basis ────────────────────────────────────────
+  // "No default — the user must choose" has one carve-out: when a bid EXACTLY
+  // matches the SOW (zero diff exceptions AND zero raw total delta), there is
+  // nothing to review, so reviewers routinely never touch the selector — the
+  // basis never persisted and everything downstream (ops stepper, publish
+  // gate) stayed blocked. If exactly ONE column bid is a perfect match and no
+  // basis is set, designate + save it automatically through the same
+  // single-PUT path as a manual pick. Ambiguous cases (two matching bids, or
+  // no match) still require the human.
+  var autoPickTried  = Object.create(null);  // sowId → true once evaluated
+  var autoPickedBySow = Object.create(null); // sowId → true when we auto-saved
+  function maybeAutoPickBasis(grid) {
+    if (!C.basisBidField || !grid) return;
+    var sowId = grid.sowId;
+    if (autoPickTried[sowId]) return;
+    // An explicit session choice — including the cleared '' — is the user's;
+    // never auto-override it.
+    if (sowId in selectedByGrid) { autoPickTried[sowId] = true; return; }
+    if (savingGrid[sowId]) return;
+    // Don't decide off an unloaded model: persistedBasis() reads '' both when
+    // the basis is genuinely empty and when the SOW view hasn't populated yet.
+    // Auto-picking in the latter window could clobber a real saved basis.
+    if (!sowRecordLoaded(sowId)) return;       // retry on a later render
+    if (persistedBasis(sowId)) { autoPickTried[sowId] = true; return; }
+
+    // Grid not populated yet (rows/bids still loading) → DON'T latch the
+    // tried flag; retry on a later render once the data is actually there.
+    if (!grid.rows || !grid.rows.length) return;
+    // Candidates that genuinely price line items on this SOW: the column
+    // packages plus the gated-out "touching" tier basisCandidates recovers.
+    // Tier 3 (offSowOnly — prices nothing here) can never be a match.
+    var cands = [];
+    var all = basisCandidates(grid);
+    for (var c = 0; c < all.length; c++) {
+      if (all[c] && all[c].id && !all[c].offSowOnly) cands.push(all[c]);
+    }
+    if (!cands.length) return;                 // bids not loaded yet — retry
+    var matches = [];
+    for (var i = 0; i < cands.length && matches.length < 2; i++) {
+      var res;
+      try { res = distill(grid, cands[i].id); } catch (e) { continue; }
+      // "Match" = zero diff line items AND the bid actually prices this SOW.
+      // totalDelta is deliberately NOT required to be zero — it counts
+      // Require-Sub-Bid=No rows that the exception scan (and the reviewer's
+      // "diff line items" view) intentionally ignores, so demanding a zero
+      // raw delta rejected bids the panel itself reports as clean.
+      if (res.total === 0 && (res.basisTotal || 0) > 0) matches.push(cands[i].id);
+    }
+    autoPickTried[sowId] = true;
+    if (matches.length !== 1) {
+      if (window.SCW && SCW.DEBUG) console.log('[scw-sub-bid-diff] auto-pick: ' +
+        matches.length + ' matching bid(s) for', sowId, '— leaving to the user');
+      return;
+    }
+    autoPickedBySow[sowId] = true;
+    selectedByGrid[sowId] = matches[0];
+    if (window.SCW && SCW.DEBUG) console.log('[scw-sub-bid-diff] auto-pick: saving',
+      matches[0], 'as basis for', sowId);
+    writeBasis(sowId, matches[0]);
   }
 
   // ── snapshot (field_2941): reviewer note + frozen diff ──────────────────
@@ -160,6 +267,11 @@
     return (snap && snap.note) || '';
   }
 
+  // Bump when the bidHtml/diffHtml RENDER changes (pdf-html.js) — the
+  // signature below only covers the diff DATA, so without a version bump an
+  // improved render would never re-persist onto already-saved blobs.
+  var PDF_RENDER_VERSION = 2;
+
   /** Stable signature of a blob's MEANINGFUL content (excludes savedAt, which
    *  always changes) — so auto-save only fires when the diff/note actually
    *  changed, never in a loop. */
@@ -171,6 +283,7 @@
     }).join(';');
     var c = b.counts || {};
     return [
+      (b.rv || 0),
       b.basisBidId || '', b.total || 0, Math.round((b.laborDelta || 0) * 100),
       [c.material || 0, c.spec || 0, c.added || 0, c.orphan || 0].join(','),
       String(b.note || '').trim(), exSig
@@ -184,6 +297,21 @@
     var sowId = grid.sowId;
     var pkgId = basisFor(sowId);
     if (!pkgId) return null;
+    // K1 sentinel — no bid to diff against. A minimal, well-formed blob so
+    // every snapshot reader (ops stepper, publish payload) sees a truthy
+    // basisBidId with zero differences and no HTML fragments.
+    if (pkgId === K1_ID) {
+      return {
+        v: 1, rv: PDF_RENDER_VERSION, sowId: sowId, sowName: grid.sowName || '',
+        basisBidId: K1_ID, basisBidName: 'K1 Bid',
+        basisSubId: '', basisSubName: '',
+        savedAt: new Date().toISOString(),
+        laborDelta: 0, counts: { material: 0, spec: 0, added: 0, orphan: 0 },
+        coverageGaps: 0, total: 0, exceptions: [],
+        note: currentNote(sowId),
+        bidHtml: '', diffHtml: ''
+      };
+    }
     var res = distill(grid, pkgId);
     var pkg = null;
     var cands = basisCandidates(grid);   // includes gated-out touching packages
@@ -191,6 +319,24 @@
       if (cands[p].id === pkgId) { pkg = cands[p]; break; }
     }
     var basisName = (pkg && (pkg.bidName || pkg.name)) || '';
+    // Basis subcontractor identity — read off the raw bid-package record
+    // (the candidates above are transformed objects without raw fields).
+    // Dormant until C.f.pkgSub names the package -> sub connection field.
+    var basisSubId = '', basisSubName = '';
+    if (C.f && C.f.pkgSub) {
+      var pkgRecs = readView(C.bidPkgViewKey);
+      for (var pr = 0; pr < pkgRecs.length; pr++) {
+        if (pkgRecs[pr] && pkgRecs[pr].id === pkgId) {
+          var subRaw = pkgRecs[pr][C.f.pkgSub + '_raw'];
+          var subOne = Array.isArray(subRaw) ? subRaw[0] : subRaw;
+          if (subOne && subOne.id) {
+            basisSubId = subOne.id;
+            basisSubName = String(subOne.identifier || '').trim();
+          }
+          break;
+        }
+      }
+    }
     // PDF-ready HTML fragments (bid + diff) so the snapshot can be stamped onto
     // the published proposal. Built with the bid-PDF class names — see
     // sub-bid-diff/pdf-html.js. Guarded: absent module → empty strings.
@@ -201,8 +347,9 @@
       try { diffHtml = pdf.buildDiff(grid, pkgId, basisName) || ''; } catch (e) { diffHtml = ''; }
     }
     return {
-      v: 1, sowId: sowId, sowName: grid.sowName || '',
+      v: 1, rv: PDF_RENDER_VERSION, sowId: sowId, sowName: grid.sowName || '',
       basisBidId: pkgId, basisBidName: basisName,
+      basisSubId: basisSubId, basisSubName: basisSubName,
       savedAt: new Date().toISOString(),
       laborDelta: res.laborDelta, counts: res.counts, coverageGaps: res.coverageGaps,
       total: res.total,
@@ -263,12 +410,20 @@
     if (!sig) sig = blobSig(blob);
     var body = {};
     body[C.snapshotField] = JSON.stringify(blob);
+    // field_2942 rides in the same PUT, set to the basis this blob was built
+    // for — snapshot and basis connection stay consistent no matter which
+    // write path (or which tab) lands last. K1 is a sentinel, not a record
+    // id — never write it into the connection (writeBasis already cleared it).
+    if (C.basisBidField && blob.basisBidId && blob.basisBidId !== K1_ID) {
+      body[C.basisBidField] = [blob.basisBidId];
+    }
     savingSnap[sowId] = true; render();
     SCW.knackAjax({
       url: SCW.knackRecordUrl(C.basisBidView, sowId),
       type: 'PUT', data: JSON.stringify(body)
     }).then(function () {
       savingSnap[sowId] = false; savedSnap[sowId] = true;
+      if (C.basisBidField && blob.basisBidId) savedByGrid[sowId] = true;
       lastWrittenSig[sowId] = sig; render();
     }, function (xhr) {
       savingSnap[sowId] = false;
@@ -298,27 +453,6 @@
       autoTimers[sowId] = null;
       writeSnapshotWith(grid, sig);
     }, 400);
-  }
-
-  /** Clear the persisted snapshot (called when the basis is cleared). */
-  function clearSnapshot(sowId) {
-    if (!C.snapshotField || !sowId) return;
-    if (!(window.SCW && typeof SCW.knackAjax === 'function' && SCW.knackRecordUrl)) return;
-    delete lastWrittenSig[sowId];
-    if (autoTimers[sowId]) { clearTimeout(autoTimers[sowId]); autoTimers[sowId] = null; }
-    var body = {};
-    body[C.snapshotField] = '';
-    savingSnap[sowId] = true; render();
-    SCW.knackAjax({
-      url: SCW.knackRecordUrl(C.basisBidView, sowId),
-      type: 'PUT', data: JSON.stringify(body)
-    }).then(function () {
-      savingSnap[sowId] = false; savedSnap[sowId] = false; render();
-    }, function (xhr) {
-      savingSnap[sowId] = false;
-      console.warn('[scw-sub-bid-diff] snapshot clear failed', sowId, xhr && xhr.status);
-      render();
-    });
   }
 
   /** Scroll to + flash the matching v2 grid row for an exception. */
@@ -684,12 +818,19 @@
   function selector(grid, selId, persisted) {
     var pkgs = basisCandidates(grid);
     var opts = '<option value="">— choose the basis bid —</option>' +
+      // Sentinel: no subcontractor bid exists for this SOW (self-perform).
+      '<option value="' + K1_ID + '"' + (selId === K1_ID ? ' selected' : '') +
+        '>K1 Bid — no subcontractor bid (self-perform)</option>' +
       pkgs.map(function (p) { return pkgOption(p, selId); }).join('');
     var note;
     if (savingGrid[grid.sowId]) {
       note = '<span class="scw-sbd-baseline__meta">saving…</span>';
+    } else if (selId === K1_ID && (persisted || savedByGrid[grid.sowId])) {
+      note = '<span class="scw-sbd-baseline__meta scw-sbd-baseline__meta--saved">✓ saved — K1 Bid (no sub bid for this SOW)</span>';
     } else if (selId && (persisted || savedByGrid[grid.sowId])) {
-      note = '<span class="scw-sbd-baseline__meta scw-sbd-baseline__meta--saved">✓ saved as the basis for this SOW → proposal</span>';
+      note = autoPickedBySow[grid.sowId]
+        ? '<span class="scw-sbd-baseline__meta scw-sbd-baseline__meta--saved">✓ auto-selected — this bid matches the SOW · saved</span>'
+        : '<span class="scw-sbd-baseline__meta scw-sbd-baseline__meta--saved">✓ saved as the basis for this SOW → proposal</span>';
     } else if (selId) {
       note = '<span class="scw-sbd-baseline__meta">not saved yet</span>';
     } else {
@@ -847,7 +988,13 @@
   function inlineHtml(grid) {
     var sowId = grid.sowId;
     var selId = basisFor(sowId);
+    // "Persisted" = the connection is saved, OR (K1) the snapshot blob carries
+    // the sentinel — K1 has no connection to read back after a reload.
     var persisted = !!(C.basisBidField && persistedBasis(sowId));
+    if (!persisted && selId === K1_ID) {
+      var pSnap = persistedSnapshot(sowId);
+      persisted = !!(pSnap && pSnap.basisBidId === K1_ID);
+    }
 
     // Readiness derived from the LOCAL diff (no second buildState). The snapshot
     // auto-saves, so the only thing a reviewer still owes us is a note when
@@ -855,6 +1002,10 @@
     var rd, res = null, needsNote = false;
     if (!selId) {
       rd = { state: 'needs-basis', label: 'Pick a basis bid' };
+    } else if (selId === K1_ID) {
+      rd = savingSnap[sowId]
+        ? { state: 'needs-review', label: 'Saving…' }
+        : { state: 'ready', label: '✓ K1 Bid — no sub bid' };
     } else {
       res = distill(grid, selId);
       needsNote = res.total > 0 && !currentNote(sowId).trim();
@@ -881,6 +1032,10 @@
     var body;
     if (!selId) {
       body = '<div class="scw-sbd-empty">Choose the basis bid to see what differs vs this SOW.</div>';
+    } else if (selId === K1_ID) {
+      body = '<div class="scw-sbd-empty">K1 Bid — no subcontractor bid applies to this ' +
+        'SOW (self-perform). There is nothing to diff, and Publish Final is not gated.</div>' +
+        noteBar(sowId, false);
     } else {
       var ex = res.total ? exDetail(res, sowId) : '';
       body = tally(res) + flag(res) + ex + nonBidDetail(res) +
@@ -956,6 +1111,9 @@
       // Keep field_2941 in lockstep with whatever the diff currently shows —
       // any data change, basis pick, or note edit re-persists (debounced).
       autoSave(grid);
+      // No basis yet + exactly one perfectly-matching bid → save it
+      // automatically (guards + once-per-session inside).
+      maybeAutoPickBasis(grid);
     }
   }
 
@@ -969,13 +1127,10 @@
         if (!bsow) return;
         var pkgId = sel.value || '';
         selectedByGrid[bsow] = pkgId;          // optimistic — diff shows immediately
-        if (pkgId) {
-          if (C.basisBidField) writeBasis(bsow, pkgId);  // persist basis (re-renders → autoSave writes snapshot)
-          else render();
-        } else {
-          if (C.basisBidField) writeBasis(bsow, '');      // clear basis
-          clearSnapshot(bsow);                            // and the snapshot it gated
-        }
+        // ONE PUT persists basis + snapshot together (set or cleared) — see
+        // writeBasis. Never split across writes, so they can't drift apart.
+        if (C.basisBidField) writeBasis(bsow, pkgId);
+        else render();
         return;
       }
       // Reviewer note committed (blur / Enter on the field) → re-persist.

@@ -290,26 +290,36 @@
   }
 
   // ── Extract one record's normalized info ──────────────────────
+  // File-field extraction — Knack stores either an object on _raw or
+  // anchor-html on the bare field. Try both, then HTML-anchor regex.
+  function fileFromAttrs(attrs, fieldKey) {
+    var url = '', name = '';
+    var raw = attrs[fieldKey + '_raw'];
+    if (raw && typeof raw === 'object') {
+      url  = raw.url || '';
+      name = raw.filename || '';
+    }
+    if (!url) {
+      var html = String(attrs[fieldKey] || '');
+      var mHref = html.match(/href="([^"]+)"/i);
+      if (mHref) url = mHref[1];
+      var mName = html.match(/>([^<]+\.pdf)</i);
+      if (mName) name = mName[1];
+    }
+    return { url: url, name: name };
+  }
+
   function fromAttrs(attrs, fields) {
     var id      = attrs.id || '';
     var name    = String(attrs[fields.name] || '').replace(/<[^>]*>/g, '').trim();
     var expDate = String(attrs[fields.exp]  || '').replace(/<[^>]*>/g, '').trim();
 
-    // PDF file — Knack stores either an object on _raw or anchor-html
-    // on the bare field. Try both, then HTML-anchor regex fallback.
-    var pdfUrl = '', pdfName = '';
-    var pdfRaw = attrs[fields.pdf + '_raw'];
-    if (pdfRaw && typeof pdfRaw === 'object') {
-      pdfUrl  = pdfRaw.url || '';
-      pdfName = pdfRaw.filename || '';
-    }
-    if (!pdfUrl) {
-      var pdfHtml = String(attrs[fields.pdf] || '');
-      var mHref = pdfHtml.match(/href="([^"]+)"/i);
-      if (mHref) pdfUrl = mHref[1];
-      var mName = pdfHtml.match(/>([^<]+\.pdf)</i);
-      if (mName) pdfName = mName[1];
-    }
+    var pdf = fileFromAttrs(attrs, fields.pdf);
+    var pdfUrl = pdf.url, pdfName = pdf.name;
+    // Optional second file (e.g. the internal sub-bid review PDF,
+    // field_2945) — extracted only when the caller names the field.
+    var reviewPdf = fields.reviewPdf
+      ? fileFromAttrs(attrs, fields.reviewPdf) : { url: '', name: '' };
 
     // "View Published Proposal" link — Knack renders this as a
     // kn-link-page anchor inside the row. Scrape from the live DOM.
@@ -344,6 +354,8 @@
       expired:  isExpired(expDate),
       pdfUrl:   pdfUrl,
       pdfName:  pdfName || 'Download PDF',
+      reviewPdfUrl:  reviewPdf.url,
+      reviewPdfName: reviewPdf.name || 'Sub-Bid Review PDF',
       viewLink: viewLink,
       tokenUrl: tokenUrl,
       type:     (window.SCW && SCW.proposalTypeChip)
@@ -363,6 +375,7 @@
       return td ? td.querySelector('a') : null;
     }
     var pdfA  = cellAnchor(fields.pdf);
+    var revA  = fields.reviewPdf ? cellAnchor(fields.reviewPdf) : null;
     var pageA = tr.querySelector('a.kn-link-page');
 
     // Type detection from DOM cells — only works if the boolean fields
@@ -397,11 +410,15 @@
       pdfUrl:   pdfA  ? (pdfA.getAttribute('href') || '') : '',
       pdfName:  pdfA  ? ((pdfA.textContent || '').trim() || 'Download PDF')
                       : 'Download PDF',
+      reviewPdfUrl:  revA ? (revA.getAttribute('href') || '') : '',
+      reviewPdfName: revA ? ((revA.textContent || '').trim() || 'Sub-Bid Review PDF')
+                          : 'Sub-Bid Review PDF',
       viewLink: pageA ? (pageA.getAttribute('href') || '') : '',
       tokenUrl: tokenUrl,
       type:     type
     };
   }
+
 
   function resolveFields(opts) {
     return {
@@ -410,6 +427,10 @@
       name:       opts.nameField     || DEFAULT_NAME,
       exp:        opts.expField      || DEFAULT_EXP,
       pdf:        opts.pdfField      || DEFAULT_PDF,
+      // Opt-in second file field (internal sub-bid review PDF, field_2945
+      // on views that carry it). No default — most published-proposal
+      // views don't project it.
+      reviewPdf:  opts.reviewPdfField || '',
       sow:        opts.sowField      || DEFAULT_SOW,
       tokenUrl:   opts.tokenUrlField || DEFAULT_TOKEN_URL
     };
@@ -623,24 +644,35 @@
       block.appendChild(expRow);
     }
 
-    if (proposal.pdfUrl) {
-      // "Downloadable file" chip: red PDF badge + filename. The badge
-      // is the universal cue ("this is a PDF") and the chip border
-      // signals "tap to download" without leaning on a generic blue
-      // text-link.
-      var pdfLink = document.createElement('a');
-      pdfLink.className = 'scw-pq-pdf';
-      pdfLink.setAttribute('href', proposal.pdfUrl);
+    // "Downloadable file" chip: red PDF badge + filename. The badge
+    // is the universal cue ("this is a PDF") and the chip border
+    // signals "tap to download" without leaning on a generic blue
+    // text-link.
+    function fileChip(url, name, extraClass) {
+      var link = document.createElement('a');
+      link.className = 'scw-pq-pdf' + (extraClass ? ' ' + extraClass : '');
+      link.setAttribute('href', url);
       // No target=_blank by default — let the browser handle inline PDFs.
       var badge = document.createElement('span');
       badge.className = 'scw-pq-pdf__badge';
       badge.textContent = 'PDF';
       var fname = document.createElement('span');
       fname.className = 'scw-pq-pdf__name';
-      fname.textContent = proposal.pdfName;
-      pdfLink.appendChild(badge);
-      pdfLink.appendChild(fname);
-      block.appendChild(pdfLink);
+      fname.textContent = name;
+      link.appendChild(badge);
+      link.appendChild(fname);
+      return link;
+    }
+    if (proposal.pdfUrl) {
+      block.appendChild(fileChip(proposal.pdfUrl, proposal.pdfName));
+    }
+    // Internal sub-bid review PDF (diff + basis bid) — present only when the
+    // caller opted into reviewPdfField and the record carries a file.
+    if (proposal.reviewPdfUrl) {
+      var revChip = fileChip(proposal.reviewPdfUrl, proposal.reviewPdfName,
+                             'scw-pq-pdf--review');
+      revChip.title = 'Sub-bid review (diff + basis bid) — internal';
+      block.appendChild(revChip);
     }
 
     // ── Primary CTA ─────────────────────────────────────────────

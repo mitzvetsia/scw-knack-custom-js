@@ -546,7 +546,7 @@
   // were defined at the top of this file as PROPOSAL_NAME / etc. and
   // are passed through; the helper handles model-first / DOM-fallback
   // and Published-status filtering.
-  function buildProposalIndex(sourceViewOverride) {
+  function buildProposalIndex(sourceViewOverride, reviewPdfField) {
     if (!window.SCW || !SCW.publishedQuoteInfo) return {};
     return SCW.publishedQuoteInfo.readById({
       sourceView:  sourceViewOverride || PROPOSAL_VIEW,
@@ -554,6 +554,7 @@
       nameField:   PROPOSAL_NAME,
       expField:    PROPOSAL_EXP,
       pdfField:    PROPOSAL_PDF,
+      reviewPdfField: reviewPdfField || '',
       sowField:    PROPOSAL_SOW
     });
   }
@@ -1201,17 +1202,21 @@
 
   /** Build the published-proposal block (or "No published quotes"
    *  placeholder) for this SOW. opts.proposalViewKey overrides the
-   *  default ops-list source view (view_3885). */
+   *  default ops-list source view (view_3885). opts.reviewPdfField
+   *  additionally surfaces the internal sub-bid review PDF when the
+   *  source view carries it; opts.proposalLinkBuilder(proposal) → href
+   *  makes the proposal number itself a link. */
   function buildProposalBlockForRow(tr, opts) {
     if (!tr) return null;
     opts = opts || {};
     if (!window.SCW || !SCW.publishedQuoteInfo) return null;
-    var proposalIndex = buildProposalIndex(opts.proposalViewKey);
+    var proposalIndex = buildProposalIndex(opts.proposalViewKey, opts.reviewPdfField);
     if (!proposalIndex || !tr.id) return null;
     var proposal = proposalIndex[tr.id];
     if (proposal) {
       return SCW.publishedQuoteInfo.buildBlock(proposal, {
         variant: 'compact',
+        linkBuilder: opts.proposalLinkBuilder,
         customerLink: {
           url:                  proposal.tokenUrl || '',
           label:                'Open Customer Link',

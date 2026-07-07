@@ -1613,6 +1613,11 @@
         : '';
       var pendingBtns = crCount
         ? '<button type="button" class="scw-bid-review__btn scw-bid-review-v2__head-btn ' +
+            'scw-bid-review-v2__head-btn--cr-preview" data-action="cr_preview" ' +
+            'data-pkg-id="' + escapeHtml(pkg.id) + '" ' +
+            'title="Preview exactly what will be sent to the subcontractor">' +
+            'Preview</button>' +
+          '<button type="button" class="scw-bid-review__btn scw-bid-review-v2__head-btn ' +
             'scw-bid-review-v2__head-btn--cr-submit" data-action="cr_submit" ' +
             'data-pkg-id="' + escapeHtml(pkg.id) + '">Submit Change Request (' + crCount + ')</button>' +
           '<button type="button" class="scw-bid-review__btn scw-bid-review-v2__head-btn ' +

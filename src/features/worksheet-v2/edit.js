@@ -30,6 +30,33 @@
   var ERR_CLS  = 'scw-ws-v2-input--error';
   var SAV_CLS  = 'scw-ws-v2-input--saving';
 
+  /** Visible toast for a failed save. The silent console.warn + revert made a
+   *  genuinely failing PUT indistinguishable from a stale-render revert — the
+   *  user just saw their edit "disappear". Errors get red (repo convention). */
+  var ERR_TOAST_ID = 'scw-ws-v2-save-error-toast';
+  function showSaveErrorToast(xhr) {
+    try {
+      var status = xhr && xhr.status;
+      var msg = (status === 403)
+        ? 'Save failed (403 — field not editable on this view?). Change reverted.'
+        : 'Save failed' + (status ? ' (HTTP ' + status + ')' : '') + '. Change reverted.';
+      var old = document.getElementById(ERR_TOAST_ID);
+      if (old && old.parentNode) old.parentNode.removeChild(old);
+      var el = document.createElement('div');
+      el.id = ERR_TOAST_ID;
+      el.textContent = msg;
+      el.style.cssText =
+        'position:fixed;bottom:24px;left:50%;transform:translateX(-50%);' +
+        'background:#b91c1c;color:#fff;padding:10px 18px;border-radius:8px;' +
+        'font:600 13px/1.3 system-ui,sans-serif;z-index:100001;' +
+        'box-shadow:0 4px 12px rgba(0,0,0,.25);';
+      document.body.appendChild(el);
+      setTimeout(function () {
+        if (el.parentNode) el.parentNode.removeChild(el);
+      }, 6000);
+    } catch (e) { /* ignore */ }
+  }
+
   /** Send the PUT. Returns a thenable. */
   function savePut(viewKey, recordId, fieldKey, value) {
     var data = {};
@@ -291,6 +318,7 @@
       },
       function (xhr) {
         console.warn('[scw-ws-v2] save failed', { recordId: recordId, fieldKey: fieldKey, xhr: xhr });
+        showSaveErrorToast(xhr);
         // Drop the pending-overlay entry — the write didn't land, so the
         // revert to prevValue must be allowed to stick.
         try {

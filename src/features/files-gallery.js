@@ -34,8 +34,14 @@
     {
       // "Site Maps & Other Files" on the sales scope-of-work-details page
       // (scene_1116) — same DOC_files object/fields as view_3531.
+      // unlink: per-card button that removes ONLY this page's SOW id from the
+      // file's SOW-header connection (field_2143), leaving every other SOW the
+      // file is linked to untouched. PUTs through this view, so view_3476 must
+      // expose field_2143 with inline-edit allowed. The current SOW id is the
+      // 24-hex tail of the URL hash (SOW-scoped scenes always carry it).
       id: 'view_3476', kind: 'file',
       media: 'field_68', type: 'field_67', notes: 'field_588',
+      unlink: { field: 'field_2143', noun: 'SOW' },
       empty: 'No files yet.'
     },
     {
@@ -111,6 +117,36 @@
     if (typeof raw === 'string') return { url: raw, filename: '' };
     return null;
   }
+  /** Current page record id — the 24-hex tail segment of the URL hash
+   *  (same pattern as bulk-add-mounting-box.js getSowIdFromHash). */
+  function pageRecordId() {
+    var m = (window.location.hash || '').split('?')[0].match(/\/([a-f0-9]{24})\/?$/i);
+    return m ? m[1] : '';
+  }
+  /** Connection field → array of connected record ids. Prefers the model's
+   *  _raw array; falls back to the DOM cell's connection-value spans (whose
+   *  24-hex class IS the record id). Empty array if the field isn't on the
+   *  view at all. */
+  function connIds(tr, attrs, fk) {
+    var out = [], i;
+    if (attrs && Array.isArray(attrs[fk + '_raw'])) {
+      var raw = attrs[fk + '_raw'];
+      for (i = 0; i < raw.length; i++) {
+        if (raw[i] && raw[i].id) out.push(String(raw[i].id));
+      }
+      return out;
+    }
+    var td = tr && tr.querySelector('td.' + fk + ', td[data-field-key="' + fk + '"]');
+    if (td) {
+      var spans = td.querySelectorAll('span[data-kn="connection-value"]');
+      for (i = 0; i < spans.length; i++) {
+        var cls = (spans[i].className || '').trim();
+        if (/^[a-f0-9]{24}$/i.test(cls)) out.push(cls);
+      }
+    }
+    return out;
+  }
+
   function extOf(name) {
     var m = /\.([a-z0-9]+)\s*$/i.exec(String(name || ''));
     return m ? m[1].toLowerCase() : '';
@@ -188,7 +224,90 @@
     if (href) { a.setAttribute('href', href); a.setAttribute('target', '_blank'); a.setAttribute('rel', 'noopener'); }
     a.setAttribute('title', titleAttr);
     a.innerHTML = thumb + (meta ? '<span class="scw-gallery-meta">' + meta + '</span>' : '');
+
+    // Opt-in "Unlink from this SOW" button (view_3476). Only rendered when
+    // the page record id is resolvable AND this file actually connects to it.
+    if (cfg.unlink) {
+      var sowId   = pageRecordId();
+      var current = connIds(tr, attrs, cfg.unlink.field);
+      if (sowId && current.indexOf(sowId) !== -1) {
+        var btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'scw-gallery-unlink';
+        btn.textContent = 'Unlink from this ' + (cfg.unlink.noun || 'record');
+        btn.setAttribute('title', 'Remove this file from this ' + (cfg.unlink.noun || 'record') +
+          ' only — its other connections are untouched');
+        btn.setAttribute('data-doc-id', tr.id);
+        btn.setAttribute('data-sow-id', sowId);
+        btn.setAttribute('data-current', current.join(','));
+        btn.addEventListener('click', function (e) {
+          e.preventDefault();
+          e.stopPropagation();
+          handleUnlink(cfg, this, fileName);
+        });
+        a.appendChild(btn);
+      }
+    }
     return a;
+  }
+
+  // ── unlink ──────────────────────────────────────────────────
+  // Removes ONLY the current page's record id from the file's connection
+  // array (cfg.unlink.field) — every other connected record is preserved.
+  // Mirrors bid-review/init.js handleDocUnlinkFromSow. PUTs through the
+  // gallery's own view, which must allow inline-edit on the field.
+  function handleUnlink(cfg, btn, fileName) {
+    if (btn.disabled) return;
+    var docId   = btn.getAttribute('data-doc-id');
+    var sowId   = btn.getAttribute('data-sow-id');
+    var current = (btn.getAttribute('data-current') || '').split(',').filter(Boolean);
+    if (!docId || !sowId) return;
+
+    var nextIds = [];
+    for (var i = 0; i < current.length; i++) {
+      if (current[i] !== sowId) nextIds.push(current[i]);
+    }
+    if (nextIds.length === current.length) return; // wasn't linked
+
+    var noun = cfg.unlink.noun || 'record';
+    if (!window.confirm('Unlink "' + (fileName || 'this file') + '" from this ' + noun +
+        '?\n\nThe file itself is NOT deleted, and any other ' + noun +
+        's it is linked to are untouched.')) return;
+
+    if (!window.SCW || typeof SCW.knackAjax !== 'function' ||
+        typeof SCW.knackRecordUrl !== 'function') {
+      alert('Unlink unavailable (SCW.knackAjax missing)');
+      return;
+    }
+
+    btn.disabled = true;
+    var origText = btn.textContent;
+    btn.textContent = 'Unlinking…';
+
+    var payload = {};
+    payload[cfg.unlink.field] = nextIds;
+
+    SCW.knackAjax({
+      url:  SCW.knackRecordUrl(cfg.id, docId),
+      type: 'PUT',
+      data: JSON.stringify(payload),
+      success: function () {
+        // Refetch → knack-view-render fires → gallery rebuilds without the card.
+        try {
+          var v = Knack && Knack.views && Knack.views[cfg.id];
+          if (v && v.model && typeof v.model.fetch === 'function') v.model.fetch();
+        } catch (e) { /* ignore */ }
+      },
+      error: function (xhr) {
+        btn.disabled = false;
+        btn.textContent = origText;
+        var msg = 'Unlink failed';
+        if (xhr && xhr.status === 403) {
+          msg = 'Unlink failed — ' + cfg.id + ' must allow inline-edit on ' + cfg.unlink.field;
+        }
+        alert(msg);
+      }
+    });
   }
 
   // ── transform ───────────────────────────────────────────────
@@ -307,7 +426,15 @@
       '.scw-gallery-type--line { background: #eff6ff; color: #1d4ed8; border: 1px solid #bfdbfe; }',
       /* notes caption — clamp to two lines so longer captions stay readable */
       '.scw-gallery-notes { font-size: 11.5px; color: #64748b; line-height: 1.35; min-width: 0;',
-      '  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }'
+      '  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }',
+
+      /* unlink button (opt-in per view) — quiet by default, red on hover
+         since it is a destructive-leaning action */
+      '.scw-gallery-unlink { margin: 0 11px 10px; padding: 4px 8px; align-self: flex-start;',
+      '  background: #fff; border: 1px solid #e2e8f0; border-radius: 6px; color: #94a3b8;',
+      '  font: 600 11px/1.2 system-ui, sans-serif; cursor: pointer; transition: color .15s, border-color .15s, background .15s; }',
+      '.scw-gallery-unlink:hover { background: #fef2f2; border-color: #fecaca; color: #dc2626; }',
+      '.scw-gallery-unlink:disabled { opacity: .6; cursor: default; }'
     ]).join('\n');
     var s = document.createElement('style');
     s.id = STYLE_ID;

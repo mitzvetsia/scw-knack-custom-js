@@ -877,7 +877,7 @@
     relocateSowField(card);
     removeSurveyNotes(card);
     lineBreakConnectedDevices(card);
-    makeScwNotesReadOnly(card);
+    makeScwNotesTextarea(card);
   }
 
   // Connected Devices (field_1957) is multi-value; show each on its own
@@ -899,33 +899,25 @@
     }
   }
 
-  // SCW Notes (field_1953) is READ-ONLY on the bid comparison page — it's
-  // owned upstream (build-SOW), not editable while reconciling bids. Render it
-  // as a full-width, wrapping textarea for readability, but lock it: drop the
-  // edit hook (data-scw-ws-v2-field) so edit.js never PUTs it, and apply the
-  // repo's locked-field convention (white bg, pointer-events:none, readOnly) so
-  // it reads as non-interactive without being grayed out.
-  function makeScwNotesReadOnly(card) {
-    var el = card.querySelector('[data-scw-ws-v2-field="field_1953"], textarea.scw-br-v2-scwnotes-ro');
-    if (!el) return;
-    var ta = el;
-    if (el.tagName !== 'TEXTAREA') {
-      ta = document.createElement('textarea');
-      ta.value = el.value;
-      for (var i = 0; i < el.attributes.length; i++) {
-        var a = el.attributes[i];
-        if (a.name === 'type' || a.name === 'class' || a.name === 'value') continue;
-        ta.setAttribute(a.name, a.value);
-      }
-      el.parentNode.replaceChild(ta, el);
+  // SCW Notes (field_1953) — EDITABLE on the bid comparison page (was locked
+  // as "owned upstream" until 2026-07; view_3921 should be fully editable).
+  // Swap the single-line input for a full-width, wrapping textarea for
+  // readability. The data-scw-ws-v2-field/-record/-view attrs carry over in
+  // the attribute copy, so worksheet-v2's delegated edit.js commits it
+  // through view_3921 like any other field (Enter saves, Shift+Enter
+  // inserts a newline).
+  function makeScwNotesTextarea(card) {
+    var el = card.querySelector('[data-scw-ws-v2-field="field_1953"]');
+    if (!el || el.tagName === 'TEXTAREA') return;
+    var ta = document.createElement('textarea');
+    ta.value = el.value;
+    for (var i = 0; i < el.attributes.length; i++) {
+      var a = el.attributes[i];
+      if (a.name === 'type' || a.name === 'class' || a.name === 'value') continue;
+      ta.setAttribute(a.name, a.value);
     }
-    ta.className = 'scw-ws-v2-input scw-ws-v2-input--textarea ' +
-      'scw-br-v2-scwnotes-ro';
-    ta.readOnly = true;
-    ta.setAttribute('aria-readonly', 'true');
-    ta.setAttribute('title', 'SCW Notes are read-only here');
-    // Drop the edit hook so the delegated edit.js handler never saves it.
-    ta.removeAttribute('data-scw-ws-v2-field');
+    ta.className = 'scw-ws-v2-input scw-ws-v2-input--textarea scw-br-v2-scwnotes';
+    el.parentNode.replaceChild(ta, el);
   }
 
   function findDetailFieldByLabel(card, labelText) {

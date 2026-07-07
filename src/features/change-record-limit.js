@@ -21,7 +21,11 @@
     // whose bid record sits on an unloaded page gets misclassified as
     // "Removed / Not surveyed". v1 loads its own copy via API, but that
     // doesn't bump these on-scene models, so force them here.
-    'view_3680', 'view_3921', 'view_3573', 'view_3822', 'view_3818'
+    'view_3680', 'view_3921', 'view_3573', 'view_3822', 'view_3818',
+    // Change Order scene: CO line items (v2 source), MDF/IDF locations,
+    // project install items (removal source), project SOW/proposal items
+    // (adoption source). All read whole via the Backbone model.
+    'view_4079', 'view_4084', 'view_4086', 'view_4088'
   ];
   const LIMIT_VALUE = '1000';
   const LIMIT_NUM = 1000;
@@ -46,7 +50,9 @@
     // import-unique-items-btn.js
     'view_3913',
     // bid-review source/compare views (now also in VIEW_IDS above)
-    'view_3680', 'view_3921', 'view_3573', 'view_3822', 'view_3818'
+    'view_3680', 'view_3921', 'view_3573', 'view_3822', 'view_3818',
+    // Change Order scene views (see VIEW_IDS above)
+    'view_4079', 'view_4084', 'view_4086', 'view_4088'
   ];
 
   (function injectHidePaginationCss() {

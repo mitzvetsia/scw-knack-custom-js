@@ -1246,10 +1246,31 @@
   var _barOpen = false;
 
   /** Jump to a revision's card (matched survey item or orphan), expanding any
-   *  collapsed L1 group + the card itself, then scroll it into view. */
-  function navigateToRev(container, siId, revId) {
-    var target = siId ? findCard(container, siId)
-                      : container.querySelector('[data-rev-id="' + revId + '"]');
+   *  collapsed L1 group + the card itself, then scroll it into view. Tries
+   *  every record id the revision carries (surveyItemId, then the change
+   *  JSON's rowId / bidRecordId / sowItemId — on this page bid records ARE
+   *  survey line items, so any of them can be the card's record id). If the
+   *  row is filtered OUT by the Bid pill strip (filtered rows aren't rendered
+   *  at all), resets the filter to Show All and retries. */
+  function navigateToRev(container, siId, revId, rev) {
+    var ids = [];
+    if (siId) ids.push(siId);
+    var cr = (rev && rev.changeJson) || {};
+    ['rowId', 'bidRecordId', 'sowItemId'].forEach(function (k) {
+      if (cr[k] && ids.indexOf(cr[k]) === -1) ids.push(cr[k]);
+    });
+    function locate() {
+      for (var i = 0; i < ids.length; i++) {
+        var c = findCard(container, ids[i]);
+        if (c) return c;
+      }
+      return revId ? container.querySelector('[data-rev-id="' + revId + '"]') : null;
+    }
+    var target = locate();
+    if (!target && container.hasAttribute('data-scw-ws-v2-sow-filter')) {
+      var allPill = container.querySelector('[data-scw-ws-v2-sow-pill="__all"]');
+      if (allPill) { allPill.click(); target = locate(); }
+    }
     if (!target) return;
     var l1 = target.closest ? target.closest('.scw-ws-v2-l1') : null;
     if (l1 && !l1.classList.contains('scw-ws-v2-l1--open')) {
@@ -1262,6 +1283,8 @@
     }
     setTimeout(function () {
       try { target.scrollIntoView({ behavior: 'smooth', block: 'center' }); } catch (e) { target.scrollIntoView(); }
+      target.classList.add(P + '-nav-flash');
+      setTimeout(function () { target.classList.remove(P + '-nav-flash'); }, 1800);
     }, 80);
   }
 
@@ -1335,6 +1358,23 @@
 
   var _barSig = '';
 
+  // Per-type section open/closed state — survives panel rebuilds while the
+  // page is up (module-scoped, not persisted). All open by default.
+  var _secOpen = { add: true, remove: true, revise: true };
+
+  // The three change-request types the summary panel groups by. Anything
+  // that isn't an explicit add/remove (revise, reinstate, …) buckets under
+  // Revisions.
+  var REV_TYPE_GROUPS = [
+    { key: 'add',    label: 'Additions', noun: 'addition' },
+    { key: 'remove', label: 'Removals',  noun: 'removal'  },
+    { key: 'revise', label: 'Revisions', noun: 'revision' }
+  ];
+  function revTypeOf(rev) {
+    var a = actionOf([rev]);
+    return (a === 'add' || a === 'remove') ? a : 'revise';
+  }
+
   function buildSummaryPanel(container, revMap, orphaned) {
     var all = [];
     Object.keys(revMap).forEach(function (k) { revMap[k].forEach(function (e) { all.push(e); }); });
@@ -1342,6 +1382,11 @@
 
     var existing = container.querySelector('.' + BAR_CLS);
     if (!all.length) { if (existing) existing.remove(); _barSig = ''; return; }
+
+    // Bucket by type once — drives the head chips, the grouped panel
+    // sections, and the per-type Accept/Reject All buttons.
+    var byType = { add: [], remove: [], revise: [] };
+    for (var bi = 0; bi < all.length; bi++) byType[revTypeOf(all[bi])].push(all[bi]);
 
     // Rebuild only when the revision set changes — otherwise keep the live bar
     // (and its click handler) so frequent re-injects don't swallow clicks.
@@ -1365,8 +1410,19 @@
     head.appendChild(count);
     var lbl = document.createElement('span');
     lbl.className = P + '-bar-title';
-    lbl.textContent = ' pending revision' + (all.length === 1 ? '' : 's');
+    lbl.textContent = ' pending change request' + (all.length === 1 ? '' : 's');
     head.appendChild(lbl);
+    // Per-type count chips so the add/remove/revise mix is visible without
+    // opening the panel.
+    for (var chi = 0; chi < REV_TYPE_GROUPS.length; chi++) {
+      var cg = REV_TYPE_GROUPS[chi];
+      var cn = byType[cg.key].length;
+      if (!cn) continue;
+      var chip = document.createElement('span');
+      chip.className = P + '-bar-chip ' + P + '-bar-chip--' + cg.key;
+      chip.textContent = cn + ' ' + cg.noun + (cn === 1 ? '' : 's');
+      head.appendChild(chip);
+    }
     var spacer = document.createElement('span');
     spacer.style.flex = '1';
     head.appendChild(spacer);
@@ -1377,7 +1433,7 @@
     rejectAll.textContent = 'Reject All';
     rejectAll.addEventListener('click', function (e) {
       e.stopPropagation();
-      if (!window.confirm('Reject all ' + all.length + ' revision(s)?')) return;
+      if (!window.confirm('Reject all ' + all.length + ' change request(s)?')) return;
       fireBulkAction('reject', all, rejectAll);
     });
     var acceptAll = document.createElement('button');
@@ -1386,7 +1442,7 @@
     acceptAll.textContent = 'Accept All';
     acceptAll.addEventListener('click', function (e) {
       e.stopPropagation();
-      if (!window.confirm('Accept all ' + all.length + ' revision(s)?')) return;
+      if (!window.confirm('Accept all ' + all.length + ' change request(s)?')) return;
       fireBulkAction('accept', all, acceptAll);
     });
     head.appendChild(rejectAll);
@@ -1402,8 +1458,7 @@
       chev.className = P + '-bar-chev' + (_barOpen ? ' is-open' : '');
     });
 
-    for (var i = 0; i < all.length; i++) {
-      var rev = all[i];
+    function makeBarCard(rev) {
       var card = document.createElement('div');
       card.className = P + '-bar-card';
       card.title = 'Click to jump to this item in the worksheet';
@@ -1414,13 +1469,78 @@
         var j = rev.changeJson || {};
         card.textContent = j.displayLabel || j.productName || 'Revision';
       }
-      (function (siId, revId) {
+      (function (siId, revId, revRef) {
         card.addEventListener('click', function (e) {
           if (e.target.closest && e.target.closest('a,button,input,textarea,select')) return;
-          navigateToRev(container, siId, revId);
+          navigateToRev(container, siId, revId, revRef);
         });
-      })(rev.surveyItemId, rev.id);
-      panel.appendChild(card);
+      })(rev.surveyItemId, rev.id, rev);
+      return card;
+    }
+
+    // Per-type Accept/Reject All — same bulk path as the global buttons,
+    // scoped to one type's revisions.
+    function makeTypeBtn(action, grp, revs) {
+      var b = document.createElement('button');
+      b.type = 'button';
+      b.className = P + '-bar-btn ' + P + '-bar-btn--' + action + ' ' + P + '-bar-btn--sm';
+      b.textContent = (action === 'accept' ? 'Accept' : 'Reject') + ' All ' + grp.label;
+      b.addEventListener('click', function (e) {
+        e.stopPropagation();
+        if (!window.confirm((action === 'accept' ? 'Accept' : 'Reject') + ' all ' +
+            revs.length + ' ' + grp.noun + (revs.length === 1 ? '' : 's') + '?')) return;
+        fireBulkAction(action, revs, b);
+      });
+      return b;
+    }
+
+    // Grouped sections: Additions / Removals / Revisions, each with its own
+    // Accept All / Reject All pair (destructive first, primary last).
+    for (var gi = 0; gi < REV_TYPE_GROUPS.length; gi++) {
+      var grp = REV_TYPE_GROUPS[gi];
+      var revsOfType = byType[grp.key];
+      if (!revsOfType.length) continue;
+
+      var sec = document.createElement('div');
+      sec.className = P + '-bar-sec ' + P + '-bar-sec--' + grp.key;
+
+      var secOpen = _secOpen[grp.key] !== false;
+
+      var secHead = document.createElement('div');
+      secHead.className = P + '-bar-sec-head';
+      var secChev = document.createElement('span');
+      secChev.className = P + '-bar-chev' + (secOpen ? ' is-open' : '');
+      secChev.innerHTML = '<svg width="11" height="11" viewBox="0 0 12 12" fill="none" stroke="currentColor" stroke-width="2"><polyline points="4 2 8 6 4 10"></polyline></svg>';
+      secHead.appendChild(secChev);
+      var secTitle = document.createElement('span');
+      secTitle.className = P + '-bar-sec-title';
+      secTitle.textContent = grp.label + ' (' + revsOfType.length + ')';
+      secHead.appendChild(secTitle);
+      var secSpacer = document.createElement('span');
+      secSpacer.style.flex = '1';
+      secHead.appendChild(secSpacer);
+      secHead.appendChild(makeTypeBtn('reject', grp, revsOfType));
+      secHead.appendChild(makeTypeBtn('accept', grp, revsOfType));
+      sec.appendChild(secHead);
+
+      var secBody = document.createElement('div');
+      secBody.className = P + '-bar-sec-body';
+      secBody.style.display = secOpen ? '' : 'none';
+      for (var ri3 = 0; ri3 < revsOfType.length; ri3++) secBody.appendChild(makeBarCard(revsOfType[ri3]));
+      sec.appendChild(secBody);
+
+      // Collapsible per section — the Accept/Reject buttons stopPropagation,
+      // so a head click anywhere else toggles.
+      (function (key, bodyEl, chevEl) {
+        secHead.addEventListener('click', function () {
+          var open = _secOpen[key] === false;   // toggling: closed → open
+          _secOpen[key] = open;
+          bodyEl.style.display = open ? '' : 'none';
+          chevEl.className = P + '-bar-chev' + (open ? ' is-open' : '');
+        });
+      })(grp.key, secBody, secChev);
+
+      panel.appendChild(sec);
     }
 
     bar.appendChild(head);
@@ -1674,15 +1794,52 @@
       '.' + P + '-bar-btn[disabled] { opacity: 0.6; cursor: not-allowed; }',
       '.' + P + '-bar-btn--accept { background: #16a34a; }',
       '.' + P + '-bar-btn--reject { background: #dc2626; }',
+      '.' + P + '-bar-btn--sm { padding: 4px 10px; font-size: 11px; }',
+      /* Per-type count chips in the bar head */
+      '.' + P + '-bar-chip {',
+      '  display: inline-flex; align-items: center; padding: 2px 8px; border-radius: 10px;',
+      '  font: 700 10.5px system-ui, sans-serif; text-transform: uppercase; letter-spacing: 0.03em;',
+      '}',
+      '.' + P + '-bar-chip--add    { background: #dcfce7; color: #166534; }',
+      '.' + P + '-bar-chip--remove { background: #fee2e2; color: #991b1b; }',
+      '.' + P + '-bar-chip--revise { background: #dbeafe; color: #1e40af; }',
       '.' + P + '-bar-panel {',
       '  border-top: 1px solid #e2e8f0; padding: 8px 14px 12px;',
-      '  max-height: 50vh; overflow-y: auto; display: flex; flex-direction: column; gap: 6px;',
+      '  max-height: 50vh; overflow-y: auto; display: flex; flex-direction: column; gap: 8px;',
       '}',
+      /* Type sections inside the panel (Additions / Removals / Revisions) */
+      '.' + P + '-bar-sec { border: 1px solid #e2e8f0; border-radius: 8px; overflow: hidden; }',
+      '.' + P + '-bar-sec-head {',
+      '  display: flex; align-items: center; gap: 8px; padding: 7px 10px;',
+      '  border-bottom: 1px solid #e2e8f0; cursor: pointer; user-select: none;',
+      '}',
+      '.' + P + '-bar-sec--add    .' + P + '-bar-chev { color: #166534; }',
+      '.' + P + '-bar-sec--remove .' + P + '-bar-chev { color: #991b1b; }',
+      '.' + P + '-bar-sec--revise .' + P + '-bar-chev { color: #1e40af; }',
+      '.' + P + '-bar-sec--add    .' + P + '-bar-sec-head { background: #f0fdf4; border-bottom-color: #bbf7d0; }',
+      '.' + P + '-bar-sec--remove .' + P + '-bar-sec-head { background: #fef2f2; border-bottom-color: #fecaca; }',
+      '.' + P + '-bar-sec--revise .' + P + '-bar-sec-head { background: #eff6ff; border-bottom-color: #bfdbfe; }',
+      '.' + P + '-bar-sec-title {',
+      '  font: 700 11.5px system-ui, sans-serif; text-transform: uppercase; letter-spacing: 0.04em;',
+      '}',
+      '.' + P + '-bar-sec--add    .' + P + '-bar-sec-title { color: #166534; }',
+      '.' + P + '-bar-sec--remove .' + P + '-bar-sec-title { color: #991b1b; }',
+      '.' + P + '-bar-sec--revise .' + P + '-bar-sec-title { color: #1e40af; }',
+      '.' + P + '-bar-sec-body { display: flex; flex-direction: column; gap: 6px; padding: 8px; }',
       '.' + P + '-bar-card {',
       '  border: 1px solid #e2e8f0; border-radius: 6px; padding: 8px 10px; cursor: pointer;',
       '  background: #fff;',
       '}',
       '.' + P + '-bar-card:hover { background: #f8fafc; border-color: #bfdbfe; }',
+      /* Flash highlight on the worksheet card a summary click lands on */
+      '.' + P + '-nav-flash {',
+      '  outline: 3px solid #2563eb; outline-offset: 2px; border-radius: 6px;',
+      '  animation: scwWsV2NavFlash 1.8s ease forwards;',
+      '}',
+      '@keyframes scwWsV2NavFlash {',
+      '  0%, 55% { outline-color: #2563eb; }',
+      '  100% { outline-color: transparent; }',
+      '}',
       /* Edit modal */
       '.' + P + '-modal-overlay {',
       '  position: fixed; inset: 0; background: rgba(15,23,42,0.45); z-index: 100000;',

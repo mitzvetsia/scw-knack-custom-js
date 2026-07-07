@@ -229,10 +229,16 @@
     if (!viewCfg) { alert('Bulk upload config not found.'); return; }
     // lineItemUpload flips the modal into targeted copy ("Uploading to this
     // MDF/IDF location", no SOW auto-match blurb); targetLabel names it.
+    // refreshViews: the borrowed view_3482 config refreshes NOTHING on close,
+    // so new MDF photos stayed invisible until a full page reload. Refetch the
+    // (hidden) MDF/IDF locations grid — the L1 photo strip scrapes ITS DOM,
+    // and v2 subscribes to its knack-view-render, so the refetch re-renders
+    // the grid with the fresh photos after Make's async write lands.
     bu.open($.extend({}, viewCfg, {
       linkField: 'mdfIdfID',
       lineItemUpload: true,
-      targetLabel: label || ''
+      targetLabel: label || '',
+      refreshViews: [mdfViewKey()]
     }), mdfIdfId);
   }
 
@@ -243,6 +249,13 @@
   function closePanels() {
     var rows = document.querySelectorAll('tr.' + ROW_CLS);
     for (var i = 0; i < rows.length; i++) rows[i].parentNode.removeChild(rows[i]);
+    // Restore the read-only surfaces a panel hid while it was open (header
+    // title, SCW Notes callout) — see the de-dupe block in openPanel.
+    var hid = document.querySelectorAll('[data-scw-mdf-dup-hidden]');
+    for (var h = 0; h < hid.length; h++) {
+      hid[h].style.display = '';
+      hid[h].removeAttribute('data-scw-mdf-dup-hidden');
+    }
   }
 
   function openPanel(gear) {
@@ -311,6 +324,31 @@
       '</div>';
     tr.appendChild(td);
     headerTr.parentNode.insertBefore(tr, headerTr.nextSibling);
+
+    // De-dupe while editing: the panel's inputs REPLACE the read-only display
+    // of the same values, so hide those for this group while the panel is
+    // open — the header's "TYPE: ## : name" title (the badge + Name input
+    // show the same thing editable) and the L1 detail band's SCW Notes
+    // callout (the Notes textarea edits it). Both are marked and restored
+    // by closePanels; a v2 grid rebuild recreates them fresh anyway.
+    function hideDup(el) {
+      if (!el) return;
+      el.setAttribute('data-scw-mdf-dup-hidden', '');
+      el.style.display = 'none';
+    }
+    hideDup(headerTr.querySelector('.scw-bid-review-v2__grp-title'));
+    var sib = tr.nextElementSibling;
+    while (sib && !sib.classList.contains('scw-bid-review-v2__group-header')) {
+      if (sib.classList.contains('scw-bid-review-v2__l1-detail-row')) {
+        var dSecs = sib.querySelectorAll('.scw-bid-review-v2__l1-detail-section');
+        for (var ds = 0; ds < dSecs.length; ds++) {
+          var dLbl = dSecs[ds].querySelector('.scw-bid-review-v2__l1-detail-label');
+          if (dLbl && /^scw notes$/i.test((dLbl.textContent || '').trim())) hideDup(dSecs[ds]);
+        }
+        break;
+      }
+      sib = sib.nextElementSibling;
+    }
 
     var saveBtn = td.querySelector('.' + P + '-btn--save');
     var status  = td.querySelector('.' + P + '-status');
@@ -387,8 +425,80 @@
         error: function (xhr) {
           saveBtn.disabled = false;
           status.classList.add('is-err');
-          status.textContent = 'Save failed (' + (xhr && xhr.status) + ') — are these ' +
-            'fields editable on ' + mdfViewKey() + '?';
+          // Surface Knack's actual rejection reason — the generic "are these
+          // fields editable?" guess sent users hunting the wrong Builder
+          // setting. Knack 400s carry {"errors":[{"message":…}]} naming the
+          // offending field/rule.
+          var srvMsg = '';
+          try {
+            var rb = JSON.parse((xhr && xhr.responseText) || '');
+            var errs = (rb && (rb.errors || rb.error)) || [];
+            if (!Array.isArray(errs)) errs = [errs];
+            srvMsg = errs.map(function (er) {
+              return (er && (er.message || er.msg)) || (typeof er === 'string' ? er : '');
+            }).filter(Boolean).join('; ');
+          } catch (e) { /* not JSON */ }
+          // Introspect the view's LIVE schema — Knack ships it to the browser
+          // (Knack.views[k].model.view), so we can say exactly which
+          // precondition for a view-scoped PUT fails instead of guessing:
+          //   1. view type must be 'table' (lists/details can't take PUTs)
+          //   2. the view-level cell editor (inline editing) must be on
+          //   3. each sent field must be a column, without ignore_edit
+          var vinfo = null;
+          try {
+            var kv = window.Knack && Knack.views && Knack.views[mdfViewKey()];
+            var vv = kv && kv.model && kv.model.view;
+            if (vv) {
+              vinfo = {
+                type: vv.type || '',
+                cellEditor: !!(vv.options && vv.options.cell_editor),
+                columns: {}
+              };
+              var cols = vv.columns || [];
+              for (var ci = 0; ci < cols.length; ci++) {
+                var col = cols[ci] || {};
+                var cf = (col.field && col.field.key) || col.id;
+                if (cf) vinfo.columns[cf] = { ignoreEdit: !!col.ignore_edit };
+              }
+            }
+          } catch (e) { /* best-effort */ }
+          var problems = [];
+          if (vinfo) {
+            if (vinfo.type && vinfo.type !== 'table') {
+              problems.push(mdfViewKey() + ' is a "' + vinfo.type + '" view — record ' +
+                'PUTs need an inline-editable grid (table). Use/add a grid of MDF/IDF ' +
+                'locations on this scene instead.');
+            } else if (!vinfo.cellEditor) {
+              problems.push('inline editing (cell editor) is OFF on ' + mdfViewKey() +
+                ' as this page loaded it — enable it in Builder, then hard-refresh.');
+            } else {
+              for (var pk in fields) {
+                if (!Object.prototype.hasOwnProperty.call(fields, pk)) continue;
+                var colInfo = vinfo.columns[pk];
+                if (!colInfo) {
+                  problems.push(pk + ' is not a column on ' + mdfViewKey() +
+                    ' — add it to the grid in Builder.');
+                } else if (colInfo.ignoreEdit) {
+                  problems.push(pk + '’s column on ' + mdfViewKey() +
+                    ' has inline editing disabled (column setting).');
+                }
+              }
+            }
+          }
+          console.warn('[scw-brv2-mdf] save failed', {
+            view: mdfViewKey(), recordId: rec.id, sent: fields,
+            status: xhr && xhr.status, response: xhr && xhr.responseText,
+            viewSchema: vinfo, problems: problems
+          });
+          var msg = 'Save failed (' + (xhr && xhr.status) + ')';
+          if (srvMsg) msg += ': ' + srvMsg;
+          if (problems.length) {
+            msg += ' — ' + problems.join(' ');
+          } else if (!srvMsg || /invalid request/i.test(srvMsg)) {
+            msg += ' — view schema looks editable from here; see console ' +
+              '([scw-brv2-mdf]) for the sent fields + view schema snapshot.';
+          }
+          status.textContent = msg;
         }
       });
     });

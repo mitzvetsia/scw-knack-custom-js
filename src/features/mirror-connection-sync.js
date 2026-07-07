@@ -2017,6 +2017,77 @@
       }
     });
 
+  // ── Accessory-SOW reconcile sweep ─────────────────────────────────────
+  // The cascade above only fires on a LIVE client-side SOW_FIELD edit
+  // (knack-cell-update on this view). SOW membership ALSO changes through
+  // paths that never raise that event here — Make scenarios (Update SOW,
+  // change-request accepts, create-SOW appends) and edits made on other
+  // scenes — so a parent and its accessories drift onto different SOW
+  // sets. The stranded accessory then renders on the old SOW's worksheet
+  // under "Other Equipment" with its parent missing entirely.
+  //
+  // On each render of this view (or the accessory view), re-assert the
+  // SAME invariant the cascade maintains — "an accessory's SOW must
+  // mirror its parent's exact set" — for every accessory whose parent is
+  // loaded in this view's model. Mismatch → repair PUT through the capped
+  // queue. Guards: never touches an accessory whose parent isn't loaded
+  // (both records' field_2154_raw are complete per record, so a loaded
+  // pair is always safely comparable regardless of view scoping); leaves
+  // children alone when the parent's SOW set is empty (same
+  // accidental-clear guard as the cascade); remembers what it wrote so a
+  // stale local model can't re-fire the same PUT; skips entirely while a
+  // cascade is in flight.
+  var sowSweepTimer   = null;
+  var sowSweepWritten = {};   // accessoryId → serialized parent set last written
+  function accessorySowSweep() {
+    if (!SOW_FIELD || !ACCESSORIES_VIEW_ID || !ACCESSORIES_PARENT_FIELD) return;
+    try {
+      if (window.SCW && SCW.mirrorConn &&
+          typeof SCW.mirrorConn.isCascadeInFlight === 'function' &&
+          SCW.mirrorConn.isCascadeInFlight()) return;
+      var av = window.Knack && Knack.views && Knack.views[ACCESSORIES_VIEW_ID];
+      var ms = av && av.model && av.model.data && av.model.data.models;
+      if (!ms || !ms.length) return;
+      var repaired = 0;
+      for (var i = 0; i < ms.length; i++) {
+        var attrs = ms[i] && (ms[i].attributes || ms[i]);
+        if (!attrs || !attrs.id) continue;
+        var pRaw = attrs[ACCESSORIES_PARENT_FIELD + '_raw'];
+        var parentId = Array.isArray(pRaw) && pRaw[0] && pRaw[0].id;
+        if (!parentId) continue;
+        var parentAttrs = getModelAttrs(parentId);
+        if (!parentAttrs) continue;              // parent not loaded here — can't judge
+        var parentSet = serializeSow(parentAttrs);
+        if (!parentSet) continue;                // parent SOW empty → leave alone
+        var accSet = serializeSow(attrs);
+        if (accSet === parentSet) { delete sowSweepWritten[attrs.id]; continue; }
+        if (sowSweepWritten[attrs.id] === parentSet) continue;  // repair already sent
+        sowSweepWritten[attrs.id] = parentSet;
+        console.warn(LOG_PREFIX, 'accessory-SOW reconcile: accessory ' + attrs.id +
+          ' SOWs [' + accSet + '] ≠ parent ' + parentId + ' [' + parentSet +
+          '] — re-aligning to the parent\'s set');
+        fireAccessorySowPut(attrs.id, sowIdsFromAttrs(parentAttrs));
+        repaired++;
+      }
+      if (repaired) log('accessory-SOW sweep: ' + repaired + ' repair PUT(s) queued');
+    } catch (e) {
+      console.warn(LOG_PREFIX, 'accessory-SOW sweep threw', e);
+    }
+  }
+  function scheduleAccessorySowSweep() {
+    if (sowSweepTimer) clearTimeout(sowSweepTimer);
+    sowSweepTimer = setTimeout(function () {
+      sowSweepTimer = null;
+      accessorySowSweep();
+    }, 1500);
+  }
+  if (SOW_FIELD && ACCESSORIES_VIEW_ID && ACCESSORIES_PARENT_FIELD) {
+    $(document).on('knack-view-render.' + VIEW_ID + EVENT_NS + '-sowsweep',
+      scheduleAccessorySowSweep);
+    $(document).on('knack-view-render.' + ACCESSORIES_VIEW_ID + EVENT_NS + '-sowsweep',
+      scheduleAccessorySowSweep);
+  }
+
   // Re-renders during the edit cycle reset the settle timer rather than
   // aborting, so Knack's native post-edit re-render doesn't kill us.
   // After the initial regroup has run, the MutationObserver watchdog is
@@ -2252,6 +2323,25 @@
     GROUPING_FIELD:    'field_2818',
     LABEL_FIELD:       'field_2802',   // install line-item display label
     PUBLIC_API_NAME:   'silentRegroupView4056'
+  });
+
+  // view_4079 (Change Order line items — SAME SOW Line Items object as
+  // view_3962/view_3586, rendered by worksheet-v2 on the CO scene). The
+  // field_1957 ↔ field_2197 pair MUST cascade on every view that edits this
+  // object (CLAUDE.md) — without this instance, connection edits through the
+  // CO worksheet would drift the reciprocal side. MODEL_ONLY like view_3962
+  // (v2 renders; the native grid is hidden). No ACCESSORIES_* wired — the CO
+  // scene has no hidden accessories grid yet; add one (view_3888 analogue)
+  // + the ACCESSORIES_* config if accessory regroups are needed there.
+  createMirror({
+    VIEW_ID:             'view_4079',
+    TRIGGER_FIELD:       'field_1957',
+    CONNECTIONS_FIELD:   'field_2197',
+    GROUPING_FIELD:      'field_1946',
+    SOW_FIELD:           'field_2154',
+    LABEL_FIELD:         'field_1950',
+    MODEL_ONLY:          true,
+    PUBLIC_API_NAME:     'silentRegroupView4079'
   });
 
   // Backward-compat alias for any lingering DevTools snippets that

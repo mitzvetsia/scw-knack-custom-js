@@ -359,8 +359,10 @@
   // v1's renderActionBar (called inside ns.refresh, which runs before
   // us) creates/updates #scw-sales-cr-bar inside the v1 accordion. We
   // just move the finished node under the v2 container — listeners and
-  // the expandable changes panel come with it. position:sticky bottom
-  // works the same in the new parent.
+  // the expandable changes panel come with it. Mounted at the TOP of the
+  // worksheet builder (before .scw-ws-v2-body, so the v2 toolbar stays
+  // first) — matching renderActionBar's own v2 placement so the two
+  // mount paths can't fight over position.
 
   function relocateBar(container) {
     var bar = document.getElementById(CFG.barId);
@@ -369,7 +371,13 @@
       if (typeof ns.renderActionBar === 'function') ns.renderActionBar();
       bar = document.getElementById(CFG.barId);
     }
-    if (bar && bar.parentNode !== container) container.appendChild(bar);
+    if (!bar) return;
+    var v2body = container.querySelector('.scw-ws-v2-body');
+    var anchor = (v2body && v2body.parentNode === container)
+      ? v2body : container.firstChild;
+    if (bar.parentNode !== container || bar.nextSibling !== anchor) {
+      container.insertBefore(bar, anchor);
+    }
   }
 
   // ── Main render pass ─────────────────────────────────────

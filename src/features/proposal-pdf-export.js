@@ -160,9 +160,17 @@
       // the proposal publish scenario.
       webhookUrl: SUBCONTRACTOR_BID_WEBHOOK,
       trigger: { type: 'formSubmit', formViewId: 'view_3679', recordIdInput: 'id' },
-      skipViews: { view_3679: true, view_3770: true, view_3552: true },
+      skipViews: { view_3679: true, view_3770: true, view_3552: true, view_4073: true },
       hideEmptyGrids: [],
-      gridKeys: { qty: 'field_2399', cost: 'field_2401' },
+      gridKeys: { qty: 'field_2399', cost: 'field_2401', rate: 'field_2400' },
+      // Bid identity header at the top of the rendered bid document:
+      // field_2638 designates WHICH survey request + which bid + the
+      // friendly name; field_2635 is the bid expiration date. Both live on
+      // view_3552 (skipped from the scrape as PDF content, but its DOM is
+      // on the scene and readable). NOTE field_2638 renders as
+      // .kn-label-none, not .kn-detail.
+      bidHeaderField:  'field_2638',
+      bidExpiresField: 'field_2635',
       payloadType: 'subcontractor bid',
       pollViewOnReturn: 'view_3507',
       pollField: 'field_2626',
@@ -172,10 +180,10 @@
         // form's hidden `id` input feeds extra.recordId from. URL-based
         // extraction missed it when the bid-submit URL didn't end in a
         // 24-hex segment.
-        { name: 'bidId', source: 'recordId' },
+        { name: 'bidRecordID', source: 'recordId' },
         { field: 'field_666',  name: 'clientSite' },
         { field: 'field_2410', name: 'projectAddress' },
-        { field: 'field_2633', name: 'field_2633' },
+        { field: 'field_2633', name: 'bidVersionCounter' },   // SYS_bid version counter
         { field: 'field_2631', name: 'cuTaskId', sourceView: 'view_3552', hide: true }
       ],
     },
@@ -499,6 +507,9 @@
         var hideCost = hideQtyCost || tr.classList.contains('scw-hide-cost');
         var l3Qty = hideQtyCost ? 0 : parseMoney(norm((tr.querySelector('td.' + keys.qty) || {}).textContent || ''));
         var l3Cost = hideCost ? '' : norm((tr.querySelector('td.' + keys.cost) || {}).textContent || '');
+        // Rate (unit price) — only scenes that declare gridKeys.rate (the
+        // subcontractor bid scene) capture it; feeds the named bidLineItems block.
+        var l3Rate = (keys.rate && !hideCost) ? norm((tr.querySelector('td.' + keys.rate) || {}).textContent || '') : '';
 
         var connDevSpan = tr.querySelector('.scw-l3-connected-devices');
         var connDevices = [];
@@ -526,7 +537,7 @@
         var isMounting = tr.classList.contains('scw-level3--mounting-hardware');
 
         currentL3 = {
-          level: 3, label: l3Label, qty: l3Qty, cost: l3Cost, hideCost: hideCost,
+          level: 3, label: l3Label, qty: l3Qty, cost: l3Cost, rate: l3Rate, hideCost: hideCost,
           connectedDevices: connDevices, isMountingHardware: isMounting, lineItems: [],
         };
 
@@ -1280,6 +1291,27 @@
       }
     }
 
+    // Bid identity header (subcontractor bid scene) — read from the
+    // user-hidden view_4073; hidden views still have readable DOM.
+    if (cfg.bidHeaderField || cfg.bidExpiresField) {
+      var readSceneField = function (fk) {
+        if (!fk || !sceneEl) return '';
+        var el = sceneEl.querySelector('.kn-detail.' + fk + ' .kn-detail-body') ||
+                 sceneEl.querySelector('.kn-label-none.' + fk + ' .kn-detail-body') ||
+                 sceneEl.querySelector('.kn-detail.' + fk) ||
+                 sceneEl.querySelector('.kn-label-none.' + fk) ||
+                 sceneEl.querySelector('td.' + fk) ||
+                 sceneEl.querySelector('[data-field-key="' + fk + '"]');
+        // Trim a trailing "|" (the field_2638 label template ends with a
+        // separator when no friendly name follows).
+        return el ? norm(el.textContent || '').replace(/[|\s]+$/, '') : '';
+      };
+      result.bidHeader = {
+        label:   readSceneField(cfg.bidHeaderField),
+        expires: readSceneField(cfg.bidExpiresField)
+      };
+    }
+
     // Stamp TBD into every install-labor surface if the bid hasn't
     // been validated (field_2725 != Yes). Only applies to proposal
     // payloads — subcontractor bids have different semantics.
@@ -1550,6 +1582,17 @@
   // has been removed in favor of a detail-table row above SOW ID, so
   // the buildHtml flow no longer needs a post-process injector for it.)
 
+  // Body-level copy of the PDF stylesheet. Some HTML-to-PDF modules wrap
+  // the input in their OWN document template, which turns our <head> into
+  // stray mid-body tags — the stylesheet is dropped and the <title> leaks
+  // as visible text (the tell). A <style> at the top of <body> survives
+  // that wrapping and is honored by browsers and PDF engines alike. The
+  // Google Fonts @import is stripped from this copy: offline engines can
+  // choke on it, and the font stack falls back cleanly.
+  function bodyLevelCss() {
+    return '<style>' + getPdfCss().replace(/@import[^;]+;/g, '') + '</style>';
+  }
+
   function buildPdfHtml(payload) {
     if (!payload.views.length) return '';
 
@@ -1565,6 +1608,22 @@
     html.push(getPdfCss());
     html.push('</style>');
     html.push('</head><body>');
+    html.push(bodyLevelCss());
+
+    // Bid identity header — WHICH survey request / bid / friendly name
+    // (field_2638) + expiration date (field_2635) at the top of the
+    // subcontractor bid document. Understated: a header line with a thin
+    // rule, not a callout.
+    if (payload.bidHeader && (payload.bidHeader.label || payload.bidHeader.expires)) {
+      html.push('<div class="bid-id-header" style="margin:0 0 16px;padding:0 0 10px;border-bottom:2px solid #e2e8f0;">');
+      if (payload.bidHeader.label) {
+        html.push('<div style="font-weight:700;font-size:16px;line-height:1.3;color:#07467c;">' + esc(payload.bidHeader.label) + '</div>');
+      }
+      if (payload.bidHeader.expires) {
+        html.push('<div style="margin-top:2px;font-size:12px;color:#64748b;">Bid expires: ' + esc(payload.bidHeader.expires) + '</div>');
+      }
+      html.push('</div>');
+    }
 
     // Split views into project vs. recurring vs. report
     var projectViews = [];
@@ -2192,7 +2251,42 @@
   // out at 180s (matches the proposal-publish path) — Make holds the
   // HTTP connection open until the scenario's final Webhook Response
   // module fires, which can take 90+s for big PDFs.
+  // The bid-submit webhook body, shaped. The unified payload builder is
+  // shared with the proposal publish flow, which used to make the bid
+  // payload a confusing superset: duplicate ids (recordId + bidId), and a
+  // dozen proposal-only keys that are always empty on scene_1149. Contract
+  // (agreed 2026-07-03; Make's scenario maps THESE names):
+  //   bidRecordID          — the bid record (single id key)
+  //   bidLineItems[]       — named {mdfIdf,bucket,description,qty,rate,cost}
+  //   html                 — the rendered bid document (renders the PDF;
+  //                          htmlPdf dropped — identical on this scene)
+  //   json / jsonString    — full record snapshot (record ids + every
+  //                          field), for Make's downstream Knack writes
+  //   grandTotal           — the bid total
+  //   bidLabel             — field_2638 (survey request + bid + friendly name)
+  //   bidExpirationDate    — field_2635
+  //   surveyRequestId, clientSite, projectAddress, bidVersionCounter,
+  //   cuTaskId, triggeredBy, sceneId, type
+  var BID_SUBMIT_DROP_KEYS = [
+    'recordId', 'hash', 'sowId', 'htmlPdf',
+    'equipmentTotal', 'installationTotal', 'expirationDate',
+    'invoiceItems', 'invoiceItemsString',
+    'proposalAccessToken', 'proposalAccessUrl',
+    'plaintext', 'plaintextJsonEscaped',
+    'scopeOfWorkDocumentElements', 'scopeOfWorkDocumentElementsString',
+    'tokens', 'publishAsTbd',
+    'subBidBidHtml', 'subBidDiffHtml', 'subBidDiffDocHtml', 'subBidReviewHtml',
+    'subBidBasis', 'subBidBasisId', 'subBidBasisSubId',
+    'subBidBasisSubName', 'subBidHasDiff', 'subBidNote', 'subBidIsK1'
+  ];
+  function shapeBidSubmitPayload(data) {
+    if (!data.bidRecordID && data.recordId) data.bidRecordID = data.recordId;
+    for (var i = 0; i < BID_SUBMIT_DROP_KEYS.length; i++) delete data[BID_SUBMIT_DROP_KEYS[i]];
+    return data;
+  }
+
   function sendToWebhook(data, cfg) {
+    if (cfg.payloadType === 'subcontractor bid') data = shapeBidSubmitPayload(data);
     var url = resolveWebhookUrl(cfg);
     console.log('[SCW PDF Webhook] POST', { url: url, payloadType: cfg.payloadType });
     return $.ajax({
@@ -3935,51 +4029,153 @@
   // subBidReviewHtml to its own PDF and attach it to the published-proposal
   // record (internal copy), not to the customer proposal.
   function buildSubBidReview() {
-    var empty = { bidHtml: '', diffHtml: '', reviewHtml: '', basis: '', hasDiff: false, note: '' };
+    // basisId / subId / subName are the STRUCTURED identity of the basis bid
+    // — Make stamps these onto the published-proposal record (connection to
+    // the bid package + subcontractor) so a greenlit project traces back to
+    // the exact bid it was quoted from. basisId comes from the field_2941
+    // blob (stamped at bid review); subId/subName ride the same blob once
+    // sub-bid-diff's pkgSub config key is set (bid package → sub connection).
+    var empty = { bidHtml: '', diffHtml: '', diffDocHtml: '', reviewHtml: '',
+      basis: '', basisId: '', subId: '', subName: '', hasDiff: false, note: '' };
     function finishSubBid(snap) {
-      if (!snap || (!snap.bidHtml && !snap.diffHtml)) return empty;
-      var b = snap.bidHtml || '', d = snap.diffHtml || '', rv = '';
+      if (!snap) return empty;
+      // The blob's embedded HTML fragments can come back TAG-STRIPPED: when
+      // the field_2941 read falls back to the rendered DOM, Knack has parsed
+      // the embedded markup into real elements, so textContent still yields
+      // parseable JSON but bidHtml/diffHtml lose every tag (the "wall of
+      // text" diff PDF). The diff is therefore REGENERATED here from the
+      // blob's structured data (counts/exceptions are plain text and survive
+      // any read path); the stored fragment is only a fallback. The bid
+      // fragment can't be rebuilt from the blob — but the official bid PDF /
+      // stored bid HTML is the preferred bid source anyway.
+      var regenDiff = '';
+      try {
+        var ph = window.SCW.subBidDiff && SCW.subBidDiff.pdfHtml;
+        if (ph && typeof ph.renderDiffFromSnapshot === 'function') {
+          regenDiff = ph.renderDiffFromSnapshot(snap) || '';
+        }
+      } catch (e) { regenDiff = ''; }
+      var b = snap.bidHtml || '', d = regenDiff || snap.diffHtml || '', rv = '', dd = '';
+      // Hard page break so whatever follows the diff (the bid section) starts
+      // on a fresh page. Harmless mid-document; if the diff doc is rendered
+      // ALONE it may add one trailing blank page — acceptable, since its
+      // primary use is DIFF-then-BID composition.
+      var PAGEBREAK = '<div style="page-break-after:always;break-after:page;"></div>';
       if (b || d) {
         rv = ['<!DOCTYPE html>', '<html><head><meta charset="utf-8">',
           '<title>Sub-Bid Review — ' + esc(snap.basisBidName || '') + '</title>',
-          '<style>', getPdfCss(), '</style>', '</head><body>',
-          d, b, '</body></html>'].join('\n');
+          '<style>', getPdfCss(), '</style>', '</head><body>', bodyLevelCss(),
+          d, (d && b ? PAGEBREAK : ''), b, '</body></html>'].join('\n');
       }
-      return { bidHtml: b, diffHtml: d, reviewHtml: rv,
-        basis: snap.basisBidName || '', hasDiff: Number(snap.total) > 0, note: snap.note || '' };
+      if (d) {
+        // Diff ALONE as a complete styled document — Make either merges the
+        // resulting PDF with the official bid PDF (field_2626), or feeds
+        // this doc concatenated with the bid record's stored html into one
+        // HTML→PDF step ({{subBidDiffDocHtml}}{{bid html}}). The trailing
+        // page break makes the bid start on a fresh page in that pattern.
+        dd = ['<!DOCTYPE html>', '<html><head><meta charset="utf-8">',
+          '<title>Sub-Bid Diff — ' + esc(snap.basisBidName || '') + '</title>',
+          '<style>', getPdfCss(), '</style>', '</head><body>', bodyLevelCss(),
+          d, PAGEBREAK, '</body></html>'].join('\n');
+      }
+      return { bidHtml: b, diffHtml: d, diffDocHtml: dd, reviewHtml: rv,
+        basis: snap.basisBidName || '', basisId: snap.basisBidId || '',
+        subId: snap.basisSubId || '', subName: snap.basisSubName || '',
+        hasDiff: Number(snap.total) > 0, note: snap.note || '' };
     }
-    // Prefer the Knack MODEL value (verbatim JSON) — Knack renders the embedded
-    // HTML fragments as elements in the detail body, so DOM textContent strips
-    // the tags and corrupts the blob. The model holds it exactly as PUT.
-    try {
-      var mv = window.Knack && Knack.views && Knack.views.view_3861;
-      var ma = mv && mv.model && mv.model.attributes;
-      var mt = (ma && ma.field_2941 != null) ? String(ma.field_2941).trim() : '';
-      if (mt) { try { return finishSubBid(JSON.parse(mt)); } catch (e) {} }
-    } catch (e) { /* fall through to DOM */ }
-    var cell = document.querySelector('.kn-detail.field_2941 .kn-detail-body');
-    if (!cell) return empty;
-    var txt = (cell.textContent || '').replace(/ /g, ' ').replace(/<[^>]*>/g, '').trim();
-    if (!txt) return empty;
-    var snap;
-    try { snap = JSON.parse(txt); } catch (e) { return empty; }
-    if (!snap || (!snap.bidHtml && !snap.diffHtml)) return empty;
-    var bid  = snap.bidHtml || '';
-    var diff = snap.diffHtml || '';
-    var review = '';
-    if (bid || diff) {
-      review = [
-        '<!DOCTYPE html>', '<html><head><meta charset="utf-8">',
-        '<title>Sub-Bid Review — ' + esc(snap.basisBidName || '') + '</title>',
-        '<style>', getPdfCss(), '</style>', '</head><body>',
-        diff, bid, '</body></html>'
-      ].join('\n');
+    function readSnapshotReview() {
+      // Prefer the Knack MODEL value (verbatim JSON) — Knack renders the embedded
+      // HTML fragments as elements in the detail body, so DOM textContent strips
+      // the tags and corrupts the blob. The model holds it exactly as PUT.
+      try {
+        var mv = window.Knack && Knack.views && Knack.views.view_3861;
+        var ma = mv && mv.model && mv.model.attributes;
+        var mt = (ma && ma.field_2941 != null) ? String(ma.field_2941).trim() : '';
+        if (mt) { try { return finishSubBid(JSON.parse(mt)); } catch (e) {} }
+      } catch (e) { /* fall through to DOM */ }
+      var cell = document.querySelector('.kn-detail.field_2941 .kn-detail-body');
+      if (!cell) return empty;
+      var txt = (cell.textContent || '').replace(/ /g, ' ').replace(/<[^>]*>/g, '').trim();
+      if (!txt) return empty;
+      var snap;
+      try { snap = JSON.parse(txt); } catch (e) { return empty; }
+      return finishSubBid(snap);
     }
-    return {
-      bidHtml: bid, diffHtml: diff, reviewHtml: review,
-      basis: snap.basisBidName || '', hasDiff: Number(snap.total) > 0,
-      note: snap.note || ''
-    };
+
+    // field_2942 — the SAVED basis-bid connection on the SOW, shown on
+    // view_3861. This is the CANONICAL "which bid is this proposal built on"
+    // answer; the field_2941 blob is just the review snapshot. Deriving
+    // subBidBasisId only from the blob meant a SOW with a saved basis but a
+    // missing/unparseable snapshot (typically a perfect-match bid — nothing
+    // to review, so no blob) published with an EMPTY subBidBasisId. Read the
+    // connection directly and let it own basisId; the blob keeps supplying
+    // the HTML fragments / diff flag / note.
+    function basisFromConnection() {
+      var out = { id: '', name: '' };
+      try {
+        var spans = document.querySelectorAll(
+          '#view_3861 .kn-detail.field_2942 span[data-kn="connection-value"]');
+        for (var i = 0; i < spans.length; i++) {
+          var cls = (spans[i].className || '').trim();
+          if (/^[0-9a-f]{24}$/i.test(cls)) {
+            out.id = cls;
+            out.name = (spans[i].textContent || '').trim();
+            return out;
+          }
+        }
+        var mv2 = window.Knack && Knack.views && Knack.views.view_3861;
+        var ma2 = mv2 && mv2.model && mv2.model.attributes;
+        var raw = ma2 && ma2.field_2942_raw;
+        if (Array.isArray(raw)) raw = raw[0];
+        if (raw && raw.id) {
+          out.id = raw.id;
+          out.name = String(raw.identifier || '').replace(/<[^>]*>/g, '').trim();
+        }
+      } catch (e) { /* leave empty */ }
+      return out;
+    }
+
+    var res = readSnapshotReview();
+    var conn = basisFromConnection();
+    if (conn.id) {
+      res.basisId = conn.id;
+      if (!res.basis && conn.name) res.basis = conn.name;
+    }
+    return res;
+  }
+
+  // Flat, explicitly-named projection of the scraped bid sections for the
+  // submit-bid webhook. Make maps bidLineItems[].rate / .qty / .cost instead of
+  // decoding raw field_XXXX keys out of `json`. One entry per rendered bid
+  // line — the preview grid splits labor-description groups by rate
+  // (bid-items-grid.js splitLevel3GroupsByRate), so a line is always a
+  // single (description, rate) pair with qty and cost summed within it.
+  function buildBidLineItems(payload) {
+    var lines = [];
+    var views = (payload && payload.views) || [];
+    for (var v = 0; v < views.length; v++) {
+      var sections = views[v].sections || [];
+      for (var s = 0; s < sections.length; s++) {
+        var l1 = sections[s];
+        var buckets = l1.buckets || [];
+        for (var b = 0; b < buckets.length; b++) {
+          var l2 = buckets[b];
+          var products = l2.products || [];
+          for (var p = 0; p < products.length; p++) {
+            var l3 = products[p];
+            lines.push({
+              mdfIdf:      l1.label || '',
+              bucket:      l2.label || '',
+              description: l3.label || '',
+              qty:         l3.qty != null ? l3.qty : '',
+              rate:        l3.rate || '',
+              cost:        l3.cost || ''
+            });
+          }
+        }
+      }
+    }
+    return lines;
   }
 
   function buildPublishPayload(sceneId, opts) {
@@ -4001,6 +4197,34 @@
     var jsonSnapshot  = buildJsonSnapshot(cfg.sceneId);
     var plaintextStr  = htmlToPlaintext(htmlStr);
     var subBid        = buildSubBidReview();
+    // Tech group — field_2954 lives on the BID; view_3861 shows it through
+    // a chain (SOW -> bids -> tech group), which renders NESTED
+    // connection spans fanned out per intermediate record:
+    //   <span id="<bid id>" data-kn="connection-value">
+    //     <span class="<tech group id>" ...>Sub Name</span></span>
+    // The OUTER span's id attribute is the intermediate (a bid), the
+    // INNER span's class is the actual tech group. And with several bids
+    // the list can carry several tech groups — this view cannot say which
+    // belongs to the BASIS bid, so only a UNANIMOUS value is trusted.
+    // (Make should hop subBidBasisId -> bid.field_2954 for the
+    // authoritative stamp; this payload copy covers the common
+    // one-sub case.)
+    try {
+      var tgEls = document.querySelectorAll(
+        '#view_3861 .kn-detail.field_2954 span[data-kn="connection-value"]');
+      var tgSeen = {}, tgDistinct = 0, tgId = '', tgName = '';
+      for (var tgi = 0; tgi < tgEls.length; tgi++) {
+        // Real tech-group spans carry the record id as their CLASS;
+        // intermediate wrappers carry theirs in the id attribute instead.
+        var tcand = (tgEls[tgi].className || '').trim();
+        if (!/^[0-9a-f]{24}$/i.test(tcand)) continue;
+        if (!tgSeen[tcand]) {
+          tgSeen[tcand] = true; tgDistinct++;
+          tgId = tcand; tgName = String(tgEls[tgi].textContent || '').trim();
+        }
+      }
+      if (tgDistinct === 1) { subBid.subId = tgId; subBid.subName = tgName; }
+    } catch (e) { /* keep snapshot values */ }
 
     // Mint a public access token + URL at publish time so the new
     // proposal record is born sharable. mintProposalAccess returns
@@ -4014,6 +4238,11 @@
       hash:                  window.location.hash || '',
       sceneId:               cfg.sceneId,
       type:                  cfg.payloadType,
+      // Named line-item projection for the subcontractor-bid scenario only
+      // (undefined elsewhere → dropped by JSON.stringify). See buildBidLineItems.
+      bidLineItems:          cfg.payloadType === 'subcontractor bid' ? buildBidLineItems(payload) : undefined,
+      bidLabel:              cfg.payloadType === 'subcontractor bid' ? ((payload.bidHeader || {}).label || '') : undefined,
+      bidExpirationDate:     cfg.payloadType === 'subcontractor bid' ? ((payload.bidHeader || {}).expires || '') : undefined,
       sowId:                 summary.sowId,
       equipmentTotal:        summary.equipmentTotal,
       installationTotal:     summary.installationTotal,
@@ -4045,8 +4274,26 @@
       // rather compose them yourself.
       subBidBidHtml:         subBid.bidHtml,
       subBidDiffHtml:        subBid.diffHtml,
+      // Complete standalone diff document (CSS inlined) — render to PDF
+      // and merge with the official bid PDF (field_2626), or splice
+      // subBidDiffHtml after <body> in the pristine bid html instead.
+      subBidDiffDocHtml:     subBid.diffDocHtml,
       subBidReviewHtml:      subBid.reviewHtml,
       subBidBasis:           subBid.basis,
+      // Structured basis identity — Make should stamp these on the published
+      // proposal record (connection → bid package, connection → subcontractor)
+      // so a greenlit project traces to the exact bid it was quoted from.
+      // basisId is the bid package record id (from the field_2941 blob; also
+      // readable as field_2942_raw on the SOW). SubId/SubName populate once
+      // the bid-review snapshot carries them (sub-bid-diff pkgSub config).
+      subBidBasisId:         subBid.basisId,
+      subBidBasisSubId:      subBid.subId,
+      subBidBasisSubName:    subBid.subName,
+      // "K1 Bid" sentinel — the reviewer explicitly designated that NO
+      // subcontractor bid exists for this SOW (self-perform). basisId is the
+      // literal string 'K1' (not a 24-hex record id); this flag lets Make
+      // branch without string-sniffing.
+      subBidIsK1:            subBid.basisId === 'K1',
       subBidHasDiff:         subBid.hasDiff,
       subBidNote:            subBid.note,
       plaintext:             plaintextStr,
