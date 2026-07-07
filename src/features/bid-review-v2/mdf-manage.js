@@ -393,8 +393,50 @@
         error: function (xhr) {
           saveBtn.disabled = false;
           status.classList.add('is-err');
-          status.textContent = 'Save failed (' + (xhr && xhr.status) + ') — are these ' +
-            'fields editable on ' + mdfViewKey() + '?';
+          // Surface Knack's actual rejection reason — the generic "are these
+          // fields editable?" guess sent users hunting the wrong Builder
+          // setting. Knack 400s carry {"errors":[{"message":…}]} naming the
+          // offending field/rule.
+          var srvMsg = '';
+          try {
+            var rb = JSON.parse((xhr && xhr.responseText) || '');
+            var errs = (rb && (rb.errors || rb.error)) || [];
+            if (!Array.isArray(errs)) errs = [errs];
+            srvMsg = errs.map(function (er) {
+              return (er && (er.message || er.msg)) || (typeof er === 'string' ? er : '');
+            }).filter(Boolean).join('; ');
+          } catch (e) { /* not JSON */ }
+          // Definitive column check: a view's records carry an attribute for
+          // every column on the grid (even when blank). A sent field with NO
+          // attribute on the view's records isn't a column on this view at
+          // all — inline editing can't be enabled on a column that isn't there.
+          var missing = [];
+          try {
+            var vrecs = (ns.data && ns.data.readRecords)
+              ? (ns.data.readRecords(mdfViewKey()) || []) : [];
+            if (vrecs.length) {
+              var a0 = vrecs[0];
+              for (var mk in fields) {
+                if (!Object.prototype.hasOwnProperty.call(fields, mk)) continue;
+                if (!(mk in a0) && !((mk + '_raw') in a0)) missing.push(mk);
+              }
+            }
+          } catch (e) { /* best-effort */ }
+          console.warn('[scw-brv2-mdf] save failed', {
+            view: mdfViewKey(), recordId: rec.id, sent: fields,
+            status: xhr && xhr.status, response: xhr && xhr.responseText,
+            fieldsNotOnView: missing
+          });
+          var msg = 'Save failed (' + (xhr && xhr.status) + ')';
+          if (srvMsg) msg += ': ' + srvMsg;
+          if (missing.length) {
+            msg += ' — ' + missing.join(', ') + ' is not a column on ' + mdfViewKey() +
+              '. Add it to that grid in Builder with inline editing enabled.';
+          } else if (!srvMsg) {
+            msg += ' — check that each edited column on ' + mdfViewKey() +
+              ' has its own inline-edit toggle enabled (see console for the sent fields).';
+          }
+          status.textContent = msg;
         }
       });
     });
