@@ -557,6 +557,58 @@
     views.push(clone);
   })();
 
+  // ── CO REMOVAL panel: project install line items (view_4086) ──────────
+  //    The removal source on the CO drafting scene — SAME install object +
+  //    field map as view_3915, so clone that entry (keeps the two in sync)
+  //    and layer the read-only / removal overrides on top. Renders the
+  //    project's active install line items as READ-ONLY cards with a per-
+  //    card "− Remove" button + multi-select bulk (worksheet-v2/co-remove.js,
+  //    mirror of co-adopt.js). Removing an item does NOT delete the install
+  //    record — it creates a Remove line on the CO (a SOW Line Item with
+  //    CO Action = Remove, Target install item → the install record). The
+  //    install record's own `Removed by CO` flip happens at signature (Make),
+  //    per docs/change-orders.md ("nothing mutates install scope until sig").
+  //
+  //    ⚠️ Write path is Make-side + gated on Builder fields not created yet
+  //    (CO Action, Target install item, Removed by CO). The panel ships with
+  //    the UI + a placeholder MAKE_CO_REMOVE_ITEMS_WEBHOOK; wire the URL +
+  //    fields to go live. Until then the "− Remove" click reports the missing
+  //    webhook (same graceful stub adoption shipped with).
+  (function cloneInstallEntryForView4086() {
+    var views = SCW.worksheetV2.CONFIG.views || [];
+    var src = null;
+    for (var i = 0; i < views.length; i++) {
+      if (views[i] && views[i].sourceViewKey === 'view_3915') { src = views[i]; break; }
+    }
+    if (!src) return;
+    var clone = JSON.parse(JSON.stringify(src));
+    clone.sourceViewKey       = 'view_4086';
+    clone.mountAfterSelector  = '#view_4086';
+    // If the hidden native grid is ever removed, mount after the CO worksheet.
+    clone.mountAfterFallback  = '#view_4079';
+    clone.label               = 'Install Line Items — available to remove';
+    clone.readOnly            = true;   // buildPanel stamps .scw-ws-v2--readonly
+    clone.hideSourceAccordion = true;   // full cutover — hide the native grid
+    clone.noAddItem           = true;
+    // MDF/IDF L1 seeding from the CO scene's locations grid (label field_1642).
+    clone.mdfSourceViewKey    = 'view_4084';
+    clone.mdfLabelField       = 'field_1642';
+    // A read-only removal panel has no photo upload / questionnaire / bulk-edit
+    // surface — drop them so nothing tries to mount an editor here.
+    delete clone.photoUploadView;
+    delete clone.questionnaire;
+    delete clone.bulkFields;
+    // Removal marker (co-remove.js selects views by this flag, mirroring the
+    // `adopt` flag on view_4088). targetField = the future SOW-Line-Item
+    // "Target install item" connection a Remove line points back through.
+    // It doesn't exist in the Builder yet, so leave it null — co-remove.js
+    // then can't detect already-flagged items and instead flips the row to a
+    // "✓ Flagged" pill optimistically after firing. Set this to the real
+    // field key once created to make the flagged state survive reloads.
+    clone.remove = { label: 'Remove from Change Order', targetField: null };
+    views.push(clone);
+  })();
+
   // ── Resolver API ──────────────────────────────────────────────────
   // Modules read field keys + bucket ids through these so a deployment is
   // pure config. Cheap; safe to call per render.

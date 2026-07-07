@@ -96,6 +96,20 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   // payload carries `changeOrder: true` so Make can branch (or this can be
   // repointed at a dedicated scenario) without a bundle change.
   MAKE_CO_ADOPT_ITEMS_WEBHOOK: "https://hook.us1.make.com/zqqc0kg10fsxmrwmr78hb9g4qqs9dutw",
+  // Change-order removal (worksheet-v2/co-remove.js): flag active project
+  // install line items for removal on a CO. Unlike adoption, removal CREATES
+  // records — one Remove line per install item (a SOW Line Item with
+  // CO Action = Remove, Target install item → the install record, connected
+  // to the CO via field_2154). The install record's own `Removed by CO` flip
+  // defers to signature. Expected:
+  //   Request body:  { changeOrderId: <CO SOW id>, installItemIds: [<install rec ids>],
+  //                    removal: true, triggeredBy: {...} }
+  //   Response body: { success: true, created?: <count>, message?: "..." }
+  //             or:  { success: false, error: "<message>" }
+  // PLACEHOLDER until the Make scenario + Builder fields (CO Action, Target
+  // install item, Removed by CO) exist — co-remove.js reports "not configured"
+  // while this contains PLACEHOLDER.
+  MAKE_CO_REMOVE_ITEMS_WEBHOOK: "PLACEHOLDER_CO_REMOVE_WEBHOOK_URL",
   // Fires on the "Request Alternative Proposal" stepper action. Expects:
   //   Request body:  { sourceRecordId: <current SOW id>, notes: "<user input>", triggeredBy: {...} }
   //   Response body: { success: true, message?: "..." }
