@@ -2026,14 +2026,19 @@ td.${P}-field-value--notes {
   box-shadow: 0 0 0 2px rgba(252, 165, 165, 0.25);
 }
 /* Calculated cell recalculating after a feeTrigger edit — a gentle pulse so
-   the totals visibly "register" while Knack recomputes them server-side. */
-.${P}-recalc {
-  animation: scwWsRecalcPulse 0.9s ease-in-out infinite;
+   the totals visibly "register" while Knack recomputes them server-side.
+   Animate OPACITY (not just background): Knack renders cell values in an inner
+   span.col-N that would mask a td background tint, but opacity fades the whole
+   cell (span included) so it's reliably visible. 0.6s so a full cycle lands
+   inside the ~700ms refetch window. */
+.${P}-recalc,
+.${P}-recalc span[class^="col-"] {
+  animation: scwWsRecalcPulse 0.6s ease-in-out infinite;
   border-radius: 4px;
 }
 @keyframes scwWsRecalcPulse {
-  0%, 100% { background-color: rgba(99, 102, 241, 0.06); }
-  50%      { background-color: rgba(99, 102, 241, 0.18); }
+  0%, 100% { opacity: 1;    background-color: rgba(99, 102, 241, 0.05); }
+  50%      { opacity: 0.35; background-color: rgba(99, 102, 241, 0.18); }
 }
 .${P}-direct-error {
   font-size: 11px;
