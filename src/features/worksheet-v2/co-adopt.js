@@ -219,18 +219,18 @@
       '  font: 600 11px/1.3 system-ui, -apple-system, sans-serif;',
       '}',
 
-      // Bulk "Add N selected" button — lives in the panel banner, only
-      // rendered while a selection exists.
-      '.' + BULK_CLS + ' {',
-      '  display: inline-flex; align-items: center; gap: 5px;',
-      '  margin-left: 10px; padding: 4px 12px;',
-      '  background: #0f4c75; color: #fff;',
-      '  border: none; border-radius: 5px;',
-      '  font: 600 11.5px/1.3 system-ui, -apple-system, sans-serif;',
-      '  cursor: pointer; white-space: nowrap;',
+      // Bulk toolbar — reuses bulk.js's floating bottom-center classes
+      // (.scw-ws-v2-bulk-toolbar / --active) for UI continuity with the
+      // worksheet's bulk-edit options. Only the Clear button needs its
+      // own ghost styling here.
+      '.scw-co-adopt-toolbar .scw-co-adopt-clear {',
+      '  background: transparent !important;',
+      '  border: 1px solid #6b21a8 !important;',
+      '  color: #d8b4fe !important;',
       '}',
-      '.' + BULK_CLS + ':hover { background: #07467c; }',
-      '.' + BULK_CLS + '[disabled] { opacity: 0.6; cursor: default; }'
+      '.scw-co-adopt-toolbar .scw-co-adopt-clear:hover {',
+      '  background: rgba(107, 33, 168, 0.35) !important;',
+      '}'
     ].join('\n');
     document.head.appendChild(s);
   }
@@ -411,7 +411,7 @@
       for (var j = 0; j < inputs.length; j++) inputs[j].disabled = true;
     }
 
-    updateBulkButton(viewKey);
+    updateBulkToolbar(viewKey);
   }
 
   function decorateSoon(vcfg) {
@@ -420,27 +420,43 @@
     setTimeout(function () { decorate(vcfg); }, 0);
   }
 
-  // ── Bulk button (panel banner) ────────────────────────────────────────
-  function updateBulkButton(viewKey) {
-    var container = document.getElementById('scw-ws-v2-' + viewKey);
-    if (!container) return;
-    var banner = container.querySelector('.scw-ws-v2-banner');
-    if (!banner) return;
-    var btn = banner.querySelector('.' + BULK_CLS);
+  // ── Bulk toolbar (floating, bottom-center) ──────────────────────────
+  // Same placement + look as the worksheet's bulk-edit toolbar (bulk.js)
+  // for UI continuity: dark pill, count on the left, purple actions.
+  // Slides in while ≥1 row is selected. Note: on the CO scene the CO
+  // worksheet's own bulk toolbar shares this spot — the two can't show
+  // together unless the user holds selections in BOTH panels at once.
+  var _toolbar = null;
+  function ensureBulkToolbar(viewKey) {
+    if (_toolbar) return _toolbar;
+    _toolbar = document.createElement('div');
+    _toolbar.className = 'scw-ws-v2-bulk-toolbar scw-co-adopt-toolbar';
+    _toolbar.innerHTML =
+      '<span class="scw-ws-v2-bulk-count">0 selected</span>' +
+      '<button type="button" class="' + BULK_CLS + '" ' +
+        'data-scw-co-adopt-bulk="' + viewKey + '">Add to Change Order</button>' +
+      '<button type="button" class="scw-co-adopt-clear" ' +
+        'data-scw-co-adopt-clear="' + viewKey + '">Clear</button>';
+    document.body.appendChild(_toolbar);
+    return _toolbar;
+  }
+
+  function updateBulkToolbar(viewKey) {
     var n = selCount();
-    if (!n) { if (btn) btn.remove(); return; }
-    if (!btn) {
-      btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = BULK_CLS;
-      btn.setAttribute('data-scw-co-adopt-bulk', viewKey);
-      // Before the record count so the banner reads title · chips · CTA · count.
-      var count = banner.querySelector('.scw-ws-v2-count');
-      banner.insertBefore(btn, count || null);
+    var bar = ensureBulkToolbar(viewKey);
+    var count = bar.querySelector('.scw-ws-v2-bulk-count');
+    if (count) count.textContent = n + ' selected';
+    bar.classList.toggle('scw-ws-v2-bulk-toolbar--active', n > 0);
+  }
+
+  function clearSelection(viewKey) {
+    _sel = {};
+    var container = document.getElementById('scw-ws-v2-' + viewKey);
+    if (container) {
+      var boxes = container.querySelectorAll('.' + CHECK_CLS + ':checked');
+      for (var i = 0; i < boxes.length; i++) boxes[i].checked = false;
     }
-    if (!btn.disabled) {
-      btn.textContent = 'Add ' + n + ' selected';
-    }
+    updateBulkToolbar(viewKey);
   }
 
   // ── Adoption write (Make webhook) — single + bulk share this ─────────
@@ -500,7 +516,7 @@
           var row = card && card.querySelector('.scw-ws-v2-row');
           if (row) setRowState(row, ids[k], viewKey, true);
         }
-        updateBulkButton(viewKey);
+        updateBulkToolbar(viewKey);
         refetchAfterAdopt(viewKey);
         ui.done();
         return;
@@ -553,7 +569,7 @@
     var vk  = box.getAttribute('data-scw-co-adopt-view');
     if (!rid) return;
     if (box.checked) _sel[rid] = true; else delete _sel[rid];
-    updateBulkButton(vk);
+    updateBulkToolbar(vk);
   }, true);
 
   // Single-row "+ Add Item".
@@ -575,7 +591,7 @@
       });
       return;
     }
-    // Bulk "Add N selected" in the banner.
+    // Bulk "Add to Change Order" in the floating toolbar.
     var bulk = e.target && e.target.closest &&
       e.target.closest('.' + BULK_CLS + '[data-scw-co-adopt-bulk]');
     if (bulk && !bulk.disabled) {
@@ -591,9 +607,26 @@
           bulk.disabled = true;
           bulk.innerHTML = '<span class="scw-co-adopt-spin"></span> Adding…';
         },
-        done: function () { bulk.disabled = false; updateBulkButton(vkB); },
-        fail: function () { bulk.disabled = false; updateBulkButton(vkB); }
+        done: function () {
+          bulk.disabled = false;
+          bulk.textContent = 'Add to Change Order';
+          updateBulkToolbar(vkB);
+        },
+        fail: function () {
+          bulk.disabled = false;
+          bulk.textContent = 'Add to Change Order';
+          updateBulkToolbar(vkB);
+        }
       });
+      return;
+    }
+    // Clear selection.
+    var clr = e.target && e.target.closest &&
+      e.target.closest('.scw-co-adopt-clear[data-scw-co-adopt-clear]');
+    if (clr) {
+      e.preventDefault();
+      e.stopPropagation();
+      clearSelection(clr.getAttribute('data-scw-co-adopt-clear'));
     }
   }, true);
 })();

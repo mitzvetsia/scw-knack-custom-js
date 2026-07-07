@@ -1586,6 +1586,31 @@
     '.scw-ws-v2--readonly .scw-ws-v2-card textarea::placeholder {',
     '  color: transparent !important;',
     '}',
+    /* Detail panel reads read-only too: connection picker buttons
+       (Prefix, MDF/IDF, Connected Device, product) flatten to plain
+       values — no box, no pencil icon. Warn variants keep their label
+       coloring; only the edit chrome goes. */
+    '.scw-ws-v2--readonly .scw-ws-v2-conn-btn {',
+    '  background: transparent !important;',
+    '  border-color: transparent !important;',
+    '  box-shadow: none !important;',
+    '  cursor: default !important;',
+    '}',
+    '.scw-ws-v2--readonly .scw-ws-v2-conn-btn-edit { display: none !important; }',
+    /* No adding photos and no editing child (mounting hardware) records
+       from the adoption panel: hide the photo add tiles and the
+       accessory add/qty-stepper controls. The chips themselves stay —
+       they are read info — with the qty badge inert. */
+    '.scw-ws-v2--readonly .scw-ws-v2-photo-add,',
+    '.scw-ws-v2--readonly .scw-ws-v2-mh-add,',
+    '.scw-ws-v2--readonly .scw-ws-v2-mh-addrow,',
+    '.scw-ws-v2--readonly .scw-ws-v2-mh-stepper { display: none !important; }',
+    '.scw-ws-v2--readonly .scw-ws-v2-mh-qty {',
+    '  pointer-events: none !important;',
+    '  background: transparent !important;',
+    '  border-color: transparent !important;',
+    '}',
+    '.scw-ws-v2--readonly .scw-ws-v2-mh-chip { pointer-events: none !important; }',
     /* Write-action affordances have no read value — remove them outright:
        the delete/trash cell (BOTH variants — the blocked placeholder has no
        kebab attr, and per-row cell counts must stay uniform for the adopt
