@@ -1349,10 +1349,18 @@
         var dv = result.views[pi];
         if (dv.type !== 'detail' || !dv.fields || !dv.fields.length) continue;
         var sowIdx = -1;
+        var hasLabeledRow = false;
         for (var fi = 0; fi < dv.fields.length; fi++) {
+          if (!dv.fields[fi].labelNone) hasLabeledRow = true;
           if (/sow\s*id/i.test(dv.fields[fi].label || '')) { sowIdx = fi; break; }
         }
-        if (sowIdx === -1) continue;
+        // Anchor above SOW ID when that row exists; otherwise append after
+        // the view's labeled rows. Snapshots WITHOUT a SOW ID row are real
+        // (observed live 2026-07-07: a published proposal whose only header
+        // row was "Project Address" — the scraper drops blank fields), and
+        // the old `continue` here silently skipped injection for them.
+        if (sowIdx === -1 && !hasLabeledRow) continue;
+        var anchorIdx = (sowIdx !== -1) ? sowIdx : dv.fields.length;
         // Don't double-insert if a previous run (or the scene itself)
         // already carries either row.
         var hasProposalId = false, hasExpiration = false;
@@ -1364,14 +1372,14 @@
         // Splice order matters: Expiration first, then Proposal ID at the
         // same index → final row order Proposal ID · Expiration Date · SOW ID.
         if (!hasExpiration) {
-          dv.fields.splice(sowIdx, 0, {
+          dv.fields.splice(anchorIdx, 0, {
             label: 'Expiration Date',
             value: tok('Expiration_Date'),
             valueHtml: tok('Expiration_Date')
           });
         }
         if (!hasProposalId) {
-          dv.fields.splice(sowIdx, 0, {
+          dv.fields.splice(anchorIdx, 0, {
             label: 'Proposal ID',
             value: tok('Proposal_ID'),
             valueHtml: tok('Proposal_ID')
