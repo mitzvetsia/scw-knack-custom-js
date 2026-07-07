@@ -1563,7 +1563,7 @@
        killed here; co-adopt.js hard-disables the inputs after each render
        so keyboard tab-and-type can\'t commit either. The card expand
        chevron and the adopt button stay live. */
-    '.scw-ws-v2--readonly .scw-ws-v2-card input,',
+    '.scw-ws-v2--readonly .scw-ws-v2-card input:not(.scw-co-adopt-check),',
     '.scw-ws-v2--readonly .scw-ws-v2-card textarea,',
     '.scw-ws-v2--readonly .scw-ws-v2-card select,',
     '.scw-ws-v2--readonly .scw-ws-v2-card [data-scw-ws-v2-conn],',
@@ -1573,13 +1573,25 @@
     '.scw-ws-v2--readonly .scw-ws-v2-card [data-scw-ws-v2-bool] {',
     '  pointer-events: none !important;',
     '}',
-    '.scw-ws-v2--readonly .scw-ws-v2-card input,',
+    /* Inputs READ as plain text — no edit chrome at all (border/background
+       gone, placeholders blanked), values stay fully readable. */
+    '.scw-ws-v2--readonly .scw-ws-v2-card input:not(.scw-co-adopt-check),',
     '.scw-ws-v2--readonly .scw-ws-v2-card textarea {',
-    '  background: #fff !important;',
+    '  background: transparent !important;',
+    '  border-color: transparent !important;',
+    '  box-shadow: none !important;',
+    '  resize: none !important;',
+    '}',
+    '.scw-ws-v2--readonly .scw-ws-v2-card input::placeholder,',
+    '.scw-ws-v2--readonly .scw-ws-v2-card textarea::placeholder {',
+    '  color: transparent !important;',
     '}',
     /* Write-action affordances have no read value — remove them outright:
-       kebab menu (delete), add-accessory, mounting-hardware actions, and
+       the delete/trash cell (BOTH variants — the blocked placeholder has no
+       kebab attr, and per-row cell counts must stay uniform for the adopt
+       panel's grid template), add-accessory, mounting-hardware actions, and
        the bulk-select checkbox (bulk never mounts on readOnly panels). */
+    '.scw-ws-v2--readonly .scw-ws-v2-trash,',
     '.scw-ws-v2--readonly [data-scw-ws-v2-kebab],',
     '.scw-ws-v2--readonly [data-scw-ws-v2-add-accessory],',
     '.scw-ws-v2--readonly [data-scw-ws-v2-mh-del],',

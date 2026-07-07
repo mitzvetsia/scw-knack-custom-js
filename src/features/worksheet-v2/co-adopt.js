@@ -4,25 +4,38 @@
  * (the view_4088 deployment in config.js, flagged `adopt`). Design decision
  * 2026-07-07: adoptable items are shown in the full device-worksheet card
  * style — same grouping, money columns, warnings the team already knows —
- * NOT a modal picker. Each card gets one live control:
+ * NOT a modal picker.
  *
- *   "+ Add to Change Order"  → connects the line item to the CO by unioning
- *   its multi-SOW connection (field_2154) with the CO's SOW record id. The
- *   write happens in Make (MAKE_CO_ADOPT_ITEMS_WEBHOOK — the same scenario
- *   shape as import-unique-items: receivingRecordId + uniqueItemIds), so the
- *   client never mutates records directly. Cards whose field_2154 already
- *   contains this CO render a green "Added" pill instead of the button.
+ * Layout pass (user feedback 2026-07-07): the panel restructures each
+ * summary row so the controls sit INLINE with the other columns instead of
+ * floating over the card —
  *
- * The panel's readOnly lockdown is three layers: styles.js kills the mouse
- * path on every edit affordance, init.js skips the toolbar/sort/bulk mounts,
- * and this module hard-disables inputs after each render so keyboard
- * tab-and-type can't commit an edit either.
+ *   [☐] chevron · label · product (desc stacked BENEATH) · qty · money ·
+ *   sow · warn · [+ Add Item]
+ *
+ * - the labor description moves underneath the product to free width
+ * - a checkbox column (far left) drives MULTI-SELECT; an "Add N selected"
+ *   button appears in the panel banner for bulk adoption
+ * - "+ Add Item" (far right) adopts a single row; already-adopted rows
+ *   show a green "✓ Added" pill in the same slot
+ *
+ * Adoption connects the line item to the CO by unioning its multi-SOW
+ * connection (field_2154) with the CO's SOW record id. The write happens
+ * in Make (MAKE_CO_ADOPT_ITEMS_WEBHOOK — same scenario shape as
+ * import-unique-items: receivingRecordId + uniqueItemIds), so the client
+ * never mutates records directly.
+ *
+ * The panel's readOnly lockdown is three layers: styles.js flattens every
+ * input to plain text + kills the mouse path, init.js skips the
+ * toolbar/sort/bulk mounts, and this module hard-disables inputs after
+ * each render so keyboard tab-and-type can't commit either. (Builder-side
+ * inline editing on view_4088 should ALSO be off — belt and suspenders.)
  *
  * ⚠️ Adopted items are SHARED records (they stay connected to their original
  * quote SOW — that's the point of the multi-connection). Removing one from
  * the CO must be a field_2154 DISCONNECT, never a record delete. The CO
- * worksheet's kebab-delete story for adopted items is a follow-up; until
- * then view_4079 renders them like any other CO line.
+ * worksheet's delete story for adopted items is a follow-up; card.js's
+ * DELETE_BLOCK guard covers view-side deletes meanwhile.
  ******************************************************************************/
 (function () {
   'use strict';
@@ -30,15 +43,22 @@
   var ns = window.SCW && window.SCW.worksheetV2;
   if (!ns) return;
 
-  var SOW_FIELD    = 'field_2154';
-  var BTN_CLS      = 'scw-co-adopt-btn';
-  var PILL_CLS     = 'scw-co-adopt-added';
-  var STYLE_ID     = 'scw-ws-v2-co-adopt-css';
-  var LOG_PREFIX   = '[scw-co-adopt]';
+  var SOW_FIELD  = 'field_2154';
+  var STYLE_ID   = 'scw-ws-v2-co-adopt-css';
+  var BTN_CLS    = 'scw-co-adopt-btn';
+  var PILL_CLS   = 'scw-co-adopt-added';
+  var CHECK_CLS  = 'scw-co-adopt-check';
+  var BULK_CLS   = 'scw-co-adopt-bulk';
+  var LOG_PREFIX = '[scw-co-adopt]';
 
   // The CO worksheet on the same scene — refetched after an adoption so the
   // new line appears there without a reload.
   var CO_VIEW_DEFAULT = 'view_4079';
+
+  // Multi-select state: record id → true. Survives re-renders (decorate
+  // re-checks the boxes); cleared per-id once a record is adopted.
+  var _sel = {};
+  function selCount() { return Object.keys(_sel).length; }
 
   // ── Config ────────────────────────────────────────────────────────────
   function adoptViews() {
@@ -84,24 +104,64 @@
     var s = document.createElement('style');
     s.id = STYLE_ID;
     s.textContent = [
-      // Anchor for the absolutely-positioned control (top-right — the slot
-      // the hidden kebab menu occupies on editable panels).
-      '.scw-ws-v2--readonly .scw-ws-v2-card { position: relative; }',
+      // 12-track grid for restructured adopt rows + their column header:
+      // check · chevron · label · product/desc (stacked) · qty · subBid ·
+      // +Hrs · +Mat · fee · sow · warn · action. Applied only to rows this
+      // module has restructured (attribute guard) so an unexpected row
+      // shape degrades to the stock template instead of misaligning.
+      '.scw-ws-v2--readonly .scw-ws-v2-row[data-scw-co-adopt-row],',
+      '.scw-ws-v2--readonly .scw-ws-v2-col-header[data-scw-co-adopt-hdr] {',
+      '  grid-template-columns:',
+      '    24px                  /* select checkbox */',
+      '    20px                  /* chevron */',
+      '    88px                  /* label / drop */',
+      '    minmax(220px, 3fr)    /* product + stacked description */',
+      '    72px                  /* qty / chips */',
+      '    78px                  /* subBid */',
+      '    64px                  /* +Hrs */',
+      '    64px                  /* +Mat */',
+      '    72px                  /* fee */',
+      '    72px                  /* sow */',
+      '    28px                  /* warning */',
+      '    96px                  /* adopt action */ !important;',
+      '}',
 
+      // Checkbox column
+      '.scw-co-adopt-checkcell {',
+      '  display: flex; align-items: center; justify-content: center;',
+      '  align-self: center; cursor: pointer;',
+      '}',
+      '.' + CHECK_CLS + ' {',
+      '  width: 14px; height: 14px; cursor: pointer; margin: 0;',
+      '}',
+
+      // Description stacked beneath the product — compact caption styling.
+      '.scw-co-adopt-stacked-desc { margin-top: 3px; }',
+      '.scw-co-adopt-stacked-desc textarea {',
+      '  font-size: 11px !important; line-height: 1.35 !important;',
+      '  color: #64748b !important;',
+      '  min-height: 0 !important; height: auto !important;',
+      '  max-height: 4.2em !important; overflow: hidden !important;',
+      '  padding: 0 !important; width: 100% !important;',
+      '}',
+
+      // Inline action column (rightmost)
+      '.scw-co-adopt-actioncell {',
+      '  display: flex; align-items: center; justify-content: flex-end;',
+      '  align-self: center;',
+      '}',
       '.' + BTN_CLS + ' {',
-      '  position: absolute; top: 6px; right: 8px; z-index: 3;',
-      '  display: inline-flex; align-items: center; gap: 5px;',
-      '  padding: 4px 10px;',
+      '  display: inline-flex; align-items: center; gap: 4px;',
+      '  padding: 4px 9px; white-space: nowrap;',
       '  background: #0f4c75; color: #fff;',
       '  border: none; border-radius: 5px;',
       '  font: 600 11px/1.3 system-ui, -apple-system, sans-serif;',
-      '  letter-spacing: 0.01em;',
       '  cursor: pointer;',
       '  transition: background 0.15s ease;',
       '}',
       '.' + BTN_CLS + ':hover { background: #07467c; }',
       '.' + BTN_CLS + '[disabled] { opacity: 0.6; cursor: default; }',
-      '.' + BTN_CLS + ' .scw-co-adopt-spin {',
+      '.scw-co-adopt-spin {',
       '  width: 11px; height: 11px; flex: 0 0 auto;',
       '  border: 2px solid rgba(255,255,255,0.35); border-top-color: #fff;',
       '  border-radius: 50%;',
@@ -111,18 +171,30 @@
 
       // Green "already on this CO" state — same slot, non-interactive.
       '.' + PILL_CLS + ' {',
-      '  position: absolute; top: 6px; right: 8px; z-index: 3;',
-      '  display: inline-flex; align-items: center; gap: 5px;',
-      '  padding: 4px 10px;',
+      '  display: inline-flex; align-items: center; gap: 4px;',
+      '  padding: 4px 9px; white-space: nowrap;',
       '  background: #ecfdf5; color: #047857;',
       '  border: 1px solid #a7f3d0; border-radius: 5px;',
       '  font: 600 11px/1.3 system-ui, -apple-system, sans-serif;',
-      '}'
+      '}',
+
+      // Bulk "Add N selected" button — lives in the panel banner, only
+      // rendered while a selection exists.
+      '.' + BULK_CLS + ' {',
+      '  display: inline-flex; align-items: center; gap: 5px;',
+      '  margin-left: 10px; padding: 4px 12px;',
+      '  background: #0f4c75; color: #fff;',
+      '  border: none; border-radius: 5px;',
+      '  font: 600 11.5px/1.3 system-ui, -apple-system, sans-serif;',
+      '  cursor: pointer; white-space: nowrap;',
+      '}',
+      '.' + BULK_CLS + ':hover { background: #07467c; }',
+      '.' + BULK_CLS + '[disabled] { opacity: 0.6; cursor: default; }'
     ].join('\n');
     document.head.appendChild(s);
   }
 
-  // ── Decorate a rendered panel ─────────────────────────────────────────
+  // ── Data helpers ──────────────────────────────────────────────────────
   function recordIndex(viewKey) {
     var byId = {};
     var recs = (ns.data && typeof ns.data.readRecords === 'function')
@@ -143,29 +215,78 @@
     return false;
   }
 
-  function setControl(card, rec, coId, vcfg) {
-    var btn  = card.querySelector('.' + BTN_CLS);
-    var pill = card.querySelector('.' + PILL_CLS);
-    if (isOnCo(rec, coId)) {
-      if (btn) btn.parentNode.removeChild(btn);
-      if (!pill) {
-        pill = document.createElement('span');
-        pill.className = PILL_CLS;
-        pill.innerHTML = '✓ Added to this Change Order';
-        card.appendChild(pill);
-      }
-      return;
+  // ── Row restructure + control state ──────────────────────────────────
+  // One-time per row: prepend the checkbox cell, move the description cell
+  // INSIDE the product cell (stacked beneath), append the action cell.
+  // The trash cell is display:none'd by styles.js, so the visible cell
+  // count matches the 12-track grid above.
+  function restructureRow(row, rid, viewKey) {
+    if (row.hasAttribute('data-scw-co-adopt-row')) return;
+
+    var prod = row.querySelector('.scw-ws-v2-cell--product, .scw-ws-v2-cell--tag');
+    var desc = row.querySelector('.scw-ws-v2-cell--labor-desc');
+    if (prod && desc) {
+      desc.classList.add('scw-co-adopt-stacked-desc');
+      prod.appendChild(desc);
     }
-    if (pill) pill.parentNode.removeChild(pill);
-    if (!btn) {
-      btn = document.createElement('button');
-      btn.type = 'button';
-      btn.className = BTN_CLS;
-      btn.setAttribute('data-scw-co-adopt', rec ? rec.id : '');
-      btn.setAttribute('data-scw-co-adopt-view', vcfg.sourceViewKey);
-      btn.title = 'Connect this quoted line item to the change order';
-      btn.textContent = '+ ' + ((vcfg.adopt && vcfg.adopt.label) || 'Add to Change Order');
-      card.appendChild(btn);
+
+    var check = document.createElement('label');
+    check.className = 'scw-co-adopt-checkcell';
+    check.innerHTML = '<input type="checkbox" class="' + CHECK_CLS + '" ' +
+      'data-scw-co-adopt-check="' + rid + '" ' +
+      'data-scw-co-adopt-view="' + viewKey + '" ' +
+      'aria-label="Select for bulk add to change order">';
+    // Checkbox clicks must not toggle the card's expand behavior.
+    check.addEventListener('click', function (e) { e.stopPropagation(); });
+    row.insertBefore(check, row.firstChild);
+
+    var act = document.createElement('span');
+    act.className = 'scw-co-adopt-actioncell';
+    row.appendChild(act);
+
+    // Only claim the 12-track template once the row actually has the
+    // adopt cells — see the CSS comment.
+    row.setAttribute('data-scw-co-adopt-row', '1');
+  }
+
+  // Column header: prepend an empty checkbox slot, drop the Description
+  // header (the cell now stacks under Product), relabel Product. The
+  // empty trash slot at the end doubles as the action column header.
+  function restructureHeaders(container) {
+    var hdrs = container.querySelectorAll('.scw-ws-v2-col-header:not([data-scw-co-adopt-hdr])');
+    for (var i = 0; i < hdrs.length; i++) {
+      var hdr = hdrs[i];
+      hdr.setAttribute('data-scw-co-adopt-hdr', '1');
+      var spans = hdr.querySelectorAll('span');
+      for (var j = 0; j < spans.length; j++) {
+        var t = (spans[j].textContent || '').trim();
+        if (t === 'Description') { hdr.removeChild(spans[j]); }
+        else if (t === 'Product') { spans[j].textContent = 'Product / Description'; }
+      }
+      var lead = document.createElement('span');
+      hdr.insertBefore(lead, hdr.firstChild);
+    }
+  }
+
+  function setRowState(row, rid, viewKey, adopted) {
+    var act = row.querySelector('.scw-co-adopt-actioncell');
+    var check = row.querySelector('.' + CHECK_CLS);
+    if (!act) return;
+    if (adopted) {
+      delete _sel[rid];
+      act.innerHTML = '<span class="' + PILL_CLS + '">✓ Added</span>';
+      if (check) { check.checked = false; check.style.visibility = 'hidden'; }
+    } else {
+      if (!act.querySelector('.' + BTN_CLS)) {
+        act.innerHTML = '<button type="button" class="' + BTN_CLS + '" ' +
+          'data-scw-co-adopt="' + rid + '" ' +
+          'data-scw-co-adopt-view="' + viewKey + '" ' +
+          'title="Add this quoted line item to the change order">+ Add Item</button>';
+      }
+      if (check) {
+        check.style.visibility = '';
+        check.checked = !!_sel[rid];
+      }
     }
   }
 
@@ -178,8 +299,11 @@
     var coId = getCoSowId();
     if (!coId) {
       console.warn(LOG_PREFIX, 'could not resolve the CO SOW id from the hash —',
-        'adopt buttons suppressed this render');
+        'adopt controls suppressed this render');
+      return;
     }
+
+    restructureHeaders(container);
 
     var byId = recordIndex(viewKey);
     var cards = container.querySelectorAll('.scw-ws-v2-card[data-scw-ws-v2-record]');
@@ -187,16 +311,23 @@
       var card = cards[i];
       var rid  = card.getAttribute('data-scw-ws-v2-record');
       var rec  = byId[rid];
-      if (coId && rec) setControl(card, rec, coId, vcfg);
+      var row  = card.querySelector('.scw-ws-v2-row');
+      if (!row || !rec) continue;
+      restructureRow(row, rid, viewKey);
+      setRowState(row, rid, viewKey, isOnCo(rec, coId));
     }
 
     // Keyboard belt for the readOnly lockdown: pointer-events CSS blocks
-    // the mouse, this blocks tab-focus + type + blur-commit.
+    // the mouse, this blocks tab-focus + type + blur-commit. Our own
+    // checkboxes stay live.
     if (vcfg.readOnly) {
       var inputs = container.querySelectorAll(
-        '.scw-ws-v2-card input, .scw-ws-v2-card textarea, .scw-ws-v2-card select');
+        '.scw-ws-v2-card input:not(.' + CHECK_CLS + '), ' +
+        '.scw-ws-v2-card textarea, .scw-ws-v2-card select');
       for (var j = 0; j < inputs.length; j++) inputs[j].disabled = true;
     }
+
+    updateBulkButton(viewKey);
   }
 
   function decorateSoon(vcfg) {
@@ -205,8 +336,31 @@
     setTimeout(function () { decorate(vcfg); }, 0);
   }
 
-  // ── Adoption write (Make webhook) ─────────────────────────────────────
-  function fireAdopt(btn, recordId, viewKey) {
+  // ── Bulk button (panel banner) ────────────────────────────────────────
+  function updateBulkButton(viewKey) {
+    var container = document.getElementById('scw-ws-v2-' + viewKey);
+    if (!container) return;
+    var banner = container.querySelector('.scw-ws-v2-banner');
+    if (!banner) return;
+    var btn = banner.querySelector('.' + BULK_CLS);
+    var n = selCount();
+    if (!n) { if (btn) btn.remove(); return; }
+    if (!btn) {
+      btn = document.createElement('button');
+      btn.type = 'button';
+      btn.className = BULK_CLS;
+      btn.setAttribute('data-scw-co-adopt-bulk', viewKey);
+      // Before the record count so the banner reads title · chips · CTA · count.
+      var count = banner.querySelector('.scw-ws-v2-count');
+      banner.insertBefore(btn, count || null);
+    }
+    if (!btn.disabled) {
+      btn.textContent = 'Add ' + n + ' selected';
+    }
+  }
+
+  // ── Adoption write (Make webhook) — single + bulk share this ─────────
+  function fireAdopt(ids, viewKey, ui) {
     var url = (window.SCW && SCW.CONFIG && SCW.CONFIG.MAKE_CO_ADOPT_ITEMS_WEBHOOK) || '';
     if (!url || /PLACEHOLDER/.test(url)) {
       alert('The change-order adopt webhook is not configured.');
@@ -217,17 +371,18 @@
       alert('Could not determine the change order record id from the URL.');
       return;
     }
-    var rec = recordIndex(viewKey)[recordId];
-    var sourceSowIds = [];
-    if (rec && Array.isArray(rec[SOW_FIELD + '_raw'])) {
-      for (var i = 0; i < rec[SOW_FIELD + '_raw'].length; i++) {
-        var r = rec[SOW_FIELD + '_raw'][i];
-        if (r && r.id) sourceSowIds.push(r.id);
+    var byId = recordIndex(viewKey);
+    var sourceSowIds = {}, i, r;
+    for (i = 0; i < ids.length; i++) {
+      var rec = byId[ids[i]];
+      var raw = rec && rec[SOW_FIELD + '_raw'];
+      if (!Array.isArray(raw)) continue;
+      for (r = 0; r < raw.length; r++) {
+        if (raw[r] && raw[r].id) sourceSowIds[raw[r].id] = true;
       }
     }
 
-    btn.disabled = true;
-    btn.innerHTML = '<span class="scw-co-adopt-spin"></span> Adding…';
+    ui.busy();
 
     // Same payload contract as import-unique-items' fireBulkWebhook —
     // "connect uniqueItemIds to receivingRecordId" — plus a changeOrder
@@ -238,11 +393,11 @@
       body: JSON.stringify({
         receivingRecordId:       coId,
         sourceRecordId:          null,
-        sourceRecordIds:         sourceSowIds,
-        uniqueItemIds:           [recordId],
+        sourceRecordIds:         Object.keys(sourceSowIds),
+        uniqueItemIds:           ids,
         deleteSourceIds:         [],
         deleteSourceAfterImport: false,
-        bulk:                    false,
+        bulk:                    ids.length > 1,
         changeOrder:             true,
         triggeredBy:             getTriggeredBy()
       })
@@ -250,25 +405,27 @@
       return resp.json().catch(function () { return null; });
     }).then(function (data) {
       if (data && data.success) {
-        // Optimistic flip to the Added pill; the refetches below make it
-        // durable (and land the new line on the CO worksheet).
-        var card = btn.closest('.scw-ws-v2-card');
-        if (card) {
-          btn.parentNode.removeChild(btn);
-          var pill = document.createElement('span');
-          pill.className = PILL_CLS;
-          pill.innerHTML = '✓ Added to this Change Order';
-          card.appendChild(pill);
+        // Optimistic flip to the Added state; the refetches below make it
+        // durable (and land the new lines on the CO worksheet).
+        var container = document.getElementById('scw-ws-v2-' + viewKey);
+        for (var k = 0; k < ids.length; k++) {
+          delete _sel[ids[k]];
+          if (!container) continue;
+          var card = container.querySelector(
+            '.scw-ws-v2-card[data-scw-ws-v2-record="' + ids[k] + '"]');
+          var row = card && card.querySelector('.scw-ws-v2-row');
+          if (row) setRowState(row, ids[k], viewKey, true);
         }
+        updateBulkButton(viewKey);
         refetchAfterAdopt(viewKey);
+        ui.done();
         return;
       }
-      btn.disabled = false;
-      btn.textContent = '+ Add to Change Order';
-      alert((data && (data.error || data.message)) || 'Failed to add the item to the change order.');
+      ui.fail();
+      alert((data && (data.error || data.message)) ||
+        'Failed to add the item' + (ids.length > 1 ? 's' : '') + ' to the change order.');
     }).catch(function (err) {
-      btn.disabled = false;
-      btn.textContent = '+ Add to Change Order';
+      ui.fail();
       alert('Webhook error: ' + (err && err.message ? err.message : err));
     });
   }
@@ -304,16 +461,56 @@
       function () { decorateSoon(vcfg); });
   });
 
-  // One delegated click handler for every adopt button.
+  // Selection tracking — delegated so re-rendered checkboxes keep working.
+  document.addEventListener('change', function (e) {
+    var box = e.target;
+    if (!box || !box.classList || !box.classList.contains(CHECK_CLS)) return;
+    var rid = box.getAttribute('data-scw-co-adopt-check');
+    var vk  = box.getAttribute('data-scw-co-adopt-view');
+    if (!rid) return;
+    if (box.checked) _sel[rid] = true; else delete _sel[rid];
+    updateBulkButton(vk);
+  }, true);
+
+  // Single-row "+ Add Item".
   document.addEventListener('click', function (e) {
     var btn = e.target && e.target.closest &&
       e.target.closest('.' + BTN_CLS + '[data-scw-co-adopt]');
-    if (!btn || btn.disabled) return;
-    e.preventDefault();
-    e.stopPropagation();
-    fireAdopt(btn,
-      btn.getAttribute('data-scw-co-adopt'),
-      btn.getAttribute('data-scw-co-adopt-view'));
+    if (btn && !btn.disabled) {
+      e.preventDefault();
+      e.stopPropagation();
+      var rid = btn.getAttribute('data-scw-co-adopt');
+      var vk  = btn.getAttribute('data-scw-co-adopt-view');
+      fireAdopt([rid], vk, {
+        busy: function () {
+          btn.disabled = true;
+          btn.innerHTML = '<span class="scw-co-adopt-spin"></span> Adding…';
+        },
+        done: function () { /* row flipped to Added by fireAdopt */ },
+        fail: function () { btn.disabled = false; btn.textContent = '+ Add Item'; }
+      });
+      return;
+    }
+    // Bulk "Add N selected" in the banner.
+    var bulk = e.target && e.target.closest &&
+      e.target.closest('.' + BULK_CLS + '[data-scw-co-adopt-bulk]');
+    if (bulk && !bulk.disabled) {
+      e.preventDefault();
+      e.stopPropagation();
+      var ids = Object.keys(_sel);
+      if (!ids.length) return;
+      if (!window.confirm('Add ' + ids.length + ' selected item' +
+          (ids.length === 1 ? '' : 's') + ' to this change order?')) return;
+      var vkB = bulk.getAttribute('data-scw-co-adopt-bulk');
+      fireAdopt(ids, vkB, {
+        busy: function () {
+          bulk.disabled = true;
+          bulk.innerHTML = '<span class="scw-co-adopt-spin"></span> Adding…';
+        },
+        done: function () { bulk.disabled = false; updateBulkButton(vkB); },
+        fail: function () { bulk.disabled = false; updateBulkButton(vkB); }
+      });
+    }
   }, true);
 })();
 /*** END WORKSHEET V2 — CHANGE ORDER: adopt previously-quoted line items *****/
