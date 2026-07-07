@@ -559,10 +559,13 @@
     });
   }
 
-  function renderProposalBlock(hostTd, proposal /*, tr */) {
+  function renderProposalBlock(hostTd, proposal, tr) {
     if (!proposal || !window.SCW || !SCW.publishedQuoteInfo) return;
     var block = SCW.publishedQuoteInfo.buildBlock(proposal, {
       variant: 'compact',
+      // The row id IS the SOW record id on this grid — carry it onto the block
+      // so pq-expiration-edit can mirror field_2659 → the SOW's field_2135.
+      sowRecordId: (tr && tr.id) || '',
       // Default linkBuilder targets
       //   #published-proposals/sow-published-proposal-details/<recordId>
       // — the canonical "view the published quote" destination. The pill

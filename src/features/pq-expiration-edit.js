@@ -26,12 +26,17 @@
   var STYLE_ID  = 'scw-pq-exp-edit-css';
   var NS        = '.scwPqExpEdit';
 
-  // Per-scene enablement: saveView = a view on that scene through which
-  // the published-proposal record accepts a field_2659 PUT.
+  // Per-scene enablement:
+  //   saveView   = a view on that scene through which the published-proposal
+  //                record accepts a field_2659 PUT.
+  //   sowExpView = a view on that scene through which the SOW record accepts a
+  //                field_2135 PUT — the MIRROR write (field_2135 tracks
+  //                field_2659, but on the SOW record, a DIFFERENT record). On
+  //                the build-SOW page the SOW grid is view_3325.
   // (scene_1116 is intentionally absent — published-proposal-sow-card.js
   // already owns the editable expiration there.)
   var SCENES = {
-    scene_1085: { saveView: 'view_3885' }
+    scene_1085: { saveView: 'view_3885', sowExpView: 'view_3325' }
   };
 
   function sceneCfg() {
@@ -189,7 +194,7 @@
   }
 
   // ── Inline editor (delegated) ────────────────────────────────────────
-  function openEditor(expEl, recordId, saveView) {
+  function openEditor(expEl, recordId, saveView, sowId, sowExpView) {
     if (expEl.querySelector('.scw-pq-exp-edit-form')) return;
     var current = readCurrentMdy(recordId, expEl, saveView);
     var restoreHtml = expEl.innerHTML;
@@ -238,6 +243,11 @@
           return;
         }
         applySavedValue(recordId, mdy, saveView);
+        // Mirror onto the SOW record's field_2135 (best-effort, non-fatal —
+        // the proposal save already landed).
+        if (sowId && sowExpView && typeof SCW.mirrorProposalExpToSow === 'function') {
+          SCW.mirrorProposalExpToSow(sowId, mdy, sowExpView);
+        }
       });
     });
   }
@@ -252,7 +262,10 @@
     if (!block || !expEl) return;
     e.preventDefault();
     e.stopPropagation();   // don't toggle the SOW card collapse
-    openEditor(expEl, block.getAttribute('data-proposal-record-id'), cfg.saveView);
+    // data-sow-record-id is stamped by published-quote-info when the block was
+    // built with a SOW context (ops-review-pill); used to mirror field_2135.
+    openEditor(expEl, block.getAttribute('data-proposal-record-id'), cfg.saveView,
+      block.getAttribute('data-sow-record-id'), cfg.sowExpView);
   }, true);
 
   // Re-decorate whenever anything re-renders — ops-review-pill rebuilds

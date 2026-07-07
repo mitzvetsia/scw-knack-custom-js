@@ -577,6 +577,12 @@
     if (proposal && proposal.recordId) {
       block.setAttribute('data-proposal-record-id', proposal.recordId);
     }
+    // Stamp the owning SOW record id when the caller knows it (ops-review-pill
+    // renders one block per SOW row). pq-expiration-edit reads this to mirror
+    // the proposal expiration onto the SOW record's field_2135.
+    if (opts.sowRecordId) {
+      block.setAttribute('data-sow-record-id', opts.sowRecordId);
+    }
 
     // Empty state — render only if emptyText is provided. Variants that
     // want to silently skip on empty just pass null and check upstream.

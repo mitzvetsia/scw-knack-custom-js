@@ -1149,6 +1149,18 @@
           try { SCW.syncKnackModel(viewKey, recordId, resp, fieldKey, mdy); }
           catch (e) { /* non-fatal */ }
         }
+        // Mirror the expiration onto the SOW record's field_2135 (a DIFFERENT
+        // record). The SOW id is on the enclosing section; the SOW write view
+        // is the same one survey-costs/next-step use (view_3918). Best-effort.
+        if (typeof SCW.mirrorProposalExpToSow === 'function') {
+          var sowId = input.getAttribute('data-sow-id');
+          if (!sowId && input.closest) {
+            var section = input.closest('.scw-bid-review__sow-section[data-sow-id]');
+            sowId = section && section.getAttribute('data-sow-id');
+          }
+          var sowExpView = CFG.surveyCostsWriteView || CFG.nextStepViewKey;
+          if (sowId) SCW.mirrorProposalExpToSow(sowId, mdy, sowExpView);
+        }
         // Refresh the proposal source view so the expired-state badge
         // and any downstream pills update without a full reload.
         try {
