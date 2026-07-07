@@ -504,9 +504,8 @@
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         changeOrderId:  coId,
-        installItemIds: ids,
+        installItemIds: ids,        // always an array (1..N) — single & bulk identical
         removal:        true,
-        bulk:           ids.length > 1,
         triggeredBy:    getTriggeredBy()
       })
     }).then(function (resp) {
