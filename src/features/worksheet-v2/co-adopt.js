@@ -242,6 +242,30 @@
       '  font: 600 11px/1.3 system-ui, -apple-system, sans-serif;',
       '}',
 
+      // Detail panel: Prefix (field_2240) + Drop # (field_1951) aren\'t
+      // editable here, so they\'re pure noise — hide their whole
+      // detail-field wrapper. Scoped to the read-only panel so the live
+      // worksheets keep them. :has() lets us key off the inner control\'s
+      // field attribute (the wrapper carries no field key of its own).
+      '.scw-ws-v2--readonly .scw-ws-v2-detail-field:has([data-scw-ws-v2-conn="field_2240"]),',
+      '.scw-ws-v2--readonly .scw-ws-v2-detail-field:has([data-scw-ws-v2-field="field_1951"]) {',
+      '  display: none !important;',
+      '}',
+
+      // Collapsible banner: make the whole panel header a toggle. The
+      // caret sits before the title; collapsing hides the body.
+      '.scw-ws-v2-banner.scw-co-adopt-collapsible {',
+      '  cursor: pointer; user-select: none;',
+      '}',
+      '.scw-co-adopt-caret {',
+      '  display: inline-flex; align-items: center; justify-content: center;',
+      '  width: 16px; height: 16px; margin-right: 6px; flex: 0 0 auto;',
+      '  color: currentColor; transition: transform 0.15s ease;',
+      '}',
+      '.scw-co-adopt-caret svg { width: 12px; height: 12px; }',
+      '.scw-ws-v2--co-collapsed .scw-co-adopt-caret { transform: rotate(-90deg); }',
+      '.scw-ws-v2--co-collapsed .scw-ws-v2-body { display: none !important; }',
+
       // Bulk toolbar — reuses bulk.js's floating bottom-center classes
       // (.scw-ws-v2-bulk-toolbar / --active) for UI continuity with the
       // worksheet's bulk-edit options. Only the Clear button needs its
@@ -396,11 +420,54 @@
     }
   }
 
+  // ── Collapsible panel banner ────────────────────────────────────────
+  function caretSvg() {
+    return '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+           'stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">' +
+           '<path d="M6 9l6 6 6-6"></path></svg>';
+  }
+  var COLLAPSE_KEY = 'scwCoAdoptCollapsed:';
+  function isCollapsed(viewKey) {
+    try { return localStorage.getItem(COLLAPSE_KEY + viewKey) === '1'; }
+    catch (e) { return false; }
+  }
+  function setCollapsed(viewKey, val) {
+    try { localStorage.setItem(COLLAPSE_KEY + viewKey, val ? '1' : '0'); }
+    catch (e) { /* private mode — non-persistent is fine */ }
+  }
+  function ensureCollapsible(viewKey) {
+    var panel = document.getElementById('scw-ws-v2-' + viewKey);
+    if (!panel) return;
+    var banner = panel.querySelector('.scw-ws-v2-banner');
+    if (!banner) return;
+    if (!banner.hasAttribute('data-scw-co-collapsible')) {
+      banner.setAttribute('data-scw-co-collapsible', '1');
+      banner.classList.add('scw-co-adopt-collapsible');
+      banner.setAttribute('role', 'button');
+      banner.setAttribute('tabindex', '0');
+      var caret = document.createElement('span');
+      caret.className = 'scw-co-adopt-caret';
+      caret.innerHTML = caretSvg();
+      banner.insertBefore(caret, banner.firstChild);
+      banner.addEventListener('click', function () {
+        var collapsed = panel.classList.toggle('scw-ws-v2--co-collapsed');
+        setCollapsed(viewKey, collapsed);
+      });
+      banner.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); banner.click(); }
+      });
+    }
+    // Re-apply the persisted state on every render (the panel body is
+    // rebuilt underneath us; the collapsed class rides on the panel root).
+    panel.classList.toggle('scw-ws-v2--co-collapsed', isCollapsed(viewKey));
+  }
+
   function decorate(vcfg) {
     var viewKey = vcfg.sourceViewKey;
     var container = document.getElementById('scw-ws-v2-' + viewKey);
     if (!container) return;
     injectStyles();
+    ensureCollapsible(viewKey);
 
     var coId = getCoSowId();
     if (!coId) {
