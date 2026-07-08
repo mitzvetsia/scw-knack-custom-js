@@ -1913,6 +1913,12 @@
     )) return;
 
     setBusy(button, true);
+    // In-process feedback: a persistent spinner toast that ticks as each line
+    // item unlocks, so a wide bid (30+ PUTs over several seconds) reads as
+    // "working" rather than frozen. Replaced by the success/partial toast +
+    // grid refresh once every record has settled.
+    showCopyToast('Reopening ' + pkgName + ' — unlocking ' + itemIds.length +
+      ' item' + (itemIds.length === 1 ? '' : 's') + '…');
 
     // ── Reliability layer (mirrors mirror-connection-sync.js) ──────
     // Knack rate-limits at ~10 req/s; a wide bid (30+ items) bursts past
@@ -1998,13 +2004,26 @@
     // Status flip first (so we always know its outcome), then the
     // line-item unlocks batched through the concurrency-limited queue.
     putWithRetry(pkgView, pkgId, statusField, 'Draft').then(function (statusRes) {
+      var unlockedSoFar = 0;
       var itemTasks = itemIds.map(function (id) {
-        return function () { return putWithRetry(itemView, id, lockField, 'No'); };
+        return function () {
+          return putWithRetry(itemView, id, lockField, 'No').then(function (res) {
+            if (res.ok) unlockedSoFar++;
+            updateCopyToastMessage('Reopening ' + pkgName + ' — unlocked ' +
+              unlockedSoFar + ' of ' + itemIds.length + ' item' +
+              (itemIds.length === 1 ? '' : 's') + '…');
+            return res;
+          });
+        };
       });
       return runBatched(itemTasks, MAX_CONCURRENT).then(function (itemResults) {
         var failedItems = 0;
         for (var r = 0; r < itemResults.length; r++) if (!itemResults[r].ok) failedItems++;
         var unlocked = itemIds.length - failedItems;
+
+        // Drop the in-process toast; the outcome toast + grid refresh below
+        // now reflect the finished state.
+        hideCopyToast();
 
         if (!statusRes.ok && failedItems === itemIds.length) {
           ns.renderToast('Reopen failed — please retry', 'error');
@@ -2096,7 +2115,10 @@
     spinner.className = 'scw-copy-spinner';
     toast.appendChild(spinner);
 
-    toast.appendChild(document.createTextNode(message));
+    var msg = document.createElement('span');
+    msg.className = 'scw-copy-msg';
+    msg.textContent = message;
+    toast.appendChild(msg);
 
     var closeBtn = document.createElement('button');
     closeBtn.className = 'scw-copy-close';
@@ -2109,6 +2131,15 @@
     toast.appendChild(closeBtn);
 
     document.body.appendChild(toast);
+  }
+
+  // Update the persistent toast's message in place (progress ticks) without
+  // tearing it down + rebuilding (which flashes the spinner).
+  function updateCopyToastMessage(message) {
+    var toast = document.getElementById(COPY_TOAST_ID);
+    if (!toast) return;
+    var msg = toast.querySelector('.scw-copy-msg');
+    if (msg) msg.textContent = message;
   }
 
   function hideCopyToast(instant) {
