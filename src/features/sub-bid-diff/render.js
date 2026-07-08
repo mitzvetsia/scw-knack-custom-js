@@ -1071,11 +1071,36 @@
 
   /** Inject/refresh a per-SOW diff block inside each v2 SOW section. Deferred
    *  one frame so it runs AFTER v2 rebuilds its section innerHTML on a tick. */
+  // ── buildState memo ────────────────────────────────────────────────────
+  // buildState is the ~800-line v2 comparison transform (O(items×sows×pkgs)).
+  // render() runs on every source-view tick PLUS the load-time retries (150/
+  // 500/1200ms) PLUS every basis/note/collapse interaction — recomputing the
+  // whole transform each time made the diff panel slow to load. It only needs
+  // to recompute when the underlying Knack DATA changes; basis/note/collapse
+  // are display-only (they read the cached state + selectedByGrid at inject
+  // time). markDirty() bumps _dataGen on real data events (wired in init.js);
+  // the timed retries and display interactions do NOT, so they reuse the
+  // cached state and just re-inject (cheap) into any newly-appeared sections.
+  var _dataGen = 0, _builtGen = -1, _builtState = null;
+  function markDirty() { _dataGen++; }
+
+  function currentState(v2t) {
+    if (_dataGen === _builtGen && _builtState) return _builtState;
+    var state = v2t.buildState(
+      readView(C.bidViewKey), readView(C.sowItemsViewKey), readView(C.bidPkgViewKey));
+    // Only commit the cache on a usable build — a transient empty read (mid-
+    // fetch) must not poison the cache or stick us on stale/empty data.
+    if (state && state.sowGrids && state.sowGrids.length) {
+      _builtState = state;
+      _builtGen = _dataGen;
+    }
+    return state;
+  }
+
   function render() {
     var v2t = window.SCW.bidReviewV2 && window.SCW.bidReviewV2.transform;
     if (!v2t || typeof v2t.buildState !== 'function') return;
-    var state = v2t.buildState(
-      readView(C.bidViewKey), readView(C.sowItemsViewKey), readView(C.bidPkgViewKey));
+    var state = currentState(v2t);
     if (!state || !state.sowGrids || !state.sowGrids.length) return;
 
     var byId = Object.create(null);
@@ -1177,6 +1202,6 @@
     });
   }
 
-  ns.render = { render: render, bindOnce: bindOnce, distill: distill };
+  ns.render = { render: render, bindOnce: bindOnce, distill: distill, markDirty: markDirty };
 })();
 /*** END SUB-BID DIFF — RENDER ***********************************************/
