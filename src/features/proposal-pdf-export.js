@@ -617,7 +617,21 @@
         var l4HideQtyCost = tr.classList.contains('scw-hide-qty-cost');
 
         var labelCell = tr.querySelector('td:first-child');
-        var l4Label = labelCell ? norm(labelCell.textContent) : '';
+        var l4Label = '';
+        if (labelCell) {
+          // The connected-camera list lives in a .scw-concat-cameras span
+          // inside this cell AND is captured separately below as `cameraList`
+          // (the orange callout). Reading textContent verbatim would bake it
+          // into the blue product label too, so accessory rows (e.g. box /
+          // pole mounts with no rich description, which fall back to the label)
+          // showed the camera numbers TWICE — once blue, once orange. Strip the
+          // camera span from a clone before reading, mirroring the
+          // scw-mounting-product-line path above. Keep ONLY the orange callout.
+          var lblClone = labelCell.cloneNode(true);
+          var lblCamSpans = lblClone.querySelectorAll('.scw-concat-cameras');
+          for (var lcs = 0; lcs < lblCamSpans.length; lcs++) lblCamSpans[lcs].remove();
+          l4Label = norm(lblClone.textContent);
+        }
 
         var descSpan = tr.querySelector('.scw-l4-2019');
         var description = '';
