@@ -1,0 +1,328 @@
+<!--
+  Camera View Approval Form — HTML→PDF template (Make-side, PDF.co).
+  Built on location-approval-form.html / sow-form.html. Same SCW header + info
+  block + Make-expression conventions; body is the camera-view approval layout:
+  approval box → camera table → networking → equipment → services → assumptions
+  → additional photos. NOT part of the Knack bundle.
+
+  ── Data contract (shared with the LA / SOW forms) ─────────────────────────
+    Date          formatDate(now; "MM/DD/YYYY")
+    Client        18.field_6_raw[].identifier
+    Project       18.field_4_raw - get(split(17.field_2755_raw[].identifier; "|"); 2)
+    Proposal      19.field_2663_raw
+    Site Address  18.field_22
+
+  ── Repeating sections (each = a Text Aggregator output dropped into {{var}}) ─
+    {{cameraRows}}          camera/reader line items  (row snippet below)
+    {{networkingRows}}      switches / NVR            (row snippet below)
+    {{equipmentRows}}       accessories / equipment   (row snippet below)
+    {{installationServices}} install-service rows     (text rows)
+    {{otherServices}}       other-service rows        (text rows)
+    {{projectAssumptions}}  assumptions <li> list     (text rows)
+    {{photoRows}}           additional-photo cells    (join trick below)
+  Each Set-variable wraps its own <h2>/<table> ONLY when non-empty (see notes)
+  so an empty section drops out entirely instead of leaving a bare header.
+
+  ── BUGS FIXED vs. the current live template (see the 2024-07-08 sample) ─────
+    • Header subtitle rendered "undefined" — a token resolved to nothing. There
+      is no subtitle here; the Proposal lives in the info block + running header.
+    • Camera table showed a "null" column header — the label column now has a
+      real "Camera" header.
+    • Photos threw  SyntaxError: ifNull(row.field_114."")  — Make uses ";" as
+      the argument separator, not ",".  →  ifNull(row.field_114; "")  (below).
+
+  ── "Page X of X" + running header: see the @page block + the RUNNING HEADER
+     note at the bottom (PDF.co header field), so the title/proposal repeat on
+     every page like the sample without the "undefined".
+  ───────────────────────────────────────────────────────────────────────────
+-->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<style>
+  @page {
+    size: letter;
+    margin: 16mm 14mm 16mm 14mm;
+    @bottom-center {
+      content: "Page " counter(page) " of " counter(pages);
+      font-family: system-ui, sans-serif; font-size: 9px; color: #94a3b8;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0; padding: 0;
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    color: #1f2937; font-size: 12px; line-height: 1.4;
+    -webkit-print-color-adjust: exact; print-color-adjust: exact;
+  }
+  .la-page { padding: 0; }
+
+  /* ── Header ─────────────────────────────────────────────── */
+  .la-header {
+    display: flex; align-items: flex-start; justify-content: space-between;
+    border-bottom: 3px solid #07467c; padding-bottom: 14px; margin-bottom: 16px;
+  }
+  .la-header-logo img { max-height: 54px; max-width: 220px; display: block; }
+  .la-header-right { text-align: right; }
+  .la-title { font-size: 20px; font-weight: 800; color: #07467c; letter-spacing: 0.01em; margin: 0 0 4px; }
+  .la-meta { font-size: 11px; color: #64748b; }
+  .la-meta b { color: #334155; font-weight: 700; }
+
+  /* ── Client / site block ────────────────────────────────── */
+  .la-info {
+    display: grid; grid-template-columns: 1fr 1fr; gap: 6px 24px;
+    background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 8px;
+    padding: 12px 16px; margin-bottom: 16px;
+  }
+  .la-info-item { font-size: 12px; }
+  .la-info-label { font-size: 9.5px; text-transform: uppercase; letter-spacing: 0.06em; color: #94a3b8; font-weight: 700; margin-bottom: 1px; }
+  .la-info-value { color: #1f2937; font-weight: 600; }
+
+  /* ── Approval box ───────────────────────────────────────── */
+  .va-approval {
+    border: 1px solid #cbd5e1; border-radius: 8px; overflow: hidden;
+    margin-bottom: 18px; page-break-inside: avoid; break-inside: avoid;
+  }
+  .va-approval-head {
+    background: #07467c; color: #fff; font-size: 12px; font-weight: 800;
+    text-transform: uppercase; letter-spacing: 0.06em; padding: 7px 14px;
+  }
+  .va-approval-grid {
+    display: grid; grid-template-columns: 1.1fr 1fr; gap: 20px;
+    padding: 14px 16px;
+  }
+  .va-approval-fields { display: flex; flex-direction: column; gap: 14px; }
+  .va-field-row { display: grid; grid-template-columns: 1fr 120px; gap: 20px; }
+  .va-field { display: flex; flex-direction: column; }
+  .va-field-cap { font-size: 9px; text-transform: uppercase; letter-spacing: 0.06em; color: #94a3b8; font-weight: 700; margin-bottom: 12px; }
+  .va-line { border-bottom: 1px solid #334155; height: 0; }
+  .va-approval-note {
+    font-size: 10.5px; color: #475569; line-height: 1.5;
+    border-left: 3px solid #e2e8f0; padding-left: 12px; align-self: center;
+  }
+
+  /* ── Section titles ─────────────────────────────────────── */
+  .va-section-title {
+    font-size: 13px; font-weight: 800; color: #07467c;
+    background: #eef4fa; border-left: 4px solid #07467c;
+    padding: 6px 12px; border-radius: 4px; margin: 18px 0 8px;
+    page-break-after: avoid; break-after: avoid;
+  }
+
+  /* ── Tables (cameras / networking / equipment) ──────────── */
+  .va-table {
+    width: 100%; border-collapse: collapse; font-size: 11px;
+    margin-bottom: 6px; break-inside: auto;
+  }
+  .va-table thead { display: table-header-group; }   /* repeat header per page */
+  .va-table th {
+    text-align: left; font-size: 9px; text-transform: uppercase; letter-spacing: 0.05em;
+    color: #64748b; font-weight: 700; background: #f1f5f9;
+    border-bottom: 1.5px solid #cbd5e1; padding: 6px 8px;
+  }
+  .va-table td {
+    padding: 6px 8px; border-bottom: 1px solid #e8edf3;
+    color: #334155; vertical-align: top; overflow-wrap: break-word;
+  }
+  .va-table tbody tr, .va-table tr { page-break-inside: avoid; break-inside: avoid; }
+  .va-table tbody tr:nth-child(even) td { background: #fbfcfe; }
+  .va-col-label { font-weight: 800; color: #07467c; white-space: nowrap; }
+  .va-col-initial { width: 58px; }
+  .va-col-qty { width: 44px; text-align: center; }
+  td.va-col-qty { text-align: center; font-weight: 700; }
+  /* Empty initials cell — a subtle box for the customer to initial each row */
+  .va-initial-cell { width: 58px; }
+  .va-initial-box {
+    display: block; height: 18px; border: 1px solid #cbd5e1;
+    border-radius: 3px; background: #fff;
+  }
+
+  /* ── Text rows (services / assumptions) ─────────────────── */
+  .va-note {
+    font-size: 11px; color: #475569; padding: 6px 10px;
+    border: 1px solid #e2e8f0; border-radius: 5px; margin-bottom: 5px;
+    page-break-inside: avoid; break-inside: avoid;
+  }
+  .va-note b { color: #334155; }
+  .va-assumptions-lead { font-size: 11.5px; font-weight: 700; color: #334155; margin: 0 0 6px; }
+  .va-assumptions ul { margin: 0; padding-left: 18px; }
+  .va-assumptions li { font-size: 11px; color: #475569; margin-bottom: 5px; line-height: 1.45; }
+
+  /* ── Additional photos ──────────────────────────────────── */
+  .va-photos { display: flex; flex-wrap: wrap; gap: 8px; }
+  .va-photos img {
+    width: 170px; height: 128px; object-fit: cover;
+    border-radius: 4px; border: 1px solid #e2e8f0; background: #f1f5f9; display: block;
+  }
+  .va-photos-empty { color: #94a3b8; font-size: 11px; font-style: italic; }
+
+  .va-section { page-break-inside: auto; }
+</style>
+</head>
+<body>
+  <div class="la-page">
+
+    <div class="la-header">
+      <div class="la-header-logo"><img src="https://www.getscw.com/media/logo/stores/1/logo-scw.jpeg" alt="SCW"></div>
+      <div class="la-header-right">
+        <div class="la-title">Camera View Approval Form</div>
+        <div class="la-meta">
+          <div><b>Date:</b> {{formatDate(now; "MM/DD/YYYY")}}</div>
+        </div>
+      </div>
+    </div>
+
+    <div class="la-info">
+      <div class="la-info-item"><div class="la-info-label">Client</div><div class="la-info-value">{{18.field_6_raw[].identifier}}</div></div>
+      <div class="la-info-item"><div class="la-info-label">Project</div><div class="la-info-value">{{18.field_4_raw}} - {{get(split(17.field_2755_raw[].identifier; "|"); 2)}}</div></div>
+      <div class="la-info-item"><div class="la-info-label">Proposal</div><div class="la-info-value">{{19.field_2663_raw}}</div></div>
+      <div class="la-info-item"><div class="la-info-label">Site Address</div><div class="la-info-value">{{18.field_22}}</div></div>
+    </div>
+
+    <!-- ── Approval box ───────────────────────────────────── -->
+    <div class="va-approval">
+      <div class="va-approval-head">Approved By</div>
+      <div class="va-approval-grid">
+        <div class="va-approval-fields">
+          <div class="va-field"><div class="va-field-cap">Name</div><div class="va-line"></div></div>
+          <div class="va-field"><div class="va-field-cap">Title</div><div class="va-line"></div></div>
+          <div class="va-field-row">
+            <div class="va-field"><div class="va-field-cap">Signature</div><div class="va-line"></div></div>
+            <div class="va-field"><div class="va-field-cap">Date</div><div class="va-line"></div></div>
+          </div>
+        </div>
+        <div class="va-approval-note">
+          Please initial each camera row to confirm you have reviewed and are
+          satisfied with all camera placements and views. Service calls to adjust
+          camera views after approval will be subject to billing at an hourly rate.
+        </div>
+      </div>
+    </div>
+
+    <!-- ── Camera views ───────────────────────────────────── -->
+    <div class="va-section">
+      <div class="va-section-title">Camera Views</div>
+      <table class="va-table va-table--cameras">
+        <thead>
+          <tr>
+            <th class="va-col-initial">Initials</th>
+            <th class="va-col-label">Camera</th>
+            <th>Product</th>
+            <th>SCW Notes</th>
+          </tr>
+        </thead>
+        <tbody>
+          {{cameraRows}}
+        </tbody>
+      </table>
+    </div>
+
+    <!-- ── Networking (switches / NVR). {{networkingRows}} is a Set-variable
+         that wraps its own <h2>+<table> only when non-empty — see notes. ── -->
+    {{networking}}
+
+    <!-- ── Equipment / accessories ── -->
+    {{equipment}}
+
+    <!-- ── Installation Services ── -->
+    {{installationServices}}
+
+    <!-- ── Other Services ── -->
+    {{otherServices}}
+
+    <!-- ── Project Assumptions ── -->
+    {{projectAssumptions}}
+
+    <!-- ── Additional Photos ── -->
+    {{additionalPhotos}}
+
+  </div>
+</body>
+</html>
+
+<!-- ════════════════════════════════════════════════════════════════════════
+  MAKE WIRING — per-section row snippets + Set-variable wrappers.
+  Field keys reuse the SOW/install line-item map (see worksheet-v2/config.js):
+    label field_2801 · product name field_2790 · scw notes field_2808 ·
+    MDF/IDF location field_1642 (computed display) · qty field_1964 ·
+    photo url = the DOC_photos url field · photo caption field_114.
+  Confirm the module numbers against THIS scenario's bundle before shipping;
+  they differ per scenario (the 5./9./38. prefixes below are placeholders).
+
+  ── CAMERA ROWS ({{cameraRows}}) ───────────────────────────────────────────
+  Filter the line items to the camera/reader bucket (6481e5ba38f283002898113c),
+  build one <tr> per item, join with a Text Aggregator → {{cameraRows}}:
+
+    <tr>
+      <td class="va-initial-cell"><span class="va-initial-box"></span></td>
+      <td class="va-col-label">{{5.field_2801_raw}}</td>
+      <td>{{5.field_2790_raw}}</td>
+      <td>{{ifNull(5.field_2808_raw; "")}}</td>
+    </tr>
+
+  (SCW Notes = field_2808. In the 2024-07-08 sample this column showed the
+   MDF/IDF location — if that's the intent, map field_1642 instead and rename
+   the <th> to "Location".)
+
+  ── NETWORKING ({{networking}}) ────────────────────────────────────────────
+  Filter to the networking bucket (647953bb54b4e1002931ed97). Row:
+    <tr><td>{{5.field_2790_raw}}</td><td>{{5.field_1642_raw}}</td><td>{{ifNull(5.field_2808_raw; "")}}</td></tr>
+  → Text Aggregator into networkingRows, then Set variable:
+    {{networking}} = if( length(networkingRows) > 0;
+      "<div class='va-section'><div class='va-section-title'>Networking</div>"
+      + "<table class='va-table'><thead><tr><th>Product</th><th>Location</th><th>Notes</th></tr></thead><tbody>"
+      + networkingRows + "</tbody></table></div>"; "" )
+
+  ── EQUIPMENT ({{equipment}}) ──────────────────────────────────────────────
+  Accessories / equipment bucket (594a94536877675816984cb9). Row (Qty col):
+    <tr><td>{{5.field_2790_raw}}</td><td class="va-col-qty">{{5.field_1964_raw}}</td><td>{{ifNull(5.field_2808_raw; "")}}</td></tr>
+  {{equipment}} = if( length(equipmentRows) > 0;
+      "<div class='va-section'><div class='va-section-title'>Equipment</div>"
+      + "<table class='va-table'><thead><tr><th>Product</th><th class='va-col-qty'>Qty</th><th>Notes</th></tr></thead><tbody>"
+      + equipmentRows + "</tbody></table></div>"; "" )
+
+  ── SERVICES ({{installationServices}} / {{otherServices}}) ─────────────────
+  Text rows (NOT the camera table). Row:
+    <div class="va-note">{{5.field_2790_raw}}{{if(length(5.field_2808_raw) > 0; " — " + 5.field_2808_raw; "")}}</div>
+  Install-services bucket vs Other-services bucket (6977caa7f246edf67b52cbcd).
+  Each wraps a header only when non-empty:
+    {{installationServices}} = if( length(installRows) > 0;
+      "<div class='va-section-title'>Installation Services</div>" + installRows; "" )
+    {{otherServices}} = if( length(otherRows) > 0;
+      "<div class='va-section-title'>Other Services</div>" + otherRows; "" )
+
+  ── PROJECT ASSUMPTIONS ({{projectAssumptions}}) ───────────────────────────
+  Assumptions bucket (697b7a023a31502ec68b3303). Row = one <li>:
+    <li>{{5.field_2808_raw}}</li>
+  → Text Aggregator into assumptionRows, then:
+    {{projectAssumptions}} = if( length(assumptionRows) > 0;
+      "<div class='va-section-title'>Project Assumptions</div>"
+      + "<div class='va-assumptions'><p class='va-assumptions-lead'>Your Video Surveillance Installation Includes:</p><ul>"
+      + assumptionRows + "</ul></div>"; "" )
+  (If the assumptions list is fixed boilerplate rather than per-line-item,
+   drop the aggregator and hardcode the <li>s inside this wrapper.)
+
+  ── ADDITIONAL PHOTOS ({{additionalPhotos}}) ───────────────────────────────
+  Same join() trick as multi-photo-form.html — build every <img> from the photo
+  url array. THE FIX vs. the sample: use ";" (not ",") in ifNull:
+
+    photoCells =
+      if( contains(get(map(9.array; "photo url"); 1); "http");
+          "<img src=""" + join(map(9.array; "photo url"); """><img src=""") + """>";
+          "<div class='va-photos-empty'>No photos on file</div>" )
+
+  Per-photo caption (if shown under each img) — the sample's crash was here:
+      {{ifNull(row.field_114; "")}}         ✔  (NOT  ifNull(row.field_114."")  ✘)
+
+  {{additionalPhotos}} = if( length(photoCells) > 0;
+      "<div class='va-section'><div class='va-section-title'>Additional Photos</div>"
+      + "<div class='va-photos'>" + photoCells + "</div></div>"; "" )
+
+  ── OPTIONAL RUNNING HEADER (PDF.co header field — repeats on every page) ────
+  Paste into the PDF.co module's header HTML so the title + proposal repeat like
+  the sample, WITHOUT the "undefined" line:
+    <div style="font-family:system-ui,sans-serif;font-size:9px;color:#94a3b8;width:100%;text-align:center;">
+      Camera View Approval Form &nbsp;·&nbsp; Proposal: {{19.field_2663_raw}}
+    </div>
+═════════════════════════════════════════════════════════════════════════════ -->
