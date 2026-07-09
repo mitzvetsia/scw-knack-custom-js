@@ -460,18 +460,25 @@ window.SCW = window.SCW || {};
     if (looksLikeTokenBody(body)) { console.warn('[SCW] Auth: token body on ' + status, url); showSessionToast(); return; }
     if (status === 401) return; // 401 without a token body — let Knack handle it
 
-    // 403 below.
-    if (isWriteMethod(method)) {
-      console.warn('[SCW] Auth: 403 on write → likely expired token', method, url);
-      showSessionToast();
-      return;
-    }
-    // Read 403 — count toward a burst.
+    // 403 without a token body — AMBIGUOUS. Knack returns 403 for both an
+    // expired token AND an ordinary permission/scope denial, and this app
+    // fires a lot of view-scoped writes: a view-based PUT/POST returns 403
+    // whenever the target record isn't in that view's filtered result set or
+    // the field isn't editable in that view. Treating a SINGLE write-403 as
+    // "session expired" (the old behavior) made the toast pop constantly on
+    // healthy sessions — the #1 false-positive source (reported 2026-07-09).
+    //
+    // The reliable discriminator: a genuinely dead token fails EVERY call, so
+    // it storms multiple 403s in seconds; a real permission gap is isolated.
+    // So route BOTH read and write 403s through one burst counter and only
+    // prompt at the threshold. Writes still count (an expiring session's first
+    // failure is often a save), we just don't fire on the very first one.
     var now = Date.now();
     _auth403Times.push(now);
     _auth403Times = _auth403Times.filter(function (t) { return now - t <= AUTH_BURST_WINDOW; });
     if (_auth403Times.length >= AUTH_BURST_COUNT) {
-      console.warn('[SCW] Auth: 403 burst → likely expired token', _auth403Times.length, url);
+      console.warn('[SCW] Auth: 403 burst → likely expired token',
+        _auth403Times.length, method, url);
       _auth403Times = [];
       showSessionToast();
     }
