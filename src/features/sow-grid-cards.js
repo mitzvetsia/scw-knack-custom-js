@@ -174,15 +174,37 @@
       '</label>';
   }
 
-  function notesHtml(tr, attrs) {
+  var NOTE_PENCIL_SVG =
+    '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" ' +
+      'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+      '<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>' +
+      '<path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>' +
+    '</svg>';
+
+  function notesHtml(tr, attrs, sowId) {
     var cust = dispHtml(tr, attrs, F.notesCust);
     var intl = stripTags(disp(tr, attrs, F.notesInt));
     var hasCust = cust && stripTags(cust);
     var hasInt  = intl;
-    if (!hasCust && !hasInt) return '';
-    var body = '';
-    if (hasCust) body += '<div class="scw-sow-note"><span class="scw-sow-note__l">Customer-facing</span>' +
-      '<div class="scw-sow-note__body">' + cust + '</div></div>';
+
+    // Customer-facing (field_2128) is ALWAYS shown and editable inline — even
+    // when empty, so a note can be added without leaving the list. Internal
+    // notes stay read-only. The pencil opens a WYSIWYG (contenteditable)
+    // editor seeded with the current rendered HTML; Save PUTs field_2128
+    // through this view (same path as survey cost / name).
+    var custBody = hasCust
+      ? cust
+      : '<span class="scw-sow-note__empty">No customer-facing notes yet.</span>';
+    var body =
+      '<div class="scw-sow-note scw-sow-note--cust" data-scw-note-cust data-sow-id="' + esc(sowId) + '">' +
+        '<div class="scw-sow-note__head">' +
+          '<span class="scw-sow-note__l">Customer-facing</span>' +
+          '<button type="button" class="scw-sow-note-edit" data-scw-note-edit ' +
+            'title="Edit customer-facing notes" aria-label="Edit customer-facing notes">' +
+            NOTE_PENCIL_SVG + '</button>' +
+        '</div>' +
+        '<div class="scw-sow-note__body" data-scw-note-body>' + custBody + '</div>' +
+      '</div>';
     if (hasInt) body += '<div class="scw-sow-note"><span class="scw-sow-note__l">Internal</span>' +
       '<div class="scw-sow-note__body">' + esc(intl) + '</div></div>';
     return '<details class="scw-sow-notes"><summary>Notes</summary>' + body + '</details>';
@@ -306,14 +328,11 @@
 
     card.appendChild(body);
 
-    // Notes (collapsed by default).
-    var notes = notesHtml(tr, attrs);
-    if (notes) {
-      var nWrap = document.createElement('div');
-      nWrap.className = 'scw-sow-card__footer';
-      nWrap.innerHTML = notes;
-      card.appendChild(nWrap);
-    }
+    // Notes (collapsed by default; customer-facing is editable inline).
+    var nWrap = document.createElement('div');
+    nWrap.className = 'scw-sow-card__footer';
+    nWrap.innerHTML = notesHtml(tr, attrs, sowId);
+    card.appendChild(nWrap);
     return card;
   }
 
@@ -415,6 +434,80 @@
     });
   }
 
+  // ── customer-facing notes inline edit (field_2128) ──────────
+  // Swap the note body for a contenteditable editor seeded with the current
+  // HTML (preserves bullet lists). Save PUTs field_2128 through this view then
+  // refetches so the card rebuilds with server truth; Cancel restores.
+  function currentNoteHtml(noteWrap) {
+    var bodyEl = noteWrap.querySelector('[data-scw-note-body]');
+    if (!bodyEl) return '';
+    if (bodyEl.querySelector('.scw-sow-note__empty')) return '';
+    return bodyEl.innerHTML;
+  }
+  function openNotesEditor(noteWrap) {
+    if (!noteWrap) return;
+    var bodyEl = noteWrap.querySelector('[data-scw-note-body]');
+    if (!bodyEl || bodyEl.querySelector('.scw-sow-note-editor')) return;   // already editing
+    noteWrap._scwNotePrev = currentNoteHtml(noteWrap);
+    bodyEl.innerHTML =
+      '<div class="scw-sow-note-editor" contenteditable="true" role="textbox" aria-multiline="true" ' +
+        'aria-label="Customer-facing notes">' + (noteWrap._scwNotePrev || '') + '</div>' +
+      '<div class="scw-sow-note-editor__actions">' +
+        '<button type="button" class="scw-sow-note-btn scw-sow-note-btn--cancel" data-scw-note-cancel>Cancel</button>' +
+        '<button type="button" class="scw-sow-note-btn scw-sow-note-btn--save" data-scw-note-save>Save</button>' +
+      '</div>';
+    var ed = bodyEl.querySelector('.scw-sow-note-editor');
+    setTimeout(function () {
+      ed.focus();
+      // Place caret at the end of existing content.
+      try {
+        var r = document.createRange(); r.selectNodeContents(ed); r.collapse(false);
+        var sel = window.getSelection(); sel.removeAllRanges(); sel.addRange(r);
+      } catch (e) {}
+    }, 0);
+  }
+  function restoreNoteBody(noteWrap, html) {
+    var bodyEl = noteWrap && noteWrap.querySelector('[data-scw-note-body]');
+    if (!bodyEl) return;
+    var textOnly = String(html || '').replace(/<[^>]*>/g, '').replace(/&nbsp;|\s/g, '');
+    bodyEl.innerHTML = textOnly
+      ? html
+      : '<span class="scw-sow-note__empty">No customer-facing notes yet.</span>';
+  }
+  function cancelNotesEditor(noteWrap) {
+    if (!noteWrap) return;
+    restoreNoteBody(noteWrap, noteWrap._scwNotePrev || '');
+  }
+  function saveNotesEditor(noteWrap) {
+    if (!noteWrap) return;
+    var ed = noteWrap.querySelector('.scw-sow-note-editor');
+    var sowId = noteWrap.getAttribute('data-sow-id');
+    if (!ed || !sowId) return;
+    if (!(window.SCW && typeof SCW.knackAjax === 'function' && typeof SCW.knackRecordUrl === 'function')) {
+      cancelNotesEditor(noteWrap); return;
+    }
+    var html = ed.innerHTML;
+    var textOnly = String(html).replace(/<[^>]*>/g, '').replace(/&nbsp;|\s/g, '');
+    var payloadVal = textOnly ? html : '';
+    // Optimistic: show the saved value immediately; the refetch re-renders with
+    // server truth (and reverts visually if the PUT failed).
+    restoreNoteBody(noteWrap, payloadVal);
+    noteWrap.classList.add('scw-sow-note--saving');
+    var body = {};
+    body[F.notesCust] = payloadVal;
+    SCW.knackAjax({
+      url:  SCW.knackRecordUrl(VIEW_ID, sowId),
+      type: 'PUT',
+      data: JSON.stringify(body),
+      dataType: 'json'
+    }).always(function () {
+      try {
+        var v = Knack && Knack.views && Knack.views[VIEW_ID];
+        if (v && v.model && typeof v.model.fetch === 'function') v.model.fetch();
+      } catch (e) {}
+    });
+  }
+
   // ── transform ───────────────────────────────────────────────
   function currentMode() {
     try { return localStorage.getItem(MODE_LS) === 'table' ? 'table' : 'cards'; }
@@ -491,6 +584,9 @@
   function transform() {
     var view = document.getElementById(VIEW_ID);
     if (!view) return;
+    // Don't rebuild while a customer-facing notes editor is open — a stray
+    // re-render (another view, cell update) would wipe the in-progress edit.
+    if (view.querySelector('.scw-sow-note-editor')) return;
     var table = view.querySelector('table.kn-table-table');
     var wrapper = view.querySelector('.kn-table-wrapper');
     if (!table || !wrapper) return;
@@ -656,10 +752,40 @@
       '.scw-sow-notes[open] > summary::before { content: "▾ "; }',
       '.scw-sow-notes[open] > summary:hover { background: #f8fafc; }',
       '.scw-sow-note { padding: 0 16px 12px; }',
+      '.scw-sow-note__head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 4px; }',
       '.scw-sow-note__l { display: block; font-size: 10px; font-weight: 700; text-transform: uppercase;',
       '  letter-spacing: .4px; color: #94a3b8; margin-bottom: 4px; }',
+      '.scw-sow-note__head .scw-sow-note__l { margin-bottom: 0; }',
       '.scw-sow-note__body { font-size: 13px; color: #334155; line-height: 1.5; }',
       '.scw-sow-note__body ul { margin: 0; padding-left: 18px; }',
+      '.scw-sow-note__empty { color: #94a3b8; font-style: italic; }',
+      /* customer-facing notes inline editor */
+      '.scw-sow-note-edit { display: inline-flex; align-items: center; justify-content: center;',
+      '  flex: none; width: 24px; height: 24px; border: none; border-radius: 5px; background: transparent;',
+      '  color: #94a3b8; cursor: pointer; padding: 0; opacity: .75; transition: opacity .12s, background .12s; }',
+      '.scw-sow-note-edit:hover, .scw-sow-note-edit:focus-visible { opacity: 1; background: #e2e8f0; color: #334155; }',
+      '.scw-sow-note-editor { min-height: 60px; border: 1px solid ' + ACC + '; border-radius: 6px;',
+      '  background: #fff; padding: 8px 10px; font-size: 13px; color: #334155; line-height: 1.5; outline: none; }',
+      '.scw-sow-note-editor:focus { box-shadow: 0 0 0 2px rgba(var(--scw-accent-rgb,47,95,145),.18); }',
+      '.scw-sow-note-editor ul { margin: 0; padding-left: 18px; }',
+      '.scw-sow-note-editor__actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 8px; }',
+      '.scw-sow-note-btn { border-radius: 6px; padding: 5px 12px; font: 600 12px/1.2 system-ui, sans-serif;',
+      '  cursor: pointer; border: 1px solid #cbd5e1; }',
+      '.scw-sow-note-btn--cancel { background: #fff; color: #475569; }',
+      '.scw-sow-note-btn--cancel:hover { background: #f1f5f9; }',
+      '.scw-sow-note-btn--save { background: ' + ACC + '; color: #fff; border-color: ' + ACC + '; }',
+      '.scw-sow-note-btn--save:hover { filter: brightness(1.05); }',
+      '.scw-sow-note--saving { opacity: .6; pointer-events: none; }',
+
+      /* Table / grid view — truncate the long note columns so rows stay
+         compact. Clamps to ~2 lines with an ellipsis; full text is visible in
+         card view (or on the edit page). */
+      '#' + VIEW_ID + ':not(.scw-sow-cards-on) td.' + F.notesCust + ',',
+      '#' + VIEW_ID + ':not(.scw-sow-cards-on) td.' + F.notesInt + ' { max-width: 260px; }',
+      '#' + VIEW_ID + ':not(.scw-sow-cards-on) td.' + F.notesCust + ' > span,',
+      '#' + VIEW_ID + ':not(.scw-sow-cards-on) td.' + F.notesInt + ' > span {',
+      '  display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;',
+      '  overflow: hidden; text-overflow: ellipsis; max-height: 3.2em; }',
 
       /* the reused ops block sits naturally in the next-step column */
       '.scw-sow-card__col--next .scw-ops-block { display: block; }',
@@ -727,6 +853,36 @@
       e.stopPropagation();
       if (e.key === 'Enter')  { e.preventDefault(); inp.blur(); }
       if (e.key === 'Escape') { e.preventDefault(); commitNameEditor(inp, true); }
+    }, true);
+
+    // Customer-facing notes inline edit (delegated). Pencil opens the editor;
+    // Save/Cancel commit or restore. All live inside the notes <details> in the
+    // card footer, so they never touch the header collapse toggle.
+    document.addEventListener('click', function (e) {
+      var editBtn = e.target.closest && e.target.closest('[data-scw-note-edit]');
+      if (editBtn) {
+        e.preventDefault(); e.stopPropagation();
+        openNotesEditor(editBtn.closest('[data-scw-note-cust]'));
+        return;
+      }
+      var cancelBtn = e.target.closest && e.target.closest('[data-scw-note-cancel]');
+      if (cancelBtn) {
+        e.preventDefault(); e.stopPropagation();
+        cancelNotesEditor(cancelBtn.closest('[data-scw-note-cust]'));
+        return;
+      }
+      var saveBtn = e.target.closest && e.target.closest('[data-scw-note-save]');
+      if (saveBtn) {
+        e.preventDefault(); e.stopPropagation();
+        saveNotesEditor(saveBtn.closest('[data-scw-note-cust]'));
+        return;
+      }
+    });
+    // Escape inside the notes editor cancels.
+    document.addEventListener('keydown', function (e) {
+      if (e.key !== 'Escape') return;
+      var ed = e.target.closest && e.target.closest('.scw-sow-note-editor');
+      if (ed) { e.preventDefault(); e.stopPropagation(); cancelNotesEditor(ed.closest('[data-scw-note-cust]')); }
     }, true);
 
     // Per-card collapse toggle (chevron / header). Ignore clicks that land on
