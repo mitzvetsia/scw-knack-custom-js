@@ -1071,25 +1071,38 @@
 
   /** Inject/refresh a per-SOW diff block inside each v2 SOW section. Deferred
    *  one frame so it runs AFTER v2 rebuilds its section innerHTML on a tick. */
-  // ── buildState memo ────────────────────────────────────────────────────
+  // ── comparison-state source ────────────────────────────────────────────
   // buildState is the ~800-line v2 comparison transform (O(items×sows×pkgs)).
-  // render() runs on every source-view tick PLUS the load-time retries (150/
-  // 500/1200ms) PLUS every basis/note/collapse interaction — recomputing the
-  // whole transform each time made the diff panel slow to load. It only needs
-  // to recompute when the underlying Knack DATA changes; basis/note/collapse
-  // are display-only (they read the cached state + selectedByGrid at inject
-  // time). markDirty() bumps _dataGen on real data events (wired in init.js);
-  // the timed retries and display interactions do NOT, so they reuse the
-  // cached state and just re-inject (cheap) into any newly-appeared sections.
+  // The v2 grid ALREADY runs it for its own render on every data change and
+  // publishes the result as SCW.bidReviewV2.builtState. We inject a per-SOW
+  // diff into those same sections, so we REUSE that exact state instead of
+  // running the transform a second time — one transform per data change, not
+  // two. v2's renderSnapshot runs synchronously on the data notify and we
+  // render rAF-deferred off the same notify, so the published state reflects
+  // the current data by the time we read it.
+  //
+  // Fallback: if v2 hasn't published yet (we booted first) OR a direct Knack
+  // event raced ahead of v2's debounced notify, build our own — memoized so
+  // the load-time retries (150/500/1200ms) and basis/note/collapse
+  // interactions reuse it rather than recomputing. markDirty() (wired to the
+  // real data events in init.js) bumps _dataGen; the retries/display
+  // interactions do NOT, so they reuse the cache and just re-inject.
   var _dataGen = 0, _builtGen = -1, _builtState = null;
   function markDirty() { _dataGen++; }
 
   function currentState(v2t) {
+    // Preferred: reuse the v2 grid's already-built state.
+    var v2ns = window.SCW.bidReviewV2;
+    var pub = v2ns && v2ns.builtState;
+    if (pub && pub.sowGrids && pub.sowGrids.length) {
+      _builtState = pub;          // keep as the fallback cache too
+      return pub;
+    }
+    // Fallback: build our own (memoized). Only commit the cache on a usable
+    // build — a transient empty read (mid-fetch) must not poison it.
     if (_dataGen === _builtGen && _builtState) return _builtState;
     var state = v2t.buildState(
       readView(C.bidViewKey), readView(C.sowItemsViewKey), readView(C.bidPkgViewKey));
-    // Only commit the cache on a usable build — a transient empty read (mid-
-    // fetch) must not poison the cache or stick us on stale/empty data.
     if (state && state.sowGrids && state.sowGrids.length) {
       _builtState = state;
       _builtGen = _dataGen;

@@ -91,6 +91,16 @@
     if (ns.data && typeof ns.data.warnIfTruncated === 'function') ns.data.warnIfTruncated();
     var state = ns.transform.buildState(bidRecords, sowItems, bidPackages);
 
+    // Publish the freshly-built comparison state so co-located consumers
+    // (sub-bid-diff, which injects a per-SOW diff into these same sections)
+    // can REUSE it instead of running the ~800-line transform a second time.
+    // Set before the early-returns below so a consumer always sees the latest
+    // build. renderSnapshot runs synchronously on the data notify, and
+    // sub-bid-diff renders rAF-deferred off the same notify, so by the time it
+    // reads this the value reflects the current data.
+    ns.builtState = state;
+    ns.builtStateGen = (ns.builtStateGen || 0) + 1;
+
     // Analyze SOW-item issues once per render (missing photos, disconnected
     // cam/reader, wrong accessory). Computed from the SOW items only — bid
     // records are never analyzed. card.js reads chips per SOW item id.
