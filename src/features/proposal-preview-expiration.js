@@ -1,28 +1,39 @@
 /*** PROPOSAL PREVIEW — show the expiration date (scene_1096) ****************
  *
- * The customer-facing proposal shows an "Expiration Date" row in its detail
- * block (built by proposal-pdf-export's tokenized `_Expiration_Date_` row +
- * live-patched by published-proposal-render.js). The internal Preview Proposal
- * page (scene_1096, #proposals/proposal/<sowId>/) renders the proposal from
- * LIVE Knack detail views and had no expiration row — so staff previewing a
- * quote couldn't see it.
+ * The customer-facing proposal shows an "Expiration Date" row in its top
+ * detail block (built by proposal-pdf-export's tokenized `_Expiration_Date_`
+ * row + live-patched by published-proposal-render.js). The internal Preview
+ * Proposal page (scene_1096, #proposals/proposal/<sowId>/) renders the
+ * proposal from LIVE Knack views and had no expiration row — so staff
+ * previewing a quote couldn't see it.
  *
- * This surfaces it in the SAME place: right above the "SOW ID" detail item,
- * mirroring the customer layout (Proposal ID · Expiration Date · SOW ID). We
- * CLONE the existing SOW-ID `.kn-detail` item and relabel it, so the DOM
- * structure + classes (and style-detail-labels' aliceblue label) match the
- * rest of the block exactly.
+ * WHERE THE VALUE COMES FROM: we read the SOW-side expiration `field_2135`
+ * (the field that feeds publish and mirrors the proposal's `field_2659`)
+ * off whichever rendered view on the scene carries it — on scene_1096 that's
+ * `view_3861` (the hidden "SOW_sow header Details" host). We fall back to
+ * `field_2659` if `field_2135` isn't present. Nothing is injected until a
+ * value is available (blank = no row, same as the customer page when unset).
  *
- * Value source: the SOW's expiration field (field_2135 — the SOW-side field
- * that feeds publish and mirrors the proposal's field_2659), read from
- * whichever rendered view on the scene carries it; falls back to field_2659.
- * Nothing is injected until a value is available (blank = no row, same as the
- * customer page when the date is unset).
+ * WHERE IT'S PLACED: the SOW identity on this scene lives in `view_3339` as
+ * label-less items — `field_2126` (SOW name `<h1>`) and `field_2122` (SW#
+ * `<strong>`). That block is the preview-page equivalent of the customer
+ * proposal's top detail table. We insert an "Expiration Date" `.kn-detail`
+ * row right after the SW# (`field_2122`), inside the same `.kn-label-left`
+ * container, so it reads Name · SW# · Expiration Date — mirroring the
+ * customer layout. style-detail-labels.js styles the injected `.kn-detail-label`
+ * (aliceblue) exactly like every other detail label on the scene.
+ *
+ * There is intentionally NO reliance on a `.kn-detail` labeled "SOW ID" —
+ * scene_1096 doesn't render one (the SW# is label-less in view_3339). A
+ * legacy "SOW ID"/proposal-ID `.kn-detail` search is kept only as a fallback
+ * anchor for any scene that does surface one.
  ****************************************************************************/
 (function () {
   'use strict';
 
   var SCENE_ID   = 'scene_1096';
+  var ID_VIEW    = 'view_3339';                    // SOW identity host
+  var ANCHOR_FLD = 'field_2122';                   // SW# item to insert after
   var EXP_FIELDS = ['field_2135', 'field_2659'];   // SOW expiration, then proposal
   var MARKER     = 'scw-preview-exp';
   var NS         = '.scwPreviewExp';
@@ -68,15 +79,40 @@
     return '';
   }
 
-  // ── Inject the row above the visible "SOW ID" detail item ───────────
+  // ── Build a native-looking labeled detail row ───────────────────────
+  function buildExpRow(value) {
+    var row = document.createElement('div');
+    row.className = 'kn-detail ' + MARKER;
+    row.setAttribute('data-scw-preview-exp', '1');
+
+    var label = document.createElement('div');
+    label.className = 'kn-detail-label';
+    label.style.minWidth = '174px';
+    label.style.maxWidth = '174px';
+    label.innerHTML = '<span><span class="">Expiration Date</span></span>';
+
+    var body = document.createElement('div');
+    body.className = 'kn-detail-body';
+    var bSpan = document.createElement('span');
+    var bInner = document.createElement('span');
+    bInner.textContent = value;
+    bSpan.appendChild(bInner);
+    body.appendChild(bSpan);
+
+    row.appendChild(label);
+    row.appendChild(body);
+    return row;
+  }
+
   function detailLabelText(item) {
     var lbl = item.querySelector('.kn-detail-label');
-    return lbl ? (lbl.textContent || '').replace(/[ \s]+/g, ' ').trim().toLowerCase() : '';
+    return lbl ? (lbl.textContent || '').replace(/[ \s]+/g, ' ').trim().toLowerCase() : '';
   }
   function isVisible(el) {
     return !!(el && (el.offsetParent !== null || el.getClientRects().length));
   }
 
+  // ── Inject the expiration row into the SOW-identity block ───────────
   function inject() {
     var scene = document.getElementById('kn-' + SCENE_ID);
     if (!scene) return;
@@ -84,44 +120,36 @@
     var value = readExpiration();
     if (!value) return;   // nothing to show yet — retries below catch late loads
 
+    // Idempotent — one expiration row on the scene.
+    if (scene.querySelector('.' + MARKER)) return;
+
+    // Primary anchor: the SW# item (field_2122) inside view_3339. Insert the
+    // expiration row right after it, in the same label-column container, so
+    // the block reads Name · SW# · Expiration Date.
+    var idView = scene.querySelector('#' + ID_VIEW);
+    var anchor = idView && isVisible(idView)
+      ? idView.querySelector('.' + ANCHOR_FLD)
+      : null;
+
+    if (anchor && anchor.parentNode) {
+      anchor.parentNode.insertBefore(buildExpRow(value), anchor.nextSibling);
+      return;
+    }
+
+    // Fallback anchor: a visible `.kn-detail` labeled "SOW ID" / "Proposal ID"
+    // on any scene that surfaces one. Insert the expiration row just before it.
     var items = scene.querySelectorAll('.kn-detail');
-    var sowIdItem = null;
     for (var i = 0; i < items.length; i++) {
       if (!isVisible(items[i])) continue;
       var t = detailLabelText(items[i]);
-      if (/^sow\s*id/.test(t) || t === 'sow id') { sowIdItem = items[i]; break; }
+      if (/^expir/.test(t)) return;                 // already present
+      if (/^sow\s*id/.test(t) || /^proposal\s*id/.test(t)) {
+        if (items[i].parentNode) {
+          items[i].parentNode.insertBefore(buildExpRow(value), items[i]);
+          return;
+        }
+      }
     }
-    if (!sowIdItem || !sowIdItem.parentNode) return;
-
-    // Idempotent — one expiration row per detail block.
-    var container = sowIdItem.parentNode;
-    if (container.querySelector('.' + MARKER)) return;
-    // Also bail if the block already has an expiration item (belt).
-    for (var j = 0; j < items.length; j++) {
-      if (/^expir/.test(detailLabelText(items[j]))) return;
-    }
-
-    // Clone the SOW-ID item so structure/classes/styling match exactly.
-    var row = sowIdItem.cloneNode(true);
-    row.classList.add(MARKER);
-    // Strip the source field's key class so no downstream feature mistakes
-    // this clone for the real SOW-ID field.
-    row.className = row.className.replace(/\bfield_\d+\b/g, '').replace(/\s+/g, ' ').trim();
-    row.setAttribute('data-scw-preview-exp', '1');
-
-    var lbl = row.querySelector('.kn-detail-label');
-    if (lbl) {
-      // Preserve any inner <span> wrapper Knack uses; just swap the text.
-      var lblInner = lbl.querySelector('span') || lbl;
-      lblInner.textContent = 'Expiration Date';
-    }
-    var body = row.querySelector('.kn-detail-body');
-    if (body) {
-      var bodyInner = body.querySelector('span') || body;
-      bodyInner.textContent = value;
-    }
-
-    sowIdItem.parentNode.insertBefore(row, sowIdItem);
   }
 
   var _t = null;
