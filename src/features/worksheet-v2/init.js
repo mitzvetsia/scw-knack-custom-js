@@ -1617,9 +1617,45 @@
             }
             return true;
           };
+          // Fallback catalog for scenes where the SCW.productMap Builder
+          // snippet isn't deployed (e.g. the bid comparison grid, scene_1155
+          // — Known Issue #17). Without it the picker used to silently never
+          // open. Scrape the distinct products actually in use on this view's
+          // loaded records (field_1949 / field_2627 connection values →
+          // id + identifier) so the picker still opens with a usable list.
+          // Degraded (in-use only, not the full catalog) but far better than
+          // a dead click; a no-op wherever productMap is present.
+          var fallbackFromRecords = function () {
+            var seen = Object.create(null), out = [];
+            var connFields = ['field_1949', 'field_2627'];
+            for (var ri = 0; ri < records.length; ri++) {
+              var rec = records[ri];
+              if (!rec) continue;
+              for (var cf = 0; cf < connFields.length; cf++) {
+                var fraw = rec[connFields[cf] + '_raw'];
+                if (!Array.isArray(fraw)) continue;
+                for (var j = 0; j < fraw.length; j++) {
+                  var v = fraw[j];
+                  if (!v || !v.id || seen[v.id]) continue;
+                  if (!allowedInBucket(v.id, null)) continue;
+                  seen[v.id] = true;
+                  out.push({
+                    id: v.id,
+                    name: (v.identifier != null
+                      ? String(v.identifier).replace(/<[^>]*>/g, '').trim()
+                      : v.id)
+                  });
+                }
+              }
+            }
+            return out;
+          };
+
           var prodCandidates = [];
+          var pmapEmpty = true;
           for (var pid in pmap) {
             if (!Object.prototype.hasOwnProperty.call(pmap, pid)) continue;
+            pmapEmpty = false;
             var p = pmap[pid];
             if (!p) continue;
             if (!allowedInBucket(pid, p)) continue;
@@ -1627,6 +1663,13 @@
               id: pid,
               name: p.name || '(unnamed)'
             });
+          }
+          if (pmapEmpty) {
+            prodCandidates = fallbackFromRecords();
+            console.warn('[scw-ws-v2] SCW.productMap absent on this scene — ' +
+              'product picker opened with in-use products only ' +
+              '(' + prodCandidates.length + '). Deploy the catalog on this ' +
+              'scene for the full list (Known Issue #17).');
           }
           prodCandidates.sort(function (a, b) {
             return String(a.name).localeCompare(String(b.name), undefined,
@@ -1665,13 +1708,26 @@
           });
         };
 
-        if (window.SCW && SCW.productMap) {
+        // Always open the picker. When the full catalog (SCW.productMap) is
+        // present, open immediately. When it's still loading, wait briefly
+        // for it but open with the in-use fallback if it doesn't arrive fast
+        // (a never-resolving productMapReady on a scene without the snippet
+        // used to hang the click forever). When it's absent entirely, open
+        // straight away — openProductPicker() falls back to in-use products.
+        if (window.SCW && SCW.productMap && Object.keys(SCW.productMap).length) {
           openProductPicker();
         } else if (window.SCW && SCW.productMapReady
                    && typeof SCW.productMapReady.then === 'function') {
-          SCW.productMapReady.then(openProductPicker);
+          var _prodOpened = false;
+          var _openOnce = function () {
+            if (_prodOpened) return;
+            _prodOpened = true;
+            openProductPicker();
+          };
+          var _prodTimer = setTimeout(_openOnce, 1500);
+          SCW.productMapReady.then(function () { clearTimeout(_prodTimer); _openOnce(); });
         } else {
-          console.warn('[scw-ws-v2] SCW.productMap missing — Builder snippet not loaded?');
+          openProductPicker();
         }
         return;
       }

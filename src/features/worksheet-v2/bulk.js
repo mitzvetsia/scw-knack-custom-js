@@ -1469,6 +1469,49 @@
         }
         prodCands.push({ id: pid, identifier: p.name || '(unnamed)' });
       }
+      // Fallback for scenes without the SCW.productMap Builder snippet (e.g.
+      // the bid comparison grid, scene_1155 — Known Issue #17). Without it the
+      // bulk product field had zero candidates and read as "broken". Scrape the
+      // distinct products in use on the loaded records so the field still
+      // offers a usable (in-use only) list. bmap = SCW.productBucketMap is the
+      // proven bucket filter; require a candidate valid for EVERY bucket in the
+      // selection, same rule as the productMap path above.
+      var pmapEmpty = true;
+      for (var _pk in pmap) { if (Object.prototype.hasOwnProperty.call(pmap, _pk)) { pmapEmpty = false; break; } }
+      if (pmapEmpty) {
+        var bmap = (window.SCW && window.SCW.productBucketMap) || null;
+        var okForSelection = function (id) {
+          if (!bmap) return true;
+          var bl = bmap[id];
+          if (!bl || !bl.length) return true;            // universal
+          for (var bk2 in bucketsInSelection) {
+            if (bl.indexOf(bk2) === -1) return false;
+          }
+          return true;
+        };
+        var fseen = Object.create(null);
+        var fconn = ['field_1949', 'field_2627'];
+        for (i = 0; i < models.length; i++) {
+          var fa = models[i] && models[i].attributes;
+          if (!fa) continue;
+          for (var fc = 0; fc < fconn.length; fc++) {
+            var fraw = fa[fconn[fc] + '_raw'];
+            if (!Array.isArray(fraw)) continue;
+            for (var fj = 0; fj < fraw.length; fj++) {
+              var fv = fraw[fj];
+              if (!fv || !fv.id || fseen[fv.id]) continue;
+              if (!okForSelection(fv.id)) continue;
+              fseen[fv.id] = true;
+              prodCands.push({
+                id: fv.id,
+                identifier: (fv.identifier != null
+                  ? String(fv.identifier).replace(/<[^>]*>/g, '').trim()
+                  : fv.id)
+              });
+            }
+          }
+        }
+      }
       prodCands.sort(function (a, b) {
         return String(a.identifier).localeCompare(String(b.identifier), undefined,
           { numeric: true, sensitivity: 'base' });
