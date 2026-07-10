@@ -1607,15 +1607,26 @@
           // filter's "no entry → allow" rule.
           var allowedInBucket = function (pid, p) {
             if (!myBucketId) return true;
-            if (bmap) {
+            // A product belongs to this bucket if EITHER source places it
+            // there — productMap's own .buckets OR SCW.productBucketMap.
+            // Using just one as the sole authority over-filters when that map
+            // is sparse (the "only 3 products show" bug): a product the other
+            // map correctly tags for this bucket gets hidden. Only exclude a
+            // product that IS known to some map but NOT for this bucket; a
+            // product with no bucket data anywhere stays (universal).
+            var known = false, hit = false;
+            if (p && Array.isArray(p.buckets) && p.buckets.length) {
+              known = true;
+              if (p.buckets.indexOf(myBucketId) !== -1) hit = true;
+            }
+            if (!hit && bmap) {
               var bl = bmap[pid];
-              if (!bl || !bl.length) return true;
-              return bl.indexOf(myBucketId) !== -1;
+              if (bl && bl.length) {
+                known = true;
+                if (bl.indexOf(myBucketId) !== -1) hit = true;
+              }
             }
-            if (p && Array.isArray(p.buckets) && p.buckets.length > 0) {
-              return p.buckets.indexOf(myBucketId) !== -1;
-            }
-            return true;
+            return known ? hit : true;
           };
           // Fallback catalog for scenes where the SCW.productMap Builder
           // snippet isn't deployed (e.g. the bid comparison grid, scene_1155
