@@ -1585,20 +1585,44 @@
       if (fieldKey === 'field_1949' || fieldKey === 'field_2627') {
         var openProductPicker = function () {
           var pmap = (window.SCW && SCW.productMap) || {};
-          var myBucketId = current ? bucketIdOf(current, viewKey) : '';
+          // Bucket membership source. Prefer SCW.productBucketMap
+          // (id → [bucketId,…]) — the SAME validated map the inline-edit
+          // filter (filter-products-by-bucket.js) uses against the line
+          // item's bucket, so its ids are known to line up. productMap's
+          // own .buckets is the fallback for when that global isn't loaded.
+          var bmap = (window.SCW && SCW.productBucketMap) || null;
+          // Resolve THIS row's bucket through the per-view bucket field
+          // (field_2219 on SOW, field_2366 on survey). The local bucketIdOf
+          // defined higher in this handler hardcodes field_2219, so go via
+          // ns.card which honours the view's configured bucket field —
+          // otherwise the survey product picker (field_2627) never filters.
+          var myBucketId = '';
+          if (current) {
+            myBucketId = (ns.card && typeof ns.card.bucketIdOf === 'function')
+              ? ns.card.bucketIdOf(current, viewKey)
+              : bucketIdOf(current);
+          }
+          // A product with no bucket entry in the chosen source is treated
+          // as universal (offered in every bucket) — matching the inline-edit
+          // filter's "no entry → allow" rule.
+          var allowedInBucket = function (pid, p) {
+            if (!myBucketId) return true;
+            if (bmap) {
+              var bl = bmap[pid];
+              if (!bl || !bl.length) return true;
+              return bl.indexOf(myBucketId) !== -1;
+            }
+            if (p && Array.isArray(p.buckets) && p.buckets.length > 0) {
+              return p.buckets.indexOf(myBucketId) !== -1;
+            }
+            return true;
+          };
           var prodCandidates = [];
           for (var pid in pmap) {
             if (!Object.prototype.hasOwnProperty.call(pmap, pid)) continue;
             var p = pmap[pid];
             if (!p) continue;
-            // Bucket gate: include only products whose buckets list
-            // contains the line item's bucket. Products with no
-            // buckets at all are still included as a catch-all (rare
-            // but happens for newly-added products).
-            if (myBucketId && Array.isArray(p.buckets) && p.buckets.length > 0
-                && p.buckets.indexOf(myBucketId) === -1) {
-              continue;
-            }
+            if (!allowedInBucket(pid, p)) continue;
             prodCandidates.push({
               id: pid,
               name: p.name || '(unnamed)'
