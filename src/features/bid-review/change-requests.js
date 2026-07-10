@@ -2014,8 +2014,26 @@
     // Rebuild the comparison grid after Make finishes processing.
     // Runs regardless of success/error since Make may have already
     // received the data even if CORS blocks the response.
-    if (ns.refresh) {
-      setTimeout(function () { ns.refresh(); }, 3000);
+    //
+    // Make writes one Knack record PER item and is ITSELF throttled by
+    // Knack's ~10 req/s limit, so a submit of N items takes progressively
+    // longer to fully land (a 20-item removal observed 18/20 refreshed,
+    // the last 2 still "pending" — the tail writes hadn't committed when a
+    // single 3s refresh fired). A one-shot refresh races that tail. Instead
+    // refetch on a backoff schedule so each tick re-reads server-fresh data
+    // and catches whatever Make has committed by then — the later ticks mop
+    // up the slow tail without the user hand-refreshing. Refresh BOTH v1
+    // (ns.refresh) and the displayed v2 grid (refetchAll) each tick.
+    var refreshBoth = function () {
+      try { if (ns.refresh) ns.refresh(); } catch (e) { /* ignore */ }
+      try {
+        var v2 = window.SCW && SCW.bidReviewV2 && SCW.bidReviewV2.data;
+        if (v2 && typeof v2.refetchAll === 'function') v2.refetchAll();
+      } catch (e2) { /* ignore */ }
+    };
+    var REFRESH_SCHEDULE_MS = [3000, 7000, 13000, 22000, 35000];
+    for (var rs = 0; rs < REFRESH_SCHEDULE_MS.length; rs++) {
+      setTimeout(refreshBoth, REFRESH_SCHEDULE_MS[rs]);
     }
 
     return deferred.promise();
