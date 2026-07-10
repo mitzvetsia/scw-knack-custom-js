@@ -1593,9 +1593,31 @@
       // it before opening the picker so we never show an empty
       // candidate list.
       if (fieldKey === 'field_1949' || fieldKey === 'field_2627') {
+        // Fallback candidate source: distinct products already in use across
+        // the loaded line items (read from each record's field_1949_raw). Used
+        // when the Builder product snippet (SCW.productMap) hasn't populated —
+        // e.g. its client-side REST fetch 403'd after an API-key rotation (see
+        // Known Issue #17). Better a working picker scoped to in-use products
+        // than a dead click.
+        var harvestInUseProducts = function () {
+          var seen = Object.create(null), out = [];
+          for (var hi = 0; hi < records.length; hi++) {
+            var hraw = records[hi] && records[hi]['field_1949_raw'];
+            if (!Array.isArray(hraw)) continue;
+            for (var hj = 0; hj < hraw.length; hj++) {
+              var hv = hraw[hj];
+              if (hv && hv.id && !seen[hv.id]) {
+                seen[hv.id] = true;
+                out.push({ id: hv.id, name: (hv.identifier != null ? String(hv.identifier) : hv.id) });
+              }
+            }
+          }
+          return out;
+        };
+
         var openProductPicker = function () {
           var pmap = (window.SCW && SCW.productMap) || {};
-          var myBucketId = current ? bucketIdOf(current, viewKey) : '';
+          var myBucketId = current ? bucketIdOf(current) : '';
           var prodCandidates = [];
           for (var pid in pmap) {
             if (!Object.prototype.hasOwnProperty.call(pmap, pid)) continue;
@@ -1614,10 +1636,31 @@
               name: p.name || '(unnamed)'
             });
           }
+
+          // Snippet map empty (not loaded / fetch failed) or the bucket filter
+          // removed everything → fall back to the in-use products so the click
+          // still opens a usable picker instead of dying silently.
+          var degraded = false;
+          if (!prodCandidates.length) {
+            prodCandidates = harvestInUseProducts();
+            degraded = true;
+          }
           prodCandidates.sort(function (a, b) {
             return String(a.name).localeCompare(String(b.name), undefined,
               { numeric: true, sensitivity: 'base' });
           });
+
+          if (!prodCandidates.length) {
+            alert('The product catalog hasn’t loaded yet, so there are no ' +
+              'products to choose from. Refresh the page and try again — if it ' +
+              'keeps happening, the product Builder snippet needs attention.');
+            return;
+          }
+          if (degraded) {
+            console.warn('[scw-ws-v2] SCW.productMap unavailable — product picker ' +
+              'is showing only in-use products (' + prodCandidates.length + '). The ' +
+              'Builder product snippet likely failed to load (see Known Issue #17).');
+          }
 
           // Current selection — field_1949 is a single-select
           // connection; read the existing connected id (if any).
@@ -1640,7 +1683,7 @@
             putViewKey:    viewKey,
             recordId:      recordId,
             fieldKey:      fieldKey,
-            label:         'Product',
+            label:         degraded ? 'Product (in-use only)' : 'Product',
             selectedIds:   prodSel,
             candidates:    prodCandidates,
             itemLabel:     function (rec) { return rec.name || rec.id; },
@@ -1651,13 +1694,28 @@
           });
         };
 
-        if (window.SCW && SCW.productMap) {
+        // Open immediately when the snippet map is ready. If it isn't, wait on
+        // its ready promise — but NEVER hang on it: a failed REST fetch can
+        // leave the promise permanently unresolved, which is exactly the "click
+        // does nothing" bug. Open with the fallback after a short timeout (and
+        // whichever fires first opens once).
+        if (window.SCW && SCW.productMap &&
+            Object.keys(SCW.productMap).length) {
           openProductPicker();
-        } else if (window.SCW && SCW.productMapReady
-                   && typeof SCW.productMapReady.then === 'function') {
-          SCW.productMapReady.then(openProductPicker);
         } else {
-          console.warn('[scw-ws-v2] SCW.productMap missing — Builder snippet not loaded?');
+          var _prodOpened = false;
+          var _openProdOnce = function () {
+            if (_prodOpened) return;
+            _prodOpened = true;
+            openProductPicker();
+          };
+          if (window.SCW && SCW.productMapReady &&
+              typeof SCW.productMapReady.then === 'function') {
+            SCW.productMapReady.then(_openProdOnce, _openProdOnce);
+            setTimeout(_openProdOnce, 4000);
+          } else {
+            _openProdOnce();
+          }
         }
         return;
       }

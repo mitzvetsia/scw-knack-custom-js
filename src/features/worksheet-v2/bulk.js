@@ -1469,6 +1469,32 @@
         }
         prodCands.push({ id: pid, identifier: p.name || '(unnamed)' });
       }
+      // Snippet map empty (not loaded / REST fetch 403'd — see Known Issue #17)
+      // → fall back to distinct products already in use across the source view,
+      // so the bulk product picker still opens with real options instead of an
+      // empty list. Mirrors the per-row picker's fallback in init.js.
+      if (!prodCands.length) {
+        var seenProd = Object.create(null);
+        for (var mi = 0; mi < models.length; mi++) {
+          var ma = models[mi] && models[mi].attributes;
+          var mraw = ma && ma.field_1949_raw;
+          if (!Array.isArray(mraw)) continue;
+          for (var mj = 0; mj < mraw.length; mj++) {
+            var mv = mraw[mj];
+            if (mv && mv.id && !seenProd[mv.id]) {
+              seenProd[mv.id] = true;
+              prodCands.push({
+                id: mv.id,
+                identifier: (mv.identifier != null ? String(mv.identifier) : mv.id)
+              });
+            }
+          }
+        }
+        if (prodCands.length && window.console) {
+          console.warn('[scw-ws-v2] bulk product picker: SCW.productMap ' +
+            'unavailable — showing only in-use products (' + prodCands.length + ').');
+        }
+      }
       prodCands.sort(function (a, b) {
         return String(a.identifier).localeCompare(String(b.identifier), undefined,
           { numeric: true, sensitivity: 'base' });
