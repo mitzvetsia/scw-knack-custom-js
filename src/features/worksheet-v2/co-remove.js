@@ -124,7 +124,7 @@
       '    minmax(0px, auto)     /* flag chits (RO, only-if-true) */',
       '    minmax(200px, 2fr)    /* SCW Notes (read-only here) */',
       '    28px                  /* warning */',
-      '    96px                  /* remove action */ !important;',
+      '    150px                 /* remove action (fits "− Slated for removal") */ !important;',
       '}',
 
       // Non-cam install rows hide the (blank) label + flag cells and pin the
