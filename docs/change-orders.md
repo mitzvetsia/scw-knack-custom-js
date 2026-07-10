@@ -380,16 +380,42 @@ but never got installed (not part of a greenlit SOW).
    read-only card sourcing display data from the target install record.
 2. Make: send-to-client (Issue) + signed-webhook apply. First signable CO,
    ops-only, skipping sub pricing.
-3. **Known Issue #17 migration on sub-reachable scenes** — ⚠️ PREREQUISITE
+3. **Restore-via-CO (re-add a removed install item)** — once a removal CO is
+   signed, the install record's `Removed by Change Order` (`field_2967`) is
+   permanent; you must NEVER un-set it (that silently reverses a signed,
+   invoiced CO). Bringing the item back is a NEW **ADD** change order, not an
+   undo. Mechanics reuse existing wiring, no new concept:
+   - **Entry point**: on the CO worksheet, list ALREADY-REMOVED install items
+     (`field_2967` **is not** blank — the inverse of view_4086's active filter)
+     with a **"Restore via CO"** action. Guard against double-restore: don't
+     offer it for an install item some add-line's `Target install item`
+     (`field_2966`) already targets.
+   - **What it creates**: a normal `CO Action = Add` SOW Line Item on the CO,
+     with **`field_2966` (Target install item) → the removed install item** —
+     i.e. the existing `replaces` link (decision 1's swap carry-over). At
+     signature Make creates a FRESH install item; the old one stays
+     `Removed by CO-1`. Audit trail: removed by CO-1, restored by CO-2.
+   - **Seed from the removed INSTALL item, not the original proposal item** (it
+     reflects actual on-site config/QA/photo state; the original base SOW line
+     is already consumed and adopting it in place would multi-parent it). If the
+     install object doesn't physically carry every SOW-line spec field, fall
+     back to seeding from `field_2819` → original SOW line and just attach
+     `field_2966` for the removed-item link. **Open: audit which spec fields
+     live on the install object vs. the SOW-line object to confirm which seed
+     source is sufficient.**
+   - **Money self-balances**: CO-1 credited (default original price via
+     `field_2966 → field_2819 → original SOW line`); CO-2 re-charges the same
+     way → net zero unless adjusted with notes (flexible credit policy).
+4. **Known Issue #17 migration on sub-reachable scenes** — ⚠️ PREREQUISITE
    before any worksheet-v2 surface is served to subcontractor logins: the
    `window.SCW.productBucketMap` Builder snippet ships the full-access REST
    key to the browser. Same check for `dropPrefixOptions` (also carries the
    role-filter TODO #11).
-4. Sub-facing CO view + status-window locking + sub-originated entry point.
-5. view_4056 chips ("Pending CO-###") + toolbar/card entry points ("New
+5. Sub-facing CO view + status-window locking + sub-originated entry point.
+6. view_4056 chips ("Pending CO-###") + toolbar/card entry points ("New
    Change Order" in the suppressed toolbar slot — worksheet-v2/toolbar.js:151
    `noAddItem` comment anticipates this; "Remove via CO" on the card menu).
-6. Invoice wiring + adjustment lines + credit policy.
+7. Invoice wiring + adjustment lines + credit policy.
 
 ## Open questions
 

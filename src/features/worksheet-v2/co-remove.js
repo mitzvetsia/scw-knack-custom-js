@@ -537,9 +537,22 @@
         triggeredBy:    getTriggeredBy()
       })
     }).then(function (resp) {
-      return resp.json().catch(function () { return null; });
-    }).then(function (data) {
-      if (data && data.success) {
+      // Make's Webhook Response module is inconsistent — depending on how the
+      // scenario is set up it returns an empty body, the default "Accepted"
+      // text, or JSON in a shape other than {success:true}. Keying success on
+      // the body alone fired a false "failed to remove" toast even when the
+      // scenario completed fine. Key on the HTTP status (2xx) instead, and only
+      // treat it as a failure when the body EXPLICITLY says so.
+      var ok = resp.ok;
+      return resp.text().then(function (txt) {
+        var body = null;
+        try { body = txt ? JSON.parse(txt) : null; } catch (e) { body = null; }
+        return { ok: ok, data: body };
+      });
+    }).then(function (r) {
+      var data = r.data;
+      var explicitFail = !!(data && (data.success === false || data.error));
+      if (r.ok && !explicitFail) {
         // Optimistic flip to the Flagged state; the refetches below make it
         // durable (and land the Remove lines on the CO worksheet).
         var container = document.getElementById('scw-ws-v2-' + viewKey);

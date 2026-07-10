@@ -623,9 +623,21 @@
         triggeredBy:             getTriggeredBy()
       })
     }).then(function (resp) {
-      return resp.json().catch(function () { return null; });
-    }).then(function (data) {
-      if (data && data.success) {
+      // Key success on the HTTP status (2xx), not the body shape — Make's
+      // Webhook Response can return an empty body / "Accepted" text / arbitrary
+      // JSON, which made the old {success:true} gate throw a false failure.
+      // Only treat as a failure when the body EXPLICITLY says so. (Mirrors the
+      // co-remove.js fireRemove fix.)
+      var ok = resp.ok;
+      return resp.text().then(function (txt) {
+        var body = null;
+        try { body = txt ? JSON.parse(txt) : null; } catch (e) { body = null; }
+        return { ok: ok, data: body };
+      });
+    }).then(function (r) {
+      var data = r.data;
+      var explicitFail = !!(data && (data.success === false || data.error));
+      if (r.ok && !explicitFail) {
         // Optimistic flip to the Added state; the refetches below make it
         // durable (and land the new lines on the CO worksheet).
         var container = document.getElementById('scw-ws-v2-' + viewKey);
