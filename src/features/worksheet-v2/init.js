@@ -1626,27 +1626,50 @@
           // Degraded (in-use only, not the full catalog) but far better than
           // a dead click; a no-op wherever productMap is present.
           var fallbackFromRecords = function () {
-            var seen = Object.create(null), out = [];
             var connFields = ['field_1949', 'field_2627'];
+            // Derive product → { name, set-of-buckets } from the loaded rows
+            // themselves: every row pairs a product with its OWN bucket, so
+            // we get a product→bucket map straight from the grid — no external
+            // Builder map needed and the ids are guaranteed to line up. This
+            // is what lets the fallback actually FILTER by category on scenes
+            // where neither productMap nor productBucketMap is deployed.
+            var prodBuckets = Object.create(null);
             for (var ri = 0; ri < records.length; ri++) {
               var rec = records[ri];
               if (!rec) continue;
+              var rb = (ns.card && typeof ns.card.bucketIdOf === 'function')
+                ? ns.card.bucketIdOf(rec, viewKey) : '';
               for (var cf = 0; cf < connFields.length; cf++) {
                 var fraw = rec[connFields[cf] + '_raw'];
                 if (!Array.isArray(fraw)) continue;
                 for (var j = 0; j < fraw.length; j++) {
                   var v = fraw[j];
-                  if (!v || !v.id || seen[v.id]) continue;
-                  if (!allowedInBucket(v.id, null)) continue;
-                  seen[v.id] = true;
-                  out.push({
-                    id: v.id,
-                    name: (v.identifier != null
-                      ? String(v.identifier).replace(/<[^>]*>/g, '').trim()
-                      : v.id)
-                  });
+                  if (!v || !v.id) continue;
+                  var pb = prodBuckets[v.id] ||
+                    (prodBuckets[v.id] = { name: '', buckets: Object.create(null) });
+                  if (rb) pb.buckets[rb] = true;
+                  if (!pb.name && v.identifier != null) {
+                    pb.name = String(v.identifier).replace(/<[^>]*>/g, '').trim();
+                  }
                 }
               }
+            }
+            var out = [];
+            for (var pk in prodBuckets) {
+              if (!Object.prototype.hasOwnProperty.call(prodBuckets, pk)) continue;
+              var e = prodBuckets[pk];
+              // Bucket gate: when this row's bucket is known, keep only
+              // products seen in that bucket on the grid. A product whose
+              // bucket we never observed stays (universal / fail-open).
+              if (myBucketId) {
+                var hasAny = false, inBucket = false;
+                for (var bkk in e.buckets) {
+                  hasAny = true;
+                  if (bkk === myBucketId) { inBucket = true; break; }
+                }
+                if (hasAny && !inBucket) continue;
+              }
+              out.push({ id: pk, name: e.name || pk });
             }
             return out;
           };
