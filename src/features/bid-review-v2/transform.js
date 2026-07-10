@@ -913,6 +913,13 @@
       if (connectionAll(obrec, FK.bidPackage).length) continue; // still on a bid
       if (connectionAll(obrec, FK.sow).length) continue;        // still on a SOW
       var obsi = connectionId(obrec, FK.relatedSowItem);
+      // If this orphan's related SOW line item is STILL priced on a bid via a
+      // SIBLING bid record, the item isn't removed — this record is just a
+      // stale leftover (the item was re-surveyed / re-connected onto a new bid
+      // record while this one kept its cleared connections). Mirrors Source A's
+      // bidItemIds guard so a live-on-bid item never surfaces a false
+      // "Removed from bid" row.
+      if (obsi && bidItemIds[obsi]) continue;
       var okey = obsi || ('rec::' + obrec.id);
       if (removedSeen[okey] || (obsi && removedSeen[obsi])) continue;
       removedSeen[okey] = true;
