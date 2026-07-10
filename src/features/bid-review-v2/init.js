@@ -514,6 +514,7 @@
       row.classList.remove('scw-bid-review-v2__row--open');
       var closedId = row.getAttribute('data-sow-item-id');
       if (closedId && ns.state) ns.state.setRowExpanded(closedId, false);
+      syncToolbarRowLabel();
       return;
     }
     var sowItemId = row.getAttribute('data-sow-item-id');
@@ -574,6 +575,15 @@
       var rowId = row.getAttribute('data-row-id');
       var urls = scrape(sowItemId || null, rowId || null);
       if (urls && urls.length) openWithPhoto(row, urls, 0);
+    }
+    syncToolbarRowLabel();
+  }
+
+  // Keep the toolbar "Expand/Collapse line items" label honest after any
+  // single-row toggle (clicking a row, closing a panel via its × button).
+  function syncToolbarRowLabel() {
+    if (ns.toolbar && typeof ns.toolbar.syncLabels === 'function') {
+      try { ns.toolbar.syncLabels(); } catch (e) { /* fail soft */ }
     }
   }
 
@@ -801,6 +811,85 @@
     }
   }
   ns.reopenExpandedRows = reopenExpandedRows;
+
+  // ── Expand / collapse EVERY line-item row (toolbar "Expand line items") ──
+  // Unlike the worksheet-v2 card toggle (a cheap CSS class flip on cards that
+  // are already in the DOM), each bid-review row lazily MOUNTS a full
+  // worksheet-v2 editor + photo viewer the first time it opens. Expanding the
+  // whole grid at once could therefore mount dozens of heavy panels on one
+  // frame and freeze the tab — so expand is chunked across animation frames.
+  // Collapse just tears down existing panels, so it runs synchronously.
+  function expandableRows() {
+    var root = ns.CONFIG && document.getElementById(ns.CONFIG.mountId);
+    if (!root) return [];
+    return Array.prototype.slice.call(
+      root.querySelectorAll('.scw-bid-review-v2__row--expandable[data-sow-item-id]')
+    );
+  }
+
+  function rowIsOpen(row) {
+    if (!row) return false;
+    if (row.getAttribute('aria-expanded') === 'true') return true;
+    var nx = row.nextElementSibling;
+    return !!(nx && nx.classList &&
+      nx.classList.contains('scw-bid-review-v2__expand-row'));
+  }
+
+  function anyRowOpen() {
+    var rows = expandableRows();
+    for (var i = 0; i < rows.length; i++) {
+      if (rowIsOpen(rows[i])) return true;
+    }
+    return false;
+  }
+  ns.anyRowOpen = anyRowOpen;
+
+  var _toggleAllBusy = false;
+  function toggleAllRows(done) {
+    if (_toggleAllBusy) return;
+    var rows = expandableRows();
+    var wantOpen = !anyRowOpen();
+
+    if (!wantOpen) {
+      // Collapse every open panel — cheap, synchronous.
+      for (var i = 0; i < rows.length; i++) {
+        if (rowIsOpen(rows[i])) toggleRowExpand(rows[i]);
+      }
+      if (typeof done === 'function') done();
+      return;
+    }
+
+    // Expand only rows visible right now — skip those hidden inside a
+    // collapsed MDF/IDF group (their expanded state stays default and they
+    // open when the group is opened). Chunk the heavy panel mounts across
+    // frames so the main thread stays responsive on big comparisons.
+    var pending = [];
+    for (var j = 0; j < rows.length; j++) {
+      if (rows[j].offsetParent === null) continue;
+      if (rowIsOpen(rows[j])) continue;
+      pending.push(rows[j]);
+    }
+    if (!pending.length) { if (typeof done === 'function') done(); return; }
+
+    _toggleAllBusy = true;
+    var CHUNK = 4, idx = 0;
+    var raf = window.requestAnimationFrame ||
+      function (fn) { return window.setTimeout(fn, 16); };
+    function step() {
+      var end = Math.min(idx + CHUNK, pending.length);
+      for (; idx < end; idx++) {
+        // A concurrent event may have opened/removed the row — re-check.
+        if (pending[idx].isConnected !== false && !rowIsOpen(pending[idx])) {
+          toggleRowExpand(pending[idx]);
+        }
+      }
+      if (typeof done === 'function') { try { done(); } catch (e) {} }
+      if (idx < pending.length) raf(step);
+      else _toggleAllBusy = false;
+    }
+    step();
+  }
+  ns.toggleAllRows = toggleAllRows;
 
   // Find the full Backbone-style attributes hash for a SOW item id.
   // Prefer the live model so we always see the freshest values; fall

@@ -196,6 +196,9 @@
 
     // Ensure the toolbar is present (idempotent — survives body rebuilds).
     if (ns.toolbar && typeof ns.toolbar.mount === 'function') ns.toolbar.mount();
+    // Re-sync the "Expand/Collapse line items" label — reopenExpandedRows may
+    // have just re-opened panels, so the button must reflect the new state.
+    if (ns.toolbar && typeof ns.toolbar.syncLabels === 'function') ns.toolbar.syncLabels();
 
     // Top-level search bar (idempotent) + re-apply the active query to the
     // freshly-rebuilt rows so a filter survives edits / refetches.
