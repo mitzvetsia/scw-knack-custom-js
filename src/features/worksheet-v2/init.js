@@ -2090,16 +2090,46 @@
       // (field_1950 on SOW / field_2365 on survey) server-side, so refetch on save.
       if (fieldKey === 'field_2240' || fieldKey === 'field_2361') {
         var dpRaw = (window.SCW && window.SCW.dropPrefixOptions) || [];
-        if (!dpRaw.length) {
-          console.warn('[scw-ws-v2] SCW.dropPrefixOptions missing/empty — Builder snippet not loaded? Drop Prefix picker can\'t open');
-          return;
-        }
         var dpCandidates = [];
-        for (var dpi = 0; dpi < dpRaw.length; dpi++) {
-          var dpr = dpRaw[dpi];
-          if (dpr && dpr.id && dpr.identifier) {
-            dpCandidates.push({ id: dpr.id, identifier: dpr.identifier });
+        if (dpRaw.length) {
+          for (var dpi = 0; dpi < dpRaw.length; dpi++) {
+            var dpr = dpRaw[dpi];
+            if (dpr && dpr.id && dpr.identifier) {
+              dpCandidates.push({ id: dpr.id, identifier: dpr.identifier });
+            }
           }
+        } else {
+          // No SCW.dropPrefixOptions Builder snippet on this scene (e.g. the
+          // bid comparison grid — Known Issue #11). Rather than hard-bail and
+          // leave a dead click, scrape the prefixes in use on the loaded rows
+          // (field_2240 / field_2361 connection values) so the picker still
+          // opens with a usable (in-use only) list. No-op wherever the catalog
+          // global is present.
+          var dpSeen = Object.create(null);
+          var dpConn = ['field_2240', 'field_2361'];
+          for (var dr = 0; dr < records.length; dr++) {
+            var drec = records[dr];
+            if (!drec) continue;
+            for (var dc = 0; dc < dpConn.length; dc++) {
+              var draw = drec[dpConn[dc] + '_raw'];
+              if (!Array.isArray(draw)) continue;
+              for (var dj = 0; dj < draw.length; dj++) {
+                var dv = draw[dj];
+                if (!dv || !dv.id || dpSeen[dv.id]) continue;
+                dpSeen[dv.id] = true;
+                dpCandidates.push({
+                  id: dv.id,
+                  identifier: (dv.identifier != null
+                    ? String(dv.identifier).replace(/<[^>]*>/g, '').trim()
+                    : dv.id)
+                });
+              }
+            }
+          }
+          console.warn('[scw-ws-v2] SCW.dropPrefixOptions absent on this scene — ' +
+            'Drop Prefix picker opened with in-use prefixes only ' +
+            '(' + dpCandidates.length + '). Deploy the catalog on this scene ' +
+            'for the full list (Known Issue #11).');
         }
         dpCandidates.sort(function (a, b) {
           return String(a.identifier).localeCompare(String(b.identifier), undefined,
