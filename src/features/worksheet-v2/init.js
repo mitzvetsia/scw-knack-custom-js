@@ -1687,12 +1687,14 @@
 
           var prodCandidates = [];
           var pmapEmpty = true;
+          var _dbgTotal = 0, _dbgRejBucket = 0;   // diagnostics
           for (var pid in pmap) {
             if (!Object.prototype.hasOwnProperty.call(pmap, pid)) continue;
             pmapEmpty = false;
+            _dbgTotal++;
             var p = pmap[pid];
             if (!p) continue;
-            if (!allowedInBucket(pid, p)) continue;
+            if (!allowedInBucket(pid, p)) { _dbgRejBucket++; continue; }
             prodCandidates.push({
               id: pid,
               name: p.name || '(unnamed)'
@@ -1705,6 +1707,23 @@
               '(' + prodCandidates.length + '). Deploy the catalog on this ' +
               'scene for the full list (Known Issue #17).');
           }
+          // One-line diagnostic so we can see WHY the list is short: is
+          // productMap itself sparse on this scene, or is the bucket filter
+          // rejecting most of it? Read this in DevTools when the picker opens.
+          try {
+            var _pSample = null, _sk = null;
+            for (_sk in pmap) { if (Object.prototype.hasOwnProperty.call(pmap, _sk)) { _pSample = pmap[_sk]; break; } }
+            console.log('[scw-ws-v2 product-picker]', {
+              viewKey: viewKey,
+              fieldKey: fieldKey,
+              myBucketId: myBucketId,
+              productMapSize: _dbgTotal,
+              productBucketMapSize: bmap ? Object.keys(bmap).length : 0,
+              rejectedByBucket: _dbgRejBucket,
+              shown: prodCandidates.length,
+              sampleEntry: _pSample && { name: _pSample.name, buckets: _pSample.buckets }
+            });
+          } catch (e) { /* ignore */ }
           prodCandidates.sort(function (a, b) {
             return String(a.name).localeCompare(String(b.name), undefined,
               { numeric: true, sensitivity: 'base' });
