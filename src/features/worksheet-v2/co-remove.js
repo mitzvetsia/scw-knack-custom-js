@@ -120,9 +120,9 @@
       '    24px                  /* select checkbox */',
       '    20px                  /* chevron */',
       '    64px                  /* label / drop */',
-      '    minmax(150px, 1.2fr)  /* product */',
+      '    minmax(220px, 3fr)    /* product + stacked description */',
       '    minmax(0px, auto)     /* flag chits (RO, only-if-true) */',
-      '    minmax(200px, 2fr)    /* SCW Notes (read-only here) */',
+      '    minmax(0px, 1.2fr)    /* SCW Notes (read-only here) */',
       '    28px                  /* warning */',
       '    150px                 /* remove action (fits "− Slated for removal") */ !important;',
       '}',
@@ -164,6 +164,25 @@
       // that its textarea reads as text — keep it top-aligned like the others.
       '.scw-ws-v2--readonly .scw-ws-v2-card--install .scw-ws-v2-cell--install-scwnotes {',
       '  align-self: center !important;',
+      '}',
+
+      // ── Product + stacked labor description (parity with the adopt panel) ──
+      // The install card renders the labor description in the DETAIL panel, not
+      // the row. co-remove reads it off the record and stacks it beneath the
+      // product name here so the removal grid reads like the "available to add"
+      // grid: bold product on top, muted read-only description below. Both are
+      // plain text — no input-box chrome.
+      '.scw-ws-v2--readonly .scw-ws-v2-card--install .scw-ws-v2-cell--product {',
+      '  display: flex !important; flex-direction: column; align-items: flex-start;',
+      '  gap: 3px; align-self: center; background: transparent !important;',
+      '  border: none !important; box-shadow: none !important; padding: 0 !important;',
+      '}',
+      '.scw-ws-v2--readonly .scw-ws-v2-card--install .scw-ws-v2-cell--product .scw-ws-v2-product-name {',
+      '  font-weight: 700; color: #0f172a;',
+      '}',
+      '.scw-co-remove-desc {',
+      '  font: 400 11px/1.45 system-ui, -apple-system, sans-serif;',
+      '  color: #64748b; white-space: normal; overflow-wrap: anywhere;',
       '}',
 
       // Checkbox column
@@ -334,6 +353,32 @@
     return !!(raw && (raw.id || raw === true || raw === 'Yes'));
   }
 
+  // Stack the labor description beneath the product name (read-only) so the
+  // removal grid reads like the adopt panel. The install card keeps the labor
+  // description in the DETAIL panel for cam/default rows, so we read it off the
+  // record and inject it here. Services/assumptions rows already show their
+  // text in the product slot (installDescRO) — skip those (no product-name el).
+  function injectDesc(card, rec, vcfg) {
+    var prodCell = card.querySelector('.scw-ws-v2-cell--product');
+    if (!prodCell) return;
+    var nameEl = prodCell.querySelector('.scw-ws-v2-product-name');
+    if (!nameEl) return;                                   // services/assumptions
+    if (prodCell.querySelector('.scw-co-remove-desc')) return;   // already injected
+    var F = (ns.cfg && typeof ns.cfg.fields === 'function')
+      ? ns.cfg.fields(vcfg.sourceViewKey) : {};
+    var lk = (F && F.laborDesc) || 'field_2809';
+    var txt = '';
+    try {
+      var v = rec[lk];
+      txt = v == null ? '' : String(v).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+    } catch (e) { /* ignore */ }
+    if (!txt) return;
+    var d = document.createElement('div');
+    d.className = 'scw-co-remove-desc';
+    d.textContent = txt;
+    prodCell.appendChild(d);
+  }
+
   // ── Row restructure + control state ──────────────────────────────────
   // One-time per row: prepend the checkbox cell, append the action cell. The
   // trash cell is display:none'd by the readOnly lockdown, so the visible cell
@@ -484,6 +529,7 @@
       var row  = card.querySelector('.scw-ws-v2-row');
       if (!row || !rec) continue;
       restructureRow(row, rid, viewKey);
+      injectDesc(card, rec, vcfg);   // stack labor description under product (read-only)
       // field_2967 (durable) OR the session-optimistic flag (covers the gap
       // before Make writes field_2967 after a fresh removal).
       setRowState(row, rid, viewKey, isFlagged(rec, vcfg) || !!_flaggedOptimistic[rid]);
