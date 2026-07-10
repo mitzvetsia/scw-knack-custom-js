@@ -51,6 +51,17 @@
   var _sel = {};
   function selCount() { return Object.keys(_sel).length; }
 
+  // Session-optimistic "already flagged for removal" set: install record id →
+  // true. field_2967 (Removed by CO) is what durably marks an item as slated
+  // for removal, but Make writes it a beat after the webhook returns — so a
+  // worksheet rebuild in that gap would read field_2967 still-blank and revert
+  // the just-removed item to a live "− Remove" button (the double-remove
+  // window). decorate() ORs this set with isFlagged() so the red flagged state
+  // sticks from the moment of removal. Cleared only on full reload; once
+  // field_2967 lands it's redundant. (A future Restore-via-CO flow would need
+  // to clear an id here; not built yet — self-heals on reload.)
+  var _flaggedOptimistic = {};
+
   // ── Config ────────────────────────────────────────────────────────────
   function removeViews() {
     var out = [];
@@ -191,13 +202,25 @@
       '}',
       '@keyframes scwCoRemoveSpin { to { transform: rotate(360deg); } }',
 
-      // Rose "flagged for removal" state — same slot, non-interactive.
+      // Rose "slated for removal" state — same slot, non-interactive.
       '.' + PILL_CLS + ' {',
       '  display: inline-flex; align-items: center; gap: 4px;',
       '  padding: 4px 9px; white-space: nowrap;',
       '  background: #fff1f2; color: #be123c;',
       '  border: 1px solid #fecdd3; border-radius: 5px;',
       '  font: 600 11px/1.3 system-ui, -apple-system, sans-serif;',
+      '}',
+
+      // Whole-card red state for an item slated for removal on THIS CO — kept
+      // in the grid (not hidden) so ops can see what will be dropped, but the
+      // Remove control + bulk checkbox are disabled so it can\'t be re-removed.
+      '.scw-ws-v2-card.scw-co-remove-card--flagged {',
+      '  background: #fff5f6 !important;',
+      '  border-color: #fecdd3 !important;',
+      '  box-shadow: inset 4px 0 0 #e11d48 !important;',   // red left rail
+      '}',
+      '.scw-ws-v2-card.scw-co-remove-card--flagged .scw-ws-v2-product-name {',
+      '  color: #9f1239;',
       '}',
 
       // Collapsible banner (mirrors co-adopt.js): make the whole panel header
@@ -349,11 +372,16 @@
   function setRowState(row, rid, viewKey, flagged) {
     var act = row.querySelector('.scw-co-remove-actioncell');
     var check = row.querySelector('.' + CHECK_CLS);
+    var card = row.closest ? row.closest('.scw-ws-v2-card') : null;
     if (!act) return;
     if (flagged) {
       delete _sel[rid];
-      act.innerHTML = '<span class="' + PILL_CLS + '">✓ Flagged</span>';
-      if (check) { check.checked = false; check.style.visibility = 'hidden'; }
+      act.innerHTML = '<span class="' + PILL_CLS + '" ' +
+        'title="This install item is slated for removal on this change order">' +
+        '− Slated for removal</span>';
+      // Disable + hide the bulk checkbox so a flagged item can\'t be re-removed.
+      if (check) { check.checked = false; check.disabled = true; check.style.visibility = 'hidden'; }
+      if (card) card.classList.add('scw-co-remove-card--flagged');
     } else {
       if (!act.querySelector('.' + BTN_CLS)) {
         act.innerHTML = '<button type="button" class="' + BTN_CLS + '" ' +
@@ -362,9 +390,11 @@
           'title="Flag this install item for removal on the change order">− Remove</button>';
       }
       if (check) {
+        check.disabled = false;
         check.style.visibility = '';
         check.checked = !!_sel[rid];
       }
+      if (card) card.classList.remove('scw-co-remove-card--flagged');
     }
   }
 
@@ -454,7 +484,9 @@
       var row  = card.querySelector('.scw-ws-v2-row');
       if (!row || !rec) continue;
       restructureRow(row, rid, viewKey);
-      setRowState(row, rid, viewKey, isFlagged(rec, vcfg));
+      // field_2967 (durable) OR the session-optimistic flag (covers the gap
+      // before Make writes field_2967 after a fresh removal).
+      setRowState(row, rid, viewKey, isFlagged(rec, vcfg) || !!_flaggedOptimistic[rid]);
     }
 
     // Keyboard belt for the readOnly lockdown (our own checkboxes stay live).
@@ -558,6 +590,7 @@
         var container = document.getElementById('scw-ws-v2-' + viewKey);
         for (var k = 0; k < ids.length; k++) {
           delete _sel[ids[k]];
+          _flaggedOptimistic[ids[k]] = true;   // survive rebuilds until field_2967 lands
           if (!container) continue;
           var card = container.querySelector(
             '.scw-ws-v2-card[data-scw-ws-v2-record="' + ids[k] + '"]');
@@ -565,6 +598,9 @@
           if (row) setRowState(row, ids[k], viewKey, true);
         }
         updateBulkToolbar(viewKey);
+        // Repatch the install grid — the refetch repopulates field_2967 so the
+        // just-removed item(s) render in the red "slated for removal" state
+        // (and the new Remove line lands on the CO worksheet).
         refetchAfterRemove(viewKey);
         ui.done();
         return;
