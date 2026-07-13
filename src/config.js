@@ -88,6 +88,28 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   //   Response body: { success: true,  imported: <count>, message?: "..." }
   //             or:  { success: false, error: "<message>" }
   MAKE_IMPORT_UNIQUE_ITEMS_WEBHOOK: "https://hook.us1.make.com/zqqc0kg10fsxmrwmr78hb9g4qqs9dutw",
+  // Change-order adoption (worksheet-v2/co-adopt.js): connect a previously
+  // quoted SOW line item to a CO by unioning field_2154 with the CO's SOW
+  // record id. SAME payload contract + scenario semantics as
+  // MAKE_IMPORT_UNIQUE_ITEMS_WEBHOOK above ("connect uniqueItemIds to
+  // receivingRecordId"), so it points at the same scenario for now — the
+  // payload carries `changeOrder: true` so Make can branch (or this can be
+  // repointed at a dedicated scenario) without a bundle change.
+  MAKE_CO_ADOPT_ITEMS_WEBHOOK: "https://hook.us1.make.com/zqqc0kg10fsxmrwmr78hb9g4qqs9dutw",
+  // Change-order removal (worksheet-v2/co-remove.js): flag active project
+  // install line items for removal on a CO. Unlike adoption, removal CREATES
+  // records — one Remove line per install item (a SOW Line Item with
+  // CO Action = Remove, Target install item → the install record, connected
+  // to the CO via field_2154). The install record's own `Removed by CO` flip
+  // defers to signature. Expected:
+  //   Request body:  { changeOrderId: <CO SOW id>, installItemIds: [<install rec ids>],
+  //                    removal: true, triggeredBy: {...} }
+  //   Response body: { success: true, created?: <count>, message?: "..." }
+  //             or:  { success: false, error: "<message>" }
+  // Single-item and bulk removal fire the SAME payload shape (co-remove.js
+  // fireRemove builds it once): installItemIds is ALWAYS an array (one id or
+  // many), so Make can parse one way regardless of how many were selected.
+  MAKE_CO_REMOVE_ITEMS_WEBHOOK: "https://hook.us1.make.com/yw3x0othv8k4guke6qx91iyo3q5hgnyy",
   // Fires on the "Request Alternative Proposal" stepper action. Expects:
   //   Request body:  { sourceRecordId: <current SOW id>, notes: "<user input>", triggeredBy: {...} }
   //   Response body: { success: true, message?: "..." }

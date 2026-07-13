@@ -12,8 +12,8 @@
     'view_3962',
     // All WORKSHEET_CONFIG views from device-worksheet.js
     'view_3313', 'view_3450', 'view_3505', 'view_3512', 'view_3575',
-    'view_3596', 'view_3997', 'view_3602', 'view_3608', 'view_3800', 'view_3915',
-    // "WHAT WE'RE INSTALLING" worksheet (same install object as view_3915)
+    'view_3596', 'view_3997', 'view_3602', 'view_3608', 'view_3800', 'view_4093',
+    // "WHAT WE'RE INSTALLING" worksheet (same install object as view_4093)
     'view_4056',
     // bid-review-v2 SOURCE views. v2 reads these straight off their
     // on-scene Backbone models (Knack.views[k].model.data.models), so a
@@ -44,8 +44,8 @@
     'view_3962',
     // change-record-limit.js — device-worksheet views
     'view_3313', 'view_3450', 'view_3505', 'view_3512', 'view_3575',
-    'view_3596', 'view_3997', 'view_3602', 'view_3608', 'view_3800', 'view_3915',
-    // "WHAT WE'RE INSTALLING" worksheet (same install object as view_3915)
+    'view_3596', 'view_3997', 'view_3602', 'view_3608', 'view_3800', 'view_4093',
+    // "WHAT WE'RE INSTALLING" worksheet (same install object as view_4093)
     'view_4056',
     // import-unique-items-btn.js
     'view_3913',

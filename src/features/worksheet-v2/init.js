@@ -44,6 +44,10 @@
     var panel = document.createElement('div');
     panel.id = 'scw-ws-v2-' + vcfg.sourceViewKey;
     panel.className = 'scw-ws-v2';
+    // Read-only deployments (e.g. the CO adoption panel view_4088): the
+    // class drives styles.js's edit-affordance lockdown; co-adopt.js adds
+    // the keyboard belt (hard-disables inputs after each render).
+    if (vcfg.readOnly) panel.className += ' scw-ws-v2--readonly';
 
     var banner = document.createElement('div');
     banner.className = 'scw-ws-v2-banner';
@@ -181,13 +185,18 @@
     }
     if (vcfg.hideSourceAccordion) relocatePanelOutsideAccordion(key);
     // Mode/photos toolbar — mount idempotently above the L1 list.
-    if (ns.toolbar && typeof ns.toolbar.mount === 'function') {
+    // readOnly panels (CO adoption view_4088) skip the toolbar (its CTAs
+    // are all write actions), sort (persists prefs), native filters, and
+    // — critically — bulk below: bulk is a singleton keyed to ONE view, and
+    // a second panel on the same scene would clobber _sourceViewKey so the
+    // bulk modal served the wrong view's fields.
+    if (!vcfg.readOnly && ns.toolbar && typeof ns.toolbar.mount === 'function') {
       ns.toolbar.mount(key);
     }
-    if (ns.sort && typeof ns.sort.mount === 'function') {
+    if (!vcfg.readOnly && ns.sort && typeof ns.sort.mount === 'function') {
       ns.sort.mount(key);
     }
-    if (ns.nativeFilter && typeof ns.nativeFilter.mount === 'function') {
+    if (!vcfg.readOnly && ns.nativeFilter && typeof ns.nativeFilter.mount === 'function') {
       ns.nativeFilter.mount(key);
     }
     var _vcSow = (ns.cfg && typeof ns.cfg.viewCfg === 'function')
@@ -212,7 +221,8 @@
     // bulk.mount('view_3586') on the bid-review scene, clobbering
     // _sourceViewKey to a SALES view so the bulk modal serves SALES fields
     // (Custom Disc %, Label #) on the bid comparison grid.
-    if (ns.bulk && typeof ns.bulk.mount === 'function' &&
+    if (!vcfg.readOnly &&
+        ns.bulk && typeof ns.bulk.mount === 'function' &&
         document.getElementById('scw-ws-v2-' + key)) {
       ns.bulk.mount(key);
     }
@@ -1431,11 +1441,11 @@
         }
       }
 
-      // ── Install object pickers (view_3915) ──────────────────────────
+      // ── Install object pickers (view_4093) ──────────────────────────
       // Connected Devices (field_2820, multi, NVR/switch side) + Connected To
       // (field_2821, single, cam/reader side). Candidates come from the loaded
-      // install records; PUT through view_3915 so mirror-connection-sync's
-      // field_2820↔field_2821 cascade fires (createMirror VIEW_ID view_3915).
+      // install records; PUT through view_4093 so mirror-connection-sync's
+      // field_2820↔field_2821 cascade fires (createMirror VIEW_ID view_4093).
       var _vcfgInstall = (ns.cfg && typeof ns.cfg.viewCfg === 'function')
         ? ns.cfg.viewCfg(viewKey) : null;
       if (_vcfgInstall && _vcfgInstall.moneyMode === 'install') {
@@ -1506,7 +1516,7 @@
             },
             multi: _iIsCD, onSaved: installRefetch,
             // Keep the modal open + locked until the field_2820↔field_2821
-            // reciprocal cascade settles (mirror-connection-sync view_3915/4056).
+            // reciprocal cascade settles (mirror-connection-sync view_4093/4056).
             awaitCascade: true
           });
           return;
@@ -1700,12 +1710,22 @@
               name: p.name || '(unnamed)'
             });
           }
+          // `degraded` labels the picker "(in-use only)" and drives the
+          // console warning below — set whenever the full catalog wasn't
+          // the source of the candidate list.
+          var degraded = false;
           if (pmapEmpty) {
             prodCandidates = fallbackFromRecords();
+            degraded = true;
             console.warn('[scw-ws-v2] SCW.productMap absent on this scene — ' +
               'product picker opened with in-use products only ' +
               '(' + prodCandidates.length + '). Deploy the catalog on this ' +
               'scene for the full list (Known Issue #17).');
+          } else if (!prodCandidates.length) {
+            // Catalog present but the bucket filter removed everything —
+            // degrade to in-use products rather than a dead empty list.
+            prodCandidates = fallbackFromRecords();
+            degraded = true;
           }
           // One-line diagnostic so we can see WHY the list is short: is
           // productMap itself sparse on this scene, or is the bucket filter
@@ -1729,6 +1749,18 @@
               { numeric: true, sensitivity: 'base' });
           });
 
+          if (!prodCandidates.length) {
+            alert('The product catalog hasn’t loaded yet, so there are no ' +
+              'products to choose from. Refresh the page and try again — if it ' +
+              'keeps happening, the product Builder snippet needs attention.');
+            return;
+          }
+          if (degraded) {
+            console.warn('[scw-ws-v2] SCW.productMap unavailable — product picker ' +
+              'is showing only in-use products (' + prodCandidates.length + '). The ' +
+              'Builder product snippet likely failed to load (see Known Issue #17).');
+          }
+
           // Current selection — field_1949 is a single-select
           // connection; read the existing connected id (if any).
           var prodSel = [];
@@ -1750,7 +1782,7 @@
             putViewKey:    viewKey,
             recordId:      recordId,
             fieldKey:      fieldKey,
-            label:         'Product',
+            label:         degraded ? 'Product (in-use only)' : 'Product',
             selectedIds:   prodSel,
             candidates:    prodCandidates,
             itemLabel:     function (rec) { return rec.name || rec.id; },
@@ -1765,8 +1797,10 @@
         // present, open immediately. When it's still loading, wait briefly
         // for it but open with the in-use fallback if it doesn't arrive fast
         // (a never-resolving productMapReady on a scene without the snippet
-        // used to hang the click forever). When it's absent entirely, open
-        // straight away — openProductPicker() falls back to in-use products.
+        // used to hang the click forever — and a REJECTED promise from a
+        // failed REST fetch must open the fallback too, not hang). When it's
+        // absent entirely, open straight away — openProductPicker() falls
+        // back to in-use products.
         if (window.SCW && SCW.productMap && Object.keys(SCW.productMap).length) {
           openProductPicker();
         } else if (window.SCW && SCW.productMapReady
@@ -1778,7 +1812,8 @@
             openProductPicker();
           };
           var _prodTimer = setTimeout(_openOnce, 1500);
-          SCW.productMapReady.then(function () { clearTimeout(_prodTimer); _openOnce(); });
+          var _readyOpen = function () { clearTimeout(_prodTimer); _openOnce(); };
+          SCW.productMapReady.then(_readyOpen, _readyOpen);
         } else {
           openProductPicker();
         }

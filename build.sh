@@ -14,6 +14,7 @@ trap 'rm -f "$TMP_BUNDLE"' EXIT
 cat \
   src/config.js \
   src/util.js \
+  src/features/session-timeout.js \
   src/features/_design-tokens.js \
   src/features/sow-color.js \
   src/features/_render-totals-guard.js \
@@ -49,6 +50,7 @@ cat \
   src/features/survey-review-grid.js \
   src/features/proposal-pdf-export.js \
   src/features/proposal-preview-images.js \
+  src/features/proposal-preview-expiration.js \
   src/features/published-proposal-render.js \
   src/features/secure-proposal-link.js \
   src/features/bid-items-grid.js \
@@ -146,7 +148,9 @@ cat \
   src/features/revision-accept-reject.js \
   src/features/proposal-type-chip.js \
   src/features/published-quote-info.js \
+  src/features/proposal-expiration-mirror.js \
   src/features/ops-review-pill.js \
+  src/features/pq-expiration-edit.js \
   src/features/sow-grid-cards.js \
   src/features/mdf-idf-cards.js \
   src/features/files-gallery.js \
@@ -204,6 +208,8 @@ cat \
   src/features/worksheet-v2/change-requests.js \
   src/features/worksheet-v2/poll.js \
   src/features/worksheet-v2/init.js \
+  src/features/worksheet-v2/co-adopt.js \
+  src/features/worksheet-v2/co-remove.js \
   src/features/survey-report-photo-lightbox.js \
   src/features/sales-change-request/render-v2.js \
   src/features/deliverables-worksheet.js \

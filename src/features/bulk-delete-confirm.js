@@ -2,10 +2,10 @@
  *
  * Two related tweaks for KTL's bulkOpsControlsDiv:
  *
- *  1. Move #bulkOpsControlsDiv-view_3610 / -view_3586's button cluster
- *     to the far right of its container (KTL renders it left-aligned
- *     by default). Scoped to those two views — other grids keep the
- *     KTL default placement.
+ *  1. Move #bulkOpsControlsDiv-view_3610's button cluster to the far
+ *     right of its container (KTL renders it left-aligned by default).
+ *     Scoped to that view — other grids keep the KTL default placement.
+ *     (view_3586 removed — hidden + fully replaced by the v2 worksheet.)
  *
  *  2. Add a confirm-before-delete prompt to the "Delete Selected: N"
  *     button on EVERY view that exposes one. Per-record deletes
@@ -25,8 +25,7 @@
     s.id = STYLE_ID;
     s.textContent = [
       // ── Position the bulk-ops control row to the far right ──
-      '#bulkOpsControlsDiv-view_3610,',
-      '#bulkOpsControlsDiv-view_3586 {',
+      '#bulkOpsControlsDiv-view_3610 {',
       '  display: flex !important;',
       '  justify-content: flex-end !important;',
       '  gap: 6px;',

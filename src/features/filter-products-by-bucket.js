@@ -21,7 +21,9 @@
     VIEWS: {
       view_3456: { product: 'field_1949', bucket: 'field_2219' },
       view_3505: { product: 'field_2627', bucket: 'field_2366' },
-      view_3586: { product: 'field_1949', bucket: 'field_2219' },
+      // view_3586 removed — hidden + fully replaced by the v2 worksheet,
+      // whose product picker filters by bucket itself (native inline-edit
+      // popovers can't open on the hidden table).
       view_3610: { product: 'field_1949', bucket: 'field_2219' },
       view_3921: { product: 'field_1949', bucket: 'field_2219' }
     },

@@ -21,13 +21,9 @@
   var NS = '.scwDefaultSort';
 
   var DEFAULT_SORTS = [
-    {
-      viewId: 'view_3586',
-      sort: [
-        { field: 'field_2240', order: 'asc' },
-        { field: 'field_1951', order: 'asc' }
-      ]
-    },
+    // view_3586 removed — hidden + fully replaced by the v2 worksheet,
+    // which applies its own canonical client-side sort. Server-side sort
+    // order has no user-visible effect on that page.
     {
       viewId: 'view_3610',
       sort: [

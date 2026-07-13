@@ -2262,6 +2262,9 @@
           expInput.setAttribute('data-record-id',  proposalRid);
           expInput.setAttribute('data-field',      'field_2659');
           expInput.setAttribute('data-view',       CFG.proposalSourceView);
+          // The SOW record id — used to mirror field_2659 onto the SOW's
+          // field_2135 (a DIFFERENT record) on save (init.js).
+          expInput.setAttribute('data-sow-id',     sowId || '');
           expInput.setAttribute('aria-label',      'Edit proposal expiration date');
           expEl.appendChild(expInput);
         }

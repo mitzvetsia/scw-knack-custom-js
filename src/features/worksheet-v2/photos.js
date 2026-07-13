@@ -254,7 +254,7 @@
     if (survey) return '#' + survey + '/edit-doc-photo/' + photoRecordId + '/';
     var base = buildSowBasePath();
     if (!base) return '';
-    // Deploy scene (install line items, view_3915) uses edit-doc-photo3;
+    // Deploy scene (install line items, view_4093) uses edit-doc-photo3;
     // sales scope-of-work-details uses edit-doc-photo2; build-SOW uses edit-photo.
     var slug = isDeployBase(base) ? 'edit-doc-photo3'
       : (base.indexOf('scope-of-work-details') !== -1) ? 'edit-doc-photo2'
@@ -362,8 +362,8 @@
   // panel (qa-popover.js openForAnchor) on click. Mirrors the chit-state
   // model qa-popover.js uses (computeChitState). Only rendered when the
   // source view exposed QA columns (p.qaPresent) — i.e. the install
-  // worksheet (view_3915). Other surfaces render no chit.
-  var QA_CHIT_VIEWS = { view_3915: 1, view_4056: 1 };
+  // worksheet (view_4093). Other surfaces render no chit.
+  var QA_CHIT_VIEWS = { view_4093: 1, view_4056: 1 };
 
   function qaChitState(p) {
     if (!p.completed) return 'missing';
@@ -1022,23 +1022,65 @@
     return host ? host.getAttribute('data-scw-ws-v2-view') : '';
   }
 
-  function dispatchPhotoMove(detail, viewKey) {
-    function refresh() {
-      if (ns.warnings && ns.warnings.invalidatePhotos) ns.warnings.invalidatePhotos();
-      if (viewKey && ns.data && typeof ns.data.refetchAndNotify === 'function') {
-        setTimeout(function () { ns.data.refetchAndNotify(viewKey); }, 1500);
+  // ── Photo-move refresh coordination ──────────────────────────────────
+  // Each drop fires a webhook and, on completion, wants to refetch + re-render
+  // the worksheet so the moved photo lands. But a re-render REBUILDS the whole
+  // strip DOM — so when the user rapidly drops several photos, the FIRST one's
+  // completion refetch tears down the OTHER drops still in flight (their
+  // in-progress state, confirm overlays, drag markers), making them look broken
+  // and forcing a retry. Fix: count in-flight moves and only refresh once they
+  // ALL settle (and no confirm overlay is open) — a burst of drops produces ONE
+  // refetch at the end, never one mid-others.
+  var _photoMoveInFlight = 0;
+  var _photoMoveRefreshTimer = null;
+  var _photoMoveViewKeys = Object.create(null);
+
+  function schedulePhotoMoveRefresh() {
+    if (_photoMoveInFlight > 0) return;                    // more moves still running
+    if (_photoMoveRefreshTimer) clearTimeout(_photoMoveRefreshTimer);
+    _photoMoveRefreshTimer = setTimeout(function () {
+      _photoMoveRefreshTimer = null;
+      // A new move started, or the user is mid-decision on a confirm overlay
+      // for another drop — defer so the refetch doesn't yank it away.
+      if (_photoMoveInFlight > 0 || document.querySelector('.scw-ws-v2-photo-confirm')) {
+        schedulePhotoMoveRefresh();
+        return;
       }
+      if (ns.warnings && ns.warnings.invalidatePhotos) ns.warnings.invalidatePhotos();
+      var keys = Object.keys(_photoMoveViewKeys);
+      _photoMoveViewKeys = Object.create(null);
+      for (var i = 0; i < keys.length; i++) {
+        if (keys[i] && ns.data && typeof ns.data.refetchAndNotify === 'function') {
+          ns.data.refetchAndNotify(keys[i]);
+        }
+      }
+    }, 1500);
+  }
+
+  function dispatchPhotoMove(detail, viewKey) {
+    if (viewKey) _photoMoveViewKeys[viewKey] = true;
+    _photoMoveInFlight++;
+    var settled = false;
+    function settle() {
+      if (settled) return;
+      settled = true;
+      _photoMoveInFlight = Math.max(0, _photoMoveInFlight - 1);
+      schedulePhotoMoveRefresh();
     }
+    // Safety net: never leave the counter stuck if a webhook / onPhotoDrop
+    // callback goes silent — the refresh would never fire again otherwise.
+    setTimeout(settle, 20000);
+
     if (window.SCW && typeof window.SCW.onPhotoDrop === 'function') {
-      window.SCW.onPhotoDrop(detail, { setPending: function(){}, setSuccess: refresh, setError: function(){} });
+      window.SCW.onPhotoDrop(detail, { setPending: function(){}, setSuccess: settle, setError: settle });
       return;
     }
     var url = (window.SCW && window.SCW.CONFIG && window.SCW.CONFIG.MAKE_PHOTO_MOVE_WEBHOOK) || '';
-    if (!url) { console.warn('[scw-ws-v2] No MAKE_PHOTO_MOVE_WEBHOOK / onPhotoDrop'); return; }
+    if (!url) { console.warn('[scw-ws-v2] No MAKE_PHOTO_MOVE_WEBHOOK / onPhotoDrop'); settle(); return; }
     fetch(url, { method: 'POST', headers: { 'Content-Type': 'application/json' },
                  body: JSON.stringify(detail) })
-      .then(function () { refresh(); })
-      .catch(function () { refresh(); });   // Make webhooks often CORS-block the response
+      .then(settle)
+      .catch(settle);   // Make webhooks often CORS-block the response
   }
 
   function confirmMove(targetCard, detail, viewKey) {

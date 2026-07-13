@@ -35,6 +35,15 @@
     var bar = document.createElement('div');
     bar.className = 'scw-ws-v2-toolbar scw-bid-review-v2__toolbar';
     bar.innerHTML =
+      '<div class="scw-ws-v2-toolbar-group" role="group" aria-label="View">' +
+        // Expand⇄collapse every line item's detail panel across the whole
+        // grid. Label flips with the live state (syncLabels below). Same
+        // idiom as worksheet-v2's "Expand line items" button.
+        '<button type="button" class="scw-ws-v2-toolbar-btn" ' +
+          'data-scw-br-v2-tb="rows-toggle" ' +
+          'title="Open or close every line item’s detail panel">' +
+          'Expand line items</button>' +
+      '</div>' +
       '<div class="scw-ws-v2-toolbar-spacer"></div>' +
       '<div class="scw-ws-v2-toolbar-group scw-ws-v2-toolbar-group--cta">' +
         btn('add-sow',    '+ Add to SOW', 'Add a new SOW line item', true) +
@@ -128,9 +137,29 @@
       var action = t.getAttribute('data-scw-br-v2-tb');
       if (action === 'add-sow') handleAddSow();
       else if (action === 'add-photos') handleAddPhotos();
+      else if (action === 'rows-toggle') {
+        if (typeof ns.toggleAllRows === 'function') ns.toggleAllRows(syncLabels);
+        syncLabels();
+      }
     });
+
+    syncLabels();
   }
 
-  ns.toolbar = { mount: mount };
+  /** Keep the "Expand/Collapse line items" label in sync with the live grid
+   *  state — any row open ⇒ the next click collapses everything, else it
+   *  expands. Called on mount, after every render, and after each row toggle. */
+  function syncLabels() {
+    var c = getContainer();
+    if (!c) return;
+    var bar = c.querySelector(':scope > .scw-bid-review-v2__toolbar');
+    if (!bar) return;
+    var b = bar.querySelector('[data-scw-br-v2-tb="rows-toggle"]');
+    if (!b) return;
+    var open = (typeof ns.anyRowOpen === 'function') && ns.anyRowOpen();
+    b.textContent = open ? 'Collapse line items' : 'Expand line items';
+  }
+
+  ns.toolbar = { mount: mount, syncLabels: syncLabels };
 })();
 /*** END BID REVIEW V2 — TOOLBAR **********************************************/

@@ -129,7 +129,12 @@
       },
     },
     {
-      viewId: 'view_3586',
+      // DISABLED: view_3586 (sales build SOW) is now hidden and fully
+      // replaced by the v2 worksheet, which renders its own grayout/lock
+      // state. Graying hidden rows on every render was wasted main-thread
+      // work. The '_disabled' suffix matches no real view so the render
+      // handler never fires. Restore the id to re-enable if v1 is unhidden.
+      viewId: 'view_3586_disabled',
       detectField: 'field_2219',
       // sortField intentionally omitted — device-worksheet's rowSort
       // already sorts this view in transformView Phase 2b; duplicate

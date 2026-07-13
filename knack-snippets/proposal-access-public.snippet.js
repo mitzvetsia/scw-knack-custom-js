@@ -107,10 +107,37 @@
     }
   ];
 
-  // Customer-facing fallback. Intentionally vague.
-  var FALLBACK_MESSAGE =
-    'This proposal link is no longer active or could not be found. ' +
-    'Please contact your SCW representative.';
+  // Customer-facing messages.
+  //
+  // GENERIC is intentionally vague and used for every "we can't even
+  // confirm this is a real proposal" path — bad/blank token, zero
+  // matches, multiple matches, archived/unknown status, render error.
+  // Never reveal to an INVALID token that a proposal exists.
+  //
+  // SUPERSEDED / EXPIRED are precise, and safe to show ONLY because
+  // they're reached exclusively when EXACTLY ONE record matched the
+  // token — i.e. the visitor already holds a valid link to a real
+  // proposal. We're just telling a legitimate holder why their (real)
+  // proposal isn't viewable. (For EXPIRED the specific date is spliced
+  // in at render time — see evaluateGates.)
+  var MESSAGES = {
+    generic: {
+      title: 'Proposal Unavailable',
+      body:  'This proposal link is no longer active or could not be found. ' +
+             'Please contact your SCW representative.'
+    },
+    superseded: {
+      title: 'Proposal Superseded',
+      body:  'A newer version of this proposal has been issued, so this link ' +
+             'is no longer active. Please contact your SCW representative for ' +
+             'the current proposal.'
+    },
+    expired: {
+      title: 'Proposal Expired',
+      body:  'This proposal has expired. Please contact your SCW ' +
+             'representative for an updated quote.'
+    }
+  };
 
   // -----------------------------------------------------------------------
   // Implementation. Shouldn't need editing below this line.
@@ -249,11 +276,13 @@
       '<div class="scw-pa-loading">Loading your proposal&hellip;</div>';
   }
 
-  function renderFallback() {
+  // msg = { title, body }; defaults to the generic (existence-safe) copy.
+  function renderFallback(msg) {
+    msg = msg || MESSAGES.generic;
     removeIframe();
     ensureFallbackNode().innerHTML =
-      '<div class="scw-pa-title">Proposal Unavailable</div>' +
-      '<div>' + escapeHtml(FALLBACK_MESSAGE) + '</div>';
+      '<div class="scw-pa-title">' + escapeHtml(msg.title) + '</div>' +
+      '<div>' + escapeHtml(msg.body) + '</div>';
   }
 
   function removeFallback() {
@@ -311,22 +340,44 @@
   }
 
   // ---- Gate checks -----------------------------------------------------
-  function passesGates(attrs) {
+  // Returns { ok: true } when the proposal is viewable, else
+  // { ok: false, message: {title, body} } describing WHY. This runs only
+  // after EXACTLY ONE token-matched record is in hand, so precise
+  // superseded / expired reasons are safe to surface (the visitor holds a
+  // valid link). Any AMBIGUOUS non-viewable status (archived, blank,
+  // unknown) and a missing/invalid expiration stay GENERIC.
+  function evaluateGates(attrs) {
+    // Status gate.
     if (STATUS_FIELD && STATUS_ALLOWED && STATUS_ALLOWED.length) {
-      if (!statusMatches(attrs, STATUS_FIELD, STATUS_ALLOWED)) return false;
+      if (!statusMatches(attrs, STATUS_FIELD, STATUS_ALLOWED)) {
+        if (statusMatches(attrs, STATUS_FIELD, ['Superseded'])) {
+          return { ok: false, message: MESSAGES.superseded };
+        }
+        return { ok: false, message: MESSAGES.generic };
+      }
     }
+    // Expiration gate.
     if (EXPIRATION_FIELD) {
       var raw = attrs[EXPIRATION_FIELD + '_raw'];
       var dateStr =
         (raw && (raw.iso_timestamp || raw.date || raw.date_formatted)) ||
         attrs[EXPIRATION_FIELD];
-      if (!dateStr) return false;
+      if (!dateStr) return { ok: false, message: MESSAGES.generic };
       var expiry = new Date(dateStr);
-      if (isNaN(expiry.getTime())) return false;
+      if (isNaN(expiry.getTime())) return { ok: false, message: MESSAGES.generic };
       var today = new Date(); today.setHours(0, 0, 0, 0);
-      if (expiry < today) return false;
+      if (expiry < today) {
+        // Splice the actual expiration date into the message when we can
+        // read it; otherwise fall back to the date-less copy.
+        var shown = readLiveExpirationDate(attrs);
+        var body = shown
+          ? 'This proposal expired on ' + shown + '. Please contact your ' +
+            'SCW representative for an updated quote.'
+          : MESSAGES.expired.body;
+        return { ok: false, message: { title: MESSAGES.expired.title, body: body } };
+      }
     }
-    return true;
+    return { ok: true };
   }
 
   function isYes(v) {
@@ -510,13 +561,48 @@
     for (var i = 0; i < labels.length; i++) {
       var labelText = (labels[i].textContent || '').trim().toLowerCase();
       // Match "Expiration Date" / "Expires" — anything starting with "expir".
+      // Overwriting also cleans up an un-replaced _Expiration_Date_ token
+      // if Make's Replace step ever misses it.
       if (!/^expir/.test(labelText)) continue;
       var valueCell = labels[i].nextElementSibling;
       if (valueCell && valueCell.classList && valueCell.classList.contains('detail-value')) {
         valueCell.textContent = live;
         valueCell.setAttribute('data-scw-live-exp', '1');
       }
-      break;
+      return;
+    }
+
+    // No expiration row in the snapshot at all — proposals published while
+    // the SOW-side date was blank (the payload scraper drops empty detail
+    // fields; the token row only ships on NEW publishes). Insert the row so
+    // the live field_2659 value still reaches the customer: right after the
+    // Proposal ID row when present, else at the top of the first
+    // detail-table. Mirrors published-proposal-render.js.
+    var table = doc.body.querySelector('table.detail-table');
+    if (!table) return;
+    var tr = doc.createElement('tr');
+    var labelTd = doc.createElement('td');
+    labelTd.className = 'detail-label';
+    labelTd.textContent = 'Expiration Date';
+    var valueTd = doc.createElement('td');
+    valueTd.className = 'detail-value';
+    valueTd.setAttribute('data-scw-live-exp', '1');
+    valueTd.textContent = live;
+    tr.appendChild(labelTd);
+    tr.appendChild(valueTd);
+
+    var anchorRow = null;
+    for (var p = 0; p < labels.length; p++) {
+      if (/^proposal\s*id/i.test((labels[p].textContent || '').trim())) {
+        anchorRow = labels[p].parentNode;
+        break;
+      }
+    }
+    if (anchorRow && anchorRow.parentNode) {
+      anchorRow.parentNode.insertBefore(tr, anchorRow.nextSibling);
+    } else {
+      var tbody = table.tBodies[0] || table;
+      tbody.insertBefore(tr, tbody.firstChild);
     }
   }
 
@@ -646,7 +732,8 @@
     }
 
     var attrs = records[0];
-    if (!passesGates(attrs)) { renderFallback(); state.pending = false; return; }
+    var gate = evaluateGates(attrs);
+    if (!gate.ok) { renderFallback(gate.message); state.pending = false; return; }
     if (OTP_REQUIRED) { renderFallback(); state.pending = false; return; }
 
     try { renderProposal(attrs); }

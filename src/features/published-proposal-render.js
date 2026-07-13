@@ -331,14 +331,49 @@
     for (var i = 0; i < labels.length; i++) {
       var labelText = (labels[i].textContent || '').trim().toLowerCase();
       // Match "Expiration Date" / "Expires" — anything that starts
-      // with "expir" is the expiration label.
+      // with "expir" is the expiration label. Overwriting also cleans up
+      // an un-replaced _Expiration_Date_ token if Make's Replace step
+      // ever misses it.
       if (!/^expir/.test(labelText)) continue;
       var valueCell = labels[i].nextElementSibling;
       if (valueCell && valueCell.classList && valueCell.classList.contains('detail-value')) {
         valueCell.textContent = live;
         valueCell.setAttribute('data-scw-live-exp', '1');
       }
-      break;
+      return;
+    }
+
+    // No expiration row in the snapshot at all — proposals published
+    // while the SOW-side date was blank (the payload scraper drops empty
+    // detail fields, and the token row only ships on NEW publishes).
+    // Insert the row so the live field_2659 value still reaches the
+    // page: right after the Proposal ID row when present, else at the
+    // top of the first detail-table.
+    var table = doc.body.querySelector('table.detail-table');
+    if (!table) return;
+    var tr = doc.createElement('tr');
+    var labelTd = doc.createElement('td');
+    labelTd.className = 'detail-label';
+    labelTd.textContent = 'Expiration Date';
+    var valueTd = doc.createElement('td');
+    valueTd.className = 'detail-value';
+    valueTd.setAttribute('data-scw-live-exp', '1');
+    valueTd.textContent = live;
+    tr.appendChild(labelTd);
+    tr.appendChild(valueTd);
+
+    var anchorRow = null;
+    for (var p = 0; p < labels.length; p++) {
+      if (/^proposal\s*id/i.test((labels[p].textContent || '').trim())) {
+        anchorRow = labels[p].parentNode;
+        break;
+      }
+    }
+    if (anchorRow && anchorRow.parentNode) {
+      anchorRow.parentNode.insertBefore(tr, anchorRow.nextSibling);
+    } else {
+      var tbody = table.tBodies[0] || table;
+      tbody.insertBefore(tr, tbody.firstChild);
     }
   }
 

@@ -42,21 +42,21 @@
 
   /** Read all records currently in the source view's model (cached). */
   function readRecords(sourceViewKey) {
+    // Bind (or REBIND) change tracking FIRST, before serving from cache. On an
+    // SPA navigation between two pages that reuse the same view id (e.g. two
+    // different SOWs' build pages, both view_3962), Knack rebuilds the view
+    // with a BRAND-NEW model/collection. bindChangeTracking detects that the
+    // collection object changed, rebinds its listeners to the live collection,
+    // and drops the stale _recCache — so we don't keep serving the PREVIOUS
+    // page's records (the "page shows SOW 1374 but the worksheet lists SOW
+    // 1432's items" bug). Must run before the cache read below, or the stale
+    // array short-circuits the whole detection.
+    bindChangeTracking(sourceViewKey);
     var cached = _recCache[sourceViewKey];
     if (cached) return cached;
     try {
       var v = Knack.views[sourceViewKey];
       if (!v || !v.model || !v.model.data) return [];
-      // Bind change tracking the moment the model is first reachable — NOT
-      // lazily on the first notify. Knack streams records into the model
-      // (add/reset) while the page loads; if those fire before we subscribe,
-      // this cache never invalidates and _dirtyAll never gets set, so a stale
-      // empty/partial snapshot can freeze the grid. That surfaces as a blank /
-      // half-loaded worksheet when you click into v2 mid-load (the click does
-      // an early direct render off the stale snapshot, then applyRender's
-      // "painted + nothing dirty → skip" guard suppresses the real render).
-      // bindChangeTracking is idempotent.
-      bindChangeTracking(sourceViewKey);
       var models = v.model.data.models || [];
       var out = [];
       for (var i = 0; i < models.length; i++) {
@@ -101,19 +101,31 @@
   // records and reuses the rest with NO signature work.
   var _dirtyIds    = Object.create(null);  // viewKey -> { recId: true }
   var _dirtyAll    = Object.create(null);  // viewKey -> bool (structural → rebuild all)
-  var _changeBound = Object.create(null);  // viewKey -> bool
+  var _boundColl   = Object.create(null);  // viewKey -> the Backbone collection we bound to
 
   function markDirty(viewKey, recId) {
     if (!viewKey || !recId) return;
     (_dirtyIds[viewKey] || (_dirtyIds[viewKey] = Object.create(null)))[recId] = true;
   }
+  // Bind our change listeners to the source view's Backbone collection. Keyed
+  // to the collection INSTANCE (not a boolean) so that when Knack rebuilds the
+  // view on an SPA navigation — a NEW collection object under the same view id —
+  // we detect the swap, rebind to the live collection, and invalidate the cache
+  // built from the previous page's data. A stale boolean guard was the bug: it
+  // left our listeners on the dead collection, so the new page's add/reset
+  // events never busted _recCache and the worksheet showed the prior SOW's
+  // line items. Idempotent for the same collection instance.
   function bindChangeTracking(viewKey) {
-    if (_changeBound[viewKey]) return;
     try {
       var v = Knack.views[viewKey];
       var coll = v && v.model && v.model.data;
       if (!coll || typeof coll.on !== 'function') return;
-      _changeBound[viewKey] = true;
+      if (_boundColl[viewKey] === coll) return;   // already bound to THIS collection
+      // Different (or first) collection instance → this is a fresh view. Drop
+      // any cache/dirty state built from the old one and bind to the new one.
+      _boundColl[viewKey] = coll;
+      invalidateRecords(viewKey);
+      _dirtyAll[viewKey] = true;
       coll.on('change', function (m) { if (m && m.id) markDirty(viewKey, m.id); });
       coll.on('add remove reset', function () {
         _dirtyAll[viewKey] = true;

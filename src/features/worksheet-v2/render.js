@@ -504,7 +504,7 @@
   // its line-item cards default COLLAPSED while its MDF/IDF groups default
   // OPEN (see state.js GROUPS_DEFAULT_OPEN), so techs scan locations first
   // and expand individual devices on demand.
-  var CARDS_DEFAULT_OPEN = { view_3915: 1, view_4056: 1 };
+  var CARDS_DEFAULT_OPEN = { view_4093: 1, view_4056: 1 };
   var _cardsSeeded = Object.create(null);   // sourceViewKey → true once defaulted-open
 
   function renderView(sourceViewKey, records) {

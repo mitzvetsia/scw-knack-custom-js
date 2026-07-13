@@ -434,8 +434,14 @@
     body.className = 'scw-pp-body';
     body.appendChild(block);
 
-    // Make the inner expiration editable.
-    makeExpirationEditable(block, proposal.expDate || '');
+    // Expiration is READ-ONLY here: scene_1116 is the sales-facing Build SOW
+    // page and sales must NOT edit the proposal expiration. The date shows as
+    // plain "Expires: MM/DD/YYYY" (the block's default display). Editing lives
+    // on the bid comparison grid + the ops build-SOW page (view_3325), both of
+    // which also mirror field_2659 → the SOW's field_2135. Leaving the pencil
+    // here would edit field_2659 WITHOUT that mirror, drifting the two apart.
+    // makeExpirationEditable()/saveExpiration() are retained (unused) in case an
+    // internal-only variant of this card ever needs them.
 
     card.appendChild(hdr);
     card.appendChild(body);

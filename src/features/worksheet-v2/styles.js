@@ -280,7 +280,7 @@
     '  border-color: transparent !important;',
     '}',
     '.scw-ws-v2-cell--labor-na .scw-ws-v2-currency-glyph { color: #cbd5e1 !important; }',
-    /* Install money model (moneyMode:"install", view_3915). No money cells at
+    /* Install money model (moneyMode:"install", view_4093). No money cells at
        all — header is chevron · label · product · flag chits (RO, show-when-
        true) · SCW Notes (editable) · warn · trash. 7-track grid (replaces the
        inherited SOW grid that was leaving phantom money columns). */
@@ -1520,15 +1520,15 @@
        rules + the view_3586 entry in device-worksheet\'s V2 kill-switch. */
     '.scw-ktl-accordion:has(#view_3586) { display: none !important; }',
     '#view_3586 { display: none !important; }',
-    /* Same cutover for the deploy/install page: hide v1\'s view_3915 table +
+    /* Same cutover for the deploy/install page: hide v1\'s view_4093 table +
        accordion shell now that v2 is primary there. Camera Config + QA fold
        into the v2 cards via install-config-subpanel/config-qa-popover. Reverse
-       by removing these two rules + the view_3915 entry in device-worksheet\'s
+       by removing these two rules + the view_4093 entry in device-worksheet\'s
        V2 kill-switch + flipping the config entry enabled:false. */
-    '.scw-ktl-accordion:has(#view_3915) { display: none !important; }',
-    '#view_3915 { display: none !important; }',
+    '.scw-ktl-accordion:has(#view_4093) { display: none !important; }',
+    '#view_4093 { display: none !important; }',
     /* "WHAT WE'RE INSTALLING" (view_4056) — same install object/cutover as
-       view_3915. Hide its native table + accordion shell; v2 renders the cards. */
+       view_4093. Hide its native table + accordion shell; v2 renders the cards. */
     '.scw-ktl-accordion:has(#view_4056) { display: none !important; }',
     '#view_4056 { display: none !important; }',
     /* Same cutover for the survey/bid page: v2 is primary on view_3505 now.
@@ -1555,6 +1555,78 @@
     '#view_4086 { display: none !important; }',
     '.scw-ktl-accordion:has(#view_4088) { display: none !important; }',
     '#view_4088 { display: none !important; }',
+
+    /* ── Read-only panels (viewCfg.readOnly — e.g. the CO adoption panel
+       view_4088) ─────────────────────────────────────────────────────────
+       Every edit affordance is disabled but the cards stay fully readable
+       (repo locked-field convention: white inputs, no graying). Mouse path
+       killed here; co-adopt.js hard-disables the inputs after each render
+       so keyboard tab-and-type can\'t commit either. The card expand
+       chevron and the adopt button stay live. */
+    '.scw-ws-v2--readonly .scw-ws-v2-card input:not(.scw-co-adopt-check),',
+    '.scw-ws-v2--readonly .scw-ws-v2-card textarea,',
+    '.scw-ws-v2--readonly .scw-ws-v2-card select,',
+    '.scw-ws-v2--readonly .scw-ws-v2-card [data-scw-ws-v2-conn],',
+    '.scw-ws-v2--readonly .scw-ws-v2-card [data-scw-ws-v2-chip],',
+    '.scw-ws-v2--readonly .scw-ws-v2-card [data-scw-ws-v2-radiochip],',
+    '.scw-ws-v2--readonly .scw-ws-v2-card [data-scw-ws-v2-option],',
+    '.scw-ws-v2--readonly .scw-ws-v2-card [data-scw-ws-v2-bool] {',
+    '  pointer-events: none !important;',
+    '}',
+    /* Inputs READ as plain text — no edit chrome at all (border/background
+       gone, placeholders blanked), values stay fully readable. */
+    '.scw-ws-v2--readonly .scw-ws-v2-card input:not(.scw-co-adopt-check),',
+    '.scw-ws-v2--readonly .scw-ws-v2-card textarea {',
+    '  background: transparent !important;',
+    '  border-color: transparent !important;',
+    '  box-shadow: none !important;',
+    '  resize: none !important;',
+    '}',
+    '.scw-ws-v2--readonly .scw-ws-v2-card input::placeholder,',
+    '.scw-ws-v2--readonly .scw-ws-v2-card textarea::placeholder {',
+    '  color: transparent !important;',
+    '}',
+    /* Detail panel reads read-only too: connection picker buttons
+       (Prefix, MDF/IDF, Connected Device, product) flatten to plain
+       values — no box, no pencil icon. Warn variants keep their label
+       coloring; only the edit chrome goes. */
+    '.scw-ws-v2--readonly .scw-ws-v2-conn-btn {',
+    '  background: transparent !important;',
+    '  border-color: transparent !important;',
+    '  box-shadow: none !important;',
+    '  cursor: default !important;',
+    '}',
+    '.scw-ws-v2--readonly .scw-ws-v2-conn-btn-edit { display: none !important; }',
+    /* No adding photos and no editing child (mounting hardware) records
+       from the adoption panel: hide the photo add tiles and the
+       accessory add/qty-stepper controls. The chips themselves stay —
+       they are read info — with the qty badge inert. */
+    '.scw-ws-v2--readonly .scw-ws-v2-photo-add,',
+    '.scw-ws-v2--readonly .scw-ws-v2-mh-add,',
+    '.scw-ws-v2--readonly .scw-ws-v2-mh-addrow,',
+    '.scw-ws-v2--readonly .scw-ws-v2-mh-stepper { display: none !important; }',
+    '.scw-ws-v2--readonly .scw-ws-v2-mh-qty {',
+    '  pointer-events: none !important;',
+    '  background: transparent !important;',
+    '  border-color: transparent !important;',
+    '}',
+    '.scw-ws-v2--readonly .scw-ws-v2-mh-chip { pointer-events: none !important; }',
+    /* Write-action affordances have no read value — remove them outright:
+       the delete/trash cell (BOTH variants — the blocked placeholder has no
+       kebab attr, and per-row cell counts must stay uniform for the adopt
+       panel's grid template), add-accessory, mounting-hardware actions, and
+       the bulk-select checkbox (bulk never mounts on readOnly panels). */
+    '.scw-ws-v2--readonly .scw-ws-v2-trash,',
+    '.scw-ws-v2--readonly [data-scw-ws-v2-kebab],',
+    '.scw-ws-v2--readonly [data-scw-ws-v2-add-accessory],',
+    '.scw-ws-v2--readonly [data-scw-ws-v2-mh-del],',
+    '.scw-ws-v2--readonly [data-scw-ws-v2-mh-unlink],',
+    '.scw-ws-v2--readonly [data-scw-ws-v2-mh-uparent],',
+    '.scw-ws-v2--readonly [data-scw-ws-v2-mh-parent],',
+    '.scw-ws-v2--readonly [data-scw-ws-v2-acc-step],',
+    '.scw-ws-v2--readonly [data-scw-ws-v2-select] {',
+    '  display: none !important;',
+    '}',
 
     '.scw-ws-v2-mh-step {',
     '  width: 16px !important; height: 18px !important;',

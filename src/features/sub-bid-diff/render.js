@@ -1071,11 +1071,49 @@
 
   /** Inject/refresh a per-SOW diff block inside each v2 SOW section. Deferred
    *  one frame so it runs AFTER v2 rebuilds its section innerHTML on a tick. */
+  // ── comparison-state source ────────────────────────────────────────────
+  // buildState is the ~800-line v2 comparison transform (O(items×sows×pkgs)).
+  // The v2 grid ALREADY runs it for its own render on every data change and
+  // publishes the result as SCW.bidReviewV2.builtState. We inject a per-SOW
+  // diff into those same sections, so we REUSE that exact state instead of
+  // running the transform a second time — one transform per data change, not
+  // two. v2's renderSnapshot runs synchronously on the data notify and we
+  // render rAF-deferred off the same notify, so the published state reflects
+  // the current data by the time we read it.
+  //
+  // Fallback: if v2 hasn't published yet (we booted first) OR a direct Knack
+  // event raced ahead of v2's debounced notify, build our own — memoized so
+  // the load-time retries (150/500/1200ms) and basis/note/collapse
+  // interactions reuse it rather than recomputing. markDirty() (wired to the
+  // real data events in init.js) bumps _dataGen; the retries/display
+  // interactions do NOT, so they reuse the cache and just re-inject.
+  var _dataGen = 0, _builtGen = -1, _builtState = null;
+  function markDirty() { _dataGen++; }
+
+  function currentState(v2t) {
+    // Preferred: reuse the v2 grid's already-built state.
+    var v2ns = window.SCW.bidReviewV2;
+    var pub = v2ns && v2ns.builtState;
+    if (pub && pub.sowGrids && pub.sowGrids.length) {
+      _builtState = pub;          // keep as the fallback cache too
+      return pub;
+    }
+    // Fallback: build our own (memoized). Only commit the cache on a usable
+    // build — a transient empty read (mid-fetch) must not poison it.
+    if (_dataGen === _builtGen && _builtState) return _builtState;
+    var state = v2t.buildState(
+      readView(C.bidViewKey), readView(C.sowItemsViewKey), readView(C.bidPkgViewKey));
+    if (state && state.sowGrids && state.sowGrids.length) {
+      _builtState = state;
+      _builtGen = _dataGen;
+    }
+    return state;
+  }
+
   function render() {
     var v2t = window.SCW.bidReviewV2 && window.SCW.bidReviewV2.transform;
     if (!v2t || typeof v2t.buildState !== 'function') return;
-    var state = v2t.buildState(
-      readView(C.bidViewKey), readView(C.sowItemsViewKey), readView(C.bidPkgViewKey));
+    var state = currentState(v2t);
     if (!state || !state.sowGrids || !state.sowGrids.length) return;
 
     var byId = Object.create(null);
@@ -1177,6 +1215,6 @@
     });
   }
 
-  ns.render = { render: render, bindOnce: bindOnce, distill: distill };
+  ns.render = { render: render, bindOnce: bindOnce, distill: distill, markDirty: markDirty };
 })();
 /*** END SUB-BID DIFF — RENDER ***********************************************/

@@ -16,13 +16,49 @@
 /* Reserve viewport height up-front so progressive view renders don't */
 /* push surrounding chrome (nav, menu, sibling sections) around as    */
 /* each view populates. Main contributor to CLS 0.60 on scene_1116.   */
+/* The veil hides the CHILDREN (not the container) so the loading     */
+/* spinner — drawn as ::before/::after on the container — stays       */
+/* visible while everything renders + transforms underneath it.       */
 #kn-scene_1116 {
   min-height: 100vh;
+  position: relative;
+}
+#kn-scene_1116 > * {
   opacity: 0;
   transition: opacity 350ms ease;
 }
-#kn-scene_1116.scw-scene-ready {
+#kn-scene_1116.scw-scene-ready > * {
   opacity: 1;
+}
+/* Invisible content must not catch clicks */
+#kn-scene_1116:not(.scw-scene-ready) {
+  pointer-events: none;
+}
+#kn-scene_1116:not(.scw-scene-ready)::before {
+  content: '';
+  position: absolute;
+  top: 140px;
+  left: 50%;
+  width: 30px;
+  height: 30px;
+  margin-left: -15px;
+  border: 3px solid #e5e7eb;
+  border-top-color: #163C6E;
+  border-radius: 50%;
+  animation: scwSceneVeilSpin 0.8s linear infinite;
+}
+#kn-scene_1116:not(.scw-scene-ready)::after {
+  content: 'Loading page…';
+  position: absolute;
+  top: 184px;
+  left: 50%;
+  transform: translateX(-50%);
+  font: 600 13px/1.3 system-ui, -apple-system, sans-serif;
+  color: #64748b;
+  letter-spacing: 0.02em;
+}
+@keyframes scwSceneVeilSpin {
+  to { transform: rotate(360deg); }
 }
 
 /* ── Totals details view (view_3418) — card ── */
@@ -649,15 +685,72 @@
   SCW.restructureTotals = restructureTotals;
 
   // ── Scene reveal ──
+  // The veil (CSS at the top of this file) hides scene_1116's content
+  // from its very first paint. Revealing used to key off the totals
+  // views only, which fired ~900ms after view_3418 rendered — BEFORE
+  // the 1000/page refetch re-renders, the KTL-accordion wrapping, and
+  // the v2 worksheet mount finished, so raw native views flashed
+  // through the fade-in. Reveal now requires BOTH:
+  //   1. render-quiet: no knack-view-render anywhere on the scene for
+  //      REVEAL_QUIET_MS (every render re-arms the timer — covers the
+  //      record-limit refetches and late hidden-view renders), and
+  //   2. transforms mounted: the v2 worksheet panel exists and at
+  //      least one accordion shell has wrapped.
+  // If the markers aren't there at quiet-timeout, keep waiting (the
+  // safety timers below cap the worst case so the page can never stay
+  // blank).
+  var REVEAL_QUIET_MS  = 600;
+  var REVEAL_SAFETY_MS = 6000;
   var _revealTimer = null;
+  var _revealSafetyTimer = null;
+  function sceneEl() {
+    return document.getElementById('kn-scene_1116');
+  }
   function revealScene() {
-    var scene = document.getElementById('kn-scene_1116');
+    clearTimeout(_revealTimer);
+    _revealTimer = null;
+    clearTimeout(_revealSafetyTimer);
+    _revealSafetyTimer = null;
+    var scene = sceneEl();
     if (scene) scene.classList.add('scw-scene-ready');
   }
-  function scheduleReveal() {
-    clearTimeout(_revealTimer);
-    _revealTimer = setTimeout(revealScene, 600);
+  function transformsReady() {
+    var scene = sceneEl();
+    if (!scene) return false;
+    // v2 worksheet panel mounted (the page's main surface)
+    if (!document.getElementById('scw-ws-v2-view_3586')) return false;
+    // accordion wrapping has run (the most visible transform)
+    if (!scene.querySelector('.scw-ktl-accordion')) return false;
+    // workflow stepper applied — its applySteps pass runs on a delay
+    // (500ms after view_3827 / 800ms after scene render), later than the
+    // other transforms, and restyles the step accordions + forms. Without
+    // this gate the veil lifted first and the raw step forms flashed.
+    // #scw-step-initiate-install has no showWhen condition, so it exists
+    // on every SOW once applySteps has run.
+    if (!document.getElementById('scw-step-initiate-install')) return false;
+    return true;
   }
+  function scheduleReveal() {
+    var scene = sceneEl();
+    if (!scene || scene.classList.contains('scw-scene-ready')) return;
+    // Absolute cap from the first render of a fresh (veiled) scene.
+    if (!_revealSafetyTimer) {
+      _revealSafetyTimer = setTimeout(revealScene, REVEAL_SAFETY_MS);
+    }
+    clearTimeout(_revealTimer);
+    _revealTimer = setTimeout(function () {
+      _revealTimer = null;
+      if (transformsReady()) revealScene();
+      else scheduleReveal();   // markers not up yet — extend the wait
+    }, REVEAL_QUIET_MS);
+  }
+
+  // Any view rendering on the scene re-arms the quiet window while the
+  // veil is up. Renders after reveal are ignored (class already set),
+  // so the page never re-veils on poll refetches or inline edits.
+  $(document).on('knack-view-render.any' + NS + 'Veil', function () {
+    scheduleReveal();
+  });
 
   // ── Bind ──
   // Debounced wrapper so we only run once after all views finish rendering
@@ -706,7 +799,10 @@
     });
   }
 
-  // Safety fallback — always reveal after 3s even if views haven't rendered
+  // Secondary safety cap — reveal 3s after the scene's initial render
+  // pass completes, whatever state the transforms are in. Together with
+  // the REVEAL_SAFETY_MS cap (armed at first view render) this
+  // guarantees the veil can never leave the page blank.
   $(document).on('knack-scene-render.scene_1116' + NS, function () {
     setTimeout(revealScene, 3000);
   });

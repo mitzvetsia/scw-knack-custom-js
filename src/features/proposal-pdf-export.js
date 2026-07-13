@@ -617,7 +617,21 @@
         var l4HideQtyCost = tr.classList.contains('scw-hide-qty-cost');
 
         var labelCell = tr.querySelector('td:first-child');
-        var l4Label = labelCell ? norm(labelCell.textContent) : '';
+        var l4Label = '';
+        if (labelCell) {
+          // The connected-camera list lives in a .scw-concat-cameras span
+          // inside this cell AND is captured separately below as `cameraList`
+          // (the orange callout). Reading textContent verbatim would bake it
+          // into the blue product label too, so accessory rows (e.g. box /
+          // pole mounts with no rich description, which fall back to the label)
+          // showed the camera numbers TWICE — once blue, once orange. Strip the
+          // camera span from a clone before reading, mirroring the
+          // scw-mounting-product-line path above. Keep ONLY the orange callout.
+          var lblClone = labelCell.cloneNode(true);
+          var lblCamSpans = lblClone.querySelectorAll('.scw-concat-cameras');
+          for (var lcs = 0; lcs < lblCamSpans.length; lcs++) lblCamSpans[lcs].remove();
+          l4Label = norm(lblClone.textContent);
+        }
 
         var descSpan = tr.querySelector('.scw-l4-2019');
         var description = '';
@@ -1327,31 +1341,64 @@
       applyTbdToPublishPayload(result);
     }
 
-    // Inject "Proposal ID" detail row right above SOW ID. Mirrors the
-    // existing SOW ID row visually — same label/value cells in the
-    // detail-table — and lets Make's Replace step swap the token in
-    // post-create. Only fires on proposal payloads since subcontractor
-    // bids don't carry a published-proposal record at all.
+    // Inject "Proposal ID" + "Expiration Date" detail rows right above
+    // SOW ID. Mirror the existing SOW ID row visually — same label/value
+    // cells in the detail-table — and let Make's Replace step swap the
+    // tokens in post-create. Only fires on proposal payloads since
+    // subcontractor bids don't carry a published-proposal record at all.
+    //
+    // Expiration Date is TOKENIZED (not scraped) because the scene's
+    // details view only renders the row when the SOW-side date is
+    // populated at publish — scrapeDetailView drops empty fields, which
+    // is exactly how proposals went out with no expiration anywhere
+    // (customer page + PDF, reported 2026-07-07). The token guarantees
+    // the row exists in every snapshot; Make substitutes the live
+    // proposal expiration (field_2659) at create, and the web surfaces
+    // re-patch it live on every view (published-proposal-render.js +
+    // the proposal-access public snippet) so post-publish date edits
+    // show without re-publishing. If the scene DID render a populated
+    // expiration row, keep it — the live patchers overwrite it anyway.
     if (cfg.payloadType === 'proposal') {
       for (var pi = 0; pi < result.views.length; pi++) {
         var dv = result.views[pi];
         if (dv.type !== 'detail' || !dv.fields || !dv.fields.length) continue;
         var sowIdx = -1;
+        var hasLabeledRow = false;
         for (var fi = 0; fi < dv.fields.length; fi++) {
+          if (!dv.fields[fi].labelNone) hasLabeledRow = true;
           if (/sow\s*id/i.test(dv.fields[fi].label || '')) { sowIdx = fi; break; }
         }
-        if (sowIdx === -1) continue;
-        // Don't double-insert if a previous run already added the row.
-        var alreadyHas = false;
+        // Anchor above SOW ID when that row exists; otherwise append after
+        // the view's labeled rows. Snapshots WITHOUT a SOW ID row are real
+        // (observed live 2026-07-07: a published proposal whose only header
+        // row was "Project Address" — the scraper drops blank fields), and
+        // the old `continue` here silently skipped injection for them.
+        if (sowIdx === -1 && !hasLabeledRow) continue;
+        var anchorIdx = (sowIdx !== -1) ? sowIdx : dv.fields.length;
+        // Don't double-insert if a previous run (or the scene itself)
+        // already carries either row.
+        var hasProposalId = false, hasExpiration = false;
         for (var ai = 0; ai < dv.fields.length; ai++) {
-          if (/proposal\s*id/i.test(dv.fields[ai].label || '')) { alreadyHas = true; break; }
+          var aLbl = dv.fields[ai].label || '';
+          if (/proposal\s*id/i.test(aLbl)) hasProposalId = true;
+          if (/^expir/i.test(aLbl))        hasExpiration = true;
         }
-        if (alreadyHas) break;
-        dv.fields.splice(sowIdx, 0, {
-          label: 'Proposal ID',
-          value: tok('Proposal_ID'),
-          valueHtml: tok('Proposal_ID')
-        });
+        // Splice order matters: Expiration first, then Proposal ID at the
+        // same index → final row order Proposal ID · Expiration Date · SOW ID.
+        if (!hasExpiration) {
+          dv.fields.splice(anchorIdx, 0, {
+            label: 'Expiration Date',
+            value: tok('Expiration_Date'),
+            valueHtml: tok('Expiration_Date')
+          });
+        }
+        if (!hasProposalId) {
+          dv.fields.splice(anchorIdx, 0, {
+            label: 'Proposal ID',
+            value: tok('Proposal_ID'),
+            valueHtml: tok('Proposal_ID')
+          });
+        }
         break;
       }
     }
