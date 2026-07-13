@@ -70,6 +70,14 @@
       // Neutralize the kickoff button's own block-forcing margins once it
       // lives inside the row (regenerate-kickoff-deck.js sets margin-right:auto).
       '#' + TOOLBAR_ID + ' #' + KICKOFF_ID + '{margin:0;}' +
+      // Visual hierarchy: the kickoff regenerate is a utility action — render
+      // it as an outline secondary inside the row so the primary Send CoC
+      // stands alone. Idle state only: its own loading/done/err colors win.
+      '#' + TOOLBAR_ID + ' #' + KICKOFF_ID +
+        ':not(.is-loading):not(.is-done):not(.is-err){' +
+        'color:#0f4c75;background:#fff;border-color:#c7d4e0;}' +
+      '#' + TOOLBAR_ID + ' #' + KICKOFF_ID +
+        ':not(.is-loading):not(.is-done):not(.is-err):hover{background:#f1f5f9;}' +
       '#' + BTN_ID + '{display:inline-flex;align-items:center;gap:8px;' +
         'padding:9px 16px;font:600 13px/1 system-ui,-apple-system,sans-serif;cursor:pointer;' +
         'color:#fff;background:#0f4c75;border:1px solid #0a3a63;border-radius:6px;' +
@@ -78,11 +86,14 @@
       // Sent → demote to outline secondary; the pill carries the state.
       '#' + BTN_ID + '.is-sent{color:#0f4c75;background:#fff;border-color:#c7d4e0;}' +
       '#' + BTN_ID + '.is-sent:hover{background:#f1f5f9;}' +
+      // Status pill reads as state, not a third button — push it to the far
+      // right of the row, away from the action cluster.
       '#' + PILL_ID + '{display:inline-flex;align-items:center;gap:6px;' +
-        'padding:6px 12px;border-radius:999px;' +
+        'margin-left:auto;padding:6px 12px;border-radius:999px;' +
         'font:600 12px/1 system-ui,-apple-system,sans-serif;}' +
       '#' + PILL_ID + '.is-sent{color:#15803d;background:#f0fdf4;border:1px solid #bbf7d0;}' +
-      '#' + PILL_ID + '.is-pending{color:#b45309;background:#fffbeb;border:1px solid #fde68a;}';
+      '#' + PILL_ID + '.is-pending{color:#b45309;background:#fffbeb;border:1px solid #fde68a;}' +
+      '#' + PILL_ID + '.is-none{color:#64748b;background:#f8fafc;border:1px solid #e2e8f0;}';
     document.head.appendChild(s);
   }
 
@@ -191,26 +202,29 @@
     btn.innerHTML = SEND_SVG + '<span>Send CoC</span>';
 
     var pill = document.getElementById(PILL_ID);
-    if (!state.status && !state.contact) {
-      if (pill) pill.remove();
-      return;
-    }
     if (!pill) {
       pill = document.createElement('span');
       pill.id = PILL_ID;
       tb.appendChild(pill);
     }
-    pill.className = state.sent ? 'is-sent' : 'is-pending';
-    var text;
+    // Contact identifiers render as "Name, email" — show just the name in
+    // the pill (full identifier stays in the tooltip).
+    var who = state.contact ? state.contact.split(',')[0].trim() : '';
     if (state.sent) {
-      text = 'CoC sent' + (state.contact ? ' → ' + esc(state.contact) : '');
-      pill.innerHTML = CHECK_SVG + '<span>' + text + '</span>';
+      pill.className = 'is-sent';
+      pill.innerHTML = CHECK_SVG + '<span>CoC sent' +
+        (who ? ' → ' + esc(who) : '') + '</span>';
+    } else if (state.status) {
+      pill.className = 'is-pending';
+      pill.innerHTML = CLOCK_SVG + '<span>CoC: ' + esc(state.status) +
+        (who ? ' → ' + esc(who) : '') + '</span>';
     } else {
-      text = 'CoC: ' + esc(state.status || '—') +
-             (state.contact ? ' → ' + esc(state.contact) : '');
-      pill.innerHTML = CLOCK_SVG + '<span>' + text + '</span>';
+      // No status yet — quiet neutral chip, no recipient (that's chosen /
+      // confirmed on the send page).
+      pill.className = 'is-none';
+      pill.innerHTML = '<span>CoC not sent</span>';
     }
-    pill.title = 'CoC status: ' + (state.status || 'unknown') +
+    pill.title = 'CoC status: ' + (state.status || 'not sent') +
                  (state.contact ? ' · Recipient: ' + state.contact : '');
   }
 
