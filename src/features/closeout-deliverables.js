@@ -763,9 +763,9 @@
   function openDocFilePicker(card, docId, closeoutId) {
     var input = document.createElement('input');
     input.type = 'file';
-    // Documents only — PDFs primary, plus office formats.  Images are
-    // intentionally excluded; deliverables are forms/PDFs, not photos.
-    input.accept = '.pdf,.doc,.docx,.xls,.xlsx,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+    // PDFs primary, plus office formats AND images — deliverables can be
+    // scanned/photographed documents, not only forms/PDFs.
+    input.accept = '.pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.gif,.webp,.heic,.heif,.tif,.tiff,application/pdf,application/msword,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,image/*';
     input.style.display = 'none';
     input.addEventListener('change', function () {
       var file = input.files && input.files[0];
@@ -837,13 +837,6 @@
   }
 
   function dispatchDocUpload(card, docId, closeoutId, file) {
-    if (isImageFile(file)) {
-      // Deliverables are forms/PDFs, not photos. Photos belong on the
-      // line-item photo strip — sending one through here would land in
-      // the wrong Knack object entirely.
-      setCardError(card, 'PDFs/docs only — not images');
-      return;
-    }
     if (file.size > 25 * 1024 * 1024) {
       setCardError(card, 'File too large');
       return;
@@ -1563,7 +1556,6 @@
 
     function startUpload(file) {
       if (!file || uploading) return;
-      if (isImageFile(file)) { setStatus('PDFs/docs only — not images.', true); return; }
       if (file.size > 25 * 1024 * 1024) { setStatus('File too large (25 MB max).', true); return; }
       uploading = true;
       pane.classList.add('is-uploading');
@@ -1578,7 +1570,7 @@
       if (uploading) return;
       var input = document.createElement('input');
       input.type = 'file';
-      input.accept = '.pdf,.doc,.docx,.xls,.xlsx,application/pdf';
+      input.accept = '.pdf,.doc,.docx,.xls,.xlsx,.jpg,.jpeg,.png,.gif,.webp,.heic,.heif,.tif,.tiff,application/pdf,image/*';
       input.style.display = 'none';
       input.addEventListener('change', function () {
         var f = input.files && input.files[0];
