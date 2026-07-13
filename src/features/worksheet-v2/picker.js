@@ -810,6 +810,28 @@
                     if (_c && _c.id) _candName[_c.id] = _c.name;
                   }
                 }
+                // Prefer the PUT response's own _raw identifiers — the
+                // server's REAL connection labels — over the candidate
+                // names. Candidates often carry a shorter label than the
+                // connection identifier (product picker: "Name" vs the
+                // stored "Name - SKU"), and whatever lands here is what
+                // registerPendingWrite re-asserts over every refetch for
+                // its TTL — so a mismatched label makes the card show one
+                // thing now and another after refresh.
+                var _respRec = (resp && resp.record &&
+                  typeof resp.record === 'object' && resp.record.id)
+                  ? resp.record : resp;
+                var _respRaw = _respRec ? _respRec[opts.fieldKey + '_raw'] : null;
+                if (Array.isArray(_respRaw)) {
+                  for (var _rj = 0; _rj < _respRaw.length; _rj++) {
+                    var _rv = _respRaw[_rj];
+                    if (_rv && _rv.id && _rv.identifier != null) {
+                      _candName[_rv.id] = _rv.identifier;
+                    }
+                  }
+                } else if (_respRaw && _respRaw.id && _respRaw.identifier != null) {
+                  _candName[_respRaw.id] = _respRaw.identifier;
+                }
                 var rawObjs = (body[opts.fieldKey] || []).map(function (v) {
                   var id = (v && typeof v === 'object') ? v.id : v;
                   var o  = (v && typeof v === 'object') ? v : { id: id };
