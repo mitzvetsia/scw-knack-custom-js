@@ -227,6 +227,51 @@
     return rows;
   }
 
+  // ── Phantom duplicate-row collapse ─────────────────────────────
+  // A single SOW line item MUST render as exactly one row per SOW grid.
+  // Stale/duplicated hidden-view data (view_3921 SOW membership + MDF
+  // lagging behind the authoritative build-SOW state, view_3680 leftover
+  // bid records) can otherwise surface the same SOW item twice in one
+  // grid — e.g. an on-sow matched row in its real IDF group AND a phantom
+  // off-sow twin in a stale MDF group, with the same bid records dupe-
+  // stacked in both. Collapse by SOW-item id, keeping the most
+  // authoritative row.
+  //
+  // rowSowRank: how authoritative a row is AS the representation of its
+  // SOW line item — on-sow matched (3) beats off-sow matched (2) beats a
+  // "removed" row (1) beats a bid-only / other-SOW row (0).
+  function rowSowRank(row) {
+    if (row.removed) return 1;
+    if (row.otherBidItem) return 0;
+    return row.offSow ? 2 : 3;
+  }
+  // dedupeRowsBySowItem: drop rows whose SOW line item is already
+  // represented by a kept row. `seen` (sowItem id → {list, idx, rank}) is
+  // shared across successive calls so weaker/later lists yield to
+  // stronger/earlier ones. With `replace` true a higher-ranked row
+  // displaces an earlier weaker one IN PLACE (so on-sow wins over an
+  // off-sow twin regardless of encounter order). Rows with no SOW item
+  // (true bid-only) never collide and are always kept.
+  function dedupeRowsBySowItem(list, seen, replace) {
+    var out = [];
+    for (var i = 0; i < list.length; i++) {
+      var row = list[i], sid = row && row.sowItem;
+      if (!sid) { if (row) out.push(row); continue; }
+      var prev = seen[sid];
+      if (!prev) {
+        out.push(row);
+        seen[sid] = { list: out, idx: out.length - 1, rank: rowSowRank(row) };
+        continue;
+      }
+      if (replace) {
+        var rk = rowSowRank(row);
+        if (rk > prev.rank) { prev.list[prev.idx] = row; prev.rank = rk; }
+      }
+      // else: SOW item already rendered — drop this duplicate row.
+    }
+    return out;
+  }
+
   function buildRow(meta, cellRecords, sowItemId) {
     var cellsByPackage = Object.create(null);
     for (var i = 0; i < cellRecords.length; i++) {
@@ -1203,6 +1248,18 @@
           bidOnlyRows.push(orr);
         }
       }
+      // Collapse phantom duplicate SOW-item rows within THIS grid (see
+      // rowSowRank/dedupeRowsBySowItem). Order = authority: matched rows
+      // first (on-sow beats an off-sow twin via `replace`), then removed,
+      // then the "other" blocks — each later list only keeps rows whose
+      // SOW item wasn't already rendered. `removedRows` is shared across
+      // all grids, so filter a per-grid COPY, never the original.
+      var _seenSowItem = Object.create(null);
+      rows                = dedupeRowsBySowItem(rows, _seenSowItem, true);
+      var removedRowsGrid = dedupeRowsBySowItem(removedRows, _seenSowItem, false);
+      otherSowRows        = dedupeRowsBySowItem(otherSowRows, _seenSowItem, false);
+      bidOnlyRows         = dedupeRowsBySowItem(bidOnlyRows, _seenSowItem, false);
+
       var otherRows = otherSowRows.concat(bidOnlyRows);
 
       // Rows used for totals/grid include the "other" items; rendering
@@ -1271,7 +1328,7 @@
       // pile pinned to the top.
       var groups = groupRows(
         bidOnlyRows.length ? displayRows.concat(bidOnlyRows) : displayRows,
-        removedRows
+        removedRowsGrid
       );
       // "Belong to another SOW" stays at the BOTTOM.
       if (otherSowRows.length) {
