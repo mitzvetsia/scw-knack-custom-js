@@ -304,9 +304,7 @@
 
   // Per-surface DOC_photos grid used for the REST-DELETE fallback when the
   // photo's row isn't in the DOM (paginated grid). view_3584 is the
-  // delete-enabled photos grid on the build-SOW scene. The review-bids
-  // scene's photos grid is unconfirmed — native-link path still works
-  // there when the row is present.
+  // delete-enabled photos grid on the build-SOW scene.
   //
   // view_3505 (subcontractor SURVEY worksheet): survey line-item photos get a
   // delete button. The handler first tries the native kn-link-delete on the
@@ -315,22 +313,30 @@
   // grid named here (Path 2). view_4070 is the delete-enabled DOC_photos grid
   // added to the survey scene for exactly this — it's hidden from view below
   // (it exists only to supply the delete link + REST endpoint).
+  //
+  // view_3921 (review-bids comparison grid): view_4098 is the same kind of
+  // helper — a delete-enabled all-photos DOC_photos grid added to the
+  // review-bids scene purely as delete plumbing (2026-07-13). Hidden below.
   var SURVEY_PHOTO_GRID = 'view_4070';
+  var REVIEW_PHOTO_GRID = 'view_4098';
   var PHOTO_GRID_FALLBACK_VIEWS = {
-    view_3962: 'view_3584', view_3921: '', view_3505: SURVEY_PHOTO_GRID
+    view_3962: 'view_3584', view_3921: REVIEW_PHOTO_GRID, view_3505: SURVEY_PHOTO_GRID
   };
 
-  // Hide the survey-scene DOC_photos helper grid — it's a delete-plumbing view
-  // only (its rows + delete links stay in the DOM so Path 1 can click them, and
-  // Path 2's REST DELETE doesn't need it visible). display:none keeps it out of
-  // the user's way without removing it from the page.
-  (function hideSurveyPhotoGrid() {
-    if (!SURVEY_PHOTO_GRID) return;
-    var ID = 'scw-ws-v2-hide-survey-photo-grid';
+  // Hide the DOC_photos helper grids — they're delete-plumbing views only
+  // (their rows + delete links stay in the DOM so Path 1 can click them, and
+  // Path 2's REST DELETE doesn't need them visible). display:none keeps them
+  // out of the user's way without removing them from the page.
+  (function hidePhotoHelperGrids() {
+    var grids = [SURVEY_PHOTO_GRID, REVIEW_PHOTO_GRID].filter(Boolean);
+    if (!grids.length) return;
+    var ID = 'scw-ws-v2-hide-photo-helper-grids';
     if (document.getElementById(ID)) return;
     var s = document.createElement('style');
     s.id = ID;
-    s.textContent = '#' + SURVEY_PHOTO_GRID + ' { display: none !important; }';
+    s.textContent = grids.map(function (g) {
+      return '#' + g + ' { display: none !important; }';
+    }).join('\n');
     (document.head || document.documentElement).appendChild(s);
   })();
 
