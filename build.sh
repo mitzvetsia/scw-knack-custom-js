@@ -211,6 +211,7 @@ cat \
   src/features/customer-account-link.js \
   src/features/customer-questionnaire-scene.js \
   src/features/regenerate-kickoff-deck.js \
+  src/features/send-coc-button.js \
   src/features/questionnaire-deployment-audit.js \
   src/features/acceptance-card.js \
   src/features/resend-credentials-btn.js \
