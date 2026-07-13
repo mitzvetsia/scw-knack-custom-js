@@ -22,6 +22,10 @@
     // "Removed / Not surveyed". v1 loads its own copy via API, but that
     // doesn't bump these on-scene models, so force them here.
     'view_3680', 'view_3921', 'view_3573', 'view_3822', 'view_3818',
+    // review-bids DOC_photos delete-plumbing grid (worksheet-v2/photos.js
+    // Path 1 clicks kn-link-delete rows in it — full page = every photo's
+    // row present in the DOM; the grid itself is hidden by photos.js)
+    'view_4098',
     // Change Order scene: CO line items (v2 source), MDF/IDF locations,
     // project install items (removal source), project SOW/proposal items
     // (adoption source). All read whole via the Backbone model.
@@ -51,6 +55,8 @@
     'view_3913',
     // bid-review source/compare views (now also in VIEW_IDS above)
     'view_3680', 'view_3921', 'view_3573', 'view_3822', 'view_3818',
+    // review-bids DOC_photos delete-plumbing grid (see VIEW_IDS above)
+    'view_4098',
     // Change Order scene views (see VIEW_IDS above)
     'view_4079', 'view_4084', 'view_4086', 'view_4088'
   ];
