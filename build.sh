@@ -46,6 +46,7 @@ cat \
   src/features/ratking/hash-bump-record-update.js \
   src/features/ratking/scene-776-stub.js \
   src/features/proposal-grid.js \
+  src/features/co-proposal-remove-styling.js \
   src/features/view-3341-loading-overlay.js \
   src/features/survey-review-grid.js \
   src/features/proposal-pdf-export.js \
