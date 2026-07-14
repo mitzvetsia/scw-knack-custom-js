@@ -55,9 +55,47 @@
       // Jump-target flash — a brief ring around the panel the user was sent to.
       '.scw-co-ab-flash{outline:3px solid #60a5fa !important;outline-offset:3px;',
       'border-radius:8px;transition:outline-color .4s ease;}',
-      '.scw-co-ab-flash.is-fading{outline-color:transparent !important;}'
+      '.scw-co-ab-flash.is-fading{outline-color:transparent !important;}',
+      // Collapsed-by-default source panels: only the banner shows; click the
+      // banner (or the action bar) to expand. Chevron shows state.
+      '.scw-co-collapsible > .scw-ws-v2-banner{cursor:pointer;user-select:none;}',
+      '.scw-co-collapsed > *:not(.scw-ws-v2-banner){display:none !important;}',
+      '.scw-co-chevron{display:inline-flex;align-items:center;margin-right:8px;',
+      'transition:transform .15s ease;color:#94a3b8;}',
+      '.scw-co-collapsible:not(.scw-co-collapsed) .scw-co-chevron{transform:rotate(90deg);}'
     ].join('');
     document.head.appendChild(s);
+  }
+
+  var CHEV_SVG =
+    '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" ' +
+    'stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">' +
+    '<polyline points="9 6 15 12 9 18"/></svg>';
+
+  // Source panels start collapsed to their banner (count summary stays
+  // visible) so the landing page is short and CO-focused. Banner click
+  // toggles; the action bar expands before jumping. The panel container
+  // survives re-renders, so the class state is stable.
+  function makeCollapsible(viewKey) {
+    var panel = document.getElementById('scw-ws-v2-' + viewKey);
+    if (!panel || panel.classList.contains('scw-co-collapsible')) return;
+    panel.classList.add('scw-co-collapsible', 'scw-co-collapsed');
+    var banner = panel.querySelector('.scw-ws-v2-banner');
+    if (!banner) return;
+    var chev = document.createElement('span');
+    chev.className = 'scw-co-chevron';
+    chev.innerHTML = CHEV_SVG;
+    banner.insertBefore(chev, banner.firstChild);
+    banner.addEventListener('click', function (e) {
+      // Don't hijack real banner controls (e.g. co-adopt's bulk button).
+      if (e.target.closest && e.target.closest('button, a, input, select')) return;
+      panel.classList.toggle('scw-co-collapsed');
+    });
+  }
+
+  function expandPanel(viewKey) {
+    var panel = document.getElementById('scw-ws-v2-' + viewKey);
+    if (panel) panel.classList.remove('scw-co-collapsed');
   }
 
   function jumpTo(viewKey) {
@@ -115,16 +153,23 @@
           ns.coAddForm.open({ viewKey: CO_VIEW });
         }
       } else if (act === 'adopt') {
+        expandPanel(ADOPT_VIEW);
         jumpTo(ADOPT_VIEW);
       } else if (act === 'remove') {
+        expandPanel(REMOVE_VIEW);
         jumpTo(REMOVE_VIEW);
       }
     });
   }
 
+  function mountAll() {
+    mount();
+    makeCollapsible(ADOPT_VIEW);
+    makeCollapsible(REMOVE_VIEW);
+  }
   function mountSoon() {
-    setTimeout(mount, 200);
-    setTimeout(mount, 800);   // catch a late v2 panel build
+    setTimeout(mountAll, 200);
+    setTimeout(mountAll, 800);   // catch a late v2 panel build
   }
 
   if (window.SCW && typeof SCW.onViewRender === 'function') {
