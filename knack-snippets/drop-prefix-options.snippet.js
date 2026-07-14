@@ -1,12 +1,5 @@
 /*** BUILDER SNIPPET — window.SCW.dropPrefixOptions ***************************
  *
- * ⚠️ DEPRECATED (2026-07-14) — superseded by the KEY-FREE view-based read
- * in src/features/_catalog-views.js (SCW.catalog.dropPrefixes): add a
- * hidden all-records Drop Prefix grid per scene and register its view id
- * in that module's CONFIG instead. Only paste this snippet as an interim
- * measure for scenes that don't have their hidden view yet; retire it
- * (delete from Builder) once every consuming scene is covered.
- *
  * Paste into Knack Builder → Settings → API & Code → JavaScript (app-level),
  * alongside the other SCW snippets. Runs before the CDN bundle loads and
  * exposes the Drop Prefix catalog for the in-bundle pickers:
@@ -34,12 +27,11 @@
  ***************************************************************************/
 (function () {
   var APP_ID  = Knack.application_id;
-  // ⚠️ Verify against Builder → Settings → API & Code before pasting: this
-  // value was copied from the productBucketMap doc in CLAUDE.md and may
-  // pre-date a key ROTATION (Known Issue #17). A wrong key = silent 401/403
-  // on the fetch below → SCW.dropPrefixOptions never set → pickers fall
-  // back to in-use scraping.
-  var API_KEY = 'f8371b90-524d-11e7-abaf-870b3d262aa2';
+  // ⚠️ Key is NOT stored in this repo. Fill in from Builder → Settings →
+  // API & Code before pasting. A wrong key = silent 401/403 on the fetch
+  // below → SCW.dropPrefixOptions never set → pickers fall back to
+  // in-use scraping.
+  var API_KEY = '###';   // TBD — fill from Builder, never commit the value
 
   // ── TODO: fill in from Builder (Drop Prefix object) ─────────────────
   var PREFIX_OBJECT = 'object_XX';    // Drop Prefix object key

@@ -1562,11 +1562,10 @@
     }
 
     if (field.candSource === 'dropPrefix') {
-      // Key-free catalog read (hidden view per scene), legacy snippet
-      // global as fallback — see _catalog-views.js (Known Issue #17).
-      // Each entry: { id: <24-hex>, identifier: '<label>' }.
-      var raw = (window.SCW && SCW.catalog && SCW.catalog.dropPrefixes()) ||
-                (window.SCW && window.SCW.dropPrefixOptions) || [];
+      // Catalog loaded by the Builder JS snippet (see CLAUDE.md
+      // "Out-of-bundle Knack Builder snippets"). Each entry:
+      //   { id: <24-hex>, identifier: '<label>' }
+      var raw = (window.SCW && window.SCW.dropPrefixOptions) || [];
       var cands = [];
       for (var dp = 0; dp < raw.length; dp++) {
         var rec = raw[dp];

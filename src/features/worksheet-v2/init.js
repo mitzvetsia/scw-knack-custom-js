@@ -2214,11 +2214,7 @@
       // picker is shared. Changing the prefix recomputes the drop LABEL
       // (field_1950 on SOW / field_2365 on survey) server-side, so refetch on save.
       if (fieldKey === 'field_2240' || fieldKey === 'field_2361') {
-        // Key-free catalog read (hidden view per scene) with the legacy
-        // Builder-snippet global as migration fallback — see
-        // _catalog-views.js (Known Issue #17).
-        var dpRaw = (window.SCW && SCW.catalog && SCW.catalog.dropPrefixes()) ||
-                    (window.SCW && window.SCW.dropPrefixOptions) || [];
+        var dpRaw = (window.SCW && window.SCW.dropPrefixOptions) || [];
         var dpCandidates = [];
         // Survey/bid page (field_2361): only offer prefixes flagged
         // Available for Subcontractors (field_2439 → subVisible on the

@@ -352,11 +352,7 @@
     function push(id, label) {
       if (id && label && !seen[id]) { seen[id] = 1; out.push({ id: id, identifier: label }); }
     }
-    // Key-free catalog read (hidden view per scene) with the legacy
-    // snippet global as fallback — see _catalog-views.js (Known Issue
-    // #17). Ops-side list, deliberately UNFILTERED by visibility flags.
-    var cat = (window.SCW && SCW.catalog && SCW.catalog.dropPrefixes()) ||
-              (window.SCW && window.SCW.dropPrefixOptions) || [];
+    var cat = (window.SCW && window.SCW.dropPrefixOptions) || [];
     for (var i = 0; i < cat.length; i++) {
       var r = cat[i];
       if (r) push(r.id, r.identifier);

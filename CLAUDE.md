@@ -386,7 +386,7 @@ Populated by this Builder snippet (one-time fetch on app boot):
 ```js
 (function () {
   var APP_ID  = Knack.application_id;
-  var API_KEY = 'f8371b90-524d-11e7-abaf-870b3d262aa2';
+  var API_KEY = '###';   // TBD — fill from Builder → Settings → API & Code; never commit the value
   var PRODUCT_OBJECT = 'object_8';
   var BUCKET_FIELD   = 'field_133';   // proposal bucket on the Products object
   var STATUS_FIELD   = 'field_956';   // Status (filter to "Enabled")
@@ -438,8 +438,10 @@ Notes:
   need names (e.g. a v2 product picker) must source those separately
   — typically from a hidden Knack view that exposes name + id, with
   the bucket map used purely to FILTER candidates.
-- The API key in the snippet is the live one. Treat the snippet
-  contents as a secret; don't paste it into public PRs/issues.
+- **API keys are NEVER committed to this repo** — snippet copies here
+  (and in knack-snippets/) carry a `###`/TBD placeholder. Fill the real
+  key in from Builder → Settings → API & Code at paste time only, and
+  keep it out of PRs/issues/chat.
 
 ## Change Orders (design locked 2026-07-03 — full reference: docs/change-orders.md)
 
@@ -775,14 +777,3 @@ This is a **copy-paste-and-modify codebase, not a design space.** Every feature 
 - **Scope (why it's a TODO, not a quick fix)**: this must be done on **every scene** each global is consumed on — `deliverablesFields` → deploy scene (`view_4093` internal worksheet) + customer questionnaire scene (`view_4031`); `productBucketMap` → all worksheet-v2 scenes + bid-review + the v2 product picker + `filter-products-by-bucket.js` + `bulk-add-mounting-box.js`. Each needs its own hidden grid view.
 - **Bundle side is ready for it**: `deliverables-worksheet.js` / `customer-questionnaire.js` `loadSchemaFields()` reads raw Knack records (`field_XXXX`/`_raw`) — a view model returns the identical shape, so swapping `window.SCW.deliverablesFields` → `getViewRecords(SCHEMA_DEF_VIEW)` is a one-line source change per feature (the scaffold originally had `SCHEMA_DEF_VIEW` for exactly this). Add a per-feature `SCHEMA_DEF_VIEW` config + hide the grid, then delete the key snippet.
 - **Interim**: rotate the key, keep the snippet running on the new (still-exposed) key until the hidden views are added scene-by-scene, then retire the snippet. Don't add NEW client-side-key snippets in the meantime.
-- **Progress (2026-07-14) — `dropPrefixOptions` migrated to the view-based pattern**:
-  `src/features/_catalog-views.js` (`SCW.catalog.dropPrefixes()`) reads a hidden
-  all-records Drop Prefix grid per scene (register view ids + the label field key in its
-  `CATALOGS.dropPrefix` config; configured views auto-hide). All three consumers
-  (worksheet-v2 init/bulk pickers, bid-review CR modal) read the catalog first, the
-  legacy snippet global second, in-use scrape last — so migration is scene-by-scene and
-  the keyed snippet (`knack-snippets/drop-prefix-options.snippet.js`, now marked
-  DEPRECATED) can be deleted from Builder once every consuming scene has its view.
-  ⚠️ One-page caveat: a hidden grid serves at most one page of records — fine for Drop
-  Prefix (small catalog), NOT sufficient for `productBucketMap` (thousands of products,
-  needs a different answer: server-side map field, or per-bucket filtered views).
