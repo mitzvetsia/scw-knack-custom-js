@@ -62,7 +62,20 @@
       '.scw-co-collapsed > *:not(.scw-ws-v2-banner){display:none !important;}',
       '.scw-co-chevron{display:inline-flex;align-items:center;margin-right:8px;',
       'transition:transform .15s ease;color:#94a3b8;}',
-      '.scw-co-collapsible:not(.scw-co-collapsed) .scw-co-chevron{transform:rotate(90deg);}'
+      '.scw-co-collapsible:not(.scw-co-collapsed) .scw-co-chevron{transform:rotate(90deg);}',
+      // Source-panel signposts: tinted banner + leading tag chip so both the
+      // collapsed strip and the jump landing read unmistakably as "the add
+      // source" (green) / "the removal source" (rose) — distinct from the CO
+      // worksheet's own banner.
+      '.scw-co-src--add > .scw-ws-v2-banner{',
+      'background:#f0fdf4 !important;box-shadow:inset 4px 0 0 #16a34a;}',
+      '.scw-co-src--remove > .scw-ws-v2-banner{',
+      'background:#fff1f2 !important;box-shadow:inset 4px 0 0 #e11d48;}',
+      '.scw-co-src-tag{display:inline-flex;align-items:center;margin-right:10px;',
+      'font:700 9px/1 system-ui,-apple-system,sans-serif;letter-spacing:.07em;',
+      'padding:3px 8px;border-radius:4px;flex:0 0 auto;}',
+      '.scw-co-src-tag--add{color:#166534;background:#dcfce7;}',
+      '.scw-co-src-tag--remove{color:#9f1239;background:#ffe4e6;}'
     ].join('');
     document.head.appendChild(s);
   }
@@ -72,28 +85,45 @@
     'stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">' +
     '<polyline points="9 6 15 12 9 18"/></svg>';
 
+  // Per-session open/closed intent. Once the user opens a panel (banner
+  // click or action-bar jump), the delayed makeCollapsible passes and any
+  // panel remount must NOT re-collapse it — that race made the two buttons
+  // behave inconsistently (a late init timer collapsed the panel the user
+  // had just jumped to).
+  var _userOpened = {};
+
   // Source panels start collapsed to their banner (count summary stays
   // visible) so the landing page is short and CO-focused. Banner click
-  // toggles; the action bar expands before jumping. The panel container
-  // survives re-renders, so the class state is stable.
-  function makeCollapsible(viewKey) {
+  // toggles; the action bar expands before jumping. `kind` ('add'|'remove')
+  // drives the signpost treatment: tinted banner + leading tag chip so the
+  // jump target is unmistakable.
+  function makeCollapsible(viewKey, kind) {
     var panel = document.getElementById('scw-ws-v2-' + viewKey);
-    if (!panel || panel.classList.contains('scw-co-collapsible')) return;
-    panel.classList.add('scw-co-collapsible', 'scw-co-collapsed');
+    if (!panel) return;
+    if (!panel.classList.contains('scw-co-collapsible')) {
+      panel.classList.add('scw-co-collapsible', 'scw-co-src--' + kind);
+      if (!_userOpened[viewKey]) panel.classList.add('scw-co-collapsed');
+    }
     var banner = panel.querySelector('.scw-ws-v2-banner');
-    if (!banner) return;
+    if (!banner || banner.querySelector('.scw-co-chevron')) return;
     var chev = document.createElement('span');
     chev.className = 'scw-co-chevron';
     chev.innerHTML = CHEV_SVG;
     banner.insertBefore(chev, banner.firstChild);
+    var tag = document.createElement('span');
+    tag.className = 'scw-co-src-tag scw-co-src-tag--' + kind;
+    tag.textContent = kind === 'remove' ? 'REMOVE FROM INSTALL' : 'ADD FROM QUOTED';
+    banner.insertBefore(tag, chev.nextSibling);
     banner.addEventListener('click', function (e) {
       // Don't hijack real banner controls (e.g. co-adopt's bulk button).
       if (e.target.closest && e.target.closest('button, a, input, select')) return;
-      panel.classList.toggle('scw-co-collapsed');
+      var nowCollapsed = panel.classList.toggle('scw-co-collapsed');
+      _userOpened[viewKey] = !nowCollapsed;
     });
   }
 
   function expandPanel(viewKey) {
+    _userOpened[viewKey] = true;
     var panel = document.getElementById('scw-ws-v2-' + viewKey);
     if (panel) panel.classList.remove('scw-co-collapsed');
   }
@@ -164,8 +194,8 @@
 
   function mountAll() {
     mount();
-    makeCollapsible(ADOPT_VIEW);
-    makeCollapsible(REMOVE_VIEW);
+    makeCollapsible(ADOPT_VIEW, 'add');
+    makeCollapsible(REMOVE_VIEW, 'remove');
   }
   function mountSoon() {
     setTimeout(mountAll, 200);
