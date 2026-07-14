@@ -32,7 +32,7 @@
   var CO_VIEW     = 'view_4079';
   var ADOPT_VIEW  = 'view_4088';
   var REMOVE_VIEW = 'view_4086';
-  var BAR_ID      = 'scw-co-actionbar';
+  var WRAP_ID     = 'scw-co-strips';
   var STRIP_ID    = 'scw-co-add-strip';
   var STYLE_ID    = 'scw-co-actionbar-css';
   var EVENT_NS    = '.scwCoActionBar';
@@ -58,30 +58,35 @@
     var s = document.createElement('style');
     s.id = STYLE_ID;
     s.textContent = [
-      // One-line caption above the strips.
-      '#' + BAR_ID + '{margin:0 0 8px 0;padding:10px 16px;background:#f8fafc;',
-      'border:1px solid #e2e8f0;border-radius:10px;}',
-      '#' + BAR_ID + ' .scw-co-ab-title{font:700 13px/1.3 system-ui,-apple-system,sans-serif;color:#0f4c75;}',
-      '#' + BAR_ID + ' .scw-co-ab-sub{font:400 12px/1.4 system-ui,sans-serif;color:#64748b;margin-top:2px;}',
-      // Tight stacking rhythm for the strips.
+      // One contained block for all three strips — hairline dividers between
+      // rows instead of three separate bordered boxes.
+      '#' + WRAP_ID + '{border:1px solid #e2e8f0;border-radius:10px;background:#fff;',
+      'overflow:hidden;margin:0 0 12px 0;}',
+      '#' + WRAP_ID + ' > * + *{border-top:1px solid #e2e8f0;}',
       '#scw-ws-v2-' + ADOPT_VIEW + ', #scw-ws-v2-' + REMOVE_VIEW + ', #' + STRIP_ID + '{',
-      'margin:0 0 8px 0 !important;}',
+      'margin:0 !important;border:0 !important;border-radius:0 !important;box-shadow:none !important;}',
+      // Slim the banner rows inside the block.
+      '#' + WRAP_ID + ' .scw-ws-v2-banner{padding:8px 14px !important;border-radius:0 !important;}',
       // Source-strip tints (their own carets/toggles stay untouched).
       '#scw-ws-v2-' + ADOPT_VIEW + ' > .scw-ws-v2-banner{',
-      'background:#f0fdf4 !important;box-shadow:inset 4px 0 0 #16a34a;}',
+      'background:#f0fdf4 !important;box-shadow:inset 4px 0 0 #16a34a !important;}',
       '#scw-ws-v2-' + REMOVE_VIEW + ' > .scw-ws-v2-banner{',
-      'background:#fff1f2 !important;box-shadow:inset 4px 0 0 #e11d48;}',
-      // Add strip — visually a sibling of the panel banners, blue.
-      '#' + STRIP_ID + '{border:1px solid #e2e8f0;border-radius:8px;background:#fff;overflow:hidden;}',
+      'background:#fff1f2 !important;box-shadow:inset 4px 0 0 #e11d48 !important;}',
+      // Warning chips are browse-time info — hide them while the source strip
+      // is collapsed (record count stays as the summary).
+      '#scw-ws-v2-' + ADOPT_VIEW + '.' + ADOPT_CLS + ' .scw-ws-v2-banner-chips,',
+      '#scw-ws-v2-' + REMOVE_VIEW + '.' + REMOVE_CLS + ' .scw-ws-v2-banner-chips{',
+      'display:none !important;}',
+      // Add strip row — blue, same anatomy as the panel banners.
       '#' + STRIP_ID + ' .scw-co-add-banner{display:flex;align-items:center;gap:8px;',
-      'padding:10px 14px;cursor:pointer;user-select:none;',
+      'padding:8px 14px;cursor:pointer;user-select:none;',
       'background:#eff6ff;box-shadow:inset 4px 0 0 #0f4c75;',
       'font:700 13px/1.3 system-ui,-apple-system,sans-serif;color:#1e293b;}',
       '#' + STRIP_ID + ' .scw-co-add-caret{display:inline-flex;align-items:center;',
       'width:16px;height:16px;color:#64748b;transition:transform .15s ease;flex:0 0 auto;}',
       '#' + STRIP_ID + ':not(.is-collapsed) .scw-co-add-caret{transform:rotate(90deg);}',
       '#' + STRIP_ID + ' .scw-co-add-plus{display:inline-flex;align-items:center;color:#0f4c75;flex:0 0 auto;}',
-      '#' + STRIP_ID + ' .scw-co-add-hint{font:400 12px/1.3 system-ui,sans-serif;color:#64748b;margin-left:auto;}',
+      '#' + STRIP_ID + ' .scw-co-add-hint{font:400 12px/1.3 system-ui,sans-serif;color:#94a3b8;margin-left:auto;}',
       '#' + STRIP_ID + ' .scw-co-add-body{padding:4px 14px 12px;}',
       '#' + STRIP_ID + '.is-collapsed .scw-co-add-body{display:none;}'
     ].join('');
@@ -159,21 +164,20 @@
     });
   }
 
-  // ── caption + add strip ───────────────────────────────────────────────
+  // ── strips block (wrapper + add strip) ────────────────────────────────
+  // One bordered container directly above the CO worksheet holding all three
+  // strips as hairline-divided rows — no separate caption box (the strip
+  // titles carry the guidance; the header card says where you are).
   function mount() {
     var panel = document.getElementById('scw-ws-v2-' + CO_VIEW);
     if (!panel) return;
     injectCss();
 
-    if (!document.getElementById(BAR_ID)) {
-      var bar = document.createElement('div');
-      bar.id = BAR_ID;
-      bar.innerHTML =
-        '<div class="scw-co-ab-title">Draft this change order</div>' +
-        '<div class="scw-co-ab-sub">Expand a panel below to add new items, ' +
-          'pull in previously quoted items, or flag installed items for ' +
-          'removal. Everything drafts here before pricing and issue.</div>';
-      panel.parentNode.insertBefore(bar, panel);
+    var wrap = document.getElementById(WRAP_ID);
+    if (!wrap) {
+      wrap = document.createElement('div');
+      wrap.id = WRAP_ID;
+      panel.parentNode.insertBefore(wrap, panel);
     }
 
     if (!document.getElementById(STRIP_ID)) {
@@ -188,8 +192,7 @@
           '<span class="scw-co-add-hint">expand to add</span>' +
         '</div>' +
         '<div class="scw-co-add-body"></div>';
-      var barEl = document.getElementById(BAR_ID);
-      barEl.parentNode.insertBefore(strip, barEl.nextSibling);
+      wrap.appendChild(strip);
       strip.querySelector('.scw-co-add-banner').addEventListener('click', function () {
         if (strip.classList.contains('is-collapsed')) expandAddStrip();
         else collapseAddStrip();
@@ -197,16 +200,20 @@
     }
   }
 
-  // Order under the caption: add strip → adopt panel → remove panel → CO
-  // worksheet. Idempotent; init.js's accordion-relocation no-ops once the
-  // panels live outside any accordion wrapper.
+  // Pull the source panels INTO the strips block, after the add strip.
+  // Idempotent; init.js's accordion-relocation no-ops once the panels live
+  // outside any accordion wrapper, and renders target the panels by id so
+  // re-parenting is safe.
   function relocateSources() {
-    var after = document.getElementById(STRIP_ID) || document.getElementById(BAR_ID);
-    if (!after || !after.parentNode) return;
+    var wrap = document.getElementById(WRAP_ID);
+    var after = document.getElementById(STRIP_ID);
+    if (!wrap || !after) return;
     [ADOPT_VIEW, REMOVE_VIEW].forEach(function (vk) {
       var p = document.getElementById('scw-ws-v2-' + vk);
       if (!p) return;
-      if (after.nextSibling !== p) after.parentNode.insertBefore(p, after.nextSibling);
+      if (after.nextSibling !== p || p.parentNode !== wrap) {
+        wrap.insertBefore(p, after.nextSibling);
+      }
       after = p;
     });
   }
