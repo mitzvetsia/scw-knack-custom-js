@@ -2216,10 +2216,17 @@
       if (fieldKey === 'field_2240' || fieldKey === 'field_2361') {
         var dpRaw = (window.SCW && window.SCW.dropPrefixOptions) || [];
         var dpCandidates = [];
+        // Survey/bid page (field_2361): only offer prefixes flagged
+        // Available for Subcontractors (field_2439 → subVisible on the
+        // catalog entries; see knack-snippets/drop-prefix-options.snippet.js).
+        // Entries WITHOUT the flag (older snippet shape) stay visible —
+        // fail open, never an empty picker because the snippet is stale.
+        var dpSubOnly = fieldKey === 'field_2361';
         if (dpRaw.length) {
           for (var dpi = 0; dpi < dpRaw.length; dpi++) {
             var dpr = dpRaw[dpi];
             if (dpr && dpr.id && dpr.identifier) {
+              if (dpSubOnly && dpr.subVisible === false) continue;
               dpCandidates.push({ id: dpr.id, identifier: dpr.identifier });
             }
           }

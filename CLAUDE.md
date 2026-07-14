@@ -672,7 +672,16 @@ This is a **copy-paste-and-modify codebase, not a design space.** Every feature 
 - **Why deferred**: each piece is small but the dependency chain (save view setup → modal scaffold → upload pipeline) deserves a focused pass instead of being squeezed alongside other worksheet work.
 
 ### 11. Drop Prefix snippet — role-based visibility filtering
-- **Status**: deferred — current Builder snippet (`window.SCW.dropPrefixOptions`) returns every Drop Prefix record regardless of who's viewing the page. Used by worksheet-v2's bulk-edit picker for `field_2240`.
+- **Status (updated 2026-07-14)**: the Builder copy of the snippet was lost/overwritten;
+  reconstructed + enhanced as **`knack-snippets/drop-prefix-options.snippet.js`** (now the
+  version-controlled source of truth — fill in the two TODO constants, Drop Prefix object
+  key + label field key, then paste into Builder). Catalog entries now carry
+  `subVisible` (`field_2439`) and `salesVisible` (`field_2440`) booleans.
+- **Shipped**: the survey/bid page Prefix picker (`field_2361`, worksheet-v2/init.js)
+  hides entries with `subVisible === false`; entries without the flag fail open. The
+  internal pickers (`field_2240`) and the ops-side CR-modal prefix list stay unfiltered.
+- **Still deferred**: the sales-page filter (`salesVisible`) — needs the sales scene-id
+  mapping (below).
 - **What's needed**: when we build the sales and subcontractor pages we'll want the picker to honor two existing visibility flags on the Drop Prefix object:
   - `field_2440` — **Sales-visible** (Yes/No). Filter out records where this is No when the loader runs inside a sales scene.
   - `field_2439` — **Subcontractor-visible** (Yes/No). Filter out records where this is No when the loader runs inside a subcontractor scene.
