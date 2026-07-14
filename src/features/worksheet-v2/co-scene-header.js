@@ -1,15 +1,24 @@
-/*** CHANGE ORDER SCENE — guidance header / action bar *********************
+/*** CHANGE ORDER SCENE — guidance header + collapsed source strips ********
  *
- * The CO drafting scene (scene_1362) hosts THREE ways to build the change
- * order, two of which were buried far down the page with no signposting:
- *   1. Add a net-new item        → the custom add modal (co-add-item-form.js)
- *   2. Adopt previously-quoted   → view_4088 panel (bottom of the page)
- *   3. Flag installs for removal → view_4086 panel (mid-page)
+ * The CO drafting scene (scene_1362) hosts three ways to build the change
+ * order. This module makes them read top-down in workflow order:
  *
- * This module injects a compact action bar above the CO worksheet
- * (#scw-ws-v2-view_4079) that names the three actions: the first opens the
- * add modal, the other two smooth-scroll to their panel and flash it. So a
- * user landing on the page sees what they can do without scrolling blind.
+ *   [ Draft this change order            (+ Add new item) ]   ← action bar
+ *   [ ▸ Previously Quoted Items — available to add    · 85 ]  ← green strip
+ *   [ ▸ Install Line Items — available to remove      · 12 ]  ← rose strip
+ *   [ Change Order Line Items (the CO worksheet) …         ]
+ *
+ * - "+ Add new item" opens the custom add modal (co-add-item-form.js).
+ * - The two source panels are RELOCATED from deep in the page to directly
+ *   under the action bar and collapsed to their banner (title + warning
+ *   chips + record count stay visible). The banner is the toggle; expanding
+ *   focuses the panel's search box so the user can type to filter at once.
+ * - Banner toggling is DELEGATED (document-level) and the decoration pass is
+ *   idempotent — panels/banners can be rebuilt by their own render pipeline
+ *   without duplicating chevrons or losing the click handler (both bugs
+ *   observed with per-element binding).
+ * - A per-session open-intent map stops the delayed init timers / panel
+ *   remounts from re-collapsing a panel the user opened.
  ***************************************************************************/
 (function () {
   'use strict';
@@ -28,10 +37,10 @@
     '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" ' +
     'stroke-width="2.4" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/>' +
     '<line x1="5" y1="12" x2="19" y2="12"/></svg>';
-  var DOWN_SVG =
+  var CHEV_SVG =
     '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" ' +
-    'stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">' +
-    '<polyline points="6 9 12 15 18 9"/></svg>';
+    'stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">' +
+    '<polyline points="9 6 15 12 9 18"/></svg>';
 
   function injectCss() {
     if (document.getElementById(STYLE_ID)) return;
@@ -39,116 +48,82 @@
     s.id = STYLE_ID;
     s.textContent = [
       '#' + BAR_ID + '{display:flex;align-items:center;flex-wrap:wrap;gap:10px;',
-      'margin:0 0 14px 0;padding:12px 16px;background:#f8fafc;',
+      'margin:0 0 8px 0;padding:12px 16px;background:#f8fafc;',
       'border:1px solid #e2e8f0;border-radius:10px;}',
       '#' + BAR_ID + ' .scw-co-ab-copy{flex:1 1 260px;min-width:220px;}',
       '#' + BAR_ID + ' .scw-co-ab-title{font:700 13px/1.3 system-ui,-apple-system,sans-serif;color:#0f4c75;}',
       '#' + BAR_ID + ' .scw-co-ab-sub{font:400 12px/1.4 system-ui,sans-serif;color:#64748b;margin-top:2px;}',
-      '#' + BAR_ID + ' .scw-co-ab-btns{display:flex;flex-wrap:wrap;gap:8px;}',
       '#' + BAR_ID + ' button{display:inline-flex;align-items:center;gap:7px;padding:9px 14px;',
       'border-radius:7px;font:600 12.5px/1 system-ui,-apple-system,sans-serif;cursor:pointer;',
-      'transition:background .12s;}',
-      '#' + BAR_ID + ' .scw-co-ab-pri{color:#fff;background:#0f4c75;border:1px solid #0a3a63;}',
-      '#' + BAR_ID + ' .scw-co-ab-pri:hover{background:#0a3a63;}',
-      '#' + BAR_ID + ' .scw-co-ab-sec{color:#0f4c75;background:#fff;border:1px solid #c7d4e0;}',
-      '#' + BAR_ID + ' .scw-co-ab-sec:hover{background:#f1f5f9;}',
-      // Jump-target flash — a brief ring around the panel the user was sent to.
-      '.scw-co-ab-flash{outline:3px solid #60a5fa !important;outline-offset:3px;',
-      'border-radius:8px;transition:outline-color .4s ease;}',
-      '.scw-co-ab-flash.is-fading{outline-color:transparent !important;}',
-      // Collapsed-by-default source panels: only the banner shows; click the
-      // banner (or the action bar) to expand. Chevron shows state.
-      '.scw-co-collapsible{margin-bottom:10px;}',
+      'transition:background .12s;color:#fff;background:#0f4c75;border:1px solid #0a3a63;}',
+      '#' + BAR_ID + ' button:hover{background:#0a3a63;}',
+      // Source strips: stacked tight under the action bar. Kill the panels'
+      // own top margins so the bar + two strips + worksheet read as one block.
+      '.scw-co-collapsible{margin:0 0 8px 0 !important;}',
       '.scw-co-collapsible > .scw-ws-v2-banner{cursor:pointer;user-select:none;}',
       '.scw-co-collapsed > *:not(.scw-ws-v2-banner){display:none !important;}',
       '.scw-co-chevron{display:inline-flex;align-items:center;margin-right:8px;',
-      'transition:transform .15s ease;color:#94a3b8;}',
+      'transition:transform .15s ease;color:#94a3b8;flex:0 0 auto;}',
       '.scw-co-collapsible:not(.scw-co-collapsed) .scw-co-chevron{transform:rotate(90deg);}',
-      // Source-panel signposts: tinted banner + leading tag chip so both the
-      // collapsed strip and the jump landing read unmistakably as "the add
-      // source" (green) / "the removal source" (rose) — distinct from the CO
-      // worksheet's own banner.
+      // Signposts: tinted banner + colored left bar. The panel titles already
+      // say "available to add / to remove" — no extra tag chip needed.
       '.scw-co-src--add > .scw-ws-v2-banner{',
       'background:#f0fdf4 !important;box-shadow:inset 4px 0 0 #16a34a;}',
       '.scw-co-src--remove > .scw-ws-v2-banner{',
-      'background:#fff1f2 !important;box-shadow:inset 4px 0 0 #e11d48;}',
-      '.scw-co-src-tag{display:inline-flex;align-items:center;margin-right:10px;',
-      'font:700 9px/1 system-ui,-apple-system,sans-serif;letter-spacing:.07em;',
-      'padding:3px 8px;border-radius:4px;flex:0 0 auto;}',
-      '.scw-co-src-tag--add{color:#166534;background:#dcfce7;}',
-      '.scw-co-src-tag--remove{color:#9f1239;background:#ffe4e6;}'
+      'background:#fff1f2 !important;box-shadow:inset 4px 0 0 #e11d48;}'
     ].join('');
     document.head.appendChild(s);
   }
 
-  var CHEV_SVG =
-    '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" ' +
-    'stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">' +
-    '<polyline points="9 6 15 12 9 18"/></svg>';
-
-  // Per-session open/closed intent. Once the user opens a panel (banner
-  // click or action-bar jump), the delayed makeCollapsible passes and any
-  // panel remount must NOT re-collapse it — that race made the two buttons
-  // behave inconsistently (a late init timer collapsed the panel the user
-  // had just jumped to).
+  // Per-session open/closed intent. Once the user opens a panel, delayed
+  // decoration passes and panel remounts must NOT re-collapse it.
   var _userOpened = {};
 
-  // Source panels start collapsed to their banner (count summary stays
-  // visible) so the landing page is short and CO-focused. Banner click
-  // toggles; the action bar expands before jumping. `kind` ('add'|'remove')
-  // drives the signpost treatment: tinted banner + leading tag chip so the
-  // jump target is unmistakable.
-  function makeCollapsible(viewKey, kind) {
+  function focusSearch(panel) {
+    var search = panel.querySelector('.scw-ws-v2-search-input');
+    if (search) {
+      try { search.focus({ preventScroll: true }); }
+      catch (e) { search.focus(); }
+    }
+  }
+
+  // Idempotent decoration — safe to re-run on every pass even if the panel
+  // or its banner was rebuilt: classes are re-asserted, stale chevrons/tags
+  // are removed, exactly one chevron is (re)inserted. NO per-element click
+  // binding (see the delegated handler below).
+  function decorate(viewKey, kind) {
     var panel = document.getElementById('scw-ws-v2-' + viewKey);
     if (!panel) return;
-    if (!panel.classList.contains('scw-co-collapsible')) {
-      panel.classList.add('scw-co-collapsible', 'scw-co-src--' + kind);
-      if (!_userOpened[viewKey]) panel.classList.add('scw-co-collapsed');
-    }
+    panel.classList.add('scw-co-collapsible', 'scw-co-src--' + kind);
+    panel.setAttribute('data-scw-co-src', viewKey);
+    if (!_userOpened[viewKey]) panel.classList.add('scw-co-collapsed');
     var banner = panel.querySelector('.scw-ws-v2-banner');
-    if (!banner || banner.querySelector('.scw-co-chevron')) return;
+    if (!banner) return;
+    var old = banner.querySelectorAll('.scw-co-chevron, .scw-co-src-tag');
+    for (var i = old.length - 1; i >= 0; i--) {
+      if (old[i].parentNode) old[i].parentNode.removeChild(old[i]);
+    }
     var chev = document.createElement('span');
     chev.className = 'scw-co-chevron';
     chev.innerHTML = CHEV_SVG;
     banner.insertBefore(chev, banner.firstChild);
-    var tag = document.createElement('span');
-    tag.className = 'scw-co-src-tag scw-co-src-tag--' + kind;
-    tag.textContent = kind === 'remove' ? 'REMOVE FROM INSTALL' : 'ADD FROM QUOTED';
-    banner.insertBefore(tag, chev.nextSibling);
-    banner.addEventListener('click', function (e) {
+  }
+
+  // Delegated banner toggle — survives banner rebuilds. Bound once.
+  if (!document.documentElement.hasAttribute('data-scw-co-strips-bound')) {
+    document.documentElement.setAttribute('data-scw-co-strips-bound', '1');
+    document.addEventListener('click', function (e) {
+      var banner = e.target && e.target.closest &&
+                   e.target.closest('.scw-co-collapsible > .scw-ws-v2-banner');
+      if (!banner) return;
       // Don't hijack real banner controls (e.g. co-adopt's bulk button).
-      if (e.target.closest && e.target.closest('button, a, input, select')) return;
+      if (e.target.closest('button, a, input, select')) return;
+      var panel = banner.parentNode;
+      var viewKey = panel.getAttribute('data-scw-co-src') || '';
       var nowCollapsed = panel.classList.toggle('scw-co-collapsed');
-      _userOpened[viewKey] = !nowCollapsed;
+      if (viewKey) _userOpened[viewKey] = !nowCollapsed;
+      if (!nowCollapsed) setTimeout(function () { focusSearch(panel); }, 60);
     });
-  }
-
-  function expandPanel(viewKey) {
-    _userOpened[viewKey] = true;
-    var panel = document.getElementById('scw-ws-v2-' + viewKey);
-    if (panel) panel.classList.remove('scw-co-collapsed');
-  }
-
-  function jumpTo(viewKey) {
-    var el = document.getElementById('scw-ws-v2-' + viewKey) ||
-             document.getElementById(viewKey);
-    if (!el) return;
-    el.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    el.classList.add('scw-co-ab-flash');
-    setTimeout(function () { el.classList.add('is-fading'); }, 900);
-    setTimeout(function () {
-      el.classList.remove('scw-co-ab-flash', 'is-fading');
-    }, 1800);
-    // Focus the panel's search box once the smooth scroll settles, so the
-    // user can immediately type to filter the (long) source list.
-    // preventScroll keeps the focus from fighting the in-flight scroll.
-    setTimeout(function () {
-      var search = el.querySelector('.scw-ws-v2-search-input');
-      if (search) {
-        try { search.focus({ preventScroll: true }); }
-        catch (e) { search.focus(); }
-      }
-    }, 650);
   }
 
   function mount() {
@@ -161,43 +136,26 @@
     bar.innerHTML =
       '<div class="scw-co-ab-copy">' +
         '<div class="scw-co-ab-title">Draft this change order</div>' +
-        '<div class="scw-co-ab-sub">Add new items, pull in previously quoted ' +
-          'items, or flag installed items for removal. Everything drafts here ' +
-          'before pricing and issue.</div>' +
+        '<div class="scw-co-ab-sub">Add new items with the button, or expand ' +
+          'a panel below to pull in previously quoted items or flag installed ' +
+          'items for removal.</div>' +
       '</div>' +
-      '<div class="scw-co-ab-btns">' +
-        '<button type="button" data-co-ab="add" class="scw-co-ab-pri">' + PLUS_SVG +
-          '<span>Add new item</span></button>' +
-        '<button type="button" data-co-ab="adopt" class="scw-co-ab-sec">' + DOWN_SVG +
-          '<span>Adopt quoted items</span></button>' +
-        '<button type="button" data-co-ab="remove" class="scw-co-ab-sec">' + DOWN_SVG +
-          '<span>Remove installed items</span></button>' +
-      '</div>';
+      '<button type="button" data-co-ab="add">' + PLUS_SVG +
+        '<span>Add new item</span></button>';
     panel.parentNode.insertBefore(bar, panel);
 
     bar.addEventListener('click', function (e) {
       var btn = e.target && e.target.closest && e.target.closest('[data-co-ab]');
       if (!btn) return;
-      var act = btn.getAttribute('data-co-ab');
-      if (act === 'add') {
-        if (ns.coAddForm && typeof ns.coAddForm.open === 'function') {
-          ns.coAddForm.open({ viewKey: CO_VIEW });
-        }
-      } else if (act === 'adopt') {
-        expandPanel(ADOPT_VIEW);
-        jumpTo(ADOPT_VIEW);
-      } else if (act === 'remove') {
-        expandPanel(REMOVE_VIEW);
-        jumpTo(REMOVE_VIEW);
+      if (ns.coAddForm && typeof ns.coAddForm.open === 'function') {
+        ns.coAddForm.open({ viewKey: CO_VIEW });
       }
     });
   }
 
   // Move the (collapsed) source panels directly under the action bar, above
-  // the CO worksheet — no more bouncing to the bottom of the page. Safe to
-  // re-run (idempotent order check); init.js's accordion-relocation no-ops
-  // once the panels live outside any accordion wrapper. Late-mounting panels
-  // get moved by the retry timers.
+  // the CO worksheet. Idempotent order check; init.js's accordion-relocation
+  // no-ops once the panels live outside any accordion wrapper.
   function relocateSources() {
     var bar = document.getElementById(BAR_ID);
     if (!bar || !bar.parentNode) return;
@@ -212,8 +170,8 @@
 
   function mountAll() {
     mount();
-    makeCollapsible(ADOPT_VIEW, 'add');
-    makeCollapsible(REMOVE_VIEW, 'remove');
+    decorate(ADOPT_VIEW, 'add');
+    decorate(REMOVE_VIEW, 'remove');
     relocateSources();
   }
   function mountSoon() {
