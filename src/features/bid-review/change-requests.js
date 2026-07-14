@@ -493,6 +493,18 @@
         // without designator keys) — otherwise the radios render unchecked
         // and submitting as-is would request CLEARING the connection.
         var currentIds = cell[fd.idsKey] || bidCell[fd.idsKey] || [];
+        // Resolve ids from display text when the prefill cell carries a
+        // label but no ids (sourceFromSow derives designator/MDF from the
+        // SOW item's rendered values) — match against the option list.
+        if (!currentIds.length && hasValue(cell[fd.key])) {
+          var wantLbl = String(cell[fd.key]).trim().toLowerCase();
+          for (var wl = 0; wl < recs.length; wl++) {
+            if (String(recs[wl].identifier || '').trim().toLowerCase() === wantLbl) {
+              currentIds = [recs[wl].id];
+              break;
+            }
+          }
+        }
         var prefillIds = (existing && existing.requested[fd.key + 'Ids']) || currentIds;
 
         if (fd.single) {

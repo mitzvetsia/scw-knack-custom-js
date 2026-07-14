@@ -1097,8 +1097,18 @@
         .trim();
     }
 
+    // Designator (drop label) compare — SOW item's computed label
+    // (field_1950 via sowItemLabel) vs the bid record's (field_2365).
+    // Cam/reader rows only (others carry no designator), and only when
+    // BOTH sides actually have a label — a missing label is data lag,
+    // not a requested change.
+    var sowLbl = norm(row.sowItemLabel);
+    var bidLbl = norm(hasText(cell.bidDisplayLabel) ? cell.bidDisplayLabel : row.displayLabel);
+    function hasText(v) { return v != null && String(v).trim() !== ''; }
+
     var m = {
       any:        false,
+      designator: (cablingVisible && sowLbl && bidLbl) ? sowLbl !== bidLbl : false,
       product:    norm(row.sowProduct)   !== norm(cell.productName),
       laborDesc:  norm(row.sowLaborDesc) !== norm(cell.laborDesc),
       fee:        row.sowFee !== cell.labor,
@@ -1119,8 +1129,9 @@
         '| diff?', m.mdfIdf);
     }
 
-    m.any = m.product || m.laborDesc || m.fee || m.cabling || m.connDevice ||
-            m.plenum || m.exterior || m.dropLength || m.conduit || m.mdfIdf;
+    m.any = m.designator || m.product || m.laborDesc || m.fee || m.cabling ||
+            m.connDevice || m.plenum || m.exterior || m.dropLength ||
+            m.conduit || m.mdfIdf;
     return m;
   }
 
@@ -1407,7 +1418,7 @@
     // Per-package mismatch breakdown
     var diffsByPkg = {};
     // Aggregate: which fields differ in ANY package (for SOW detail highlight)
-    var sowDiffs = { any: false, product: false, laborDesc: false, fee: false,
+    var sowDiffs = { any: false, designator: false, product: false, laborDesc: false, fee: false,
                      cabling: false, connDevice: false,
                      plenum: false, exterior: false, dropLength: false, conduit: false,
                      mdfIdf: false };
@@ -1420,6 +1431,7 @@
 
       if (m && m.any) {
         sowDiffs.any = true;
+        if (m.designator) sowDiffs.designator = true;
         if (m.product)    sowDiffs.product    = true;
         if (m.laborDesc)  sowDiffs.laborDesc  = true;
         if (m.fee)        sowDiffs.fee        = true;
@@ -1431,6 +1443,13 @@
         if (m.conduit)    sowDiffs.conduit    = true;
         if (m.mdfIdf)     sowDiffs.mdfIdf     = true;
       }
+    }
+
+    // Designator mismatch → highlight the row-label cell (the designator
+    // renders there, not in the SOW detail cell).
+    if (sowDiffs.designator) {
+      var rowLblEl = labelTd.querySelector('.scw-bid-review__row-label');
+      if (rowLblEl) rowLblEl.classList.add(DIFF_CLS);
     }
 
     // SOW detail cell — highlight cell + individual differing fields

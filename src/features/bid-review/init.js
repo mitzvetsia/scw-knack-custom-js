@@ -2756,6 +2756,18 @@
         bidMdfIdfIds:     [],
         requireSubBid:    cell.requireSubBid,
       };
+      // Designator, derived from the SOW item's computed label ("E-003" →
+      // prefix "E-" + number 3). The SOW's own prefix/number fields aren't
+      // projected on the loaded views, but the label is; the CR modal
+      // resolves the prefix's record id from its option list by text.
+      // Set ONLY when the label parses — an absent key falls back to the
+      // bid's current designator (no change requested).
+      var sowDesigLbl = String(row.sowItemLabel || '').trim();
+      var desigMatch = /^(.*?)(\d+)\s*$/.exec(sowDesigLbl);
+      if (desigMatch && desigMatch[1]) {
+        modalCell.bidDropPrefix = desigMatch[1];
+        modalCell.dropNumber    = parseInt(desigMatch[2], 10);
+      }
     }
 
     ns.changeRequests.open({

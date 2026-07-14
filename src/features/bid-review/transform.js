@@ -327,6 +327,9 @@
           // label + ids alongside the payload-only id above.
           bidDropPrefix:    connectionLabel(rec, FK.dropPrefix),
           bidDropPrefixIds: connectionIdsAll(rec, FK.dropPrefix),
+          // Bid-side computed label (field_2365) — compared against the SOW
+          // item's label (sowItemLabel) for designator mismatch detection.
+          bidDisplayLabel:  raw(rec, FK.displayLabel),
           limitQtyOne:     bool(rec, FK.limitQtyOne),
           mapConnections:  bool(rec, FK.bidMapConn),
           bidMdfIdf:        connectionLabel(rec, FK.mdfIdf),
