@@ -1473,7 +1473,14 @@
     // Cabling diffs anchor on the BID carrying a value (incl. 0), so a bid that
     // simply didn't capture conduit/drop (blank) doesn't flag every row against
     // a spec that has one. Booleans flag on any true≠false delta.
+    // Designator drift — the bid record's copy of the display label
+    // (field_2365, cell.label) vs the SOW line item's authoritative label
+    // (field_1950, swapped onto row.displayLabel by buildState). Both
+    // sides must carry a label — a missing one is data lag, not a change.
+    var sowLblD = norm(row.displayLabel), bidLblD = norm(cell.label);
+
     var m = {
+      designator: (sowLblD && bidLblD) ? sowLblD !== bidLblD : false,
       product:    productDiff,
       laborDesc:  wseq(sowDesc) !== wseq(cell.laborDesc),
       // Anchor qty on the SOW side carrying a value (mirrors the conn anchors)
@@ -1490,9 +1497,9 @@
       connTo:     connToDiff,
       mdfIdf:     mdfDiff
     };
-    m.any = m.product || m.laborDesc || m.qty || m.fee || m.conduit ||
-            m.dropLength || m.plenum || m.exterior || m.existing ||
-            m.connDevice || m.connTo || m.mdfIdf;
+    m.any = m.designator || m.product || m.laborDesc || m.qty || m.fee ||
+            m.conduit || m.dropLength || m.plenum || m.exterior ||
+            m.existing || m.connDevice || m.connTo || m.mdfIdf;
     return m;
   }
 

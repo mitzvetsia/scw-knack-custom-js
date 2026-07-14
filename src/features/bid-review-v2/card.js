@@ -833,10 +833,10 @@
     // no longer matches the SOW line item's authoritative label (field_1950,
     // swapped onto row.displayLabel by the transform). Surface the bid's
     // stale label as a flagged line so the drift is visible instead of the
-    // bid label silently winning the row title.
-    var sowLblN = String(row.displayLabel || '').replace(/\s+/g, ' ').trim().toLowerCase();
-    var bidLblN = String(cell.label || '').replace(/\s+/g, ' ').trim().toLowerCase();
-    var labelDriftHtml = (bidLblN && sowLblN && bidLblN !== sowLblN)
+    // bid label silently winning the row title. Sourced from the SAME
+    // getMismatches designator flag that flips diffs.any, so a designator
+    // change also unlocks the Revise ▾ / Match SOW values menu.
+    var labelDriftHtml = (diffs && diffs.designator)
       ? '<div class="scw-bid-review-v2__cell-conn scw-bid-review-v2__field-diff"' +
           ' data-scw-diff-field="label" title="Bid label: ' +
           escapeHtml(cell.label) + ' — SOW: ' + escapeHtml(row.displayLabel) + '">' +
