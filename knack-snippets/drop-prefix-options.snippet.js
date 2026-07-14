@@ -1,5 +1,12 @@
 /*** BUILDER SNIPPET — window.SCW.dropPrefixOptions ***************************
  *
+ * ⚠️ DEPRECATED (2026-07-14) — superseded by the KEY-FREE view-based read
+ * in src/features/_catalog-views.js (SCW.catalog.dropPrefixes): add a
+ * hidden all-records Drop Prefix grid per scene and register its view id
+ * in that module's CONFIG instead. Only paste this snippet as an interim
+ * measure for scenes that don't have their hidden view yet; retire it
+ * (delete from Builder) once every consuming scene is covered.
+ *
  * Paste into Knack Builder → Settings → API & Code → JavaScript (app-level),
  * alongside the other SCW snippets. Runs before the CDN bundle loads and
  * exposes the Drop Prefix catalog for the in-bundle pickers:
