@@ -279,7 +279,13 @@
       '.scw-coadd__opt:hover{background:#eef2f7;}',
       '.scw-coadd__opt.is-sel{background:#0f4c75;color:#fff;}',
       '.scw-coadd__opt.scw-coadd__hide{display:none;}',
-      '.scw-coadd__menu-empty{padding:10px 11px;font:12px system-ui,sans-serif;color:#94a3b8;}',
+      '.scw-coadd__menu-empty{padding:10px 11px;font:12px/1.4 system-ui,sans-serif;color:#94a3b8;}',
+      // checkbox / radio group (MDF/IDF)
+      '.scw-coadd__checks{display:flex;flex-direction:column;gap:7px;border:1px solid #e2e8f0;',
+      'border-radius:7px;padding:9px 11px;max-height:200px;overflow-y:auto;}',
+      '.scw-coadd__check{display:flex;align-items:center;gap:8px;font:13px/1.3 system-ui,sans-serif;',
+      'color:#1e293b;cursor:pointer;}',
+      '.scw-coadd__check input{cursor:pointer;}',
       '.scw-coadd__toggles{display:flex;flex-wrap:wrap;gap:16px;}',
       '.scw-coadd__tog{display:inline-flex;align-items:center;gap:7px;font:600 12.5px/1 system-ui,sans-serif;color:#334155;cursor:pointer;}',
       '.scw-coadd__foot{display:flex;justify-content:flex-end;gap:10px;padding:14px 20px;border-top:1px solid #e2e8f0;}',
@@ -348,6 +354,12 @@
     }
     input.addEventListener('focus', function () { if (!multi) input.select(); menu.hidden = false; });
     input.addEventListener('input', function () { menu.hidden = false; filter(input.value); });
+    // Close on blur — the menu options preventDefault on mousedown so picking
+    // one does NOT blur the input (multi-select stays open); focus only leaves
+    // when the user clicks/tabs elsewhere, which is exactly when to dismiss.
+    input.addEventListener('blur', function () {
+      setTimeout(function () { menu.hidden = true; }, 120);
+    });
     menu.addEventListener('mousedown', function (e) {
       var opt = e.target.closest && e.target.closest('.scw-coadd__opt');
       if (!opt) return;
@@ -370,6 +382,35 @@
     // close handled at modal level (see below) to avoid per-combo doc leaks
     host._closeMenu = function (target) { if (!host.contains(target)) menu.hidden = true; };
     return { ids: function () { return selected.slice(); } };
+  }
+
+  // ── inline checkbox / radio group (short lists — MDF/IDF) ──────────
+  // All options visible at once, no search. multi → checkboxes, single →
+  // radios.
+  var _cgSeq = 0;
+  function makeCheckGroup(host, cfg) {
+    var multi = !!cfg.multi;
+    var cands = cfg.candidates || [];
+    host.className = 'scw-coadd__checks';
+    if (!cands.length) {
+      host.innerHTML = '<div class="scw-coadd__menu-empty">' + esc(cfg.emptyText || 'No options') + '</div>';
+      if (typeof cfg.onChange === 'function') cfg.onChange([]);
+      return;
+    }
+    var name = 'scw-coadd-cg-' + (++_cgSeq);
+    var type = multi ? 'checkbox' : 'radio';
+    var h = '';
+    for (var i = 0; i < cands.length; i++) {
+      h += '<label class="scw-coadd__check"><input type="' + type + '" name="' + name +
+        '" value="' + esc(cands[i].id) + '"> ' + esc(cands[i].name) + '</label>';
+    }
+    host.innerHTML = h;
+    host.addEventListener('change', function () {
+      var checked = host.querySelectorAll('input:checked');
+      var ids = [];
+      for (var k = 0; k < checked.length; k++) ids.push(checked[k].value);
+      if (typeof cfg.onChange === 'function') cfg.onChange(ids);
+    });
   }
 
   // ── modal ──────────────────────────────────────────────────────────
@@ -407,7 +448,14 @@
       document.removeEventListener('keydown', onKey, true);
       if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
     }
-    function onKey(e) { if (e.key === 'Escape') { e.preventDefault(); close(); } }
+    function onKey(e) {
+      if (e.key !== 'Escape') return;
+      // Escape closes an open combo menu first; only closes the modal when no
+      // menu is open.
+      var openMenu = body.querySelector('.scw-coadd__menu:not([hidden])');
+      if (openMenu) { e.preventDefault(); e.stopPropagation(); openMenu.hidden = true; return; }
+      e.preventDefault(); close();
+    }
     document.addEventListener('keydown', onKey, true);
     overlay.addEventListener('mousedown', function (e) { if (e.target === overlay) close(); });
     overlay.querySelector('.scw-coadd__x').addEventListener('click', close);
@@ -458,9 +506,9 @@
           (fd.mode === 'single' ? '' : ' — one item created per location');
         var mrow = labelRow(lbl);
         var mhost = document.createElement('div'); mrow.appendChild(mhost);
-        combos.mdf = makeCombo(mhost, {
+        // Checkbox (multi) / radio (single) group — short list, all visible.
+        makeCheckGroup(mhost, {
           candidates: mdfCandidates(viewKey), multi: fd.mode !== 'single',
-          placeholder: 'Search MDF / IDF…',
           emptyText: 'No MDF/IDF locations — add one from Manage Deployment first',
           onChange: function (ids) { st.mdfIds = ids; }
         });
@@ -540,6 +588,15 @@
       host.innerHTML = '';
       host.className = '';   // makeCombo re-adds .scw-coadd__combo
       st.accessoryIds = [];
+      // Accessories are per-product, so a single optional-accessory list is
+      // ambiguous once MULTIPLE products are chosen — defer those to the
+      // worksheet card (per item, after creating). Defaults still auto-attach.
+      if (st.productIds.length > 1) {
+        host.innerHTML = '<div class="scw-coadd__menu-empty">Multiple products selected — ' +
+          'add optional accessories per item on the worksheet after creating. ' +
+          '(Default accessories attach automatically.)</div>';
+        return;
+      }
       combos.accessory = makeCombo(host, {
         candidates: accessoryCandidates(st.productIds), multi: true,
         placeholder: 'Search optional accessories…',
