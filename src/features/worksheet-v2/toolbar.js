@@ -269,6 +269,19 @@
   // ── Action handlers ──
   function handleAction(action, viewKey) {
     if (action === 'add-sow') {
+      // Custom add modal (viewCfg.customAddModal) — replaces the native DTO
+      // form entirely. The CO worksheet (view_4079) opts in: it fires a Make
+      // webhook straight from the modal (no DTO staging object), and the modal
+      // reads the CO's SOW id from the hash. Falls through to the menu-link
+      // path only if the modal module isn't loaded.
+      try {
+        var _cVc = ns.cfg && typeof ns.cfg.viewCfg === 'function' && ns.cfg.viewCfg(viewKey);
+        if (_cVc && _cVc.customAddModal &&
+            ns.coAddForm && typeof ns.coAddForm.open === 'function') {
+          ns.coAddForm.open({ viewKey: viewKey });
+          return;
+        }
+      } catch (e) { /* fall through */ }
       // Scene-specific add path. Preferred: viewCfg.addSowMenuView — a
       // Knack menu view whose first link IS the add-to-SOW action
       // (e.g. view_3450 on the sales page, the same link v1 used).

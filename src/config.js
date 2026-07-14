@@ -110,6 +110,23 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   // fireRemove builds it once): installItemIds is ALWAYS an array (one id or
   // many), so Make can parse one way regardless of how many were selected.
   MAKE_CO_REMOVE_ITEMS_WEBHOOK: "https://hook.us1.make.com/yw3x0othv8k4guke6qx91iyo3q5hgnyy",
+  // Change-order ADD item (worksheet-v2/co-add-item-form.js): the custom
+  // "Add line item(s)" modal fires this INSTEAD of the native DTO form. Make
+  // creates SOW Line Item records DIRECTLY from the payload (no DTO staging
+  // object) and connects them to the CO's SOW (field_2154 = coSowId). One
+  // item per (product × MDF/IDF); qty/prefix/startNumber drive label
+  // numbering the same way the old DTO scenario did. Expected:
+  //   Request body: {
+  //     coSowId, bucketId, bucketName,
+  //     productIds: [...], accessoryIds: [...],
+  //     mdfIds: [...],                 // [] when the bucket has no MDF field
+  //     qty, prefix, startNumber,      // startNumber/prefix: cameras only
+  //     existingCabling, exterior, plenum,   // cameras only (bool)
+  //     serviceCost, description, notes,
+  //     triggeredBy: { id, name, email }
+  //   }
+  //   Response: 2xx = accepted (body optional; only {success:false}|{error} fails)
+  MAKE_CO_ADD_ITEMS_WEBHOOK: "https://hook.us1.make.com/ae51ped3yu5m671mx3yvxqyk5r14wp9o",
   // Fires on the "Request Alternative Proposal" stepper action. Expects:
   //   Request body:  { sourceRecordId: <current SOW id>, notes: "<user input>", triggeredBy: {...} }
   //   Response body: { success: true, message?: "..." }

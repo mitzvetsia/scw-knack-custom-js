@@ -210,6 +210,7 @@ cat \
   src/features/worksheet-v2/init.js \
   src/features/worksheet-v2/co-adopt.js \
   src/features/worksheet-v2/co-remove.js \
+  src/features/worksheet-v2/co-add-item-form.js \
   src/features/survey-report-photo-lightbox.js \
   src/features/sales-change-request/render-v2.js \
   src/features/deliverables-worksheet.js \

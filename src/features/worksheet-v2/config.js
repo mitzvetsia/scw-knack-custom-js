@@ -480,13 +480,18 @@
         mdfLabelField:      'field_1642',
         hideSow:            true,   // CO items group by MDF/IDF; SOW pills are noise here
         hideSourceAccordion: true,  // full cutover — hide the native grid + accordion
-        // "+ Add New Item" toolbar button clicks the (hidden) link inside
-        // view_4099 — a menu on the CO scene whose button opens a copy of
-        // the Add-to-SOW form targeted at the CO. Same pattern as the
-        // sales page (view_3450) and review-bids (view_4001). The menu
-        // view itself is hidden by hide-data-source-views.js.
-        addSowMenuView:     'view_4099',
+        // "+ Add New Item" opens the CUSTOM add-item modal (co-add-item-form.js)
+        // instead of the native DTO form: one bucket-filtered product picker
+        // (no per-bucket product-field sprawl), the DTO view's per-bucket
+        // field rules ported in JS, and a direct Make webhook that creates the
+        // SOW line items connected to THIS CO's SOW (id read from the hash —
+        // no default-to-parent form rebuild needed). view_4099/view_4100 are
+        // retired for the CO once this is live.
+        customAddModal:     true,
         addItemLabel:       'Add New Item',
+        // MDF/IDF options for the modal's location picker (CO scene locations).
+        mdfSourceViewKey:   'view_4084',
+        mdfLabelField:      'field_1642',
         fields:  {},
         buckets: {}
       }
