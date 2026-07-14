@@ -2916,32 +2916,33 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
   }
 
   // ============================================================
-  // CHANGE ORDER — "Removed from install scope" sub-sections
+  // CHANGE ORDER — removal treatment + Change Summary manifest
   // ============================================================
   // On a CO's proposal, rows with CO Action (field_2965) = Remove are
-  // CREDITS. Within each L1 (location) group they're pulled out of the
-  // add flow and gathered under a rose "REMOVED FROM INSTALL SCOPE —
-  // CREDIT" band at the TAIL of the L1 (still inside the location, just
-  // before its totals), so the viewer reads "adding here / removing
-  // here" at a glance. An emerald "ADDING TO INSTALL SCOPE" band is
-  // stamped at the top of any L1 that has BOTH adds and removes.
+  // CREDITS. Two layers, both derived inside every pipeline run:
   //
-  // Runs INSIDE the pipeline (after header synthesis, before the totals
-  // pass captures group rows) so every re-run — including the safety-net
-  // re-renders — re-derives it atomically; a post-pass module kept losing
-  // the render race. Totals math: moved rows leave their L2/L3 subtotals
-  // (the add sections read clean) but stay inside the L1, so location
-  // and project totals keep netting the credits.
+  //   1. IN-PLACE row treatment — removed rows (and their product header,
+  //      when the whole block is removed) stay EXACTLY where the grid
+  //      puts them, rose-tinted with a "REMOVED — CREDIT" chip. No row
+  //      is ever MOVED: two earlier attempts (post-pass module, in-
+  //      pipeline re-sectioning) both ended with the removed item eaten
+  //      by downstream machinery (accessory relocation / header hiding).
+  //      Visibility beats layout.
   //
-  // Fails safe: no field_2965 column / no Remove rows → no-op.
+  //   2. "CHANGE ORDER SUMMARY" manifest ABOVE the grid — the at-a-glance
+  //      layer: Adding (N items, subtotal) side by side with Removing
+  //      (N items, credit subtotal) and the net change. Built from the
+  //      view's MODEL records (not the transformed DOM), so no grid
+  //      feature can eat or reorder it. The published HTML/PDF inherits
+  //      it via the publish payload's DOM scrape.
+  //
+  // Fails safe: records without field_2965 (base proposals) → no-op.
 
   const CO_RM = {
-    rowCls:   'scw-co-rm-row',
-    chipCls:  'scw-co-rm-chip',
-    bandCls:  'scw-co-rm-band',
-    addBandCls: 'scw-co-add-band',
-    bannerCls:  'scw-co-rm-banner',
-    styleId:  'scw-co-rm-css',
+    rowCls:     'scw-co-rm-row',
+    chipCls:    'scw-co-rm-chip',
+    summaryId:  'scw-co-change-summary',
+    styleId:    'scw-co-rm-css',
   };
 
   function coRmInjectCss() {
@@ -2952,18 +2953,6 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
     s.id = CO_RM.styleId;
     s.textContent = `
 ${viewSel} { display: none !important; }
-tr.${CO_RM.bandCls} td {
-  background: #ffe4e6 !important; box-shadow: inset 4px 0 0 #e11d48;
-  padding: 5px 12px !important; border-top: 2px solid #fecdd3;
-  font: 700 10.5px/1.6 system-ui, -apple-system, sans-serif;
-  letter-spacing: .07em; text-transform: uppercase; color: #9f1239;
-}
-tr.${CO_RM.addBandCls} td {
-  background: #ecfdf5 !important; box-shadow: inset 4px 0 0 #059669;
-  padding: 5px 12px !important;
-  font: 700 10.5px/1.6 system-ui, -apple-system, sans-serif;
-  letter-spacing: .07em; text-transform: uppercase; color: #065f46;
-}
 tr.${CO_RM.rowCls} td { background: #fff1f2 !important; }
 tr.${CO_RM.rowCls} td:first-child { box-shadow: inset 4px 0 0 #e11d48; }
 tr.kn-table-group.${CO_RM.rowCls} td { background: #ffe4e6 !important; }
@@ -2973,171 +2962,199 @@ tr.kn-table-group.${CO_RM.rowCls} td { background: #ffe4e6 !important; }
   font: 700 9.5px/1.5 system-ui, -apple-system, sans-serif;
   letter-spacing: .06em; white-space: nowrap;
 }
-.${CO_RM.bannerCls} {
-  margin: 0 0 10px; padding: 9px 14px; border: 1px solid #fecdd3;
-  border-radius: 8px; background: #fff1f2; box-shadow: inset 4px 0 0 #e11d48;
-  font: 600 12.5px/1.4 system-ui, -apple-system, sans-serif; color: #9f1239;
+#${CO_RM.summaryId} {
+  margin: 0 0 16px; border: 1px solid #dbe4ee; border-radius: 10px;
+  overflow: hidden; background: #fff;
+  font-family: system-ui, -apple-system, sans-serif;
 }
-.${CO_RM.bannerCls} b { font-weight: 800; }`;
+#${CO_RM.summaryId} .scw-cos-title {
+  padding: 9px 16px; background: #163C6E; color: #fff;
+  font-size: 13px; font-weight: 800; letter-spacing: .05em;
+  text-transform: uppercase;
+}
+#${CO_RM.summaryId} .scw-cos-cols { display: flex; flex-wrap: wrap; }
+#${CO_RM.summaryId} .scw-cos-col { flex: 1 1 320px; min-width: 280px; padding: 12px 16px; }
+#${CO_RM.summaryId} .scw-cos-col--add { box-shadow: inset 4px 0 0 #059669; }
+#${CO_RM.summaryId} .scw-cos-col--rm  { box-shadow: inset 4px 0 0 #e11d48; background: #fff7f7; }
+#${CO_RM.summaryId} .scw-cos-head {
+  font-size: 11px; font-weight: 800; letter-spacing: .07em;
+  text-transform: uppercase; margin-bottom: 8px;
+}
+#${CO_RM.summaryId} .scw-cos-col--add .scw-cos-head { color: #065f46; }
+#${CO_RM.summaryId} .scw-cos-col--rm  .scw-cos-head { color: #9f1239; }
+#${CO_RM.summaryId} table.scw-cos-table { width: 100%; border-collapse: collapse; }
+#${CO_RM.summaryId} table.scw-cos-table td {
+  padding: 4px 6px; font-size: 12.5px; color: #1e293b;
+  border-bottom: 1px solid #eef2f7; vertical-align: top;
+}
+#${CO_RM.summaryId} td.scw-cos-qty { width: 42px; text-align: right; color: #64748b; white-space: nowrap; }
+#${CO_RM.summaryId} td.scw-cos-amt { width: 96px; text-align: right; font-weight: 600; white-space: nowrap; }
+#${CO_RM.summaryId} .scw-cos-col--rm td.scw-cos-amt { color: #be123c; }
+#${CO_RM.summaryId} .scw-cos-lbl { color: #64748b; font-size: 11.5px; }
+#${CO_RM.summaryId} tr.scw-cos-sub td {
+  border-bottom: 0; padding-top: 7px;
+  font-weight: 800; font-size: 12.5px;
+}
+#${CO_RM.summaryId} .scw-cos-net {
+  display: flex; justify-content: flex-end; align-items: baseline; gap: 10px;
+  padding: 9px 16px; border-top: 1px solid #dbe4ee; background: #f8fafc;
+  font-size: 13px; font-weight: 800; color: #163C6E;
+}
+#${CO_RM.summaryId} .scw-cos-net-label {
+  font-size: 11px; letter-spacing: .07em; text-transform: uppercase; color: #64748b;
+}`;
     document.head.appendChild(s);
   }
 
-  function coRmBandRow(cls, text, colspan) {
-    const tr = document.createElement('tr');
-    tr.className = cls;
-    const td = document.createElement('td');
-    td.colSpan = colspan || 12;
-    td.textContent = text;
-    tr.appendChild(td);
-    return tr;
-  }
-
-  function coRmIsRemove(tr) {
+  function coRmIsRemoveTr(tr) {
     const td = tr.querySelector('td.field_2965');
     return !!td && /remove/i.test((td.textContent || '').trim());
   }
+
+  const coRmEsc = (v) => String(v == null ? '' : v)
+    .replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+
+  const coRmMoney = (n) => (n < 0 ? '−' : '') + '$' +
+    Math.abs(n || 0).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
   function sectionCoRemovals(ctx) {
     const tbody = ctx.$tbody[0];
     if (!tbody) return;
     const root = tbody.closest('.kn-view') || document.getElementById(ctx.viewId);
 
-    // Re-derive from scratch every run.
-    tbody.querySelectorAll(
-      `tr.${CO_RM.bandCls}, tr.${CO_RM.addBandCls}`).forEach((n) => n.remove());
-
+    // ── Layer 1: IN-PLACE row treatment (no moving — ever) ─────────────
     const allRows = Array.prototype.slice.call(tbody.querySelectorAll('tr'));
+    const isDataRow = (tr) => tr.tagName === 'TR' && tr.id && tr.id.indexOf('kn-') !== 0;
     const groupLevel = (tr) => {
       if (!tr.classList || !tr.classList.contains('kn-table-group')) return 0;
       const m = tr.className.match(/kn-group-level-(\d+)/);
       return m ? parseInt(m[1], 10) : 0;
     };
-    const isDataRow = (tr) => tr.tagName === 'TR' && tr.id && tr.id.indexOf('kn-') !== 0;
 
-    // Untag rows recycled from a previous run.
+    let anyRemoveRow = false;
     allRows.forEach((tr) => {
-      if (tr.classList.contains(CO_RM.rowCls) && isDataRow(tr) && !coRmIsRemove(tr)) {
+      if (!isDataRow(tr)) return;
+      if (coRmIsRemoveTr(tr)) {
+        anyRemoveRow = true;
+        tr.classList.add(CO_RM.rowCls);
+        const firstTd = tr.querySelector('td');
+        if (firstTd && !firstTd.querySelector('.' + CO_RM.chipCls)) {
+          const chip = document.createElement('span');
+          chip.className = CO_RM.chipCls;
+          chip.textContent = 'REMOVED — CREDIT';
+          firstTd.insertBefore(chip, firstTd.firstChild);
+        }
+      } else if (tr.classList.contains(CO_RM.rowCls)) {
+        // Recycled <tr> from a previous run — untag.
         tr.classList.remove(CO_RM.rowCls);
         const chip = tr.querySelector('.' + CO_RM.chipCls);
         if (chip) chip.remove();
       }
     });
 
-    // Split into L1 segments: [l1HeaderRow, rows...] per location.
-    const segments = [];
-    let seg = null;
-    allRows.forEach((tr) => {
-      if (groupLevel(tr) === 1) { seg = { header: tr, rows: [] }; segments.push(seg); }
-      else if (seg) seg.rows.push(tr);
-    });
+    // Tint group headers whose ENTIRE block is removed (product header of
+    // a fully-removed item reads rose too). Headers stay in place.
+    for (let i = 0; i < allRows.length; i++) {
+      const lvl = groupLevel(allRows[i]);
+      if (lvl < 2) continue;
+      let j = i + 1;
+      let dataCount = 0, removeCount = 0;
+      while (j < allRows.length) {
+        const l2 = groupLevel(allRows[j]);
+        if (l2 && l2 <= lvl) break;
+        if (isDataRow(allRows[j])) {
+          dataCount++;
+          if (coRmIsRemoveTr(allRows[j])) removeCount++;
+        }
+        j++;
+      }
+      allRows[i].classList.toggle(
+        CO_RM.rowCls, dataCount > 0 && dataCount === removeCount);
+    }
 
-    let removedCount = 0;
-    let credit = 0;
-    const laborKey = ctx.keys.labor;
-    const costKey = ctx.keys.cost;
-    const num = (tr, key) => {
-      const td = tr.querySelector('td.' + key);
-      const n = parseFloat(String(td ? td.textContent : '').replace(/[^0-9.\-]/g, ''));
+    // ── Layer 2: Change Summary manifest above the grid (MODEL-based) ──
+    let records = [];
+    try {
+      const v = typeof Knack !== 'undefined' && Knack.views && Knack.views[ctx.viewId];
+      const models = v && v.model && v.model.data && v.model.data.models;
+      if (models) records = models.map((m) => m.attributes || {});
+    } catch (e) { /* model unavailable — summary skipped */ }
+
+    const readTxt = (rec, key) =>
+      String(rec[key] == null ? '' : rec[key]).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+    const readNumF = (rec, key) => {
+      const raw = rec[key + '_raw'];
+      if (typeof raw === 'number') return isFinite(raw) ? raw : 0;
+      const n = parseFloat(readTxt(rec, key).replace(/[^0-9.\-]/g, ''));
       return isFinite(n) ? n : 0;
     };
+    const connLabel = (rec, key) => {
+      const raw = rec[key + '_raw'];
+      if (Array.isArray(raw) && raw.length && raw[0]) return String(raw[0].identifier || '').trim();
+      return readTxt(rec, key);
+    };
 
-    segments.forEach((s) => {
-      // Move units: an entire L2/L3 block when ALL its data rows are
-      // removes (header travels with them), else the individual rows.
-      const moved = [];
-      let i = 0;
-      while (i < s.rows.length) {
-        const tr = s.rows[i];
-        const lvl = groupLevel(tr);
-        if (lvl >= 2) {
-          // Block = this header + everything until the next header of the
-          // same-or-shallower level.
-          const block = [tr];
-          let j = i + 1;
-          while (j < s.rows.length) {
-            const l2 = groupLevel(s.rows[j]);
-            if (l2 && l2 <= lvl) break;
-            block.push(s.rows[j]);
-            j++;
-          }
-          const dataRows = block.filter(isDataRow);
-          if (dataRows.length && dataRows.every(coRmIsRemove)) {
-            moved.push(...block);
-            i = j;
-            continue;
-          }
-          // Mixed block — descend into it row by row.
-          for (let k = 1; k < block.length; k++) {
-            if (isDataRow(block[k]) && coRmIsRemove(block[k])) moved.push(block[k]);
-          }
-          i = j;
-          continue;
-        }
-        if (isDataRow(tr) && coRmIsRemove(tr)) moved.push(tr);
-        i++;
-      }
-      if (!moved.length) return;
-
-      // Tag + tally.
-      moved.forEach((tr) => {
-        tr.classList.add(CO_RM.rowCls);
-        if (isDataRow(tr)) {
-          removedCount++;
-          credit += num(tr, laborKey) + num(tr, costKey);
-          const firstTd = tr.querySelector('td');
-          if (firstTd && !firstTd.querySelector('.' + CO_RM.chipCls)) {
-            const chip = document.createElement('span');
-            chip.className = CO_RM.chipCls;
-            chip.textContent = 'REMOVED — CREDIT';
-            firstTd.insertBefore(chip, firstTd.firstChild);
-          }
-        }
-      });
-
-      const colspan = (() => {
-        const anyData = s.rows.find(isDataRow);
-        return anyData ? anyData.querySelectorAll('td').length : 12;
-      })();
-
-      // "Adding" band under the L1 header — only when the location has
-      // both adds and removes (a pure-removal location needs no add band).
-      const hasAdds = s.rows.some((tr) => isDataRow(tr) && !coRmIsRemove(tr));
-      if (hasAdds) {
-        tbody.insertBefore(
-          coRmBandRow(CO_RM.addBandCls, 'Adding to install scope', colspan),
-          s.header.nextSibling);
-      }
-
-      // Rose band + moved block at the TAIL of the L1 segment (before the
-      // next L1 header, or the end of the tbody).
-      const lastRow = s.rows[s.rows.length - 1];
-      const boundary = lastRow ? lastRow.nextSibling : null;
-      tbody.insertBefore(
-        coRmBandRow(CO_RM.bandCls, 'Removed from install scope — credit', colspan),
-        boundary);
-      moved.forEach((tr) => tbody.insertBefore(tr, boundary));
+    const adds = [], removes = [];
+    records.forEach((rec) => {
+      const action = readTxt(rec, 'field_2965');
+      const product = connLabel(rec, 'field_1949');
+      const label = readTxt(rec, 'field_1950');
+      // Line value = install fee + equipment net (same composition as the
+      // CO worksheet's value strip).
+      const amt = readNumF(rec, ctx.keys.labor) + readNumF(rec, 'field_2269');
+      const entry = {
+        product: product,
+        label: label,
+        qty: readNumF(rec, ctx.keys.qty) || 1,
+        amt: amt,
+      };
+      if (/remove/i.test(action)) removes.push(entry);
+      // Adds: only rows with something to show (skips assumptions text rows).
+      else if (product || amt) adds.push(entry);
     });
 
-    // Grid-top banner (idempotent; removed when no removals).
-    if (root) {
-      let banner = root.querySelector('.' + CO_RM.bannerCls);
-      if (!removedCount) {
-        if (banner) banner.remove();
-      } else {
-        if (!banner) {
-          banner = document.createElement('div');
-          banner.className = CO_RM.bannerCls;
-          const table = root.querySelector('table');
-          (table ? table.parentNode : root).insertBefore(banner, table || root.firstChild);
-        }
-        banner.innerHTML =
-          `This change order <b>removes ${removedCount} item${removedCount === 1 ? '' : 's'}</b>` +
-          ` from the install scope${credit ? ` — credit <b>${credit < 0 ? '−' : ''}$` +
-          Math.abs(credit).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) +
-          '</b>' : ''}. Removed items are grouped in red at the end of their location.`;
-      }
+    let summary = root ? root.querySelector('#' + CO_RM.summaryId) : null;
+    if (!removes.length) {
+      // Base proposal / add-only CO — no manifest, no CSS, nothing changes.
+      if (summary) summary.remove();
+      if (anyRemoveRow) coRmInjectCss();
+      return;
     }
-    if (removedCount) coRmInjectCss();
+    coRmInjectCss();
+    if (root) {
+      if (!summary) {
+        summary = document.createElement('div');
+        summary.id = CO_RM.summaryId;
+        const table = root.querySelector('table');
+        (table ? table.parentNode : root).insertBefore(summary, table || root.firstChild);
+      }
+      const itemRows = (list) => list.map((e) =>
+        `<tr><td>${coRmEsc(e.product || '(item)')}` +
+        (e.label ? ` <span class="scw-cos-lbl">${coRmEsc(e.label)}</span>` : '') +
+        `</td><td class="scw-cos-qty">${e.qty}</td>` +
+        `<td class="scw-cos-amt">${coRmEsc(coRmMoney(e.amt))}</td></tr>`).join('');
+      const subRow = (label, total) =>
+        `<tr class="scw-cos-sub"><td>${coRmEsc(label)}</td><td></td>` +
+        `<td class="scw-cos-amt">${coRmEsc(coRmMoney(total))}</td></tr>`;
+      const addTotal = adds.reduce((t, e) => t + e.amt, 0);
+      const rmTotal  = removes.reduce((t, e) => t + e.amt, 0);
+
+      summary.innerHTML =
+        `<div class="scw-cos-title">Change Order Summary</div>` +
+        `<div class="scw-cos-cols">` +
+          (adds.length ?
+            `<div class="scw-cos-col scw-cos-col--add">` +
+              `<div class="scw-cos-head">Adding to install scope (${adds.length})</div>` +
+              `<table class="scw-cos-table"><tbody>${itemRows(adds)}${subRow('Subtotal — additions', addTotal)}</tbody></table>` +
+            `</div>` : '') +
+          `<div class="scw-cos-col scw-cos-col--rm">` +
+            `<div class="scw-cos-head">Removing from install scope — credit (${removes.length})</div>` +
+            `<table class="scw-cos-table"><tbody>${itemRows(removes)}${subRow('Subtotal — credits', rmTotal)}</tbody></table>` +
+          `</div>` +
+        `</div>` +
+        `<div class="scw-cos-net"><span class="scw-cos-net-label">Net change</span>` +
+        `<span>${coRmEsc(coRmMoney(addTotal + rmTotal))}</span></div>`;
+    }
   }
 
   // ============================================================
