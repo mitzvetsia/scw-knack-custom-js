@@ -488,9 +488,6 @@
         // is suppressed (redundant with the strip); view_4099/view_4100 are
         // retired for the CO once this is live.
         noAddItem:          true,
-        // MDF/IDF options for the modal's location picker (CO scene locations).
-        mdfSourceViewKey:   'view_4084',
-        mdfLabelField:      'field_1642',
         // Per-row delete guard (card.js kebabCell + init.js unlink handler):
         // an item whose field_2154 lists a SOW OTHER than this CO's SOW was
         // ADOPTED from survey/bid (a shared record) → offer UNLINK (disconnect
