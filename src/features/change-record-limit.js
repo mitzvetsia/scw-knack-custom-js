@@ -29,7 +29,10 @@
     // Change Order scene: CO line items (v2 source), MDF/IDF locations,
     // project install items (removal source), project SOW/proposal items
     // (adoption source). All read whole via the Backbone model.
-    'view_4079', 'view_4084', 'view_4086', 'view_4088'
+    'view_4079', 'view_4084', 'view_4086', 'view_4088',
+    // Sub portal Manage Change Order page (scene_1374) — 1:1 analogues of
+    // the four CO scene views above, same full-model rationale.
+    'view_4112', 'view_4114', 'view_4116', 'view_4118'
   ];
   const LIMIT_VALUE = '1000';
   const LIMIT_NUM = 1000;
@@ -58,7 +61,9 @@
     // review-bids DOC_photos delete-plumbing grid (see VIEW_IDS above)
     'view_4098',
     // Change Order scene views (see VIEW_IDS above)
-    'view_4079', 'view_4084', 'view_4086', 'view_4088'
+    'view_4079', 'view_4084', 'view_4086', 'view_4088',
+    // Sub portal Manage Change Order views (see VIEW_IDS above)
+    'view_4112', 'view_4114', 'view_4116', 'view_4118'
   ];
 
   (function injectHidePaginationCss() {

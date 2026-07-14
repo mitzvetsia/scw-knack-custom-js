@@ -1,7 +1,7 @@
-/*** CHANGE ORDER VALUE STRIP (scene_1362) *********************************
+/*** CHANGE ORDER VALUE STRIP (scene_1362 + sub scene_1374) ****************
  *
  * Live valuation of the CO being drafted, rendered into the CO header card
- * (view_4092) directly under the CO-number/status row:
+ * directly under the CO-number/status row:
  *
  *   [ ADDS  n lines ]  [ CREDITS  n lines ]  [ NET CHANGE ]
  *     $1,252.00           −$1,336.00            −$84.00
@@ -17,9 +17,13 @@
  * If a Remove line's money hasn't been negated (seeding gap), its positive
  * value shows up in the Credits tile — deliberately visible, not masked.
  *
- * Data source: the CO worksheet's own view model (view_4079) via the v2
- * data layer — subscribe() keeps the strip live as lines are added/edited/
- * removed, readRecords() serves the mount-time render.
+ * Data source: the CO worksheet's own view model via the v2 data layer —
+ * subscribe() keeps the strip live as lines are added/edited/removed,
+ * readRecords() serves the mount-time render.
+ *
+ * Deployments: internal CO drafting scene (view_4092 header ← view_4079
+ * worksheet) and the sub portal Manage Change Order page (view_4121 header
+ * ← view_4112 worksheet).
  ***************************************************************************/
 (function () {
   'use strict';
@@ -27,11 +31,11 @@
   var ns = window.SCW && window.SCW.worksheetV2;
   if (!ns) return;
 
-  var CO_VIEW  = 'view_4079';   // CO worksheet (SOW line items on this CO)
-  var HDR_VIEW = 'view_4092';   // CO header card form (co-header-card.js)
-  var EL_ID    = 'scw-co-value';
+  var PAIRS = [
+    { coView: 'view_4079', hdrView: 'view_4092' },   // internal scene_1362
+    { coView: 'view_4112', hdrView: 'view_4121' }    // sub portal scene_1374
+  ];
   var STYLE_ID = 'scw-co-value-css';
-  var EVENT_NS = '.scwCoValue';
 
   var F_ACTION = 'field_2965';  // CO_FLAG action (Remove on credit lines)
   var F_EQUIP  = 'field_2269';  // equipment extended net
@@ -42,7 +46,7 @@
     var s = document.createElement('style');
     s.id = STYLE_ID;
     s.textContent = [
-      '#' + EL_ID + '{display:flex;gap:10px;flex-wrap:wrap;',
+      '.scw-co-value{display:flex;gap:10px;flex-wrap:wrap;',
       'padding:12px 0;margin-bottom:14px;border-bottom:1px solid #e2e8f0;}',
       '.scw-co-val-tile{flex:1 1 170px;min-width:160px;border:1px solid #e2e8f0;',
       'border-radius:8px;padding:8px 12px;background:#fff;}',
@@ -119,16 +123,18 @@
     '</div>';
   }
 
-  function render() {
-    var viewEl = document.getElementById(HDR_VIEW);
+  function render(pair) {
+    var elId = 'scw-co-value-' + pair.coView;
+    var viewEl = document.getElementById(pair.hdrView);
     var form = viewEl && viewEl.querySelector('form');
     if (!form) return;
     injectCss();
 
-    var el = document.getElementById(EL_ID);
+    var el = document.getElementById(elId);
     if (!el) {
       el = document.createElement('div');
-      el.id = EL_ID;
+      el.id = elId;
+      el.className = 'scw-co-value';
     }
     // Keep the strip pinned under the header row — or under the stage strip
     // (co-stage-strip.js) when it's mounted between them. Both build on
@@ -144,7 +150,7 @@
     var records = [];
     try {
       if (ns.data && typeof ns.data.readRecords === 'function') {
-        records = ns.data.readRecords(CO_VIEW) || [];
+        records = ns.data.readRecords(pair.coView) || [];
       }
     } catch (e) { /* view not loaded yet — render zeros */ }
 
@@ -156,22 +162,25 @@
            t.adds.eq + t.rem.eq, t.adds.fee + t.rem.fee);
   }
 
-  function soon() {
-    // After co-header-card's 50ms enhance pass so .scw-co-hdr exists.
-    setTimeout(render, 120);
-    setTimeout(render, 600);   // catch a late v2 model populate
-  }
+  PAIRS.forEach(function (pair) {
+    var EVENT_NS = '.scwCoValue' + pair.coView.replace('view_', '');
+    function soon() {
+      // After co-header-card's 50ms enhance pass so .scw-co-hdr exists.
+      setTimeout(function () { render(pair); }, 120);
+      setTimeout(function () { render(pair); }, 600);   // catch a late v2 model populate
+    }
 
-  // Live updates as CO lines are added / edited / removed.
-  if (ns.data && typeof ns.data.subscribe === 'function') {
-    ns.data.subscribe(CO_VIEW, function () { render(); });
-  }
+    // Live updates as CO lines are added / edited / removed.
+    if (ns.data && typeof ns.data.subscribe === 'function') {
+      ns.data.subscribe(pair.coView, function () { render(pair); });
+    }
 
-  if (window.SCW && typeof SCW.onViewRender === 'function') {
-    SCW.onViewRender(HDR_VIEW, soon, EVENT_NS);
-    SCW.onViewRender(CO_VIEW, soon, EVENT_NS);
-  }
-  $(document).off('knack-view-render.' + HDR_VIEW + EVENT_NS)
-    .on('knack-view-render.' + HDR_VIEW + EVENT_NS, soon);
+    if (window.SCW && typeof SCW.onViewRender === 'function') {
+      SCW.onViewRender(pair.hdrView, soon, EVENT_NS);
+      SCW.onViewRender(pair.coView, soon, EVENT_NS);
+    }
+    $(document).off('knack-view-render.' + pair.hdrView + EVENT_NS)
+      .on('knack-view-render.' + pair.hdrView + EVENT_NS, soon);
+  });
 })();
 /*** END: CO value strip ***************************************************/

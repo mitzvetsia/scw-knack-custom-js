@@ -44,8 +44,19 @@
   var LOG_PREFIX = '[scw-co-remove]';
 
   // The CO worksheet on the same scene — refetched after a removal so the new
-  // Remove line appears there without a reload.
+  // Remove line appears there without a reload. Per-deployment override via
+  // the config entry's `coViewKey` (sub scene_1374 panels point at view_4112);
+  // no override = the internal CO drafting scene.
   var CO_VIEW_DEFAULT = 'view_4079';
+  function coViewFor(viewKey) {
+    var views = (ns.CONFIG && ns.CONFIG.views) || [];
+    for (var i = 0; i < views.length; i++) {
+      if (views[i] && views[i].sourceViewKey === viewKey) {
+        return views[i].coViewKey || CO_VIEW_DEFAULT;
+      }
+    }
+    return CO_VIEW_DEFAULT;
+  }
 
   // Multi-select state: install record id → true. Survives re-renders.
   var _sel = {};
@@ -663,7 +674,7 @@
   // Staggered refetches — Make's writes land asynchronously after the response.
   function refetchAfterRemove(removeViewKey) {
     function refetch() {
-      [CO_VIEW_DEFAULT, removeViewKey].forEach(function (vk) {
+      [coViewFor(removeViewKey), removeViewKey].forEach(function (vk) {
         var v = window.Knack && Knack.views && Knack.views[vk];
         if (v && v.model && typeof v.model.fetch === 'function') {
           try { v.model.fetch(); } catch (e) { /* next tick catches it */ }

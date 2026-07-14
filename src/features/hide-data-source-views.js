@@ -121,6 +121,10 @@
     // on the CO drafting scene. co-stage-strip.js reads status/snapshot
     // from its model and polls it while the CO is Pending Sub Pricing.
     'view_4109',
+    // 'view_4122' — CO record details on the sub portal Manage Change
+    // Order page (scene_1374). co-sub-lock.js reads CO Status from its
+    // model to decide the page-wide edit window.
+    'view_4122',
   ];
 
   // Views that must NEVER be hidden as collateral damage from the

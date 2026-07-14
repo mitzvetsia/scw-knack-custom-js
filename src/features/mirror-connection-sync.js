@@ -2383,6 +2383,21 @@
     PUBLIC_API_NAME:     'silentRegroupView4079'
   });
 
+  // view_4112 (sub portal "Manage Change Order" scene_1374 — the 1:1
+  // analogue of view_4079; same SOW Line Items object rendered by
+  // worksheet-v2). The sub edits connections during the Sub Pricing window,
+  // so the field_1957 ↔ field_2197 cascade must fire here too.
+  createMirror({
+    VIEW_ID:             'view_4112',
+    TRIGGER_FIELD:       'field_1957',
+    CONNECTIONS_FIELD:   'field_2197',
+    GROUPING_FIELD:      'field_1946',
+    SOW_FIELD:           'field_2154',
+    LABEL_FIELD:         'field_1950',
+    MODEL_ONLY:          true,
+    PUBLIC_API_NAME:     'silentRegroupView4112'
+  });
+
   // Backward-compat alias for any lingering DevTools snippets that
   // referenced the old "silentPoll" name.
   window.SCW = window.SCW || {};

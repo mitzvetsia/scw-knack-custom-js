@@ -1575,6 +1575,18 @@
     '#view_4086 { display: none !important; }',
     '.scw-ktl-accordion:has(#view_4088) { display: none !important; }',
     '#view_4088 { display: none !important; }',
+    /* Sub portal "Manage Change Order" page (scene_1374) — 1:1 analogues of
+       the CO scene views above: view_4112 (CO worksheet source), view_4114
+       (MDF/IDF locations), view_4116 (removal source), view_4118 (adoption
+       source). Same full cutover: models keep loading, native areas hide. */
+    '.scw-ktl-accordion:has(#view_4112) { display: none !important; }',
+    '#view_4112 { display: none !important; }',
+    '.scw-ktl-accordion:has(#view_4114) { display: none !important; }',
+    '#view_4114 { display: none !important; }',
+    '.scw-ktl-accordion:has(#view_4116) { display: none !important; }',
+    '#view_4116 { display: none !important; }',
+    '.scw-ktl-accordion:has(#view_4118) { display: none !important; }',
+    '#view_4118 { display: none !important; }',
 
     /* ── Read-only panels (viewCfg.readOnly — e.g. the CO adoption panel
        view_4088) ─────────────────────────────────────────────────────────

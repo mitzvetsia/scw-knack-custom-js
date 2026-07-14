@@ -634,6 +634,47 @@
     views.push(clone);
   })();
 
+  // ── SUB PORTAL "Manage Change Order" page (scene_1374) ────────────────
+  //    The sub prices the CO on their own page with the SAME drafting
+  //    experience as the internal CO scene (scene_1362). Every view there is
+  //    a 1:1 analogue of an internal one — same objects, same columns:
+  //      view_4112 ← view_4079  CO worksheet (line items on this CO)
+  //      view_4114 ← view_4084  MDF/IDF locations (L1 seeding)
+  //      view_4116 ← view_4086  project install items (removal source)
+  //      view_4118 ← view_4088  project SOW/proposal items (adoption source)
+  //      view_4121 ← view_4092  CO header form (co-header-card / co-value)
+  //      view_4122 ← view_4109  hidden CO status details (co-sub-lock reads)
+  //    Clone the three v2 entries and swap only the keys. `coViewKey` tells
+  //    co-adopt/co-remove which CO worksheet to refetch after their webhook
+  //    fires (they default to view_4079). Edit-window enforcement is
+  //    co-sub-lock.js — everything on scene_1374 locks unless CO Status is
+  //    Pending Sub Pricing; these panels get the same lock treatment there.
+  (function cloneCoEntriesForSubScene() {
+    var views = SCW.worksheetV2.CONFIG.views || [];
+    function entry(key) {
+      for (var i = 0; i < views.length; i++) {
+        if (views[i] && views[i].sourceViewKey === key) return views[i];
+      }
+      return null;
+    }
+    var MAP = [
+      { from: 'view_4079', to: 'view_4112' },
+      { from: 'view_4088', to: 'view_4118' },
+      { from: 'view_4086', to: 'view_4116' }
+    ];
+    for (var i = 0; i < MAP.length; i++) {
+      var src = entry(MAP[i].from);
+      if (!src) continue;
+      var clone = JSON.parse(JSON.stringify(src));
+      clone.sourceViewKey      = MAP[i].to;
+      clone.mountAfterSelector = '#' + MAP[i].to;
+      clone.mdfSourceViewKey   = 'view_4114';
+      if (clone.mountAfterFallback) clone.mountAfterFallback = '#view_4112';
+      if (clone.adopt || clone.remove) clone.coViewKey = 'view_4112';
+      views.push(clone);
+    }
+  })();
+
   // ── Resolver API ──────────────────────────────────────────────────
   // Modules read field keys + bucket ids through these so a deployment is
   // pure config. Cheap; safe to call per render.

@@ -1,6 +1,6 @@
-/*** CHANGE ORDER HEADER CARD (view_4092) **********************************
+/*** CHANGE ORDER HEADER CARD (view_4092 / view_4121) **********************
  *
- * The CO scene's header form renders raw: an unlabeled equation value
+ * A CO scene's header form renders raw: an unlabeled equation value
  * ("1410"), an unlabeled status ("Draft"), Builder-facing input labels
  * ("INPUT: sow friendly name" / "INPUT_notes"), and a bare Submit. Nothing
  * tells the user where they are.
@@ -11,18 +11,26 @@
  *   - Human labels: "Change order name" / "Notes"
  *   - Submit → "Save details"
  *
- * Fields (Update SOW_sow header form):
+ * Fields (Update SOW_sow header form — identical on both views):
  *   field_2123 — CO / SOW number (equation, read-only)
  *   field_2953 — CO status (read-only)   Draft/…/Void
  *   field_2126 — friendly name (input)
  *   field_2198 — notes (textarea)
+ *
+ * Deployments: view_4092 (internal CO drafting scene_1362) and view_4121
+ * (sub portal Manage Change Order scene_1374 — same form, sub's page).
  ***************************************************************************/
 (function () {
   'use strict';
 
-  var VIEW     = 'view_4092';
-  var STYLE_ID = 'scw-co-hdr-css';
-  var EVENT_NS = '.scwCoHeader';
+  var VIEWS = ['view_4092', 'view_4121'];
+
+  // Breadcrumb back-link label per deployment (what the PARENT page is
+  // called on that portal).
+  var BACK_LABELS = {
+    view_4092: 'Manage Deployment',
+    view_4121: 'Deployment Dashboard'
+  };
 
   // Status → pill tone. Unknown statuses fall back to amber (in-flight).
   var STATUS_TONES = {
@@ -35,10 +43,11 @@
   };
   var TONE_DEFAULT = { fg: '#b45309', bg: '#fffbeb', bd: '#fde68a' };
 
-  function injectCss() {
-    if (document.getElementById(STYLE_ID)) return;
+  function injectCss(VIEW) {
+    var styleId = 'scw-co-hdr-css-' + VIEW;
+    if (document.getElementById(styleId)) return;
     var s = document.createElement('style');
-    s.id = STYLE_ID;
+    s.id = styleId;
     s.textContent = [
       // Card shell around the whole form.
       '#' + VIEW + ' form{background:#fff;border:1px solid #e2e8f0;border-radius:10px;',
@@ -116,12 +125,12 @@
     return '';
   }
 
-  function enhance() {
+  function enhance(VIEW) {
     var viewEl = document.getElementById(VIEW);
     if (!viewEl) return;
     var form = viewEl.querySelector('form');
     if (!form) return;
-    injectCss();
+    injectCss(VIEW);
 
     var num    = readOnlyValue(viewEl, 'field_2123');
     var status = readOnlyValue(viewEl, 'field_2953');
@@ -136,8 +145,9 @@
       form.insertBefore(crumb, form.firstChild);
     }
     var pHash = parentHash();
+    var backLabel = BACK_LABELS[VIEW] || 'Manage Deployment';
     crumb.innerHTML =
-      (pHash ? '<a href="' + esc(pHash) + '">&larr; Manage Deployment</a>' +
+      (pHash ? '<a href="' + esc(pHash) + '">&larr; ' + esc(backLabel) + '</a>' +
                '<span class="scw-co-crumb-sep">/</span>' : '') +
       '<span class="scw-co-crumb-here">Change Order' +
         (num ? ' ' + esc(num) : '') + '</span>';
@@ -164,12 +174,15 @@
     if (btn && btn.textContent.trim() === 'Submit') btn.textContent = 'Save details';
   }
 
-  function soon() { setTimeout(enhance, 50); }
+  VIEWS.forEach(function (VIEW) {
+    var EVENT_NS = '.scwCoHeader' + VIEW.replace('view_', '');
+    function soon() { setTimeout(function () { enhance(VIEW); }, 50); }
 
-  if (window.SCW && typeof SCW.onViewRender === 'function') {
-    SCW.onViewRender(VIEW, soon, EVENT_NS);
-  }
-  $(document).off('knack-view-render.' + VIEW + EVENT_NS)
-    .on('knack-view-render.' + VIEW + EVENT_NS, soon);
+    if (window.SCW && typeof SCW.onViewRender === 'function') {
+      SCW.onViewRender(VIEW, soon, EVENT_NS);
+    }
+    $(document).off('knack-view-render.' + VIEW + EVENT_NS)
+      .on('knack-view-render.' + VIEW + EVENT_NS, soon);
+  });
 })();
 /*** END: CO header card ***************************************************/

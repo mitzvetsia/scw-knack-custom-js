@@ -4,20 +4,23 @@
  * (docs/change-orders.md edit-window table: Pending Sub Pricing = the sub's
  * window; every other status the sub is read-only.)
  *
- * The page is raw Knack views (no worksheet-v2 mounted here yet):
- *   view_4121 — CO header form (number/status read-only, name + notes inputs)
- *   view_4112 — Line Items Connected to this CO (cell-edit grid, delete/edit
- *               links, add-accessory / add-photo link columns)
+ * The page mirrors the internal CO drafting scene (scene_1362) 1:1 —
+ * worksheet-v2 + the CO modules are deployed on its analogous views:
+ *   view_4121 — CO header form (co-header-card + co-value strip)
+ *   view_4112 — CO worksheet (v2 cards — the write surface)
  *   view_4114 — Manage MDFs/IDFs (mdf-idf-cards inputs, delete, photos)
- *   view_4116 — WHAT WE'RE INSTALLING (install grid, cell-edit + links)
- *   view_4118 — V2 device worksheet source grid (rows hidden; same treatment)
+ *   view_4116 — project install items (v2 remove panel, co-remove.js)
+ *   view_4118 — project SOW/proposal items (v2 adopt panel, co-adopt.js)
  *   view_4122 — SOW header details (CO Status field_2953 — the status READ)
  *
  * When CO Status (field_2953) does NOT match /sub pricing/i (blank/unknown
  * fails safe to LOCKED):
  *   - a lock banner renders at the top of the scene with the current status
- *   - all inline cell editing is dead (pointer-events + capture-phase click
- *     belt), delete / edit / add-accessory / add-photo link columns hidden
+ *   - the v2 CO worksheet flips to read-only (the same .scw-ws-v2--readonly
+ *     treatment the adopt panel uses) and its toolbar hides
+ *   - the add/adopt/remove strips block hides entirely (no drafting verbs)
+ *   - all native inline cell editing is dead (pointer-events + capture-phase
+ *     click belt), delete / edit / add-accessory / add-photo links hidden
  *   - the header form's inputs go white-bg read-only (repo locked-field
  *     convention) and its Submit hides
  *   - MDF/IDF card inputs lock, their delete / add-photo affordances hide
@@ -35,6 +38,10 @@
     STATUS_VIEW:  'view_4122',   // details view carrying CO Status
     STATUS_FIELD: 'field_2953',
     GRIDS:        ['view_4112', 'view_4114', 'view_4116', 'view_4118'],
+    // worksheet-v2 surfaces on this scene (mirror of the internal CO scene):
+    V2_CO_VIEW:   'view_4112',   // the v2 CO worksheet panel → read-only
+    V2_HIDE:      ['view_4118', 'view_4116'],   // adopt + remove panels → hidden
+    STRIPS_WRAP:  'scw-co-strips-view_4112',    // co-scene-header strips block
     OPEN_RE:      /sub pricing/i   // matches "Pending Sub Pricing"
   };
 
@@ -100,6 +107,15 @@
       S + ' .scw-mdf-photos,',
       S + ' .scw-inline-photo-add{display:none !important;}',
       S + ' .scw-inline-photo-strip{pointer-events:none !important;}',
+      // ── worksheet-v2 surfaces (mirror of the internal drafting scene) ──
+      // No drafting verbs while locked: the add/adopt/remove strips block
+      // hides whole, and the CO worksheet's toolbar (bulk CTAs, add) goes.
+      // The worksheet itself stays READABLE — apply() stamps it with the
+      // same .scw-ws-v2--readonly class styles.js already knows.
+      'body.' + LOCK_CLS + ' #' + CFG.STRIPS_WRAP + '{display:none !important;}',
+      'body.' + LOCK_CLS + ' #scw-ws-v2-' + CFG.V2_HIDE[0] + ',',
+      'body.' + LOCK_CLS + ' #scw-ws-v2-' + CFG.V2_HIDE[1] + '{display:none !important;}',
+      'body.' + LOCK_CLS + ' #scw-ws-v2-' + CFG.V2_CO_VIEW + ' .scw-ws-v2-toolbar{display:none !important;}',
       // ── lock banner ──
       '#' + BANNER_ID + '{display:flex;align-items:center;gap:10px;',
       'margin:0 0 14px;padding:11px 16px;border-radius:8px;',
@@ -134,7 +150,13 @@
     var root = sceneRoot();
     if (!root) return;
     var sel = '#' + CFG.HDR_FORM + ' input, #' + CFG.HDR_FORM + ' textarea, ' +
-      '.scw-mdf-input';
+      '.scw-mdf-input, ' +
+      // v2 CO worksheet card inputs — pointer path dies via the readonly
+      // class; this is the keyboard tab-and-type belt (same as co-adopt.js
+      // does for the adopt panel).
+      '#scw-ws-v2-' + CFG.V2_CO_VIEW + ' input, ' +
+      '#scw-ws-v2-' + CFG.V2_CO_VIEW + ' textarea, ' +
+      '#scw-ws-v2-' + CFG.V2_CO_VIEW + ' select';
     var els = root.querySelectorAll(sel);
     for (var i = 0; i < els.length; i++) {
       if (locked) {
@@ -151,6 +173,25 @@
 
   var _locked = false;
 
+  // Flip the v2 CO worksheet between live and read-only. Two layers so a
+  // rebuild can't lose the state: (a) stamp the mounted panel with the
+  // .scw-ws-v2--readonly class styles.js already handles, (b) flip the
+  // config entry's readOnly so any FULL panel rebuild bakes it in.
+  function lockV2Worksheet(locked) {
+    var panel = document.getElementById('scw-ws-v2-' + CFG.V2_CO_VIEW);
+    if (panel) panel.classList.toggle('scw-ws-v2--readonly', locked);
+    try {
+      var ws = window.SCW && SCW.worksheetV2;
+      var views = ws && ws.CONFIG && ws.CONFIG.views || [];
+      for (var i = 0; i < views.length; i++) {
+        if (views[i] && views[i].sourceViewKey === CFG.V2_CO_VIEW) {
+          views[i].readOnly = locked;
+          break;
+        }
+      }
+    } catch (e) { /* class stamp above still holds */ }
+  }
+
   function apply() {
     if (!sceneRoot()) {
       _locked = false;
@@ -162,6 +203,7 @@
     _locked = !CFG.OPEN_RE.test(status);   // blank/unknown → locked
     document.body.classList.toggle(LOCK_CLS, _locked);
     renderBanner(_locked, status);
+    lockV2Worksheet(_locked);
     lockInputs(_locked);
   }
 
@@ -197,6 +239,14 @@
   if (window.SCW && typeof SCW.onSceneRender === 'function') {
     SCW.onSceneRender(CFG.SCENE, soon, EVENT_NS);
   }
+  // v2 rebuilds recreate the worksheet's card inputs on data notifies that
+  // never fire knack-view-render — re-apply the lock after each one.
+  (function () {
+    var ws = window.SCW && SCW.worksheetV2;
+    if (ws && ws.data && typeof ws.data.subscribe === 'function') {
+      ws.data.subscribe(CFG.V2_CO_VIEW, soon);
+    }
+  })();
   if (window.SCW && typeof SCW.onViewRender === 'function') {
     SCW.onViewRender(CFG.STATUS_VIEW, soon, EVENT_NS);
     SCW.onViewRender(CFG.HDR_FORM, soon, EVENT_NS);

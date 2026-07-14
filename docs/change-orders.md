@@ -430,6 +430,20 @@ but never got installed (not part of a greenlit SOW).
    whenever CO Status (field_2953, read off view_4122) doesn't match
    /sub pricing/i — blank/unknown fails safe to locked. Applies to
    everyone on the scene; ops manage from the internal drafting scene.
+   **Full drafting deployment shipped 2026-07-14 (same day)**: scene_1374's
+   views are 1:1 analogues of the internal CO scene and now run the SAME
+   code — worksheet-v2 CO worksheet on view_4112 (config clone of the
+   view_4079 entry, incl. its own `createMirror` field_1957↔2197 cascade
+   instance), adopt panel on view_4118, remove panel on view_4116
+   (`coViewKey: 'view_4112'` steers their post-webhook refetch), MDF L1
+   seeding from view_4114, co-header-card + co-value strip on view_4121,
+   and the co-scene-header add/adopt/remove strips block. co-sub-lock now
+   also flips the v2 worksheet to `.scw-ws-v2--readonly` and hides the
+   strips block + adopt/remove panels while locked. Deliberately NOT
+   deployed to the sub scene: co-stage-strip (its verbs — Send to Sub /
+   Send back / Preview & Issue — are ops actions). Still missing: the
+   sub's own hand-back verb ("Submit pricing to SCW" → flips status to
+   Ops Review) — the sub currently has no button to end their window.
 6. view_4056 chips ("Pending CO-###") + toolbar/card entry points ("New
    Change Order" in the suppressed toolbar slot — worksheet-v2/toolbar.js:151
    `noAddItem` comment anticipates this; "Remove via CO" on the card menu).
