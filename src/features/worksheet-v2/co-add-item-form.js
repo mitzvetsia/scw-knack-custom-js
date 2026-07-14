@@ -432,12 +432,18 @@
     function buildField(fd, b) {
       var t = fd.t;
       if (t === 'product') {
-        var row = labelRow(fd.label || 'Product');
-        var host = document.createElement('div'); row.insertBefore(host, row.querySelector('.scw-coadd__help'));
-        row.appendChild(host);
+        // Camera/Reader is single-select (label numbering is per-camera:
+        // one prefix + start #). Every other bucket allows MULTIPLE products
+        // — productIds stays an array either way, so the webhook payload is
+        // identical shape and Make iterates one uniform list (length 1 for
+        // cameras, N otherwise) with no per-bucket branch.
+        var pMulti = b.id !== B_CAMERA;
+        var row = labelRow(fd.label || (pMulti ? 'Products' : 'Product'));
+        var host = document.createElement('div'); row.appendChild(host);
         combos.product = makeCombo(host, {
-          candidates: productCandidates(st.bucketId, viewKey), multi: false,
-          placeholder: 'Search products…', emptyText: 'No products available on this scene',
+          candidates: productCandidates(st.bucketId, viewKey), multi: pMulti,
+          placeholder: pMulti ? 'Search products…' : 'Search products…',
+          emptyText: 'No products available on this scene',
           onChange: function (ids) {
             st.productIds = ids;
             if (b.id === B_ASSUMPTIONS) syncAssumptionDesc();
