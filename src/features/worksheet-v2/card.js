@@ -805,7 +805,42 @@
    *  Survey-derived rows render a hidden, non-interactive placeholder
    *  (no data-scw-ws-v2-kebab → the delete handler never matches it),
    *  mirroring v1's hide-delete behavior. */
+  // CO's own SOW id = last 24-hex of the hash (view_4079 is a drill-in child
+  // page whose record IS the CO's SOW; same rule co-adopt.js uses).
+  function coSowIdFromHash() {
+    var segs = (window.location.hash || '').replace(/^#/, '').split('?')[0].split('/');
+    for (var i = segs.length - 1; i >= 0; i--) {
+      if (/^[a-f0-9]{24}$/i.test(segs[i])) return segs[i];
+    }
+    return '';
+  }
+
   function kebabCell(rec, viewKey) {
+    // CO worksheet delete guard: an ADOPTED item (field_2154 lists a SOW
+    // other than this CO) is a SHARED record — never delete it, only unlink
+    // it from the CO. A net-new item (CO's SOW only) falls through to the
+    // real trash below.
+    var _vc = (ns.cfg && typeof ns.cfg.viewCfg === 'function' && ns.cfg.viewCfg(viewKey)) || {};
+    if (_vc.coDeleteGuard && !isDeleteBlocked(rec, viewKey)) {
+      var coId = coSowIdFromHash();
+      var sowRaw = rec['field_2154_raw'];
+      var shared = false;
+      if (coId && Array.isArray(sowRaw)) {
+        for (var si = 0; si < sowRaw.length; si++) {
+          if (sowRaw[si] && sowRaw[si].id && sowRaw[si].id !== coId) { shared = true; break; }
+        }
+      }
+      if (shared) {
+        return '<button type="button" class="scw-ws-v2-cell scw-ws-v2-trash scw-ws-v2-unlink" ' +
+          'data-scw-ws-v2-unlink="' + escapeHtml(rec.id) + '" ' +
+          'data-scw-ws-v2-view="' + escapeHtml(viewKey || '') + '" ' +
+          'data-scw-ws-v2-co="' + escapeHtml(coId) + '" ' +
+          'aria-label="Remove from this change order" ' +
+          'title="Remove from this change order (adopted item — stays on its original scope)">' +
+          UNLINK_SVG +
+        '</button>';
+      }
+    }
     if (isDeleteBlocked(rec, viewKey)) {
       var msg = DELETE_BLOCK_WHEN_SET[viewKey]
         ? 'Adopted into a SOW — remove it from the SOW, not here.'
@@ -1978,6 +2013,16 @@
     // left accent + the inline attached-to chip.
     if (readParentRef(rec)) {
       card.classList.add('scw-ws-v2-card--promoted-bracket');
+    }
+
+    // CO worksheet: visually separate ADD rows from REMOVAL rows by the CO
+    // Action field (field_2965). Removal rows (co-remove.js creates them with
+    // CO Action = Remove) get a rose accent + "REMOVE" badge; everything else
+    // reads as an add. Only on the CO worksheet (coDeleteGuard).
+    var _coVc = (ns.cfg && typeof ns.cfg.viewCfg === 'function' && ns.cfg.viewCfg(sourceViewKey)) || {};
+    if (_coVc.coDeleteGuard) {
+      var coAct = String(readField(rec, 'field_2965') || '').replace(/<[^>]*>/g, '').trim();
+      card.classList.add(/remove/i.test(coAct) ? 'scw-ws-v2-card--co-remove' : 'scw-ws-v2-card--co-add');
     }
 
     // SOW connection ids — space-separated for the SOW filter pills.

@@ -996,6 +996,66 @@
   //      then delete the parent via its native delete link (REST fallback).
   //      No Make webhook.
   // Single popover element reused across cards. Outside click closes.
+  // CO worksheet "Unlink from change order" — adopted (shared) rows detach
+  // from the CO by removing the CO's SOW id from field_2154 (a direct
+  // view-scoped PUT; single field, no cascade). The record itself and its
+  // other SOW connections are untouched.
+  if (!document.documentElement.hasAttribute('data-scw-ws-v2-unlink-bound')) {
+    document.documentElement.setAttribute('data-scw-ws-v2-unlink-bound', '1');
+    document.addEventListener('click', function (e) {
+      var btn = e.target && e.target.closest && e.target.closest('[data-scw-ws-v2-unlink]');
+      if (!btn) return;
+      e.preventDefault();
+      e.stopPropagation();
+      var rowId  = btn.getAttribute('data-scw-ws-v2-unlink');
+      var viewId = btn.getAttribute('data-scw-ws-v2-view');
+      var coId   = btn.getAttribute('data-scw-ws-v2-co');
+      if (!rowId || !viewId || !coId) return;
+      if (!(window.SCW && typeof SCW.knackAjax === 'function' && typeof SCW.knackRecordUrl === 'function')) return;
+
+      // Current field_2154 ids minus the CO — what stays after unlink.
+      var recs = (ns.data && typeof ns.data.readRecords === 'function') ? ns.data.readRecords(viewId) : [];
+      var rec = null;
+      for (var i = 0; i < recs.length; i++) { if (recs[i] && recs[i].id === rowId) { rec = recs[i]; break; } }
+      var raw = rec && rec['field_2154_raw'];
+      var remaining = [];
+      if (Array.isArray(raw)) {
+        for (var j = 0; j < raw.length; j++) {
+          if (raw[j] && raw[j].id && raw[j].id !== coId) remaining.push(raw[j].id);
+        }
+      }
+
+      function doUnlink() {
+        SCW.knackAjax({
+          url:  SCW.knackRecordUrl(viewId, rowId),
+          type: 'PUT',
+          data: JSON.stringify({ field_2154: remaining }),
+          success: function () {
+            if (ns.data && typeof ns.data.refetchAndNotify === 'function') {
+              ns.data.refetchAndNotify(viewId);
+              setTimeout(function () { ns.data.refetchAndNotify(viewId); }, 1500);
+            }
+          },
+          error: function (xhr) {
+            console.warn('[scw-ws-v2] CO unlink PUT failed for ' + rowId, xhr && xhr.status);
+            alert('Could not remove the item from the change order. Try again.');
+          }
+        });
+      }
+
+      var body = 'Remove this item from the change order? It was adopted from ' +
+        'survey/bid, so it stays on its original scope — only its link to this ' +
+        'CO is removed.';
+      if (ns.confirmModal && typeof ns.confirmModal === 'function') {
+        ns.confirmModal({ title: 'Remove from change order?', body: body,
+          okLabel: 'Remove from CO', cancelLabel: 'Cancel' })
+          .then(function (ok) { if (ok) doUnlink(); });
+      } else if (window.confirm(body)) {
+        doUnlink();
+      }
+    }, true);
+  }
+
   if (!document.documentElement.hasAttribute('data-scw-ws-v2-kebab-bound')) {
     document.documentElement.setAttribute('data-scw-ws-v2-kebab-bound', '1');
 

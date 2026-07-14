@@ -631,6 +631,25 @@
     '  box-shadow: inset 3px 0 0 #94a3b8 !important;',
     '  background: #f8fafc !important;',
     '}',
+    // CO worksheet: ADD vs REMOVE separation (field_2965). Removal rows get a
+    // rose left accent + faint tint + corner "REMOVE" badge; adds get a green
+    // accent + "ADD" badge. Position set so the ::after badge anchors to the
+    // card corner.
+    '.scw-ws-v2-card--co-remove, .scw-ws-v2-card--co-add { position: relative !important; }',
+    '.scw-ws-v2-card--co-remove {',
+    '  box-shadow: inset 4px 0 0 #e11d48 !important;',
+    '  background: #fff5f6 !important;',
+    '}',
+    '.scw-ws-v2-card--co-add {',
+    '  box-shadow: inset 4px 0 0 #16a34a !important;',
+    '}',
+    '.scw-ws-v2-card--co-remove::after, .scw-ws-v2-card--co-add::after {',
+    '  position: absolute; top: 6px; right: 8px; z-index: 3; pointer-events: none;',
+    '  font: 700 9px/1 system-ui, -apple-system, sans-serif; letter-spacing: .07em;',
+    '  padding: 3px 7px; border-radius: 4px;',
+    '}',
+    '.scw-ws-v2-card--co-remove::after { content: "REMOVE"; color: #9f1239; background: #ffe4e6; }',
+    '.scw-ws-v2-card--co-add::after { content: "ADD"; color: #166534; background: #dcfce7; }',
     '.scw-ws-v2-card--promoted-bracket .scw-ws-v2-cell--product .scw-ws-v2-product-name {',
     '  font-style: italic !important;',
     '  color: #475569 !important;',
