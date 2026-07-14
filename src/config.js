@@ -137,7 +137,18 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   //   mode:'sendback' → same writes as 'send' (fresh snapshot = the new
   //                     baseline ops just reviewed) + payload.note in the
   //                     notification.
-  //   Request body:  { changeOrderId, mode, snapshot?, note?, triggeredBy }
+  //   ClickUp (send + sendback): update BOTH tasks' statuses — the
+  //   subcontractor's task and our internal one — and post
+  //   payload.requestText (or requestHtml where the surface renders HTML)
+  //   as a comment on each, so the fixed record of exactly what was
+  //   requested rides the tasks, not just Knack.
+  //   Request body:  { changeOrderId, mode, snapshot?, note?, triggeredBy,
+  //                    coNumber, coName,         // CU task lookup / naming
+  //                    requestHtml, requestText  // fixed what-was-sent record:
+  //                  }                           // self-contained HTML card
+  //                                              // (inline styles — store as the
+  //                                              // durable artifact) + plaintext
+  //                                              // twin (for CU comments)
   //     snapshot = { sentAt, sentBy, lines: { <lineId>: { label, prefixId,
   //                  prefix, number, action, subBid, hrs, mat, fee, equip } } }
   //     (prefixId = Drop Prefix connection record id (field_2240);

@@ -210,6 +210,28 @@
     return isFinite(n) ? n : 0;
   }
 
+  // Read a field's current value off the CO header form (view_4092) —
+  // input value for editable fields (CO name), rendered text for
+  // read-only ones (CO number). Fields hidden by co-header-card's CSS
+  // are still in the DOM.
+  function readHeaderValue(fieldKey) {
+    var viewEl = document.getElementById(VIEW);
+    if (!viewEl) return '';
+    var input = viewEl.querySelector(
+      '#kn-input-' + fieldKey + ' input, #kn-input-' + fieldKey + ' textarea');
+    if (input && typeof input.value === 'string' && input.value.trim()) {
+      return input.value.trim();
+    }
+    var wrap = viewEl.querySelector('#kn-input-' + fieldKey);
+    if (!wrap) return '';
+    var clone = wrap.cloneNode(true);
+    var strip = clone.querySelectorAll('label, p.kn-instructions');
+    for (var i = 0; i < strip.length; i++) {
+      if (strip[i].parentNode) strip[i].parentNode.removeChild(strip[i]);
+    }
+    return (clone.textContent || '').replace(/\s+/g, ' ').trim();
+  }
+
   // The "ops proposed" money baseline, per CO line — what the Ops-Review
   // diff compares the sub's returned pricing against.
   function buildSnapshot() {
@@ -247,6 +269,103 @@
       sentBy: getTriggeredBy(),
       lines:  lines
     };
+  }
+
+  // ── the fixed record of WHAT WAS REQUESTED ──────────────────────────
+  // A self-contained HTML card (inline styles only — renders anywhere) +
+  // a plaintext twin, shipped in the webhook so Make can (a) store the
+  // durable "this is exactly what we sent the sub" artifact and (b) drop
+  // it on the ClickUp tasks (the subcontractor's AND ours) alongside the
+  // status change. `note` = the send-back note, when present.
+  function buildRequestDoc(note) {
+    var ns = window.SCW && window.SCW.worksheetV2;
+    var recs = (ns && ns.data && typeof ns.data.readRecords === 'function')
+      ? ns.data.readRecords(CO_VIEW) : [];
+    var who = getTriggeredBy();
+    var when = new Date();
+    var coNumber = readHeaderValue('field_2123');
+    var coName   = readHeaderValue('field_2126');
+
+    function conn(r, key) {
+      var raw = r[key + '_raw'];
+      if (Array.isArray(raw) && raw.length && raw[0]) {
+        return String(raw[0].identifier || '').trim();
+      }
+      return readTxt(r, key);
+    }
+    function money(n) {
+      return (n < 0 ? '−' : '') + '$' + Math.abs(n || 0)
+        .toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    }
+
+    var htmlRows = [], textLines = [], nAdd = 0, nRm = 0;
+    for (var i = 0; i < recs.length; i++) {
+      var r = recs[i];
+      if (!r || !r.id) continue;
+      var isRm = /remove/i.test(readTxt(r, 'field_2965'));
+      if (isRm) nRm++; else nAdd++;
+      // Services/assumptions rows have no product — fall back to the
+      // labor description so every line names itself.
+      var item = conn(r, 'field_1949') || readTxt(r, 'field_2020') || '(item)';
+      var drop = readTxt(r, 'field_1950');
+      var loc  = conn(r, 'field_1946');
+      var qty  = num(r, 'field_1964') || 1;
+      var bid  = num(r, 'field_2150');
+      var eq   = num(r, 'field_2269');
+      var tint = isRm ? '#fff1f2' : '#f0fdf4';
+      var bar  = isRm ? '#e11d48' : '#059669';
+      htmlRows.push(
+        '<tr style="background:' + tint + ';">' +
+        '<td style="padding:4px 8px;border-bottom:1px solid #eef2f7;' +
+          'box-shadow:inset 3px 0 0 ' + bar + ';font-weight:700;color:' +
+          (isRm ? '#9f1239' : '#065f46') + ';white-space:nowrap;">' +
+          (isRm ? 'REMOVE' : 'ADD') + '</td>' +
+        '<td style="padding:4px 8px;border-bottom:1px solid #eef2f7;">' + esc(item) +
+          (drop || loc
+            ? '<br><span style="color:#64748b;font-size:11px;">' +
+              esc([drop, loc].filter(Boolean).join(' · ')) + '</span>'
+            : '') + '</td>' +
+        '<td style="padding:4px 8px;border-bottom:1px solid #eef2f7;text-align:right;">' + qty + '</td>' +
+        '<td style="padding:4px 8px;border-bottom:1px solid #eef2f7;text-align:right;">' + esc(money(bid)) + '</td>' +
+        '<td style="padding:4px 8px;border-bottom:1px solid #eef2f7;text-align:right;">' + esc(money(eq)) + '</td>' +
+        '</tr>');
+      textLines.push('[' + (isRm ? 'REMOVE' : 'ADD') + '] ' + item +
+        (drop ? ' — ' + drop : '') + (loc ? ' · ' + loc : '') +
+        ' · qty ' + qty + ' · baseline sub bid ' + money(bid) +
+        (eq ? ' · equip ' + money(eq) : ''));
+    }
+
+    var title = 'Change Order Pricing Request' +
+      (coNumber ? ' — ' + coNumber : '') + (coName ? ' · ' + coName : '');
+    var sentLine = 'Sent by ' + (who.name || who.email || 'SCW') + ' · ' +
+      when.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+
+    var html =
+      '<div style="font-family:system-ui,-apple-system,sans-serif;font-size:12.5px;' +
+        'color:#1e293b;border:1px solid #dbe4ee;border-radius:8px;overflow:hidden;">' +
+      '<div style="background:#163C6E;color:#fff;padding:8px 12px;font-weight:800;' +
+        'font-size:12px;letter-spacing:.04em;text-transform:uppercase;">' + esc(title) + '</div>' +
+      '<div style="padding:6px 12px;background:#f0f4fa;border-bottom:1px solid #dbe4ee;' +
+        'color:#334155;font-size:11.5px;">' + esc(sentLine) +
+        ' · ' + nAdd + ' add' + (nAdd === 1 ? '' : 's') +
+        ', ' + nRm + ' removal' + (nRm === 1 ? '' : 's') + '</div>' +
+      (note ? '<div style="padding:6px 12px;background:#fffbeb;border-bottom:1px solid ' +
+        '#fde68a;color:#92400e;font-size:12px;"><b>Note:</b> ' + esc(note) + '</div>' : '') +
+      '<table style="width:100%;border-collapse:collapse;">' +
+      '<thead><tr>' +
+        ['Action', 'Item', 'Qty', 'Baseline Bid', 'Equip'].map(function (h, idx) {
+          return '<th style="padding:5px 8px;background:#f8fafc;border-bottom:1px solid ' +
+            '#dbe4ee;font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;' +
+            'color:#64748b;text-align:' + (idx >= 2 ? 'right' : 'left') + ';">' + h + '</th>';
+        }).join('') +
+      '</tr></thead><tbody>' + htmlRows.join('') + '</tbody></table></div>';
+
+    var text = title + '\n' + sentLine +
+      (note ? '\nNote: ' + note : '') + '\n' +
+      textLines.join('\n') +
+      '\nAdds: ' + nAdd + ' · Removals: ' + nRm;
+
+    return { coNumber: coNumber, coName: coName, html: html, text: text };
   }
 
   function fireWebhook(mode, extra, onOk) {
@@ -320,7 +439,14 @@
       'line pricing is snapshotted as the baseline, and the sub is notified.',
       'Send to Sub',
       function () {
-        fireWebhook('send', { snapshot: buildSnapshot() }, function () {
+        var doc = buildRequestDoc();
+        fireWebhook('send', {
+          snapshot:    buildSnapshot(),
+          coNumber:    doc.coNumber,
+          coName:      doc.coName,
+          requestHtml: doc.html,
+          requestText: doc.text
+        }, function () {
           _optimistic = 'Pending Sub Pricing';
           setPillText('Pending Sub Pricing');
           render();
@@ -332,14 +458,27 @@
     confirmThen('Nudge the sub?',
       'Re-send the pricing request notification to the subcontractor?',
       'Nudge sub',
-      function () { fireWebhook('nudge', null, function () { render(); }); });
+      function () {
+        fireWebhook('nudge', {
+          coNumber: readHeaderValue('field_2123'),
+          coName:   readHeaderValue('field_2126')
+        }, function () { render(); });
+      });
   }
 
   function sendBackToSub() {
     var note = window.prompt(
       'Note to the subcontractor (what needs revisiting):', '');
     if (note === null) return;   // cancelled
-    fireWebhook('sendback', { snapshot: buildSnapshot(), note: note }, function () {
+    var doc = buildRequestDoc(note);
+    fireWebhook('sendback', {
+      snapshot:    buildSnapshot(),
+      note:        note,
+      coNumber:    doc.coNumber,
+      coName:      doc.coName,
+      requestHtml: doc.html,
+      requestText: doc.text
+    }, function () {
       _optimistic = 'Pending Sub Pricing';
       setPillText('Pending Sub Pricing');
       render();

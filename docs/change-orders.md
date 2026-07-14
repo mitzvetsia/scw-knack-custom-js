@@ -324,7 +324,15 @@ design:
 
 ## Make scenarios (not started)
 
-1. **Send to sub** — notify sub, flip status.
+1. **Send to sub** — notify sub, flip status. The webhook payload
+   (co-stage-strip.js, 2026-07-14) now carries everything this scenario
+   needs: `snapshot` (pricing baseline JSON → store verbatim in
+   `field_2972`), `coNumber`/`coName` (ClickUp task lookup), and
+   `requestHtml`/`requestText` — the fixed record of exactly what was
+   requested (self-contained HTML card + plaintext twin). Scenario
+   responsibilities: store snapshot, flip status, notify sub, AND update
+   both ClickUp tasks (subcontractor's + internal) — status change plus
+   the request record posted as a comment on each.
 2. **Send to client (Issue)** — build the CO agreement (adds table +
    removes/credits table + net change) via the existing esignatures
    `document_elements` builder in `proposal-pdf-export.js` (~line 3645);
@@ -411,7 +419,14 @@ but never got installed (not part of a greenlit SOW).
    `window.SCW.productBucketMap` Builder snippet ships the full-access REST
    key to the browser. Same check for `dropPrefixOptions` (also carries the
    role-filter TODO #11).
-5. Sub-facing CO view + status-window locking + sub-originated entry point.
+5. Sub-facing CO view + sub-originated entry point. **Status-window locking
+   shipped 2026-07-14** (`worksheet-v2/co-sub-lock.js`): for external
+   (non-@getscw.com) users on the CO scene, the worksheet is fully
+   read-only unless CO Status = Pending Sub Pricing (blank/unknown status
+   fails safe to locked), and the ops drafting surfaces (add/adopt/remove
+   strips, stage-strip actions, header-form inputs) are hidden at every
+   status. Internal users unaffected. When the dedicated sub-facing view
+   lands it reuses the same module (point its view keys at the new scene).
 6. view_4056 chips ("Pending CO-###") + toolbar/card entry points ("New
    Change Order" in the suppressed toolbar slot — worksheet-v2/toolbar.js:151
    `noAddItem` comment anticipates this; "Remove via CO" on the card menu).
