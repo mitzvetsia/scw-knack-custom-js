@@ -2941,6 +2941,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
   const CO_RM = {
     rowCls:     'scw-co-rm-row',
     chipCls:    'scw-co-rm-chip',
+    badgeCls:   'scw-co-rm-badge',
     summaryId:  'scw-co-change-summary',
     styleId:    'scw-co-rm-css',
   };
@@ -2962,16 +2963,32 @@ tr.kn-table-group.${CO_RM.rowCls} td { background: #ffe4e6 !important; }
   font: 700 9.5px/1.5 system-ui, -apple-system, sans-serif;
   letter-spacing: .06em; white-space: nowrap;
 }
+/* Badge label rendered via ::after from a data attribute so the pipeline's
+ * many norm($td.text()) reads (section-rule matching, L2 renames, group
+ * labels on subtotal rows) never see it. */
+.${CO_RM.badgeCls} {
+  display: inline-block; margin-left: 8px; padding: 1px 7px;
+  border-radius: 3px; background: #e11d48; color: #fff;
+  font: 700 9.5px/1.5 system-ui, -apple-system, sans-serif;
+  letter-spacing: .06em; white-space: nowrap; vertical-align: middle;
+  text-transform: uppercase;
+}
+.${CO_RM.badgeCls}::after { content: attr(data-scw-rm); }
 #${CO_RM.summaryId} {
   margin: 0 0 16px; border: 1px solid #dbe4ee; border-radius: 10px;
   overflow: hidden; background: #fff;
   font-family: system-ui, -apple-system, sans-serif;
 }
 #${CO_RM.summaryId} .scw-cos-title {
-  padding: 9px 16px; background: #163C6E; color: #fff;
+  padding: 9px 16px 8px; background: #163C6E; color: #fff;
   font-size: 13px; font-weight: 800; letter-spacing: .05em;
   text-transform: uppercase;
 }
+#${CO_RM.summaryId} .scw-cos-desc {
+  padding: 8px 16px; background: #f0f4fa; color: #334155;
+  font-size: 12px; line-height: 1.45; border-bottom: 1px solid #dbe4ee;
+}
+#${CO_RM.summaryId} .scw-cos-desc b { color: #163C6E; }
 #${CO_RM.summaryId} .scw-cos-cols { display: flex; flex-wrap: wrap; }
 #${CO_RM.summaryId} .scw-cos-col { flex: 1 1 320px; min-width: 280px; padding: 12px 16px; }
 #${CO_RM.summaryId} .scw-cos-col--add { box-shadow: inset 4px 0 0 #059669; }
@@ -2991,6 +3008,9 @@ tr.kn-table-group.${CO_RM.rowCls} td { background: #ffe4e6 !important; }
 #${CO_RM.summaryId} td.scw-cos-amt { width: 96px; text-align: right; font-weight: 600; white-space: nowrap; }
 #${CO_RM.summaryId} .scw-cos-col--rm td.scw-cos-amt { color: #be123c; }
 #${CO_RM.summaryId} .scw-cos-lbl { color: #64748b; font-size: 11.5px; }
+#${CO_RM.summaryId} .scw-cos-meta {
+  display: block; color: #64748b; font-size: 11px; margin-top: 1px;
+}
 #${CO_RM.summaryId} tr.scw-cos-sub td {
   border-bottom: 0; padding-top: 7px;
   font-weight: 800; font-size: 12.5px;
@@ -3002,6 +3022,15 @@ tr.kn-table-group.${CO_RM.rowCls} td { background: #ffe4e6 !important; }
 }
 #${CO_RM.summaryId} .scw-cos-net-label {
   font-size: 11px; letter-spacing: .07em; text-transform: uppercase; color: #64748b;
+}
+#${CO_RM.summaryId} .scw-cos-legend {
+  padding: 7px 16px; border-top: 1px solid #dbe4ee; background: #fff;
+  color: #64748b; font-size: 11.5px; line-height: 1.4;
+}
+#${CO_RM.summaryId} .scw-cos-legend .scw-cos-swatch {
+  display: inline-block; width: 11px; height: 11px; border-radius: 2px;
+  background: #fff1f2; box-shadow: inset 2px 0 0 #e11d48;
+  border: 1px solid #fecdd3; vertical-align: -1px; margin-right: 4px;
 }`;
     document.head.appendChild(s);
   }
@@ -3052,11 +3081,14 @@ tr.kn-table-group.${CO_RM.rowCls} td { background: #ffe4e6 !important; }
       }
     });
 
-    // Tint group headers whose ENTIRE block is removed (product header of
-    // a fully-removed item reads rose too). Headers stay in place.
+    // Signpost group headers. Fully-removed blocks (level ≥2) tint rose;
+    // ANY header whose block contains removals gets a badge — "Removed"
+    // when the whole block goes, "N of M removed" when it's partial — so
+    // a reader scanning section headers knows exactly where to look.
+    // Headers stay in place.
     for (let i = 0; i < allRows.length; i++) {
       const lvl = groupLevel(allRows[i]);
-      if (lvl < 2) continue;
+      if (lvl < 1) continue;
       let j = i + 1;
       let dataCount = 0, removeCount = 0;
       while (j < allRows.length) {
@@ -3068,49 +3100,93 @@ tr.kn-table-group.${CO_RM.rowCls} td { background: #ffe4e6 !important; }
         }
         j++;
       }
-      allRows[i].classList.toggle(
-        CO_RM.rowCls, dataCount > 0 && dataCount === removeCount);
+      const fullyRemoved = dataCount > 0 && dataCount === removeCount;
+      allRows[i].classList.toggle(CO_RM.rowCls, lvl >= 2 && fullyRemoved);
+
+      let badge = allRows[i].querySelector('.' + CO_RM.badgeCls);
+      if (removeCount > 0) {
+        const text = fullyRemoved
+          ? 'Removed — credit'
+          : removeCount + ' of ' + dataCount + ' removed';
+        if (!badge) {
+          badge = document.createElement('span');
+          badge.className = CO_RM.badgeCls;
+          const td = allRows[i].querySelector('td');
+          if (td) td.appendChild(badge);
+        }
+        // Label lives in a data attribute (rendered via ::after) so the
+        // pipeline's norm($td.text()) reads never see it.
+        badge.setAttribute('data-scw-rm', text);
+      } else if (badge) {
+        badge.remove();
+      }
     }
 
-    // ── Layer 2: Change Summary manifest above the grid (MODEL-based) ──
-    let records = [];
+    // ── Layer 2: Change Summary manifest above the grid ────────────────
+    // Entries are derived from the GRID rows themselves — product from the
+    // enclosing L3 group header, location from the enclosing L1 header,
+    // money from the row's own cells — so the manifest always names things
+    // exactly the way the itemized list below does. (The view's model
+    // doesn't carry the product connection; the grid's product names only
+    // exist as group headers.) Model is used only for designator fields.
+    const modelById = {};
     try {
       const v = typeof Knack !== 'undefined' && Knack.views && Knack.views[ctx.viewId];
       const models = v && v.model && v.model.data && v.model.data.models;
-      if (models) records = models.map((m) => m.attributes || {});
-    } catch (e) { /* model unavailable — summary skipped */ }
+      if (models) models.forEach((m) => { modelById[m.id] = m.attributes || {}; });
+    } catch (e) { /* model unavailable — designators skipped */ }
 
+    const cleanTxt = (s) => String(s == null ? '' : s).replace(/\s+/g, ' ').trim();
     const readTxt = (rec, key) =>
       String(rec[key] == null ? '' : rec[key]).replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
-    const readNumF = (rec, key) => {
-      const raw = rec[key + '_raw'];
-      if (typeof raw === 'number') return isFinite(raw) ? raw : 0;
-      const n = parseFloat(readTxt(rec, key).replace(/[^0-9.\-]/g, ''));
-      return isFinite(n) ? n : 0;
-    };
     const connLabel = (rec, key) => {
       const raw = rec[key + '_raw'];
       if (Array.isArray(raw) && raw.length && raw[0]) return String(raw[0].identifier || '').trim();
       return readTxt(rec, key);
     };
+    const cellNum = (tr, key) => {
+      const td = tr.querySelector('td.' + key);
+      const n = td ? parseFloat(cleanTxt(td.textContent).replace(/[^0-9.\-]/g, '')) : NaN;
+      return isFinite(n) ? n : 0;
+    };
+    // First group header at exactly wantLvl walking up from tr; '' when the
+    // walk passes a shallower header first (no such ancestor).
+    const enclosingGroupLabel = (tr, wantLvl) => {
+      let p = tr.previousElementSibling;
+      while (p) {
+        const l = groupLevel(p);
+        if (l && l <= wantLvl) {
+          if (l !== wantLvl) return '';
+          const td = p.querySelector('td');
+          return td ? cleanTxt(td.textContent) : '';
+        }
+        p = p.previousElementSibling;
+      }
+      return '';
+    };
 
     const adds = [], removes = [];
-    records.forEach((rec) => {
-      const action = readTxt(rec, 'field_2965');
-      const product = connLabel(rec, 'field_1949');
-      const label = readTxt(rec, 'field_1950');
-      // Line value = install fee + equipment net (same composition as the
-      // CO worksheet's value strip).
-      const amt = readNumF(rec, ctx.keys.labor) + readNumF(rec, 'field_2269');
+    allRows.forEach((tr) => {
+      if (!isDataRow(tr)) return;
+      const rec = modelById[tr.id] || {};
+      // Relocated accessory rows carry their own product name (set before
+      // the move); everything else reads its enclosing L3 header.
+      const product = cleanTxt(tr.getAttribute('data-scw-product-name')) ||
+        enclosingGroupLabel(tr, 3);
+      const prefix = connLabel(rec, ctx.keys.prefix);
+      const number = readTxt(rec, ctx.keys.number);
       const entry = {
         product: product,
-        label: label,
-        qty: readNumF(rec, ctx.keys.qty) || 1,
-        amt: amt,
+        desig: prefix ? prefix + number : '',
+        loc: enclosingGroupLabel(tr, 1),
+        qty: cellNum(tr, ctx.keys.qty) || 1,
+        // Line value = install fee + hardware — the same two columns the
+        // grid's own subtotals sum, read from the same cells.
+        amt: cellNum(tr, ctx.keys.labor) + cellNum(tr, ctx.keys.hardware),
       };
-      if (/remove/i.test(action)) removes.push(entry);
+      if (coRmIsRemoveTr(tr)) removes.push(entry);
       // Adds: only rows with something to show (skips assumptions text rows).
-      else if (product || amt) adds.push(entry);
+      else if (entry.product || entry.amt) adds.push(entry);
     });
 
     let summary = root ? root.querySelector('#' + CO_RM.summaryId) : null;
@@ -3128,11 +3204,13 @@ tr.kn-table-group.${CO_RM.rowCls} td { background: #ffe4e6 !important; }
         const table = root.querySelector('table');
         (table ? table.parentNode : root).insertBefore(summary, table || root.firstChild);
       }
-      const itemRows = (list) => list.map((e) =>
-        `<tr><td>${coRmEsc(e.product || '(item)')}` +
-        (e.label ? ` <span class="scw-cos-lbl">${coRmEsc(e.label)}</span>` : '') +
-        `</td><td class="scw-cos-qty">${e.qty}</td>` +
-        `<td class="scw-cos-amt">${coRmEsc(coRmMoney(e.amt))}</td></tr>`).join('');
+      const itemRows = (list) => list.map((e) => {
+        const meta = [e.desig, e.loc].filter(Boolean).join(' · ');
+        return `<tr><td>${coRmEsc(e.product || '(item)')}` +
+          (meta ? `<span class="scw-cos-meta">${coRmEsc(meta)}</span>` : '') +
+          `</td><td class="scw-cos-qty">${e.qty}</td>` +
+          `<td class="scw-cos-amt">${coRmEsc(coRmMoney(e.amt))}</td></tr>`;
+      }).join('');
       const subRow = (label, total) =>
         `<tr class="scw-cos-sub"><td>${coRmEsc(label)}</td><td></td>` +
         `<td class="scw-cos-amt">${coRmEsc(coRmMoney(total))}</td></tr>`;
@@ -3140,7 +3218,11 @@ tr.kn-table-group.${CO_RM.rowCls} td { background: #ffe4e6 !important; }
       const rmTotal  = removes.reduce((t, e) => t + e.amt, 0);
 
       summary.innerHTML =
-        `<div class="scw-cos-title">Change Order Summary</div>` +
+        `<div class="scw-cos-title">Change Order — What's Changing</div>` +
+        `<div class="scw-cos-desc">This change order amends the previously approved ` +
+          `installation scope: <b>${adds.length}</b> item${adds.length === 1 ? '' : 's'} ` +
+          `added and <b>${removes.length}</b> item${removes.length === 1 ? '' : 's'} removed ` +
+          `(credited back). The full itemized list below shows every change in context.</div>` +
         `<div class="scw-cos-cols">` +
           (adds.length ?
             `<div class="scw-cos-col scw-cos-col--add">` +
@@ -3153,7 +3235,10 @@ tr.kn-table-group.${CO_RM.rowCls} td { background: #ffe4e6 !important; }
           `</div>` +
         `</div>` +
         `<div class="scw-cos-net"><span class="scw-cos-net-label">Net change</span>` +
-        `<span>${coRmEsc(coRmMoney(addTotal + rmTotal))}</span></div>`;
+        `<span>${coRmEsc(coRmMoney(addTotal + rmTotal))}</span></div>` +
+        `<div class="scw-cos-legend"><span class="scw-cos-swatch"></span>` +
+        `In the itemized list below, removed items are highlighted in red and ` +
+        `marked <b>REMOVED — CREDIT</b>; section headers show a count of removals inside.</div>`;
     }
   }
 
@@ -3206,10 +3291,10 @@ tr.kn-table-group.${CO_RM.rowCls} td { background: #ffe4e6 !important; }
     synthesizeMissingAncestorHeaders(ctx);
     synthesizeMissingL4Headers(ctx);
 
-    // CO: gather Remove-action rows into a rose "Removed from install
-    // scope — credit" block at the tail of their L1 (location) group.
-    // Runs BEFORE the totals pass below captures group rows, so subtotals
-    // compute against the final row positions. No-op on base proposals.
+    // CO: in-place rose tint + chips on Remove-action rows, removal badges
+    // on group headers, and the "What's Changing" manifest above the grid.
+    // Never moves a row. Runs after header synthesis so the manifest can
+    // read product names off the L3 headers. No-op on base proposals.
     sectionCoRemovals(ctx);
 
     const $firstDataRow = $tbody.find('tr[id]').first();
