@@ -32,7 +32,7 @@
  * ============================================================ */
 
 KnackInitAsync = function ($, callback) {
-  var NO_KTL_SCENES = ['scene_1085','scene_1116','scene_1155','scene_1140','scene_1096','scene_1311'];   // stable scene KEYS, rename-proof
+  var NO_KTL_SCENES = ['scene_1085','scene_1116','scene_1155','scene_1140','scene_1096','scene_1311','scene_1362'];   // stable scene KEYS, rename-proof
 
   // Map the entry URL's slug segments → scene keys via Knack's metadata,
   // then match on the key. Exact-segment match (not substring), and a rename
