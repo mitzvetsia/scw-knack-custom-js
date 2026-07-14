@@ -142,10 +142,17 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   //                  subBid, hrs, mat, fee, equip } } }
   //   Response body: { success: true } or { success: false, error: "..." }
   MAKE_CO_SEND_TO_SUB_WEBHOOK: "PLACEHOLDER — set when the CO send-to-sub scenario exists",
-  // Issue Change Order (co-stage-strip.js): Proposal snapshot (type=CO) +
-  // Acceptance (type=CO) + e-sign send in one gesture; flips CO Status to
-  // Issued. See docs/change-orders.md (the "Issue" verb).
-  //   Request body:  { changeOrderId, triggeredBy }
+  // Issue Change Order — fired by ops-stepper.js's CO-mode step
+  // ('issue-change-order') on the proposal PREVIEW page (scene_1096), which
+  // renders instead of the base publish steps when SOW Type (field_2952) =
+  // "change order". ONE gesture, three Make-side writes (docs/change-orders.md
+  // "Issue" verb): create the published proposal (type=CO), create the
+  // esignatures contract + acceptance record (type=CO), set CO Status =
+  // Issued. Payload = the SAME full publish shape as publish-final
+  // (sourceRecordId, stepId:'issue-change-order', notes, sowFields,
+  // sowLineItemIds, html/htmlPdf/json/totals/proposalAccessToken/Url, …)
+  // plus changeOrderId (alias of sourceRecordId, matching the other CO
+  // webhooks). ⚠️ Requires field_2952 on view_3861 for CO mode to activate.
   //   Response body: { success: true } or { success: false, error: "..." }
   MAKE_CO_ISSUE_WEBHOOK: "PLACEHOLDER — set when the CO issue scenario exists",
   // Fires on the "Request Alternative Proposal" stepper action. Expects:

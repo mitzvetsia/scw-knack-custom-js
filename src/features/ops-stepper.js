@@ -307,8 +307,44 @@
         primaryMode: 'publish-and-notify'
       },
       includeFullPayload: true
+    },
+    // ── Change-order mode ─────────────────────────────────────
+    // When the SOW on this preview page is a CHANGE ORDER (field_2952 =
+    // "change order"), the base-scope actions above are all inapplicable —
+    // the render loop swaps the whole step set for this single step (see
+    // the coOnly filter in renderInto). "Issue" is the CO's publish verb
+    // (docs/change-orders.md): ONE gesture creates the published proposal
+    // (type=CO, with everything a publish carries — html/json/totals/
+    // token), the esignatures contract + acceptance record, and flips CO
+    // Status to Issued. Make owns all three writes; the payload is the
+    // same full publish shape as publish-final so the scenario reuses the
+    // existing publish plumbing.
+    {
+      id: 'issue-change-order',
+      label: 'Issue Change Order — send to client for signature',
+      tone: 'success',
+      coOnly: true,
+      webhookKey: 'MAKE_CO_ISSUE_WEBHOOK',
+      modal: {
+        title:       'Issue Change Order',
+        intro:       'Publishes the change-order document, creates the ' +
+                     'e-signature contract, and sends it to the client. ' +
+                     'Line items lock once issued.',
+        placeholder: 'e.g. CO-1410: 2 cameras added at dock, 1 removed at cash register',
+        submitLabel: 'Issue Change Order'
+      },
+      includeFullPayload: true
     }
   ];
+
+  // SOW Type (field_2952): "change order" flips the stepper into CO mode —
+  // only coOnly steps render. Fails open: when the field isn't projected
+  // onto view_3861 (readField → ''), the page behaves as base scope, so
+  // nothing changes for existing SOWs. ⚠️ field_2952 must be ADDED to
+  // view_3861 in Builder for CO mode to activate.
+  function isChangeOrder() {
+    return conditionMet({ field: 'field_2952', value: 'change order' });
+  }
 
   // ── Icons ────────────────────────────────────────────────
   // Ops stepper icons. These intentionally diverge from
@@ -1020,7 +1056,8 @@
         step.id === 'publish-sow-tbd' ||
         step.id === 'publish-gfe' ||
         step.id === 'publish-final' ||
-        step.id === 'publish-proposal') {
+        step.id === 'publish-proposal' ||
+        step.id === 'issue-change-order') {
 
       // Per-step TBD treatment for the publish html. The three publish
       // variants force their own behavior; everyone else falls back to
@@ -1028,10 +1065,19 @@
       //   publish-sow-tbd → ALWAYS TBD (SOW-only quote, labor pending)
       //   publish-gfe     → NEVER TBD  (Good-Faith Estimate, labor shown)
       //   publish-final   → NEVER TBD  (Final, labor shown)
+      //   issue-change-order → NEVER TBD (CO is fully priced by the sub;
+      //                        the client signs real numbers)
       var tbdMode;
       if (step.id === 'publish-sow-tbd') tbdMode = true;
-      else if (step.id === 'publish-gfe' || step.id === 'publish-final') tbdMode = false;
+      else if (step.id === 'publish-gfe' || step.id === 'publish-final' ||
+               step.id === 'issue-change-order') tbdMode = false;
       else tbdMode = undefined;   // default — read field_2725
+
+      // The CO webhooks all key on changeOrderId — alias the SOW record id
+      // so the Issue scenario reads the same name as send-to-sub / remove.
+      if (step.id === 'issue-change-order') {
+        payload.changeOrderId = payload.sourceRecordId;
+      }
 
       payload.publishAsTbd = (tbdMode === true)
         || (tbdMode === undefined && shouldPublishAsTbd());
@@ -1686,7 +1732,8 @@
     var isPublishStep = step.id === 'publish-sow-tbd' ||
                         step.id === 'publish-gfe' ||
                         step.id === 'publish-final' ||
-                        step.id === 'publish-proposal';
+                        step.id === 'publish-proposal' ||
+                        step.id === 'issue-change-order';
     if (isPublishStep &&
         window.SCW && SCW.pdfExport && typeof SCW.pdfExport.isPageReady === 'function' &&
         !SCW.pdfExport.isPageReady('scene_1096')) {
@@ -1831,9 +1878,18 @@
     title.textContent = 'Ops Actions';
     block.appendChild(title);
 
+    // CO mode: a change order renders ONLY the coOnly step(s); a base SOW
+    // renders only the base steps. One filter instead of per-step
+    // hideWhen edits, so the existing gate conditions stay untouched.
+    var coMode = isChangeOrder();
+
     // Internal sub-bid review panel (diff + why Publish-Final is gated).
-    var subBidPanel = buildSubBidPanel();
-    if (subBidPanel) block.appendChild(subBidPanel);
+    // Not applicable to a CO — its sub pricing is reconciled on the CO
+    // drafting page (co-stage-strip), not via the base-scope bid review.
+    if (!coMode) {
+      var subBidPanel = buildSubBidPanel();
+      if (subBidPanel) block.appendChild(subBidPanel);
+    }
 
     // Render every step in fixed order. Three possible states per step:
     //   hideWhen  matches → skip rendering entirely (step is inapplicable)
@@ -1843,6 +1899,7 @@
     // Completed takes priority over showWhen so a finished step always
     // reads as "done" rather than as locked.
     STEPS.forEach(function (step) {
+      if (coMode !== !!step.coOnly) return;   // CO ↔ base step sets are disjoint
       if (step.hideWhen && conditionMet(step.hideWhen)) return;
 
       var completed = step.completed ? conditionMet(step.completed) : false;

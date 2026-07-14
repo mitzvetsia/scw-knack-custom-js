@@ -12,8 +12,10 @@
  *                         happens in Make — the one writer)
  *   Pending Sub Pricing → waiting state "With the sub since ⟨date⟩ — N days"
  *                         + [Nudge sub] (re-notify only, no state change)
- *   Ops Review          → [Send back to sub] [Issue Change Order]
- *                         (destructive/secondary first, primary last)
+ *   Ops Review          → [Send back to sub] [Preview & Issue →]
+ *                         (destructive/secondary first, primary last; the
+ *                         Issue itself fires from the preview page's CO-mode
+ *                         ops stepper — see ops-stepper.js issue-change-order)
  *   Issued/Accepted/Applied/Declined/Void → informational notes.
  *
  * Send to Sub also captures the PRICING SNAPSHOT (the "ops proposed" money
@@ -42,8 +44,9 @@
     // Hidden details view (CO record: status + snapshot) on scene_1362.
     // Hidden via hide-data-source-views.js; model is the read/poll target.
     STATUS_VIEW:    'view_4109',
-    // `CO Sub Pricing Snapshot` field key on the SOW object. '' = not built.
-    SNAPSHOT_FIELD: '',
+    // `CO Sub Pricing Snapshot` field key on the SOW object (paragraph
+    // text, JSON — written only by the send-to-sub Make scenario).
+    SNAPSHOT_FIELD: 'field_2972',
     STATUS_FIELD:   'field_2953',
     // Poll cadence while the CO sits in Pending Sub Pricing (only when
     // STATUS_VIEW is configured — a form view can't be refetched).
@@ -331,46 +334,14 @@
     });
   }
 
-  function issueCo() {
-    var url = (window.SCW && SCW.CONFIG && SCW.CONFIG.MAKE_CO_ISSUE_WEBHOOK) || '';
-    if (!url || /PLACEHOLDER/.test(url)) {
-      alert('The Issue Change Order webhook is not configured yet.\n\n' +
-        'Issue = Proposal snapshot (type=CO) + Acceptance (type=CO) + e-sign ' +
-        'send, in one Make scenario. Set MAKE_CO_ISSUE_WEBHOOK when it exists.');
-      return;
-    }
-    confirmThen('Issue this change order?',
-      'Issuing creates the client-facing CO document and sends it for ' +
-      'e-signature. Line items lock. Continue?',
-      'Issue Change Order',
-      function () {
-        // Same wire shape, dedicated key so the scenario can differ.
-        var coId = getCoSowId();
-        if (!coId) return;
-        setBusy(true);
-        fetch(url, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ changeOrderId: coId, triggeredBy: getTriggeredBy() })
-        }).then(function (resp) { return resp.text().then(function (txt) {
-          var body = null;
-          try { body = txt ? JSON.parse(txt) : null; } catch (e) {}
-          return { ok: resp.ok, data: body };
-        }); }).then(function (r) {
-          setBusy(false);
-          var explicitFail = !!(r.data && (r.data.success === false || r.data.error));
-          if (r.ok && !explicitFail) {
-            _optimistic = 'Issued';
-            setPillText('Issued');
-            render();
-            return;
-          }
-          alert((r.data && (r.data.error || r.data.message)) || 'Issue failed. Try again.');
-        }).catch(function (err) {
-          setBusy(false);
-          alert('Webhook error: ' + (err && err.message ? err.message : err));
-        });
-      });
+  // Issuing happens FROM THE PREVIEW PAGE (scene_1096) — ops reviews the
+  // client-facing document, then fires the "Issue Change Order" step that
+  // ops-stepper.js renders there in CO mode (full publish payload →
+  // MAKE_CO_ISSUE_WEBHOOK). This button just takes them there.
+  function previewIssue() {
+    var coId = getCoSowId();
+    if (!coId) { alert('Could not determine the change order record id from the URL.'); return; }
+    window.location.hash = '#proposals/proposal/' + coId + '/';
   }
 
   // ── waiting copy ("With the sub since ⟨date⟩ — N days") ──────────────
@@ -415,7 +386,8 @@
       return '<button type="button" class="scw-co-stage-btn scw-co-stage-btn--secondary" ' +
         'data-scw-co-act="sendback">Send back to sub</button>' +
         '<button type="button" class="scw-co-stage-btn scw-co-stage-btn--primary" ' +
-        'data-scw-co-act="issue">Issue Change Order</button>';
+        'data-scw-co-act="preview-issue">Preview &amp; Issue &rarr;</button>' +
+        '<span class="scw-co-stage-note">Review the client-facing document, then issue from there.</span>';
     }
     if (cur === 3) return '<span class="scw-co-stage-note">Sent for client signature — waiting on e-sign.</span>';
     if (cur === 4) return '<span class="scw-co-stage-note">Signed — applying changes to the install scope…</span>';
@@ -440,10 +412,10 @@
         if (!btn) return;
         e.preventDefault();
         var act = btn.getAttribute('data-scw-co-act');
-        if (act === 'send')     sendToSub();
-        if (act === 'nudge')    nudgeSub();
-        if (act === 'sendback') sendBackToSub();
-        if (act === 'issue')    issueCo();
+        if (act === 'send')          sendToSub();
+        if (act === 'nudge')         nudgeSub();
+        if (act === 'sendback')      sendBackToSub();
+        if (act === 'preview-issue') previewIssue();
       });
     }
     // Pin directly under the header row (co-header-card builds .scw-co-hdr
