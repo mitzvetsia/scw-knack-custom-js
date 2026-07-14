@@ -57,14 +57,16 @@
           _mdfIdfRecords.length, 'MDF/IDF records');
       }
 
-      var mount = ns.renderMatrix(_state);
-      if (!mount) return;   // wrong scene — renderMatrix refused
-      attachClickHandler(mount);
-
-      // Rehydrate change request drafts from Knack field
+      // Rehydrate change request drafts from Knack BEFORE the mount gate —
+      // with v2 owning the page renderMatrix returns null (v1 grid dead),
+      // but the CR engine still needs its drafts for v2's pending cards.
       if (ns.changeRequests && ns.changeRequests.rehydrate) {
         ns.changeRequests.rehydrate(_state.sowGrids);
       }
+
+      var mount = ns.renderMatrix(_state);
+      if (!mount) return;   // v2 owns the page / wrong scene
+      attachClickHandler(mount);
     }).fail(function (err) {
       console.error('[BidReview] Pipeline failed:', err);
       ns.renderToast('Failed to load comparison data', 'error');

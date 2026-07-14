@@ -731,6 +731,33 @@ This is a **copy-paste-and-modify codebase, not a design space.** Every feature 
 - **Fix direction (Builder-side)**: in the gate snippet's `skip` branch, load the CDN bundle FIRST (LazyLoad is already available there), then call `callback()`. SHA-pinned jsDelivr is immutable + browser-cached, so warm cost is small. Needs a guard so the Builder JS's existing bundle loader doesn't double-load. Update the snippet file in `knack-snippets/` and re-paste into Builder.
 - **Status**: parked 2026-07-07 mid-testing ("we'll come back to this") after the in-bundle reveal gating (quiet-window + transform markers incl. `#scw-step-initiate-install`) fixed the post-veil flashes.
 
+### 19. Delete the dead v1 bid-review GRID code (decided 2026-07-14: v1 grid is dead and gone)
+- **Runtime state (done 2026-07-14)**: with `bid-review-v2/config.js` `replaceV1: true`, v1's
+  `renderMatrix` / `showLoading` short-circuit (`v2OwnsPage()` in `bid-review/render.js`) —
+  the v1 matrix is never BUILT, not just hidden. CR-draft rehydration was moved ahead of
+  the mount gate in `bid-review/init.js` `runPipeline` so v2's pending cards still hydrate.
+- **What remains (the actual deletion)**: physically remove the v1 grid DOM builders and
+  their v1-grid-only event wiring — `render.js` (`buildDataRow`, `buildSowDetailCell`,
+  `buildDataCell`, `buildSowSection`, toolbar/accordion machinery, `getMismatches`) and the
+  init.js handlers that only serve v1 grid DOM (accordion clicks, expand rows / wsTr
+  moving, `attachClickHandler` paths). ~thousands of lines across `render.js` (2.8k) and
+  `init.js` (4.3k).
+- **⚠️ v1 is NOT a dead directory — v2 uses it as a library.** Confirmed call surface v2
+  depends on (must survive the deletion): `SCW.bidReview.changeRequests` (the entire CR
+  modal/payload/draft engine), the action dispatchers (`dispatchCRAction`,
+  `dispatchHeaderAction` — every v2 Revise/Remove/Add/Reinstate button routes through v1
+  handlers that resolve rows from v1 `_state`), the data pipeline (`loadRawData`,
+  `buildState`, `_state`), `buildSowStatusBar` (rendered INSIDE v2's SOW headers),
+  `scrapeRowPhotoUrls`, `addBulkChangeRequest`, `rerender`/`refreshSilently`,
+  `refreshHeaderTotals`, `resetDocsIndex`, `renderToast`, `sowFriendlyName`, and
+  `CONFIG` (field keys — also read by worksheet-v2/change-requests.js and
+  bid-revision-inject.js, incl. `revisionResponseWebhook`). `sales-revision-column.js`
+  listens for `scw-bid-review-rendered` (v1-grid-only; no-ops now).
+- **How to do it**: work function-by-function in `render.js`/`init.js`, grepping each for
+  external references before deleting; keep everything in the list above. Also strip
+  v1-grid-only CSS from `bid-review/styles.js` EXCEPT the classes v2 reuses
+  (`.scw-bid-review__cell-action*`, overflow menu, status-bar, toast styles).
+
 ### 17. Builder snippets ship the live Knack REST API key client-side — migrate to view-based reads (HIGH PRIORITY / SECURITY)
 - **The hole**: the out-of-bundle Builder snippets that populate `window.SCW.*` globals (`productBucketMap`, and the newer `deliverablesFields` for the questionnaires) authenticate with the app's **REST API key** in client-side JS. That key is delivered to and used in the **browser** — Knack Builder "JavaScript" is NOT server-side — so anyone who can load the page can read it (DevTools → Network → any `api.knack.com` request → `X-Knack-REST-API-Key` header, in plaintext). A Knack REST key is **not role-scoped**: it grants full read/write to every object, bypassing view/role permissions. This is bad on internal pages and **much worse on customer-facing pages** (e.g. the customer questionnaire `view_4031`), where customers could extract it and read/write all app data.
 - **Confirmed 2026-06-19**: the `deliverablesFields` key was exposed in chat + lives in client JS. Key must be **rotated** in Knack (Settings → API & Code → reset) and every consumer updated (rotation is app-wide: all Builder snippets + any Make scenarios/integrations on the old key break until updated).
