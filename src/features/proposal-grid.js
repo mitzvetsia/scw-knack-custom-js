@@ -2919,29 +2919,32 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
   // CHANGE ORDER — removal treatment + Change Summary manifest
   // ============================================================
   // On a CO's proposal, rows with CO Action (field_2965) = Remove are
-  // CREDITS. Two layers, both derived inside every pipeline run:
+  // CREDITS and Add rows are new charges. Two layers, both derived
+  // inside every pipeline run:
   //
-  //   1. IN-PLACE row treatment — removed rows (and their product header,
-  //      when the whole block is removed) stay EXACTLY where the grid
-  //      puts them, rose-tinted with a "REMOVED — CREDIT" chip. No row
-  //      is ever MOVED: two earlier attempts (post-pass module, in-
-  //      pipeline re-sectioning) both ended with the removed item eaten
-  //      by downstream machinery (accessory relocation / header hiding).
-  //      Visibility beats layout.
+  //   1. IN-PLACE row treatment — Remove rows tint rose (plus their
+  //      product header when the whole block is removed) with a solid
+  //      "REMOVED FROM INSTALL SCOPE — CREDIT" banner row spanning the
+  //      table above each contiguous removed block; Add rows tint pale
+  //      green. Rows are never MOVED: two earlier attempts (post-pass
+  //      module, in-pipeline re-sectioning) both ended with the removed
+  //      item eaten by downstream machinery (accessory relocation /
+  //      header hiding). Banner rows are synthetic inserts that are
+  //      cleared + re-inserted every pass. Visibility beats layout.
   //
-  //   2. "CHANGE ORDER SUMMARY" manifest ABOVE the grid — the at-a-glance
-  //      layer: Adding (N items, subtotal) side by side with Removing
-  //      (N items, credit subtotal) and the net change. Built from the
-  //      view's MODEL records (not the transformed DOM), so no grid
-  //      feature can eat or reorder it. The published HTML/PDF inherits
-  //      it via the publish payload's DOM scrape.
+  //   2. "WHAT'S CHANGING" manifest ABOVE the grid — the at-a-glance
+  //      layer: Adding / Removing columns with per-item designator +
+  //      location signposts, subtotals, and the net change. Names and
+  //      amounts are read off the grid's own headers/cells so the
+  //      manifest can't disagree with the itemized list. The published
+  //      HTML/PDF inherits it all via the publish payload's DOM scrape.
   //
-  // Fails safe: records without field_2965 (base proposals) → no-op.
+  // Fails safe: no field_2965 values anywhere (base proposals) → no-op.
 
   const CO_RM = {
     rowCls:     'scw-co-rm-row',
-    chipCls:    'scw-co-rm-chip',
-    badgeCls:   'scw-co-rm-badge',
+    addCls:     'scw-co-add-row',
+    bannerCls:  'scw-co-rm-banner',
     summaryId:  'scw-co-change-summary',
     styleId:    'scw-co-rm-css',
   };
@@ -2957,23 +2960,14 @@ ${viewSel} { display: none !important; }
 tr.${CO_RM.rowCls} td { background: #fff1f2 !important; }
 tr.${CO_RM.rowCls} td:first-child { box-shadow: inset 4px 0 0 #e11d48; }
 tr.kn-table-group.${CO_RM.rowCls} td { background: #ffe4e6 !important; }
-.${CO_RM.chipCls} {
-  display: block; width: max-content; margin: 0 0 3px; padding: 1px 7px;
-  border-radius: 3px; background: #ffe4e6; color: #9f1239;
-  font: 700 9.5px/1.5 system-ui, -apple-system, sans-serif;
-  letter-spacing: .06em; white-space: nowrap;
+tr.${CO_RM.addCls} td { background: #f0fdf4 !important; }
+tr.${CO_RM.addCls} td:first-child { box-shadow: inset 4px 0 0 #059669; }
+tr.${CO_RM.bannerCls} td {
+  background: #e11d48 !important; color: #fff; padding: 3px 12px;
+  border: 0;
+  font: 700 10px/1.7 system-ui, -apple-system, sans-serif;
+  letter-spacing: .08em; text-transform: uppercase; white-space: nowrap;
 }
-/* Badge label rendered via ::after from a data attribute so the pipeline's
- * many norm($td.text()) reads (section-rule matching, L2 renames, group
- * labels on subtotal rows) never see it. */
-.${CO_RM.badgeCls} {
-  display: inline-block; margin-left: 8px; padding: 1px 7px;
-  border-radius: 3px; background: #e11d48; color: #fff;
-  font: 700 9.5px/1.5 system-ui, -apple-system, sans-serif;
-  letter-spacing: .06em; white-space: nowrap; vertical-align: middle;
-  text-transform: uppercase;
-}
-.${CO_RM.badgeCls}::after { content: attr(data-scw-rm); }
 #${CO_RM.summaryId} {
   margin: 0 0 16px; border: 1px solid #dbe4ee; border-radius: 10px;
   overflow: hidden; background: #fff;
@@ -3023,22 +3017,17 @@ tr.kn-table-group.${CO_RM.rowCls} td { background: #ffe4e6 !important; }
 #${CO_RM.summaryId} .scw-cos-net-label {
   font-size: 11px; letter-spacing: .07em; text-transform: uppercase; color: #64748b;
 }
-#${CO_RM.summaryId} .scw-cos-legend {
-  padding: 7px 16px; border-top: 1px solid #dbe4ee; background: #fff;
-  color: #64748b; font-size: 11.5px; line-height: 1.4;
-}
-#${CO_RM.summaryId} .scw-cos-legend .scw-cos-swatch {
-  display: inline-block; width: 11px; height: 11px; border-radius: 2px;
-  background: #fff1f2; box-shadow: inset 2px 0 0 #e11d48;
-  border: 1px solid #fecdd3; vertical-align: -1px; margin-right: 4px;
-}`;
+#${CO_RM.summaryId} .scw-cos-desc .scw-cos-g { color: #059669; }
+#${CO_RM.summaryId} .scw-cos-desc .scw-cos-r { color: #e11d48; }`;
     document.head.appendChild(s);
   }
 
-  function coRmIsRemoveTr(tr) {
+  function coRmActionTxt(tr) {
     const td = tr.querySelector('td.field_2965');
-    return !!td && /remove/i.test((td.textContent || '').trim());
+    return td ? (td.textContent || '').trim() : '';
   }
+  function coRmIsRemoveTr(tr) { return /remove/i.test(coRmActionTxt(tr)); }
+  function coRmIsAddTr(tr)    { return /add/i.test(coRmActionTxt(tr)); }
 
   const coRmEsc = (v) => String(v == null ? '' : v)
     .replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
@@ -3051,6 +3040,15 @@ tr.kn-table-group.${CO_RM.rowCls} td { background: #ffe4e6 !important; }
     if (!tbody) return;
     const root = tbody.closest('.kn-view') || document.getElementById(ctx.viewId);
 
+    // Column hiding for field_2965/2966 lives in this CSS — inject
+    // unconditionally so base proposals never show a blank CO Action
+    // column. Tint/banner rules are class-scoped, so harmless on base.
+    coRmInjectCss();
+
+    // Clear banner rows from the previous pass before snapshotting rows.
+    Array.prototype.slice.call(tbody.querySelectorAll('tr.' + CO_RM.bannerCls))
+      .forEach((b) => b.remove());
+
     // ── Layer 1: IN-PLACE row treatment (no moving — ever) ─────────────
     const allRows = Array.prototype.slice.call(tbody.querySelectorAll('tr'));
     const isDataRow = (tr) => tr.tagName === 'TR' && tr.id && tr.id.indexOf('kn-') !== 0;
@@ -3060,35 +3058,25 @@ tr.kn-table-group.${CO_RM.rowCls} td { background: #ffe4e6 !important; }
       return m ? parseInt(m[1], 10) : 0;
     };
 
-    let anyRemoveRow = false;
+    // Rose tint on Remove-action rows, pale green on Add-action rows.
+    // classList.toggle untags recycled <tr>s from previous runs.
+    let anyAction = false;
     allRows.forEach((tr) => {
       if (!isDataRow(tr)) return;
-      if (coRmIsRemoveTr(tr)) {
-        anyRemoveRow = true;
-        tr.classList.add(CO_RM.rowCls);
-        const firstTd = tr.querySelector('td');
-        if (firstTd && !firstTd.querySelector('.' + CO_RM.chipCls)) {
-          const chip = document.createElement('span');
-          chip.className = CO_RM.chipCls;
-          chip.textContent = 'REMOVED — CREDIT';
-          firstTd.insertBefore(chip, firstTd.firstChild);
-        }
-      } else if (tr.classList.contains(CO_RM.rowCls)) {
-        // Recycled <tr> from a previous run — untag.
-        tr.classList.remove(CO_RM.rowCls);
-        const chip = tr.querySelector('.' + CO_RM.chipCls);
-        if (chip) chip.remove();
-      }
+      const isRm  = coRmIsRemoveTr(tr);
+      const isAdd = !isRm && coRmIsAddTr(tr);
+      anyAction = anyAction || isRm || isAdd;
+      tr.classList.toggle(CO_RM.rowCls, isRm);
+      tr.classList.toggle(CO_RM.addCls, isAdd);
     });
 
-    // Signpost group headers. Fully-removed blocks (level ≥2) tint rose;
-    // ANY header whose block contains removals gets a badge — "Removed"
-    // when the whole block goes, "N of M removed" when it's partial — so
-    // a reader scanning section headers knows exactly where to look.
-    // Headers stay in place.
+    // Group headers whose ENTIRE block is removed (level ≥2) tint rose so
+    // the removed unit reads as one band with its header. Headers stay in
+    // place. Fully-removed headers also join the banner runs below.
+    const removedHeaders = new Set();
     for (let i = 0; i < allRows.length; i++) {
       const lvl = groupLevel(allRows[i]);
-      if (lvl < 1) continue;
+      if (lvl < 2) continue;
       let j = i + 1;
       let dataCount = 0, removeCount = 0;
       while (j < allRows.length) {
@@ -3101,26 +3089,31 @@ tr.kn-table-group.${CO_RM.rowCls} td { background: #ffe4e6 !important; }
         j++;
       }
       const fullyRemoved = dataCount > 0 && dataCount === removeCount;
-      allRows[i].classList.toggle(CO_RM.rowCls, lvl >= 2 && fullyRemoved);
-
-      let badge = allRows[i].querySelector('.' + CO_RM.badgeCls);
-      if (removeCount > 0) {
-        const text = fullyRemoved
-          ? 'Removed — credit'
-          : removeCount + ' of ' + dataCount + ' removed';
-        if (!badge) {
-          badge = document.createElement('span');
-          badge.className = CO_RM.badgeCls;
-          const td = allRows[i].querySelector('td');
-          if (td) td.appendChild(badge);
-        }
-        // Label lives in a data attribute (rendered via ::after) so the
-        // pipeline's norm($td.text()) reads never see it.
-        badge.setAttribute('data-scw-rm', text);
-      } else if (badge) {
-        badge.remove();
-      }
+      allRows[i].classList.toggle(CO_RM.rowCls, fullyRemoved);
+      if (fullyRemoved) removedHeaders.add(allRows[i]);
     }
+
+    // One "Removed from install scope — credit" banner bar spanning the
+    // table ABOVE each contiguous removed block (the fully-removed header
+    // when the whole block goes, otherwise the removed row itself).
+    const table = tbody.closest('table');
+    const colCount = (table && table.querySelectorAll('thead th').length) || 12;
+    const isRemovedish = (el) => removedHeaders.has(el) ||
+      (isDataRow(el) && el.classList.contains(CO_RM.rowCls));
+    let prevRemoved = false;
+    allRows.forEach((el) => {
+      const r = isRemovedish(el);
+      if (r && !prevRemoved) {
+        const btr = document.createElement('tr');
+        btr.className = CO_RM.bannerCls;
+        const btd = document.createElement('td');
+        btd.colSpan = colCount;
+        btd.textContent = 'Removed from install scope — credit';
+        btr.appendChild(btd);
+        el.parentNode.insertBefore(btr, el);
+      }
+      prevRemoved = r;
+    });
 
     // ── Layer 2: Change Summary manifest above the grid ────────────────
     // Entries are derived from the GRID rows themselves — product from the
@@ -3190,13 +3183,11 @@ tr.kn-table-group.${CO_RM.rowCls} td { background: #ffe4e6 !important; }
     });
 
     let summary = root ? root.querySelector('#' + CO_RM.summaryId) : null;
-    if (!removes.length) {
-      // Base proposal / add-only CO — no manifest, no CSS, nothing changes.
+    if (!anyAction) {
+      // Base proposal — no CO Action values anywhere. No manifest.
       if (summary) summary.remove();
-      if (anyRemoveRow) coRmInjectCss();
       return;
     }
-    coRmInjectCss();
     if (root) {
       if (!summary) {
         summary = document.createElement('div');
@@ -3204,8 +3195,13 @@ tr.kn-table-group.${CO_RM.rowCls} td { background: #ffe4e6 !important; }
         const table = root.querySelector('table');
         (table ? table.parentNode : root).insertBefore(summary, table || root.firstChild);
       }
+      // Location in the meta line is only useful when the CO touches more
+      // than one location — otherwise it's the same string on every row.
+      const locSet = new Set(
+        adds.concat(removes).map((e) => e.loc).filter(Boolean));
+      const showLoc = locSet.size > 1;
       const itemRows = (list) => list.map((e) => {
-        const meta = [e.desig, e.loc].filter(Boolean).join(' · ');
+        const meta = [e.desig, showLoc ? e.loc : ''].filter(Boolean).join(' · ');
         return `<tr><td>${coRmEsc(e.product || '(item)')}` +
           (meta ? `<span class="scw-cos-meta">${coRmEsc(meta)}</span>` : '') +
           `</td><td class="scw-cos-qty">${e.qty}</td>` +
@@ -3220,25 +3216,23 @@ tr.kn-table-group.${CO_RM.rowCls} td { background: #ffe4e6 !important; }
       summary.innerHTML =
         `<div class="scw-cos-title">Change Order — What's Changing</div>` +
         `<div class="scw-cos-desc">This change order amends the previously approved ` +
-          `installation scope: <b>${adds.length}</b> item${adds.length === 1 ? '' : 's'} ` +
-          `added and <b>${removes.length}</b> item${removes.length === 1 ? '' : 's'} removed ` +
-          `(credited back). The full itemized list below shows every change in context.</div>` +
+          `installation scope. In the itemized list below, added items are shaded ` +
+          `<b class="scw-cos-g">green</b>; removed items are shaded ` +
+          `<b class="scw-cos-r">red</b> and credited back.</div>` +
         `<div class="scw-cos-cols">` +
           (adds.length ?
             `<div class="scw-cos-col scw-cos-col--add">` +
               `<div class="scw-cos-head">Adding to install scope (${adds.length})</div>` +
               `<table class="scw-cos-table"><tbody>${itemRows(adds)}${subRow('Subtotal — additions', addTotal)}</tbody></table>` +
             `</div>` : '') +
-          `<div class="scw-cos-col scw-cos-col--rm">` +
-            `<div class="scw-cos-head">Removing from install scope — credit (${removes.length})</div>` +
-            `<table class="scw-cos-table"><tbody>${itemRows(removes)}${subRow('Subtotal — credits', rmTotal)}</tbody></table>` +
-          `</div>` +
+          (removes.length ?
+            `<div class="scw-cos-col scw-cos-col--rm">` +
+              `<div class="scw-cos-head">Removing from install scope — credit (${removes.length})</div>` +
+              `<table class="scw-cos-table"><tbody>${itemRows(removes)}${subRow('Subtotal — credits', rmTotal)}</tbody></table>` +
+            `</div>` : '') +
         `</div>` +
         `<div class="scw-cos-net"><span class="scw-cos-net-label">Net change</span>` +
-        `<span>${coRmEsc(coRmMoney(addTotal + rmTotal))}</span></div>` +
-        `<div class="scw-cos-legend"><span class="scw-cos-swatch"></span>` +
-        `In the itemized list below, removed items are highlighted in red and ` +
-        `marked <b>REMOVED — CREDIT</b>; section headers show a count of removals inside.</div>`;
+        `<span>${coRmEsc(coRmMoney(addTotal + rmTotal))}</span></div>`;
     }
   }
 
