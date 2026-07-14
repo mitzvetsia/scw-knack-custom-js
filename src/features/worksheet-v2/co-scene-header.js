@@ -70,6 +70,16 @@
     setTimeout(function () {
       el.classList.remove('scw-co-ab-flash', 'is-fading');
     }, 1800);
+    // Focus the panel's search box once the smooth scroll settles, so the
+    // user can immediately type to filter the (long) source list.
+    // preventScroll keeps the focus from fighting the in-flight scroll.
+    setTimeout(function () {
+      var search = el.querySelector('.scw-ws-v2-search-input');
+      if (search) {
+        try { search.focus({ preventScroll: true }); }
+        catch (e) { search.focus(); }
+      }
+    }, 650);
   }
 
   function mount() {
