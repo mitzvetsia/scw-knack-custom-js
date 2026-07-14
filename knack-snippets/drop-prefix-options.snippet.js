@@ -27,6 +27,11 @@
  ***************************************************************************/
 (function () {
   var APP_ID  = Knack.application_id;
+  // ⚠️ Verify against Builder → Settings → API & Code before pasting: this
+  // value was copied from the productBucketMap doc in CLAUDE.md and may
+  // pre-date a key ROTATION (Known Issue #17). A wrong key = silent 401/403
+  // on the fetch below → SCW.dropPrefixOptions never set → pickers fall
+  // back to in-use scraping.
   var API_KEY = 'f8371b90-524d-11e7-abaf-870b3d262aa2';
 
   // ── TODO: fill in from Builder (Drop Prefix object) ─────────────────

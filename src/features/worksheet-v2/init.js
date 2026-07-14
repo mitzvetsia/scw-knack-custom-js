@@ -2258,10 +2258,22 @@
               }
             }
           }
-          console.warn('[scw-ws-v2] SCW.dropPrefixOptions absent on this scene — ' +
-            'Drop Prefix picker opened with in-use prefixes only ' +
-            '(' + dpCandidates.length + '). Deploy the catalog on this scene ' +
-            'for the full list (Known Issue #11).');
+          // Distinguish the two failure modes for debugging:
+          //   undefined → the Builder snippet never ran or its objects-API
+          //     fetch failed (check Network for /v1/objects/<obj>/records —
+          //     404 = object/field TODOs unfilled, 401/403 = key).
+          //   []        → the snippet ran but produced ZERO usable entries
+          //     (LABEL_FIELD wrong → every record skipped for blank label).
+          var dpGlobal = window.SCW && window.SCW.dropPrefixOptions;
+          console.warn('[scw-ws-v2] Drop Prefix catalog unusable — ' +
+            'SCW.dropPrefixOptions is ' +
+            (dpGlobal === undefined ? 'UNDEFINED (snippet never ran or its ' +
+              'fetch failed — check the Network tab for the objects-API call)'
+              : 'an EMPTY array (snippet ran but every record was skipped — ' +
+                'LABEL_FIELD is probably wrong)') +
+            '. Picker opened with in-use prefixes only (' +
+            dpCandidates.length + '). See knack-snippets/' +
+            'drop-prefix-options.snippet.js (Known Issue #11).');
         }
         dpCandidates.sort(function (a, b) {
           return String(a.identifier).localeCompare(String(b.identifier), undefined,
