@@ -83,7 +83,9 @@
   }
   function fmtMoney(n) {
     if (!isFinite(n)) n = 0;
-    return '$' + n.toLocaleString(undefined, {
+    // Sign-aware: CO Remove lines carry NEGATIVE money (credits) — render
+    // −$700, not the "$-700" toLocaleString would produce.
+    return (n < 0 ? '−' : '') + '$' + Math.abs(n).toLocaleString(undefined, {
       minimumFractionDigits: 0, maximumFractionDigits: 0
     });
   }
@@ -188,8 +190,10 @@
         }
       }
 
+      // Include negative money — CO Remove lines are credits and must net
+      // against adds in every subtotal (they used to be skipped as "no bid").
       var bid = readNum(r, moneyField);
-      if (bid > 0) {
+      if (bid) {
         p.subBidSum         += bid;
         grp.subtotal.subBidSum += bid;
         totals.subBidSum    += bid;
@@ -295,7 +299,7 @@
       '<td class="scw-ws-v2-summary-num">' + fmtNum(p.count) + '</td>' +
       (_hideMoney ? '' :
         '<td class="scw-ws-v2-summary-money">' +
-          (p.subBidSum > 0 ? esc(fmtMoney(p.subBidSum)) : '') +
+          (p.subBidSum !== 0 ? esc(fmtMoney(p.subBidSum)) : '') +
         '</td>') +
     '</tr>';
   }

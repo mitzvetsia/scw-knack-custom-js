@@ -428,9 +428,34 @@ but never got installed (not part of a greenlit SOW).
    $0-plus-demob is just what ops types.
 2. **One open Draft CO per deployment?** Needed as the target for the
    "Remove via CO" gesture from view_4056. Recommended: yes.
-3. **Proposal→install conversion trigger** — confirm what invokes it today and
+3. **Remove-flow accessory cascade (flagged 2026-07-14).** Removing a parent
+   install item (camera/NVR with mounting hardware) creates ONLY that item's
+   Remove line — its accessory/child install items are silently left active,
+   so the CO under-credits and the install scope keeps orphaned mounts.
+   Direction:
+   - **UI**: the Remove gesture (single + bulk — both funnel through
+     `co-remove.js fireRemove`) detects the target's accessory children and
+     prompts "Also remove N child/accessory items?" Accepted ids join the SAME
+     `installItemIds` array in the webhook payload — no payload shape change;
+     Make already loops it, creating one Remove line per id with its own
+     `field_2966` target + seeded credit.
+   - **Detection source (audit needed)**: does the install object carry its own
+     accessory back-pointer (a `field_2464` analogue)? If not, derive children
+     via `field_2819` → original SOW line → its accessory children
+     (`field_2464` reciprocals) → THEIR install records' `field_2819` matches.
+   - **Sync on the created Remove lines — recommend NOT mirroring.** Do NOT
+     recreate parent/child (`field_2464`) or connected-device
+     (`field_1957`/`field_2197`) links between the new Remove lines. They're
+     credit lines, not buildable scope — mirroring re-imports the cascade
+     fragility of CLAUDE.md Known Issue #12 for zero benefit. Group them
+     visually via `field_2966` → install lineage instead. (If a later surface
+     genuinely needs the structure, add it then.)
+   - Same gap applies to **connected devices**: removing an NVR leaves its
+     cameras' install items active but headless — the prompt should probably
+     ALSO offer connected children, or at minimum warn.
+4. **Proposal→install conversion trigger** — confirm what invokes it today and
    that it can scope to a CO's items.
-4. **CO numbering** (CO-001 per deployment vs global) — display label on
+5. **CO numbering** (CO-001 per deployment vs global) — display label on
    documents, statuses, and chips.
-5. **Awarded-sub auto-assign mechanic** (Project connection stamped at apply
+6. **Awarded-sub auto-assign mechanic** (Project connection stamped at apply
    vs filtered dropdown) — see Sub assignment chain.
