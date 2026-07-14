@@ -36,6 +36,12 @@
   // idsKey: cell property holding the raw connection IDs (for pre-fill)
   var FIELD_DEFS = [
     { key: 'productName',     label: 'Product',            type: 'text', displayOnly: true },
+    // Designator (drop prefix + cam/reader #) — a CR can request a
+    // designator change, and the revision card must show it from → to.
+    // The computed label (e.g. "E-003") recalculates server-side from
+    // these two once Make applies them. Cam/reader rows only (cabling).
+    { key: 'bidDropPrefix',   label: 'Prefix',             type: 'connection', connection: 'field_2361', idsKey: 'bidDropPrefixIds', single: true, visKey: 'cabling' },
+    { key: 'dropNumber',      label: 'Cam/Reader #',       type: 'number',  visKey: 'cabling' },
     { key: 'qty',             label: 'Qty',                type: 'number',  visKey: 'qty' },
     { key: 'rate',            label: 'Rate ($)',           type: 'number',  currency: true },
     { key: 'laborDesc',       label: 'Labor Description',  type: 'text',    multiline: true },
@@ -334,6 +340,40 @@
     return null;
   }
 
+  // Drop Prefix catalog for the CR modal's Prefix radio list. Prefers
+  // window.SCW.dropPrefixOptions ([{id, identifier}], Builder snippet);
+  // falls back to the distinct prefixes already in use across the loaded
+  // bid cells so the field still works where the snippet is absent.
+  function buildDropPrefixOptions(params) {
+    var out = [], seen = {};
+    var cat = (window.SCW && window.SCW.dropPrefixOptions) || [];
+    for (var i = 0; i < cat.length; i++) {
+      var r = cat[i];
+      if (r && r.id && r.identifier && !seen[r.id]) {
+        seen[r.id] = 1;
+        out.push({ id: r.id, identifier: r.identifier });
+      }
+    }
+    if (out.length) return out;
+    var rows = (params && params.gridRows) || [];
+    for (var ri = 0; ri < rows.length; ri++) {
+      var cells = (rows[ri] && rows[ri].cellsByPackage) || {};
+      var pks = Object.keys(cells);
+      for (var pi = 0; pi < pks.length; pi++) {
+        var cell = cells[pks[pi]] || {};
+        var ids = cell.bidDropPrefixIds || [];
+        if (ids.length && cell.bidDropPrefix && !seen[ids[0]]) {
+          seen[ids[0]] = 1;
+          out.push({ id: ids[0], identifier: cell.bidDropPrefix });
+        }
+      }
+    }
+    out.sort(function (a, b) {
+      return String(a.identifier).localeCompare(String(b.identifier));
+    });
+    return out;
+  }
+
   function openChangeModal(params) {
     injectCrStyles();
     closeModal();
@@ -356,6 +396,13 @@
       if (FIELD_DEFS[ci].type === 'connection') {
         connRecords[FIELD_DEFS[ci].key] = opts[FIELD_DEFS[ci].key] || [];
       }
+    }
+    // Drop Prefix options aren't derivable from grid rows like the other
+    // connections — source the catalog global (Builder snippet), falling
+    // back to the prefixes in use on the loaded rows when the snippet
+    // isn't deployed on this scene (Known Issue #11).
+    if (!connRecords.bidDropPrefix || !connRecords.bidDropPrefix.length) {
+      connRecords.bidDropPrefix = buildDropPrefixOptions(params);
     }
 
     if (CFG.debug) {
@@ -416,6 +463,11 @@
       var prefill = (existing && hasValue(existing.requested[fd.key]))
         ? existing.requested[fd.key]
         : cell[fd.key];
+      // When the prefill cell doesn't carry this key AT ALL (sourceFromSow
+      // builds a SOW-shaped cell without designator keys), fall back to the
+      // bid value — an empty input would otherwise diff as a phantom
+      // "change to blank/0" on submit.
+      if (!hasValue(prefill) && !(fd.key in cell)) prefill = bidCell[fd.key];
 
       var inp;
       if (fd.displayOnly) {
@@ -436,7 +488,11 @@
         var hasLockedIds = Object.keys(lockedIdSet).length > 0;
 
         var recs = connRecords[fd.key] || [];
-        var currentIds = cell[fd.idsKey] || [];
+        // Fall back to the bid cell when the prefill cell doesn't carry
+        // this connection at all (sourceFromSow builds a SOW-shaped cell
+        // without designator keys) — otherwise the radios render unchecked
+        // and submitting as-is would request CLEARING the connection.
+        var currentIds = cell[fd.idsKey] || bidCell[fd.idsKey] || [];
         var prefillIds = (existing && existing.requested[fd.key + 'Ids']) || currentIds;
 
         if (fd.single) {

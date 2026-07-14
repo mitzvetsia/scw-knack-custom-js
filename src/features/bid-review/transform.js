@@ -320,7 +320,13 @@
           price:           num(rec, FK.price),
           productDesc:     raw(rec, FK.productDesc),
           dropPrefix:      connectionId(rec, FK.dropPrefix),
-          dropNumber:      raw(rec, FK.dropNumber),
+          // Numeric (not raw display text) — the CR modal diffs this as a
+          // number field, and "10" !== 10 read as a phantom change.
+          dropNumber:      num(rec, FK.dropNumber),
+          // Designator as a first-class CR field (FIELD_DEFS bidDropPrefix):
+          // label + ids alongside the payload-only id above.
+          bidDropPrefix:    connectionLabel(rec, FK.dropPrefix),
+          bidDropPrefixIds: connectionIdsAll(rec, FK.dropPrefix),
           limitQtyOne:     bool(rec, FK.limitQtyOne),
           mapConnections:  bool(rec, FK.bidMapConn),
           bidMdfIdf:        connectionLabel(rec, FK.mdfIdf),
