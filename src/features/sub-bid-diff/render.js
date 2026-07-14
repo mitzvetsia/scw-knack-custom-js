@@ -564,6 +564,11 @@
       if (row.offSow) {
         if (!cell) continue;                    // not on the basis package
         var ol = Number(cell.labor) || 0;
+        // Absent vs $0 reads as a MATCH (user rule 2026-07-14): a $0 bid-only
+        // line (Wattbox/UPS placeholders the sub listed but didn't price)
+        // moves no money and isn't a coverage gap — suppress it like any
+        // covered line instead of stacking "Bid only" exceptions.
+        if (moneyEq(ol, 0)) continue;
         laborDelta -= ol; counts.orphan++;
         ex.push({
           tier: 'orphan',
@@ -598,6 +603,10 @@
 
       if (!cell) {
         // SOW line that requires a bid but isn't on the basis bid → gap.
+        // Same absent-vs-$0 = match rule as the orphan tier: a SOW line whose
+        // expected labor is $0/blank prices nothing, so the sub not listing
+        // it isn't a gap worth flagging.
+        if (moneyEq(sowFee, 0)) continue;
         laborDelta += sowFee; counts.added++;
         ex.push({ tier: 'added', label: label, product: product,
                   note: 'not on basis bid', sowFee: sowFee, bidLabor: 0, delta: sowFee,
