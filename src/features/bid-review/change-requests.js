@@ -1601,6 +1601,14 @@
         }
       }
 
+      // Drop designator identity — Make needs the prefix CONNECTION ID
+      // (field_2361 on the bid record) and the drop number (field_2362),
+      // not just the computed display label, to write designator changes.
+      // Sourced from the bid cell, so present on revise/remove/reinstate
+      // items (adds have no bid record yet — Make assigns on creation).
+      if (hasValue(cell.dropPrefix)) entry.dropPrefixId = cell.dropPrefix;
+      if (hasValue(cell.dropNumber)) entry.dropNumber   = cell.dropNumber;
+
       // 3. For ADD items: SOW record values (what the SOW line item has)
       if (itemActionType(it) === 'add') {
         var c = it.current || {};
