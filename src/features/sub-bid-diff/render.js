@@ -581,8 +581,14 @@
       // Matched to this SOW. Exclude require-sub-bid = No.
       if (isReqNo(row.requireSubBidSow)) continue;
 
-      var sowFee = (row.sowItemData && Number(row.sowItemData.fee)) ||
-                   Number(row.sowFee) || 0;
+      // Live SOW fee, blank-safe: a blank/zero fee on the LIVE SOW item is a
+      // real $0 — never fall through to row.sowFee (the bid view's related
+      // copy) when sowItemData exists, or a cleared/blank SOW fee resurrects
+      // as the stale copy and flags a phantom "Labor change" against a $0
+      // bid (the blank-vs-$0 bug).
+      var sowFee = row.sowItemData
+        ? (Number(row.sowItemData.fee) || 0)
+        : (Number(row.sowFee) || 0);
       var label  = row.displayLabel ||
                    (row.sowItemData && row.sowItemData.productName) ||
                    row.productName || '(line item)';
@@ -669,8 +675,11 @@
       for (var nb = 0; nb < rows.length; nb++) {
         var nrow = rows[nb];
         if (!nrow || nrow.offSow || !isReqNo(nrow.requireSubBidSow)) continue;
-        var nfee = (nrow.sowItemData && Number(nrow.sowItemData.fee)) ||
-                   Number(nrow.sowFee) || 0;
+        // Same blank-safe read as the exception scan above: a blank live fee
+        // is $0, not an invitation to fall back to the stale bid-side copy.
+        var nfee = nrow.sowItemData
+          ? (Number(nrow.sowItemData.fee) || 0)
+          : (Number(nrow.sowFee) || 0);
         var ncell = nrow.cellsByPackage && nrow.cellsByPackage[pkgId];
         var nbid  = ncell ? (Number(ncell.labor) || 0) : 0;
         if (moneyEq(nfee, nbid)) continue;      // covered — not part of the gap

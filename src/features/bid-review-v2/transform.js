@@ -1487,7 +1487,15 @@
       // so a blank-spec line item doesn't flag every bid that priced qty 1.
       qty:        (Number(sd.qty) || 0) > 0
                     ? ((Number(sd.qty) || 0) !== (Number(cell.qty) || 0)) : false,
-      fee:        Math.abs((Number(row.sowFee) || 0) - (Number(cell.labor) || 0)) > 0.001,
+      // Fee basis: the LIVE SOW item's fee — what the SOW column actually
+      // displays — when the row has one (same "flag matches display" fix the
+      // labor-desc basis got). row.sowFee is the BID record's related copy;
+      // comparing against it let a blank/$0 live fee flag a phantom diff
+      // against a $0 bid whenever the copy was stale. Blank reads as a real
+      // $0 on both sides. Rows with no live SOW item keep the copy basis.
+      fee:        Math.abs((row.sowItemData ? (Number(sd.fee) || 0)
+                                            : (Number(row.sowFee) || 0))
+                    - (Number(cell.labor) || 0)) > 0.001,
       conduit:    bConduit != null ? (bConduit !== (cnum(sd.conduit) || 0)) : false,
       dropLength: bDrop != null ? (bDrop !== (cnum(sd.dropLength) || 0)) : false,
       plenum:     !!sd.plenum !== !!cell.plenum,

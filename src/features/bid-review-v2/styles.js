@@ -367,23 +367,32 @@
     '.scw-bid-review-v2__cell-cr-card {',
     '  margin-top: 8px; cursor: pointer;',
     '}',
-    /* Diff highlighting — whole cell flagged + per-field amber pill (v1 parity). */
+    /* Diff highlighting — whole cell flagged + per-field pill (v1 parity).
+       Two-tone (2026-07-14): MONEY diffs (Sub Bid / Ext fee + Qty) keep the
+       amber pill so pricing deltas stay the loudest signal; every OTHER
+       field diff (product / desc / conn / MDF / label / cabling) reads
+       LAVENDER. The bid-side pills always carry data-scw-diff-field, so the
+       money override keys off that attribute. */
     '.scw-bid-review-v2__cell--mismatch {',
     '  background: #fff7ed; box-shadow: inset 3px 0 0 #fb923c;',
     '}',
     '.scw-bid-review-v2__field-diff {',
-    '  background: #fed7aa; border-radius: 3px; padding: 0 4px;',
+    '  background: #ddd6fe; border-radius: 3px; padding: 0 4px;',
     '  box-decoration-break: clone; -webkit-box-decoration-break: clone;',
+    '}',
+    '.scw-bid-review-v2__field-diff[data-scw-diff-field="qty"],',
+    '.scw-bid-review-v2__field-diff[data-scw-diff-field="fee"] {',
+    '  background: #fed7aa;',
     '}',
     /* Word-level diff on text fields (product / labor desc): underline ONLY
        the words that differ from the SOW value, instead of the whole-field
-       amber pill. Amber to match the diff theme. */
+       pill. Lavender — text diffs are non-money (see the rule above). */
     '.scw-bid-review-v2__tok-diff {',
     '  text-decoration: underline;',
-    '  text-decoration-color: #ea580c;',
+    '  text-decoration-color: #7c3aed;',
     '  text-decoration-thickness: 2px;',
     '  text-underline-offset: 2px;',
-    '  background: #ffedd5;',
+    '  background: #ede9fe;',
     '  border-radius: 2px;',
     '}',
     /* Cabling attribute strip (conduit / drop / plenum / exterior / existing)
