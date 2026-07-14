@@ -642,13 +642,14 @@
     '  box-shadow: inset 4px 0 0 #e11d48 !important;',
     '  background: #fff5f6 !important;',
     '}',
-    // Inline "REMOVE" flag — leads the DROP/label cell (its identity column),
-    // not a badge floating over the action icons.
+    // "REMOVE" flag in the DROP/label cell — stacked ABOVE the label on its
+    // own line (inline beside it truncated the drop label in the narrow
+    // column: "REMOVE E-…").
     '.scw-ws-v2-co-flag--remove {',
-    '  display: inline-block; margin: 0 6px 3px 0;',
+    '  display: block; width: -moz-fit-content; width: fit-content;',
+    '  margin: 0 0 3px 0;',
     '  font: 700 8.5px/1 system-ui, -apple-system, sans-serif; letter-spacing: .06em;',
     '  padding: 2px 6px; border-radius: 4px; color: #9f1239; background: #ffe4e6;',
-    '  vertical-align: middle;',
     '}',
     '.scw-ws-v2-card--promoted-bracket .scw-ws-v2-cell--product .scw-ws-v2-product-name {',
     '  font-style: italic !important;',
