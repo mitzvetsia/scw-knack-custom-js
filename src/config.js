@@ -155,7 +155,7 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   //      prefix/number = display text + drop # (field_1951);
   //      label = the computed drop label, e.g. "E-010")
   //   Response body: { success: true } or { success: false, error: "..." }
-  MAKE_CO_SEND_TO_SUB_WEBHOOK: "PLACEHOLDER — set when the CO send-to-sub scenario exists",
+  MAKE_CO_SEND_TO_SUB_WEBHOOK: "https://hook.us1.make.com/vj5dai5w3k84m9xrd9f296wlqnr8oo4q",
   // Issue Change Order — fired by ops-stepper.js's CO-mode step
   // ('issue-change-order') on the proposal PREVIEW page (scene_1096), which
   // renders instead of the base publish steps when SOW Type (field_2952) =
