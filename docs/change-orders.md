@@ -419,14 +419,17 @@ but never got installed (not part of a greenlit SOW).
    `window.SCW.productBucketMap` Builder snippet ships the full-access REST
    key to the browser. Same check for `dropPrefixOptions` (also carries the
    role-filter TODO #11).
-5. Sub-facing CO view + sub-originated entry point. **Status-window locking
-   shipped 2026-07-14** (`worksheet-v2/co-sub-lock.js`): for external
-   (non-@getscw.com) users on the CO scene, the worksheet is fully
-   read-only unless CO Status = Pending Sub Pricing (blank/unknown status
-   fails safe to locked), and the ops drafting surfaces (add/adopt/remove
-   strips, stage-strip actions, header-form inputs) are hidden at every
-   status. Internal users unaffected. When the dedicated sub-facing view
-   lands it reuses the same module (point its view keys at the new scene).
+5. Sub-originated entry point (deferred). **The sub-facing CO page +
+   status-window locking shipped 2026-07-14**: scene_1374 ("Manage Change
+   Order" under the sub portal's deployment dashboard) — view_4121 CO
+   header form, view_4112 CO line items grid, view_4114 MDF/IDF cards,
+   view_4116 install grid, view_4118 v2 source grid, view_4122 status
+   details. `worksheet-v2/co-sub-lock.js` locks the ENTIRE scene (cell
+   edits, delete/edit/add link columns, header form, MDF cards, photo
+   affordances, capture-phase click/submit belt) with a lock banner
+   whenever CO Status (field_2953, read off view_4122) doesn't match
+   /sub pricing/i — blank/unknown fails safe to locked. Applies to
+   everyone on the scene; ops manage from the internal drafting scene.
 6. view_4056 chips ("Pending CO-###") + toolbar/card entry points ("New
    Change Order" in the suppressed toolbar slot — worksheet-v2/toolbar.js:151
    `noAddItem` comment anticipates this; "Remove via CO" on the card menu).

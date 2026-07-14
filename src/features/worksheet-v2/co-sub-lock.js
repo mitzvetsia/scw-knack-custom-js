@@ -1,192 +1,210 @@
-/*** CO SUB LOCK — status-window lockdown for external users ****************
+/*** CO SUB LOCK — sub portal "Manage Change Order" page (scene_1374) *******
  *
- * "The CO is entirely locked to the sub UNLESS the status is Pending Sub
- * Pricing." (docs/change-orders.md edit-window table: Draft = originator,
- * Pending Sub Pricing = sub's window, Ops Review onward = sub locked.)
+ * "Everything on this page is locked UNLESS the CO status is Sub Pricing."
+ * (docs/change-orders.md edit-window table: Pending Sub Pricing = the sub's
+ * window; every other status the sub is read-only.)
  *
- * On the CO scene, for EXTERNAL (non-@getscw.com) users:
- *   - ALWAYS (any status): the ops drafting surfaces are hidden — the
- *     add/adopt/remove strips (#scw-co-strips), the stage-strip action row
- *     (Send to Sub / Send back / Preview & Issue are ops verbs), and the
- *     CO header form's name/notes inputs + submit (drafting fields).
- *     The stage STEPPER itself stays visible — "where is this CO" is
- *     useful to the sub.
- *   - When CO Status (field_2953) ≠ Pending Sub Pricing: the CO worksheet
- *     (view_4079) flips to the existing readOnly machinery
- *     (.scw-ws-v2--readonly styles + cfg.readOnly so toolbar/bulk/sort
- *     never mount) plus a hard input-disable belt after every render,
- *     and the panel banner shows a lock note with the current status.
+ * The page is raw Knack views (no worksheet-v2 mounted here yet):
+ *   view_4121 — CO header form (number/status read-only, name + notes inputs)
+ *   view_4112 — Line Items Connected to this CO (cell-edit grid, delete/edit
+ *               links, add-accessory / add-photo link columns)
+ *   view_4114 — Manage MDFs/IDFs (mdf-idf-cards inputs, delete, photos)
+ *   view_4116 — WHAT WE'RE INSTALLING (install grid, cell-edit + links)
+ *   view_4118 — V2 device worksheet source grid (rows hidden; same treatment)
+ *   view_4122 — SOW header details (CO Status field_2953 — the status READ)
  *
- * Internal users are never affected. Fails safe to LOCKED while the
- * session email hasn't resolved yet (same direction as init.js's
- * internalOnly gate) — a staff member's surfaces restore on the next
- * render tick; an external user never gets a flash of editable UI.
+ * When CO Status (field_2953) does NOT match /sub pricing/i (blank/unknown
+ * fails safe to LOCKED):
+ *   - a lock banner renders at the top of the scene with the current status
+ *   - all inline cell editing is dead (pointer-events + capture-phase click
+ *     belt), delete / edit / add-accessory / add-photo link columns hidden
+ *   - the header form's inputs go white-bg read-only (repo locked-field
+ *     convention) and its Submit hides
+ *   - MDF/IDF card inputs lock, their delete / add-photo affordances hide
  *
- * Status source: SCW.coStage.getStatus() (co-stage-strip.js — includes
- * its optimistic post-webhook flip), falling back to a direct read of the
- * hidden status view (view_4109). Blank/unknown status = locked.
+ * Applies to EVERYONE on this scene — it's the sub's page; ops manage the
+ * CO from the internal drafting scene. Re-applied on scene + view renders
+ * (Knack re-renders rebuild the DOM).
  ***************************************************************************/
 (function () {
   'use strict';
 
-  var ns = window.SCW && window.SCW.worksheetV2;
-  if (!ns) return;
-
-  var CO_VIEW      = 'view_4079';   // CO worksheet (the lock target)
-  var HDR_VIEW     = 'view_4092';   // CO header form (name/notes inputs)
-  var STATUS_VIEW  = 'view_4109';   // hidden CO record (status fallback read)
-  var STATUS_FIELD = 'field_2953';
-  var OPEN_RE      = /pending sub pricing/i;   // the sub's edit window
+  var CFG = {
+    SCENE:        'scene_1374',
+    HDR_FORM:     'view_4121',
+    STATUS_VIEW:  'view_4122',   // details view carrying CO Status
+    STATUS_FIELD: 'field_2953',
+    GRIDS:        ['view_4112', 'view_4114', 'view_4116', 'view_4118'],
+    OPEN_RE:      /sub pricing/i   // matches "Pending Sub Pricing"
+  };
 
   var STYLE_ID  = 'scw-co-sub-lock-css';
-  var NOTE_CLS  = 'scw-co-sub-lock-note';
-  var EXT_CLS   = 'scw-co-ext-user';
+  var BANNER_ID = 'scw-co-sub-lock-banner';
   var LOCK_CLS  = 'scw-co-sub-locked';
   var EVENT_NS  = '.scwCoSubLock';
 
+  function sceneRoot() { return document.getElementById('kn-' + CFG.SCENE); }
+
+  function stripHtml(v) {
+    return String(v == null ? '' : v).replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+  }
+
+  function getStatus() {
+    // Model first (details view → model.attributes).
+    try {
+      var v = Knack.views[CFG.STATUS_VIEW];
+      if (v && v.model && v.model.attributes) {
+        var s = stripHtml(v.model.attributes[CFG.STATUS_FIELD]);
+        if (s) return s;
+      }
+    } catch (e) { /* fall through */ }
+    // DOM: the details view's status row.
+    var el = document.querySelector(
+      '#' + CFG.STATUS_VIEW + ' .kn-detail.' + CFG.STATUS_FIELD + ' .kn-detail-body');
+    if (el && stripHtml(el.textContent)) return stripHtml(el.textContent);
+    // Last resort: the header form's read-only status input block.
+    var wrap = document.querySelector(
+      '#' + CFG.HDR_FORM + ' #kn-input-' + CFG.STATUS_FIELD);
+    if (wrap) {
+      var clone = wrap.cloneNode(true);
+      var junk = clone.querySelectorAll('label, p.kn-instructions');
+      for (var i = 0; i < junk.length; i++) {
+        if (junk[i].parentNode) junk[i].parentNode.removeChild(junk[i]);
+      }
+      return stripHtml(clone.textContent);
+    }
+    return '';
+  }
+
   function injectCss() {
     if (document.getElementById(STYLE_ID)) return;
+    var S = 'body.' + LOCK_CLS + ' #kn-' + CFG.SCENE;
     var s = document.createElement('style');
     s.id = STYLE_ID;
     s.textContent = [
-      // ── external user, ANY status: ops drafting surfaces are not theirs ──
-      'body.' + EXT_CLS + ' #scw-co-strips{display:none !important;}',
-      'body.' + EXT_CLS + ' #scw-co-stage .scw-co-stage-actions{display:none !important;}',
-      // CO header form: name/notes stay readable (repo locked-field
-      // convention: white bg, no graying), never editable; no submit.
-      'body.' + EXT_CLS + ' #' + HDR_VIEW + ' input,',
-      'body.' + EXT_CLS + ' #' + HDR_VIEW + ' textarea{',
+      // ── grids: no inline editing, no row actions ──
+      S + ' td.cell-edit{pointer-events:none !important;}',
+      S + ' a.kn-link-delete{display:none !important;}',
+      // edit / add-accessory / add-photo link columns (their headers stay —
+      // hiding <th> would shift the column grid under Knack's fixed labels)
+      S + ' td.kn-table-link{visibility:hidden !important;}',
+      // ── CO header form: readable, not editable (repo locked-field rule) ──
+      S + ' #' + CFG.HDR_FORM + ' input,',
+      S + ' #' + CFG.HDR_FORM + ' textarea{',
       'pointer-events:none !important;background:#fff !important;}',
-      'body.' + EXT_CLS + ' #' + HDR_VIEW + ' .kn-submit{display:none !important;}',
-      // ── locked window: belt on top of the .scw-ws-v2--readonly styles ──
-      'body.' + LOCK_CLS + ' #scw-ws-v2-' + CO_VIEW + ' .scw-ws-v2-toolbar,',
-      'body.' + LOCK_CLS + ' #scw-ws-v2-' + CO_VIEW + ' .scw-ws-v2-bulkbar{display:none !important;}',
-      // Lock note in the worksheet banner.
-      '.' + NOTE_CLS + '{display:inline-flex;align-items:center;gap:6px;',
-      'margin-left:10px;padding:2px 10px;border-radius:999px;',
-      'background:#f1f5f9;border:1px solid #cbd5e1;color:#475569;',
-      'font:600 11px/1.5 system-ui,-apple-system,sans-serif;white-space:nowrap;}'
+      S + ' #' + CFG.HDR_FORM + ' .kn-submit{display:none !important;}',
+      // ── MDF/IDF cards (mdf-idf-cards.js inputs + affordances) ──
+      S + ' .scw-mdf-input{pointer-events:none !important;background:#fff !important;',
+      'appearance:none;-webkit-appearance:none;}',
+      S + ' .scw-mdf-del,',
+      S + ' .scw-mdf-photos,',
+      S + ' .scw-inline-photo-add{display:none !important;}',
+      S + ' .scw-inline-photo-strip{pointer-events:none !important;}',
+      // ── lock banner ──
+      '#' + BANNER_ID + '{display:flex;align-items:center;gap:10px;',
+      'margin:0 0 14px;padding:11px 16px;border-radius:8px;',
+      'background:#f1f5f9;border:1px solid #cbd5e1;box-shadow:inset 4px 0 0 #64748b;',
+      'font:600 13px/1.45 system-ui,-apple-system,sans-serif;color:#334155;}',
+      '#' + BANNER_ID + ' b{color:#0f172a;}'
     ].join('');
     document.head.appendChild(s);
   }
 
-  function isExternal() {
-    // Fails safe to "external" (locked) until the session email resolves.
-    return !(window.SCW && typeof SCW.isInternalUser === 'function' &&
-      SCW.isInternalUser());
-  }
-
-  function stripHtml(v) {
-    return String(v == null ? '' : v).replace(/<[^>]*>/g, '').trim();
-  }
-
-  function getStatus() {
-    if (window.SCW && SCW.coStage && typeof SCW.coStage.getStatus === 'function') {
-      var s = SCW.coStage.getStatus();
-      if (s) return s;
+  function renderBanner(locked, status) {
+    var banner = document.getElementById(BANNER_ID);
+    if (!locked) {
+      if (banner && banner.parentNode) banner.parentNode.removeChild(banner);
+      return;
     }
-    try {
-      var v = Knack.views[STATUS_VIEW];
-      if (v && v.model) {
-        if (v.model.attributes && v.model.attributes.id) {
-          return stripHtml(v.model.attributes[STATUS_FIELD]);
-        }
-        var models = v.model.data && v.model.data.models;
-        if (models && models.length) return stripHtml(models[0].attributes[STATUS_FIELD]);
-      }
-    } catch (e) { /* fall through */ }
-    return '';
+    var root = sceneRoot();
+    if (!root) return;
+    if (!banner) {
+      banner = document.createElement('div');
+      banner.id = BANNER_ID;
+      root.insertBefore(banner, root.firstChild);
+    }
+    banner.innerHTML = '🔒 <span>This change order is <b>locked</b>' +
+      (status ? ' — status: <b>' + stripHtml(status) + '</b>' : '') +
+      '. Editing opens when it returns to <b>Sub Pricing</b>.</span>';
   }
 
-  // Keyboard/tab belt on top of the pointer-events CSS — same layer
-  // co-adopt.js/co-remove.js use on their readOnly panels. Re-applied
-  // after every v2 render (renders rebuild the inputs).
-  function disableInputs(panel) {
-    var els = panel.querySelectorAll(
-      '.scw-ws-v2-body input, .scw-ws-v2-body select, ' +
-      '.scw-ws-v2-body textarea, .scw-ws-v2-body button');
+  // Keyboard/tab belt on top of the pointer-events CSS — inputs are rebuilt
+  // by every Knack render, so re-applied each pass.
+  function lockInputs(locked) {
+    var root = sceneRoot();
+    if (!root) return;
+    var sel = '#' + CFG.HDR_FORM + ' input, #' + CFG.HDR_FORM + ' textarea, ' +
+      '.scw-mdf-input';
+    var els = root.querySelectorAll(sel);
     for (var i = 0; i < els.length; i++) {
-      els[i].setAttribute('disabled', 'disabled');
-      els[i].setAttribute('tabindex', '-1');
+      if (locked) {
+        if (els[i].tagName === 'SELECT') els[i].setAttribute('disabled', 'disabled');
+        else els[i].setAttribute('readonly', 'readonly');
+        els[i].setAttribute('tabindex', '-1');
+      } else {
+        els[i].removeAttribute('disabled');
+        els[i].removeAttribute('readonly');
+        els[i].removeAttribute('tabindex');
+      }
     }
   }
+
+  var _locked = false;
 
   function apply() {
-    var onScene = !!document.getElementById(CO_VIEW);
-    if (!onScene) {
-      document.body.classList.remove(EXT_CLS, LOCK_CLS);
+    if (!sceneRoot()) {
+      _locked = false;
+      document.body.classList.remove(LOCK_CLS);
       return;
     }
     injectCss();
-
-    var ext = isExternal();
     var status = getStatus();
-    var locked = ext && !OPEN_RE.test(status);   // blank status → locked
+    _locked = !CFG.OPEN_RE.test(status);   // blank/unknown → locked
+    document.body.classList.toggle(LOCK_CLS, _locked);
+    renderBanner(_locked, status);
+    lockInputs(_locked);
+  }
 
-    document.body.classList.toggle(EXT_CLS, ext);
-    document.body.classList.toggle(LOCK_CLS, locked);
-
-    // Flip the worksheet's readOnly machinery. Mutating the live cfg is
-    // safe — one session is one user — and gets us the full existing
-    // lockdown for free (styles.js affordance kill + init.js skipping the
-    // toolbar/sort/filter/bulk mounts).
-    var vcfg = ns.cfg && ns.cfg.viewCfg(CO_VIEW);
-    if (vcfg) {
-      if (vcfg.__scwRoBase === undefined) vcfg.__scwRoBase = !!vcfg.readOnly;
-      var want = vcfg.__scwRoBase || locked;
-      if (!!vcfg.readOnly !== want) {
-        vcfg.readOnly = want;
-        // Rebuild the cards in the new mode (renderView is idempotent; our
-        // subscribe below re-enters apply() but readOnly is settled so it
-        // can't loop).
-        try {
-          if (ns.render && ns.data) {
-            ns.render.renderView(CO_VIEW, ns.data.readRecords(CO_VIEW));
-          }
-        } catch (e) { /* next render picks it up */ }
+  // Capture-phase belt: block anything the CSS might miss (Enter-key form
+  // submits, programmatic focus clicks). Bound once, document-level.
+  if (!document.__scwCoSubLockBound) {
+    document.__scwCoSubLockBound = true;
+    document.addEventListener('click', function (e) {
+      if (!_locked) return;
+      var t = e.target;
+      if (!t || !t.closest || !t.closest('#kn-' + CFG.SCENE)) return;
+      var hit = t.closest(
+        'td.cell-edit, a.kn-link-delete, td.kn-table-link a, ' +
+        '.scw-mdf-del, .scw-mdf-photos, .scw-inline-photo-card, ' +
+        '.scw-inline-photo-add, #' + CFG.HDR_FORM + ' .kn-submit');
+      if (hit) { e.preventDefault(); e.stopPropagation(); }
+    }, true);
+    document.addEventListener('submit', function (e) {
+      if (!_locked) return;
+      var f = e.target;
+      if (f && f.closest && f.closest('#' + CFG.HDR_FORM)) {
+        e.preventDefault();
+        e.stopPropagation();
       }
-    }
-
-    var panel = document.getElementById('scw-ws-v2-' + CO_VIEW);
-    if (panel) {
-      panel.classList.toggle('scw-ws-v2--readonly',
-        locked || !!(vcfg && vcfg.__scwRoBase));
-      var banner = panel.querySelector('.scw-ws-v2-banner');
-      var note = panel.querySelector('.' + NOTE_CLS);
-      if (locked) {
-        if (!note && banner) {
-          note = document.createElement('span');
-          note.className = NOTE_CLS;
-          var title = banner.querySelector('.scw-ws-v2-banner-title');
-          if (title && title.nextSibling) banner.insertBefore(note, title.nextSibling);
-          else banner.appendChild(note);
-        }
-        if (note) {
-          note.textContent = '🔒 Locked — ' +
-            (status ? 'status: ' + status : 'not open for pricing');
-        }
-        disableInputs(panel);
-      } else if (note) {
-        note.parentNode.removeChild(note);
-      }
-    }
+    }, true);
   }
 
   function soon() {
     setTimeout(apply, 100);
-    setTimeout(apply, 700);   // catch late model/session populates
+    setTimeout(apply, 700);   // catch late model populates / re-enhancers
   }
 
-  // Re-apply after every v2 render (renders rebuild inputs → belt re-arms).
-  if (ns.data && typeof ns.data.subscribe === 'function') {
-    ns.data.subscribe(CO_VIEW, function () { setTimeout(apply, 0); });
+  if (window.SCW && typeof SCW.onSceneRender === 'function') {
+    SCW.onSceneRender(CFG.SCENE, soon, EVENT_NS);
   }
   if (window.SCW && typeof SCW.onViewRender === 'function') {
-    SCW.onViewRender(CO_VIEW, soon, EVENT_NS);
-    SCW.onViewRender(HDR_VIEW, soon, EVENT_NS);
-    SCW.onViewRender(STATUS_VIEW, soon, EVENT_NS);
+    SCW.onViewRender(CFG.STATUS_VIEW, soon, EVENT_NS);
+    SCW.onViewRender(CFG.HDR_FORM, soon, EVENT_NS);
+    for (var i = 0; i < CFG.GRIDS.length; i++) {
+      SCW.onViewRender(CFG.GRIDS[i], soon, EVENT_NS);
+    }
   }
-  $(document).off('knack-scene-render.any' + EVENT_NS)
-    .on('knack-scene-render.any' + EVENT_NS, soon);
+  $(document).off('knack-scene-render.' + CFG.SCENE + EVENT_NS)
+    .on('knack-scene-render.' + CFG.SCENE + EVENT_NS, soon);
 })();
 /*** END: CO sub lock *******************************************************/
