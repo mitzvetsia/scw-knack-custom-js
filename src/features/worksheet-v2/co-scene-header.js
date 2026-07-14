@@ -58,6 +58,7 @@
       '.scw-co-ab-flash.is-fading{outline-color:transparent !important;}',
       // Collapsed-by-default source panels: only the banner shows; click the
       // banner (or the action bar) to expand. Chevron shows state.
+      '.scw-co-collapsible{margin-bottom:10px;}',
       '.scw-co-collapsible > .scw-ws-v2-banner{cursor:pointer;user-select:none;}',
       '.scw-co-collapsed > *:not(.scw-ws-v2-banner){display:none !important;}',
       '.scw-co-chevron{display:inline-flex;align-items:center;margin-right:8px;',
@@ -192,10 +193,28 @@
     });
   }
 
+  // Move the (collapsed) source panels directly under the action bar, above
+  // the CO worksheet — no more bouncing to the bottom of the page. Safe to
+  // re-run (idempotent order check); init.js's accordion-relocation no-ops
+  // once the panels live outside any accordion wrapper. Late-mounting panels
+  // get moved by the retry timers.
+  function relocateSources() {
+    var bar = document.getElementById(BAR_ID);
+    if (!bar || !bar.parentNode) return;
+    var after = bar;
+    [ADOPT_VIEW, REMOVE_VIEW].forEach(function (vk) {
+      var p = document.getElementById('scw-ws-v2-' + vk);
+      if (!p) return;
+      if (after.nextSibling !== p) after.parentNode.insertBefore(p, after.nextSibling);
+      after = p;
+    });
+  }
+
   function mountAll() {
     mount();
     makeCollapsible(ADOPT_VIEW, 'add');
     makeCollapsible(REMOVE_VIEW, 'remove');
+    relocateSources();
   }
   function mountSoon() {
     setTimeout(mountAll, 200);
