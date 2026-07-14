@@ -8,7 +8,10 @@
   // ======================
   // view_4002 — Add-to-SOW form on the bid comparison page (scene_1155),
   // opened via view_4001's menu link. Identical DTO fields to view_3329.
-  const VIEW_IDS = ['view_3329', 'view_4002']; // add more views
+  // view_4100 — Add-to-Change-Order form on the CO scene, opened via the CO
+  // worksheet's "+ Add New Item" button (view_4099 menu link). Same SOW
+  // multi-add DTO fields (field_2182 REL_scope of work on every bucket).
+  const VIEW_IDS = ['view_3329', 'view_4002', 'view_4100']; // add more views
   const BUCKET_FIELD_KEY = 'field_2223';
   const EVENT_NS = '.scwBucketRules';
   const CSS_ID = 'scw-bucket-visibility-css';
