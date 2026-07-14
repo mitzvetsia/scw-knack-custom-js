@@ -45,6 +45,16 @@
       'box-shadow:0 1px 2px rgba(15,23,42,.04);padding:16px 20px;}',
       // Hide the raw read-only value blocks — the header renders them.
       '#' + VIEW + ' #kn-input-field_2123, #' + VIEW + ' #kn-input-field_2953{display:none !important;}',
+      // Breadcrumb row — says WHERE you are: this page is a child of the
+      // Manage Deployment page, and the link goes back up.
+      '.scw-co-crumb{display:flex;align-items:center;gap:8px;margin-bottom:10px;',
+      'font:600 12px/1.2 system-ui,-apple-system,sans-serif;}',
+      '.scw-co-crumb a{display:inline-flex;align-items:center;gap:6px;',
+      'color:#0f4c75;text-decoration:none;padding:5px 10px;border:1px solid #c7d4e0;',
+      'border-radius:6px;background:#fff;transition:background .12s;}',
+      '.scw-co-crumb a:hover{background:#f1f5f9;text-decoration:none;}',
+      '.scw-co-crumb-sep{color:#cbd5e1;}',
+      '.scw-co-crumb-here{color:#64748b;font-weight:600;}',
       // Header strip.
       '.scw-co-hdr{display:flex;align-items:center;gap:12px;flex-wrap:wrap;',
       'padding-bottom:12px;margin-bottom:14px;border-bottom:1px solid #e2e8f0;}',
@@ -88,6 +98,24 @@
     });
   }
 
+  // Parent (Manage Deployment) hash: the CO page is a drill-in child — cut
+  // the hash at the edit-change-order segment. Fallback: drop the trailing
+  // slug + record-id pair.
+  function parentHash() {
+    var hash = (window.location.hash || '').replace(/^#/, '').split('?')[0]
+      .replace(/\/+$/, '');
+    var segs = hash.split('/');
+    for (var i = 0; i < segs.length; i++) {
+      if (/^edit-change-order/i.test(segs[i])) {
+        return '#' + segs.slice(0, i).join('/') + '/';
+      }
+    }
+    if (segs.length >= 2 && /^[a-f0-9]{24}$/i.test(segs[segs.length - 1])) {
+      return '#' + segs.slice(0, -2).join('/') + '/';
+    }
+    return '';
+  }
+
   function enhance() {
     var viewEl = document.getElementById(VIEW);
     if (!viewEl) return;
@@ -99,11 +127,26 @@
     var status = readOnlyValue(viewEl, 'field_2953');
     var tone   = STATUS_TONES[status.toLowerCase()] || TONE_DEFAULT;
 
+    // Breadcrumb: back-link to the parent Manage Deployment page + "you are
+    // here". Lives INSIDE the card, above the header strip.
+    var crumb = form.querySelector('.scw-co-crumb');
+    if (!crumb) {
+      crumb = document.createElement('div');
+      crumb.className = 'scw-co-crumb';
+      form.insertBefore(crumb, form.firstChild);
+    }
+    var pHash = parentHash();
+    crumb.innerHTML =
+      (pHash ? '<a href="' + esc(pHash) + '">&larr; Manage Deployment</a>' +
+               '<span class="scw-co-crumb-sep">/</span>' : '') +
+      '<span class="scw-co-crumb-here">Change Order' +
+        (num ? ' ' + esc(num) : '') + '</span>';
+
     var hdr = form.querySelector('.scw-co-hdr');
     if (!hdr) {
       hdr = document.createElement('div');
       hdr.className = 'scw-co-hdr';
-      form.insertBefore(hdr, form.firstChild);
+      form.insertBefore(hdr, crumb.nextSibling);
     }
     hdr.innerHTML =
       '<div class="scw-co-hdr-id">' +
