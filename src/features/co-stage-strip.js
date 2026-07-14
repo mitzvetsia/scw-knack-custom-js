@@ -529,9 +529,11 @@
     }
     if (cur === 1) {
       return '<span class="scw-co-stage-wait"><span class="scw-co-stage-pulse"></span>' +
-        esc(waitingCopy()) + '</span>' +
-        '<button type="button" class="scw-co-stage-btn scw-co-stage-btn--secondary" ' +
-        'data-scw-co-act="nudge">Nudge sub</button>';
+        esc(waitingCopy()) + '</span>';
+      // Nudge sub — shelved 2026-07-14 (nice-to-have; wire later). The
+      // 'nudge' handler + webhook mode:'nudge' contract stay in place:
+      // + '<button type="button" class="scw-co-stage-btn scw-co-stage-btn--secondary" '
+      // + 'data-scw-co-act="nudge">Nudge sub</button>';
     }
     if (cur === 2) {
       return '<button type="button" class="scw-co-stage-btn scw-co-stage-btn--secondary" ' +
