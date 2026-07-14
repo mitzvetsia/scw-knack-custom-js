@@ -480,7 +480,13 @@
         mdfLabelField:      'field_1642',
         hideSow:            true,   // CO items group by MDF/IDF; SOW pills are noise here
         hideSourceAccordion: true,  // full cutover — hide the native grid + accordion
-        noAddItem:          true,   // CO add flow (new item) TBD — adoption ships below
+        // "+ Add New Item" toolbar button clicks the (hidden) link inside
+        // view_4099 — a menu on the CO scene whose button opens a copy of
+        // the Add-to-SOW form targeted at the CO. Same pattern as the
+        // sales page (view_3450) and review-bids (view_4001). The menu
+        // view itself is hidden by hide-data-source-views.js.
+        addSowMenuView:     'view_4099',
+        addItemLabel:       'Add New Item',
         fields:  {},
         buckets: {}
       }

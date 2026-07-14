@@ -111,6 +111,12 @@
     // customer questionnaire scene; customer-questionnaire.js reads its
     // model to inject photo strips into the questionnaire cards.
     'view_4075',
+    // 'view_4099' — Add-item menu link on the Change Order scene. The CO
+    // worksheet's "+ Add New Item" toolbar button clicks this view's
+    // (hidden) link programmatically (worksheet-v2 addSowMenuView on the
+    // view_4079 entry) — same mechanism as view_4001 on review-bids. The
+    // link opens a copy of the Add-to-SOW form targeted at the CO.
+    'view_4099',
   ];
 
   // Views that must NEVER be hidden as collateral damage from the
