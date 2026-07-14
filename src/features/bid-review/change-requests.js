@@ -340,21 +340,25 @@
     return null;
   }
 
-  // Drop Prefix catalog for the CR modal's Prefix radio list. Prefers
-  // window.SCW.dropPrefixOptions ([{id, identifier}], Builder snippet);
-  // falls back to the distinct prefixes already in use across the loaded
-  // bid cells so the field still works where the snippet is absent.
+  // Drop Prefix catalog for the CR modal's Prefix radio list — same source
+  // priority as the worksheet-v2 Prefix picker (init.js field_2240/2361):
+  // the window.SCW.dropPrefixOptions Builder snippet when deployed, else
+  // the union of prefixes in use on BOTH sides — bid records (field_2361,
+  // via the grid cells) AND SOW line items (field_2240_raw, straight off
+  // the view_3921 model). The SOW side matters: a match-SOW prefill can
+  // name a prefix (e.g. "RA-E-") that no bid record uses yet.
   function buildDropPrefixOptions(params) {
     var out = [], seen = {};
+    function push(id, label) {
+      if (id && label && !seen[id]) { seen[id] = 1; out.push({ id: id, identifier: label }); }
+    }
     var cat = (window.SCW && window.SCW.dropPrefixOptions) || [];
     for (var i = 0; i < cat.length; i++) {
       var r = cat[i];
-      if (r && r.id && r.identifier && !seen[r.id]) {
-        seen[r.id] = 1;
-        out.push({ id: r.id, identifier: r.identifier });
-      }
+      if (r) push(r.id, r.identifier);
     }
     if (out.length) return out;
+    // Bid-side in-use prefixes (field_2361, scraped onto the grid cells).
     var rows = (params && params.gridRows) || [];
     for (var ri = 0; ri < rows.length; ri++) {
       var cells = (rows[ri] && rows[ri].cellsByPackage) || {};
@@ -362,12 +366,21 @@
       for (var pi = 0; pi < pks.length; pi++) {
         var cell = cells[pks[pi]] || {};
         var ids = cell.bidDropPrefixIds || [];
-        if (ids.length && cell.bidDropPrefix && !seen[ids[0]]) {
-          seen[ids[0]] = 1;
-          out.push({ id: ids[0], identifier: cell.bidDropPrefix });
-        }
+        if (ids.length) push(ids[0], cell.bidDropPrefix);
       }
     }
+    // SOW-side in-use prefixes (field_2240_raw on the view_3921 model).
+    try {
+      var v = window.Knack && Knack.views && Knack.views[CFG.sowItemsViewKey];
+      var models = v && v.model && v.model.data && v.model.data.models;
+      for (var mi = 0; mi < (models ? models.length : 0); mi++) {
+        var raw = models[mi] && models[mi].attributes &&
+                  models[mi].attributes.field_2240_raw;
+        if (Array.isArray(raw) && raw.length && raw[0]) {
+          push(raw[0].id, raw[0].identifier);
+        }
+      }
+    } catch (e) { /* SOW view not loaded — bid-side list still usable */ }
     out.sort(function (a, b) {
       return String(a.identifier).localeCompare(String(b.identifier));
     });
@@ -488,14 +501,15 @@
         var hasLockedIds = Object.keys(lockedIdSet).length > 0;
 
         var recs = connRecords[fd.key] || [];
-        // Fall back to the bid cell when the prefill cell doesn't carry
-        // this connection at all (sourceFromSow builds a SOW-shaped cell
-        // without designator keys) — otherwise the radios render unchecked
-        // and submitting as-is would request CLEARING the connection.
-        var currentIds = cell[fd.idsKey] || bidCell[fd.idsKey] || [];
-        // Resolve ids from display text when the prefill cell carries a
-        // label but no ids (sourceFromSow derives designator/MDF from the
-        // SOW item's rendered values) — match against the option list.
+        // Prefill id precedence:
+        //   1. ids on the prefill cell itself
+        //   2. ids RESOLVED from the prefill cell's display text (the
+        //      sourceFromSow cell carries the SOW's designator/MDF as a
+        //      label with no ids) — must beat the bid fallback, or the
+        //      radios preselect the BID's value instead of the SOW's
+        //   3. the bid cell's ids (key absent on the prefill cell —
+        //      without this, submitting as-is would request CLEARING it)
+        var currentIds = cell[fd.idsKey] || [];
         if (!currentIds.length && hasValue(cell[fd.key])) {
           var wantLbl = String(cell[fd.key]).trim().toLowerCase();
           for (var wl = 0; wl < recs.length; wl++) {
@@ -505,6 +519,7 @@
             }
           }
         }
+        if (!currentIds.length) currentIds = bidCell[fd.idsKey] || [];
         var prefillIds = (existing && existing.requested[fd.key + 'Ids']) || currentIds;
 
         if (fd.single) {

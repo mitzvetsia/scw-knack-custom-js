@@ -2758,17 +2758,43 @@
         bidMdfIdfIds:     [],
         requireSubBid:    cell.requireSubBid,
       };
-      // Designator, derived from the SOW item's computed label ("E-003" →
-      // prefix "E-" + number 3). The SOW's own prefix/number fields aren't
-      // projected on the loaded views, but the label is; the CR modal
-      // resolves the prefix's record id from its option list by text.
-      // Set ONLY when the label parses — an absent key falls back to the
+      // Designator — prefer the SOW item's ACTUAL prefix/number off the
+      // view_3921 model (field_2240_raw carries the exact record id +
+      // label; field_1951 the number). Fall back to parsing the computed
+      // label ("RA-E-009" → "RA-E-" + 9), which the CR modal resolves to
+      // an id by matching the option list's display text. Keys are set
+      // ONLY when a value is found — an absent key falls back to the
       // bid's current designator (no change requested).
-      var sowDesigLbl = String(row.sowItemLabel || '').trim();
-      var desigMatch = /^(.*?)(\d+)\s*$/.exec(sowDesigLbl);
-      if (desigMatch && desigMatch[1]) {
-        modalCell.bidDropPrefix = desigMatch[1];
-        modalCell.dropNumber    = parseInt(desigMatch[2], 10);
+      try {
+        var siViewKey = (ns.CONFIG && ns.CONFIG.sowItemsViewKey) || 'view_3921';
+        var siView = window.Knack && Knack.views && Knack.views[siViewKey];
+        var siModels = siView && siView.model && siView.model.data &&
+                       siView.model.data.models;
+        for (var sim = 0; sim < (siModels ? siModels.length : 0); sim++) {
+          var siAttrs = siModels[sim] && siModels[sim].attributes;
+          if (!siAttrs || siAttrs.id !== row.sowItem) continue;
+          var pRaw = siAttrs.field_2240_raw;
+          if (Array.isArray(pRaw) && pRaw.length && pRaw[0] && pRaw[0].id) {
+            modalCell.bidDropPrefix    = pRaw[0].identifier || '';
+            modalCell.bidDropPrefixIds = [pRaw[0].id];
+          }
+          var dnRaw = siAttrs.field_1951_raw != null
+            ? siAttrs.field_1951_raw : siAttrs.field_1951;
+          var dn = parseFloat(String(dnRaw == null ? '' : dnRaw)
+            .replace(/[^0-9.\-]/g, ''));
+          if (isFinite(dn)) modalCell.dropNumber = dn;
+          break;
+        }
+      } catch (e) { /* model not loaded — label parse below covers it */ }
+      if (modalCell.bidDropPrefix == null) {
+        var sowDesigLbl = String(row.sowItemLabel || '').trim();
+        var desigMatch = /^(.*?)(\d+)\s*$/.exec(sowDesigLbl);
+        if (desigMatch && desigMatch[1]) {
+          modalCell.bidDropPrefix = desigMatch[1];
+          if (modalCell.dropNumber == null) {
+            modalCell.dropNumber = parseInt(desigMatch[2], 10);
+          }
+        }
       }
     }
 
