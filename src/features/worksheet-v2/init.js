@@ -2421,6 +2421,52 @@
       // field_2197 is single-connection (one cam → one NVR).
       var isMulti = (fieldKey !== 'field_2197');
 
+      // ── Cross-SOW organization (bid comparison grid) ────────────────
+      // view_3921 pools SOW line items from EVERY SOW on the project, and
+      // each SOW can carry same-named MDF/IDF locations — the canonical
+      // MDF-only grouping then yields several identical "MDF" headers with
+      // no hint which SOW each belongs to (and lookalike "E-001 · <product>"
+      // items, since drop numbering restarts per SOW). When the candidate
+      // set spans more than one SOW, compose the group as "SW-1001 · MDF"
+      // (SOW read from field_2154) so headers dedupe and groups order
+      // SOW-first. Single-SOW surfaces (build-SOW view_3962, sales
+      // view_3586) detect one SOW and keep the canonical grouping.
+      var groupBy;   // undefined → picker's canonical MDF/IDF default
+      (function () {
+        function sowTag(rec) {
+          var raw = rec && rec['field_2154_raw'];
+          var ids = [], labels = [];
+          if (Array.isArray(raw)) {
+            for (var i = 0; i < raw.length; i++) {
+              if (raw[i] && raw[i].id) {
+                ids.push(raw[i].id);
+                var l = String(raw[i].identifier || '').replace(/<[^>]*>/g, '').trim();
+                if (l) labels.push(l);
+              }
+            }
+          }
+          return { id: ids.join('+'), label: labels.join(' + ') };
+        }
+        var seen = Object.create(null), distinct = 0;
+        for (var i = 0; i < candidates.length; i++) {
+          var k = sowTag(candidates[i]).id;
+          if (!seen[k]) { seen[k] = 1; distinct++; }
+        }
+        if (distinct < 2) return;   // single SOW → canonical grouping
+        var mdfGroup = ns.picker.groupByMdfIdf;
+        groupBy = function (rec) {
+          var m = mdfGroup(rec);
+          var s = sowTag(rec);
+          // No SOW AND no MDF → keep the canonical '__unknown' group so it
+          // sinks to the bottom instead of alphabetizing as "No SOW · …".
+          if (!s.id && m.id === '__unknown') return m;
+          return {
+            id:    (s.id || '__nosow') + '::' + m.id,
+            label: (s.label || 'No SOW') + ' · ' + m.label
+          };
+        };
+      })();
+
       ns.picker.open({
         sourceViewKey: viewKey,
         putViewKey:    putViewKey,
@@ -2429,7 +2475,9 @@
         label:         label,
         selectedIds:   sel,
         candidates:    candidates,
-        // Grouped by MDF/IDF + canonically sorted by the picker default.
+        // Canonical MDF/IDF grouping + sort — except when candidates span
+        // multiple SOWs (bid review), where groups compose "SOW · MDF".
+        groupBy:       groupBy,
         itemLabel:     itemLabel,
         multi:         isMulti,
         // Keep the modal open + locked until the field_1957↔field_2197
