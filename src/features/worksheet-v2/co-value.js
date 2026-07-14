@@ -130,11 +130,14 @@
       el = document.createElement('div');
       el.id = EL_ID;
     }
-    // Keep the strip pinned right under the header row (co-header-card.js
-    // builds .scw-co-hdr on its own timer — reposition on every render).
-    var hdr = form.querySelector('.scw-co-hdr');
-    var want = hdr ? hdr.nextSibling : form.firstChild;
-    if (el.parentNode !== form || (hdr && hdr.nextElementSibling !== el)) {
+    // Keep the strip pinned under the header row — or under the stage strip
+    // (co-stage-strip.js) when it's mounted between them. Both build on
+    // their own timers, so reposition on every render.
+    var stage = form.querySelector('#scw-co-stage');
+    var hdr   = form.querySelector('.scw-co-hdr');
+    var anchor = stage || hdr;
+    var want = anchor ? anchor.nextSibling : form.firstChild;
+    if (el.parentNode !== form || (anchor && anchor.nextElementSibling !== el)) {
       form.insertBefore(el, want);
     }
 

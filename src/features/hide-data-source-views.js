@@ -117,6 +117,10 @@
     // view_4079 entry) — same mechanism as view_4001 on review-bids. The
     // link opens a copy of the Add-to-SOW form targeted at the CO.
     'view_4099',
+    // 'view_4109' — CO record details (CO Status + Sub Pricing Snapshot)
+    // on the CO drafting scene. co-stage-strip.js reads status/snapshot
+    // from its model and polls it while the CO is Pending Sub Pricing.
+    'view_4109',
   ];
 
   // Views that must NEVER be hidden as collateral damage from the

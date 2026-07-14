@@ -127,6 +127,27 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   //   }
   //   Response: 2xx = accepted (body optional; only {success:false}|{error} fails)
   MAKE_CO_ADD_ITEMS_WEBHOOK: "https://hook.us1.make.com/ae51ped3yu5m671mx3yvxqyk5r14wp9o",
+  // Change-order sub-pricing loop (co-stage-strip.js). One scenario, the
+  // payload's `mode` branches it:
+  //   mode:'send'     → store payload.snapshot verbatim in the CO header's
+  //                     `CO Sub Pricing Snapshot` field, set CO Status =
+  //                     "Pending Sub Pricing", notify the sub (resolve off
+  //                     the CO's bid-basis connection).
+  //   mode:'nudge'    → re-send the notification only. No writes.
+  //   mode:'sendback' → same writes as 'send' (fresh snapshot = the new
+  //                     baseline ops just reviewed) + payload.note in the
+  //                     notification.
+  //   Request body:  { changeOrderId, mode, snapshot?, note?, triggeredBy }
+  //     snapshot = { sentAt, sentBy, lines: { <lineId>: { label, action,
+  //                  subBid, hrs, mat, fee, equip } } }
+  //   Response body: { success: true } or { success: false, error: "..." }
+  MAKE_CO_SEND_TO_SUB_WEBHOOK: "PLACEHOLDER — set when the CO send-to-sub scenario exists",
+  // Issue Change Order (co-stage-strip.js): Proposal snapshot (type=CO) +
+  // Acceptance (type=CO) + e-sign send in one gesture; flips CO Status to
+  // Issued. See docs/change-orders.md (the "Issue" verb).
+  //   Request body:  { changeOrderId, triggeredBy }
+  //   Response body: { success: true } or { success: false, error: "..." }
+  MAKE_CO_ISSUE_WEBHOOK: "PLACEHOLDER — set when the CO issue scenario exists",
   // Fires on the "Request Alternative Proposal" stepper action. Expects:
   //   Request body:  { sourceRecordId: <current SOW id>, notes: "<user input>", triggeredBy: {...} }
   //   Response body: { success: true, message?: "..." }

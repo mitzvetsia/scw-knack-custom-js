@@ -222,6 +222,7 @@ cat \
   src/features/regenerate-kickoff-deck.js \
   src/features/send-coc-button.js \
   src/features/co-header-card.js \
+  src/features/co-stage-strip.js \
   src/features/questionnaire-deployment-audit.js \
   src/features/acceptance-card.js \
   src/features/resend-credentials-btn.js \
