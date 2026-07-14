@@ -220,14 +220,26 @@
     for (var i = 0; i < recs.length; i++) {
       var r = recs[i];
       if (!r || !r.id) continue;
+      // Drop prefix (field_2240) is a connection — ship both the record id
+      // (what Make writes/references) and the display text.
+      var prefixRaw = r['field_2240_raw'];
+      var prefixId = '';
+      if (Array.isArray(prefixRaw) && prefixRaw.length && prefixRaw[0] && prefixRaw[0].id) {
+        prefixId = prefixRaw[0].id;
+      } else if (prefixRaw && prefixRaw.id) {
+        prefixId = prefixRaw.id;
+      }
       lines[r.id] = {
-        label:  readTxt(r, 'field_1950'),
-        action: readTxt(r, 'field_2965'),
-        subBid: num(r, 'field_2150'),
-        hrs:    num(r, 'field_1973'),
-        mat:    num(r, 'field_1974'),
-        fee:    num(r, 'field_2028'),
-        equip:  num(r, 'field_2269')
+        label:    readTxt(r, 'field_1950'),   // computed drop label, e.g. "E-010"
+        prefixId: prefixId,                   // Drop Prefix connection record id
+        prefix:   readTxt(r, 'field_2240'),   // Drop Prefix display text, e.g. "E-"
+        number:   num(r, 'field_1951'),       // drop number, e.g. 10
+        action:   readTxt(r, 'field_2965'),
+        subBid:   num(r, 'field_2150'),
+        hrs:      num(r, 'field_1973'),
+        mat:      num(r, 'field_1974'),
+        fee:      num(r, 'field_2028'),
+        equip:    num(r, 'field_2269')
       };
     }
     return {

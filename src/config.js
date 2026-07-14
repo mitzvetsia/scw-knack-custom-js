@@ -138,8 +138,11 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   //                     baseline ops just reviewed) + payload.note in the
   //                     notification.
   //   Request body:  { changeOrderId, mode, snapshot?, note?, triggeredBy }
-  //     snapshot = { sentAt, sentBy, lines: { <lineId>: { label, action,
-  //                  subBid, hrs, mat, fee, equip } } }
+  //     snapshot = { sentAt, sentBy, lines: { <lineId>: { label, prefixId,
+  //                  prefix, number, action, subBid, hrs, mat, fee, equip } } }
+  //     (prefixId = Drop Prefix connection record id (field_2240);
+  //      prefix/number = display text + drop # (field_1951);
+  //      label = the computed drop label, e.g. "E-010")
   //   Response body: { success: true } or { success: false, error: "..." }
   MAKE_CO_SEND_TO_SUB_WEBHOOK: "PLACEHOLDER — set when the CO send-to-sub scenario exists",
   // Issue Change Order — fired by ops-stepper.js's CO-mode step
