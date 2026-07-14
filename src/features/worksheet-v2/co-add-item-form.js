@@ -245,6 +245,12 @@
       'width:560px;max-width:96vw;max-height:92vh;display:flex;flex-direction:column;',
       'font:13px/1.45 system-ui,-apple-system,sans-serif;color:#1e293b;}',
       '.scw-coadd.is-busy{opacity:.65;pointer-events:none;}',
+      // Inline (strip-hosted) variant: full width, no dialog chrome.
+      '.scw-coadd--inline{width:auto;max-width:none;max-height:none;',
+      'box-shadow:none;border:0;border-radius:0;}',
+      '.scw-coadd--inline .scw-coadd__body{overflow:visible;max-width:640px;}',
+      '.scw-coadd--inline .scw-coadd__foot{justify-content:flex-start;border-top:0;padding-top:0;}',
+      '.scw-coadd--inline .scw-coadd__err{margin-right:0;order:3;align-self:center;}',
       '.scw-coadd__head{display:flex;align-items:center;gap:8px;padding:16px 20px 12px;border-bottom:1px solid #e2e8f0;}',
       '.scw-coadd__title{font:700 15px/1.3 system-ui,sans-serif;color:#0f4c75;flex:1 1 auto;}',
       '.scw-coadd__x{border:none;background:none;font-size:22px;line-height:1;color:#94a3b8;cursor:pointer;padding:0 4px;}',
@@ -413,40 +419,59 @@
     });
   }
 
-  // ── modal ──────────────────────────────────────────────────────────
+  // ── form (modal OR inline host) ────────────────────────────────────
+  // open({ host: el, onClose: fn }) renders the SAME form inline into `host`
+  // (no overlay) — used by the CO scene's "+ Add new items" strip. Without
+  // `host` it renders as the centered modal. Submit/cancel behavior is
+  // identical; close() tears down the form and fires opts.onClose.
   function open(opts) {
     opts = opts || {};
     var viewKey = opts.viewKey || 'view_4079';
+    var inlineHost = opts.host || null;
     var coSowId = getCoSowId();
     injectCss();
 
     var st = { bucketId: '', productIds: [], mdfIds: [], accessoryIds: [] };
 
-    var overlay = document.createElement('div');
-    overlay.className = 'scw-coadd__overlay';
-    overlay.innerHTML =
-      '<div class="scw-coadd" role="dialog" aria-modal="true">' +
-        '<div class="scw-coadd__head">' +
-          '<span class="scw-coadd__title">Add line item to Change Order</span>' +
-          '<button type="button" class="scw-coadd__x" aria-label="Close">&times;</button>' +
-        '</div>' +
-        '<div class="scw-coadd__body"></div>' +
-        '<div class="scw-coadd__foot">' +
-          '<span class="scw-coadd__err" hidden></span>' +
-          '<button type="button" class="scw-coadd__btn scw-coadd__btn--sec" data-act="cancel">Cancel</button>' +
-          '<button type="button" class="scw-coadd__btn scw-coadd__btn--pri" data-act="submit">Add to Change Order</button>' +
-        '</div>' +
+    var chrome =
+      '<div class="scw-coadd__body"></div>' +
+      '<div class="scw-coadd__foot">' +
+        '<span class="scw-coadd__err" hidden></span>' +
+        '<button type="button" class="scw-coadd__btn scw-coadd__btn--sec" data-act="cancel">Cancel</button>' +
+        '<button type="button" class="scw-coadd__btn scw-coadd__btn--pri" data-act="submit">Add to Change Order</button>' +
       '</div>';
-    document.body.appendChild(overlay);
 
-    var modal = overlay.querySelector('.scw-coadd');
-    var body  = overlay.querySelector('.scw-coadd__body');
-    var errEl = overlay.querySelector('.scw-coadd__err');
+    var overlay = null, root;
+    if (inlineHost) {
+      root = document.createElement('div');
+      root.className = 'scw-coadd scw-coadd--inline';
+      root.innerHTML = chrome;
+      inlineHost.innerHTML = '';
+      inlineHost.appendChild(root);
+    } else {
+      overlay = document.createElement('div');
+      overlay.className = 'scw-coadd__overlay';
+      overlay.innerHTML =
+        '<div class="scw-coadd" role="dialog" aria-modal="true">' +
+          '<div class="scw-coadd__head">' +
+            '<span class="scw-coadd__title">Add line item to Change Order</span>' +
+            '<button type="button" class="scw-coadd__x" aria-label="Close">&times;</button>' +
+          '</div>' + chrome +
+        '</div>';
+      document.body.appendChild(overlay);
+      root = overlay.querySelector('.scw-coadd');
+    }
+
+    var modal = root;
+    var body  = root.querySelector('.scw-coadd__body');
+    var errEl = root.querySelector('.scw-coadd__err');
     var combos = {};   // key → combo controller
 
     function close() {
-      document.removeEventListener('keydown', onKey, true);
-      if (overlay.parentNode) overlay.parentNode.removeChild(overlay);
+      if (!inlineHost) document.removeEventListener('keydown', onKey, true);
+      if (overlay && overlay.parentNode) overlay.parentNode.removeChild(overlay);
+      if (inlineHost) inlineHost.innerHTML = '';
+      if (typeof opts.onClose === 'function') opts.onClose();
     }
     function onKey(e) {
       if (e.key !== 'Escape') return;
@@ -456,9 +481,11 @@
       if (openMenu) { e.preventDefault(); e.stopPropagation(); openMenu.hidden = true; return; }
       e.preventDefault(); close();
     }
-    document.addEventListener('keydown', onKey, true);
-    overlay.addEventListener('mousedown', function (e) { if (e.target === overlay) close(); });
-    overlay.querySelector('.scw-coadd__x').addEventListener('click', close);
+    if (!inlineHost) {
+      document.addEventListener('keydown', onKey, true);
+      overlay.addEventListener('mousedown', function (e) { if (e.target === overlay) close(); });
+      overlay.querySelector('.scw-coadd__x').addEventListener('click', close);
+    }
     // One handler closes any open combo menu whose host wasn't clicked.
     modal.addEventListener('mousedown', function (e) {
       var hosts = body.querySelectorAll('.scw-coadd__combo');
@@ -707,8 +734,8 @@
         });
     }
 
-    overlay.querySelector('[data-act="cancel"]').addEventListener('click', close);
-    overlay.querySelector('[data-act="submit"]').addEventListener('click', submit);
+    root.querySelector('[data-act="cancel"]').addEventListener('click', close);
+    root.querySelector('[data-act="submit"]').addEventListener('click', submit);
 
     render();
   }

@@ -480,15 +480,14 @@
         mdfLabelField:      'field_1642',
         hideSow:            true,   // CO items group by MDF/IDF; SOW pills are noise here
         hideSourceAccordion: true,  // full cutover — hide the native grid + accordion
-        // "+ Add New Item" opens the CUSTOM add-item modal (co-add-item-form.js)
-        // instead of the native DTO form: one bucket-filtered product picker
-        // (no per-bucket product-field sprawl), the DTO view's per-bucket
-        // field rules ported in JS, and a direct Make webhook that creates the
-        // SOW line items connected to THIS CO's SOW (id read from the hash —
-        // no default-to-parent form rebuild needed). view_4099/view_4100 are
+        // Adding items happens through the "+ Add New Items" STRIP on the CO
+        // scene (co-scene-header.js hosts co-add-item-form.js inline): one
+        // bucket-filtered product picker, the DTO view's per-bucket field
+        // rules in JS, and a direct Make webhook creating the SOW line items
+        // connected to THIS CO's SOW. The worksheet toolbar's own add button
+        // is suppressed (redundant with the strip); view_4099/view_4100 are
         // retired for the CO once this is live.
-        customAddModal:     true,
-        addItemLabel:       'Add New Item',
+        noAddItem:          true,
         // MDF/IDF options for the modal's location picker (CO scene locations).
         mdfSourceViewKey:   'view_4084',
         mdfLabelField:      'field_1642',
