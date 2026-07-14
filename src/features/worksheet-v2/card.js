@@ -2020,9 +2020,11 @@
     // CO Action = Remove) get a rose accent + "REMOVE" badge; everything else
     // reads as an add. Only on the CO worksheet (coDeleteGuard).
     var _coVc = (ns.cfg && typeof ns.cfg.viewCfg === 'function' && ns.cfg.viewCfg(sourceViewKey)) || {};
+    var _coRemove = false;
     if (_coVc.coDeleteGuard) {
       var coAct = String(readField(rec, 'field_2965') || '').replace(/<[^>]*>/g, '').trim();
-      card.classList.add(/remove/i.test(coAct) ? 'scw-ws-v2-card--co-remove' : 'scw-ws-v2-card--co-add');
+      _coRemove = /remove/i.test(coAct);
+      card.classList.add(_coRemove ? 'scw-ws-v2-card--co-remove' : 'scw-ws-v2-card--co-add');
     }
 
     // SOW connection ids — space-separated for the SOW filter pills.
@@ -2090,6 +2092,16 @@
     }
 
     card.innerHTML = attachedCaption + row + det;
+    // CO removal rows: a leading "REMOVE" chip in the DROP/label cell reads as
+    // the row's type flag (in-flow, next to its identity) instead of a badge
+    // floating over the action icons. The rose accent + tint still mark the row.
+    if (_coRemove) {
+      var _labelCell = card.querySelector('.scw-ws-v2-row .scw-ws-v2-cell--label');
+      if (_labelCell) {
+        _labelCell.insertAdjacentHTML('afterbegin',
+          '<span class="scw-ws-v2-co-flag scw-ws-v2-co-flag--remove">REMOVE</span>');
+      }
+    }
     // Sales lock: existing survey-derived items (field_2586 >= 1) are
     // read-only except Product / Custom Disc % / SCW Notes (v1 parity).
     if (isCrLocked(rec, sourceViewKey)) {
