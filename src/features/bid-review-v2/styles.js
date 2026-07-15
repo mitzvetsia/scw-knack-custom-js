@@ -372,7 +372,12 @@
        amber pill so pricing deltas stay the loudest signal; every OTHER
        field diff (product / desc / conn / MDF / label / cabling) reads
        LAVENDER. The bid-side pills always carry data-scw-diff-field, so the
-       money override keys off that attribute. */
+       money override keys off that attribute.
+       Existing Cabling joins the amber set (2026-07-15) — it drives cost
+       like money does (not-existing = a pull), so its mismatch shouldn't
+       read as a soft lavender spec diff. A DROPPED existing chip (--off)
+       keeps its red struck text on the amber pill — only the background
+       comes from this rule. */
     '.scw-bid-review-v2__cell--mismatch {',
     '  background: #fff7ed; box-shadow: inset 3px 0 0 #fb923c;',
     '}',
@@ -381,7 +386,8 @@
     '  box-decoration-break: clone; -webkit-box-decoration-break: clone;',
     '}',
     '.scw-bid-review-v2__field-diff[data-scw-diff-field="qty"],',
-    '.scw-bid-review-v2__field-diff[data-scw-diff-field="fee"] {',
+    '.scw-bid-review-v2__field-diff[data-scw-diff-field="fee"],',
+    '.scw-bid-review-v2__field-diff[data-scw-diff-field="existing"] {',
     '  background: #fed7aa;',
     '}',
     /* Word-level diff on text fields (product / labor desc): underline ONLY
