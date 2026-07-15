@@ -327,7 +327,7 @@
       webhookKey: 'MAKE_CO_ISSUE_WEBHOOK',
       // Recipient picker — WHO the CO goes to for signature. Options come
       // from view_4124 (contacts grid added to the preview page); the
-      // chosen contact rides on payload.recipient = { id, label, email }.
+      // chosen contact rides on payload.recipient = { id, name, label, email }.
       // Required: Issue is blocked until a contact is picked.
       recipient: {
         view:     'view_4124',
@@ -1522,16 +1522,22 @@
       for (var ri = 0; ri < rows.length; ri++) {
         var r = rows[ri];
         if (!/^[a-f0-9]{24}$/i.test(r.id || '')) continue;
-        var parts = [], email = '';
+        var parts = [], email = '', name = '';
+        // Clean contact name — the CORE_contacts Name column (field_198) when
+        // present, else the first non-empty cell that isn't an email/phone link.
+        var nameCell = r.querySelector('td.field_198');
+        if (nameCell) name = (nameCell.textContent || '').replace(/\s+/g, ' ').trim();
         var tds = r.querySelectorAll('td');
         for (var c = 0; c < tds.length; c++) {
           var t = (tds[c].textContent || '').replace(/\s+/g, ' ').trim();
           if (!t) continue;
-          if (!email) { var m = t.match(EMAIL_RE); if (m) email = m[0]; }
+          var isEmail = EMAIL_RE.test(t);
+          if (!email && isEmail) { var m = t.match(EMAIL_RE); email = m[0]; }
+          if (!name && !isEmail && !tds[c].querySelector('a[href^="tel:"]')) name = t;
           if (parts.indexOf(t) === -1) parts.push(t);
         }
         if (!parts.length) continue;
-        options.push({ id: r.id, label: parts.join(' — ').slice(0, 140), email: email });
+        options.push({ id: r.id, name: name, label: parts.join(' — ').slice(0, 140), email: email });
       }
 
       var wrap = document.createElement('div');
@@ -1565,10 +1571,15 @@
           if (!id) return null;
           for (var i = 0; i < options.length; i++) {
             if (options[i].id === id) {
-              return { id: id, label: options[i].label, email: options[i].email || '' };
+              return {
+                id:    id,
+                name:  options[i].name  || '',
+                label: options[i].label,
+                email: options[i].email || ''
+              };
             }
           }
-          return { id: id, label: '', email: '' };
+          return { id: id, name: '', label: '', email: '' };
         }
       };
     }
@@ -1898,7 +1909,7 @@
       // (which webhook to fire) and to mode (publish-and-notify, etc.).
       // A step with no submission radio can still force a default
       // (step.forceSubmission) — e.g. mark-ready always submits to Sales.
-      // Chosen CO recipient (issue-change-order) — { id, label, email }.
+      // Chosen CO recipient (issue-change-order) — { id, name, label, email }.
       // Make resolves the full contact record from the id; label/email are
       // convenience copies of what the picker showed.
       if (ctx.recipient)              payload.recipient = ctx.recipient;
