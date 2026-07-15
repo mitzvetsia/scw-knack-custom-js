@@ -2615,6 +2615,19 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
       return cell ? (cell.textContent || '').replace(/\s+/g, ' ').trim() : '';
     }
 
+    // Only CAM/READER parents contribute a drop label to accessory tags.
+    // Drop prefix/number are a camera-drop concept — an NVR/switch/headend
+    // record that happens to carry values in those fields (e.g. Drop # 32
+    // typed on an Admiral Pro, read as channel count) produced a bogus
+    // "(I-32)" tag on its accessories. Bucket id read the same way
+    // synthesizeMissingAncestorHeaders does (field_2218 connection span).
+    const CAM_READER_BUCKET_ID = '6481e5ba38f283002898113c';
+    function isCamReaderRow(row) {
+      const span = row.querySelector('td.field_2218 span[data-kn="connection-value"]');
+      const id = span ? String(span.id || span.className || '').trim() : '';
+      return id === CAM_READER_BUCKET_ID;
+    }
+
     // Given an array of bracket rows, build "I-1, I-2, E-3" from their
     // parent rows' prefix + number cells. Mirrors buildCameraListHtml.
     function buildParentLabelList(rows) {
@@ -2623,6 +2636,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
         const parentId = rows[i].getAttribute('data-scw-parent-id');
         const parent = parentId ? rowById[parentId] : null;
         if (!parent) continue;
+        if (!isCamReaderRow(parent)) continue;   // cam/reader drops only
         const prefix = readCellText(parent, prefixKey);
         const numRaw = readCellText(parent, numberKey);
         if (!prefix || !numRaw) continue;
