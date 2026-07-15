@@ -1649,6 +1649,19 @@
     '  cursor: default !important;',
     '}',
     '.scw-ws-v2--readonly .scw-ws-v2-conn-btn-edit { display: none !important; }',
+    /* Summary-row product picker (a button, not an input) flattens too —
+       its base rule paints a white box + border with !important, so match
+       its compound specificity (and the card-hover retint) from later in
+       the sheet. Without this the product reads as an editable box on an
+       otherwise-locked row. */
+    '.scw-ws-v2--readonly .scw-ws-v2-cell.scw-ws-v2-cell--product,',
+    '.scw-ws-v2--readonly .scw-ws-v2-cell--editable-conn.scw-ws-v2-cell--product,',
+    '.scw-ws-v2--readonly .scw-ws-v2-card:hover .scw-ws-v2-cell--product {',
+    '  background: transparent !important;',
+    '  border-color: transparent !important;',
+    '  box-shadow: none !important;',
+    '  cursor: default !important;',
+    '}',
     /* No adding photos and no editing child (mounting hardware) records
        from the adoption panel: hide the photo add tiles and the
        accessory add/qty-stepper controls. The chips themselves stay —
