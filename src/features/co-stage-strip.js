@@ -81,7 +81,12 @@
     var s = document.createElement('style');
     s.id = STYLE_ID;
     s.textContent = [
-      '#' + EL_ID + '{padding:10px 0 12px;margin-bottom:2px;border-bottom:1px solid #e2e8f0;}',
+      // Two columns: stepper + status/actions left, published-proposal
+      // card (Issued+) docked in the white space to the right.
+      '#' + EL_ID + '{display:flex;align-items:flex-start;gap:28px;',
+      'padding:10px 0 12px;margin-bottom:2px;border-bottom:1px solid #e2e8f0;}',
+      '.scw-co-stage-main{flex:1 1 auto;min-width:0;}',
+      '.scw-co-stage-side{flex:0 0 auto;max-width:320px;padding:2px 8px 0 0;}',
       // ── stepper ──
       '.scw-co-steps{display:flex;align-items:flex-start;gap:0;max-width:640px;}',
       '.scw-co-step{display:flex;flex-direction:column;align-items:center;flex:1 1 0;',
@@ -850,13 +855,9 @@
             ' — have them check their email for the e-signature request.'
           : 'Issued — sent for client signature. Have the recipient check ' +
             'their email for the e-signature request.';
-        return '<span class="scw-co-stage-note">' + copy + '</span>' +
-          '<button type="button" class="scw-co-stage-btn scw-co-stage-btn--secondary" ' +
-          'data-scw-co-act="view-proposal">Proposal &amp; Links &rarr;</button>';
+        return '<span class="scw-co-stage-note">' + copy + '</span>';
       }
-      if (cur === 4) return '<span class="scw-co-stage-note">Signed — applying changes to the install scope…</span>' +
-        '<button type="button" class="scw-co-stage-btn scw-co-stage-btn--secondary" ' +
-        'data-scw-co-act="view-proposal">Proposal &amp; Links &rarr;</button>';
+      if (cur === 4) return '<span class="scw-co-stage-note">Signed — applying changes to the install scope…</span>';
       if (cur === 5) return '<span class="scw-co-stage-note"><b>Applied.</b> Install scope updated and invoiced.</span>';
       if (/declined/.test(s)) return '<span class="scw-co-stage-note"><b>Declined.</b> Revise the lines and re-issue.</span>';
       if (/void/.test(s))     return '<span class="scw-co-stage-note"><b>Void.</b></span>';
@@ -914,7 +915,6 @@
           if (act === 'recall')        recallFromSub();
           if (act === 'sendback')      sendBackToSub();
           if (act === 'preview-issue') previewIssue();
-          if (act === 'view-proposal') previewIssue();   // same page hosts PDF + links post-issue
         });
       }
       // Pin directly under the header row (co-header-card builds .scw-co-hdr
@@ -928,16 +928,18 @@
       var cur = stageIndex(status);
       var offPath = cur === -1 && /declined|void/i.test(status || '');
       el.className = offPath ? 'scw-co-stage--offpath' : '';
-      el.innerHTML = stepsHtml(cur) +
+      el.innerHTML = '<div class="scw-co-stage-main">' + stepsHtml(cur) +
         '<div class="scw-co-stage-actions">' +
         (IS_OPS ? opsActionsHtml(status, cur) : subActionsHtml(status, cur)) +
-        '</div>';
+        '</div></div>';
       renderPublishedBlock(el, cur);
     }
 
-    // Inline published-proposal card (name + PDF chip + customer link) for
-    // the Issued/Signed/Applied stages — lights up once PUBLISHED_VIEW is
-    // configured with a hidden published-proposals grid on this scene.
+    // Published-proposal card (header + name + expiration + PDF chip +
+    // customer link) docked to the RIGHT of the stepper for the
+    // Issued/Signed/Applied stages — the same widget the preview page
+    // shows. Lights up once PUBLISHED_VIEW is configured with a hidden
+    // published-proposals grid on this scene.
     function renderPublishedBlock(el, cur) {
       if (!IS_OPS || cur < 3) return;
       var PUB = DEP.PUBLISHED_VIEW || '';
@@ -948,14 +950,15 @@
       if (!proposal) return;
       var block = pq.buildBlock(proposal, {
         variant: 'regular',
+        header:  'Published Proposal',
         customerLink: proposal.tokenUrl
           ? { url: proposal.tokenUrl, label: 'Customer Link' } : null
       });
-      if (block) {
-        block.style.alignItems = 'flex-start';
-        block.style.marginTop = '10px';
-        el.appendChild(block);
-      }
+      if (!block) return;
+      var side = document.createElement('div');
+      side.className = 'scw-co-stage-side';
+      side.appendChild(block);
+      el.appendChild(side);
     }
 
     // ── status polling while the ball is in the other court ──────────────
@@ -998,6 +1001,18 @@
     if (window.SCW && typeof SCW.onViewRender === 'function') {
       SCW.onViewRender(VIEW, soon, EVENT_NS);
       if (STATUS_VIEW) SCW.onViewRender(STATUS_VIEW, soon, EVENT_NS);
+      if (DEP.PUBLISHED_VIEW) SCW.onViewRender(DEP.PUBLISHED_VIEW, soon, EVENT_NS);
+    }
+    // The published-proposals source grid is data-only — keep it out of
+    // sight (display:none keeps the DOM + model readable).
+    if (DEP.PUBLISHED_VIEW) {
+      var hideId = 'scw-co-stage-pubhide-' + DEP.PUBLISHED_VIEW;
+      if (!document.getElementById(hideId)) {
+        var hideStyle = document.createElement('style');
+        hideStyle.id = hideId;
+        hideStyle.textContent = '#' + DEP.PUBLISHED_VIEW + ' { display: none !important; }';
+        document.head.appendChild(hideStyle);
+      }
     }
     $(document).off('knack-view-render.' + VIEW + EVENT_NS)
       .on('knack-view-render.' + VIEW + EVENT_NS, soon);
