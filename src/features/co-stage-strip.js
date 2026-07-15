@@ -562,63 +562,13 @@
         });
     }
 
-    // Recall writes CO Status through the header form ITSELF: set the
-    // (hidden) status dropdown, sync Knack's internal form model with a
-    // `change` event, and fire Knack's own form submit — byte-for-byte what
-    // pressing Submit does (validation, PUT, submit rules, and the
-    // knack-form-submit success event). The send/sendback status flips stay
-    // Make-written; recall is the one client-side writer so taking the CO
-    // back never waits on a scenario. Falls back to a direct view-based
-    // ajax PUT if the form/select isn't in the DOM.
+    // Recall writes CO Status DIRECTLY — a session-authed view-based PUT
+    // through this form (field_2953 sits on view_4092 as a hidden dropdown
+    // for exactly this). The send/sendback status flips stay Make-written;
+    // recall's webhook is NOTIFY-ONLY (sub notification + ClickUp) and must
+    // NOT write the status — an early Make branch that wrote it back was
+    // masking this PUT as "not working."
     function putStatus(value, done) {
-      var viewEl = document.getElementById(VIEW);
-      var form = viewEl && viewEl.querySelector('form');
-      var sel  = viewEl && viewEl.querySelector(
-        '#kn-input-' + STATUS_FIELD + ' select');
-      if (!form || !sel) { putStatusAjax(value, done); return; }
-
-      sel.value = value;
-      $(sel).trigger('liszt:updated').trigger('chosen:updated')
-            .trigger('change');   // ← syncs Knack's internal form model
-
-      // co-ops-lock blocks form submits while the page is locked — flip the
-      // optimistic status first so it unlocks before the submit fires.
-      _optimistic = value;
-      try {
-        if (SCW.coOpsLock && typeof SCW.coOpsLock.refresh === 'function') {
-          SCW.coOpsLock.refresh();
-        }
-      } catch (e) { /* lock refresh is best-effort */ }
-
-      var settled = false;
-      var evt = 'knack-form-submit.' + VIEW;
-      $(document).off(evt + EVENT_NS + 'Put')
-        .on(evt + EVENT_NS + 'Put', function () {
-          if (settled) return;
-          settled = true;
-          console.info('[scw-co-stage] status written via form submit:', value);
-          // Knack swaps the form for its confirmation message — click its
-          // own "Reload form" to bring the form (and our header UI) back.
-          setTimeout(function () {
-            var reload = viewEl.querySelector('.kn-form-reload');
-            if (reload) reload.click();
-          }, 50);
-          done(true);
-        });
-      console.info('[scw-co-stage] status write via form submit →', VIEW, value);
-      $(form).trigger('submit');
-      // No submit event after 8s → Knack rejected/hung the submit; try the
-      // direct PUT so the action still lands, then report through `done`.
-      setTimeout(function () {
-        if (settled) return;
-        settled = true;
-        $(document).off(evt + EVENT_NS + 'Put');
-        console.warn('[scw-co-stage] form-submit write timed out; trying direct PUT');
-        putStatusAjax(value, done);
-      }, 8000);
-    }
-
-    function putStatusAjax(value, done) {
       var coId = getCoSowId();
       if (!coId) {
         alert('Could not determine the change order record id from the URL.');
@@ -669,16 +619,7 @@
           setBusy(true);
           putStatus('Draft', function (ok) {
             setBusy(false);
-            if (!ok) {
-              // putStatus flips the optimistic status before writing (the
-              // ops-lock must lift for the form submit) — roll it back so a
-              // failed write doesn't leave the page lying about Draft.
-              _optimistic = '';
-              render();
-              managePoll();
-              refreshLocks();
-              return;
-            }
+            if (!ok) return;
             _optimistic = 'Draft';
             setPillText('Draft');
             render();

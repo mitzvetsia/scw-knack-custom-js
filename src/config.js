@@ -151,8 +151,11 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   //                     status write (CO Status = "Draft") happens
   //                     CLIENT-SIDE before this fires — co-stage-strip.js
   //                     PUTs field_2953 through view_4092 (the field is on
-  //                     that form, hidden). No snapshot write — any pricing
-  //                     the sub already entered stays on the lines.
+  //                     that form, hidden). ⚠️ The Make recall branch must
+  //                     NOT touch CO Status — a branch that wrote it back
+  //                     overwrote the client PUT and made recall look
+  //                     broken (2026-07-15). No snapshot write — any
+  //                     pricing the sub already entered stays on the lines.
   //   ClickUp (send + sendback): update BOTH tasks' statuses — the
   //   subcontractor's task and our internal one — and post
   //   payload.requestText (or requestHtml where the surface renders HTML)
