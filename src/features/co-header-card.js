@@ -32,6 +32,28 @@
     view_4121: 'Deployment Dashboard'
   };
 
+  // Hidden CO-status details view per deployment — the ClickUp task link
+  // lives there (hidden by hide-data-source-views, but in the DOM). The
+  // header surfaces it as a chip, same treatment as the survey request /
+  // build / deploy headers.
+  var STATUS_VIEWS = {
+    view_4092: 'view_4109',
+    view_4121: 'view_4122'
+  };
+
+  // Any clickup.com anchor on the deployment's hidden status view (field-key
+  // agnostic — works wherever the link field was dropped).
+  function clickupHref(VIEW) {
+    var sv = document.getElementById(STATUS_VIEWS[VIEW] || '');
+    if (!sv) return '';
+    var links = sv.querySelectorAll('a[href]');
+    for (var i = 0; i < links.length; i++) {
+      var href = links[i].getAttribute('href') || '';
+      if (/clickup\.com/i.test(href)) return href;
+    }
+    return '';
+  }
+
   // Status → pill tone. Unknown statuses fall back to amber (in-flight).
   var STATUS_TONES = {
     'draft':    { fg: '#475569', bg: '#f1f5f9', bd: '#cbd5e1' },
@@ -73,6 +95,12 @@
       '.scw-co-hdr-num{font:700 20px/1.2 system-ui,-apple-system,sans-serif;color:#0f4c75;}',
       '.scw-co-hdr-pill{display:inline-flex;align-items:center;padding:5px 12px;',
       'border-radius:999px;font:700 11.5px/1 system-ui,sans-serif;letter-spacing:.02em;}',
+      // ClickUp task chip — far right of the header row, flat purple chip
+      // (matches the survey-request header treatment).
+      '.scw-co-hdr-clickup{margin-left:auto;font:600 11.5px/1 system-ui,sans-serif;',
+      'text-decoration:none;color:#5b4bc4;background:#efeafd;border-radius:999px;',
+      'padding:6px 12px;white-space:nowrap;}',
+      '.scw-co-hdr-clickup:hover{background:#e6e1fb;text-decoration:none;}',
       // Inputs: tidy labels, comfortable sizing.
       '#' + VIEW + ' .kn-label span{font:600 11px/1.2 system-ui,sans-serif;',
       'letter-spacing:.04em;text-transform:uppercase;color:#64748b;}',
@@ -172,6 +200,7 @@
       hdr.className = 'scw-co-hdr';
       form.insertBefore(hdr, crumb.nextSibling);
     }
+    var cu = clickupHref(VIEW);
     hdr.innerHTML =
       '<div class="scw-co-hdr-id">' +
         '<span class="scw-co-hdr-eyebrow">Change Order</span>' +
@@ -179,7 +208,9 @@
       '</div>' +
       '<span class="scw-co-hdr-pill" style="color:' + tone.fg +
         ';background:' + tone.bg + ';border:1px solid ' + tone.bd + ';">' +
-        esc(status || 'Unknown') + '</span>';
+        esc(status || 'Unknown') + '</span>' +
+      (cu ? '<a class="scw-co-hdr-clickup" href="' + esc(cu) +
+        '" target="_blank" rel="noopener">ClickUp Task &#8599;</a>' : '');
 
     setLabel(viewEl, 'field_2126', 'Change order name');
     setLabel(viewEl, 'field_2198', 'Notes');
@@ -247,6 +278,9 @@
 
     if (window.SCW && typeof SCW.onViewRender === 'function') {
       SCW.onViewRender(VIEW, soon, EVENT_NS);
+      // The ClickUp chip reads off the hidden status view, which can render
+      // after the header's first enhance pass — re-enhance when it lands.
+      if (STATUS_VIEWS[VIEW]) SCW.onViewRender(STATUS_VIEWS[VIEW], soon, EVENT_NS);
     }
     $(document).off('knack-view-render.' + VIEW + EVENT_NS)
       .on('knack-view-render.' + VIEW + EVENT_NS, soon);

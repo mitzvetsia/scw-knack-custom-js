@@ -524,6 +524,15 @@
         escapeHtml(total) +
       '</div>';
     }
+    if (isLaborOnly(viewKey)) {
+      // Sub CO page: Sub Bid is the sub's ONLY money. +Hrs/+Mat (SCW-side
+      // adders) and Fee (client install price) render as blank cells so the
+      // grid template holds without leaking numbers.
+      return stackCell(rec, viewKey, 'field_2150', readNum(rec, 'field_2150'), readField(rec, 'field_2151'), 'Sub Bid') +
+             empty('scw-ws-v2-cell--stack') +
+             empty('scw-ws-v2-cell--stack') +
+             empty('scw-ws-v2-cell--fee');
+    }
     return stackCell(rec, viewKey, 'field_2150', readNum(rec, 'field_2150'), readField(rec, 'field_2151'), 'Sub Bid') +
            stackCell(rec, viewKey, 'field_1973', readNum(rec, 'field_1973'), readField(rec, 'field_1997'), '+Hrs') +
            stackCell(rec, viewKey, 'field_1974', readNum(rec, 'field_1974'), readField(rec, 'field_2146'), '+Mat') +
@@ -540,6 +549,16 @@
       detailReadOnly(rec,          'field_2303', 'Applied Discount') +
       detailReadOnly(rec,          'field_2269', 'Total') +
     '</div>';
+  }
+
+  /** True when the view shows LABOR money only (config laborOnly — the sub
+   *  CO page): Fee/+Hrs/+Mat are SCW-side or client-facing numbers, so
+   *  their cells render blank (grid alignment kept) and never carry data. */
+  function isLaborOnly(viewKey) {
+    try {
+      var vc = ns.cfg && typeof ns.cfg.viewCfg === 'function' && ns.cfg.viewCfg(viewKey);
+      return !!(vc && vc.laborOnly);
+    } catch (e) { return false; }
   }
 
   /** True when the view hides the SOW column entirely (config hideSow). */
@@ -2217,6 +2236,7 @@
     // that aren't deletable.
     isDeleteBlocked:     isDeleteBlocked,
     subOwnsRecord:       subOwnsRecord,
+    isLaborOnly:         isLaborOnly,
     // Reciprocal Connected-Devices fingerprint — folded into the render
     // signature so a parent rebuilds when a child's Connected To changes.
     connDevicesSig:      connDevicesSig

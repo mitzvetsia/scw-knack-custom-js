@@ -31,15 +31,19 @@
   var ns = window.SCW && window.SCW.worksheetV2;
   if (!ns) return;
 
+  // mode 'labor' (sub portal): equip net + install fee are CLIENT-facing
+  // money the sub must not see — the sub strip totals extended Sub Bid
+  // (field_2151, their own labor pricing) instead.
   var PAIRS = [
-    { coView: 'view_4079', hdrView: 'view_4092' },   // internal scene_1362
-    { coView: 'view_4112', hdrView: 'view_4121' }    // sub portal scene_1374
+    { coView: 'view_4079', hdrView: 'view_4092' },                  // internal scene_1362
+    { coView: 'view_4112', hdrView: 'view_4121', mode: 'labor' }    // sub portal scene_1374
   ];
   var STYLE_ID = 'scw-co-value-css';
 
   var F_ACTION = 'field_2965';  // CO_FLAG action (Remove on credit lines)
   var F_EQUIP  = 'field_2269';  // equipment extended net
   var F_FEE    = 'field_2028';  // install fee extended
+  var F_BID    = 'field_2151';  // extended sub bid (labor — the sub's number)
 
   function injectCss() {
     if (document.getElementById(STYLE_ID)) return;
@@ -96,8 +100,8 @@
   }
 
   function compute(records) {
-    var adds = { count: 0, eq: 0, fee: 0 };
-    var rem  = { count: 0, eq: 0, fee: 0 };
+    var adds = { count: 0, eq: 0, fee: 0, bid: 0 };
+    var rem  = { count: 0, eq: 0, fee: 0, bid: 0 };
     for (var i = 0; i < (records ? records.length : 0); i++) {
       var r = records[i];
       if (!r) continue;
@@ -105,6 +109,7 @@
       b.count++;
       b.eq  += readNum(r, F_EQUIP);
       b.fee += readNum(r, F_FEE);
+      b.bid += readNum(r, F_BID);
     }
     return { adds: adds, rem: rem };
   }
@@ -120,6 +125,20 @@
       '<div class="scw-co-val-amt">' + esc(fmtMoney(total)) + '</div>' +
       '<div class="scw-co-val-split">Equip ' + esc(fmtMoney(eq)) +
         ' &middot; Install ' + esc(fmtMoney(fee)) + '</div>' +
+    '</div>';
+  }
+
+  // Labor tile (sub mode): one number — the extended Sub Bid total. No
+  // equip/install split, since those are client-facing figures.
+  function tileLabor(cls, label, count, bid) {
+    var noun = count === 1 ? 'line' : 'lines';
+    return '<div class="scw-co-val-tile scw-co-val-tile--' + cls + '">' +
+      '<div class="scw-co-val-head">' +
+        '<span class="scw-co-val-label">' + esc(label) + '</span>' +
+        (count != null ? '<span class="scw-co-val-count">' + count + ' ' + noun + '</span>' : '') +
+      '</div>' +
+      '<div class="scw-co-val-amt">' + esc(fmtMoney(bid)) + '</div>' +
+      '<div class="scw-co-val-split">Labor (Sub Bid)</div>' +
     '</div>';
   }
 
@@ -155,11 +174,18 @@
     } catch (e) { /* view not loaded yet — render zeros */ }
 
     var t = compute(records);
-    el.innerHTML =
-      tile('adds',    'Adds',       t.adds.count, t.adds.eq, t.adds.fee) +
-      tile('credits', 'Credits',    t.rem.count,  t.rem.eq,  t.rem.fee) +
-      tile('net',     'Net change', null,
-           t.adds.eq + t.rem.eq, t.adds.fee + t.rem.fee);
+    if (pair.mode === 'labor') {
+      el.innerHTML =
+        tileLabor('adds',    'Adds',       t.adds.count, t.adds.bid) +
+        tileLabor('credits', 'Credits',    t.rem.count,  t.rem.bid) +
+        tileLabor('net',     'Net change', null, t.adds.bid + t.rem.bid);
+    } else {
+      el.innerHTML =
+        tile('adds',    'Adds',       t.adds.count, t.adds.eq, t.adds.fee) +
+        tile('credits', 'Credits',    t.rem.count,  t.rem.eq,  t.rem.fee) +
+        tile('net',     'Net change', null,
+             t.adds.eq + t.rem.eq, t.adds.fee + t.rem.fee);
+    }
   }
 
   PAIRS.forEach(function (pair) {

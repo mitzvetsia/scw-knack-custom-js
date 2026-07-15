@@ -671,6 +671,11 @@
       clone.mdfSourceViewKey   = 'view_4114';
       if (clone.mountAfterFallback) clone.mountAfterFallback = '#view_4112';
       if (clone.adopt || clone.remove) clone.coViewKey = 'view_4112';
+      // LABOR ONLY on the sub's page: Fee (field_2028), +Hrs (field_1973)
+      // and +Mat (field_1974) are SCW-side / client-facing money — the sub
+      // sees and edits Sub Bid alone. Blanks the cells (grid stays aligned),
+      // the column headers, and the bulk-edit field list.
+      clone.laborOnly = true;
       // Sub authorship gate (the sub's CO worksheet only): SYS_origin
       // (field_2978, stamped by Make from the add-item payload's `origin`)
       // decides delete rights — the sub deletes THEIR items; SCW-created

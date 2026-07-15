@@ -249,8 +249,11 @@
     if (el && el.textContent !== text) el.textContent = text;
   }
 
-  function patchDerivedCells(container, records) {
+  function patchDerivedCells(container, records, sourceViewKey) {
     if (!records || !records.length) return;
+    // laborOnly views render the fee cell BLANK — never repopulate it here.
+    var laborOnly = !!(ns.card && ns.card.isLaborOnly &&
+      ns.card.isLaborOnly(sourceViewKey));
     for (var i = 0; i < records.length; i++) {
       var rec = records[i];
       if (!rec || !rec.id) continue;
@@ -261,7 +264,9 @@
       if (!card) continue;
 
       setCellText(card, '.scw-ws-v2-cell--label', readDerived(rec, 'field_1950'));
-      setCellText(card, '.scw-ws-v2-cell--fee',   readDerived(rec, 'field_2028'));
+      if (!laborOnly) {
+        setCellText(card, '.scw-ws-v2-cell--fee', readDerived(rec, 'field_2028'));
+      }
 
       for (var inField in STACK_TOTALS) {
         var input = card.querySelector('[data-scw-ws-v2-field="' + inField + '"]');
@@ -450,7 +455,11 @@
           '<span>Qty</span>' +
           (salesMoney
             ? '<span class="scw-ws-v2-col-header-total">Total</span>'
-            : '<span>Sub Bid</span><span>+Hrs</span><span>+Mat</span><span>Fee</span><span>SOW</span>') +
+            // laborOnly (sub CO page): the +Hrs/+Mat/Fee tracks exist in the
+            // grid but are blank — headers blank to match.
+            : (ns.card && ns.card.isLaborOnly && ns.card.isLaborOnly(sourceViewKey)
+              ? '<span>Sub Bid</span><span></span><span></span><span></span><span>SOW</span>'
+              : '<span>Sub Bid</span><span>+Hrs</span><span>+Mat</span><span>Fee</span><span>SOW</span>')) +
           '<span></span>' + /* warning slot */
           (salesMoney ? '<span>CR</span>' : '<span></span>');   /* trash / CR slot */
       }
@@ -531,7 +540,7 @@
       // place so the committed value's recomputed label / fee / totals
       // show immediately.
       pending[sourceViewKey] = records;
-      patchDerivedCells(container, records);
+      patchDerivedCells(container, records, sourceViewKey);
       return;
     }
     delete pending[sourceViewKey];

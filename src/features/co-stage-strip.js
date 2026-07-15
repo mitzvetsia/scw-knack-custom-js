@@ -748,7 +748,12 @@
     function previewIssue() {
       var coId = getCoSowId();
       if (!coId) { alert('Could not determine the change order record id from the URL.'); return; }
-      window.location.hash = '#proposals/proposal/' + coId + '/';
+      // New tab — the review/issue flow lives on its own page and ops keep
+      // the build-CO page open underneath.
+      window.open(
+        window.location.origin + window.location.pathname +
+          '#proposals/proposal/' + coId + '/',
+        '_blank', 'noopener');
     }
 
     // ── waiting copy ("With the sub since ⟨date⟩ — N days") ──────────────

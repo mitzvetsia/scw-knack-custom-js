@@ -276,9 +276,14 @@
     // entry for the category — e.g. SALES_FIELDS has no 'assumptions', which
     // would otherwise leave the row with ZERO editable fields ("no options").
     var base = fieldSet[cat] || fieldSet['default'] || FIELDS[cat] || FIELDS['default'] || [];
+    // laborOnly views (sub CO page): +Hrs/+Mat are SCW-side money — the sub
+    // never sees or bulk-edits them.
+    var laborOnly = !!(ns.card && ns.card.isLaborOnly &&
+      ns.card.isLaborOnly(sourceViewKey));
     var out = [];
     for (var i = 0; i < base.length; i++) {
       var f = base[i];
+      if (laborOnly && (f.key === 'field_1973' || f.key === 'field_1974')) continue;
       // Legacy SOW conditional gates (hardcoded keys).
       if (f.key === 'field_1964' && !qtyAllowsMulti(attrs)) continue;
       if (f.key === 'field_1957' && !isMapConnectionsRow(attrs)) continue;
