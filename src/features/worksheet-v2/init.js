@@ -1017,35 +1017,74 @@
       var recs = (ns.data && typeof ns.data.readRecords === 'function') ? ns.data.readRecords(viewId) : [];
       var rec = null;
       for (var i = 0; i < recs.length; i++) { if (recs[i] && recs[i].id === rowId) { rec = recs[i]; break; } }
-      var raw = rec && rec['field_2154_raw'];
-      var remaining = [];
-      if (Array.isArray(raw)) {
-        for (var j = 0; j < raw.length; j++) {
-          if (raw[j] && raw[j].id && raw[j].id !== coId) remaining.push(raw[j].id);
+      function minusCo(r) {
+        var raw = r && r['field_2154_raw'];
+        var out = [];
+        if (Array.isArray(raw)) {
+          for (var j = 0; j < raw.length; j++) {
+            if (raw[j] && raw[j].id && raw[j].id !== coId) out.push(raw[j].id);
+          }
+        }
+        return out;
+      }
+      var remaining = minusCo(rec);
+      // Accessory invariant: an accessory's SOW mirrors its parent's set, so
+      // unlinking a parent detaches its accessories from the CO too —
+      // otherwise they'd strand on the CO with no parent (and the build-page
+      // reconcile sweep would fight whichever way they were left). Accessory
+      // = a loaded CO row whose field_2464 back-pointer names this record.
+      var accJobs = [];
+      for (var a = 0; a < recs.length; a++) {
+        var ar = recs[a];
+        if (!ar || !ar.id || ar.id === rowId) continue;
+        var aRaw = ar['field_2464_raw'];
+        if (Array.isArray(aRaw) && aRaw[0] && aRaw[0].id === rowId) {
+          accJobs.push({ id: ar.id, remaining: minusCo(ar) });
         }
       }
 
       function doUnlink() {
+        var pending = 1 + accJobs.length;
+        function settle() {
+          if (--pending > 0) return;
+          if (ns.data && typeof ns.data.refetchAndNotify === 'function') {
+            ns.data.refetchAndNotify(viewId);
+            setTimeout(function () { ns.data.refetchAndNotify(viewId); }, 1500);
+          }
+        }
         SCW.knackAjax({
           url:  SCW.knackRecordUrl(viewId, rowId),
           type: 'PUT',
           data: JSON.stringify({ field_2154: remaining }),
-          success: function () {
-            if (ns.data && typeof ns.data.refetchAndNotify === 'function') {
-              ns.data.refetchAndNotify(viewId);
-              setTimeout(function () { ns.data.refetchAndNotify(viewId); }, 1500);
-            }
-          },
+          success: settle,
           error: function (xhr) {
             console.warn('[scw-ws-v2] CO unlink PUT failed for ' + rowId, xhr && xhr.status);
             alert('Could not remove the item from the change order. Try again.');
+            settle();
           }
+        });
+        accJobs.forEach(function (job) {
+          SCW.knackAjax({
+            url:  SCW.knackRecordUrl(viewId, job.id),
+            type: 'PUT',
+            data: JSON.stringify({ field_2154: job.remaining }),
+            success: settle,
+            error: function (xhr) {
+              console.warn('[scw-ws-v2] CO unlink PUT failed for accessory ' +
+                job.id, xhr && xhr.status);
+              settle();
+            }
+          });
         });
       }
 
       var body = 'Remove this item from the change order? It was adopted from ' +
         'survey/bid, so it stays on its original scope — only its link to this ' +
-        'CO is removed.';
+        'CO is removed.' +
+        (accJobs.length
+          ? ' Its ' + (accJobs.length === 1 ? 'attached accessory comes' :
+              accJobs.length + ' attached accessories come') + ' off the CO with it.'
+          : '');
       if (ns.confirmModal && typeof ns.confirmModal === 'function') {
         ns.confirmModal({ title: 'Remove from change order?', body: body,
           okLabel: 'Remove from CO', cancelLabel: 'Cancel' })

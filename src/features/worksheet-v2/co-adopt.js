@@ -615,6 +615,36 @@
     updateBulkToolbar(viewKey);
   }
 
+  // Accessory invariant (mirror-connection-sync): an accessory's SOW must
+  // always mirror its parent's exact set — the pair travels TOGETHER.
+  // Expand the adopted set both directions so adoption can't split them:
+  //   • adopting a parent pulls every accessory pointing at it (field_2464)
+  //   • adopting an accessory pulls its parent (else the build-page
+  //     reconcile sweep would later re-align the accessory to the parent's
+  //     set and silently UN-adopt it)
+  // Already-on-CO relatives are skipped (nothing to add).
+  function expandWithAccessoryPairs(ids, byId, coId) {
+    var set = {}, i, r;
+    for (i = 0; i < ids.length; i++) set[ids[i]] = true;
+    // Parents of any checked accessories first, so the accessory scan
+    // below also picks up THEIR other accessories.
+    for (i = 0; i < ids.length; i++) {
+      var rec = byId[ids[i]];
+      var pRaw = rec && rec['field_2464_raw'];
+      var pid = Array.isArray(pRaw) && pRaw[0] && pRaw[0].id;
+      if (pid && byId[pid] && !set[pid] && !isOnCo(byId[pid], coId)) set[pid] = true;
+    }
+    // Accessories of every parent in the set.
+    for (var rid in byId) {
+      if (set[rid]) continue;
+      r = byId[rid];
+      var raw = r && r['field_2464_raw'];
+      var parentId = Array.isArray(raw) && raw[0] && raw[0].id;
+      if (parentId && set[parentId] && !isOnCo(r, coId)) set[rid] = true;
+    }
+    return Object.keys(set);
+  }
+
   // ── Adoption write (Make webhook) — single + bulk share this ─────────
   function fireAdopt(ids, viewKey, ui) {
     var url = (window.SCW && SCW.CONFIG && SCW.CONFIG.MAKE_CO_ADOPT_ITEMS_WEBHOOK) || '';
@@ -628,6 +658,12 @@
       return;
     }
     var byId = recordIndex(viewKey);
+    var expanded = expandWithAccessoryPairs(ids, byId, coId);
+    if (expanded.length !== ids.length) {
+      console.info(LOG_PREFIX, 'adopt expanded ' + ids.length + ' selected → ' +
+        expanded.length + ' (accessory/parent pairs ride together)');
+    }
+    ids = expanded;
     var sourceSowIds = {}, i, r;
     for (i = 0; i < ids.length; i++) {
       var rec = byId[ids[i]];

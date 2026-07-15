@@ -2081,7 +2081,12 @@
     try {
       if (window.SCW && SCW.mirrorConn &&
           typeof SCW.mirrorConn.isCascadeInFlight === 'function' &&
-          SCW.mirrorConn.isCascadeInFlight()) return;
+          SCW.mirrorConn.isCascadeInFlight()) {
+        // Don't silently drop this render's sweep — re-arm so it runs once
+        // the cascade settles (each re-arm replaces the timer; no stacking).
+        scheduleAccessorySowSweep();
+        return;
+      }
       var av = window.Knack && Knack.views && Knack.views[ACCESSORIES_VIEW_ID];
       var ms = av && av.model && av.model.data && av.model.data.models;
       if (!ms || !ms.length) return;
@@ -2378,6 +2383,15 @@
     CONNECTIONS_FIELD:   'field_2197',
     GROUPING_FIELD:      'field_1946',
     SOW_FIELD:           'field_2154',
+    // Accessory config so the accessory-SOW reconcile sweep also runs on
+    // the internal CO drafting page. Unlike the build/bid scenes there's no
+    // separate hidden accessory grid here — accessories on the CO are
+    // ordinary line items in THIS view's model, so the accessory view IS
+    // the worksheet view. Repair PUTs go through view_4079 (field_2154 is
+    // already written through it by the unlink flow).
+    ACCESSORIES_FIELD:        'field_1958',
+    ACCESSORIES_VIEW_ID:      'view_4079',
+    ACCESSORIES_PARENT_FIELD: 'field_2464',
     LABEL_FIELD:         'field_1950',
     MODEL_ONLY:          true,
     PUBLIC_API_NAME:     'silentRegroupView4079'
