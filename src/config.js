@@ -123,7 +123,16 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   //     qty, prefix, startNumber,      // startNumber/prefix: cameras only
   //     existingCabling, exterior, plenum,   // cameras only (bool)
   //     serviceCost, description, notes,
-  //     triggeredBy: { id, name, email }
+  //     triggeredBy: { id, name, email },
+  //     origin: 'sub'|'ops',           // STRUCTURAL initiator: which page fired
+  //                                    // the add — 'sub' = sub portal Manage CO
+  //                                    // page (scene_1374/view_4112), 'ops' =
+  //                                    // internal build-CO (scene_1362/view_4079).
+  //                                    // Derived from the hosting deployment,
+  //                                    // never from the user's email. Make
+  //                                    // stamps authorship (Added-by-sub flag)
+  //                                    // from this.
+  //     originPage, originView, originScene   // human/debug context for origin
   //   }
   //   Response: 2xx = accepted (body optional; only {success:false}|{error} fails)
   MAKE_CO_ADD_ITEMS_WEBHOOK: "https://hook.us1.make.com/ae51ped3yu5m671mx3yvxqyk5r14wp9o",

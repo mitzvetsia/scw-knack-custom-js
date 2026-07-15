@@ -419,6 +419,18 @@
     });
   }
 
+  // Who is adding — derived STRUCTURALLY from which deployment hosts the
+  // form, never from the user's email (accounts/roles drift). The sub
+  // portal's Manage Change Order page (scene_1374) hosts view_4112; the
+  // internal CO drafting scene (scene_1362) hosts view_4079. Make reads
+  // `origin` to stamp authorship (the "Added by sub" flag) on the created
+  // line items; `originPage`/`originView`/`originScene` are human/debug
+  // context riding along.
+  var ORIGINS = {
+    view_4079: { origin: 'ops', originPage: 'SCW build CO' },
+    view_4112: { origin: 'sub', originPage: 'Sub bid pricing' }
+  };
+
   // ── form (modal OR inline host) ────────────────────────────────────
   // open({ host: el, onClose: fn }) renders the SAME form inline into `host`
   // (no overlay) — used by the CO scene's "+ Add new items" strip. Without
@@ -704,7 +716,16 @@
         serviceCost:     readField('serviceCost') || '',
         description:     readField('description') || '',
         notes:           readField('notes') || '',
-        triggeredBy:     triggeredBy()
+        triggeredBy:     triggeredBy(),
+        // Structural origin (see ORIGINS above): 'sub' = the sub portal's
+        // pricing page, 'ops' = the internal build-CO page. An unknown
+        // deployment fails safe to 'ops' (internal pages are the default;
+        // sub authorship is only ever granted explicitly).
+        origin:          (ORIGINS[viewKey] || {}).origin || 'ops',
+        originPage:      (ORIGINS[viewKey] || {}).originPage || viewKey,
+        originView:      viewKey,
+        originScene:     (typeof Knack !== 'undefined' && Knack.router &&
+                          Knack.router.current_scene_key) || ''
       };
 
       showErr('');
