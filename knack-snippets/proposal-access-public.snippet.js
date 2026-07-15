@@ -82,6 +82,9 @@
   //                (heuristic: a display name carrying the SW####CO
   //                 suffix marks the proposal as a change order — see
   //                 isChangeOrderProposal. Not detected if not exposed.)
+  //   field_1089  install agreement contact         → CO e-sign banner
+  //                (names WHO the signature request went to; banner
+  //                 falls back to generic copy if not exposed/blank)
   //
   // Source view IDs on the public scene:
   //   view_3953  "I'm Ready for a Site Survey"
@@ -100,8 +103,9 @@
   //   2. Heuristic fallback — the display name / proposal number carries
   //      the CO suffix (…SW1410CO…), per the CO numbering convention.
   // Neither signal present → NOT a CO (base proposals keep the button).
-  var CO_TYPE_FIELD   = '';            // TODO: 'field_XXXX' when built
-  var CO_NAME_FIELDS  = ['field_2665', 'field_2663'];
+  var CO_TYPE_FIELD    = '';           // TODO: 'field_XXXX' when built
+  var CO_NAME_FIELDS   = ['field_2665', 'field_2663'];
+  var CO_CONTACT_FIELD = 'field_1089'; // install agreement contact (signer)
   function isChangeOrderProposal(attrs) {
     if (!attrs) return false;
     if (CO_TYPE_FIELD) {
@@ -572,6 +576,8 @@
 
   // ---- Change-order e-sign notice ---------------------------------------
   // Mirrors src/features/published-proposal-render.js injectCoNoticeBanner.
+  // Names the signer when the install agreement contact (field_1089) is
+  // exposed on the lookup view and populated.
   function injectCoNoticeBanner(iframe, attrs) {
     if (!iframe || !isChangeOrderProposal(attrs)) return;
     var doc;
@@ -579,6 +585,20 @@
     catch (e) { return; }
     if (!doc || !doc.body) return;
     if (doc.body.querySelector('.scw-co-esign-banner')) return;  // idempotent
+
+    var contact = '';
+    if (CO_CONTACT_FIELD && attrs) {
+      var cRaw = attrs[CO_CONTACT_FIELD + '_raw'];
+      contact = String(cRaw != null && typeof cRaw !== 'object'
+          ? cRaw : (attrs[CO_CONTACT_FIELD] || ''))
+        .replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+    }
+    var body = contact
+      ? 'The signature request was sent by email to <b>' + escapeHtml(contact) +
+        '</b> — check that inbox for a message from SCW to review and sign ' +
+        'this change order.'
+      : 'The signature request was sent by email — check your inbox for a ' +
+        'message from SCW to review and sign this change order.';
 
     var banner = doc.createElement('div');
     banner.className = 'scw-co-esign-banner';
@@ -592,10 +612,7 @@
       '<div style="font-size:15px; font-weight:800; margin-bottom:4px;">' +
         'This change order is signed electronically' +
       '</div>' +
-      '<div style="font-weight:500;">' +
-        'The signature request was sent by email — check your inbox for a ' +
-        'message from SCW to review and sign this change order.' +
-      '</div>';
+      '<div style="font-weight:500;">' + body + '</div>';
     doc.body.insertBefore(banner, doc.body.firstChild);
   }
 

@@ -436,6 +436,9 @@
   }
 
   // Customer-facing notice for issued COs — replaces the Accept CTA.
+  // Names the signer when the install agreement contact (field_1089) is
+  // on the proposal record; falls back to generic copy.
+  var CO_CONTACT_FIELD = 'field_1089';
   function injectCoNoticeBanner(iframe) {
     if (!iframe || !isChangeOrderProposal()) return;
     var doc;
@@ -443,6 +446,26 @@
     catch (e) { return; }
     if (!doc || !doc.body) return;
     if (doc.body.querySelector('.scw-co-esign-banner')) return;  // idempotent
+
+    var contact = '';
+    var attrs = readPublishedProposalAttrs();
+    if (attrs) {
+      var cRaw = attrs[CO_CONTACT_FIELD + '_raw'];
+      contact = String(cRaw != null && typeof cRaw !== 'object'
+          ? cRaw : (attrs[CO_CONTACT_FIELD] || ''))
+        .replace(/<[^>]*>/g, '').replace(/\s+/g, ' ').trim();
+    }
+    function escBanner(s) {
+      return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+        return ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[c];
+      });
+    }
+    var body = contact
+      ? 'The signature request was sent by email to <b>' + escBanner(contact) +
+        '</b> — check that inbox for a message from SCW to review and sign ' +
+        'this change order.'
+      : 'The signature request was sent by email — check your inbox for a ' +
+        'message from SCW to review and sign this change order.';
 
     var banner = doc.createElement('div');
     banner.className = 'scw-co-esign-banner';
@@ -456,10 +479,7 @@
       '<div style="font-size:15px; font-weight:800; margin-bottom:4px;">' +
         'This change order is signed electronically' +
       '</div>' +
-      '<div style="font-weight:500;">' +
-        'The signature request was sent by email — check your inbox for a ' +
-        'message from SCW to review and sign this change order.' +
-      '</div>';
+      '<div style="font-weight:500;">' + body + '</div>';
     doc.body.insertBefore(banner, doc.body.firstChild);
   }
   function readCrCount() {
