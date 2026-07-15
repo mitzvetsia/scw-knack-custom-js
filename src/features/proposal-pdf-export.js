@@ -105,7 +105,12 @@
         // grid scrape — they're appended to the END of the PDF in a
         // dedicated image section instead (see appendImageViews).
         view_3928: true,
-        view_3929: true
+        view_3929: true,
+        // CORE_contacts — hidden grid added for the Issue-CO recipient
+        // picker (ops-stepper.js). Internal data source only; without
+        // this it leaked a bare "CORE_contacts" heading into the
+        // published CO html (observed 2026-07-15).
+        view_4124: true
       },
       // Image-attachment views appended to the END of the PDF (in
       // order). Each entry: { viewId, label }. Site maps render first,
@@ -427,6 +432,63 @@
   // ══════════════════════════════════════════════════════════════
   // SCRAPER: Grid views (parameterized by keys)
   // ══════════════════════════════════════════════════════════════
+
+  // ── Change Order "What's Changing" manifest ─────────────────────
+  // On a CO's preview, proposal-grid.js injects #scw-co-change-summary
+  // as a <div> ABOVE the grid's <table> (adds / removes / net change).
+  // scrapeGridView only reads the table tbody, so without an explicit
+  // capture the manifest — the customer-facing substance of a CO —
+  // never reaches the published HTML or the e-sign agreement. Scrape
+  // it into structured data here; buildPdfHtml re-renders it with
+  // publish-safe markup (.co-change-summary) and buildSowDocumentElements
+  // emits it as native e-signatures elements. Returns null on base
+  // proposals (no manifest on the page).
+  function scrapeCoChangeSummary(sceneEl) {
+    var root = sceneEl && sceneEl.querySelector('#scw-co-change-summary');
+    if (!root) return null;
+
+    function colItems(colSel) {
+      var out = { items: [], subtotal: '' };
+      var col = root.querySelector(colSel);
+      if (!col) return out;
+      var rows = col.querySelectorAll('table.scw-cos-table tbody tr');
+      for (var i = 0; i < rows.length; i++) {
+        var tds = rows[i].querySelectorAll('td');
+        if (!tds.length) continue;
+        if (rows[i].classList.contains('scw-cos-sub')) {
+          out.subtotal = norm(tds[tds.length - 1].textContent || '');
+          continue;
+        }
+        // First cell = product name + optional .scw-cos-meta span
+        // (designator · location). Strip the meta from a clone so the
+        // product label comes out clean.
+        var labelClone = tds[0].cloneNode(true);
+        var metaEl = labelClone.querySelector('.scw-cos-meta');
+        var meta = '';
+        if (metaEl) { meta = norm(metaEl.textContent); metaEl.remove(); }
+        out.items.push({
+          product: norm(labelClone.textContent),
+          meta:    meta,
+          qty:     tds.length > 2 ? norm(tds[1].textContent) : '',
+          amt:     norm(tds[tds.length - 1].textContent || '')
+        });
+      }
+      return out;
+    }
+
+    var adds     = colItems('.scw-cos-col--add');
+    var removes  = colItems('.scw-cos-col--rm');
+    var netEl    = root.querySelector('.scw-cos-net span:last-child');
+    var descEl   = root.querySelector('.scw-cos-desc');
+    return {
+      desc:           descEl ? norm(descEl.textContent) : '',
+      adds:           adds.items,
+      addSubtotal:    adds.subtotal,
+      removes:        removes.items,
+      removeSubtotal: removes.subtotal,
+      net:            netEl ? norm(netEl.textContent) : ''
+    };
+  }
 
   function scrapeGridView(viewId, keys) {
     var root = document.getElementById(viewId);
@@ -1280,6 +1342,12 @@
       }
     }
 
+    // Change Order manifest (null on base proposals). Rides the payload
+    // so buildPdfHtml + buildSowDocumentElements can emit CO-specific
+    // content, and so Make/e-sign templates can branch on isChangeOrder.
+    result.coChangeSummary = scrapeCoChangeSummary(sceneEl);
+    result.isChangeOrder = !!result.coChangeSummary;
+
     // Image attachments to append at the END of the rendered PDF
     // (site maps, additional photos). buildPdfHtml emits a cover-page
     // section per image after the project content + report views.
@@ -1456,6 +1524,52 @@
     if (view.tableHtml) {
       html.push('<div class="report-table-wrap">' + view.tableHtml + '</div>');
     }
+  }
+
+  // Change Order "What's Changing" block for the published HTML/PDF.
+  // Publish-safe re-render of the on-page #scw-co-change-summary
+  // manifest: stacked Adding / Removing tables + net change, styled by
+  // the .co-change-summary rules in getPdfCss (no flex — PDF engines
+  // handle it inconsistently). buildSowDocumentElements has a matching
+  // emitter keyed on the .co-change-summary class.
+  function renderCoChangeSummary(cs, html) {
+    if (!cs) return;
+    html.push('<div class="co-change-summary">');
+    html.push('<div class="co-cs-title">Change Order &mdash; What&#39;s Changing</div>');
+    if (cs.desc) {
+      html.push('<div class="co-cs-desc">' + esc(cs.desc) + '</div>');
+    }
+
+    function block(cls, heading, items, subLabel, subtotal) {
+      if (!items || !items.length) return;
+      html.push('<div class="co-cs-block ' + cls + '">');
+      html.push('<div class="co-cs-head">' + esc(heading) + '</div>');
+      html.push('<table class="co-cs-table"><tbody>');
+      for (var i = 0; i < items.length; i++) {
+        var it = items[i];
+        html.push('<tr><td class="co-cs-item">' + esc(it.product || '(item)') +
+          (it.meta ? '<span class="co-cs-meta">' + esc(it.meta) + '</span>' : '') +
+          '</td><td class="co-cs-qty">' + esc(it.qty) + '</td>' +
+          '<td class="co-cs-amt">' + esc(it.amt) + '</td></tr>');
+      }
+      if (subtotal) {
+        html.push('<tr class="co-cs-sub"><td class="co-cs-item">' + esc(subLabel) +
+          '</td><td class="co-cs-qty"></td><td class="co-cs-amt">' + esc(subtotal) + '</td></tr>');
+      }
+      html.push('</tbody></table>');
+      html.push('</div>');
+    }
+
+    block('co-cs-block--add', 'Adding to install scope (' + cs.adds.length + ')',
+          cs.adds, 'Subtotal — additions', cs.addSubtotal);
+    block('co-cs-block--rm', 'Removing from install scope — credit (' + cs.removes.length + ')',
+          cs.removes, 'Subtotal — credits', cs.removeSubtotal);
+
+    if (cs.net) {
+      html.push('<div class="co-cs-net"><span class="co-cs-net-label">Net change</span>' +
+        '<span class="co-cs-net-value">' + esc(cs.net) + '</span></div>');
+    }
+    html.push('</div>');
   }
 
   function renderGridSections(view, html) {
@@ -1687,9 +1801,16 @@
       }
     }
 
-    // Render project views
+    // Render project views. On a CO, the "What's Changing" manifest
+    // sits immediately above the itemized grid — same position it holds
+    // on the live preview page.
+    var coSummaryEmitted = false;
     for (var pv = 0; pv < projectViews.length; pv++) {
       var pView = projectViews[pv];
+      if (pView.type === 'grid' && !coSummaryEmitted && payload.coChangeSummary) {
+        renderCoChangeSummary(payload.coChangeSummary, html);
+        coSummaryEmitted = true;
+      }
       if (pView.type === 'detail') {
         renderDetailView(pView, html);
       } else if (pView.type === 'richtext') {
@@ -1697,6 +1818,11 @@
       } else if (pView.type === 'grid') {
         renderGridSections(pView, html);
       }
+    }
+    // A CO whose grid view didn't scrape (e.g. render race) still gets
+    // the manifest — it's the substance of the change order.
+    if (payload.coChangeSummary && !coSummaryEmitted) {
+      renderCoChangeSummary(payload.coChangeSummary, html);
     }
 
     // Project totals
@@ -1959,6 +2085,48 @@
       '  font-size: 20px; font-weight: 800; color: #07467c;',
       '  margin-bottom: 8px; padding-bottom: 4px;',
       '  border-bottom: 3px solid #07467c;',
+      '}',
+      '',
+      '/* ── Change Order — What\'s Changing ── */',
+      '.co-change-summary {',
+      '  margin: 0 0 20px; border: 1px solid #dbe4ee; border-radius: 8px;',
+      '  overflow: hidden; background: #fff; page-break-inside: avoid;',
+      '}',
+      '.co-cs-title {',
+      '  padding: 8px 14px; background: #163C6E; color: #fff;',
+      '  font-size: 13px; font-weight: 800; letter-spacing: 0.05em;',
+      '  text-transform: uppercase;',
+      '}',
+      '.co-cs-desc {',
+      '  padding: 8px 14px; background: #f0f4fa; color: #334155;',
+      '  font-size: 11px; line-height: 1.45; border-bottom: 1px solid #dbe4ee;',
+      '}',
+      '.co-cs-block { padding: 10px 14px; }',
+      '.co-cs-block--add { border-left: 4px solid #059669; }',
+      '.co-cs-block--rm  { border-left: 4px solid #e11d48; background: #fff7f7; }',
+      '.co-cs-head {',
+      '  font-size: 10px; font-weight: 800; letter-spacing: 0.07em;',
+      '  text-transform: uppercase; margin-bottom: 6px;',
+      '}',
+      '.co-cs-block--add .co-cs-head { color: #065f46; }',
+      '.co-cs-block--rm  .co-cs-head { color: #9f1239; }',
+      'table.co-cs-table { width: 100%; border-collapse: collapse; }',
+      'table.co-cs-table td {',
+      '  padding: 4px 6px; font-size: 11px; color: #1e293b;',
+      '  border-bottom: 1px solid #eef2f7; vertical-align: top;',
+      '}',
+      'td.co-cs-qty { width: 42px; text-align: right; color: #64748b; white-space: nowrap; }',
+      'td.co-cs-amt { width: 96px; text-align: right; font-weight: 600; white-space: nowrap; }',
+      '.co-cs-block--rm td.co-cs-amt { color: #be123c; }',
+      '.co-cs-meta { display: block; color: #64748b; font-size: 10px; margin-top: 1px; }',
+      'tr.co-cs-sub td { border-bottom: 0; padding-top: 6px; font-weight: 800; }',
+      '.co-cs-net {',
+      '  text-align: right; padding: 8px 14px; border-top: 1px solid #dbe4ee;',
+      '  background: #f8fafc; font-size: 12px; font-weight: 800; color: #163C6E;',
+      '}',
+      '.co-cs-net-label {',
+      '  font-size: 10px; letter-spacing: 0.07em; text-transform: uppercase;',
+      '  color: #64748b; margin-right: 10px; font-weight: 700;',
       '}',
       '',
       '/* ── Report / BOM Table ── */',
@@ -2321,6 +2489,7 @@
     'proposalAccessToken', 'proposalAccessUrl',
     'plaintext', 'plaintextJsonEscaped',
     'scopeOfWorkDocumentElements', 'scopeOfWorkDocumentElementsString',
+    'isChangeOrder', 'coNetChange', 'coChangeSummary',
     'tokens', 'publishAsTbd',
     'subBidBidHtml', 'subBidDiffHtml', 'subBidDiffDocHtml', 'subBidReviewHtml',
     'subBidBasis', 'subBidBasisId', 'subBidBasisSubId',
@@ -3999,6 +4168,64 @@
       }
     }
 
+    // .co-change-summary — the Change Order "What's Changing" block
+    // (renderCoChangeSummary). Emits natively: H2 title, intro text,
+    // per-column H3 + 3-col table (item / qty / amount, subtotal row
+    // bold), then the net change as a bold H3 — same shape the L1
+    // footer lines use. This is the substance of a CO agreement; the
+    // merged product tables above may legitimately be sparse on a CO.
+    function emitCoChangeSummary(rootEl) {
+      var titleEl = rootEl.querySelector('.co-cs-title');
+      pushHeader(2, titleEl ? cleanText(titleEl.textContent) : "Change Order — What's Changing");
+      var descEl = rootEl.querySelector('.co-cs-desc');
+      if (descEl) pushNormal(cleanText(descEl.textContent));
+
+      var blocks = rootEl.querySelectorAll('.co-cs-block');
+      for (var b = 0; b < blocks.length; b++) {
+        var headEl = blocks[b].querySelector('.co-cs-head');
+        if (headEl) pushHeader(3, cleanText(headEl.textContent));
+        var rows = blocks[b].querySelectorAll('table.co-cs-table tr');
+        var cells = [[
+          { text: 'Item', styles: ['bold'] },
+          { text: 'Qty', styles: ['bold'], alignment: 'center' },
+          { text: 'Amount', styles: ['bold'], alignment: 'center' }
+        ]];
+        for (var r = 0; r < rows.length; r++) {
+          var isSub = rows[r].className.indexOf('co-cs-sub') >= 0;
+          var itemEl = rows[r].querySelector('td.co-cs-item');
+          var qtyEl  = rows[r].querySelector('td.co-cs-qty');
+          var amtEl  = rows[r].querySelector('td.co-cs-amt');
+          if (!itemEl) continue;
+          // Product name + meta (designator · location) share the first
+          // cell; join with an em-dash so both survive the flatten.
+          var metaEl = itemEl.querySelector('.co-cs-meta');
+          var meta = metaEl ? cleanText(metaEl.textContent) : '';
+          var itemClone = itemEl.cloneNode(true);
+          var metaClone = itemClone.querySelector('.co-cs-meta');
+          if (metaClone) metaClone.parentNode.removeChild(metaClone);
+          var itemText = cleanText(itemClone.textContent) + (meta ? ' — ' + meta : '');
+          var rowStyles = isSub ? ['bold'] : null;
+          var rowOut = [
+            { text: itemText },
+            { text: cleanText(qtyEl ? qtyEl.textContent : ''), alignment: 'center' },
+            { text: cleanText(amtEl ? amtEl.textContent : ''), alignment: 'center' }
+          ];
+          if (rowStyles) {
+            for (var rc = 0; rc < rowOut.length; rc++) rowOut[rc].styles = rowStyles;
+          }
+          cells.push(rowOut);
+        }
+        if (cells.length > 1) {
+          elements.push({ type: 'table', table_cells: padRows(cells) });
+        }
+      }
+
+      var netVal = rootEl.querySelector('.co-cs-net-value');
+      if (netVal) {
+        pushHeader(3, 'Net change   ' + cleanText(netVal.textContent));
+      }
+    }
+
     // Generic table fallback (BOM, etc.). Center-aligns numeric cells.
     function emitGenericTable(table) {
       var rowEls = table.querySelectorAll('tr');
@@ -4052,6 +4279,7 @@
           if (nt) pushNormal(nt);
           continue;
         }
+        if (classes && classes.contains('co-change-summary')) { emitCoChangeSummary(child); continue; }
         if (classes && classes.contains('l1-section')) { emitL1Section(child); continue; }
         if (classes && classes.contains('project-totals')) { emitProjectTotals(child); continue; }
         if (classes && classes.contains('recurring-section')) {
@@ -4312,6 +4540,16 @@
       installationTotal:     summary.installationTotal,
       grandTotal:            summary.grandTotal,
       expirationDate:        summary.expirationDate,
+      // Change Order publish — true when the preview page carried the
+      // proposal-grid "What's Changing" manifest (#scw-co-change-summary).
+      // coNetChange is the manifest's net-change money string (e.g.
+      // "$1,234.00" / "−$500.00") — the e-sign template should show THIS
+      // (not grandTotal) as the headline amount on a CO agreement.
+      // coChangeSummary is the full structured manifest
+      // { desc, adds[], addSubtotal, removes[], removeSubtotal, net }.
+      isChangeOrder:         payload.isChangeOrder || false,
+      coNetChange:           payload.coChangeSummary ? payload.coChangeSummary.net : '',
+      coChangeSummary:       payload.coChangeSummary || undefined,
       // Tokenized public link, minted client-side at publish time.
       // Make should write these to field_2904 and field_2908 on the
       // proposal record so the public snippet finds them on first

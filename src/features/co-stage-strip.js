@@ -54,7 +54,7 @@
     // customer link inline via SCW.publishedQuoteInfo. Until it exists the
     // strip links to the preview page, which already shows all of it.
     { VIEW: 'view_4092', CO_VIEW: 'view_4079', STATUS_VIEW: 'view_4109',
-      PUBLISHED_VIEW: '', MODE: 'ops', NS: '.scwCoStage' },
+      PUBLISHED_VIEW: 'view_4125', MODE: 'ops', NS: '.scwCoStage' },
     { VIEW: 'view_4121', CO_VIEW: 'view_4112', STATUS_VIEW: 'view_4122',
       MODE: 'sub', NS: '.scwCoStageSub' }
   ];

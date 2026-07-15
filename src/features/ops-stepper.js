@@ -1135,6 +1135,11 @@
             // htmlPdf = small weserv-resized variant for the PDF render.
             'html', 'htmlPdf', 'plaintext', 'plaintextJsonEscaped',
             'scopeOfWorkDocumentElements', 'scopeOfWorkDocumentElementsString',
+            // Change Order publish — isChangeOrder flags the branch,
+            // coNetChange is the headline money string for the CO
+            // agreement (use INSTEAD of grandTotal on COs), and
+            // coChangeSummary is the structured adds/removes manifest.
+            'isChangeOrder', 'coNetChange', 'coChangeSummary',
             'json', 'jsonString',
             'invoiceItems', 'invoiceItemsString',
             // Tokenized public link, minted at publish time by
