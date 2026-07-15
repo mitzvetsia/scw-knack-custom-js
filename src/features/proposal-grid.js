@@ -1414,6 +1414,32 @@ ${sel('tr.scw-mounting-labor-line td:first-child')} {
   // FEATURE: Camera list builder
   // ============================================================
 
+  // Cam/reader bucket check off a data row's field_2218 connection span —
+  // shared by both drop-label emitters (cluster product lines + standalone
+  // mounting L3 headers) so only camera/reader lineage ever prints a label.
+  const SCW_CAM_READER_BUCKET_ID = '6481e5ba38f283002898113c';
+  function rowIsCamReaderBucket(rowEl) {
+    if (!rowEl) return false;
+    const span = rowEl.querySelector('td.field_2218 span[data-kn="connection-value"]');
+    const id = span ? String(span.id || span.className || '').trim() : '';
+    return id === SCW_CAM_READER_BUCKET_ID;
+  }
+
+  // For an ACCESSORY row: true unless its field_2464 parent resolves to a
+  // non-cam/reader row. Accessories of NVRs/switches can carry prefix/number
+  // junk COPIED INTO THEIR OWN CELLS at creation (e.g. "I-"/"32" from an
+  // Admiral Pro typed as channel count), so their own cells can't be trusted
+  // as a drop label source. Unresolvable parents fail open (keep the row).
+  function accessoryRowParentIsCamReader(rowEl) {
+    const pSpan = rowEl.querySelector('td.field_2464 span[data-kn="connection-value"]');
+    const pid = pSpan ? String(pSpan.className || '').trim() : '';
+    if (!/^[a-f0-9]{24}$/i.test(pid)) return true;
+    const tbody = rowEl.closest('tbody');
+    const parent = tbody ? tbody.querySelector('tr[id="' + pid + '"]') : null;
+    if (!parent) return true;
+    return rowIsCamReaderBucket(parent);
+  }
+
   function buildCameraListHtml(ctx, caches, $rows) {
     const items = [];
     const rows = $rows.get();
@@ -1554,7 +1580,14 @@ ${sel('tr.scw-mounting-labor-line td:first-child')} {
     if ($groupRow.data('scwConcatL3MountRunId') === runId) return;
     $groupRow.data('scwConcatL3MountRunId', runId);
 
-    const cameraListHtml = buildCameraListHtml(ctx, caches, $rowsToSum);
+    // buildCameraListHtml reads prefix/number off the rows' OWN cells, but
+    // an NVR/switch accessory can carry copied junk there (see
+    // accessoryRowParentIsCamReader) — drop rows whose parent isn't a
+    // cam/reader before building the label.
+    const eligibleRows = $rowsToSum.get().filter(accessoryRowParentIsCamReader);
+    if (!eligibleRows.length) return;
+
+    const cameraListHtml = buildCameraListHtml(ctx, caches, $(eligibleRows));
     if (!cameraListHtml) return;
 
     const $labelCell = $groupRow.children('td').first();
@@ -2615,28 +2648,18 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
       return cell ? (cell.textContent || '').replace(/\s+/g, ' ').trim() : '';
     }
 
-    // Only CAM/READER parents contribute a drop label to accessory tags.
-    // Drop prefix/number are a camera-drop concept — an NVR/switch/headend
-    // record that happens to carry values in those fields (e.g. Drop # 32
-    // typed on an Admiral Pro, read as channel count) produced a bogus
-    // "(I-32)" tag on its accessories. Bucket id read the same way
-    // synthesizeMissingAncestorHeaders does (field_2218 connection span).
-    const CAM_READER_BUCKET_ID = '6481e5ba38f283002898113c';
-    function isCamReaderRow(row) {
-      const span = row.querySelector('td.field_2218 span[data-kn="connection-value"]');
-      const id = span ? String(span.id || span.className || '').trim() : '';
-      return id === CAM_READER_BUCKET_ID;
-    }
-
     // Given an array of bracket rows, build "I-1, I-2, E-3" from their
     // parent rows' prefix + number cells. Mirrors buildCameraListHtml.
+    // Only CAM/READER parents contribute a drop label — an NVR/switch record
+    // carrying stray values in Drop Prefix/# (e.g. 32 typed on an Admiral
+    // Pro as channel count) produced a bogus "(I-32)" tag on its accessories.
     function buildParentLabelList(rows) {
       const items = [];
       for (let i = 0; i < rows.length; i++) {
         const parentId = rows[i].getAttribute('data-scw-parent-id');
         const parent = parentId ? rowById[parentId] : null;
         if (!parent) continue;
-        if (!isCamReaderRow(parent)) continue;   // cam/reader drops only
+        if (!rowIsCamReaderBucket(parent)) continue;   // cam/reader drops only
         const prefix = readCellText(parent, prefixKey);
         const numRaw = readCellText(parent, numberKey);
         if (!prefix || !numRaw) continue;
