@@ -3845,6 +3845,23 @@
       elements.push({ type: 'text_normal', text: text });
     }
 
+    // esignatures.com rejects ragged tables ("The table_cells must have
+    // the same number of cells in each row") and has no colspan concept —
+    // a full-width note row (<td colspan=3>, e.g. a bucket assumption
+    // line inside a product table) collapses to a 1-cell row and 400s the
+    // whole contract. Pad every row to the table's widest row with empty
+    // cells before pushing.
+    function padRows(cells) {
+      var max = 0, i;
+      for (i = 0; i < cells.length; i++) {
+        if (cells[i].length > max) max = cells[i].length;
+      }
+      for (i = 0; i < cells.length; i++) {
+        while (cells[i].length < max) cells[i].push({ text: '' });
+      }
+      return cells;
+    }
+
     // .detail-label-none holds the rendered project name + quote name
     // as <h1>/<h2>. Skip the <h1> (project name) — Make injects it
     // dynamically at the top of the agreement instead. Keep the <h2>
@@ -3881,7 +3898,7 @@
           { text: value }
         ]);
       }
-      if (cells.length) elements.push({ type: 'table', table_cells: cells });
+      if (cells.length) elements.push({ type: 'table', table_cells: padRows(cells) });
     }
 
     // .col-qty / .col-cost cells get center alignment per request.
@@ -3938,7 +3955,7 @@
         // <tfoot> (.l2-footer) rows skipped intentionally.
       }
       if (combinedCells.length) {
-        elements.push({ type: 'table', table_cells: combinedCells });
+        elements.push({ type: 'table', table_cells: padRows(combinedCells) });
       }
 
       var footer = section.querySelector('.l1-footer');
@@ -3978,7 +3995,7 @@
         tableCells.push([labelCell, valueCell]);
       }
       if (tableCells.length) {
-        elements.push({ type: 'table', table_cells: tableCells });
+        elements.push({ type: 'table', table_cells: padRows(tableCells) });
       }
     }
 
@@ -4003,7 +4020,7 @@
         }
         cells.push(rowCells);
       }
-      if (cells.length) elements.push({ type: 'table', table_cells: cells });
+      if (cells.length) elements.push({ type: 'table', table_cells: padRows(cells) });
     }
 
     function walkChildren(parent) {
