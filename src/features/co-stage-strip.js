@@ -661,6 +661,13 @@
       for (var i = 0; i < recs.length; i++) {
         var r = recs[i];
         if (!r || !r.id) continue;
+        // "Sub bid required" (field_2478) explicitly No = the line is on
+        // the CO but not the sub's to price (equipment-only rows) — never
+        // counts as unpriced. Blank/missing (or the column not on the
+        // grid) reads as required, matching bid-items-grid's convention.
+        var req = String(r['field_2478'] == null ? '' : r['field_2478'])
+          .replace(/<[^>]*>/g, '').trim();
+        if (/^no$/i.test(req)) continue;
         var raw = r['field_2150_raw'];
         var txt = String(r['field_2150'] == null ? '' : r['field_2150'])
           .replace(/<[^>]*>/g, '').trim();
