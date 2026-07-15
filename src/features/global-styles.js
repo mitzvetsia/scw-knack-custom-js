@@ -13,6 +13,22 @@
 
   const css = `
 
+    /* ── Kill browser scroll anchoring APP-WIDE (2026-07-15) ──────────────
+       Third page class hit by the same runaway: repeated no-gesture scrollY
+       jumps (scroll-spy shows NO scrollTo/scrollBy/scrollTop call) while
+       views refetch and the document height oscillates. The browser's
+       overflow-anchor tries to "hold" content across DOM mutations, but this
+       app rebuilds grids wholesale (device-worksheet, worksheet-v2,
+       inline-photo-row, bid review) so its anchor nodes keep dying and the
+       adjustments compound into visible bouncing. Scroll management here is
+       JS-owned (preserve-scroll-on-refresh, SCW.v2ScrollAnchor) — native
+       anchoring only ever fights it. Previously scoped to bid-review +
+       worksheet-v2 pages (those rules remain, harmlessly); the deploy/survey
+       /proposal pages were still exposed. history.scrollRestoration is
+       already 'manual' app-wide for the same reason. */
+    html, body { overflow-anchor: none !important; }
+    body * { overflow-anchor: none !important; }
+
     /* H1 headings */
     h1:not(.kn-title) {
       color: var(--scw-navy);

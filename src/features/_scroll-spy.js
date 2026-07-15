@@ -135,10 +135,16 @@
         var now = (window.performance && performance.now) ? performance.now() : 0;
         var userDriven = (now - _lastGesture) < 250;
         if (!userDriven) {
+          var scene = '';
+          try {
+            scene = (window.Knack && Knack.router && Knack.router.current_scene_key) || '';
+          } catch (eScene) { /* ignore */ }
           console.warn(P + ' scrollY ' + (d > 0 ? 'JUMP DOWN ' : 'JUMP UP ') + Math.round(d) +
             'px → ' + Math.round(cur) + ' (no user gesture). activeElement=' +
             describe(document.activeElement) +
-            ' docHeight=' + document.documentElement.scrollHeight);
+            ' docHeight=' + document.documentElement.scrollHeight +
+            (scene ? ' scene=' + scene : '') +
+            ' hash=' + String(location.hash || '').slice(0, 80));
         }
       }
       _lastY = cur;
