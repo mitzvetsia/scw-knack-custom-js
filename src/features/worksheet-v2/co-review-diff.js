@@ -199,7 +199,17 @@
     clearAnnotations(panel);
     if (!panel || !inOpsReview()) return;
     var snap = getSnapshot();
-    if (!snap || !snap.lines) return;
+    if (!snap || !snap.lines) {
+      // Loud when dormant-in-review: the #1 setup gap is the snapshot not
+      // being readable (field_2972 missing from view_4109, or Make's send
+      // branch not writing payload.snapshot verbatim).
+      console.warn('[scw-co-review-diff] CO is in Ops Review but the send ' +
+        'baseline is unreadable — no diff will render. Check that ' +
+        'field_2972 is a field ON view_4109 and that Make\'s send/sendback ' +
+        'branch writes payload.snapshot (raw JSON) to it. getSnapshot() =',
+        snap);
+      return;
+    }
     injectCss();
 
     var ws = window.SCW && SCW.worksheetV2;
