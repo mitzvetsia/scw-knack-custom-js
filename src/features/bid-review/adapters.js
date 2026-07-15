@@ -100,12 +100,45 @@
    * a short delay (Knack may still be loading the view).
    * Returns a jQuery Deferred resolving to an array of records.
    */
+  /**
+   * A Backbone model only holds the CURRENT PAGE of its view. Detect a
+   * truncated model — loaded === the page cap, or fewer than the server
+   * total — so loadView can fall through to the paginated API instead of
+   * trusting a partial page. This is how the same page shows a full
+   * record set for one user and a truncated one for another: per-user
+   * persisted view state (records-per-page / filters) shrinks the page.
+   */
+  function modelLooksTruncated(model, loaded) {
+    if (!model || !loaded) return false;
+    var cap = (model.view && model.view.rows_per_page) || null;
+    if (cap && loaded >= cap) return true;
+    try {
+      var total = model.data &&
+        (model.data.total_records != null ? model.data.total_records
+          : (model.data.pagination_meta && model.data.pagination_meta.total_records));
+      if (total != null && loaded < total) return true;
+    } catch (e) { /* ignore */ }
+    return false;
+  }
+
   function loadView(viewKey) {
     var model   = findModel(viewKey);
     var records = extractRecords(model);
 
     if (CFG.debug) {
       SCW.debug('[BidReview] Model records from ' + viewKey + ':', records.length);
+    }
+
+    if (records.length > 0 && modelLooksTruncated(model, records.length)) {
+      console.warn('[BidReview] ' + viewKey + ' model looks truncated (' +
+        records.length + ' loaded, page cap ' +
+        ((model.view && model.view.rows_per_page) || '?') +
+        ') — fetching full set via API');
+      return fetchFromApi(viewKey).then(function (recs) {
+        // Keep whichever set is larger — an API hiccup mid-pagination
+        // must not hand back LESS than the model already had.
+        return recs.length >= records.length ? recs : records;
+      });
     }
 
     if (records.length > 0) {
