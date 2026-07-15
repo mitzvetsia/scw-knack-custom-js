@@ -573,15 +573,24 @@
         done(false); return;
       }
       if (!(window.SCW && typeof SCW.knackAjax === 'function' &&
-            typeof SCW.knackRecordUrl === 'function')) { done(false); return; }
+            typeof SCW.knackRecordUrl === 'function')) {
+        alert('Status write unavailable (SCW.knackAjax missing).');
+        done(false); return;
+      }
       var body = {};
       body[STATUS_FIELD] = value;
+      var url = SCW.knackRecordUrl(VIEW, coId);
+      console.info('[scw-co-stage] status PUT →', url, body);
+      // No dataType — an empty/non-JSON 200 body must not read as an error.
       SCW.knackAjax({
-        url:  SCW.knackRecordUrl(VIEW, coId),
+        url:  url,
         type: 'PUT',
-        data: JSON.stringify(body),
-        dataType: 'json'
-      }).then(function () {
+        data: JSON.stringify(body)
+      }).then(function (resp) {
+        console.info('[scw-co-stage] status PUT ok; response ' +
+          STATUS_FIELD + ' =',
+          resp && (resp[STATUS_FIELD] ||
+            (resp.record && resp.record[STATUS_FIELD])));
         // Keep the hidden form dropdown in sync so later reads (the status
         // fallback, any form serialize) reflect the new value.
         var sel = document.querySelector(
@@ -589,8 +598,11 @@
         if (sel) sel.value = value;
         done(true);
       }, function (xhr) {
+        console.warn('[scw-co-stage] status PUT FAILED', xhr && xhr.status,
+          xhr && xhr.responseText);
         alert('Could not update the CO status (HTTP ' +
-          ((xhr && xhr.status) || '?') + '). Try again.');
+          ((xhr && xhr.status) || '?') + ').\n\n' +
+          ((xhr && xhr.responseText) || '').slice(0, 200));
         done(false);
       });
     }
