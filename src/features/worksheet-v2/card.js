@@ -815,6 +815,22 @@
     return '';
   }
 
+  /** Sub CO page authorship (field_2978 SYS_origin, stamped by Make from
+   *  the add-item payload's `origin`): rows the SUB created are theirs to
+   *  delete; everything else — SCW-created, or blank (pre-stamp records /
+   *  column not on the grid yet) — fails safe to NOT deletable.
+   *  Returns true (sub owns it) / false (SCW's) / null (no gate on view). */
+  function subOwnsRecord(rec, viewKey) {
+    var vc = (ns.cfg && typeof ns.cfg.viewCfg === 'function' && ns.cfg.viewCfg(viewKey)) || {};
+    if (!vc.subOrigin || !vc.subOrigin.field) return null;
+    var f = vc.subOrigin.field;
+    var raw = rec[f + '_raw'];
+    if (raw && typeof raw === 'object' && !Array.isArray(raw)) raw = raw.identifier || '';
+    var val = String(raw != null && raw !== '' ? raw : (rec[f] || ''))
+      .replace(/<[^>]*>/g, '').trim();
+    return new RegExp(vc.subOrigin.own || 'sub', 'i').test(val);
+  }
+
   function kebabCell(rec, viewKey) {
     // CO worksheet delete guard: an ADOPTED item (field_2154 lists a SOW
     // other than this CO) is a SHARED record — never delete it, only unlink
@@ -830,13 +846,18 @@
           if (sowRaw[si] && sowRaw[si].id && sowRaw[si].id !== coId) { shared = true; break; }
         }
       }
-      if (shared) {
+      // Sub page: an SCW-created CO-only item is ALSO unlink-only — the sub
+      // may take it off the CO but never delete SCW's record.
+      var scwOwned = subOwnsRecord(rec, viewKey) === false;
+      if (shared || scwOwned) {
         return '<button type="button" class="scw-ws-v2-cell scw-ws-v2-trash scw-ws-v2-unlink" ' +
           'data-scw-ws-v2-unlink="' + escapeHtml(rec.id) + '" ' +
           'data-scw-ws-v2-view="' + escapeHtml(viewKey || '') + '" ' +
           'data-scw-ws-v2-co="' + escapeHtml(coId) + '" ' +
           'aria-label="Remove from this change order" ' +
-          'title="Remove from this change order (adopted item — stays on its original scope)">' +
+          'title="' + (shared
+            ? 'Remove from this change order (adopted item — stays on its original scope)'
+            : 'Remove from this change order (SCW added this item — it can’t be deleted here)') + '">' +
           UNLINK_SVG +
         '</button>';
       }
@@ -851,10 +872,13 @@
         TRASH_SVG +
       '</span>';
     }
+    var trashTitle = subOwnsRecord(rec, viewKey) === true
+      ? 'Delete line item (you added this item)'
+      : 'Delete line item';
     return '<button type="button" class="scw-ws-v2-cell scw-ws-v2-trash" ' +
       'data-scw-ws-v2-kebab="' + escapeHtml(rec.id) + '" ' +
       'data-scw-ws-v2-view="' + escapeHtml(viewKey || '') + '" ' +
-      'aria-label="Delete line item" title="Delete line item">' +
+      'aria-label="Delete line item" title="' + trashTitle + '">' +
       TRASH_SVG +
     '</button>';
   }
@@ -2102,6 +2126,16 @@
           '<span class="scw-ws-v2-co-flag scw-ws-v2-co-flag--remove">REMOVE</span>');
       }
     }
+    // Sub CO page: badge the rows the sub created — theirs to delete. SCW
+    // rows carry no badge; their trash is already swapped for unlink.
+    if (subOwnsRecord(rec, sourceViewKey) === true) {
+      var _ownCell = card.querySelector('.scw-ws-v2-row .scw-ws-v2-cell--label');
+      if (_ownCell) {
+        _ownCell.insertAdjacentHTML('afterbegin',
+          '<span class="scw-ws-v2-co-flag scw-ws-v2-co-flag--sub" ' +
+          'title="You added this item — you can edit or delete it.">ADDED BY YOU</span>');
+      }
+    }
     // Sales lock: existing survey-derived items (field_2586 >= 1) are
     // read-only except Product / Custom Disc % / SCW Notes (v1 parity).
     if (isCrLocked(rec, sourceViewKey)) {
@@ -2182,6 +2216,7 @@
     // Survey-link delete block — consumed by bulk delete to drop records
     // that aren't deletable.
     isDeleteBlocked:     isDeleteBlocked,
+    subOwnsRecord:       subOwnsRecord,
     // Reciprocal Connected-Devices fingerprint — folded into the render
     // signature so a parent rebuilds when a child's Connected To changes.
     connDevicesSig:      connDevicesSig

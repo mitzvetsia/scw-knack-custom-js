@@ -671,6 +671,14 @@
       clone.mdfSourceViewKey   = 'view_4114';
       if (clone.mountAfterFallback) clone.mountAfterFallback = '#view_4112';
       if (clone.adopt || clone.remove) clone.coViewKey = 'view_4112';
+      // Sub authorship gate (the sub's CO worksheet only): SYS_origin
+      // (field_2978, stamped by Make from the add-item payload's `origin`)
+      // decides delete rights — the sub deletes THEIR items; SCW-created
+      // items are remove-from-CO only. Blank/missing (pre-stamp records, or
+      // the column not yet on the grid) fails safe to NOT-deletable.
+      if (MAP[i].to === 'view_4112') {
+        clone.subOrigin = { field: 'field_2978', own: 'sub' };
+      }
       views.push(clone);
     }
   })();

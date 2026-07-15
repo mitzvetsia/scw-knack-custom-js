@@ -651,6 +651,16 @@
     '  font: 700 8.5px/1 system-ui, -apple-system, sans-serif; letter-spacing: .06em;',
     '  padding: 2px 6px; border-radius: 4px; color: #9f1239; background: #ffe4e6;',
     '}',
+    // "ADDED BY YOU" flag (sub CO page, field_2978 SYS_origin = sub): marks
+    // the rows the sub created — the ones they can delete. Indigo so it
+    // can't be confused with the rose REMOVE flag or the amber warnings.
+    '.scw-ws-v2-co-flag--sub {',
+    '  display: block; width: -moz-fit-content; width: fit-content;',
+    '  margin: 0 0 3px 0;',
+    '  font: 700 8.5px/1 system-ui, -apple-system, sans-serif; letter-spacing: .06em;',
+    '  padding: 2px 6px; border-radius: 4px; color: #3730a3; background: #e0e7ff;',
+    '  white-space: nowrap;',
+    '}',
     '.scw-ws-v2-card--promoted-bracket .scw-ws-v2-cell--product .scw-ws-v2-product-name {',
     '  font-style: italic !important;',
     '  color: #475569 !important;',

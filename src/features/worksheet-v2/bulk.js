@@ -478,13 +478,17 @@
   }
 
   /** Split ids into { deletable, blocked } using the same survey-link delete
-   *  block the per-row trash uses (card.js isDeleteBlocked). */
+   *  block the per-row trash uses (card.js isDeleteBlocked), plus the sub
+   *  authorship gate (card.js subOwnsRecord): on the sub CO page, rows the
+   *  sub didn't create are never bulk-deletable. */
   function partitionDeletable(ids, sourceViewKey) {
     var deletable = [], blocked = [];
     var canCheck = ns.card && typeof ns.card.isDeleteBlocked === 'function';
+    var canOwn   = ns.card && typeof ns.card.subOwnsRecord === 'function';
     for (var i = 0; i < ids.length; i++) {
-      var a = canCheck ? attrsOf(ids[i], sourceViewKey) : null;
-      if (a && ns.card.isDeleteBlocked(a, sourceViewKey)) blocked.push(ids[i]);
+      var a = (canCheck || canOwn) ? attrsOf(ids[i], sourceViewKey) : null;
+      if (a && canCheck && ns.card.isDeleteBlocked(a, sourceViewKey)) blocked.push(ids[i]);
+      else if (a && canOwn && ns.card.subOwnsRecord(a, sourceViewKey) === false) blocked.push(ids[i]);
       else deletable.push(ids[i]);
     }
     return { deletable: deletable, blocked: blocked };
