@@ -806,4 +806,39 @@
   $(document).on('knack-scene-render.scene_1116' + NS, function () {
     setTimeout(revealScene, 3000);
   });
+
+  // ── Stuck-veil watchdog (event-independent) ──
+  // Both caps above arm off Knack EVENTS. A user whose scene data fetch
+  // hangs (or whose render events get starved by an exception upstream)
+  // gets NO events — observed in the field 2026-07-15 as an indefinite
+  // "Loading page…" on the sales build page. Poll the veiled scene on a
+  // plain timer: veiled for WATCHDOG_MS since first seen → force the
+  // reveal (whatever state the page is in beats a spinner forever) and
+  // dump diagnostics naming which reveal markers / view renders are
+  // missing, so a stuck report is debuggable from the user's console.
+  var VEIL_WATCHDOG_MS = 10000;
+  var _veilFirstSeen = 0;
+  setInterval(function () {
+    var scene = sceneEl();
+    if (!scene || scene.classList.contains('scw-scene-ready')) {
+      _veilFirstSeen = 0;
+      return;
+    }
+    var now = Date.now();
+    if (!_veilFirstSeen) { _veilFirstSeen = now; return; }
+    if (now - _veilFirstSeen < VEIL_WATCHDOG_MS) return;
+    try {
+      var rendered = [];
+      if (typeof Knack !== 'undefined' && Knack.views) {
+        for (var k in Knack.views) rendered.push(k);
+      }
+      console.warn('[scw-scene-veil] scene_1116 still veiled after ' +
+        Math.round((now - _veilFirstSeen) / 1000) + 's — forcing reveal.' +
+        ' ws-v2 panel=' + !!document.getElementById('scw-ws-v2-view_3586') +
+        ' accordion=' + !!scene.querySelector('.scw-ktl-accordion') +
+        ' stepper=' + !!document.getElementById('scw-step-initiate-install') +
+        ' | Knack.views: ' + (rendered.join(', ') || '(none)'));
+    } catch (e) { /* diagnostics only */ }
+    revealScene();
+  }, 2000);
 })();
