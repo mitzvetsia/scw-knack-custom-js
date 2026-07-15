@@ -293,79 +293,156 @@
       }
       return readTxt(r, key);
     }
+    // ASCII minus — Make's HTML→PDF font subset drops U+2212 in some setups.
     function money(n) {
-      return (n < 0 ? '−' : '') + '$' + Math.abs(n || 0)
+      return (n < 0 ? '-' : '') + '$' + Math.abs(n || 0)
         .toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     }
+    // HEADEND display names compute with an empty ## segment ("HEADEND: :
+    // behind cashregister") — collapse the doubled colon for the doc.
+    function cleanLoc(s) { return String(s || '').replace(/:\s*:/g, ':').trim(); }
 
-    var htmlRows = [], textLines = [], nAdd = 0, nRm = 0;
+    // Collect entries first — the totals row and the grouped text need the
+    // full set before rendering.
+    var entries = [], nAdd = 0, nRm = 0;
+    var tAdd = { bid: 0, eq: 0 }, tRm = { bid: 0, eq: 0 };
     for (var i = 0; i < recs.length; i++) {
       var r = recs[i];
       if (!r || !r.id) continue;
       var isRm = /remove/i.test(readTxt(r, 'field_2965'));
-      if (isRm) nRm++; else nAdd++;
       // Services/assumptions rows have no product — fall back to the
       // labor description so every line names itself.
-      var item = conn(r, 'field_1949') || readTxt(r, 'field_2020') || '(item)';
-      var drop = readTxt(r, 'field_1950');
-      var loc  = conn(r, 'field_1946');
-      var qty  = num(r, 'field_1964') || 1;
-      var bid  = num(r, 'field_2150');
-      var eq   = num(r, 'field_2269');
-      var tint = isRm ? '#fff1f2' : '#f0fdf4';
-      var bar  = isRm ? '#e11d48' : '#059669';
-      htmlRows.push(
-        '<tr style="background:' + tint + ';">' +
-        '<td style="padding:4px 8px;border-bottom:1px solid #eef2f7;' +
-          'box-shadow:inset 3px 0 0 ' + bar + ';font-weight:700;color:' +
-          (isRm ? '#9f1239' : '#065f46') + ';white-space:nowrap;">' +
-          (isRm ? 'REMOVE' : 'ADD') + '</td>' +
-        '<td style="padding:4px 8px;border-bottom:1px solid #eef2f7;">' + esc(item) +
-          (drop || loc
-            ? '<br><span style="color:#64748b;font-size:11px;">' +
-              esc([drop, loc].filter(Boolean).join(' · ')) + '</span>'
-            : '') + '</td>' +
-        '<td style="padding:4px 8px;border-bottom:1px solid #eef2f7;text-align:right;">' + qty + '</td>' +
-        '<td style="padding:4px 8px;border-bottom:1px solid #eef2f7;text-align:right;">' + esc(money(bid)) + '</td>' +
-        '<td style="padding:4px 8px;border-bottom:1px solid #eef2f7;text-align:right;">' + esc(money(eq)) + '</td>' +
-        '</tr>');
-      textLines.push('[' + (isRm ? 'REMOVE' : 'ADD') + '] ' + item +
-        (drop ? ' — ' + drop : '') + (loc ? ' · ' + loc : '') +
-        ' · qty ' + qty + ' · baseline sub bid ' + money(bid) +
-        (eq ? ' · equip ' + money(eq) : ''));
+      var e = {
+        isRm: isRm,
+        item: conn(r, 'field_1949') || readTxt(r, 'field_2020') || '(item)',
+        drop: readTxt(r, 'field_1950'),
+        loc:  cleanLoc(conn(r, 'field_1946')),
+        qty:  num(r, 'field_1964') || 1,
+        bid:  num(r, 'field_2150'),
+        eq:   num(r, 'field_2269')
+      };
+      entries.push(e);
+      var t = isRm ? tRm : tAdd;
+      if (isRm) nRm++; else nAdd++;
+      t.bid += e.bid; t.eq += e.eq;
     }
+    var totBid = tAdd.bid + tRm.bid, totEq = tAdd.eq + tRm.eq;
 
     var title = 'Change Order Pricing Request' +
       (coNumber ? ' — ' + coNumber : '') + (coName ? ' · ' + coName : '');
     var sentLine = 'Sent by ' + (who.name || who.email || 'SCW') + ' · ' +
       when.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+    var countLine = nAdd + ' add' + (nAdd === 1 ? '' : 's') +
+      ', ' + nRm + ' removal' + (nRm === 1 ? '' : 's');
+
+    // ── HTML (the durable card + Make's PDF source) ──────────────────
+    // Font: Helvetica/Arial only — PDF engines don't know system-ui and
+    // fall back to Courier. Numeric cells: right-aligned + nowrap so a
+    // leading minus sign can't wrap/clip in a tight column.
+    var NUM_TD = 'padding:4px 10px;border-bottom:1px solid #eef2f7;' +
+      'text-align:right;white-space:nowrap;';
+    var htmlRows = [];
+    for (var h = 0; h < entries.length; h++) {
+      var en = entries[h];
+      var tint = en.isRm ? '#fff1f2' : '#f0fdf4';
+      var bar  = en.isRm ? '#e11d48' : '#059669';
+      htmlRows.push(
+        '<tr style="background:' + tint + ';">' +
+        '<td style="padding:4px 8px;border-bottom:1px solid #eef2f7;' +
+          'box-shadow:inset 3px 0 0 ' + bar + ';font-weight:700;color:' +
+          (en.isRm ? '#9f1239' : '#065f46') + ';white-space:nowrap;">' +
+          (en.isRm ? 'REMOVE' : 'ADD') + '</td>' +
+        '<td style="padding:4px 8px;border-bottom:1px solid #eef2f7;">' + esc(en.item) +
+          (en.drop || en.loc
+            ? '<br><span style="color:#64748b;font-size:11px;">' +
+              esc([en.drop, en.loc].filter(Boolean).join(' · ')) + '</span>'
+            : '') + '</td>' +
+        '<td style="' + NUM_TD + '">' + en.qty + '</td>' +
+        '<td style="' + NUM_TD + '">' + esc(money(en.bid)) + '</td>' +
+        '<td style="' + NUM_TD + '">' + esc(money(en.eq)) + '</td>' +
+        '</tr>');
+    }
+    // Totals: adds/removals breakdown only when both exist, then the total.
+    function footRow(label, bid, eq, isNet) {
+      var td = 'padding:5px 10px;text-align:right;white-space:nowrap;' +
+        (isNet ? 'border-top:2px solid #163C6E;font-weight:700;color:#163C6E;'
+               : 'font-weight:600;color:#334155;');
+      return '<tr style="background:#f8fafc;">' +
+        '<td colspan="3" style="' + td + '">' + esc(label) + '</td>' +
+        '<td style="' + td + '">' + esc(money(bid)) + '</td>' +
+        '<td style="' + td + '">' + esc(money(eq)) + '</td></tr>';
+    }
+    var foot = '';
+    if (nAdd && nRm) {
+      foot += footRow('Adds (' + nAdd + ')', tAdd.bid, tAdd.eq, false) +
+              footRow('Removals (' + nRm + ')', tRm.bid, tRm.eq, false) +
+              footRow('Net change', totBid, totEq, true);
+    } else {
+      foot += footRow('Total', totBid, totEq, true);
+    }
 
     var html =
-      '<div style="font-family:system-ui,-apple-system,sans-serif;font-size:12.5px;' +
+      '<div style="font-family:Helvetica,Arial,sans-serif;font-size:12.5px;' +
         'color:#1e293b;border:1px solid #dbe4ee;border-radius:8px;overflow:hidden;">' +
       '<div style="background:#163C6E;color:#fff;padding:8px 12px;font-weight:800;' +
         'font-size:12px;letter-spacing:.04em;text-transform:uppercase;">' + esc(title) + '</div>' +
       '<div style="padding:6px 12px;background:#f0f4fa;border-bottom:1px solid #dbe4ee;' +
-        'color:#334155;font-size:11.5px;">' + esc(sentLine) +
-        ' · ' + nAdd + ' add' + (nAdd === 1 ? '' : 's') +
-        ', ' + nRm + ' removal' + (nRm === 1 ? '' : 's') + '</div>' +
+        'color:#334155;font-size:11.5px;">' + esc(sentLine) + ' · ' + esc(countLine) + '</div>' +
       (note ? '<div style="padding:6px 12px;background:#fffbeb;border-bottom:1px solid ' +
         '#fde68a;color:#92400e;font-size:12px;"><b>Note:</b> ' + esc(note) + '</div>' : '') +
       '<table style="width:100%;border-collapse:collapse;">' +
       '<thead><tr>' +
-        ['Action', 'Item', 'Qty', 'Baseline Bid', 'Equip'].map(function (h, idx) {
-          return '<th style="padding:5px 8px;background:#f8fafc;border-bottom:1px solid ' +
+        ['Action', 'Item', 'Qty', 'Baseline Bid', 'Equip'].map(function (hd, idx) {
+          return '<th style="padding:5px ' + (idx >= 2 ? '10px' : '8px') + ';' +
+            'background:#f8fafc;border-bottom:1px solid ' +
             '#dbe4ee;font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;' +
-            'color:#64748b;text-align:' + (idx >= 2 ? 'right' : 'left') + ';">' + h + '</th>';
+            'color:#64748b;white-space:nowrap;text-align:' + (idx >= 2 ? 'right' : 'left') +
+            ';">' + hd + '</th>';
         }).join('') +
-      '</tr></thead><tbody>' + htmlRows.join('') + '</tbody></table></div>';
+      '</tr></thead><tbody>' + htmlRows.join('') + '</tbody>' +
+      '<tfoot>' + foot + '</tfoot></table></div>';
 
-    var text = title + '\n' + sentLine +
-      (note ? '\nNote: ' + note : '') + '\n' +
-      textLines.join('\n') +
-      '\nAdds: ' + nAdd + ' · Removals: ' + nRm;
+    // ── Plain text (the ClickUp comment) ─────────────────────────────
+    // Grouped by location, one item per line + an indented detail line,
+    // totals block at the end — reads top-to-bottom instead of one dense
+    // run-on line per item.
+    var tx = [title, sentLine + ' · ' + countLine];
+    if (note) tx.push('Note: ' + note);
+    // Bucket by location (first-seen order) so a group can't split when the
+    // model order interleaves locations.
+    var locOrder = [], locMap = {};
+    for (var g = 0; g < entries.length; g++) {
+      var locKey = entries[g].loc || 'No location';
+      if (!locMap[locKey]) { locMap[locKey] = []; locOrder.push(locKey); }
+      locMap[locKey].push(entries[g]);
+    }
+    for (var lo = 0; lo < locOrder.length; lo++) {
+      tx.push('');
+      tx.push('== ' + locOrder[lo] + ' ==');
+      var group = locMap[locOrder[lo]];
+      for (var gi = 0; gi < group.length; gi++) {
+        var et = group[gi];
+        tx.push((et.isRm ? '- REMOVE  ' : '+ ADD  ') + et.item +
+          (et.drop ? ' — ' + et.drop : ''));
+        tx.push('    qty ' + et.qty + ' · baseline sub bid ' + money(et.bid) +
+          (et.eq ? ' · equip ' + money(et.eq) : ''));
+      }
+    }
+    tx.push('');
+    tx.push('== TOTALS ==');
+    if (nAdd && nRm) {
+      tx.push('Adds (' + nAdd + '): baseline sub bid ' + money(tAdd.bid) +
+        ' · equip ' + money(tAdd.eq));
+      tx.push('Removals (' + nRm + '): baseline sub bid ' + money(tRm.bid) +
+        ' · equip ' + money(tRm.eq));
+      tx.push('Net change: baseline sub bid ' + money(totBid) +
+        ' · equip ' + money(totEq));
+    } else {
+      tx.push('Total: baseline sub bid ' + money(totBid) +
+        ' · equip ' + money(totEq));
+    }
 
-    return { coNumber: coNumber, coName: coName, html: html, text: text };
+    return { coNumber: coNumber, coName: coName, html: html, text: tx.join('\n') };
   }
 
   function fireWebhook(mode, extra, onOk) {
