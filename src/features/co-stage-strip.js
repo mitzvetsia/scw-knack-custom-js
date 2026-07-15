@@ -332,9 +332,14 @@
         var isRm = /remove/i.test(readTxt(r, 'field_2965'));
         // Services/assumptions rows have no product — fall back to the
         // labor description so every line names itself.
+        var prod = conn(r, 'field_1949');
+        var desc = readTxt(r, 'field_2020');
         var e = {
           isRm: isRm,
-          item: conn(r, 'field_1949') || readTxt(r, 'field_2020') || '(item)',
+          item: prod || desc || '(item)',
+          // Labor description rides under the item name — but not when it
+          // already IS the item name (no-product services rows).
+          desc: prod ? desc : '',
           drop: readTxt(r, 'field_1950'),
           loc:  cleanLoc(conn(r, 'field_1946')),
           qty:  num(r, 'field_1964') || 1,
@@ -359,8 +364,10 @@
       // Font: Helvetica/Arial only — PDF engines don't know system-ui and
       // fall back to Courier. Numeric cells: right-aligned + nowrap so a
       // leading minus sign can't wrap/clip in a tight column.
-      var NUM_TD = 'padding:4px 10px;border-bottom:1px solid #eef2f7;' +
-        'text-align:right;white-space:nowrap;';
+      // Roomier rows: rows carry a description line now, so cells get real
+      // padding + top alignment (numbers stay on the item-name line).
+      var NUM_TD = 'padding:8px 10px;border-bottom:1px solid #eef2f7;' +
+        'text-align:right;white-space:nowrap;vertical-align:top;';
       var htmlRows = [];
       for (var h = 0; h < entries.length; h++) {
         var en = entries[h];
@@ -368,14 +375,21 @@
         var bar  = en.isRm ? '#e11d48' : '#059669';
         htmlRows.push(
           '<tr style="background:' + tint + ';">' +
-          '<td style="padding:4px 8px;border-bottom:1px solid #eef2f7;' +
+          '<td style="padding:8px 10px;border-bottom:1px solid #eef2f7;' +
             'box-shadow:inset 3px 0 0 ' + bar + ';font-weight:700;color:' +
-            (en.isRm ? '#9f1239' : '#065f46') + ';white-space:nowrap;">' +
+            (en.isRm ? '#9f1239' : '#065f46') + ';white-space:nowrap;' +
+            'vertical-align:top;">' +
             (en.isRm ? 'REMOVE' : 'ADD') + '</td>' +
-          '<td style="padding:4px 8px;border-bottom:1px solid #eef2f7;">' + esc(en.item) +
+          '<td style="padding:8px 10px;border-bottom:1px solid #eef2f7;' +
+            'vertical-align:top;line-height:1.45;">' +
+            '<span style="font-weight:600;">' + esc(en.item) + '</span>' +
             (en.drop || en.loc
               ? '<br><span style="color:#64748b;font-size:11px;">' +
                 esc([en.drop, en.loc].filter(Boolean).join(' · ')) + '</span>'
+              : '') +
+            (en.desc
+              ? '<div style="color:#475569;font-size:11px;margin-top:3px;">' +
+                esc(en.desc) + '</div>'
               : '') + '</td>' +
           '<td style="' + NUM_TD + '">' + en.qty + '</td>' +
           '<td style="' + NUM_TD + '">' + esc(money(en.bid)) + '</td>' +
@@ -384,7 +398,7 @@
       }
       // Totals: adds/removals breakdown only when both exist, then the total.
       function footRow(label, bid, eq, isNet) {
-        var td = 'padding:5px 10px;text-align:right;white-space:nowrap;' +
+        var td = 'padding:7px 10px;text-align:right;white-space:nowrap;' +
           (isNet ? 'border-top:2px solid #163C6E;font-weight:700;color:#163C6E;'
                  : 'font-weight:600;color:#334155;');
         return '<tr style="background:#f8fafc;">' +
@@ -444,6 +458,7 @@
           var et = group[gi];
           tx.push((et.isRm ? '- REMOVE  ' : '+ ADD  ') + et.item +
             (et.drop ? ' — ' + et.drop : ''));
+          if (et.desc) tx.push('    ' + et.desc);
           tx.push('    qty ' + et.qty + ' · baseline sub bid ' + money(et.bid) +
             (et.eq ? ' · equip ' + money(et.eq) : ''));
         }

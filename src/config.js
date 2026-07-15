@@ -147,13 +147,18 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   //                     baseline ops just reviewed) + payload.note in the
   //                     notification.
   //   mode:'sub-submit' → the SUB hands their priced CO back: set CO Status
-  //                     = "Ops Review", write payload.snapshot verbatim to
-  //                     the `CO Sub Pricing Snapshot` field (the SUBMITTAL
-  //                     capture — the agreed cost basis / tamper defense),
-  //                     notify SCW ops (not the sub), update both ClickUp
-  //                     task statuses, and post payload.requestText (or
-  //                     requestHtml) as the "what the sub submitted"
-  //                     comment on each task.
+  //                     = "Ops Review", notify SCW ops (not the sub),
+  //                     update both ClickUp task statuses, and post
+  //                     payload.requestText (or requestHtml) as the "what
+  //                     the sub submitted" comment on each task — that CU
+  //                     comment IS the submittal record / tamper defense.
+  //                     ⚠️ Do NOT write payload.snapshot to field_2972
+  //                     (decided 2026-07-15): the field stays the SCW→sub
+  //                     SEND baseline so the Ops-Review "what changed" diff
+  //                     has something to compare the live lines against.
+  //                     (The payload still carries snapshot = the submitted
+  //                     values, in case a dedicated submittal field is
+  //                     added later.)
   //   mode:'recall'   → NOTIFY-ONLY: tell the sub their pricing window
   //                     closed + update both ClickUp task statuses. The
   //                     status write (CO Status = "Draft") happens
