@@ -57,7 +57,17 @@
   }
 
   function getStatus() {
-    // Model first (details view → model.attributes).
+    // The sub stage strip's read honors its optimistic post-webhook flip
+    // (submit → Ops Review) — prefer it so the page relocks the moment the
+    // sub hands the CO back, before the status view refetch lands.
+    try {
+      if (window.SCW && SCW.coStageSub &&
+          typeof SCW.coStageSub.getStatus === 'function') {
+        var s0 = stripHtml(SCW.coStageSub.getStatus());
+        if (s0) return s0;
+      }
+    } catch (e) { /* fall through */ }
+    // Model next (details view → model.attributes).
     try {
       var v = Knack.views[CFG.STATUS_VIEW];
       if (v && v.model && v.model.attributes) {
@@ -258,5 +268,11 @@
   }
   $(document).off('knack-scene-render.' + CFG.SCENE + EVENT_NS)
     .on('knack-scene-render.' + CFG.SCENE + EVENT_NS, soon);
+
+  // The sub stage strip calls this right after an optimistic status flip
+  // (Submit Pricing → relock now) instead of waiting for the status-view
+  // refetch.
+  window.SCW = window.SCW || {};
+  SCW.coSubLock = { refresh: apply };
 })();
 /*** END: CO sub lock *******************************************************/

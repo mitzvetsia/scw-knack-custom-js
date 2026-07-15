@@ -146,6 +146,14 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   //   mode:'sendback' → same writes as 'send' (fresh snapshot = the new
   //                     baseline ops just reviewed) + payload.note in the
   //                     notification.
+  //   mode:'sub-submit' → the SUB hands their priced CO back: set CO Status
+  //                     = "Ops Review", write payload.snapshot verbatim to
+  //                     the `CO Sub Pricing Snapshot` field (the SUBMITTAL
+  //                     capture — the agreed cost basis / tamper defense),
+  //                     notify SCW ops (not the sub), update both ClickUp
+  //                     task statuses, and post payload.requestText (or
+  //                     requestHtml) as the "what the sub submitted"
+  //                     comment on each task.
   //   mode:'recall'   → NOTIFY-ONLY: tell the sub their pricing window
   //                     closed + update both ClickUp task statuses. The
   //                     status write (CO Status = "Draft") happens

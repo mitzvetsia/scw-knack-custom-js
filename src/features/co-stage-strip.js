@@ -293,8 +293,11 @@
     // a plaintext twin, shipped in the webhook so Make can (a) store the
     // durable "this is exactly what we sent the sub" artifact and (b) drop
     // it on the ClickUp tasks (the subcontractor's AND ours) alongside the
-    // status change. `note` = the send-back note, when present.
-    function buildRequestDoc(note) {
+    // status change. `note` = the send-back note, when present. `titleBase`
+    // overrides the doc title — the sub's hand-back reuses this builder as
+    // "Pricing Submission" (same lines/totals, the values ARE the sub's
+    // submitted pricing).
+    function buildRequestDoc(note, titleBase) {
       var ns = window.SCW && window.SCW.worksheetV2;
       var recs = (ns && ns.data && typeof ns.data.readRecords === 'function')
         ? ns.data.readRecords(CO_VIEW) : [];
@@ -345,7 +348,7 @@
       }
       var totBid = tAdd.bid + tRm.bid, totEq = tAdd.eq + tRm.eq;
 
-      var title = 'Change Order Pricing Request' +
+      var title = (titleBase || 'Change Order Pricing Request') +
         (coNumber ? ' — ' + coNumber : '') + (coName ? ' · ' + coName : '');
       var sentLine = 'Sent by ' + (who.name || who.email || 'SCW') + ' · ' +
         when.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
@@ -636,14 +639,65 @@
         });
     }
 
-    // Unlock/relock the internal page immediately after an optimistic status
-    // flip (co-ops-lock reads status through SCW.coStage, which honors the
-    // flip), then refetch the status view so the durable value replaces it.
+    // ── sub hand-back: "Submit Pricing to SCW" ────────────────────────────
+    // Lines with no Sub Bid yet — surfaced in the confirm copy so the sub
+    // knows what they're about to hand back (informational, not a block:
+    // $0/no-charge lines are legitimate).
+    function countUnpriced() {
+      var wsns = window.SCW && window.SCW.worksheetV2;
+      var recs = (wsns && wsns.data && typeof wsns.data.readRecords === 'function')
+        ? wsns.data.readRecords(CO_VIEW) : [];
+      var n = 0;
+      for (var i = 0; i < recs.length; i++) {
+        var r = recs[i];
+        if (!r || !r.id) continue;
+        var raw = r['field_2150_raw'];
+        var txt = String(r['field_2150'] == null ? '' : r['field_2150'])
+          .replace(/<[^>]*>/g, '').trim();
+        if ((raw == null || raw === '') && !txt) n++;
+      }
+      return n;
+    }
+
+    // Fires mode:'sub-submit' — Make progresses CO Status → "Ops Review"
+    // (forward flips stay Make-written), writes payload.snapshot verbatim to
+    // the handoff-snapshot field (the submittal capture = the agreed cost
+    // basis), notifies SCW + updates both ClickUp tasks. The optimistic flip
+    // relocks this page instantly; the status-view refetch confirms.
+    function submitToScw() {
+      var blank = countUnpriced();
+      confirmThen('Submit pricing to SCW?',
+        'Send your pricing back to SCW for review? Your pricing window ' +
+        'closes when you submit.' +
+        (blank ? '\n\nHeads up: ' + blank + ' line item' +
+          (blank === 1 ? ' has' : 's have') + ' no Sub Bid entered.' : ''),
+        'Submit Pricing',
+        function () {
+          var doc = buildRequestDoc(null, 'Change Order Pricing Submission');
+          fireWebhook('sub-submit', {
+            snapshot:    buildSnapshot(),
+            coNumber:    doc.coNumber,
+            coName:      doc.coName,
+            requestHtml: doc.html,
+            requestText: doc.text
+          }, function () {
+            _optimistic = 'Ops Review';
+            setPillText('Ops Review');
+            render();
+            managePoll();
+            refreshLocks();
+          });
+        });
+    }
+
+    // Unlock/relock this deployment's page immediately after an optimistic
+    // status flip (each lock reads status through its stage-strip surface,
+    // which honors the flip), then refetch the status view so the durable
+    // value replaces it.
     function refreshLocks() {
       try {
-        if (SCW.coOpsLock && typeof SCW.coOpsLock.refresh === 'function') {
-          SCW.coOpsLock.refresh();
-        }
+        var lock = IS_OPS ? SCW.coOpsLock : SCW.coSubLock;
+        if (lock && typeof lock.refresh === 'function') lock.refresh();
         var v = Knack.views[STATUS_VIEW];
         if (v && v.model && typeof v.model.fetch === 'function') v.model.fetch();
       } catch (e) { /* next render corrects it */ }
@@ -755,7 +809,10 @@
       if (cur === 1) {
         return '<span class="scw-co-stage-wait scw-co-stage-wait--open">' +
           '<span class="scw-co-stage-pulse"></span>' +
-          'Your pricing window is open — price the items below.</span>';
+          'Your pricing window is open — price the items below.</span>' +
+          '<button type="button" class="scw-co-stage-btn scw-co-stage-btn--primary" ' +
+          'data-scw-co-act="sub-submit">Submit Pricing to SCW</button>' +
+          '<span class="scw-co-stage-note">Submitting closes your pricing window and sends it to SCW for review.</span>';
       }
       if (cur === 2) return '<span class="scw-co-stage-note">Pricing submitted — SCW is reviewing.</span>';
       if (cur === 3) return '<span class="scw-co-stage-note">Issued — awaiting client signature.</span>';
@@ -780,8 +837,12 @@
           var btn = e.target && e.target.closest && e.target.closest('[data-scw-co-act]');
           if (!btn) return;
           e.preventDefault();
-          if (!IS_OPS) return;   // sub strip is display-only
           var act = btn.getAttribute('data-scw-co-act');
+          if (!IS_OPS) {
+            // The sub strip's one verb: hand the priced CO back to SCW.
+            if (act === 'sub-submit') submitToScw();
+            return;
+          }
           if (act === 'send')          sendToSub();
           if (act === 'nudge')         nudgeSub();
           if (act === 'recall')        recallFromSub();
@@ -809,14 +870,15 @@
     // ── status polling while the ball is in the other court ──────────────
     // Only possible once the hidden STATUS_VIEW exists (forms can't refetch).
     // ops: polls during Pending Sub Pricing (waiting on the sub to submit).
-    // sub: polls during Draft (waiting for the window to open) AND Pending
-    //      Sub Pricing (to notice a recall closing the window) — the status
-    //      view's re-render also re-fires co-sub-lock, so the page relocks
+    // sub: polls during Draft (waiting for the window to open), Pending Sub
+    //      Pricing (to notice a recall closing the window), and Ops Review
+    //      (to notice a send-back reopening it) — the status view's
+    //      re-render also re-fires co-sub-lock, so the page locks/unlocks
     //      without a manual refresh.
     var _pollTimer = null;
     function shouldPoll() {
       var cur = stageIndex(getStatus());
-      return IS_OPS ? cur === 1 : (cur === 0 || cur === 1);
+      return IS_OPS ? cur === 1 : (cur === 0 || cur === 1 || cur === 2);
     }
     function managePoll() {
       var pending = shouldPoll();
