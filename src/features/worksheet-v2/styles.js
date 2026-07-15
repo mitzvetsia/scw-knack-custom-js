@@ -1618,6 +1618,16 @@
     '.scw-ws-v2--readonly .scw-ws-v2-card textarea::placeholder {',
     '  color: transparent !important;',
     '}',
+    /* Selects flatten too — no box, no dropdown arrow, and no UA graying
+       when the lock disables them (values stay fully readable). */
+    '.scw-ws-v2--readonly .scw-ws-v2-card select {',
+    '  background: transparent !important;',
+    '  border-color: transparent !important;',
+    '  box-shadow: none !important;',
+    '  appearance: none !important; -webkit-appearance: none !important;',
+    '  color: var(--scw-text-default, #1f2937) !important;',
+    '  opacity: 1 !important;',
+    '}',
     /* Detail panel reads read-only too: connection picker buttons
        (Prefix, MDF/IDF, Connected Device, product) flatten to plain
        values — no box, no pencil icon. Warn variants keep their label

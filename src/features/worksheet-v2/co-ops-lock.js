@@ -90,15 +90,18 @@
       // edit / add-accessory / add-photo link columns (their headers stay —
       // hiding <th> would shift the column grid under Knack's fixed labels)
       S + ' td.kn-table-link{visibility:hidden !important;}',
-      // ── CO header form: readable, not editable (repo locked-field rule).
-      // The stage strip's buttons live in this form too — they are
-      // <button>s, not inputs, so they stay live (Recall from Sub).
+      // ── CO header form: readable, not editable. Locked inputs FLATTEN to
+      // plain text (no box, no border) so nothing reads as editable. The
+      // stage strip's buttons live in this form too — they are <button>s,
+      // not inputs, so they stay live (Recall from Sub).
       S + ' #' + CFG.HDR_FORM + ' input,',
       S + ' #' + CFG.HDR_FORM + ' textarea{',
-      'pointer-events:none !important;background:#fff !important;}',
+      'pointer-events:none !important;background:transparent !important;',
+      'border-color:transparent !important;box-shadow:none !important;}',
       S + ' #' + CFG.HDR_FORM + ' .kn-submit{display:none !important;}',
       // ── MDF/IDF cards (mdf-idf-cards.js inputs + affordances) ──
-      S + ' .scw-mdf-input{pointer-events:none !important;background:#fff !important;',
+      S + ' .scw-mdf-input{pointer-events:none !important;background:transparent !important;',
+      'border-color:transparent !important;box-shadow:none !important;',
       'appearance:none;-webkit-appearance:none;}',
       S + ' .scw-mdf-del,',
       S + ' .scw-mdf-photos,',

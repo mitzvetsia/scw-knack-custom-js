@@ -525,7 +525,7 @@ land in the published PDF. This is a deliberate, user-approved tradeoff —
 - Comment headers use banner-style delimiters: `/*** FEATURE NAME ***/`
 - Config objects at the top of each file — keep logic generic, keep config specific
 - **Button ordering**: destructive/negative action first, positive/primary action last. Examples: Edit | Cancel, Reject | Accept, Cancel | Submit. The primary action is always the rightmost button.
-- **Read-only / locked fields**: when programmatically making a field non-editable, keep it fully readable — no reduced opacity, no graying out. Instead, set `pointer-events: none`, `readOnly = true`, and give the input a **white background** (`background: #fff`) to visually distinguish it from editable inputs (which have a light-gray background). The field should look normal but clearly not interactive.
+- **Read-only / locked fields** (convention updated 2026-07-15): when programmatically making a field non-editable, keep it fully readable — no reduced opacity, no graying out — but **strip ALL input chrome so it reads as plain text**: `pointer-events: none`, `readOnly = true`, `background: transparent`, `border-color: transparent`, `box-shadow: none` (selects also get `appearance: none` and an explicit text color so UA disabled-graying doesn't apply). A white input box on a locked field makes readers think they should be able to edit it — never leave the box visible. Reference implementations: `worksheet-v2/styles.js` `.scw-ws-v2--readonly` / `.scw-ws-v2-card--locked` blocks, `co-sub-lock.js` / `co-ops-lock.js` header-form + MDF rules.
 
 ## Context Hygiene (Read This First)
 
