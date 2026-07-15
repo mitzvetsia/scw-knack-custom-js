@@ -78,15 +78,52 @@
   //                 the connected SOW, which in turn pulls field_2728
   //                 from the project. If > 0, hides the Site Survey
   //                 button. Treated as 0 if not exposed.)
+  //   field_2665  SYS_display name                  → change-order gate
+  //                (heuristic: a display name carrying the SW####CO
+  //                 suffix marks the proposal as a change order — see
+  //                 isChangeOrderProposal. Not detected if not exposed.)
   //
   // Source view IDs on the public scene:
   //   view_3953  "I'm Ready for a Site Survey"
   //   view_3956  "Accept Proposal"
   var CR_COUNT_FIELD = 'field_2907';
+
+  // ── Change-order detection (proposal record only) ──────────────────
+  // A change-order proposal is accepted via the ISSUED E-SIGN AGREEMENT
+  // (esignatures.com email), never the Accept Proposal flow — accepting
+  // would fire the base-scope acceptance pipeline. This public page has
+  // NO SOW view, so detection must come off the proposal record itself:
+  //   1. CO_TYPE_FIELD — a text-formula field on the proposal pulling
+  //      the connected SOW's Type (field_2952). TODO: create it in
+  //      Builder, expose it on view_3952, and fill the key here. The
+  //      durable signal.
+  //   2. Heuristic fallback — the display name / proposal number carries
+  //      the CO suffix (…SW1410CO…), per the CO numbering convention.
+  // Neither signal present → NOT a CO (base proposals keep the button).
+  var CO_TYPE_FIELD   = '';            // TODO: 'field_XXXX' when built
+  var CO_NAME_FIELDS  = ['field_2665', 'field_2663'];
+  function isChangeOrderProposal(attrs) {
+    if (!attrs) return false;
+    if (CO_TYPE_FIELD) {
+      var raw = attrs[CO_TYPE_FIELD + '_raw'];
+      var t = String(raw != null ? raw : (attrs[CO_TYPE_FIELD] || ''))
+        .replace(/<[^>]*>/g, '').trim().toLowerCase();
+      if (t) return t.indexOf('change order') !== -1;
+    }
+    for (var i = 0; i < CO_NAME_FIELDS.length; i++) {
+      var v = attrs[CO_NAME_FIELDS[i]];
+      if (v != null && /SW\d+CO\b/i.test(String(v).replace(/<[^>]*>/g, ''))) {
+        return true;
+      }
+    }
+    return false;
+  }
+
   var CTA_CONFIGS = [
     {
       viewId: 'view_3953',   // I'm Ready for a Site Survey
       gate: function (attrs) {
+        if (isChangeOrderProposal(attrs)) return false;
         if (readCrCount(attrs) > 0) return false;
         return isYes(attrs.field_2746) || isYes(attrs.field_2746_raw)
             || isYes(attrs.field_2748) || isYes(attrs.field_2748_raw);
@@ -102,6 +139,7 @@
       // child page to it and the connected Add form auto-fills the connection.
       appendRecordId: true,
       gate: function (attrs) {
+        if (isChangeOrderProposal(attrs)) return false;   // e-sign only
         return isYes(attrs.field_2747) || isYes(attrs.field_2747_raw);
       }
     }
@@ -525,6 +563,40 @@
     // same scene; render-order isn't guaranteed).
     setTimeout(function () { injectCtaIntoIframe(iframe, attrs, resize); }, 350);
     setTimeout(function () { injectCtaIntoIframe(iframe, attrs, resize); }, 1200);
+
+    // Change-order proposals: the Accept CTA is suppressed (e-sign only),
+    // so point the customer at the signing path instead.
+    setTimeout(function () { injectCoNoticeBanner(iframe, attrs); }, 350);
+    setTimeout(function () { injectCoNoticeBanner(iframe, attrs); }, 1200);
+  }
+
+  // ---- Change-order e-sign notice ---------------------------------------
+  // Mirrors src/features/published-proposal-render.js injectCoNoticeBanner.
+  function injectCoNoticeBanner(iframe, attrs) {
+    if (!iframe || !isChangeOrderProposal(attrs)) return;
+    var doc;
+    try { doc = iframe.contentDocument || (iframe.contentWindow && iframe.contentWindow.document); }
+    catch (e) { return; }
+    if (!doc || !doc.body) return;
+    if (doc.body.querySelector('.scw-co-esign-banner')) return;  // idempotent
+
+    var banner = doc.createElement('div');
+    banner.className = 'scw-co-esign-banner';
+    banner.style.cssText =
+      'margin: 0 0 18px 0; padding: 14px 18px;' +
+      'background: #eff6ff; border: 1px solid #bfdbfe;' +
+      'border-radius: 8px; color: #1e40af;' +
+      'font: 600 14px/1.45 system-ui, -apple-system, sans-serif;' +
+      'text-align: left;';
+    banner.innerHTML =
+      '<div style="font-size:15px; font-weight:800; margin-bottom:4px;">' +
+        'This change order is signed electronically' +
+      '</div>' +
+      '<div style="font-weight:500;">' +
+        'The signature request was sent by email — check your inbox for a ' +
+        'message from SCW to review and sign this change order.' +
+      '</div>';
+    doc.body.insertBefore(banner, doc.body.firstChild);
   }
 
   // ---- Live expiration date patch (field_2659 → snapshot row) ---------
