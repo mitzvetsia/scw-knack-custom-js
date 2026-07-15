@@ -1,4 +1,4 @@
-/*** CHANGE ORDER STAGE STRIP (view_4092) **********************************
+/*** CHANGE ORDER STAGE STRIP (view_4092 ops · view_4121 sub) **************
  *
  * "Where is this CO and whose court is the ball in" — a compact stepper +
  * exactly one primary action per status, rendered into the CO header card
@@ -7,51 +7,52 @@
  *   Draft ── Sub Pricing ── Ops Review ── Issued ── Signed ── Applied
  *   [ Send to Sub ]                    (action area matches the status)
  *
- * Status → action (one writer per status, docs/change-orders.md):
- *   Draft               → [Send to Sub]  (snapshot + webhook, status flip
- *                         happens in Make — the one writer)
- *   Pending Sub Pricing → waiting state "With the sub since ⟨date⟩ — N days"
- *                         + [Nudge sub] (re-notify only, no state change)
- *   Ops Review          → [Send back to sub] [Preview & Issue →]
- *                         (destructive/secondary first, primary last; the
- *                         Issue itself fires from the preview page's CO-mode
- *                         ops stepper — see ops-stepper.js issue-change-order)
- *   Issued/Accepted/Applied/Declined/Void → informational notes.
+ * Two deployments (scenes never coexist, so the mount id is shared):
+ *   ops (view_4092, scene_1362) — full action set. Status → action (one
+ *   writer per status, docs/change-orders.md):
+ *     Draft               → [Send to Sub]  (snapshot + webhook, status flip
+ *                           happens in Make — the one writer)
+ *     Pending Sub Pricing → waiting state "With the sub since ⟨date⟩ — N days"
+ *                           + [Recall from Sub] (mirror-lock escape hatch)
+ *     Ops Review          → [Send back to sub] [Preview & Issue →]
+ *                           (destructive/secondary first, primary last; the
+ *                           Issue itself fires from the preview page's CO-mode
+ *                           ops stepper — see ops-stepper.js issue-change-order)
+ *     Issued/Accepted/Applied/Declined/Void → informational notes.
+ *   sub (view_4121, scene_1374) — the SAME stepper, display-only: sub-facing
+ *   notes per stage ("Your pricing window is open…"), NO action buttons. The
+ *   sub's verbs live elsewhere (worksheet edits while unlocked; the hand-back
+ *   submit verb ships separately).
  *
  * Send to Sub also captures the PRICING SNAPSHOT (the "ops proposed" money
  * baseline, per line) and ships it in the webhook payload — Make writes it
  * verbatim to the CO header's snapshot field. The Ops-Review diff ("what
  * did the sub change") reads it back from the hidden status view.
  *
- * Builder dependencies (fill the CFG placeholders as they land):
- *   - STATUS_VIEW: hidden details view on scene_1362 showing the CO record
- *     with CO Status (field_2953) + the snapshot field. Read + poll target.
+ * Builder dependencies (fill the DEP placeholders as they land):
+ *   - STATUS_VIEW: hidden details view showing the CO record with CO Status
+ *     (field_2953) + the snapshot field. Read + poll target.
  *   - SNAPSHOT_FIELD: the `CO Sub Pricing Snapshot` paragraph field key.
  *   - MAKE_CO_SEND_TO_SUB_WEBHOOK / MAKE_CO_ISSUE_WEBHOOK in SCW.CONFIG.
- * Until they exist: status falls back to view_4092's (hidden) field_2953
- * value, and the buttons alert what's missing instead of firing.
+ * Until they exist: status falls back to the header form's (hidden)
+ * field_2953 value, and the buttons alert what's missing instead of firing.
  ***************************************************************************/
 (function () {
   'use strict';
 
-  var VIEW      = 'view_4092';   // CO header form (mount target)
-  var CO_VIEW   = 'view_4079';   // CO worksheet (snapshot source)
-  var EL_ID     = 'scw-co-stage';
-  var STYLE_ID  = 'scw-co-stage-css';
-  var EVENT_NS  = '.scwCoStage';
+  var EL_ID    = 'scw-co-stage';        // shared — the two scenes never coexist
+  var STYLE_ID = 'scw-co-stage-css';
 
-  var CFG = {
-    // Hidden details view (CO record: status + snapshot) on scene_1362.
-    // Hidden via hide-data-source-views.js; model is the read/poll target.
-    STATUS_VIEW:    'view_4109',
-    // `CO Sub Pricing Snapshot` field key on the SOW object (paragraph
-    // text, JSON — written only by the send-to-sub Make scenario).
-    SNAPSHOT_FIELD: 'field_2972',
-    STATUS_FIELD:   'field_2953',
-    // Poll cadence while the CO sits in Pending Sub Pricing (only when
-    // STATUS_VIEW is configured — a form view can't be refetched).
-    POLL_MS:        30 * 1000
-  };
+  var SNAPSHOT_FIELD = 'field_2972';
+  var STATUS_FIELD   = 'field_2953';
+  var POLL_MS        = 30 * 1000;
+
+  var DEPLOYMENTS = [
+    { VIEW: 'view_4092', CO_VIEW: 'view_4079', STATUS_VIEW: 'view_4109',
+      MODE: 'ops', NS: '.scwCoStage' },
+    { VIEW: 'view_4121', CO_VIEW: 'view_4112', STATUS_VIEW: 'view_4122',
+      MODE: 'sub', NS: '.scwCoStageSub' }
+  ];
 
   // Stepper stages in lifecycle order. `match` normalizes the Builder
   // status text (lowercased) to a stage index.
@@ -63,10 +64,6 @@
     { key: 'signed',   label: 'Signed',      match: /^accepted$/ },
     { key: 'applied',  label: 'Applied',     match: /^applied$/ }
   ];
-
-  // Optimistic status override after a successful webhook fire — Make owns
-  // the real write; this keeps the strip honest until the next read.
-  var _optimistic = '';
 
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
@@ -119,58 +116,17 @@
       'font:600 12px/1.3 system-ui,sans-serif;color:#b45309;}',
       '.scw-co-stage-wait .scw-co-stage-pulse{width:8px;height:8px;border-radius:50%;',
       'background:#f59e0b;animation:scwCoPulse 1.6s ease-in-out infinite;}',
+      // sub "your window is open" variant — green, same pulse
+      '.scw-co-stage-wait--open{background:#f0fdf4;border-color:#bbf7d0;color:#166534;}',
+      '.scw-co-stage-wait--open .scw-co-stage-pulse{background:#22c55e;}',
       '@keyframes scwCoPulse{0%,100%{opacity:1;}50%{opacity:.3;}}'
     ].join('');
     document.head.appendChild(s);
   }
 
-  // ── status + snapshot reads ───────────────────────────────────────────
   function readTxt(rec, key) {
     var v = rec && rec[key];
     return String(v == null ? '' : v).replace(/<[^>]*>/g, '').trim();
-  }
-
-  function statusViewRecord() {
-    if (!CFG.STATUS_VIEW) return null;
-    try {
-      var v = Knack.views[CFG.STATUS_VIEW];
-      // Details view → model.attributes; grid → first row.
-      if (v && v.model) {
-        if (v.model.attributes && v.model.attributes.id) return v.model.attributes;
-        var models = v.model.data && v.model.data.models;
-        if (models && models.length) return models[0].attributes;
-      }
-    } catch (e) { /* fall through */ }
-    return null;
-  }
-
-  function getStatus() {
-    if (_optimistic) return _optimistic;
-    var rec = statusViewRecord();
-    if (rec) {
-      var s = readTxt(rec, CFG.STATUS_FIELD);
-      if (s) return s;
-    }
-    // Fallback: view_4092's read-only status block (hidden by
-    // co-header-card's CSS but still in the DOM).
-    var viewEl = document.getElementById(VIEW);
-    var wrap = viewEl && viewEl.querySelector('#kn-input-' + CFG.STATUS_FIELD);
-    if (!wrap) return '';
-    var clone = wrap.cloneNode(true);
-    var strip = clone.querySelectorAll('label, p.kn-instructions');
-    for (var i = 0; i < strip.length; i++) {
-      if (strip[i].parentNode) strip[i].parentNode.removeChild(strip[i]);
-    }
-    return (clone.textContent || '').replace(/\s+/g, ' ').trim();
-  }
-
-  function getSnapshot() {
-    if (!CFG.SNAPSHOT_FIELD) return null;
-    var rec = statusViewRecord();
-    if (!rec) return null;
-    var raw = readTxt(rec, CFG.SNAPSHOT_FIELD);
-    if (!raw) return null;
-    try { return JSON.parse(raw); } catch (e) { return null; }
   }
 
   function stageIndex(status) {
@@ -179,16 +135,6 @@
       if (STAGES[i].match.test(s)) return i;
     }
     return -1;   // unknown / declined / void
-  }
-
-  // ── webhook plumbing (shared shape with co-remove.js) ─────────────────
-  function getCoSowId() {
-    var segs = (window.location.hash || '').replace(/^#/, '').split('?')[0]
-      .split('/');
-    for (var i = segs.length - 1; i >= 0; i--) {
-      if (/^[a-f0-9]{24}$/i.test(segs[i])) return segs[i];
-    }
-    return '';
   }
 
   function getTriggeredBy() {
@@ -203,503 +149,655 @@
     } catch (e) { return {}; }
   }
 
-  function num(rec, key) {
-    var raw = rec[key + '_raw'];
-    if (typeof raw === 'number') return isFinite(raw) ? raw : 0;
-    var n = parseFloat(readTxt(rec, key).replace(/[^0-9.\-]/g, ''));
-    return isFinite(n) ? n : 0;
+  function getCoSowId() {
+    var segs = (window.location.hash || '').replace(/^#/, '').split('?')[0]
+      .split('/');
+    for (var i = segs.length - 1; i >= 0; i--) {
+      if (/^[a-f0-9]{24}$/i.test(segs[i])) return segs[i];
+    }
+    return '';
   }
 
-  // Read a field's current value off the CO header form (view_4092) —
-  // input value for editable fields (CO name), rendered text for
-  // read-only ones (CO number). Fields hidden by co-header-card's CSS
-  // are still in the DOM.
-  function readHeaderValue(fieldKey) {
-    var viewEl = document.getElementById(VIEW);
-    if (!viewEl) return '';
-    var input = viewEl.querySelector(
-      '#kn-input-' + fieldKey + ' input, #kn-input-' + fieldKey + ' textarea');
-    if (input && typeof input.value === 'string' && input.value.trim()) {
-      return input.value.trim();
-    }
-    var wrap = viewEl.querySelector('#kn-input-' + fieldKey);
-    if (!wrap) return '';
-    var clone = wrap.cloneNode(true);
-    var strip = clone.querySelectorAll('label, p.kn-instructions');
-    for (var i = 0; i < strip.length; i++) {
-      if (strip[i].parentNode) strip[i].parentNode.removeChild(strip[i]);
-    }
-    return (clone.textContent || '').replace(/\s+/g, ' ').trim();
-  }
+  // ═══ per-deployment instance ══════════════════════════════════════════
+  function setup(DEP) {
+    var VIEW        = DEP.VIEW;
+    var CO_VIEW     = DEP.CO_VIEW;
+    var STATUS_VIEW = DEP.STATUS_VIEW;
+    var IS_OPS      = DEP.MODE === 'ops';
+    var EVENT_NS    = DEP.NS;
 
-  // The "ops proposed" money baseline, per CO line — what the Ops-Review
-  // diff compares the sub's returned pricing against.
-  function buildSnapshot() {
-    var ns = window.SCW && window.SCW.worksheetV2;
-    var recs = (ns && ns.data && typeof ns.data.readRecords === 'function')
-      ? ns.data.readRecords(CO_VIEW) : [];
-    var lines = {};
-    for (var i = 0; i < recs.length; i++) {
-      var r = recs[i];
-      if (!r || !r.id) continue;
-      // Drop prefix (field_2240) is a connection — ship both the record id
-      // (what Make writes/references) and the display text.
-      var prefixRaw = r['field_2240_raw'];
-      var prefixId = '';
-      if (Array.isArray(prefixRaw) && prefixRaw.length && prefixRaw[0] && prefixRaw[0].id) {
-        prefixId = prefixRaw[0].id;
-      } else if (prefixRaw && prefixRaw.id) {
-        prefixId = prefixRaw.id;
+    // Optimistic status override after a successful webhook fire — Make owns
+    // the real write; this keeps the strip honest until the next read.
+    var _optimistic = '';
+
+    // ── status + snapshot reads ─────────────────────────────────────────
+    function statusViewRecord() {
+      if (!STATUS_VIEW) return null;
+      try {
+        var v = Knack.views[STATUS_VIEW];
+        // Details view → model.attributes; grid → first row.
+        if (v && v.model) {
+          if (v.model.attributes && v.model.attributes.id) return v.model.attributes;
+          var models = v.model.data && v.model.data.models;
+          if (models && models.length) return models[0].attributes;
+        }
+      } catch (e) { /* fall through */ }
+      return null;
+    }
+
+    function getStatus() {
+      if (_optimistic) return _optimistic;
+      var rec = statusViewRecord();
+      if (rec) {
+        var s = readTxt(rec, STATUS_FIELD);
+        if (s) return s;
       }
-      lines[r.id] = {
-        label:    readTxt(r, 'field_1950'),   // computed drop label, e.g. "E-010"
-        prefixId: prefixId,                   // Drop Prefix connection record id
-        prefix:   readTxt(r, 'field_2240'),   // Drop Prefix display text, e.g. "E-"
-        number:   num(r, 'field_1951'),       // drop number, e.g. 10
-        action:   readTxt(r, 'field_2965'),
-        subBid:   num(r, 'field_2150'),
-        hrs:      num(r, 'field_1973'),
-        mat:      num(r, 'field_1974'),
-        fee:      num(r, 'field_2028'),
-        equip:    num(r, 'field_2269')
+      // Fallback: the header form's read-only status block (hidden by
+      // co-header-card's CSS but still in the DOM).
+      var viewEl = document.getElementById(VIEW);
+      var wrap = viewEl && viewEl.querySelector('#kn-input-' + STATUS_FIELD);
+      if (!wrap) return '';
+      var clone = wrap.cloneNode(true);
+      var strip = clone.querySelectorAll('label, p.kn-instructions');
+      for (var i = 0; i < strip.length; i++) {
+        if (strip[i].parentNode) strip[i].parentNode.removeChild(strip[i]);
+      }
+      return (clone.textContent || '').replace(/\s+/g, ' ').trim();
+    }
+
+    function getSnapshot() {
+      if (!SNAPSHOT_FIELD) return null;
+      var rec = statusViewRecord();
+      if (!rec) return null;
+      var raw = readTxt(rec, SNAPSHOT_FIELD);
+      if (!raw) return null;
+      try { return JSON.parse(raw); } catch (e) { return null; }
+    }
+
+    function num(rec, key) {
+      var raw = rec[key + '_raw'];
+      if (typeof raw === 'number') return isFinite(raw) ? raw : 0;
+      var n = parseFloat(readTxt(rec, key).replace(/[^0-9.\-]/g, ''));
+      return isFinite(n) ? n : 0;
+    }
+
+    // Read a field's current value off the CO header form — input value for
+    // editable fields (CO name), rendered text for read-only ones (CO
+    // number). Fields hidden by co-header-card's CSS are still in the DOM.
+    function readHeaderValue(fieldKey) {
+      var viewEl = document.getElementById(VIEW);
+      if (!viewEl) return '';
+      var input = viewEl.querySelector(
+        '#kn-input-' + fieldKey + ' input, #kn-input-' + fieldKey + ' textarea');
+      if (input && typeof input.value === 'string' && input.value.trim()) {
+        return input.value.trim();
+      }
+      var wrap = viewEl.querySelector('#kn-input-' + fieldKey);
+      if (!wrap) return '';
+      var clone = wrap.cloneNode(true);
+      var strip = clone.querySelectorAll('label, p.kn-instructions');
+      for (var i = 0; i < strip.length; i++) {
+        if (strip[i].parentNode) strip[i].parentNode.removeChild(strip[i]);
+      }
+      return (clone.textContent || '').replace(/\s+/g, ' ').trim();
+    }
+
+    // The "ops proposed" money baseline, per CO line — what the Ops-Review
+    // diff compares the sub's returned pricing against.
+    function buildSnapshot() {
+      var ns = window.SCW && window.SCW.worksheetV2;
+      var recs = (ns && ns.data && typeof ns.data.readRecords === 'function')
+        ? ns.data.readRecords(CO_VIEW) : [];
+      var lines = {};
+      for (var i = 0; i < recs.length; i++) {
+        var r = recs[i];
+        if (!r || !r.id) continue;
+        // Drop prefix (field_2240) is a connection — ship both the record id
+        // (what Make writes/references) and the display text.
+        var prefixRaw = r['field_2240_raw'];
+        var prefixId = '';
+        if (Array.isArray(prefixRaw) && prefixRaw.length && prefixRaw[0] && prefixRaw[0].id) {
+          prefixId = prefixRaw[0].id;
+        } else if (prefixRaw && prefixRaw.id) {
+          prefixId = prefixRaw.id;
+        }
+        lines[r.id] = {
+          label:    readTxt(r, 'field_1950'),   // computed drop label, e.g. "E-010"
+          prefixId: prefixId,                   // Drop Prefix connection record id
+          prefix:   readTxt(r, 'field_2240'),   // Drop Prefix display text, e.g. "E-"
+          number:   num(r, 'field_1951'),       // drop number, e.g. 10
+          action:   readTxt(r, 'field_2965'),
+          subBid:   num(r, 'field_2150'),
+          hrs:      num(r, 'field_1973'),
+          mat:      num(r, 'field_1974'),
+          fee:      num(r, 'field_2028'),
+          equip:    num(r, 'field_2269')
+        };
+      }
+      return {
+        sentAt: new Date().toISOString(),
+        sentBy: getTriggeredBy(),
+        lines:  lines
       };
     }
-    return {
-      sentAt: new Date().toISOString(),
-      sentBy: getTriggeredBy(),
-      lines:  lines
-    };
-  }
 
-  // ── the fixed record of WHAT WAS REQUESTED ──────────────────────────
-  // A self-contained HTML card (inline styles only — renders anywhere) +
-  // a plaintext twin, shipped in the webhook so Make can (a) store the
-  // durable "this is exactly what we sent the sub" artifact and (b) drop
-  // it on the ClickUp tasks (the subcontractor's AND ours) alongside the
-  // status change. `note` = the send-back note, when present.
-  function buildRequestDoc(note) {
-    var ns = window.SCW && window.SCW.worksheetV2;
-    var recs = (ns && ns.data && typeof ns.data.readRecords === 'function')
-      ? ns.data.readRecords(CO_VIEW) : [];
-    var who = getTriggeredBy();
-    var when = new Date();
-    var coNumber = readHeaderValue('field_2123');
-    var coName   = readHeaderValue('field_2126');
+    // ── the fixed record of WHAT WAS REQUESTED ──────────────────────────
+    // A self-contained HTML card (inline styles only — renders anywhere) +
+    // a plaintext twin, shipped in the webhook so Make can (a) store the
+    // durable "this is exactly what we sent the sub" artifact and (b) drop
+    // it on the ClickUp tasks (the subcontractor's AND ours) alongside the
+    // status change. `note` = the send-back note, when present.
+    function buildRequestDoc(note) {
+      var ns = window.SCW && window.SCW.worksheetV2;
+      var recs = (ns && ns.data && typeof ns.data.readRecords === 'function')
+        ? ns.data.readRecords(CO_VIEW) : [];
+      var who = getTriggeredBy();
+      var when = new Date();
+      var coNumber = readHeaderValue('field_2123');
+      var coName   = readHeaderValue('field_2126');
 
-    function conn(r, key) {
-      var raw = r[key + '_raw'];
-      if (Array.isArray(raw) && raw.length && raw[0]) {
-        return String(raw[0].identifier || '').trim();
+      function conn(r, key) {
+        var raw = r[key + '_raw'];
+        if (Array.isArray(raw) && raw.length && raw[0]) {
+          return String(raw[0].identifier || '').trim();
+        }
+        return readTxt(r, key);
       }
-      return readTxt(r, key);
-    }
-    // ASCII minus — Make's HTML→PDF font subset drops U+2212 in some setups.
-    function money(n) {
-      return (n < 0 ? '-' : '') + '$' + Math.abs(n || 0)
-        .toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
-    }
-    // HEADEND display names compute with an empty ## segment ("HEADEND: :
-    // behind cashregister") — collapse the doubled colon for the doc.
-    function cleanLoc(s) { return String(s || '').replace(/:\s*:/g, ':').trim(); }
+      // ASCII minus — Make's HTML→PDF font subset drops U+2212 in some setups.
+      function money(n) {
+        return (n < 0 ? '-' : '') + '$' + Math.abs(n || 0)
+          .toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+      }
+      // HEADEND display names compute with an empty ## segment ("HEADEND: :
+      // behind cashregister") — collapse the doubled colon for the doc.
+      function cleanLoc(s) { return String(s || '').replace(/:\s*:/g, ':').trim(); }
 
-    // Collect entries first — the totals row and the grouped text need the
-    // full set before rendering.
-    var entries = [], nAdd = 0, nRm = 0;
-    var tAdd = { bid: 0, eq: 0 }, tRm = { bid: 0, eq: 0 };
-    for (var i = 0; i < recs.length; i++) {
-      var r = recs[i];
-      if (!r || !r.id) continue;
-      var isRm = /remove/i.test(readTxt(r, 'field_2965'));
-      // Services/assumptions rows have no product — fall back to the
-      // labor description so every line names itself.
-      var e = {
-        isRm: isRm,
-        item: conn(r, 'field_1949') || readTxt(r, 'field_2020') || '(item)',
-        drop: readTxt(r, 'field_1950'),
-        loc:  cleanLoc(conn(r, 'field_1946')),
-        qty:  num(r, 'field_1964') || 1,
-        bid:  num(r, 'field_2150'),
-        eq:   num(r, 'field_2269')
-      };
-      entries.push(e);
-      var t = isRm ? tRm : tAdd;
-      if (isRm) nRm++; else nAdd++;
-      t.bid += e.bid; t.eq += e.eq;
-    }
-    var totBid = tAdd.bid + tRm.bid, totEq = tAdd.eq + tRm.eq;
+      // Collect entries first — the totals row and the grouped text need the
+      // full set before rendering.
+      var entries = [], nAdd = 0, nRm = 0;
+      var tAdd = { bid: 0, eq: 0 }, tRm = { bid: 0, eq: 0 };
+      for (var i = 0; i < recs.length; i++) {
+        var r = recs[i];
+        if (!r || !r.id) continue;
+        var isRm = /remove/i.test(readTxt(r, 'field_2965'));
+        // Services/assumptions rows have no product — fall back to the
+        // labor description so every line names itself.
+        var e = {
+          isRm: isRm,
+          item: conn(r, 'field_1949') || readTxt(r, 'field_2020') || '(item)',
+          drop: readTxt(r, 'field_1950'),
+          loc:  cleanLoc(conn(r, 'field_1946')),
+          qty:  num(r, 'field_1964') || 1,
+          bid:  num(r, 'field_2150'),
+          eq:   num(r, 'field_2269')
+        };
+        entries.push(e);
+        var t = isRm ? tRm : tAdd;
+        if (isRm) nRm++; else nAdd++;
+        t.bid += e.bid; t.eq += e.eq;
+      }
+      var totBid = tAdd.bid + tRm.bid, totEq = tAdd.eq + tRm.eq;
 
-    var title = 'Change Order Pricing Request' +
-      (coNumber ? ' — ' + coNumber : '') + (coName ? ' · ' + coName : '');
-    var sentLine = 'Sent by ' + (who.name || who.email || 'SCW') + ' · ' +
-      when.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
-    var countLine = nAdd + ' add' + (nAdd === 1 ? '' : 's') +
-      ', ' + nRm + ' removal' + (nRm === 1 ? '' : 's');
+      var title = 'Change Order Pricing Request' +
+        (coNumber ? ' — ' + coNumber : '') + (coName ? ' · ' + coName : '');
+      var sentLine = 'Sent by ' + (who.name || who.email || 'SCW') + ' · ' +
+        when.toLocaleDateString(undefined, { month: 'short', day: 'numeric', year: 'numeric' });
+      var countLine = nAdd + ' add' + (nAdd === 1 ? '' : 's') +
+        ', ' + nRm + ' removal' + (nRm === 1 ? '' : 's');
 
-    // ── HTML (the durable card + Make's PDF source) ──────────────────
-    // Font: Helvetica/Arial only — PDF engines don't know system-ui and
-    // fall back to Courier. Numeric cells: right-aligned + nowrap so a
-    // leading minus sign can't wrap/clip in a tight column.
-    var NUM_TD = 'padding:4px 10px;border-bottom:1px solid #eef2f7;' +
-      'text-align:right;white-space:nowrap;';
-    var htmlRows = [];
-    for (var h = 0; h < entries.length; h++) {
-      var en = entries[h];
-      var tint = en.isRm ? '#fff1f2' : '#f0fdf4';
-      var bar  = en.isRm ? '#e11d48' : '#059669';
-      htmlRows.push(
-        '<tr style="background:' + tint + ';">' +
-        '<td style="padding:4px 8px;border-bottom:1px solid #eef2f7;' +
-          'box-shadow:inset 3px 0 0 ' + bar + ';font-weight:700;color:' +
-          (en.isRm ? '#9f1239' : '#065f46') + ';white-space:nowrap;">' +
-          (en.isRm ? 'REMOVE' : 'ADD') + '</td>' +
-        '<td style="padding:4px 8px;border-bottom:1px solid #eef2f7;">' + esc(en.item) +
-          (en.drop || en.loc
-            ? '<br><span style="color:#64748b;font-size:11px;">' +
-              esc([en.drop, en.loc].filter(Boolean).join(' · ')) + '</span>'
-            : '') + '</td>' +
-        '<td style="' + NUM_TD + '">' + en.qty + '</td>' +
-        '<td style="' + NUM_TD + '">' + esc(money(en.bid)) + '</td>' +
-        '<td style="' + NUM_TD + '">' + esc(money(en.eq)) + '</td>' +
-        '</tr>');
-    }
-    // Totals: adds/removals breakdown only when both exist, then the total.
-    function footRow(label, bid, eq, isNet) {
-      var td = 'padding:5px 10px;text-align:right;white-space:nowrap;' +
-        (isNet ? 'border-top:2px solid #163C6E;font-weight:700;color:#163C6E;'
-               : 'font-weight:600;color:#334155;');
-      return '<tr style="background:#f8fafc;">' +
-        '<td colspan="3" style="' + td + '">' + esc(label) + '</td>' +
-        '<td style="' + td + '">' + esc(money(bid)) + '</td>' +
-        '<td style="' + td + '">' + esc(money(eq)) + '</td></tr>';
-    }
-    var foot = '';
-    if (nAdd && nRm) {
-      foot += footRow('Adds (' + nAdd + ')', tAdd.bid, tAdd.eq, false) +
-              footRow('Removals (' + nRm + ')', tRm.bid, tRm.eq, false) +
-              footRow('Net change', totBid, totEq, true);
-    } else {
-      foot += footRow('Total', totBid, totEq, true);
-    }
+      // ── HTML (the durable card + Make's PDF source) ──────────────────
+      // Font: Helvetica/Arial only — PDF engines don't know system-ui and
+      // fall back to Courier. Numeric cells: right-aligned + nowrap so a
+      // leading minus sign can't wrap/clip in a tight column.
+      var NUM_TD = 'padding:4px 10px;border-bottom:1px solid #eef2f7;' +
+        'text-align:right;white-space:nowrap;';
+      var htmlRows = [];
+      for (var h = 0; h < entries.length; h++) {
+        var en = entries[h];
+        var tint = en.isRm ? '#fff1f2' : '#f0fdf4';
+        var bar  = en.isRm ? '#e11d48' : '#059669';
+        htmlRows.push(
+          '<tr style="background:' + tint + ';">' +
+          '<td style="padding:4px 8px;border-bottom:1px solid #eef2f7;' +
+            'box-shadow:inset 3px 0 0 ' + bar + ';font-weight:700;color:' +
+            (en.isRm ? '#9f1239' : '#065f46') + ';white-space:nowrap;">' +
+            (en.isRm ? 'REMOVE' : 'ADD') + '</td>' +
+          '<td style="padding:4px 8px;border-bottom:1px solid #eef2f7;">' + esc(en.item) +
+            (en.drop || en.loc
+              ? '<br><span style="color:#64748b;font-size:11px;">' +
+                esc([en.drop, en.loc].filter(Boolean).join(' · ')) + '</span>'
+              : '') + '</td>' +
+          '<td style="' + NUM_TD + '">' + en.qty + '</td>' +
+          '<td style="' + NUM_TD + '">' + esc(money(en.bid)) + '</td>' +
+          '<td style="' + NUM_TD + '">' + esc(money(en.eq)) + '</td>' +
+          '</tr>');
+      }
+      // Totals: adds/removals breakdown only when both exist, then the total.
+      function footRow(label, bid, eq, isNet) {
+        var td = 'padding:5px 10px;text-align:right;white-space:nowrap;' +
+          (isNet ? 'border-top:2px solid #163C6E;font-weight:700;color:#163C6E;'
+                 : 'font-weight:600;color:#334155;');
+        return '<tr style="background:#f8fafc;">' +
+          '<td colspan="3" style="' + td + '">' + esc(label) + '</td>' +
+          '<td style="' + td + '">' + esc(money(bid)) + '</td>' +
+          '<td style="' + td + '">' + esc(money(eq)) + '</td></tr>';
+      }
+      var foot = '';
+      if (nAdd && nRm) {
+        foot += footRow('Adds (' + nAdd + ')', tAdd.bid, tAdd.eq, false) +
+                footRow('Removals (' + nRm + ')', tRm.bid, tRm.eq, false) +
+                footRow('Net change', totBid, totEq, true);
+      } else {
+        foot += footRow('Total', totBid, totEq, true);
+      }
 
-    var html =
-      '<div style="font-family:Helvetica,Arial,sans-serif;font-size:12.5px;' +
-        'color:#1e293b;border:1px solid #dbe4ee;border-radius:8px;overflow:hidden;">' +
-      '<div style="background:#163C6E;color:#fff;padding:8px 12px;font-weight:800;' +
-        'font-size:12px;letter-spacing:.04em;text-transform:uppercase;">' + esc(title) + '</div>' +
-      '<div style="padding:6px 12px;background:#f0f4fa;border-bottom:1px solid #dbe4ee;' +
-        'color:#334155;font-size:11.5px;">' + esc(sentLine) + ' · ' + esc(countLine) + '</div>' +
-      (note ? '<div style="padding:6px 12px;background:#fffbeb;border-bottom:1px solid ' +
-        '#fde68a;color:#92400e;font-size:12px;"><b>Note:</b> ' + esc(note) + '</div>' : '') +
-      '<table style="width:100%;border-collapse:collapse;">' +
-      '<thead><tr>' +
-        ['Action', 'Item', 'Qty', 'Baseline Bid', 'Equip'].map(function (hd, idx) {
-          return '<th style="padding:5px ' + (idx >= 2 ? '10px' : '8px') + ';' +
-            'background:#f8fafc;border-bottom:1px solid ' +
-            '#dbe4ee;font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;' +
-            'color:#64748b;white-space:nowrap;text-align:' + (idx >= 2 ? 'right' : 'left') +
-            ';">' + hd + '</th>';
-        }).join('') +
-      '</tr></thead><tbody>' + htmlRows.join('') + '</tbody>' +
-      '<tfoot>' + foot + '</tfoot></table></div>';
+      var html =
+        '<div style="font-family:Helvetica,Arial,sans-serif;font-size:12.5px;' +
+          'color:#1e293b;border:1px solid #dbe4ee;border-radius:8px;overflow:hidden;">' +
+        '<div style="background:#163C6E;color:#fff;padding:8px 12px;font-weight:800;' +
+          'font-size:12px;letter-spacing:.04em;text-transform:uppercase;">' + esc(title) + '</div>' +
+        '<div style="padding:6px 12px;background:#f0f4fa;border-bottom:1px solid #dbe4ee;' +
+          'color:#334155;font-size:11.5px;">' + esc(sentLine) + ' · ' + esc(countLine) + '</div>' +
+        (note ? '<div style="padding:6px 12px;background:#fffbeb;border-bottom:1px solid ' +
+          '#fde68a;color:#92400e;font-size:12px;"><b>Note:</b> ' + esc(note) + '</div>' : '') +
+        '<table style="width:100%;border-collapse:collapse;">' +
+        '<thead><tr>' +
+          ['Action', 'Item', 'Qty', 'Baseline Bid', 'Equip'].map(function (hd, idx) {
+            return '<th style="padding:5px ' + (idx >= 2 ? '10px' : '8px') + ';' +
+              'background:#f8fafc;border-bottom:1px solid ' +
+              '#dbe4ee;font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;' +
+              'color:#64748b;white-space:nowrap;text-align:' + (idx >= 2 ? 'right' : 'left') +
+              ';">' + hd + '</th>';
+          }).join('') +
+        '</tr></thead><tbody>' + htmlRows.join('') + '</tbody>' +
+        '<tfoot>' + foot + '</tfoot></table></div>';
 
-    // ── Plain text (the ClickUp comment) ─────────────────────────────
-    // Grouped by location, one item per line + an indented detail line,
-    // totals block at the end — reads top-to-bottom instead of one dense
-    // run-on line per item.
-    var tx = [title, sentLine + ' · ' + countLine];
-    if (note) tx.push('Note: ' + note);
-    // Bucket by location (first-seen order) so a group can't split when the
-    // model order interleaves locations.
-    var locOrder = [], locMap = {};
-    for (var g = 0; g < entries.length; g++) {
-      var locKey = entries[g].loc || 'No location';
-      if (!locMap[locKey]) { locMap[locKey] = []; locOrder.push(locKey); }
-      locMap[locKey].push(entries[g]);
-    }
-    for (var lo = 0; lo < locOrder.length; lo++) {
+      // ── Plain text (the ClickUp comment) ─────────────────────────────
+      // Grouped by location, one item per line + an indented detail line,
+      // totals block at the end — reads top-to-bottom instead of one dense
+      // run-on line per item.
+      var tx = [title, sentLine + ' · ' + countLine];
+      if (note) tx.push('Note: ' + note);
+      // Bucket by location (first-seen order) so a group can't split when the
+      // model order interleaves locations.
+      var locOrder = [], locMap = {};
+      for (var g = 0; g < entries.length; g++) {
+        var locKey = entries[g].loc || 'No location';
+        if (!locMap[locKey]) { locMap[locKey] = []; locOrder.push(locKey); }
+        locMap[locKey].push(entries[g]);
+      }
+      for (var lo = 0; lo < locOrder.length; lo++) {
+        tx.push('');
+        tx.push('== ' + locOrder[lo] + ' ==');
+        var group = locMap[locOrder[lo]];
+        for (var gi = 0; gi < group.length; gi++) {
+          var et = group[gi];
+          tx.push((et.isRm ? '- REMOVE  ' : '+ ADD  ') + et.item +
+            (et.drop ? ' — ' + et.drop : ''));
+          tx.push('    qty ' + et.qty + ' · baseline sub bid ' + money(et.bid) +
+            (et.eq ? ' · equip ' + money(et.eq) : ''));
+        }
+      }
       tx.push('');
-      tx.push('== ' + locOrder[lo] + ' ==');
-      var group = locMap[locOrder[lo]];
-      for (var gi = 0; gi < group.length; gi++) {
-        var et = group[gi];
-        tx.push((et.isRm ? '- REMOVE  ' : '+ ADD  ') + et.item +
-          (et.drop ? ' — ' + et.drop : ''));
-        tx.push('    qty ' + et.qty + ' · baseline sub bid ' + money(et.bid) +
-          (et.eq ? ' · equip ' + money(et.eq) : ''));
+      tx.push('== TOTALS ==');
+      if (nAdd && nRm) {
+        tx.push('Adds (' + nAdd + '): baseline sub bid ' + money(tAdd.bid) +
+          ' · equip ' + money(tAdd.eq));
+        tx.push('Removals (' + nRm + '): baseline sub bid ' + money(tRm.bid) +
+          ' · equip ' + money(tRm.eq));
+        tx.push('Net change: baseline sub bid ' + money(totBid) +
+          ' · equip ' + money(totEq));
+      } else {
+        tx.push('Total: baseline sub bid ' + money(totBid) +
+          ' · equip ' + money(totEq));
+      }
+
+      return { coNumber: coNumber, coName: coName, html: html, text: tx.join('\n') };
+    }
+
+    function fireWebhook(mode, extra, onOk) {
+      var url = (window.SCW && SCW.CONFIG && SCW.CONFIG.MAKE_CO_SEND_TO_SUB_WEBHOOK) || '';
+      if (!url || /PLACEHOLDER/.test(url)) {
+        alert('The send-to-sub webhook is not configured yet.\n\n' +
+          'Needs: the CO Sub Pricing Snapshot field, the Make scenario ' +
+          '(store snapshot + flip CO Status + notify sub), then set ' +
+          'MAKE_CO_SEND_TO_SUB_WEBHOOK in src/config.js.');
+        return;
+      }
+      var coId = getCoSowId();
+      if (!coId) { alert('Could not determine the change order record id from the URL.'); return; }
+
+      var payload = { changeOrderId: coId, mode: mode, triggeredBy: getTriggeredBy() };
+      if (extra) for (var k in extra) payload[k] = extra[k];
+
+      setBusy(true);
+      fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      }).then(function (resp) {
+        var ok = resp.ok;
+        return resp.text().then(function (txt) {
+          var body = null;
+          try { body = txt ? JSON.parse(txt) : null; } catch (e) { body = null; }
+          return { ok: ok, data: body };
+        });
+      }).then(function (r) {
+        setBusy(false);
+        var explicitFail = !!(r.data && (r.data.success === false || r.data.error));
+        if (r.ok && !explicitFail) { if (onOk) onOk(r.data); return; }
+        alert((r.data && (r.data.error || r.data.message)) || 'The action failed. Try again.');
+      }).catch(function (err) {
+        setBusy(false);
+        alert('Webhook error: ' + (err && err.message ? err.message : err));
+      });
+    }
+
+    function setBusy(busy) {
+      var el = document.getElementById(EL_ID);
+      if (!el) return;
+      var btns = el.querySelectorAll('.scw-co-stage-btn');
+      for (var i = 0; i < btns.length; i++) {
+        if (busy) btns[i].setAttribute('disabled', 'disabled');
+        else btns[i].removeAttribute('disabled');
       }
     }
-    tx.push('');
-    tx.push('== TOTALS ==');
-    if (nAdd && nRm) {
-      tx.push('Adds (' + nAdd + '): baseline sub bid ' + money(tAdd.bid) +
-        ' · equip ' + money(tAdd.eq));
-      tx.push('Removals (' + nRm + '): baseline sub bid ' + money(tRm.bid) +
-        ' · equip ' + money(tRm.eq));
-      tx.push('Net change: baseline sub bid ' + money(totBid) +
-        ' · equip ' + money(totEq));
-    } else {
-      tx.push('Total: baseline sub bid ' + money(totBid) +
-        ' · equip ' + money(totEq));
+
+    // Also retint the header pill so the optimistic flip reads everywhere.
+    function setPillText(text) {
+      var pill = document.querySelector('#' + VIEW + ' .scw-co-hdr-pill');
+      if (pill) pill.textContent = text;
     }
 
-    return { coNumber: coNumber, coName: coName, html: html, text: tx.join('\n') };
-  }
-
-  function fireWebhook(mode, extra, onOk) {
-    var url = (window.SCW && SCW.CONFIG && SCW.CONFIG.MAKE_CO_SEND_TO_SUB_WEBHOOK) || '';
-    if (!url || /PLACEHOLDER/.test(url)) {
-      alert('The send-to-sub webhook is not configured yet.\n\n' +
-        'Needs: the CO Sub Pricing Snapshot field, the Make scenario ' +
-        '(store snapshot + flip CO Status + notify sub), then set ' +
-        'MAKE_CO_SEND_TO_SUB_WEBHOOK in src/config.js.');
-      return;
+    function confirmThen(title, body, okLabel, fn) {
+      var ns = window.SCW && window.SCW.worksheetV2;
+      if (ns && typeof ns.confirmModal === 'function') {
+        ns.confirmModal({ title: title, body: body, okLabel: okLabel, cancelLabel: 'Cancel' })
+          .then(function (ok) { if (ok) fn(); });
+      } else if (window.confirm(body)) {
+        fn();
+      }
     }
-    var coId = getCoSowId();
-    if (!coId) { alert('Could not determine the change order record id from the URL.'); return; }
 
-    var payload = { changeOrderId: coId, mode: mode, triggeredBy: getTriggeredBy() };
-    if (extra) for (var k in extra) payload[k] = extra[k];
-
-    setBusy(true);
-    fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    }).then(function (resp) {
-      var ok = resp.ok;
-      return resp.text().then(function (txt) {
-        var body = null;
-        try { body = txt ? JSON.parse(txt) : null; } catch (e) { body = null; }
-        return { ok: ok, data: body };
-      });
-    }).then(function (r) {
-      setBusy(false);
-      var explicitFail = !!(r.data && (r.data.success === false || r.data.error));
-      if (r.ok && !explicitFail) { if (onOk) onOk(r.data); return; }
-      alert((r.data && (r.data.error || r.data.message)) || 'The action failed. Try again.');
-    }).catch(function (err) {
-      setBusy(false);
-      alert('Webhook error: ' + (err && err.message ? err.message : err));
-    });
-  }
-
-  function setBusy(busy) {
-    var el = document.getElementById(EL_ID);
-    if (!el) return;
-    var btns = el.querySelectorAll('.scw-co-stage-btn');
-    for (var i = 0; i < btns.length; i++) {
-      if (busy) btns[i].setAttribute('disabled', 'disabled');
-      else btns[i].removeAttribute('disabled');
-    }
-  }
-
-  // Also retint the header pill so the optimistic flip reads everywhere.
-  function setPillText(text) {
-    var pill = document.querySelector('#' + VIEW + ' .scw-co-hdr-pill');
-    if (pill) pill.textContent = text;
-  }
-
-  function confirmThen(title, body, okLabel, fn) {
-    var ns = window.SCW && window.SCW.worksheetV2;
-    if (ns && typeof ns.confirmModal === 'function') {
-      ns.confirmModal({ title: title, body: body, okLabel: okLabel, cancelLabel: 'Cancel' })
-        .then(function (ok) { if (ok) fn(); });
-    } else if (window.confirm(body)) {
-      fn();
-    }
-  }
-
-  // ── actions ───────────────────────────────────────────────────────────
-  function sendToSub() {
-    confirmThen('Send to sub for pricing?',
-      'Send this change order to the subcontractor for pricing? Current ' +
-      'line pricing is snapshotted as the baseline, and the sub is notified.',
-      'Send to Sub',
-      function () {
-        var doc = buildRequestDoc();
-        fireWebhook('send', {
-          snapshot:    buildSnapshot(),
-          coNumber:    doc.coNumber,
-          coName:      doc.coName,
-          requestHtml: doc.html,
-          requestText: doc.text
-        }, function () {
-          _optimistic = 'Pending Sub Pricing';
-          setPillText('Pending Sub Pricing');
-          render();
+    // ── actions (ops only — the sub strip renders no buttons) ────────────
+    function sendToSub() {
+      confirmThen('Send to sub for pricing?',
+        'Send this change order to the subcontractor for pricing? Current ' +
+        'line pricing is snapshotted as the baseline, and the sub is notified.',
+        'Send to Sub',
+        function () {
+          var doc = buildRequestDoc();
+          fireWebhook('send', {
+            snapshot:    buildSnapshot(),
+            coNumber:    doc.coNumber,
+            coName:      doc.coName,
+            requestHtml: doc.html,
+            requestText: doc.text
+          }, function () {
+            _optimistic = 'Pending Sub Pricing';
+            setPillText('Pending Sub Pricing');
+            render();
+            managePoll();
+            refreshLocks();
+          });
         });
-      });
-  }
-
-  function nudgeSub() {
-    confirmThen('Nudge the sub?',
-      'Re-send the pricing request notification to the subcontractor?',
-      'Nudge sub',
-      function () {
-        fireWebhook('nudge', {
-          coNumber: readHeaderValue('field_2123'),
-          coName:   readHeaderValue('field_2126')
-        }, function () { render(); });
-      });
-  }
-
-  function sendBackToSub() {
-    var note = window.prompt(
-      'Note to the subcontractor (what needs revisiting):', '');
-    if (note === null) return;   // cancelled
-    var doc = buildRequestDoc(note);
-    fireWebhook('sendback', {
-      snapshot:    buildSnapshot(),
-      note:        note,
-      coNumber:    doc.coNumber,
-      coName:      doc.coName,
-      requestHtml: doc.html,
-      requestText: doc.text
-    }, function () {
-      _optimistic = 'Pending Sub Pricing';
-      setPillText('Pending Sub Pricing');
-      render();
-    });
-  }
-
-  // Issuing happens FROM THE PREVIEW PAGE (scene_1096) — ops reviews the
-  // client-facing document, then fires the "Issue Change Order" step that
-  // ops-stepper.js renders there in CO mode (full publish payload →
-  // MAKE_CO_ISSUE_WEBHOOK). This button just takes them there.
-  function previewIssue() {
-    var coId = getCoSowId();
-    if (!coId) { alert('Could not determine the change order record id from the URL.'); return; }
-    window.location.hash = '#proposals/proposal/' + coId + '/';
-  }
-
-  // ── waiting copy ("With the sub since ⟨date⟩ — N days") ──────────────
-  function waitingCopy() {
-    var snap = getSnapshot();
-    var sentAt = snap && snap.sentAt ? new Date(snap.sentAt) : null;
-    if (!sentAt || isNaN(+sentAt)) return 'Waiting on subcontractor pricing';
-    var days = Math.floor((Date.now() - sentAt.getTime()) / 86400000);
-    var when = sentAt.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
-    return 'With the sub since ' + when +
-      (days > 0 ? ' — ' + days + ' day' + (days === 1 ? '' : 's') : '');
-  }
-
-  // ── render ────────────────────────────────────────────────────────────
-  function stepsHtml(cur) {
-    var out = '<div class="scw-co-steps">';
-    for (var i = 0; i < STAGES.length; i++) {
-      var cls = i < cur ? ' scw-co-step--done'
-              : i === cur ? ' scw-co-step--done scw-co-step--current' : '';
-      out += '<div class="scw-co-step' + cls + '">' +
-        '<div class="scw-co-step-dot"></div>' +
-        '<div class="scw-co-step-lbl">' + esc(STAGES[i].label) + '</div>' +
-      '</div>';
     }
-    return out + '</div>';
-  }
 
-  function actionsHtml(status, cur) {
-    var s = String(status || '').toLowerCase();
-    if (cur === 0) {
-      return '<button type="button" class="scw-co-stage-btn scw-co-stage-btn--primary" ' +
-        'data-scw-co-act="send">Send to Sub</button>' +
-        '<span class="scw-co-stage-note">Sends the CO to the subcontractor to price.</span>';
+    function nudgeSub() {
+      confirmThen('Nudge the sub?',
+        'Re-send the pricing request notification to the subcontractor?',
+        'Nudge sub',
+        function () {
+          fireWebhook('nudge', {
+            coNumber: readHeaderValue('field_2123'),
+            coName:   readHeaderValue('field_2126')
+          }, function () { render(); });
+        });
     }
-    if (cur === 1) {
-      return '<span class="scw-co-stage-wait"><span class="scw-co-stage-pulse"></span>' +
-        esc(waitingCopy()) + '</span>';
-      // Nudge sub — shelved 2026-07-14 (nice-to-have; wire later). The
-      // 'nudge' handler + webhook mode:'nudge' contract stay in place:
-      // + '<button type="button" class="scw-co-stage-btn scw-co-stage-btn--secondary" '
-      // + 'data-scw-co-act="nudge">Nudge sub</button>';
-    }
-    if (cur === 2) {
-      return '<button type="button" class="scw-co-stage-btn scw-co-stage-btn--secondary" ' +
-        'data-scw-co-act="sendback">Send back to sub</button>' +
-        '<button type="button" class="scw-co-stage-btn scw-co-stage-btn--primary" ' +
-        'data-scw-co-act="preview-issue">Preview &amp; Issue &rarr;</button>' +
-        '<span class="scw-co-stage-note">Review the client-facing document, then issue from there.</span>';
-    }
-    if (cur === 3) return '<span class="scw-co-stage-note">Sent for client signature — waiting on e-sign.</span>';
-    if (cur === 4) return '<span class="scw-co-stage-note">Signed — applying changes to the install scope…</span>';
-    if (cur === 5) return '<span class="scw-co-stage-note"><b>Applied.</b> Install scope updated and invoiced.</span>';
-    if (/declined/.test(s)) return '<span class="scw-co-stage-note"><b>Declined.</b> Revise the lines and re-issue.</span>';
-    if (/void/.test(s))     return '<span class="scw-co-stage-note"><b>Void.</b></span>';
-    return '<span class="scw-co-stage-note">Status: ' + esc(status || 'unknown') + '</span>';
-  }
 
-  function render() {
-    var viewEl = document.getElementById(VIEW);
-    var form = viewEl && viewEl.querySelector('form');
-    if (!form) return;
-    injectCss();
+    function recallFromSub() {
+      confirmThen('Recall from sub?',
+        'Take this change order back from the subcontractor? Their pricing ' +
+        'window closes and they are notified. Any pricing they already ' +
+        'entered stays on the lines.',
+        'Recall from Sub',
+        function () {
+          fireWebhook('recall', {
+            coNumber: readHeaderValue('field_2123'),
+            coName:   readHeaderValue('field_2126')
+          }, function () {
+            _optimistic = 'Draft';
+            setPillText('Draft');
+            render();
+            managePoll();
+            refreshLocks();
+          });
+        });
+    }
 
-    var el = document.getElementById(EL_ID);
-    if (!el) {
-      el = document.createElement('div');
-      el.id = EL_ID;
-      el.addEventListener('click', function (e) {
-        var btn = e.target && e.target.closest && e.target.closest('[data-scw-co-act]');
-        if (!btn) return;
-        e.preventDefault();
-        var act = btn.getAttribute('data-scw-co-act');
-        if (act === 'send')          sendToSub();
-        if (act === 'nudge')         nudgeSub();
-        if (act === 'sendback')      sendBackToSub();
-        if (act === 'preview-issue') previewIssue();
+    // Unlock/relock the internal page immediately after an optimistic status
+    // flip (co-ops-lock reads status through SCW.coStage, which honors the
+    // flip), then refetch the status view so the durable value replaces it.
+    function refreshLocks() {
+      try {
+        if (SCW.coOpsLock && typeof SCW.coOpsLock.refresh === 'function') {
+          SCW.coOpsLock.refresh();
+        }
+        var v = Knack.views[STATUS_VIEW];
+        if (v && v.model && typeof v.model.fetch === 'function') v.model.fetch();
+      } catch (e) { /* next render corrects it */ }
+    }
+
+    function sendBackToSub() {
+      var note = window.prompt(
+        'Note to the subcontractor (what needs revisiting):', '');
+      if (note === null) return;   // cancelled
+      var doc = buildRequestDoc(note);
+      fireWebhook('sendback', {
+        snapshot:    buildSnapshot(),
+        note:        note,
+        coNumber:    doc.coNumber,
+        coName:      doc.coName,
+        requestHtml: doc.html,
+        requestText: doc.text
+      }, function () {
+        _optimistic = 'Pending Sub Pricing';
+        setPillText('Pending Sub Pricing');
+        render();
+        managePoll();
+        refreshLocks();
       });
     }
-    // Pin directly under the header row (co-header-card builds .scw-co-hdr
-    // on its own timer — reposition every render).
-    var hdr = form.querySelector('.scw-co-hdr');
-    if (el.parentNode !== form || (hdr && hdr.nextElementSibling !== el)) {
-      form.insertBefore(el, hdr ? hdr.nextSibling : form.firstChild);
+
+    // Issuing happens FROM THE PREVIEW PAGE (scene_1096) — ops reviews the
+    // client-facing document, then fires the "Issue Change Order" step that
+    // ops-stepper.js renders there in CO mode (full publish payload →
+    // MAKE_CO_ISSUE_WEBHOOK). This button just takes them there.
+    function previewIssue() {
+      var coId = getCoSowId();
+      if (!coId) { alert('Could not determine the change order record id from the URL.'); return; }
+      window.location.hash = '#proposals/proposal/' + coId + '/';
     }
 
-    var status = getStatus();
-    var cur = stageIndex(status);
-    var offPath = cur === -1 && /declined|void/i.test(status || '');
-    el.className = offPath ? 'scw-co-stage--offpath' : '';
-    el.innerHTML = stepsHtml(cur) +
-      '<div class="scw-co-stage-actions">' + actionsHtml(status, cur) + '</div>';
-  }
-
-  // ── status polling while the ball is in the sub's court ──────────────
-  // Only possible once the hidden STATUS_VIEW exists (forms can't refetch).
-  var _pollTimer = null;
-  function managePoll() {
-    var pending = stageIndex(getStatus()) === 1;
-    if (pending && CFG.STATUS_VIEW && !_pollTimer) {
-      _pollTimer = setInterval(function () {
-        try {
-          var v = Knack.views[CFG.STATUS_VIEW];
-          if (v && v.model && typeof v.model.fetch === 'function') {
-            v.model.fetch();   // its view-render re-triggers render() below
-          }
-        } catch (e) { /* keep polling */ }
-      }, CFG.POLL_MS);
-    } else if ((!pending || !CFG.STATUS_VIEW) && _pollTimer) {
-      clearInterval(_pollTimer);
-      _pollTimer = null;
+    // ── waiting copy ("With the sub since ⟨date⟩ — N days") ──────────────
+    function waitingCopy() {
+      var snap = getSnapshot();
+      var sentAt = snap && snap.sentAt ? new Date(snap.sentAt) : null;
+      if (!sentAt || isNaN(+sentAt)) return 'Waiting on subcontractor pricing';
+      var days = Math.floor((Date.now() - sentAt.getTime()) / 86400000);
+      var when = sentAt.toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
+      return 'With the sub since ' + when +
+        (days > 0 ? ' — ' + days + ' day' + (days === 1 ? '' : 's') : '');
     }
+
+    // ── render ────────────────────────────────────────────────────────────
+    function stepsHtml(cur) {
+      var out = '<div class="scw-co-steps">';
+      for (var i = 0; i < STAGES.length; i++) {
+        var cls = i < cur ? ' scw-co-step--done'
+                : i === cur ? ' scw-co-step--done scw-co-step--current' : '';
+        out += '<div class="scw-co-step' + cls + '">' +
+          '<div class="scw-co-step-dot"></div>' +
+          '<div class="scw-co-step-lbl">' + esc(STAGES[i].label) + '</div>' +
+        '</div>';
+      }
+      return out + '</div>';
+    }
+
+    function opsActionsHtml(status, cur) {
+      var s = String(status || '').toLowerCase();
+      if (cur === 0) {
+        return '<button type="button" class="scw-co-stage-btn scw-co-stage-btn--primary" ' +
+          'data-scw-co-act="send">Send to Sub</button>' +
+          '<span class="scw-co-stage-note">Sends the CO to the subcontractor to price.</span>';
+      }
+      if (cur === 1) {
+        // Recall = the ops escape hatch while the ball is in the sub's court —
+        // the internal page is mirror-LOCKED during Pending Sub Pricing
+        // (co-ops-lock.js) so exactly one party holds the pen; recalling
+        // closes the sub's window (Make flips status → Draft) instead of
+        // letting ops edit underneath them.
+        return '<span class="scw-co-stage-wait"><span class="scw-co-stage-pulse"></span>' +
+          esc(waitingCopy()) + '</span>' +
+          '<button type="button" class="scw-co-stage-btn scw-co-stage-btn--secondary" ' +
+          'data-scw-co-act="recall">Recall from Sub</button>' +
+          '<span class="scw-co-stage-note">Recalling closes the sub’s pricing window and unlocks editing here.</span>';
+        // Nudge sub — shelved 2026-07-14 (nice-to-have; wire later). The
+        // 'nudge' handler + webhook mode:'nudge' contract stay in place:
+        // + '<button type="button" class="scw-co-stage-btn scw-co-stage-btn--secondary" '
+        // + 'data-scw-co-act="nudge">Nudge sub</button>';
+      }
+      if (cur === 2) {
+        return '<button type="button" class="scw-co-stage-btn scw-co-stage-btn--secondary" ' +
+          'data-scw-co-act="sendback">Send back to sub</button>' +
+          '<button type="button" class="scw-co-stage-btn scw-co-stage-btn--primary" ' +
+          'data-scw-co-act="preview-issue">Preview &amp; Issue &rarr;</button>' +
+          '<span class="scw-co-stage-note">Review the client-facing document, then issue from there.</span>';
+      }
+      if (cur === 3) return '<span class="scw-co-stage-note">Sent for client signature — waiting on e-sign.</span>';
+      if (cur === 4) return '<span class="scw-co-stage-note">Signed — applying changes to the install scope…</span>';
+      if (cur === 5) return '<span class="scw-co-stage-note"><b>Applied.</b> Install scope updated and invoiced.</span>';
+      if (/declined/.test(s)) return '<span class="scw-co-stage-note"><b>Declined.</b> Revise the lines and re-issue.</span>';
+      if (/void/.test(s))     return '<span class="scw-co-stage-note"><b>Void.</b></span>';
+      return '<span class="scw-co-stage-note">Status: ' + esc(status || 'unknown') + '</span>';
+    }
+
+    // Sub-facing copy: same stepper, no verbs — the sub's only actions are
+    // editing the worksheet while their window is open (co-sub-lock handles
+    // the lock/unlock) and, later, the hand-back submit verb.
+    function subActionsHtml(status, cur) {
+      var s = String(status || '').toLowerCase();
+      if (cur === 0) {
+        return '<span class="scw-co-stage-note">SCW is drafting this change order — ' +
+          'you’ll be notified when it’s ready to price.</span>';
+      }
+      if (cur === 1) {
+        return '<span class="scw-co-stage-wait scw-co-stage-wait--open">' +
+          '<span class="scw-co-stage-pulse"></span>' +
+          'Your pricing window is open — price the items below.</span>';
+      }
+      if (cur === 2) return '<span class="scw-co-stage-note">Pricing submitted — SCW is reviewing.</span>';
+      if (cur === 3) return '<span class="scw-co-stage-note">Issued — awaiting client signature.</span>';
+      if (cur === 4) return '<span class="scw-co-stage-note">Signed — SCW is applying the changes.</span>';
+      if (cur === 5) return '<span class="scw-co-stage-note"><b>Applied.</b></span>';
+      if (/declined/.test(s)) return '<span class="scw-co-stage-note"><b>Declined</b> by the client.</span>';
+      if (/void/.test(s))     return '<span class="scw-co-stage-note"><b>Void.</b></span>';
+      return '<span class="scw-co-stage-note">Status: ' + esc(status || 'unknown') + '</span>';
+    }
+
+    function render() {
+      var viewEl = document.getElementById(VIEW);
+      var form = viewEl && viewEl.querySelector('form');
+      if (!form) return;
+      injectCss();
+
+      var el = document.getElementById(EL_ID);
+      if (!el) {
+        el = document.createElement('div');
+        el.id = EL_ID;
+        el.addEventListener('click', function (e) {
+          var btn = e.target && e.target.closest && e.target.closest('[data-scw-co-act]');
+          if (!btn) return;
+          e.preventDefault();
+          if (!IS_OPS) return;   // sub strip is display-only
+          var act = btn.getAttribute('data-scw-co-act');
+          if (act === 'send')          sendToSub();
+          if (act === 'nudge')         nudgeSub();
+          if (act === 'recall')        recallFromSub();
+          if (act === 'sendback')      sendBackToSub();
+          if (act === 'preview-issue') previewIssue();
+        });
+      }
+      // Pin directly under the header row (co-header-card builds .scw-co-hdr
+      // on its own timer — reposition every render).
+      var hdr = form.querySelector('.scw-co-hdr');
+      if (el.parentNode !== form || (hdr && hdr.nextElementSibling !== el)) {
+        form.insertBefore(el, hdr ? hdr.nextSibling : form.firstChild);
+      }
+
+      var status = getStatus();
+      var cur = stageIndex(status);
+      var offPath = cur === -1 && /declined|void/i.test(status || '');
+      el.className = offPath ? 'scw-co-stage--offpath' : '';
+      el.innerHTML = stepsHtml(cur) +
+        '<div class="scw-co-stage-actions">' +
+        (IS_OPS ? opsActionsHtml(status, cur) : subActionsHtml(status, cur)) +
+        '</div>';
+    }
+
+    // ── status polling while the ball is in the other court ──────────────
+    // Only possible once the hidden STATUS_VIEW exists (forms can't refetch).
+    // ops: polls during Pending Sub Pricing (waiting on the sub to submit).
+    // sub: polls during Draft (waiting for the window to open) AND Pending
+    //      Sub Pricing (to notice a recall closing the window) — the status
+    //      view's re-render also re-fires co-sub-lock, so the page relocks
+    //      without a manual refresh.
+    var _pollTimer = null;
+    function shouldPoll() {
+      var cur = stageIndex(getStatus());
+      return IS_OPS ? cur === 1 : (cur === 0 || cur === 1);
+    }
+    function managePoll() {
+      var pending = shouldPoll();
+      if (pending && STATUS_VIEW && !_pollTimer) {
+        _pollTimer = setInterval(function () {
+          try {
+            var v = Knack.views[STATUS_VIEW];
+            if (v && v.model && typeof v.model.fetch === 'function') {
+              v.model.fetch();   // its view-render re-triggers render() below
+            }
+          } catch (e) { /* keep polling */ }
+        }, POLL_MS);
+      } else if ((!pending || !STATUS_VIEW) && _pollTimer) {
+        clearInterval(_pollTimer);
+        _pollTimer = null;
+      }
+    }
+
+    function soon() {
+      // After co-header-card's 50ms enhance so .scw-co-hdr exists; before/after
+      // doesn't matter for correctness (we reposition), just avoids a reflow.
+      setTimeout(function () { render(); managePoll(); }, 80);
+      setTimeout(function () { render(); managePoll(); }, 600);
+    }
+
+    if (window.SCW && typeof SCW.onViewRender === 'function') {
+      SCW.onViewRender(VIEW, soon, EVENT_NS);
+      if (STATUS_VIEW) SCW.onViewRender(STATUS_VIEW, soon, EVENT_NS);
+    }
+    $(document).off('knack-view-render.' + VIEW + EVENT_NS)
+      .on('knack-view-render.' + VIEW + EVENT_NS, soon);
+
+    // Shared surface: current status (honors the optimistic flip) + the
+    // send-to-sub pricing baseline. The ops instance is SCW.coStage — read
+    // by co-ops-lock.js and the Ops-Review diff; the sub instance is
+    // SCW.coStageSub (co-sub-lock reads view_4122 directly, but the surface
+    // is there if anything needs the sub-page status).
+    window.SCW = window.SCW || {};
+    SCW[IS_OPS ? 'coStage' : 'coStageSub'] =
+      { getStatus: getStatus, getSnapshot: getSnapshot, refresh: render };
   }
 
-  function soon() {
-    // After co-header-card's 50ms enhance so .scw-co-hdr exists; before/after
-    // doesn't matter for correctness (we reposition), just avoids a reflow.
-    setTimeout(function () { render(); managePoll(); }, 80);
-    setTimeout(function () { render(); managePoll(); }, 600);
-  }
-
-  if (window.SCW && typeof SCW.onViewRender === 'function') {
-    SCW.onViewRender(VIEW, soon, EVENT_NS);
-    if (CFG.STATUS_VIEW) SCW.onViewRender(CFG.STATUS_VIEW, soon, EVENT_NS);
-  }
-  $(document).off('knack-view-render.' + VIEW + EVENT_NS)
-    .on('knack-view-render.' + VIEW + EVENT_NS, soon);
-
-  // Shared surface for the Ops-Review diff module (next piece): current
-  // status + the send-to-sub pricing baseline.
-  window.SCW = window.SCW || {};
-  SCW.coStage = { getStatus: getStatus, getSnapshot: getSnapshot, refresh: render };
+  for (var d = 0; d < DEPLOYMENTS.length; d++) setup(DEPLOYMENTS[d]);
 })();
 /*** END: CO stage strip ***************************************************/

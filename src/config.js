@@ -146,6 +146,12 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   //   mode:'sendback' → same writes as 'send' (fresh snapshot = the new
   //                     baseline ops just reviewed) + payload.note in the
   //                     notification.
+  //   mode:'recall'   → take the CO back mid-window: set CO Status = "Draft",
+  //                     notify the sub their pricing window closed, update
+  //                     both ClickUp task statuses. No snapshot write — any
+  //                     pricing the sub already entered stays on the lines.
+  //                     (Status stays Make-written — the client never PUTs
+  //                     field_2953 directly; one writer per status.)
   //   ClickUp (send + sendback): update BOTH tasks' statuses — the
   //   subcontractor's task and our internal one — and post
   //   payload.requestText (or requestHtml where the surface renders HTML)

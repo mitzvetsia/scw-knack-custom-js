@@ -1,54 +1,53 @@
-/*** CO SUB LOCK — sub portal "Manage Change Order" page (scene_1374) *******
+/*** CO OPS LOCK — internal "Build Change Order" page (scene_1362) **********
  *
- * "Everything on this page is locked UNLESS the CO status is Sub Pricing."
- * (docs/change-orders.md edit-window table: Pending Sub Pricing = the sub's
- * window; every other status the sub is read-only.)
+ * The other half of the mirror lock (co-sub-lock.js is the sub side):
+ * while the CO sits in Pending Sub Pricing the ball is in the SUB'S court,
+ * so the internal drafting page locks — exactly one party holds the pen at
+ * a time (docs/change-orders.md edit-window table). Ops' escape hatch is
+ * the stage strip's [Recall from Sub] button, which stays live inside the
+ * otherwise-locked header form: Make flips status → Draft, the sub's
+ * window closes, and this lock releases.
  *
- * The page mirrors the internal CO drafting scene (scene_1362) 1:1 —
- * worksheet-v2 + the CO modules are deployed on its analogous views:
- *   view_4121 — CO header form (co-header-card + co-value strip)
- *   view_4112 — CO worksheet (v2 cards — the write surface)
- *   view_4114 — Manage MDFs/IDFs (mdf-idf-cards inputs, delete, photos)
- *   view_4116 — project install items (v2 remove panel, co-remove.js)
- *   view_4118 — project SOW/proposal items (v2 adopt panel, co-adopt.js)
- *   view_4122 — SOW header details (CO Status field_2953 — the status READ)
- *
- * When CO Status (field_2953) does NOT match /sub pricing/i (blank/unknown
- * fails safe to LOCKED):
- *   - a lock banner renders at the top of the scene with the current status
- *   - the v2 CO worksheet flips to read-only (the same .scw-ws-v2--readonly
- *     treatment the adopt panel uses) and its toolbar hides
- *   - the add/adopt/remove strips block hides entirely (no drafting verbs)
- *   - all native inline cell editing is dead (pointer-events + capture-phase
- *     click belt), delete / edit / add-accessory / add-photo links hidden
+ * Locked (status matches /pending sub pricing/i):
+ *   - a lock banner renders at the top of the scene
+ *   - the v2 CO worksheet flips read-only (.scw-ws-v2--readonly) and its
+ *     toolbar hides; the add/adopt/remove strips block hides entirely
+ *   - native inline cell editing dies, delete / link columns hide
  *   - the header form's inputs go white-bg read-only (repo locked-field
- *     convention) and its Submit hides
+ *     convention) and its Submit hides — but the stage strip's action
+ *     buttons ([Recall from Sub]) keep working
  *   - MDF/IDF card inputs lock, their delete / add-photo affordances hide
  *
- * Applies to EVERYONE on this scene — it's the sub's page; ops manage the
- * CO from the internal drafting scene. Re-applied on scene + view renders
- * (Knack re-renders rebuild the DOM).
+ * Unlike the sub side, blank/unknown status FAILS OPEN here — this is ops'
+ * own drafting page, and a slow status-view load must not brick Draft
+ * editing. (The sub page fails safe LOCKED; at worst both pages are briefly
+ * editable during a status read, and Make remains the only status writer.)
+ *
+ * Status read prefers SCW.coStage.getStatus() so the stage strip's
+ * OPTIMISTIC flips (send → Pending, recall → Draft) lock/unlock this page
+ * instantly, before the status view refetch lands. The strip calls
+ * SCW.coOpsLock.refresh() right after each flip.
  ***************************************************************************/
 (function () {
   'use strict';
 
   var CFG = {
-    SCENE:        'scene_1374',
-    HDR_FORM:     'view_4121',
-    STATUS_VIEW:  'view_4122',   // details view carrying CO Status
+    SCENE:        'scene_1362',
+    HDR_FORM:     'view_4092',
+    STATUS_VIEW:  'view_4109',   // hidden details view carrying CO Status
     STATUS_FIELD: 'field_2953',
-    GRIDS:        ['view_4112', 'view_4114', 'view_4116', 'view_4118'],
-    // worksheet-v2 surfaces on this scene (mirror of the internal CO scene):
-    V2_CO_VIEW:   'view_4112',   // the v2 CO worksheet panel → read-only
-    V2_HIDE:      ['view_4118', 'view_4116'],   // adopt + remove panels → hidden
-    STRIPS_WRAP:  'scw-co-strips-view_4112',    // co-scene-header strips block
-    OPEN_RE:      /sub pricing/i   // matches "Pending Sub Pricing"
+    GRIDS:        ['view_4079', 'view_4084', 'view_4086', 'view_4088'],
+    // worksheet-v2 surfaces on this scene:
+    V2_CO_VIEW:   'view_4079',   // the v2 CO worksheet panel → read-only
+    V2_HIDE:      ['view_4088', 'view_4086'],   // adopt + remove panels → hidden
+    STRIPS_WRAP:  'scw-co-strips-view_4079',    // co-scene-header strips block
+    LOCKED_RE:    /pending sub pricing/i   // locked WHILE the sub prices
   };
 
-  var STYLE_ID  = 'scw-co-sub-lock-css';
-  var BANNER_ID = 'scw-co-sub-lock-banner';
-  var LOCK_CLS  = 'scw-co-sub-locked';
-  var EVENT_NS  = '.scwCoSubLock';
+  var STYLE_ID  = 'scw-co-ops-lock-css';
+  var BANNER_ID = 'scw-co-ops-lock-banner';
+  var LOCK_CLS  = 'scw-co-ops-locked';
+  var EVENT_NS  = '.scwCoOpsLock';
 
   function sceneRoot() { return document.getElementById('kn-' + CFG.SCENE); }
 
@@ -57,7 +56,15 @@
   }
 
   function getStatus() {
-    // Model first (details view → model.attributes).
+    // The stage strip's read honors its optimistic post-webhook flips —
+    // prefer it so send/recall lock/unlock this page without waiting for
+    // the status view refetch.
+    try {
+      if (window.SCW && SCW.coStage && typeof SCW.coStage.getStatus === 'function') {
+        var s0 = stripHtml(SCW.coStage.getStatus());
+        if (s0) return s0;
+      }
+    } catch (e) { /* fall through */ }
     try {
       var v = Knack.views[CFG.STATUS_VIEW];
       if (v && v.model && v.model.attributes) {
@@ -65,21 +72,9 @@
         if (s) return s;
       }
     } catch (e) { /* fall through */ }
-    // DOM: the details view's status row.
     var el = document.querySelector(
       '#' + CFG.STATUS_VIEW + ' .kn-detail.' + CFG.STATUS_FIELD + ' .kn-detail-body');
     if (el && stripHtml(el.textContent)) return stripHtml(el.textContent);
-    // Last resort: the header form's read-only status input block.
-    var wrap = document.querySelector(
-      '#' + CFG.HDR_FORM + ' #kn-input-' + CFG.STATUS_FIELD);
-    if (wrap) {
-      var clone = wrap.cloneNode(true);
-      var junk = clone.querySelectorAll('label, p.kn-instructions');
-      for (var i = 0; i < junk.length; i++) {
-        if (junk[i].parentNode) junk[i].parentNode.removeChild(junk[i]);
-      }
-      return stripHtml(clone.textContent);
-    }
     return '';
   }
 
@@ -95,7 +90,9 @@
       // edit / add-accessory / add-photo link columns (their headers stay —
       // hiding <th> would shift the column grid under Knack's fixed labels)
       S + ' td.kn-table-link{visibility:hidden !important;}',
-      // ── CO header form: readable, not editable (repo locked-field rule) ──
+      // ── CO header form: readable, not editable (repo locked-field rule).
+      // The stage strip's buttons live in this form too — they are
+      // <button>s, not inputs, so they stay live (Recall from Sub).
       S + ' #' + CFG.HDR_FORM + ' input,',
       S + ' #' + CFG.HDR_FORM + ' textarea{',
       'pointer-events:none !important;background:#fff !important;}',
@@ -107,26 +104,25 @@
       S + ' .scw-mdf-photos,',
       S + ' .scw-inline-photo-add{display:none !important;}',
       S + ' .scw-inline-photo-strip{pointer-events:none !important;}',
-      // ── worksheet-v2 surfaces (mirror of the internal drafting scene) ──
-      // No drafting verbs while locked: the add/adopt/remove strips block
-      // hides whole, and the CO worksheet's toolbar (bulk CTAs, add) goes.
-      // The worksheet itself stays READABLE — apply() stamps it with the
-      // same .scw-ws-v2--readonly class styles.js already knows.
+      // ── worksheet-v2 surfaces ──
+      // No drafting verbs while the sub holds the pen: strips block hides
+      // whole, adopt/remove panels hide, the CO worksheet's toolbar goes.
+      // The worksheet stays READABLE — apply() stamps .scw-ws-v2--readonly.
       'body.' + LOCK_CLS + ' #' + CFG.STRIPS_WRAP + '{display:none !important;}',
       'body.' + LOCK_CLS + ' #scw-ws-v2-' + CFG.V2_HIDE[0] + ',',
       'body.' + LOCK_CLS + ' #scw-ws-v2-' + CFG.V2_HIDE[1] + '{display:none !important;}',
       'body.' + LOCK_CLS + ' #scw-ws-v2-' + CFG.V2_CO_VIEW + ' .scw-ws-v2-toolbar{display:none !important;}',
-      // ── lock banner ──
+      // ── lock banner (amber — "with the sub", not an error) ──
       '#' + BANNER_ID + '{display:flex;align-items:center;gap:10px;',
       'margin:0 0 14px;padding:11px 16px;border-radius:8px;',
-      'background:#f1f5f9;border:1px solid #cbd5e1;box-shadow:inset 4px 0 0 #64748b;',
-      'font:600 13px/1.45 system-ui,-apple-system,sans-serif;color:#334155;}',
-      '#' + BANNER_ID + ' b{color:#0f172a;}'
+      'background:#fffbeb;border:1px solid #fde68a;box-shadow:inset 4px 0 0 #f59e0b;',
+      'font:600 13px/1.45 system-ui,-apple-system,sans-serif;color:#78350f;}',
+      '#' + BANNER_ID + ' b{color:#451a03;}'
     ].join('');
     document.head.appendChild(s);
   }
 
-  function renderBanner(locked, status) {
+  function renderBanner(locked) {
     var banner = document.getElementById(BANNER_ID);
     if (!locked) {
       if (banner && banner.parentNode) banner.parentNode.removeChild(banner);
@@ -139,9 +135,9 @@
       banner.id = BANNER_ID;
       root.insertBefore(banner, root.firstChild);
     }
-    banner.innerHTML = '🔒 <span>This change order is <b>locked</b>' +
-      (status ? ' — status: <b>' + stripHtml(status) + '</b>' : '') +
-      '. Editing opens when it returns to <b>Sub Pricing</b>.</span>';
+    banner.innerHTML = '✉️ <span>With the <b>subcontractor for pricing</b> — ' +
+      'editing is locked while they work. Use <b>Recall from Sub</b> below ' +
+      'to close their window and take it back.</span>';
   }
 
   // Keyboard/tab belt on top of the pointer-events CSS — inputs are rebuilt
@@ -151,9 +147,6 @@
     if (!root) return;
     var sel = '#' + CFG.HDR_FORM + ' input, #' + CFG.HDR_FORM + ' textarea, ' +
       '.scw-mdf-input, ' +
-      // v2 CO worksheet card inputs — pointer path dies via the readonly
-      // class; this is the keyboard tab-and-type belt (same as co-adopt.js
-      // does for the adopt panel).
       '#scw-ws-v2-' + CFG.V2_CO_VIEW + ' input, ' +
       '#scw-ws-v2-' + CFG.V2_CO_VIEW + ' textarea, ' +
       '#scw-ws-v2-' + CFG.V2_CO_VIEW + ' select';
@@ -173,15 +166,9 @@
 
   var _locked = false;
 
-  // Flip the v2 CO worksheet between live and read-only by stamping the
-  // mounted panel with the .scw-ws-v2--readonly class styles.js already
-  // handles. Re-stamped on every apply() pass + v2 data notify, so rebuilds
-  // can't lose it. Deliberately does NOT flip the config entry's readOnly:
-  // apply() fails safe to LOCKED while the status view is still loading, and
-  // if the v2 panel happens to BUILD in that window a readOnly config would
-  // make init.js skip the toolbar/sort/bulk mounts permanently — the panel
-  // then unlocks with no toolbar (the missing-add/toolbar race). CSS covers
-  // everything the locked state needs; the config stays untouched.
+  // Class-stamp ONLY — never flip the config entry's readOnly (that skips
+  // the toolbar/sort/bulk mounts permanently if the panel builds while
+  // locked; see the co-sub-lock.js note on the missing-toolbar race).
   function lockV2Worksheet(locked) {
     var panel = document.getElementById('scw-ws-v2-' + CFG.V2_CO_VIEW);
     if (panel) panel.classList.toggle('scw-ws-v2--readonly', locked);
@@ -195,17 +182,19 @@
     }
     injectCss();
     var status = getStatus();
-    _locked = !CFG.OPEN_RE.test(status);   // blank/unknown → locked
+    _locked = CFG.LOCKED_RE.test(status);   // blank/unknown → UNLOCKED (ops' page)
     document.body.classList.toggle(LOCK_CLS, _locked);
-    renderBanner(_locked, status);
+    renderBanner(_locked);
     lockV2Worksheet(_locked);
     lockInputs(_locked);
   }
 
   // Capture-phase belt: block anything the CSS might miss (Enter-key form
-  // submits, programmatic focus clicks). Bound once, document-level.
-  if (!document.__scwCoSubLockBound) {
-    document.__scwCoSubLockBound = true;
+  // submits, programmatic focus clicks). Bound once, document-level. The
+  // stage strip's [data-scw-co-act] buttons are deliberately NOT in the
+  // hit list — Recall must work while locked.
+  if (!document.__scwCoOpsLockBound) {
+    document.__scwCoOpsLockBound = true;
     document.addEventListener('click', function (e) {
       if (!_locked) return;
       var t = e.target;
@@ -251,5 +240,11 @@
   }
   $(document).off('knack-scene-render.' + CFG.SCENE + EVENT_NS)
     .on('knack-scene-render.' + CFG.SCENE + EVENT_NS, soon);
+
+  // The stage strip calls this right after an optimistic status flip
+  // (send → lock now; recall → unlock now) instead of waiting for the
+  // status-view refetch.
+  window.SCW = window.SCW || {};
+  SCW.coOpsLock = { refresh: apply };
 })();
-/*** END: CO sub lock *******************************************************/
+/*** END: CO ops lock *******************************************************/
