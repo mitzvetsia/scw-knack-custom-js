@@ -1561,8 +1561,10 @@
           if (!a.id) continue;
           var nameRaw   = a[F.name + '_raw'];
           var nameIsObj = !!(nameRaw && typeof nameRaw === 'object');
+          var first = nameIsObj ? String(nameRaw.first || '').trim() : '';
+          var last  = nameIsObj ? String(nameRaw.last  || '').trim() : '';
           var name = nameIsObj
-            ? [nameRaw.title, nameRaw.first, nameRaw.middle, nameRaw.last]
+            ? [nameRaw.title, first, nameRaw.middle, last]
                 .filter(Boolean).join(' ').replace(/\s+/g, ' ').trim()
             : stripHtml(nameRaw != null ? nameRaw : a[F.name]);
           var phoneRaw = a[F.phone + '_raw'];
@@ -1574,7 +1576,9 @@
             ? String(emailRaw.email || '').trim()
             : stripHtml(emailRaw != null ? emailRaw : a[F.email]);
           options.push({
-            id: a.id, name: name, phone: phone, email: email, nameIsObj: nameIsObj,
+            id: a.id, name: name, phone: phone, email: email,
+            nameIsObj: nameIsObj, first: first, last: last,
+            nameRawObj: nameIsObj ? nameRaw : null,
             label: [name, phone, email].filter(Boolean).join(' — ').slice(0, 140) || a.id
           });
         }
@@ -1594,7 +1598,8 @@
           var nm = cellText(F.name), ph2 = cellText(F.phone), em = cellText(F.email);
           if (!nm && !ph2 && !em) continue;
           options.push({
-            id: r.id, name: nm, phone: ph2, email: em, nameIsObj: false,
+            id: r.id, name: nm, phone: ph2, email: em,
+            nameIsObj: false, first: '', last: '', nameRawObj: null,
             label: [nm, ph2, em].filter(Boolean).join(' — ').slice(0, 140)
           });
         }
@@ -1623,11 +1628,15 @@
       });
       wrap.appendChild(sel);
 
-      // Editable Name / Email / Phone — revealed once a contact is chosen.
+      // Editable contact fields — revealed once a contact is chosen. A
+      // Knack person-name field gets separate First / Last inputs (its
+      // stored shape), a plain-text name field gets a single Name input —
+      // no string-splitting heuristics either way.
       var fieldsWrap = document.createElement('div');
       fieldsWrap.className = 'scw-ops-modal-rcp-fields';
-      var inputs = {};
-      [['name', 'Name', 'text'], ['email', 'Email', 'email'], ['phone', 'Phone', 'tel']]
+      var inputs = {}, rowEls = {};
+      [['name', 'Name', 'text'], ['first', 'First', 'text'], ['last', 'Last', 'text'],
+       ['email', 'Email', 'email'], ['phone', 'Phone', 'tel']]
         .forEach(function (def) {
           var row = document.createElement('div');
           row.className = 'scw-ops-modal-rcp-row';
@@ -1639,6 +1648,7 @@
           row.appendChild(inp);
           fieldsWrap.appendChild(row);
           inputs[def[0]] = inp;
+          rowEls[def[0]] = row;
         });
       var hint = document.createElement('div');
       hint.className = 'scw-ops-modal-rcp-hint';
@@ -1653,7 +1663,12 @@
           if (options[i].id === sel.value) { current = options[i]; break; }
         }
         if (current) {
+          rowEls.name.style.display  = current.nameIsObj ? 'none' : '';
+          rowEls.first.style.display = current.nameIsObj ? '' : 'none';
+          rowEls.last.style.display  = current.nameIsObj ? '' : 'none';
           inputs.name.value  = current.name  || '';
+          inputs.first.value = current.first || '';
+          inputs.last.value  = current.last  || '';
           inputs.email.value = current.email || '';
           inputs.phone.value = current.phone || '';
           fieldsWrap.style.display = 'block';
@@ -1667,9 +1682,12 @@
         required: !!config.required,
         getValue: function () {
           if (!current) return null;
+          var name = current.nameIsObj
+            ? ((inputs.first.value || '').trim() + ' ' + (inputs.last.value || '').trim()).trim()
+            : (inputs.name.value || '').trim();
           return {
             id:    current.id,
-            name:  (inputs.name.value  || '').trim(),
+            name:  name,
             email: (inputs.email.value || '').trim(),
             phone: (inputs.phone.value || '').trim(),
             label: current.label
@@ -1682,19 +1700,22 @@
         saveEdits: function () {
           if (!current || !window.SCW || !SCW.knackAjax) return;
           var data = {};
-          var nm = (inputs.name.value  || '').trim();
           var em = (inputs.email.value || '').trim();
           var pn = (inputs.phone.value || '').trim();
-          if (nm && nm !== current.name) {
-            if (current.nameIsObj) {
-              // Person-name field — Knack wants {first, last}.
-              var sp = nm.indexOf(' ');
-              data[F.name] = sp === -1
-                ? { first: nm, last: '' }
-                : { first: nm.slice(0, sp), last: nm.slice(sp + 1) };
-            } else {
-              data[F.name] = nm;
+          if (current.nameIsObj) {
+            // Person-name field — separate First/Last inputs write straight
+            // into Knack's {first, last} shape; keep any stored title/middle.
+            var f1 = (inputs.first.value || '').trim();
+            var l1 = (inputs.last.value  || '').trim();
+            if ((f1 !== current.first || l1 !== current.last) && (f1 || l1)) {
+              var nameObj = { first: f1, last: l1 };
+              if (current.nameRawObj && current.nameRawObj.title)  nameObj.title  = current.nameRawObj.title;
+              if (current.nameRawObj && current.nameRawObj.middle) nameObj.middle = current.nameRawObj.middle;
+              data[F.name] = nameObj;
             }
+          } else {
+            var nm = (inputs.name.value || '').trim();
+            if (nm && nm !== current.name) data[F.name] = nm;
           }
           if (em !== current.email) data[F.email] = em;
           if (pn !== current.phone) data[F.phone] = pn;
