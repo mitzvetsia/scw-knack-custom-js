@@ -47,6 +47,32 @@
     { key: F.surveyNotes, label: 'Survey notes' }
   ];
 
+  // ── Delete gating ───────────────────────────────────────────
+  // Per-view: the location delete only works while the SOW has NO associated
+  // ClickUp task. view_3602 (sales build page, scene_1116): the workflow's
+  // Initiate step creates the CU task and its link renders in the view_3491
+  // details — from that point ops is working off these locations, so the
+  // trash renders inert (grayed + tooltip) instead of deleting. Detection is
+  // DOM-based (any clickup.com anchor inside cuLinkView — the same read
+  // co-header-card.js uses), so no field key is needed; an empty link field
+  // renders no anchor and the delete stays available. scanAll() re-runs on
+  // every view render, so the gate re-evaluates when view_3491 populates
+  // late or refreshes after Initiate.
+  var DELETE_GATE = {
+    'view_3602': {
+      cuLinkView: 'view_3491',
+      title: 'This SOW already has a ClickUp task — locations can’t be ' +
+             'deleted once work is initiated.'
+    }
+  };
+  function deleteGateActive(viewKey) {
+    var gate = DELETE_GATE[viewKey];
+    if (!gate) return null;
+    var root = document.getElementById(gate.cuLinkView);
+    if (!root) return null;   // gate view absent → fail open (delete allowed)
+    return root.querySelector('a[href*="clickup.com"]') ? gate : null;
+  }
+
   // ── model / cell reads ──────────────────────────────────────
   function viewModels(viewKey) {
     try {
@@ -111,7 +137,7 @@
 
   // Photos + delete aside — reuse the row's native Knack links so behaviour
   // (photo-edit page nav, Vue delete confirm) is preserved verbatim.
-  function buildAside(tr) {
+  function buildAside(viewKey, tr) {
     var aside = document.createElement('div');
     aside.className = 'scw-mdf-card__aside';
 
@@ -140,15 +166,25 @@
 
     var delLink = tr.querySelector('a.kn-link-delete');
     if (delLink) {
+      var gate = deleteGateActive(viewKey);
       var del = document.createElement('button');
       del.type = 'button';
-      del.className = 'scw-mdf-del';
-      del.setAttribute('title', 'Delete location');
+      del.className = 'scw-mdf-del' + (gate ? ' scw-mdf-del--gated' : '');
+      del.setAttribute('title', gate ? gate.title : 'Delete location');
       del.innerHTML = iconSvg('trash');
-      del.addEventListener('click', function (e) {
-        e.preventDefault(); e.stopPropagation();
-        delLink.click();
-      });
+      if (gate) {
+        // Not the `disabled` attribute — disabled buttons swallow pointer
+        // events and the explanatory tooltip never shows.
+        del.setAttribute('aria-disabled', 'true');
+        del.addEventListener('click', function (e) {
+          e.preventDefault(); e.stopPropagation();
+        });
+      } else {
+        del.addEventListener('click', function (e) {
+          e.preventDefault(); e.stopPropagation();
+          delLink.click();
+        });
+      }
       aside.appendChild(del);
     }
     return aside;
@@ -197,7 +233,7 @@
     var row1 = document.createElement('div');
     row1.className = 'scw-mdf-card__row1';
     row1.innerHTML = badge + '<div class="scw-mdf-card__namewrap">' + nameField + '</div>';
-    row1.appendChild(buildAside(tr));
+    row1.appendChild(buildAside(viewKey, tr));
     card.appendChild(row1);
 
     var noteBits = [];
@@ -351,6 +387,10 @@
     if (ae && ae.classList && ae.classList.contains('scw-mdf-input') && view.contains(ae)) return;
 
     var container = ensureChrome(view, wrapper);
+    // Delete gate also covers the raw-table fallback ("Table view" toggle):
+    // the native delete link hides while the gate is active, so the toggle
+    // can't be used to bypass it.
+    view.classList.toggle('scw-mdf-delgated', !!deleteGateActive(viewKey));
     var rows = table.querySelectorAll('tbody tr[id]');
     var typeOptions = typeOptionsFactory(rows);
 
@@ -454,6 +494,10 @@
       '.scw-mdf-del { display: inline-flex; align-items: center; justify-content: center; width: 30px; height: 30px;',
       '  border: 1px solid #fecaca; border-radius: 6px; background: #fff; color: #b91c1c; cursor: pointer; }',
       '.scw-mdf-del:hover { background: #fef2f2; }',
+      /* Gated delete (SOW has a ClickUp task) — inert gray, tooltip explains */
+      '.scw-mdf-del--gated { border-color: #e2e8f0; color: #cbd5e1; cursor: not-allowed; }',
+      '.scw-mdf-del--gated:hover { background: #fff; }',
+      '.scw-mdf-delgated .kn-table-wrapper a.kn-link-delete { display: none !important; }',
 
       /* Photo strip injected by inline-photo-row.js (SCW.inlinePhotoRow.refresh).
          Full-width row beneath the card body, separated like row2. The strip

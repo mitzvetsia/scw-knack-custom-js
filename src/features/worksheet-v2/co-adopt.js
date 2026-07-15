@@ -211,6 +211,30 @@
       '  grid-column: 4 / 10 !important;',
       '}',
 
+      // ── Labor-only variant (sub CO page, view_4118) ─────────────────────
+      // The labor cards render NO +Hrs/+Mat/Fee cells (card.js laborOnly),
+      // so the adopt grid closes those tracks up: check · chevron · label ·
+      // product/desc · qty · subBid · sow · warn · action. Doubled class /
+      // extra ancestor keeps these above the base adopt rules (0,4,0).
+      '.scw-ws-v2--readonly .scw-ws-v2-card--labor .scw-ws-v2-row[data-scw-co-adopt-row],',
+      '.scw-ws-v2--readonly .scw-ws-v2-col-header.scw-ws-v2-col-header--labor[data-scw-co-adopt-hdr] {',
+      '  grid-template-columns:',
+      '    24px                  /* select checkbox */',
+      '    20px                  /* chevron */',
+      '    88px                  /* label / drop */',
+      '    minmax(220px, 3fr)    /* product + stacked description */',
+      '    72px                  /* qty / chips */',
+      '    88px                  /* subBid */',
+      '    72px                  /* sow */',
+      '    28px                  /* warning */',
+      '    96px                  /* adopt action */ !important;',
+      '}',
+      // Labor assumptions re-pin: desc spans product → subBid (4/7); sow
+      // keeps track 7, warn 8, action 9.
+      '.scw-ws-v2--readonly .scw-ws-v2-card--labor .scw-ws-v2-row--assumptions[data-scw-co-adopt-row] > .scw-ws-v2-cell--labor-desc {',
+      '  grid-column: 4 / 7 !important;',
+      '}',
+
       // Empty money cells (no Sub Bid / +Hrs / +Mat value): the borderless
       // read-only input is invisible, which left orphan "$" glyphs and a
       // strange dead zone. Hide the glyph/input/total and show a faint

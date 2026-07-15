@@ -280,6 +280,34 @@
     '  border-color: transparent !important;',
     '}',
     '.scw-ws-v2-cell--labor-na .scw-ws-v2-currency-glyph { color: #cbd5e1 !important; }',
+    /* Labor-only money model (config laborOnly — the sub CO page, view_4112).
+       Same shape as the build-SOW grid but with a single money column: the
+       +Hrs / +Mat / Fee tracks are REMOVED (card.js renders no cells for
+       them), so product/description reclaim the space instead of the row
+       carrying dead blanks. No SOW track either — the CO worksheet hides SOW
+       (the adopt panel view_4118 shows it, but co-adopt.js restructures those
+       rows onto its own attribute-guarded template with a sow track).
+       Doubled header class for the same specificity reason as sales above. */
+    '.scw-ws-v2-card--labor .scw-ws-v2-row--default,',
+    '.scw-ws-v2-card--labor .scw-ws-v2-row--cam,',
+    '.scw-ws-v2-card--labor .scw-ws-v2-row--services,',
+    '.scw-ws-v2-card--labor .scw-ws-v2-row--assumptions,',
+    '.scw-ws-v2-col-header.scw-ws-v2-col-header--labor {',
+    '  grid-template-columns:',
+    '    20px                  /* chevron */',
+    '    88px                  /* label / drop */',
+    '    minmax(180px, 1.5fr)  /* product */',
+    '    minmax(200px, 2fr)    /* labor desc (wider — reclaimed money space) */',
+    '    72px                  /* qty / chips */',
+    '    88px                  /* subBid (roomier than the build-SOW 78px) */',
+    '    28px                  /* warning */',
+    '    28px                  /* kebab */ !important;',
+    '}',
+    /* Labor assumptions: the desc spans product → subBid (base rule spans
+       3/10 against the 12-track grid, which overflows this 8-track one). */
+    '.scw-ws-v2-card--labor .scw-ws-v2-row--assumptions > .scw-ws-v2-cell--labor-desc {',
+    '  grid-column: 3 / 7 !important;',
+    '}',
     /* Install money model (moneyMode:"install", view_4093). No money cells at
        all — header is chevron · label · product · flag chits (RO, show-when-
        true) · SCW Notes (editable) · warn · trash. 7-track grid (replaces the

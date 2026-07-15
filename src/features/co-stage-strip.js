@@ -355,6 +355,17 @@
       }
       var totBid = tAdd.bid + tRm.bid;
 
+      // Bucket by MDF/IDF location (first-seen order) — shared by the HTML
+      // table (location header rows) and the plaintext groups, so both read
+      // in the same order as the worksheet and a group can't split when the
+      // model order interleaves locations.
+      var locOrder = [], locMap = {};
+      for (var g = 0; g < entries.length; g++) {
+        var locKey = entries[g].loc || 'No location';
+        if (!locMap[locKey]) { locMap[locKey] = []; locOrder.push(locKey); }
+        locMap[locKey].push(entries[g]);
+      }
+
       var title = (titleBase || 'Change Order Pricing Request') +
         (coNumber ? ' — ' + coNumber : '') + (coName ? ' · ' + coName : '');
       var sentLine = 'Sent by ' + (who.name || who.email || 'SCW') + ' · ' +
@@ -371,31 +382,42 @@
       var NUM_TD = 'padding:8px 10px;border-bottom:1px solid #eef2f7;' +
         'text-align:right;white-space:nowrap;vertical-align:top;';
       var htmlRows = [];
-      for (var h = 0; h < entries.length; h++) {
-        var en = entries[h];
-        var tint = en.isRm ? '#fff1f2' : '#f0fdf4';
-        var bar  = en.isRm ? '#e11d48' : '#059669';
+      for (var lg = 0; lg < locOrder.length; lg++) {
+        // MDF/IDF location header band — same grouping/order as the
+        // worksheet, so the priced quote reads like the drafting surface.
         htmlRows.push(
-          '<tr style="background:' + tint + ';">' +
-          '<td style="padding:8px 10px;border-bottom:1px solid #eef2f7;' +
-            'box-shadow:inset 3px 0 0 ' + bar + ';font-weight:700;color:' +
-            (en.isRm ? '#9f1239' : '#065f46') + ';white-space:nowrap;' +
-            'vertical-align:top;">' +
-            (en.isRm ? 'REMOVE' : 'ADD') + '</td>' +
-          '<td style="padding:8px 10px;border-bottom:1px solid #eef2f7;' +
-            'vertical-align:top;line-height:1.45;">' +
-            '<span style="font-weight:600;">' + esc(en.item) + '</span>' +
-            (en.drop || en.loc
-              ? '<br><span style="color:#64748b;font-size:11px;">' +
-                esc([en.drop, en.loc].filter(Boolean).join(' · ')) + '</span>'
-              : '') +
-            (en.desc
-              ? '<div style="color:#475569;font-size:11px;margin-top:3px;">' +
-                esc(en.desc) + '</div>'
-              : '') + '</td>' +
-          '<td style="' + NUM_TD + '">' + en.qty + '</td>' +
-          '<td style="' + NUM_TD + '">' + esc(money(en.bid)) + '</td>' +
-          '</tr>');
+          '<tr><td colspan="4" style="background:#e8eef7;color:#163C6E;' +
+          'font-weight:800;font-size:11px;letter-spacing:.05em;' +
+          'text-transform:uppercase;padding:6px 10px;' +
+          'border-bottom:1px solid #dbe4ee;">' + esc(locOrder[lg]) + '</td></tr>');
+        var grp = locMap[locOrder[lg]];
+        for (var h = 0; h < grp.length; h++) {
+          var en = grp[h];
+          var tint = en.isRm ? '#fff1f2' : '#f0fdf4';
+          var bar  = en.isRm ? '#e11d48' : '#059669';
+          htmlRows.push(
+            '<tr style="background:' + tint + ';">' +
+            '<td style="padding:8px 10px;border-bottom:1px solid #eef2f7;' +
+              'box-shadow:inset 3px 0 0 ' + bar + ';font-weight:700;color:' +
+              (en.isRm ? '#9f1239' : '#065f46') + ';white-space:nowrap;' +
+              'vertical-align:top;">' +
+              (en.isRm ? 'REMOVE' : 'ADD') + '</td>' +
+            '<td style="padding:8px 10px;border-bottom:1px solid #eef2f7;' +
+              'vertical-align:top;line-height:1.45;">' +
+              '<span style="font-weight:600;">' + esc(en.item) + '</span>' +
+              // Location moved to the group header — only the drop rides here.
+              (en.drop
+                ? '<br><span style="color:#64748b;font-size:11px;">' +
+                  esc(en.drop) + '</span>'
+                : '') +
+              (en.desc
+                ? '<div style="color:#475569;font-size:11px;margin-top:3px;">' +
+                  esc(en.desc) + '</div>'
+                : '') + '</td>' +
+            '<td style="' + NUM_TD + '">' + en.qty + '</td>' +
+            '<td style="' + NUM_TD + '">' + esc(money(en.bid)) + '</td>' +
+            '</tr>');
+        }
       }
       // Totals: adds/removals breakdown only when both exist, then the total.
       function footRow(label, bid, isNet) {
@@ -442,14 +464,7 @@
       // run-on line per item.
       var tx = [title, sentLine + ' · ' + countLine];
       if (note) tx.push('Note: ' + note);
-      // Bucket by location (first-seen order) so a group can't split when the
-      // model order interleaves locations.
-      var locOrder = [], locMap = {};
-      for (var g = 0; g < entries.length; g++) {
-        var locKey = entries[g].loc || 'No location';
-        if (!locMap[locKey]) { locMap[locKey] = []; locOrder.push(locKey); }
-        locMap[locKey].push(entries[g]);
-      }
+      // Same location buckets as the HTML table above.
       for (var lo = 0; lo < locOrder.length; lo++) {
         tx.push('');
         tx.push('== ' + locOrder[lo] + ' ==');

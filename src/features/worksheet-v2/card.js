@@ -526,12 +526,10 @@
     }
     if (isLaborOnly(viewKey)) {
       // Sub CO page: Sub Bid is the sub's ONLY money. +Hrs/+Mat (SCW-side
-      // adders) and Fee (client install price) render as blank cells so the
-      // grid template holds without leaking numbers.
-      return stackCell(rec, viewKey, 'field_2150', readNum(rec, 'field_2150'), readField(rec, 'field_2151'), 'Sub Bid') +
-             empty('scw-ws-v2-cell--stack') +
-             empty('scw-ws-v2-cell--stack') +
-             empty('scw-ws-v2-cell--fee');
+      // adders) and Fee (client install price) don't render at all — the
+      // labor grid (.scw-ws-v2-card--labor, styles.js) drops those tracks
+      // entirely so the row closes up instead of holding blank space.
+      return stackCell(rec, viewKey, 'field_2150', readNum(rec, 'field_2150'), readField(rec, 'field_2151'), 'Sub Bid');
     }
     return stackCell(rec, viewKey, 'field_2150', readNum(rec, 'field_2150'), readField(rec, 'field_2151'), 'Sub Bid') +
            stackCell(rec, viewKey, 'field_1973', readNum(rec, 'field_1973'), readField(rec, 'field_1997'), '+Hrs') +
@@ -580,6 +578,7 @@
    *  in sales mode, three blank stacks + fee otherwise. */
   function moneyCellsBlank(viewKey) {
     if (isSalesMoney(viewKey)) return empty('scw-ws-v2-cell--sales-total');
+    if (isLaborOnly(viewKey))  return empty('scw-ws-v2-cell--stack');
     return empty('scw-ws-v2-cell--stack') +
            empty('scw-ws-v2-cell--stack') +
            empty('scw-ws-v2-cell--stack') +
@@ -2048,6 +2047,13 @@
     if (isSalesMoney(sourceViewKey))   card.classList.add('scw-ws-v2-card--sales');
     if (isSurveyMoney(sourceViewKey))  card.classList.add('scw-ws-v2-card--survey');
     if (isInstallMoney(sourceViewKey)) card.classList.add('scw-ws-v2-card--install');
+    // laborOnly (sub CO page): the build-SOW card shape with a single money
+    // column — the labor grid drops the +Hrs/+Mat/Fee tracks. The install
+    // removal panel (view_4116) is laborOnly too but already has its own
+    // money-free --install grid, so it doesn't take the labor class.
+    if (isLaborOnly(sourceViewKey) && !isInstallMoney(sourceViewKey)) {
+      card.classList.add('scw-ws-v2-card--labor');
+    }
     var bid = bucketIdOf(rec, sourceViewKey);
     if (bid) card.setAttribute('data-scw-ws-v2-bucket', bid);
     // Promoted-bracket marker: the bracket has a parent (field_2464

@@ -412,10 +412,16 @@
       // headers line up with their columns. Cam-row-shaped (with
       // "Drop" slot) since the cam template is the superset.
       var hdr = document.createElement('div');
+      var laborMoney = !salesMoney && !surveyMoney && !installMoney &&
+        !!(ns.card && ns.card.isLaborOnly && ns.card.isLaborOnly(sourceViewKey));
+      var _vcHdr = ns.cfg && typeof ns.cfg.viewCfg === 'function' &&
+                   ns.cfg.viewCfg(sourceViewKey);
+      var hdrHideSow = !!(_vcHdr && _vcHdr.hideSow);
       hdr.className = 'scw-ws-v2-col-header' +
         (salesMoney  ? ' scw-ws-v2-col-header--sales'  : '') +
         (surveyMoney ? ' scw-ws-v2-col-header--survey' : '') +
-        (installMoney ? ' scw-ws-v2-col-header--install' : '');
+        (installMoney ? ' scw-ws-v2-col-header--install' : '') +
+        (laborMoney  ? ' scw-ws-v2-col-header--labor' : '');
       if (installMoney) {
         // Install 7-track header (matches the install row grid): chevron ·
         // Label · Product · Flags · SCW Notes · warn · trash. No money columns.
@@ -455,10 +461,11 @@
           '<span>Qty</span>' +
           (salesMoney
             ? '<span class="scw-ws-v2-col-header-total">Total</span>'
-            // laborOnly (sub CO page): the +Hrs/+Mat/Fee tracks exist in the
-            // grid but are blank — headers blank to match.
-            : (ns.card && ns.card.isLaborOnly && ns.card.isLaborOnly(sourceViewKey)
-              ? '<span>Sub Bid</span><span></span><span></span><span></span><span>SOW</span>'
+            // laborOnly (sub CO page): +Hrs/+Mat/Fee tracks don't exist in
+            // the labor grid — only Sub Bid, plus SOW where the view shows
+            // it (the adopt panel does; the CO worksheet hides it).
+            : (laborMoney
+              ? '<span>Sub Bid</span>' + (hdrHideSow ? '' : '<span>SOW</span>')
               : '<span>Sub Bid</span><span>+Hrs</span><span>+Mat</span><span>Fee</span><span>SOW</span>')) +
           '<span></span>' + /* warning slot */
           (salesMoney ? '<span>CR</span>' : '<span></span>');   /* trash / CR slot */
