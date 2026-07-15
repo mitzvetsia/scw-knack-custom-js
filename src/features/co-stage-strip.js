@@ -270,10 +270,12 @@
         }
         lines[r.id] = {
           label:    readTxt(r, 'field_1950'),   // computed drop label, e.g. "E-010"
+          item:     readTxt(r, 'field_1949'),   // product name (names removed lines in the diff)
           prefixId: prefixId,                   // Drop Prefix connection record id
           prefix:   readTxt(r, 'field_2240'),   // Drop Prefix display text, e.g. "E-"
           number:   num(r, 'field_1951'),       // drop number, e.g. 10
           action:   readTxt(r, 'field_2965'),
+          qty:      num(r, 'field_1964'),
           subBid:   num(r, 'field_2150'),
           hrs:      num(r, 'field_1973'),
           mat:      num(r, 'field_1974'),
@@ -323,9 +325,10 @@
       function cleanLoc(s) { return String(s || '').replace(/:\s*:/g, ':').trim(); }
 
       // Collect entries first — the totals row and the grouped text need the
-      // full set before rendering.
+      // full set before rendering. LABOR ONLY: the sub pricing loop trades
+      // labor numbers (sub bid); equipment pricing never rides this doc.
       var entries = [], nAdd = 0, nRm = 0;
-      var tAdd = { bid: 0, eq: 0 }, tRm = { bid: 0, eq: 0 };
+      var tAdd = { bid: 0 }, tRm = { bid: 0 };
       for (var i = 0; i < recs.length; i++) {
         var r = recs[i];
         if (!r || !r.id) continue;
@@ -343,15 +346,14 @@
           drop: readTxt(r, 'field_1950'),
           loc:  cleanLoc(conn(r, 'field_1946')),
           qty:  num(r, 'field_1964') || 1,
-          bid:  num(r, 'field_2150'),
-          eq:   num(r, 'field_2269')
+          bid:  num(r, 'field_2150')
         };
         entries.push(e);
         var t = isRm ? tRm : tAdd;
         if (isRm) nRm++; else nAdd++;
-        t.bid += e.bid; t.eq += e.eq;
+        t.bid += e.bid;
       }
-      var totBid = tAdd.bid + tRm.bid, totEq = tAdd.eq + tRm.eq;
+      var totBid = tAdd.bid + tRm.bid;
 
       var title = (titleBase || 'Change Order Pricing Request') +
         (coNumber ? ' — ' + coNumber : '') + (coName ? ' · ' + coName : '');
@@ -393,26 +395,24 @@
               : '') + '</td>' +
           '<td style="' + NUM_TD + '">' + en.qty + '</td>' +
           '<td style="' + NUM_TD + '">' + esc(money(en.bid)) + '</td>' +
-          '<td style="' + NUM_TD + '">' + esc(money(en.eq)) + '</td>' +
           '</tr>');
       }
       // Totals: adds/removals breakdown only when both exist, then the total.
-      function footRow(label, bid, eq, isNet) {
+      function footRow(label, bid, isNet) {
         var td = 'padding:7px 10px;text-align:right;white-space:nowrap;' +
           (isNet ? 'border-top:2px solid #163C6E;font-weight:700;color:#163C6E;'
                  : 'font-weight:600;color:#334155;');
         return '<tr style="background:#f8fafc;">' +
           '<td colspan="3" style="' + td + '">' + esc(label) + '</td>' +
-          '<td style="' + td + '">' + esc(money(bid)) + '</td>' +
-          '<td style="' + td + '">' + esc(money(eq)) + '</td></tr>';
+          '<td style="' + td + '">' + esc(money(bid)) + '</td></tr>';
       }
       var foot = '';
       if (nAdd && nRm) {
-        foot += footRow('Adds (' + nAdd + ')', tAdd.bid, tAdd.eq, false) +
-                footRow('Removals (' + nRm + ')', tRm.bid, tRm.eq, false) +
-                footRow('Net change', totBid, totEq, true);
+        foot += footRow('Adds (' + nAdd + ')', tAdd.bid, false) +
+                footRow('Removals (' + nRm + ')', tRm.bid, false) +
+                footRow('Net change', totBid, true);
       } else {
-        foot += footRow('Total', totBid, totEq, true);
+        foot += footRow('Total', totBid, true);
       }
 
       var html =
@@ -426,7 +426,7 @@
           '#fde68a;color:#92400e;font-size:12px;"><b>Note:</b> ' + esc(note) + '</div>' : '') +
         '<table style="width:100%;border-collapse:collapse;">' +
         '<thead><tr>' +
-          ['Action', 'Item', 'Qty', 'Baseline Bid', 'Equip'].map(function (hd, idx) {
+          ['Action', 'Item', 'Qty', 'Sub Bid (Labor)'].map(function (hd, idx) {
             return '<th style="padding:5px ' + (idx >= 2 ? '10px' : '8px') + ';' +
               'background:#f8fafc;border-bottom:1px solid ' +
               '#dbe4ee;font-size:10.5px;letter-spacing:.05em;text-transform:uppercase;' +
@@ -459,22 +459,17 @@
           tx.push((et.isRm ? '- REMOVE  ' : '+ ADD  ') + et.item +
             (et.drop ? ' — ' + et.drop : ''));
           if (et.desc) tx.push('    ' + et.desc);
-          tx.push('    qty ' + et.qty + ' · baseline sub bid ' + money(et.bid) +
-            (et.eq ? ' · equip ' + money(et.eq) : ''));
+          tx.push('    qty ' + et.qty + ' · sub bid (labor) ' + money(et.bid));
         }
       }
       tx.push('');
-      tx.push('== TOTALS ==');
+      tx.push('== TOTALS (labor) ==');
       if (nAdd && nRm) {
-        tx.push('Adds (' + nAdd + '): baseline sub bid ' + money(tAdd.bid) +
-          ' · equip ' + money(tAdd.eq));
-        tx.push('Removals (' + nRm + '): baseline sub bid ' + money(tRm.bid) +
-          ' · equip ' + money(tRm.eq));
-        tx.push('Net change: baseline sub bid ' + money(totBid) +
-          ' · equip ' + money(totEq));
+        tx.push('Adds (' + nAdd + '): ' + money(tAdd.bid));
+        tx.push('Removals (' + nRm + '): ' + money(tRm.bid));
+        tx.push('Net change: ' + money(totBid));
       } else {
-        tx.push('Total: baseline sub bid ' + money(totBid) +
-          ' · equip ' + money(totEq));
+        tx.push('Total: ' + money(totBid));
       }
 
       return { coNumber: coNumber, coName: coName, html: html, text: tx.join('\n') };

@@ -215,6 +215,7 @@ cat \
   src/features/worksheet-v2/co-value.js \
   src/features/worksheet-v2/co-sub-lock.js \
   src/features/worksheet-v2/co-ops-lock.js \
+  src/features/worksheet-v2/co-review-diff.js \
   src/features/survey-report-photo-lightbox.js \
   src/features/sales-change-request/render-v2.js \
   src/features/deliverables-worksheet.js \
