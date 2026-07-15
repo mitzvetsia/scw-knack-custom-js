@@ -2104,6 +2104,20 @@
         if (!accepted) {
           throw new Error(webhookErrorMsg(resp, step.label + ' webhook'));
         }
+        // Issue CO: stash WHO it went to, keyed by the CO record id —
+        // co-stage-strip's Issued note reads this to render "issued to
+        // X — have them check their email". Best-effort (same-browser
+        // only); a Make-written Knack field would make it durable.
+        if (step.id === 'issue-change-order' && ctx.recipient) {
+          try {
+            localStorage.setItem('scw-co-issued-recipient:' + getSourceRecordId(),
+              JSON.stringify({
+                name:  ctx.recipient.name  || '',
+                email: ctx.recipient.email || '',
+                at:    Date.now()
+              }));
+          } catch (eLs) { /* localStorage may be disabled; non-fatal */ }
+        }
         // Close the notes modal before navigating — the redirect is
         // just a hash change, it doesn't tear down body-level overlays.
         ctx.close();

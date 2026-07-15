@@ -37,8 +37,12 @@
       // connected Add form auto-fills the proposal connection (mirrors the
       // public token snippet, where the id is otherwise lost). Idempotent —
       // on this record-detail scene Knack may already include the id.
+      // NEVER offered on a change-order proposal — a CO is accepted via the
+      // issued e-signature agreement, not the Accept flow (which would fire
+      // the base-scope acceptance pipeline). See isChangeOrderProposal().
       appendRecordId: true,
       gate: function (attrs) {
+        if (isChangeOrderProposal()) return false;
         return isYesValue(attrs.field_2747) || isYesValue(attrs.field_2747_raw);
       }
     }
@@ -227,6 +231,12 @@
     setTimeout(function () { injectExpiredBanner(iframe); }, 250);
     setTimeout(function () { injectExpiredBanner(iframe); }, 1200);
 
+    // Change-order proposals: "signed electronically — check your email"
+    // notice up top (the Accept CTA is suppressed for COs, so this is the
+    // customer's pointer to the actual signing path).
+    setTimeout(function () { injectCoNoticeBanner(iframe); }, 250);
+    setTimeout(function () { injectCoNoticeBanner(iframe); }, 1200);
+
     // Inject the CTA bar inside the iframe, just above the first
     // .view-title — typically "Proposed Solution" — so it sits between
     // the project-address detail row and the line-items table.
@@ -391,6 +401,67 @@
   // the view or the field isn't populated yet.
   var SOW_DETAIL_VIEW = 'view_3874';
   var CR_COUNT_FIELD  = 'field_2728';
+
+  // ── Change-order detection ──────────────────────────────────
+  // A CO proposal is e-signed via the issued CO agreement — the standard
+  // Accept flow is suppressed and a "check your email" notice shows
+  // instead. Two signals, best-effort (both missing → NOT a CO, so base
+  // proposals keep their button):
+  //   1. SOW Type (field_2952 = "change order") read off view_3874 —
+  //      requires that field on the view (the view is display:none on
+  //      this scene, so adding it is invisible).
+  //   2. Fallback heuristic: the proposal display name / SOW number
+  //      carries the CO suffix (…SW1410CO…), per the CO numbering
+  //      convention (field_2122 = "<deal>-SW####CO").
+  var SOW_TYPE_FIELD = 'field_2952';
+  function isChangeOrderProposal() {
+    try {
+      var v = window.Knack && Knack.views && Knack.views[SOW_DETAIL_VIEW];
+      var attrs = v && v.model && (v.model.attributes
+                  || (v.model.data && v.model.data.attributes));
+      if (attrs) {
+        var raw = attrs[SOW_TYPE_FIELD + '_raw'];
+        var t = String(raw != null ? raw : (attrs[SOW_TYPE_FIELD] || ''))
+          .replace(/<[^>]*>/g, '').trim().toLowerCase();
+        if (t) return t.indexOf('change order') !== -1;
+      }
+    } catch (e) { /* fall through to heuristic */ }
+    var p = readPublishedProposalAttrs();
+    if (p) {
+      var nm = (String(p.field_2665 || '') + ' ' + String(p.field_2663 || ''))
+        .replace(/<[^>]*>/g, '');
+      if (/SW\d+CO\b/i.test(nm)) return true;
+    }
+    return false;
+  }
+
+  // Customer-facing notice for issued COs — replaces the Accept CTA.
+  function injectCoNoticeBanner(iframe) {
+    if (!iframe || !isChangeOrderProposal()) return;
+    var doc;
+    try { doc = iframe.contentDocument || (iframe.contentWindow && iframe.contentWindow.document); }
+    catch (e) { return; }
+    if (!doc || !doc.body) return;
+    if (doc.body.querySelector('.scw-co-esign-banner')) return;  // idempotent
+
+    var banner = doc.createElement('div');
+    banner.className = 'scw-co-esign-banner';
+    banner.style.cssText =
+      'margin: 0 0 18px 0; padding: 14px 18px;' +
+      'background: #eff6ff; border: 1px solid #bfdbfe;' +
+      'border-radius: 8px; color: #1e40af;' +
+      'font: 600 14px/1.45 system-ui, -apple-system, sans-serif;' +
+      'text-align: left;';
+    banner.innerHTML =
+      '<div style="font-size:15px; font-weight:800; margin-bottom:4px;">' +
+        'This change order is signed electronically' +
+      '</div>' +
+      '<div style="font-weight:500;">' +
+        'The signature request was sent by email — check your inbox for a ' +
+        'message from SCW to review and sign this change order.' +
+      '</div>';
+    doc.body.insertBefore(banner, doc.body.firstChild);
+  }
   function readCrCount() {
     try {
       var v = window.Knack && Knack.views && Knack.views[SOW_DETAIL_VIEW];

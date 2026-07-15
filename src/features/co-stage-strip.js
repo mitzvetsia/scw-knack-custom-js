@@ -48,8 +48,13 @@
   var POLL_MS        = 30 * 1000;
 
   var DEPLOYMENTS = [
+    // PUBLISHED_VIEW (ops, optional): a hidden published-proposals grid on
+    // the CO scene (view_3886-style, filtered to this SOW). When present,
+    // the Issued/Signed/Applied stages render the proposal name + PDF +
+    // customer link inline via SCW.publishedQuoteInfo. Until it exists the
+    // strip links to the preview page, which already shows all of it.
     { VIEW: 'view_4092', CO_VIEW: 'view_4079', STATUS_VIEW: 'view_4109',
-      MODE: 'ops', NS: '.scwCoStage' },
+      PUBLISHED_VIEW: '', MODE: 'ops', NS: '.scwCoStage' },
     { VIEW: 'view_4121', CO_VIEW: 'view_4112', STATUS_VIEW: 'view_4122',
       MODE: 'sub', NS: '.scwCoStageSub' }
   ];
@@ -759,7 +764,9 @@
     // Issuing happens FROM THE PREVIEW PAGE (scene_1096) — ops reviews the
     // client-facing document, then fires the "Issue Change Order" step that
     // ops-stepper.js renders there in CO mode (full publish payload →
-    // MAKE_CO_ISSUE_WEBHOOK). This button just takes them there.
+    // MAKE_CO_ISSUE_WEBHOOK). This button just takes them there. Post-issue
+    // the same page hosts the published proposal PDF + customer links, so
+    // the Issued stage's "Proposal & Links" button reuses it.
     function previewIssue() {
       var coId = getCoSowId();
       if (!coId) { alert('Could not determine the change order record id from the URL.'); return; }
@@ -769,6 +776,15 @@
         window.location.origin + window.location.pathname +
           '#proposals/proposal/' + coId + '/',
         '_blank', 'noopener');
+    }
+
+    // WHO the CO agreement went to — stashed by ops-stepper's
+    // issue-change-order success handler (same-browser best effort).
+    function readIssuedRecipient() {
+      try {
+        var raw = localStorage.getItem('scw-co-issued-recipient:' + getCoSowId());
+        return raw ? JSON.parse(raw) : null;
+      } catch (e) { return null; }
     }
 
     // ── waiting copy ("With the sub since ⟨date⟩ — N days") ──────────────
@@ -826,8 +842,21 @@
           'data-scw-co-act="preview-issue">Preview &amp; Issue &rarr;</button>' +
           '<span class="scw-co-stage-note">Review the client-facing document, then issue from there.</span>';
       }
-      if (cur === 3) return '<span class="scw-co-stage-note">Sent for client signature — waiting on e-sign.</span>';
-      if (cur === 4) return '<span class="scw-co-stage-note">Signed — applying changes to the install scope…</span>';
+      if (cur === 3) {
+        var rcp = readIssuedRecipient();
+        var copy = (rcp && rcp.name)
+          ? 'CO agreement issued to <b>' + esc(rcp.name) + '</b>' +
+            (rcp.email ? ' (' + esc(rcp.email) + ')' : '') +
+            ' — have them check their email for the e-signature request.'
+          : 'Issued — sent for client signature. Have the recipient check ' +
+            'their email for the e-signature request.';
+        return '<span class="scw-co-stage-note">' + copy + '</span>' +
+          '<button type="button" class="scw-co-stage-btn scw-co-stage-btn--secondary" ' +
+          'data-scw-co-act="view-proposal">Proposal &amp; Links &rarr;</button>';
+      }
+      if (cur === 4) return '<span class="scw-co-stage-note">Signed — applying changes to the install scope…</span>' +
+        '<button type="button" class="scw-co-stage-btn scw-co-stage-btn--secondary" ' +
+        'data-scw-co-act="view-proposal">Proposal &amp; Links &rarr;</button>';
       if (cur === 5) return '<span class="scw-co-stage-note"><b>Applied.</b> Install scope updated and invoiced.</span>';
       if (/declined/.test(s)) return '<span class="scw-co-stage-note"><b>Declined.</b> Revise the lines and re-issue.</span>';
       if (/void/.test(s))     return '<span class="scw-co-stage-note"><b>Void.</b></span>';
@@ -885,6 +914,7 @@
           if (act === 'recall')        recallFromSub();
           if (act === 'sendback')      sendBackToSub();
           if (act === 'preview-issue') previewIssue();
+          if (act === 'view-proposal') previewIssue();   // same page hosts PDF + links post-issue
         });
       }
       // Pin directly under the header row (co-header-card builds .scw-co-hdr
@@ -902,6 +932,30 @@
         '<div class="scw-co-stage-actions">' +
         (IS_OPS ? opsActionsHtml(status, cur) : subActionsHtml(status, cur)) +
         '</div>';
+      renderPublishedBlock(el, cur);
+    }
+
+    // Inline published-proposal card (name + PDF chip + customer link) for
+    // the Issued/Signed/Applied stages — lights up once PUBLISHED_VIEW is
+    // configured with a hidden published-proposals grid on this scene.
+    function renderPublishedBlock(el, cur) {
+      if (!IS_OPS || cur < 3) return;
+      var PUB = DEP.PUBLISHED_VIEW || '';
+      if (!PUB || !document.getElementById(PUB)) return;
+      var pq = window.SCW && SCW.publishedQuoteInfo;
+      if (!pq) return;
+      var proposal = pq.read({ sourceView: PUB });
+      if (!proposal) return;
+      var block = pq.buildBlock(proposal, {
+        variant: 'regular',
+        customerLink: proposal.tokenUrl
+          ? { url: proposal.tokenUrl, label: 'Customer Link' } : null
+      });
+      if (block) {
+        block.style.alignItems = 'flex-start';
+        block.style.marginTop = '10px';
+        el.appendChild(block);
+      }
     }
 
     // ── status polling while the ball is in the other court ──────────────
