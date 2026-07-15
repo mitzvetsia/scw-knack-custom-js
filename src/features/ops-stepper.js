@@ -326,13 +326,17 @@
       coOnly: true,
       webhookKey: 'MAKE_CO_ISSUE_WEBHOOK',
       // Recipient picker — WHO the CO goes to for signature. Options come
-      // from view_4124 (contacts grid added to the preview page); the
-      // chosen contact rides on payload.recipient = { id, name, label, email }.
-      // Required: Issue is blocked until a contact is picked.
+      // from view_4124 (contacts grid added to the preview page). Choosing
+      // a contact reveals editable Name / Email / Phone inputs; the final
+      // values ride on payload.recipient = { id, name, label, email, phone }
+      // and any edits are PUT back to the contact record via view_4124
+      // (inline edit must stay enabled on that view). Required: Issue is
+      // blocked until a contact with an email is picked.
       recipient: {
         view:     'view_4124',
         question: 'Who should this change order go to for signature?',
-        required: true
+        required: true,
+        fields:   { name: 'field_198', phone: 'field_195', email: 'field_196' }
       },
       modal: {
         title:       'Issue Change Order',
@@ -512,6 +516,23 @@
       '  width: 100%; box-sizing: border-box; margin-top: 6px;' +
       '  padding: 8px 10px; border: 1px solid #d1d5db; border-radius: 6px;' +
       '  font-family: inherit; font-size: 13px; background: #fff; color: #1f2937;' +
+      '}' +
+      /* Editable Name / Email / Phone for the chosen recipient */
+      '.scw-ops-modal-rcp-fields { display: none; margin-top: 8px; }' +
+      '.scw-ops-modal-rcp-row {' +
+      '  display: flex; align-items: center; gap: 8px; margin-top: 6px;' +
+      '}' +
+      '.scw-ops-modal-rcp-row label {' +
+      '  flex: 0 0 46px; font-size: 11px; font-weight: 700; color: #6b7280;' +
+      '  text-transform: uppercase; letter-spacing: .03em;' +
+      '}' +
+      '.scw-ops-modal-rcp-row input {' +
+      '  flex: 1; min-width: 0; box-sizing: border-box; padding: 7px 9px;' +
+      '  border: 1px solid #d1d5db; border-radius: 6px;' +
+      '  font-family: inherit; font-size: 13px; background: #fff; color: #1f2937;' +
+      '}' +
+      '.scw-ops-modal-rcp-hint {' +
+      '  font-size: 11px; color: #6b7280; margin-top: 6px;' +
       '}' +
 
       // Submission options (radio group rendered between the textarea
@@ -1507,37 +1528,76 @@
     }
 
     // Recipient picker — single-select contact sourced from a grid view on
-    // this scene (opts.recipient = { view, question, required }). Options
-    // are read off the grid's RENDERED ROWS, so whatever columns Builder
-    // puts on that view become the option label (name / email / role…) —
-    // no field keys to configure here. Works even when the grid is hidden
-    // (rows stay in the DOM). An email-looking cell is also captured
-    // separately so Make gets it without re-parsing the label.
+    // this scene (opts.recipient = { view, question, required, fields }).
+    // `fields` maps the contact columns ({ name, phone, email } → field
+    // keys). Choosing a contact reveals EDITABLE Name / Email / Phone
+    // inputs prefilled from the record; the (possibly edited) values ride
+    // on payload.recipient AND, when changed, are written back to the
+    // contact record through the same grid view on submit (view-based PUT
+    // with the user's session token — the view must have inline editing
+    // enabled). Works even when the grid is hidden (model + DOM persist).
     function buildRecipientPicker(config) {
       if (!config || !config.view) return null;
-      var viewEl = document.getElementById(config.view);
-      var rows = viewEl ? viewEl.querySelectorAll('tbody tr[id]') : [];
+      var F = config.fields || { name: 'field_198', phone: 'field_195', email: 'field_196' };
       var options = [];
-      var EMAIL_RE = /[^\s@<>"']+@[^\s@<>"']+\.[a-z]{2,}/i;
-      for (var ri = 0; ri < rows.length; ri++) {
-        var r = rows[ri];
-        if (!/^[a-f0-9]{24}$/i.test(r.id || '')) continue;
-        var parts = [], email = '', name = '';
-        // Clean contact name — the CORE_contacts Name column (field_198) when
-        // present, else the first non-empty cell that isn't an email/phone link.
-        var nameCell = r.querySelector('td.field_198');
-        if (nameCell) name = (nameCell.textContent || '').replace(/\s+/g, ' ').trim();
-        var tds = r.querySelectorAll('td');
-        for (var c = 0; c < tds.length; c++) {
-          var t = (tds[c].textContent || '').replace(/\s+/g, ' ').trim();
-          if (!t) continue;
-          var isEmail = EMAIL_RE.test(t);
-          if (!email && isEmail) { var m = t.match(EMAIL_RE); email = m[0]; }
-          if (!name && !isEmail && !tds[c].querySelector('a[href^="tel:"]')) name = t;
-          if (parts.indexOf(t) === -1) parts.push(t);
+
+      function stripHtml(v) {
+        if (v == null) return '';
+        var d = document.createElement('div');
+        d.innerHTML = String(v);
+        return (d.textContent || '').replace(/\s+/g, ' ').trim();
+      }
+
+      // Prefer the view MODEL — raw values are clean and reveal the real
+      // field shape (a Knack person-name raw is {first,last}; plain text
+      // raw is a string), which the write-back has to match.
+      try {
+        var models = (Knack.views[config.view] &&
+                      Knack.views[config.view].model &&
+                      Knack.views[config.view].model.data &&
+                      Knack.views[config.view].model.data.models) || [];
+        for (var mi = 0; mi < models.length; mi++) {
+          var a = models[mi].attributes || {};
+          if (!a.id) continue;
+          var nameRaw   = a[F.name + '_raw'];
+          var nameIsObj = !!(nameRaw && typeof nameRaw === 'object');
+          var name = nameIsObj
+            ? [nameRaw.title, nameRaw.first, nameRaw.middle, nameRaw.last]
+                .filter(Boolean).join(' ').replace(/\s+/g, ' ').trim()
+            : stripHtml(nameRaw != null ? nameRaw : a[F.name]);
+          var phoneRaw = a[F.phone + '_raw'];
+          var phone = (phoneRaw && typeof phoneRaw === 'object')
+            ? String(phoneRaw.formatted || phoneRaw.full || '').trim()
+            : stripHtml(phoneRaw != null ? phoneRaw : a[F.phone]);
+          var emailRaw = a[F.email + '_raw'];
+          var email = (emailRaw && typeof emailRaw === 'object')
+            ? String(emailRaw.email || '').trim()
+            : stripHtml(emailRaw != null ? emailRaw : a[F.email]);
+          options.push({
+            id: a.id, name: name, phone: phone, email: email, nameIsObj: nameIsObj,
+            label: [name, phone, email].filter(Boolean).join(' — ').slice(0, 140) || a.id
+          });
         }
-        if (!parts.length) continue;
-        options.push({ id: r.id, name: name, label: parts.join(' — ').slice(0, 140), email: email });
+      } catch (eModel) { /* fall through to DOM scrape */ }
+
+      // DOM fallback — scrape the rendered rows if the model isn't populated.
+      if (!options.length) {
+        var viewEl = document.getElementById(config.view);
+        var rows = viewEl ? viewEl.querySelectorAll('tbody tr[id]') : [];
+        for (var ri = 0; ri < rows.length; ri++) {
+          var r = rows[ri];
+          if (!/^[a-f0-9]{24}$/i.test(r.id || '')) continue;
+          var cellText = function (fk) {
+            var td = r.querySelector('td.' + fk);
+            return td ? (td.textContent || '').replace(/\s+/g, ' ').trim() : '';
+          };
+          var nm = cellText(F.name), ph2 = cellText(F.phone), em = cellText(F.email);
+          if (!nm && !ph2 && !em) continue;
+          options.push({
+            id: r.id, name: nm, phone: ph2, email: em, nameIsObj: false,
+            label: [nm, ph2, em].filter(Boolean).join(' — ').slice(0, 140)
+          });
+        }
       }
 
       var wrap = document.createElement('div');
@@ -1563,23 +1623,96 @@
       });
       wrap.appendChild(sel);
 
+      // Editable Name / Email / Phone — revealed once a contact is chosen.
+      var fieldsWrap = document.createElement('div');
+      fieldsWrap.className = 'scw-ops-modal-rcp-fields';
+      var inputs = {};
+      [['name', 'Name', 'text'], ['email', 'Email', 'email'], ['phone', 'Phone', 'tel']]
+        .forEach(function (def) {
+          var row = document.createElement('div');
+          row.className = 'scw-ops-modal-rcp-row';
+          var lab = document.createElement('label');
+          lab.textContent = def[1];
+          var inp = document.createElement('input');
+          inp.type = def[2];
+          row.appendChild(lab);
+          row.appendChild(inp);
+          fieldsWrap.appendChild(row);
+          inputs[def[0]] = inp;
+        });
+      var hint = document.createElement('div');
+      hint.className = 'scw-ops-modal-rcp-hint';
+      hint.textContent = 'Edits here update the contact record when you submit.';
+      fieldsWrap.appendChild(hint);
+      wrap.appendChild(fieldsWrap);
+
+      var current = null; // the chosen option (original values for diffing)
+      sel.addEventListener('change', function () {
+        current = null;
+        for (var i = 0; i < options.length; i++) {
+          if (options[i].id === sel.value) { current = options[i]; break; }
+        }
+        if (current) {
+          inputs.name.value  = current.name  || '';
+          inputs.email.value = current.email || '';
+          inputs.phone.value = current.phone || '';
+          fieldsWrap.style.display = 'block';
+        } else {
+          fieldsWrap.style.display = 'none';
+        }
+      });
+
       return {
         element:  wrap,
         required: !!config.required,
         getValue: function () {
-          var id = sel.value;
-          if (!id) return null;
-          for (var i = 0; i < options.length; i++) {
-            if (options[i].id === id) {
-              return {
-                id:    id,
-                name:  options[i].name  || '',
-                label: options[i].label,
-                email: options[i].email || ''
-              };
+          if (!current) return null;
+          return {
+            id:    current.id,
+            name:  (inputs.name.value  || '').trim(),
+            email: (inputs.email.value || '').trim(),
+            phone: (inputs.phone.value || '').trim(),
+            label: current.label
+          };
+        },
+        // Write edited Name/Email/Phone back to the contact record via the
+        // grid view (inline edit must be enabled on it). Fire-and-forget —
+        // the webhook payload already carries the edited values, so a
+        // failed sync never blocks the CO. One record → one PUT, no queue.
+        saveEdits: function () {
+          if (!current || !window.SCW || !SCW.knackAjax) return;
+          var data = {};
+          var nm = (inputs.name.value  || '').trim();
+          var em = (inputs.email.value || '').trim();
+          var pn = (inputs.phone.value || '').trim();
+          if (nm && nm !== current.name) {
+            if (current.nameIsObj) {
+              // Person-name field — Knack wants {first, last}.
+              var sp = nm.indexOf(' ');
+              data[F.name] = sp === -1
+                ? { first: nm, last: '' }
+                : { first: nm.slice(0, sp), last: nm.slice(sp + 1) };
+            } else {
+              data[F.name] = nm;
             }
           }
-          return { id: id, name: '', label: '', email: '' };
+          if (em !== current.email) data[F.email] = em;
+          if (pn !== current.phone) data[F.phone] = pn;
+          if (!Object.keys(data).length) return;
+          var rid = current.id;
+          SCW.knackAjax({
+            url: SCW.knackRecordUrl(config.view, rid),
+            type: 'PUT',
+            data: JSON.stringify(data),
+            success: function () {
+              SCW.debug('[scw-ops-stepper] contact record updated:', rid, data);
+            },
+            error: function (xhr) {
+              console.warn('[scw-ops-stepper] contact update failed (' +
+                (xhr && xhr.status) + ') — the webhook payload still ' +
+                'carries the edited values.', rid, data);
+            }
+          });
         }
       };
     }
@@ -1693,6 +1826,12 @@
         showError('Pick who this should go to first.');
         return { blocked: true };
       }
+      if (recipientPicker && recipientPicker.required && rec && !rec.email) {
+        showError("Add an email for this contact — the CO can't go out for signature without one.");
+        return { blocked: true };
+      }
+      // Sync any Name/Email/Phone edits back to the contact record.
+      if (recipientPicker && rec && recipientPicker.saveEdits) recipientPicker.saveEdits();
       return { blocked: false, recipient: rec };
     }
 
@@ -1909,7 +2048,7 @@
       // (which webhook to fire) and to mode (publish-and-notify, etc.).
       // A step with no submission radio can still force a default
       // (step.forceSubmission) — e.g. mark-ready always submits to Sales.
-      // Chosen CO recipient (issue-change-order) — { id, name, label, email }.
+      // Chosen CO recipient (issue-change-order) — { id, name, label, email, phone }.
       // Make resolves the full contact record from the id; label/email are
       // convenience copies of what the picker showed.
       if (ctx.recipient)              payload.recipient = ctx.recipient;
