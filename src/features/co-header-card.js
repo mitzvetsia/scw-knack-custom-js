@@ -77,17 +77,31 @@
       '#' + VIEW + ' .kn-label span{font:600 11px/1.2 system-ui,sans-serif;',
       'letter-spacing:.04em;text-transform:uppercase;color:#64748b;}',
       '#' + VIEW + ' textarea.kn-textarea{min-height:72px;}',
-      // Save button.
-      '#' + VIEW + ' .kn-submit .kn-button.is-primary{border-radius:7px;',
-      'font:600 13px/1.2 system-ui,sans-serif;padding:9px 18px;}'
+      // Name/notes autosave replaces the Submit button entirely — commits
+      // fire on Tab/Enter/blur via view-based PUT.
+      '#' + VIEW + ' .kn-submit{display:none !important;}',
+      // Autosave state flashes on the input border.
+      '#' + VIEW + ' .scw-co-hdr-saving{border-color:#f59e0b !important;}',
+      '#' + VIEW + ' .scw-co-hdr-saved{border-color:#22c55e !important;',
+      'box-shadow:0 0 0 2px rgba(34,197,94,.18) !important;transition:border-color .15s;}',
+      '#' + VIEW + ' .scw-co-hdr-err{border-color:#e11d48 !important;',
+      'box-shadow:0 0 0 2px rgba(225,29,72,.15) !important;}'
     ].join('');
     document.head.appendChild(s);
   }
 
-  // Value of a read-only kn-input block = wrapper text minus label/instructions.
+  // Value of a kn-input block. Editable controls first (view_4092 carries
+  // CO Status as a hidden dropdown so recall can PUT it — the wrapper's
+  // textContent would concatenate every option), then the read-only path:
+  // wrapper text minus label/instructions.
   function readOnlyValue(viewEl, fieldKey) {
     var wrap = viewEl.querySelector('#kn-input-' + fieldKey);
     if (!wrap) return '';
+    var ctl = wrap.querySelector('select');
+    if (ctl) {
+      var opt = ctl.options[ctl.selectedIndex];
+      return String((opt ? opt.textContent : ctl.value) || '').trim();
+    }
     var clone = wrap.cloneNode(true);
     var strip = clone.querySelectorAll('label, p.kn-instructions');
     for (var i = 0; i < strip.length; i++) {
@@ -170,8 +184,61 @@
     setLabel(viewEl, 'field_2126', 'Change order name');
     setLabel(viewEl, 'field_2198', 'Notes');
 
-    var btn = viewEl.querySelector('.kn-submit .kn-button.is-primary');
-    if (btn && btn.textContent.trim() === 'Submit') btn.textContent = 'Save details';
+    // Baseline for the autosave's changed-check — stamped once per fresh
+    // DOM (Knack re-renders rebuild the inputs, losing the attribute).
+    EDIT_FIELDS.forEach(function (fk) {
+      var ctl = viewEl.querySelector(
+        '#kn-input-' + fk + ' input, #kn-input-' + fk + ' textarea');
+      if (ctl && !ctl.hasAttribute('data-scw-saved-val')) {
+        ctl.setAttribute('data-scw-saved-val', ctl.value);
+      }
+    });
+  }
+
+  // ── autosave (name + notes commit on Tab/Enter/blur — no Submit) ───────
+  var EDIT_FIELDS = ['field_2126', 'field_2198'];
+
+  function recordIdFromHash() {
+    var segs = (window.location.hash || '').replace(/^#/, '').split('?')[0]
+      .split('/');
+    for (var i = segs.length - 1; i >= 0; i--) {
+      if (/^[a-f0-9]{24}$/i.test(segs[i])) return segs[i];
+    }
+    return '';
+  }
+
+  // View-based PUT of the single changed field — the mdf-idf-cards inline
+  // save pattern (SCW.knackAjax adds session auth; no API key involved).
+  function commitField(el, VIEW) {
+    if (el.getAttribute('data-scw-saved-val') === el.value) return;   // unchanged
+    var wrap = el.closest('[id^="kn-input-field_"]');
+    var fieldKey = wrap && wrap.id.replace('kn-input-', '');
+    var recId = recordIdFromHash();
+    if (!fieldKey || !recId) return;
+    if (!(window.SCW && typeof SCW.knackAjax === 'function' &&
+          typeof SCW.knackRecordUrl === 'function')) return;
+    var value = el.value;
+    var body = {};
+    body[fieldKey] = value;
+    el.classList.remove('scw-co-hdr-saved', 'scw-co-hdr-err');
+    el.classList.add('scw-co-hdr-saving');
+    SCW.knackAjax({
+      url:  SCW.knackRecordUrl(VIEW, recId),
+      type: 'PUT',
+      data: JSON.stringify(body),
+      dataType: 'json'
+    }).then(function () {
+      el.classList.remove('scw-co-hdr-saving');
+      el.setAttribute('data-scw-saved-val', value);
+      el.classList.add('scw-co-hdr-saved');
+      setTimeout(function () { el.classList.remove('scw-co-hdr-saved'); }, 1200);
+    }, function (xhr) {
+      el.classList.remove('scw-co-hdr-saving');
+      el.classList.add('scw-co-hdr-err');
+      console.warn('[scw-co-header-card] save failed', VIEW, fieldKey,
+        xhr && xhr.status);
+      setTimeout(function () { el.classList.remove('scw-co-hdr-err'); }, 2500);
+    });
   }
 
   VIEWS.forEach(function (VIEW) {
@@ -183,6 +250,22 @@
     }
     $(document).off('knack-view-render.' + VIEW + EVENT_NS)
       .on('knack-view-render.' + VIEW + EVENT_NS, soon);
+
+    // Autosave commits: blur/Tab via focusout; Enter blurs first (Shift+Enter
+    // keeps inserting a newline in the notes textarea). Delegated, so
+    // Knack's re-rendered inputs stay wired.
+    var FIELD_SEL = EDIT_FIELDS.map(function (fk) {
+      return '#' + VIEW + ' #kn-input-' + fk + ' input, ' +
+             '#' + VIEW + ' #kn-input-' + fk + ' textarea';
+    }).join(', ');
+    $(document).off('focusout' + EVENT_NS).on('focusout' + EVENT_NS, FIELD_SEL,
+      function () { commitField(this, VIEW); });
+    $(document).off('keydown' + EVENT_NS).on('keydown' + EVENT_NS, FIELD_SEL,
+      function (e) {
+        if (e.key !== 'Enter' || e.shiftKey) return;
+        e.preventDefault();   // don't let Knack submit the form
+        this.blur();          // focusout commits
+      });
   });
 })();
 /*** END: CO header card ***************************************************/

@@ -192,11 +192,18 @@
         var s = readTxt(rec, STATUS_FIELD);
         if (s) return s;
       }
-      // Fallback: the header form's read-only status block (hidden by
-      // co-header-card's CSS but still in the DOM).
+      // Fallback: the header form's status block (hidden by co-header-card's
+      // CSS but still in the DOM). If the field is EDITABLE on the form
+      // (view_4092 carries it as a hidden dropdown so recall can PUT it),
+      // read the selected value — the wrapper's textContent would concatenate
+      // every option.
       var viewEl = document.getElementById(VIEW);
       var wrap = viewEl && viewEl.querySelector('#kn-input-' + STATUS_FIELD);
       if (!wrap) return '';
+      var ctl = wrap.querySelector('select, input[type="radio"]:checked, input:not([type="radio"])');
+      if (ctl && typeof ctl.value === 'string' && ctl.value.trim()) {
+        return ctl.value.trim();
+      }
       var clone = wrap.cloneNode(true);
       var strip = clone.querySelectorAll('label, p.kn-instructions');
       for (var i = 0; i < strip.length; i++) {
@@ -555,6 +562,39 @@
         });
     }
 
+    // Recall writes CO Status DIRECTLY — a view-based PUT through this form
+    // (field_2953 sits on view_4092 as a hidden dropdown for exactly this).
+    // The send/sendback status flips stay Make-written; recall is the one
+    // client-side writer so taking the CO back never waits on a scenario.
+    function putStatus(value, done) {
+      var coId = getCoSowId();
+      if (!coId) {
+        alert('Could not determine the change order record id from the URL.');
+        done(false); return;
+      }
+      if (!(window.SCW && typeof SCW.knackAjax === 'function' &&
+            typeof SCW.knackRecordUrl === 'function')) { done(false); return; }
+      var body = {};
+      body[STATUS_FIELD] = value;
+      SCW.knackAjax({
+        url:  SCW.knackRecordUrl(VIEW, coId),
+        type: 'PUT',
+        data: JSON.stringify(body),
+        dataType: 'json'
+      }).then(function () {
+        // Keep the hidden form dropdown in sync so later reads (the status
+        // fallback, any form serialize) reflect the new value.
+        var sel = document.querySelector(
+          '#' + VIEW + ' #kn-input-' + STATUS_FIELD + ' select');
+        if (sel) sel.value = value;
+        done(true);
+      }, function (xhr) {
+        alert('Could not update the CO status (HTTP ' +
+          ((xhr && xhr.status) || '?') + '). Try again.');
+        done(false);
+      });
+    }
+
     function recallFromSub() {
       confirmThen('Recall from sub?',
         'Take this change order back from the subcontractor? Their pricing ' +
@@ -562,15 +602,22 @@
         'entered stays on the lines.',
         'Recall from Sub',
         function () {
-          fireWebhook('recall', {
-            coNumber: readHeaderValue('field_2123'),
-            coName:   readHeaderValue('field_2126')
-          }, function () {
+          setBusy(true);
+          putStatus('Draft', function (ok) {
+            setBusy(false);
+            if (!ok) return;
             _optimistic = 'Draft';
             setPillText('Draft');
             render();
             managePoll();
             refreshLocks();
+            // Notify-only webhook (sub notification + ClickUp statuses) —
+            // the status is already written; a notify failure surfaces via
+            // fireWebhook's alert but doesn't undo the recall.
+            fireWebhook('recall', {
+              coNumber: readHeaderValue('field_2123'),
+              coName:   readHeaderValue('field_2126')
+            }, function () {});
           });
         });
     }

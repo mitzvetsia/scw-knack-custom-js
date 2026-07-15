@@ -73,6 +73,10 @@
     var wrap = document.querySelector(
       '#' + CFG.HDR_FORM + ' #kn-input-' + CFG.STATUS_FIELD);
     if (wrap) {
+      // Editable dropdown variant: read the selected value — the wrapper's
+      // textContent would concatenate every option.
+      var sel = wrap.querySelector('select');
+      if (sel && sel.value) return stripHtml(sel.value);
       var clone = wrap.cloneNode(true);
       var junk = clone.querySelectorAll('label, p.kn-instructions');
       for (var i = 0; i < junk.length; i++) {
