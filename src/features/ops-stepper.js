@@ -325,11 +325,20 @@
       tone: 'success',
       coOnly: true,
       webhookKey: 'MAKE_CO_ISSUE_WEBHOOK',
+      // Recipient picker — WHO the CO goes to for signature. Options come
+      // from view_4124 (contacts grid added to the preview page); the
+      // chosen contact rides on payload.recipient = { id, label, email }.
+      // Required: Issue is blocked until a contact is picked.
+      recipient: {
+        view:     'view_4124',
+        question: 'Who should this change order go to for signature?',
+        required: true
+      },
       modal: {
         title:       'Issue Change Order',
         intro:       'Publishes the change-order document, creates the ' +
-                     'e-signature contract, and sends it to the client. ' +
-                     'Line items lock once issued.',
+                     'e-signature contract, and sends it to the chosen ' +
+                     'contact. Line items lock once issued.',
         placeholder: 'e.g. CO-1410: 2 cameras added at dock, 1 removed at cash register',
         submitLabel: 'Issue Change Order'
       },
@@ -497,6 +506,12 @@
       '}' +
       '.scw-ops-modal-error {' +
       '  margin-top: 8px; color: #b91c1c; font-size: 12px;' +
+      '}' +
+      /* Recipient single-select (issue-change-order) */
+      '.scw-ops-modal-recipient {' +
+      '  width: 100%; box-sizing: border-box; margin-top: 6px;' +
+      '  padding: 8px 10px; border: 1px solid #d1d5db; border-radius: 6px;' +
+      '  font-family: inherit; font-size: 13px; background: #fff; color: #1f2937;' +
       '}' +
 
       // Submission options (radio group rendered between the textarea
@@ -1491,6 +1506,76 @@
       };
     }
 
+    // Recipient picker — single-select contact sourced from a grid view on
+    // this scene (opts.recipient = { view, question, required }). Options
+    // are read off the grid's RENDERED ROWS, so whatever columns Builder
+    // puts on that view become the option label (name / email / role…) —
+    // no field keys to configure here. Works even when the grid is hidden
+    // (rows stay in the DOM). An email-looking cell is also captured
+    // separately so Make gets it without re-parsing the label.
+    function buildRecipientPicker(config) {
+      if (!config || !config.view) return null;
+      var viewEl = document.getElementById(config.view);
+      var rows = viewEl ? viewEl.querySelectorAll('tbody tr[id]') : [];
+      var options = [];
+      var EMAIL_RE = /[^\s@<>"']+@[^\s@<>"']+\.[a-z]{2,}/i;
+      for (var ri = 0; ri < rows.length; ri++) {
+        var r = rows[ri];
+        if (!/^[a-f0-9]{24}$/i.test(r.id || '')) continue;
+        var parts = [], email = '';
+        var tds = r.querySelectorAll('td');
+        for (var c = 0; c < tds.length; c++) {
+          var t = (tds[c].textContent || '').replace(/\s+/g, ' ').trim();
+          if (!t) continue;
+          if (!email) { var m = t.match(EMAIL_RE); if (m) email = m[0]; }
+          if (parts.indexOf(t) === -1) parts.push(t);
+        }
+        if (!parts.length) continue;
+        options.push({ id: r.id, label: parts.join(' — ').slice(0, 140), email: email });
+      }
+
+      var wrap = document.createElement('div');
+      wrap.className = 'scw-ops-modal-submission';
+      var q = document.createElement('div');
+      q.className = 'scw-ops-modal-submission__q';
+      q.textContent = config.question || 'Send to';
+      wrap.appendChild(q);
+
+      var sel = document.createElement('select');
+      sel.className = 'scw-ops-modal-recipient';
+      var ph = document.createElement('option');
+      ph.value = '';
+      ph.textContent = options.length
+        ? '— choose a contact —'
+        : 'No contacts found (is ' + config.view + ' on this page?)';
+      sel.appendChild(ph);
+      options.forEach(function (o) {
+        var opt = document.createElement('option');
+        opt.value = o.id;
+        opt.textContent = o.label;
+        sel.appendChild(opt);
+      });
+      wrap.appendChild(sel);
+
+      return {
+        element:  wrap,
+        required: !!config.required,
+        getValue: function () {
+          var id = sel.value;
+          if (!id) return null;
+          for (var i = 0; i < options.length; i++) {
+            if (options[i].id === id) {
+              return { id: id, label: options[i].label, email: options[i].email || '' };
+            }
+          }
+          return { id: id, label: '', email: '' };
+        }
+      };
+    }
+
+    var recipientPicker = buildRecipientPicker(opts.recipient);
+    if (recipientPicker) card.appendChild(recipientPicker.element);
+
     // Submission options — also-submit-to-Sales / Second Set / no.
     // Rendered ABOVE the note textarea so the operator picks a submit
     // target first; the textarea then surfaces only when a real
@@ -1590,25 +1675,41 @@
     document.addEventListener('keydown', function esc(e) {
       if (e.key === 'Escape') { close(); document.removeEventListener('keydown', esc); }
     });
+    // Required-recipient gate shared by both action buttons.
+    function recipientOrBlock() {
+      var rec = recipientPicker ? recipientPicker.getValue() : null;
+      if (recipientPicker && recipientPicker.required && !rec) {
+        showError('Pick who this should go to first.');
+        return { blocked: true };
+      }
+      return { blocked: false, recipient: rec };
+    }
+
     submitBtn.addEventListener('click', function () {
       err.style.display = 'none';
+      var gate = recipientOrBlock();
+      if (gate.blocked) return;
       var notes = (ta.value || '').trim();
       onSubmit(notes, {
         setSubmitting: setSubmitting, showError: showError, close: close,
         mode: opts.primaryMode || null,
         submission:    submissionGroup ? submissionGroup.getValue() : null,
-        clickupStatus: clickupGroup    ? clickupGroup.getValue()    : null
+        clickupStatus: clickupGroup    ? clickupGroup.getValue()    : null,
+        recipient:     gate.recipient || null
       });
     });
     if (secondaryBtn) {
       secondaryBtn.addEventListener('click', function () {
         err.style.display = 'none';
+        var gate = recipientOrBlock();
+        if (gate.blocked) return;
         var notes = (ta.value || '').trim();
         onSubmit(notes, {
           setSubmitting: setSubmitting, showError: showError, close: close,
           mode: opts.secondaryMode || null,
           submission:    submissionGroup ? submissionGroup.getValue() : null,
-          clickupStatus: clickupGroup    ? clickupGroup.getValue()    : null
+          clickupStatus: clickupGroup    ? clickupGroup.getValue()    : null,
+          recipient:     gate.recipient || null
         });
       });
     }
@@ -1777,7 +1878,8 @@
     // instead of cluttering step.modal.
     var modalOpts = $.extend({}, step.modal, {
       submission:    step.submission    || null,
-      clickupStatus: step.clickupStatus || null
+      clickupStatus: step.clickupStatus || null,
+      recipient:     step.recipient     || null
     });
     openNotesPromptModal(modalOpts, function (notes, ctx) {
       ctx.setSubmitting(true);
@@ -1796,6 +1898,10 @@
       // (which webhook to fire) and to mode (publish-and-notify, etc.).
       // A step with no submission radio can still force a default
       // (step.forceSubmission) — e.g. mark-ready always submits to Sales.
+      // Chosen CO recipient (issue-change-order) — { id, label, email }.
+      // Make resolves the full contact record from the id; label/email are
+      // convenience copies of what the picker showed.
+      if (ctx.recipient)              payload.recipient = ctx.recipient;
       if (ctx.submission)             payload.submission = ctx.submission;
       else if (step.forceSubmission)  payload.submission = step.forceSubmission;
       // ClickUp status update ('gfe-submitted' / 'final-bid-submitted' /

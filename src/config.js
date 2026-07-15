@@ -200,7 +200,7 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   // plus changeOrderId (alias of sourceRecordId, matching the other CO
   // webhooks). ⚠️ Requires field_2952 on view_3861 for CO mode to activate.
   //   Response body: { success: true } or { success: false, error: "..." }
-  MAKE_CO_ISSUE_WEBHOOK: "PLACEHOLDER — set when the CO issue scenario exists",
+  MAKE_CO_ISSUE_WEBHOOK: "https://hook.us1.make.com/fwpbnldo3fkrywggxwu18qsh6ghgrg7w",
   // Fires on the "Request Alternative Proposal" stepper action. Expects:
   //   Request body:  { sourceRecordId: <current SOW id>, notes: "<user input>", triggeredBy: {...} }
   //   Response body: { success: true, message?: "..." }
