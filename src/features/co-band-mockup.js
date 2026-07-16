@@ -120,6 +120,22 @@
       '.scw-co-band-lav tr.scw-co-rm-row td { background: #f5f3ff !important; }',
       '.scw-co-band-lav tr.scw-co-rm-row td:first-child { box-shadow: inset 4px 0 0 #8b5cf6; }',
       '.scw-co-band-lav tr.kn-table-group.scw-co-rm-row td { background: #ede9fe !important; }',
+      // Gray + red numbers variant (scw-co-band-gray): neutral slate rows —
+      // "removed, not bad" — while the money keeps the accounting-red
+      // credit signal in the Cost/price columns.
+      '.scw-co-band-gray tr.' + BAND_CLS + '--rm td {',
+      '  background: #f1f5f9 !important; color: #334155 !important;',
+      '  box-shadow: inset 4px 0 0 #64748b, inset 0 6px 0 #07467c;',
+      '}',
+      '.scw-co-band-gray tr.scw-co-band-tint-rm td { background: #f1f5f9 !important; }',
+      '.scw-co-band-gray tr.scw-co-band-tint-rm td:first-child { box-shadow: inset 4px 0 0 #94a3b8; }',
+      '.scw-co-band-gray tr.scw-co-rm-row td { background: #f1f5f9 !important; }',
+      '.scw-co-band-gray tr.scw-co-rm-row td:first-child { box-shadow: inset 4px 0 0 #94a3b8; }',
+      '.scw-co-band-gray tr.kn-table-group.scw-co-rm-row td { background: #e2e8f0 !important; }',
+      '.scw-co-band-gray tr.scw-co-band-tint-rm td.field_2203,',
+      '.scw-co-band-gray tr.scw-co-band-tint-rm td.field_2201,',
+      '.scw-co-band-gray tr.scw-co-band-tint-rm td.field_2028,',
+      '.scw-co-band-gray tr.scw-co-band-tint-rm td.field_1960 { color: #be123c !important; }',
       // Native subsection subtotals mix adds + removes — hidden in V1
       // band mode, replaced by the per-band rows below.
       'tr.scw-co-band-hidden-sub { display: none !important; }',
@@ -148,6 +164,11 @@
       '  background: #ede9fe !important; color: #5b21b6 !important;',
       '  border-top: 2px solid #8b5cf6 !important;',
       '}',
+      '.scw-co-band-gray tr.scw-co-band-sub--rm:not(.scw-co-band-sub--section) td {',
+      '  background: #e2e8f0 !important; color: #334155 !important;',
+      '  border-top: 2px solid #64748b !important;',
+      '}',
+      '.scw-co-band-gray tr.scw-co-band-sub--rm .scw-co-band-sub-amt { color: #be123c !important; }',
 
       // Floating switcher
       '#' + TOGGLE_ID + ' {',
@@ -281,6 +302,7 @@
       td.style.textAlign = 'center';
       if (k === idxQty && sums.q) td.innerHTML = '<strong>' + sums.q + '</strong>';
       else if (k === idxCost) {
+        td.className = 'scw-co-band-sub-amt';
         td.innerHTML = '<strong></strong>';
         td.firstChild.textContent = bandMoney(sums.c);
       }
@@ -551,8 +573,11 @@
 
     cleanInjected(tbody);
     root.classList.toggle('scw-co-band-mode', hasCo && mode !== 'off');
+    var rmColor = getRmColor();
     root.classList.toggle('scw-co-band-lav',
-      hasCo && mode !== 'off' && getRmColor() === 'lav');
+      hasCo && mode !== 'off' && rmColor === 'lav');
+    root.classList.toggle('scw-co-band-gray',
+      hasCo && mode !== 'off' && rmColor === 'gray');
 
     if (!hasCo) return;
     log('applyMode', viewId, 'mode=' + mode);
@@ -597,7 +622,9 @@
           'V2 · Section bands</button>' +
         '<span class="scw-cbm-lbl" style="margin-left:8px">Remove</span>' +
         '<button type="button" data-scw-cbm-color="red">Red</button>' +
-        '<button type="button" data-scw-cbm-color="lav">Lavender</button>';
+        '<button type="button" data-scw-cbm-color="lav">Lavender</button>' +
+        '<button type="button" data-scw-cbm-color="gray" title="Neutral gray rows, ' +
+          'accounting-red credit amounts">Gray + red $</button>';
       document.body.appendChild(el);
       log('toggle mounted (mode=' + getMode() + ')');
     }
