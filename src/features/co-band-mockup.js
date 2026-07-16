@@ -124,14 +124,14 @@
       // "removed, not bad" — while the money keeps the accounting-red
       // credit signal in the Cost/price columns.
       '.scw-co-band-gray tr.' + BAND_CLS + '--rm td {',
-      '  background: #f1f5f9 !important; color: #334155 !important;',
+      '  background: #f4f7fa !important; color: #334155 !important;',
       '  box-shadow: inset 4px 0 0 #64748b, inset 0 6px 0 #07467c;',
       '}',
-      '.scw-co-band-gray tr.scw-co-band-tint-rm td { background: #f1f5f9 !important; }',
+      '.scw-co-band-gray tr.scw-co-band-tint-rm td { background: #f8fafc !important; }',
       '.scw-co-band-gray tr.scw-co-band-tint-rm td:first-child { box-shadow: inset 4px 0 0 #94a3b8; }',
-      '.scw-co-band-gray tr.scw-co-rm-row td { background: #f1f5f9 !important; }',
+      '.scw-co-band-gray tr.scw-co-rm-row td { background: #f8fafc !important; }',
       '.scw-co-band-gray tr.scw-co-rm-row td:first-child { box-shadow: inset 4px 0 0 #94a3b8; }',
-      '.scw-co-band-gray tr.kn-table-group.scw-co-rm-row td { background: #e2e8f0 !important; }',
+      '.scw-co-band-gray tr.kn-table-group.scw-co-rm-row td { background: #eef2f7 !important; }',
       '.scw-co-band-gray tr.scw-co-band-tint-rm td.field_2203,',
       '.scw-co-band-gray tr.scw-co-band-tint-rm td.field_2201,',
       '.scw-co-band-gray tr.scw-co-band-tint-rm td.field_2028,',
@@ -165,10 +165,17 @@
       '  border-top: 2px solid #8b5cf6 !important;',
       '}',
       '.scw-co-band-gray tr.scw-co-band-sub--rm:not(.scw-co-band-sub--section) td {',
-      '  background: #e2e8f0 !important; color: #334155 !important;',
+      '  background: #eef2f7 !important; color: #334155 !important;',
       '  border-top: 2px solid #64748b !important;',
       '}',
-      '.scw-co-band-gray tr.scw-co-band-sub--rm .scw-co-band-sub-amt { color: #be123c !important; }',
+      // Amount cell stays red on BOTH the section subtotals and the band
+      // total — the :not(--section) form matches the slate row rule's
+      // specificity so the (later) red rule wins on the band total too.
+      '.scw-co-band-gray tr.scw-co-band-sub--rm td.scw-co-band-sub-amt,',
+      '.scw-co-band-gray tr.scw-co-band-sub--rm:not(.scw-co-band-sub--section) td.scw-co-band-sub-amt,',
+      '.scw-co-band-gray tr.scw-co-band-sub--rm td.scw-co-band-sub-amt strong {',
+      '  color: #be123c !important;',
+      '}',
 
       // Floating switcher
       '#' + TOGGLE_ID + ' {',
