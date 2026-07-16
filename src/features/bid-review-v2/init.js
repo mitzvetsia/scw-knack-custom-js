@@ -670,6 +670,14 @@
       // row keeps its cells intact for re-renders.
       var clone = cells[i].cloneNode(true);
       while (clone.firstChild) body.appendChild(clone.firstChild);
+      // Re-link lives in the OPEN panel only (CSS hides it in the grid
+      // row): relocate the primary cell's pill from the cloned action
+      // stack up into the card's label strip, top-right. Dupe blocks
+      // keep theirs in place (nested inside the dupe, so the :scope
+      // direct-child selector skips them).
+      var relinkBtn = body.querySelector(
+        ':scope > .scw-bid-review-v2__cell-actions .scw-bid-review__cell-action--relink');
+      if (relinkBtn) lbl.appendChild(relinkBtn);
       card.appendChild(body);
       col.appendChild(card);
     }

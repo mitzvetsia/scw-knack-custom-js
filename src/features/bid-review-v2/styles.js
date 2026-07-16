@@ -619,6 +619,14 @@
     '  letter-spacing: 0.04em; color: #295f91;',
     '  margin-bottom: 8px; padding-bottom: 6px;',
     '  border-bottom: 1px solid #e2e8f0;',
+    '  display: flex; align-items: center; gap: 8px;',
+    '}',
+    /* Re-link only shows when the row is OPEN: hidden in the grid row's
+       cell action stack, relocated into the bid card's label strip
+       (top-right) when the expand panel builds. */
+    '.scw-bid-review-v2__row .scw-bid-review__cell-action--relink { display: none; }',
+    '.scw-bid-review-v2__bid-card-label .scw-bid-review__cell-action--relink {',
+    '  margin-left: auto; letter-spacing: 0.02em; text-transform: none;',
     '}',
     /* ── Narrow-editor reflow (scoped to the panel) ─────────────
        The worksheet-v2 summary row is a fixed ~930px 12-column grid that
