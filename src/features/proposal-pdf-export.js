@@ -505,13 +505,56 @@
     var currentL1 = null;
     var currentL2 = null;
     var currentL3 = null;
+    // CO band context (co-band-mockup.js live presentation). While a
+    // banded CO grid is scraped, every bucket created inside a band
+    // carries coBand: 'add'|'rm' so the publish renderer can re-emit
+    // the Added/Removed banding instead of flattening it away.
+    var currentCoBand = null;
 
     for (var i = 0; i < rows.length; i++) {
       var tr = rows[i];
 
       if (tr.id && !tr.classList.contains('kn-table-group') && !tr.classList.contains('scw-level-total-row')) continue;
 
+      // ── CO band rows (banded CO preview only) ───────────────────
+      // Band header ("Items to be Added" / "Items to be Removed") →
+      // marker entry in the bucket stream; per-subsection band subtotal
+      // → the current bucket's footer (replacing the hidden native
+      // mixed-value subtotal); band TOTAL row → marker entry. All three
+      // fall through every other branch on base proposals (the classes
+      // only exist on a banded CO grid).
+      if (tr.classList.contains('scw-co-band')) {
+        currentCoBand = tr.classList.contains('scw-co-band--rm') ? 'rm' : 'add';
+        if (currentL1) {
+          currentL1.buckets.push({
+            level: 2, coBandHeader: true, kind: currentCoBand,
+            label: norm(tr.textContent), products: [], footer: null,
+          });
+        }
+        currentL2 = null;
+        currentL3 = null;
+        continue;
+      }
+      if (tr.classList.contains('scw-co-band-sub')) {
+        var coBandKind = tr.classList.contains('scw-co-band-sub--rm') ? 'rm' : 'add';
+        var coBandLbl  = norm((tr.querySelector('.scw-co-band-sub-label') || {}).textContent || '');
+        var coBandAmt  = norm((tr.querySelector('td.scw-co-band-sub-amt') || {}).textContent || '');
+        if (tr.classList.contains('scw-co-band-sub--section')) {
+          var coBandQty = parseMoney(norm((tr.querySelector('td.' + keys.qty) || {}).textContent || ''));
+          if (currentL2) {
+            currentL2.footer = { label: coBandLbl, qty: coBandQty, cost: coBandAmt, coBand: coBandKind };
+          }
+        } else if (currentL1) {
+          currentL1.buckets.push({
+            level: 2, coBandTotal: true, kind: coBandKind,
+            label: coBandLbl, cost: coBandAmt, products: [], footer: null,
+          });
+        }
+        continue;
+      }
+
       if (tr.classList.contains('kn-group-level-1')) {
+        currentCoBand = null;
         var l1Label = groupLabelText(tr);
         if (tr.style.display === 'none') {
           currentL1 = { level: 1, label: '', promoted: true, buckets: [], footer: null };
@@ -539,9 +582,13 @@
 
         var l2Label = groupLabelText(tr);
         var isPromoted = tr.classList.contains('scw-promoted-l2-as-l1');
+        // A promoted L2 IS the section head — any band context belongs
+        // to the previous section.
+        if (isPromoted) currentCoBand = null;
 
         currentL2 = {
           level: 2, label: l2Label, isPromoted: isPromoted, products: [], footer: null,
+          coBand: currentCoBand || undefined,
         };
 
         if (isPromoted) {
@@ -757,6 +804,11 @@
       }
 
       if (tr.classList.contains('scw-subtotal--level-2')) {
+        // Banded CO grids hide the native subsection subtotal (it mixes
+        // adds + removes into one meaningless number) and replace it with
+        // per-band rows — captured above as the bucket footer. Don't let
+        // the hidden native clobber that.
+        if (tr.classList.contains('scw-co-band-hidden-sub')) continue;
         var l2FooterLabel = norm(tr.getAttribute('data-scw-group-label') || '');
         var l2FooterQty = parseMoney(norm((tr.querySelector('td.' + keys.qty) || {}).textContent || ''));
         var l2FooterCost = norm((tr.querySelector('td.' + keys.cost) || {}).textContent || '');
@@ -871,8 +923,10 @@
         var lbl = String(line.label);
         // Install-labor subtotal AND the grand total both render "TBD". The
         // grand total sums in install labor, so while the bid is unreleased it
-        // shows "TBD" rather than the equipment-only figure.
-        if (/installation/i.test(lbl) || /grand\s*total/i.test(lbl)) {
+        // shows "TBD" rather than the equipment-only figure. (On a CO the
+        // grand-total line is labeled "Change Order Total".)
+        if (/installation/i.test(lbl) || /grand\s*total/i.test(lbl) ||
+            /change\s*order\s*total/i.test(lbl)) {
           line.value = TBD;
         }
       }
@@ -1602,10 +1656,27 @@
 
       for (var b = 0; b < section.buckets.length; b++) {
         var bucket = section.buckets[b];
+
+        // CO band markers (banded CO preview scrape) — emit the band
+        // heading / band total as standalone rows between the product
+        // tables, mirroring the on-page Added/Removed presentation.
+        if (bucket.coBandHeader) {
+          html.push('<div class="co-band-hdr co-band-hdr--' + bucket.kind + '">' +
+            esc(bucket.label) + '</div>');
+          continue;
+        }
+        if (bucket.coBandTotal) {
+          html.push('<div class="co-band-total co-band-total--' + bucket.kind + '">' +
+            '<span class="co-band-total-label">' + esc(bucket.label) + '</span>' +
+            '<span class="co-band-total-value">' + esc(bucket.cost) + '</span></div>');
+          continue;
+        }
+
         if (!bucket.products.length && !bucket.footer) continue;
 
+        var coBandCls = bucket.coBand ? ' co-band--' + bucket.coBand : '';
         if (!bucket.isPromoted) {
-          html.push('<div class="l2-header">' + esc(bucket.label) + '</div>');
+          html.push('<div class="l2-header' + coBandCls + '">' + esc(bucket.label) + '</div>');
         }
 
         if (bucket.products.length) {
@@ -1615,7 +1686,7 @@
           // shows "Qty Cost" labels above colspan-3 rows with no
           // values, which reads as a broken table.
           var bucketHideCost = bucket.products.every(function (p) { return p.hideCost; });
-          html.push('<table class="product-table">');
+          html.push('<table class="product-table' + coBandCls + '">');
           if (bucketHideCost) {
             html.push('<thead><tr><th class="col-desc"></th></tr></thead>');
           } else {
@@ -1669,7 +1740,8 @@
 
           if (bucket.footer) {
             html.push('<tfoot>');
-            html.push('<tr class="l2-footer">');
+            html.push('<tr class="l2-footer' +
+              (bucket.footer.coBand ? ' co-band-sub--' + bucket.footer.coBand : '') + '">');
             // L2 footer hides the qty roll-up (per the on-page grid).
             // The roll-up isn't meaningful across mixed product types
             // in a bucket, and the per-product L3 rows already show
@@ -2129,39 +2201,35 @@
       '  color: #64748b; margin-right: 10px; font-weight: 700;',
       '}',
       '',
-      '/* ── CO Added/Removed bands (live presentation; scraped from the',
-      '      preview grid — keep in sync with co-band-mockup.js styles) ── */',
-      'tr.scw-co-band td {',
+      '/* ── CO Added/Removed bands — publish re-render. renderGridSections',
+      '      emits .co-band-* from the banded preview scrape; look kept in',
+      '      sync with co-band-mockup.js (V1 + gray rows / red credits). ── */',
+      '.co-band-hdr {',
       '  font-weight: 800; font-size: 11px; text-transform: uppercase;',
-      '  letter-spacing: 0.06em; padding: 8px 10px;',
+      '  letter-spacing: 0.06em; padding: 8px 10px; margin: 14px 0 8px;',
+      '  page-break-after: avoid;',
       '}',
-      'tr.scw-co-band--add td {',
+      '.co-band-hdr--add {',
       '  background: #ecfdf5; color: #065f46;',
       '  border-left: 4px solid #059669; border-top: 2px solid #059669;',
       '}',
-      'tr.scw-co-band--rm td {',
-      '  background: #f4f7fa; color: #334155;',
-      '  border-left: 4px solid #64748b; border-top: 18px solid #fff;',
+      '.co-band-hdr--rm {',
+      '  background: #f4f7fa; color: #334155; margin-top: 26px;',
+      '  border-left: 4px solid #64748b; border-top: 3px solid #07467c;',
       '}',
-      'tr.scw-co-band-tint-add td { background: #f0fdf4 !important; }',
-      'tr.scw-co-band-tint-rm td { background: #f8fafc !important; }',
-      'tr.kn-table-group.scw-co-band-tint-rm td { background: #eef2f7 !important; }',
-      'tr.scw-co-band-tint-rm td.field_2203, tr.scw-co-band-tint-rm td.field_2201,',
-      'tr.scw-co-band-tint-rm td.field_2028, tr.scw-co-band-tint-rm td.field_1960 {',
-      '  color: #be123c !important;',
+      'table.product-table.co-band--add tbody td { background: #f0fdf4; }',
+      'table.product-table.co-band--rm tbody td { background: #f8fafc; }',
+      'table.product-table.co-band--rm tbody td.col-cost { color: #be123c; }',
+      '.l2-header.co-band--rm { color: #334155; }',
+      'tr.l2-footer.co-band-sub--rm td:last-child { color: #be123c; }',
+      '.co-band-total {',
+      '  display: flex; justify-content: space-between;',
+      '  font-weight: 800; font-size: 12px; padding: 7px 10px; margin: 2px 0 12px;',
+      '  page-break-inside: avoid;',
       '}',
-      'tr.scw-co-band-sub td { font-weight: 700; padding: 6px 10px; }',
-      'tr.scw-co-band-sub--section td { background: #f0f4fa !important; color: #163C6E; }',
-      'tr.scw-co-band-sub--add:not(.scw-co-band-sub--section) td {',
-      '  background: #dcfce7 !important; color: #065f46; border-top: 2px solid #059669;',
-      '}',
-      'tr.scw-co-band-sub--rm:not(.scw-co-band-sub--section) td {',
-      '  background: #eef2f7 !important; color: #334155; border-top: 2px solid #64748b;',
-      '}',
-      'tr.scw-co-band-sub--rm td.scw-co-band-sub-amt { color: #be123c !important; }',
-      // The bands replace the per-block credit banners and the native
-      // mixed-value subsection subtotals in the scraped DOM.
-      'tr.scw-co-rm-banner, tr.scw-co-band-hidden-sub { display: none; }',
+      '.co-band-total--add { background: #dcfce7; color: #065f46; border-top: 2px solid #059669; }',
+      '.co-band-total--rm  { background: #eef2f7; color: #334155; border-top: 2px solid #64748b; }',
+      '.co-band-total--rm .co-band-total-value { color: #be123c; }',
       '',
       '/* ── Report / BOM Table ── */',
       '.report-table-wrap { margin-top: 30px; }',
@@ -2291,7 +2359,9 @@
                             || (pg ? fmtSummaryMoney(pg.equipmentTotal) : ''),
       installationTotal:  findTotalLine(payload, /installation\s*total/i)
                             || (pg ? fmtSummaryMoney(pg.installationTotal) : ''),
-      grandTotal:         findTotalLine(payload, /grand\s*total/i)
+      // On a CO the grand-total line is labeled "Change Order Total" —
+      // match either so the summary field never comes back blank.
+      grandTotal:         findTotalLine(payload, /grand\s*total|change\s*order\s*total/i)
                             || (pg ? fmtSummaryMoney(pg.grandTotal) : '')
     };
   }
@@ -4128,19 +4198,34 @@
     }
 
     // .l1-section wraps an MDF/IDF/Headend group. Emit the L1 header as
-    // H3, MERGE every .product-table inside the section into ONE
-    // combined table (skipping L2 headers and L2 footers), then emit
-    // each .l1-footer line as its own H3.
+    // H3, then walk the section's children IN ORDER: product-table
+    // bodies merge into one combined table PER SEGMENT (L2 headers and
+    // L2 footers skipped, header row deduped per segment, Qty/Cost
+    // cells centered). On a base proposal there are no segment breaks,
+    // so the whole section is still one merged table. On a banded CO,
+    // each .co-band-hdr / .co-band-total is a segment break emitted as
+    // its own H3 — so the agreement keeps the Items to be Added /
+    // Items to be Removed structure the preview shows (esignatures has
+    // no cell colors; the headings + signed credit amounts carry it).
+    // Finally each .l1-footer line becomes its own H3.
     function emitL1Section(section) {
       var headerEl = section.querySelector('.l1-header');
       if (headerEl) pushHeader(3, cleanText(headerEl.textContent));
 
       var combinedCells = [];
       var emittedHeaderRow = false;
-      var tables = section.querySelectorAll('table.product-table');
-      for (var t = 0; t < tables.length; t++) {
+
+      function flushTable() {
+        if (combinedCells.length) {
+          elements.push({ type: 'table', table_cells: padRows(combinedCells) });
+        }
+        combinedCells = [];
+        emittedHeaderRow = false;
+      }
+
+      function harvestTable(tableEl) {
         if (!emittedHeaderRow) {
-          var headRows = tables[t].querySelectorAll('thead tr');
+          var headRows = tableEl.querySelectorAll('thead tr');
           for (var hr = 0; hr < headRows.length; hr++) {
             var thCells = headRows[hr].querySelectorAll('th');
             if (!thCells.length) continue;
@@ -4157,7 +4242,7 @@
             break;
           }
         }
-        var bodyRows = tables[t].querySelectorAll('tbody tr');
+        var bodyRows = tableEl.querySelectorAll('tbody tr');
         for (var br = 0; br < bodyRows.length; br++) {
           var tdCells = bodyRows[br].querySelectorAll('td');
           if (!tdCells.length) continue;
@@ -4173,9 +4258,34 @@
         }
         // <tfoot> (.l2-footer) rows skipped intentionally.
       }
-      if (combinedCells.length) {
-        elements.push({ type: 'table', table_cells: padRows(combinedCells) });
+
+      for (var ci = 0; ci < section.children.length; ci++) {
+        var child = section.children[ci];
+        var cCls = child.classList;
+        if (cCls && cCls.contains('co-band-hdr')) {
+          flushTable();
+          var bandText = cleanText(child.textContent);
+          if (cCls.contains('co-band-hdr--rm') && !/credit/i.test(bandText)) {
+            bandText += ' (credit)';
+          }
+          pushHeader(3, bandText);
+          continue;
+        }
+        if (cCls && cCls.contains('co-band-total')) {
+          flushTable();
+          var btLbl = child.querySelector('.co-band-total-label');
+          var btVal = child.querySelector('.co-band-total-value');
+          var btText = cleanText(btLbl ? btLbl.textContent : '') + '   ' +
+                       cleanText(btVal ? btVal.textContent : '');
+          pushHeader(3, cleanText(btText));
+          continue;
+        }
+        if (child.tagName && child.tagName.toLowerCase() === 'table' &&
+            cCls && cCls.contains('product-table')) {
+          harvestTable(child);
+        }
       }
+      flushTable();
 
       var footer = section.querySelector('.l1-footer');
       if (footer) {

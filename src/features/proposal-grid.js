@@ -1951,7 +1951,17 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
 
     const rows = [];
 
-    rows.push(makeTitleRow('Project Totals'));
+    // A change order's totals aren't "project" totals — they're the CO's
+    // net change. Flip the headline labels when any row carries a CO
+    // Action (field_2965); base proposals keep the classic labels. The
+    // publish pipeline scrapes these labels verbatim, so the published
+    // HTML / PDF / e-sign agreement inherit the flip automatically.
+    const isChangeOrder = $allDataRows.toArray().some((tr) => {
+      const td = tr.querySelector('td.field_2965');
+      return !!td && /add|remove/i.test(td.textContent || '');
+    });
+
+    rows.push(makeTitleRow(isChangeOrder ? 'Change Order Totals' : 'Project Totals'));
 
     if (hasAnyDiscount) {
       rows.push(makeLineRow({
@@ -2004,7 +2014,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
     }
 
     rows.push(makeLineRow({
-      label: 'Grand Total',
+      label: isChangeOrder ? 'Change Order Total' : 'Grand Total',
       value: formatMoney(grandTotal),
       rowType: 'final',
       isLast: true,
@@ -3891,7 +3901,8 @@ tr.${CO_RM.bannerCls} td {
     $view.find('tr.scw-project-totals').each(function () {
       var $tr = $(this);
       var label = ($tr.find('.scw-l1-labelcell').text() || '').trim().toLowerCase();
-      if (label.indexOf('installation') !== -1 || label.indexOf('grand total') !== -1) {
+      if (label.indexOf('installation') !== -1 || label.indexOf('grand total') !== -1 ||
+          label.indexOf('change order total') !== -1) {
         $tr.find('.scw-l1-valuecell').html('<strong>' + TBD + '</strong>');
       }
     });
