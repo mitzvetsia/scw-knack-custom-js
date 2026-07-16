@@ -674,6 +674,39 @@
         });
     }
 
+    // ── ops: "Reopen for Changes" (Issued / Declined → Ops Review) ────────
+    // The post-issue escape hatch: an Issued (or Declined) CO goes back to
+    // Ops Review so the lines unlock and the normal Preview & Issue flow
+    // re-applies. Status is written DIRECTLY (same session-authed PUT as
+    // Recall from Sub — field_2953 sits hidden on view_4092 for this).
+    // Client-side only, no webhook: there is no Make branch for a reopen
+    // today. The already-sent e-signature request stays live in the
+    // client's inbox — the confirm copy says so; withdraw it from the
+    // esignatures.com dashboard if it shouldn't be signable meanwhile.
+    // (If/when Make grows a mode:'reopen' branch that voids the contract
+    // automatically, fire it here the way recallFromSub does.)
+    function reopenForChanges() {
+      confirmThen('Reopen this change order?',
+        'Reopen for changes? The CO returns to Ops Review so you can edit ' +
+        'the lines and re-issue.\n\nHeads up: the e-signature request ' +
+        'already sent to the client stays active until you re-issue — ' +
+        'withdraw it from the esignatures.com dashboard if it should not ' +
+        'be signable in the meantime. Re-issuing sends a fresh agreement.',
+        'Reopen for Changes',
+        function () {
+          setBusy(true);
+          putStatus('Ops Review', function (ok) {
+            setBusy(false);
+            if (!ok) return;
+            _optimistic = 'Ops Review';
+            setPillText('Ops Review');
+            render();
+            managePoll();
+            refreshLocks();
+          });
+        });
+    }
+
     // ── sub hand-back: "Submit Pricing to SCW" ────────────────────────────
     // Lines with no Sub Bid yet — surfaced in the confirm copy so the sub
     // knows what they're about to hand back (informational, not a block:
@@ -855,11 +888,20 @@
             ' — have them check their email for the e-signature request.'
           : 'Issued — sent for client signature. Have the recipient check ' +
             'their email for the e-signature request.';
-        return '<span class="scw-co-stage-note">' + copy + '</span>';
+        // Reopen = the ops escape hatch after issue: unlocks editing so the
+        // CO can be revised and re-issued (a re-issue mints a NEW published
+        // proposal + a NEW e-sign agreement).
+        return '<span class="scw-co-stage-note">' + copy + '</span>' +
+          '<button type="button" class="scw-co-stage-btn scw-co-stage-btn--secondary" ' +
+          'data-scw-co-act="reopen">Reopen for Changes</button>';
       }
       if (cur === 4) return '<span class="scw-co-stage-note">Signed — applying changes to the install scope…</span>';
       if (cur === 5) return '<span class="scw-co-stage-note"><b>Applied.</b> Install scope updated and invoiced.</span>';
-      if (/declined/.test(s)) return '<span class="scw-co-stage-note"><b>Declined.</b> Revise the lines and re-issue.</span>';
+      if (/declined/.test(s)) {
+        return '<span class="scw-co-stage-note"><b>Declined.</b> Revise the lines and re-issue.</span>' +
+          '<button type="button" class="scw-co-stage-btn scw-co-stage-btn--secondary" ' +
+          'data-scw-co-act="reopen">Reopen for Changes</button>';
+      }
       if (/void/.test(s))     return '<span class="scw-co-stage-note"><b>Void.</b></span>';
       return '<span class="scw-co-stage-note">Status: ' + esc(status || 'unknown') + '</span>';
     }
@@ -915,6 +957,7 @@
           if (act === 'recall')        recallFromSub();
           if (act === 'sendback')      sendBackToSub();
           if (act === 'preview-issue') previewIssue();
+          if (act === 'reopen')        reopenForChanges();
         });
       }
       // Pin directly under the header row (co-header-card builds .scw-co-hdr
