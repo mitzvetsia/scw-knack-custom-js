@@ -129,7 +129,29 @@
       // sub "your window is open" variant — green, same pulse
       '.scw-co-stage-wait--open{background:#f0fdf4;border-color:#bbf7d0;color:#166534;}',
       '.scw-co-stage-wait--open .scw-co-stage-pulse{background:#22c55e;}',
-      '@keyframes scwCoPulse{0%,100%{opacity:1;}50%{opacity:.3;}}'
+      '@keyframes scwCoPulse{0%,100%{opacity:1;}50%{opacity:.3;}}',
+      // ── Skip Sub Pricing modal ──
+      '.scw-co-skip-ovl{position:fixed;inset:0;z-index:10050;background:rgba(15,23,42,.45);',
+      'display:flex;align-items:center;justify-content:center;padding:20px;}',
+      '.scw-co-skip-card{background:#fff;border-radius:12px;width:440px;max-width:100%;',
+      'box-shadow:0 20px 50px rgba(15,23,42,.3);padding:20px 22px 18px;box-sizing:border-box;}',
+      '.scw-co-skip-title{font:700 15px/1.3 system-ui,-apple-system,sans-serif;color:#1e293b;',
+      'margin-bottom:6px;}',
+      '.scw-co-skip-body{font:400 12.5px/1.5 system-ui,-apple-system,sans-serif;color:#475569;',
+      'margin-bottom:14px;}',
+      '.scw-co-skip-lbl{display:block;font:600 12px/1.3 system-ui,-apple-system,sans-serif;',
+      'color:#334155;margin-bottom:12px;}',
+      '.scw-co-skip-file{display:block;margin-top:5px;font:400 12px/1.3 system-ui,sans-serif;',
+      'color:#334155;width:100%;}',
+      '.scw-co-skip-note{display:block;margin-top:5px;width:100%;box-sizing:border-box;',
+      'border:1px solid #cbd5e1;border-radius:7px;padding:7px 9px;resize:vertical;',
+      'font:400 12.5px/1.45 system-ui,-apple-system,sans-serif;color:#1e293b;}',
+      '.scw-co-skip-note:focus{outline:none;border-color:#0f4c75;',
+      'box-shadow:0 0 0 2px rgba(15,76,117,.15);}',
+      '.scw-co-skip-err{font:600 12px/1.4 system-ui,sans-serif;color:#be123c;',
+      'background:#fff1f2;border:1px solid #fecdd3;border-radius:7px;padding:7px 10px;',
+      'margin-bottom:12px;}',
+      '.scw-co-skip-btns{display:flex;justify-content:flex-end;gap:10px;margin-top:4px;}'
     ].join('');
     document.head.appendChild(s);
   }
@@ -707,6 +729,160 @@
         });
     }
 
+    // ── ops: "Skip Sub Pricing" (Draft → Ops Review, no sub round-trip) ──
+    // Ops sometimes already has the sub's number in hand (bid arrived by
+    // email / phone) — let them jump straight to Preview & Issue. Gated:
+    // the bid PDF (stored on the CO via SKIP_PDF_FIELD, exposed on
+    // view_4092) and a reason note are both REQUIRED. Status flips
+    // directly (same session-authed PUT as Recall); a notify-only webhook
+    // (mode 'skip-pricing') carries the note + asset id for ClickUp/audit
+    // — fired silently until a Make branch exists for it.
+    var SKIP_PDF_FIELD  = 'field_2981';
+    // Optional CO field for the skip reason. Until a field exists, the note
+    // rides the skip-pricing webhook payload only.
+    var SKIP_NOTE_FIELD = '';
+
+    function putFields(fields, done) {
+      var coId = getCoSowId();
+      if (!coId) {
+        alert('Could not determine the change order record id from the URL.');
+        done(false); return;
+      }
+      var url = SCW.knackRecordUrl(VIEW, coId);
+      console.info('[scw-co-stage] fields PUT →', url, fields);
+      SCW.knackAjax({
+        url: url, type: 'PUT', data: JSON.stringify(fields)
+      }).then(function () { done(true); }, function (xhr) {
+        console.warn('[scw-co-stage] fields PUT FAILED', xhr && xhr.status,
+          xhr && xhr.responseText);
+        alert('Could not update the change order (HTTP ' +
+          ((xhr && xhr.status) || '?') + ').');
+        done(false);
+      });
+    }
+
+    function uploadSkipPdf(file) {
+      var fd = new FormData();
+      fd.append('files', file, file.name || 'bid.pdf');
+      return new Promise(function (resolve, reject) {
+        $.ajax({
+          url: Knack.api_url + '/v1/applications/' + Knack.application_id +
+               '/assets/file/upload',
+          type: 'POST', data: fd, processData: false, contentType: false,
+          headers: {
+            'X-Knack-Application-Id': Knack.application_id,
+            'x-knack-rest-api-key': 'knack',
+            'Authorization': Knack.getUserToken()
+          },
+          success: function (res) {
+            var id = res && (res.id || (res.asset && res.asset.id));
+            id ? resolve(id) : reject(new Error('no asset id in upload response'));
+          },
+          error: function (xhr) {
+            reject(new Error('upload failed (HTTP ' + ((xhr && xhr.status) || '?') + ')'));
+          }
+        });
+      });
+    }
+
+    function skipSubPricing() {
+      var old = document.getElementById('scw-co-skip-ovl');
+      if (old) old.remove();
+      var ovl = document.createElement('div');
+      ovl.id = 'scw-co-skip-ovl';
+      ovl.className = 'scw-co-skip-ovl';
+      ovl.innerHTML =
+        '<div class="scw-co-skip-card">' +
+          '<div class="scw-co-skip-title">Skip sub pricing?</div>' +
+          '<div class="scw-co-skip-body">This jumps the change order straight ' +
+            'to Ops Review / Preview &amp; Issue without the subcontractor ' +
+            'pricing round-trip. Attach the bid you already have and note ' +
+            'why — both are required.</div>' +
+          '<label class="scw-co-skip-lbl">Sub bid PDF' +
+            '<input type="file" class="scw-co-skip-file" ' +
+              'accept="application/pdf,.pdf"></label>' +
+          '<label class="scw-co-skip-lbl">Why are we skipping sub pricing?' +
+            '<textarea class="scw-co-skip-note" rows="3" placeholder=' +
+              '"e.g. Sub priced via email 7/15 — bid attached."></textarea></label>' +
+          '<div class="scw-co-skip-err" hidden></div>' +
+          '<div class="scw-co-skip-btns">' +
+            '<button type="button" class="scw-co-stage-btn scw-co-stage-btn--secondary" ' +
+              'data-skip="cancel">Cancel</button>' +
+            '<button type="button" class="scw-co-stage-btn scw-co-stage-btn--primary" ' +
+              'data-skip="go">Skip &amp; Continue to Review</button>' +
+          '</div>' +
+        '</div>';
+      document.body.appendChild(ovl);
+
+      var fileIn = ovl.querySelector('.scw-co-skip-file');
+      var noteIn = ovl.querySelector('.scw-co-skip-note');
+      var errEl  = ovl.querySelector('.scw-co-skip-err');
+      var goBtn  = ovl.querySelector('[data-skip="go"]');
+      function err(msg) { errEl.hidden = !msg; errEl.textContent = msg || ''; }
+      function close() { ovl.remove(); }
+
+      ovl.addEventListener('click', function (e) {
+        if (e.target === ovl) { close(); return; }
+        var b = e.target.closest && e.target.closest('[data-skip]');
+        if (!b) return;
+        if (b.getAttribute('data-skip') === 'cancel') { close(); return; }
+
+        var file = fileIn.files && fileIn.files[0];
+        var note = (noteIn.value || '').trim();
+        if (!file) { err('Attach the sub bid PDF.'); return; }
+        if (!note) { err('Add a note explaining why sub pricing is being skipped.'); return; }
+
+        err('');
+        goBtn.setAttribute('disabled', 'disabled');
+        goBtn.textContent = 'Uploading…';
+        uploadSkipPdf(file).then(function (assetId) {
+          goBtn.textContent = 'Saving…';
+          var fields = {};
+          fields[SKIP_PDF_FIELD] = assetId;
+          fields[STATUS_FIELD]   = 'Ops Review';
+          if (SKIP_NOTE_FIELD) fields[SKIP_NOTE_FIELD] = note;
+          putFields(fields, function (ok) {
+            if (!ok) {
+              goBtn.removeAttribute('disabled');
+              goBtn.innerHTML = 'Skip &amp; Continue to Review';
+              return;
+            }
+            close();
+            _optimistic = 'Ops Review';
+            setPillText('Ops Review');
+            render();
+            managePoll();
+            refreshLocks();
+            // Best-effort audit ping (no Make branch yet → fire silently;
+            // the status PUT above is the source of truth).
+            try {
+              var url = (window.SCW && SCW.CONFIG &&
+                SCW.CONFIG.MAKE_CO_SEND_TO_SUB_WEBHOOK) || '';
+              if (url && !/PLACEHOLDER/.test(url)) {
+                fetch(url, {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    changeOrderId: getCoSowId(),
+                    mode: 'skip-pricing',
+                    skipNote: note,
+                    bidPdfAssetId: assetId,
+                    coNumber: readHeaderValue('field_2123'),
+                    coName:   readHeaderValue('field_2126'),
+                    triggeredBy: getTriggeredBy()
+                  })
+                }).catch(function () { /* audit-only */ });
+              }
+            } catch (eWh) { /* audit-only */ }
+          });
+        }).catch(function (e2) {
+          err('Bid PDF upload failed — ' + (e2 && e2.message ? e2.message : e2));
+          goBtn.removeAttribute('disabled');
+          goBtn.innerHTML = 'Skip &amp; Continue to Review';
+        });
+      });
+    }
+
     // ── sub hand-back: "Submit Pricing to SCW" ────────────────────────────
     // Lines with no Sub Bid yet — surfaced in the confirm copy so the sub
     // knows what they're about to hand back (informational, not a block:
@@ -855,7 +1031,10 @@
       if (cur === 0) {
         return '<button type="button" class="scw-co-stage-btn scw-co-stage-btn--primary" ' +
           'data-scw-co-act="send">Send to Sub</button>' +
-          '<span class="scw-co-stage-note">Sends the CO to the subcontractor to price.</span>';
+          '<button type="button" class="scw-co-stage-btn scw-co-stage-btn--secondary" ' +
+          'data-scw-co-act="skip">Skip Sub Pricing &rarr;</button>' +
+          '<span class="scw-co-stage-note">Sends the CO to the subcontractor to price ' +
+          '— or skip straight to review with a bid PDF on file.</span>';
       }
       if (cur === 1) {
         // Recall = the ops escape hatch while the ball is in the sub's court —
@@ -953,6 +1132,7 @@
             return;
           }
           if (act === 'send')          sendToSub();
+          if (act === 'skip')          skipSubPricing();
           if (act === 'nudge')         nudgeSub();
           if (act === 'recall')        recallFromSub();
           if (act === 'sendback')      sendBackToSub();
