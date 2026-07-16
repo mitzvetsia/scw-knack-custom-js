@@ -79,12 +79,25 @@
       '}',
       'tr.' + BAND_CLS + '--rm td {',
       '  background: #fff1f2 !important; color: #9f1239 !important;',
-      '  box-shadow: inset 4px 0 0 #e11d48;',
-      '  border-top: 2px solid #e11d48 !important;',
+      // 26px of breathing room above the Removed band, then an echo of the
+      // navy L1 divider bar (inset top stripe) so the two bands read as
+      // clearly separated sections — plus the red left accent.
+      '  border-top: 26px solid #fff !important;',
+      '  box-shadow: inset 4px 0 0 #e11d48, inset 0 6px 0 #07467c;',
+      '  padding-top: 15px !important;',
       '}',
       // Band modes replace the per-block "Removed from install scope"
       // banners — the red band already says it once per group.
       '.scw-co-band-mode tr.scw-co-rm-banner { display: none !important; }',
+      // Add = green / Remove = red parallel: every row placed INSIDE a band
+      // is stamped scw-co-band-tint-add/-rm on apply, so the whole section
+      // carries the tint (L3 product headers, L4 descriptions, mounting
+      // lines — not just the data rows proposal-grid already tints).
+      // Subsection (L2) headers keep their own look for orientation.
+      '.scw-co-band-mode tr.scw-co-band-tint-add td { background: #f0fdf4 !important; }',
+      '.scw-co-band-mode tr.scw-co-band-tint-add td:first-child { box-shadow: inset 4px 0 0 #059669; }',
+      '.scw-co-band-mode tr.scw-co-band-tint-rm td { background: #fff1f2 !important; }',
+      '.scw-co-band-mode tr.scw-co-band-tint-rm td:first-child { box-shadow: inset 4px 0 0 #e11d48; }',
 
       // Floating switcher
       '#' + TOGGLE_ID + ' {',
@@ -220,16 +233,33 @@
     return out.concat(u.rows);
   }
 
+  // Stamp every row of a unit with the band tint (green for adds, red for
+  // removes) so the whole section carries the color, not just the data rows.
+  function stampUnit(u, kind) {
+    var nodes = unitNodes(u);
+    for (var i = 0; i < nodes.length; i++) {
+      nodes[i].classList.add('scw-co-band-tint-' + kind);
+    }
+    return nodes;
+  }
+
   function colCountFor(tbody) {
     var table = tbody.closest('table');
     return (table && table.querySelectorAll('thead th').length) || 12;
   }
 
-  // Remove every injected band header / cloned L2 header from the tbody.
+  // Remove every injected band header / cloned L2 header from the tbody,
+  // and strip the band tint classes off the (persistent) grid rows.
   function cleanInjected(tbody) {
     Array.prototype.slice.call(
       tbody.querySelectorAll('tr.' + BAND_CLS + ', tr.' + CLONE_CLS)
     ).forEach(function (tr) { tr.remove(); });
+    Array.prototype.slice.call(
+      tbody.querySelectorAll('tr.scw-co-band-tint-add, tr.scw-co-band-tint-rm')
+    ).forEach(function (tr) {
+      tr.classList.remove('scw-co-band-tint-add');
+      tr.classList.remove('scw-co-band-tint-rm');
+    });
   }
 
   function snapshotOrder(tbody) {
@@ -262,7 +292,7 @@
         var adds = blk.units.filter(function (u) { return unitAction(u) === 'add'; });
         var rms  = blk.units.filter(function (u) { return unitAction(u) === 'rm'; });
         if (adds.length && blk.header) addSeq.push(blk.header);
-        adds.forEach(function (u) { addSeq.push.apply(addSeq, unitNodes(u)); });
+        adds.forEach(function (u) { addSeq.push.apply(addSeq, stampUnit(u, 'add')); });
         if (rms.length && blk.header) {
           if (adds.length) {
             var clone = blk.header.cloneNode(true);
@@ -272,7 +302,7 @@
             rmSeq.push(blk.header);
           }
         }
-        rms.forEach(function (u) { rmSeq.push.apply(rmSeq, unitNodes(u)); });
+        rms.forEach(function (u) { rmSeq.push.apply(rmSeq, stampUnit(u, 'rm')); });
       });
       if (addSeq.length) {
         frag.appendChild(bandRow('add', 'Items to be Added', cols));
@@ -299,13 +329,13 @@
         if (adds.length) {
           frag.appendChild(bandRow('add', 'Items to be Added', cols));
           adds.forEach(function (u) {
-            unitNodes(u).forEach(function (n) { frag.appendChild(n); });
+            stampUnit(u, 'add').forEach(function (n) { frag.appendChild(n); });
           });
         }
         if (rms.length) {
           frag.appendChild(bandRow('rm', 'Items to be Removed', cols));
           rms.forEach(function (u) {
-            unitNodes(u).forEach(function (n) { frag.appendChild(n); });
+            stampUnit(u, 'rm').forEach(function (n) { frag.appendChild(n); });
           });
         }
         insertAfter(blk.header || section.header, frag);
