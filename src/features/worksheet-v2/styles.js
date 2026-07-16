@@ -1963,33 +1963,18 @@
     '  background: #fff !important;',
     '}',
 
-    /* Floating CTA dock — bottom-RIGHT clone of the toolbar\'s Add
-       buttons, shown once the real toolbar scrolls off the top
-       (toolbar.js attachFloatingCtas). Bottom-center stays reserved
-       for the bulk-select toolbar below, so the two never collide. */
-    '.scw-ws-v2-toolbar-float {',
+    /* Floating toolbar — once the bar\'s natural slot scrolls off the
+       top, toolbar.js attachFloatingBar pins the WHOLE bar to the top
+       edge (position:fixed; left/width synced to the slot inline) and
+       a same-height placeholder keeps the grid from jumping. Fixed,
+       not sticky: Knack/KTL overflow wrappers silently kill sticky. */
+    '.scw-ws-v2-toolbar--floating {',
     '  position: fixed !important;',
-    '  right: 16px !important;',
-    '  bottom: 16px !important;',
-    '  display: flex !important; align-items: center !important; gap: 8px !important;',
+    '  top: 0 !important;',
     '  z-index: 9997 !important;',
-    '  opacity: 0 !important;',
-    '  pointer-events: none !important;',
-    '  transform: translateY(70px) !important;',
-    '  transition: transform 180ms ease, opacity 180ms ease !important;',
-    '}',
-    '.scw-ws-v2-toolbar-float--visible {',
-    '  opacity: 1 !important;',
-    '  pointer-events: auto !important;',
-    '  transform: translateY(0) !important;',
-    '}',
-    /* Docked clones read as primary floating actions — a touch larger */
-    /* than the in-toolbar originals, with a lift shadow.              */
-    '.scw-ws-v2-toolbar-float .scw-ws-v2-toolbar-btn--cta {',
-    '  padding: 10px 16px !important;',
-    '  font-size: 13px !important;',
-    '  border-radius: 8px !important;',
-    '  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.3) !important;',
+    '  margin: 0 !important;',
+    '  box-shadow: 0 6px 16px rgba(15, 23, 42, 0.14) !important;',
+    '  border-bottom: 1px solid #cbd5e1 !important;',
     '}',
 
     /* Floating toolbar — bottom-center, slides in when ≥1 selected */

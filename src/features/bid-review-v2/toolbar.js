@@ -143,12 +143,11 @@
       }
     });
 
-    // Floating bottom-right dock for the CTA cluster once the toolbar
-    // scrolls off the top — shared worksheet-v2 helper (clones the
-    // buttons; clicks proxy back to the originals wired above).
+    // Float the whole bar (fixed to the top edge) once its natural
+    // position scrolls off-screen — shared worksheet-v2 helper.
     var wsTb = window.SCW && SCW.worksheetV2 && SCW.worksheetV2.toolbar;
-    if (wsTb && typeof wsTb.attachFloatingCtas === 'function') {
-      wsTb.attachFloatingCtas(bar, c);
+    if (wsTb && typeof wsTb.attachFloatingBar === 'function') {
+      wsTb.attachFloatingBar(bar, c);
     }
 
     syncLabels();
