@@ -71,8 +71,10 @@
       { t: 'mdf', mode: 'opt' },
       { t: 'qty' }
     ]},
-    { id: B_SERVICE, name: 'Other Services', fields: [
-      { t: 'product' },
+    // Services: the product is OPTIONAL — a service line is defined by its
+    // description + cost; a catalog product only rides along when relevant.
+    { id: B_SERVICE, name: 'Other Services', productOptional: true, fields: [
+      { t: 'product', label: 'Products (optional)' },
       { t: 'mdf', mode: 'opt' },
       { t: 'serviceCost' },
       { t: 'qty' },
@@ -688,7 +690,14 @@
     function submit() {
       var b = bucketById(st.bucketId);
       if (!b) { showErr('Pick an item type.'); return; }
-      if (!st.productIds.length) { showErr('Pick a product.'); return; }
+      if (!st.productIds.length && !b.productOptional) { showErr('Pick a product.'); return; }
+      // productOptional buckets (Services) still need SOMETHING to define
+      // the line — require a description when no product is chosen.
+      if (!st.productIds.length && b.productOptional &&
+          !String(readField('description') || '').trim()) {
+        showErr('Pick a product or enter a description of the service.');
+        return;
+      }
       var mdfField = null;
       for (var i = 0; i < b.fields.length; i++) if (b.fields[i].t === 'mdf') mdfField = b.fields[i];
       if (mdfField && (mdfField.mode === 'single' || mdfField.mode === 'multi') && !st.mdfIds.length) {

@@ -1,21 +1,16 @@
-/////*********** CO ADD/REMOVE BAND MOCKUPS (proposal preview) ***************//////
+/////*********** CO ADD/REMOVE BANDS (proposal preview — LIVE) ***************//////
 /**
- * MOCKUP feature — two live layout variants for presenting a Change Order
- * on the proposal preview grid (scene_1096), switchable via a floating
- * pill so both can be evaluated on the real page:
+ * LIVE CO presentation (cutover 2026-07-16, was a mockup with a toggle):
+ * on a change order's proposal preview grid (scene_1096), each MDF/IDF
+ * section regroups into a green "ITEMS TO BE ADDED" band and a neutral
+ * gray "ITEMS TO BE REMOVED" band with accounting-red credit amounts in
+ * the money columns (V1 layout + gray/red scheme). Every subsection gets
+ * a per-band subtotal (native mixed-value subtotals are hidden), and each
+ * band closes with its own total row.
  *
- *   V1 — bands per MDF/IDF: inside each L1 (MDF/IDF) section, all added
- *        items regroup under a green "ITEMS TO BE ADDED" band and all
- *        removed items under a red "ITEMS TO BE REMOVED" band. L2
- *        subsection headers (Cameras, Networking & Headend, …) are kept
- *        inside each band (cloned when a subsection has both).
- *
- *   V2 — bands per subsection: inside each L2 subsection, its items
- *        split into the same green/red bands (structure otherwise
- *        unchanged).
- *
- * "Current" restores the shipped presentation (in-place tint + credit
- * banners). The choice persists in localStorage.
+ * Debug/console overrides (no UI): SCW.coBands.set(mode, color) or
+ * localStorage scwCoBandMockupMode = 'off'|'v1'|'v2',
+ * scwCoBandRmColor = 'red'|'lav'|'gray' — then reload/re-render.
  *
  * Implementation notes:
  *   - Runs AFTER proposal-grid's pipeline (bundle order + delayed
@@ -26,13 +21,11 @@
  *   - Row action comes from the classes proposal-grid already stamps
  *     (scw-co-add-row / scw-co-rm-row from field_2965).
  *   - The original tbody order is snapshotted before the first move so
- *     "Current" restores it exactly; a Knack re-render replaces the
- *     tbody children, which invalidates (and garbage-collects) the
- *     snapshot naturally.
- *   - ⚠ While a band variant is active, the DOM the publish pipeline
- *     scrapes includes the band rows — flip back to "Current" before
- *     issuing a CO for real. (Mockup-only caveat; if a variant wins it
- *     gets folded into proposal-grid + the publish renderer properly.)
+ *     the 'off' override restores it exactly; a Knack re-render replaces
+ *     the tbody children, which invalidates the snapshot naturally.
+ *   - The publish pipeline scrapes the banded DOM — the published page /
+ *     PDF render it via matching band CSS in proposal-pdf-export.js
+ *     getPdfCss (kept in sync with the in-page styles here).
  */
 (function () {
   'use strict';
@@ -56,20 +49,23 @@
     } catch (e) { /* ignore */ }
   }
 
+  // LIVE (2026-07-16): V1 MDF bands + gray rows / red credit amounts is the
+  // shipped CO presentation. localStorage keys remain as HIDDEN debug
+  // overrides only (set scwCoBandMockupMode='off'|'v2' or
+  // scwCoBandRmColor='red'|'lav' from the console to compare) — there is no
+  // UI toggle anymore.
   function getMode() {
-    try { return window.localStorage.getItem(STORE_KEY) || 'off'; }
-    catch (e) { return 'off'; }
+    try { return window.localStorage.getItem(STORE_KEY) || 'v1'; }
+    catch (e) { return 'v1'; }
   }
   function setMode(m) {
     try { window.localStorage.setItem(STORE_KEY, m); } catch (e) { /* ignore */ }
   }
 
-  // Removed-side color scheme: classic red or lavender — its own live
-  // sub-toggle on the pill so both can be compared on the real page.
-  var COLOR_KEY = 'scwCoBandRmColor';   // 'red' | 'lav'
+  var COLOR_KEY = 'scwCoBandRmColor';   // 'red' | 'lav' | 'gray'
   function getRmColor() {
-    try { return window.localStorage.getItem(COLOR_KEY) || 'red'; }
-    catch (e) { return 'red'; }
+    try { return window.localStorage.getItem(COLOR_KEY) || 'gray'; }
+    catch (e) { return 'gray'; }
   }
   function setRmColor(c) {
     try { window.localStorage.setItem(COLOR_KEY, c); } catch (e) { /* ignore */ }
@@ -175,29 +171,6 @@
       '.scw-co-band-gray tr.scw-co-band-sub--rm:not(.scw-co-band-sub--section) td.scw-co-band-sub-amt,',
       '.scw-co-band-gray tr.scw-co-band-sub--rm td.scw-co-band-sub-amt strong {',
       '  color: #be123c !important;',
-      '}',
-
-      // Floating switcher
-      '#' + TOGGLE_ID + ' {',
-      '  position: fixed; right: 18px; bottom: 18px; z-index: 99990;',
-      '  background: #0f172a; color: #e2e8f0;',
-      '  border-radius: 10px; box-shadow: 0 8px 26px rgba(0,0,0,0.35);',
-      '  padding: 8px 10px; font: 12px/1.3 system-ui, sans-serif;',
-      '  display: flex; align-items: center; gap: 6px;',
-      '}',
-      '#' + TOGGLE_ID + ' .scw-cbm-lbl {',
-      '  font-weight: 700; letter-spacing: 0.04em; margin-right: 2px;',
-      '  color: #94a3b8; text-transform: uppercase; font-size: 10px;',
-      '}',
-      '#' + TOGGLE_ID + ' button {',
-      '  appearance: none; border: 1px solid #334155; background: #1e293b;',
-      '  color: #cbd5e1; border-radius: 6px; padding: 5px 9px;',
-      '  font: 600 11.5px system-ui, sans-serif; cursor: pointer;',
-      '  white-space: nowrap;',
-      '}',
-      '#' + TOGGLE_ID + ' button:hover { border-color: #64748b; }',
-      '#' + TOGGLE_ID + ' button.is-active {',
-      '  background: #0369a1; border-color: #38bdf8; color: #fff;',
       '}'
     ].join('\n');
     var s = document.createElement('style');
@@ -616,68 +589,19 @@
     });
   }
 
-  // ── Floating switcher ────────────────────────────────────────────
-  function ensureToggle() {
-    // Only show when some grid on the page actually has CO rows.
-    var anyCo = VIEWS.some(function (v) {
-      var root = document.getElementById(v);
-      return !!(root && root.querySelector('tr.scw-co-add-row, tr.scw-co-rm-row'));
-    });
-    var el = document.getElementById(TOGGLE_ID);
-    if (!anyCo) { if (el) el.remove(); return; }
-    if (!el) {
-      el = document.createElement('div');
-      el.id = TOGGLE_ID;
-      el.innerHTML =
-        '<span class="scw-cbm-lbl">CO layout</span>' +
-        '<button type="button" data-scw-cbm="off">Current</button>' +
-        '<button type="button" data-scw-cbm="v1" title="Added / Removed bands ' +
-          'within each MDF/IDF">V1 · MDF bands</button>' +
-        '<button type="button" data-scw-cbm="v2" title="Added / Removed bands ' +
-          'within each subsection (Cameras, Networking & Headend, …)">' +
-          'V2 · Section bands</button>' +
-        '<span class="scw-cbm-lbl" style="margin-left:8px">Remove</span>' +
-        '<button type="button" data-scw-cbm-color="red">Red</button>' +
-        '<button type="button" data-scw-cbm-color="lav">Lavender</button>' +
-        '<button type="button" data-scw-cbm-color="gray" title="Neutral gray rows, ' +
-          'accounting-red credit amounts">Gray + red $</button>';
-      document.body.appendChild(el);
-      log('toggle mounted (mode=' + getMode() + ')');
+  // ── Live cutover (2026-07-16) ───────────────────────────────────
+  // The evaluation pill is gone. One-time migration clears any stored
+  // mode/color from the mockup period so everyone lands on the shipped
+  // defaults (V1 + gray); console overrides still work after that.
+  try {
+    if (!window.localStorage.getItem('scwCoBandLive1')) {
+      window.localStorage.removeItem(STORE_KEY);
+      window.localStorage.removeItem(COLOR_KEY);
+      window.localStorage.setItem('scwCoBandLive1', '1');
     }
-    syncToggle();
-  }
-
-  // Click handling lives at the DOCUMENT level (capture) rather than on the
-  // toggle element — one binding that survives any toggle re-mount and can't
-  // be starved by other document-level handlers.
-  if (!document.documentElement.hasAttribute('data-scw-co-band-click')) {
-    document.documentElement.setAttribute('data-scw-co-band-click', '1');
-    document.addEventListener('click', function (e) {
-      var btn = e.target && e.target.closest &&
-        e.target.closest('#' + TOGGLE_ID + ' button');
-      if (!btn) return;
-      e.preventDefault();
-      e.stopPropagation();
-      var m = btn.getAttribute('data-scw-cbm');
-      var c = btn.getAttribute('data-scw-cbm-color');
-      if (m) { log('toggle click →', m); setMode(m); }
-      else if (c) { log('color click →', c); setRmColor(c); }
-      else return;
-      syncToggle();
-      applyAll();
-    }, true);
-  }
-  function syncToggle() {
-    var el = document.getElementById(TOGGLE_ID);
-    if (!el) return;
-    var mode = getMode();
-    var col  = getRmColor();
-    Array.prototype.slice.call(el.querySelectorAll('button')).forEach(function (b) {
-      var m = b.getAttribute('data-scw-cbm');
-      var c = b.getAttribute('data-scw-cbm-color');
-      b.classList.toggle('is-active', m ? m === mode : c === col);
-    });
-  }
+    var _staleToggle = document.getElementById(TOGGLE_ID);
+    if (_staleToggle) _staleToggle.remove();
+  } catch (e) { /* ignore */ }
 
   // ── Bind ─────────────────────────────────────────────────────────
   // Runs after proposal-grid's synchronous pipeline (bundle order), then
@@ -686,7 +610,6 @@
     injectCss();
     [400, 1500, 3300].forEach(function (ms) {
       setTimeout(function () {
-        ensureToggle();
         try { applyMode(viewId); }
         catch (e) { console.error('[scw-co-band] applyMode threw for ' + viewId, e); }
       }, ms);
@@ -701,12 +624,11 @@
       });
   });
 
-  // Scene render: toggle cleanup on non-grid scenes AND a catch-up apply —
-  // if knack-records-render fired before the bundle loaded (slow first
-  // load), the per-view binding above never saw it; this path still arms.
+  // Scene render catch-up — if knack-records-render fired before the
+  // bundle loaded (slow first load), the per-view binding above never saw
+  // it; this path still arms.
   $(document).on('knack-scene-render.any' + EVENT_NS, function () {
     setTimeout(function () {
-      ensureToggle();
       VIEWS.forEach(function (viewId) {
         var root = document.getElementById(viewId);
         if (root && root.querySelector('tr.scw-co-add-row, tr.scw-co-rm-row')) {
@@ -715,5 +637,16 @@
       });
     }, 500);
   });
+
+  // Console escape hatch: SCW.coBands.set('off'|'v1'|'v2', 'red'|'lav'|'gray')
+  window.SCW = window.SCW || {};
+  window.SCW.coBands = {
+    set: function (mode, color) {
+      if (mode) setMode(mode);
+      if (color) setRmColor(color);
+      applyAll();
+    },
+    apply: applyAll
+  };
 })();
 /*** END FEATURE: CO ADD/REMOVE BAND MOCKUPS **********************************/

@@ -3132,15 +3132,14 @@ tr.${CO_RM.bannerCls} td {
   const CO_SUM_COLLAPSE_KEY = 'scwCoSummaryCollapsed';
   const CO_SUM_AUTO_COLLAPSE_PX = 300;
   function coRmMountSummary(summary) {
-    // Dock BELOW the row of views that hosts the ops stepper — a sibling of
-    // the whole .view-group, so the panel gets the full page width to work
-    // with (sized to ~2/3 by CSS) instead of being squeezed into the
-    // stepper's column.
+    // Dock directly BENEATH the ops stepper ("Issue Change Order") inside
+    // its column — that's otherwise dead space next to the (taller)
+    // published-proposal column, so the panel fills it instead of pushing
+    // the whole page down. Columns stack/flow via their own flex-basis.
     const stepper = document.querySelector('.scw-ops-stepper');
     if (stepper) {
-      const group = stepper.closest('.view-group') || stepper;
-      if (summary.previousElementSibling !== group) {
-        group.parentNode.insertBefore(summary, group.nextSibling);
+      if (summary.previousElementSibling !== stepper) {
+        stepper.parentNode.insertBefore(summary, stepper.nextSibling);
       }
       summary.classList.add('scw-cos--docked');
     }
