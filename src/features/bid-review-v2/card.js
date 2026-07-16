@@ -1770,14 +1770,21 @@
     // details band and actions in the actions band so the SOW column tracks
     // the bid columns' layout.
     var v1 = window.SCW.bidReview;
+    // separateDocs: the documents GALLERY comes back as bar.docs instead of
+    // living inside the details band — the SOW column is too narrow for
+    // preview cards. It mounts below as a full-width row between the SOW
+    // header and the first line-item group.
+    var sowDocsBlock = null;
     if (v1 && typeof v1.buildSowStatusBar === 'function') {
       try {
-        var bar = v1.buildSowStatusBar({ sowId: grid.sowId, sowName: grid.sowName });
+        var bar = v1.buildSowStatusBar({ sowId: grid.sowId, sowName: grid.sowName },
+          { separateDocs: true });
         if (bar) {
           var detSlot = r3.querySelector('.scw-bid-review-v2__head--sow-details');
           var actSlot = r4.querySelector('.scw-bid-review-v2__head--sow-actions');
           if (detSlot && bar.details) detSlot.appendChild(bar.details);
           if (actSlot && bar.actions) actSlot.appendChild(bar.actions);
+          sowDocsBlock = bar.docs || null;
         }
       } catch (err) {
         if (window.console && console.warn) {
@@ -1790,6 +1797,19 @@
     var tbody = document.createElement('tbody');
     // colspan = label + photos + sow + one per bid package
     var colspan = grid.packages.length + 3;
+
+    // Full-width documents gallery band — below the SOW header, above the
+    // line items, so the preview cards get the whole grid width to breathe.
+    if (sowDocsBlock) {
+      var docsTr = document.createElement('tr');
+      docsTr.className = 'scw-bid-review-v2__docs-row';
+      var docsTd = document.createElement('td');
+      docsTd.className = 'scw-bid-review-v2__docs-cell';
+      docsTd.colSpan = colspan;
+      docsTd.appendChild(sowDocsBlock);
+      docsTr.appendChild(docsTd);
+      tbody.appendChild(docsTr);
+    }
     var groups = grid.groups || [{ key: '__all__', level: 0, rows: grid.rows, subgroups: [] }];
     for (var g = 0; g < groups.length; g++) {
       // Per-group guard: a throw in one group must not blank the whole section

@@ -225,19 +225,24 @@
     '  letter-spacing: 0.05em; color: #94a3b8; margin-bottom: 2px;',
     '}',
     '.scw-bid-review-v2__head-name-value { font-size: 13px; font-weight: 700; color: #0f172a; }',
-    /* Doc-type label ("Site plan") to the RIGHT of the filename in the v2',
-       SOW header — keeps the filename left edge clean. v2-scoped so v1 is',
-       untouched. */
-    '.scw-bid-review-v2__head--sow .scw-bid-review__docs-item {',
-    '  display: flex; align-items: baseline; gap: 8px;',
+    /* Documents GALLERY band (2026-07-16) — the docs block no longer lives
+       in the (narrow) SOW head column: buildSowSection asks v1's
+       buildSowStatusBar for it separately (separateDocs) and mounts it in
+       this full-width row between the SOW header and the first line-item
+       group, so the preview cards get the whole grid width. */
+    '.scw-bid-review-v2__docs-cell {',
+    '  padding: 10px 16px 12px;',
+    '  background: #f8fafc;',
+    '  border-bottom: 1px solid #e2e8f0;',
     '}',
-    '.scw-bid-review-v2__head--sow .scw-bid-review__docs-body { order: 1; flex: 1 1 auto; min-width: 0; }',
-    '.scw-bid-review-v2__head--sow .scw-bid-review__docs-type {',
-    '  order: 2; margin-left: auto; flex: 0 0 auto;',
+    /* The block carries v1 margins tuned for the head column — the band
+       cell's own padding provides the breathing room instead. */
+    '.scw-bid-review-v2__docs-cell .scw-bid-review__docs--sow {',
+    '  margin: 0;',
     '}',
-    '.scw-bid-review-v2__head--sow .scw-bid-review__docs-unlink-btn,',
-    '.scw-bid-review-v2__head--sow .scw-bid-review__docs-link-btn {',
-    '  order: 3; flex: 0 0 auto;',
+    /* Wider canvas → slightly larger cards than the v1 default. */
+    '.scw-bid-review-v2__docs-cell .scw-bid-review__docs-list {',
+    '  grid-template-columns: repeat(auto-fill, minmax(170px, 1fr));',
     '}',
     '.scw-bid-review-v2__head-title {',
     '  font-size: 13px; font-weight: 800; letter-spacing: 0.04em;',

@@ -2232,7 +2232,11 @@
   // (badges/name in r2, action buttons in r3).
   //   details: published proposal block + Survey Costs / Margin metrics
   //   actions: margin-low warning button stack + Preview Proposal pill
-  function buildSowStatusBar(sowGrid) {
+  // opts.separateDocs: return the documents gallery as `docs` instead of
+  // embedding it in `details` — v2 mounts it as a FULL-WIDTH band between
+  // the SOW header and the line items (the head's SOW column is too
+  // narrow for a card gallery). Default (v1 path) keeps it inline.
+  function buildSowStatusBar(sowGrid, opts) {
     var sowId = sowGrid.sowId;
     var tr = findNextStepRow(sowId);
     var ops = (window.SCW && SCW.opsReview) ? SCW.opsReview : null;
@@ -2353,7 +2357,11 @@
       addDocUrl = base + '/add-document-review-bid/' + sowId + '/';
     }
     var sowDocsBlock = buildSowDocsBlock(sowId, addDocUrl, docsIdx);
-    if (sowDocsBlock) details.appendChild(sowDocsBlock);
+    var docsOut = null;
+    if (sowDocsBlock) {
+      if (opts && opts.separateDocs) docsOut = sowDocsBlock;
+      else details.appendChild(sowDocsBlock);
+    }
 
     // 3. Survey Costs (editable input) + Margin (read-only display).
     var metrics = el('div', 'scw-bid-review__sow-metrics');
@@ -2452,7 +2460,7 @@
       }
     }
 
-    return { details: details, actions: actions };
+    return { details: details, actions: actions, docs: docsOut };
   }
 
   function buildSowSection(sowGrid) {
@@ -2765,8 +2773,8 @@
   // Public so v2 can build the SOW column header (name / proposal / docs /
   // survey costs / margin / margin-low warning / preview pill) from v1's
   // exact renderer. Takes any object with { sowId, sowName }.
-  ns.buildSowStatusBar = function (sowGridLike) {
-    return buildSowStatusBar(sowGridLike);
+  ns.buildSowStatusBar = function (sowGridLike, opts) {
+    return buildSowStatusBar(sowGridLike, opts);
   };
 
   // Public so v2 can surface the editable SOW Name (field_2126, the friendly
