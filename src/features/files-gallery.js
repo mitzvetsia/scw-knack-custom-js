@@ -32,6 +32,15 @@
       empty: 'No files yet.'
     },
     {
+      // "Site Maps & Other Files" on the Build SOW page (scene_1085) —
+      // same DOC_files object/fields as view_3531. No unlink button: the
+      // page record here is the PROJECT (not a SOW), so the SOW-connection
+      // unlink verb doesn't apply.
+      id: 'view_3949', kind: 'file',
+      media: 'field_68', type: 'field_67', notes: 'field_588',
+      empty: 'No files yet.'
+    },
+    {
       // "Site Maps & Other Files" on the sales scope-of-work-details page
       // (scene_1116) — same DOC_files object/fields as view_3531.
       // unlink: per-card button that removes ONLY this page's SOW id from the
