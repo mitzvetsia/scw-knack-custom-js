@@ -307,9 +307,18 @@
     for (var k = idxQty; k < ths.length; k++) {
       var td = document.createElement('td');
       td.style.textAlign = 'center';
+      // Carry the column's field_XXXX class so columns the grid hides by
+      // class (field_2965/field_2966 CO Action) collapse on THIS row too —
+      // otherwise these cells render the hidden tracks and push the table
+      // wider than every other row (the phantom right-edge gutter).
+      var fcls = '';
+      for (var c = 0; c < ths[k].classList.length; c++) {
+        if (/^field_\d+$/.test(ths[k].classList[c])) { fcls = ths[k].classList[c]; break; }
+      }
+      if (fcls) td.className = fcls;
       if (k === idxQty && sums.q) td.innerHTML = '<strong>' + sums.q + '</strong>';
       else if (k === idxCost) {
-        td.className = 'scw-co-band-sub-amt';
+        td.className = (fcls ? fcls + ' ' : '') + 'scw-co-band-sub-amt';
         td.innerHTML = '<strong></strong>';
         td.firstChild.textContent = bandMoney(sums.c);
       }
