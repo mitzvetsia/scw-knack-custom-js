@@ -3043,8 +3043,41 @@
       return;
     }
 
+    // ── "Unclaimed first" partition ─────────────────────────────────
+    // SOW line items that NO bid item points at (via field_2404) are the
+    // likely criss-cross targets — float them to the TOP of the picker,
+    // with the SOW + MDF/IDF called out in the group label. Claims are
+    // scoped to the SAME bid package as the record being re-linked
+    // (sibling packages bid the full scope, so their pointers don't make
+    // an item "taken" for this bid); a record with no package falls back
+    // to page-wide claims. The record being re-linked doesn't claim its
+    // own current target.
+    var FKpkg = (CFG.fieldKeys && CFG.fieldKeys.bidPackage) || 'field_2415';
+    function firstConnId(rec, fk) {
+      var raw = rec && rec[fk + '_raw'];
+      if (Array.isArray(raw)) return (raw[0] && raw[0].id) || null;
+      return (raw && raw.id) || null;
+    }
+    var myPkgId = firstConnId(bidRec, FKpkg);
+    var claimed = {};
+    for (var cb = 0; cb < bids.length; cb++) {
+      var br = bids[cb];
+      if (!br || br.id === bidId) continue;
+      if (myPkgId && firstConnId(br, FKpkg) !== myPkgId) continue;
+      var claimRaw = br[FKsow + '_raw'];
+      if (Array.isArray(claimRaw)) {
+        for (var ci = 0; ci < claimRaw.length; ci++) {
+          if (claimRaw[ci] && claimRaw[ci].id) claimed[claimRaw[ci].id] = true;
+        }
+      } else if (claimRaw && claimRaw.id) {
+        claimed[claimRaw.id] = true;
+      }
+    }
+
     // "SW-#### · MDF" grouping — same composition as the Connected Devices
     // picker on this multi-SOW scene (worksheet-v2/init.js view_3921 branch).
+    // Unclaimed items get their own rank:-1 groups (picker orders by rank
+    // first) so they read as a distinct "needs a bid item" band up top.
     var mdfGroup = picker.groupByMdfIdf;
     function sowTag(rec) {
       var raw = rec && rec[sowFK + '_raw'];
@@ -3064,11 +3097,18 @@
       var m = (typeof mdfGroup === 'function') ? mdfGroup(rec)
         : { id: '__unknown', label: 'No MDF / IDF' };
       var t = sowTag(rec);
-      if (!t.id && m.id === '__unknown') return m;
-      return {
+      var base = (!t.id && m.id === '__unknown') ? m : {
         id:    (t.id || '__nosow') + '::' + m.id,
         label: (t.label || 'No SOW') + ' · ' + m.label
       };
+      if (!claimed[rec.id]) {
+        return {
+          id:    'unclaimed::' + base.id,
+          label: '⚠ No bid item yet — ' + (base.label || 'No MDF / IDF'),
+          rank:  -1
+        };
+      }
+      return base;
     }
 
     // Worksheet-style option label (drop label · product) with the same

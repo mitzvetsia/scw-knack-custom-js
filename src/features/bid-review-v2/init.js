@@ -512,22 +512,25 @@
       next.parentNode.removeChild(next);
       row.setAttribute('aria-expanded', 'false');
       row.classList.remove('scw-bid-review-v2__row--open');
-      var closedId = row.getAttribute('data-sow-item-id');
+      var closedId = row.getAttribute('data-sow-item-id') ||
+                     row.getAttribute('data-row-id');
       if (closedId && ns.state) ns.state.setRowExpanded(closedId, false);
       syncToolbarRowLabel();
       return;
     }
+    // Rows whose bid item points at NO SOW item still open (that's where
+    // the Re-link button lives) — the panel just skips the SOW editor.
     var sowItemId = row.getAttribute('data-sow-item-id');
-    if (!sowItemId) return;
-    var sowRec = lookupSowRecord(sowItemId);
-    if (!sowRec) {
+    var stateKey  = sowItemId || row.getAttribute('data-row-id');
+    if (!stateKey) return;
+    var sowRec = sowItemId ? lookupSowRecord(sowItemId) : null;
+    if (sowItemId && !sowRec) {
       console.warn('[scw-br-v2] SOW item not found in model:', sowItemId);
-      return;
     }
 
     var expand = document.createElement('tr');
     expand.className = 'scw-bid-review-v2__expand-row';
-    expand.setAttribute('data-expand-for', sowItemId);
+    expand.setAttribute('data-expand-for', stateKey);
     var td = document.createElement('td');
     td.colSpan = row.children.length;
     td.className = 'scw-bid-review-v2__expand-cell';
@@ -562,9 +565,18 @@
     row.setAttribute('aria-expanded', 'true');
     // Remember this row is open so a post-edit/-delete grid rebuild can
     // re-open it (render.js → reopenExpandedRows) instead of collapsing it.
-    if (ns.state) ns.state.setRowExpanded(sowItemId, true);
+    if (ns.state) ns.state.setRowExpanded(stateKey, true);
 
-    mountWorksheetV2Card(cardCol, sowRec);
+    if (sowRec) {
+      mountWorksheetV2Card(cardCol, sowRec);
+    } else {
+      cardCol.innerHTML =
+        '<div class="scw-bid-review-v2__expand-loading">' +
+          'No SOW line item is linked to this bid item — it isn’t part of ' +
+          'any SOW’s scope. Use <b>Re-link</b> (top-right of a bid card) to ' +
+          'point it at the correct SOW line item.' +
+        '</div>';
+    }
 
     // Auto-mount the photo viewer when the row has photos, so expanding
     // (by clicking the SOW cell, the row, or a thumb) always surfaces
@@ -803,10 +815,11 @@
     if (!ns.state || typeof ns.state.isRowExpanded !== 'function') return;
     var root = scope || (ns.CONFIG && document.getElementById(ns.CONFIG.mountId));
     if (!root) return;
-    var rows = root.querySelectorAll('.scw-bid-review-v2__row[data-sow-item-id]');
+    var rows = root.querySelectorAll('.scw-bid-review-v2__row--expandable');
     for (var i = 0; i < rows.length; i++) {
       var row = rows[i];
-      var rid = row.getAttribute('data-sow-item-id');
+      var rid = row.getAttribute('data-sow-item-id') ||
+                row.getAttribute('data-row-id');
       if (!rid || !ns.state.isRowExpanded(rid)) continue;
       // Skip rows hidden by a collapsed MDF/IDF group — don't surface a
       // detached panel; the state stays set so it re-opens if the group opens.
@@ -831,7 +844,7 @@
     var root = ns.CONFIG && document.getElementById(ns.CONFIG.mountId);
     if (!root) return [];
     return Array.prototype.slice.call(
-      root.querySelectorAll('.scw-bid-review-v2__row--expandable[data-sow-item-id]')
+      root.querySelectorAll('.scw-bid-review-v2__row--expandable')
     );
   }
 

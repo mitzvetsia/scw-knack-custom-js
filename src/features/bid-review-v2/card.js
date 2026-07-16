@@ -1001,7 +1001,12 @@
     if (row.offSow)      tr.classList.add('scw-bid-review-v2__row--off-sow');
     if (row.removed)     tr.classList.add('scw-bid-review-v2__row--removed');
     if (row.isAccessory) tr.classList.add('scw-bid-review-v2__row--accessory');
-    if (row.sowItem) tr.classList.add('scw-bid-review-v2__row--expandable');
+    // EVERY data row is expandable — including rows whose bid item points at
+    // NO SOW item (off-SOW / orphaned bids). Those used to be dead rows, which
+    // made the panel-only Re-link button unreachable for exactly the records
+    // that most need re-pointing. The panel mounts the SOW editor only when a
+    // SOW record exists; otherwise it shows the bid cards + a re-link hint.
+    tr.classList.add('scw-bid-review-v2__row--expandable');
     tr.setAttribute('data-row-id', row.id);
     if (row.sowItem) tr.setAttribute('data-sow-item-id', row.sowItem);
     tr.setAttribute('aria-expanded', 'false');
@@ -1014,10 +1019,9 @@
     // Expand caret — kept as a direct child of the <td> (absolutely
     // positioned) so the cell stays a table-cell and its background spans
     // the full row height. The stacked content lives in an inner flex div.
-    var caretHtml = row.sowItem
-      ? '<span class="scw-bid-review-v2__row-caret" aria-hidden="true">' +
-          GROUP_CHEVRON_SVG + '</span>'
-      : '';
+    var caretHtml =
+      '<span class="scw-bid-review-v2__row-caret" aria-hidden="true">' +
+        GROUP_CHEVRON_SVG + '</span>';
     var labelHtml = '';
     // Bulk-select checkbox — keyed on the SOW line-item id so the shared
     // worksheet-v2 bulk module (mounted on the SOW view) drives selection

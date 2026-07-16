@@ -124,7 +124,10 @@
 
   /** Group candidates via opts.groupBy → [{ id, label, items: [...] }, ...].
    *  Default (undefined) = canonical MDF/IDF grouping; `false`/`null` opts out
-   *  to a flat list. */
+   *  to a flat list. groupBy may return an optional numeric `rank` — groups
+   *  order by rank asc FIRST (default 0), then label natural-asc, so a caller
+   *  can float priority groups to the top (e.g. the re-link picker's
+   *  "no bid item yet" partition) without hacking sortable label prefixes. */
   function groupCandidates(candidates, groupBy) {
     if (groupBy === false || groupBy === null) {
       return [{ id: '__all', label: '', items: candidates.slice() }];
@@ -135,7 +138,7 @@
     for (var i = 0; i < candidates.length; i++) {
       var g = groupBy(candidates[i]) || { id: '__unknown', label: 'Unassigned' };
       if (!groups[g.id]) {
-        groups[g.id] = { id: g.id, label: g.label || '', items: [] };
+        groups[g.id] = { id: g.id, label: g.label || '', rank: g.rank || 0, items: [] };
         order.push(g.id);
       }
       groups[g.id].items.push(candidates[i]);
@@ -146,8 +149,10 @@
     if (order.length === 1 && order[0] === '__unknown') {
       return [{ id: '__all', label: '', items: groups['__unknown'].items }];
     }
-    // Sort groups: by label natural-asc; unknowns sink to bottom.
+    // Sort groups: rank asc, then label natural-asc; unknowns sink to bottom.
     order.sort(function (a, b) {
+      var ra = groups[a].rank || 0, rb = groups[b].rank || 0;
+      if (ra !== rb) return ra - rb;
       var la = groups[a].label, lb = groups[b].label;
       if (a === '__unknown' && b !== '__unknown') return 1;
       if (b === '__unknown' && a !== '__unknown') return -1;
