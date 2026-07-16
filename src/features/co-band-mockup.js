@@ -348,12 +348,20 @@
   }
 
   function unitAction(u) {
-    var add = false, rm = false;
-    for (var i = 0; i < u.rows.length; i++) {
-      var a = rowAction(u.rows[i]);
+    var add = false, rm = false, hasData = false;
+    var nodes = unitNodes(u);
+    for (var i = 0; i < nodes.length; i++) {
+      var a = rowAction(nodes[i]);
       if (a === 'rm') rm = true;
       else if (a === 'add') add = true;
+      if (nodes[i].id && HEX24.test(nodes[i].id)) hasData = true;
     }
+    // No real data rows → presentational residue (scw-empty-group-header
+    // duplicates from Knack's server-side grouping, hidden by
+    // proposal-grid). Skip: don't band, don't tint, don't count — this is
+    // what produced phantom "$0.00 Other Equipment / Mounting Hardware"
+    // subtotals for subsections with no actual items.
+    if (!hasData) return 'skip';
     if (rm && !add) return 'rm';
     // mixed / none sink into the add band — on a real CO every row
     // carries an action, so this is just the fail-safe.
