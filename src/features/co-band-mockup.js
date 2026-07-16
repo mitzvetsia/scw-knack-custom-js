@@ -313,10 +313,22 @@
     });
   }
 
+  // The GRID's tbody — never the What's-Changing manifest's. The view root
+  // itself carries the `kn-table` class, so a loose `.kn-table tbody` lookup
+  // matches the FIRST tbody under the root — which on a CO page is the
+  // #scw-co-change-summary manifest's own <table> (it sits above the grid
+  // inside .kn-table-wrapper). That made applyMode band an invisible no-op:
+  // the manifest tbody has no scw-co-add/rm rows, so hasCo read false and it
+  // returned silently. Target Knack's real grid table (`kn-table-table`).
+  function gridTbody(root) {
+    return root.querySelector('table.kn-table-table tbody') ||
+           root.querySelector('.kn-table-wrapper > table tbody');
+  }
+
   function applyMode(viewId) {
     var root = document.getElementById(viewId);
     if (!root) return;
-    var tbody = root.querySelector('.kn-table tbody');
+    var tbody = gridTbody(root);
     if (!tbody) return;
 
     // Only meaningful on a CO grid (proposal-grid stamps action classes).
