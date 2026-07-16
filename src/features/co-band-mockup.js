@@ -120,6 +120,25 @@
       '.scw-co-band-lav tr.scw-co-rm-row td { background: #f5f3ff !important; }',
       '.scw-co-band-lav tr.scw-co-rm-row td:first-child { box-shadow: inset 4px 0 0 #8b5cf6; }',
       '.scw-co-band-lav tr.kn-table-group.scw-co-rm-row td { background: #ede9fe !important; }',
+      // Band subtotal rows — one at the end of each Added / Removed band,
+      // amount aligned to the grid's Cost column.
+      'tr.scw-co-band-sub td {',
+      '  font: 700 12.5px system-ui, sans-serif; padding: 7px 12px !important;',
+      '}',
+      'tr.scw-co-band-sub .scw-co-band-sub-label { text-align: right; letter-spacing: 0.03em; }',
+      'tr.scw-co-band-sub .scw-co-band-sub-amt { text-align: center; white-space: nowrap; }',
+      'tr.scw-co-band-sub--add td {',
+      '  background: #dcfce7 !important; color: #065f46 !important;',
+      '  border-top: 2px solid #059669 !important;',
+      '}',
+      'tr.scw-co-band-sub--rm td {',
+      '  background: #ffe4e6 !important; color: #9f1239 !important;',
+      '  border-top: 2px solid #e11d48 !important;',
+      '}',
+      '.scw-co-band-lav tr.scw-co-band-sub--rm td {',
+      '  background: #ede9fe !important; color: #5b21b6 !important;',
+      '  border-top: 2px solid #8b5cf6 !important;',
+      '}',
 
       // Floating switcher
       '#' + TOGGLE_ID + ' {',
@@ -182,6 +201,67 @@
     td.colSpan = colCount;
     td.textContent = label;
     tr.appendChild(td);
+    return tr;
+  }
+
+  // ── Band subtotals ────────────────────────────────────────────────
+  // Money comes from the Backbone model (field_2203 = line item total,
+  // the same figure the grid's Cost column and L2 subtotals use) keyed
+  // by record id — so display-only rows (mounting product lines) and
+  // hidden raw accessory rows can never double-count.
+  var HEX24 = /^[0-9a-f]{24}$/i;
+  function costMapFor(viewId) {
+    var map = Object.create(null);
+    try {
+      var v = window.Knack && Knack.views && Knack.views[viewId];
+      var ms = (v && v.model && v.model.data && v.model.data.models) || [];
+      for (var i = 0; i < ms.length; i++) {
+        var a = ms[i] && ms[i].attributes;
+        if (!a || !a.id) continue;
+        var n = (typeof a.field_2203_raw === 'number') ? a.field_2203_raw
+          : parseFloat(String(a.field_2203 || '').replace(/[^0-9.\-]/g, ''));
+        map[a.id] = isFinite(n) ? n : 0;
+      }
+    } catch (e) { /* empty map → subtotal renders $0.00, still visible */ }
+    return map;
+  }
+  function unitCost(u, costMap) {
+    var sum = 0, nodes = unitNodes(u);
+    for (var i = 0; i < nodes.length; i++) {
+      var id = nodes[i].id;
+      if (id && HEX24.test(id) && costMap[id] != null) sum += costMap[id];
+    }
+    return sum;
+  }
+  function bandMoney(n) {
+    return '$' + (n < 0 ? '-' : '') +
+      Math.abs(n || 0).toLocaleString('en-US',
+        { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+  // Subtotal row aligned to the grid's Cost column (th.field_2203).
+  function bandSubRow(kind, label, amount, tbody) {
+    var ths = tbody.closest('table').querySelectorAll('thead th');
+    var idx = ths.length - 1;
+    for (var i = 0; i < ths.length; i++) {
+      if (ths[i].classList.contains('field_2203')) { idx = i; break; }
+    }
+    var tr = document.createElement('tr');
+    tr.className = 'scw-co-band-sub scw-co-band-sub--' + kind;
+    var lbl = document.createElement('td');
+    lbl.colSpan = Math.max(idx, 1);
+    lbl.className = 'scw-co-band-sub-label';
+    lbl.textContent = label;
+    tr.appendChild(lbl);
+    var amt = document.createElement('td');
+    amt.className = 'scw-co-band-sub-amt';
+    amt.textContent = bandMoney(amount);
+    tr.appendChild(amt);
+    var rest = ths.length - idx - 1;
+    if (rest > 0) {
+      var pad = document.createElement('td');
+      pad.colSpan = rest;
+      tr.appendChild(pad);
+    }
     return tr;
   }
 
@@ -281,7 +361,8 @@
   // and strip the band tint classes off the (persistent) grid rows.
   function cleanInjected(tbody) {
     Array.prototype.slice.call(
-      tbody.querySelectorAll('tr.' + BAND_CLS + ', tr.' + CLONE_CLS)
+      tbody.querySelectorAll(
+        'tr.' + BAND_CLS + ', tr.' + CLONE_CLS + ', tr.scw-co-band-sub')
     ).forEach(function (tr) { tr.remove(); });
     Array.prototype.slice.call(
       tbody.querySelectorAll('tr.scw-co-band-tint-add, tr.scw-co-band-tint-rm')
@@ -312,16 +393,20 @@
   // V1: per L1 section — ADD band (subsection headers kept inside),
   //     then REMOVE band. An L2 with both sides keeps its original
   //     header in the add band and gets a visual clone in the remove band.
-  function applyV1(tbody) {
+  function applyV1(tbody, costMap) {
     var cols = colCountFor(tbody);
     parseTbody(tbody).forEach(function (section) {
       var frag = document.createDocumentFragment();
       var addSeq = [], rmSeq = [];
+      var addSum = 0, rmSum = 0;
       section.blocks.forEach(function (blk) {
         var adds = blk.units.filter(function (u) { return unitAction(u) === 'add'; });
         var rms  = blk.units.filter(function (u) { return unitAction(u) === 'rm'; });
         if (adds.length && blk.header) addSeq.push(blk.header);
-        adds.forEach(function (u) { addSeq.push.apply(addSeq, stampUnit(u, 'add')); });
+        adds.forEach(function (u) {
+          addSum += unitCost(u, costMap);
+          addSeq.push.apply(addSeq, stampUnit(u, 'add'));
+        });
         if (rms.length && blk.header) {
           if (adds.length) {
             var clone = blk.header.cloneNode(true);
@@ -331,7 +416,10 @@
             rmSeq.push(blk.header);
           }
         }
-        rms.forEach(function (u) { rmSeq.push.apply(rmSeq, stampUnit(u, 'rm')); });
+        rms.forEach(function (u) {
+          rmSum += unitCost(u, costMap);
+          rmSeq.push.apply(rmSeq, stampUnit(u, 'rm'));
+        });
         // Re-seat the subsection's subtotal after its LAST band chunk (its
         // removes when it has any, else its adds) so it stays visually
         // attached to its subsection instead of stranding at section end.
@@ -345,10 +433,12 @@
       if (addSeq.length) {
         frag.appendChild(bandRow('add', 'Items to be Added', cols));
         addSeq.forEach(function (n) { frag.appendChild(n); });
+        frag.appendChild(bandSubRow('add', 'Items to be Added — subtotal', addSum, tbody));
       }
       if (rmSeq.length) {
         frag.appendChild(bandRow('rm', 'Items to be Removed', cols));
         rmSeq.forEach(function (n) { frag.appendChild(n); });
+        frag.appendChild(bandSubRow('rm', 'Items to be Removed — subtotal', rmSum, tbody));
       }
       insertAfter(section.header, frag);
     });
@@ -356,7 +446,7 @@
 
   // V2: per L2 subsection — its units split into the two bands beneath
   //     the (untouched) subsection header.
-  function applyV2(tbody) {
+  function applyV2(tbody, costMap) {
     var cols = colCountFor(tbody);
     parseTbody(tbody).forEach(function (section) {
       section.blocks.forEach(function (blk) {
@@ -365,16 +455,22 @@
         if (!adds.length && !rms.length) return;
         var frag = document.createDocumentFragment();
         if (adds.length) {
+          var addSum = 0;
           frag.appendChild(bandRow('add', 'Items to be Added', cols));
           adds.forEach(function (u) {
+            addSum += unitCost(u, costMap);
             stampUnit(u, 'add').forEach(function (n) { frag.appendChild(n); });
           });
+          frag.appendChild(bandSubRow('add', 'Items to be Added — subtotal', addSum, tbody));
         }
         if (rms.length) {
+          var rmSum = 0;
           frag.appendChild(bandRow('rm', 'Items to be Removed', cols));
           rms.forEach(function (u) {
+            rmSum += unitCost(u, costMap);
             stampUnit(u, 'rm').forEach(function (n) { frag.appendChild(n); });
           });
+          frag.appendChild(bandSubRow('rm', 'Items to be Removed — subtotal', rmSum, tbody));
         }
         insertAfter(blk.header || section.header, frag);
       });
@@ -415,8 +511,9 @@
     snapshotOrder(tbody);
     // Rebuild from pristine order so v1 ↔ v2 flips don't compound.
     restoreOrder(tbody);
-    if (mode === 'v1') applyV1(tbody);
-    else if (mode === 'v2') applyV2(tbody);
+    var costMap = costMapFor(viewId);
+    if (mode === 'v1') applyV1(tbody, costMap);
+    else if (mode === 'v2') applyV2(tbody, costMap);
     log('applyMode done', viewId,
       'bands=' + tbody.querySelectorAll('tr.' + BAND_CLS).length);
   }

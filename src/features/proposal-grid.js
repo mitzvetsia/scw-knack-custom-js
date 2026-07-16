@@ -3074,6 +3074,11 @@ tr.${CO_RM.bannerCls} td {
 #${CO_RM.summaryId}.scw-cos-collapsed .scw-cos-desc,
 #${CO_RM.summaryId}.scw-cos-collapsed .scw-cos-cols { display: none; }
 #${CO_RM.summaryId}.scw-cos--docked { margin: 10px 0 0; }
+/* Docked under the ops stepper the panel is narrow — stack the Add /
+   Remove columns full-width instead of cramming them side by side. */
+#${CO_RM.summaryId}.scw-cos--docked .scw-cos-cols { display: block; }
+#${CO_RM.summaryId}.scw-cos--docked .scw-cos-col { min-width: 0; }
+#${CO_RM.summaryId}.scw-cos--docked .scw-cos-col--rm { border-top: 1px solid #dbe4ee; }
 #${CO_RM.summaryId} .scw-cos-desc {
   padding: 8px 16px; background: #f0f4fa; color: #334155;
   font-size: 12px; line-height: 1.45; border-bottom: 1px solid #dbe4ee;
