@@ -324,13 +324,14 @@
       '  font: 600 10.5px/1.2 system-ui, sans-serif;',
       '  color: #64748b;',
       '}',
+      /* Docs GALLERY grid (2026-07-16): thumbnail cards instead of text
+         rows so the user can SEE which site plan / photo / PDF they are
+         linking. */
       '.scw-bid-review__docs--sow .scw-bid-review__docs-list {',
-      '  display: flex; flex-direction: column;',
-      '  gap: 0;',
-      '  padding: 0;',
-      '}',
-      '.scw-bid-review__docs--sow .scw-bid-review__docs-item {',
-      '  padding: 6px 0;',  /* whitespace separates rows; no border-top */
+      '  display: grid;',
+      '  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));',
+      '  gap: 10px;',
+      '  padding: 4px 0 6px;',
       '}',
       '.scw-bid-review__docs-sublabel {',
       '  padding: 6px 10px 2px;',
@@ -372,19 +373,25 @@
       '  border-color: #475569;',
       '  color: #fff;',
       '}',
-      /* Two-line item layout:
-           [type-anchor]  filename (bold, dark)              [action]
-                          notes (muted, smaller)
-         Type chip on the left is a narrow, quiet column anchor — NOT
-         a competing pill. Body wraps filename + notes vertically so
-         filename gets full width before truncation and reads as the
-         scan target. */
+      /* Gallery card:
+           [ thumbnail — image preview / PDF tile ]   (action pill overlays
+           filename (bold, dark)                       the top-right corner)
+           type chip · notes (muted)                                        */
       '.scw-bid-review__docs-item {',
+      '  position: relative;',
       '  display: flex;',
-      '  align-items: flex-start;',
-      '  gap: 8px;',
-      '  padding: 4px 0;',
+      '  flex-direction: column;',
+      '  background: #fff;',
+      '  border: 1px solid #e2e8f0;',
+      '  border-radius: 8px;',
+      '  overflow: hidden;',
       '  color: #1e293b;',
+      '  box-shadow: 0 1px 2px rgba(15,23,42,.04);',
+      '  transition: box-shadow 120ms ease, border-color 120ms ease;',
+      '}',
+      '.scw-bid-review__docs-item:hover {',
+      '  border-color: #94a3b8;',
+      '  box-shadow: 0 4px 12px rgba(15,23,42,.10);',
       '}',
       /* Available (un-linked) docs read as muted so the eye lands on
          the linked set first; hover restores full contrast. */
@@ -395,10 +402,31 @@
       '.scw-bid-review__docs-item--available:hover {',
       '  opacity: 1;',
       '}',
+      /* Thumbnail — fixed-aspect preview. Images cover; non-images get
+         a quiet file tile with the extension badge (PDF tinted red). */
+      '.scw-bid-review__docs-thumb {',
+      '  display: flex;',
+      '  align-items: center;',
+      '  justify-content: center;',
+      '  aspect-ratio: 4 / 3;',
+      '  background: #f1f5f9;',
+      '  overflow: hidden;',
+      '  text-decoration: none !important;',
+      '}',
+      '@supports not (aspect-ratio: 1) { .scw-bid-review__docs-thumb { height: 110px; } }',
+      '.scw-bid-review__docs-thumb img {',
+      '  width: 100%; height: 100%; object-fit: cover; display: block;',
+      '}',
+      '.scw-bid-review__docs-thumb--icon {',
+      '  flex-direction: column; gap: 4px; color: #94a3b8;',
+      '}',
+      '.scw-bid-review__docs-thumb--pdf { background: #fef2f2; color: #dc2626; }',
+      '.scw-bid-review__docs-ext {',
+      '  font: 800 10px/1 system-ui, sans-serif; letter-spacing: 0.5px;',
+      '}',
       '.scw-bid-review__docs-type {',
       '  display: inline-block;',
       '  flex: 0 0 auto;',
-      '  margin-top: 1px;',  /* nudge to align with filename baseline */
       '  padding: 1px 5px;',
       '  background: transparent;',
       '  border: 1px solid #e2e8f0;',
@@ -414,12 +442,20 @@
       '  min-width: 0;',
       '  display: flex;',
       '  flex-direction: column;',
-      '  gap: 2px;',  /* gap between filename and notes sub-line */
+      '  gap: 3px;',  /* gap between filename and chip/notes sub-line */
+      '  padding: 7px 9px 9px;',
+      '}',
+      '.scw-bid-review__docs-sub {',
+      '  display: flex;',
+      '  flex-wrap: wrap;',
+      '  align-items: center;',
+      '  gap: 5px;',
+      '  min-width: 0;',
       '}',
       '.scw-bid-review__docs-link {',
       '  display: block;',
       '  color: #1e293b;',  /* bold dark, not link-blue — this is the scan target */
-      '  font: 600 12px/1.3 system-ui, sans-serif;',
+      '  font: 600 11.5px/1.3 system-ui, sans-serif;',
       '  text-decoration: none;',
       '  white-space: nowrap;',
       '  overflow: hidden;',
@@ -431,6 +467,8 @@
       '}',
       '.scw-bid-review__docs-notes {',
       '  display: block;',
+      '  min-width: 0;',
+      '  flex: 1 1 auto;',
       '  font-size: 10px;',
       '  line-height: 1.3;',
       '  color: #94a3b8;',
@@ -444,13 +482,14 @@
       '.scw-bid-review__docs-link-btn {',
       '  display: inline-flex;',
       '  align-items: center;',
-      '  align-self: flex-start;',  /* align with filename top line */
-      '  margin-top: 1px;',
       '  gap: 3px;',
-      '  flex: 0 0 auto;',
-      '  margin-left: auto;',
+      /* Card overlay — pinned to the thumbnail's top-right corner so
+         the pill doesn't steal vertical space from the meta block. */
+      '  position: absolute;',
+      '  top: 6px;',
+      '  right: 6px;',
       '  padding: 2px 8px;',
-      '  background: #fff;',
+      '  background: rgba(255,255,255,0.95);',
       '  border: 1px solid #cbd5e1;',
       '  border-radius: 999px;',
       '  color: #295f91;',
@@ -458,6 +497,7 @@
       '  letter-spacing: 0.03em;',
       '  text-transform: uppercase;',
       '  cursor: pointer;',
+      '  box-shadow: 0 1px 3px rgba(15,23,42,.15);',
       '}',
       '.scw-bid-review__docs-link-btn:hover {',
       '  background: #295f91;',
@@ -477,13 +517,14 @@
       '.scw-bid-review__docs-unlink-btn {',
       '  display: inline-flex;',
       '  align-items: center;',
-      '  align-self: flex-start;',  /* align with filename top line */
-      '  margin-top: 1px;',
       '  gap: 3px;',
-      '  flex: 0 0 auto;',
-      '  margin-left: auto;',
+      /* Card overlay — same top-right pin as + Link; hidden until the
+         card is hovered so linked cards stay clean. */
+      '  position: absolute;',
+      '  top: 6px;',
+      '  right: 6px;',
       '  padding: 2px 8px;',
-      '  background: #fff;',
+      '  background: rgba(255,255,255,0.95);',
       '  border: 1px solid #cbd5e1;',
       '  border-radius: 999px;',
       '  color: #64748b;',
@@ -491,7 +532,8 @@
       '  letter-spacing: 0.03em;',
       '  text-transform: uppercase;',
       '  cursor: pointer;',
-      '  opacity: 0.55;',
+      '  opacity: 0;',
+      '  box-shadow: 0 1px 3px rgba(15,23,42,.15);',
       '  transition: opacity 120ms ease, background 120ms ease, color 120ms ease;',
       '}',
       '.scw-bid-review__docs-item:hover .scw-bid-review__docs-unlink-btn {',

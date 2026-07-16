@@ -1916,6 +1916,20 @@
     var view = document.getElementById(CFG.docFilesViewKey);
     if (!view) { _docsIndexCache = idx; return idx; }
 
+    // Model map — field_68_raw carries { url, filename }: the DIRECT
+    // asset URL, usable as an <img> src for gallery previews. (The DOM
+    // anchor's href is an in-app #kn-asset route — useless for <img>.)
+    var byId = {};
+    try {
+      var kv = typeof Knack !== 'undefined' && Knack.views && Knack.views[CFG.docFilesViewKey];
+      var models = kv && kv.model && kv.model.data && kv.model.data.models;
+      if (models) {
+        for (var mi = 0; mi < models.length; mi++) {
+          byId[models[mi].id] = models[mi].attributes || {};
+        }
+      }
+    } catch (e) { /* model unavailable — cards fall back to file tiles */ }
+
     var rows = view.querySelectorAll('tbody tr[id]');
     for (var i = 0; i < rows.length; i++) {
       var tr = rows[i];
@@ -1944,14 +1958,21 @@
       var fileA = tr.querySelector('td.field_68 a.kn-view-asset, td.field_68 a');
       if (!fileA) continue;
 
+      var attrs = byId[tr.id] || null;
+      var mraw = attrs && attrs.field_68_raw;
+      if (Array.isArray(mraw)) mraw = mraw[0];
+      var directUrl = (mraw && typeof mraw === 'object' &&
+                       (mraw.url || mraw.thumb_url)) || '';
+
       var doc = {
-        id:       tr.id,
-        docType:  readRowFieldText(tr, 'field_67'),
-        notes:    readRowFieldText(tr, 'field_588'),
-        fileName: (fileA.textContent || '').trim() || 'Document',
-        fileUrl:  fileA.getAttribute('href') || '',
-        sowIds:   sowIds,
-        bidIds:   bidIds
+        id:        tr.id,
+        docType:   readRowFieldText(tr, 'field_67'),
+        notes:     readRowFieldText(tr, 'field_588'),
+        fileName:  (fileA.textContent || '').trim() || 'Document',
+        fileUrl:   fileA.getAttribute('href') || '',
+        directUrl: directUrl,
+        sowIds:    sowIds,
+        bidIds:    bidIds
       };
 
       idx.all.push(doc);
@@ -1989,18 +2010,53 @@
     return c;
   }
 
+  function docExt(name) {
+    var m = /\.([a-z0-9]+)\s*$/i.exec(String(name || ''));
+    return m ? m[1].toLowerCase() : '';
+  }
+
+  // GALLERY CARD (2026-07-16, replaces the two-line text row): thumbnail
+  // preview on top — a real <img> for image files (direct asset URL from
+  // the model, see buildDocsIndex), a PDF/file tile otherwise — with the
+  // type chip + filename + notes beneath. The Link/Unlink pill is still
+  // appended by the caller and CSS-positioned over the thumbnail's top-
+  // right corner, so the linked/available grouping + actions carry over
+  // unchanged.
   function buildDocsItem(d) {
     var row = el('div', 'scw-bid-review__docs-item');
     // data-doc-type drives the filter-chip show/hide. Untyped docs
     // get a sentinel so "All" still matches but specific-type filters
     // hide them.
     row.setAttribute('data-doc-type', d.docType || '__none__');
-    if (d.docType) row.appendChild(el('span', 'scw-bid-review__docs-type', d.docType));
 
-    // Body wraps filename + notes vertically so the filename is the
-    // visual anchor and metadata (notes) sits as a muted sub-line.
-    // Two-line layout makes lists of docs scannable — the eye lands
-    // on bold filenames at a consistent left edge.
+    var ext = docExt(d.fileName);
+    var isImg = !!d.directUrl && /^(png|jpe?g|gif|webp|bmp|avif)$/.test(ext);
+
+    var thumb = document.createElement('a');
+    thumb.className = 'scw-bid-review__docs-thumb' +
+      (isImg ? '' : ' scw-bid-review__docs-thumb--icon' +
+        (ext === 'pdf' ? ' scw-bid-review__docs-thumb--pdf' : ''));
+    thumb.href = d.directUrl || d.fileUrl;
+    thumb.target = '_blank';
+    thumb.rel = 'noopener';
+    thumb.title = d.fileName + (d.notes ? ' — ' + d.notes : '');
+    if (isImg) {
+      var img = document.createElement('img');
+      img.loading = 'lazy';
+      img.src = d.directUrl;
+      img.alt = d.fileName;
+      thumb.appendChild(img);
+    } else {
+      thumb.innerHTML =
+        '<svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" ' +
+        'stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">' +
+        '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>' +
+        '<polyline points="14 2 14 8 20 8"/></svg>' +
+        '<span class="scw-bid-review__docs-ext">' +
+        (ext ? ext.toUpperCase().replace(/[^A-Z0-9]/g, '') : 'FILE') + '</span>';
+    }
+    row.appendChild(thumb);
+
     var body = el('div', 'scw-bid-review__docs-body');
     var a = document.createElement('a');
     a.href = d.fileUrl;
@@ -2010,11 +2066,14 @@
     a.className = 'scw-bid-review__docs-link';
     a.textContent = d.fileName;
     body.appendChild(a);
+    var subBits = el('span', 'scw-bid-review__docs-sub');
+    if (d.docType) subBits.appendChild(el('span', 'scw-bid-review__docs-type', d.docType));
     if (d.notes) {
       var nEl = el('span', 'scw-bid-review__docs-notes', d.notes);
       nEl.title = d.notes;
-      body.appendChild(nEl);
+      subBits.appendChild(nEl);
     }
+    if (d.docType || d.notes) body.appendChild(subBits);
     row.appendChild(body);
     return row;
   }
