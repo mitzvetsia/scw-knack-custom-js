@@ -188,41 +188,14 @@
     return out;
   }
 
-  // One recovery attempt per view per page load. A failed recovery
-  // (still truncated after the forced fetch) must not loop — every
-  // fetch fires knack-view-render → render → warnIfTruncated again.
-  var _truncRecoveryTried = {};
-
   function warnIfTruncated() {
     var stats = sourceStats();
     for (var i = 0; i < stats.length; i++) {
-      if (!stats[i].truncated) continue;
-      console.warn('[scw-br-v2] SOURCE VIEW TRUNCATED — diff will be wrong ' +
-        '(phantom Removed/Not-surveyed rows):', stats[i]);
-
-      // Self-heal: the usual cause is per-user persisted view state (a
-      // saved records-per-page choice or filter on the hidden source
-      // grid) capping the Backbone model below the real record count —
-      // change-record-limit.js's render-time bump ran before the user
-      // state applied, so the model reloaded capped. Force the cap back
-      // to 1000 and refetch; the fetch's knack-view-render notifies this
-      // grid to rebuild on the full dataset. Same strategy-2 pattern as
-      // change-record-limit.js (incl. the URL probe — a model without a
-      // usable URL makes Backbone.sync throw synchronously).
-      var k = stats[i].view;
-      if (_truncRecoveryTried[k]) continue;
-      _truncRecoveryTried[k] = true;
-      try {
-        var v = Knack.views && Knack.views[k];
-        if (!v || !v.model || !v.model.view) continue;
-        v.model.view.rows_per_page = 1000;
-        if (v.model.view.source) v.model.view.source.limit = 1000;
-        var url = (typeof v.model.url === 'function')
-          ? v.model.url.call(v.model) : v.model.url;
-        if (!url) continue;
-        console.warn('[scw-br-v2] forcing ' + k + ' to 1000/page and refetching…');
-        v.model.fetch();
-      } catch (e) { /* leave the warn as the record */ }
+      if (stats[i].truncated) {
+        console.warn('[scw-br-v2] SOURCE VIEW TRUNCATED — diff will be wrong ' +
+          '(phantom Removed/Not-surveyed rows):', stats[i],
+          '→ add ' + stats[i].view + ' to change-record-limit.js VIEW_IDS');
+      }
     }
   }
 
