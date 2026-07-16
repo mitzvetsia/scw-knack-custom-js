@@ -796,6 +796,73 @@
     });
   }
 
+  // ── Floating CTA dock ─────────────────────────────────────────────
+  // The toolbar lives at the TOP of the worksheet; on long grids users
+  // had to scroll all the way back up to reach "+ Add to SOW" /
+  // "+ Add Photos". This clones the CTA cluster into a fixed
+  // bottom-RIGHT dock (bottom-center belongs to the bulk-select
+  // toolbar) that fades in once the real toolbar scrolls off the top
+  // and out again when it's back in view. Clicks proxy to the ORIGINAL
+  // buttons so every action keeps exactly one wiring. Shared: the
+  // bid-review-v2 toolbar reuses this via ns.toolbar.attachFloatingCtas.
+  var _floatSeq = 0;
+  function attachFloatingCtas(bar, scopeEl) {
+    if (!bar || bar._scwFloat) return;
+    var group = bar.querySelector('.scw-ws-v2-toolbar-group--cta');
+    var origBtns = group ? group.querySelectorAll('button') : [];
+    if (!origBtns.length) return;
+
+    var float = document.createElement('div');
+    float.className = 'scw-ws-v2-toolbar-float';
+    for (var i = 0; i < origBtns.length; i++) {
+      (function (orig) {
+        var clone = orig.cloneNode(true);
+        clone.addEventListener('click', function (e) {
+          e.preventDefault();
+          orig.click();
+        });
+        float.appendChild(clone);
+      })(origBtns[i]);
+    }
+    document.body.appendChild(float);
+    bar._scwFloat = float;
+
+    var evNs = '.scwWsV2Float' + (++_floatSeq);
+    var ticking = false;
+    function detach() {
+      if (float.parentNode) float.parentNode.removeChild(float);
+      window.removeEventListener('scroll', onScroll, true);
+      window.removeEventListener('resize', onScroll);
+      try { $(document).off('knack-scene-render' + evNs); } catch (e) {}
+    }
+    function update() {
+      ticking = false;
+      // SPA nav tore the toolbar out → the dock goes with it. A fresh
+      // mount() on the next render builds a fresh pair.
+      if (!document.body.contains(bar)) { detach(); return; }
+      var barRect = bar.getBoundingClientRect();
+      var scope = (scopeEl && document.body.contains(scopeEl)) ? scopeEl : bar.parentNode;
+      var scopeRect = (scope || bar).getBoundingClientRect();
+      var vh = window.innerHeight || document.documentElement.clientHeight || 0;
+      // Show only while the toolbar is scrolled past ABOVE and the
+      // worksheet itself is still on screen — no orphan dock when the
+      // user has scrolled into unrelated content below the grid.
+      var show = barRect.bottom < 0 && scopeRect.bottom > 80 && scopeRect.top < vh;
+      float.classList.toggle('scw-ws-v2-toolbar-float--visible', show);
+    }
+    function onScroll() {
+      if (ticking) return;
+      ticking = true;
+      requestAnimationFrame(update);
+    }
+    // Capture-phase scroll also catches nested scroll containers
+    // (KTL/Knack wrappers); passive keeps it off the input path.
+    window.addEventListener('scroll', onScroll, { passive: true, capture: true });
+    window.addEventListener('resize', onScroll, { passive: true });
+    try { $(document).on('knack-scene-render' + evNs, onScroll); } catch (e) {}
+    update();
+  }
+
   /** Mount the toolbar inside the v2 container for a given source view.
    *  Idempotent — re-runs on every re-render but only inserts once. */
   function mount(viewKey) {
@@ -844,6 +911,7 @@
         }
       });
     }
+    attachFloatingCtas(bar, container);
     applyState(container, viewKey);
   }
 
@@ -851,6 +919,8 @@
     mount:           mount,
     loadMode:        loadMode,
     loadPhotosShown: loadPhotosShown,
+    // Shared floating-CTA dock — bid-review-v2's toolbar reuses it.
+    attachFloatingCtas: attachFloatingCtas,
     // Exposed so the floating bulk panel (bulk.js) can open the
     // add-accessory modal — it applies to a row selection, same as the
     // bulk Remove-accessories action, so both live together there.
