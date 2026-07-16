@@ -1699,7 +1699,11 @@
             var prodClass = prod.isMountingHardware ? ' class="mounting"' : '';
 
             if (prod.label) {
-              html.push('<tr class="l3-row">');
+              // l3-product marks the true PRODUCT header row (vs synthetic
+              // L3s hosting orphan description rows, which also render as
+              // l3-row) — the PDF CSS bolds it and the e-sign walker bolds
+              // its cells, so products stand out from labor descriptions.
+              html.push('<tr class="l3-row l3-product">');
               html.push('<td' + prodClass + (prod.hideCost ? ' colspan="3"' : '') + '>' + esc(prod.label));
               if (prod.connectedDevices && prod.connectedDevices.length) {
                 html.push('<span class="connected-devices">(' + esc(prod.connectedDevices.join(', ')) + ')</span>');
@@ -1716,7 +1720,10 @@
             var l4TdClass = prod.label ? 'l4-desc' : '';
             for (var li = 0; li < prod.lineItems.length; li++) {
               var item = prod.lineItems[li];
-              html.push('<tr class="' + l4Class + '">');
+              // Relocated equipment accessories (bracket/box-mount rollup
+              // lines) are PRODUCTS, not labor descriptions — mark them so
+              // they get the same bold treatment as l3-product rows.
+              html.push('<tr class="' + l4Class + (item.isEquipment ? ' l4-product' : '') + '">');
               var l4Content = item.description
                 ? item.description
                     .replace(/<b>/gi, '<span style="font-weight:700">')
@@ -2084,6 +2091,9 @@
       '.l3-row td:first-child { font-size: 12px; }',
       '.l3-row td.col-qty, .l3-row td.col-cost { font-weight: 600; }',
       '.l3-row td.mounting { padding-left: 40px; font-size: 11px; }',
+      '/* Product rows read BOLD; labor/description rows stay regular. */',
+      '.l3-row.l3-product td { font-weight: 700; }',
+      '.l4-row.l4-product td:first-child { font-weight: 600; color: #07467c; }',
       '.connected-devices { display: inline; margin-left: 4px; color: orange; font-weight: 700; font-size: 10px; }',
       '',
       '/* ── L4 Line Item Row ── */',
@@ -4134,6 +4144,17 @@
       elements.push({ type: 'text_normal', text: text });
     }
 
+    // Cell text with element boundaries turned into spaces. Reading
+    // textContent directly glues adjacent runs together ("…Cabling to
+    // Network.Install and terminate…") because the source HTML has no
+    // whitespace between a bold heading and the text that follows it.
+    // Strip tags to spaces, then decode entities via a scratch node.
+    function cellText(td) {
+      var scratch = doc.createElement('div');
+      scratch.innerHTML = (td.innerHTML || '').replace(/<[^>]+>/g, ' ');
+      return cleanText(scratch.textContent);
+    }
+
     // esignatures.com rejects ragged tables ("The table_cells must have
     // the same number of cells in each row") and has no colspan concept —
     // a full-width note row (<td colspan=3>, e.g. a bucket assumption
@@ -4246,10 +4267,16 @@
         for (var br = 0; br < bodyRows.length; br++) {
           var tdCells = bodyRows[br].querySelectorAll('td');
           if (!tdCells.length) continue;
+          // Product rows (true L3 headers + accessory rollup lines) render
+          // BOLD; labor/description rows stay regular so the two read
+          // apart in the agreement.
+          var isProductRow = bodyRows[br].classList.contains('l3-product') ||
+                             bodyRows[br].classList.contains('l4-product');
           var rowCells = [];
           for (var cb = 0; cb < tdCells.length; cb++) {
             var td = tdCells[cb];
-            var rcell = { text: cleanText(td.textContent) };
+            var rcell = { text: cellText(td) };
+            if (isProductRow) rcell.styles = ['bold'];
             var alignB = cellAlignmentForClass(td);
             if (alignB) rcell.alignment = alignB;
             rowCells.push(rcell);
