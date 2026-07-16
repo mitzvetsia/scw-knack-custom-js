@@ -51,7 +51,8 @@
     var _scrollTo = window.scrollTo;
     window.scrollTo = function () {
       if (active()) {
-        console.warn(P + ' window.scrollTo(', arguments[0], arguments[1], ') from', y());
+        console.warn(P + ' window.scrollTo(', arguments[0], arguments[1], ') from', y(),
+          'docHeight=' + document.documentElement.scrollHeight);
         console.trace(P + ' scrollTo stack');
       }
       return _scrollTo.apply(window, arguments);
@@ -112,6 +113,34 @@
           return desc.set.call(this, v);
         }
       });
+    }
+  } catch (e) { /* ignore */ }
+
+  // ── Knack render-event tracker ───────────────────────────────────────
+  // The watchdog sees docHeight collapse but can't say WHICH view rebuilt.
+  // Log every view/records render with the view key + docHeight before/after
+  // the render settles, so height collapses are attributable: the render
+  // line whose docHeight matches the jump names the culprit.
+  try {
+    if (window.$ && window.$.fn) {
+      var _renderLog = function (kind) {
+        return function (e, view) {
+          if (!active()) return;
+          var key = (view && view.key) || '?';
+          var h0 = document.documentElement.scrollHeight;
+          console.warn(P + ' ' + kind + ' ' + key +
+            ' docHeight=' + h0 + ' y=' + Math.round(y()));
+          setTimeout(function () {
+            var h1 = document.documentElement.scrollHeight;
+            if (Math.abs(h1 - h0) > 150) {
+              console.warn(P + ' ' + kind + ' ' + key +
+                ' → docHeight ' + h0 + ' → ' + h1 + ' (Δ' + (h1 - h0) + ')');
+            }
+          }, 60);
+        };
+      };
+      window.$(document).on('knack-view-render.any.scwScrollSpy', _renderLog('view-render'));
+      window.$(document).on('knack-scene-render.any.scwScrollSpy', _renderLog('scene-render'));
     }
   } catch (e) { /* ignore */ }
 
