@@ -2318,11 +2318,17 @@
 
   // view_3921 (SOW Line Items source for the bid-review comparison
   // grid). Same SOW Line Items object as view_3586/3610, same field
-  // keys, same regroup semantics. The bid-review feature edits
-  // field_1957 through worksheet cards moved out of #view_3921 into
-  // #bid-review-matrix; the connection-picker calls
-  // silentRegroupView3921 on save so the reciprocal + grouping cascade
-  // still fires.
+  // keys, same regroup semantics.
+  //
+  // MODEL_ONLY since the bid-review v2 cutover (replaceV1): v1's
+  // device-worksheet transform bails on view_3921 when v2 owns the page
+  // (device-worksheet.js brV2OwnsView), so there are NO .scw-ws-row rows
+  // to scrape — DOM-mode findRowsPointingTo always saw ZERO current
+  // children, the remove diff came back empty, and de-selecting a
+  // Connected Device never cleared the child's field_2197 (the card then
+  // re-derived the old connection from the stale back-pointer: "unselect
+  // the last device and it never updates"). The Backbone model is the
+  // right source here — it's what bid-review-v2's data layer reads.
   //
   // Mounting brackets on the comparison-grid scene live on view_3927
   // (a hidden source view added so cascadeAccessoryMdf can read each
@@ -2337,6 +2343,7 @@
     ACCESSORIES_PARENT_FIELD: 'field_2464',
     SOW_FIELD:                'field_2154',
     LABEL_FIELD:              'field_1950',   // SOW line-item display label
+    MODEL_ONLY:          true,
     PUBLIC_API_NAME:     'silentRegroupView3921'
   });
 
