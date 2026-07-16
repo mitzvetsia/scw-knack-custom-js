@@ -2236,13 +2236,29 @@
     return '';
   }
 
+  function fmtSummaryMoney(n) {
+    if (typeof n !== 'number' || !isFinite(n)) return '';
+    return (n < 0 ? '-' : '') + '$' + Math.abs(n).toLocaleString('en-US',
+      { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  }
+
   function extractSummaryFields(payload) {
+    // Primary source: the project-totals lines scraped off the rendered
+    // grid. That scrape can come up empty (observed on CO previews) —
+    // fall back to the exact numbers proposal-grid computed for the same
+    // rows, stashed on SCW.proposalGridTotals at render time. On a CO
+    // these are the NET values (credit rows are negative in the sums),
+    // which is what the published-proposal record should carry.
+    var pg = (window.SCW && window.SCW.proposalGridTotals) || null;
     return {
       sowId:              findDetailField(payload, /sow\s*id/i),
       expirationDate:     findDetailField(payload, /expir/i),
-      equipmentTotal:     findTotalLine(payload, /equipment\s*total/i),
-      installationTotal:  findTotalLine(payload, /installation\s*total/i),
+      equipmentTotal:     findTotalLine(payload, /equipment\s*total/i)
+                            || (pg ? fmtSummaryMoney(pg.equipmentTotal) : ''),
+      installationTotal:  findTotalLine(payload, /installation\s*total/i)
+                            || (pg ? fmtSummaryMoney(pg.installationTotal) : ''),
       grandTotal:         findTotalLine(payload, /grand\s*total/i)
+                            || (pg ? fmtSummaryMoney(pg.grandTotal) : '')
     };
   }
 

@@ -1843,6 +1843,25 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
     const installationTotal = sumField(caches, $allDataRows, laborKey);
     const grandTotal = equipmentTotal + installationTotal - proposalDiscount;
 
+    // Publish-payload fallback: proposal-pdf-export scrapes these totals
+    // back OUT of the synthetic rows below, but that scrape can come up
+    // empty (observed on CO previews), which shipped blank equipment /
+    // installation / grand totals to Make. Stash the exact computed
+    // numbers so extractSummaryFields can read them directly. On a CO
+    // these are the NET values — Remove-action credit rows are negative
+    // amounts inside the same sums.
+    window.SCW = window.SCW || {};
+    window.SCW.proposalGridTotals = {
+      viewId: ctx.viewId,
+      equipmentSubtotal: equipmentSubtotal,
+      lineItemDiscounts: lineItemDiscounts,
+      proposalDiscount: proposalDiscount,
+      equipmentTotal: equipmentTotal,
+      installationTotal: installationTotal,
+      grandTotal: grandTotal,
+      at: Date.now()
+    };
+
     const hasAnyDiscount = lineItemDiscounts !== 0 || proposalDiscount !== 0;
 
     const meta = computeColumnMeta(ctx);

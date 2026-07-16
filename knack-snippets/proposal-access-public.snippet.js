@@ -78,10 +78,13 @@
   //                 the connected SOW, which in turn pulls field_2728
   //                 from the project. If > 0, hides the Site Survey
   //                 button. Treated as 0 if not exposed.)
-  //   field_2665  SYS_display name                  → change-order gate
-  //                (heuristic: a display name carrying the SW####CO
-  //                 suffix marks the proposal as a change order — see
-  //                 isChangeOrderProposal. Not detected if not exposed.)
+  //   field_2952  SOW Type (via SOW connection)     → change-order gate
+  //                (FLAG_SOW: base scope / change order — the durable
+  //                 CO signal; see isChangeOrderProposal)
+  //   field_2656  SOW name | proposal name          → change-order gate
+  //                (heuristic fallback: a name carrying the SW####CO
+  //                 suffix marks the proposal as a change order.
+  //                 Not detected if not exposed.)
   //   field_1089  install agreement contact         → CO e-sign banner
   //                (names WHO the signature request went to; banner
   //                 falls back to generic copy if not exposed/blank)
@@ -96,24 +99,45 @@
   // (esignatures.com email), never the Accept Proposal flow — accepting
   // would fire the base-scope acceptance pipeline. This public page has
   // NO SOW view, so detection must come off the proposal record itself:
-  //   1. CO_TYPE_FIELD — a text-formula field on the proposal pulling
-  //      the connected SOW's Type (field_2952). TODO: create it in
-  //      Builder, expose it on view_3952, and fill the key here. The
-  //      durable signal.
-  //   2. Heuristic fallback — the display name / proposal number carries
-  //      the CO suffix (…SW1410CO…), per the CO numbering convention.
+  //   1. CO_TYPE_FIELD — the SOW's Type field (field_2952, FLAG_SOW:
+  //      base scope / change order), exposed on view_3952 through the
+  //      SOW connection (added 2026-07-16). Connected columns arrive in
+  //      the record under a DOTTED key (e.g. 'field_2666.field_2952'),
+  //      so the reader scans for both the plain and dotted forms. The
+  //      durable signal: "change order" → CO, "base scope" → not a CO.
+  //   2. Heuristic fallback (only when the type is unreadable) — a name
+  //      field carries the CO suffix (…SW1410CO…), per the CO numbering
+  //      convention. field_2656 (SOW name | proposal name) is the one
+  //      that reliably carries it; field_2665/field_2663 kept for
+  //      older records.
   // Neither signal present → NOT a CO (base proposals keep the button).
-  var CO_TYPE_FIELD    = '';           // TODO: 'field_XXXX' when built
-  var CO_NAME_FIELDS   = ['field_2665', 'field_2663'];
+  var CO_TYPE_FIELD    = 'field_2952'; // SOW Type via the SOW connection
+  var CO_NAME_FIELDS   = ['field_2656', 'field_2665', 'field_2663'];
   var CO_CONTACT_FIELD = 'field_1089'; // install agreement contact (signer)
+
+  // Read CO_TYPE_FIELD off the record, accepting the plain key or any
+  // connected-field dotted key ('field_XXXX.field_2952'), raw or display,
+  // string or array (FLAG_SOW raw can be an array of choices).
+  function readSowTypeValue(attrs) {
+    var keys = [CO_TYPE_FIELD + '_raw', CO_TYPE_FIELD];
+    for (var k in attrs) {
+      if (!attrs.hasOwnProperty(k)) continue;
+      if (k.indexOf('.' + CO_TYPE_FIELD) !== -1) keys.push(k);
+    }
+    for (var i = 0; i < keys.length; i++) {
+      var v = attrs[keys[i]];
+      if (v == null || v === '') continue;
+      if (Object.prototype.toString.call(v) === '[object Array]') v = v.join(' ');
+      var t = String(v).replace(/<[^>]*>/g, '').replace(/&nbsp;/gi, ' ').trim();
+      if (t) return t;
+    }
+    return '';
+  }
+
   function isChangeOrderProposal(attrs) {
     if (!attrs) return false;
-    if (CO_TYPE_FIELD) {
-      var raw = attrs[CO_TYPE_FIELD + '_raw'];
-      var t = String(raw != null ? raw : (attrs[CO_TYPE_FIELD] || ''))
-        .replace(/<[^>]*>/g, '').trim().toLowerCase();
-      if (t) return t.indexOf('change order') !== -1;
-    }
+    var t = readSowTypeValue(attrs).toLowerCase();
+    if (t) return t.indexOf('change order') !== -1;
     for (var i = 0; i < CO_NAME_FIELDS.length; i++) {
       var v = attrs[CO_NAME_FIELDS[i]];
       if (v != null && /SW\d+CO\b/i.test(String(v).replace(/<[^>]*>/g, ''))) {
