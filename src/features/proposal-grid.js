@@ -348,6 +348,31 @@
     return total;
   }
 
+  // Sign-exact sum: prefers the Backbone model's numeric `<field>_raw`
+  // and falls back to the cell parse. Needed for CO credit rows — their
+  // NEGATIVE discount cells (e.g. "−$55.00") can parse positive from the
+  // rendered text, which inflated Line Item Discounts and shorted the
+  // Equipment/Grand totals (observed 2026-07-16: $110 = 2 × the credit
+  // row's $55 discount).
+  function sumFieldSigned(ctx, caches, $rows, fieldKey) {
+    const byId = {};
+    try {
+      const v = typeof Knack !== 'undefined' && Knack.views && Knack.views[ctx.viewId];
+      const models = v && v.model && v.model.data && v.model.data.models;
+      if (models) models.forEach((m) => { byId[m.id] = m.attributes || {}; });
+    } catch (e) { /* model unavailable — cell fallback below */ }
+    let total = 0;
+    const rows = $rows.get();
+    for (let i = 0; i < rows.length; i++) {
+      const rec = byId[rows[i].id];
+      const raw = rec ? rec[fieldKey + '_raw'] : undefined;
+      if (typeof raw === 'number' && Number.isFinite(raw)) { total += raw; continue; }
+      const num = getRowNumericValue(caches, rows[i], fieldKey);
+      if (Number.isFinite(num)) total += num;
+    }
+    return total;
+  }
+
   function sumFields(caches, $rows, fieldKeys) {
     const totals = {};
     fieldKeys.forEach((key) => (totals[key] = 0));
@@ -1831,7 +1856,12 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
     const laborKey = ctx.keys.labor;         // field_2028
 
     const equipmentSubtotal = sumField(caches, $allDataRows, hardwareKey);
-    const lineItemDiscounts = Math.abs(sumField(caches, $allDataRows, 'field_2303'));
+    // SIGNED sum (no Math.abs): on a CO, a Remove-action credit row carries
+    // a NEGATIVE line discount that must reduce the total discount — abs
+    // (or a sign-mangled cell parse) double-counted it and shorted the
+    // Equipment/Grand totals. Base proposals only have positive discounts,
+    // so this is behavior-preserving there.
+    const lineItemDiscounts = sumFieldSigned(ctx, caches, $allDataRows, 'field_2303');
     const proposalDiscount = Math.abs(readDomFieldValue('2302', 'view_3342'));
     // Client-facing discount reason (field_2291) — shown beneath the
     // Proposal Discount amount only when a discount is actually applied.
@@ -3173,11 +3203,12 @@ tr.${CO_RM.bannerCls} td {
 
     // ── Layer 2: Change Summary manifest above the grid ────────────────
     // Entries are derived from the GRID rows themselves — product from the
-    // enclosing L3 group header, location from the enclosing L1 header,
-    // money from the row's own cells — so the manifest always names things
-    // exactly the way the itemized list below does. (The view's model
-    // doesn't carry the product connection; the grid's product names only
-    // exist as group headers.) Model is used only for designator fields.
+    // enclosing L3 group header, location from the enclosing L1 header —
+    // so the manifest always names things exactly the way the itemized
+    // list below does. (The view's model doesn't carry the product
+    // connection; the grid's product names only exist as group headers.)
+    // Money is DISCOUNT-NET per line (model-preferred; see `amt` below)
+    // so Net change ties to the Project Total.
     const modelById = {};
     try {
       const v = typeof Knack !== 'undefined' && Knack.views && Knack.views[ctx.viewId];
@@ -3224,14 +3255,30 @@ tr.${CO_RM.bannerCls} td {
         enclosingGroupLabel(tr, 3);
       const prefix = connLabel(rec, ctx.keys.prefix);
       const number = readTxt(rec, ctx.keys.number);
+      // Line value is NET of line-item discounts (decided 2026-07-16) so
+      // the manifest's Net change equals the Project (Grand) Total — one
+      // number everywhere the customer looks. Prefer the model's exact
+      // numbers: install fee (field_2028, ctx.keys.labor) + discounted
+      // hardware (field_2269 = hardware − line discount); fall back to
+      // cells (labor + hardware − field_2303) when the model row is
+      // missing. (If a proposal-level discount is ever applied to a CO,
+      // the Grand Total will sit below Net change by that amount — the
+      // manifest is per-line and can't carry a proposal-wide discount.)
+      let amt;
+      if (typeof rec[ctx.keys.labor + '_raw'] === 'number' ||
+          typeof rec['field_2269_raw'] === 'number') {
+        amt = (Number(rec[ctx.keys.labor + '_raw']) || 0) +
+              (Number(rec['field_2269_raw']) || 0);
+      } else {
+        amt = cellNum(tr, ctx.keys.labor) + cellNum(tr, ctx.keys.hardware) -
+              cellNum(tr, 'field_2303');
+      }
       const entry = {
         product: product,
         desig: prefix ? prefix + number : '',
         loc: enclosingGroupLabel(tr, 1),
         qty: cellNum(tr, ctx.keys.qty) || 1,
-        // Line value = install fee + hardware — the same two columns the
-        // grid's own subtotals sum, read from the same cells.
-        amt: cellNum(tr, ctx.keys.labor) + cellNum(tr, ctx.keys.hardware),
+        amt: amt,
       };
       if (coRmIsRemoveTr(tr)) removes.push(entry);
       // Adds: only rows with something to show (skips assumptions text rows).
