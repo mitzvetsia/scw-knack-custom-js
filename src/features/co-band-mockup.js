@@ -46,6 +46,16 @@
   var BAND_CLS  = 'scw-co-band';
   var CLONE_CLS = 'scw-co-band-clone';
 
+  // Mockup feature — keep loud console diagnostics so "toggle shows but
+  // nothing happens" is debuggable from the user's console.
+  function log() {
+    try {
+      var a = ['[scw-co-band]'];
+      for (var i = 0; i < arguments.length; i++) a.push(arguments[i]);
+      console.info.apply(console, a);
+    } catch (e) { /* ignore */ }
+  }
+
   function getMode() {
     try { return window.localStorage.getItem(STORE_KEY) || 'off'; }
     catch (e) { return 'off'; }
@@ -317,6 +327,7 @@
     root.classList.toggle('scw-co-band-mode', hasCo && mode !== 'off');
 
     if (!hasCo) return;
+    log('applyMode', viewId, 'mode=' + mode);
     if (mode === 'off') { restoreOrder(tbody); return; }
 
     snapshotOrder(tbody);
@@ -324,10 +335,15 @@
     restoreOrder(tbody);
     if (mode === 'v1') applyV1(tbody);
     else if (mode === 'v2') applyV2(tbody);
+    log('applyMode done', viewId,
+      'bands=' + tbody.querySelectorAll('tr.' + BAND_CLS).length);
   }
 
   function applyAll() {
-    VIEWS.forEach(applyMode);
+    VIEWS.forEach(function (v) {
+      try { applyMode(v); }
+      catch (e) { console.error('[scw-co-band] applyMode threw for ' + v, e); }
+    });
   }
 
   // ── Floating switcher ────────────────────────────────────────────
@@ -350,16 +366,29 @@
         '<button type="button" data-scw-cbm="v2" title="Added / Removed bands ' +
           'within each subsection (Cameras, Networking & Headend, …)">' +
           'V2 · Section bands</button>';
-      el.addEventListener('click', function (e) {
-        var btn = e.target.closest('button[data-scw-cbm]');
-        if (!btn) return;
-        setMode(btn.getAttribute('data-scw-cbm'));
-        syncToggle();
-        applyAll();
-      });
       document.body.appendChild(el);
+      log('toggle mounted (mode=' + getMode() + ')');
     }
     syncToggle();
+  }
+
+  // Click handling lives at the DOCUMENT level (capture) rather than on the
+  // toggle element — one binding that survives any toggle re-mount and can't
+  // be starved by other document-level handlers.
+  if (!document.documentElement.hasAttribute('data-scw-co-band-click')) {
+    document.documentElement.setAttribute('data-scw-co-band-click', '1');
+    document.addEventListener('click', function (e) {
+      var btn = e.target && e.target.closest &&
+        e.target.closest('#' + TOGGLE_ID + ' button[data-scw-cbm]');
+      if (!btn) return;
+      e.preventDefault();
+      e.stopPropagation();
+      var m = btn.getAttribute('data-scw-cbm');
+      log('toggle click →', m);
+      setMode(m);
+      syncToggle();
+      applyAll();
+    }, true);
   }
   function syncToggle() {
     var el = document.getElementById(TOGGLE_ID);
@@ -373,20 +402,38 @@
   // ── Bind ─────────────────────────────────────────────────────────
   // Runs after proposal-grid's synchronous pipeline (bundle order), then
   // re-applies after its 300/1200ms safety-net windows have settled.
+  function armFor(viewId) {
+    injectCss();
+    [400, 1500, 3300].forEach(function (ms) {
+      setTimeout(function () {
+        ensureToggle();
+        try { applyMode(viewId); }
+        catch (e) { console.error('[scw-co-band] applyMode threw for ' + viewId, e); }
+      }, ms);
+    });
+  }
   VIEWS.forEach(function (viewId) {
     $(document)
       .off('knack-records-render.' + viewId + EVENT_NS)
       .on('knack-records-render.' + viewId + EVENT_NS, function () {
-        injectCss();
-        [400, 1500, 3300].forEach(function (ms) {
-          setTimeout(function () { ensureToggle(); applyMode(viewId); }, ms);
-        });
+        log('records-render', viewId);
+        armFor(viewId);
       });
   });
 
-  // Toggle cleanup when navigating to a scene without the grids.
+  // Scene render: toggle cleanup on non-grid scenes AND a catch-up apply —
+  // if knack-records-render fired before the bundle loaded (slow first
+  // load), the per-view binding above never saw it; this path still arms.
   $(document).on('knack-scene-render.any' + EVENT_NS, function () {
-    setTimeout(ensureToggle, 500);
+    setTimeout(function () {
+      ensureToggle();
+      VIEWS.forEach(function (viewId) {
+        var root = document.getElementById(viewId);
+        if (root && root.querySelector('tr.scw-co-add-row, tr.scw-co-rm-row')) {
+          armFor(viewId);
+        }
+      });
+    }, 500);
   });
 })();
 /*** END FEATURE: CO ADD/REMOVE BAND MOCKUPS **********************************/
