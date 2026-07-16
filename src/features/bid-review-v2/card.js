@@ -590,8 +590,20 @@
           'scw-bid-review__cell-action--revise scw-bid-review-v2__cell-action" ' +
           crAttrs('cell_request_change', row.id, pkgId, sowId, bidRecordId) + '>Revise</button>';
     }
+    // Re-link — re-point THIS bid record's source-of-truth SOW line item
+    // (field_2404) at a different SOW item. Only renders when we know the
+    // exact bid record behind the cell (criss-crossed items are per-record;
+    // row identity alone is the SOW item, not the bid).
+    var relink = bidRecordId
+      ? '<button type="button" class="scw-bid-review__cell-action ' +
+          'scw-bid-review__cell-action--relink scw-bid-review-v2__cell-action" ' +
+          crAttrs('cell_relink_bid', row.id, pkgId, sowId, bidRecordId) +
+          ' title="Point this bid item at a different SOW line item (source of truth)"' +
+          '>Re-link</button>'
+      : '';
     return '<div class="scw-bid-review-v2__cell-actions">' +
       revise +
+      relink +
       '<button type="button" class="scw-bid-review__cell-action ' +
         'scw-bid-review__cell-action--remove scw-bid-review-v2__cell-action" ' +
         crAttrs('cell_remove_from_bid', row.id, pkgId, sowId, bidRecordId) + '>Remove</button>' +
@@ -635,6 +647,16 @@
           'data-sow-id="' + escapeHtml(sowId || '') + '" ' +
           'title="Keep both — create a separate SOW line item for this bid item">' +
           '+ New SOW item</button>' +
+        // Duplicates are the prime criss-cross case — the 2nd bid item
+        // usually belongs to a DIFFERENT existing SOW item. Re-link points
+        // THIS dupe record's field_2404 at the one the user picks.
+        '<button type="button" class="scw-bid-review__cell-action ' +
+          'scw-bid-review__cell-action--relink scw-bid-review-v2__cell-action" ' +
+          'data-action="cell_relink_bid" ' +
+          'data-bid-record-id="' + escapeHtml(d.id) + '" ' +
+          'data-sow-id="' + escapeHtml(sowId || '') + '" ' +
+          'title="Point this bid item at a different SOW line item (source of truth)"' +
+          '>Re-link</button>' +
         '<button type="button" class="scw-bid-review__cell-action ' +
           'scw-bid-review__cell-action--remove scw-bid-review-v2__cell-action" ' +
           crAttrs('cell_remove_from_bid', row.id, pkgId, sowId) +

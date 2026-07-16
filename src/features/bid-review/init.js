@@ -2982,6 +2982,136 @@
     }
   }
 
+  // ── re-link a bid item to a DIFFERENT SOW line item ───────────────
+  // Bid line items carry their "source of truth" SOW line item on
+  // REL_sow-line-item (field_2404). When a bid item gets criss-crossed —
+  // pointed at the WRONG SOW item — reviewers need to re-point it without
+  // deleting/recreating anything. Opens the worksheet-v2 picker over EVERY
+  // SOW line item loaded on the scene (view_3921 pools all SOWs on the
+  // project, so cross-SOW criss-crosses are fixable too; groups compose
+  // "SW-#### · MDF" exactly like the Connected Devices picker here) and
+  // PUTs the chosen id to field_2404 through the bid source view
+  // (view_3680) — the same write path the duplicate-split clear uses.
+  function handleRelinkBid(button) {
+    var bidId = button.getAttribute('data-bid-record-id');
+    if (!bidId) return;
+
+    var FKsow  = (CFG.fieldKeys && CFG.fieldKeys.relatedSowItem) || 'field_2404';
+    var sowFK  = (CFG.fieldKeys && CFG.fieldKeys.sow) || 'field_2154';
+    var picker = window.SCW && SCW.worksheetV2 && SCW.worksheetV2.picker;
+    if (!picker || typeof picker.open !== 'function') {
+      if (ns.renderToast) ns.renderToast('Re-link unavailable — picker module not loaded', 'error');
+      return;
+    }
+
+    function modelAttrs(viewKey) {
+      var out = [];
+      try {
+        var v = Knack.views && Knack.views[viewKey];
+        var ms = (v && v.model && v.model.data && v.model.data.models) || [];
+        for (var i = 0; i < ms.length; i++) {
+          if (ms[i] && ms[i].attributes && ms[i].attributes.id) out.push(ms[i].attributes);
+        }
+      } catch (e) { /* fall through */ }
+      return out;
+    }
+
+    // The bid record — current field_2404 selection. The field can be
+    // multi-valued (data quirk); re-linking normalizes it to exactly one.
+    var bidRec = null;
+    var bids = modelAttrs(CFG.viewKey);
+    for (var b = 0; b < bids.length; b++) {
+      if (bids[b].id === bidId) { bidRec = bids[b]; break; }
+    }
+    if (!bidRec) {
+      if (ns.renderToast) ns.renderToast('Could not find the bid record to re-link', 'error');
+      return;
+    }
+    var sel = [];
+    var selRaw = bidRec[FKsow + '_raw'];
+    if (Array.isArray(selRaw)) {
+      for (var s = 0; s < selRaw.length; s++) {
+        if (selRaw[s] && selRaw[s].id) sel.push(selRaw[s].id);
+      }
+    } else if (selRaw && selRaw.id) {
+      sel.push(selRaw.id);
+    }
+
+    var candidates = modelAttrs(CFG.sowItemsViewKey);
+    if (!candidates.length) {
+      if (ns.renderToast) ns.renderToast('SOW line items not loaded yet — try again in a moment', 'error');
+      return;
+    }
+
+    // "SW-#### · MDF" grouping — same composition as the Connected Devices
+    // picker on this multi-SOW scene (worksheet-v2/init.js view_3921 branch).
+    var mdfGroup = picker.groupByMdfIdf;
+    function sowTag(rec) {
+      var raw = rec && rec[sowFK + '_raw'];
+      var ids = [], labels = [];
+      if (Array.isArray(raw)) {
+        for (var i = 0; i < raw.length; i++) {
+          if (raw[i] && raw[i].id) {
+            ids.push(raw[i].id);
+            var l = String(raw[i].identifier || '').replace(/<[^>]*>/g, '').trim();
+            if (l) labels.push(l);
+          }
+        }
+      }
+      return { id: ids.join('+'), label: labels.join(' + ') };
+    }
+    function groupBy(rec) {
+      var m = (typeof mdfGroup === 'function') ? mdfGroup(rec)
+        : { id: '__unknown', label: 'No MDF / IDF' };
+      var t = sowTag(rec);
+      if (!t.id && m.id === '__unknown') return m;
+      return {
+        id:    (t.id || '__nosow') + '::' + m.id,
+        label: (t.label || 'No SOW') + ' · ' + m.label
+      };
+    }
+
+    // Worksheet-style option label (drop label · product) with the same
+    // degenerate-server-label cleanup the Connected Devices picker uses —
+    // field_1950 can render as "<recordId> (<mdfLabel>)" for rows with no
+    // real drop label; never show a raw record id.
+    function itemLabel(rec) {
+      var lbl  = (rec.field_1950 || '').toString().replace(/<[^>]*>/g, '').trim();
+      var prod = (rec.field_1949 || '').toString().replace(/<[^>]*>/g, '').trim();
+      var hexWrap = lbl.match(/^[a-f0-9]{24}\s*\(([^)]+)\)\s*$/i);
+      if (hexWrap) lbl = '';
+      else if (/^[a-f0-9]{24}(\s|\b|$)/i.test(lbl)) lbl = '';
+      if (/^[a-f0-9]{24}(\s|\b|$)/i.test(prod)) prod = '';
+      var loc = hexWrap ? ' (' + hexWrap[1].trim() + ')' : '';
+      if (lbl && prod) return lbl + ' · ' + prod;
+      if (prod) return prod + loc;
+      if (lbl)  return lbl;
+      return hexWrap ? '(unnamed item)' + loc : rec.id;
+    }
+
+    picker.open({
+      sourceViewKey: CFG.viewKey,   // PUT through view_3680 (bid records)
+      recordId:      bidId,
+      fieldKey:      FKsow,
+      label:         'Set source-of-truth SOW line item',
+      selectedIds:   sel,
+      candidates:    candidates,
+      groupBy:       groupBy,
+      itemLabel:     itemLabel,
+      multi:         false,
+      onSaved:       function (ids) {
+        if (ns.renderToast) {
+          ns.renderToast(ids && ids.length
+            ? 'Bid item re-linked to the selected SOW item'
+            : 'Bid item disconnected from its SOW item', 'success');
+        }
+        // Server-truth reload → v1 _state rebuild; the model fetches it
+        // fires re-render v2 too (knack-view-render → notifyDebounced).
+        refreshSilently();
+      }
+    });
+  }
+
   // ── disconnect from SOW (per-row, on SOW detail cell) ──────
   // Removes this SOW's id from the SOW Line Item's field_2154
   // connection (the SOW connection is multi-value — a single line
@@ -3668,6 +3798,7 @@
     if (action === 'cell_add_to_bid')               { handleAddToBid(button); return true; }
     if (action === 'cell_reinstate')                { handleReinstate(button); return true; }
     if (action === 'cell_create_sow_from_bid')      { handleCreateSowFromBid(button); return true; }
+    if (action === 'cell_relink_bid')               { handleRelinkBid(button); return true; }
     if (action === 'cr_submit') {
       var pkgId = button.getAttribute('data-pkg-id');
       if (ns.changeRequests && ns.changeRequests.submitForPackage) {
