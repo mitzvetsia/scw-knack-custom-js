@@ -64,6 +64,17 @@
     try { window.localStorage.setItem(STORE_KEY, m); } catch (e) { /* ignore */ }
   }
 
+  // Removed-side color scheme: classic red or lavender — its own live
+  // sub-toggle on the pill so both can be compared on the real page.
+  var COLOR_KEY = 'scwCoBandRmColor';   // 'red' | 'lav'
+  function getRmColor() {
+    try { return window.localStorage.getItem(COLOR_KEY) || 'red'; }
+    catch (e) { return 'red'; }
+  }
+  function setRmColor(c) {
+    try { window.localStorage.setItem(COLOR_KEY, c); } catch (e) { /* ignore */ }
+  }
+
   function injectCss() {
     if (document.getElementById(STYLE_ID)) return;
     var css = [
@@ -98,6 +109,17 @@
       '.scw-co-band-mode tr.scw-co-band-tint-add td:first-child { box-shadow: inset 4px 0 0 #059669; }',
       '.scw-co-band-mode tr.scw-co-band-tint-rm td { background: #fff1f2 !important; }',
       '.scw-co-band-mode tr.scw-co-band-tint-rm td:first-child { box-shadow: inset 4px 0 0 #e11d48; }',
+      // Lavender variant for the removed side (scw-co-band-lav on the view
+      // root). Extra ancestor class outscores proposal-grid's red rules.
+      '.scw-co-band-lav tr.' + BAND_CLS + '--rm td {',
+      '  background: #f5f3ff !important; color: #6d28d9 !important;',
+      '  box-shadow: inset 4px 0 0 #8b5cf6, inset 0 6px 0 #07467c;',
+      '}',
+      '.scw-co-band-lav tr.scw-co-band-tint-rm td { background: #f5f3ff !important; }',
+      '.scw-co-band-lav tr.scw-co-band-tint-rm td:first-child { box-shadow: inset 4px 0 0 #8b5cf6; }',
+      '.scw-co-band-lav tr.scw-co-rm-row td { background: #f5f3ff !important; }',
+      '.scw-co-band-lav tr.scw-co-rm-row td:first-child { box-shadow: inset 4px 0 0 #8b5cf6; }',
+      '.scw-co-band-lav tr.kn-table-group.scw-co-rm-row td { background: #ede9fe !important; }',
 
       // Floating switcher
       '#' + TOGGLE_ID + ' {',
@@ -195,10 +217,17 @@
         continue;
       }
       if (isTotalsRow(tr)) {
-        // L1 subtotal/discount/total rows (and credit banners) — leave in
-        // place; they always trail the units they summarize.
         closeUnit();
-        section.tail.push(tr);
+        // An L2 (subsection) subtotal belongs to its block — V1 re-seats it
+        // after the block's last band chunk so it doesn't strand at the
+        // bottom of the section, detached from its subsection.
+        if (block && tr.classList.contains('scw-subtotal--level-2')) {
+          (block.subtotals = block.subtotals || []).push(tr);
+        } else {
+          // L1 subtotal/discount/total rows (and credit banners) — leave in
+          // place; they always trail the section they summarize.
+          section.tail.push(tr);
+        }
         continue;
       }
       if (groupLevel(tr) === 3) {
@@ -303,6 +332,15 @@
           }
         }
         rms.forEach(function (u) { rmSeq.push.apply(rmSeq, stampUnit(u, 'rm')); });
+        // Re-seat the subsection's subtotal after its LAST band chunk (its
+        // removes when it has any, else its adds) so it stays visually
+        // attached to its subsection instead of stranding at section end.
+        var subs = blk.subtotals || [];
+        if (subs.length) {
+          var dest = rms.length ? rmSeq : (adds.length ? addSeq : null);
+          if (dest) subs.forEach(function (t) { dest.push(t); });
+          // no units in this block → leave the subtotal where it stands
+        }
       });
       if (addSeq.length) {
         frag.appendChild(bandRow('add', 'Items to be Added', cols));
@@ -367,6 +405,8 @@
 
     cleanInjected(tbody);
     root.classList.toggle('scw-co-band-mode', hasCo && mode !== 'off');
+    root.classList.toggle('scw-co-band-lav',
+      hasCo && mode !== 'off' && getRmColor() === 'lav');
 
     if (!hasCo) return;
     log('applyMode', viewId, 'mode=' + mode);
@@ -407,7 +447,10 @@
           'within each MDF/IDF">V1 · MDF bands</button>' +
         '<button type="button" data-scw-cbm="v2" title="Added / Removed bands ' +
           'within each subsection (Cameras, Networking & Headend, …)">' +
-          'V2 · Section bands</button>';
+          'V2 · Section bands</button>' +
+        '<span class="scw-cbm-lbl" style="margin-left:8px">Remove</span>' +
+        '<button type="button" data-scw-cbm-color="red">Red</button>' +
+        '<button type="button" data-scw-cbm-color="lav">Lavender</button>';
       document.body.appendChild(el);
       log('toggle mounted (mode=' + getMode() + ')');
     }
@@ -421,13 +464,15 @@
     document.documentElement.setAttribute('data-scw-co-band-click', '1');
     document.addEventListener('click', function (e) {
       var btn = e.target && e.target.closest &&
-        e.target.closest('#' + TOGGLE_ID + ' button[data-scw-cbm]');
+        e.target.closest('#' + TOGGLE_ID + ' button');
       if (!btn) return;
       e.preventDefault();
       e.stopPropagation();
       var m = btn.getAttribute('data-scw-cbm');
-      log('toggle click →', m);
-      setMode(m);
+      var c = btn.getAttribute('data-scw-cbm-color');
+      if (m) { log('toggle click →', m); setMode(m); }
+      else if (c) { log('color click →', c); setRmColor(c); }
+      else return;
       syncToggle();
       applyAll();
     }, true);
@@ -436,8 +481,11 @@
     var el = document.getElementById(TOGGLE_ID);
     if (!el) return;
     var mode = getMode();
+    var col  = getRmColor();
     Array.prototype.slice.call(el.querySelectorAll('button')).forEach(function (b) {
-      b.classList.toggle('is-active', b.getAttribute('data-scw-cbm') === mode);
+      var m = b.getAttribute('data-scw-cbm');
+      var c = b.getAttribute('data-scw-cbm-color');
+      b.classList.toggle('is-active', m ? m === mode : c === col);
     });
   }
 

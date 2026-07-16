@@ -3063,7 +3063,17 @@ tr.${CO_RM.bannerCls} td {
   padding: 9px 16px 8px; background: #163C6E; color: #fff;
   font-size: 13px; font-weight: 800; letter-spacing: .05em;
   text-transform: uppercase;
+  cursor: pointer; user-select: none;
+  display: flex; align-items: center; gap: 8px;
 }
+#${CO_RM.summaryId} .scw-cos-chevron {
+  margin-left: auto; font-size: 12px; line-height: 1;
+  transition: transform 0.15s ease;
+}
+#${CO_RM.summaryId}.scw-cos-collapsed .scw-cos-chevron { transform: rotate(-90deg); }
+#${CO_RM.summaryId}.scw-cos-collapsed .scw-cos-desc,
+#${CO_RM.summaryId}.scw-cos-collapsed .scw-cos-cols { display: none; }
+#${CO_RM.summaryId}.scw-cos--docked { margin: 10px 0 0; }
 #${CO_RM.summaryId} .scw-cos-desc {
   padding: 8px 16px; background: #f0f4fa; color: #334155;
   font-size: 12px; line-height: 1.45; border-bottom: 1px solid #dbe4ee;
@@ -3106,6 +3116,48 @@ tr.${CO_RM.bannerCls} td {
 #${CO_RM.summaryId} .scw-cos-desc .scw-cos-g { color: #059669; }
 #${CO_RM.summaryId} .scw-cos-desc .scw-cos-r { color: #e11d48; }`;
     document.head.appendChild(s);
+  }
+
+  // ── What's-Changing panel: collapsible + docked under the ops stepper ──
+  // The panel is collapsible (title row toggles; chevron + localStorage
+  // persistence) and, when the scene hosts the Ops Actions stepper ("Issue
+  // Change Order"), the panel docks directly beneath it instead of sitting
+  // above the grid. Safe for publishing: view_3345 (the stepper host) is in
+  // the publish scrape's skipViews, and scrapeCoChangeSummary looks the
+  // panel up scene-wide, so it's still captured for the PDF/esign manifest.
+  const CO_SUM_COLLAPSE_KEY = 'scwCoSummaryCollapsed';
+  function coRmSummaryCollapsed() {
+    try { return window.localStorage.getItem(CO_SUM_COLLAPSE_KEY) === '1'; }
+    catch (e) { return false; }
+  }
+  function coRmMountSummary(summary) {
+    const stepper = document.querySelector('.scw-ops-stepper');
+    if (stepper && summary.previousElementSibling !== stepper) {
+      stepper.parentNode.insertBefore(summary, stepper.nextSibling);
+      summary.classList.add('scw-cos--docked');
+    }
+    summary.classList.toggle('scw-cos-collapsed', coRmSummaryCollapsed());
+    const title = summary.querySelector('.scw-cos-title');
+    if (title && !title.querySelector('.scw-cos-chevron')) {
+      const ch = document.createElement('span');
+      ch.className = 'scw-cos-chevron';
+      ch.textContent = '▾';
+      title.appendChild(ch);
+    }
+  }
+  if (!document.documentElement.hasAttribute('data-scw-cos-collapse')) {
+    document.documentElement.setAttribute('data-scw-cos-collapse', '1');
+    document.addEventListener('click', function (e) {
+      const t = e.target && e.target.closest &&
+        e.target.closest('#' + CO_RM.summaryId + ' .scw-cos-title');
+      if (!t) return;
+      const summary = t.closest('#' + CO_RM.summaryId);
+      if (!summary) return;
+      const collapsed = !summary.classList.contains('scw-cos-collapsed');
+      summary.classList.toggle('scw-cos-collapsed', collapsed);
+      try { window.localStorage.setItem(CO_SUM_COLLAPSE_KEY, collapsed ? '1' : '0'); }
+      catch (err) { /* ignore */ }
+    });
   }
 
   function coRmActionTxt(tr) {
@@ -3285,7 +3337,10 @@ tr.${CO_RM.bannerCls} td {
       else if (entry.product || entry.amt) adds.push(entry);
     });
 
-    let summary = root ? root.querySelector('#' + CO_RM.summaryId) : null;
+    // Document-wide lookup — once docked under the ops stepper the panel
+    // lives OUTSIDE this view's root; a root-scoped lookup would recreate a
+    // duplicate above the grid on the next pipeline run.
+    let summary = document.getElementById(CO_RM.summaryId);
     if (!anyAction) {
       // Base proposal — no CO Action values anywhere. No manifest.
       if (summary) summary.remove();
@@ -3336,6 +3391,10 @@ tr.${CO_RM.bannerCls} td {
         `</div>` +
         `<div class="scw-cos-net"><span class="scw-cos-net-label">Net change</span>` +
         `<span>${coRmEsc(coRmMoney(addTotal + rmTotal))}</span></div>`;
+
+      // Collapse state + chevron + dock under the ops stepper (innerHTML
+      // rebuild above wiped the chevron; re-mount is idempotent).
+      coRmMountSummary(summary);
     }
   }
 
