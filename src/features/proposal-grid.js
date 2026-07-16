@@ -3073,12 +3073,11 @@ tr.${CO_RM.bannerCls} td {
 #${CO_RM.summaryId}.scw-cos-collapsed .scw-cos-chevron { transform: rotate(-90deg); }
 #${CO_RM.summaryId}.scw-cos-collapsed .scw-cos-desc,
 #${CO_RM.summaryId}.scw-cos-collapsed .scw-cos-cols { display: none; }
-#${CO_RM.summaryId}.scw-cos--docked { margin: 10px 0 0; }
-/* Docked under the ops stepper the panel is narrow — stack the Add /
-   Remove columns full-width instead of cramming them side by side. */
-#${CO_RM.summaryId}.scw-cos--docked .scw-cos-cols { display: block; }
-#${CO_RM.summaryId}.scw-cos--docked .scw-cos-col { min-width: 0; }
-#${CO_RM.summaryId}.scw-cos--docked .scw-cos-col--rm { border-top: 1px solid #dbe4ee; }
+/* Docked below the ops-stepper row: ~2/3 of the page wide, so the Add /
+   Remove columns sit comfortably side by side. */
+#${CO_RM.summaryId}.scw-cos--docked {
+  margin: 12px 0 4px; width: 66%; min-width: 560px; max-width: 100%;
+}
 #${CO_RM.summaryId} .scw-cos-desc {
   padding: 8px 16px; background: #f0f4fa; color: #334155;
   font-size: 12px; line-height: 1.45; border-bottom: 1px solid #dbe4ee;
@@ -3131,17 +3130,20 @@ tr.${CO_RM.bannerCls} td {
   // the publish scrape's skipViews, and scrapeCoChangeSummary looks the
   // panel up scene-wide, so it's still captured for the PDF/esign manifest.
   const CO_SUM_COLLAPSE_KEY = 'scwCoSummaryCollapsed';
-  function coRmSummaryCollapsed() {
-    try { return window.localStorage.getItem(CO_SUM_COLLAPSE_KEY) === '1'; }
-    catch (e) { return false; }
-  }
+  const CO_SUM_AUTO_COLLAPSE_PX = 300;
   function coRmMountSummary(summary) {
+    // Dock BELOW the row of views that hosts the ops stepper — a sibling of
+    // the whole .view-group, so the panel gets the full page width to work
+    // with (sized to ~2/3 by CSS) instead of being squeezed into the
+    // stepper's column.
     const stepper = document.querySelector('.scw-ops-stepper');
-    if (stepper && summary.previousElementSibling !== stepper) {
-      stepper.parentNode.insertBefore(summary, stepper.nextSibling);
+    if (stepper) {
+      const group = stepper.closest('.view-group') || stepper;
+      if (summary.previousElementSibling !== group) {
+        group.parentNode.insertBefore(summary, group.nextSibling);
+      }
       summary.classList.add('scw-cos--docked');
     }
-    summary.classList.toggle('scw-cos-collapsed', coRmSummaryCollapsed());
     const title = summary.querySelector('.scw-cos-title');
     if (title && !title.querySelector('.scw-cos-chevron')) {
       const ch = document.createElement('span');
@@ -3149,20 +3151,40 @@ tr.${CO_RM.bannerCls} td {
       ch.textContent = '▾';
       title.appendChild(ch);
     }
+    // Collapse state: an explicit user choice (stored) wins; with no stored
+    // choice, auto-collapse when the expanded panel runs tall (>300px) so a
+    // long CO doesn't bury the page — the header + Net change stay visible.
+    let stored = null;
+    try { stored = window.localStorage.getItem(CO_SUM_COLLAPSE_KEY); }
+    catch (e) { /* ignore */ }
+    if (stored === '1') {
+      summary.classList.add('scw-cos-collapsed');
+    } else if (stored === '0') {
+      summary.classList.remove('scw-cos-collapsed');
+    } else {
+      summary.classList.remove('scw-cos-collapsed');
+      if (summary.offsetHeight > CO_SUM_AUTO_COLLAPSE_PX) {
+        summary.classList.add('scw-cos-collapsed');
+      }
+    }
   }
   if (!document.documentElement.hasAttribute('data-scw-cos-collapse')) {
     document.documentElement.setAttribute('data-scw-cos-collapse', '1');
+    // CAPTURE phase — other document-level capture handlers on these scenes
+    // can stop propagation before a bubble-phase listener would ever fire.
     document.addEventListener('click', function (e) {
       const t = e.target && e.target.closest &&
         e.target.closest('#' + CO_RM.summaryId + ' .scw-cos-title');
       if (!t) return;
+      e.preventDefault();
+      e.stopPropagation();
       const summary = t.closest('#' + CO_RM.summaryId);
       if (!summary) return;
       const collapsed = !summary.classList.contains('scw-cos-collapsed');
       summary.classList.toggle('scw-cos-collapsed', collapsed);
       try { window.localStorage.setItem(CO_SUM_COLLAPSE_KEY, collapsed ? '1' : '0'); }
       catch (err) { /* ignore */ }
-    });
+    }, true);
   }
 
   function coRmActionTxt(tr) {

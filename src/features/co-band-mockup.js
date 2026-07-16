@@ -120,22 +120,31 @@
       '.scw-co-band-lav tr.scw-co-rm-row td { background: #f5f3ff !important; }',
       '.scw-co-band-lav tr.scw-co-rm-row td:first-child { box-shadow: inset 4px 0 0 #8b5cf6; }',
       '.scw-co-band-lav tr.kn-table-group.scw-co-rm-row td { background: #ede9fe !important; }',
-      // Band subtotal rows — one at the end of each Added / Removed band,
-      // amount aligned to the grid's Cost column.
+      // Native subsection subtotals mix adds + removes — hidden in V1
+      // band mode, replaced by the per-band rows below.
+      'tr.scw-co-band-hidden-sub { display: none !important; }',
+      // Band subtotal rows — same cell structure as the grid's native L2
+      // subtotal rows (label colspan to the Qty column, qty + amount in
+      // their own columns) so size and alignment match exactly.
       'tr.scw-co-band-sub td {',
-      '  font: 700 12.5px system-ui, sans-serif; padding: 7px 12px !important;',
+      '  font-size: inherit; padding: 7px 10px !important;',
       '}',
-      'tr.scw-co-band-sub .scw-co-band-sub-label { text-align: right; letter-spacing: 0.03em; }',
-      'tr.scw-co-band-sub .scw-co-band-sub-amt { text-align: center; white-space: nowrap; }',
-      'tr.scw-co-band-sub--add td {',
+      'tr.scw-co-band-sub .scw-co-band-sub-label { text-align: right; }',
+      // Per-subsection rows inside a band — native subtotal look (light
+      // blue, navy text) so they read like the other section subtotals.
+      'tr.scw-co-band-sub--section td {',
+      '  background: #f0f4fa !important; color: #163C6E !important;',
+      '}',
+      // Band TOTAL rows — themed green/red (or lavender), slightly louder.
+      'tr.scw-co-band-sub--add:not(.scw-co-band-sub--section) td {',
       '  background: #dcfce7 !important; color: #065f46 !important;',
       '  border-top: 2px solid #059669 !important;',
       '}',
-      'tr.scw-co-band-sub--rm td {',
+      'tr.scw-co-band-sub--rm:not(.scw-co-band-sub--section) td {',
       '  background: #ffe4e6 !important; color: #9f1239 !important;',
       '  border-top: 2px solid #e11d48 !important;',
       '}',
-      '.scw-co-band-lav tr.scw-co-band-sub--rm td {',
+      '.scw-co-band-lav tr.scw-co-band-sub--rm:not(.scw-co-band-sub--section) td {',
       '  background: #ede9fe !important; color: #5b21b6 !important;',
       '  border-top: 2px solid #8b5cf6 !important;',
       '}',
@@ -218,49 +227,64 @@
       for (var i = 0; i < ms.length; i++) {
         var a = ms[i] && ms[i].attributes;
         if (!a || !a.id) continue;
-        var n = (typeof a.field_2203_raw === 'number') ? a.field_2203_raw
+        var c = (typeof a.field_2203_raw === 'number') ? a.field_2203_raw
           : parseFloat(String(a.field_2203 || '').replace(/[^0-9.\-]/g, ''));
-        map[a.id] = isFinite(n) ? n : 0;
+        var q = (typeof a.field_1964_raw === 'number') ? a.field_1964_raw
+          : parseFloat(String(a.field_1964 || '').replace(/[^0-9.\-]/g, ''));
+        map[a.id] = { c: isFinite(c) ? c : 0, q: isFinite(q) ? q : 0 };
       }
     } catch (e) { /* empty map → subtotal renders $0.00, still visible */ }
     return map;
   }
-  function unitCost(u, costMap) {
-    var sum = 0, nodes = unitNodes(u);
+  function addSums(into, u, costMap) {
+    var nodes = unitNodes(u);
     for (var i = 0; i < nodes.length; i++) {
       var id = nodes[i].id;
-      if (id && HEX24.test(id) && costMap[id] != null) sum += costMap[id];
+      if (id && HEX24.test(id) && costMap[id]) {
+        into.c += costMap[id].c;
+        into.q += costMap[id].q;
+      }
     }
-    return sum;
+    return into;
   }
   function bandMoney(n) {
     return '$' + (n < 0 ? '-' : '') +
       Math.abs(n || 0).toLocaleString('en-US',
         { minimumFractionDigits: 2, maximumFractionDigits: 2 });
   }
-  // Subtotal row aligned to the grid's Cost column (th.field_2203).
-  function bandSubRow(kind, label, amount, tbody) {
+  // Subtotal row mirroring the native L2 subtotal structure exactly —
+  // label colspan up to the Qty column, then one td per remaining column
+  // with <strong> qty / amount landing in the same cells the native
+  // subtotal rows use (field_1964 / field_2203) — so size and alignment
+  // match the grid's other section subtotals.
+  function bandSubRow(kind, label, sums, tbody, isSection) {
     var ths = tbody.closest('table').querySelectorAll('thead th');
-    var idx = ths.length - 1;
+    var idxQty = -1, idxCost = -1;
     for (var i = 0; i < ths.length; i++) {
-      if (ths[i].classList.contains('field_2203')) { idx = i; break; }
+      if (idxQty === -1 && ths[i].classList.contains('field_1964')) idxQty = i;
+      if (idxCost === -1 && ths[i].classList.contains('field_2203')) idxCost = i;
     }
+    if (idxQty === -1) idxQty = Math.max(ths.length - 2, 1);
+    if (idxCost === -1) idxCost = ths.length - 1;
+
     var tr = document.createElement('tr');
-    tr.className = 'scw-co-band-sub scw-co-band-sub--' + kind;
+    tr.className = 'scw-co-band-sub scw-co-band-sub--' + kind +
+      (isSection ? ' scw-co-band-sub--section' : '');
     var lbl = document.createElement('td');
-    lbl.colSpan = Math.max(idx, 1);
+    lbl.colSpan = Math.max(idxQty, 1);
     lbl.className = 'scw-co-band-sub-label';
-    lbl.textContent = label;
+    lbl.innerHTML = '<strong></strong>';
+    lbl.firstChild.textContent = label;
     tr.appendChild(lbl);
-    var amt = document.createElement('td');
-    amt.className = 'scw-co-band-sub-amt';
-    amt.textContent = bandMoney(amount);
-    tr.appendChild(amt);
-    var rest = ths.length - idx - 1;
-    if (rest > 0) {
-      var pad = document.createElement('td');
-      pad.colSpan = rest;
-      tr.appendChild(pad);
+    for (var k = idxQty; k < ths.length; k++) {
+      var td = document.createElement('td');
+      td.style.textAlign = 'center';
+      if (k === idxQty && sums.q) td.innerHTML = '<strong>' + sums.q + '</strong>';
+      else if (k === idxCost) {
+        td.innerHTML = '<strong></strong>';
+        td.firstChild.textContent = bandMoney(sums.c);
+      }
+      tr.appendChild(td);
     }
     return tr;
   }
@@ -365,10 +389,12 @@
         'tr.' + BAND_CLS + ', tr.' + CLONE_CLS + ', tr.scw-co-band-sub')
     ).forEach(function (tr) { tr.remove(); });
     Array.prototype.slice.call(
-      tbody.querySelectorAll('tr.scw-co-band-tint-add, tr.scw-co-band-tint-rm')
+      tbody.querySelectorAll('tr.scw-co-band-tint-add, tr.scw-co-band-tint-rm, ' +
+        'tr.scw-co-band-hidden-sub')
     ).forEach(function (tr) {
       tr.classList.remove('scw-co-band-tint-add');
       tr.classList.remove('scw-co-band-tint-rm');
+      tr.classList.remove('scw-co-band-hidden-sub');
     });
   }
 
@@ -393,20 +419,33 @@
   // V1: per L1 section — ADD band (subsection headers kept inside),
   //     then REMOVE band. An L2 with both sides keeps its original
   //     header in the add band and gets a visual clone in the remove band.
+  function blockLabel(blk) {
+    if (!blk.header) return 'Items';
+    var td = blk.header.querySelector('td');
+    return ((td ? td.textContent : blk.header.textContent) || 'Items')
+      .replace(/\s+/g, ' ').trim();
+  }
+
   function applyV1(tbody, costMap) {
     var cols = colCountFor(tbody);
     parseTbody(tbody).forEach(function (section) {
       var frag = document.createDocumentFragment();
       var addSeq = [], rmSeq = [];
-      var addSum = 0, rmSum = 0;
+      var addTot = { c: 0, q: 0 }, rmTot = { c: 0, q: 0 };
       section.blocks.forEach(function (blk) {
         var adds = blk.units.filter(function (u) { return unitAction(u) === 'add'; });
         var rms  = blk.units.filter(function (u) { return unitAction(u) === 'rm'; });
+        var lbl  = blockLabel(blk);
         if (adds.length && blk.header) addSeq.push(blk.header);
+        var addS = { c: 0, q: 0 };
         adds.forEach(function (u) {
-          addSum += unitCost(u, costMap);
+          addSums(addS, u, costMap);
           addSeq.push.apply(addSeq, stampUnit(u, 'add'));
         });
+        if (adds.length) {
+          addTot.c += addS.c; addTot.q += addS.q;
+          addSeq.push(bandSubRow('add', lbl, addS, tbody, true));
+        }
         if (rms.length && blk.header) {
           if (adds.length) {
             var clone = blk.header.cloneNode(true);
@@ -416,29 +455,32 @@
             rmSeq.push(blk.header);
           }
         }
+        var rmS = { c: 0, q: 0 };
         rms.forEach(function (u) {
-          rmSum += unitCost(u, costMap);
+          addSums(rmS, u, costMap);
           rmSeq.push.apply(rmSeq, stampUnit(u, 'rm'));
         });
-        // Re-seat the subsection's subtotal after its LAST band chunk (its
-        // removes when it has any, else its adds) so it stays visually
-        // attached to its subsection instead of stranding at section end.
-        var subs = blk.subtotals || [];
-        if (subs.length) {
-          var dest = rms.length ? rmSeq : (adds.length ? addSeq : null);
-          if (dest) subs.forEach(function (t) { dest.push(t); });
-          // no units in this block → leave the subtotal where it stands
+        if (rms.length) {
+          rmTot.c += rmS.c; rmTot.q += rmS.q;
+          rmSeq.push(bandSubRow('rm', lbl, rmS, tbody, true));
         }
+        // The NATIVE subsection subtotal mixes adds + removes into one
+        // number — meaningless inside a single band. Hide it (class is
+        // stripped by cleanInjected); the per-band subsection subtotals
+        // above replace it in BOTH bands.
+        (blk.subtotals || []).forEach(function (t) {
+          t.classList.add('scw-co-band-hidden-sub');
+        });
       });
       if (addSeq.length) {
         frag.appendChild(bandRow('add', 'Items to be Added', cols));
         addSeq.forEach(function (n) { frag.appendChild(n); });
-        frag.appendChild(bandSubRow('add', 'Items to be Added — subtotal', addSum, tbody));
+        frag.appendChild(bandSubRow('add', 'Items to be Added — subtotal', addTot, tbody));
       }
       if (rmSeq.length) {
         frag.appendChild(bandRow('rm', 'Items to be Removed', cols));
         rmSeq.forEach(function (n) { frag.appendChild(n); });
-        frag.appendChild(bandSubRow('rm', 'Items to be Removed — subtotal', rmSum, tbody));
+        frag.appendChild(bandSubRow('rm', 'Items to be Removed — subtotal', rmTot, tbody));
       }
       insertAfter(section.header, frag);
     });
@@ -455,22 +497,22 @@
         if (!adds.length && !rms.length) return;
         var frag = document.createDocumentFragment();
         if (adds.length) {
-          var addSum = 0;
+          var addS = { c: 0, q: 0 };
           frag.appendChild(bandRow('add', 'Items to be Added', cols));
           adds.forEach(function (u) {
-            addSum += unitCost(u, costMap);
+            addSums(addS, u, costMap);
             stampUnit(u, 'add').forEach(function (n) { frag.appendChild(n); });
           });
-          frag.appendChild(bandSubRow('add', 'Items to be Added — subtotal', addSum, tbody));
+          frag.appendChild(bandSubRow('add', 'Items to be Added — subtotal', addS, tbody));
         }
         if (rms.length) {
-          var rmSum = 0;
+          var rmS = { c: 0, q: 0 };
           frag.appendChild(bandRow('rm', 'Items to be Removed', cols));
           rms.forEach(function (u) {
-            rmSum += unitCost(u, costMap);
+            addSums(rmS, u, costMap);
             stampUnit(u, 'rm').forEach(function (n) { frag.appendChild(n); });
           });
-          frag.appendChild(bandSubRow('rm', 'Items to be Removed — subtotal', rmSum, tbody));
+          frag.appendChild(bandSubRow('rm', 'Items to be Removed — subtotal', rmS, tbody));
         }
         insertAfter(blk.header || section.header, frag);
       });
