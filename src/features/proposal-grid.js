@@ -3936,6 +3936,18 @@ tr.${CO_RM.bannerCls} td {
           const ctx = buildCtx(viewId, view);
           if (!ctx) return;
 
+          // CO bands: un-band BEFORE transforming. The pipeline's grouping
+          // walk anchors synthetic rows (mounting clusters, subtotals,
+          // totals) relative to row order — running it on a band-reordered
+          // tbody strands them at the top of the table, disconnected from
+          // their section. co-band-mockup.js re-bands via the applyView
+          // hook at the end of this pass.
+          try {
+            if (window.SCW && window.SCW.coBands && window.SCW.coBands.suspend) {
+              window.SCW.coBands.suspend(viewId);
+            }
+          } catch (coErr) { /* banding is presentational — never block the pipeline */ }
+
           injectCssOnce();
           normalizeField2019ForGrouping(ctx);
 
@@ -3955,6 +3967,16 @@ tr.${CO_RM.bannerCls} td {
 
           // Post-pipeline: replace zeroed labor with TBD labels
           if (masked) applyTBDLabels(ctx);
+
+          // CO bands: re-apply synchronously on the fresh output (no
+          // timer gap for another pass to sneak into). No-op on base
+          // proposals — the module keys off the scw-co-add/rm-row
+          // classes this pipeline just stamped.
+          try {
+            if (window.SCW && window.SCW.coBands && window.SCW.coBands.applyView) {
+              window.SCW.coBands.applyView(viewId);
+            }
+          } catch (coErr2) { /* banding is presentational — never block reveal */ }
 
           // Reveal the grid only once relocation has settled (or there
           // was nothing to relocate). Until then it stays

@@ -13,11 +13,13 @@
  * scwCoBandRmColor = 'red'|'lav'|'gray' — then reload/re-render.
  *
  * Implementation notes:
- *   - Runs AFTER proposal-grid's pipeline (bundle order + delayed
- *     re-apply). Rows are only ever MOVED WITHIN their L1 section /
- *     L2 block, so proposal-grid's manifest scrape (which walks
- *     previousElementSibling up to the enclosing L1/L3 header) keeps
- *     resolving correctly.
+ *   - SERIALIZED with proposal-grid: its executePipeline calls
+ *     SCW.coBands.suspend(viewId) before transforming (un-band → the
+ *     pipeline sees native row order) and SCW.coBands.applyView(viewId)
+ *     after (re-band the fresh output). No self-timers. Rows are only
+ *     ever MOVED WITHIN their L1 section / L2 block, so proposal-grid's
+ *     manifest scrape (which walks previousElementSibling up to the
+ *     enclosing L1/L3 header) keeps resolving correctly.
  *   - Row action comes from the classes proposal-grid already stamps
  *     (scw-co-add-row / scw-co-rm-row from field_2965).
  *   - The original tbody order is snapshotted before the first move so
@@ -34,7 +36,6 @@
   var STORE_KEY = 'scwCoBandMockupMode';   // 'off' | 'v1' | 'v2'
   var STYLE_ID  = 'scw-co-band-mockup-css';
   var TOGGLE_ID = 'scw-co-band-mockup-toggle';
-  var EVENT_NS  = '.scwCoBandMock';
 
   var BAND_CLS  = 'scw-co-band';
   var CLONE_CLS = 'scw-co-band-clone';
@@ -426,8 +427,29 @@
     var snap = tbody.__scwCoOrig;
     if (!snap) return;
     for (var i = 0; i < snap.length; i++) {
-      if (snap[i]) tbody.appendChild(snap[i]);
+      // Skip rows other features removed since the snapshot (e.g.
+      // proposal-grid's refreshProjectTotals removes + rebuilds the
+      // Change Order Totals rows on every view_3342 render) —
+      // re-appending a detached node RESURRECTS the deleted row,
+      // which is how the totals block ended up in the grid twice.
+      if (snap[i] && snap[i].isConnected) tbody.appendChild(snap[i]);
     }
+  }
+
+  /** Un-band a view so proposal-grid can re-run its pipeline against
+   *  the native row order. Called by proposal-grid at the START of
+   *  every executePipeline pass — its grouping walk anchors synthetic
+   *  rows (mounting clusters, subtotals, totals) relative to row
+   *  order, so transforming a banded tbody strands them at the top of
+   *  the table, disconnected from their section. Drops the snapshot:
+   *  the pipeline is about to rebuild rows, so it would be stale. */
+  function suspendView(viewId) {
+    var root = document.getElementById(viewId);
+    var tbody = root && gridTbody(root);
+    if (!tbody) return;
+    cleanInjected(tbody);
+    restoreOrder(tbody);
+    delete tbody.__scwCoOrig;
   }
 
   function insertAfter(refNode, node) {
@@ -603,40 +625,26 @@
     if (_staleToggle) _staleToggle.remove();
   } catch (e) { /* ignore */ }
 
-  // ── Bind ─────────────────────────────────────────────────────────
-  // Runs after proposal-grid's synchronous pipeline (bundle order), then
-  // re-applies after its 300/1200ms safety-net windows have settled.
-  function armFor(viewId) {
+  // ── Bind (2026-07-17: serialized with proposal-grid) ─────────────
+  // NO self-timers anymore. Banding is driven exclusively by
+  // proposal-grid's executePipeline, which calls:
+  //   SCW.coBands.suspend(viewId)   at the START of every pass (un-band
+  //                                 so the pipeline sees native order)
+  //   SCW.coBands.applyView(viewId) at the END of every pass (re-band
+  //                                 the fresh output synchronously)
+  // The old free-running 400/1500/3300ms timers raced proposal-grid's
+  // own 300/1200/3000… safety-net re-runs: the pipeline would transform
+  // a band-reordered tbody (stranding its synthetic mounting clusters /
+  // subtotals / totals at the top of the table, disconnected from their
+  // section) and the next timer here would restore a stale snapshot on
+  // top of that. Serializing through the pipeline removes the race
+  // entirely — the action classes this module keys off (scw-co-add-row /
+  // scw-co-rm-row) only exist after a pipeline pass anyway.
+  function applyView(viewId) {
     injectCss();
-    [400, 1500, 3300].forEach(function (ms) {
-      setTimeout(function () {
-        try { applyMode(viewId); }
-        catch (e) { console.error('[scw-co-band] applyMode threw for ' + viewId, e); }
-      }, ms);
-    });
+    try { applyMode(viewId); }
+    catch (e) { console.error('[scw-co-band] applyMode threw for ' + viewId, e); }
   }
-  VIEWS.forEach(function (viewId) {
-    $(document)
-      .off('knack-records-render.' + viewId + EVENT_NS)
-      .on('knack-records-render.' + viewId + EVENT_NS, function () {
-        log('records-render', viewId);
-        armFor(viewId);
-      });
-  });
-
-  // Scene render catch-up — if knack-records-render fired before the
-  // bundle loaded (slow first load), the per-view binding above never saw
-  // it; this path still arms.
-  $(document).on('knack-scene-render.any' + EVENT_NS, function () {
-    setTimeout(function () {
-      VIEWS.forEach(function (viewId) {
-        var root = document.getElementById(viewId);
-        if (root && root.querySelector('tr.scw-co-add-row, tr.scw-co-rm-row')) {
-          armFor(viewId);
-        }
-      });
-    }, 500);
-  });
 
   // Console escape hatch: SCW.coBands.set('off'|'v1'|'v2', 'red'|'lav'|'gray')
   window.SCW = window.SCW || {};
@@ -646,7 +654,10 @@
       if (color) setRmColor(color);
       applyAll();
     },
-    apply: applyAll
+    apply: applyAll,
+    // proposal-grid pipeline hooks — see the Bind comment above.
+    suspend: suspendView,
+    applyView: applyView
   };
 })();
 /*** END FEATURE: CO ADD/REMOVE BAND MOCKUPS **********************************/
