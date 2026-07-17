@@ -23,6 +23,17 @@
   var VIEW        = 'view_3942';
   var FILE_FIELD  = 'field_68';
   var TYPE_FIELD  = 'field_2877';
+  // Requires these as INLINE-EDITABLE columns on view_3942 (Builder) —
+  // both the model read and the view-based PUT need them exposed. The
+  // controls render only when the column exists, so the gallery degrades
+  // gracefully until they're added.
+  var REQUIRED_FIELD = 'field_2894';  // FLAG_required (Yes/No)
+  var NOTES_FIELD    = 'field_588';   // INPUT_notes
+  var CLOSEOUT_FIELD = 'field_2885';  // REL_install closeout (connection)
+  // The page's closeout record — read from the closeout grid on the same
+  // scene (first row). Flipping a file to Required stamps this onto the
+  // DOC so it joins the closeout deliverables.
+  var CLOSEOUT_VIEW  = 'view_3940';
   // Builder TODO: hidden all-records grid of CONFIG_file type on the deploy
   // scene. When added, set the view key + the label (name) field key and the
   // picker gets the FULL catalog instead of the in-use union.
@@ -73,6 +84,28 @@
       '  cursor: pointer; color: #64748b; background: transparent;',
       '  border: 1px solid transparent; padding: 0; }',
       '.scw-ofg-edit:hover { background: #eef2f7; border-color: #cbd5e1; color: #0f4c75; }',
+      '.scw-ofg-note { display: block; margin-top: 5px; cursor: pointer;',
+      '  font: 400 11px/1.4 system-ui, sans-serif; color: #475569;',
+      '  max-height: 2.8em; overflow: hidden; }',
+      '.scw-ofg-note:hover { color: #0f4c75; }',
+      '.scw-ofg-note.is-empty { color: #94a3b8; font-style: italic; }',
+      '.scw-ofg-req { display: inline-flex; align-items: center; gap: 4px; cursor: pointer;',
+      '  border-radius: 999px; padding: 3px 9px; font: 600 10.5px/1.2 system-ui, sans-serif;',
+      '  background: #fff; color: #64748b; border: 1px dashed #cbd5e1; }',
+      '.scw-ofg-req:hover { background: #f8fafc; }',
+      '.scw-ofg-req.is-on { background: #dcfce7; border: 1px solid #86efac; color: #15803d; }',
+      '.scw-ofg-pop__body { padding: 10px 12px; }',
+      '.scw-ofg-pop__ta { width: 100%; min-height: 84px; box-sizing: border-box;',
+      '  border: 1px solid #cbd5e1; border-radius: 6px; padding: 7px 9px; resize: vertical;',
+      '  font: 12.5px/1.45 system-ui, -apple-system, sans-serif; }',
+      '.scw-ofg-pop__ta:focus { outline: none; border-color: #0f4c75;',
+      '  box-shadow: 0 0 0 2px rgba(15,76,117,.15); }',
+      '.scw-ofg-pop__foot { display: flex; justify-content: flex-end; gap: 8px;',
+      '  padding: 0 12px 10px; }',
+      '.scw-ofg-pop__btn { padding: 6px 12px; border-radius: 5px; cursor: pointer;',
+      '  font: 600 12px/1.2 system-ui, sans-serif; border: 1px solid transparent; }',
+      '.scw-ofg-pop__btn--cancel { background: #fff; color: #475569; border-color: #cbd5e1; }',
+      '.scw-ofg-pop__btn--ok { background: #0f4c75; color: #fff; }',
       // Type picker popover (fixed, anchored near the chip)
       '.scw-ofg-pop { position: fixed; z-index: 100000; background: #fff;',
       '  border: 1px solid #cbd5e1; border-radius: 8px; min-width: 180px; max-width: 260px;',
@@ -138,10 +171,8 @@
     return out;
   }
 
-  function putType(recId, typeIds, done) {
+  function putDoc(recId, fields, done) {
     if (!(window.SCW && typeof SCW.knackAjax === 'function')) { done(false); return; }
-    var fields = {};
-    fields[TYPE_FIELD] = typeIds;   // [] clears the connection
     SCW.knackAjax({
       url:  SCW.knackRecordUrl(VIEW, recId),
       type: 'PUT',
@@ -149,6 +180,19 @@
       success: function () { done(true); },
       error:   function () { done(false); }
     });
+  }
+
+  /** The page's closeout record id — first row of the closeout grid on
+   *  this scene (one closeout per project). */
+  function closeoutRecordId() {
+    var row = document.querySelector('#' + CLOSEOUT_VIEW + ' tbody tr[id]');
+    return row ? row.id : '';
+  }
+
+  /** Column feature-detect: controls only render for fields actually
+   *  exposed on view_3942 (the model read AND the PUT both need them). */
+  function hasColumn(viewEl, fk) {
+    return !!viewEl.querySelector('thead th.' + fk);
   }
 
   function refetch() {
@@ -202,7 +246,9 @@
       if (!btn) return;
       var id = btn.getAttribute('data-type-id');
       pop.innerHTML = '<div class="scw-ofg-pop__status">Saving…</div>';
-      putType(recId, id ? [id] : [], function (ok) {
+      var fields = {};
+      fields[TYPE_FIELD] = id ? [id] : [];   // [] clears the connection
+      putDoc(recId, fields, function (ok) {
         closePopover();
         if (ok) refetch();
         else alert('Could not save the file type — try again.');
@@ -213,8 +259,51 @@
     }, 0);
   }
 
+  function openNotesEditor(anchorEl, recId, currentText) {
+    closePopover();
+    var pop = document.createElement('div');
+    pop.className = 'scw-ofg-pop';
+    pop.style.width = '260px';
+    pop.innerHTML =
+      '<div class="scw-ofg-pop__head">Notes</div>' +
+      '<div class="scw-ofg-pop__body">' +
+        '<textarea class="scw-ofg-pop__ta"></textarea>' +
+      '</div>' +
+      '<div class="scw-ofg-pop__foot">' +
+        '<button type="button" class="scw-ofg-pop__btn scw-ofg-pop__btn--cancel">Cancel</button>' +
+        '<button type="button" class="scw-ofg-pop__btn scw-ofg-pop__btn--ok">Save</button>' +
+      '</div>';
+    document.body.appendChild(pop);
+    var ta = pop.querySelector('.scw-ofg-pop__ta');
+    ta.value = currentText || '';
+
+    var r = anchorEl.getBoundingClientRect();
+    var vw = window.innerWidth || 1200, vh = window.innerHeight || 800;
+    pop.style.left = Math.min(r.left, vw - pop.offsetWidth - 12) + 'px';
+    pop.style.top  = (r.bottom + 6 + pop.offsetHeight > vh
+      ? Math.max(8, r.top - pop.offsetHeight - 6)
+      : r.bottom + 6) + 'px';
+    setTimeout(function () { ta.focus(); }, 30);
+
+    pop.querySelector('.scw-ofg-pop__btn--cancel').addEventListener('click', closePopover);
+    pop.querySelector('.scw-ofg-pop__btn--ok').addEventListener('click', function () {
+      var fields = {};
+      fields[NOTES_FIELD] = ta.value.trim();
+      pop.innerHTML = '<div class="scw-ofg-pop__status">Saving…</div>';
+      putDoc(recId, fields, function (ok) {
+        closePopover();
+        if (ok) refetch();
+        else alert('Could not save the notes — try again.');
+      });
+    });
+    setTimeout(function () {
+      document.addEventListener('mousedown', onDocDown, true);
+    }, 0);
+  }
+
   // ── Cards ─────────────────────────────────────────────────────────
-  function buildCard(row, attrs) {
+  // caps: which optional columns view_3942 actually exposes.
+  function buildCard(row, attrs, caps) {
     var recId  = row.id;
     var assetA = row.querySelector('td.' + FILE_FIELD + ' a.kn-view-asset') ||
                  row.querySelector('td.' + FILE_FIELD + ' a[href]');
@@ -231,6 +320,13 @@
     var typeLabel = (Array.isArray(typeRaw) && typeRaw.length && typeRaw[0]) ?
       String(typeRaw[0].identifier || '').trim() : '';
 
+    function cellText(fk) {
+      var td = row.querySelector('td.' + fk);
+      return td ? td.textContent.replace(/\s+/g, ' ').trim() : '';
+    }
+    var notesTxt   = caps.notes ? cellText(NOTES_FIELD) : '';
+    var isRequired = caps.required && /^yes$/i.test(cellText(REQUIRED_FIELD));
+
     var card = document.createElement('div');
     card.className = 'scw-ofg-card';
     card.innerHTML =
@@ -241,9 +337,17 @@
       '</button>' +
       '<div class="scw-ofg-body">' +
         '<a class="scw-ofg-name" href="javascript:void(0)">' + esc(name) + '</a>' +
+        (caps.notes
+          ? '<span class="scw-ofg-note' + (notesTxt ? '' : ' is-empty') + '" title="Edit notes">' +
+              esc(notesTxt || '+ Add note') + '</span>'
+          : '') +
         '<div class="scw-ofg-foot">' +
           '<button type="button" class="scw-ofg-type' + (typeLabel ? '' : ' is-empty') + '"' +
             ' title="Set file type">' + esc(typeLabel || '+ Type') + '</button>' +
+          (caps.required
+            ? '<button type="button" class="scw-ofg-req' + (isRequired ? ' is-on' : '') + '"' +
+                ' title="Toggle closeout-required">' + (isRequired ? '✓ Required' : 'Required?') + '</button>'
+            : '') +
           (editA
             ? '<button type="button" class="scw-ofg-edit" title="Edit file record">' +
                 '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" ' +
@@ -267,6 +371,37 @@
       openTypePicker(this, recId, typeId, navEdit);
     });
 
+    var noteEl = card.querySelector('.scw-ofg-note');
+    if (noteEl) noteEl.addEventListener('click', function () {
+      openNotesEditor(this, recId, notesTxt);
+    });
+
+    var reqBtn = card.querySelector('.scw-ofg-req');
+    if (reqBtn) reqBtn.addEventListener('click', function () {
+      var next = !isRequired;
+      var fields = {};
+      fields[REQUIRED_FIELD] = next ? 'Yes' : 'No';
+      // Flipping to Required joins this file to the page's closeout — stamp
+      // the closeout record onto the DOC so the deliverables strip picks
+      // it up. (Un-flipping leaves the link in place deliberately.)
+      if (next && caps.closeout) {
+        var clo = closeoutRecordId();
+        if (clo) fields[CLOSEOUT_FIELD] = [clo];
+        else if (window.console) {
+          console.warn('[scw-ofg] no closeout record found on this scene — ' +
+            'required flag set WITHOUT the closeout link');
+        }
+      }
+      reqBtn.disabled = true;
+      reqBtn.textContent = 'Saving…';
+      putDoc(recId, fields, function (ok) {
+        if (ok) { refetch(); return; }
+        reqBtn.disabled = false;
+        reqBtn.textContent = isRequired ? '✓ Required' : 'Required?';
+        alert('Could not save the required flag — try again.');
+      });
+    });
+
     return card;
   }
 
@@ -283,10 +418,15 @@
     if (!rows.length) return;
 
     var attrsById = modelAttrsById(VIEW);
+    var caps = {
+      required: hasColumn(viewEl, REQUIRED_FIELD),
+      notes:    hasColumn(viewEl, NOTES_FIELD),
+      closeout: hasColumn(viewEl, CLOSEOUT_FIELD)
+    };
     var grid = document.createElement('div');
     grid.className = 'scw-ofg-grid';
     for (var i = 0; i < rows.length; i++) {
-      grid.appendChild(buildCard(rows[i], attrsById[rows[i].id]));
+      grid.appendChild(buildCard(rows[i], attrsById[rows[i].id], caps));
     }
     viewEl.appendChild(grid);
   }
