@@ -222,6 +222,20 @@
         if (v && v.model && typeof v.model.fetch === 'function') v.model.fetch();
       } catch (e) { /* best-effort */ }
     }, 350);
+    // The closeout grid (view_3940) renders the deliverables strip from
+    // its OWN connection columns — a required flip that (un)links the DOC
+    // to the closeout (field_2885) doesn't show up there until ITS model
+    // refetches (its fetch re-fires knack-view-render, which rebuilds the
+    // strip). Fetch twice, staggered, so a lagging reverse-connection
+    // update still lands without the user refreshing the page.
+    function fetchCloseout() {
+      try {
+        var cv = window.Knack && Knack.views && Knack.views[CLOSEOUT_VIEW];
+        if (cv && cv.model && typeof cv.model.fetch === 'function') cv.model.fetch();
+      } catch (e) { /* best-effort */ }
+    }
+    setTimeout(fetchCloseout, 700);
+    setTimeout(fetchCloseout, 2800);
   }
 
   function closePopover() {

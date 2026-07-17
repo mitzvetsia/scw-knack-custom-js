@@ -1934,6 +1934,16 @@
     }
     return out;
   }
+  /** Is a record's (possibly empty) SOW set AUTHORITATIVE? True when the
+   *  record demonstrably projects SOW_FIELD — _raw is a real array (even
+   *  []) or the display key is present (empty connections sometimes ship
+   *  with no _raw at all). False = the view doesn't project the field, so
+   *  an empty read proves nothing and must not drive a clear. */
+  function sowSetKnown(attrs) {
+    if (!attrs) return false;
+    if (Array.isArray(attrs[SOW_FIELD + '_raw'])) return true;
+    return typeof attrs[SOW_FIELD] === 'string';
+  }
   function primeSowCache() {
     if (!SOW_FIELD) return;
     var records = getModelRecords();
@@ -1998,10 +2008,23 @@
         lastSowSeen[record.id] = curr;
 
         var parentSowIds = sowIdsFromAttrs(record);
-        // Parent SOW cleared entirely → leave children alone (don't orphan
-        // everything on an accidental clear), mirroring the MDF-clear guard.
+        // Parent SOW cleared entirely: accessories must FOLLOW the parent
+        // off the SOW ("an accessory's SOW mirrors its parent's exact
+        // set" — an empty set is a valid set; leaving them behind is the
+        // orphaned-accessory bug). Connected DEVICES stay untouched on a
+        // clear — removing an NVR from a SOW must not pull its cameras
+        // off it. Skip only when the empty read isn't authoritative.
         if (!parentSowIds.length) {
-          log('sow-cascade: parent ' + record.id + ' SOW cleared — leaving children alone');
+          if (!sowSetKnown(record)) {
+            log('sow-cascade: parent ' + record.id + ' SOW read is unverifiable — leaving children alone');
+            return;
+          }
+          var accIdsClr = findAccessoryIdsForParent(record.id);
+          for (var ac = 0; ac < accIdsClr.length; ac++) {
+            fireAccessorySowPut(accIdsClr[ac], []);
+          }
+          log('sow-cascade: parent ' + record.id + ' SOW cleared — ' +
+              accIdsClr.length + ' accessory(ies) cleared with it');
           return;
         }
         var parentSowSet = {};
@@ -2069,9 +2092,10 @@
   // loaded in this view's model. Mismatch → repair PUT through the capped
   // queue. Guards: never touches an accessory whose parent isn't loaded
   // (both records' field_2154_raw are complete per record, so a loaded
-  // pair is always safely comparable regardless of view scoping); leaves
-  // children alone when the parent's SOW set is empty (same
-  // accidental-clear guard as the cascade); remembers what it wrote so a
+  // pair is always safely comparable regardless of view scoping); an
+  // EMPTY parent set is honored (accessory follows the parent off the
+  // SOW) when the read is authoritative — sowSetKnown — else skipped;
+  // remembers what it wrote so a
   // stale local model can't re-fire the same PUT; skips entirely while a
   // cascade is in flight.
   var sowSweepTimer   = null;
@@ -2100,7 +2124,12 @@
         var parentAttrs = getModelAttrs(parentId);
         if (!parentAttrs) continue;              // parent not loaded here — can't judge
         var parentSet = serializeSow(parentAttrs);
-        if (!parentSet) continue;                // parent SOW empty → leave alone
+        // Empty parent set is AUTHORITATIVE when the record demonstrably
+        // projects SOW_FIELD — the accessory follows the parent OFF the
+        // SOW (self-heals orphans left by Make-side removals, bid
+        // reconcile, edits from other scenes). Skip only when the empty
+        // read is unverifiable (field not projected on this view).
+        if (!parentSet && !sowSetKnown(parentAttrs)) continue;
         var accSet = serializeSow(attrs);
         if (accSet === parentSet) { delete sowSweepWritten[attrs.id]; continue; }
         if (sowSweepWritten[attrs.id] === parentSet) continue;  // repair already sent
