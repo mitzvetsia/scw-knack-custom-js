@@ -103,6 +103,17 @@
       '.scw-acpt-btn--add { background: #fff; border: 1px dashed #cbd5e1; color: #64748b; }',
       '.scw-acpt-btn--add:hover { background: #f8fafc; border-color: #94a3b8; color: #334155; }',
       '.scw-acpt-group { display: inline-flex; align-items: center; gap: 2px; }',
+      // Compact list mode: ONE card, one row per acceptance record —
+      // title | pills | actions on a single line (wraps on narrow).
+      '.scw-acpt-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap;',
+      '  padding: 8px 2px; }',
+      '.scw-acpt-row + .scw-acpt-row { border-top: 1px solid #eef2f7; }',
+      '.scw-acpt-row .scw-acpt-title { font-size: 13px; flex: 0 1 auto; }',
+      '.scw-acpt-row .scw-acpt-status { margin: 0; gap: 6px; }',
+      '.scw-acpt-row .scw-acpt-pill { padding: 3px 9px; font-size: 11px; }',
+      '.scw-acpt-row .scw-acpt-actions { margin-left: auto; gap: 6px; }',
+      '.scw-acpt-row .scw-acpt-btn { padding: 5px 10px; font-size: 11.5px; }',
+      '.scw-acpt-row .scw-acpt-edit { width: 22px; height: 22px; }',
       // Own mini-modal (link editor / upload progress).
       '.scw-acpt-m-backdrop { position: fixed; inset: 0; background: rgba(15,23,42,.55);',
       '  z-index: 100000; display: flex; align-items: center; justify-content: center; padding: 18px; }',
@@ -296,8 +307,8 @@
     input.click();
   }
 
-  /** One card for one acceptance row. All anchors/editors bind to THIS
-   *  row's record. */
+  /** One compact list row for one acceptance record. All anchors/editors
+   *  bind to THIS row's record. */
   function buildCard(row) {
     var recId   = row.id;
     var propA   = cellAnchor(row, F.proposal, 'a[data-kn="connection-link"]') || cellAnchor(row, F.proposal);
@@ -313,7 +324,6 @@
     var actionA = row.querySelector('.kn-action-link') || row.querySelector('.kn-table-link a');
 
     var html =
-      '<div class="scw-acpt-eyebrow">Acceptance</div>' +
       (propHref
         ? '<a class="scw-acpt-title" href="' + esc(propHref) + '">' + esc(propTxt) + '</a>'
         : '<div class="scw-acpt-title">' + esc(propTxt) + '</div>') +
@@ -340,7 +350,7 @@
       '</div>';
 
     var card = document.createElement('div');
-    card.className = 'scw-acpt-card';
+    card.className = 'scw-acpt-row';
     card.innerHTML = html;
 
     // Proxy clicks to the original (hidden) anchors so Knack's asset preview +
@@ -371,16 +381,23 @@
     if (!viewEl) return;
     injectCss();
 
-    // Rebuild all cards from scratch — a project accrues one acceptance per
-    // signed agreement (base proposal + each CO), so render one card per row
-    // in the grid's own order.
-    var priors = viewEl.querySelectorAll(':scope > .scw-acpt-card');
-    for (var pi = 0; pi < priors.length; pi++) priors[pi].remove();
+    // Rebuild from scratch — a project accrues one acceptance per signed
+    // agreement (base proposal + each CO). ONE card, one compact list row
+    // per record in the grid's own order, so a testing pile of 20 doesn't
+    // eat the page.
+    var prior = viewEl.querySelector(':scope > .scw-acpt-card');
+    if (prior) prior.remove();
 
     var rows = viewEl.querySelectorAll('tbody tr[id]');
+    if (!rows.length) return;
+
+    var card = document.createElement('div');
+    card.className = 'scw-acpt-card';
+    card.innerHTML = '<div class="scw-acpt-eyebrow">Acceptance</div>';
     for (var ri = 0; ri < rows.length; ri++) {
-      viewEl.appendChild(buildCard(rows[ri]));
+      card.appendChild(buildCard(rows[ri]));
     }
+    viewEl.appendChild(card);
   }
 
   if (window.SCW && typeof SCW.onViewRender === 'function') {
