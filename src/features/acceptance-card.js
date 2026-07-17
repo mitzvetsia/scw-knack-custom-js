@@ -1,10 +1,14 @@
 /*** FEATURE: Acceptance summary card (view_3914) **************************
  *
- * Replaces the raw single-row INSTALL_acceptance table on the deploy scene
- * with a clean card: the proposal as the title, Yes/No flags as status pills,
- * and the document links + the "Create Questionnaire" action rendered as
- * buttons. The native table is hidden (kept in the DOM) and the buttons proxy
- * clicks to its original anchors so Knack's asset/action handlers still fire.
+ * Replaces the raw INSTALL_acceptance table on the deploy scene with clean
+ * cards — ONE PER RECORD (2026-07-17: a project accrues an acceptance per
+ * signed agreement — the base proposal plus each change order — so the old
+ * first-row-only render hid every CO acceptance). Each card: the proposal as
+ * the title, Yes/No flags as status pills, and the document links + the
+ * "Create Questionnaire" action rendered as buttons. The native table is
+ * hidden (kept in the DOM) and the buttons proxy clicks to their own row's
+ * original anchors so Knack's asset/action handlers still fire; the editors
+ * PUT against their own row's record id.
  *
  * Columns:
  *   field_2755  REL proposal (connection link)        → title
@@ -149,20 +153,14 @@
   // Both PUT through this view with the user's session and refetch so the
   // card rebuilds with the fresh value.
 
-  function acptRecordId() {
-    var viewEl = document.getElementById(VIEW);
-    var row = viewEl && viewEl.querySelector('tbody tr[id]');
-    return row ? row.id : '';
-  }
   function refreshAcptView() {
     try {
       var v = window.Knack && Knack.views && Knack.views[VIEW];
       if (v && v.model && typeof v.model.fetch === 'function') v.model.fetch();
     } catch (e) { /* best-effort */ }
   }
-  function putAcceptance(fields) {
+  function putAcceptance(recId, fields) {
     return new Promise(function (resolve, reject) {
-      var recId = acptRecordId();
       if (!recId) return reject(new Error('no acceptance record on the page'));
       if (!(window.SCW && typeof SCW.knackAjax === 'function')) {
         return reject(new Error('SCW.knackAjax unavailable'));
@@ -202,7 +200,7 @@
   }
 
   /** Xero invoice link (field_1847, Link field) — URL input modal. */
-  function openXeroEditor(currentUrl) {
+  function openXeroEditor(recId, currentUrl) {
     var body = document.createElement('div');
     body.innerHTML =
       '<input type="url" class="scw-acpt-m__input" placeholder="https://…">' +
@@ -228,7 +226,7 @@
       status.textContent = 'Saving…';
       var fields = {};
       fields[F.xero] = url;   // empty string clears the link
-      putAcceptance(fields).then(function () {
+      putAcceptance(recId, fields).then(function () {
         m.close();
         refreshAcptView();
       }).catch(function (err) { fail((err && err.message) || 'Save failed'); });
@@ -237,7 +235,7 @@
 
   /** Signed agreement (field_2767, File field) — picker → Knack asset
    *  upload with the session token → PUT the asset id. */
-  function openAgreementUpload() {
+  function openAgreementUpload(recId) {
     var input = document.createElement('input');
     input.type = 'file';
     input.accept = '.pdf,.doc,.docx,image/*,application/pdf';
@@ -277,7 +275,7 @@
           status.textContent = 'Saving…';
           var fields = {};
           fields[F.agreement] = assetId;
-          putAcceptance(fields).then(function () {
+          putAcceptance(recId, fields).then(function () {
             m.close();
             refreshAcptView();
           }).catch(function (err) {
@@ -298,14 +296,10 @@
     input.click();
   }
 
-  function render() {
-    var viewEl = document.getElementById(VIEW);
-    if (!viewEl) return;
-    injectCss();
-    var row = viewEl.querySelector('tbody tr[id]');
-    var prior = viewEl.querySelector(':scope > .scw-acpt-card');
-    if (!row) { if (prior) prior.remove(); return; }
-
+  /** One card for one acceptance row. All anchors/editors bind to THIS
+   *  row's record. */
+  function buildCard(row) {
+    var recId   = row.id;
     var propA   = cellAnchor(row, F.proposal, 'a[data-kn="connection-link"]') || cellAnchor(row, F.proposal);
     var propTxt = propA ? propA.textContent.replace(/\s+/g, ' ').trim() : (cellText(row, F.proposal) || 'Proposal');
     var propHref = propA ? (propA.getAttribute('href') || '') : '';
@@ -316,8 +310,7 @@
     var terms   = isYes(cellText(row, F.terms));
     var xeroA   = cellAnchor(row, F.xero);
     var fileA   = cellAnchor(row, F.agreement, 'a.kn-view-asset') || cellAnchor(row, F.agreement);
-    var actionA = row.parentNode &&
-      (row.querySelector('.kn-action-link') || row.querySelector('.kn-table-link a'));
+    var actionA = row.querySelector('.kn-action-link') || row.querySelector('.kn-table-link a');
 
     var html =
       '<div class="scw-acpt-eyebrow">Acceptance</div>' +
@@ -346,10 +339,9 @@
         (actionA ? '<button type="button" class="scw-acpt-btn scw-acpt-btn--primary" data-proxy="action">Create Questionnaire</button>' : '') +
       '</div>';
 
-    var card = prior || document.createElement('div');
+    var card = document.createElement('div');
     card.className = 'scw-acpt-card';
     card.innerHTML = html;
-    if (!prior) viewEl.appendChild(card);
 
     // Proxy clicks to the original (hidden) anchors so Knack's asset preview +
     // action-rule handlers still run.
@@ -358,17 +350,36 @@
     var actBtn = card.querySelector('[data-proxy="action"]');
     if (actBtn && actionA) actBtn.addEventListener('click', function () { actionA.click(); });
 
-    // Edit / add affordances → the card's own editors (view-based PUT).
+    // Edit / add affordances → the card's own editors (view-based PUT
+    // against THIS row's record id).
     var editBtns = card.querySelectorAll('[data-edit-field]');
     for (var eb = 0; eb < editBtns.length; eb++) {
       editBtns[eb].addEventListener('click', function () {
         var fk = this.getAttribute('data-edit-field');
         if (fk === F.xero) {
-          openXeroEditor(xeroA ? (xeroA.getAttribute('href') || '') : '');
+          openXeroEditor(recId, xeroA ? (xeroA.getAttribute('href') || '') : '');
         } else if (fk === F.agreement) {
-          openAgreementUpload();
+          openAgreementUpload(recId);
         }
       });
+    }
+    return card;
+  }
+
+  function render() {
+    var viewEl = document.getElementById(VIEW);
+    if (!viewEl) return;
+    injectCss();
+
+    // Rebuild all cards from scratch — a project accrues one acceptance per
+    // signed agreement (base proposal + each CO), so render one card per row
+    // in the grid's own order.
+    var priors = viewEl.querySelectorAll(':scope > .scw-acpt-card');
+    for (var pi = 0; pi < priors.length; pi++) priors[pi].remove();
+
+    var rows = viewEl.querySelectorAll('tbody tr[id]');
+    for (var ri = 0; ri < rows.length; ri++) {
+      viewEl.appendChild(buildCard(rows[ri]));
     }
   }
 
