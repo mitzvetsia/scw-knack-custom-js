@@ -1633,7 +1633,7 @@
     html.push('</div>');
   }
 
-  function renderGridSections(view, html) {
+  function renderGridSections(view, html, isChangeOrder) {
     if (view.title) {
       html.push('<div class="view-title">' + esc(view.title) + '</div>');
     }
@@ -1786,6 +1786,12 @@
         html.push('<div class="l1-footer-title">' + esc(section.footer.title) + '</div>');
         for (var fl = 0; fl < section.footer.lines.length; fl++) {
           var line = section.footer.lines[fl];
+          // On a CO the per-section "Total" line duplicates the Change
+          // Order Total directly beneath it (single-section COs are the
+          // norm) — drop it. Subtotal/Discount lines, if any, stay.
+          if (isChangeOrder && line.type === 'final' && /^total$/i.test(line.label || '')) {
+            continue;
+          }
           html.push('<div class="l1-footer-line l1-line--' + line.type + ' l1-line--' + labelSlug(line.label) + '">');
           html.push('<span class="l1-footer-label">' + esc(line.label) + '</span>');
           html.push('<span class="l1-footer-value">' + esc(line.value) + '</span>');
@@ -1908,7 +1914,7 @@
       } else if (pView.type === 'richtext') {
         renderRichTextView(pView, html);
       } else if (pView.type === 'grid') {
-        renderGridSections(pView, html);
+        renderGridSections(pView, html, payload.isChangeOrder);
       }
     }
     // A CO whose grid view didn't scrape (e.g. render race) still gets
@@ -1941,7 +1947,7 @@
     if (recurringViews.length) {
       html.push('<div class="recurring-section">');
       for (var rv = 0; rv < recurringViews.length; rv++) {
-        renderGridSections(recurringViews[rv], html);
+        renderGridSections(recurringViews[rv], html, payload.isChangeOrder);
       }
       html.push('</div>');
     }
@@ -2166,7 +2172,9 @@
       '.pt-line--final:last-child .pt-label { font-size: 17px; }',
       '.pt-line--final:last-child .pt-value { font-size: 19px; }',
       '/* Extra padding below Equipment Total and Installation Total */',
-      '.pt-line--equipment-total, .pt-line--installation-total { padding-bottom: 14px; }',
+      '/* (COs label these Equipment Net / Installation Net) */',
+      '.pt-line--equipment-total, .pt-line--installation-total,',
+      '.pt-line--equipment-net, .pt-line--installation-net { padding-bottom: 14px; }',
       '/* Tight cluster: Equipment Subtotal → Line Item Discounts → Equipment Total */',
       '.pt-line--equipment-subtotal, .pt-line--line-item-discounts { padding-top: 0; padding-bottom: 0; }',
       '.pt-line--equipment-subtotal + .pt-line, .pt-line--line-item-discounts + .pt-line { padding-top: 0; }',
@@ -2378,9 +2386,10 @@
     return {
       sowId:              findDetailField(payload, /sow\s*id/i),
       expirationDate:     findDetailField(payload, /expir/i),
-      equipmentTotal:     findTotalLine(payload, /equipment\s*total/i)
+      // COs label these "Equipment Net" / "Installation Net" — match both.
+      equipmentTotal:     findTotalLine(payload, /equipment\s*(?:total|net)/i)
                             || (pg ? fmtSummaryMoney(pg.equipmentTotal) : ''),
-      installationTotal:  findTotalLine(payload, /installation\s*total/i)
+      installationTotal:  findTotalLine(payload, /installation\s*(?:total|net)/i)
                             || (pg ? fmtSummaryMoney(pg.installationTotal) : ''),
       // On a CO the grand-total line is labeled "Change Order Total" —
       // match either so the summary field never comes back blank.

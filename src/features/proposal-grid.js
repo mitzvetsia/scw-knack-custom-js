@@ -1999,8 +1999,10 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
       }
     }
 
+    // On a CO these figures are NET deltas (adds minus credits), not
+    // totals of anything — label them accordingly.
     rows.push(makeLineRow({
-      label: 'Equipment Total',
+      label: isChangeOrder ? 'Equipment Net' : 'Equipment Total',
       value: formatMoney(equipmentTotal),
       rowType: 'final',
       isLast: false,
@@ -2008,7 +2010,7 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
     }));
 
     rows.push(makeLineRow({
-      label: 'Installation Total',
+      label: isChangeOrder ? 'Installation Net' : 'Installation Total',
       value: formatMoney(installationTotal),
       rowType: 'final',
       isLast: false,
