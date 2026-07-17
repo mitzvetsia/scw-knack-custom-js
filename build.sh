@@ -229,6 +229,7 @@ cat \
   src/features/co-stage-strip.js \
   src/features/questionnaire-deployment-audit.js \
   src/features/acceptance-card.js \
+  src/features/other-files-gallery.js \
   src/features/resend-credentials-btn.js \
   > "$TMP_BUNDLE"
 
