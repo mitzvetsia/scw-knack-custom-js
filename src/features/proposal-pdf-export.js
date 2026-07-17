@@ -1727,10 +1727,10 @@
             var l4TdClass = prod.label ? 'l4-desc' : '';
             for (var li = 0; li < prod.lineItems.length; li++) {
               var item = prod.lineItems[li];
-              // Relocated equipment accessories (bracket/box-mount rollup
-              // lines) are PRODUCTS, not labor descriptions — mark them so
-              // they get the same bold treatment as l3-product rows.
-              html.push('<tr class="' + l4Class + (item.isEquipment ? ' l4-product' : '') + '">');
+              // (Accessory rollup lines deliberately NOT bolded — only the
+              // true L3 product header row gets the bold treatment, so the
+              // parent product stands out over its children; 2026-07-17.)
+              html.push('<tr class="' + l4Class + '">');
               var l4Content = item.description
                 ? item.description
                     .replace(/<b>/gi, '<span style="font-weight:700">')
@@ -2110,9 +2110,9 @@
       '.l3-row td:first-child { font-size: 12px; }',
       '.l3-row td.col-qty, .l3-row td.col-cost { font-weight: 600; }',
       '.l3-row td.mounting { padding-left: 40px; font-size: 11px; }',
-      '/* Product rows read BOLD; labor/description rows stay regular. */',
+      '/* The PRODUCT header row reads BOLD; labor/description rows and',
+      '   accessory rollup lines stay regular. */',
       '.l3-row.l3-product td { font-weight: 700; }',
-      '.l4-row.l4-product td:first-child { font-weight: 600; color: #07467c; }',
       '.connected-devices { display: inline; margin-left: 4px; color: orange; font-weight: 700; font-size: 10px; }',
       '',
       '/* ── L4 Line Item Row ── */',
@@ -4289,11 +4289,10 @@
         for (var br = 0; br < bodyRows.length; br++) {
           var tdCells = bodyRows[br].querySelectorAll('td');
           if (!tdCells.length) continue;
-          // Product rows (true L3 headers + accessory rollup lines) render
-          // BOLD; labor/description rows stay regular so the two read
-          // apart in the agreement.
-          var isProductRow = bodyRows[br].classList.contains('l3-product') ||
-                             bodyRows[br].classList.contains('l4-product');
+          // Only the true PRODUCT header row renders BOLD — labor
+          // descriptions AND accessory/child rollup lines stay regular,
+          // so the parent product stands out over everything beneath it.
+          var isProductRow = bodyRows[br].classList.contains('l3-product');
           var rowCells = [];
           for (var cb = 0; cb < tdCells.length; cb++) {
             var td = tdCells[cb];
