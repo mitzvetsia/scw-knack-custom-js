@@ -165,6 +165,29 @@ install line items.
      `remove.targetField` config hook is the seam for the draft-side read once
      the field exists.)
 
+10. **Invoice anchor: the PROJECT carries its accepted base proposal — stamped
+    at acceptance, never searched (decided 2026-07-17).** Xero invoices tie to
+    a proposal number; a CO's invoice must reference the BASE SOW's accepted
+    proposal so the project tells one story. Do NOT resolve this at CO-signed
+    time with a filtered search (accepted ∧ same project ∧ type = base scope) —
+    that re-runs on every CO and silently mis-links the day a project has two
+    accepted base proposals (phase 2, re-accepted revision). Instead:
+    - **Builder**: on the Installation Project object, add `REL_accepted base
+      proposal` (connection → SOW_published proposals, single) and optionally a
+      text copy of the proposal number for zero-hop reads.
+    - **Make (base acceptance scenario)**: when the base proposal's SIGNED
+      webhook fires, it already holds the exact accepted proposal record —
+      add one Update Record stamping it onto the project. One-time backfill
+      for in-flight projects.
+    - **Make (CO signed scenario)**: read the anchor off the already-fetched
+      project record → Xero reference. No search modules.
+    - Same stamp-at-the-source pattern as the sub chain (bid basis
+      `field_2942` → Proposal → Acceptance → CO auto-assign), applied to the
+      customer-side chain. Optional follow-up: copy the anchor onto each CO at
+      creation ("Invoice anchor" text) so the signed webhook payload is fully
+      self-contained and a wrong link is visible during ops review instead of
+      at invoicing.
+
 ## Lifecycle
 
 ```
