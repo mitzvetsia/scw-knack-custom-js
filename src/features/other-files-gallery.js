@@ -23,10 +23,13 @@
   var VIEW        = 'view_3942';
   var FILE_FIELD  = 'field_68';
   var TYPE_FIELD  = 'field_2877';
-  // Requires these as INLINE-EDITABLE columns on view_3942 (Builder) —
-  // both the model read and the view-based PUT need them exposed. The
-  // controls render only when the column exists, so the gallery degrades
-  // gracefully until they're added.
+  // Required/notes/closeout live on the hidden DOC inline-edit grid
+  // (view_3941 — the same save view closeout-deliverables.js PUTs
+  // through), NOT on view_3942. Reads come from its model, writes PUT
+  // through it. Each control feature-detects its column on the save view
+  // first (view_3942 as fallback exposure), so the gallery degrades
+  // gracefully until Builder exposes a field.
+  var SAVE_VIEW      = 'view_3941';
   var REQUIRED_FIELD = 'field_2894';  // FLAG_required (Yes/No)
   var NOTES_FIELD    = 'field_588';   // INPUT_notes
   var CLOSEOUT_FIELD = 'field_2885';  // REL_install closeout (connection)
@@ -171,10 +174,10 @@
     return out;
   }
 
-  function putDoc(recId, fields, done) {
+  function putDoc(viewKey, recId, fields, done) {
     if (!(window.SCW && typeof SCW.knackAjax === 'function')) { done(false); return; }
     SCW.knackAjax({
-      url:  SCW.knackRecordUrl(VIEW, recId),
+      url:  SCW.knackRecordUrl(viewKey, recId),
       type: 'PUT',
       data: JSON.stringify(fields),
       success: function () { done(true); },
@@ -189,17 +192,36 @@
     return row ? row.id : '';
   }
 
-  /** Column feature-detect: controls only render for fields actually
-   *  exposed on view_3942 (the model read AND the PUT both need them). */
-  function hasColumn(viewEl, fk) {
-    return !!viewEl.querySelector('thead th.' + fk);
+  /** Which view exposes a field as a column — the save view preferred
+   *  (hidden views keep their DOM), view_3942 as fallback. A view-based
+   *  PUT only accepts fields the view exposes, so the answer is both
+   *  "can we show this control" and "where do we write it". */
+  function columnView(fk) {
+    if (document.querySelector('#' + SAVE_VIEW + ' thead th.' + fk)) return SAVE_VIEW;
+    if (document.querySelector('#' + VIEW + ' thead th.' + fk)) return VIEW;
+    return '';
+  }
+
+  function stripHtml(s) {
+    var div = document.createElement('div');
+    div.innerHTML = String(s == null ? '' : s);
+    return (div.textContent || '').replace(/\s+/g, ' ').trim();
   }
 
   function refetch() {
+    // Refresh the save view's model FIRST (it's the read source for
+    // required/notes), then the gallery view — its render event rebuilds
+    // the cards against the fresh save-view model.
     try {
-      var v = window.Knack && Knack.views && Knack.views[VIEW];
-      if (v && v.model && typeof v.model.fetch === 'function') v.model.fetch();
+      var sv = window.Knack && Knack.views && Knack.views[SAVE_VIEW];
+      if (sv && sv.model && typeof sv.model.fetch === 'function') sv.model.fetch();
     } catch (e) { /* best-effort */ }
+    setTimeout(function () {
+      try {
+        var v = window.Knack && Knack.views && Knack.views[VIEW];
+        if (v && v.model && typeof v.model.fetch === 'function') v.model.fetch();
+      } catch (e) { /* best-effort */ }
+    }, 350);
   }
 
   function closePopover() {
@@ -248,7 +270,7 @@
       pop.innerHTML = '<div class="scw-ofg-pop__status">Saving…</div>';
       var fields = {};
       fields[TYPE_FIELD] = id ? [id] : [];   // [] clears the connection
-      putDoc(recId, fields, function (ok) {
+      putDoc(columnView(TYPE_FIELD) || VIEW, recId, fields, function (ok) {
         closePopover();
         if (ok) refetch();
         else alert('Could not save the file type — try again.');
@@ -290,7 +312,7 @@
       var fields = {};
       fields[NOTES_FIELD] = ta.value.trim();
       pop.innerHTML = '<div class="scw-ofg-pop__status">Saving…</div>';
-      putDoc(recId, fields, function (ok) {
+      putDoc(columnView(NOTES_FIELD) || SAVE_VIEW, recId, fields, function (ok) {
         closePopover();
         if (ok) refetch();
         else alert('Could not save the notes — try again.');
@@ -320,12 +342,17 @@
     var typeLabel = (Array.isArray(typeRaw) && typeRaw.length && typeRaw[0]) ?
       String(typeRaw[0].identifier || '').trim() : '';
 
-    function cellText(fk) {
+    // Required/notes live on the SAVE VIEW's model (view_3941 — the DOC
+    // inline-edit grid); fall back to a view_3942 cell if the field is
+    // exposed there instead.
+    function readDocField(fk) {
+      var sv = modelAttrsById(SAVE_VIEW)[recId];
+      if (sv && sv[fk] !== undefined) return stripHtml(sv[fk]);
       var td = row.querySelector('td.' + fk);
       return td ? td.textContent.replace(/\s+/g, ' ').trim() : '';
     }
-    var notesTxt   = caps.notes ? cellText(NOTES_FIELD) : '';
-    var isRequired = caps.required && /^yes$/i.test(cellText(REQUIRED_FIELD));
+    var notesTxt   = caps.notes ? readDocField(NOTES_FIELD) : '';
+    var isRequired = caps.required && /^yes$/i.test(readDocField(REQUIRED_FIELD));
 
     var card = document.createElement('div');
     card.className = 'scw-ofg-card';
@@ -379,30 +406,43 @@
     var reqBtn = card.querySelector('.scw-ofg-req');
     if (reqBtn) reqBtn.addEventListener('click', function () {
       var next = !isRequired;
+      var reqView = columnView(REQUIRED_FIELD) || SAVE_VIEW;
+      var cloView = caps.closeout ? (columnView(CLOSEOUT_FIELD) || SAVE_VIEW) : '';
       var fields = {};
       fields[REQUIRED_FIELD] = next ? 'Yes' : 'No';
       // Required ⇄ closeout membership travel together: flipping ON stamps
       // the page's closeout record onto the DOC (the deliverables strip
-      // picks it up); flipping OFF clears the link again.
-      if (caps.closeout) {
+      // picks it up); flipping OFF clears the link again. The closeout
+      // connection lives on view_3941 — ride the same PUT when both
+      // fields share a view, else chain a second PUT.
+      var cloFields = null;
+      if (cloView) {
+        var cloVal = [];
         if (next) {
           var clo = closeoutRecordId();
-          if (clo) fields[CLOSEOUT_FIELD] = [clo];
+          if (clo) cloVal = [clo];
           else if (window.console) {
             console.warn('[scw-ofg] no closeout record found on this scene — ' +
               'required flag set WITHOUT the closeout link');
           }
-        } else {
-          fields[CLOSEOUT_FIELD] = [];
         }
+        if (cloView === reqView) fields[CLOSEOUT_FIELD] = cloVal;
+        else { cloFields = {}; cloFields[CLOSEOUT_FIELD] = cloVal; }
       }
       reqBtn.disabled = true;
       reqBtn.textContent = 'Saving…';
-      putDoc(recId, fields, function (ok) {
-        if (ok) { refetch(); return; }
-        reqBtn.disabled = false;
-        reqBtn.textContent = isRequired ? '✓ Required' : 'Required?';
-        alert('Could not save the required flag — try again.');
+      putDoc(reqView, recId, fields, function (ok) {
+        if (!ok) {
+          reqBtn.disabled = false;
+          reqBtn.textContent = isRequired ? '✓ Required' : 'Required?';
+          alert('Could not save the required flag — try again.');
+          return;
+        }
+        if (!cloFields) { refetch(); return; }
+        putDoc(cloView, recId, cloFields, function (ok2) {
+          refetch();
+          if (!ok2) alert('Required flag saved, but the closeout link did not — try the flip again.');
+        });
       });
     });
 
@@ -423,9 +463,9 @@
 
     var attrsById = modelAttrsById(VIEW);
     var caps = {
-      required: hasColumn(viewEl, REQUIRED_FIELD),
-      notes:    hasColumn(viewEl, NOTES_FIELD),
-      closeout: hasColumn(viewEl, CLOSEOUT_FIELD)
+      required: !!columnView(REQUIRED_FIELD),
+      notes:    !!columnView(NOTES_FIELD),
+      closeout: !!columnView(CLOSEOUT_FIELD)
     };
     var grid = document.createElement('div');
     grid.className = 'scw-ofg-grid';
