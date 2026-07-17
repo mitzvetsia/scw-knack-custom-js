@@ -348,6 +348,22 @@
     return total;
   }
 
+  // Product-label hygiene for customer-facing surfaces:
+  //  1. Strip trailing designator-list parentheticals ("(RA-I-4, RA-I-5,
+  //     RA-I-6)" / "(E-14)") that earlier passes baked into the name —
+  //     they duplicate the per-row meta and the appended orange callout.
+  //  2. Collapse a duplicated trailing SKU token ("…Scout- PMB26B
+  //     PMB26B") — products whose NAME already ends with the SKU get it
+  //     appended again by the name+SKU display formula (field_2208).
+  function cleanProductLabel(s) {
+    let out = String(s == null ? '' : s).replace(/\s+/g, ' ').trim();
+    const desigList =
+      /\s*\(\s*[A-Za-z]{1,6}-(?:[A-Za-z]{1,6}-)?\d+[A-Za-z]?\s*(?:,\s*[A-Za-z]{1,6}-(?:[A-Za-z]{1,6}-)?\d+[A-Za-z]?\s*)*\)$/;
+    while (desigList.test(out)) out = out.replace(desigList, '').trim();
+    out = out.replace(/(\s\S+)\1$/, '$1');
+    return out;
+  }
+
   // Sign-exact sum: prefers the Backbone model's numeric `<field>_raw`
   // and falls back to the cell parse. Needed for CO credit rows — their
   // NEGATIVE discount cells (e.g. "−$55.00") can parse positive from the
@@ -2526,9 +2542,17 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
       if (ownL3 && !childRow.getAttribute('data-scw-product-name')) {
         const ownLabelCell = ownL3.querySelector('td');
         if (ownLabelCell) {
-          const productName = (ownLabelCell.textContent || '')
-            .replace(/\s+/g, ' ')
-            .trim();
+          // Read from a CLONE with injected decorations stripped. On
+          // safety-net re-runs the L3 header already carries the orange
+          // camera-list <b>(RA-I-4, …)</b> from the previous pass's
+          // concat step — reading it raw BAKED the designator list into
+          // the product name, which then repeated on every surface
+          // (mounting rollup line, What's-Changing manifest, e-sign).
+          const ownClone = ownLabelCell.cloneNode(true);
+          ownClone
+            .querySelectorAll('.scw-concat-cameras, .scw-mounting-parents, .scw-l3-connected-devices')
+            .forEach((el) => el.remove());
+          const productName = cleanProductLabel(ownClone.textContent);
           if (productName) {
             childRow.setAttribute('data-scw-product-name', productName);
           }
@@ -2782,12 +2806,12 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
         // read from data-scw-product-name (captured from the bracket's
         // original L3 group header text). Fall back to td.field_1958
         // in case the row exists but wasn't stamped.
-        let productName = r.getAttribute('data-scw-product-name') || '';
+        // cleanProductLabel de-bakes designator lists / doubled SKUs that
+        // rows stamped by OLDER passes may still carry.
+        let productName = cleanProductLabel(r.getAttribute('data-scw-product-name') || '');
         if (!productName) {
           const productCell = r.querySelector('td.field_1958');
-          productName = productCell
-            ? (productCell.textContent || '').replace(/\s+/g, ' ').trim()
-            : '';
+          productName = productCell ? cleanProductLabel(productCell.textContent) : '';
         }
         if (!byProduct[productName]) {
           byProduct[productName] = [];
@@ -2854,7 +2878,9 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
           probe &&
           probe.classList &&
           probe.classList.contains('scw-mounting-product-line') &&
-          probe.getAttribute('data-scw-product') === productName
+          // Compare CLEANED both sides — lines built by older passes may
+          // carry the dirty (list-baked) attribute value.
+          cleanProductLabel(probe.getAttribute('data-scw-product') || '') === productName
         ) {
           line = probe;
         }
@@ -3339,8 +3365,10 @@ tr.${CO_RM.bannerCls} td {
       const rec = modelById[tr.id] || {};
       // Relocated accessory rows carry their own product name (set before
       // the move); everything else reads its enclosing L3 header.
-      const product = cleanTxt(tr.getAttribute('data-scw-product-name')) ||
-        enclosingGroupLabel(tr, 3);
+      // cleanProductLabel strips designator lists baked into the name by
+      // older passes and collapses doubled trailing SKUs.
+      const product = cleanProductLabel(tr.getAttribute('data-scw-product-name') || '') ||
+        cleanProductLabel(enclosingGroupLabel(tr, 3));
       const prefix = connLabel(rec, ctx.keys.prefix);
       const number = readTxt(rec, ctx.keys.number);
       // Line value is NET of line-item discounts (decided 2026-07-16) so
@@ -3389,10 +3417,38 @@ tr.${CO_RM.bannerCls} td {
         const table = root.querySelector('table');
         (table ? table.parentNode : root).insertBefore(summary, table || root.firstChild);
       }
+      // Merge identical products (same product + location) into one row —
+      // an accessory add otherwise lists the same bracket once per camera,
+      // which reads as a wall of repeated text on the agreement. Qty and
+      // amounts sum; designators join into the meta line.
+      const groupEntries = (list) => {
+        const byKey = new Map();
+        list.forEach((e) => {
+          const key = e.product + '¦' + e.loc;
+          const g = byKey.get(key);
+          if (g) {
+            g.qty += e.qty;
+            g.amt += e.amt;
+            if (e.desig) g.desigs.push(e.desig);
+          } else {
+            byKey.set(key, Object.assign({}, e, { desigs: e.desig ? [e.desig] : [] }));
+          }
+        });
+        return Array.from(byKey.values()).map((g) => {
+          g.desig = g.desigs.join(', ');
+          return g;
+        });
+      };
+      const addsG = groupEntries(adds);
+      const removesG = groupEntries(removes);
+      // Item counts stay the TOTAL number of line items (qty sum), not the
+      // number of merged display rows.
+      const countOf = (list) => list.reduce((t, e) => t + (e.qty || 1), 0);
+
       // Location in the meta line is only useful when the CO touches more
       // than one location — otherwise it's the same string on every row.
       const locSet = new Set(
-        adds.concat(removes).map((e) => e.loc).filter(Boolean));
+        addsG.concat(removesG).map((e) => e.loc).filter(Boolean));
       const showLoc = locSet.size > 1;
       const itemRows = (list) => list.map((e) => {
         const meta = [e.desig, showLoc ? e.loc : ''].filter(Boolean).join(' · ');
@@ -3404,8 +3460,8 @@ tr.${CO_RM.bannerCls} td {
       const subRow = (label, total) =>
         `<tr class="scw-cos-sub"><td>${coRmEsc(label)}</td><td></td>` +
         `<td class="scw-cos-amt">${coRmEsc(coRmMoney(total))}</td></tr>`;
-      const addTotal = adds.reduce((t, e) => t + e.amt, 0);
-      const rmTotal  = removes.reduce((t, e) => t + e.amt, 0);
+      const addTotal = addsG.reduce((t, e) => t + e.amt, 0);
+      const rmTotal  = removesG.reduce((t, e) => t + e.amt, 0);
 
       summary.innerHTML =
         `<div class="scw-cos-title">Change Order — What's Changing</div>` +
@@ -3414,15 +3470,15 @@ tr.${CO_RM.bannerCls} td {
           `<b class="scw-cos-g">green</b>; removed items are shaded ` +
           `<b class="scw-cos-r">red</b> and credited back.</div>` +
         `<div class="scw-cos-cols">` +
-          (adds.length ?
+          (addsG.length ?
             `<div class="scw-cos-col scw-cos-col--add">` +
-              `<div class="scw-cos-head">Adding to install scope (${adds.length})</div>` +
-              `<table class="scw-cos-table"><tbody>${itemRows(adds)}${subRow('Subtotal — additions', addTotal)}</tbody></table>` +
+              `<div class="scw-cos-head">Adding to install scope (${countOf(addsG)})</div>` +
+              `<table class="scw-cos-table"><tbody>${itemRows(addsG)}${subRow('Subtotal — additions', addTotal)}</tbody></table>` +
             `</div>` : '') +
-          (removes.length ?
+          (removesG.length ?
             `<div class="scw-cos-col scw-cos-col--rm">` +
-              `<div class="scw-cos-head">Removing from install scope — credit (${removes.length})</div>` +
-              `<table class="scw-cos-table"><tbody>${itemRows(removes)}${subRow('Subtotal — credits', rmTotal)}</tbody></table>` +
+              `<div class="scw-cos-head">Removing from install scope — credit (${countOf(removesG)})</div>` +
+              `<table class="scw-cos-table"><tbody>${itemRows(removesG)}${subRow('Subtotal — credits', rmTotal)}</tbody></table>` +
             `</div>` : '') +
         `</div>` +
         `<div class="scw-cos-net"><span class="scw-cos-net-label">Net change</span>` +
