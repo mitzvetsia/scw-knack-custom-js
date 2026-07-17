@@ -108,12 +108,20 @@
       '.scw-acpt-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap;',
       '  padding: 8px 2px; }',
       '.scw-acpt-row + .scw-acpt-row { border-top: 1px solid #eef2f7; }',
-      '.scw-acpt-row .scw-acpt-title { font-size: 13px; flex: 0 1 auto; }',
+      // Fixed title column — base SOW numbers (SW1145) are shorter than CO
+      // numbers (SW1418CO), so an auto-width title staggered the pills.
+      '.scw-acpt-row .scw-acpt-title { font-size: 13px; flex: 0 0 320px;',
+      '  overflow-wrap: anywhere; }',
       '.scw-acpt-row .scw-acpt-status { margin: 0; gap: 6px; }',
       '.scw-acpt-row .scw-acpt-pill { padding: 3px 9px; font-size: 11px; }',
       '.scw-acpt-row .scw-acpt-actions { margin-left: auto; gap: 6px; }',
       '.scw-acpt-row .scw-acpt-btn { padding: 5px 10px; font-size: 11.5px; }',
       '.scw-acpt-row .scw-acpt-edit { width: 22px; height: 22px; }',
+      // Fixed-width action slots so the agreement / Xero buttons form
+      // straight columns whether a row shows the "+ add" ghost or the
+      // populated link + pencil pair.
+      '.scw-acpt-slot { display: inline-flex; align-items: center; gap: 2px;',
+      '  width: 178px; }',
       // Own mini-modal (link editor / upload progress).
       '.scw-acpt-m-backdrop { position: fixed; inset: 0; background: rgba(15,23,42,.55);',
       '  z-index: 100000; display: flex; align-items: center; justify-content: center; padding: 18px; }',
@@ -340,18 +348,22 @@
         pill(signed ? 'Agreement signed'         : 'Agreement not signed',    signed) +
       '</div>' +
       '<div class="scw-acpt-actions">' +
+        '<span class="scw-acpt-slot">' +
         (fileA
           ? '<span class="scw-acpt-group">' +
               '<a class="scw-acpt-btn scw-acpt-btn--ghost" data-proxy="file" href="javascript:void(0)">' + FILE_SVG + 'Signed agreement</a>' +
               '<button type="button" class="scw-acpt-edit" data-edit-field="' + F.agreement + '" title="Replace signed agreement">' + PENCIL_SVG + '</button>' +
             '</span>'
           : '<button type="button" class="scw-acpt-btn scw-acpt-btn--add" data-edit-field="' + F.agreement + '">' + PLUS_SVG + 'Signed agreement</button>') +
+        '</span>' +
+        '<span class="scw-acpt-slot">' +
         (xeroA
           ? '<span class="scw-acpt-group">' +
               '<a class="scw-acpt-btn scw-acpt-btn--ghost" target="_blank" rel="noopener" href="' + esc(xeroA.getAttribute('href') || '') + '">' + LINK_SVG + 'Xero invoice</a>' +
               '<button type="button" class="scw-acpt-edit" data-edit-field="' + F.xero + '" title="Edit Xero invoice link">' + PENCIL_SVG + '</button>' +
             '</span>'
           : '<button type="button" class="scw-acpt-btn scw-acpt-btn--add" data-edit-field="' + F.xero + '">' + PLUS_SVG + 'Xero invoice link</button>') +
+        '</span>' +
         (actionA ? '<button type="button" class="scw-acpt-btn scw-acpt-btn--primary" data-proxy="action">Create Questionnaire</button>' : '') +
       '</div>';
 
