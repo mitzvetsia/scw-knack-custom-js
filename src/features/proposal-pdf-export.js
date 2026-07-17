@@ -3892,7 +3892,10 @@
   // convention), so rows aggregate by their real qty (field_1964) and
   // extended net (field_2269) instead of 1-per-row positive-only, and a
   // net-negative labor lump survives instead of clamping to zero. The
-  // base-proposal path is byte-identical to before.
+  // base-proposal path is byte-identical to before. A final xeroSafe pass
+  // then re-shapes CO lines for Xero (which rejects qty < 0): the sign
+  // moves into the amounts — credit notes get positive lines, invoices
+  // keep removes as positive-qty / negative-amount lines.
   function buildInvoiceItems(jsonSnapshot, sowId, projectTotals, isChangeOrder) {
     if (!jsonSnapshot || typeof jsonSnapshot !== 'object') return null;
 
@@ -4134,6 +4137,47 @@
     for (var eq = 0; eq < equipment.length; eq++) invoiceTotal += num(equipment[eq].lineTotal);
     if (labor) invoiceTotal += num(labor.lineTotal);
     invoiceTotal = round2(invoiceTotal);
+    var isCredit = !!isChangeOrder && invoiceTotal < 0;
+
+    // ── Xero-safe line normalization (CO only) ──────────────────────────
+    // Xero hard-rejects negative QUANTITIES ("Quantity must not be less
+    // than zero"), so a line's sign must live in its AMOUNTS, never qty:
+    //   • Credit note (isCredit): flip every line's sign — the credit-note
+    //     document IS the negation, so removes book as POSITIVE lines and
+    //     any adds book as negative-amount lines. invoiceTotal keeps the
+    //     signed net (Make branches on isCredit, not on the sign here).
+    //   • Invoice with remove lines (net-positive CO): move the sign from
+    //     qty into unitPrice — qty stays positive and qty × unitPrice
+    //     still equals lineTotal (negative unit amounts are legal in Xero).
+    function xeroSafe(item) {
+      if (!item) return;
+      if (isCredit) {
+        item.unitPrice = round2(-item.unitPrice);
+        item.lineTotal = round2(-item.lineTotal);
+      }
+      if (item.qty < 0) {
+        item.qty = -item.qty;
+        item.unitPrice = round2(-item.unitPrice);
+      }
+      if (item.qty === 0 && item.lineTotal !== 0) {
+        item.qty = 1;
+        item.unitPrice = item.lineTotal;
+      }
+    }
+    function dropEmpty(list) {
+      return list.filter(function (it) {
+        return it && (it.qty !== 0 || it.lineTotal !== 0);
+      });
+    }
+    if (isChangeOrder) {
+      for (var xe = 0; xe < equipment.length; xe++) xeroSafe(equipment[xe]);
+      for (var xr = 0; xr < recurring.length; xr++) xeroSafe(recurring[xr]);
+      xeroSafe(labor);
+      // Fully-cancelled aggregates (add + remove of the same SKU at the
+      // same price) net to qty 0 / $0 — drop them, don't ship empty lines.
+      equipment = dropEmpty(equipment);
+      recurring = dropEmpty(recurring);
+    }
 
     return {
       equipment: equipment,
@@ -4142,7 +4186,7 @@
       isChangeOrder: !!isChangeOrder,
       // equipment + labor only — recurring bills separately.
       invoiceTotal: invoiceTotal,
-      isCredit: !!isChangeOrder && invoiceTotal < 0
+      isCredit: isCredit
     };
   }
 
@@ -4908,8 +4952,10 @@
       invoiceItemsString:    (function () { try { return JSON.stringify(buildInvoiceItems(jsonSnapshot, summary.sowId, payload.projectTotals, payload.isChangeOrder) || {}); } catch (e) { return '{}'; } })(),
       // ── Xero routing for COs ─────────────────────────────────────────
       // A change order whose total is NEGATIVE must be booked as a Xero
-      // CREDIT NOTE, with revenue amounts entered as NEGATIVE numbers —
-      // invoiceItems already carries the true signed amounts on a CO, so
+      // CREDIT NOTE. invoiceItems lines are already Xero-safe: qty is
+      // never negative (Xero rejects it) — on a credit note the lines
+      // carry POSITIVE amounts (the document type is the negation), on an
+      // invoice a remove line ships as positive qty × negative unitPrice.
       // Make maps them verbatim and branches on invoiceIsCredit.
       // invoiceTotal is the exact numeric grand/CO total (same figure the
       // grid computed; not the display string).
