@@ -381,15 +381,19 @@
       var next = !isRequired;
       var fields = {};
       fields[REQUIRED_FIELD] = next ? 'Yes' : 'No';
-      // Flipping to Required joins this file to the page's closeout — stamp
-      // the closeout record onto the DOC so the deliverables strip picks
-      // it up. (Un-flipping leaves the link in place deliberately.)
-      if (next && caps.closeout) {
-        var clo = closeoutRecordId();
-        if (clo) fields[CLOSEOUT_FIELD] = [clo];
-        else if (window.console) {
-          console.warn('[scw-ofg] no closeout record found on this scene — ' +
-            'required flag set WITHOUT the closeout link');
+      // Required ⇄ closeout membership travel together: flipping ON stamps
+      // the page's closeout record onto the DOC (the deliverables strip
+      // picks it up); flipping OFF clears the link again.
+      if (caps.closeout) {
+        if (next) {
+          var clo = closeoutRecordId();
+          if (clo) fields[CLOSEOUT_FIELD] = [clo];
+          else if (window.console) {
+            console.warn('[scw-ofg] no closeout record found on this scene — ' +
+              'required flag set WITHOUT the closeout link');
+          }
+        } else {
+          fields[CLOSEOUT_FIELD] = [];
         }
       }
       reqBtn.disabled = true;
