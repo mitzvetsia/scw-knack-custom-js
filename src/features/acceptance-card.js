@@ -323,14 +323,20 @@
     var fileA   = cellAnchor(row, F.agreement, 'a.kn-view-asset') || cellAnchor(row, F.agreement);
     var actionA = row.querySelector('.kn-action-link') || row.querySelector('.kn-table-link a');
 
+    // Change-order acceptances (SOW number "SW####CO") have no initial
+    // payment — the CO amount rides the final project invoice — so the
+    // payment pill is noise there. Signature is the only gate.
+    var isCo = /\bSW\d+CO\b/i.test(propTxt);
+
     var html =
       (propHref
         ? '<a class="scw-acpt-title" href="' + esc(propHref) + '">' + esc(propTxt) + '</a>'
         : '<div class="scw-acpt-title">' + esc(propTxt) + '</div>') +
       '<div class="scw-acpt-status">' +
-        (terms
-          ? pill('Approved for terms', true)
-          : pill(paid ? 'Initial payment received' : 'Initial payment pending', paid)) +
+        (isCo ? '' :
+          (terms
+            ? pill('Approved for terms', true)
+            : pill(paid ? 'Initial payment received' : 'Initial payment pending', paid))) +
         pill(signed ? 'Agreement signed'         : 'Agreement not signed',    signed) +
       '</div>' +
       '<div class="scw-acpt-actions">' +
