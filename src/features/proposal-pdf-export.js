@@ -3887,7 +3887,13 @@
   // request, the proposal discount is subtracted from the LABOR lump,
   // not from equipment lines (which already reflect their per-line
   // discounts via field_2269).
-  function buildInvoiceItems(jsonSnapshot, sowId, projectTotals) {
+  // isChangeOrder: CO invoices carry SIGNED amounts — Remove lines are
+  // credits (negative qty × positive price under the CO qty-negation
+  // convention), so rows aggregate by their real qty (field_1964) and
+  // extended net (field_2269) instead of 1-per-row positive-only, and a
+  // net-negative labor lump survives instead of clamping to zero. The
+  // base-proposal path is byte-identical to before.
+  function buildInvoiceItems(jsonSnapshot, sowId, projectTotals, isChangeOrder) {
     if (!jsonSnapshot || typeof jsonSnapshot !== 'object') return null;
 
     // Find any line-items array in the snapshot. Heuristic: an array
@@ -3932,6 +3938,16 @@
       var unitAmount = num(row.field_2268_raw);
       var equipmentVal = unitAmount;
       var laborVal = num(row.field_2028_raw);
+      // CO rows: real qty (negative on Remove lines) + extended net amount.
+      // Base rows keep the historical 1-per-row unit-sum behavior.
+      var rowQty = 1;
+      var rowAmt = equipmentVal;
+      if (isChangeOrder) {
+        var coQty = num(row.field_1964_raw);
+        rowQty = coQty || 1;
+        var coExt = num(row.field_2269_raw);
+        rowAmt = coExt !== 0 ? coExt : round2(rowQty * unitAmount);
+      }
       // Bucket sort order from field_2218 if projected on the line-item
       // record; otherwise fall back to bucket name (so the output is at
       // least deterministic). Add field_2218 to view_3896 to get the
@@ -3948,7 +3964,7 @@
       }
 
       if (/^license\b/i.test(bucket)) {
-        if ((sku || name) && equipmentVal > 0) {
+        if ((sku || name) && (isChangeOrder ? rowAmt !== 0 : equipmentVal > 0)) {
           // Aggregation key: bucket + sku + name + unitPrice. Same SKU
           // at different prices (e.g. tiered pricing) yields separate
           // invoice lines so qty × unitPrice always equals lineTotal.
@@ -3960,8 +3976,8 @@
               _sortBucket: bucketSort, _sortLabel: (bucket + '|' + name)
             };
           }
-          recurringBySku[recurringKey].qty += 1;
-          recurringBySku[recurringKey].lineTotal = round2(recurringBySku[recurringKey].lineTotal + equipmentVal);
+          recurringBySku[recurringKey].qty += rowQty;
+          recurringBySku[recurringKey].lineTotal = round2(recurringBySku[recurringKey].lineTotal + rowAmt);
         }
         continue;
       }
@@ -3970,7 +3986,7 @@
         continue;
       }
 
-      if ((sku || name) && equipmentVal > 0) {
+      if ((sku || name) && (isChangeOrder ? rowAmt !== 0 : equipmentVal > 0)) {
         var equipmentKey = bucket + '␟' + sku + '␟' + name + '␟' + unitAmount;
         if (!equipmentBySku[equipmentKey]) {
           equipmentBySku[equipmentKey] = {
@@ -3979,8 +3995,8 @@
             _sortBucket: bucketSort, _sortLabel: (bucket + '|' + name)
           };
         }
-        equipmentBySku[equipmentKey].qty += 1;
-        equipmentBySku[equipmentKey].lineTotal = round2(equipmentBySku[equipmentKey].lineTotal + equipmentVal);
+        equipmentBySku[equipmentKey].qty += rowQty;
+        equipmentBySku[equipmentKey].lineTotal = round2(equipmentBySku[equipmentKey].lineTotal + rowAmt);
       }
 
       laborTotal = round2(laborTotal + laborVal);
@@ -4018,7 +4034,11 @@
       } catch (e) { /* ignore */ }
       return null;
     })();
-    if (modelLaborTotal !== null && modelLaborTotal > 0) {
+    // CO labor can legitimately net NEGATIVE (a removal-heavy CO credits
+    // install labor back) — take any non-zero model sum there. Base
+    // proposals keep the positive-only override.
+    if (modelLaborTotal !== null &&
+        (isChangeOrder ? modelLaborTotal !== 0 : modelLaborTotal > 0)) {
       laborTotal = modelLaborTotal;
     } else if (projectTotals && Array.isArray(projectTotals.lines)) {
       // Secondary fallback: projectTotals "Installation Total" line.
@@ -4026,10 +4046,13 @@
       for (var li = 0; li < projectTotals.lines.length; li++) {
         var ptLine = projectTotals.lines[li];
         if (!ptLine) continue;
-        if (!/^installation\s+total\b/i.test(ptLine.label || '')) continue;
-        var instRaw = (ptLine.value || '').replace(/[^0-9.]/g, '');
+        // COs label this line "Installation Net" — match both, keep the sign.
+        if (!/^installation\s+(?:total|net)\b/i.test(ptLine.label || '')) continue;
+        var instRaw = (ptLine.value || '').replace(/[^0-9.\-]/g, '');
         var instAmt = parseFloat(instRaw);
-        if (!isNaN(instAmt) && instAmt > 0) laborTotal = round2(instAmt);
+        if (!isNaN(instAmt) && (isChangeOrder ? instAmt !== 0 : instAmt > 0)) {
+          laborTotal = round2(instAmt);
+        }
         break;
       }
     }
@@ -4061,7 +4084,9 @@
       }
     }
     var laborAfterDiscount = round2(laborTotal - proposalDiscount);
-    if (laborAfterDiscount < 0) laborAfterDiscount = 0;
+    // Base proposals never invoice negative labor; a CO's negative labor
+    // lump IS the credit — keep the sign.
+    if (laborAfterDiscount < 0 && !isChangeOrder) laborAfterDiscount = 0;
 
     function flatten(map) {
       var out = [];
@@ -4087,20 +4112,37 @@
       return out;
     }
 
+    var equipment = flatten(equipmentBySku);
+    var recurring = flatten(recurringBySku);
+    var labor = (isChangeOrder ? laborAfterDiscount !== 0 : laborAfterDiscount > 0) ? {
+      description: 'Installation services per SOW ' + (sowId || ''),
+      qty: 1,
+      unitPrice: laborAfterDiscount,
+      lineTotal: laborAfterDiscount,
+      // Surface the pre-discount and discount values too so Make can
+      // render either ("Labor $X less proposal discount $Y = $Z") or
+      // just ship the net.
+      laborSubtotal: laborTotal,
+      proposalDiscount: proposalDiscount
+    } : null;
+
+    // Signed grand total across the invoice lines. On a CO this is the
+    // net change; isCredit tells Make to book a Xero CREDIT NOTE (with
+    // the amounts entered NEGATIVE, exactly as they already are here)
+    // instead of an invoice.
+    var invoiceTotal = 0;
+    for (var eq = 0; eq < equipment.length; eq++) invoiceTotal += num(equipment[eq].lineTotal);
+    if (labor) invoiceTotal += num(labor.lineTotal);
+    invoiceTotal = round2(invoiceTotal);
+
     return {
-      equipment: flatten(equipmentBySku),
-      labor: laborAfterDiscount > 0 ? {
-        description: 'Installation services per SOW ' + (sowId || ''),
-        qty: 1,
-        unitPrice: laborAfterDiscount,
-        lineTotal: laborAfterDiscount,
-        // Surface the pre-discount and discount values too so Make can
-        // render either ("Labor $X less proposal discount $Y = $Z") or
-        // just ship the net.
-        laborSubtotal: laborTotal,
-        proposalDiscount: proposalDiscount
-      } : null,
-      recurring: flatten(recurringBySku)
+      equipment: equipment,
+      labor: labor,
+      recurring: recurring,
+      isChangeOrder: !!isChangeOrder,
+      // equipment + labor only — recurring bills separately.
+      invoiceTotal: invoiceTotal,
+      isCredit: !!isChangeOrder && invoiceTotal < 0
     };
   }
 
@@ -4862,8 +4904,34 @@
       //   { equipment: [ { sku, description, qty, unitPrice, lineTotal } ],
       //     labor:    { description, qty, unitPrice, lineTotal } | null,
       //     recurring: [ { sku, description, qty, unitPrice, lineTotal } ] }
-      invoiceItems:          buildInvoiceItems(jsonSnapshot, summary.sowId, payload.projectTotals),
-      invoiceItemsString:    (function () { try { return JSON.stringify(buildInvoiceItems(jsonSnapshot, summary.sowId, payload.projectTotals) || {}); } catch (e) { return '{}'; } })(),
+      invoiceItems:          buildInvoiceItems(jsonSnapshot, summary.sowId, payload.projectTotals, payload.isChangeOrder),
+      invoiceItemsString:    (function () { try { return JSON.stringify(buildInvoiceItems(jsonSnapshot, summary.sowId, payload.projectTotals, payload.isChangeOrder) || {}); } catch (e) { return '{}'; } })(),
+      // ── Xero routing for COs ─────────────────────────────────────────
+      // A change order whose total is NEGATIVE must be booked as a Xero
+      // CREDIT NOTE, with revenue amounts entered as NEGATIVE numbers —
+      // invoiceItems already carries the true signed amounts on a CO, so
+      // Make maps them verbatim and branches on invoiceIsCredit.
+      // invoiceTotal is the exact numeric grand/CO total (same figure the
+      // grid computed; not the display string).
+      invoiceTotal:          (function () {
+        try {
+          var pgT = window.SCW && window.SCW.proposalGridTotals;
+          if (pgT && typeof pgT.grandTotal === 'number' && isFinite(pgT.grandTotal)) {
+            return Math.round(pgT.grandTotal * 100) / 100;
+          }
+        } catch (e) { /* fall through */ }
+        var gp = parseFloat(String(summary.grandTotal || '').replace(/[^0-9.\-]/g, ''));
+        return isFinite(gp) ? gp : null;
+      })(),
+      invoiceIsCredit:       (function () {
+        if (!payload.isChangeOrder) return false;
+        try {
+          var pgC = window.SCW && window.SCW.proposalGridTotals;
+          if (pgC && typeof pgC.grandTotal === 'number') return pgC.grandTotal < 0;
+        } catch (e) { /* fall through */ }
+        var gc = parseFloat(String(summary.grandTotal || '').replace(/[^0-9.\-]/g, ''));
+        return isFinite(gc) && gc < 0;
+      })(),
       // Token contract — Make's "Tools → Replace" step should run
       // through this list and substitute each {{TOKEN}} occurrence in
       // .html with the post-create record's matching field. Listed on
