@@ -3371,23 +3371,20 @@ tr.${CO_RM.bannerCls} td {
         cleanProductLabel(enclosingGroupLabel(tr, 3));
       const prefix = connLabel(rec, ctx.keys.prefix);
       const number = readTxt(rec, ctx.keys.number);
-      // Line value is NET of line-item discounts (decided 2026-07-16) so
-      // the manifest's Net change equals the Project (Grand) Total — one
-      // number everywhere the customer looks. Prefer the model's exact
-      // numbers: install fee (field_2028, ctx.keys.labor) + discounted
-      // hardware (field_2269 = hardware − line discount); fall back to
-      // cells (labor + hardware − field_2303) when the model row is
-      // missing. (If a proposal-level discount is ever applied to a CO,
-      // the Grand Total will sit below Net change by that amount — the
-      // manifest is per-line and can't carry a proposal-wide discount.)
+      // Line value is the LINE ITEM TOTAL (field_2203 = install fee +
+      // discount-net equipment) so the manifest's Net change equals the
+      // Change Order Total — one number everywhere the customer looks.
+      // The previous labor+field_2269 composition silently dropped the
+      // equipment side on grids whose model doesn't carry field_2269
+      // (view_3341 doesn't) — observed 2026-07-17 as Net change $1,338
+      // (labor only) vs Change Order Total $878. (If a proposal-level
+      // discount is ever applied to a CO, the totals will differ by that
+      // amount — the manifest is per-line and can't carry it.)
       let amt;
-      if (typeof rec[ctx.keys.labor + '_raw'] === 'number' ||
-          typeof rec['field_2269_raw'] === 'number') {
-        amt = (Number(rec[ctx.keys.labor + '_raw']) || 0) +
-              (Number(rec['field_2269_raw']) || 0);
+      if (typeof rec['field_2203_raw'] === 'number') {
+        amt = Number(rec['field_2203_raw']) || 0;
       } else {
-        amt = cellNum(tr, ctx.keys.labor) + cellNum(tr, ctx.keys.hardware) -
-              cellNum(tr, 'field_2303');
+        amt = cellNum(tr, 'field_2203');
       }
       const entry = {
         product: product,

@@ -1572,12 +1572,16 @@
   }
 
   function renderReportView(view, html) {
+    // Title goes INSIDE the wrap: the e-sign walker skips
+    // .report-table-wrap wholesale (BOM tables are internal), and a
+    // title emitted outside it leaked a bare "BOM" heading into the
+    // agreement with nothing under it.
+    html.push('<div class="report-table-wrap">');
     if (view.title) {
       html.push('<div class="view-title">' + esc(view.title) + '</div>');
     }
-    if (view.tableHtml) {
-      html.push('<div class="report-table-wrap">' + view.tableHtml + '</div>');
-    }
+    if (view.tableHtml) html.push(view.tableHtml);
+    html.push('</div>');
   }
 
   // Change Order "What's Changing" block for the published HTML/PDF.
@@ -1590,9 +1594,12 @@
     if (!cs) return;
     html.push('<div class="co-change-summary">');
     html.push('<div class="co-cs-title">Change Order &mdash; What&#39;s Changing</div>');
-    if (cs.desc) {
-      html.push('<div class="co-cs-desc">' + esc(cs.desc) + '</div>');
-    }
+    // Color-NEUTRAL copy, not the scraped on-page desc — the on-page
+    // sentence references green/red shading, which the e-sign agreement
+    // (and any colorless consumer) can't render.
+    html.push('<div class="co-cs-desc">This change order amends the previously ' +
+      'approved installation scope. Items being added and items being removed ' +
+      '(credited back) are itemized below.</div>');
 
     function block(cls, heading, items, subLabel, subtotal) {
       if (!items || !items.length) return;
@@ -4677,16 +4684,20 @@
       console.warn('[SCW pdfExport] buildPublishPayload: scrapeAllViews returned 0 views for ' + cfg.sceneId + '. Page may not be fully rendered.');
       return null;
     }
+    // ONE variant everywhere (2026-07-17): the "What's Changing" manifest
+    // is dropped from ALL publish outputs — published page, PDF, e-sign,
+    // plaintext. In the agreement it triple-told the story next to the
+    // banded itemization + Change Order Totals, and its "shaded green /
+    // red" copy referenced colors esignatures can't render. It survives
+    // ON-PAGE only (the ops panel under Issue Change Order). The
+    // structured coChangeSummary/coNetChange payload keys still ride for
+    // Make/e-sign templates, and buildPdfHtml(payload,
+    // { includeCoSummary: true }) remains available if a summary variant
+    // is ever wanted again.
     var htmlStr       = buildPdfHtml(payload);
-    // E-sign variant: identical, plus the CO "What's Changing" manifest.
-    // The published page/PDF present just the banded CO proposal; the
-    // agreement keeps the summary + net-change headline.
-    var htmlEsignStr  = payload.coChangeSummary
-      ? buildPdfHtml(payload, { includeCoSummary: true })
-      : htmlStr;
     var summary       = extractSummaryFields(payload);
     var jsonSnapshot  = buildJsonSnapshot(cfg.sceneId);
-    var plaintextStr  = htmlToPlaintext(htmlEsignStr);
+    var plaintextStr  = htmlToPlaintext(htmlStr);
     var subBid        = buildSubBidReview();
     // Tech group — field_2954 lives on the BID; view_3861 shows it through
     // a chain (SOW -> bids -> tech group), which renders NESTED
@@ -4810,7 +4821,7 @@
       // INSTEAD of `"value": "..."` to render headings + tables natively
       // in the agreement. Bypasses JSON-string-escape entirely because
       // the value is a structured array, not a string.
-      scopeOfWorkDocumentElements: buildSowDocumentElements(htmlEsignStr),
+      scopeOfWorkDocumentElements: buildSowDocumentElements(htmlStr),
       // Pre-stringified scopeOfWorkDocumentElements for the same reason
       // jsonString exists below: when Make maps an array value into a
       // plain-text/paragraph Knack field, it iterates the array and
@@ -4818,7 +4829,7 @@
       // The user then has to wrap-in-brackets at read time. Ship the
       // proper JSON.stringify of the array so it can be stored verbatim
       // and parseJSON'd back to a structured array on the read side.
-      scopeOfWorkDocumentElementsString: (function () { try { return JSON.stringify(buildSowDocumentElements(htmlEsignStr)); } catch (e) { return '[]'; } })(),
+      scopeOfWorkDocumentElementsString: (function () { try { return JSON.stringify(buildSowDocumentElements(htmlStr)); } catch (e) { return '[]'; } })(),
       // Full snapshot, both `field_xxx` (rendered HTML) and `field_xxx_raw`
       // (clean structured) shapes. Keep this intact for Make scenarios
       // that map directly to `.json[].field_xxx` for their downstream
