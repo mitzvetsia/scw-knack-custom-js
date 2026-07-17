@@ -1833,7 +1833,12 @@
     return '<style>' + getPdfCss().replace(/@import[^;]+;/g, '') + '</style>';
   }
 
-  function buildPdfHtml(payload) {
+  // opts.includeCoSummary — emit the CO "What's Changing" manifest block.
+  // Only the e-sign variant wants it (the agreement's headline summary +
+  // net change); the published customer page and PDF present just the
+  // banded CO proposal, where the manifest would duplicate the itemized
+  // Added/Removed bands (user call, 2026-07-17).
+  function buildPdfHtml(payload, opts) {
     if (!payload.views.length) return '';
 
     var html = [];
@@ -1880,13 +1885,14 @@
       }
     }
 
-    // Render project views. On a CO, the "What's Changing" manifest
-    // sits immediately above the itemized grid — same position it holds
-    // on the live preview page.
+    // Render project views. On a CO's E-SIGN variant, the "What's
+    // Changing" manifest sits immediately above the itemized grid —
+    // same position it holds on the live preview page.
+    var wantCoSummary = !!(opts && opts.includeCoSummary && payload.coChangeSummary);
     var coSummaryEmitted = false;
     for (var pv = 0; pv < projectViews.length; pv++) {
       var pView = projectViews[pv];
-      if (pView.type === 'grid' && !coSummaryEmitted && payload.coChangeSummary) {
+      if (pView.type === 'grid' && !coSummaryEmitted && wantCoSummary) {
         renderCoChangeSummary(payload.coChangeSummary, html);
         coSummaryEmitted = true;
       }
@@ -1900,7 +1906,7 @@
     }
     // A CO whose grid view didn't scrape (e.g. render race) still gets
     // the manifest — it's the substance of the change order.
-    if (payload.coChangeSummary && !coSummaryEmitted) {
+    if (wantCoSummary && !coSummaryEmitted) {
       renderCoChangeSummary(payload.coChangeSummary, html);
     }
 
@@ -4672,9 +4678,15 @@
       return null;
     }
     var htmlStr       = buildPdfHtml(payload);
+    // E-sign variant: identical, plus the CO "What's Changing" manifest.
+    // The published page/PDF present just the banded CO proposal; the
+    // agreement keeps the summary + net-change headline.
+    var htmlEsignStr  = payload.coChangeSummary
+      ? buildPdfHtml(payload, { includeCoSummary: true })
+      : htmlStr;
     var summary       = extractSummaryFields(payload);
     var jsonSnapshot  = buildJsonSnapshot(cfg.sceneId);
-    var plaintextStr  = htmlToPlaintext(htmlStr);
+    var plaintextStr  = htmlToPlaintext(htmlEsignStr);
     var subBid        = buildSubBidReview();
     // Tech group — field_2954 lives on the BID; view_3861 shows it through
     // a chain (SOW -> bids -> tech group), which renders NESTED
@@ -4798,7 +4810,7 @@
       // INSTEAD of `"value": "..."` to render headings + tables natively
       // in the agreement. Bypasses JSON-string-escape entirely because
       // the value is a structured array, not a string.
-      scopeOfWorkDocumentElements: buildSowDocumentElements(htmlStr),
+      scopeOfWorkDocumentElements: buildSowDocumentElements(htmlEsignStr),
       // Pre-stringified scopeOfWorkDocumentElements for the same reason
       // jsonString exists below: when Make maps an array value into a
       // plain-text/paragraph Knack field, it iterates the array and
@@ -4806,7 +4818,7 @@
       // The user then has to wrap-in-brackets at read time. Ship the
       // proper JSON.stringify of the array so it can be stored verbatim
       // and parseJSON'd back to a structured array on the read side.
-      scopeOfWorkDocumentElementsString: (function () { try { return JSON.stringify(buildSowDocumentElements(htmlStr)); } catch (e) { return '[]'; } })(),
+      scopeOfWorkDocumentElementsString: (function () { try { return JSON.stringify(buildSowDocumentElements(htmlEsignStr)); } catch (e) { return '[]'; } })(),
       // Full snapshot, both `field_xxx` (rendered HTML) and `field_xxx_raw`
       // (clean structured) shapes. Keep this intact for Make scenarios
       // that map directly to `.json[].field_xxx` for their downstream
