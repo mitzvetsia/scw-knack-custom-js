@@ -517,20 +517,162 @@
       return { id: u.id || '', name: n || '', email: u.email || '' };
     } catch (e) { return {}; }
   }
+  /** MDF/IDF location options for a view, read from its configured
+   *  mdfSourceViewKey grid (same source render.js seeds L1 groups from). */
+  function mdfOptionsForView(viewKey) {
+    try {
+      var vc = ns.cfg && typeof ns.cfg.viewCfg === 'function' && ns.cfg.viewCfg(viewKey);
+      if (!vc || !vc.mdfSourceViewKey) return [];
+      var v = window.Knack && Knack.views && Knack.views[vc.mdfSourceViewKey];
+      var models = (v && v.model && v.model.data && v.model.data.models) || [];
+      var labelField = vc.mdfLabelField || 'field_1642';
+      var out = [];
+      for (var i = 0; i < models.length; i++) {
+        var a = models[i] && models[i].attributes;
+        if (!a || !a.id) continue;
+        var label = stripHtml(String(a[labelField] || a.identifier || ''));
+        if (label) out.push({ id: a.id, label: label });
+      }
+      out.sort(function (x, y) {
+        return x.label.localeCompare(y.label, undefined,
+          { numeric: true, sensitivity: 'base' });
+      });
+      return out;
+    } catch (e) { return []; }
+  }
+
+  /** Belt-and-suspenders placement: until the Make duplicate scenario maps
+   *  targetMdfIdf itself, re-home the freshly-created duplicates client-side.
+   *  New record = appears in the model after the webhook and wasn't there
+   *  before. Sweeps a few times (Make-write lag), caps the re-homes at the
+   *  number of duplicates requested, and skips records already on the target
+   *  (so a Make-side mapping landing later makes this a no-op). */
+  function rehomeDuplicates(viewKey, beforeIds, target, mdfFieldKey, expected) {
+    if (!target || !mdfFieldKey || !expected) return;
+    var done = Object.create(null);
+    var attempts = 0;
+    function sweep() {
+      attempts++;
+      var idx = attrsIndex(viewKey);
+      var jobs = [];
+      for (var id in idx) {
+        if (beforeIds[id] || done[id]) continue;
+        if (Object.keys(done).length + jobs.length >= expected) break;
+        var raw = idx[id][mdfFieldKey + '_raw'];
+        var curId = Array.isArray(raw) && raw[0] && raw[0].id;
+        done[id] = true;
+        if (curId === target.id) continue;   // already placed (Make mapped it)
+        var body = {};
+        body[mdfFieldKey] = [target.id];
+        jobs.push({ viewKey: viewKey, recordId: id, body: body });
+      }
+      if (jobs.length) {
+        runQueue(jobs).then(function () {
+          if (ns.data && typeof ns.data.refetchAndNotify === 'function') {
+            ns.data.refetchAndNotify(viewKey);
+          }
+        });
+      }
+      if (Object.keys(done).length < expected && attempts < 6) {
+        setTimeout(sweep, 2500);
+      }
+    }
+    setTimeout(sweep, 2500);
+  }
+
   function handleDuplicate(ids, viewKey) {
     if (!ids || !ids.length) return;
-    if (!window.confirm('Duplicate ' + ids.length + ' selected item' +
-        (ids.length === 1 ? '' : 's') + '?')) return;
+    var vc = null;
+    try { vc = ns.cfg && typeof ns.cfg.viewCfg === 'function' && ns.cfg.viewCfg(viewKey); }
+    catch (e) { /* plain confirm below */ }
+    var mdfOpts = (vc && vc.duplicatePickMdf) ? mdfOptionsForView(viewKey) : [];
+    if (!mdfOpts.length) {
+      // No MDF prompt on this view — original two-click confirm flow.
+      if (!window.confirm('Duplicate ' + ids.length + ' selected item' +
+          (ids.length === 1 ? '' : 's') + '?')) return;
+      fireDuplicate(ids, viewKey, null);
+      return;
+    }
+    openDuplicateMdfModal(ids, viewKey, mdfOpts);
+  }
+
+  /** Duplicate prompt with an MDF/IDF landing picker (config
+   *  duplicatePickMdf — the survey/bid worksheet). "Same as original"
+   *  keeps the source rows' locations. */
+  function openDuplicateMdfModal(ids, viewKey, mdfOpts) {
+    var overlay = document.createElement('div');
+    overlay.className = 'scw-ws-v2-mb-overlay';
+    overlay.innerHTML =
+      '<div class="scw-ws-v2-mb-modal">' +
+        '<div class="scw-ws-v2-mb-title">Duplicate ' + ids.length +
+          ' item' + (ids.length === 1 ? '' : 's') + '</div>' +
+        '<div class="scw-ws-v2-mb-sub">Pick where the duplicated item' +
+          (ids.length === 1 ? '' : 's') + ' should go.</div>' +
+        '<label class="scw-ws-v2-mb-label">MDF / IDF</label>' +
+        '<select class="scw-ws-v2-mb-input"></select>' +
+        '<div class="scw-ws-v2-mb-actions">' +
+          '<button type="button" class="scw-ws-v2-mb-cancel">Cancel</button>' +
+          '<button type="button" class="scw-ws-v2-mb-submit">Duplicate</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(overlay);
+
+    var sel = overlay.querySelector('select.scw-ws-v2-mb-input');
+    var same = document.createElement('option');
+    same.value = ''; same.textContent = '— Same as original —';
+    sel.appendChild(same);
+    mdfOpts.forEach(function (o) {
+      var opt = document.createElement('option');
+      opt.value = o.id;
+      opt.textContent = o.label;
+      sel.appendChild(opt);
+    });
+
+    function close() { overlay.parentNode && overlay.parentNode.removeChild(overlay); }
+    overlay.querySelector('.scw-ws-v2-mb-cancel').addEventListener('click', close);
+    overlay.addEventListener('click', function (e) { if (e.target === overlay) close(); });
+    overlay.querySelector('.scw-ws-v2-mb-submit').addEventListener('click', function () {
+      var target = null;
+      if (sel.value) {
+        var opt = sel.options[sel.selectedIndex];
+        target = { id: sel.value, label: (opt && opt.textContent) || '' };
+      }
+      close();
+      fireDuplicate(ids, viewKey, target);
+    });
+  }
+
+  function fireDuplicate(ids, viewKey, target) {
     var dup = toolbar && toolbar.querySelector('.scw-ws-v2-bulk-duplicate');
     if (toolbar) toolbar.classList.add('scw-ws-v2-bulk-toolbar--saving');
     if (dup) dup.disabled = true;
+    var mdfFieldKey = '';
+    try {
+      var F = ns.cfg && typeof ns.cfg.fields === 'function' && ns.cfg.fields(viewKey);
+      mdfFieldKey = (F && F.mdfIdf) || '';
+    } catch (e) { /* payload ships without the key */ }
+    // Snapshot the model ids BEFORE the webhook so the re-home sweep can
+    // recognize the freshly-created duplicates.
+    var beforeIds = Object.create(null);
+    if (target) {
+      var pre = attrsIndex(viewKey);
+      for (var pid in pre) beforeIds[pid] = true;
+    }
     function refetch() {
       var v = window.Knack && Knack.views && Knack.views[viewKey];
       if (v && v.model && typeof v.model.fetch === 'function') v.model.fetch();
     }
     $.ajax({
       url: DUPLICATE_WEBHOOK, type: 'POST', contentType: 'application/json',
-      data: JSON.stringify({ recordIds: ids, viewId: viewKey, triggeredBy: bulkTriggeredBy() }),
+      data: JSON.stringify({
+        recordIds: ids, viewId: viewKey, triggeredBy: bulkTriggeredBy(),
+        // Landing MDF/IDF for the duplicates (null = same as original).
+        // Make can map targetMdfIdf.id onto the duplicate's MDF connection
+        // (targetMdfFieldKey names the field); the client-side re-home
+        // sweep below covers placement until that mapping exists.
+        targetMdfIdf:      target ? { id: target.id, label: target.label } : null,
+        targetMdfFieldKey: mdfFieldKey
+      }),
       crossDomain: true, timeout: 120000
     }).always(function () {
       if (toolbar) toolbar.classList.remove('scw-ws-v2-bulk-toolbar--saving');
@@ -542,6 +684,7 @@
       refetch();
       setTimeout(refetch, 3000);
       setTimeout(refetch, 8000);
+      if (target) rehomeDuplicates(viewKey, beforeIds, target, mdfFieldKey, ids.length);
     });
   }
 
@@ -2272,10 +2415,16 @@
             '</div>';
           setTimeout(function () {
             close();
-            // Keep the checkbox selection after a bulk edit so the user can run
-            // another bulk action on the same rows — only the explicit Clear
-            // button clears it. The refetch → rebuild → mount() re-applies the
-            // selection to the new DOM via syncDomFromState.
+            // Selection lifecycle is per-view: the SOW build + bid comparison
+            // pages KEEP the checkbox selection so the user can chain bulk
+            // actions on the same rows (explicit Clear only). Views with
+            // config bulkClearSelection (the survey/bid worksheet) auto-clear
+            // after a successful bulk edit instead.
+            try {
+              var _vcClr = ns.cfg && typeof ns.cfg.viewCfg === 'function' &&
+                           ns.cfg.viewCfg(sourceViewKey);
+              if (_vcClr && _vcClr.bulkClearSelection) clearAll();
+            } catch (eClr) { /* keep selection */ }
             try {
               if (ns.data && typeof ns.data.refetchAndNotify === 'function') {
                 ns.data.refetchAndNotify(sourceViewKey);

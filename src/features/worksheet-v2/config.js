@@ -317,6 +317,16 @@
         moneyMode:         'survey',
         hideSow:           true,            // survey groups by Bid, not SOW
         bulkDuplicate:     true,            // bulk panel "Duplicate" → Make webhook
+        // Survey drafting flow: after a successful bulk EDIT, auto-clear the
+        // row selection. The SOW build + bid comparison pages deliberately
+        // KEEP the selection for chained bulk actions — this page prefers a
+        // clean slate after each pass.
+        bulkClearSelection: true,
+        // Duplicate flow: prompt for the MDF/IDF the duplicated items should
+        // land in (options read from mdfSourceViewKey; "Same as original"
+        // opt-out). Ships targetMdfIdf on the webhook payload AND re-homes
+        // the new records client-side, so it works before Make maps it.
+        duplicatePickMdf:   true,
         // Full cutover: hide the native source view AND its KTL accordion
         // shell entirely (no collapsible header) — JUST the v2 grid. init.js
         // relocates the v2 panel out of the accordion; styles.js hides the
