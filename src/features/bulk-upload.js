@@ -442,9 +442,83 @@
     }).catch(function () { return null; });
   }
 
+  // ── HEIC → JPEG CONVERSION ────────────────────────────────────────────
+  // Chrome/Edge/Firefox can't decode HEIC, so iPhone photos either bounced
+  // (oversized) or uploaded as .heic files nothing downstream could render.
+  // Lazy-load a WASM decoder (heic2any) from jsDelivr ONLY when a HEIC is
+  // actually picked — zero cost on ordinary JPEG batches — and convert
+  // every HEIC to JPEG on pick. Safari's native HEIC decode is the
+  // fallback if the CDN script can't load.
+  var HEIC2ANY_URL = 'https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js';
+  var _heicLibPromise = null;
+
+  function isHeicFile(f) {
+    var t = (f && f.type || '').toLowerCase();
+    if (t === 'image/heic' || t === 'image/heif' ||
+        t === 'image/heic-sequence' || t === 'image/heif-sequence') return true;
+    // File.type is frequently EMPTY for HEIC on Windows — extension is the
+    // reliable signal there.
+    return /\.(heic|heif)$/i.test((f && f.name) || '');
+  }
+
+  function loadHeicLib() {
+    if (window.heic2any) return Promise.resolve(window.heic2any);
+    if (_heicLibPromise) return _heicLibPromise;
+    _heicLibPromise = new Promise(function (resolve, reject) {
+      var s = document.createElement('script');
+      s.src = HEIC2ANY_URL;
+      s.onload = function () {
+        if (window.heic2any) resolve(window.heic2any);
+        else reject(new Error('heic2any loaded but global missing'));
+      };
+      s.onerror = function () {
+        _heicLibPromise = null;   // network hiccup — allow retry on next pick
+        reject(new Error('failed to load HEIC decoder'));
+      };
+      document.head.appendChild(s);
+    });
+    return _heicLibPromise;
+  }
+
+  /** HEIC/HEIF file → JPEG Blob. WASM decoder first (works in every
+   *  browser); native decode via the canvas ladder as fallback (Safari
+   *  can read HEIC without the lib). Resolves null when neither works. */
+  function convertHeic(f) {
+    return loadHeicLib().then(function (heic2any) {
+      return heic2any({ blob: f, toType: 'image/jpeg', quality: 0.88 });
+    }).then(function (out) {
+      // Multi-image HEIC (bursts/live photos) yields an array — take the
+      // primary frame.
+      var blob = Array.isArray(out) ? out[0] : out;
+      return blob || null;
+    }).catch(function (err) {
+      console.warn('[bulk-upload] heic2any unavailable/failed — trying native decode', err);
+      return downscaleImage(f, CONFIG.MAX_FILE_BYTES);
+    });
+  }
+
   /** Resolve what to queue for a picked file: pass-through when it fits,
    *  auto-resize oversized raster images, null blob → too-big row. */
   function prepareFile(f) {
+    // HEIC always converts — even under the size cap. A sub-cap .heic used
+    // to pass through untouched and then render nowhere downstream
+    // (non-Apple browsers can't display HEIC).
+    if (isHeicFile(f)) {
+      var _tHeic = Date.now();
+      return convertHeic(f).then(function (jpeg) {
+        if (!jpeg) return { blob: null, converted: false, triedResize: true, heicFailed: true };
+        var fit = (jpeg.size <= CONFIG.MAX_FILE_BYTES)
+          ? Promise.resolve(jpeg)
+          : downscaleImage(jpeg, CONFIG.MAX_FILE_BYTES);
+        return fit.then(function (finalBlob) {
+          if (!finalBlob) return { blob: null, converted: false, triedResize: true, heicFailed: true };
+          console.info('[bulk-upload] HEIC converted', f.name,
+            fmtBytes(f.size), '→', fmtBytes(finalBlob.size),
+            '(' + (Date.now() - _tHeic) + 'ms)');
+          return { blob: finalBlob, converted: true, triedResize: true };
+        });
+      });
+    }
     // Full-resolution uploads under the hard cap — a sub-cap file ships
     // exactly as-is. Only genuinely oversized raster images get downscaled,
     // and only enough to clear MAX_FILE_BYTES so they upload at all instead
@@ -938,8 +1012,10 @@
           blob:      blob || f,
           status:    tooBig ? 'too-big' : 'queued',
           error:     tooBig
-            ? ('File exceeds ' + fmtBytes(CONFIG.MAX_FILE_BYTES) + ' limit' +
-               (prep.triedResize ? ' — auto-resize failed (unsupported image format?)' : ''))
+            ? (prep.heicFailed
+              ? 'HEIC photo could not be converted — export it as JPEG and re-add it'
+              : ('File exceeds ' + fmtBytes(CONFIG.MAX_FILE_BYTES) + ' limit' +
+                 (prep.triedResize ? ' — auto-resize failed (unsupported image format?)' : '')))
             : null,
           addedAt:   Date.now(),
           batchId:   _state.batchId,
