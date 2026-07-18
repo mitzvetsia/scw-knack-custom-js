@@ -1150,7 +1150,7 @@
    * styled cell. Click handler in init.js reads the data-* attrs and
    * opens the picker modal.
    */
-  function detailConnection(rec, viewKey, fieldKey, label, warn) {
+  function detailConnection(rec, viewKey, fieldKey, label, warn, readOnly) {
     // Special-case connections that point at ANOTHER LINE ITEM (Parent
     // field_2464, Connected Device field_2197): the line-item object\'s auto
     // identifier degenerates to "<recordId> (<mdfLabel>)" server-side for
@@ -1175,6 +1175,16 @@
       labelHtml = '<span class="scw-ws-v2-detail-warn-ic" ' +
         'title="No connected device — this cam/reader is disconnected">' +
         warnIc + '</span>' + labelHtml;
+    }
+    // readOnly: derived/locked connection — plain readable text per the repo
+    // locked-field convention (no button, no edit affordance, no picker
+    // hook). Same value resolution + warn icon as the editable variant.
+    if (readOnly) {
+      return '<div class="scw-ws-v2-detail-field scw-ws-v2-detail-field--conn scw-ws-v2-detail-field--ro' +
+          (warn ? ' scw-ws-v2-detail-field--warn' : '') + '">' +
+        '<div class="scw-ws-v2-detail-label">' + labelHtml + '</div>' +
+        '<div class="scw-ws-v2-display">' + escapeHtml(val) + '</div>' +
+      '</div>';
     }
     return '<div class="scw-ws-v2-detail-field scw-ws-v2-detail-field--conn' +
         (warn ? ' scw-ws-v2-detail-field--warn' : '') + '">' +
@@ -1851,12 +1861,15 @@
       groups += notesCol;
 
       // Col 3 — Connection & location: MDF/IDF (top) over Connected To.
-      // Connected To (field_2381, single) — editable; cascade writes the
-      // parent's field_2380. Candidates resolved in init.js.
+      // Connected To (field_2381, single) — READ-ONLY display. The canonical
+      // editable side is the NVR/switch's Connected Devices (field_2380);
+      // the mirror cascade derives field_2381 from it, so editing the child
+      // side here would just re-create the two-writer drift (same direction
+      // as CLAUDE.md #12 for the SOW pair).
       groups += sdGroup(
         mdfItem +
         sdItem(detailConnection(rec, viewKey, F.connectedDevice || 'field_2381',
-          'Connected To', hasIssue(rec, 'disconnected')), 'scw-ws-v2-sd--conn'),
+          'Connected To', hasIssue(rec, 'disconnected'), true), 'scw-ws-v2-sd--conn'),
         'scw-ws-v2-sd-group--conn');
 
       // Col 4 — Mounting & cabling: Mounting Height + Drop Length + Conduit.
