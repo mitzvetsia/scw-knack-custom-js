@@ -2223,7 +2223,7 @@
       }
       var qHdr = document.createElement('div');
       qHdr.className = 'scw-ws-v2-bulk-section';
-      qHdr.textContent = 'System Questionnaire';
+      qHdr.textContent = 'Configuration';
       body.appendChild(qHdr);
       qWrap = document.createElement('div');
       qWrap.className = 'scw-ws-v2-bulk-qsection';
