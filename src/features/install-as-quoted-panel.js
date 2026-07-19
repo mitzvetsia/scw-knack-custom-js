@@ -31,6 +31,17 @@
   var PROPOSED_VIEW = 'view_4072';     // hidden grid of the OG proposed line items
   var LINK_FIELD    = 'field_2819';    // on the install record → proposed record id
 
+  // ── Provenance (which SOW/CO + which accepted quote) ────────────
+  // OG line item → SOW(s) via field_2154 (must be a column on view_4072).
+  // SOW number → accepted quote resolves through the acceptance grid
+  // (view_3914): its proposal connection's identifier embeds both —
+  // "<project#>-<SOW#> | <quote#>" — so we parse rather than needing a
+  // SOW grid on the scene. CO detection = SOW number's CO suffix (the
+  // system-generated numbering: SW1418 base, SW1418CO change order).
+  var ACCEPT_VIEW     = 'view_3914';
+  var ACCEPT_PROPOSAL = 'field_2755';  // REL_SOW_published proposal (connection)
+  var ACCEPT_SIGNED   = 'field_2766';  // FLAG_agreement signed
+
   // Field keys on the PROPOSED line-item object (view_4072). Best-guess SOW
   // Line Item keys (DEFAULT_FIELDS in worksheet-v2/config.js). CONFIRM/adjust
   // if view_4072 renders a different object.
@@ -42,7 +53,8 @@
     surveyNotes:      'field_2412',    // Survey notes
     existCabling:     'field_2461',    // Existing cabling
     exterior:         'field_1984',    // Exterior
-    plenum:           'field_1983'     // Plenum
+    plenum:           'field_1983',    // Plenum
+    sow:              'field_2154'     // SOW connection(s) — the provenance hop
   };
 
   // Compact label/value grid groups (survey notes rendered full-width below).
@@ -131,10 +143,85 @@
     return idx;
   }
 
+  // ── provenance resolution ───────────────────────────────────────
+  function normToken(s) {
+    return stripHtml(s).replace(/[^A-Za-z0-9]/g, '').toUpperCase();
+  }
+  /** Acceptance index: normalized SOW token → { quote, proposalId, signed }.
+   *  A SOW can carry several acceptances (revisions/duplicates) — signed
+   *  wins; among equals the latest quote number (date-prefixed) wins. */
+  function buildAcceptanceIndex() {
+    var idx = Object.create(null);
+    var models = viewModels(ACCEPT_VIEW);
+    for (var i = 0; i < models.length; i++) {
+      var a = models[i] && models[i].attributes;
+      if (!a) continue;
+      var raw = a[ACCEPT_PROPOSAL + '_raw'];
+      var ref = Array.isArray(raw) ? raw[0] : raw;
+      if (!ref || !ref.id) continue;
+      var ident = stripHtml(ref.identifier || '');      // "60524852230-SW1418CO | 20260716-10730"
+      var parts = ident.split('|');
+      if (parts.length < 2) continue;
+      var left  = parts[0].trim();
+      var quote = parts[1].trim();
+      var segs  = left.split('-');
+      var token = normToken(segs[segs.length - 1]);      // "SW1418CO"
+      if (!token) continue;
+      var signed = stripHtml(a[ACCEPT_SIGNED] || '').toLowerCase() === 'yes';
+      var cur = idx[token];
+      var better = !cur ||
+        (signed && !cur.signed) ||
+        (signed === cur.signed && quote > cur.quote);
+      if (better) idx[token] = { quote: quote, proposalId: ref.id, signed: signed };
+    }
+    return idx;
+  }
+  /** Origins for one OG line item: [{ label, isCo, quote, proposalId,
+   *  signed }] — one entry per SOW the item connects to. */
+  function resolveOrigins(pa, acceptIdx) {
+    var out = [];
+    var raw = pa && pa[PF.sow + '_raw'];
+    if (!Array.isArray(raw)) return out;
+    for (var i = 0; i < raw.length; i++) {
+      if (!raw[i] || !raw[i].id) continue;
+      var label = stripHtml(raw[i].identifier || '') || raw[i].id;
+      var token = normToken(label);
+      var acc = (acceptIdx && acceptIdx[token]) || null;
+      out.push({
+        label:      label,
+        isCo:       /CO$/.test(token),
+        quote:      acc ? acc.quote      : '',
+        proposalId: acc ? acc.proposalId : '',
+        signed:     acc ? acc.signed     : false
+      });
+    }
+    // Base scope first, COs after — reads as "created on X, changed by Y".
+    out.sort(function (a, b) { return (a.isCo ? 1 : 0) - (b.isCo ? 1 : 0); });
+    return out;
+  }
+  function originChipHtml(o) {
+    return '<span class="scw-aq-origin' + (o.isCo ? ' scw-aq-origin--co' : '') + '" ' +
+      'title="' + esc(o.isCo ? 'Change-order item' : 'Base-scope item') +
+      (o.quote ? ' · Quote ' + esc(o.quote) : '') + '">' +
+      esc(o.label) + (o.isCo ? '' : '') + '</span>';
+  }
+  /** #<current deploy route>/sow-published-proposal-details/<id> — same
+   *  child route the acceptance grid links through. Empty when the hash
+   *  doesn't look like a deploy page (no link, plain text). */
+  function proposalHref(proposalId) {
+    if (!proposalId) return '';
+    var m = (window.location.hash || '').match(/^#(.*\/deploy\/[a-f0-9]{24})/);
+    return m ? ('#' + m[1] + '/sow-published-proposal-details/' + proposalId) : '';
+  }
+
   // ── panel markup ────────────────────────────────────────────────
-  function buildPanel(pa) {
+  function buildPanel(pa, origins) {
+    origins = origins || [];
     var panel = document.createElement('div');
     panel.className = PANEL_CLS;
+
+    var headChips = '';
+    for (var oc = 0; oc < origins.length; oc++) headChips += originChipHtml(origins[oc]);
 
     var head = document.createElement('button');
     head.type = 'button';
@@ -146,11 +233,33 @@
         'stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">' +
         '<polyline points="9 6 15 12 9 18"></polyline></svg></span>' +
       '<span class="' + PANEL_CLS + '-title">As Quoted</span>' +
+      headChips +
       '<span class="' + PANEL_CLS + '-hint">original proposal</span>';
     panel.appendChild(head);
 
     var body = document.createElement('div');
     body.className = PANEL_CLS + '-body';
+
+    // Origin block — names the specific SOW/CO and its accepted quote,
+    // linking through to the published proposal record.
+    if (origins.length) {
+      var ohtml = '';
+      for (var oi = 0; oi < origins.length; oi++) {
+        var o = origins[oi];
+        var text = esc(o.label) + ' — ' + (o.isCo ? 'Change Order' : 'Base scope') +
+          (o.quote ? ' · Quote ' + esc(o.quote) +
+            (o.signed ? ' <span class="scw-aq-signed">signed</span>' : '') : '');
+        var href = proposalHref(o.proposalId);
+        ohtml += '<div class="scw-aq-origin-line">' +
+          (href ? '<a href="' + esc(href) + '">' + text + '</a>' : text) +
+        '</div>';
+      }
+      var ob = document.createElement('div');
+      ob.className = 'scw-aq-origin-block';
+      ob.innerHTML =
+        '<div class="' + PANEL_CLS + '-label">Origin</div>' + ohtml;
+      body.appendChild(ob);
+    }
 
     var grid = document.createElement('div');
     grid.className = PANEL_CLS + '-grid';
@@ -191,7 +300,7 @@
   }
 
   // ── inject ──────────────────────────────────────────────────────
-  function injectPanel(installId, proposedAttrs) {
+  function injectPanel(installId, proposedAttrs, origins) {
     for (var v = 0; v < INSTALL_VIEWS.length; v++) {
       var container = document.getElementById('scw-ws-v2-' + INSTALL_VIEWS[v]);
       if (!container) continue;
@@ -203,7 +312,19 @@
         if (!detail) continue;
         var prior = detail.querySelector(':scope > .' + PANEL_CLS);
         if (prior && prior.parentNode) prior.parentNode.removeChild(prior);
-        detail.appendChild(buildPanel(proposedAttrs));
+        detail.appendChild(buildPanel(proposedAttrs, origins));
+
+        // Row-level origin chip(s) in the Flags cell — base vs CO is
+        // scannable without expanding the card. Idempotent per rebuild.
+        var flags = cards[c].querySelector('.scw-ws-v2-cell--install-flags');
+        if (flags && origins && origins.length) {
+          var old = flags.querySelectorAll('.scw-aq-origin');
+          for (var x = 0; x < old.length; x++) old[x].remove();
+          var chips = '';
+          for (var oi = 0; oi < origins.length; oi++) chips += originChipHtml(origins[oi]);
+          flags.insertAdjacentHTML('beforeend', chips);
+          flags.classList.remove('scw-ws-v2-cell--blank');
+        }
       }
     }
   }
@@ -217,11 +338,32 @@
   }
   function invalidate() { _lastHash = ''; }
 
+  var _warnedNoSow = false;
   function merge() {
     var linkIdx = buildInstallLinkIndex();
     var ids = Object.keys(linkIdx);
     if (!ids.length) return;
     var propIdx = buildProposedIndex();
+    var acceptIdx = buildAcceptanceIndex();
+
+    // One-time diagnostic: OG records loaded but NONE carry field_2154 —
+    // the provenance column isn't projected on view_4072, so origin
+    // chips/links can't render. Everything else still works.
+    if (!_warnedNoSow) {
+      var pids = Object.keys(propIdx);
+      if (pids.length) {
+        var anySow = false;
+        for (var pw = 0; pw < pids.length; pw++) {
+          if (Array.isArray(propIdx[pids[pw]][PF.sow + '_raw'])) { anySow = true; break; }
+        }
+        if (!anySow) {
+          _warnedNoSow = true;
+          console.warn('[scw-as-quoted] no ' + PF.sow + ' (SOW connection) on any ' +
+            PROPOSED_VIEW + ' record — add it as a column in Builder to get ' +
+            'origin (base vs CO / quote) chips.');
+        }
+      }
+    }
 
     var hash = computeHash(linkIdx);
     if (hash === _lastHash) return;   // reset by invalidate() on any rebuild
@@ -231,7 +373,7 @@
     try {
       for (var i = 0; i < ids.length; i++) {
         var pa = propIdx[linkIdx[ids[i]]];
-        if (pa) injectPanel(ids[i], pa);
+        if (pa) injectPanel(ids[i], pa, resolveOrigins(pa, acceptIdx));
       }
     } finally {
       setTimeout(function () { _selfMutating = false; }, 0);
@@ -291,7 +433,24 @@
       P + '-empty { color: #cbd5e1; }',
       P + '-notes { margin-top: 10px; padding-top: 10px; border-top: 1px solid #e2e8f0; }',
       P + '-notes-val { font: 500 13px/1.5 system-ui, sans-serif; color: #334155;',
-      '  white-space: pre-wrap; word-break: break-word; }'
+      '  white-space: pre-wrap; word-break: break-word; }',
+      // ── origin (base vs CO provenance) ──
+      '.scw-aq-origin { display: inline-flex; align-items: center; flex: 0 0 auto;',
+      '  margin-left: 6px; padding: 1px 8px; border-radius: 999px;',
+      '  font: 700 10px/1.6 system-ui, sans-serif; letter-spacing: .02em;',
+      '  background: #f1f5f9; color: #475569; border: 1px solid #e2e8f0;',
+      '  text-transform: none; white-space: nowrap; }',
+      '.scw-aq-origin--co { background: #fffbeb; color: #92400e; border-color: #fde68a; }',
+      '.scw-ws-v2-cell--install-flags .scw-aq-origin { margin-left: 0;',
+      '  margin-right: 4px; }',
+      '.scw-aq-origin-block { margin: 2px 0 10px; padding-bottom: 10px;',
+      '  border-bottom: 1px solid #e2e8f0; }',
+      '.scw-aq-origin-line { font: 500 13px/1.5 system-ui, sans-serif; color: #1e293b; }',
+      '.scw-aq-origin-line a { color: #1d4ed8; text-decoration: none; }',
+      '.scw-aq-origin-line a:hover { text-decoration: underline; }',
+      '.scw-aq-signed { display: inline-block; margin-left: 4px; padding: 0 6px;',
+      '  border-radius: 999px; font: 700 10px/1.6 system-ui, sans-serif;',
+      '  background: #ecfdf5; color: #047857; border: 1px solid #a7f3d0; }'
     ].join('\n');
     var s = document.createElement('style');
     s.id = CSS_ID;
@@ -311,6 +470,11 @@
     });
     // Proposed data can render after the install views (or update).
     window.SCW.onViewRender(PROPOSED_VIEW, function () {
+      invalidate(); stagger();
+    }, 'scwAsQuoted');
+    // The acceptance grid feeds the origin → quote resolution — re-merge
+    // when it (re)loads so chips pick up fresh signed/quote state.
+    window.SCW.onViewRender(ACCEPT_VIEW, function () {
       invalidate(); stagger();
     }, 'scwAsQuoted');
   }
