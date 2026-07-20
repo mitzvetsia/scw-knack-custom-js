@@ -1,7 +1,7 @@
-/*** SCROLL SPY (DIAGNOSTIC) **************************************************
+/*** SCROLL SPY (DIAGNOSTIC — OPT-IN) *****************************************
  *
- * TEMPORARY instrumentation to pinpoint "the page/grid jumps around" bugs. It
- * does NOT change any behavior — it only LOGS:
+ * Instrumentation to pinpoint "the page/grid jumps around" bugs. It does NOT
+ * change any behavior — it only LOGS:
  *
  *   1. Every PROGRAMMATIC scroll (window.scrollTo/scroll/scrollBy,
  *      Element.scrollIntoView, and direct scrollTop assignment) with a
@@ -11,24 +11,30 @@
  *      250ms — catches NON-JS scrolls (focus-into-view, CSS, browser anchoring)
  *      too, with the active element at fault.
  *
- * ARMED BY DEFAULT on this build (so it works on whatever grid you're on —
- * just open the console and reproduce the jump). To silence it without a
- * rebuild:  localStorage.scwScrollSpy = '0'   (then reload). Re-enable:
- * localStorage.removeItem('scwScrollSpy').
+ * OFF BY DEFAULT. This spy is genuinely expensive when armed: the render
+ * tracker reads document.documentElement.scrollHeight on EVERY
+ * knack-view/scene-render (a forced synchronous reflow — brutal on big
+ * worksheets with many MDF/IDFs), the scrollTop prototype patch intercepts
+ * every scrollTop write in the app, and the rAF watchdog never stops.
+ * Leaving it armed in production was itself a measurable perf regression, so
+ * NOTHING installs unless explicitly armed.
  *
- * This is a debugging tool — REMOVE this file (+ its build.sh line) once the
- * jump is found; the perpetual rAF watchdog + global scroll monkey-patches add
- * a little overhead on every page.
+ *   Arm:     localStorage.scwScrollSpy = '1'   (then reload)
+ *   Disarm:  localStorage.removeItem('scwScrollSpy')   (then reload)
+ *
+ * Arming is checked ONCE at load — when disarmed this file's total cost is
+ * one localStorage read.
  ****************************************************************************/
 (function () {
   'use strict';
   var P = '[scw-scroll-spy]';
 
-  // Armed everywhere by default; explicit '0' turns it off.
-  function active() {
-    try { return !(window.localStorage && localStorage.scwScrollSpy === '0'); }
-    catch (e) { return true; }
-  }
+  // Opt-in only. When not armed, install NOTHING — no patches, no listeners,
+  // no rAF loop (a "dormant" loop still costs a scroll-position read per
+  // frame forever).
+  try {
+    if (!window.localStorage || localStorage.scwScrollSpy !== '1') return;
+  } catch (e) { return; }
 
   function y() { return window.pageYOffset || document.documentElement.scrollTop || 0; }
 
@@ -50,11 +56,9 @@
   try {
     var _scrollTo = window.scrollTo;
     window.scrollTo = function () {
-      if (active()) {
-        console.warn(P + ' window.scrollTo(', arguments[0], arguments[1], ') from', y(),
-          'docHeight=' + document.documentElement.scrollHeight);
-        console.trace(P + ' scrollTo stack');
-      }
+      console.warn(P + ' window.scrollTo(', arguments[0], arguments[1], ') from', y(),
+        'docHeight=' + document.documentElement.scrollHeight);
+      console.trace(P + ' scrollTo stack');
       return _scrollTo.apply(window, arguments);
     };
   } catch (e) { /* ignore */ }
@@ -62,10 +66,8 @@
   try {
     var _scrollBy = window.scrollBy;
     window.scrollBy = function () {
-      if (active()) {
-        console.warn(P + ' window.scrollBy(', arguments[0], arguments[1], ') from', y());
-        console.trace(P + ' scrollBy stack');
-      }
+      console.warn(P + ' window.scrollBy(', arguments[0], arguments[1], ') from', y());
+      console.trace(P + ' scrollBy stack');
       return _scrollBy.apply(window, arguments);
     };
   } catch (e) { /* ignore */ }
@@ -73,10 +75,8 @@
   try {
     var _scroll = window.scroll;
     window.scroll = function () {
-      if (active()) {
-        console.warn(P + ' window.scroll(', arguments[0], arguments[1], ') from', y());
-        console.trace(P + ' scroll stack');
-      }
+      console.warn(P + ' window.scroll(', arguments[0], arguments[1], ') from', y());
+      console.trace(P + ' scroll stack');
       return _scroll.apply(window, arguments);
     };
   } catch (e) { /* ignore */ }
@@ -84,10 +84,8 @@
   try {
     var _sIV = Element.prototype.scrollIntoView;
     Element.prototype.scrollIntoView = function () {
-      if (active()) {
-        console.warn(P + ' Element.scrollIntoView on', describe(this), 'from', y());
-        console.trace(P + ' scrollIntoView stack');
-      }
+      console.warn(P + ' Element.scrollIntoView on', describe(this), 'from', y());
+      console.trace(P + ' scrollIntoView stack');
       return _sIV.apply(this, arguments);
     };
   } catch (e) { /* ignore */ }
@@ -103,10 +101,9 @@
         enumerable: desc.enumerable,
         get: desc.get,
         set: function (v) {
-          if (active() &&
-              (this === document.scrollingElement ||
-               this === document.documentElement ||
-               this === document.body)) {
+          if (this === document.scrollingElement ||
+              this === document.documentElement ||
+              this === document.body) {
             console.warn(P + ' set ' + describe(this) + '.scrollTop=' + v + ' from', y());
             console.trace(P + ' scrollTop stack');
           }
@@ -119,13 +116,13 @@
   // ── Knack render-event tracker ───────────────────────────────────────
   // The watchdog sees docHeight collapse but can't say WHICH view rebuilt.
   // Log every view/records render with the view key + docHeight before/after
-  // the render settles, so height collapses are attributable: the render
-  // line whose docHeight matches the jump names the culprit.
+  // the render settles, so height collapses are attributable. NOTE: the
+  // scrollHeight reads here force a synchronous reflow — this is a big part
+  // of why the spy is opt-in.
   try {
     if (window.$ && window.$.fn) {
       var _renderLog = function (kind) {
         return function (e, view) {
-          if (!active()) return;
           var key = (view && view.key) || '?';
           var h0 = document.documentElement.scrollHeight;
           console.warn(P + ' ' + kind + ' ' + key +
@@ -157,33 +154,30 @@
   var _lastY = y();
   var raf = window.requestAnimationFrame || function (f) { return setTimeout(f, 16); };
   function tick() {
-    if (active()) {
-      var cur = y();
-      var d = cur - _lastY;
-      if (Math.abs(d) > 40) {
-        var now = (window.performance && performance.now) ? performance.now() : 0;
-        var userDriven = (now - _lastGesture) < 250;
-        if (!userDriven) {
-          var scene = '';
-          try {
-            scene = (window.Knack && Knack.router && Knack.router.current_scene_key) || '';
-          } catch (eScene) { /* ignore */ }
-          console.warn(P + ' scrollY ' + (d > 0 ? 'JUMP DOWN ' : 'JUMP UP ') + Math.round(d) +
-            'px → ' + Math.round(cur) + ' (no user gesture). activeElement=' +
-            describe(document.activeElement) +
-            ' docHeight=' + document.documentElement.scrollHeight +
-            (scene ? ' scene=' + scene : '') +
-            ' hash=' + String(location.hash || '').slice(0, 80));
-        }
+    var cur = y();
+    var d = cur - _lastY;
+    if (Math.abs(d) > 40) {
+      var now = (window.performance && performance.now) ? performance.now() : 0;
+      var userDriven = (now - _lastGesture) < 250;
+      if (!userDriven) {
+        var scene = '';
+        try {
+          scene = (window.Knack && Knack.router && Knack.router.current_scene_key) || '';
+        } catch (eScene) { /* ignore */ }
+        console.warn(P + ' scrollY ' + (d > 0 ? 'JUMP DOWN ' : 'JUMP UP ') + Math.round(d) +
+          'px → ' + Math.round(cur) + ' (no user gesture). activeElement=' +
+          describe(document.activeElement) +
+          ' docHeight=' + document.documentElement.scrollHeight +
+          (scene ? ' scene=' + scene : '') +
+          ' hash=' + String(location.hash || '').slice(0, 80));
       }
-      _lastY = cur;
-    } else {
-      _lastY = y();
     }
+    _lastY = cur;
     raf(tick);
   }
   raf(tick);
 
-  if (active()) console.warn(P + ' armed — reproduce the jump and watch the log. Silence: localStorage.scwScrollSpy="0"');
+  console.warn(P + ' ARMED — reproduce the jump and watch the log. ' +
+    'Disarm: localStorage.removeItem("scwScrollSpy") + reload.');
 })();
 /*** END SCROLL SPY (DIAGNOSTIC) *********************************************/

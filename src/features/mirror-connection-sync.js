@@ -122,6 +122,12 @@
   var _cascadeUnloadBound = false;
   var CASCADE_TOAST_CSS_ID = 'scw-cascade-toast-css';
 
+  // Accessory-SOW reconcile sweep dedupe — SHARED across all mirror
+  // instances (each instance aliases this as its sowSweepWritten). Keyed
+  // accessoryId → serialized parent SOW set last written, so two instances
+  // sweeping the same accessory grid can't double-fire the same repair.
+  var _sowSweepWritten = {};
+
   function injectCascadeToastStyles() {
     if (document.getElementById(CASCADE_TOAST_CSS_ID)) return;
     var s = document.createElement('style');
@@ -2099,7 +2105,14 @@
   // stale local model can't re-fire the same PUT; skips entirely while a
   // cascade is in flight.
   var sowSweepTimer   = null;
-  var sowSweepWritten = {};   // accessoryId → serialized parent set last written
+  // accessoryId → serialized parent set last written. SHARED across every
+  // mirror instance (module-scoped, see _sowSweepWritten) — scenes where two
+  // instances watch the SAME accessory grid (build-SOW: view_3610 + view_3962
+  // both sweep view_3888) were each firing their own duplicate repair PUT +
+  // console.warn per mismatched accessory. The repair target is identical
+  // from any instance (same fields, same parent set), so one shared guard
+  // dedupes them.
+  var sowSweepWritten = _sowSweepWritten;
   function accessorySowSweep() {
     if (!SOW_FIELD || !ACCESSORIES_VIEW_ID || !ACCESSORIES_PARENT_FIELD) return;
     try {
