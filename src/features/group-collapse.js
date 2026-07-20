@@ -953,7 +953,34 @@
     suppress: function (val) { _suppressAutoEnhance = !!val; },
     /** True if an enhance pass ran within the coalesce window — lets the
      *  post-edit coordinator skip its own redundant enhance() call. */
-    recentlyEnhanced: recentlyEnhanced
+    recentlyEnhanced: recentlyEnhanced,
+    /** Temporarily reveal every row hidden under a COLLAPSED L1/L2 group
+     *  in the given view, so DOM scrapers (proposal-pdf-export's bid /
+     *  proposal snapshot) capture the FULL grid regardless of the user's
+     *  accordion state. Only rows whose inline display is 'none' beneath
+     *  a .scw-collapsed header are touched; the returned restore() puts
+     *  display:none back on exactly those rows. Call restore()
+     *  synchronously after scraping and nothing ever paints. */
+    revealCollapsedForSnapshot: function (viewId) {
+      var undo = [];
+      try {
+        $('#' + viewId)
+          .find('tr.kn-table-group.scw-group-header.scw-collapsed')
+          .each(function () {
+            rowsUntilNextRelevantGroup($(this)).each(function () {
+              if (this.style.display === 'none') {
+                undo.push(this);
+                this.style.display = '';
+              }
+            });
+          });
+      } catch (e) { /* never break the caller's scrape */ }
+      return function restore() {
+        for (var i = 0; i < undo.length; i++) {
+          try { undo[i].style.display = 'none'; } catch (e) { /* ignore */ }
+        }
+      };
+    }
   };
 })();
 /*************  Collapsible Level-1 & Level-2 Groups (collapsed by default) **************************/

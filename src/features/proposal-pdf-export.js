@@ -1370,7 +1370,25 @@
           SCW.debug('[SCW PDF Export]', viewId, '→ empty grid, skipping');
           continue;
         }
-        data = scrapeGridView(viewId, cfg.gridKeys);
+        // The scrape walks the LIVE table and skips display:none rows —
+        // which is also how group-collapse hides rows inside collapsed
+        // MDF/IDF groups. A bid submitted with groups collapsed silently
+        // omitted every row in them from the PDF + payload (observed: a
+        // sub bid $50K under the on-page Grand Total). Reveal collapse-
+        // hidden rows for the synchronous scrape, restore immediately —
+        // nothing paints in between.
+        var restoreCollapsed = null;
+        try {
+          if (window.SCW && SCW.groupCollapse &&
+              typeof SCW.groupCollapse.revealCollapsedForSnapshot === 'function') {
+            restoreCollapsed = SCW.groupCollapse.revealCollapsedForSnapshot(viewId);
+          }
+        } catch (eReveal) { /* scrape proceeds with live visibility */ }
+        try {
+          data = scrapeGridView(viewId, cfg.gridKeys);
+        } finally {
+          if (restoreCollapsed) restoreCollapsed();
+        }
         if (data && cfg.recurringGrids && cfg.recurringGrids.indexOf(viewId) !== -1) {
           data.isRecurring = true;
         }
