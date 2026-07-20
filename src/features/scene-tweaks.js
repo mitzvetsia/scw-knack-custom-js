@@ -793,6 +793,35 @@
     for (var ev = 0; ev < ALL_VIEWS.length; ev++) {
       SCW.onViewRender(ALL_VIEWS[ev], debouncedTotals, NS);
     }
+
+    // ── Refetch the equipment grids after a discount form submits ──
+    // The Global Discount % (view_3492) and Lump Sum (view_3490) forms
+    // write the SOW record; Knack then recomputes every line item's
+    // discounted values (field_2303 / field_2269) SERVER-side. The
+    // already-loaded grid models keep their pre-discount numbers, so the
+    // Totals panel — which sums those models — kept showing ZERO
+    // discount until a manual page reload ("my discount isn't
+    // applying"). Refetch the grids once the write has had time to land;
+    // their re-render re-runs debouncedTotals with fresh values. Two
+    // passes cover slow equation recomputes; both are cheap no-op
+    // re-renders if the first already caught the final numbers.
+    function refetchEquipmentGrids() {
+      [1200, 3500].forEach(function (delay) {
+        setTimeout(function () {
+          for (var i = 0; i < ALL_VIEWS.length; i++) {
+            try {
+              var v = (typeof Knack !== 'undefined' && Knack.views) ?
+                Knack.views[ALL_VIEWS[i]] : null;
+              if (v && v.model && typeof v.model.fetch === 'function') {
+                v.model.fetch();
+              }
+            } catch (e) { /* view not on scene */ }
+          }
+        }, delay);
+      });
+    }
+    $(document).on('knack-form-submit.view_3492' + NS, refetchEquipmentGrids);
+    $(document).on('knack-form-submit.view_3490' + NS, refetchEquipmentGrids);
   } else {
     $(document).ready(function () {
       setTimeout(function () { restructureTotals(); revealScene(); }, 1000);
