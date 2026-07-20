@@ -221,6 +221,41 @@
         // one is skipped harmlessly.
         refreshViews:         ['view_4093', 'view_4056'],
         reloadOnClose:        false
+      },
+      {
+        // SOW DOCUMENT uploads — replaces the Knack-native add-document
+        // child page on the bid-review comparison grid (its modal form
+        // 400s on submit; see modal-form-connection-sync.js). Synthetic
+        // lookup entry like view_4093_deploy: no menu view renders by
+        // this key, so the INIT bind is inert. Opened programmatically
+        // by the docs panel's "Upload new" button
+        // (bid-review/render.js buildSowDocsBlock).
+        //
+        // ROUTING: Make branches on `uploadKind: 'doc_file'` in the
+        // payload (every file in a doc batch also carries `docType`) —
+        // create a DOC_files record: field_68 = file, field_67 =
+        // docType, field_2143 = recordId (the SOW header id shipped
+        // under linkField 'sowID').
+        menuViewId:           'sow_docs_upload',
+        linkText:             'Upload Documents',
+        linkField:            'sowID',
+        docUpload:            true,
+        docTypeOptions: [
+          'Signed Installation Agreement',
+          'Site Plan',
+          'Signed Certificate of Completion',
+          'Quote',
+          'Purchase Order Terms',
+          'Other',
+          'Scope of Work',
+          'Change Order',
+          'Site Visit Form'
+        ],
+        // view_3926 is the project-docs source grid the bid-review docs
+        // panel scrapes — re-fetching it re-runs the pipeline so the new
+        // doc appears without a manual refresh.
+        refreshViews:         ['view_3926'],
+        reloadOnClose:        false
       }
     ]
   };
@@ -697,6 +732,18 @@
       '}',
       M + ' .scw-bu-context-note { margin-top:4px; font-size:12px; line-height:1.45; }',
       M + ' .scw-bu-context-note strong { color:#78350f; }',
+      // Doc mode — batch-wide "type of document" picker.
+      M + ' .scw-bu-doctype { margin-top:10px; }',
+      M + ' .scw-bu-doctype-label {',
+      '  display:block; margin-bottom:4px;',
+      '  font-size:12.5px; font-weight:600; color:#334155;',
+      '}',
+      M + ' .scw-bu-doctype-req { color:#b91c1c; }',
+      M + ' .scw-bu-doctype-select {',
+      '  width:100%; padding:7px 10px;',
+      '  border:1px solid #cbd5e1; border-radius:8px;',
+      '  background:#fff; font-size:13px; color:#0f172a;',
+      '}',
       M + ' .scw-bu-list { margin-top:10px; }',
       M + ' .scw-bu-row {',
       '  display:flex; align-items:center; gap:10px;',
@@ -760,13 +807,23 @@
       mdfIdfID:          'MDF/IDF location'
     };
     var isLineItem  = !!(viewCfg && viewCfg.lineItemUpload);
+    var isDoc       = !!(viewCfg && viewCfg.docUpload);
     var kindLabel   = (viewCfg && LINE_ITEM_KINDS[viewCfg.linkField]) || 'line item';
     var targetLabel = (viewCfg && viewCfg.targetLabel) || '';
 
-    var titleText = isLineItem ? 'Add Photos to This ' +
-      kindLabel.replace(/\b\w/, function (c) { return c.toUpperCase(); }) : 'Bulk Upload Files';
+    var titleText = isDoc ? 'Upload Documents'
+      : isLineItem ? 'Add Photos to This ' +
+        kindLabel.replace(/\b\w/, function (c) { return c.toUpperCase(); }) : 'Bulk Upload Files';
 
-    var contextHtml = isLineItem
+    var contextHtml = isDoc
+      ? '<div class="scw-bu-context">' +
+          '<div class="scw-bu-context-title">Uploading documents to this SOW</div>' +
+          (targetLabel
+            ? '<div class="scw-bu-context-target">' + escapeHtml(targetLabel) + '</div>' : '') +
+          '<div class="scw-bu-context-note">Each file becomes a document connected to ' +
+            '<strong>this SOW</strong>. The type below applies to every file in the batch.</div>' +
+        '</div>'
+      : isLineItem
       ? '<div class="scw-bu-context">' +
           '<div class="scw-bu-context-title">Uploading to this ' + escapeHtml(kindLabel) + '</div>' +
           (targetLabel
@@ -776,7 +833,27 @@
         '</div>'
       : '';
 
-    var infoHtml = isLineItem
+    // Doc mode: required "type of document" picker (choices mirror the
+    // DOC_files field_67 multiple-choice options — override per VIEWS
+    // entry via docTypeOptions). Applies to the whole batch.
+    var docTypeHtml = '';
+    if (isDoc) {
+      var opts = (viewCfg.docTypeOptions || []).map(function (o) {
+        return '<option value="' + escapeHtml(o) + '">' + escapeHtml(o) + '</option>';
+      }).join('');
+      docTypeHtml =
+        '<div class="scw-bu-doctype">' +
+          '<label class="scw-bu-doctype-label">Type of document ' +
+            '<span class="scw-bu-doctype-req">*</span></label>' +
+          '<select class="scw-bu-doctype-select">' +
+            '<option value="">Select…</option>' + opts +
+          '</select>' +
+        '</div>';
+    }
+
+    var infoHtml = isDoc
+      ? ''
+      : isLineItem
       ? '<div class="scw-bu-info"><p>Photos you add here connect directly to this ' +
           escapeHtml(kindLabel) + '.</p></div>'
       : '<div class="scw-bu-info">' +
@@ -796,6 +873,7 @@
         '<div id="' + MODAL_ID + '-body">' +
           '<div class="scw-bu-banner-slot"></div>' +
           contextHtml +
+          docTypeHtml +
           '<div class="scw-bu-drop" tabindex="0">' +
             '<div><strong>Drop files here</strong> or click to choose</div>' +
             '<span class="scw-bu-drop-hint">Any type · max ' +
@@ -1266,6 +1344,21 @@
       alert('Bulk upload webhook is not configured (SCW.CONFIG.MAKE_BULK_UPLOAD_WEBHOOK).');
       return;
     }
+    // Doc mode: the batch-wide "type of document" is required — block the
+    // upload (not the queueing) until one is picked, then stamp it onto
+    // every row so uploadOne ships it per file.
+    if (_state.viewCfg && _state.viewCfg.docUpload) {
+      var typeSel = document.querySelector('#' + MODAL_ID + ' .scw-bu-doctype-select');
+      var docType = typeSel ? typeSel.value : '';
+      if (!docType) {
+        alert('Pick a type of document first — it applies to every file in this batch.');
+        if (typeSel) typeSel.focus();
+        return;
+      }
+      _state.rows.forEach(function (r) {
+        if (r.status !== 'done') { r.docType = docType; r.uploadKind = 'doc_file'; }
+      });
+    }
     // Re-queue any rows the user wants retried
     _state.rows.forEach(function (r) {
       if (r.status === 'failed') { r.status = 'queued'; r.error = null; }
@@ -1341,6 +1434,12 @@
         batchId:     row.batchId,
         triggeredBy: getCurrentUser()
       };
+      // Doc batches (docUpload VIEWS entries) tag every file so Make can
+      // branch: uploadKind 'doc_file' → create a DOC_files record
+      // (field_68 file, field_67 docType, field_2143 ← recordId/sowID)
+      // instead of the photo pipeline.
+      if (row.uploadKind) payload.uploadKind = row.uploadKind;
+      if (row.docType)    payload.docType    = row.docType;
       var bodyStr = JSON.stringify(payload);
       // Client-side hard stop: Make silently drops connections on bodies
       // over ~5 MB. Fail BEFORE sending (this never touches the network) so

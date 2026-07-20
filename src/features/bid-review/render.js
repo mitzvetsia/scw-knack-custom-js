@@ -2115,12 +2115,37 @@
     // as centered relative to the left/right-aligned metric rows).
     var header = el('div', 'scw-bid-review__docs-header');
     header.appendChild(el('span', 'scw-bid-review__docs-label', 'Documents'));
-    if (addUrl) {
-      var addBtn = document.createElement('a');
-      addBtn.href = addUrl;
+    if (sowId) {
+      // Upload goes through the bulk-upload modal in doc mode (the
+      // 'sow_docs_upload' VIEWS entry: doc-type picker + payload tagged
+      // uploadKind 'doc_file' / linkField 'sowID') — NOT Knack's native
+      // add-document child page, whose modal form 400s on submit. The
+      // child-page addUrl is kept only as a fallback when bulk-upload
+      // isn't loaded.
+      var addBtn = document.createElement('button');
+      addBtn.type = 'button';
       addBtn.className = 'scw-bid-review__docs-add';
       addBtn.innerHTML = '<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>';
       addBtn.appendChild(document.createTextNode(' Upload new'));
+      addBtn.addEventListener('click', function (e) {
+        e.preventDefault();
+        e.stopPropagation();
+        var bu = window.SCW && window.SCW.bulkUpload;
+        var docsCfg = null;
+        if (bu && bu.config && Array.isArray(bu.config.VIEWS)) {
+          for (var di = 0; di < bu.config.VIEWS.length; di++) {
+            if (bu.config.VIEWS[di] && bu.config.VIEWS[di].docUpload) {
+              docsCfg = bu.config.VIEWS[di];
+              break;
+            }
+          }
+        }
+        if (bu && typeof bu.open === 'function' && docsCfg) {
+          bu.open(docsCfg, sowId);
+        } else if (addUrl) {
+          window.location.hash = addUrl;
+        }
+      });
       header.appendChild(addBtn);
     }
     wrap.appendChild(header);

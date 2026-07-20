@@ -582,6 +582,7 @@
       '  gap: 4px;',
       '  padding: 2px 10px;',
       '  background: #fff;',
+      '  cursor: pointer;',   /* now a <button>, not an <a> */
       '  border: 1px solid #0891b2;',
       '  border-radius: 999px;',
       '  color: #0891b2 !important;',
