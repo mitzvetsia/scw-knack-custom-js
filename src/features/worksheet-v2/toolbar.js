@@ -132,8 +132,8 @@
       '</div>' +
       '<div class="scw-ws-v2-toolbar-group">' +
         '<button type="button" class="scw-ws-v2-toolbar-btn"' +
-          ' data-scw-ws-v2-photos-toggle aria-pressed="true"' +
-          ' title="Show or hide attached photos on expanded rows">' +
+          ' data-scw-ws-v2-photos-toggle aria-pressed="false"' +
+          ' title="Show or hide attached photo strips">' +
           '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" ' +
             'stroke="currentColor" stroke-width="1.7" stroke-linecap="round" ' +
             'stroke-linejoin="round">' +
@@ -141,7 +141,7 @@
             '<circle cx="9" cy="9" r="1.8"></circle>' +
             '<path d="M21 16l-5-5-9 9"></path>' +
           '</svg>' +
-          '<span class="scw-ws-v2-photos-btn-label">Hide photos</span>' +
+          '<span class="scw-ws-v2-photos-btn-label">Show photos</span>' +
         '</button>' +
       '</div>' +
       '<div class="scw-ws-v2-toolbar-spacer"></div>' +
@@ -925,10 +925,22 @@
     applyState(container, viewKey);
   }
 
+  /** Programmatically turn the photo strips ON for a view (no-op if
+   *  already on). Used by the per-row "missing photos" warn-chit —
+   *  clicking it must actually reveal the missing-photo placeholders
+   *  now that the toolbar toggle is the master photo switch. */
+  function showPhotos(viewKey) {
+    if (loadPhotosShown(viewKey)) return;
+    savePhotosShown(viewKey, true);
+    var container = document.getElementById('scw-ws-v2-' + viewKey);
+    if (container) applyState(container, viewKey);
+  }
+
   ns.toolbar = {
     mount:           mount,
     loadMode:        loadMode,
     loadPhotosShown: loadPhotosShown,
+    showPhotos:      showPhotos,
     // Shared floating-toolbar helper — bid-review-v2's toolbar reuses it.
     attachFloatingBar: attachFloatingBar,
     // Exposed so the floating bulk panel (bulk.js) can open the

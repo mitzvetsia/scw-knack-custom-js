@@ -449,6 +449,19 @@
       e.preventDefault();
       e.stopPropagation();
       card.classList.toggle('scw-ws-v2-card--open');
+      // The per-row "missing photos" chit must actually surface the
+      // missing-photo placeholders: force the card open (never toggle
+      // closed) and flip the view's photo strips on — the toolbar
+      // "Show photos" toggle is the master photo switch.
+      if (btn.classList.contains('scw-ws-v2-warn-chit') &&
+          btn.getAttribute('data-issue-type') === 'photos') {
+        card.classList.add('scw-ws-v2-card--open');
+        var _cont = card.closest('.scw-ws-v2');
+        var _vk = _cont && _cont.id ? _cont.id.replace('scw-ws-v2-', '') : '';
+        if (_vk && ns.toolbar && typeof ns.toolbar.showPhotos === 'function') {
+          ns.toolbar.showPhotos(_vk);
+        }
+      }
     });
   }
 

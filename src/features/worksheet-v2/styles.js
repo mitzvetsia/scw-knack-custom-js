@@ -2298,9 +2298,12 @@
     '}',
 
     /* ── PHOTOS ────────────────────────────────────────────────
-       Hidden by default; revealed only when the card is expanded
-       (matches the detail panel\'s show-on-open behavior). Sizing
-       mirrors v1\'s inline-photo-row.js — ~200px-tall thumbnails. */
+       Hidden by default; the toolbar "Show photos" toggle is the ONLY
+       thing that reveals strips (see the .scw-ws-v2-photos-shown rules
+       in MODE OVERRIDES). Card expand state does NOT reveal photos on
+       its own — an unconditional card--open reveal made the toggle a
+       no-op on views that load with every card expanded (deploy grid).
+       Sizing mirrors v1\'s inline-photo-row.js — ~200px-tall thumbnails. */
     '.scw-ws-v2-photos {',
     '  display: none !important;',
     '  padding: 2px 14px 14px 44px !important;',
@@ -2310,7 +2313,6 @@
        sub-boxes. padding-left matches .scw-ws-v2-detail (44px) so content aligns
        to the same gutter as the header/detail above it. */
     '}',
-    '.scw-ws-v2-card--open .scw-ws-v2-photos { display: block !important; }',
     '.scw-ws-v2-photos-strip {',
     '  display: flex !important;',
     '  flex-wrap: wrap !important;',
@@ -2923,12 +2925,11 @@
     '.scw-ws-v2-mode-summary .scw-ws-v2-l2-head {',
     '  display: none !important;',
     '}',
-    /* Photos toggle (v1-parity): default is hidden when card collapsed,
-       shown when expanded. "Show photos" reveals the strip on every
-       card regardless of expand state. Selector specificity (3 classes)
-       beats the default `.scw-ws-v2-photos` (1) rule + ties the
-       `.scw-ws-v2-card--open` (2) reveal — declaration order then wins
-       since this rule is declared AFTER the defaults above. */
+    /* Photos toggle: the MASTER switch for photo strips. Off (default)
+       = no strips anywhere, even on expanded cards. On = strips on
+       every card regardless of expand state (v1 "Show photos" parity).
+       Selector specificity (3 classes) beats the default
+       `.scw-ws-v2-photos` (1) hide rule. */
     '.scw-ws-v2-photos-shown .scw-ws-v2-card .scw-ws-v2-photos {',
     '  display: block !important;',
     '}',
