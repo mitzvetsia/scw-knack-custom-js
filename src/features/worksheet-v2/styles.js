@@ -1999,6 +1999,17 @@
     '  border-bottom: 1px solid #cbd5e1 !important;',
     '}',
 
+    /* While a Knack modal is open (child-page modal or confirm dialog),
+       hide the floating bar — it sits ABOVE Knack\'s modal layer and
+       would paint over the dialog (e.g. the add-document page on the
+       bid-review scene). Knack removes modal nodes from the DOM on
+       close, so :has() re-shows the bar automatically. */
+    'body:has([id^="kn-modal-bg"]) .scw-ws-v2-toolbar--floating,',
+    'body:has([id^="kn-page-modal"]) .scw-ws-v2-toolbar--floating,',
+    'body:has(.kn-modal-bg) .scw-ws-v2-toolbar--floating {',
+    '  visibility: hidden !important;',
+    '}',
+
     /* Floating toolbar — bottom-center, slides in when ≥1 selected */
     '.scw-ws-v2-bulk-toolbar {',
     '  position: fixed !important;',
