@@ -45,6 +45,7 @@ cat \
   src/features/ratking/discount-copy-tweaks.js \
   src/features/ratking/hash-bump-record-update.js \
   src/features/ratking/scene-776-stub.js \
+  src/features/modal-form-connection-sync.js \
   src/features/proposal-grid.js \
   src/features/co-band-mockup.js \
   src/features/view-3341-loading-overlay.js \
