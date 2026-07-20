@@ -2144,6 +2144,14 @@
         // read is unverifiable (field not projected on this view).
         if (!parentSet && !sowSetKnown(parentAttrs)) continue;
         var accSet = serializeSow(attrs);
+        // The ACCESSORY's empty read must be verifiable too. If the
+        // accessory view doesn't project SOW_FIELD, EVERY accessory reads
+        // [] here, false-mismatches its parent, and fires a no-op repair
+        // PUT on every page load (confirmed live on view_3888: accessories
+        // with field_2154 populated in the DB warned "SOWs []" each render
+        // because the grid lacks the column). Unverifiable empty → skip;
+        // genuinely-empty reads (field projected, raw = []) still repair.
+        if (!accSet && !sowSetKnown(attrs)) continue;
         if (accSet === parentSet) { delete sowSweepWritten[attrs.id]; continue; }
         if (sowSweepWritten[attrs.id] === parentSet) continue;  // repair already sent
         sowSweepWritten[attrs.id] = parentSet;
