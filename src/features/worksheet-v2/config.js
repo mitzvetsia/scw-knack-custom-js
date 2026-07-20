@@ -159,6 +159,10 @@
         mdfSourceViewKey: '',               // TODO: empty-L1 seed source (analogue of view_3577)
         mdfLabelField:    '',               // TODO
         hideMoneyColumns: true,             // no subBid/fee/hrs/mat/installFee on this object
+        // Accessories (field_2853 child→parent) with a loaded parent always
+        // attach under it (hidden row + read-only chip on the parent card) —
+        // no Require-Sub-Bid promote rule on the install side.
+        accessoriesAlwaysAttach: true,
         fields: {
           // identity / grouping
           product:        'field_2846',     // CORE_product (connection — for picker/edit)

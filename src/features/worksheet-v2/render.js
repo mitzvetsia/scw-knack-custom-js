@@ -620,7 +620,16 @@
       // Per-view field map so L1 (MDF/IDF) / L2 (bucket) / sort resolve for
       // non-SOW objects (survey view_3505 groups by field_2375 / field_2366).
       fields: (ns.cfg && typeof ns.cfg.fields === 'function')
-        ? ns.cfg.fields(sourceViewKey) : null
+        ? ns.cfg.fields(sourceViewKey) : null,
+      // Install worksheet: accessories with a loaded parent ALWAYS
+      // attach/hide (no Require-Sub-Bid promote rule — no money there).
+      accessoriesAlwaysAttach: (function () {
+        try {
+          var _vcA = ns.cfg && typeof ns.cfg.viewCfg === 'function' &&
+                     ns.cfg.viewCfg(sourceViewKey);
+          return !!(_vcA && _vcA.accessoriesAlwaysAttach);
+        } catch (e) { return false; }
+      })()
     });
     if (_PF) _pfG = SCW._now() - _ag;
     if (ns.state && typeof ns.state.applyOpenState === 'function') {

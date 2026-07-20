@@ -2011,6 +2011,50 @@
     '</div>';
   }
 
+  /** Read-only Mounting Hardware chips for the install worksheet. Same
+   *  authoritative child-side read as detailMountingHardware — each
+   *  accessory's OWN back-pointer names its parent — but resolved through
+   *  the per-view field map (install: field_2853) and stripped of every
+   *  drafting affordance (no stepper, no unlink/delete, no + Add): install
+   *  accessories are signed scope, not drafting. Returns '' when the view
+   *  maps no parent field or nothing points at this record, so the SOW
+   *  paths and accessory-less installs are untouched. */
+  function detailMountingHardwareRO(rec, viewKey) {
+    var F = fieldsFor(viewKey);
+    var parentKey = F.parent;
+    if (!parentKey || !rec || !rec.id) return '';
+    var kids;
+    try { kids = backIndex(viewKey, parentKey)[rec.id] || []; }
+    catch (e) { return ''; }
+    if (!kids.length) return '';
+    var HEX_24 = /^[a-f0-9]{24}(\s|\b|$)/i;
+    var chipsHtml = '';
+    for (var i = 0; i < kids.length; i++) {
+      var aA = kids[i] && (kids[i].attributes || kids[i]);
+      if (!aA || !aA.id) continue;
+      var lbl = '';
+      var cand = [F.productName, F.displayLabel];
+      for (var c = 0; c < cand.length && !lbl; c++) {
+        if (!cand[c]) continue;
+        lbl = (aA[cand[c]] || '').toString().replace(/<[^>]*>/g, '').trim();
+        if (HEX_24.test(lbl)) lbl = '';
+      }
+      if (!lbl) lbl = '(accessory)';
+      var q = parseFloat(readNum(aA, F.qty || 'field_1964'));
+      var qtySuffix = (isFinite(q) && q > 1) ? ' ×' + q : '';
+      chipsHtml += '<span class="scw-ws-v2-mh-chip-wrap">' +
+        '<span class="scw-ws-v2-mh-chip scw-ws-v2-mh-chip--inert" ' +
+          'title="' + escapeHtml(lbl) + '">' +
+          escapeHtml(lbl + qtySuffix) +
+        '</span></span>';
+    }
+    if (!chipsHtml) return '';
+    return '<div class="scw-ws-v2-detail-field scw-ws-v2-detail-field--ro">' +
+      '<div class="scw-ws-v2-detail-label">Mounting Hardware</div>' +
+      '<div class="scw-ws-v2-mh-chips">' + chipsHtml + '</div>' +
+    '</div>';
+  }
+
   function buildDetail_install(rec, viewKey, cat) {
     var F = fieldsFor(viewKey);
 
@@ -2029,6 +2073,8 @@
         'scw-ws-v2-sd--num');
       items += sdItem(detailReadOnly(rec, F.conduit || 'field_2803', 'Conduit'),
         'scw-ws-v2-sd--num');
+      var mhCam = detailMountingHardwareRO(rec, viewKey);
+      if (mhCam) items += sdItem(mhCam, 'scw-ws-v2-sd--wide');
       items += sdItem(detailReadOnly(rec, F.laborDesc || 'field_2809', 'Labor description'),
         'scw-ws-v2-sd--wide');
     } else if (cat === 'default') {
@@ -2037,6 +2083,8 @@
       if (readBool(rec, F.mapConn || 'field_2795') === 'Yes') {
         items += sdItem(detailConnectedDevices(rec, viewKey, F.connectedDevices || 'field_2820', 'Connected Devices'), 'scw-ws-v2-sd--conn');
       }
+      var mhDef = detailMountingHardwareRO(rec, viewKey);
+      if (mhDef) items += sdItem(mhDef, 'scw-ws-v2-sd--wide');
       items += sdItem(detailReadOnly(rec, F.laborDesc || 'field_2809', 'Labor description'),
         'scw-ws-v2-sd--wide');
     }
