@@ -1163,6 +1163,28 @@
     '  border-color: #fca5a5 !important;',
     '}',
 
+    /* ── REMOVED-BY-CO (install worksheet) ────────────────────
+       field_2967 populated = the item was removed from install scope by a
+       signed change order. Red is the removed/destructive STATE color
+       (warnings stay amber per the repo convention). The record is never
+       deleted — it must stay visible but read as dead scope. */
+    '.scw-ws-v2-chip--removed {',
+    '  background: #dc2626 !important;',
+    '  color: #fff !important;',
+    '  border-color: #b91c1c !important;',
+    '  cursor: default !important;',
+    '}',
+    '.scw-ws-v2-card--removed { border-left: 3px solid #dc2626 !important; }',
+    '.scw-ws-v2-card--removed .scw-ws-v2-row { background: #fef2f2 !important; }',
+    /* Strike the identity (label / product / assumption text) — content stays
+       fully readable, just visibly cancelled. */
+    '.scw-ws-v2-card--removed .scw-ws-v2-cell--label,',
+    '.scw-ws-v2-card--removed .scw-ws-v2-product-name,',
+    '.scw-ws-v2-card--removed .scw-ws-v2-cell--install-descro {',
+    '  text-decoration: line-through !important;',
+    '  color: #991b1b !important;',
+    '}',
+
     /* ── Detail panel (expand body under each card) ──────────── */
     '.scw-ws-v2-detail {',
     '  display: none !important;',

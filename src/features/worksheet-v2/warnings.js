@@ -328,9 +328,21 @@
     lastAccMismatch = bracket.byAccessory;
     var bracketParents = bracket.byParent;
 
+    // Removed-by-CO records (install views map removedByCo → field_2967) are
+    // dead scope — nagging about missing photos / disconnections on an item
+    // that will never be installed is noise. Views without the mapping
+    // (SOW/survey) resolve no key and skip nothing.
+    var removedKey = F().removedByCo || null;
+    function isRemovedByCo(rec) {
+      if (!removedKey) return false;
+      var raw = rec[removedKey + '_raw'];
+      return Array.isArray(raw) && raw.length > 0;
+    }
+
     for (var i = 0; i < records.length; i++) {
       var rec = records[i];
       if (!rec || !rec.id) continue;
+      if (isRemovedByCo(rec)) continue;
       var issues = [];
       if (hasPhotoWarning(rec, viewKey))           issues.push('photos');
       if (isDisconnected(rec))                     issues.push('disconnected');

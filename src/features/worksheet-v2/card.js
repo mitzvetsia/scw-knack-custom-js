@@ -1951,10 +1951,41 @@
       'title="' + escapeHtml(label) + '">' + escapeHtml(label) + '</span>';
   }
 
+  // "Removed by CO" — the install record's removedByCo connection
+  // (field_2967) is populated by Make at CO signature (docs/change-orders.md:
+  // removes flip this connection, never delete). Populated = this item is no
+  // longer in install scope. Returns the CO identifier string, or null when
+  // the item is still active.
+  function installRemovedBy(rec, viewKey) {
+    var key = 'field_2967';
+    try {
+      var F = ns.cfg.fields(viewKey);
+      if (F && F.removedByCo) key = F.removedByCo;
+    } catch (e) {}
+    var raw = rec[key + '_raw'];
+    if (Array.isArray(raw) && raw.length && raw[0]) {
+      return String(raw[0].identifier || '') || 'change order';
+    }
+    return null;
+  }
+
+  // Red "Removed by CO" chip for the Flags cell. Red is correct here per the
+  // repo color convention — this is a destructive/removed STATE, not a
+  // warning (warnings stay amber).
+  function installRemovedChip(rec, viewKey) {
+    var by = installRemovedBy(rec, viewKey);
+    if (by === null) return '';
+    return '<span class="scw-ws-v2-chip scw-ws-v2-chip--ro scw-ws-v2-chip--removed" ' +
+      'title="' + escapeHtml('Removed from install scope by signed change order (' + by + ')') +
+      '">Removed by CO</span>';
+  }
+
   // Flag-chits cell — always emitted (holds its grid track); empty when no
-  // flag is true. Cam rows carry cabling/exterior/plenum.
-  function installFlags(rec, viewKey, F) {
+  // flag is true. Cam rows carry cabling/exterior/plenum. The Removed-by-CO
+  // chip (when present) leads the cell on every category.
+  function installFlags(rec, viewKey, F, extraChips) {
     return '<div class="scw-ws-v2-cell scw-ws-v2-cell--install-flags">' +
+      (extraChips || '') +
       installFlagChit(rec, F.existCabling || 'field_2807', 'Existing') +
       installFlagChit(rec, F.exterior     || 'field_2805', 'Exterior') +
       installFlagChit(rec, F.plenum       || 'field_2806', 'Plenum') +
@@ -1991,9 +2022,18 @@
       productSlot = installProductCell(rec, F);
 
     // Read-only flag chits (Existing/Exterior/Plenum) — cam rows only, shown
-    // only when true. Non-cam keeps an empty track for grid alignment.
-    var flagsSlot = isCam ? installFlags(rec, viewKey, F)
-                          : empty('scw-ws-v2-cell--install-flags');
+    // only when true. Non-cam keeps an empty track for grid alignment, EXCEPT
+    // when the item is removed by a CO — that chip shows on every category.
+    var removedChip = installRemovedChip(rec, viewKey);
+    var flagsSlot;
+    if (isCam) {
+      flagsSlot = installFlags(rec, viewKey, F, removedChip);
+    } else if (removedChip) {
+      flagsSlot = '<div class="scw-ws-v2-cell scw-ws-v2-cell--install-flags">' +
+        removedChip + '</div>';
+    } else {
+      flagsSlot = empty('scw-ws-v2-cell--install-flags');
+    }
 
     // SCW Notes — the ONE editable field in the install header (v1 field_2808
     // directEdit). Everything else on the card is read-only.
@@ -2107,7 +2147,15 @@
     card.classList.add('scw-ws-v2-card--' + cat);
     if (isSalesMoney(sourceViewKey))   card.classList.add('scw-ws-v2-card--sales');
     if (isSurveyMoney(sourceViewKey))  card.classList.add('scw-ws-v2-card--survey');
-    if (isInstallMoney(sourceViewKey)) card.classList.add('scw-ws-v2-card--install');
+    if (isInstallMoney(sourceViewKey)) {
+      card.classList.add('scw-ws-v2-card--install');
+      // Removed-by-CO ghost treatment — the item stays visible (never delete,
+      // per the CO design) but reads as dead scope: struck-through identity,
+      // rose accent. The chip itself renders in the Flags cell.
+      if (installRemovedBy(rec, sourceViewKey) !== null) {
+        card.classList.add('scw-ws-v2-card--removed');
+      }
+    }
     // laborOnly (sub CO page): the build-SOW card shape with a single money
     // column — the labor grid drops the +Hrs/+Mat/Fee tracks. The install
     // removal panel (view_4116) is laborOnly too but already has its own

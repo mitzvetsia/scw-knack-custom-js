@@ -193,6 +193,10 @@
           accessories:      'field_2852',   // accessories array on the parent
           children:         'field_2852',   // same forward array (no separate mirror here)
           parent:           'field_2853',   // accessory → parent line item
+          // CO removal marker — populated (at signature, by Make) = this item
+          // is removed from install scope. card.js renders the red "Removed by
+          // CO" chip + card ghost; warnings.js skips removed rows.
+          removedByCo:      'field_2967',   // CO_REL_removed by co (→ CO header)
           // photos (shared DOC_photos object — identical keys to SOW)
           photoImage:     'field_771',
           photoType:      'field_2445',
