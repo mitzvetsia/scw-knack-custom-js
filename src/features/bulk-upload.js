@@ -488,20 +488,33 @@
   }
 
   function loadLibheifLib() {
-    if (window.libheif && window.libheif.HeifDecoder) return Promise.resolve(window.libheif);
     if (_libheifPromise) return _libheifPromise;
-    _libheifPromise = new Promise(function (resolve, reject) {
-      var s = document.createElement('script');
-      s.src = LIBHEIF_URL;
-      s.onload = function () {
-        if (window.libheif && window.libheif.HeifDecoder) resolve(window.libheif);
-        else reject(new Error('libheif loaded but global missing'));
-      };
-      s.onerror = function () {
-        _libheifPromise = null;   // network hiccup — allow retry on next pick
-        reject(new Error('failed to load libheif decoder'));
-      };
-      document.head.appendChild(s);
+    var scriptLoaded = window.libheif
+      ? Promise.resolve(window.libheif)
+      : new Promise(function (resolve, reject) {
+          var s = document.createElement('script');
+          s.src = LIBHEIF_URL;
+          s.onload = function () {
+            if (window.libheif) resolve(window.libheif);
+            else reject(new Error('libheif loaded but global missing'));
+          };
+          s.onerror = function () {
+            reject(new Error('failed to load libheif decoder'));
+          };
+          document.head.appendChild(s);
+        });
+    // libheif-js 1.19.x exposes a FACTORY function — calling it yields the
+    // module object carrying HeifDecoder (synchronously in current builds;
+    // Promise.resolve guards a future thenable). The resolved module is
+    // cached via _libheifPromise so the factory runs once.
+    _libheifPromise = scriptLoaded.then(function (g) {
+      return Promise.resolve(typeof g === 'function' ? g() : g);
+    }).then(function (mod) {
+      if (mod && mod.HeifDecoder) return mod;
+      throw new Error('libheif global has no HeifDecoder');
+    });
+    _libheifPromise.catch(function () {
+      _libheifPromise = null;   // network hiccup — allow retry on next pick
     });
     return _libheifPromise;
   }
