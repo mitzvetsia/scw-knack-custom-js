@@ -445,12 +445,19 @@
   // ── HEIC → JPEG CONVERSION ────────────────────────────────────────────
   // Chrome/Edge/Firefox can't decode HEIC, so iPhone photos either bounced
   // (oversized) or uploaded as .heic files nothing downstream could render.
-  // Lazy-load a WASM decoder (heic2any) from jsDelivr ONLY when a HEIC is
-  // actually picked — zero cost on ordinary JPEG batches — and convert
-  // every HEIC to JPEG on pick. Safari's native HEIC decode is the
-  // fallback if the CDN script can't load.
+  // Lazy-load a WASM decoder from jsDelivr ONLY when a HEIC is actually
+  // picked — zero cost on ordinary JPEG batches — and convert every HEIC
+  // to JPEG on pick. Decode chain (each step only runs if the previous
+  // failed):
+  //   1. heic2any (small, fast, but bundles an OLD libheif — chokes on
+  //      newer iPhone HEICs, e.g. iOS 17/18 HDR captures)
+  //   2. libheif-js (current libheif build — bigger download, handles the
+  //      formats heic2any can't)
+  //   3. native canvas decode (Safari can read HEIC without any lib)
   var HEIC2ANY_URL = 'https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js';
+  var LIBHEIF_URL  = 'https://cdn.jsdelivr.net/npm/libheif-js@1.19.8/libheif-wasm/libheif-bundle.js';
   var _heicLibPromise = null;
+  var _libheifPromise = null;
 
   function isHeicFile(f) {
     var t = (f && f.type || '').toLowerCase();
@@ -480,9 +487,63 @@
     return _heicLibPromise;
   }
 
-  /** HEIC/HEIF file → JPEG Blob. WASM decoder first (works in every
-   *  browser); native decode via the canvas ladder as fallback (Safari
-   *  can read HEIC without the lib). Resolves null when neither works. */
+  function loadLibheifLib() {
+    if (window.libheif && window.libheif.HeifDecoder) return Promise.resolve(window.libheif);
+    if (_libheifPromise) return _libheifPromise;
+    _libheifPromise = new Promise(function (resolve, reject) {
+      var s = document.createElement('script');
+      s.src = LIBHEIF_URL;
+      s.onload = function () {
+        if (window.libheif && window.libheif.HeifDecoder) resolve(window.libheif);
+        else reject(new Error('libheif loaded but global missing'));
+      };
+      s.onerror = function () {
+        _libheifPromise = null;   // network hiccup — allow retry on next pick
+        reject(new Error('failed to load libheif decoder'));
+      };
+      document.head.appendChild(s);
+    });
+    return _libheifPromise;
+  }
+
+  /** Decode a HEIC via libheif-js into a JPEG Blob (rejects on failure). */
+  function convertHeicViaLibheif(f) {
+    return loadLibheifLib().then(function (libheif) {
+      return new Promise(function (resolve, reject) {
+        var r = new FileReader();
+        r.onerror = function () { reject(new Error('read failed')); };
+        r.onload = function () {
+          try {
+            var decoder = new libheif.HeifDecoder();
+            var images  = decoder.decode(new Uint8Array(r.result));
+            if (!images || !images.length) return reject(new Error('libheif: no images'));
+            var image = images[0];   // primary frame (bursts/live photos)
+            var w = image.get_width(), h = image.get_height();
+            if (!w || !h) return reject(new Error('libheif: no dimensions'));
+            var c = document.createElement('canvas');
+            c.width = w; c.height = h;
+            var ctx = c.getContext('2d');
+            var imgData = ctx.createImageData(w, h);
+            image.display(imgData, function (displayData) {
+              try {
+                if (!displayData) return reject(new Error('libheif: display failed'));
+                ctx.putImageData(displayData, 0, 0);
+                c.toBlob(function (b) {
+                  if (b) resolve(b);
+                  else reject(new Error('canvas.toBlob returned null'));
+                }, 'image/jpeg', 0.88);
+              } catch (e2) { reject(e2); }
+            });
+          } catch (e) { reject(e); }
+        };
+        r.readAsArrayBuffer(f);
+      });
+    });
+  }
+
+  /** HEIC/HEIF file → JPEG Blob. WASM decoders first (work in every
+   *  browser); native decode via the canvas ladder as the last fallback
+   *  (Safari can read HEIC without a lib). Resolves null when none work. */
   function convertHeic(f) {
     return loadHeicLib().then(function (heic2any) {
       return heic2any({ blob: f, toType: 'image/jpeg', quality: 0.88 });
@@ -492,8 +553,11 @@
       var blob = Array.isArray(out) ? out[0] : out;
       return blob || null;
     }).catch(function (err) {
-      console.warn('[bulk-upload] heic2any unavailable/failed — trying native decode', err);
-      return downscaleImage(f, CONFIG.MAX_FILE_BYTES);
+      console.warn('[bulk-upload] heic2any unavailable/failed — trying libheif-js', err);
+      return convertHeicViaLibheif(f).catch(function (err2) {
+        console.warn('[bulk-upload] libheif-js unavailable/failed — trying native decode', err2);
+        return downscaleImage(f, CONFIG.MAX_FILE_BYTES);
+      });
     });
   }
 
