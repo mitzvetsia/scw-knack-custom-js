@@ -45,27 +45,48 @@
     try { localStorage.setItem(modeKey(viewKey), mode); }
     catch (e) {}
   }
-  function loadPhotosShown(viewKey) {
-    try { return localStorage.getItem(photosKey(viewKey)) === '1'; }
-    catch (e) { return false; }
+  // Tri-state photos visibility: 'default' (no stored value — strips show
+  // on expanded cards only), 'on' (strips everywhere), 'off' (strips
+  // nowhere, even on expanded cards).
+  function loadPhotosState(viewKey) {
+    try {
+      var v = localStorage.getItem(photosKey(viewKey));
+      if (v === '1') return 'on';
+      if (v === '0') return 'off';
+    } catch (e) {}
+    return 'default';
   }
+  function loadPhotosShown(viewKey) { return loadPhotosState(viewKey) === 'on'; }
   function savePhotosShown(viewKey, shown) {
     try { localStorage.setItem(photosKey(viewKey), shown ? '1' : '0'); }
     catch (e) {}
   }
+  function clearPhotosState(viewKey) {
+    try { localStorage.removeItem(photosKey(viewKey)); } catch (e) {}
+  }
+  /** Are any strips effectively visible right now? True when the toggle is
+   *  ON, or in default state when at least one card is expanded. */
+  function photosEffectivelyVisible(container, viewKey) {
+    var st = loadPhotosState(viewKey);
+    if (st === 'on') return true;
+    if (st === 'off') return false;
+    return !!container.querySelector('.scw-ws-v2-card--open');
+  }
 
   function applyState(container, viewKey) {
     var mode  = loadMode(viewKey);
-    var shown = loadPhotosShown(viewKey);
+    var pState = loadPhotosState(viewKey);
     container.classList.remove(
       'scw-ws-v2-mode-default',
       'scw-ws-v2-mode-summary'
     );
     if (mode === 'summary') container.classList.add('scw-ws-v2-mode-summary');
     else container.classList.add('scw-ws-v2-mode-default');
-    // Mirror v1\'s view_3610 behavior — "Show photos" REVEALS strips on
-    // collapsed cards too (default is: strips show only when expanded).
-    container.classList.toggle('scw-ws-v2-photos-shown', shown);
+    // Tri-state: default = expanded cards reveal their strip (CSS);
+    // ON mirrors v1's "Show photos" (strips on collapsed cards too);
+    // OFF hides strips even on expanded cards.
+    container.classList.toggle('scw-ws-v2-photos-shown',  pState === 'on');
+    container.classList.toggle('scw-ws-v2-photos-hidden', pState === 'off');
 
     var bar = container.querySelector('.scw-ws-v2-toolbar');
     if (!bar) return;
@@ -105,10 +126,14 @@
 
     var photosBtn = bar.querySelector('[data-scw-ws-v2-photos-toggle]');
     if (photosBtn) {
-      photosBtn.classList.toggle('scw-ws-v2-toolbar-btn--active', shown);
-      photosBtn.setAttribute('aria-pressed', shown ? 'true' : 'false');
+      // Label reflects EFFECTIVE visibility, not just the stored toggle:
+      // in default state with expanded cards, strips are showing, so the
+      // honest next action is "Hide photos".
+      var visible = photosEffectivelyVisible(container, viewKey);
+      photosBtn.classList.toggle('scw-ws-v2-toolbar-btn--active', pState === 'on');
+      photosBtn.setAttribute('aria-pressed', visible ? 'true' : 'false');
       var label = photosBtn.querySelector('.scw-ws-v2-photos-btn-label');
-      if (label) label.textContent = shown ? 'Hide photos' : 'Show photos';
+      if (label) label.textContent = visible ? 'Hide photos' : 'Show photos';
     }
   }
 
@@ -907,7 +932,11 @@
           }
           applyState(container, viewKey);
         } else if (t.hasAttribute('data-scw-ws-v2-photos-toggle')) {
-          var nextShown = !loadPhotosShown(viewKey);
+          // Toggle on EFFECTIVE visibility: if any strips are showing
+          // (explicit ON, or default state with expanded cards), the
+          // click hides them all; otherwise it shows them all. One click
+          // always does something visible.
+          var nextShown = !photosEffectivelyVisible(container, viewKey);
           savePhotosShown(viewKey, nextShown);
           // Mirror v1: when revealing photos, also expand every L1 so
           // the user sees them right away. Hiding leaves L1 state alone.
@@ -925,13 +954,14 @@
     applyState(container, viewKey);
   }
 
-  /** Programmatically turn the photo strips ON for a view (no-op if
-   *  already on). Used by the per-row "missing photos" warn-chit —
-   *  clicking it must actually reveal the missing-photo placeholders
-   *  now that the toolbar toggle is the master photo switch. */
+  /** Make sure the photo strip on a card the caller just force-opened is
+   *  actually visible. Used by the per-row "missing photos" warn-chit.
+   *  In default state an open card reveals its strip via CSS, so only an
+   *  explicit OFF needs lifting — clear it back to default rather than
+   *  blasting every card's strips open with a global ON. */
   function showPhotos(viewKey) {
-    if (loadPhotosShown(viewKey)) return;
-    savePhotosShown(viewKey, true);
+    if (loadPhotosState(viewKey) !== 'off') return;
+    clearPhotosState(viewKey);
     var container = document.getElementById('scw-ws-v2-' + viewKey);
     if (container) applyState(container, viewKey);
   }
@@ -940,6 +970,7 @@
     mount:           mount,
     loadMode:        loadMode,
     loadPhotosShown: loadPhotosShown,
+    loadPhotosState: loadPhotosState,
     showPhotos:      showPhotos,
     // Shared floating-toolbar helper — bid-review-v2's toolbar reuses it.
     attachFloatingBar: attachFloatingBar,
