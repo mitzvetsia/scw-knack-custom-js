@@ -1141,10 +1141,21 @@
             return;
           }
 
+          // Accessory back-pointer resolved per view (CLAUDE.md #15):
+          // SOW objects → field_2464, install (view_4093/4056) → field_2853.
+          // Deleting an install parent must cascade over the INSTALL
+          // relationship — the SOW literal doesn't exist on that object and
+          // would silently orphan the accessory records.
+          var accParentKey = 'field_2464';
+          try {
+            var _dfF = ns.cfg && typeof ns.cfg.fields === 'function' && viewId
+              ? ns.cfg.fields(viewId) : null;
+            if (_dfF && _dfF.parent) accParentKey = _dfF.parent;
+          } catch (e) { /* SOW fallback */ }
           var accIds = [];
           for (var ri = 0; ri < allRecs.length; ri++) {
             var r = allRecs[ri];
-            var raw = r && r['field_2464_raw'];
+            var raw = r && r[accParentKey + '_raw'];
             if (Array.isArray(raw)) {
               for (var rj = 0; rj < raw.length; rj++) {
                 if (raw[rj] && raw[rj].id === rowId) {

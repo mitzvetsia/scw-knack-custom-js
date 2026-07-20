@@ -1051,11 +1051,26 @@
     return d.promise();
   }
 
-  /** Collect the accessory line-item ids attached (via field_2464
-   *  back-mirror) to any of the given parent ids. Walks the source
-   *  view\'s model — accessories are hidden from the v2 tree but
+  /** Accessory child→parent field for a view, resolved through cfg.fields
+   *  (CLAUDE.md #15): SOW objects → field_2464, install → field_2853. The
+   *  delete cascades below must walk the OWNING object's relationship —
+   *  the SOW literal doesn't exist on install records and would silently
+   *  orphan their accessories. */
+  function accParentKeyFor(sourceViewKey) {
+    try {
+      var F = ns.cfg && typeof ns.cfg.fields === 'function' && sourceViewKey
+        ? ns.cfg.fields(sourceViewKey) : null;
+      if (F && F.parent) return F.parent;
+    } catch (e) { /* SOW fallback */ }
+    return 'field_2464';
+  }
+
+  /** Collect the accessory line-item ids attached (via the per-view
+   *  child→parent back-mirror) to any of the given parent ids. Walks the
+   *  source view\'s model — accessories are hidden from the v2 tree but
    *  still present in Knack\'s records. */
   function collectAccessoryIds(parentIds, sourceViewKey) {
+    var accParentRaw = accParentKeyFor(sourceViewKey) + '_raw';
     var parentSet = Object.create(null);
     for (var p = 0; p < parentIds.length; p++) parentSet[parentIds[p]] = true;
 
@@ -1069,7 +1084,7 @@
       if (!r || !r.id) continue;
       // Skip parents themselves — we delete them separately.
       if (parentSet[r.id]) continue;
-      var raw = r.field_2464_raw;
+      var raw = r[accParentRaw];
       if (!Array.isArray(raw)) continue;
       for (var j = 0; j < raw.length; j++) {
         if (raw[j] && parentSet[raw[j].id]) {
@@ -1090,12 +1105,13 @@
     var parentSet = Object.create(null);
     for (var p = 0; p < parentIds.length; p++) parentSet[parentIds[p]] = true;
     var map = Object.create(null);
+    var accParentRaw = accParentKeyFor(sourceViewKey) + '_raw';
     var v = window.Knack && Knack.views && Knack.views[sourceViewKey];
     var models = (v && v.model && v.model.data && v.model.data.models) || [];
     for (var i = 0; i < models.length; i++) {
       var r = models[i] && models[i].attributes;
       if (!r || !r.id || parentSet[r.id]) continue;
-      var raw = r.field_2464_raw;
+      var raw = r[accParentRaw];
       if (!Array.isArray(raw)) continue;
       for (var j = 0; j < raw.length; j++) {
         var pid = raw[j] && raw[j].id;
@@ -1255,6 +1271,7 @@
     var parentSet = Object.create(null);
     for (var p = 0; p < parentIds.length; p++) parentSet[parentIds[p]] = true;
 
+    var accParentRaw = accParentKeyFor(sourceViewKey) + '_raw';
     var v = window.Knack && Knack.views && Knack.views[sourceViewKey];
     if (!v || !v.model || !v.model.data) return [];
     var models = v.model.data.models || [];
@@ -1264,7 +1281,7 @@
     for (var i = 0; i < models.length; i++) {
       var r = models[i] && models[i].attributes;
       if (!r || !r.id || parentSet[r.id]) continue;
-      var raw = r.field_2464_raw;
+      var raw = r[accParentRaw];
       if (!Array.isArray(raw)) continue;
       var isChild = false;
       for (var j = 0; j < raw.length; j++) {
