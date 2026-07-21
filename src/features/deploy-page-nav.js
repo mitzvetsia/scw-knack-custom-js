@@ -12,7 +12,7 @@
  *   2. CHANGE ORDERS ← WORKSHEET — the Change Orders grid + "Create Change
  *      Order" CTA used to sit at the very bottom of the page, ~2000px from
  *      the install worksheet whose "Removed by CO" rows they explain. Both
- *      views are MOVED into a strip directly beneath the worksheet mount.
+ *      views are MOVED into a strip directly ABOVE the worksheet mount.
  *      Knack re-renders views in place by element id, so a relocated view
  *      keeps working; a scene re-render rebuilds everything and the
  *      debounced pass re-applies the move.
@@ -44,6 +44,8 @@
     var css = [
       '#' + NAV_ID + ' {',
       '  position: sticky; top: 0; z-index: 900;',
+      '  width: 100%; max-width: 100%; box-sizing: border-box;',
+      '  grid-column: 1 / -1; flex: 1 1 100%;',
       '  display: flex; flex-wrap: wrap; gap: 6px; align-items: center;',
       '  background: rgba(255,255,255,0.97);',
       '  border: 1px solid #e2e8f0; border-radius: 10px;',
@@ -90,9 +92,18 @@
       '.scw-ktl-accordion, #' + WORKSHEET_MOUNT + ', #' + STRIP_ID + ' {',
       '  scroll-margin-top: 58px;',
       '}',
-      /* CO strip — visually attached to the worksheet above it */
-      '#' + STRIP_ID + ' {',
+      /* CO strip — sits directly ABOVE the worksheet it explains. It is
+         injected as a direct child of the scene\'s group-layout-wrapper,
+         which sizes its children as layout columns — force full width
+         under either grid or flex layout, and un-column the relocated
+         views inside it. */
+      '#kn-' + SCENE_ID + ' > #' + STRIP_ID + ', #' + STRIP_ID + ' {',
+      '  width: 100% !important; max-width: 100% !important;',
+      '  grid-column: 1 / -1 !important; flex: 1 1 100% !important;',
       '  margin: 14px 0 10px;',
+      '}',
+      '#' + STRIP_ID + ' .kn-view {',
+      '  width: 100% !important; max-width: 100% !important; float: none !important;',
       '}',
       '#' + STRIP_ID + '-title {',
       '  font: 700 15px/1.3 system-ui, sans-serif; color: #163C6E;',
@@ -149,10 +160,11 @@
       title.textContent = 'Change Orders';
       strip.appendChild(title);
     }
-    // Keep the strip pinned directly after the worksheet mount (re-renders
-    // can re-insert siblings between them).
-    if (strip.previousElementSibling !== anchor) {
-      anchor.parentNode.insertBefore(strip, anchor.nextSibling);
+    // Keep the strip pinned directly BEFORE the worksheet mount — the CO
+    // records explain the worksheet's Removed-by-CO rows, and with 15+
+    // expanded cards "after the worksheet" reads as the bottom of the page.
+    if (strip.nextElementSibling !== anchor) {
+      anchor.parentNode.insertBefore(strip, anchor);
     }
 
     var grid = findCoGridView(scene);
@@ -189,17 +201,18 @@
         warn:  acc.hasAttribute('data-scw-attention')
       });
     }
+    // Change Orders strip (post-move, sits above the worksheet) — count =
+    // grid data rows.
+    var strip = document.getElementById(STRIP_ID);
+    if (strip && strip.querySelector('.kn-view')) {
+      var rows = strip.querySelectorAll('tbody tr[id]').length;
+      out.push({ label: 'Change Orders', count: rows ? String(rows) : '', el: strip, kind: 'co' });
+    }
     // Install worksheet.
     var ws = document.getElementById(WORKSHEET_MOUNT);
     if (ws) {
       var m = txt(ws.querySelector('.scw-ws-v2-count')).match(/\d+/);
       out.push({ label: 'Install Items', count: m ? m[0] : '', el: ws, kind: 'worksheet' });
-    }
-    // Change Orders strip (post-move) — count = grid data rows.
-    var strip = document.getElementById(STRIP_ID);
-    if (strip && strip.querySelector('.kn-view')) {
-      var rows = strip.querySelectorAll('tbody tr[id]').length;
-      out.push({ label: 'Change Orders', count: rows ? String(rows) : '', el: strip, kind: 'co' });
     }
     return out;
   }
@@ -227,9 +240,10 @@
     for (var fa = 0; fa < targets.length; fa++) {
       if (targets[fa].kind === 'accordion') { firstAcc = targets[fa].el; break; }
     }
-    var anchorEl = firstAcc
-      ? (firstAcc.closest('.view-group') || firstAcc)
-      : scene.firstChild;
+    // Anchor directly before the accordion ELEMENT, not its .view-group —
+    // the group can also contain the project-details header, which should
+    // stay above the nav.
+    var anchorEl = firstAcc || scene.firstChild;
 
     var nav = document.getElementById(NAV_ID);
     if (!nav) {
