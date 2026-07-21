@@ -161,32 +161,24 @@
       '#' + STRIP_ID + ' .kn-view {',
       '  width: 100% !important; max-width: 100% !important; float: none !important;',
       '}',
-      /* ── Header action slot — THE consistent home for "buttons that
-         pertain to a view": inside the section\'s accordion header bar,
-         right-aligned before the status pills. Clicks inside the slot
-         never toggle the accordion. */
-      '.scw-acc-actions {',
-      '  display: inline-flex; align-items: center; gap: 6px; flex: none;',
-      '  margin-right: 8px;',
+      /* ── Section action bar — THE consistent home for "buttons that
+         pertain to a view": a slim right-aligned row at the TOP of the
+         section\'s body (headers stay clean — status pills only). */
+      '.scw-acc-actionbar {',
+      '  display: flex; align-items: center; justify-content: flex-end;',
+      '  gap: 8px; padding: 10px 12px 0;',
       '}',
-      '.scw-acc-actions .kn-button, .scw-acc-actions button {',
-      '  padding: 5px 12px !important; border-radius: 8px !important;',
-      '  font: 600 12px/1.2 system-ui, sans-serif !important;',
-      '  white-space: nowrap;',
-      '}',
-      '.scw-acc-actions a.kn-button {',
+      '.scw-acc-actionbar a.kn-button {',
       '  display: inline-flex; align-items: center;',
+      '  padding: 6px 14px !important; border-radius: 8px !important;',
       '  background: #163C6E !important; border: 1px solid #163C6E !important;',
-      '  color: #fff !important; text-decoration: none !important;',
+      '  color: #fff !important; font: 600 12.5px/1.2 system-ui, sans-serif !important;',
+      '  text-decoration: none !important; white-space: nowrap; flex: none;',
       '}',
-      '.scw-acc-actions a.kn-button:hover {',
+      '.scw-acc-actionbar a.kn-button:hover {',
       '  background: #1d4d8c !important; border-color: #1d4d8c !important;',
       '}',
-      '.scw-acc-actions a.kn-button span { color: #fff !important; }',
-      '.scw-acc-actions #scw-closeout-actions {',
-      '  display: inline-flex; align-items: center; gap: 6px;',
-      '  margin: 0 !important; padding: 0 !important;',
-      '}',
+      '.scw-acc-actionbar a.kn-button span { color: #fff !important; }',
       /* When the CO grid sits inside its accordion, the accordion bar is
          the title — hide the grid\'s own duplicate header. */
       '#' + STRIP_ID + ' .scw-ktl-accordion .kn-view .view-header h2.kn-title { display: none; }',
@@ -325,65 +317,47 @@
     }
   }
 
-  // ── Part 6: header action slots — one consistent home for the buttons
-  // that pertain to a view: inside its accordion header bar. ────────────
-  function headerActionsSlot(acc) {
-    var head = acc.querySelector('.scw-ktl-accordion__header');
-    if (!head) return null;
-    var slot = head.querySelector('.scw-acc-actions');
-    if (!slot) {
-      slot = document.createElement('span');
-      slot.className = 'scw-acc-actions';
-      // Action clicks must not toggle the accordion.
-      slot.addEventListener('click', function (e) { e.stopPropagation(); });
-      var ref = head.querySelector('.scw-deploy-rollup') ||
-                head.querySelector('.scw-acpt-rollup') ||
-                head.querySelector('.scw-acc-count');
-      if (ref) head.insertBefore(slot, ref);
-      else head.appendChild(slot);
-    }
-    return slot;
-  }
-
+  // ── Part 6: section action bars — one consistent home for the buttons
+  // that pertain to a view: a slim right-aligned row at the top of the
+  // section's BODY (headers stay clean). The closeout toolbar already
+  // follows this pattern natively (its module mounts it under the view
+  // header inside the accordion body).
   function placeViewActions(scene) {
-    // Closeout: adopt the Regenerate Kickoff Deck / Send CoC toolbar. Its
-    // module creates it only when missing and never repositions it, so the
-    // move sticks; if a header rebuild destroys it, the module recreates
-    // it inside view_3940 and the next pass re-adopts it.
-    var c = findAcc(scene, /^closeout$/i);
-    var tb = document.getElementById('scw-closeout-actions');
-    if (c && tb) {
-      var slot = headerActionsSlot(c);
-      if (slot && tb.parentNode !== slot) slot.appendChild(tb);
-    }
-    // Change Orders: compact proxy button in the CO accordion's header,
-    // mirroring the live href/label of the view_4081 menu link (the view
-    // itself is hidden in place — moving a Knack view element into a
-    // rebuildable header would risk losing it).
+    // Change Orders: compact proxy button in an action bar at the top of
+    // the CO accordion's body, mirroring the live href/label of the
+    // view_4081 menu link (the view itself is hidden in place — moving a
+    // Knack view element around risks losing it to re-renders).
     var strip = document.getElementById(STRIP_ID);
     var coAcc = (strip && strip.querySelector('.scw-ktl-accordion')) ||
                 findAcc(scene, /^change orders?$/i);
+    var body = coAcc && coAcc.querySelector('.scw-ktl-accordion__body');
     var ctaView = findCoCtaView(scene);
     var src = ctaView && ctaView.querySelector('a.kn-link');
-    if (coAcc && src) {
-      var slot2 = headerActionsSlot(coAcc);
-      if (slot2) {
-        var btn = document.getElementById('scw-deploy-co-cta');
-        if (!btn) {
-          btn = document.createElement('a');
-          btn.id = 'scw-deploy-co-cta';
-          btn.className = 'kn-button';
-        }
-        if (btn.parentNode !== slot2) slot2.appendChild(btn);
-        if (btn.getAttribute('href') !== src.getAttribute('href')) {
-          btn.setAttribute('href', src.getAttribute('href'));
-        }
-        var label = txt(src) || 'Create Change Order';
-        if (btn.textContent !== label) {
-          btn.innerHTML = '<span>' + esc(label) + '</span>';
-        }
-        ctaView.style.setProperty('display', 'none', 'important');
+    if (body && src) {
+      var bar = document.getElementById('scw-deploy-co-actionbar');
+      if (!bar) {
+        bar = document.createElement('div');
+        bar.id = 'scw-deploy-co-actionbar';
+        bar.className = 'scw-acc-actionbar';
       }
+      if (bar.parentNode !== body || body.firstElementChild !== bar) {
+        body.insertBefore(bar, body.firstChild);
+      }
+      var btn = document.getElementById('scw-deploy-co-cta');
+      if (!btn) {
+        btn = document.createElement('a');
+        btn.id = 'scw-deploy-co-cta';
+        btn.className = 'kn-button';
+      }
+      if (btn.parentNode !== bar) bar.appendChild(btn);
+      if (btn.getAttribute('href') !== src.getAttribute('href')) {
+        btn.setAttribute('href', src.getAttribute('href'));
+      }
+      var label = txt(src) || 'Create Change Order';
+      if (btn.textContent !== label) {
+        btn.innerHTML = '<span>' + esc(label) + '</span>';
+      }
+      ctaView.style.setProperty('display', 'none', 'important');
     }
   }
 

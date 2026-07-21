@@ -146,12 +146,32 @@
       var titleEl = acc.querySelector('.scw-acc-title');
       var iconEl  = acc.querySelector('.scw-acc-icon');
       if (!titleEl) continue;
-      var titleText = titleEl.textContent;
+      // Match on the SECTION NAME only. Prefer the original Builder title
+      // (deploy-page-nav stashes it before renaming), else the title
+      // element's direct text nodes — subtitles are element children and
+      // must NOT join the match text (an acceptance subtitle mentioning
+      // "proposal" once hid the whole Acceptances section via HIDE_TITLES).
+      var titleText = acc.getAttribute('data-scw-orig-title') || '';
+      if (!titleText) {
+        for (var n = 0; n < titleEl.childNodes.length; n++) {
+          if (titleEl.childNodes[n].nodeType === 3) {
+            titleText += titleEl.childNodes[n].textContent;
+          }
+        }
+        if (!titleText.trim()) titleText = titleEl.textContent;
+      }
 
       // Hide-by-title wins — no point stamping an icon on a hidden node.
       if (shouldHide(titleText)) {
         acc.style.display = 'none';
+        acc.setAttribute('data-scw-asi-hidden', '1');
         continue;
+      }
+      // Un-hide if a previous pass hid this accordion and the title no
+      // longer matches (e.g. after a rename).
+      if (acc.getAttribute('data-scw-asi-hidden') === '1') {
+        acc.style.display = '';
+        acc.removeAttribute('data-scw-asi-hidden');
       }
 
       if (!iconEl) continue;
