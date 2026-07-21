@@ -183,6 +183,46 @@
   }
   ns.applyGroupCollapse = applyGroupCollapse;
 
+  /** Are every SOW's MDF/IDF groups currently open? Mirrors worksheet-v2's
+   *  "honest label" rule — the toolbar button always says what the NEXT
+   *  click will do. No groups on the page ⇒ treated as "not all open" so
+   *  the button defaults to "Expand". */
+  function allGroupsOpen() {
+    var heads = document.querySelectorAll('.scw-bid-review-v2__group-header');
+    if (!heads.length) return false;
+    for (var i = 0; i < heads.length; i++) {
+      if (heads[i].classList.contains('scw-bid-review-v2__group-header--collapsed')) return false;
+    }
+    return true;
+  }
+  ns.allGroupsOpen = allGroupsOpen;
+
+  /** Global "Expand/Collapse MDF/IDFs" — same walk as the per-SOW toggle
+   *  (data-scw-br-v2-sow-groups) but applied to EVERY SOW section, and it
+   *  keeps each SOW's own toggle button label in sync so the two controls
+   *  never disagree. Used by the top toolbar's groups-toggle button. */
+  function toggleAllGroups(collapse) {
+    var sections = document.querySelectorAll('.scw-bid-review-v2__sow');
+    for (var i = 0; i < sections.length; i++) {
+      var section = sections[i];
+      var sowId = section.getAttribute('data-sow-id') || '';
+      var subs = section.querySelectorAll('.scw-bid-review-v2__subgroup-header');
+      for (var sb = 0; sb < subs.length; sb++) {
+        subs[sb].classList.toggle('scw-bid-review-v2__subgroup-header--collapsed', collapse);
+        subs[sb].setAttribute('aria-expanded', collapse ? 'false' : 'true');
+        rememberSub(sowId, subs[sb].getAttribute('data-subgroup-key') || '', collapse);
+      }
+      var heads = section.querySelectorAll('.scw-bid-review-v2__group-header');
+      for (var h = 0; h < heads.length; h++) {
+        setL1Collapsed(heads[h], collapse);
+        rememberL1(sowId, heads[h].getAttribute('data-l1-id') || '', collapse);
+      }
+      var sowToggle = section.querySelector('[data-scw-br-v2-sow-groups]');
+      if (sowToggle) sowToggle.textContent = collapse ? 'Expand all' : 'Collapse all';
+    }
+  }
+  ns.toggleAllGroups = toggleAllGroups;
+
   function wireGroupCollapse() {
     if (document.documentElement.hasAttribute('data-scw-br-v2-collapse-bound')) return;
     document.documentElement.setAttribute('data-scw-br-v2-collapse-bound', '1');
