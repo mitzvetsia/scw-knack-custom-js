@@ -123,6 +123,18 @@
         label:            'SOW Line Items',
         mdfSourceViewKey: 'view_3577',
         mdfLabelField:    'field_1642',
+        // Location management folded INTO the worksheet (mdf-notes.js) —
+        // same integration as the deploy page: every real-location L1 gets
+        // the edit pencil (designator/##/name panel) + the always-visible
+        // detail band (survey-notes callout, photos strip + add-tile,
+        // inline SCW notes). Reads/PUTs go through the Manage MDFs/IDFs
+        // grid (view_3577), whose standalone accordion section is hidden
+        // by mdf-notes.js static CSS.
+        mdfManage:        { viewKey: 'view_3577', notesField: 'field_1643' },
+        // "+ Add MDF/IDF" toolbar CTA next to "+ Add to SOW" — clicks the
+        // (hidden) view_3436 menu link (#add-mdfidf7), replacing the button
+        // that lived in the now-hidden standalone section.
+        addMdfMenuView:   'view_3436',
         // No field/bucket overrides — uses the defaults above verbatim.
         fields:  {},
         buckets: {}

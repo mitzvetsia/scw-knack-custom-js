@@ -1,7 +1,8 @@
 /*** WORKSHEET V2 — MDF/IDF LOCATION MANAGE (manage-section integration) ******
  *
- * Folds the deploy page's standalone "Manage MDFs / IDFs" section INTO the
- * install worksheet, with full parity to the bid-review-v2 manage panel
+ * Folds the standalone "Manage MDFs / IDFs" section INTO the worksheet
+ * (deploy scene view_3932; build-SOW scene view_3577 — config-driven per
+ * worksheet-v2 view entry), with full parity to the bid-review-v2 manage panel
  * (bid-review-v2/mdf-manage.js): every real-location L1 header gets a pencil
  * that opens a panel directly under the header with
  *
@@ -16,8 +17,8 @@
  * user's session; on success the L1 header label is retitled in place and
  * the manage view quietly refetches so the model agrees.
  *
- * The standalone accordion section is hidden by STATIC CSS (injected at
- * bundle load) so it never flashes before the worksheet takes over. A
+ * The standalone accordion sections are hidden by STATIC CSS (injected at
+ * bundle load) so they never flash before the worksheet takes over. A
  * retrofit pass re-adds pencils when the manage view's model finishes
  * loading AFTER the worksheet rendered (the old flakiness).
  *
@@ -77,9 +78,13 @@
   function injectStyles() {
     if (document.getElementById(STYLE_ID)) return;
     var css = [
-      /* The standalone manage section never paints — the worksheet is its
-         home now. Static CSS so there is no flash while models load. */
-      '.scw-ktl-accordion:has(.scw-ktl-accordion__header[data-view-key="view_3932"]) {',
+      /* The standalone manage sections never paint — the worksheet is
+         their home now. Static CSS so there is no flash while models load.
+         view_3932 = deploy scene; view_3577 = build-SOW scene (view_3962
+         integration). The views still render (display:none keeps their
+         models + rows readable for the pencil panel / photo scrape). */
+      '.scw-ktl-accordion:has(.scw-ktl-accordion__header[data-view-key="view_3932"]),',
+      '.scw-ktl-accordion:has(.scw-ktl-accordion__header[data-view-key="view_3577"]) {',
       '  display: none !important;',
       '}',
       /* Icon-only pencil before the L1 title — borderless, quiet; a soft

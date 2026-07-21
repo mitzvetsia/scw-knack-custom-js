@@ -174,6 +174,12 @@
         // the scope without a change order.
         ((_vc && _vc.noAddItem) ? '' :
           actionBtn('add-sow',    addLabel,               'Add a new line item')) +
+        // "+ Add MDF/IDF" — views with an addMdfMenuView (a hidden Knack
+        // menu whose link is the add-location action, e.g. view_3436 on
+        // build-SOW). Replaces the button that lived in the standalone
+        // Manage MDFs/IDFs section now folded into the worksheet.
+        ((_vc && _vc.addMdfMenuView) ?
+          actionBtn('add-mdf',    '+ Add MDF/IDF',        'Add a new MDF/IDF location') : '') +
         actionBtn('add-photos',   '+ Add Photos',         'Bulk upload photos') +
         // "+ Add Accessories" lives in the floating bulk panel (bulk.js)
         // now — it only applies to a row selection, same as Remove.
@@ -363,6 +369,35 @@
       }
       alert('Could not find the "Add to Scope" link on this page. ' +
             'Make sure the Knack details/menu link is enabled on the scene.');
+      return;
+    }
+    if (action === 'add-mdf') {
+      // Same pattern as addSowMenuView: the configured Knack menu view's
+      // link IS the add-location action (e.g. view_3436 → #add-mdfidf7).
+      // Clicking the CSS-hidden anchor still navigates.
+      try {
+        var _mdfVc = ns.cfg && typeof ns.cfg.viewCfg === 'function' && ns.cfg.viewCfg(viewKey);
+        var _mdfMenuId = _mdfVc && _mdfVc.addMdfMenuView;
+        if (_mdfMenuId) {
+          var _mdfLink = document.querySelector(
+            '#' + _mdfMenuId + ' a.kn-link-page, #' + _mdfMenuId + ' a.kn-link, #' + _mdfMenuId + ' a[href]'
+          );
+          if (_mdfLink) { _mdfLink.click(); return; }
+        }
+      } catch (e) { /* fall through to text scan */ }
+      // Fallback: any live "Add MDF/IDF" link on the page (incl. the
+      // accordion action-bar copy accordion-menu-inject builds).
+      var mdfAnchors = document.querySelectorAll('a.kn-link, .scw-acc-action-btn, .kn-link-page, a');
+      for (var mi = 0; mi < mdfAnchors.length; mi++) {
+        var mTxt = (mdfAnchors[mi].textContent || '').trim();
+        if (/^add mdf\s*\/\s*idf$/i.test(mTxt) &&
+            (mdfAnchors[mi].getAttribute('href') || mdfAnchors[mi].hasAttribute('data-link-href'))) {
+          mdfAnchors[mi].click();
+          return;
+        }
+      }
+      alert('Could not find the "Add MDF/IDF" link on this page. ' +
+            'Make sure the Knack menu link is enabled on the scene.');
       return;
     }
     if (action === 'add-photos') {
