@@ -2329,14 +2329,12 @@
     '}',
 
     /* ── PHOTOS ────────────────────────────────────────────────
-       Tri-state visibility (see MODE OVERRIDES for the state rules):
-         default        → strips show on EXPANDED cards only (long-
-                          standing worksheet UX)
+       Visibility (see MODE OVERRIDES for the state rules):
+         default / OFF  → strips show on EXPANDED cards only (long-
+                          standing worksheet UX). An expanded line item
+                          ALWAYS shows its strip — the global toggle
+                          never suppresses it.
          photos-shown   → strips on every card (toolbar toggle ON)
-         photos-hidden  → strips nowhere, even on expanded cards
-                          (toolbar toggle OFF — this is what makes the
-                          toggle meaningful on views that load with
-                          every card expanded, e.g. the deploy grid)
        Sizing mirrors v1\'s inline-photo-row.js — ~200px-tall thumbnails. */
     '.scw-ws-v2-photos {',
     '  display: none !important;',
@@ -2959,19 +2957,14 @@
     '.scw-ws-v2-mode-summary .scw-ws-v2-l2-head {',
     '  display: none !important;',
     '}',
-    /* Photos tri-state. DEFAULT (no explicit toggle state): expanded
-       cards reveal their strip — the long-standing worksheet UX field
-       users expect ("photos not loading" reports came from dropping
-       this). Explicit ON (photos-shown): strips on every card, v1
-       "Show photos" parity. Explicit OFF (photos-hidden): strips
-       nowhere — this is what makes the toggle meaningful on views
-       that load fully expanded (deploy grid). photos-shown and
-       photos-hidden are mutually exclusive container classes. */
+    /* Photos: an EXPANDED card always reveals its strip — the long-
+       standing worksheet UX field users expect ("photos not loading"
+       reports came from dropping this), and the global toggle never
+       suppresses it. Explicit ON (photos-shown): strips on every card,
+       v1 "Show photos" parity — the toggle only governs strips on
+       COLLAPSED line items. */
     '.scw-ws-v2-card--open .scw-ws-v2-photos {',
     '  display: block !important;',
-    '}',
-    '.scw-ws-v2-photos-hidden .scw-ws-v2-card--open .scw-ws-v2-photos {',
-    '  display: none !important;',
     '}',
     '.scw-ws-v2-photos-shown .scw-ws-v2-card .scw-ws-v2-photos {',
     '  display: block !important;',

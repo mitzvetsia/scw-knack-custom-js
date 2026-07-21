@@ -64,13 +64,11 @@
   function clearPhotosState(viewKey) {
     try { localStorage.removeItem(photosKey(viewKey)); } catch (e) {}
   }
-  /** Are any strips effectively visible right now? True when the toggle is
-   *  ON, or in default state when at least one card is expanded. */
+  /** Is the all-cards photos mode on? Expanded cards ALWAYS show their
+   *  strip (CSS, non-suppressible) — the toggle only governs strips on
+   *  collapsed line items, so its state alone is the truth. */
   function photosEffectivelyVisible(container, viewKey) {
-    var st = loadPhotosState(viewKey);
-    if (st === 'on') return true;
-    if (st === 'off') return false;
-    return !!container.querySelector('.scw-ws-v2-card--open');
+    return loadPhotosState(viewKey) === 'on';
   }
 
   function applyState(container, viewKey) {
@@ -158,7 +156,7 @@
       '<div class="scw-ws-v2-toolbar-group">' +
         '<button type="button" class="scw-ws-v2-toolbar-btn"' +
           ' data-scw-ws-v2-photos-toggle aria-pressed="false"' +
-          ' title="Show or hide attached photo strips">' +
+          ' title="Show photo strips on collapsed line items too (expanded items always show theirs)">' +
           '<svg viewBox="0 0 24 24" width="14" height="14" fill="none" ' +
             'stroke="currentColor" stroke-width="1.7" stroke-linecap="round" ' +
             'stroke-linejoin="round">' +
@@ -919,14 +917,19 @@
           handleModeClick(requested, viewKey, container);
         } else if (t.hasAttribute('data-scw-ws-v2-rows-toggle')) {
           // Expand/collapse every line item's detail panel. Same pure
-          // class toggle as the per-card chevron (init.js expand handler)
-          // — deliberately does NOT touch ns.state / the MDF/IDF groups,
-          // and no rerender so the group accordion stays exactly as-is.
-          // Cards inside closed groups get the class too: they'll show
-          // expanded when their group is opened later.
+          // class toggle as the per-card chevron (init.js expand handler).
+          // When EXPANDING, also open the MDF/IDF groups first — expanding
+          // line items inside collapsed groups is invisible and read as
+          // "the button doesn't work". Collapsing leaves groups alone.
           var allCards = container.querySelectorAll('.scw-ws-v2-card');
           var openNow  = container.querySelectorAll('.scw-ws-v2-card--open');
           var openAll  = !(allCards.length > 0 && openNow.length === allCards.length);
+          if (openAll && ns.state) {
+            if (loadMode(viewKey) === 'summary') saveMode(viewKey, 'default');
+            ns.state.setAllOpen(viewKey, collectL1Ids(container));
+            rerender(viewKey);
+            allCards = container.querySelectorAll('.scw-ws-v2-card');
+          }
           for (var ci = 0; ci < allCards.length; ci++) {
             allCards[ci].classList.toggle('scw-ws-v2-card--open', openAll);
           }
