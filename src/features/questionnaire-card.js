@@ -8,8 +8,12 @@
  *     all questionnaire editing happens there)
  *   - signoff progression: Customer → Project Manager → Tech Support, each
  *     step done / current / todo with who + date where known
- *   - Who has access — the customer-account cell scraped verbatim, so the
- *     edit/add links customer-account-link.js injects keep working
+ *   - Who has access — built HERE from primary sources (customer ids from
+ *     the raw connection spans, edit/add hrefs harvested straight from
+ *     view_4040), NOT scraped from customer-account-link's decorated cell.
+ *     That makes the card a pure function of the two views' DOM: rebuild
+ *     on either view's render and the result is order-independent — no
+ *     race against another module's mutations.
  *   - AUDIT TRAIL collapsed behind a click (<details>) — the raw log never
  *     paints unless the user deliberately opens it
  *   - connected install line items likewise collapsed to a count
@@ -20,9 +24,11 @@
 (function () {
   'use strict';
 
-  var VIEW     = 'view_4015';
-  var STYLE_ID = 'scw-qst-card-css';
-  var EVENT_NS = '.scwQstCard';
+  var VIEW        = 'view_4015';
+  var DETAIL_VIEW = 'view_4040';   // CORE_company Details — edit/add href source
+  var STYLE_ID    = 'scw-qst-card-css';
+  var EVENT_NS    = '.scwQstCard';
+  var HEX24       = /^[a-f0-9]{24}$/i;
 
   var F = {
     status:   'field_1772',
@@ -50,6 +56,16 @@
     '<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>' +
     '<polyline points="15 3 21 3 21 9"></polyline>' +
     '<line x1="10" y1="14" x2="21" y2="3"></line></svg>';
+  var PENCIL_SVG =
+    '<svg class="scw-cust-edit-ic" width="12" height="12" viewBox="0 0 24 24" fill="none" ' +
+    'stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+    '<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>' +
+    '<path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path></svg>';
+  var PLUS_SVG =
+    '<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+    'stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">' +
+    '<line x1="12" y1="5" x2="12" y2="19"></line>' +
+    '<line x1="5" y1="12" x2="19" y2="12"></line></svg>';
 
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
@@ -74,22 +90,21 @@
       '  box-shadow: 0 1px 2px rgba(15,23,42,.04); padding: 14px 18px 12px;',
       '  margin-top: 8px; font-family: system-ui, -apple-system, "Segoe UI", sans-serif;',
       '}',
-      '.scw-qst-top { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }',
-      /* "Open questionnaire" is pure NAVIGATION, not an action — filled navy
-         buttons on this page DO things. Style it like the page\'s other
-         go-to-a-page links: navy underline + external-link icon. */
-      '.scw-qst-open { display: inline-flex; align-items: center; gap: 6px; cursor: pointer;',
-      '  font: 600 12.5px/1.2 system-ui, sans-serif; margin-left: auto;',
-      '  color: #0f4c75 !important; text-decoration: underline !important;',
-      '  text-decoration-color: #93b8d6 !important; text-underline-offset: 3px; }',
-      '.scw-qst-open:hover { color: #0a3a63 !important; text-decoration-color: currentColor !important; }',
-      '.scw-qst-open svg { flex: none; opacity: .7; }',
-      '.scw-qst-open:hover svg { opacity: 1; }',
-      /* Signoff progression */
-      '.scw-qst-steps { display: flex; flex-wrap: wrap; gap: 10px; margin: 12px 0 2px; }',
+      /* Signoff progression — the stage tiles ARE the navigation: every
+         tile links to the questionnaire page (they all describe it), with
+         a go-arrow on the current stage. No separate "Open" button. */
+      '.scw-qst-steps { display: flex; flex-wrap: wrap; gap: 10px; margin: 2px 0 2px; }',
       '.scw-qst-step { flex: 1 1 170px; min-width: 150px; display: flex; gap: 8px;',
       '  align-items: flex-start; padding: 8px 10px; border-radius: 8px;',
       '  border: 1px solid #e5e7eb; background: #f8fafc; }',
+      'a.scw-qst-step { text-decoration: none !important; cursor: pointer; }',
+      'a.scw-qst-step:hover { border-color: #94a3b8;',
+      '  box-shadow: 0 1px 4px rgba(15,23,42,.1); }',
+      'a.scw-qst-step.is-current:hover { border-color: #f59e0b; }',
+      'a.scw-qst-step.is-done:hover { border-color: #4ade80; }',
+      '.scw-qst-step-go { margin-left: auto; align-self: center; flex: none;',
+      '  color: #b45309; opacity: .75; }',
+      'a.scw-qst-step:hover .scw-qst-step-go { opacity: 1; }',
       '.scw-qst-step-ic { display: inline-flex; align-items: center; justify-content: center;',
       '  width: 20px; height: 20px; border-radius: 50%; flex: none; margin-top: 1px;',
       '  background: #e2e8f0; color: #64748b; }',
@@ -104,18 +119,19 @@
       '.scw-qst-access { margin: 10px 0 4px; }',
       '.scw-qst-lbl { font: 700 10px/1.2 system-ui, sans-serif; letter-spacing: .07em;',
       '  text-transform: uppercase; color: #94a3b8; margin-bottom: 4px; }',
-      '.scw-qst-access-body { font: 13px/2 system-ui, sans-serif; color: #1e293b; }',
-      /* customer-account-link\'s widgets ride in via the scrape, but that
-         module\'s CSS is scoped to the (hidden) grid cell — restate the
-         layout here so the pencil icon + add link get breathing room. */
+      '.scw-qst-access-body { font: 13px/1.6 system-ui, sans-serif; color: #1e293b; }',
+      /* Account widgets are built by THIS module from primary sources —
+         one row per customer account, add-chip on its own line below. */
+      '.scw-qst-acct { margin: 3px 0; }',
       '.scw-qst-access-body .scw-cust-edit-link { display: inline-flex; align-items: center;',
       '  gap: 6px; color: #0f4c75; font-weight: 600; text-decoration: underline;',
       '  text-decoration-color: #93b8d6; text-underline-offset: 3px; }',
       '.scw-qst-access-body .scw-cust-edit-link:hover { color: #0a3a63;',
       '  text-decoration-color: currentColor; }',
       '.scw-qst-access-body .scw-cust-edit-ic { flex: none; opacity: .65; }',
+      '.scw-qst-access-body .scw-cust-edit-link:hover .scw-cust-edit-ic { opacity: 1; }',
       '.scw-qst-access-body .scw-cust-add-btn { display: inline-flex; align-items: center;',
-      '  gap: 5px; margin-left: 14px; padding: 3px 10px; border: 1px solid #cbd5e1;',
+      '  gap: 5px; margin: 8px 0 2px; padding: 3px 10px; border: 1px solid #cbd5e1;',
       '  border-radius: 6px; background: #fff; color: #0f4c75 !important;',
       '  font: 600 12px/1.4 system-ui, sans-serif; text-decoration: none !important; }',
       '.scw-qst-access-body .scw-cust-add-btn:hover { border-color: #94a3b8; background: #f8fafc; }',
@@ -149,10 +165,49 @@
     var td = cell(tr, fk);
     return td ? String(td.textContent || '').replace(/\s+/g, ' ').trim() : '';
   }
-  function cellInnerHtml(tr, fk) {
-    var td = cell(tr, fk);
-    var span = td && td.querySelector('span[class^="col-"]');
-    return span ? span.innerHTML : (td ? td.innerHTML : '');
+
+  // ── Who-has-access, from primary sources (no scrape of decorated DOM) ──
+  // Edit/add hrefs harvested straight from view_4040, exactly like
+  // customer-account-link does. Captured once, kept across renders.
+  var editBase = '', addUrl = '';
+  function captureAccountLinks() {
+    var detail = document.getElementById(DETAIL_VIEW);
+    if (!detail) return;
+    var addA  = detail.querySelector('a[href*="add-customer-account2/"]');
+    var editA = detail.querySelector('a[href*="edit-customer-account/"]');
+    if (addA) addUrl = addA.getAttribute('href') || addUrl;
+    var src = (editA && editA.getAttribute('href')) ||
+              (addA && addA.getAttribute('href')) || '';
+    var m = src.match(/^(#.*\/)(?:edit-customer-account|add-customer-account2)\//);
+    if (m) editBase = m[1] + 'edit-customer-account/';
+  }
+
+  // Customer record ids = the 24-hex CLASS on the inner connection-value
+  // spans — raw grid markup, present the moment the row renders. Reading
+  // textContent works whether or not customer-account-link has decorated
+  // the cell (its anchor adds no text), so render order is irrelevant.
+  function accessHtml(tr) {
+    var td = cell(tr, F.access);
+    if (!td) return '';
+    var html = '';
+    var spans = td.querySelectorAll('span[data-kn="connection-value"]');
+    for (var i = 0; i < spans.length; i++) {
+      var cls = (spans[i].className || '').trim();
+      if (!HEX24.test(cls)) continue;         // skip the outer (id-only) wrapper
+      var name = String(spans[i].textContent || '').replace(/\s+/g, ' ').trim();
+      if (!name) continue;
+      html += '<div class="scw-qst-acct">' +
+        (editBase
+          ? '<a class="scw-cust-edit-link" title="Edit customer account" href="' +
+              esc(editBase + cls) + '">' + esc(name) + PENCIL_SVG + '</a>'
+          : esc(name)) +
+        '</div>';
+    }
+    if (addUrl) {
+      html += '<a class="scw-cust-add-btn" href="' + esc(addUrl) + '">' +
+        PLUS_SVG + '<span>Add customer account</span></a>';
+    }
+    return html;
   }
 
   function auditLines(tr) {
@@ -207,36 +262,35 @@
   function buildCard(tr) {
     var status = cellText(tr, F.status);
     var openA  = tr.querySelector('td.kn-table-link a[href]');
+    var href   = openA ? openA.getAttribute('href') : '';
     var stages = stageStates(tr, status);
     var audit  = auditLines(tr);
 
     var card = document.createElement('div');
     card.className = 'scw-qst-card';
 
-    // No in-card status pill — the accordion header's rollup already says
-    // it, and the highlighted step below repeats it. Just the nav link.
-    var html =
-      (openA
-        ? '<div class="scw-qst-top">' +
-            '<a class="scw-qst-open" href="' + esc(openA.getAttribute('href')) + '">' +
-              'Open questionnaire' + GOTO_SVG + '</a>' +
-          '</div>'
-        : '') +
-      '<div class="scw-qst-steps">';
+    // No status pill (the header rollup + highlighted step already say it)
+    // and no Open button — the stage tiles themselves navigate to the
+    // questionnaire page.
+    var html = '<div class="scw-qst-steps">';
     for (var s = 0; s < stages.length; s++) {
       var st = stages[s];
+      var tag = href ? 'a' : 'div';
       html +=
-        '<div class="scw-qst-step is-' + st.state + '">' +
+        '<' + tag + ' class="scw-qst-step is-' + st.state + '"' +
+          (href ? ' href="' + esc(href) + '" title="Open questionnaire"' : '') + '>' +
           '<span class="scw-qst-step-ic">' +
             (st.state === 'done' ? CHECK_SVG : CLOCK_SVG) + '</span>' +
           '<span><span class="scw-qst-step-lbl">' + esc(st.label) + '</span>' +
           '<div class="scw-qst-step-sub">' + esc(st.sub) + '</div></span>' +
-        '</div>';
+          (href && st.state === 'current'
+            ? '<span class="scw-qst-step-go">' + GOTO_SVG + '</span>' : '') +
+        '</' + tag + '>';
     }
     html += '</div>' +
       '<div class="scw-qst-access">' +
         '<div class="scw-qst-lbl">Who has access</div>' +
-        '<div class="scw-qst-access-body">' + cellInnerHtml(tr, F.access) + '</div>' +
+        '<div class="scw-qst-access-body">' + accessHtml(tr) + '</div>' +
       '</div>';
 
     if (audit.length) {
@@ -257,40 +311,21 @@
     var viewEl = document.getElementById(VIEW);
     if (!viewEl) return;
     injectCss();
+    captureAccountLinks();
     var prior = viewEl.querySelectorAll(':scope > .scw-qst-card');
     for (var p = 0; p < prior.length; p++) prior[p].remove();
     var rows = viewEl.querySelectorAll('tbody tr[id]');
     for (var r = 0; r < rows.length; r++) {
       viewEl.appendChild(buildCard(rows[r]));
     }
-    watchGrid(viewEl);
-  }
-
-  // customer-account-link decorates the (hidden) access cell only after
-  // view_4040 renders and its hrefs are harvested — timing we can't predict
-  // from here. Rebuild the card whenever the hidden table mutates, so the
-  // edit/add widgets ride into the scrape no matter when they land. The
-  // card lives OUTSIDE .kn-table-wrapper, so rebuilds can't retrigger the
-  // observer. Knack re-renders replace the wrapper element, killing the
-  // observer — render() reattaches on every pass.
-  var _obsTimer = null;
-  function watchGrid(viewEl) {
-    var wrap = viewEl.querySelector('.kn-table-wrapper');
-    if (!wrap || wrap.getAttribute('data-scw-qst-obs') === '1') return;
-    wrap.setAttribute('data-scw-qst-obs', '1');
-    new MutationObserver(function () {
-      if (_obsTimer) clearTimeout(_obsTimer);
-      _obsTimer = setTimeout(render, 150);
-    }).observe(wrap, { childList: true, subtree: true });
   }
 
   if (window.SCW && typeof SCW.onViewRender === 'function') {
-    SCW.onViewRender(VIEW, function () {
-      // Immediate pass + one late pass; the mutation observer covers the
-      // decorated-after-us case in between and beyond.
-      setTimeout(render, 60);
-      setTimeout(render, 700);
-    }, EVENT_NS);
+    // The card is a pure function of view_4015 (row data) + view_4040
+    // (edit/add hrefs) — rebuilding on EITHER view's render makes the
+    // final state order-independent. No timers racing other modules.
+    SCW.onViewRender(VIEW, function () { setTimeout(render, 30); }, EVENT_NS);
+    SCW.onViewRender(DETAIL_VIEW, function () { setTimeout(render, 30); }, EVENT_NS);
   }
 })();
 /*** END FEATURE: System Setup Questionnaire card ***************************/
