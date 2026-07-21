@@ -357,14 +357,16 @@
     sel.setAttribute('data-scw-ws-v2-l1-select', l1.id);
     sel.setAttribute('aria-label', 'Select all in group');
     headWrap.appendChild(sel);
-    headWrap.appendChild(buildL1Header(l1, sourceViewKey));
-    // Optional MDF/IDF notes pencil (config mdfManage — deploy integration).
-    // Lives in the wrap, not the head <button>: nested buttons are invalid
-    // and in-place updates swap the head node while the wrap persists.
+    var headEl = buildL1Header(l1, sourceViewKey);
+    headWrap.appendChild(headEl);
+    // Optional MDF/IDF edit pencil (config mdfManage — deploy integration).
+    // Lives in the wrap BEFORE the head <button> (icon chip between the
+    // checkbox and the title — nested buttons are invalid and in-place
+    // updates swap the head node while the wrap persists).
     if (ns.mdfNotes && typeof ns.mdfNotes.headerControl === 'function') {
       try {
         var mdfBtn = ns.mdfNotes.headerControl(l1, sourceViewKey);
-        if (mdfBtn) headWrap.appendChild(mdfBtn);
+        if (mdfBtn) headWrap.insertBefore(mdfBtn, headEl);
       } catch (eMdf) { /* optional module — never break the header */ }
     }
     block.appendChild(headWrap);

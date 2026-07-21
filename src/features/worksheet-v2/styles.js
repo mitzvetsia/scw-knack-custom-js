@@ -327,8 +327,26 @@
     '    28px                  /* trash */ !important;',
     '}',
     '.scw-ws-v2-cell--install-flags {',
-    '  display: flex !important; flex-wrap: wrap; gap: 3px;',
+    '  display: flex !important; flex-wrap: wrap; gap: 4px;',
     '  align-items: center !important;',
+    '}',
+    /* Flags read as quiet status badges, not buttons: same chip language
+       as the origin badge (small, outlined, sentence case). The row
+       already carries the loud signals (rose tint, strikethrough, left
+       border) — the chip just names the state. Scoped here so the
+       interactive yes/no chips in detail panels keep their filled look. */
+    '.scw-ws-v2-cell--install-flags .scw-ws-v2-chip {',
+    '  padding: 1px 8px !important; border-radius: 999px !important;',
+    '  font: 600 10px/1.6 system-ui, sans-serif !important;',
+    '  letter-spacing: .02em !important; text-transform: none !important;',
+    '}',
+    '.scw-ws-v2-cell--install-flags .scw-ws-v2-chip--yes {',
+    '  background: #f0fdf4 !important; color: #15803d !important;',
+    '  border-color: #bbf7d0 !important;',
+    '}',
+    '.scw-ws-v2-cell--install-flags .scw-ws-v2-chip--removed {',
+    '  background: #fef2f2 !important; color: #b91c1c !important;',
+    '  border-color: #fecaca !important;',
     '}',
     '.scw-ws-v2-chip--ro { cursor: default !important; }',
     '.scw-ws-v2-card--install .scw-ws-v2-cell--product.scw-ws-v2-cell--ro {',

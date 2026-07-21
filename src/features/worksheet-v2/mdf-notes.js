@@ -82,20 +82,16 @@
       '.scw-ktl-accordion:has(.scw-ktl-accordion__header[data-view-key="view_3932"]) {',
       '  display: none !important;',
       '}',
-      /* Pencil in the L1 head wrap */
+      /* Icon-only pencil chip between the chevron and the L1 title —
+         same subtle affordance as the comparison page. */
       '.scw-ws-v2-mdf-notes-btn {',
-      '  display: inline-flex; align-items: center; gap: 4px; flex: none;',
-      '  margin-left: 6px; padding: 4px 7px;',
-      '  border: 1px solid rgba(255,255,255,0.45); border-radius: 6px;',
-      '  background: transparent; color: #fff; cursor: pointer;',
-      '  opacity: 0.85;',
+      '  display: inline-flex; align-items: center; justify-content: center;',
+      '  width: 24px; height: 24px; padding: 0; flex: none; margin-right: 2px;',
+      '  border: none; border-radius: 50%;',
+      '  background: rgba(255,255,255,0.16); color: #fff; cursor: pointer;',
+      '  transition: background .15s;',
       '}',
-      '.scw-ws-v2-mdf-notes-btn:hover { opacity: 1; background: rgba(255,255,255,0.12); }',
-      '.scw-ws-v2-mdf-notes-btn--has {',
-      '  background: rgba(255,255,255,0.92); color: #0f4c81;',
-      '  border-color: rgba(255,255,255,0.92); opacity: 1;',
-      '}',
-      '.scw-ws-v2-mdf-notes-btn--has:hover { background: #fff; }',
+      '.scw-ws-v2-mdf-notes-btn:hover { background: rgba(255,255,255,0.32); }',
       /* ── Manage panel — mirrors bid-review-v2 mdf-manage / mdf-idf-cards */
       '.' + P + '-panel { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-start;',
       '  margin: 0 0 6px; padding: 12px 14px; background: #fff;',
@@ -159,6 +155,13 @@
       '  padding: 12px 16px; }',
       '.' + P + '-band-sec { flex: 1 1 240px; min-width: 200px; }',
       '.' + P + '-band-sec--photos { flex: 2 1 320px; }',
+      /* Click-to-edit surfaces: the notes block and the survey-notes
+         callout open the manage panel directly. */
+      '.' + P + '-band-sec--notes, .' + P + '-callout {',
+      '  cursor: pointer; border-radius: 8px;',
+      '}',
+      '.' + P + '-band-sec--notes:hover { background: #f1f5f9; }',
+      '.' + P + '-callout:hover { background: #fdf6d8; }',
       '.' + P + '-band-notes { font: 13px/1.5 system-ui, sans-serif; color: #1e293b;',
       '  white-space: pre-line; }',
       '.' + P + '-band-notes--empty { color: #94a3b8; }',
@@ -269,16 +272,14 @@
     if (!attrs) return null;
     injectStyles();
 
-    var hasNotes = !!(fieldText(attrs, cfg.notesField || F.notes));
     var btn = document.createElement('button');
     btn.type = 'button';
-    btn.className = 'scw-ws-v2-mdf-notes-btn' +
-      (hasNotes ? ' scw-ws-v2-mdf-notes-btn--has' : '');
+    btn.className = 'scw-ws-v2-mdf-notes-btn';
     btn.setAttribute('data-scw-ws-v2-mdf-notes', l1.id);
     btn.setAttribute('data-scw-ws-v2-view', sourceViewKey);
-    btn.setAttribute('aria-label', 'Manage this MDF/IDF');
-    btn.title = 'Manage this location — rename, redesignate, notes, photos';
-    btn.innerHTML = PENCIL_SVG + (hasNotes ? '<span>Notes</span>' : '');
+    btn.setAttribute('aria-label', 'Edit this MDF/IDF');
+    btn.title = 'Edit this MDF/IDF — rename, redesignate, notes';
+    btn.innerHTML = PENCIL_SVG;
     return btn;
   }
 
@@ -313,8 +314,12 @@
     band.className = P + '-band';
     band.setAttribute('data-scw-ws-v2-mdf-band', l1.id);
     band.innerHTML =
+      // The callout + notes blocks carry the same data attrs as the header
+      // pencil, so clicking either opens the manage panel (click-to-edit).
       (sNotes
-        ? '<div class="' + P + '-callout">' +
+        ? '<div class="' + P + '-callout" title="Click to edit" ' +
+            'data-scw-ws-v2-mdf-notes="' + esc(l1.id) + '" ' +
+            'data-scw-ws-v2-view="' + esc(sourceViewKey) + '">' +
             '<span class="' + P + '-callout-ic">' + DOC_SVG + '</span>' +
             '<div><div class="' + P + '-callout-lbl">Survey Notes</div>' +
             '<div class="' + P + '-callout-txt">' + esc(sNotes) + '</div></div>' +
@@ -325,10 +330,12 @@
           '<div class="' + P + '-lbl">Photos</div>' +
           '<div class="' + P + '-photos-strip">' + photosHtml + '</div>' +
         '</div>' +
-        '<div class="' + P + '-band-sec">' +
+        '<div class="' + P + '-band-sec ' + P + '-band-sec--notes" title="Click to edit" ' +
+          'data-scw-ws-v2-mdf-notes="' + esc(l1.id) + '" ' +
+          'data-scw-ws-v2-view="' + esc(sourceViewKey) + '">' +
           '<div class="' + P + '-lbl">SCW Notes</div>' +
           '<div class="' + P + '-band-notes' + (notes ? '' : ' ' + P + '-band-notes--empty') + '">' +
-            (notes ? esc(notes) : '—') + '</div>' +
+            (notes ? esc(notes) : '+ Add notes') + '</div>' +
         '</div>' +
       '</div>';
     return band;
@@ -351,7 +358,11 @@
         var headWrap = sections[s].querySelector(':scope > .scw-ws-v2-l1-head-wrap');
         if (headWrap && !headWrap.querySelector('[data-scw-ws-v2-mdf-notes]')) {
           var btn = headerControl({ id: id }, srcKey);
-          if (btn) headWrap.appendChild(btn);
+          if (btn) {
+            var headEl = headWrap.querySelector(':scope > .scw-ws-v2-l1-head');
+            if (headEl) headWrap.insertBefore(btn, headEl);
+            else headWrap.appendChild(btn);
+          }
         }
         // Bands rebuild on every sweep — photos/notes refresh after the
         // manage view refetches (bulk upload, panel save). Cheap DOM.
@@ -495,13 +506,6 @@
           if (nN && nN.length === 1) nN = '0' + nN;
           var lbl = block.querySelector('.scw-ws-v2-l1-label');
           if (lbl) lbl.textContent = nT + ': ' + nN + ': ' + nM;
-          // Pencil has-notes state.
-          var pBtn = block.querySelector('[data-scw-ws-v2-mdf-notes="' + l1Id + '"]');
-          if (pBtn) {
-            var has = !!(own.call(fields, F.notes) ? fields[F.notes] : notes);
-            pBtn.classList.toggle('scw-ws-v2-mdf-notes-btn--has', has);
-            pBtn.innerHTML = PENCIL_SVG + (has ? '<span>Notes</span>' : '');
-          }
           // Quiet model sync so the next rebuild reads fresh values.
           try {
             var v = window.Knack && Knack.views && Knack.views[cfg.viewKey];
