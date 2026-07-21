@@ -48,8 +48,8 @@
   var SECTIONS = [
     { match: /^system setup questionnaire/i,
       sub: "Client's configuration preferences, captured at project start." },
-    { match: /^acceptance$/i, rename: 'Agreements & Invoicing',
-      sub: 'Issued paperwork per SOW / proposal — agreement status and invoicing.' },
+    { match: /^acceptance$/i, rename: 'Acceptances',
+      sub: 'Issued paperwork per SOW / proposal — agreement + invoice status.' },
     { match: /^closeout$/i, rename: 'Closeout Deliverables',
       sub: 'Documents required before closeout + Certificate of Completion.' }
   ];
@@ -388,15 +388,23 @@
       var st = questionnaireStatus();
       upsertRollup(q, st && st.text, !!(st && st.warn));
     }
-    // Closeout — count the deliverable cards the closeout strip renders.
+    // Closeout — read the deliverable cards' state classes (three-tier
+    // model from closeout-deliverables.js): a required doc is DONE only
+    // when its file is in AND QA passed.
     var c = findAcc(scene, /^closeout$/i);
     if (c) {
       var total = c.querySelectorAll('.scw-cd-doc').length;
       if (total) {
-        var missing = c.querySelectorAll('.scw-cd-doc__chip.is-missing-required').length;
+        var missing   = c.querySelectorAll('.scw-cd-doc.is-no-file:not(.is-optional)').length;
+        var qaFail    = c.querySelectorAll('.scw-cd-doc.is-qa-fail').length;
+        var qaPending = c.querySelectorAll('.scw-cd-doc.is-qa-pending').length;
+        var parts = [];
+        if (missing)   parts.push(missing + ' missing');
+        if (qaFail)    parts.push(qaFail + ' QA failed');
+        if (qaPending) parts.push(qaPending + ' QA pending');
         upsertRollup(c,
-          missing ? missing + ' required missing' : 'all required docs in',
-          missing > 0);
+          parts.length ? parts.join(' · ') : 'all required docs QA passed',
+          parts.length > 0);
       }
     }
   }
