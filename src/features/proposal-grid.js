@@ -1698,16 +1698,37 @@ ${sel('tr.scw-mounting-labor-line td:first-child')} {
     const rows = $rowsToSum.get();
     const devices = [];
 
+    // The field_1957 array on an NVR/switch can include devices that belong
+    // to a DIFFERENT SOW on the same project (the connection is per-record,
+    // not per-SOW). This view is filtered to the current SOW, so only show
+    // connected devices whose record is actually a row in this grid. Each
+    // connection span's class is the connected record's 24-hex id; each data
+    // row's <tr> id is its record id — build the row-id set once per tbody.
+    const tbody = $groupRow[0].closest('tbody');
+    let viewRowIds = tbody && tbody._scwConnDevRowIds;
+    if (!viewRowIds || (tbody && tbody._scwConnDevRowIdsRun !== runId)) {
+      viewRowIds = {};
+      if (tbody) {
+        const dataRows = tbody.querySelectorAll('tr[id]');
+        for (let r = 0; r < dataRows.length; r++) {
+          const id = dataRows[r].id;
+          if (/^[0-9a-f]{24}$/i.test(id)) viewRowIds[id] = true;
+        }
+        tbody._scwConnDevRowIds = viewRowIds;
+        tbody._scwConnDevRowIdsRun = runId;
+      }
+    }
+
     for (let i = 0; i < rows.length; i++) {
       const cell = getRowCell(caches, rows[i], 'field_1957');
       if (!cell) continue;
-      // Replace <br> with a delimiter before reading text, so multi-value cells split properly
-      const html = cell.innerHTML || '';
-      const parts = html.replace(/<br\s*\/?>/gi, '|||').split('|||');
-      for (let j = 0; j < parts.length; j++) {
-        const tmp = document.createElement('span');
-        tmp.innerHTML = parts[j];
-        const text = norm(tmp.textContent || '');
+      const spans = cell.querySelectorAll('span[data-kn="connection-value"]');
+      for (let j = 0; j < spans.length; j++) {
+        const recId = (spans[j].className || '').trim();
+        // Skip connections whose record isn't in this view (other SOW).
+        // Fail open when the id doesn't look like a record id.
+        if (/^[0-9a-f]{24}$/i.test(recId) && !viewRowIds[recId]) continue;
+        const text = norm(spans[j].textContent || '');
         if (!text || isBlankish(text)) continue;
         devices.push(text);
       }
