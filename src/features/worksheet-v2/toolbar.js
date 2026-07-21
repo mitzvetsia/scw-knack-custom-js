@@ -135,6 +135,38 @@
     }
   }
 
+  // ── Add-MDF/IDF link discovery ──────────────────────────────────
+  // Finds a Knack menu link whose text is "Add MDF/IDF" anywhere on the
+  // scene (e.g. view_3436 on build-SOW). Returns {link, menu, solo} or
+  // null. Used both to decide whether to RENDER the toolbar button and to
+  // resolve the click when no addMdfMenuView is configured.
+  function findAddMdfMenuLink() {
+    var menus = document.querySelectorAll('.kn-menu.kn-view');
+    for (var m = 0; m < menus.length; m++) {
+      var links = menus[m].querySelectorAll('a[href]');
+      for (var i = 0; i < links.length; i++) {
+        if (/^add\s*mdf\s*\/\s*idf$/i.test((links[i].textContent || '').trim())) {
+          return { link: links[i], menu: menus[m], solo: links.length === 1 };
+        }
+      }
+    }
+    return null;
+  }
+
+  /** Should the "+ Add MDF/IDF" CTA render for this view config? True when
+   *  the view names an add-menu explicitly, or when it runs the mdfManage
+   *  integration AND the scene carries an Add MDF/IDF menu link (auto-hide
+   *  the single-link source menu — the toolbar button replaces it). */
+  function addMdfAvailable(_vc) {
+    if (!_vc) return false;
+    if (_vc.addMdfMenuView) return true;
+    if (!_vc.mdfManage) return false;
+    var found = findAddMdfMenuLink();
+    if (!found) return false;
+    if (found.solo) found.menu.style.setProperty('display', 'none', 'important');
+    return true;
+  }
+
   function build(viewKey) {
     var _vc = ns.cfg && typeof ns.cfg.viewCfg === 'function' && ns.cfg.viewCfg(viewKey);
     var addLabel = (_vc && _vc.addItemLabel) ? ('+ ' + _vc.addItemLabel) : '+ Add to SOW';
@@ -177,8 +209,11 @@
         // "+ Add MDF/IDF" — views with an addMdfMenuView (a hidden Knack
         // menu whose link is the add-location action, e.g. view_3436 on
         // build-SOW). Replaces the button that lived in the standalone
-        // Manage MDFs/IDFs section now folded into the worksheet.
-        ((_vc && _vc.addMdfMenuView) ?
+        // Manage MDFs/IDFs section now folded into the worksheet. On other
+        // mdfManage worksheets (deploy) the button auto-appears the moment
+        // the scene carries ANY "Add MDF/IDF" menu link — so adding the
+        // Builder menu view lights it up with no code change.
+        (addMdfAvailable(_vc) ?
           actionBtn('add-mdf',    '+ Add MDF/IDF',        'Add a new MDF/IDF location') : '') +
         actionBtn('add-photos',   '+ Add Photos',         'Bulk upload photos') +
         // "+ Add Accessories" lives in the floating bulk panel (bulk.js)
@@ -385,6 +420,10 @@
           if (_mdfLink) { _mdfLink.click(); return; }
         }
       } catch (e) { /* fall through to text scan */ }
+      // No configured menu — use whatever Add MDF/IDF menu link the scene
+      // carries (the same one that made the button render).
+      var _mdfFound = findAddMdfMenuLink();
+      if (_mdfFound) { _mdfFound.link.click(); return; }
       // Fallback: any live "Add MDF/IDF" link on the page (incl. the
       // accordion action-bar copy accordion-menu-inject builds).
       var mdfAnchors = document.querySelectorAll('a.kn-link, .scw-acc-action-btn, .kn-link-page, a');
