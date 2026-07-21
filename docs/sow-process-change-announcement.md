@@ -1,19 +1,20 @@
 # SOW-Centric Pipeline Change — Slack Announcement
 
-Slack-ready articulation of the bid-to-proposal process change. The core of
-the change: subcontractor bid SOWs auto-sync into our SOWs, and first-return
-bids route straight to Sales — so Sales and the customer review the survey
-results and proposed solution SEPARATE from a final number, before Ops
-polishes the solution and releases pricing.
+Slack-ready articulation of the proposed bid-to-proposal process change,
+framed as an idea being floated (Ben + Micah brainstorm) rather than a
+decided rollout. The core of the change: subcontractor bid SOWs auto-sync
+into our SOWs, and first-return bids route straight to Sales — so Sales and
+the customer review the survey results and proposed solution SEPARATE from a
+final number, before Ops polishes the solution and releases pricing.
 
 ---
 
-**Heads up team — we're changing what happens when a bid comes back from our subcontractor.** One core idea, then the mechanics.
+**Ben and I were batting around some ideas this afternoon RE: how to more efficiently handle the final bid prep process.** Here's an idea for how it could work:
 
-**The big idea: we're separating the solution conversation from the pricing conversation.**
-Today, when a sub's bid returns, it sits with Ops until it's been worked into a polished final number — so the first time Sales and the customer engage with the post-survey solution, it arrives welded to a price. Going forward, the moment a bid first returns from the sub, it goes **straight to Sales**. Sales and the customer review the survey results and the initially proposed solution on their own — is this the right design, the right coverage, the right direction? — **before a final number exists**. Only after that direction is confirmed does Ops polish the solution and release pricing.
+**The core of it: separate the solution conversation from the pricing conversation.**
+Today, when a sub's bid returns, it sits with Ops until it's been worked into a polished final number — so the first time Sales and the customer engage with the post-survey solution, it arrives welded to a price. The idea is that the moment a bid first returns from the sub, it would go **straight to Sales**. Sales and the customer review the survey results and the initially proposed solution on their own — is this the right design, the right coverage, the right direction? — **before a final number exists**. Only after that direction is confirmed does Ops polish the solution and release pricing.
 
-How it works:
+How it would work:
 
 **1. New projects start in "Create Preliminary."**
 Every project begins life as a preliminary SOW in Knack — that's the scope object everything downstream builds on.
@@ -28,6 +29,8 @@ No Ops polish pass first. Sales takes the freshly synced solution to the custome
 Out of that review, Sales submits either a go-ahead or a revision request spelling out how the SOW should change. The solution gets locked in (or reshaped) while it's still just a solution.
 
 **5. To Do is where Ops polishes and releases numbers.**
-Confirmed finals and revision requests land in **To Do**. That's now the production queue where Ops refines the solution and produces the **client-facing final proposal** — the first time a final number enters the picture, it's attached to a solution the customer has already bought into.
+Confirmed finals and revision requests land in **To Do**. That becomes the production queue where Ops refines the solution and produces the **client-facing final proposal** — the first time a final number enters the picture, it's attached to a solution the customer has already bought into.
 
-**Why:** customers evaluate the design on its merits instead of anchoring on price, Sales gets in the conversation days earlier, revision cycles happen before pricing work is done (not after, wasting it), and the final proposal lands as a confirmation rather than an opening offer.
+**Why we like it:** customers evaluate the design on its merits instead of anchoring on price, Sales gets in the conversation days earlier, revision cycles happen before pricing work is done (not after, wasting it), and the final proposal lands as a confirmation rather than an opening offer.
+
+Curious what everyone thinks — especially where this would rub in practice.
