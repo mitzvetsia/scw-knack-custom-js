@@ -822,6 +822,7 @@
         laborDesc:   rawHtml(s, SFK.laborDesc),
         displayLabel: raw(s, SFK.displayLabel),
         surveyNotes: raw(s, SFK.notes),
+        scwNotes:    raw(s, SFK.scwNotes),
         // Attached accessories (field_2207, "REL_Accessories" — the parent's
         // OWN forward connection, not the per-accessory field_2464 back-
         // pointer worksheet-v2 prefers). Accessory RECORDS are filtered out

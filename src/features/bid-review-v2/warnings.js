@@ -145,8 +145,11 @@
     return out;
   }
 
-  /** Per-cell chips — icon-only, one per issue type the SOW item has. */
-  function chipsHtml(sowItemId) {
+  /** Per-cell chips — icon-only, one per issue type the SOW item has.
+   *  `noteText` (optional) is the SOW item's actual SCW Notes text — when
+   *  present, the "notes" chip's hover shows the note itself instead of
+   *  just the generic "has SCW notes" label. */
+  function chipsHtml(sowItemId, noteText) {
     var w = wv2();
     if (!w) return '';
     var issues = issuesFor(sowItemId);
@@ -157,8 +160,9 @@
     for (var t = 0; t < TYPES.length; t++) {
       var k = TYPES[t];
       if (issues.indexOf(k) === -1) continue;
+      var title = (k === 'notes' && noteText) ? noteText : (LABELS[k] || k);
       parts.push('<span class="scw-bid-review-v2__warn-chip" ' +
-        'data-issue-type="' + k + '" title="' + esc(LABELS[k] || k) + '">' +
+        'data-issue-type="' + k + '" title="' + esc(title) + '">' +
         (ICONS[k] || '') + '</span>');
     }
     return parts.length

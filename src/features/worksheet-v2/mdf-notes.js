@@ -514,7 +514,28 @@
 
     panel.querySelector('.' + P + '-btn--cancel').addEventListener('click', closePanels);
 
-    saveBtn.addEventListener('click', function () {
+    // Enter-to-save + tab/click-away-to-save — the rest of the app saves
+    // inline fields on blur (SCW notes textarea, direct-edit worksheet
+    // cells) rather than requiring an explicit button click; match that
+    // here so Tab/Enter behave consistently. The Save button stays for
+    // mouse users. Cancel is exempt (blurring into it doesn't autosave).
+    for (var ki = 0; ki < inputs.length; ki++) {
+      inputs[ki].addEventListener('keydown', function (e) {
+        if (e.key !== 'Enter') return;
+        e.preventDefault();
+        if (!saveBtn.disabled) doSave();
+      });
+    }
+    panel.addEventListener('focusout', function () {
+      setTimeout(function () {
+        if (!panel.isConnected) return;   // panel already closed
+        if (!panel.contains(document.activeElement) && !saveBtn.disabled) doSave();
+      }, 0);
+    });
+
+    saveBtn.addEventListener('click', doSave);
+
+    function doSave() {
       // Diff-only PUT — never send an unchanged field (the prefill can be a
       // parsed fallback; blindly PUTting everything could wipe real values).
       var fields = {};
@@ -597,7 +618,7 @@
             (srvMsg ? ': ' + srvMsg : '');
         }
       });
-    });
+    }
   }
 
   // ── Delegated toggle ──────────────────────────────────────────────

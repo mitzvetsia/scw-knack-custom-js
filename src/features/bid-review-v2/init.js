@@ -1026,8 +1026,22 @@
     }
     relocateSowField(card);
     removeSurveyNotes(card);
+    removeNotesWarnChip(card);
     lineBreakConnectedDevices(card);
     makeScwNotesTextarea(card);
+  }
+
+  // The "has SCW notes" chip is a callout for the collapsed grid row, where
+  // the note text isn't visible anywhere else. Once expanded, the SCW Notes
+  // field is directly visible (and editable) in the detail zone below — the
+  // chip is redundant there. The other issue types (photos / disconnected /
+  // wrong accessory) stay, since their underlying data still isn't all
+  // visible at a glance in the expanded card.
+  function removeNotesWarnChip(card) {
+    var chits = card.querySelectorAll('.scw-ws-v2-warn-chit[data-issue-type="notes"]');
+    for (var i = 0; i < chits.length; i++) {
+      chits[i].parentNode.removeChild(chits[i]);
+    }
   }
 
   // Connected Devices (field_1957) is multi-value; show each on its own

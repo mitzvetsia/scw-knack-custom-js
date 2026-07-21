@@ -463,10 +463,12 @@
     }
     var qtyTxt  = sowItemData.qty ? String(sowItemData.qty) : '—';
     var feeTxt  = sowItemData.fee ? fmtMoney(sowItemData.fee) : '—';
-    // SOW-item issue chips (missing photos / disconnected / wrong accessory).
-    // Computed from the SOW item only — never the bid side.
+    // SOW-item issue chips (missing photos / disconnected / wrong accessory /
+    // has SCW notes). Computed from the SOW item only — never the bid side.
+    // The actual note text is passed through so the "notes" chip's hover
+    // shows the note itself instead of just a generic label.
     var warnHtml = (ns.warnings && row && row.sowItem)
-      ? ns.warnings.chipsHtml(row.sowItem) : '';
+      ? ns.warnings.chipsHtml(row.sowItem, sowItemData.scwNotes) : '';
     // Accessory rows get an "attached to <parent>" line so the relationship
     // is explicit even when scrolled away from the parent.
     var attachHtml = (row && row.isAccessory && row.parentLabel)

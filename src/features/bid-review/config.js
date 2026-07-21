@@ -175,6 +175,10 @@
                                        // attached-accessories connection (NOT field_1958,
                                        // which concatenates product + accessory names
                                        // with no separator — see transform.js)
+      scwNotes:        'field_1953',   // SCW Notes (same field worksheet-v2 defaults to) —
+                                       // read here so the comparison grid's "has notes"
+                                       // warning chip can show the actual text on hover
+                                       // instead of just a generic label.
     },
 
     // ── Timing ────────────────────────────────────────────────
