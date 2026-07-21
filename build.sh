@@ -199,6 +199,7 @@ cat \
   src/features/worksheet-v2/summary.js \
   src/features/worksheet-v2/picker.js \
   src/features/worksheet-v2/edit.js \
+  src/features/worksheet-v2/mdf-notes.js \
   src/features/worksheet-v2/render.js \
   src/features/worksheet-v2/toolbar.js \
   src/features/worksheet-v2/sort.js \

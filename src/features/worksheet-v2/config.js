@@ -160,8 +160,17 @@
                                             // install scope changes ONLY via the CO process.
                                             // card.js renders an inert trash; bulk.js hides
                                             // the bulk Delete (view_4056 clone inherits)
-        mdfSourceViewKey: '',               // TODO: empty-L1 seed source (analogue of view_3577)
-        mdfLabelField:    '',               // TODO
+        mdfSourceViewKey: 'view_3932',      // deploy "Manage MDFs/IDFs" grid — seeds
+                                            // empty-location L1 groups (parity with the
+                                            // standalone section this replaces)
+        mdfLabelField:    'field_1642',
+        // Location management folded INTO the worksheet (mdf-notes.js): each
+        // real-location L1 header gets a pencil that edits the location's
+        // notes through view_3932, and the standalone "Manage MDFs / IDFs"
+        // accordion section is hidden once the pencils are live. The
+        // view_4056 sub-portal clone inherits this config but view_3932
+        // isn't on that scene — every consumer guards on the view existing.
+        mdfManage:        { viewKey: 'view_3932', notesField: 'field_1643' },
         hideMoneyColumns: true,             // no subBid/fee/hrs/mat/installFee on this object
         // Accessories (field_2853 child→parent) with a loaded parent always
         // attach under it (hidden row + read-only chip on the parent card) —
