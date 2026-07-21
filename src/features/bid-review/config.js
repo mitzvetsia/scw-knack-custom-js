@@ -171,6 +171,10 @@
       dropLength:      'field_1965',   // drop length (SOW side)
       conduit:         'field_2035',   // conduit (SOW side)
       notes:           'field_2412',   // survey notes (same field key as bid side)
+      accessories:     'field_2207',   // REL_Accessories — the parent line item's own
+                                       // attached-accessories connection (NOT field_1958,
+                                       // which concatenates product + accessory names
+                                       // with no separator — see transform.js)
     },
 
     // ── Timing ────────────────────────────────────────────────

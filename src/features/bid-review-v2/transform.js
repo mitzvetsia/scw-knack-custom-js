@@ -87,6 +87,17 @@
     if (c.length) return stripHtml(c[0].identifier || '');
     return stripHtml(rec[key] || '');
   }
+  // Every connected identifier (not just the first) — used for multi-value
+  // connections like accessories, where each attached record's label matters.
+  function connectionLabels(rec, key) {
+    var c = connectionAll(rec, key);
+    var out = [];
+    for (var i = 0; i < c.length; i++) {
+      var lbl = stripHtml((c[i] && c[i].identifier) || '');
+      if (lbl) out.push(lbl);
+    }
+    return out;
+  }
 
   // ── field_2404 is MULTI-VALUED ───────────────────────────────
   // A bid line item's "related SOW line item" connection (field_2404,
@@ -811,6 +822,15 @@
         laborDesc:   rawHtml(s, SFK.laborDesc),
         displayLabel: raw(s, SFK.displayLabel),
         surveyNotes: raw(s, SFK.notes),
+        // Attached accessories (field_2207, "REL_Accessories" — the parent's
+        // OWN forward connection, not the per-accessory field_2464 back-
+        // pointer worksheet-v2 prefers). Accessory RECORDS are filtered out
+        // of view_3921 entirely (see warnings.js), so there's no child-side
+        // list to scan here — this text field is the only signal available
+        // on this grid. field_1958 ("stored product name") is NOT usable for
+        // this — it concatenates product + accessory names with no
+        // separator (see the productName comment above).
+        accessories: connectionLabels(s, SFK.accessories),
         mdfIdf:      connectionLabel(s, SFK.mdfIdf),
         mdfIdfId:    connectionId(s, SFK.mdfIdf),
         proposalBucket: connectionLabel(s, SFK.proposalBucket),

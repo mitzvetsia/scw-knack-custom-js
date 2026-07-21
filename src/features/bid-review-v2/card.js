@@ -475,6 +475,17 @@
           '<span class="scw-bid-review-v2__sow-attached-name">' +
             escapeHtml(row.parentLabel) + '</span></div>'
       : '';
+    // Text-only accessories line (bracket, UPS, etc. attached to this SOW
+    // item) — same info worksheet-v2 shows as chips, but the accessory
+    // RECORDS aren't loaded into this grid's source view (see transform.js),
+    // so there's no chip UI to build — just list the names.
+    var accList = sowItemData.accessories || [];
+    var accessoriesHtml = accList.length
+      ? '<div class="scw-bid-review-v2__sow-accessories" title="' +
+          escapeHtml(accList.join(', ')) + '">' +
+          '<label>Accessories</label>' + escapeHtml(accList.join(', ')) +
+        '</div>'
+      : '';
     td.innerHTML =
       warnHtml +
       attachHtml +
@@ -493,6 +504,7 @@
         '<div class="scw-bid-review-v2__sow-desc" data-scw-sow-field="desc" title="' +
           escapeHtml(descTxt) + '">' + escapeHtml(descTxt) +
         '</div>' : '') +
+      accessoriesHtml +
       connLineHtml(sowItemData.connDevice, sowItemData.connTo, { side: 'sow' }) +
       cablingLineHtml(sowItemData, { side: 'sow' }) +
       // SOW MDF/IDF — shown when a bid overrides it (diff.mdfIdf) so the

@@ -1,15 +1,16 @@
 /*** BID REVIEW V2 — WARNINGS ************************************************
  *
  * Surfaces the SAME issue warnings the worksheet-v2 Build-SOW grid shows
- * (missing required photos, disconnected cam/reader, wrong accessory) on
- * the comparison grid's SOW column + MDF/IDF group headers.
+ * (missing required photos, disconnected cam/reader, wrong accessory,
+ * non-blank SCW notes) on the comparison grid's SOW column + MDF/IDF
+ * group headers.
  *
  * Detection sources (all SOW ITEMS ONLY — bid records are never analyzed):
- *   - photos / disconnected: delegated to worksheet-v2's analyzer pointed
- *     at view_3921. Those checks read object-level fields (field_2219
- *     bucket, field_2197 connected device) + scrape the view's photo cells
- *     (field_771 / field_2446 / field_2447), all of which view_3921 mirrors
- *     from view_3610.
+ *   - photos / disconnected / notes: delegated to worksheet-v2's analyzer
+ *     pointed at view_3921. Those checks read object-level fields
+ *     (field_2219 bucket, field_2197 connected device, field_1953 SCW
+ *     notes) + scrape the view's photo cells (field_771 / field_2446 /
+ *     field_2447), all of which view_3921 mirrors from view_3610.
  *   - wrong accessory: computed LOCALLY here by scraping each SOW item's
  *     own row field_2244 cell (the per-accessory match-check spans). On
  *     scene_1155 the accessory child records aren't in view_3921's model,
@@ -32,7 +33,7 @@
 
   var SOW_VIEW = (ns.CONFIG && ns.CONFIG.sourceViewKeys && ns.CONFIG.sourceViewKeys[1]) ||
                  'view_3921';
-  var TYPES = ['photos', 'disconnected', 'bracket'];
+  var TYPES = ['photos', 'disconnected', 'bracket', 'notes'];
 
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
@@ -172,7 +173,7 @@
     if (!w || !ids || !ids.length) return '';
     var ICONS  = w.ICONS  || {};
     var LABELS = w.LABELS || {};
-    var counts = { photos: 0, disconnected: 0, bracket: 0 };
+    var counts = { photos: 0, disconnected: 0, bracket: 0, notes: 0 };
     for (var i = 0; i < ids.length; i++) {
       var issues = issuesFor(ids[i]);
       for (var j = 0; j < issues.length; j++) {

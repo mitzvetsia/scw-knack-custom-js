@@ -802,6 +802,9 @@
     '.scw-bid-review-v2__warn-chip[data-issue-type="bracket"] {',
     '  color: #b45309; background: #fffbeb; border-color: #fcd34d;',
     '}',
+    '.scw-bid-review-v2__warn-chip[data-issue-type="notes"] {',
+    '  color: #0e7490; background: #ecfeff; border-color: #a5f3fc;',
+    '}',
     /* Aggregate (summary) chips in the MDF/IDF group header — icon + count
        + label, auto-width pill. Sits between the title and the row count.
        CRITICAL: the base __warn-chips rule above is an absolutely-positioned
@@ -995,6 +998,16 @@
     '  font-weight: 600;',
     '}',
     '.scw-bid-review-v2__sow-desc-wrap { margin-top: 4px; }',
+    /* Attached accessories line (text-only) under a SOW item's numbers. */
+    '.scw-bid-review-v2__sow-accessories {',
+    '  margin-top: 6px; font-size: 11.5px; line-height: 1.4;',
+    '  color: #475569; overflow-wrap: anywhere; word-break: break-word;',
+    '}',
+    '.scw-bid-review-v2__sow-accessories label {',
+    '  display: inline-block; margin-right: 5px;',
+    '  color: #64748b; font-size: 10px; font-weight: 700;',
+    '  text-transform: uppercase; letter-spacing: .03em;',
+    '}',
     /* ── Bid cells (read-only) ─────────────────────────────── */
     '.scw-bid-review-v2__cell {',
     '  padding: 20px 22px !important;',

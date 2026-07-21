@@ -3114,6 +3114,11 @@
     '  color: #b45309 !important; background: #fffbeb !important;',
     '  border-color: #fcd34d !important;',
     '}',
+    '.scw-ws-v2-warn-chit[data-issue-type="notes"],',
+    '.scw-ws-v2-warn-chip[data-issue-type="notes"] {',
+    '  color: #0e7490 !important; background: #ecfeff !important;',
+    '  border-color: #a5f3fc !important;',
+    '}',
     /* Card-flash animation triggered when a warning chip is clicked
        — amber pulse on the matching cards so the user sees them at
        a glance after scrolling. */
