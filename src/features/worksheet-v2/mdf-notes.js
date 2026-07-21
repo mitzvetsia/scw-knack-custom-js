@@ -532,10 +532,38 @@
         url:  SCW.knackRecordUrl(cfg.viewKey, l1Id),
         type: 'PUT',
         data: JSON.stringify(fields),
-        success: function () {
+        success: function (resp) {
+          // Knack's view-based PUT can return 200 while silently DROPPING a
+          // field the target view doesn't expose as an inline-editable
+          // column — the record is otherwise saved, that one field just
+          // never lands. Verify the response actually reflects what we
+          // sent before declaring success; otherwise the header retitles
+          // optimistically here, then reverts a moment later when
+          // model.fetch() below reads the still-unchanged stored value.
+          // See bid-review-v2/mdf-manage.js's documented Builder
+          // dependency for view_3822/field_1943 — view_3577 needs the
+          // same inline-edit column configured for field_1943 (Name).
+          var own = Object.prototype.hasOwnProperty;
+          var dropped = [];
+          for (var fk in fields) {
+            if (!own.call(fields, fk)) continue;
+            var got = resp && (resp[fk + '_raw'] != null ? resp[fk + '_raw'] : resp[fk]);
+            got = stripTags(got == null ? '' : got);
+            if (got !== fields[fk]) dropped.push(fk);
+          }
+          if (dropped.length) {
+            saveBtn.disabled = false;
+            status.classList.add('is-err');
+            status.textContent = 'Save didn’t take — ' + dropped.join(', ') +
+              ' isn’t editable on this view (check Knack Builder inline-edit settings).';
+            console.warn('[scw-ws-v2-mdf] server dropped field(s) — view is missing ' +
+              'inline-edit config for these fields', {
+                view: cfg.viewKey, recordId: l1Id, sent: fields, dropped: dropped, response: resp
+              });
+            return;
+          }
           status.textContent = 'Saved ✓';
           // Retitle the L1 header in place from the saved values.
-          var own = Object.prototype.hasOwnProperty;
           var nT = own.call(fields, F.type) ? fields[F.type] : type;
           var nN = own.call(fields, F.num)  ? fields[F.num]  : num;
           var nM = own.call(fields, F.name) ? fields[F.name] : name;
