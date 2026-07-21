@@ -1370,10 +1370,12 @@
     // Photos (field_771) — gallery thumb strip. Each connection-value
     // span carries an <img data-kn-img-gallery> with the full-size URL;
     // surface that as the click-through target (opens full image in a
-    // new tab) and as the thumb src.
+    // new tab) and as the thumb src. The span's id is the connected
+    // DOC_photos record's id — kept so each thumb can carry a delete button
+    // (see mdf-manage.js's delegated [data-scw-mdf-photo-del] handler).
     var photoCell = sourceTr.querySelector(
       'td.field_771, td[data-field-key="field_771"]');
-    var imgUrls = [];
+    var photos = [];
     if (photoCell) {
       var imgSpans = photoCell.querySelectorAll(
         'span[id][data-kn="connection-value"]');
@@ -1382,13 +1384,13 @@
         if (!img) continue;
         var url = img.getAttribute('data-kn-img-gallery') ||
                   img.getAttribute('src') || '';
-        if (url) imgUrls.push(url);
+        if (url) photos.push({ id: (imgSpans[si].id || '').trim(), url: url });
       }
     }
     // Render the Photos section whenever there are photos OR the group has
     // a real location record to attach photos to — the "+ Add" tile keeps
     // upload one click away right where the photos live.
-    if (imgUrls.length || mdfIdfId) {
+    if (photos.length || mdfIdfId) {
       var photoSection = document.createElement('div');
       photoSection.className = 'scw-bid-review-v2__l1-detail-section';
       var pLabel = document.createElement('div');
@@ -1397,17 +1399,32 @@
       photoSection.appendChild(pLabel);
       var photoStrip = document.createElement('div');
       photoStrip.className = 'scw-bid-review-v2__l1-detail-photos';
-      for (var pi = 0; pi < imgUrls.length; pi++) {
+      for (var pi = 0; pi < photos.length; pi++) {
         var a = document.createElement('a');
-        a.href = imgUrls[pi];
+        a.href = photos[pi].url;
         a.target = '_blank';
         a.rel = 'noopener';
         a.className = 'scw-bid-review-v2__l1-detail-photo';
         var thumb = document.createElement('img');
-        thumb.src = imgUrls[pi];
+        thumb.src = photos[pi].url;
         thumb.alt = '';
         thumb.loading = 'lazy';
         a.appendChild(thumb);
+        if (photos[pi].id) {
+          var delBtn = document.createElement('button');
+          delBtn.type = 'button';
+          delBtn.className = 'scw-bid-review-v2__l1-detail-photo-del';
+          delBtn.setAttribute('data-scw-mdf-photo-del', photos[pi].id);
+          delBtn.title = 'Delete photo';
+          delBtn.innerHTML =
+            '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" ' +
+            'stroke="currentColor" stroke-width="2" stroke-linecap="round" ' +
+            'stroke-linejoin="round"><polyline points="3 6 5 6 21 6"></polyline>' +
+            '<path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>' +
+            '<path d="M10 11v6"></path><path d="M14 11v6"></path>' +
+            '<path d="M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"></path></svg>';
+          a.appendChild(delBtn);
+        }
         photoStrip.appendChild(a);
       }
       if (mdfIdfId) {

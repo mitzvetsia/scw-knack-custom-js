@@ -212,6 +212,17 @@
       '<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>' +
       '<circle cx="12" cy="13" r="4"/></svg>';
 
+  // Delete-enabled DOC_photos grid on this scene, used ONLY as a REST-DELETE
+  // endpoint (view-scoped PUT/DELETE, same trick every other save in this
+  // file uses). This is the SAME "all-photos" helper grid worksheet-v2/
+  // photos.js already added to review-bids for line-item photo deletion
+  // (view_4098, added 2026-07-13) — DOC_photos is one shared object across
+  // line items AND MDF/IDF locations (different connection field per
+  // parent), so no separate Builder view should be needed here. If deletes
+  // 404/403, the object differs after all and a dedicated helper grid for
+  // MDF/IDF location photos needs to be added and pointed at below.
+  var MDF_PHOTO_DELETE_GRID = 'view_4098';
+
   /** Open the identity-aware bulk photo uploader against an MDF/IDF
    *  location record (linkField mdfIdfID). Shared by the manage panel's
    *  Add photos button and the L1 detail strip's "+ Add" tile. */
@@ -524,7 +535,69 @@
         openMdfBulkUpload(add.getAttribute('data-scw-mdf-addphoto'),
                           add.getAttribute('data-mdf-label') || '');
       }
+      // CAPTURE phase so the thumb's own click-through (opens the full
+      // image in a new tab) never fires when the delete button is hit.
+      var del = e.target && e.target.closest &&
+                e.target.closest('[data-scw-mdf-photo-del]');
+      if (del) {
+        e.preventDefault();
+        e.stopPropagation();
+        deleteMdfPhoto(del);
+      }
     }, true);
+  }
+
+  /** Delete an MDF/IDF location photo (DOC_photos record) via a REST DELETE
+   *  through MDF_PHOTO_DELETE_GRID, then quietly refetch the MDF/IDF
+   *  locations view so the L1 photos strip rebuilds without it. Confirms
+   *  first — this permanently removes the photo and can't be undone. */
+  function deleteMdfPhoto(btn) {
+    var photoId = btn.getAttribute('data-scw-mdf-photo-del');
+    if (!photoId) return;
+
+    function doDelete() {
+      var a = btn.closest('.scw-bid-review-v2__l1-detail-photo');
+      if (a && a.parentNode) a.parentNode.removeChild(a);   // optimistic
+      if (!(window.SCW && typeof SCW.knackAjax === 'function' &&
+            typeof SCW.knackRecordUrl === 'function')) return;
+      SCW.knackAjax({
+        url:  SCW.knackRecordUrl(MDF_PHOTO_DELETE_GRID, photoId),
+        type: 'DELETE',
+        success: function () {
+          try {
+            var v = window.Knack && Knack.views && Knack.views[mdfViewKey()];
+            if (v && v.model && typeof v.model.fetch === 'function') v.model.fetch();
+          } catch (e) { /* best-effort */ }
+        },
+        error: function (xhr) {
+          console.warn('[scw-brv2-mdf] photo delete failed via ' +
+            MDF_PHOTO_DELETE_GRID + ' for ' + photoId,
+            xhr && xhr.status, xhr && xhr.responseText);
+          alert('Couldn’t delete that photo (status ' + (xhr && xhr.status) +
+            '). It may belong to a different object than ' + MDF_PHOTO_DELETE_GRID +
+            ' — check the console for details.');
+          // Refetch either way — if the delete silently landed server-side
+          // despite the error, the strip should still catch up.
+          try {
+            var v2 = window.Knack && Knack.views && Knack.views[mdfViewKey()];
+            if (v2 && v2.model && typeof v2.model.fetch === 'function') v2.model.fetch();
+          } catch (e2) { /* best-effort */ }
+        }
+      });
+    }
+
+    var wsv2 = window.SCW && SCW.worksheetV2;
+    if (wsv2 && typeof wsv2.confirmModal === 'function') {
+      wsv2.confirmModal({
+        title: 'Delete this photo?',
+        body: 'This permanently removes the photo from this MDF/IDF location and ' +
+              'can’t be undone.',
+        okLabel: 'Delete photo',
+        cancelLabel: 'Cancel'
+      }).then(function (ok) { if (ok) doDelete(); });
+    } else if (window.confirm('Delete this photo? This can’t be undone.')) {
+      doDelete();
+    }
   }
 
   // Tile/gear styles must exist at render time, not first-panel-open time.
