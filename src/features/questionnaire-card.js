@@ -74,11 +74,13 @@
       '  border: 1px solid transparent; }',
       '.scw-qst-pill.is-warn { background: #fef3c7; border-color: #fde68a; color: #92400e; }',
       '.scw-qst-pill.is-ok   { background: #dcfce7; border-color: #86efac; color: #15803d; }',
+      /* !important — Knack\'s global anchor color otherwise wins and the
+         label reads navy-on-navy. */
       '.scw-qst-open { display: inline-flex; align-items: center; gap: 7px; cursor: pointer;',
       '  font: 600 12.5px/1 system-ui, sans-serif; padding: 8px 14px; border-radius: 6px;',
-      '  text-decoration: none; background: #0f4c75; border: 1px solid #0a3a63;',
-      '  color: #fff; margin-left: auto; }',
-      '.scw-qst-open:hover { background: #0a3a63; }',
+      '  text-decoration: none !important; background: #0f4c75; border: 1px solid #0a3a63;',
+      '  color: #fff !important; margin-left: auto; }',
+      '.scw-qst-open:hover { background: #0a3a63; color: #fff !important; }',
       /* Signoff progression */
       '.scw-qst-steps { display: flex; flex-wrap: wrap; gap: 10px; margin: 12px 0 2px; }',
       '.scw-qst-step { flex: 1 1 170px; min-width: 150px; display: flex; gap: 8px;',
@@ -114,11 +116,7 @@
       '.scw-qst-audit-line { font: 11.5px/1.55 ui-monospace, SFMono-Regular, Menlo, monospace;',
       '  color: #475569; padding: 2px 0; border-bottom: 1px dashed #e2e8f0;',
       '  overflow-wrap: anywhere; }',
-      '.scw-qst-audit-line:last-child { border-bottom: none; }',
-      '.scw-qst-items { display: flex; flex-wrap: wrap; gap: 5px; margin: 8px 0 2px; }',
-      '.scw-qst-item-chip { padding: 2px 9px; border-radius: 999px; background: #f1f5f9;',
-      '  border: 1px solid #e2e8f0; color: #475569;',
-      '  font: 600 11px/1.6 system-ui, sans-serif; white-space: nowrap; }'
+      '.scw-qst-audit-line:last-child { border-bottom: none; }'
     ].join('\n');
     var style = document.createElement('style');
     style.id = STYLE_ID;
@@ -159,18 +157,6 @@
     return out;
   }
 
-  function itemLabels(tr) {
-    var td = cell(tr, F.items);
-    var out = [];
-    if (!td) return out;
-    var spans = td.querySelectorAll('span[data-kn="connection-value"]');
-    for (var i = 0; i < spans.length; i++) {
-      var t = String(spans[i].textContent || '').trim();
-      if (t) out.push(t);
-    }
-    return out;
-  }
-
   /** Signoff stage states from the STATUS text + date columns. */
   function stageStates(tr, status) {
     var cur = -1;
@@ -205,7 +191,6 @@
     var openA  = tr.querySelector('td.kn-table-link a[href]');
     var stages = stageStates(tr, status);
     var audit  = auditLines(tr);
-    var items  = itemLabels(tr);
     var statusOk = /complete|approved|closed/i.test(status);
 
     var card = document.createElement('div');
@@ -247,15 +232,6 @@
       }
       html += '</div></details>';
     }
-    if (items.length) {
-      html += '<details class="scw-qst-details"><summary>Connected install line items · ' +
-        items.length + '</summary><div class="scw-qst-items">';
-      for (var it = 0; it < items.length; it++) {
-        html += '<span class="scw-qst-item-chip">' + esc(items[it]) + '</span>';
-      }
-      html += '</div></details>';
-    }
-
     card.innerHTML = html;
     return card;
   }
