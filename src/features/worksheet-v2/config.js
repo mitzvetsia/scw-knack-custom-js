@@ -156,6 +156,10 @@
         noAddItem:        true,             // can't add to a deployment scope without a
                                             // change order — suppress the "+ Add to SOW"
                                             // toolbar CTA (view_4056 clone inherits this)
+        noDelete:         true,             // NOTHING deletable on the install worksheet —
+                                            // install scope changes ONLY via the CO process.
+                                            // card.js renders an inert trash; bulk.js hides
+                                            // the bulk Delete (view_4056 clone inherits)
         mdfSourceViewKey: '',               // TODO: empty-L1 seed source (analogue of view_3577)
         mdfLabelField:    '',               // TODO
         hideMoneyColumns: true,             // no subBid/fee/hrs/mat/installFee on this object

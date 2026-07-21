@@ -789,6 +789,15 @@
     } catch (e) { return false; }
   }
 
+  /** Config noDelete (install worksheets): nothing is deletable — install
+   *  scope changes only via the change-order process. Hides bulk Delete. */
+  function viewNoDelete(sourceViewKey) {
+    try {
+      var vc = ns.cfg && typeof ns.cfg.viewCfg === 'function' && ns.cfg.viewCfg(sourceViewKey);
+      return !!(vc && vc.noDelete);
+    } catch (e) { return false; }
+  }
+
   function refreshToolbar() {
     if (!toolbar) return;
     var n = selSize();
@@ -814,6 +823,13 @@
     }
     var delBtn = toolbar.querySelector('.scw-ws-v2-bulk-delete');
     var delLabel = delBtn.querySelector('.scw-ws-v2-bulk-delete-label');
+    // Install worksheets (config noDelete): hide bulk Delete entirely —
+    // same !important trick as the noAccessories buttons above.
+    if (viewNoDelete(_sourceViewKey)) {
+      delBtn.style.setProperty('display', 'none', 'important');
+    } else {
+      delBtn.style.removeProperty('display');
+    }
     if (n === 0) {
       delBtn.disabled = true;
       delBtn.title = '';

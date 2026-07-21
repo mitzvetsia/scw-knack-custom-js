@@ -855,6 +855,16 @@
     // it from the CO. A net-new item (CO's SOW only) falls through to the
     // real trash below.
     var _vc = (ns.cfg && typeof ns.cfg.viewCfg === 'function' && ns.cfg.viewCfg(viewKey)) || {};
+    // Install worksheets (config noDelete): NOTHING is deletable — install
+    // scope only changes through the change-order process. Inert grayed
+    // trash keeps the grid track aligned and tells the user why.
+    if (_vc.noDelete) {
+      return '<span class="scw-ws-v2-cell scw-ws-v2-trash scw-ws-v2-trash--blocked" ' +
+        'aria-hidden="true" ' +
+        'title="Install items can’t be deleted here — all changes go through the change-order process.">' +
+        TRASH_SVG +
+      '</span>';
+    }
     if (_vc.coDeleteGuard && !isDeleteBlocked(rec, viewKey)) {
       var coId = coSowIdFromHash();
       var sowRaw = rec['field_2154_raw'];

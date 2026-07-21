@@ -319,7 +319,7 @@
     '.scw-ws-v2-col-header.scw-ws-v2-col-header--install {',
     '  grid-template-columns:',
     '    20px                  /* chevron */',
-    '    64px                  /* label / drop */',
+    '    88px                  /* label / drop — RA-E-1xx labels need the room */',
     '    minmax(150px, 1.2fr)  /* product */',
     '    minmax(0px, auto)     /* flag chits (RO, only-if-true) */',
     '    minmax(200px, 2fr)    /* SCW Notes (editable) */',
