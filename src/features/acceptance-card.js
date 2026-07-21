@@ -105,6 +105,14 @@
       '.scw-acpt-group { display: inline-flex; align-items: center; gap: 2px; }',
       // Compact list mode: ONE card, one row per acceptance record —
       // title | pills | actions on a single line (wraps on narrow).
+      // Accordion-header rollup badge (signed tally) — sits before the count
+      // pill; margin-left:auto is harmless when the title already flexes.
+      '.scw-acpt-rollup { display: inline-flex; align-items: center;',
+      '  margin-left: auto; margin-right: 8px; padding: 3px 10px;',
+      '  border-radius: 999px; font: 700 11px/1.2 system-ui, sans-serif;',
+      '  border: 1px solid transparent; white-space: nowrap; }',
+      '.scw-acpt-rollup--warn { background: #fef3c7; border-color: #fde68a; color: #92400e; }',
+      '.scw-acpt-rollup--ok   { background: #dcfce7; border-color: #86efac; color: #15803d; }',
       '.scw-acpt-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap;',
       '  padding: 8px 2px; }',
       '.scw-acpt-row + .scw-acpt-row { border-top: 1px solid #eef2f7; }',
@@ -409,13 +417,58 @@
     var rows = viewEl.querySelectorAll('tbody tr[id]');
     if (!rows.length) return;
 
+    // Triage sort: rows still needing something (unsigned agreement, or a
+    // base acceptance with neither payment nor terms approval) float to the
+    // top so a 6-12 acceptance pile on a big project self-prioritizes.
+    var entries = [];
+    var signedCount = 0;
+    for (var ri = 0; ri < rows.length; ri++) {
+      var r = rows[ri];
+      var rSigned = isYes(cellText(r, F.signed));
+      var rPaid   = isYes(cellText(r, F.payment));
+      var rTerms  = isYes(cellText(r, F.terms));
+      var rIsCo   = /\bSW\d+CO\b/i.test(cellText(r, F.proposal));
+      var attention = !rSigned || (!rIsCo && !rTerms && !rPaid);
+      if (rSigned) signedCount++;
+      entries.push({ row: r, attention: attention, order: ri });
+    }
+    entries.sort(function (a, b) {
+      if (a.attention !== b.attention) return a.attention ? -1 : 1;
+      return a.order - b.order;   // stable within each tier
+    });
+
     var card = document.createElement('div');
     card.className = 'scw-acpt-card';
     card.innerHTML = '<div class="scw-acpt-eyebrow">Acceptance</div>';
-    for (var ri = 0; ri < rows.length; ri++) {
-      card.appendChild(buildCard(rows[ri]));
+    for (var ei = 0; ei < entries.length; ei++) {
+      card.appendChild(buildCard(entries[ei].row));
     }
     viewEl.appendChild(card);
+
+    // Rollup badge in the accordion header bar: "N awaiting signature"
+    // (amber) or "all signed" (green) — visible without expanding, and the
+    // attention attribute feeds the deploy page nav's amber dot.
+    var pending = rows.length - signedCount;
+    var acc = viewEl.closest('.scw-ktl-accordion');
+    if (acc) {
+      acc.toggleAttribute && acc.toggleAttribute('data-scw-attention', pending > 0);
+      var head = acc.querySelector('.scw-ktl-accordion__header');
+      var countEl = head && head.querySelector('.scw-acc-count');
+      if (head) {
+        var roll = head.querySelector('.scw-acpt-rollup');
+        if (!roll) {
+          roll = document.createElement('span');
+          roll.className = 'scw-acpt-rollup';
+          if (countEl) head.insertBefore(roll, countEl);
+          else head.appendChild(roll);
+        }
+        roll.classList.toggle('scw-acpt-rollup--warn', pending > 0);
+        roll.classList.toggle('scw-acpt-rollup--ok', pending === 0);
+        roll.textContent = pending > 0
+          ? (pending + ' awaiting signature')
+          : 'all signed';
+      }
+    }
   }
 
   if (window.SCW && typeof SCW.onViewRender === 'function') {

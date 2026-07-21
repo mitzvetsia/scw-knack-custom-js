@@ -66,6 +66,26 @@
       '  background: #0f4c81; color: #fff; border-radius: 999px;',
       '  padding: 1px 7px; font-size: 10.5px; font-weight: 700;',
       '}',
+      /* Attention dot — the section needs someone (e.g. unsigned acceptances) */
+      '.scw-deploy-nav-dot {',
+      '  width: 7px; height: 7px; border-radius: 50%; background: #f59e0b;',
+      '  flex: none;',
+      '}',
+      /* ── Reference tier — Other Files / Additional Photos demoted to a
+         quieter visual weight so the page reads paperwork → work → reference. */
+      '.scw-ktl-accordion.scw-acc-tier-ref {',
+      '  box-shadow: none !important;',
+      '  border-color: #e2e8f0 !important;',
+      '  margin: 6px 0 !important;',
+      '}',
+      '.scw-ktl-accordion.scw-acc-tier-ref .scw-ktl-accordion__header {',
+      '  background: #f8fafc !important;',
+      '  padding-top: 8px !important; padding-bottom: 8px !important;',
+      '}',
+      '.scw-ktl-accordion.scw-acc-tier-ref .scw-acc-title {',
+      '  color: #64748b !important; font-size: 13px !important;',
+      '}',
+      '.scw-ktl-accordion.scw-acc-tier-ref .scw-acc-icon { color: #94a3b8 !important; }',
       /* Scroll targets clear the sticky bar */
       '.scw-ktl-accordion, #' + WORKSHEET_MOUNT + ', #' + STRIP_ID + ' {',
       '  scroll-margin-top: 58px;',
@@ -165,7 +185,8 @@
         label: title,
         count: txt(acc.querySelector('.scw-acc-count')),
         el:    acc,
-        kind:  'accordion'
+        kind:  'accordion',
+        warn:  acc.hasAttribute('data-scw-attention')
       });
     }
     // Install worksheet.
@@ -198,19 +219,35 @@
     var targets = collectTargets(scene);
     if (targets.length < 2) return;
 
+    // Anchor the bar INTO the page flow, directly above the first section it
+    // indexes (not at the very top of the scene, where it floats detached
+    // above the page menu + title). position:sticky keeps it pinned once the
+    // user scrolls past it.
+    var firstAcc = null;
+    for (var fa = 0; fa < targets.length; fa++) {
+      if (targets[fa].kind === 'accordion') { firstAcc = targets[fa].el; break; }
+    }
+    var anchorEl = firstAcc
+      ? (firstAcc.closest('.view-group') || firstAcc)
+      : scene.firstChild;
+
     var nav = document.getElementById(NAV_ID);
     if (!nav) {
       nav = document.createElement('nav');
       nav.id = NAV_ID;
       nav.setAttribute('aria-label', 'Page sections');
-      scene.insertBefore(nav, scene.firstChild);
-    } else if (nav.parentNode !== scene || nav !== scene.firstChild) {
+    }
+    if (anchorEl && nav.nextElementSibling !== anchorEl && anchorEl.parentNode) {
+      anchorEl.parentNode.insertBefore(nav, anchorEl);
+    } else if (!nav.parentNode) {
       scene.insertBefore(nav, scene.firstChild);
     }
 
     // Rebuild pills only when the signature changed — keeps the heartbeat
     // rebuild from thrashing the DOM (and hover states) every pass.
-    var sig = targets.map(function (t) { return t.label + ':' + t.count; }).join('|');
+    var sig = targets.map(function (t) {
+      return t.label + ':' + t.count + (t.warn ? '!' : '');
+    }).join('|');
     if (nav.getAttribute('data-scw-sig') === sig) return;
     nav.setAttribute('data-scw-sig', sig);
 
@@ -220,12 +257,28 @@
         var btn = document.createElement('button');
         btn.type = 'button';
         btn.className = 'scw-deploy-nav-item';
-        btn.innerHTML = '<span>' + t.label.replace(/[&<>]/g, function (c) {
-          return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c];
-        }) + '</span>' + (t.count ? '<span class="scw-deploy-nav-count">' + t.count + '</span>' : '');
+        btn.innerHTML =
+          (t.warn ? '<span class="scw-deploy-nav-dot" title="Needs attention"></span>' : '') +
+          '<span>' + t.label.replace(/[&<>]/g, function (c) {
+            return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c];
+          }) + '</span>' + (t.count ? '<span class="scw-deploy-nav-count">' + t.count + '</span>' : '');
         btn.addEventListener('click', function () { scrollToTarget(t); });
         nav.appendChild(btn);
       })(targets[i]);
+    }
+  }
+
+  // ── Part 4: demote reference sections to a quieter tier ───────────────
+  var REF_TITLES = [/^other files$/i, /^additional photos$/i];
+  function applyReferenceTier(scene) {
+    var accs = scene.querySelectorAll('.scw-ktl-accordion');
+    for (var i = 0; i < accs.length; i++) {
+      var title = txt(accs[i].querySelector('.scw-acc-title'));
+      var isRef = false;
+      for (var r = 0; r < REF_TITLES.length; r++) {
+        if (REF_TITLES[r].test(title)) { isRef = true; break; }
+      }
+      accs[i].classList.toggle('scw-acc-tier-ref', isRef);
     }
   }
 
@@ -239,6 +292,7 @@
       if (!scene) return;
       injectStyles();
       try { moveChangeOrders(scene); } catch (e) { /* keep native order */ }
+      try { applyReferenceTier(scene); } catch (e) { /* cosmetic only */ }
       try { buildNav(scene); } catch (e) { /* nav is optional chrome */ }
     }, delay == null ? 250 : delay);
   }
