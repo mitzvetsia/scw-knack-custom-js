@@ -161,10 +161,31 @@
       '#' + STRIP_ID + ' .kn-view {',
       '  width: 100% !important; max-width: 100% !important; float: none !important;',
       '}',
+      /* Strip header row — title left, Create Change Order CTA right. The
+         CTA is the whole view_4081 menu view moved in, so Knack re-renders
+         (which replace the view\'s innerHTML in place) keep working. */
+      '#' + STRIP_ID + '-head {',
+      '  display: flex; align-items: center; justify-content: space-between;',
+      '  gap: 10px; margin: 0 0 8px;',
+      '}',
       '#' + STRIP_ID + '-title {',
       '  font: 700 15px/1.3 system-ui, sans-serif; color: #163C6E;',
-      '  margin: 0 0 8px 2px;',
+      '  margin: 0 0 0 2px;',
       '}',
+      '#' + STRIP_ID + '-head .kn-menu, #' + STRIP_ID + '-head .kn-menu .control {',
+      '  margin: 0 !important; padding: 0 !important;',
+      '}',
+      '#' + STRIP_ID + '-head .kn-button {',
+      '  display: inline-flex; align-items: center;',
+      '  padding: 6px 14px !important; border-radius: 8px !important;',
+      '  background: #163C6E !important; border: 1px solid #163C6E !important;',
+      '  color: #fff !important; font: 600 12.5px/1.2 system-ui, sans-serif !important;',
+      '  text-decoration: none !important; white-space: nowrap;',
+      '}',
+      '#' + STRIP_ID + '-head .kn-button:hover {',
+      '  background: #1d4d8c !important; border-color: #1d4d8c !important;',
+      '}',
+      '#' + STRIP_ID + '-head .kn-button span { color: #fff !important; }',
       /* The relocated grid keeps its own header title — hide it so the
          strip title isn\'t doubled. */
       '#' + STRIP_ID + ' .kn-view .view-header h2.kn-title { display: none; }',
@@ -211,10 +232,13 @@
     if (!strip) {
       strip = document.createElement('div');
       strip.id = STRIP_ID;
+      var head = document.createElement('div');
+      head.id = STRIP_ID + '-head';
       var title = document.createElement('div');
       title.id = STRIP_ID + '-title';
       title.textContent = 'Change Orders';
-      strip.appendChild(title);
+      head.appendChild(title);
+      strip.appendChild(head);
     }
     // Keep the strip pinned directly BEFORE the worksheet mount — the CO
     // records explain the worksheet's Removed-by-CO rows, and with 15+
@@ -225,8 +249,12 @@
 
     var grid = findCoGridView(scene);
     if (grid && grid.parentNode !== strip) strip.appendChild(grid);
+    // CTA lives in the strip's header row, right of the title.
     var cta = findCoCtaView(scene);
-    if (cta && cta.parentNode !== strip && cta !== grid) strip.appendChild(cta);
+    var head2 = document.getElementById(STRIP_ID + '-head');
+    if (cta && head2 && cta.parentNode !== head2 && cta !== grid) {
+      head2.appendChild(cta);
+    }
   }
 
   // ── Part 3: lifecycle organization — rename, subtitle, reorder, band ──
