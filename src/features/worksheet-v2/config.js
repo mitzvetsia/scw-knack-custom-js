@@ -183,6 +183,11 @@
         // view_4056 sub-portal clone inherits this config but view_3932
         // isn't on that scene — every consumer guards on the view existing.
         mdfManage:        { viewKey: 'view_3932', notesField: 'field_1643' },
+        // "+ Add MDF/IDF" toolbar CTA — clicks the (hidden) view_4136 menu
+        // link on the deploy scene. The view_4056 sub-portal clone inherits
+        // this but view_4136 isn't on that scene — toolbar.js guards on the
+        // menu view actually being in the DOM before rendering the button.
+        addMdfMenuView:   'view_4136',
         hideMoneyColumns: true,             // no subBid/fee/hrs/mat/installFee on this object
         // Accessories (field_2853 child→parent) with a loaded parent always
         // attach under it (hidden row + read-only chip on the parent card) —

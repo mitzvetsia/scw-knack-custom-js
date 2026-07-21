@@ -159,7 +159,20 @@
    *  the single-link source menu — the toolbar button replaces it). */
   function addMdfAvailable(_vc) {
     if (!_vc) return false;
-    if (_vc.addMdfMenuView) return true;
+    // Explicit config wins — but only when the named menu view is actually
+    // on the current scene (the view_4056 clone inherits view_4093's config
+    // while its scene carries neither view_4136 nor any add-MDF menu link).
+    if (_vc.addMdfMenuView) {
+      var _mdfMenuEl = document.getElementById(_vc.addMdfMenuView);
+      if (_mdfMenuEl) {
+        // The toolbar button replaces the raw Knack menu — hide the source
+        // (unless something else already absorbed/hid it, e.g. the build-SOW
+        // accordion-menu-inject → hidden view_3577 accordion path).
+        _mdfMenuEl.style.setProperty('display', 'none', 'important');
+        return true;
+      }
+      // configured view absent → fall through to the scene-wide link scan
+    }
     if (!_vc.mdfManage) return false;
     var found = findAddMdfMenuLink();
     if (!found) return false;
