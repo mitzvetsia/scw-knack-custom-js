@@ -179,6 +179,12 @@
                                        // read here so the comparison grid's "has notes"
                                        // warning chip can show the actual text on hover
                                        // instead of just a generic label.
+      accessoryParent: 'field_2464',   // REL_accessory of — the CHILD's own back-pointer
+                                       // to its parent line item (worksheet-v2's
+                                       // "child back-pointer is authoritative" convention,
+                                       // CLAUDE.md Known Issue #12). Read here so the
+                                       // copy-to-SOW removal pass can tell an accessory
+                                       // row apart from a standalone one — see actions.js.
     },
 
     // ── Timing ────────────────────────────────────────────────

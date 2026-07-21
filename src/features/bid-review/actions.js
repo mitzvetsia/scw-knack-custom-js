@@ -142,6 +142,16 @@
     var sowFK = (CFG.fieldKeys && CFG.fieldKeys.relatedSowItem) || 'field_2404';
     var rows     = sowGrid.rows;
 
+    // Pre-pass: which SOW items are covered by a bid cell on this package.
+    // Needed BEFORE the removal decision below — an accessory row's own
+    // parent may appear later in `rows` than the accessory itself, so this
+    // can't be decided inline in a single forward pass.
+    var coveredSowItemIds = {};
+    for (var ci = 0; ci < rows.length; ci++) {
+      var crow = rows[ci];
+      if (crow.sowItem && crow.cellsByPackage[pkgId]) coveredSowItemIds[crow.sowItem] = true;
+    }
+
     for (var i = 0; i < rows.length; i++) {
       var row  = rows[i];
       var cell = row.cellsByPackage[pkgId] || null;
@@ -235,7 +245,15 @@
           bidRecord:        cell._rawRecord || null,
         });
       } else if (row.sowItem && !cell) {
-        // Removal: SOW item not covered by this bid package
+        // Removal: SOW item not covered by this bid package. BUT — an
+        // accessory/mounting-hardware row (row.accessoryParentId set)
+        // never gets its own bid cell; bids price the parent device, not
+        // each accessory. So an accessory with no cell of its own is only
+        // a real removal when its PARENT is ALSO not covered this round
+        // (the parent is being removed too). A parent that IS covered
+        // (being updated) keeps its children untouched — skip the
+        // accessory entirely rather than flagging it for removal.
+        if (row.accessoryParentId && coveredSowItemIds[row.accessoryParentId]) continue;
         removals.push({
           sowItemId: row.sowItem,
           // Human-readable name so the confirm modal can show WHICH
