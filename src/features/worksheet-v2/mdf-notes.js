@@ -82,16 +82,16 @@
       '.scw-ktl-accordion:has(.scw-ktl-accordion__header[data-view-key="view_3932"]) {',
       '  display: none !important;',
       '}',
-      /* Icon-only pencil chip between the chevron and the L1 title —
-         same subtle affordance as the comparison page. */
+      /* Icon-only pencil before the L1 title — borderless, quiet; a soft
+         circle only appears on hover. */
       '.scw-ws-v2-mdf-notes-btn {',
       '  display: inline-flex; align-items: center; justify-content: center;',
-      '  width: 24px; height: 24px; padding: 0; flex: none; margin-right: 2px;',
-      '  border: none; border-radius: 50%;',
-      '  background: rgba(255,255,255,0.16); color: #fff; cursor: pointer;',
-      '  transition: background .15s;',
+      '  width: 22px; height: 22px; padding: 0; flex: none; margin: 0 2px;',
+      '  border: none; border-radius: 50%; align-self: center;',
+      '  background: transparent; color: rgba(255,255,255,0.75); cursor: pointer;',
+      '  transition: background .15s, color .15s;',
       '}',
-      '.scw-ws-v2-mdf-notes-btn:hover { background: rgba(255,255,255,0.32); }',
+      '.scw-ws-v2-mdf-notes-btn:hover { background: rgba(255,255,255,0.22); color: #fff; }',
       /* ── Manage panel — mirrors bid-review-v2 mdf-manage / mdf-idf-cards */
       '.' + P + '-panel { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-start;',
       '  margin: 0 0 6px; padding: 12px 14px; background: #fff;',
@@ -155,13 +155,16 @@
       '  padding: 12px 16px; }',
       '.' + P + '-band-sec { flex: 1 1 240px; min-width: 200px; }',
       '.' + P + '-band-sec--photos { flex: 2 1 320px; }',
-      /* Click-to-edit surfaces: the notes block and the survey-notes
-         callout open the manage panel directly. */
-      '.' + P + '-band-sec--notes, .' + P + '-callout {',
-      '  cursor: pointer; border-radius: 8px;',
-      '}',
-      '.' + P + '-band-sec--notes:hover { background: #f1f5f9; }',
-      '.' + P + '-callout:hover { background: #fdf6d8; }',
+      /* SCW Notes are edited inline in the band — blur saves. */
+      '.' + P + '-band-ta { width: 100%; box-sizing: border-box; min-height: 44px;',
+      '  font: 13px/1.5 system-ui, sans-serif; color: #1e293b;',
+      '  padding: 8px 10px; border: 1px solid #cbd5e1; border-radius: 6px;',
+      '  background: #fff; resize: vertical;',
+      '  transition: background .4s, border-color .2s; }',
+      '.' + P + '-band-ta:focus { outline: none; border-color: #0f4c81; }',
+      '.' + P + '-band-ta--saving { border-color: #93c5fd !important; }',
+      '.' + P + '-band-ta--saved  { background: #dcfce7 !important; border-color: #4ade80 !important; }',
+      '.' + P + '-band-ta--err    { background: #fef2f2 !important; border-color: #fca5a5 !important; }',
       '.' + P + '-band-notes { font: 13px/1.5 system-ui, sans-serif; color: #1e293b;',
       '  white-space: pre-line; }',
       '.' + P + '-band-notes--empty { color: #94a3b8; }',
@@ -278,7 +281,7 @@
     btn.setAttribute('data-scw-ws-v2-mdf-notes', l1.id);
     btn.setAttribute('data-scw-ws-v2-view', sourceViewKey);
     btn.setAttribute('aria-label', 'Edit this MDF/IDF');
-    btn.title = 'Edit this MDF/IDF — rename, redesignate, notes';
+    btn.title = 'Change HEADEND/IDF designator, number, or name';
     btn.innerHTML = PENCIL_SVG;
     return btn;
   }
@@ -314,12 +317,10 @@
     band.className = P + '-band';
     band.setAttribute('data-scw-ws-v2-mdf-band', l1.id);
     band.innerHTML =
-      // The callout + notes blocks carry the same data attrs as the header
-      // pencil, so clicking either opens the manage panel (click-to-edit).
+      // Survey Notes stay READ-ONLY here (subs' territory — same rule as
+      // the comparison page); SCW Notes edit INLINE, saving on blur.
       (sNotes
-        ? '<div class="' + P + '-callout" title="Click to edit" ' +
-            'data-scw-ws-v2-mdf-notes="' + esc(l1.id) + '" ' +
-            'data-scw-ws-v2-view="' + esc(sourceViewKey) + '">' +
+        ? '<div class="' + P + '-callout">' +
             '<span class="' + P + '-callout-ic">' + DOC_SVG + '</span>' +
             '<div><div class="' + P + '-callout-lbl">Survey Notes</div>' +
             '<div class="' + P + '-callout-txt">' + esc(sNotes) + '</div></div>' +
@@ -330,15 +331,52 @@
           '<div class="' + P + '-lbl">Photos</div>' +
           '<div class="' + P + '-photos-strip">' + photosHtml + '</div>' +
         '</div>' +
-        '<div class="' + P + '-band-sec ' + P + '-band-sec--notes" title="Click to edit" ' +
-          'data-scw-ws-v2-mdf-notes="' + esc(l1.id) + '" ' +
-          'data-scw-ws-v2-view="' + esc(sourceViewKey) + '">' +
+        '<div class="' + P + '-band-sec">' +
           '<div class="' + P + '-lbl">SCW Notes</div>' +
-          '<div class="' + P + '-band-notes' + (notes ? '' : ' ' + P + '-band-notes--empty') + '">' +
-            (notes ? esc(notes) : '+ Add notes') + '</div>' +
+          '<textarea class="' + P + '-band-ta" placeholder="Add notes — saves when you click away"></textarea>' +
         '</div>' +
       '</div>';
+    var ta = band.querySelector('.' + P + '-band-ta');
+    if (ta) {
+      ta.value = notes;
+      ta.setAttribute('data-scw-saved-val', notes);
+      ta.addEventListener('blur', function () {
+        saveBandNotes(ta, cfg.viewKey, l1.id, cfg.notesField || F.notes);
+      });
+    }
     return band;
+  }
+
+  /** Blur-save for the band's inline SCW Notes textarea. */
+  function saveBandNotes(ta, manageViewKey, recId, field) {
+    if (ta.getAttribute('data-scw-saved-val') === ta.value) return;
+    if (!(window.SCW && typeof SCW.knackAjax === 'function' &&
+          typeof SCW.knackRecordUrl === 'function')) return;
+    var value = ta.value;
+    var body = {}; body[field] = value;
+    ta.classList.add(P + '-band-ta--saving');
+    SCW.knackAjax({
+      url:  SCW.knackRecordUrl(manageViewKey, recId),
+      type: 'PUT',
+      data: JSON.stringify(body),
+      dataType: 'json'
+    }).then(function (resp) {
+      ta.classList.remove(P + '-band-ta--saving');
+      ta.setAttribute('data-scw-saved-val', value);
+      ta.classList.add(P + '-band-ta--saved');
+      setTimeout(function () { ta.classList.remove(P + '-band-ta--saved'); }, 1200);
+      try {
+        if (typeof SCW.syncKnackModel === 'function') {
+          SCW.syncKnackModel(manageViewKey, recId, resp, field, value);
+        }
+      } catch (e) { /* model sync best-effort */ }
+    }, function (xhr) {
+      ta.classList.remove(P + '-band-ta--saving');
+      ta.classList.add(P + '-band-ta--err');
+      console.warn('[scw-ws-v2-mdf] notes save failed', manageViewKey, recId,
+        xhr && xhr.status);
+      setTimeout(function () { ta.classList.remove(P + '-band-ta--err'); }, 2500);
+    });
   }
 
   /** RETROFIT — the worksheet can render before the manage view's model is
@@ -366,13 +404,16 @@
         }
         // Bands rebuild on every sweep — photos/notes refresh after the
         // manage view refetches (bulk upload, panel save). Cheap DOM.
+        // Never replace a band the user is typing in (inline notes).
         var bodyEl = sections[s].querySelector(':scope > .scw-ws-v2-l1-body');
         if (bodyEl) {
-          var fresh = detailBand({ id: id }, srcKey);
           var cur = bodyEl.querySelector(':scope > [data-scw-ws-v2-mdf-band]');
-          if (fresh) {
-            if (cur) cur.parentNode.replaceChild(fresh, cur);
-            else bodyEl.insertBefore(fresh, bodyEl.firstChild);
+          if (!(cur && cur.contains(document.activeElement))) {
+            var fresh = detailBand({ id: id }, srcKey);
+            if (fresh) {
+              if (cur) cur.parentNode.replaceChild(fresh, cur);
+              else bodyEl.insertBefore(fresh, bodyEl.firstChild);
+            }
           }
         }
       }
@@ -405,16 +446,14 @@
     var type  = fieldText(attrs, F.type) || dn.type;
     var num   = fieldText(attrs, F.num)  || dn.num;
     var name  = fieldText(attrs, F.name) || dn.name;
-    var notes = fieldText(attrs, F.notes);
-    var sNotes = fieldText(attrs, F.surveyNotes);
     var isHead = /headend|mdf/i.test(type);
 
+    // Identity only — designator / ## / name. Notes edit inline in the
+    // band; Survey Notes are read-only on this page.
     var initial = {};
     initial[F.type] = type;
     initial[F.num] = num;
     initial[F.name] = name;
-    initial[F.notes] = notes;
-    initial[F.surveyNotes] = sNotes;
 
     var panel = document.createElement('div');
     panel.className = P + '-panel' + (isHead ? ' ' + P + '-panel--head' : '');
@@ -432,14 +471,6 @@
       '<div class="' + P + '-fld ' + P + '-fld--name">' +
         '<div class="' + P + '-lbl">Name</div>' +
         '<input type="text" data-fk="' + F.name + '" value="' + esc(name) + '" placeholder="Location name">' +
-      '</div>' +
-      '<div class="' + P + '-fld ' + P + '-fld--wide">' +
-        '<div class="' + P + '-lbl">Notes</div>' +
-        '<textarea data-fk="' + F.notes + '">' + esc(notes) + '</textarea>' +
-      '</div>' +
-      '<div class="' + P + '-fld ' + P + '-fld--wide">' +
-        '<div class="' + P + '-lbl">Survey Notes</div>' +
-        '<textarea data-fk="' + F.surveyNotes + '">' + esc(sNotes) + '</textarea>' +
       '</div>' +
       '<div class="' + P + '-actions">' +
         '<span class="' + P + '-status"></span>' +
