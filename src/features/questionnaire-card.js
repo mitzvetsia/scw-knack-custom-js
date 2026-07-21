@@ -44,6 +44,12 @@
     '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" ' +
     'stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">' +
     '<circle cx="12" cy="12" r="9"></circle><polyline points="12 7 12 12 15 14"></polyline></svg>';
+  var GOTO_SVG =
+    '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" ' +
+    'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+    '<path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>' +
+    '<polyline points="15 3 21 3 21 9"></polyline>' +
+    '<line x1="10" y1="14" x2="21" y2="3"></line></svg>';
 
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
@@ -69,18 +75,16 @@
       '  margin-top: 8px; font-family: system-ui, -apple-system, "Segoe UI", sans-serif;',
       '}',
       '.scw-qst-top { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; }',
-      '.scw-qst-pill { display: inline-flex; align-items: center; gap: 6px;',
-      '  padding: 5px 11px; border-radius: 999px; font: 700 11px/1.2 system-ui, sans-serif;',
-      '  border: 1px solid transparent; }',
-      '.scw-qst-pill.is-warn { background: #fef3c7; border-color: #fde68a; color: #92400e; }',
-      '.scw-qst-pill.is-ok   { background: #dcfce7; border-color: #86efac; color: #15803d; }',
-      /* !important — Knack\'s global anchor color otherwise wins and the
-         label reads navy-on-navy. */
-      '.scw-qst-open { display: inline-flex; align-items: center; gap: 7px; cursor: pointer;',
-      '  font: 600 12.5px/1 system-ui, sans-serif; padding: 8px 14px; border-radius: 6px;',
-      '  text-decoration: none !important; background: #0f4c75; border: 1px solid #0a3a63;',
-      '  color: #fff !important; margin-left: auto; }',
-      '.scw-qst-open:hover { background: #0a3a63; color: #fff !important; }',
+      /* "Open questionnaire" is pure NAVIGATION, not an action — filled navy
+         buttons on this page DO things. Style it like the page\'s other
+         go-to-a-page links: navy underline + external-link icon. */
+      '.scw-qst-open { display: inline-flex; align-items: center; gap: 6px; cursor: pointer;',
+      '  font: 600 12.5px/1.2 system-ui, sans-serif; margin-left: auto;',
+      '  color: #0f4c75 !important; text-decoration: underline !important;',
+      '  text-decoration-color: #93b8d6 !important; text-underline-offset: 3px; }',
+      '.scw-qst-open:hover { color: #0a3a63 !important; text-decoration-color: currentColor !important; }',
+      '.scw-qst-open svg { flex: none; opacity: .7; }',
+      '.scw-qst-open:hover svg { opacity: 1; }',
       /* Signoff progression */
       '.scw-qst-steps { display: flex; flex-wrap: wrap; gap: 10px; margin: 12px 0 2px; }',
       '.scw-qst-step { flex: 1 1 170px; min-width: 150px; display: flex; gap: 8px;',
@@ -100,7 +104,21 @@
       '.scw-qst-access { margin: 10px 0 4px; }',
       '.scw-qst-lbl { font: 700 10px/1.2 system-ui, sans-serif; letter-spacing: .07em;',
       '  text-transform: uppercase; color: #94a3b8; margin-bottom: 4px; }',
-      '.scw-qst-access-body { font: 13px/1.6 system-ui, sans-serif; color: #1e293b; }',
+      '.scw-qst-access-body { font: 13px/2 system-ui, sans-serif; color: #1e293b; }',
+      /* customer-account-link\'s widgets ride in via the scrape, but that
+         module\'s CSS is scoped to the (hidden) grid cell — restate the
+         layout here so the pencil icon + add link get breathing room. */
+      '.scw-qst-access-body .scw-cust-edit-link { display: inline-flex; align-items: center;',
+      '  gap: 6px; color: #0f4c75; font-weight: 600; text-decoration: underline;',
+      '  text-decoration-color: #93b8d6; text-underline-offset: 3px; }',
+      '.scw-qst-access-body .scw-cust-edit-link:hover { color: #0a3a63;',
+      '  text-decoration-color: currentColor; }',
+      '.scw-qst-access-body .scw-cust-edit-ic { flex: none; opacity: .65; }',
+      '.scw-qst-access-body .scw-cust-add-btn { display: inline-flex; align-items: center;',
+      '  gap: 5px; margin-left: 14px; padding: 3px 10px; border: 1px solid #cbd5e1;',
+      '  border-radius: 6px; background: #fff; color: #0f4c75 !important;',
+      '  font: 600 12px/1.4 system-ui, sans-serif; text-decoration: none !important; }',
+      '.scw-qst-access-body .scw-cust-add-btn:hover { border-color: #94a3b8; background: #f8fafc; }',
       /* Collapsed disclosures — audit + line items only exist on click */
       '.scw-qst-details { margin-top: 8px; border-top: 1px solid #f1f5f9; padding-top: 6px; }',
       '.scw-qst-details > summary { cursor: pointer; list-style: none;',
@@ -191,20 +209,19 @@
     var openA  = tr.querySelector('td.kn-table-link a[href]');
     var stages = stageStates(tr, status);
     var audit  = auditLines(tr);
-    var statusOk = /complete|approved|closed/i.test(status);
 
     var card = document.createElement('div');
     card.className = 'scw-qst-card';
 
+    // No in-card status pill — the accordion header's rollup already says
+    // it, and the highlighted step below repeats it. Just the nav link.
     var html =
-      '<div class="scw-qst-top">' +
-        '<span class="scw-qst-pill ' + (statusOk ? 'is-ok' : 'is-warn') + '">' +
-          esc(status || 'No status') + '</span>' +
-        (openA
-          ? '<a class="scw-qst-open" href="' + esc(openA.getAttribute('href')) + '">' +
-              'Open questionnaire</a>'
-          : '') +
-      '</div>' +
+      (openA
+        ? '<div class="scw-qst-top">' +
+            '<a class="scw-qst-open" href="' + esc(openA.getAttribute('href')) + '">' +
+              'Open questionnaire' + GOTO_SVG + '</a>' +
+          '</div>'
+        : '') +
       '<div class="scw-qst-steps">';
     for (var s = 0; s < stages.length; s++) {
       var st = stages[s];

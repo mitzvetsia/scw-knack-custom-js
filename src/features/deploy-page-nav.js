@@ -209,10 +209,12 @@
     }
     return null;
   }
-  function findCoCtaView(scene) {
+  // Any view whose (menu) link matches — used for the proxy-CTA sources
+  // ("Create Change Order" on view_4081, "Add Project Note" on view_4133).
+  function findMenuLinkView(scene, re) {
     var anchors = scene.querySelectorAll('.kn-view a');
     for (var i = 0; i < anchors.length; i++) {
-      if (/create change order/i.test(txt(anchors[i]))) {
+      if (re.test(txt(anchors[i]))) {
         return anchors[i].closest('.kn-view');
       }
     }
@@ -237,8 +239,19 @@
       anchor.parentNode.insertBefore(strip, anchor);
     }
 
+    // Installation section order: Project Notes → Change Orders → worksheet.
+    // The notes accordion (view_4135) moves in as a whole wrapper — the view
+    // stays inside its body, so ktl-accordion's orphan adoption never fires.
+    var notes = findAcc(scene, /^project notes$/i);
+    if (notes && !strip.contains(notes)) {
+      strip.insertBefore(notes, strip.firstChild);
+    }
+
+    // contains(), not parentNode — once ktl-accordion wraps the moved grid,
+    // its parent is the accordion body INSIDE the strip; a parentNode check
+    // would rip the view back out of its wrapper every heartbeat.
     var grid = findCoGridView(scene);
-    if (grid && grid.parentNode !== strip) strip.appendChild(grid);
+    if (grid && !strip.contains(grid)) strip.appendChild(grid);
   }
 
   // ── Part 3: lifecycle organization — rename, subtitle, reorder, band ──
@@ -324,43 +337,53 @@
   // section's BODY (headers stay clean). The closeout toolbar already
   // follows this pattern natively (its module mounts it under the view
   // header inside the accordion body).
-  function placeViewActions(scene) {
-    // Change Orders: compact proxy button in an action bar at the top of
-    // the CO accordion's body, mirroring the live href/label of the
-    // view_4081 menu link (the view itself is hidden in place — moving a
-    // Knack view element around risks losing it to re-renders).
-    var strip = document.getElementById(STRIP_ID);
-    var coAcc = (strip && strip.querySelector('.scw-ktl-accordion')) ||
-                findAcc(scene, /^change orders?$/i);
-    var body = coAcc && coAcc.querySelector('.scw-ktl-accordion__body');
-    var ctaView = findCoCtaView(scene);
-    var src = ctaView && ctaView.querySelector('a.kn-link');
-    if (body && src) {
-      var bar = document.getElementById('scw-deploy-co-actionbar');
-      if (!bar) {
-        bar = document.createElement('div');
-        bar.id = 'scw-deploy-co-actionbar';
-        bar.className = 'scw-acc-actionbar';
-      }
-      if (bar.parentNode !== body || body.firstElementChild !== bar) {
-        body.insertBefore(bar, body.firstChild);
-      }
-      var btn = document.getElementById('scw-deploy-co-cta');
-      if (!btn) {
-        btn = document.createElement('a');
-        btn.id = 'scw-deploy-co-cta';
-        btn.className = 'kn-button';
-      }
-      if (btn.parentNode !== bar) bar.appendChild(btn);
-      if (btn.getAttribute('href') !== src.getAttribute('href')) {
-        btn.setAttribute('href', src.getAttribute('href'));
-      }
-      var label = txt(src) || 'Create Change Order';
-      if (btn.textContent !== label) {
-        btn.innerHTML = '<span>' + esc(label) + '</span>';
-      }
-      ctaView.style.setProperty('display', 'none', 'important');
+  // Proxy CTA in an action bar at the top of an accordion's body, mirroring
+  // the live href/label of a Knack menu link elsewhere on the scene. The
+  // source view is hidden in place by the caller — moving a Knack view
+  // element into a rebuildable header/bar risks losing it to re-renders.
+  function mountProxyCta(acc, ctaView, barId, btnId) {
+    var body = acc && acc.querySelector('.scw-ktl-accordion__body');
+    var src = ctaView &&
+      (ctaView.querySelector('a.kn-link') || ctaView.querySelector('a[href]'));
+    if (!body || !src) return;
+    var bar = document.getElementById(barId);
+    if (!bar) {
+      bar = document.createElement('div');
+      bar.id = barId;
+      bar.className = 'scw-acc-actionbar';
     }
+    if (bar.parentNode !== body || body.firstElementChild !== bar) {
+      body.insertBefore(bar, body.firstChild);
+    }
+    var btn = document.getElementById(btnId);
+    if (!btn) {
+      btn = document.createElement('a');
+      btn.id = btnId;
+      btn.className = 'kn-button';
+    }
+    if (btn.parentNode !== bar) bar.appendChild(btn);
+    if (btn.getAttribute('href') !== src.getAttribute('href')) {
+      btn.setAttribute('href', src.getAttribute('href'));
+    }
+    var label = txt(src);
+    if (label && btn.textContent !== label) {
+      btn.innerHTML = '<span>' + esc(label) + '</span>';
+    }
+    ctaView.style.setProperty('display', 'none', 'important');
+  }
+
+  function placeViewActions(scene) {
+    // Change Orders ← "Create Change Order" (view_4081). The strip now
+    // holds TWO accordions, so match by title, not first-in-strip.
+    mountProxyCta(
+      findAcc(scene, /^change orders?$/i),
+      findMenuLinkView(scene, /create change order/i),
+      'scw-deploy-co-actionbar', 'scw-deploy-co-cta');
+    // Project Notes ← "Add Project Note" (view_4133).
+    mountProxyCta(
+      findAcc(scene, /^project notes$/i),
+      findMenuLinkView(scene, /add project note/i),
+      'scw-deploy-notes-actionbar', 'scw-deploy-notes-cta');
   }
 
   // ── Part 5: phase rollups — questionnaire status + closeout docs ──────
@@ -453,27 +476,28 @@
     for (var i = 0; i < accs.length; i++) {
       var acc = accs[i];
       if (acc.style.display === 'none' || !acc.offsetParent) continue;
-      // Inside the CO strip? Its section pill is the strip itself.
-      if (acc.closest('#' + STRIP_ID)) continue;
       // Exclude on the ORIGINAL title (renames don't dodge exclusion);
-      // label with the renamed name, sans subtitle.
+      // label with the renamed name, sans subtitle. Strip accordions
+      // (Project Notes, Change Orders) are real sections — they get their
+      // own pills in document order like everything else.
       var ot = origTitle(acc);
       var title = acc.getAttribute('data-scw-nav-label') ||
                   txt(acc.querySelector('.scw-acc-title'));
       if (!title || excluded(ot || title)) continue;
+      var cEl = acc.querySelector('.scw-acc-count');
       out.push({
         label: title,
-        count: txt(acc.querySelector('.scw-acc-count')),
+        count: (cEl && cEl.style.visibility !== 'hidden') ? txt(cEl) : '',
         el:    acc,
         kind:  'accordion',
         warn:  acc.hasAttribute('data-scw-attention')
       });
     }
-    // Change Orders strip (post-move, sits above the worksheet) — count =
-    // grid data rows.
+    // Pre-adoption fallback: the CO grid moved into the strip but
+    // ktl-accordion hasn't wrapped it yet — keep the section reachable.
     var strip = document.getElementById(STRIP_ID);
-    if (strip && strip.querySelector('.kn-view')) {
-      var rows = strip.querySelectorAll('tbody tr[id]').length;
+    if (strip && strip.querySelector(':scope > .kn-view')) {
+      var rows = strip.querySelectorAll(':scope > .kn-view tbody tr[id]').length;
       out.push({ label: 'Change Orders', count: rows ? String(rows) : '', el: strip, kind: 'co' });
     }
     // Install worksheet.
