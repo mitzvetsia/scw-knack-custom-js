@@ -263,12 +263,31 @@
     for (var r = 0; r < rows.length; r++) {
       viewEl.appendChild(buildCard(rows[r]));
     }
+    watchGrid(viewEl);
+  }
+
+  // customer-account-link decorates the (hidden) access cell only after
+  // view_4040 renders and its hrefs are harvested — timing we can't predict
+  // from here. Rebuild the card whenever the hidden table mutates, so the
+  // edit/add widgets ride into the scrape no matter when they land. The
+  // card lives OUTSIDE .kn-table-wrapper, so rebuilds can't retrigger the
+  // observer. Knack re-renders replace the wrapper element, killing the
+  // observer — render() reattaches on every pass.
+  var _obsTimer = null;
+  function watchGrid(viewEl) {
+    var wrap = viewEl.querySelector('.kn-table-wrapper');
+    if (!wrap || wrap.getAttribute('data-scw-qst-obs') === '1') return;
+    wrap.setAttribute('data-scw-qst-obs', '1');
+    new MutationObserver(function () {
+      if (_obsTimer) clearTimeout(_obsTimer);
+      _obsTimer = setTimeout(render, 150);
+    }).observe(wrap, { childList: true, subtree: true });
   }
 
   if (window.SCW && typeof SCW.onViewRender === 'function') {
     SCW.onViewRender(VIEW, function () {
-      // Two passes: immediate, then after customer-account-link has had
-      // time to enhance the access cell (its widgets ride into the scrape).
+      // Immediate pass + one late pass; the mutation observer covers the
+      // decorated-after-us case in between and beyond.
       setTimeout(render, 60);
       setTimeout(render, 700);
     }, EVENT_NS);
