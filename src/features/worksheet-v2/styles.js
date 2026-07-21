@@ -1205,9 +1205,7 @@
     '.scw-ws-v2-card--open:nth-child(even),',
     '.scw-ws-v2-card--open:nth-child(even):hover {',
     '  background: #fff !important;',
-    '  margin: 8px 6px !important;',
-    '  border: 1px solid #e2e8f0 !important;',   /* neutral gray, no blue accent */
-    '  border-radius: 10px !important;',
+    '  margin: 0 0 8px 0 !important;',   /* full-width open cards, gap below only */
     '  box-shadow: 0 1px 2px rgba(15,23,42,0.05) !important;',   /* softer — less busy */
     '}',
     /* Round the tinted body (detail / photos = the card\'s last child) to the

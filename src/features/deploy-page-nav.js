@@ -48,7 +48,7 @@
   var SECTIONS = [
     { match: /^system setup questionnaire/i,
       sub: "Client's configuration preferences, captured at project start." },
-    { match: /^acceptance$/i, rename: 'Acceptances',
+    { match: /^acceptance$/i, rename: 'Agreements & Invoices',
       sub: 'Issued paperwork per SOW / proposal — agreement + invoice status.' },
     { match: /^closeout$/i, rename: 'Closeout Deliverables',
       sub: 'Documents required before closeout + Certificate of Completion.' }
