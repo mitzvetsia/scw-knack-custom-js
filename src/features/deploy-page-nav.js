@@ -33,10 +33,35 @@
   var WORKSHEET_MOUNT = 'scw-ws-v2-view_4093';
 
   // Accordion sections excluded from the nav — the staging/data-source
-  // sections slated for hiding ("MICAH'S SHIT" block). Matched on title.
+  // sections slated for hiding ("MICAH'S SHIT" block), plus the (hidden)
+  // worksheet source accordion, which the "Install Items" pill covers.
+  // Matched on title.
   var EXCLUDE_TITLES = [
     /\(hide\)/i, /^DOC_/i, /^INSTALL_system setup/i, /^SOW_proposed/i,
-    /^PHOTOS$/i
+    /^PHOTOS$/i, /^what we.?re installing/i
+  ];
+
+  // ── Lifecycle organization (Part 3) ───────────────────────────────────
+  // Renames + one-line subtitles for the opaque section titles. Matched on
+  // the ORIGINAL Builder title (stashed in data-scw-orig-title on first
+  // touch so heartbeat passes stay idempotent).
+  var SECTIONS = [
+    { match: /^system setup questionnaire/i,
+      sub: "Client's configuration preferences, captured at project start." },
+    { match: /^acceptance$/i, rename: 'Agreements & Invoicing',
+      sub: 'Issued paperwork per SOW / proposal — agreement status and invoicing.' },
+    { match: /^closeout$/i, rename: 'Closeout Deliverables',
+      sub: 'Documents required before closeout + Certificate of Completion.' }
+  ];
+  // Band dividers — thin uppercase signposts splitting the page into
+  // lifecycle phases. Everything stays ABOVE the worksheet; Installation
+  // (CO strip + worksheet) is always last.
+  var BANDS = [
+    { id: 'setup',   label: 'Project Setup',       find: /^system setup questionnaire/i },
+    { id: 'paper',   label: 'Paperwork & Billing', find: /^acceptance$/i },
+    { id: 'close',   label: 'Closeout',            find: /^closeout$/i },
+    { id: 'ref',     label: 'Reference',           find: /^other files$/i },
+    { id: 'install', label: 'Installation',        strip: true }
   ];
 
   function injectStyles() {
@@ -88,6 +113,37 @@
       '  color: #64748b !important; font-size: 13px !important;',
       '}',
       '.scw-ktl-accordion.scw-acc-tier-ref .scw-acc-icon { color: #94a3b8 !important; }',
+      /* ── Lifecycle band dividers — signposts, not more boxes. Scene-level
+         instances need the same layout-column escape as the CO strip. */
+      '.scw-deploy-band {',
+      '  width: 100% !important; max-width: 100% !important;',
+      '  grid-column: 1 / -1 !important; flex: 1 1 100% !important;',
+      '  box-sizing: border-box;',
+      '  display: flex; align-items: center; gap: 10px;',
+      '  margin: 22px 0 8px; padding: 0 2px;',
+      '}',
+      '.scw-deploy-band > span {',
+      '  font: 700 11px/1 system-ui, sans-serif; letter-spacing: 0.1em;',
+      '  text-transform: uppercase; color: #94a3b8; flex: none;',
+      '}',
+      '.scw-deploy-band::after {',
+      '  content: ""; flex: 1; height: 1px; background: #e2e8f0;',
+      '}',
+      /* One-line section subtitle, inline after the accordion title */
+      '.scw-deploy-acc-sub {',
+      '  font-weight: 400; font-size: 12px; color: #64748b; margin-left: 8px;',
+      '}',
+      /* Phase rollup pill (questionnaire status / closeout docs) — same
+         look as the acceptance "N awaiting signature" pill. */
+      '.scw-deploy-rollup {',
+      '  display: inline-flex; align-items: center;',
+      '  margin-left: auto; margin-right: 8px; padding: 3px 10px;',
+      '  border-radius: 999px; font: 700 11px/1.2 system-ui, sans-serif;',
+      '  border: 1px solid transparent; white-space: nowrap;',
+      '  max-width: 45%; overflow: hidden; text-overflow: ellipsis;',
+      '}',
+      '.scw-deploy-rollup--warn { background: #fef3c7; border-color: #fde68a; color: #92400e; }',
+      '.scw-deploy-rollup--ok   { background: #dcfce7; border-color: #86efac; color: #15803d; }',
       /* Scroll targets clear the sticky bar */
       '.scw-ktl-accordion, #' + WORKSHEET_MOUNT + ', #' + STRIP_ID + ' {',
       '  scroll-margin-top: 58px;',
@@ -173,6 +229,150 @@
     if (cta && cta.parentNode !== strip && cta !== grid) strip.appendChild(cta);
   }
 
+  // ── Part 3: lifecycle organization — rename, subtitle, reorder, band ──
+  function esc(s) {
+    return String(s).replace(/[&<>]/g, function (c) {
+      return ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' })[c];
+    });
+  }
+  function origTitle(acc) {
+    return acc.getAttribute('data-scw-orig-title') ||
+           txt(acc.querySelector('.scw-acc-title'));
+  }
+  function findAcc(scene, re) {
+    var accs = scene.querySelectorAll('.scw-ktl-accordion');
+    for (var i = 0; i < accs.length; i++) {
+      if (re.test(origTitle(accs[i]))) return accs[i];
+    }
+    return null;
+  }
+
+  function applyNames(scene) {
+    var accs = scene.querySelectorAll('.scw-ktl-accordion');
+    for (var i = 0; i < accs.length; i++) {
+      var acc = accs[i], ot = origTitle(acc), sec = null;
+      for (var s = 0; s < SECTIONS.length; s++) {
+        if (SECTIONS[s].match.test(ot)) { sec = SECTIONS[s]; break; }
+      }
+      if (!sec) continue;
+      if (!acc.hasAttribute('data-scw-orig-title')) {
+        acc.setAttribute('data-scw-orig-title', ot);
+      }
+      var name = sec.rename || ot;
+      acc.setAttribute('data-scw-nav-label', name);
+      var titleEl = acc.querySelector('.scw-acc-title');
+      if (!titleEl) continue;
+      var want = esc(name) +
+        (sec.sub ? '<span class="scw-deploy-acc-sub">' + esc(sec.sub) + '</span>' : '');
+      if (titleEl.innerHTML !== want) titleEl.innerHTML = want;
+    }
+  }
+
+  // Physical order: the questionnaire (project SETUP) reads before the
+  // acceptance paperwork it precedes in real life. One move; everything
+  // else already sits above the worksheet.
+  function reorderSections(scene) {
+    var q = findAcc(scene, /^system setup questionnaire/i);
+    var a = findAcc(scene, /^acceptance$/i);
+    if (!q || !a || !a.parentNode) return;
+    if (a.compareDocumentPosition(q) & Node.DOCUMENT_POSITION_FOLLOWING) {
+      a.parentNode.insertBefore(q, a);
+    }
+  }
+
+  function applyBands(scene) {
+    for (var i = 0; i < BANDS.length; i++) {
+      var b = BANDS[i], target = null;
+      if (b.strip) {
+        target = document.getElementById(STRIP_ID) ||
+                 document.getElementById(WORKSHEET_MOUNT);
+      } else {
+        var acc = findAcc(scene, b.find);
+        if (acc && acc.style.display !== 'none' && acc.offsetParent) target = acc;
+      }
+      var el = document.getElementById('scw-deploy-band-' + b.id);
+      if (!target || !target.parentNode) {
+        if (el && el.parentNode) el.parentNode.removeChild(el);
+        continue;
+      }
+      if (!el) {
+        el = document.createElement('div');
+        el.id = 'scw-deploy-band-' + b.id;
+        el.className = 'scw-deploy-band';
+        el.innerHTML = '<span>' + esc(b.label) + '</span>';
+      }
+      if (el.nextElementSibling !== target) {
+        target.parentNode.insertBefore(el, target);
+      }
+    }
+  }
+
+  // ── Part 5: phase rollups — questionnaire status + closeout docs ──────
+  function upsertRollup(acc, text, warn) {
+    var head = acc.querySelector('.scw-ktl-accordion__header');
+    if (!head) return;
+    var roll = head.querySelector('.scw-deploy-rollup');
+    if (!text) {
+      if (roll && roll.parentNode) roll.parentNode.removeChild(roll);
+      acc.removeAttribute('data-scw-attention');
+      return;
+    }
+    if (!roll) {
+      roll = document.createElement('span');
+      var countEl = head.querySelector('.scw-acc-count');
+      if (countEl) head.insertBefore(roll, countEl);
+      else head.appendChild(roll);
+    }
+    roll.className = 'scw-deploy-rollup scw-deploy-rollup--' + (warn ? 'warn' : 'ok');
+    if (roll.textContent !== text) roll.textContent = text;
+    if (warn) acc.setAttribute('data-scw-attention', '');
+    else acc.removeAttribute('data-scw-attention');
+  }
+
+  // Questionnaire STATUS (field_1772) — may not be a column on view_4015,
+  // so scan every loaded model for it (same trick as the deploy audit).
+  function questionnaireStatus() {
+    try {
+      var views = (typeof Knack !== 'undefined' && Knack.views) || {};
+      var sawRecord = false;
+      for (var vid in views) {
+        var v = views[vid];
+        var models = v && v.model && v.model.data && v.model.data.models;
+        if (vid === 'view_4015' && models && models.length) sawRecord = true;
+        if (!models) continue;
+        for (var i = 0; i < models.length; i++) {
+          var a = models[i] && models[i].attributes;
+          if (!a || a.field_1772 == null) continue;
+          var s = String(a.field_1772).replace(/<[^>]*>/g, '')
+                    .replace(/&nbsp;/g, ' ').trim();
+          if (!s || s.indexOf('[object') === 0) continue;
+          return { text: s, warn: /pending|await|not started|in progress|draft|sent/i.test(s) };
+        }
+      }
+      if (sawRecord) return null;              // record exists, status unknown
+      return { text: 'Not started', warn: true };
+    } catch (e) { return null; }
+  }
+
+  function applyRollups(scene) {
+    var q = findAcc(scene, /^system setup questionnaire/i);
+    if (q) {
+      var st = questionnaireStatus();
+      upsertRollup(q, st && st.text, !!(st && st.warn));
+    }
+    // Closeout — count the deliverable cards the closeout strip renders.
+    var c = findAcc(scene, /^closeout$/i);
+    if (c) {
+      var total = c.querySelectorAll('.scw-cd-doc').length;
+      if (total) {
+        var missing = c.querySelectorAll('.scw-cd-doc__chip.is-missing-required').length;
+        upsertRollup(c,
+          missing ? missing + ' required missing' : 'all required docs in',
+          missing > 0);
+      }
+    }
+  }
+
   // ── Part 1: sticky signpost bar ───────────────────────────────────────
   function excluded(title) {
     for (var i = 0; i < EXCLUDE_TITLES.length; i++) {
@@ -191,8 +391,12 @@
       if (acc.style.display === 'none' || !acc.offsetParent) continue;
       // Inside the CO strip? Its section pill is the strip itself.
       if (acc.closest('#' + STRIP_ID)) continue;
-      var title = txt(acc.querySelector('.scw-acc-title'));
-      if (!title || excluded(title)) continue;
+      // Exclude on the ORIGINAL title (renames don't dodge exclusion);
+      // label with the renamed name, sans subtitle.
+      var ot = origTitle(acc);
+      var title = acc.getAttribute('data-scw-nav-label') ||
+                  txt(acc.querySelector('.scw-acc-title'));
+      if (!title || excluded(ot || title)) continue;
       out.push({
         label: title,
         count: txt(acc.querySelector('.scw-acc-count')),
@@ -242,8 +446,14 @@
     }
     // Anchor directly before the accordion ELEMENT, not its .view-group —
     // the group can also contain the project-details header, which should
-    // stay above the nav.
+    // stay above the nav. Step back over any band divider so the nav sits
+    // above the first signpost (and the two inserts don't fight).
     var anchorEl = firstAcc || scene.firstChild;
+    while (anchorEl && anchorEl.previousElementSibling &&
+           anchorEl.previousElementSibling.classList &&
+           anchorEl.previousElementSibling.classList.contains('scw-deploy-band')) {
+      anchorEl = anchorEl.previousElementSibling;
+    }
 
     var nav = document.getElementById(NAV_ID);
     if (!nav) {
@@ -306,7 +516,11 @@
       if (!scene) return;
       injectStyles();
       try { moveChangeOrders(scene); } catch (e) { /* keep native order */ }
+      try { applyNames(scene); } catch (e) { /* labels are cosmetic */ }
+      try { reorderSections(scene); } catch (e) { /* keep native order */ }
+      try { applyBands(scene); } catch (e) { /* signposts are cosmetic */ }
       try { applyReferenceTier(scene); } catch (e) { /* cosmetic only */ }
+      try { applyRollups(scene); } catch (e) { /* rollups are optional */ }
       try { buildNav(scene); } catch (e) { /* nav is optional chrome */ }
     }, delay == null ? 250 : delay);
   }
