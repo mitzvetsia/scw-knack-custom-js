@@ -52,6 +52,12 @@
     'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
     '<path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"/>' +
     '<circle cx="12" cy="13" r="4"/></svg>';
+  var DOC_SVG =
+    '<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" ' +
+    'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+    '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>' +
+    '<polyline points="14 2 14 8 20 8"/><line x1="9" y1="13" x2="15" y2="13"/>' +
+    '<line x1="9" y1="17" x2="15" y2="17"/></svg>';
 
   function esc(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
@@ -135,6 +141,27 @@
       '  font: 600 11px/1 system-ui, sans-serif; flex: none;',
       '  transition: border-color .15s, color .15s; }',
       '.' + P + '-addphoto:hover { border-color: #0f4c75; color: #0f4c75; background: #eff6ff; }',
+      /* ── L1 detail band — always-visible location info at the top of an
+         expanded group: survey-notes callout + photos strip + SCW notes.
+         Mirrors the comparison page's L1 treatment. */
+      '.' + P + '-band { background: #fff; border-bottom: 1px solid #e2e8f0; }',
+      '.' + P + '-callout { display: flex; gap: 10px; align-items: flex-start;',
+      '  background: #fefce8; padding: 10px 16px; border-bottom: 1px solid #f1e9c8; }',
+      '.' + P + '-callout-ic { width: 26px; height: 26px; border-radius: 50%; flex: none;',
+      '  background: #1e293b; color: #fff; display: inline-flex;',
+      '  align-items: center; justify-content: center; margin-top: 1px; }',
+      '.' + P + '-callout-lbl { font: 700 10px/1.2 system-ui, sans-serif;',
+      '  text-transform: uppercase; letter-spacing: .06em; color: #334155;',
+      '  margin-bottom: 2px; }',
+      '.' + P + '-callout-txt { font: 13px/1.5 system-ui, sans-serif; color: #1e293b;',
+      '  white-space: pre-line; }',
+      '.' + P + '-band-grid { display: flex; flex-wrap: wrap; gap: 28px;',
+      '  padding: 12px 16px; }',
+      '.' + P + '-band-sec { flex: 1 1 240px; min-width: 200px; }',
+      '.' + P + '-band-sec--photos { flex: 2 1 320px; }',
+      '.' + P + '-band-notes { font: 13px/1.5 system-ui, sans-serif; color: #1e293b;',
+      '  white-space: pre-line; }',
+      '.' + P + '-band-notes--empty { color: #94a3b8; }',
       '.' + P + '-actions { flex: 1 1 100%; display: flex; justify-content: flex-end;',
       '  align-items: center; gap: 8px; }',
       '.' + P + '-status { margin-right: auto; font-weight: 600; color: #0f4c75; }',
@@ -255,10 +282,62 @@
     return btn;
   }
 
+  /** L1 DETAIL BAND — always-visible location info at the top of an
+   *  expanded group (survey-notes callout + photos strip + SCW notes),
+   *  mirroring the comparison page's L1 treatment. Called by render.js
+   *  buildL1Block; also injected by the retrofit sweep when the manage
+   *  view's model lands after the worksheet rendered. */
+  function detailBand(l1, sourceViewKey) {
+    var cfg = manageCfg(sourceViewKey);
+    if (!cfg) return null;
+    if (!l1 || !/^[a-f0-9]{24}$/i.test(String(l1.id || ''))) return null;
+    var attrs = manageAttrs(cfg.viewKey, l1.id);
+    var photos = locationPhotos(cfg.viewKey, l1.id);
+    if (!attrs && !photos.length) return null;   // nothing yet — retrofit adds later
+    injectStyles();
+
+    var sNotes = attrs ? fieldText(attrs, F.surveyNotes) : '';
+    var notes  = attrs ? fieldText(attrs, cfg.notesField || F.notes) : '';
+
+    var photosHtml = '';
+    for (var p = 0; p < photos.length; p++) {
+      photosHtml += '<a class="' + P + '-thumb" href="' + esc(photos[p].href) + '" ' +
+        'title="Open photo"><img src="' + esc(photos[p].thumb) + '" alt="" loading="lazy"></a>';
+    }
+    photosHtml += '<button type="button" class="' + P + '-addphoto" ' +
+      'data-scw-ws-v2-mdf-add="' + esc(l1.id) + '" ' +
+      'data-scw-ws-v2-view="' + esc(sourceViewKey) + '" ' +
+      'title="Add photos to this MDF/IDF">' + CAMERA_SVG + '<span>+ Add</span></button>';
+
+    var band = document.createElement('div');
+    band.className = P + '-band';
+    band.setAttribute('data-scw-ws-v2-mdf-band', l1.id);
+    band.innerHTML =
+      (sNotes
+        ? '<div class="' + P + '-callout">' +
+            '<span class="' + P + '-callout-ic">' + DOC_SVG + '</span>' +
+            '<div><div class="' + P + '-callout-lbl">Survey Notes</div>' +
+            '<div class="' + P + '-callout-txt">' + esc(sNotes) + '</div></div>' +
+          '</div>'
+        : '') +
+      '<div class="' + P + '-band-grid">' +
+        '<div class="' + P + '-band-sec ' + P + '-band-sec--photos">' +
+          '<div class="' + P + '-lbl">Photos</div>' +
+          '<div class="' + P + '-photos-strip">' + photosHtml + '</div>' +
+        '</div>' +
+        '<div class="' + P + '-band-sec">' +
+          '<div class="' + P + '-lbl">SCW Notes</div>' +
+          '<div class="' + P + '-band-notes' + (notes ? '' : ' ' + P + '-band-notes--empty') + '">' +
+            (notes ? esc(notes) : '—') + '</div>' +
+        '</div>' +
+      '</div>';
+    return band;
+  }
+
   /** RETROFIT — the worksheet can render before the manage view's model is
-   *  ready, in which case headerControl returned null and the L1 headers
-   *  have no pencil. When the manage view (re)renders, sweep every mounted
-   *  worksheet whose config points at it and add the missing pencils. */
+   *  ready, in which case headerControl/detailBand returned null and the
+   *  L1s have no pencil / band. When the manage view (re)renders, sweep
+   *  every mounted worksheet whose config points at it and fill the gaps. */
   function retrofit() {
     var mounts = document.querySelectorAll('.scw-ws-v2[id^="scw-ws-v2-"]');
     for (var m = 0; m < mounts.length; m++) {
@@ -270,9 +349,21 @@
         var id = sections[s].getAttribute('data-scw-ws-v2-l1') || '';
         if (!/^[a-f0-9]{24}$/i.test(id)) continue;
         var headWrap = sections[s].querySelector(':scope > .scw-ws-v2-l1-head-wrap');
-        if (!headWrap || headWrap.querySelector('[data-scw-ws-v2-mdf-notes]')) continue;
-        var btn = headerControl({ id: id }, srcKey);
-        if (btn) headWrap.appendChild(btn);
+        if (headWrap && !headWrap.querySelector('[data-scw-ws-v2-mdf-notes]')) {
+          var btn = headerControl({ id: id }, srcKey);
+          if (btn) headWrap.appendChild(btn);
+        }
+        // Bands rebuild on every sweep — photos/notes refresh after the
+        // manage view refetches (bulk upload, panel save). Cheap DOM.
+        var bodyEl = sections[s].querySelector(':scope > .scw-ws-v2-l1-body');
+        if (bodyEl) {
+          var fresh = detailBand({ id: id }, srcKey);
+          var cur = bodyEl.querySelector(':scope > [data-scw-ws-v2-mdf-band]');
+          if (fresh) {
+            if (cur) cur.parentNode.replaceChild(fresh, cur);
+            else bodyEl.insertBefore(fresh, bodyEl.firstChild);
+          }
+        }
       }
     }
   }
@@ -314,13 +405,6 @@
     initial[F.notes] = notes;
     initial[F.surveyNotes] = sNotes;
 
-    var photos = locationPhotos(cfg.viewKey, l1Id);
-    var photosHtml = '';
-    for (var p = 0; p < photos.length; p++) {
-      photosHtml += '<a class="' + P + '-thumb" href="' + esc(photos[p].href) + '" ' +
-        'title="Open photo"><img src="' + esc(photos[p].thumb) + '" alt=""></a>';
-    }
-
     var panel = document.createElement('div');
     panel.className = P + '-panel' + (isHead ? ' ' + P + '-panel--head' : '');
     panel.innerHTML =
@@ -345,13 +429,6 @@
       '<div class="' + P + '-fld ' + P + '-fld--wide">' +
         '<div class="' + P + '-lbl">Survey Notes</div>' +
         '<textarea data-fk="' + F.surveyNotes + '">' + esc(sNotes) + '</textarea>' +
-      '</div>' +
-      '<div class="' + P + '-photos">' +
-        '<div class="' + P + '-lbl">Photos</div>' +
-        '<div class="' + P + '-photos-strip">' + photosHtml +
-          '<button type="button" class="' + P + '-addphoto">' + CAMERA_SVG +
-            '<span>+ Add</span></button>' +
-        '</div>' +
       '</div>' +
       '<div class="' + P + '-actions">' +
         '<span class="' + P + '-status"></span>' +
@@ -389,10 +466,6 @@
     });
 
     panel.querySelector('.' + P + '-btn--cancel').addEventListener('click', closePanels);
-    panel.querySelector('.' + P + '-addphoto').addEventListener('click', function () {
-      openMdfBulkUpload(cfg.viewKey, l1Id,
-        fieldText(attrs, F.displayName) || name);
-    });
 
     saveBtn.addEventListener('click', function () {
       // Diff-only PUT — never send an unchanged field (the prefill can be a
@@ -463,6 +536,20 @@
   if (!document.documentElement.hasAttribute('data-scw-ws-v2-mdf-notes-bound')) {
     document.documentElement.setAttribute('data-scw-ws-v2-mdf-notes-bound', '1');
     document.addEventListener('click', function (e) {
+      var add = e.target && e.target.closest &&
+        e.target.closest('[data-scw-ws-v2-mdf-add]');
+      if (add) {
+        e.preventDefault();
+        e.stopPropagation();
+        var aCfg = manageCfg(add.getAttribute('data-scw-ws-v2-view'));
+        if (aCfg) {
+          var aId = add.getAttribute('data-scw-ws-v2-mdf-add');
+          var aAttrs = manageAttrs(aCfg.viewKey, aId);
+          openMdfBulkUpload(aCfg.viewKey, aId,
+            aAttrs ? fieldText(aAttrs, F.displayName) : '');
+        }
+        return;
+      }
       var btn = e.target && e.target.closest &&
         e.target.closest('[data-scw-ws-v2-mdf-notes]');
       if (!btn) return;

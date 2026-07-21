@@ -156,7 +156,9 @@
       '#kn-' + SCENE_ID + ' > #' + STRIP_ID + ', #' + STRIP_ID + ' {',
       '  width: 100% !important; max-width: 100% !important;',
       '  grid-column: 1 / -1 !important; flex: 1 1 100% !important;',
-      '  margin: 14px 0 10px;',
+      /* No extra top margin — the band divider provides the gap, so the
+         header→section spacing matches every other band. */
+      '  margin: 0 0 10px;',
       '}',
       '#' + STRIP_ID + ' .kn-view {',
       '  width: 100% !important; max-width: 100% !important; float: none !important;',

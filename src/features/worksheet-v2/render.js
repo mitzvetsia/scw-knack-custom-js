@@ -372,6 +372,16 @@
     var body = document.createElement('div');
     body.className = 'scw-ws-v2-l1-body';
 
+    // Optional MDF/IDF detail band (survey-notes callout + photos + SCW
+    // notes — config mdfManage, deploy integration). Top of the body,
+    // mirroring the comparison page's L1 treatment.
+    if (ns.mdfNotes && typeof ns.mdfNotes.detailBand === 'function') {
+      try {
+        var mdfBand = ns.mdfNotes.detailBand(l1, sourceViewKey);
+        if (mdfBand) body.appendChild(mdfBand);
+      } catch (eBand) { /* optional module — never break the body */ }
+    }
+
     // Sales money model? (moneyMode:'sales') — drives the summary money
     // column (Total vs Sub Bid) and the column-header labels below.
     var salesMoney = false;
