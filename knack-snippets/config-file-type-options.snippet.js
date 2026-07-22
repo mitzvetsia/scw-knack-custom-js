@@ -27,9 +27,8 @@
   // in-use scraping (same as before this snippet existed).
   var API_KEY = '###';   // TBD — fill from Builder, never commit the value
 
-  // ── TODO: fill in from Builder (CONFIG_file type object) ────────────
-  var FILE_TYPE_OBJECT = 'object_XX';    // CONFIG_file type object key
-  var LABEL_FIELD       = 'field_XXXX';  // type name field
+  var FILE_TYPE_OBJECT = 'object_133';    // CONFIG_file type object key
+  var LABEL_FIELD       = 'field_2872';   // type name field
 
   window.SCW = window.SCW || {};
   var out = [];
