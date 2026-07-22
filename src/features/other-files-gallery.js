@@ -9,12 +9,17 @@
  * FILE TYPE stays editable (field_2877, connection → CONFIG_file type):
  * the type chip opens a picker and saves via a view-based PUT through this
  * view. Option list sources, in order:
- *   1. TYPE_SOURCE_VIEW — a hidden all-records CONFIG_file type grid on the
- *      scene (Builder TODO; set the view + label field below when added).
- *   2. Fallback: the UNION of types already in use across this scene's
+ *   1. window.SCW.fileTypeOptions — the FULL catalog, populated by the
+ *      Builder snippet knack-snippets/config-file-type-options.snippet.js
+ *      (CONFIG_file type has no connection to the page record, so a hidden
+ *      view read wasn't viable here — see Known Issue #17 for the tradeoff).
+ *   2. TYPE_SOURCE_VIEW — a hidden all-records CONFIG_file type grid on the
+ *      scene, if one ever gets added instead (set the view + label field
+ *      below).
+ *   3. Fallback: the UNION of types already in use across this scene's
  *      models (this view + the closeout views) — covers the common types
  *      with zero Builder work.
- *   3. If neither yields options, the chip falls back to the native edit
+ *   4. If none yield options, the chip falls back to the native edit
  *      page (same as the pencil) so the ability is never lost.
  ****************************************************************************/
 (function () {
@@ -150,7 +155,13 @@
       seen[id] = true;
       out.push({ id: id, label: label || '(unnamed)' });
     }
-    if (TYPE_SOURCE_VIEW) {
+    var catalog = window.SCW && SCW.fileTypeOptions;
+    if (Array.isArray(catalog) && catalog.length) {
+      for (var fi = 0; fi < catalog.length; fi++) {
+        if (catalog[fi] && catalog[fi].id) add(catalog[fi].id, catalog[fi].label);
+      }
+    }
+    if (!out.length && TYPE_SOURCE_VIEW) {
       var cat = modelAttrsById(TYPE_SOURCE_VIEW);
       for (var cid in cat) add(cid, String(cat[cid][TYPE_LABEL_FIELD] || '').trim());
     }

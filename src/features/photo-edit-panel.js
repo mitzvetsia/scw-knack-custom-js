@@ -12,9 +12,14 @@
  *                              authenticated with the user's session token
  *                              (no REST key, no Make hop).
  *   putRecord(view, id, data)→ view-based PUT via SCW.knackAjax.
- *   collectTypeOptions()     → [{id, label}] photo-type candidates scraped
- *                              from field_2445 connection values rendered
- *                              anywhere on the current scene.
+ *   collectTypeOptions()     → [{id, label}] photo-type candidates. Prefers
+ *                              window.SCW.photoTypeOptions — the FULL
+ *                              catalog, populated by the Builder snippet
+ *                              knack-snippets/config-photo-type-options
+ *                              .snippet.js — falling back to whatever
+ *                              field_2445 connection values happen to be
+ *                              rendered on the current scene (incomplete by
+ *                              construction: only types already in use).
  *
  * SAVE_VIEWS maps each worksheet source view → the DOC_photos view ON THE
  * SAME SCENE that PUTs go through (view-based PUTs only work against views
@@ -168,6 +173,40 @@
     });
   }
 
+  /** Photo-type candidates for a type picker. Prefers the full catalog
+   *  (window.SCW.photoTypeOptions, from the Builder snippet); falls back to
+   *  scraping field_2445 connection-value spans already rendered anywhere on
+   *  the current scene — necessarily incomplete (only types in use), but
+   *  keeps a picker functional before the snippet's object/field TODOs are
+   *  filled in. */
+  function collectTypeOptions() {
+    var catalog = window.SCW && SCW.photoTypeOptions;
+    if (Array.isArray(catalog) && catalog.length) {
+      var out = [];
+      for (var i = 0; i < catalog.length; i++) {
+        if (catalog[i] && catalog[i].id) out.push({ id: catalog[i].id, label: catalog[i].label });
+      }
+      if (out.length) return out;
+    }
+    var seen = {};
+    var scraped = [];
+    var spans = document.querySelectorAll(
+      'td.' + F.type + ' span[id][data-kn="connection-value"]');
+    for (var s = 0; s < spans.length; s++) {
+      var id = (spans[s].id || '').trim();
+      if (!id || seen[id]) continue;
+      var inner = spans[s].querySelector('span[data-kn="connection-value"]');
+      var label = ((inner ? inner.textContent : spans[s].textContent) || '').trim();
+      if (!label) continue;
+      seen[id] = true;
+      scraped.push({ id: id, label: label });
+    }
+    scraped.sort(function (a, b) {
+      return a.label.localeCompare(b.label, undefined, { numeric: true, sensitivity: 'base' });
+    });
+    return scraped;
+  }
+
   window.SCW = window.SCW || {};
   SCW.photoEditPanel = {
     SAVE_VIEWS: SAVE_VIEWS,
@@ -176,6 +215,7 @@
       uploadImage: uploadImage,
       putRecord: putRecord,
       clearFileField: clearFileField,
+      collectTypeOptions: collectTypeOptions,
       FIELDS: F
     }
   };
