@@ -262,6 +262,19 @@
     }
   }
 
+  /** True while a truncation-repair refetch is in flight. render.js uses
+   *  this to SKIP building the grid on known-partial data — rendering the
+   *  diff mid-repair paints phantom Removed/Not-bid sections that collapse
+   *  a moment later (the "giant gaps while it's running" report). Returns
+   *  false once repairs settle (or retries exhaust), so a genuinely
+   *  >1000-record view still renders rather than deadlocking. */
+  function truncationRepairPending() {
+    for (var k in _truncRepairInflight) {
+      if (_truncRepairInflight[k]) return true;
+    }
+    return false;
+  }
+
   ns.debugSources = function () {
     var stats = sourceStats();
     console.table(stats);
@@ -276,7 +289,8 @@
     notifyDebounced: notifyDebounced,
     refetchAll:      refetchAll,
     attachListeners: attachListeners,
-    warnIfTruncated: warnIfTruncated
+    warnIfTruncated: warnIfTruncated,
+    truncationRepairPending: truncationRepairPending
   };
 })();
 /*** END BID REVIEW V2 — DATA *************************************************/

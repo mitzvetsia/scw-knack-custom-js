@@ -88,7 +88,25 @@
     }
     // Loud console warning if any source view is page-capped — the diff
     // silently produces phantom Removed/Not-surveyed rows on partial data.
+    // warnIfTruncated also KICKS OFF the self-repair refetches; while one
+    // is in flight, do NOT build the grid from the partial snapshot —
+    // rendering it paints hundreds of phantom Removed/Not-bid rows that
+    // collapse a moment later when the full data lands (the "giant gaps
+    // while the diff runs" report). Keep whatever is already on screen;
+    // on a cold first paint show a loading note instead. The repair's
+    // fetch completion fires knack-view-render → notifyDebounced, so a
+    // full-data render always follows. If retries exhaust (a genuinely
+    // >1000-record view), truncationRepairPending goes false and we
+    // render the best data we have rather than deadlocking.
     if (ns.data && typeof ns.data.warnIfTruncated === 'function') ns.data.warnIfTruncated();
+    if (ns.data && typeof ns.data.truncationRepairPending === 'function' &&
+        ns.data.truncationRepairPending()) {
+      if (!body.querySelector('.scw-bid-review-v2__sow')) {
+        body.innerHTML = '<div class="scw-bid-review-v2-empty">' +
+          'Loading full bid data&hellip;</div>';
+      }
+      return;
+    }
     var state = ns.transform.buildState(bidRecords, sowItems, bidPackages);
 
     // Publish the freshly-built comparison state so co-located consumers
