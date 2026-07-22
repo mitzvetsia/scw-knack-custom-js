@@ -1987,6 +1987,32 @@
   // tolerance: the same CORS-blocked response makes it reject outright
   // with an opaque "TypeError: Failed to fetch" and no status — which is
   // exactly the unhelpful "Failed to fetch" alert Ops was hitting here.
+  // Make's webhook gateway rejects request bodies over 5 MB with a 400
+  // that carries no CORS headers — so from the browser it's status 0 /
+  // "Failed to fetch", NO scenario run appears in Make's history, and
+  // (worst) the status-0 tolerance below would report it as SUCCESS.
+  // Confirmed live 2026-07-22: a 5,832,684-byte publish payload → 400
+  // Bad Request at the gateway. Block over-limit sends up front with a
+  // real error instead of letting them fail unreadably.
+  var MAKE_BODY_LIMIT = 5 * 1024 * 1024;
+
+  // Per-field byte breakdown of a payload, largest first. Logged on every
+  // send (and embedded in the over-limit error) so when a payload is at or
+  // over the cap we can see exactly which fields carry the weight.
+  function payloadFieldSizes(payload) {
+    var sizes = [];
+    try {
+      var keys = Object.keys(payload);
+      for (var i = 0; i < keys.length; i++) {
+        var v = '';
+        try { v = JSON.stringify(payload[keys[i]]) || ''; } catch (e) { /* unserializable */ }
+        sizes.push({ field: keys[i], bytes: v.length });
+      }
+      sizes.sort(function (a, b) { return b.bytes - a.bytes; });
+    } catch (e) { /* diagnostic only — never block the send */ }
+    return sizes;
+  }
+
   function postWebhook(url, payload) {
     var body = JSON.stringify(payload);
     // Always log the outbound size + result — a publish payload carries the
@@ -1995,6 +2021,27 @@
     // from the browser's side (no status, no Make run). The byte count in
     // the console is what tells those two failure modes apart.
     console.info('[SCW ops-stepper] POST ' + url + ' payloadBytes=' + body.length);
+    var sizes = payloadFieldSizes(payload);
+    if (console.table) console.table(sizes.slice(0, 15));
+
+    if (body.length > MAKE_BODY_LIMIT) {
+      var top = sizes.slice(0, 3).map(function (s) {
+        return s.field + ' (' + (s.bytes / 1048576).toFixed(2) + ' MB)';
+      }).join(', ');
+      console.error('[SCW ops-stepper] BLOCKED: payload ' + body.length +
+        ' bytes exceeds Make’s 5 MB webhook limit. Field breakdown logged above.');
+      return Promise.resolve({
+        ok: false,
+        status: 413,
+        body: '',
+        data: {
+          error: 'Publish payload is ' + (body.length / 1048576).toFixed(2) +
+            ' MB — over Make’s 5 MB webhook limit, so the gateway would reject it ' +
+            'and nothing would reach the scenario. Largest fields: ' + top +
+            '. Screenshot the console table and report it so we can trim the payload.'
+        }
+      });
+    }
     return new Promise(function (resolve) {
       $.ajax({
         url: url,
