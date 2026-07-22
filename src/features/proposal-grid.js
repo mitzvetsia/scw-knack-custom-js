@@ -2557,12 +2557,27 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
       if (childRow.parentNode !== tbody) continue;
       if (parentRow.parentNode !== tbody) continue;
 
+      const l3 = findEnclosingL3(parentRow);
+
       // Capture the bracket's CURRENT L3 group header text (its own
       // product name as Knack rendered it — e.g. "Electrical Mounting
       // Bracket") before we move the row out of that group. The
       // post-process pass reads this back via data-scw-product-name.
+      //
+      // Some accessory records carry no product name of their own (blank
+      // field_1958), so Knack renders them with no distinct L3 group —
+      // findEnclosingL3 then walks back past them and lands on whatever
+      // L3 header happens to sit above, which is the PARENT camera's own
+      // group. Stamping that borrowed label produced bogus per-camera
+      // "product" lines in the Mounting Hardware rollup (13 identical
+      // brackets split into a 3-unit line mislabeled with the camera's own
+      // name and a 10-unit line with no label at all, instead of one
+      // 13-unit line). ownL3 === l3 is the precise signal that we found
+      // the PARENT's group, not the bracket's own — skip the stamp so
+      // these fall through to postProcessMountingClusters' shared fallback
+      // label instead of a wrong or inconsistent one.
       const ownL3 = findEnclosingL3(childRow);
-      if (ownL3 && !childRow.getAttribute('data-scw-product-name')) {
+      if (ownL3 && ownL3 !== l3 && !childRow.getAttribute('data-scw-product-name')) {
         const ownLabelCell = ownL3.querySelector('td');
         if (ownLabelCell) {
           // Read from a CLONE with injected decorations stripped. On
@@ -2582,7 +2597,6 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
         }
       }
 
-      const l3 = findEnclosingL3(parentRow);
       if (!l3) continue;
       if (!groupedByL3.has(l3)) groupedByL3.set(l3, []);
       groupedByL3.get(l3).push({ childRow, parentId });
@@ -2836,6 +2850,13 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
           const productCell = r.querySelector('td.field_1958');
           productName = productCell ? cleanProductLabel(productCell.textContent) : '';
         }
+        // No resolvable product name from either source — a real gap in the
+        // accessory's own data, not something to leave as an empty-string
+        // group key. Rows with no name would otherwise group under '' just
+        // fine on their own, but silently rendering with a blank label reads
+        // as broken. Fall back to the L4 cluster's own label ("Mounting
+        // Hardware") so they still merge into ONE line with a real name.
+        if (!productName) productName = 'Mounting Hardware';
         if (!byProduct[productName]) {
           byProduct[productName] = [];
           productOrder.push(productName);
