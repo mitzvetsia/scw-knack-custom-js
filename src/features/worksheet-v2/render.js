@@ -531,18 +531,20 @@
     return block;
   }
 
-  // Views whose line-item cards default to OPEN (expanded) on first render —
-  // the field-facing install worksheets, where you're filling in each
-  // device's detail, not scanning a list. Later re-renders preserve whatever
-  // the user has since collapsed (via the openIds DOM snapshot). Other v2
-  // worksheets keep the default-collapsed behavior.
+  // Views whose line-item cards remember PER-RECORD open state across page
+  // loads (see state.js CARD_PERSIST_VIEWS) — the field-facing install
+  // worksheets. A page nobody has touched — or a record nobody has opened —
+  // defaults COLLAPSED (photo strips stay hidden, per the CSS rule that only
+  // reveals strips on open cards); a record the user previously opened
+  // reopens automatically when they return. Later re-renders in the same
+  // session preserve whatever's currently open/closed in the DOM. Other v2
+  // worksheets keep the plain DOM-only (non-persisted) expand state.
   //
   // NOTE: the survey/bid worksheet (view_3505) is intentionally NOT here —
   // its line-item cards default COLLAPSED while its MDF/IDF groups default
   // OPEN (see state.js GROUPS_DEFAULT_OPEN), so techs scan locations first
   // and expand individual devices on demand.
-  var CARDS_DEFAULT_OPEN = { view_4093: 1, view_4056: 1 };
-  var _cardsSeeded = Object.create(null);   // sourceViewKey → true once defaulted-open
+  var _cardsSeeded = Object.create(null);   // sourceViewKey → true once persisted state applied
 
   function renderView(sourceViewKey, records) {
     var container = document.getElementById('scw-ws-v2-' + sourceViewKey);
@@ -670,14 +672,17 @@
       var rid = openNodes[oi].getAttribute('data-scw-ws-v2-record');
       if (rid) openIds[rid] = true;
     }
-    // Default-open views: on the FIRST render that actually has records, seed
-    // every card into the open set so they all start expanded. The per-view
-    // flag means later re-renders fall back to the DOM snapshot above, so a
-    // card the user has since collapsed stays collapsed.
-    if (CARDS_DEFAULT_OPEN[sourceViewKey] && !_cardsSeeded[sourceViewKey] && records.length) {
+    // Persist-open views: on the FIRST render that actually has records,
+    // merge in whatever the user left open on a PREVIOUS visit (localStorage)
+    // instead of forcing every card open. A record nobody has ever opened —
+    // or a first-ever visitor — stays collapsed. The per-view seeded flag
+    // means later re-renders fall back to the DOM snapshot above, so a card
+    // the user opens/closes this session isn't fought by a stale reload.
+    if (!_cardsSeeded[sourceViewKey] && records.length) {
       _cardsSeeded[sourceViewKey] = true;
-      for (var _so = 0; _so < records.length; _so++) {
-        if (records[_so] && records[_so].id) openIds[records[_so].id] = true;
+      if (ns.state && typeof ns.state.loadOpenCardIds === 'function') {
+        var _persistedOpen = ns.state.loadOpenCardIds(sourceViewKey);
+        for (var _pid in _persistedOpen) openIds[_pid] = true;
       }
     }
 

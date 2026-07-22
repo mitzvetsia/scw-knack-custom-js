@@ -1019,6 +1019,10 @@
           }
           for (var ci = 0; ci < allCards.length; ci++) {
             allCards[ci].classList.toggle('scw-ws-v2-card--open', openAll);
+            if (ns.state && typeof ns.state.setCardOpen === 'function') {
+              var _rid = allCards[ci].getAttribute('data-scw-ws-v2-record');
+              if (_rid) ns.state.setCardOpen(viewKey, _rid, openAll);
+            }
           }
           applyState(container, viewKey);
         } else if (t.hasAttribute('data-scw-ws-v2-photos-toggle')) {

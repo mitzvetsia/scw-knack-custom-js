@@ -435,10 +435,10 @@
     });
   }
 
-  // Chevron click — toggle the card's detail panel open/closed.
-  // No persistence per card; expand state lives in the DOM only and
-  // resets on re-render. (If "remember which cards were open across
-  // refreshes" becomes a real ask, persist a Set of ids per view.)
+  // Chevron click — toggle the card's detail panel open/closed. Persisted
+  // per record only on the views state.js flags (CARD_PERSIST_VIEWS,
+  // e.g. view_4093/view_4056) — setCardOpen no-ops elsewhere, so this is
+  // safe to call unconditionally.
   if (!document.documentElement.hasAttribute('data-scw-ws-v2-expand-bound')) {
     document.documentElement.setAttribute('data-scw-ws-v2-expand-bound', '1');
     document.addEventListener('click', function (e) {
@@ -449,6 +449,12 @@
       e.preventDefault();
       e.stopPropagation();
       card.classList.toggle('scw-ws-v2-card--open');
+      var _cont0 = card.closest('.scw-ws-v2');
+      var _vk0 = _cont0 && _cont0.id ? _cont0.id.replace('scw-ws-v2-', '') : '';
+      var _rid0 = card.getAttribute('data-scw-ws-v2-record');
+      if (_vk0 && _rid0 && ns.state && typeof ns.state.setCardOpen === 'function') {
+        ns.state.setCardOpen(_vk0, _rid0, card.classList.contains('scw-ws-v2-card--open'));
+      }
       // The per-row "missing photos" chit must actually surface the
       // missing-photo placeholders: force the card open (never toggle
       // closed) and flip the view's photo strips on — the toolbar
@@ -460,6 +466,9 @@
         var _vk = _cont && _cont.id ? _cont.id.replace('scw-ws-v2-', '') : '';
         if (_vk && ns.toolbar && typeof ns.toolbar.showPhotos === 'function') {
           ns.toolbar.showPhotos(_vk);
+        }
+        if (_vk && _rid0 && ns.state && typeof ns.state.setCardOpen === 'function') {
+          ns.state.setCardOpen(_vk, _rid0, true);
         }
       }
     });

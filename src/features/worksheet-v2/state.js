@@ -143,13 +143,61 @@
     return next;
   }
 
+  // ── Per-card (line-item) open state — persisted, per record ────────────
+  // Only the field-facing install worksheets remember which INDIVIDUAL
+  // cards a user has opened, across page loads. Everywhere else, card
+  // expand/collapse is DOM-only and resets on re-render (unchanged). On
+  // these views a brand-new page load — or a record nobody has ever
+  // opened — defaults COLLAPSED (so its photo strip stays hidden too,
+  // per the CSS rule that reveals strips only on open cards); only a
+  // record the user has explicitly opened before reopens automatically
+  // when they return.
+  var CARD_PERSIST_VIEWS = { view_4093: 1, view_4056: 1 };
+  var CARD_STORAGE_PREFIX = 'scw:ws-v2-cardopen:';
+
+  function cardStorageKey(sourceViewKey) {
+    return CARD_STORAGE_PREFIX + getSceneId() + ':' + sourceViewKey;
+  }
+
+  function persistsCardOpen(sourceViewKey) {
+    return !!CARD_PERSIST_VIEWS[sourceViewKey];
+  }
+
+  /** Map of recordId → 1 for every card the user has left open on this
+   *  view. Empty (not "all open") is the correct default for a view/record
+   *  this function has never seen. */
+  function loadOpenCardIds(sourceViewKey) {
+    if (!persistsCardOpen(sourceViewKey)) return {};
+    try {
+      var raw = JSON.parse(localStorage.getItem(cardStorageKey(sourceViewKey)) || '{}');
+      return (raw && typeof raw === 'object') ? raw : {};
+    } catch (e) {
+      return {};
+    }
+  }
+
+  /** Record a single card's open/closed state. No-ops on views that don't
+   *  persist card state (safe to call unconditionally from shared UI). */
+  function setCardOpen(sourceViewKey, recordId, open) {
+    if (!persistsCardOpen(sourceViewKey) || !recordId) return;
+    try {
+      var state = loadOpenCardIds(sourceViewKey);
+      if (open) state[recordId] = 1;
+      else delete state[recordId];
+      localStorage.setItem(cardStorageKey(sourceViewKey), JSON.stringify(state));
+    } catch (e) { /* quota / private mode — silent */ }
+  }
+
   ns.state = {
     applyOpenState:   applyOpenState,
     toggleL1:         toggleL1,
     setOpenExclusive: setOpenExclusive,
     setAllOpen:       setAllOpen,
     setAllClosed:     setAllClosed,
-    DEFAULT_OPEN_THRESHOLD: DEFAULT_OPEN_THRESHOLD
+    DEFAULT_OPEN_THRESHOLD: DEFAULT_OPEN_THRESHOLD,
+    persistsCardOpen: persistsCardOpen,
+    loadOpenCardIds:  loadOpenCardIds,
+    setCardOpen:      setCardOpen
   };
 })();
 /*** END WORKSHEET V2 — STATE *************************************************/
