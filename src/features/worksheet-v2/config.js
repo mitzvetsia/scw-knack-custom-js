@@ -542,6 +542,15 @@
         // field_2154 from the CO), never delete. An item on the CO's SOW ONLY
         // was created for this CO → real delete (clean up drafting extras).
         coDeleteGuard:      true,
+        // Ops price CO adds in FULL here: equipment + labor. Renders an
+        // editable Equipment $ stack (unit price; extended field_2201 shown
+        // beneath) ahead of the Sub Bid stack, with a matching --equip grid
+        // variant. Ops CO worksheet ONLY — the sub portal analogue
+        // (view_4112, laborOnly) never renders SCW-side money, and the
+        // laborOnly gate keeps this flag inert if the entry is ever cloned.
+        // ⚠ Builder dependency: field_1960 must be an inline-editable column
+        // on view_4079 or the view-based PUT silently drops the edit.
+        equipmentField:     'field_1960',
         fields:  {},
         buckets: {}
       }

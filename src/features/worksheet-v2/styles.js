@@ -308,6 +308,44 @@
     '.scw-ws-v2-card--labor .scw-ws-v2-row--assumptions > .scw-ws-v2-cell--labor-desc {',
     '  grid-column: 3 / 7 !important;',
     '}',
+    /* Equipment money model (config equipmentField — ops CO worksheet,
+       view_4079). The build-SOW stacks PLUS an Equipment $ stack ahead of
+       Sub Bid, MINUS the SOW track (the CO view is hideSow, so the row
+       never renders a sow cell — a 13-track grid would leave everything
+       misaligned by one). Doubled header class for the same specificity
+       reason noted on the sales rule above. */
+    '.scw-ws-v2-card--equip .scw-ws-v2-row--default,',
+    '.scw-ws-v2-card--equip .scw-ws-v2-row--cam,',
+    '.scw-ws-v2-card--equip .scw-ws-v2-row--services,',
+    '.scw-ws-v2-card--equip .scw-ws-v2-row--assumptions,',
+    '.scw-ws-v2-col-header.scw-ws-v2-col-header--equip {',
+    '  grid-template-columns:',
+    '    20px                  /* chevron */',
+    '    88px                  /* label / drop */',
+    '    minmax(150px, 1.3fr)  /* product */',
+    '    minmax(150px, 1.4fr)  /* labor desc */',
+    '    72px                  /* qty / chips */',
+    '    78px                  /* Equip $ */',
+    '    78px                  /* subBid */',
+    '    64px                  /* +Hrs */',
+    '    64px                  /* +Mat */',
+    '    72px                  /* fee */',
+    '    28px                  /* warning */',
+    '    28px                  /* kebab */ !important;',
+    '}',
+    /* Equip assumptions: the base rule spans desc 3/10 (tuned to the
+       12-track SOW grid, where sow/warn/kebab then autoplace at 10-12).
+       This grid has no sow track, so respan the desc through the fee
+       track and pin warn/kebab so they line up with the other rows. */
+    '.scw-ws-v2-card--equip .scw-ws-v2-row--assumptions > .scw-ws-v2-cell--labor-desc {',
+    '  grid-column: 3 / 11 !important;',
+    '}',
+    '.scw-ws-v2-card--equip .scw-ws-v2-row--assumptions > .scw-ws-v2-cell--warn {',
+    '  grid-column: 11 / 12 !important;',
+    '}',
+    '.scw-ws-v2-card--equip .scw-ws-v2-row--assumptions > .scw-ws-v2-trash {',
+    '  grid-column: 12 / 13 !important;',
+    '}',
     /* Install money model (moneyMode:"install", view_4093). No money cells at
        all — header is chevron · label · product · flag chits (RO, show-when-
        true) · SCW Notes (editable) · warn · trash. 7-track grid (replaces the

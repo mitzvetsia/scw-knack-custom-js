@@ -438,11 +438,16 @@
       var _vcHdr = ns.cfg && typeof ns.cfg.viewCfg === 'function' &&
                    ns.cfg.viewCfg(sourceViewKey);
       var hdrHideSow = !!(_vcHdr && _vcHdr.hideSow);
+      // Ops CO worksheet: Equipment $ stack ahead of Sub Bid (config
+      // equipmentField — only meaningful on the build-SOW money model).
+      var equipMoney = !!(_vcHdr && _vcHdr.equipmentField) &&
+        !salesMoney && !surveyMoney && !installMoney && !laborMoney;
       hdr.className = 'scw-ws-v2-col-header' +
         (salesMoney  ? ' scw-ws-v2-col-header--sales'  : '') +
         (surveyMoney ? ' scw-ws-v2-col-header--survey' : '') +
         (installMoney ? ' scw-ws-v2-col-header--install' : '') +
-        (laborMoney  ? ' scw-ws-v2-col-header--labor' : '');
+        (laborMoney  ? ' scw-ws-v2-col-header--labor' : '') +
+        (equipMoney  ? ' scw-ws-v2-col-header--equip' : '');
       if (installMoney) {
         // Install 7-track header (matches the install row grid): chevron ·
         // Label · Product · Flags · SCW Notes · warn · trash. No money columns.
@@ -487,7 +492,13 @@
             // it (the adopt panel does; the CO worksheet hides it).
             : (laborMoney
               ? '<span>Sub Bid</span>' + (hdrHideSow ? '' : '<span>SOW</span>')
-              : '<span>Sub Bid</span><span>+Hrs</span><span>+Mat</span><span>Fee</span><span>SOW</span>')) +
+              // equipMoney (ops CO worksheet): Equipment $ ahead of the labor
+              // stacks; the CO view hides SOW so its track doesn't exist in
+              // the --equip grid.
+              : (equipMoney
+                ? '<span>Equip $</span><span>Sub Bid</span><span>+Hrs</span><span>+Mat</span><span>Fee</span>' +
+                  (hdrHideSow ? '' : '<span>SOW</span>')
+                : '<span>Sub Bid</span><span>+Hrs</span><span>+Mat</span><span>Fee</span><span>SOW</span>'))) +
           '<span></span>' + /* warning slot */
           (salesMoney ? '<span>CR</span>' : '<span></span>');   /* trash / CR slot */
       }

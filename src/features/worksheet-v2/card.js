@@ -531,7 +531,14 @@
       // entirely so the row closes up instead of holding blank space.
       return stackCell(rec, viewKey, 'field_2150', readNum(rec, 'field_2150'), readField(rec, 'field_2151'), 'Sub Bid');
     }
-    return stackCell(rec, viewKey, 'field_2150', readNum(rec, 'field_2150'), readField(rec, 'field_2151'), 'Sub Bid') +
+    // Ops CO worksheet (config equipmentField): Equipment $ stack first —
+    // unit price editable, extended equipment (field_2201) shown beneath.
+    var eqF = equipmentFieldOf(viewKey);
+    var eq = eqF
+      ? stackCell(rec, viewKey, eqF, readNum(rec, eqF), readField(rec, 'field_2201'), 'Equip $')
+      : '';
+    return eq +
+           stackCell(rec, viewKey, 'field_2150', readNum(rec, 'field_2150'), readField(rec, 'field_2151'), 'Sub Bid') +
            stackCell(rec, viewKey, 'field_1973', readNum(rec, 'field_1973'), readField(rec, 'field_1997'), '+Hrs') +
            stackCell(rec, viewKey, 'field_1974', readNum(rec, 'field_1974'), readField(rec, 'field_2146'), '+Mat') +
            ro(readField(rec, 'field_2028'), 'scw-ws-v2-cell--fee', 'Install fee');
@@ -559,6 +566,18 @@
     } catch (e) { return false; }
   }
 
+  /** Equipment money field (config equipmentField — the ops CO worksheet,
+   *  view_4079): an editable unit-equipment-price stack rendered ahead of
+   *  Sub Bid so ops price CO adds in full (equipment + labor). Inert on
+   *  sales/survey/install/laborOnly views — those money models never reach
+   *  the build-SOW stack branch. */
+  function equipmentFieldOf(viewKey) {
+    try {
+      var vc = ns.cfg && typeof ns.cfg.viewCfg === 'function' && ns.cfg.viewCfg(viewKey);
+      return (vc && vc.equipmentField) || null;
+    } catch (e) { return null; }
+  }
+
   /** True when the view hides the SOW column entirely (config hideSow). */
   function hideSow(viewKey) {
     try {
@@ -579,7 +598,8 @@
   function moneyCellsBlank(viewKey) {
     if (isSalesMoney(viewKey)) return empty('scw-ws-v2-cell--sales-total');
     if (isLaborOnly(viewKey))  return empty('scw-ws-v2-cell--stack');
-    return empty('scw-ws-v2-cell--stack') +
+    return (equipmentFieldOf(viewKey) ? empty('scw-ws-v2-cell--stack') : '') +
+           empty('scw-ws-v2-cell--stack') +
            empty('scw-ws-v2-cell--stack') +
            empty('scw-ws-v2-cell--stack') +
            empty('scw-ws-v2-cell--fee');
@@ -2172,6 +2192,14 @@
     // money-free --install grid, so it doesn't take the labor class.
     if (isLaborOnly(sourceViewKey) && !isInstallMoney(sourceViewKey)) {
       card.classList.add('scw-ws-v2-card--labor');
+    }
+    // Ops CO worksheet (config equipmentField): the extra Equipment $ money
+    // stack needs its own grid variant. Only meaningful on the build-SOW
+    // money model — the other models never render the equipment stack.
+    if (equipmentFieldOf(sourceViewKey) &&
+        !isSalesMoney(sourceViewKey) && !isSurveyMoney(sourceViewKey) &&
+        !isInstallMoney(sourceViewKey) && !isLaborOnly(sourceViewKey)) {
+      card.classList.add('scw-ws-v2-card--equip');
     }
     var bid = bucketIdOf(rec, sourceViewKey);
     if (bid) card.setAttribute('data-scw-ws-v2-bucket', bid);
