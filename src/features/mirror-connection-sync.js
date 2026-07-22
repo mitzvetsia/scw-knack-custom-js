@@ -2290,6 +2290,17 @@
     CONNECTIONS_FIELD: 'field_2381',
     GROUPING_FIELD:    'field_2375',
     LABEL_FIELD:       'field_2365',   // survey line-item display label
+    // view_3505 is now driven by worksheet-v2 (custom card UI, no v1
+    // .scw-ws-row triplets to scrape) — same cutover every other v2 surface
+    // registered below already accounts for (view_3586, view_3610, …). This
+    // instance was never flipped when the survey page moved to v2: without
+    // MODEL_ONLY, findRowsPointingTo() scrapes for `tr.scw-ws-row td.field_2381`,
+    // which no longer exists on this page, so it always sees ZERO currently-
+    // connected children. Confirmed symptom: adding a device to Connected
+    // Devices updates the parent's own display immediately (that's just the
+    // edited record's local state), but the child never picks up its
+    // reciprocal field_2381 / never shows as connected on its own card.
+    MODEL_ONLY:        true,
     PUBLIC_API_NAME:   'silentRegroupView3505'
   });
 
