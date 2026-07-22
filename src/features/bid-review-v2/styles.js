@@ -53,6 +53,23 @@
     '  color: #64748b; font-size: 12px;',
     '  font-variant-numeric: tabular-nums;',
     '}',
+    /* ── Partial-data mode: rows stream in, AGGREGATES hide ─────
+       While a truncation-repair refetch is in flight (render.js sets
+       --partial on the container) the diff totals are computed from
+       incomplete data and read as alarming nonsense ("137 not bid,
+       labor Δ +$260k"). Hide the sub-bid diff strip and the SOW-header
+       warning chips until the data is complete; the count line carries
+       the explicit loading notice. Amber = warning per repo convention. */
+    '.scw-bid-review-v2--partial .scw-sbd-inline { display: none !important; }',
+    '.scw-bid-review-v2--partial .scw-bid-review-v2__warn-chips,',
+    '.scw-bid-review-v2--partial .scw-bid-review-v2__warn-chip--sum { display: none !important; }',
+    '.scw-bid-review-v2--partial .scw-bid-review-v2-count {',
+    '  color: #b45309; font-weight: 700;',
+    '  animation: scw-br-v2-loading-pulse 1.2s ease-in-out infinite;',
+    '}',
+    '@keyframes scw-br-v2-loading-pulse {',
+    '  0%, 100% { opacity: 1; } 50% { opacity: 0.45; }',
+    '}',
     '.scw-bid-review-v2-body {',
     '  padding: 16px;',
     '  background: #fff;',

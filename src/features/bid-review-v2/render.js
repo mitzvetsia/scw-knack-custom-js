@@ -88,25 +88,21 @@
     }
     // Loud console warning if any source view is page-capped — the diff
     // silently produces phantom Removed/Not-surveyed rows on partial data.
-    // warnIfTruncated also KICKS OFF the self-repair refetches; while one
-    // is in flight, do NOT build the grid from the partial snapshot —
-    // rendering it paints hundreds of phantom Removed/Not-bid rows that
-    // collapse a moment later when the full data lands (the "giant gaps
-    // while the diff runs" report). Keep whatever is already on screen;
-    // on a cold first paint show a loading note instead. The repair's
+    // warnIfTruncated also KICKS OFF the self-repair refetches. While one
+    // is in flight the grid still renders (records stream in as they
+    // load), but the container gets --partial, whose CSS hides every
+    // AGGREGATE built from incomplete data — the sub-bid diff strip
+    // (labor Δ / not-bid counts) and the SOW-header warning chips — since
+    // those read as alarming nonsense mid-load ("137 not bid, +$260k").
+    // The count line becomes an explicit loading notice. The repair's
     // fetch completion fires knack-view-render → notifyDebounced, so a
-    // full-data render always follows. If retries exhaust (a genuinely
-    // >1000-record view), truncationRepairPending goes false and we
-    // render the best data we have rather than deadlocking.
+    // full-data render always follows and clears the flag; if retries
+    // exhaust (a genuinely >1000-record view), pending goes false and
+    // the best available data renders rather than deadlocking.
     if (ns.data && typeof ns.data.warnIfTruncated === 'function') ns.data.warnIfTruncated();
-    if (ns.data && typeof ns.data.truncationRepairPending === 'function' &&
-        ns.data.truncationRepairPending()) {
-      if (!body.querySelector('.scw-bid-review-v2__sow')) {
-        body.innerHTML = '<div class="scw-bid-review-v2-empty">' +
-          'Loading full bid data&hellip;</div>';
-      }
-      return;
-    }
+    var partial = !!(ns.data && typeof ns.data.truncationRepairPending === 'function' &&
+                     ns.data.truncationRepairPending());
+    container.classList.toggle('scw-bid-review-v2--partial', partial);
     var state = ns.transform.buildState(bidRecords, sowItems, bidPackages);
 
     // Publish the freshly-built comparison state so co-located consumers
@@ -128,9 +124,13 @@
     }
 
     if (count) {
-      count.textContent = state.sowGrids.length + ' SOW' +
-        (state.sowGrids.length === 1 ? '' : 's') + ' / ' +
-        bidRecords.length + ' bid record' + (bidRecords.length === 1 ? '' : 's');
+      count.textContent = partial
+        ? ('Loading full bid data… ' + bidRecords.length +
+           ' record' + (bidRecords.length === 1 ? '' : 's') +
+           ' so far — totals hidden until complete')
+        : (state.sowGrids.length + ' SOW' +
+           (state.sowGrids.length === 1 ? '' : 's') + ' / ' +
+           bidRecords.length + ' bid record' + (bidRecords.length === 1 ? '' : 's'));
     }
 
     if (state.isEmpty) {
