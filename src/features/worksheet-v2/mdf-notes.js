@@ -478,9 +478,7 @@
         '<input type="text" data-fk="' + F.name + '" value="' + esc(name) + '" placeholder="Location name">' +
       '</div>' +
       '<div class="' + P + '-actions">' +
-        '<span class="' + P + '-status"></span>' +
-        '<button type="button" class="' + P + '-btn ' + P + '-btn--cancel">Cancel</button>' +
-        '<button type="button" class="' + P + '-btn ' + P + '-btn--save" disabled>Save</button>' +
+        '<span class="' + P + '-status">Enter saves &middot; Esc cancels</span>' +
       '</div>';
 
     // Directly after the header wrap (NOT inside the l1-body) so the panel
@@ -492,10 +490,12 @@
       block.appendChild(panel);
     }
 
-    var saveBtn = panel.querySelector('.' + P + '-btn--save');
     var status  = panel.querySelector('.' + P + '-status');
     var inputs  = panel.querySelectorAll('[data-fk]');
-    function markDirty() { saveBtn.disabled = false; }
+    // No Save/Cancel buttons — Enter or tabbing/clicking away commits,
+    // Escape closes without saving. Dirty/saving flags gate the autosave.
+    var dirty = false, saving = false;
+    function markDirty() { dirty = true; }
     for (var i = 0; i < inputs.length; i++) {
       inputs[i].addEventListener('input', markDirty);
       inputs[i].addEventListener('change', markDirty);
@@ -512,28 +512,26 @@
       numIn.value  = head ? '' : (numIn.value || initial[F.num] || '');
     });
 
-    panel.querySelector('.' + P + '-btn--cancel').addEventListener('click', closePanels);
-
     // Enter-to-save + tab/click-away-to-save — the rest of the app saves
     // inline fields on blur (SCW notes textarea, direct-edit worksheet
     // cells) rather than requiring an explicit button click; match that
-    // here so Tab/Enter behave consistently. The Save button stays for
-    // mouse users. Cancel is exempt (blurring into it doesn't autosave).
+    // here. Escape closes the panel without saving (the old Cancel
+    // button). closePanels removes the panel synchronously, so the
+    // deferred focusout autosave sees !panel.isConnected and skips.
     for (var ki = 0; ki < inputs.length; ki++) {
       inputs[ki].addEventListener('keydown', function (e) {
+        if (e.key === 'Escape') { e.preventDefault(); closePanels(); return; }
         if (e.key !== 'Enter') return;
         e.preventDefault();
-        if (!saveBtn.disabled) doSave();
+        if (dirty && !saving) doSave();
       });
     }
     panel.addEventListener('focusout', function () {
       setTimeout(function () {
         if (!panel.isConnected) return;   // panel already closed
-        if (!panel.contains(document.activeElement) && !saveBtn.disabled) doSave();
+        if (!panel.contains(document.activeElement) && dirty && !saving) doSave();
       }, 0);
     });
-
-    saveBtn.addEventListener('click', doSave);
 
     function doSave() {
       // Diff-only PUT — never send an unchanged field (the prefill can be a
@@ -546,7 +544,7 @@
         if (v !== (initial[fk] || '')) { fields[fk] = v; changed++; }
       }
       if (!changed) { closePanels(); return; }
-      saveBtn.disabled = true;
+      saving = true;
       status.classList.remove('is-err');
       status.textContent = 'Saving…';
       SCW.knackAjax({
@@ -554,35 +552,38 @@
         type: 'PUT',
         data: JSON.stringify(fields),
         success: function (resp) {
+          saving = false;
           // Knack's view-based PUT can return 200 while silently DROPPING a
           // field the target view doesn't expose as an inline-editable
           // column — the record is otherwise saved, that one field just
-          // never lands. Verify the response actually reflects what we
-          // sent before declaring success; otherwise the header retitles
-          // optimistically here, then reverts a moment later when
-          // model.fetch() below reads the still-unchanged stored value.
-          // See bid-review-v2/mdf-manage.js's documented Builder
-          // dependency for view_3822/field_1943 — view_3577 needs the
-          // same inline-edit column configured for field_1943 (Name).
+          // never lands. BUT the response only echoes fields the view
+          // DISPLAYS: a field that saved fine but isn't a column on the
+          // view is simply ABSENT from the response (observed live
+          // 2026-07-22 — field_1943 saved, refresh showed the new name,
+          // yet the old absence-as-dropped check flagged it). So absence
+          // proves nothing; only an echoed value that CONTRADICTS what we
+          // sent proves a real drop.
           var own = Object.prototype.hasOwnProperty;
           var dropped = [];
           for (var fk in fields) {
             if (!own.call(fields, fk)) continue;
-            var got = resp && (resp[fk + '_raw'] != null ? resp[fk + '_raw'] : resp[fk]);
+            if (!resp || (!own.call(resp, fk + '_raw') && !own.call(resp, fk))) continue;
+            var got = resp[fk + '_raw'] != null ? resp[fk + '_raw'] : resp[fk];
             got = stripTags(got == null ? '' : got);
             if (got !== fields[fk]) dropped.push(fk);
           }
           if (dropped.length) {
-            saveBtn.disabled = false;
+            dirty = true;
             status.classList.add('is-err');
             status.textContent = 'Save didn’t take — ' + dropped.join(', ') +
               ' isn’t editable on this view (check Knack Builder inline-edit settings).';
-            console.warn('[scw-ws-v2-mdf] server dropped field(s) — view is missing ' +
-              'inline-edit config for these fields', {
+            console.warn('[scw-ws-v2-mdf] server echoed a different value — view is ' +
+              'missing inline-edit config for these fields', {
                 view: cfg.viewKey, recordId: l1Id, sent: fields, dropped: dropped, response: resp
               });
             return;
           }
+          dirty = false;
           status.textContent = 'Saved ✓';
           // Retitle the L1 header in place from the saved values.
           var nT = own.call(fields, F.type) ? fields[F.type] : type;
@@ -599,7 +600,8 @@
           setTimeout(closePanels, 700);
         },
         error: function (xhr) {
-          saveBtn.disabled = false;
+          saving = false;
+          dirty = true;
           status.classList.add('is-err');
           var srvMsg = '';
           try {
