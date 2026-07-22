@@ -1952,6 +1952,15 @@
   // short delay so the user still ends up somewhere sensible.
   //
   // The setTimeout before window.close() is intentional: some browsers
+  // Diagnostic hold — set localStorage.scwOpsStepperHold = '1' in the
+  // console (then reload) to keep the tab AND the notes modal open after a
+  // webhook fires. The normal flow closes the tab on success, which nukes
+  // the DevTools Network capture with it — impossible to see whether the
+  // POST actually reached Make. Delete the key to restore normal behavior.
+  function diagnosticHold() {
+    try { return localStorage.getItem('scwOpsStepperHold') === '1'; } catch (e) { return false; }
+  }
+
   // miss the cross-tab storage-event IPC if the origin tab closes too
   // quickly after setItem. 150ms is plenty for the event to propagate.
   function dismissAfterSuccess() {
@@ -1979,27 +1988,38 @@
   // with an opaque "TypeError: Failed to fetch" and no status — which is
   // exactly the unhelpful "Failed to fetch" alert Ops was hitting here.
   function postWebhook(url, payload) {
+    var body = JSON.stringify(payload);
+    // Always log the outbound size + result — a publish payload carries the
+    // full proposal HTML/JSON snapshot several times over, and an oversized
+    // body dying mid-upload at the gateway looks identical to a CORS block
+    // from the browser's side (no status, no Make run). The byte count in
+    // the console is what tells those two failure modes apart.
+    console.info('[SCW ops-stepper] POST ' + url + ' payloadBytes=' + body.length);
     return new Promise(function (resolve) {
       $.ajax({
         url: url,
         type: 'POST',
         contentType: 'application/json',
-        data: JSON.stringify(payload),
-        success: function (body, textStatus, xhr) {
+        data: body,
+        success: function (respBody, textStatus, xhr) {
+          console.info('[SCW ops-stepper] webhook OK status=' + xhr.status);
           var data = null;
-          try { data = body ? (typeof body === 'string' ? JSON.parse(body) : body) : null; } catch (e) {}
-          resolve({ ok: true, status: xhr.status, body: body, data: data });
+          try { data = respBody ? (typeof respBody === 'string' ? JSON.parse(respBody) : respBody) : null; } catch (e) {}
+          resolve({ ok: true, status: xhr.status, body: respBody, data: data });
         },
         error: function (xhr) {
+          console.warn('[SCW ops-stepper] webhook ERROR status=' + (xhr ? xhr.status : '?') +
+            ' — status 0 means the browser never got a response (CORS-opaque reply, ' +
+            'blocked request, or connection killed mid-upload)');
           if (xhr && xhr.status === 0) {
             resolve({ ok: true, status: 0, body: '', data: { success: true } });
             return;
           }
-          var body = '';
-          try { body = xhr.responseText || ''; } catch (e) { /* ignore */ }
+          var respBody = '';
+          try { respBody = xhr.responseText || ''; } catch (e) { /* ignore */ }
           var data = null;
-          try { data = body ? JSON.parse(body) : null; } catch (e) { /* not JSON */ }
-          resolve({ ok: false, status: xhr ? xhr.status : 0, body: body, data: data });
+          try { data = respBody ? JSON.parse(respBody) : null; } catch (e) { /* not JSON */ }
+          resolve({ ok: false, status: xhr ? xhr.status : 0, body: respBody, data: data });
         }
       });
     });
@@ -2146,6 +2166,16 @@
                 at:    Date.now()
               }));
           } catch (eLs) { /* localStorage may be disabled; non-fatal */ }
+        }
+        // Diagnostic hold: leave everything open and surface the raw
+        // result so the Network tab / console stay inspectable.
+        if (diagnosticHold()) {
+          setBtnLoading(btn, false);
+          ctx.setSubmitting(false);
+          ctx.showError('[debug hold] webhook resolved status=' + resp.status +
+            (resp.status === 0 ? ' (status 0 = no readable response — check the Network tab: did the POST row complete, CORS-error, or fail?)' : '') +
+            ' — tab left open because scwOpsStepperHold is set.');
+          return;
         }
         // Close the notes modal before navigating — the redirect is
         // just a hash change, it doesn't tear down body-level overlays.
