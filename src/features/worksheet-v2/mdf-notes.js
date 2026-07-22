@@ -181,7 +181,21 @@
       '  font: 600 12.5px/1.2 system-ui, sans-serif; border: 1px solid transparent; }',
       '.' + P + '-btn--cancel { background: #fff; color: #475569; border-color: #cbd5e1; }',
       '.' + P + '-btn--save { background: #0f4c75; color: #fff; }',
-      '.' + P + '-btn--save:disabled { background: #cbd5e1; cursor: not-allowed; }'
+      '.' + P + '-btn--save:disabled { background: #cbd5e1; cursor: not-allowed; }',
+      /* Delete location — red is reserved for destructive actions. */
+      '.' + P + '-btn--delete { background: #fff; color: #b91c1c; border-color: #fca5a5; margin-right: auto; }',
+      '.' + P + '-btn--delete:hover:not(:disabled) { background: #fef2f2; }',
+      '.' + P + '-btn--delete:disabled { color: #94a3b8; border-color: #e2e8f0; cursor: not-allowed; }',
+      '.' + P + '-btn--delete + .' + P + '-status { margin-right: 0; }',
+      /* Delete confirmation — deliberately loud. */
+      '.' + P + '-delconf { flex: 1 1 100%; padding: 14px 16px; border: 2px solid #dc2626;',
+      '  border-radius: 8px; background: #fef2f2; }',
+      '.' + P + '-delconf-title { font: 800 15px/1.4 system-ui, sans-serif; color: #991b1b; }',
+      '.' + P + '-delconf-msg { margin: 6px 0 12px; font: 13px/1.5 system-ui, sans-serif; color: #7f1d1d; }',
+      '.' + P + '-delconf-actions { display: flex; justify-content: flex-end; align-items: center; gap: 8px; }',
+      '.' + P + '-delconf-status { margin-right: auto; font-weight: 600; color: #be123c; }',
+      '.' + P + '-btn--confirm-del { background: #dc2626; color: #fff; }',
+      '.' + P + '-btn--confirm-del:disabled { background: #fca5a5; cursor: not-allowed; }'
     ].join('\n');
     var style = document.createElement('style');
     style.id = STYLE_ID;
@@ -432,6 +446,105 @@
     }
   }
 
+  /** True only when NOTHING points at this location: no worksheet cards in
+   *  its L1 block AND no loaded source-view record whose MDF/IDF connection
+   *  (cfg mdfIdf, default field_1946) references it. Fails CLOSED — if the
+   *  model can't be read, the location is treated as NOT empty so the
+   *  delete stays disabled rather than trusting a blind check. */
+  function locationIsEmpty(sourceViewKey, l1Id, block) {
+    if (block && block.querySelector('.scw-ws-v2-card')) return false;
+    var mdfField = 'field_1946';
+    try {
+      var f = ns.cfg && typeof ns.cfg.fields === 'function' && ns.cfg.fields(sourceViewKey);
+      if (f && f.mdfIdf) mdfField = f.mdfIdf;
+    } catch (e) { /* default */ }
+    try {
+      var v = Knack.views && Knack.views[sourceViewKey];
+      var models = v && v.model && v.model.data && v.model.data.models;
+      if (!models) return false;
+      for (var i = 0; i < models.length; i++) {
+        var raw = models[i].attributes && models[i].attributes[mdfField + '_raw'];
+        if (Array.isArray(raw)) {
+          for (var j = 0; j < raw.length; j++) {
+            if (raw[j] && raw[j].id === l1Id) return false;
+          }
+        } else if (raw && raw.id === l1Id) {
+          return false;
+        }
+      }
+    } catch (e) { return false; }
+    return true;
+  }
+
+  /** Big, loud confirm → view-scoped REST DELETE of the location record.
+   *  Only reachable when locationIsEmpty() said yes; the manage view
+   *  (view_3577 / view_3932) carries the Delete link in Builder that
+   *  authorizes the session-authed DELETE. On success the L1 block is
+   *  removed in place and the manage + source views refetch so the next
+   *  rebuild agrees. */
+  function openDeleteConfirm(panel, cfg, sourceViewKey, l1Id, block, label) {
+    if (panel.querySelector('.' + P + '-delconf')) return;
+    var conf = document.createElement('div');
+    conf.className = P + '-delconf';
+    conf.innerHTML =
+      '<div class="' + P + '-delconf-title">Are you ABSOLUTELY sure you want to delete this MDF/IDF?</div>' +
+      '<div class="' + P + '-delconf-msg">&ldquo;' + esc(label) + '&rdquo; will be permanently deleted, ' +
+        'along with its notes and photo links. There is no undo.</div>' +
+      '<div class="' + P + '-delconf-actions">' +
+        '<span class="' + P + '-delconf-status"></span>' +
+        '<button type="button" class="' + P + '-btn ' + P + '-btn--cancel">Keep it</button>' +
+        '<button type="button" class="' + P + '-btn ' + P + '-btn--confirm-del">Yes &mdash; delete it</button>' +
+      '</div>';
+    panel.appendChild(conf);
+
+    var st = conf.querySelector('.' + P + '-delconf-status');
+    conf.querySelector('.' + P + '-btn--cancel').addEventListener('click', function () {
+      conf.parentNode.removeChild(conf);
+    });
+    var goBtn = conf.querySelector('.' + P + '-btn--confirm-del');
+    goBtn.addEventListener('click', function () {
+      // Re-verify at the moment of truth — records may have been added
+      // while the confirm sat open.
+      if (!locationIsEmpty(sourceViewKey, l1Id, block)) {
+        st.textContent = 'This location is no longer empty — delete cancelled.';
+        goBtn.disabled = true;
+        return;
+      }
+      goBtn.disabled = true;
+      st.textContent = 'Deleting…';
+      SCW.knackAjax({
+        url:  SCW.knackRecordUrl(cfg.viewKey, l1Id),
+        type: 'DELETE',
+        success: function () {
+          closePanels();
+          if (block && block.parentNode) block.parentNode.removeChild(block);
+          // Refetch the manage view (groups.js seeds empty L1 groups from
+          // it — without this the deleted location reappears on the next
+          // rebuild) and the mdf options source if it's a different view.
+          try {
+            var mv = Knack.views && Knack.views[cfg.viewKey];
+            if (mv && mv.model && typeof mv.model.fetch === 'function') mv.model.fetch();
+            var vc = ns.cfg && typeof ns.cfg.viewCfg === 'function' && ns.cfg.viewCfg(sourceViewKey);
+            if (vc && vc.mdfSourceViewKey && vc.mdfSourceViewKey !== cfg.viewKey) {
+              var ov = Knack.views && Knack.views[vc.mdfSourceViewKey];
+              if (ov && ov.model && typeof ov.model.fetch === 'function') ov.model.fetch();
+            }
+          } catch (e) { /* best-effort */ }
+        },
+        error: function (xhr) {
+          goBtn.disabled = false;
+          var status = xhr && xhr.status;
+          st.textContent = 'Delete failed (' + status + ')' +
+            (status === 403 ? ' — the manage view needs a Delete link enabled in Knack Builder.' : '.');
+          console.warn('[scw-ws-v2-mdf] location delete failed', {
+            view: cfg.viewKey, recordId: l1Id, status: status,
+            response: xhr && xhr.responseText
+          });
+        }
+      });
+    });
+  }
+
   function openPanel(btn) {
     var l1Id = btn.getAttribute('data-scw-ws-v2-mdf-notes');
     var sourceViewKey = btn.getAttribute('data-scw-ws-v2-view');
@@ -478,6 +591,7 @@
         '<input type="text" data-fk="' + F.name + '" value="' + esc(name) + '" placeholder="Location name">' +
       '</div>' +
       '<div class="' + P + '-actions">' +
+        '<button type="button" class="' + P + '-btn ' + P + '-btn--delete">Delete&hellip;</button>' +
         '<span class="' + P + '-status">Enter saves &middot; Esc cancels</span>' +
       '</div>';
 
@@ -492,6 +606,23 @@
 
     var status  = panel.querySelector('.' + P + '-status');
     var inputs  = panel.querySelectorAll('[data-fk]');
+
+    // Delete — only for locations with NOTHING under them. Not-empty
+    // locations get a disabled button with the reason, so the capability
+    // is discoverable without being dangerous.
+    var delBtn = panel.querySelector('.' + P + '-btn--delete');
+    if (delBtn) {
+      var emptyNow = locationIsEmpty(sourceViewKey, l1Id, block);
+      delBtn.disabled = !emptyNow;
+      delBtn.title = emptyNow
+        ? 'Delete this MDF/IDF location'
+        : 'Can’t delete — this MDF/IDF still has line items under it. Move or delete them first.';
+      delBtn.addEventListener('click', function () {
+        var lblEl = block.querySelector('.scw-ws-v2-l1-label');
+        openDeleteConfirm(panel, cfg, sourceViewKey, l1Id, block,
+          (lblEl && lblEl.textContent.trim()) || fieldText(attrs, F.displayName) || 'this location');
+      });
+    }
     // No Save/Cancel buttons — Enter or tabbing/clicking away commits,
     // Escape closes without saving. Dirty/saving flags gate the autosave.
     var dirty = false, saving = false;
