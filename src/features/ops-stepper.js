@@ -1967,16 +1967,40 @@
   // ── Webhook ──────────────────────────────────────────────
   // POST the payload as JSON. Resolves with {ok, status, data} where
   // `data` is the parsed JSON body (or null if the body isn't JSON).
+  //
+  // Uses $.ajax, not fetch() — every other Make-webhook caller in this
+  // codebase does the same (bid-review/change-requests.js,
+  // sales-change-request/submit.js, worksheet-v2/toolbar.js,
+  // revision-accept-reject.js, etc.) because Make webhooks routinely
+  // respond without CORS headers even though the request landed and the
+  // scenario is running. XHR surfaces that as status 0, which every one
+  // of those callers treats as success. fetch() has no equivalent
+  // tolerance: the same CORS-blocked response makes it reject outright
+  // with an opaque "TypeError: Failed to fetch" and no status — which is
+  // exactly the unhelpful "Failed to fetch" alert Ops was hitting here.
   function postWebhook(url, payload) {
-    return fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    }).then(function (resp) {
-      return resp.text().then(function (body) {
-        var data = null;
-        try { data = body ? JSON.parse(body) : null; } catch (e) {}
-        return { ok: resp.ok, status: resp.status, body: body, data: data };
+    return new Promise(function (resolve) {
+      $.ajax({
+        url: url,
+        type: 'POST',
+        contentType: 'application/json',
+        data: JSON.stringify(payload),
+        success: function (body, textStatus, xhr) {
+          var data = null;
+          try { data = body ? (typeof body === 'string' ? JSON.parse(body) : body) : null; } catch (e) {}
+          resolve({ ok: true, status: xhr.status, body: body, data: data });
+        },
+        error: function (xhr) {
+          if (xhr && xhr.status === 0) {
+            resolve({ ok: true, status: 0, body: '', data: { success: true } });
+            return;
+          }
+          var body = '';
+          try { body = xhr.responseText || ''; } catch (e) { /* ignore */ }
+          var data = null;
+          try { data = body ? JSON.parse(body) : null; } catch (e) { /* not JSON */ }
+          resolve({ ok: false, status: xhr ? xhr.status : 0, body: body, data: data });
+        }
       });
     });
   }
