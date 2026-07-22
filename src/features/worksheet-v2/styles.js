@@ -2537,6 +2537,26 @@
     '.scw-ws-v2-photo-del:hover { background: #fee2e2; color: #b91c1c; }',
     '.scw-ws-v2-photo-del svg { display: block; }',
 
+    /* ── Photo disconnect (install/deploy surfaces only — see photos.js
+       PHOTO_DISCONNECT_VIEWS). Top-left so it never collides with delete
+       (top-right) if a view ever enables both. Amber, not red — unlike
+       delete this doesn't destroy anything, matches the repo\'s warning-
+       icon color convention (CLAUDE.md: red is reserved for destructive
+       actions). ── */
+    '.scw-ws-v2-photo-unlink {',
+    '  position: absolute; top: 3px; left: 3px; z-index: 3;',
+    '  display: inline-flex; align-items: center; justify-content: center;',
+    '  width: 20px; height: 20px; padding: 0;',
+    '  border: 0; border-radius: 50%;',
+    '  background: rgba(255,255,255,0.92); color: #64748b;',
+    '  box-shadow: 0 1px 3px rgba(2,6,23,0.35);',
+    '  cursor: pointer; opacity: 0;',
+    '  transition: opacity 100ms ease, background 100ms ease, color 100ms ease;',
+    '}',
+    '.scw-ws-v2-photo-card:hover .scw-ws-v2-photo-unlink { opacity: 1; }',
+    '.scw-ws-v2-photo-unlink:hover { background: #fef3c7; color: #b45309; }',
+    '.scw-ws-v2-photo-unlink svg { display: block; }',
+
     /* ── Photo drag-to-fill-required-slot (v1 parity) ────────── */
     '.scw-ws-v2-photo-card { position: relative !important; }',
     '.scw-ws-v2-photo-card[data-scw-ws-v2-photo-drag] { cursor: grab; }',
