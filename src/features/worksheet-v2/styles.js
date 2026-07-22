@@ -2994,6 +2994,15 @@
     '.scw-ws-v2-photos-shown .scw-ws-v2-card:not(.scw-ws-v2-card--open) .scw-ws-v2-photos--add-only {',
     '  display: none !important;',
     '}',
+    /* Explicit OFF (photos-hidden): the "an open card always reveals its
+       strip" rule above is meant for strips with actual photos to look
+       at — an add-only strip has nothing to reveal, just an Add button,
+       so "Hide photos" should suppress it even on an expanded card.
+       3-class selector outranks the 2-class rule above regardless of
+       source order, so this wins without needing !important tricks. */
+    '.scw-ws-v2-photos-hidden .scw-ws-v2-card--open .scw-ws-v2-photos--add-only {',
+    '  display: none !important;',
+    '}',
 
     /* ── COLLAPSIBLE SUMMARY PANEL (grand + per-L1 share styles) ──
        Collapsed by default; click the head to toggle. In Summary
