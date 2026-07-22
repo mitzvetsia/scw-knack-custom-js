@@ -557,16 +557,22 @@
       return stackCell(rec, viewKey, 'field_2150', readNum(rec, 'field_2150'), readField(rec, 'field_2151'), 'Sub Bid');
     }
     // Ops CO worksheet (config equipmentField): Equipment $ stack first —
-    // unit price editable, extended equipment (field_2201) shown beneath.
+    // unit price editable, extended equipment (field_2201) shown beneath —
+    // and a trailing read-only extended-NET total (field_2269) so the
+    // all-in line value is visible while pricing.
     var eqF = equipmentFieldOf(viewKey);
     var eq = eqF
       ? stackCell(rec, viewKey, eqF, readNum(rec, eqF), readField(rec, 'field_2201'), 'Equip $')
+      : '';
+    var net = eqF
+      ? ro(readField(rec, 'field_2269'), 'scw-ws-v2-cell--fee scw-ws-v2-cell--net', 'Extended net total')
       : '';
     return eq +
            stackCell(rec, viewKey, 'field_2150', readNum(rec, 'field_2150'), readField(rec, 'field_2151'), 'Sub Bid') +
            stackCell(rec, viewKey, 'field_1973', readNum(rec, 'field_1973'), readField(rec, 'field_1997'), '+Hrs') +
            stackCell(rec, viewKey, 'field_1974', readNum(rec, 'field_1974'), readField(rec, 'field_2146'), '+Mat') +
-           ro(readField(rec, 'field_2028'), 'scw-ws-v2-cell--fee', 'Install fee');
+           ro(readField(rec, 'field_2028'), 'scw-ws-v2-cell--fee', 'Install fee') +
+           net;
   }
 
   /** Sales-only detail zone — Retail Price (ro), Discount % (editable),
@@ -623,11 +629,13 @@
   function moneyCellsBlank(viewKey) {
     if (isSalesMoney(viewKey)) return empty('scw-ws-v2-cell--sales-total');
     if (isLaborOnly(viewKey))  return empty('scw-ws-v2-cell--stack');
-    return (equipmentFieldOf(viewKey) ? empty('scw-ws-v2-cell--stack') : '') +
+    var hasEq = !!equipmentFieldOf(viewKey);
+    return (hasEq ? empty('scw-ws-v2-cell--stack') : '') +
            empty('scw-ws-v2-cell--stack') +
            empty('scw-ws-v2-cell--stack') +
            empty('scw-ws-v2-cell--stack') +
-           empty('scw-ws-v2-cell--fee');
+           empty('scw-ws-v2-cell--fee') +
+           (hasEq ? empty('scw-ws-v2-cell--fee') : '');   /* net track */
   }
 
   /**

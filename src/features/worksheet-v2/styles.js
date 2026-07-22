@@ -330,21 +330,25 @@
     '    64px                  /* +Hrs */',
     '    64px                  /* +Mat */',
     '    72px                  /* fee */',
+    '    78px                  /* extended net (RO) */',
     '    28px                  /* warning */',
     '    28px                  /* kebab */ !important;',
     '}',
+    '.scw-ws-v2-cell--net {',
+    '  font-weight: 600 !important; color: #0f172a !important;',
+    '}',
     /* Equip assumptions: the base rule spans desc 3/10 (tuned to the
        12-track SOW grid, where sow/warn/kebab then autoplace at 10-12).
-       This grid has no sow track, so respan the desc through the fee
-       track and pin warn/kebab so they line up with the other rows. */
+       This grid has no sow track but adds equip + net, so respan the desc
+       through the net track and pin warn/kebab to line up with the rows. */
     '.scw-ws-v2-card--equip .scw-ws-v2-row--assumptions > .scw-ws-v2-cell--labor-desc {',
-    '  grid-column: 3 / 11 !important;',
+    '  grid-column: 3 / 12 !important;',
     '}',
     '.scw-ws-v2-card--equip .scw-ws-v2-row--assumptions > .scw-ws-v2-cell--warn {',
-    '  grid-column: 11 / 12 !important;',
+    '  grid-column: 12 / 13 !important;',
     '}',
     '.scw-ws-v2-card--equip .scw-ws-v2-row--assumptions > .scw-ws-v2-trash {',
-    '  grid-column: 12 / 13 !important;',
+    '  grid-column: 13 / 14 !important;',
     '}',
     /* Install money model (moneyMode:"install", view_4093). No money cells at
        all — header is chevron · label · product · flag chits (RO, show-when-

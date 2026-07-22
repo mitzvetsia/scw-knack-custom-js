@@ -497,6 +497,7 @@
               // the --equip grid.
               : (equipMoney
                 ? '<span>Equip $</span><span>Sub Bid</span><span>+Hrs</span><span>+Mat</span><span>Fee</span>' +
+                  '<span title="Extended net total">Net</span>' +
                   (hdrHideSow ? '' : '<span>SOW</span>')
                 : '<span>Sub Bid</span><span>+Hrs</span><span>+Mat</span><span>Fee</span><span>SOW</span>'))) +
           '<span></span>' + /* warning slot */
