@@ -33,20 +33,42 @@
 
 KnackInitAsync = function ($, callback) {
   var NO_KTL_SCENES = ['scene_1085','scene_1116','scene_1155','scene_1140','scene_1096','scene_1311','scene_1362'];   // stable scene KEYS, rename-proof
+  // Slug fallback — used when Knack.scenes metadata is EMPTY at boot
+  // (observed live 2026-07-22: the slug→key match silently failed open on
+  // scene_1155 and KTL loaded, costing ~9s of :visible scanning on the
+  // reconcile page). Keep in sync with the scenes above. Slugs are less
+  // rename-proof than keys, so the key match stays primary.
+  var NO_KTL_SLUGS = ['review-bids'];
 
   // Map the entry URL's slug segments → scene keys via Knack's metadata,
   // then match on the key. Exact-segment match (not substring), and a rename
   // changes the slug in BOTH the URL and the metadata, so this still resolves.
-  var skip = false;
+  var skip = false, why = 'no match';
+  var segs = [];
   try {
-    var segs = location.hash.replace(/^#/, '').split('/').filter(Boolean)
+    segs = location.hash.replace(/^#/, '').split('/').filter(Boolean)
       .map(function (s) { return s.split('?')[0]; });   // strip query part: 'slug?x=y' → 'slug'
     var scenes = (Knack.scenes && Knack.scenes.models) || [];
+    if (!scenes.length) why = 'scene metadata EMPTY at boot';
     for (var i = 0; i < scenes.length; i++) {
       var a = scenes[i].attributes || {};
-      if (segs.indexOf(a.slug) !== -1 && NO_KTL_SCENES.indexOf(a.key) !== -1) { skip = true; break; }
+      if (segs.indexOf(a.slug) !== -1 && NO_KTL_SCENES.indexOf(a.key) !== -1) {
+        skip = true; why = 'matched ' + a.key + ' (slug ' + a.slug + ')'; break;
+      }
     }
-  } catch (e) { /* metadata not ready → fall through and load KTL (safe default) */ }
+    if (!skip) {
+      for (var j = 0; j < NO_KTL_SLUGS.length; j++) {
+        if (segs.indexOf(NO_KTL_SLUGS[j]) !== -1) {
+          skip = true; why = 'slug fallback: ' + NO_KTL_SLUGS[j]; break;
+        }
+      }
+    }
+  } catch (e) { why = 'threw: ' + e; }
+
+  // Diagnostic — keep this log. When a gated scene still loads KTL, this
+  // line says whether the metadata was missing, the slug didn't match, or
+  // the Builder copy of this snippet is stale (no [KTL gate v2] tag = stale).
+  try { console.log('[KTL gate v2] skip =', skip, '(' + why + ')', '#' + segs.join('/')); } catch (e2) {}
 
   if (skip) { callback(); return; }            // boot WITHOUT KTL
   (window.LazyLoad = LazyLoad) && LazyLoad.js(
