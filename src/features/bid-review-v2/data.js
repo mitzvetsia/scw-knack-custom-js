@@ -205,14 +205,60 @@
     return out;
   }
 
+  // Self-heal for truncated source views. A truncated view means its
+  // Backbone model holds fewer records than the server has — observed live
+  // 2026-07-22 on view_3921 (loaded 100 of 304) with rows_per_page ALREADY
+  // '1000': change-record-limit.js set the limit, but its refetch got
+  // raced/aborted in the scene's initial render burst, leaving the
+  // collection stuck at the Builder-default page. The damage is not
+  // cosmetic — every unloaded bid record becomes a phantom "Not bid /
+  // Removed" diff row (e.g. "137 not bid, labor Δ +$260k" on a 2-SOW
+  // project). Warning alone leaves the diff wrong for the whole session,
+  // so re-issue the fetch ourselves. Bounded per view so a genuinely
+  // >1000-record view can't refetch-loop forever.
+  var TRUNC_REPAIR_MAX = 2;
+  var _truncRepairTries = {};
+  var _truncRepairInflight = {};
+
+  function repairTruncated(stat) {
+    var k = stat.view;
+    if (_truncRepairInflight[k]) return true;   // already refetching — don't burn a retry
+    var tries = _truncRepairTries[k] || 0;
+    if (tries >= TRUNC_REPAIR_MAX) return false;
+    var v = Knack.views && Knack.views[k];
+    if (!v || !v.model || typeof v.model.fetch !== 'function') return false;
+    _truncRepairTries[k] = tries + 1;
+    try {
+      var mv = v.model.view;
+      if (mv) {
+        mv.rows_per_page = 1000;
+        if (mv.source) mv.source.limit = 1000;
+      }
+      var p = v.model.fetch();   // completion fires knack-view-render → notifyDebounced → rebuild
+      _truncRepairInflight[k] = true;
+      var clear = function () { _truncRepairInflight[k] = false; };
+      if (p && typeof p.always === 'function') p.always(clear);
+      else setTimeout(clear, 3000);
+      return true;
+    } catch (e) {
+      _truncRepairInflight[k] = false;
+      return false;
+    }
+  }
+
   function warnIfTruncated() {
     var stats = sourceStats();
     for (var i = 0; i < stats.length; i++) {
-      if (stats[i].truncated) {
-        console.warn('[scw-br-v2] SOURCE VIEW TRUNCATED — diff will be wrong ' +
-          '(phantom Removed/Not-surveyed rows):', stats[i],
-          '→ add ' + stats[i].view + ' to change-record-limit.js VIEW_IDS');
-      }
+      if (!stats[i].truncated) continue;
+      var repairing = repairTruncated(stats[i]);
+      console.warn('[scw-br-v2] SOURCE VIEW TRUNCATED — diff will be wrong ' +
+        '(phantom Removed/Not-surveyed rows):', stats[i],
+        repairing
+          ? ('→ refetching ' + stats[i].view + ' now to self-repair (attempt ' +
+             (_truncRepairTries[stats[i].view] || 0) + '/' + TRUNC_REPAIR_MAX + ')')
+          : ('→ self-repair retries exhausted for ' + stats[i].view +
+             '; if it is missing from change-record-limit.js VIEW_IDS add it there, ' +
+             'otherwise the view may genuinely exceed 1000 records'));
     }
   }
 
