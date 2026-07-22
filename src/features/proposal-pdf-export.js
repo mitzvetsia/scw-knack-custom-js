@@ -4847,7 +4847,7 @@
     var accessToken = access.token;
     var accessUrl   = access.url;
 
-    return {
+    var out = {
       recordId:              getPageRecordId() || '',
       hash:                  window.location.hash || '',
       sceneId:               cfg.sceneId,
@@ -5003,6 +5003,45 @@
       // hard-coded copy.
       tokens:                PROPOSAL_TOKENS
     };
+
+    // ── Payload budget: keep the webhook body under Make's 5 MB cap ────
+    // Make's gateway rejects request bodies over 5 MB with a CORS-opaque
+    // 400 BEFORE the scenario runs (confirmed live 2026-07-22: a 5.83 MB
+    // publish → 400, no scenario run, browser saw only "Failed to fetch").
+    // The two heaviest fields by far are `json` (full line-item snapshot,
+    // rendered + _raw twins — 3.06 MB on the failing SOW) and `jsonString`
+    // (raw-only twin, 1.81 MB). Budget is 4.5 MB, NOT 5: the ops/sales
+    // steppers merge another ~150 KB (sowFields, record-id lists) onto
+    // this payload after we return, and ops-stepper hard-blocks at 5 MB.
+    //
+    // Degradation ladder — smaller payloads ship byte-identical, only an
+    // over-budget payload is touched, and every step is flagged on the
+    // payload + console.warn'd so Make (and we) can see what happened:
+    //   1. jsonSlimmed: `json` drops its rendered field_xxx twins
+    //      (stripNonRawFields — same shape jsonString already uses; any
+    //      `.json[].field_xxx_raw` mapping in Make keeps working).
+    //   2. jsonDropped: `json` removed entirely — `jsonString` still
+    //      carries the full raw-only snapshot as a string.
+    var PAYLOAD_BUDGET = 4.5 * 1024 * 1024;
+    try {
+      var totalBytes = JSON.stringify(out).length;
+      if (totalBytes > PAYLOAD_BUDGET) {
+        out.json = stripNonRawFields(jsonSnapshot);
+        out.jsonSlimmed = true;
+        var slimmedBytes = JSON.stringify(out).length;
+        console.warn('[SCW publish] payload ' + totalBytes + 'B over ' + PAYLOAD_BUDGET +
+          'B budget — slimmed json to raw-only fields (now ' + slimmedBytes + 'B)');
+        totalBytes = slimmedBytes;
+      }
+      if (totalBytes > PAYLOAD_BUDGET) {
+        out.json = null;
+        out.jsonDropped = true;
+        console.warn('[SCW publish] still over budget — dropped json entirely ' +
+          '(jsonString keeps the raw-only snapshot; now ' + JSON.stringify(out).length + 'B)');
+      }
+    } catch (eBudget) { /* budgeting is best-effort — never block the payload */ }
+
+    return out;
   }
 
   window.SCW = window.SCW || {};
