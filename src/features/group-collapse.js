@@ -538,23 +538,38 @@
   }
 
   function rowsUntilNextRelevantGroup($headerRow) {
+    // Plain sibling walk collected into an array and wrapped in $() ONCE.
+    // The previous version did $rows.add($tr) per row — .add() re-runs
+    // uniqueSort on a freshly built jQuery object every iteration, making
+    // this O(n²) per header, and it runs once per header per render.
     const isLevel2 = $headerRow.hasClass('kn-group-level-2');
-    let $rows = $();
-
-    $headerRow.nextAll('tr').each(function () {
-      const $tr = $(this);
-
+    const out = [];
+    let el = $headerRow[0] ? $headerRow[0].nextElementSibling : null;
+    while (el) {
+      const cl = el.classList;
       if (isLevel2) {
-        if ($tr.hasClass('kn-table-group')) return false;
-        $rows = $rows.add($tr);
-        return;
+        if (cl && cl.contains('kn-table-group')) break;
+      } else if (cl && cl.contains('kn-group-level-1')) {
+        break;
       }
+      out.push(el);
+      el = el.nextElementSibling;
+    }
+    return $(out);
+  }
 
-      if ($tr.hasClass('kn-group-level-1')) return false;
-      $rows = $rows.add($tr);
-    });
-
-    return $rows;
+  // Show/hide a row set WITHOUT jQuery's .show()/.hide()/.toggle().
+  // jQuery's visibility machinery runs a per-element hidden check that
+  // reads offsetWidth/offsetHeight — a forced layout per row, interleaved
+  // with the display writes re-invalidating layout, i.e. O(rows × full
+  // relayout). A DevTools trace on the bid-review comparison page
+  // (2026-07-22) attributed 13.7s of a 29.7s capture to exactly that
+  // check ($.expr.filters.hidden) under this module's toggles. A raw
+  // display write reads nothing, so the browser coalesces the whole
+  // batch into one layout.
+  function setRowsShown($rows, show) {
+    const v = show ? '' : 'none';
+    for (let i = 0; i < $rows.length; i++) $rows[i].style.display = v;
   }
 
   function restoreLevel2StatesUnderLevel1($level1Header) {
@@ -563,7 +578,7 @@
       .each(function () {
         const $l2 = $(this);
         const collapsed = $l2.hasClass('scw-collapsed');
-        rowsUntilNextRelevantGroup($l2).toggle(!collapsed);
+        setRowsShown(rowsUntilNextRelevantGroup($l2), !collapsed);
       });
   }
 
@@ -578,7 +593,7 @@
         $l2.addClass('scw-collapsed');
 
         // hide its detail rows (even though L1 is hiding everything, this keeps it consistent)
-        rowsUntilNextRelevantGroup($l2).hide();
+        setRowsShown(rowsUntilNextRelevantGroup($l2), false);
 
         // persist
         const key = buildKey($l2, 2);
@@ -593,11 +608,11 @@
     // Chevron rotation is handled entirely by CSS (rotate -90deg when .scw-collapsed)
 
     if (isLevel2) {
-      rowsUntilNextRelevantGroup($header).toggle(!collapsed);
+      setRowsShown(rowsUntilNextRelevantGroup($header), !collapsed);
       return;
     }
 
-    rowsUntilNextRelevantGroup($header).toggle(!collapsed);
+    setRowsShown(rowsUntilNextRelevantGroup($header), !collapsed);
 
     if (!collapsed) restoreLevel2StatesUnderLevel1($header);
   }
