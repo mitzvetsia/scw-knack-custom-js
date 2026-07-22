@@ -472,11 +472,18 @@
     return attrsIndex(sourceViewKey)[id] || null;
   }
 
-  /** True if ANY selected id is a locked sales row. */
+  /** True if ANY selected id is a locked sales row.
+   *  Build the attrs index ONCE and look ids up in it — attrsOf() rebuilds
+   *  the whole index (full model read + full-document card querySelectorAll)
+   *  on every call, so calling it per selected id made this loop O(selected
+   *  × records) with a full DOM scan per iteration. On the bid-review
+   *  comparison grid a shift-click range-select ran this on every checkbox
+   *  change and froze the page. */
   function selectionHasLocked(ids, sourceViewKey) {
     if (!(ns.card && typeof ns.card.isCrLocked === 'function')) return false;
+    var idx = attrsIndex(sourceViewKey);
     for (var i = 0; i < ids.length; i++) {
-      var a = attrsOf(ids[i], sourceViewKey);
+      var a = idx[ids[i]] || null;
       if (a && ns.card.isCrLocked(a, sourceViewKey)) return true;
     }
     return false;
@@ -490,8 +497,13 @@
     var deletable = [], blocked = [];
     var canCheck = ns.card && typeof ns.card.isDeleteBlocked === 'function';
     var canOwn   = ns.card && typeof ns.card.subOwnsRecord === 'function';
+    // Index once, look up per id — see selectionHasLocked for why calling
+    // attrsOf() (which rebuilds the index) inside this loop froze the page.
+    // refreshToolbar runs this on EVERY checkbox change, so it must stay
+    // O(records), not O(selected × records).
+    var idx = (canCheck || canOwn) ? attrsIndex(sourceViewKey) : null;
     for (var i = 0; i < ids.length; i++) {
-      var a = (canCheck || canOwn) ? attrsOf(ids[i], sourceViewKey) : null;
+      var a = idx ? (idx[ids[i]] || null) : null;
       if (a && canCheck && ns.card.isDeleteBlocked(a, sourceViewKey)) blocked.push(ids[i]);
       else if (a && canOwn && ns.card.subOwnsRecord(a, sourceViewKey) === false) blocked.push(ids[i]);
       else deletable.push(ids[i]);
