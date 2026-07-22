@@ -32,7 +32,7 @@
  * ============================================================ */
 
 KnackInitAsync = function ($, callback) {
-  var NO_KTL_SCENES = ['scene_1085','scene_1116','scene_1155','scene_1140','scene_1096','scene_1311','scene_1362'];   // stable scene KEYS, rename-proof
+  var NO_KTL_SCENES = ['scene_1085','scene_1116','scene_1155','scene_1140','scene_1096','scene_1311','scene_1149','scene_1362'];   // stable scene KEYS, rename-proof — MUST match KTL_FREE_SCENES in ktl-accordion.js
   // Slug fallback — used when Knack.scenes metadata is EMPTY at boot
   // (observed live 2026-07-22: the slug→key match silently failed open on
   // scene_1155 and KTL loaded, costing ~9s of :visible scanning on the
