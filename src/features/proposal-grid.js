@@ -2284,14 +2284,30 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
           row.classList.contains('scw-mounting-product-line') ||
           row.classList.contains('scw-level-total-row')) continue;
 
-      // Properly grouped (has L3 since the last L1) → remember as a template.
+      // Has its own L3 header since the last L1 — but Knack may still have
+      // suppressed the L2 header above it: Knack only re-emits a group
+      // header when that field's value actually changes, not on every
+      // outer-group (L1) boundary. If this L1's first bucket is the SAME
+      // bucket as the previous L1's last bucket (e.g. two adjacent MDF/IDF
+      // sections both ending/starting on "Camera or Reader"), the L2 header
+      // never renders here even though L3 (a different product name each
+      // time) renders fine. Repair that before treating the row as a
+      // template.
       if (l3SinceL1 && lastL3) {
+        if (!l2SinceL1 && lastL2) {
+          const newL2 = pristineHeaderClone(lastL2);
+          newL2.classList.add('scw-synthetic-l2');
+          lastL3.parentNode.insertBefore(newL2, lastL3);
+          lastL2 = newL2;
+          l2SinceL1 = true;
+        }
         const sig = sigOf(row);
         if (!registry[sig]) registry[sig] = { l2: lastL2, l3: lastL3 };
         continue;
       }
 
-      // Orphan — missing L2 and/or L3. Clone the matching twin group's headers.
+      // Fully orphaned — missing L2 and/or L3 of its own. Clone the
+      // matching twin group's headers.
       const tmpl = registry[sigOf(row)];
       if (!tmpl) continue; // no known twin → leave as-is (can't reconstruct)
 
