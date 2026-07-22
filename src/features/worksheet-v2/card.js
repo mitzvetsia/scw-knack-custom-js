@@ -57,11 +57,36 @@
     return String(v).replace(/<[^>]*>/g, '').trim();
   }
 
+  /** Normalize a money/number string to a plain numeric string, PRESERVING
+   *  the sign across every negative format Knack emits: "-$2,500.00",
+   *  "$-2,500.00", accounting parens "($2,500.00)", and trailing-minus
+   *  "2,500.00-". The old blind strip could leave the minus mid-string
+   *  (e.g. "$-2,500.00" → "-2500.00" was fine, but "2,500.00-" →
+   *  "2500.00-" is INVALID and a type="number" input silently renders an
+   *  invalid value attribute as BLANK — the "Sub Bid appears empty on CO
+   *  Remove lines" bug). Returns '' when nothing numeric is present. */
+  function parseNumStr(s) {
+    s = String(s == null ? '' : s).replace(/<[^>]*>/g, '').trim();
+    if (!s) return '';
+    var neg = /^\(.*\)$/.test(s) || s.indexOf('-') !== -1;
+    var digits = s.replace(/[^0-9.]/g, '');
+    if (!digits) return '';
+    var n = parseFloat(digits);
+    if (!isFinite(n)) return '';
+    return String(neg ? -n : n);
+  }
+
   function readNum(rec, key) {
     var raw = rec[key + '_raw'];
     if (typeof raw === 'number') return String(raw);
-    var s = readField(rec, key);
-    return s.replace(/[^0-9.\-]/g, '');
+    // Knack sometimes ships currency raws as STRINGS — parse those with
+    // the same sign-preserving normalizer instead of falling through to
+    // the (differently-formatted) display value.
+    if (typeof raw === 'string' && raw.trim() !== '') {
+      var p = parseNumStr(raw);
+      if (p !== '') return p;
+    }
+    return parseNumStr(readField(rec, key));
   }
 
   function readBool(rec, key) {
