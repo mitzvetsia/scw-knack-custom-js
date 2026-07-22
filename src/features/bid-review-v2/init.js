@@ -1154,16 +1154,38 @@
     hookV1Rerender();
     if (ns.data && ns.render) {
       ns.data.subscribe(function (snapshot) {
-        // NOTE: do NOT wrap this in SCW.v2ScrollAnchor.around. On this grid the
-        // anchor's window.scrollBy correction runs away: editing field_2150 in
-        // an expanded row's embedded worksheet-v2 card rebuilds the panel, the
-        // SOW section below it shifts, and the anchor scrollBy's DOWN by the
-        // delta — repeatedly — scrolling the page to the bottom in several
-        // jumps (confirmed via scroll-spy: scrollBy with no scrollTo trace).
-        // bid-review-v2's renderSnapshot already keyed-reuses unchanged
-        // sections + defers while focused, so a plain rebuild stays put.
-        ns.render.renderSnapshot(snapshot);
-        mountBulk();
+        function doRender() {
+          ns.render.renderSnapshot(snapshot);
+          mountBulk();
+        }
+        // NOTE: do NOT wrap ORDINARY field-edit renders in
+        // SCW.v2ScrollAnchor.around. On this grid the anchor's
+        // window.scrollBy correction runs away: editing field_2150 in an
+        // expanded row's embedded worksheet-v2 card rebuilds the panel,
+        // the SOW section below it shifts, and the anchor scrollBy's DOWN
+        // by the delta — repeatedly — scrolling the page to the bottom in
+        // several jumps (confirmed via scroll-spy: scrollBy with no
+        // scrollTo trace). bid-review-v2's renderSnapshot already
+        // keyed-reuses unchanged sections + defers while focused, so a
+        // plain rebuild stays put for those.
+        //
+        // EXCEPTION: a cascade settling (data.js's scw-cascade-idle
+        // listener, e.g. Connected Devices) sets _pendingCascadeAnchor.
+        // That kind of edit can genuinely move a child's row into a
+        // different MDF/IDF group or change the parent's device-list
+        // line count — a real height change the keyed rebuild has no way
+        // to hold scroll position through — so THAT render (and only
+        // that one, thanks to notifyDebounced already coalescing the
+        // cascade's refetch burst into a single call) gets the anchor.
+        var useAnchor = !!ns._pendingCascadeAnchor;
+        ns._pendingCascadeAnchor = false;
+        if (useAnchor && window.SCW && SCW.v2ScrollAnchor &&
+            typeof SCW.v2ScrollAnchor.around === 'function') {
+          SCW.v2ScrollAnchor.around(
+            '.scw-bid-review-v2__row[data-row-id]', 'data-row-id', doRender);
+        } else {
+          doRender();
+        }
       });
     }
 

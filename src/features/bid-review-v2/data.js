@@ -17,6 +17,14 @@
 
   var subscribers = [];
 
+  // Set true when the NEXT notify is a result of scw-cascade-idle (a
+  // mirror-connection-sync cascade settling — e.g. Connected Devices).
+  // init.js's subscribe callback reads + resets this to decide whether the
+  // render needs the scroll-anchor safety net. Ordinary field edits (view-
+  // render/cell-update/scw-ws-v2-record-saved) leave it false — see the
+  // note at that call site for why those must NOT use the anchor.
+  ns._pendingCascadeAnchor = false;
+
   /** Read records from a single view's Backbone model. */
   function readRecords(viewKey) {
     try {
@@ -137,7 +145,16 @@
     // duplicate binding across re-inits.
     if (!document.documentElement.hasAttribute('data-scw-br-v2-cascade-bound')) {
       document.documentElement.setAttribute('data-scw-br-v2-cascade-bound', '1');
-      document.addEventListener('scw-cascade-idle', refetchDebounced);
+      document.addEventListener('scw-cascade-idle', function () {
+        // A cascade (e.g. Connected Devices) can move a child's row into a
+        // DIFFERENT MDF/IDF group, or change the parent's device-list text
+        // enough to change its row height — a real layout shift the plain
+        // keyed-section rebuild has no way to hold scroll position through.
+        // Flag it so the render this triggers gets the anchor correction;
+        // reset by init.js's subscribe callback once it's read.
+        ns._pendingCascadeAnchor = true;
+        refetchDebounced();
+      });
     }
 
     // The expand-panel SOW editor is an embedded worksheet-v2 card that writes

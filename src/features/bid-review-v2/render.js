@@ -211,6 +211,13 @@
   // Resume deferred render when focus leaves the panel. Plain rebuild — NOT
   // anchored: SCW.v2ScrollAnchor's scrollBy runs away on this grid (see
   // init.js), scrolling to the bottom. Keyed section reuse keeps it stable.
+  // init.js's subscribe callback DOES wrap the cascade-triggered render in
+  // the anchor (Connected Devices moving a row between MDF/IDF groups) —
+  // but only when that render fires immediately. If it instead gets queued
+  // here (user still focused in the panel when the cascade settles) it
+  // flushes as a plain rebuild like any other deferred render — a known,
+  // accepted gap rather than a bug; the common case is focus has already
+  // left the panel (the picker modal closed) by the time the cascade idles.
   document.addEventListener('focusout', function () {
     setTimeout(function () {
       if (!_pendingSnapshot) return;
