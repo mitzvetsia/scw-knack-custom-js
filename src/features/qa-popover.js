@@ -730,6 +730,104 @@
     return wrap;
   }
 
+  /** Viewer-top action bar for a photo that HAS an image: Replace photo
+   *  (downsample → asset upload → PUT) and Remove photo (clears field_771,
+   *  keeps the record — viewer swaps to the upload pane in place, modal
+   *  stays open). Locked once QA is signed off, same rule as the files
+   *  popover. Returns null when the save machinery isn't available. */
+  function buildPhotoViewerBar(viewerEl, photo) {
+    var u = pepUtil();
+    var saveView = pepSaveView(photo.viewKey);
+    if (!u || !saveView) return null;
+
+    var bar = document.createElement('div');
+    bar.className = 'scw-qa-modal__viewer-bar';
+
+    var locked = photo.needsQa !== false && isFullyComplete(photo.status, photo.client);
+    var lockTitle = 'QA is signed off — set it back to Pending or Fail first.';
+
+    function swapToUploadPane() {
+      viewerEl.innerHTML = '';
+      viewerEl.appendChild(buildUploadPane(photo));
+    }
+    function pickImage(onFile) {
+      var input = document.createElement('input');
+      input.type = 'file';
+      input.accept = 'image/*';
+      input.style.display = 'none';
+      input.addEventListener('change', function () {
+        var f = input.files && input.files[0];
+        document.body.removeChild(input);
+        if (f) onFile(f);
+      });
+      document.body.appendChild(input);
+      input.click();
+    }
+
+    var repB = document.createElement('button');
+    repB.type = 'button';
+    repB.textContent = 'Replace photo';
+    if (locked) { repB.disabled = true; repB.title = lockTitle; }
+    repB.addEventListener('click', function () {
+      if (repB.disabled) return;
+      pickImage(function (file) {
+        if ((file.type || '').indexOf('image/') !== 0) { alert('Not an image file.'); return; }
+        repB.disabled = true;
+        repB.textContent = 'Replacing…';
+        u.downscale(file).then(function (blob) {
+          if (!blob) throw new Error('image too large to resize');
+          var name = (file.name || 'photo').replace(/\.[a-z0-9]+$/i, '') + '.jpg';
+          return u.uploadImage(blob, name).then(function (assetId) {
+            var body = {}; body[F.img] = assetId;
+            return u.putRecord(saveView, photo.id, body);
+          }).then(function () {
+            var url = URL.createObjectURL(blob);
+            var imgEl = viewerEl.querySelector('img');
+            if (imgEl) imgEl.src = url;
+            photo.imgUrl = url;
+            repB.disabled = locked;
+            repB.textContent = 'Replace photo';
+            notifyHostSaved(photo);
+          });
+        }).catch(function (err) {
+          repB.disabled = false;
+          repB.textContent = 'Replace photo';
+          alert('Replace failed: ' + ((err && err.message) || 'unknown error'));
+        });
+      });
+    });
+    bar.appendChild(repB);
+
+    var remB = document.createElement('button');
+    remB.type = 'button';
+    remB.className = 'is-danger';
+    remB.textContent = 'Remove photo';
+    if (locked) { remB.disabled = true; remB.title = lockTitle; }
+    remB.addEventListener('click', function () {
+      if (remB.disabled) return;
+      if (!window.confirm('Remove this photo from ' + (photo.type || 'this record') + '?\n\n' +
+            'The photo slot stays — only the image is cleared.')) return;
+      remB.disabled = true;
+      remB.textContent = 'Removing…';
+      var extra = {};
+      extra[F.completed] = 'No';
+      // clearFileField verifies against the PUT response and retries with ''
+      // when null is silently ignored (Knack file-field quirk).
+      u.clearFileField(saveView, photo.id, F.img, extra).then(function () {
+        photo.imgUrl = '';
+        photo.completed = false;
+        swapToUploadPane();
+        notifyHostSaved(photo);
+      }).catch(function (err) {
+        remB.disabled = false;
+        remB.textContent = 'Remove photo';
+        alert('Remove failed: ' + ((err && err.message) || 'unknown error'));
+      });
+    });
+    bar.appendChild(remB);
+    return bar;
+  }
+
   /**
    * Modal shell (openForAnchor path). Reuses buildPopover to build the
    * exact same QA controls, then transplants its scrollable body + action
