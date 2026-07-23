@@ -34,8 +34,31 @@
 
   function escapeHtml(s) {
     return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
-      return ({ '&':'&amp;', '<':'&lt;', '>':'&gt;', '"':'&quot;', "'":'&#39;' })[c];
+      return ({ '&':'&amp;', '<':'&lt;', '"':'&quot;', '>':'&gt;', "'":'&#39;' })[c];
     });
+  }
+
+  /** Render Knack rich-text (labor desc / assumption text) PRESERVING its
+   *  formatting. The old stripHtml→escapeHtml path flattened <br>, <b>,
+   *  lists AND raw newlines into one run-on line — the data kept the
+   *  markup, only the display lost it. Keeps the stored markup but
+   *  neutralizes anything active (script/style/iframe, on* handlers,
+   *  javascript: URLs); plain-text newlines become <br> when the value
+   *  carries no block markup of its own. */
+  function richTextHtml(s) {
+    var raw = String(s == null ? '' : s);
+    if (!raw) return '';
+    var cleaned = raw
+      .replace(/<\s*(script|style|iframe|object|embed)[^>]*>[\s\S]*?<\s*\/\s*\1\s*>/gi, '')
+      .replace(/<\s*(script|style|iframe|object|embed)[^>]*\/?\s*>/gi, '')
+      .replace(/\son\w+\s*=\s*"[^"]*"/gi, '')
+      .replace(/\son\w+\s*=\s*'[^']*'/gi, '')
+      .replace(/\son\w+\s*=\s*[^\s>]+/gi, '')
+      .replace(/(href|src)\s*=\s*(['"]?)\s*javascript:[^'">\s]*\2/gi, '');
+    if (!/<\s*(br|p|div|li|ul|ol|h[1-6])\b/i.test(cleaned)) {
+      cleaned = cleaned.replace(/\r?\n/g, '<br>');
+    }
+    return cleaned;
   }
 
   // Word-level diff for text fields (product name / labor desc). Returns
@@ -452,12 +475,15 @@
     // counterpart, via the data-scw-sow-field hooks below.
     if (diff && diff.any) td.classList.add('scw-bid-review-v2__sow-cell--has-diff');
     var descTxt = ns.transform.stripHtml(sowItemData.laborDesc || '');
+    // Rich display variant — formatting (<br>/<b>/lists) and line breaks
+    // preserved; the stripped text stays for title tooltips + word diffs.
+    var descRich = richTextHtml(sowItemData.laborDesc || '');
     // Assumptions are free-text only — no product name, no qty/fee numbers.
     if (isAssumption) {
       td.classList.add('scw-bid-review-v2__sow-cell--assumption');
       td.innerHTML = descTxt
         ? '<div class="scw-bid-review-v2__sow-desc" title="' +
-            escapeHtml(descTxt) + '">' + escapeHtml(descTxt) + '</div>'
+            escapeHtml(descTxt) + '">' + descRich + '</div>'
         : '<span class="scw-bid-review-v2__cell-empty-mark">—</span>';
       return td;
     }
@@ -504,7 +530,7 @@
       '</div>' +
       (descTxt ?
         '<div class="scw-bid-review-v2__sow-desc" data-scw-sow-field="desc" title="' +
-          escapeHtml(descTxt) + '">' + escapeHtml(descTxt) +
+          escapeHtml(descTxt) + '">' + descRich +
         '</div>' : '') +
       accessoriesHtml +
       connLineHtml(sowItemData.connDevice, sowItemData.connTo, { side: 'sow' }) +
@@ -814,13 +840,15 @@
     }
 
     var descTxt = ns.transform.stripHtml(cell.laborDesc || '');
+    // Rich variant for display; stripped text stays for tooltips + diffs.
+    var descRichBid = richTextHtml(cell.laborDesc || '');
 
     // Assumptions are free-text only — no product name, no qty/rate/ext.
     if (isAssumption) {
       td.classList.add('scw-bid-review-v2__cell--assumption');
       td.innerHTML = descTxt
         ? '<div class="scw-bid-review-v2__cell-desc" title="' +
-            escapeHtml(descTxt) + '">' + escapeHtml(descTxt) + '</div>'
+            escapeHtml(descTxt) + '">' + descRichBid + '</div>'
         : '<span class="scw-bid-review-v2__cell-empty-mark">—</span>';
       td.innerHTML += cellActionStack(row, pkgId, sowId, null, cell && cell.id);
       appendPendingCard(td, pendingItem, row, pkg, sowId);
@@ -855,8 +883,10 @@
       (row.sowItemData && row.sowItemData.laborDesc) || row.sowLaborDesc || '');
     var prodInner = (diffs && diffs.product)
       ? markWordDiff(cell.productName, sowProd) : escapeHtml(cell.productName);
+    // Diff mode keeps the stripped word-diff (underline tokens need plain
+    // text); otherwise show the rich formatting the record actually has.
     var descInner = (diffs && diffs.laborDesc)
-      ? markWordDiff(descTxt, sowDesc) : escapeHtml(descTxt);
+      ? markWordDiff(descTxt, sowDesc) : descRichBid;
     // Hover hooks: hovering a differing field highlights its SOW-cell
     // counterpart (init.js wires the mouseover). Only the actually-
     // differing field carries the hook.

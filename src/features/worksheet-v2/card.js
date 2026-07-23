@@ -228,15 +228,41 @@
       'value="' + escapeHtml(value) + '"' + attrsFor(rec, viewKey, fieldKey) + '>';
   }
 
+  /** Multi-line read: like readField but PRESERVES line structure —
+   *  <br> and closing block tags become \n instead of vanishing. The
+   *  plain readField flatten was destroying data, not just display: the
+   *  textarea prefilled with the flattened text, so the next blur-save
+   *  committed it back WITHOUT the breaks the record still had. */
+  function readMultiline(rec, key) {
+    var v = rec[key];
+    if (v == null || v === '') {
+      var raw = rec[key + '_raw'];
+      v = (raw == null || typeof raw === 'object') ? '' : raw;
+    }
+    return String(v)
+      .replace(/<br\s*\/?>/gi, '\n')
+      .replace(/<\/(p|div|li|h[1-6])>/gi, '\n')
+      .replace(/<[^>]*>/g, '')
+      .replace(/&nbsp;/g, ' ')
+      .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+      .replace(/&quot;/g, '"').replace(/&#39;/g, "'")
+      .replace(/\n{3,}/g, '\n\n')
+      .trim();
+  }
+
   /** Multi-line wrapping text field — used for labor description so
    *  the full text is visible without horizontal scroll. Auto-grows
-   *  with content via CSS field-sizing / rows attribute fallback. */
+   *  with content via CSS field-sizing / rows attribute fallback.
+   *  NOTE: the value is re-derived via readMultiline (line breaks
+   *  preserved); the caller-passed flattened value is only a fallback
+   *  when the record/field aren't resolvable. */
   function textArea(rec, viewKey, fieldKey, value, label) {
+    var v = (rec && fieldKey) ? readMultiline(rec, fieldKey) : (value || '');
     return '<textarea class="scw-ws-v2-input scw-ws-v2-input--textarea" ' +
       'rows="2" ' +
       'aria-label="' + escapeHtml(label) + '" placeholder="' + escapeHtml(label) + '"' +
       attrsFor(rec, viewKey, fieldKey) + '>' +
-      escapeHtml(value) +
+      escapeHtml(v) +
     '</textarea>';
   }
 
