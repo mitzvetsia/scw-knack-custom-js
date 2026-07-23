@@ -2217,11 +2217,13 @@
         return;
       }
 
-      // MDF/IDF picker (field_1946) — candidates come from this view's
-      // configured MDF/IDF locations grid. Single-select. The MODEL_ONLY
-      // cascade in mirror-connection-sync handles accessory re-grouping
-      // when this changes.
-      if (fieldKey === 'field_1946') {
+      // MDF/IDF picker — candidates come from this view's configured
+      // MDF/IDF locations grid. Single-select. The GROUPING_FIELD cascade
+      // in mirror-connection-sync handles accessory re-grouping when this
+      // changes. field_1946 = SOW line items; field_2818 = install line
+      // items (deploy scene, added 2026-07-23 so ops can relocate
+      // installed items — its mdfSourceViewKey is view_3932).
+      if (fieldKey === 'field_1946' || fieldKey === 'field_2818') {
         // Source the candidates from the view's own mdfSourceViewKey
         // (view_3577 on build-SOW, view_3602 on sales view_3586, …) so the
         // picker opens on every deployment — NOT just the build/bid grids.
@@ -2256,7 +2258,7 @@
           sourceViewKey: viewKey,
           putViewKey:    viewKey,
           recordId:      recordId,
-          fieldKey:      'field_1946',
+          fieldKey:      fieldKey,
           label:         'MDF / IDF',
           selectedIds:   sel,
           candidates:    mdfCandidates,

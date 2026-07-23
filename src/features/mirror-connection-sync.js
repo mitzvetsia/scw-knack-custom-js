@@ -2414,13 +2414,18 @@
   //   TRIGGER_FIELD     = field_2820  (REL_networking device → connection device)
   //   CONNECTIONS_FIELD = field_2821  (REL_connected device → network device)
   //   GROUPING_FIELD    = field_2818  (REL_OPS_MDF-IDF — the L1 group key)
-  // No accessory cascade wired yet — add ACCESSORIES_* if/when mounting
-  // hardware on the install side needs its MDF cascaded from the parent.
+  // Accessory cascade (added 2026-07-23, with the editable install MDF):
+  // accessories are ordinary rows in this same view's model (field_2853
+  // child→parent back-connection, view_4079-style self-reference), so a
+  // relocated camera drags its mounting hardware's MDF along.
   createMirror({
     VIEW_ID:           'view_4093',
     TRIGGER_FIELD:     'field_2820',
     CONNECTIONS_FIELD: 'field_2821',
     GROUPING_FIELD:    'field_2818',
+    ACCESSORIES_FIELD:        'field_2852',
+    ACCESSORIES_VIEW_ID:      'view_4093',
+    ACCESSORIES_PARENT_FIELD: 'field_2853',
     LABEL_FIELD:       'field_2802',   // install line-item display label
     PUBLIC_API_NAME:   'silentRegroupView3915'
   });
@@ -2433,6 +2438,9 @@
     TRIGGER_FIELD:     'field_2820',
     CONNECTIONS_FIELD: 'field_2821',
     GROUPING_FIELD:    'field_2818',
+    ACCESSORIES_FIELD:        'field_2852',
+    ACCESSORIES_VIEW_ID:      'view_4056',
+    ACCESSORIES_PARENT_FIELD: 'field_2853',
     LABEL_FIELD:       'field_2802',   // install line-item display label
     PUBLIC_API_NAME:   'silentRegroupView4056'
   });

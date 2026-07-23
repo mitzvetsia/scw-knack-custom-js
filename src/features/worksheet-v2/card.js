@@ -2182,10 +2182,15 @@
   function buildDetail_install(rec, viewKey, cat) {
     var F = fieldsFor(viewKey);
 
-    // Install detail = READ-ONLY info (per v1 view_4093). The ONLY editable
-    // items are SCW Notes (header) and Connected Devices (network devices).
+    // Install detail = READ-ONLY info (per v1 view_4093). The editable
+    // items are SCW Notes (header), Connected Devices (network devices),
+    // and MDF / IDF (added 2026-07-23 — ops must be able to relocate an
+    // installed item; the field_2818 GROUPING_FIELD cascade in
+    // mirror-connection-sync regroups the worksheet after the move).
     // Connected To (field_2821) is read-only display (v1: connectedTo readOnly).
     var items = '';
+    items += sdItem(detailConnection(rec, viewKey, F.mdfIdf || 'field_2818',
+      'MDF / IDF'), 'scw-ws-v2-sd--conn');
 
     if (cat === 'cam') {
       // Connected To (field_2821, single → network device) — EDITABLE; the

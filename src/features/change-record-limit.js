@@ -26,6 +26,12 @@
     // Path 1 clicks kn-link-delete rows in it — full page = every photo's
     // row present in the DOM; the grid itself is hidden by photos.js)
     'view_4098',
+    // Deploy scene As-Quoted plumbing: view_4072 = hidden grid of the OG
+    // proposed line items (install-as-quoted-panel reads it whole off the
+    // model — a page cap silently drops the LAST-created records, i.e.
+    // change-order items, and their install cards lose the As Quoted
+    // panel); view_3914 = acceptance grid feeding origin/quote chips.
+    'view_4072', 'view_3914',
     // Change Order scene: CO line items (v2 source), MDF/IDF locations,
     // project install items (removal source), project SOW/proposal items
     // (adoption source). All read whole via the Backbone model.
@@ -60,6 +66,8 @@
     'view_3680', 'view_3921', 'view_3573', 'view_3822', 'view_3818',
     // review-bids DOC_photos delete-plumbing grid (see VIEW_IDS above)
     'view_4098',
+    // Deploy-scene As-Quoted source grids (see VIEW_IDS above)
+    'view_4072', 'view_3914',
     // Change Order scene views (see VIEW_IDS above)
     'view_4079', 'view_4084', 'view_4086', 'view_4088',
     // Sub portal Manage Change Order views (see VIEW_IDS above)

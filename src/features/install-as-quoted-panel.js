@@ -370,13 +370,31 @@
     _lastHash = hash;
 
     _selfMutating = true;
+    var missing = [];
     try {
       for (var i = 0; i < ids.length; i++) {
         var pa = propIdx[linkIdx[ids[i]]];
         if (pa) injectPanel(ids[i], pa, resolveOrigins(pa, acceptIdx));
+        else missing.push(ids[i] + ' → ' + linkIdx[ids[i]]);
       }
     } finally {
       setTimeout(function () { _selfMutating = false; }, 0);
+    }
+    // Linked-but-unresolvable diagnostic: the install record names its OG
+    // proposed record, but that record isn't in view_4072's model — so no
+    // As Quoted panel renders for it. Observed live for CHANGE-ORDER items
+    // (2026-07-23): either view_4072's page cap dropped the newest records
+    // (now forced to 1000 via change-record-limit.js) or a Builder filter
+    // on view_4072 excludes CO-typed SOW items ("Type is not change
+    // order"-style) — the CO's line items must be included for their
+    // install cards to show provenance.
+    if (missing.length && missing.join('|') !== merge._lastMissing) {
+      merge._lastMissing = missing.join('|');
+      console.warn('[scw-as-quoted] ' + missing.length + ' install record(s) link to ' +
+        'OG proposed records NOT loaded in ' + PROPOSED_VIEW + ' (no As Quoted ' +
+        'panel for them). If these are change-order items, check ' + PROPOSED_VIEW +
+        '’s Builder filters (a "Type is not change order" filter would ' +
+        'exclude them):\n  ' + missing.join('\n  '));
     }
   }
 
