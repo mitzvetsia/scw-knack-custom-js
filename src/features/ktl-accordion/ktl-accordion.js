@@ -390,23 +390,42 @@
    *  Fallback: check arrow class.
    */
   function isExpanded(viewKey) {
-    // Check the actual KTL section visibility (source of truth)
+    // ⚠ Perf: NO getComputedStyle on the hot path. Each call forces a
+    // style recalc for the whole invalidated document — profiled at
+    // ~1.6s cumulative during one big-quote page init (2026-07-23),
+    // because syncState interleaves writes between these reads. KTL
+    // toggles sections via INLINE style.display, so read that (free),
+    // then the arrow class KTL itself maintains; computed style only as
+    // a last resort when neither signal exists.
     var section = document.querySelector('.hideShow_' + viewKey + '.ktlHideShowSection');
-    if (section) {
-      var disp = getComputedStyle(section).display;
-      return disp !== 'none';
-    }
-    // Fallback to arrow class
     var arrow = arrowForViewKey(viewKey);
+    if (section) {
+      var inline = section.style.display;
+      if (inline === 'none') return false;
+      if (inline) return true;
+      if (arrow) return arrow.classList.contains('ktlDown');
+      return getComputedStyle(section).display !== 'none';
+    }
     if (!arrow) return true;
     return arrow.classList.contains('ktlDown');
   }
 
-  /** Read the effective background-color from the KTL button. */
+  /** Read the effective background-color from the KTL button.
+   *  Cached per button with a short TTL — profiled at ~2.7s cumulative
+   *  per big-quote page init when every syncState pass re-ran
+   *  getComputedStyle (forced style recalc) on every accordion. The TTL
+   *  still picks up the hsv-override injection within a few seconds. */
+  var _accentCache = (typeof WeakMap === 'function') ? new WeakMap() : null;
+  var ACCENT_TTL_MS = 3000;
   function readAccentColor(btn) {
+    if (_accentCache) {
+      var hit = _accentCache.get(btn);
+      if (hit && (Date.now() - hit.t) < ACCENT_TTL_MS) return hit.v;
+    }
     var raw = getComputedStyle(btn).backgroundColor;
-    if (!raw || raw === 'rgba(0, 0, 0, 0)' || raw === 'transparent') return null;
-    return raw;
+    var v = (!raw || raw === 'rgba(0, 0, 0, 0)' || raw === 'transparent') ? null : raw;
+    if (_accentCache) _accentCache.set(btn, { v: v, t: Date.now() });
+    return v;
   }
 
   /**
@@ -1214,7 +1233,13 @@
   $(document)
     .off('knack-view-render.any' + EVENT_NS)
     .on('knack-view-render.any' + EVENT_NS, function () {
-      setTimeout(function () {
+      // Trailing debounce — a render storm (initial scene load fires one
+      // event per view, refetches stack more) used to queue one full
+      // enhance() pass PER EVENT; on big quotes those passes are the
+      // expensive part, not the events.
+      if (_enhanceTimer) clearTimeout(_enhanceTimer);
+      _enhanceTimer = setTimeout(function () {
+        _enhanceTimer = 0;
         enhance();
         applySavedState();
       }, 80);
@@ -1228,6 +1253,7 @@
   // enhance's own writes are mutations too, it self-sustained as an
   // every-frame loop (1.3–2s rAF violations forever on busy pages).
   // Scene/view renders are covered by the event bindings above.
+  var _enhanceTimer = 0;
   var globalRaf = 0;
   var globalObs = new MutationObserver(function (muts) {
     var relevant = false;

@@ -238,15 +238,43 @@
     return { type: '', num: '', name: dn.trim() };
   }
 
+  /** Row index for a manage view: 24-hex id → its rendered <tr>. Built
+   *  ONCE per sweep and passed into locationPhotos — the old per-L1
+   *  `a[href*="/<id>"]` substring selector re-scanned the manage view's
+   *  whole DOM for every group (profiled inside the 3.5s retrofit task
+   *  on big quotes). First row per id wins, matching the old selector. */
+  function photoRowIndex(manageViewKey) {
+    var map = Object.create(null);
+    var mv = document.getElementById(manageViewKey);
+    if (!mv) return map;
+    var links = mv.querySelectorAll('tbody tr a[href]');
+    for (var i = 0; i < links.length; i++) {
+      var ids = (links[i].getAttribute('href') || '').match(/[a-f0-9]{24}/gi);
+      if (!ids) continue;
+      var tr = links[i].closest('tr');
+      if (!tr) continue;
+      for (var j = 0; j < ids.length; j++) {
+        if (!map[ids[j]]) map[ids[j]] = tr;
+      }
+    }
+    return map;
+  }
+
   /** Photos for a location, scraped from the manage view's rendered row —
    *  the data row whose edit link points at add-photo…/<locationId>. Each
-   *  photo is {thumb, href} (href = the photo's own edit child page). */
-  function locationPhotos(manageViewKey, l1Id) {
+   *  photo is {thumb, href} (href = the photo's own edit child page).
+   *  `rowIndex` (optional) is a prebuilt photoRowIndex for the view. */
+  function locationPhotos(manageViewKey, l1Id, rowIndex) {
     var out = [];
-    var mv = document.getElementById(manageViewKey);
-    if (!mv) return out;
-    var editA = mv.querySelector('a[href*="/' + l1Id + '"]');
-    var row = editA && editA.closest('tr');
+    var row;
+    if (rowIndex) {
+      row = rowIndex[l1Id] || null;
+    } else {
+      var mv = document.getElementById(manageViewKey);
+      if (!mv) return out;
+      var editA = mv.querySelector('a[href*="/' + l1Id + '"]');
+      row = editA && editA.closest('tr');
+    }
     if (!row) return out;
     var cell = row.querySelector('td[data-field-key="field_771"]');
     if (!cell) return out;
@@ -259,6 +287,15 @@
       });
     }
     return out;
+  }
+
+  /** Content signature for a band — retrofit skips the rebuild+replaceChild
+   *  when nothing it displays has changed. */
+  function bandSig(attrs, photos, notesField) {
+    var s = (attrs ? fieldText(attrs, F.surveyNotes) : '') + '\u0001' +
+            (attrs ? fieldText(attrs, notesField) : '');
+    for (var i = 0; i < photos.length; i++) s += '\u0001' + photos[i].thumb;
+    return s;
   }
 
   /** Identity-aware bulk photo uploader against this MDF/IDF location
@@ -310,12 +347,14 @@
    *  mirroring the comparison page's L1 treatment. Called by render.js
    *  buildL1Block; also injected by the retrofit sweep when the manage
    *  view's model lands after the worksheet rendered. */
-  function detailBand(l1, sourceViewKey) {
+  function detailBand(l1, sourceViewKey, prebuilt) {
     var cfg = manageCfg(sourceViewKey);
     if (!cfg) return null;
     if (!l1 || !/^[a-f0-9]{24}$/i.test(String(l1.id || ''))) return null;
-    var attrs = manageAttrs(cfg.viewKey, l1.id);
-    var photos = locationPhotos(cfg.viewKey, l1.id);
+    var attrs = (prebuilt && prebuilt.attrs !== undefined)
+      ? prebuilt.attrs : manageAttrs(cfg.viewKey, l1.id);
+    var photos = (prebuilt && prebuilt.photos)
+      ? prebuilt.photos : locationPhotos(cfg.viewKey, l1.id);
     if (!attrs && !photos.length) return null;   // nothing yet — retrofit adds later
     injectStyles();
 
@@ -335,6 +374,10 @@
     var band = document.createElement('div');
     band.className = P + '-band';
     band.setAttribute('data-scw-ws-v2-mdf-band', l1.id);
+    // Content signature — retrofit compares before rebuilding so an
+    // unchanged band is never re-created/replaced on sweep.
+    band.setAttribute('data-scw-sig',
+      bandSig(attrs, photos, cfg.notesField || F.notes));
     band.innerHTML =
       // Survey Notes stay READ-ONLY here (subs' territory — same rule as
       // the comparison page); SCW Notes edit INLINE, saving on blur.
@@ -404,16 +447,39 @@
    *  every mounted worksheet whose config points at it and fill the gaps. */
   function retrofit() {
     var mounts = document.querySelectorAll('.scw-ws-v2[id^="scw-ws-v2-"]');
+    // Per-sweep caches, one entry per manage view: record-id → attrs, and
+    // the photo-row index. The old per-L1 lookups (linear model scan +
+    // whole-view substring selector) made one sweep O(L1 × page-DOM) —
+    // profiled as a single 3.5s task on a big quote (2026-07-23 trace).
+    var attrsIdx = Object.create(null);
+    var rowIdx   = Object.create(null);
+    function attrsFor(manageViewKey, id) {
+      var idx = attrsIdx[manageViewKey];
+      if (!idx) {
+        idx = attrsIdx[manageViewKey] = Object.create(null);
+        try {
+          var v = Knack && Knack.views && Knack.views[manageViewKey];
+          var models = (v && v.model && v.model.data && v.model.data.models) || [];
+          for (var i = 0; i < models.length; i++) {
+            if (models[i] && models[i].id) idx[models[i].id] = models[i].attributes;
+          }
+        } catch (e) { /* view not on scene */ }
+      }
+      return idx[id] || null;
+    }
     for (var m = 0; m < mounts.length; m++) {
       var srcKey = mounts[m].id.replace('scw-ws-v2-', '');
       var cfg = manageCfg(srcKey);
       if (!cfg) continue;
+      if (!(cfg.viewKey in rowIdx)) rowIdx[cfg.viewKey] = photoRowIndex(cfg.viewKey);
+      var notesField = cfg.notesField || F.notes;
       var sections = mounts[m].querySelectorAll('[data-scw-ws-v2-l1]');
       for (var s = 0; s < sections.length; s++) {
         var id = sections[s].getAttribute('data-scw-ws-v2-l1') || '';
         if (!/^[a-f0-9]{24}$/i.test(id)) continue;
+        var attrs = attrsFor(cfg.viewKey, id);
         var headWrap = sections[s].querySelector(':scope > .scw-ws-v2-l1-head-wrap');
-        if (headWrap && !headWrap.querySelector('[data-scw-ws-v2-mdf-notes]')) {
+        if (headWrap && attrs && !headWrap.querySelector('[data-scw-ws-v2-mdf-notes]')) {
           var btn = headerControl({ id: id }, srcKey);
           if (btn) {
             var headEl = headWrap.querySelector(':scope > .scw-ws-v2-l1-head');
@@ -421,17 +487,26 @@
             else headWrap.appendChild(btn);
           }
         }
-        // Bands rebuild on every sweep — photos/notes refresh after the
-        // manage view refetches (bulk upload, panel save). Cheap DOM.
-        // Never replace a band the user is typing in (inline notes).
+        // Bands refresh on sweep so photos/notes catch up after the manage
+        // view refetches (bulk upload, panel save) — but ONLY when their
+        // content signature actually changed. The old unconditional
+        // rebuild+replaceChild per L1 per sweep churned layout for
+        // nothing. Never replace a band the user is typing in.
         var bodyEl = sections[s].querySelector(':scope > .scw-ws-v2-l1-body');
         if (bodyEl) {
           var cur = bodyEl.querySelector(':scope > [data-scw-ws-v2-mdf-band]');
           if (!(cur && cur.contains(document.activeElement))) {
-            var fresh = detailBand({ id: id }, srcKey);
-            if (fresh) {
-              if (cur) cur.parentNode.replaceChild(fresh, cur);
-              else bodyEl.insertBefore(fresh, bodyEl.firstChild);
+            var photos = locationPhotos(cfg.viewKey, id, rowIdx[cfg.viewKey]);
+            if (attrs || photos.length) {
+              var sig = bandSig(attrs, photos, notesField);
+              if (!(cur && cur.getAttribute('data-scw-sig') === sig)) {
+                var fresh = detailBand({ id: id }, srcKey,
+                  { attrs: attrs, photos: photos });
+                if (fresh) {
+                  if (cur) cur.parentNode.replaceChild(fresh, cur);
+                  else bodyEl.insertBefore(fresh, bodyEl.firstChild);
+                }
+              }
             }
           }
         }
@@ -783,10 +858,19 @@
 
   // Retrofit pencils when the manage view's model lands after the worksheet
   // rendered — the source of the "pencils sometimes missing" flakiness.
+  var _retrofitTimer = 0;
   $(document)
     .off('knack-view-render.any.scwWsV2MdfRetrofit')
     .on('knack-view-render.any.scwWsV2MdfRetrofit', function () {
-      setTimeout(retrofit, 150);
+      // Trailing debounce — scene load / refetch storms fire one render
+      // event per view; one sweep per storm is enough (each sweep covers
+      // every mount). The old per-event scheduling stacked dozens of
+      // full sweeps during a big-quote init.
+      if (_retrofitTimer) clearTimeout(_retrofitTimer);
+      _retrofitTimer = setTimeout(function () {
+        _retrofitTimer = 0;
+        retrofit();
+      }, 150);
     });
 
   injectStyles();
