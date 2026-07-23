@@ -202,8 +202,16 @@
           (v.model.data.total_records != null ? v.model.data.total_records
             : (v.model.data.pagination_meta && v.model.data.pagination_meta.total_records)));
       } catch (e) { /* ignore */ }
-      var capped = (cap != null && loaded >= cap) ||
-                   (total != null && loaded < total);
+      // Trust the server total when Knack stamped one: loaded < total is
+      // the ONLY real truncation signal. The loaded >= rows_per_page
+      // heuristic is a fallback for when total is unknown — it used to be
+      // OR'd in unconditionally, and misfired whenever a scene re-render
+      // reset rows_per_page to the Builder default (loaded 169 >= cap 100
+      // with ALL 169 records present), warn+repair-refetching every render
+      // until the retry budget burned.
+      var capped = (total != null)
+        ? (loaded < total)
+        : (cap != null && loaded >= cap);
       out.push({ view: k, loaded: loaded, perPage: cap, total: total, truncated: !!capped });
     }
     return out;

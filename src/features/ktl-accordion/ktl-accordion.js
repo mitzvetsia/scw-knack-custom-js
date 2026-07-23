@@ -1237,7 +1237,10 @@
       for (var j = 0; j < added.length; j++) {
         var n = added[j];
         if (!n || n.nodeType !== 1) continue;
-        if ((n.id && n.id.indexOf('hideShow_') === 0) ||
+        // typeof guard: on a <form> with a control named "id" (Knack
+        // forms carry hidden name="id" inputs), n.id is that ELEMENT,
+        // not a string — .indexOf on it threw and killed the observer.
+        if ((typeof n.id === 'string' && n.id.indexOf('hideShow_') === 0) ||
             (n.querySelector && n.querySelector('[id^="hideShow_"]'))) {
           relevant = true;
           break;
