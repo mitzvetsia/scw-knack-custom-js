@@ -1234,6 +1234,25 @@
     '  border-color: #b91c1c !important;',
     '  cursor: default !important;',
     '}',
+    /* Collapsible "Removed by CO" cluster at the bottom of each install
+       MDF/IDF group (render.js buildRemovedSection). Red family = removed
+       state, consistent with the card ghost treatment below. */
+    '.scw-ws-v2-removedsec { margin: 10px 8px 8px; border: 1px solid #fecaca;',
+    '  border-radius: 8px; background: #fff; overflow: hidden; }',
+    '.scw-ws-v2-removedsec-head { display: flex; align-items: center; gap: 8px;',
+    '  width: 100%; padding: 8px 12px; background: #fef2f2; border: 0;',
+    '  cursor: pointer; text-align: left;',
+    '  font: 700 11px/1.2 system-ui, sans-serif; color: #991b1b;',
+    '  text-transform: uppercase; letter-spacing: .05em; }',
+    '.scw-ws-v2-removedsec-head:hover { background: #fee2e2; }',
+    '.scw-ws-v2-removedsec-caret { display: inline-flex; flex: 0 0 auto;',
+    '  color: #b91c1c; transition: transform 120ms ease; }',
+    '.scw-ws-v2-removedsec--open .scw-ws-v2-removedsec-caret { transform: rotate(90deg); }',
+    '.scw-ws-v2-removedsec-count { margin-left: auto; flex: 0 0 auto;',
+    '  background: #dc2626; color: #fff; border-radius: 999px; padding: 1px 8px;',
+    '  font: 700 10px/1.6 system-ui, sans-serif; }',
+    '.scw-ws-v2-removedsec-body { display: none; }',
+    '.scw-ws-v2-removedsec--open .scw-ws-v2-removedsec-body { display: block; }',
     '.scw-ws-v2-card--removed { border-left: 3px solid #dc2626 !important; }',
     '.scw-ws-v2-card--removed .scw-ws-v2-row { background: #fef2f2 !important; }',
     /* Strike the identity (label / product / assumption text) — content stays

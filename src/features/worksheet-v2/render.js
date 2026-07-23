@@ -88,19 +88,31 @@
 
   // Flat, in-order list of record ids the tree would render — used to detect
   // whether an edit changed the visible STRUCTURE (group membership / sort /
-  // filter) vs. just a record's own fields. Same order the cards appear in.
-  function flatTreeIds(tree) {
+  // filter) vs. just a record's own fields. Same order the cards appear in
+  // — including the install worksheet's removed-by-CO partition (removed
+  // cards render LAST in their L1, inside the collapsible section), so the
+  // in-place fast path isn't permanently defeated on groups with removals.
+  function flatTreeIds(tree, sourceViewKey) {
     var out = [];
+    var partitionRemoved = false;
+    try {
+      var _vc = ns.cfg && typeof ns.cfg.viewCfg === 'function' && ns.cfg.viewCfg(sourceViewKey);
+      partitionRemoved = !!(_vc && _vc.moneyMode === 'install');
+    } catch (e) { /* default */ }
     for (var i = 0; i < tree.length; i++) {
       var l1 = tree[i];
+      var removedTail = [];
       for (var j = 0; j < l1.l2.length; j++) {
         var l2 = l1.l2[j];
         if (l2.id === '__empty_l2') continue;
         for (var k = 0; k < l2.records.length; k++) {
           var r = l2.records[k];
-          if (r && r.id) out.push(r.id);
+          if (!r || !r.id) continue;
+          if (partitionRemoved && removedByCoRef(r, sourceViewKey)) removedTail.push(r.id);
+          else out.push(r.id);
         }
       }
+      for (var t = 0; t < removedTail.length; t++) out.push(removedTail[t]);
     }
     return out;
   }
@@ -114,7 +126,7 @@
    */
   function tryInPlaceUpdate(body, tree, dirtyIds, sourceViewKey, openIds) {
     var domCards = body.querySelectorAll('.scw-ws-v2-card[data-scw-ws-v2-record]');
-    var treeIds  = flatTreeIds(tree);
+    var treeIds  = flatTreeIds(tree, sourceViewKey);
     if (domCards.length !== treeIds.length) return false;
 
     var byId = Object.create(null);
@@ -339,6 +351,63 @@
     return sub;
   }
 
+  // ── Removed-by-CO grouping (install worksheet) ────────────────────
+  // Removed install items cluster in a collapsible red section at the
+  // BOTTOM of their MDF/IDF group instead of sitting inline with active
+  // scope. Open/closed state survives rebuilds in memory, keyed by L1 id
+  // (default collapsed — dead scope shouldn't dominate the group).
+  var _removedSecOpen = {};
+
+  function removedByCoRef(rec, sourceViewKey) {
+    var key = 'field_2967';
+    try {
+      var f = ns.cfg && typeof ns.cfg.fields === 'function' && ns.cfg.fields(sourceViewKey);
+      if (f && f.removedByCo) key = f.removedByCo;
+    } catch (e) { /* default */ }
+    var raw = rec && rec[key + '_raw'];
+    return (Array.isArray(raw) && raw.length && raw[0]) ? raw[0] : null;
+  }
+
+  function buildRemovedSection(recs, sourceViewKey, cardFn, l1Id) {
+    var open = !!_removedSecOpen[l1Id];
+    var sec = document.createElement('div');
+    sec.className = 'scw-ws-v2-removedsec' + (open ? ' scw-ws-v2-removedsec--open' : '');
+    var head = document.createElement('button');
+    head.type = 'button';
+    head.className = 'scw-ws-v2-removedsec-head';
+    head.setAttribute('aria-expanded', open ? 'true' : 'false');
+    head.innerHTML =
+      '<span class="scw-ws-v2-removedsec-caret" aria-hidden="true">' +
+        '<svg viewBox="0 0 24 24" width="12" height="12" fill="none" stroke="currentColor" ' +
+        'stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">' +
+        '<polyline points="9 6 15 12 9 18"></polyline></svg></span>' +
+      '<span>Removed by CO</span>' +
+      '<span class="scw-ws-v2-removedsec-count">' + recs.length + '</span>';
+    sec.appendChild(head);
+    var secBody = document.createElement('div');
+    secBody.className = 'scw-ws-v2-removedsec-body';
+    for (var r = 0; r < recs.length; r++) {
+      try {
+        secBody.appendChild(
+          cardFn ? cardFn(recs[r], sourceViewKey)
+                 : ns.card.buildCard(recs[r], sourceViewKey));
+      } catch (remErr) {
+        console.warn('[scw-ws-v2] buildCard threw for removed record', {
+          recordId: recs[r] && recs[r].id, viewKey: sourceViewKey, error: remErr
+        });
+      }
+    }
+    sec.appendChild(secBody);
+    head.addEventListener('click', function (e) {
+      e.preventDefault();
+      e.stopPropagation();
+      var nowOpen = sec.classList.toggle('scw-ws-v2-removedsec--open');
+      head.setAttribute('aria-expanded', nowOpen ? 'true' : 'false');
+      _removedSecOpen[l1Id] = nowOpen;
+    });
+    return sec;
+  }
+
   function buildL1Block(l1, sourceViewKey, cardFn) {
     var block = document.createElement('section');
     block.className = 'scw-ws-v2-l1' +
@@ -505,6 +574,9 @@
       }
       body.appendChild(hdr);
 
+      // Install worksheet: removed-by-CO items pull OUT of the normal flow
+      // and cluster in a collapsible section at the bottom of the group.
+      var removedRecs = [];
       for (var i = 0; i < l1.l2.length; i++) {
         var l2 = l1.l2[i];
         // Empty seed L1 — skip the L2 header so we just show the
@@ -515,6 +587,10 @@
         // is the only grouping; bucket-level sub-heads were noise.
         if (l2.id !== '__flat') body.appendChild(buildL2Header(l2));
         for (var j = 0; j < l2.records.length; j++) {
+          if (installMoney && removedByCoRef(l2.records[j], sourceViewKey)) {
+            removedRecs.push(l2.records[j]);
+            continue;
+          }
           // Per-card try/catch — one malformed record shouldn't take
           // down the entire panel. Failed cards render an inline
           // placeholder + log to console so the issue is debuggable
@@ -536,6 +612,9 @@
             body.appendChild(stub);
           }
         }
+      }
+      if (removedRecs.length) {
+        body.appendChild(buildRemovedSection(removedRecs, sourceViewKey, cardFn, l1.id));
       }
     }
 

@@ -2053,15 +2053,30 @@
     return null;
   }
 
-  // Red "Removed by CO" chip for the Flags cell. Red is correct here per the
-  // repo color convention — this is a destructive/removed STATE, not a
-  // warning (warnings stay amber).
+  // Short "CO ####" label from the removedByCo connection identifier —
+  // handles the shapes the CO numbering produces: "1410", "CO-1410",
+  // "SW1418CO", "60524852230-SW1418CO". Falls back to the (truncated)
+  // identifier text when no number is recognizable.
+  function shortCoLabel(ident) {
+    var s = String(ident || '').replace(/<[^>]*>/g, '').trim();
+    if (!s) return 'CO';
+    var m = s.match(/CO[-\s]?(\d+)/i) ||     // "CO-1410" / "CO 1410"
+            s.match(/(\d{2,})\s*CO\b/i) ||   // "SW1418CO"
+            s.match(/^(\d+)$/) ||            // bare "1410"
+            s.match(/SW\s?(\d+)/i);          // "SW1418" (no CO suffix)
+    if (m) return 'CO ' + m[1];
+    return 'CO ' + (s.length > 14 ? s.slice(0, 14) + '…' : s);
+  }
+
+  // Red "Removed by CO ####" chip for the Flags cell — names the specific
+  // change order. Red is correct here per the repo color convention — this
+  // is a destructive/removed STATE, not a warning (warnings stay amber).
   function installRemovedChip(rec, viewKey) {
     var by = installRemovedBy(rec, viewKey);
     if (by === null) return '';
     return '<span class="scw-ws-v2-chip scw-ws-v2-chip--ro scw-ws-v2-chip--removed" ' +
       'title="' + escapeHtml('Removed from install scope by signed change order (' + by + ')') +
-      '">Removed by CO</span>';
+      '">Removed by ' + escapeHtml(shortCoLabel(by)) + '</span>';
   }
 
   // Flag-chits cell — always emitted (holds its grid track); empty when no
