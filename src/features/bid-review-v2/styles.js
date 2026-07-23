@@ -846,13 +846,18 @@
        clean gap so nothing is crammed together. */
     '.scw-bid-review-v2__row-label-cell {',
     '  position: relative;',
-    /* Left padding clears BOTH fixed-position controls: checkbox at 8px
-       (16px wide) + gap + caret at 34px (22px wide) → content from 62px. */
-    '  padding: 16px 14px 16px 62px !important;',
+    '  padding: 12px 14px 16px !important;',
     '  background: #f8fafc;',
     '  border-right: 1px solid #e2e8f0;',
     '  font-variant-numeric: tabular-nums;',
     '  vertical-align: top;',
+    '}',
+    /* Controls row above the content: checkbox far left, caret second,
+       clearly gapped (caret misclicks when they were adjacent). Normal
+       flow — absolute-positioning these beside the text squeezed this
+       narrow column and wrapped labels like "I-038". */
+    '.scw-bid-review-v2__row-controls {',
+    '  display: flex; align-items: center; gap: 12px; margin-bottom: 8px;',
     '}',
     /* Inner wrapper carries the flex stack; the <td> stays a table-cell so
        its background spans the full row height (e.g. when there are no
@@ -870,15 +875,9 @@
     '  background: rgba(41,95,145,0.10); color: #295f91;',
     '  transition: transform 150ms ease, background 150ms ease, color 150ms ease;',
     '}',
-    /* Selection-then-disclosure order: checkbox FAR left, caret second,
-       10px apart — they were adjacent and caret misclicks were constant
-       when aiming for the box. */
     '.scw-bid-review-v2__row-caret {',
-    '  position: absolute; left: 34px; top: 13px;',
+    '  flex: 0 0 auto;',
     '  transform: rotate(-90deg);', /* point right when closed */
-    '}',
-    '.scw-br-v2-rowselect--row {',
-    '  position: absolute; left: 8px; top: 17px;',
     '}',
     '.scw-bid-review-v2__row--expandable:hover .scw-bid-review-v2__row-caret {',
     '  background: rgba(41,95,145,0.20); color: #1e4e85;',

@@ -897,23 +897,43 @@
   var lastAnchorId = null;
 
   function rowCheckboxesInDocOrder() {
-    return document.querySelectorAll('[data-scw-ws-v2-select]');
+    // VISIBLE boxes only, deduped by record id. The document can hold
+    // several boxes for the SAME record — the bid-review expand-panel
+    // header checkbox, the hidden worksheet-card checkbox inside the
+    // editor panel — plus boxes inside collapsed sections. Computing the
+    // range over that raw list let later duplicates overwrite the
+    // anchor/target indexes, so shift-click skipped rows or collapsed to
+    // an empty range. Range-select operates over exactly what the user
+    // can see. (offsetParent is null for anything under display:none.)
+    var all = document.querySelectorAll('[data-scw-ws-v2-select]');
+    var out = [], seen = {};
+    for (var i = 0; i < all.length; i++) {
+      var id = all[i].getAttribute('data-scw-ws-v2-select');
+      if (!id || seen[id]) continue;
+      if (all[i].offsetParent === null) continue;
+      seen[id] = true;
+      out.push(all[i]);
+    }
+    return out;
   }
 
+  // Returns true when the range was applied; false when either endpoint
+  // isn't visible (caller falls back to a plain single toggle).
   function applyRange(anchorId, targetId, on) {
     var boxes = rowCheckboxesInDocOrder();
     var ai = -1, ti = -1;
     for (var i = 0; i < boxes.length; i++) {
       var id = boxes[i].getAttribute('data-scw-ws-v2-select');
-      if (id === anchorId) ai = i;
-      if (id === targetId) ti = i;
+      if (ai === -1 && id === anchorId) ai = i;
+      if (ti === -1 && id === targetId) ti = i;
     }
-    if (ai === -1 || ti === -1) return;
+    if (ai === -1 || ti === -1) return false;
     var lo = Math.min(ai, ti), hi = Math.max(ai, ti);
     for (var j = lo; j <= hi; j++) {
       var rid = boxes[j].getAttribute('data-scw-ws-v2-select');
       setSelected(rid, on);
     }
+    return true;
   }
 
   function wireGlobalDelegates(sourceViewKey) {
@@ -937,12 +957,16 @@
         // browser default; use the new state as the "on/off" for the
         // whole range. Then refresh DOM.
         var targetId = t.getAttribute('data-scw-ws-v2-select');
-        applyRange(lastAnchorId, targetId, !!t.checked);
-        syncDomFromState();
-        refreshToolbar();
-        // Anchor stays put so consecutive shift-clicks extend from the
-        // original origin — matches Gmail / Finder behavior.
-        return;
+        if (applyRange(lastAnchorId, targetId, !!t.checked)) {
+          syncDomFromState();
+          refreshToolbar();
+          // Anchor stays put so consecutive shift-clicks extend from the
+          // original origin — matches Gmail / Finder behavior.
+          return;
+        }
+        // Anchor box isn\'t visible anymore (its section collapsed / row
+        // re-rendered away) — fall through to the plain-click path so the
+        // click still lands and this box becomes the new anchor.
       }
 
       // Plain click — let the change handler do the state update; just
