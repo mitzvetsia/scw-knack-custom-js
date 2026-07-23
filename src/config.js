@@ -88,14 +88,13 @@ window.SCW.CONFIG = window.SCW.CONFIG || {
   //   Response body: { success: true,  imported: <count>, message?: "..." }
   //             or:  { success: false, error: "<message>" }
   MAKE_IMPORT_UNIQUE_ITEMS_WEBHOOK: "https://hook.us1.make.com/zqqc0kg10fsxmrwmr78hb9g4qqs9dutw",
-  // Change-order adoption (worksheet-v2/co-adopt.js): connect a previously
-  // quoted SOW line item to a CO by unioning field_2154 with the CO's SOW
-  // record id. SAME payload contract + scenario semantics as
-  // MAKE_IMPORT_UNIQUE_ITEMS_WEBHOOK above ("connect uniqueItemIds to
-  // receivingRecordId"), so it points at the same scenario for now — the
-  // payload carries `changeOrder: true` so Make can branch (or this can be
-  // repointed at a dedicated scenario) without a bundle change.
-  MAKE_CO_ADOPT_ITEMS_WEBHOOK: "https://hook.us1.make.com/zqqc0kg10fsxmrwmr78hb9g4qqs9dutw",
+  // Change-order adoption (worksheet-v2/co-adopt.js) — RETIRED 2026-07-23.
+  // Adoption no longer goes through Make: it's a plain field_2154 union
+  // (add the CO's SOW id to the line item's multi-SOW connection), done
+  // client-side via view-scoped PUTs — the exact inverse of the CO
+  // worksheet's unlink. The old MAKE_CO_ADOPT_ITEMS_WEBHOOK pointed at the
+  // import-unique-items scenario, which never matched the adopt payload
+  // and ACKed 200 without writing anything ("adds but doesn't add").
   // Change-order removal (worksheet-v2/co-remove.js): flag active project
   // install line items for removal on a CO. Unlike adoption, removal CREATES
   // records — one Remove line per install item (a SOW Line Item with

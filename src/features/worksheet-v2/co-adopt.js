@@ -20,10 +20,13 @@
  *   show a green "✓ Added" pill in the same slot
  *
  * Adoption connects the line item to the CO by unioning its multi-SOW
- * connection (field_2154) with the CO's SOW record id. The write happens
- * in Make (MAKE_CO_ADOPT_ITEMS_WEBHOOK — same scenario shape as
- * import-unique-items: receivingRecordId + uniqueItemIds), so the client
- * never mutates records directly.
+ * connection (field_2154) with the CO's SOW record id — a direct
+ * view-scoped PUT, the exact inverse of the CO worksheet's unlink handler
+ * (init.js `data-scw-ws-v2-unlink`). No Make involvement: it's a plain
+ * single-field record update. (The original Make route via
+ * MAKE_CO_ADOPT_ITEMS_WEBHOOK silently no-opped — the shared
+ * import-unique-items scenario never matched the adopt payload and ACKed
+ * 200 "Accepted" without writing anything — retired 2026-07-23.)
  *
  * The panel's readOnly lockdown is three layers: styles.js flattens every
  * input to plain text + kills the mouse path, init.js skips the
@@ -95,18 +98,6 @@
       if (/^[a-f0-9]{24}$/i.test(segs[i])) return segs[i];
     }
     return '';
-  }
-
-  function getTriggeredBy() {
-    try {
-      var u = (typeof Knack !== 'undefined' &&
-               typeof Knack.getUserAttributes === 'function')
-        ? Knack.getUserAttributes() : null;
-      if (!u || typeof u !== 'object') return {};
-      var n = u.name;
-      if (n && typeof n === 'object') n = ((n.first || '') + ' ' + (n.last || '')).trim();
-      return { id: u.id || '', name: n || '', email: u.email || '' };
-    } catch (e) { return {}; }
   }
 
   // ── Styles ────────────────────────────────────────────────────────────
@@ -645,16 +636,76 @@
     return Object.keys(set);
   }
 
-  // ── Adoption write (Make webhook) — single + bulk share this ─────────
-  function fireAdopt(ids, viewKey, ui) {
-    var url = (window.SCW && SCW.CONFIG && SCW.CONFIG.MAKE_CO_ADOPT_ITEMS_WEBHOOK) || '';
-    if (!url || /PLACEHOLDER/.test(url)) {
-      alert('The change-order adopt webhook is not configured.');
-      return;
+  // ── Adoption write (direct view-scoped PUTs) — single + bulk share this ──
+  // Adopting is a plain single-field update: union the record's field_2154
+  // with the CO's SOW id. PUTs route through the CO worksheet view (the
+  // scene's inline-editable deployment of the same object — view_4088
+  // itself is read-only; Knack's view-based endpoints accept any record of
+  // the view's source object, which init.js's unlink relies on too).
+  //
+  // Bulk adoptions can queue dozens of PUTs, so they run through a
+  // concurrency-capped retry queue (CLAUDE.md: Knack silently 429s past
+  // ~10 req/s) — a trimmed copy of mirror-connection-sync's
+  // knackPutKeepalive pattern.
+  var MAX_CONCURRENT_PUTS = 4;
+  var MAX_PUT_ATTEMPTS    = 4;
+  var BASE_BACKOFF_MS     = 350;
+  var _putQueue   = [];
+  var _putRunning = 0;
+
+  function isTransientPutError(status) {
+    return status === 0 || status === 408 || status === 429 ||
+           (status >= 500 && status <= 599);
+  }
+
+  function queuedPut(url, body, onDone) {
+    _putQueue.push({ url: url, body: body, onDone: onDone });
+    drainPutQueue();
+  }
+
+  function drainPutQueue() {
+    while (_putRunning < MAX_CONCURRENT_PUTS && _putQueue.length) {
+      var task = _putQueue.shift();
+      _putRunning++;
+      putWithRetry(task, 1);
     }
+  }
+
+  function putWithRetry(task, attempt) {
+    SCW.knackAjax({
+      url: task.url, type: 'PUT', data: JSON.stringify(task.body),
+      success: function () { settlePut(task, null); },
+      error: function (xhr) {
+        var status = (xhr && xhr.status) || 0;
+        if (isTransientPutError(status) && attempt < MAX_PUT_ATTEMPTS) {
+          var delay = BASE_BACKOFF_MS * Math.pow(2, attempt - 1) +
+                      Math.floor(Math.random() * 250);
+          console.warn(LOG_PREFIX, 'transient PUT failure (' + status +
+            ') — retry ' + attempt + '/' + (MAX_PUT_ATTEMPTS - 1) +
+            ' in ' + delay + 'ms');
+          setTimeout(function () { putWithRetry(task, attempt + 1); }, delay);
+          return;
+        }
+        settlePut(task, status || 'failed');
+      }
+    });
+  }
+
+  function settlePut(task, err) {
+    _putRunning--;
+    try { if (typeof task.onDone === 'function') task.onDone(err); }
+    finally { setTimeout(drainPutQueue, 0); }
+  }
+
+  function fireAdopt(ids, viewKey, ui) {
     var coId = getCoSowId();
     if (!coId) {
       alert('Could not determine the change order record id from the URL.');
+      return;
+    }
+    if (!(window.SCW && typeof SCW.knackAjax === 'function' &&
+          typeof SCW.knackRecordUrl === 'function')) {
+      alert('Save helpers unavailable — reload the page and try again.');
       return;
     }
     var byId = recordIndex(viewKey);
@@ -664,90 +715,95 @@
         expanded.length + ' (accessory/parent pairs ride together)');
     }
     ids = expanded;
-    var sourceSowIds = {}, i, r;
-    for (i = 0; i < ids.length; i++) {
-      var rec = byId[ids[i]];
+    var putView = coViewFor(viewKey);
+
+    // The record's current SOW ids + the CO (deduped, order preserved).
+    function plusCo(rec) {
+      var out = [], seen = {};
       var raw = rec && rec[SOW_FIELD + '_raw'];
-      if (!Array.isArray(raw)) continue;
-      for (r = 0; r < raw.length; r++) {
-        if (raw[r] && raw[r].id) sourceSowIds[raw[r].id] = true;
+      if (Array.isArray(raw)) {
+        for (var j = 0; j < raw.length; j++) {
+          if (raw[j] && raw[j].id && !seen[raw[j].id]) {
+            seen[raw[j].id] = true;
+            out.push(raw[j].id);
+          }
+        }
       }
+      if (!seen[coId]) out.push(coId);
+      return out;
     }
 
     ui.busy();
 
-    // Same payload contract as import-unique-items' fireBulkWebhook —
-    // "connect uniqueItemIds to receivingRecordId" — plus a changeOrder
-    // marker so the Make scenario can branch if CO handling ever diverges.
-    fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        receivingRecordId:       coId,
-        sourceRecordId:          null,
-        sourceRecordIds:         Object.keys(sourceSowIds),
-        uniqueItemIds:           ids,
-        deleteSourceIds:         [],
-        deleteSourceAfterImport: false,
-        bulk:                    ids.length > 1,
-        changeOrder:             true,
-        triggeredBy:             getTriggeredBy()
-      })
-    }).then(function (resp) {
-      // Key success on the HTTP status (2xx), not the body shape — Make's
-      // Webhook Response can return an empty body / "Accepted" text / arbitrary
-      // JSON, which made the old {success:true} gate throw a false failure.
-      // Only treat as a failure when the body EXPLICITLY says so. (Mirrors the
-      // co-remove.js fireRemove fix.)
-      var ok = resp.ok;
-      return resp.text().then(function (txt) {
-        var body = null;
-        try { body = txt ? JSON.parse(txt) : null; } catch (e) { body = null; }
-        return { ok: ok, data: body };
-      });
-    }).then(function (r) {
-      var data = r.data;
-      var explicitFail = !!(data && (data.success === false || data.error));
-      if (r.ok && !explicitFail) {
-        // Optimistic flip to the Added state; the refetches below make it
-        // durable (and land the new lines on the CO worksheet).
-        var container = document.getElementById('scw-ws-v2-' + viewKey);
-        for (var k = 0; k < ids.length; k++) {
-          delete _sel[ids[k]];
-          if (!container) continue;
-          var card = container.querySelector(
-            '.scw-ws-v2-card[data-scw-ws-v2-record="' + ids[k] + '"]');
-          var row = card && card.querySelector('.scw-ws-v2-row');
-          if (row) setRowState(row, ids[k], viewKey, true);
-        }
-        updateBulkToolbar(viewKey);
-        refetchAfterAdopt(viewKey);
-        ui.done();
-        return;
+    var pending = 0, okIds = [], failedIds = [];
+    function settle(rid, err) {
+      if (err) {
+        failedIds.push(rid);
+        console.warn(LOG_PREFIX, 'adopt PUT failed for ' + rid + ' (' + err + ')');
+      } else {
+        okIds.push(rid);
       }
-      ui.fail();
-      alert((data && (data.error || data.message)) ||
-        'Failed to add the item' + (ids.length > 1 ? 's' : '') + ' to the change order.');
-    }).catch(function (err) {
-      ui.fail();
-      alert('Webhook error: ' + (err && err.message ? err.message : err));
-    });
+      if (--pending === 0) finish();
+    }
+
+    function finish() {
+      var container = document.getElementById('scw-ws-v2-' + viewKey);
+      for (var k = 0; k < okIds.length; k++) {
+        delete _sel[okIds[k]];
+        if (!container) continue;
+        var card = container.querySelector(
+          '.scw-ws-v2-card[data-scw-ws-v2-record="' + okIds[k] + '"]');
+        var row = card && card.querySelector('.scw-ws-v2-row');
+        if (row) setRowState(row, okIds[k], viewKey, true);
+      }
+      updateBulkToolbar(viewKey);
+      refetchAfterAdopt(viewKey);
+      if (failedIds.length) {
+        ui.fail();
+        alert(failedIds.length + ' of ' + (okIds.length + failedIds.length) +
+          ' item' + (okIds.length + failedIds.length === 1 ? '' : 's') +
+          ' could not be added to the change order. Try again.');
+      } else {
+        ui.done();
+      }
+    }
+
+    for (var i = 0; i < ids.length; i++) {
+      var rec = byId[ids[i]];
+      if (!rec || isOnCo(rec, coId)) continue;   // unknown / already adopted
+      pending++;
+      (function (rid, body) {
+        queuedPut(SCW.knackRecordUrl(putView, rid), body, function (err) {
+          settle(rid, err);
+        });
+      })(ids[i], (function (r) { return { field_2154: plusCo(r) }; })(rec));
+    }
+
+    if (!pending) {   // everything selected was already on the CO
+      updateBulkToolbar(viewKey);
+      ui.done();
+    }
   }
 
-  // Staggered refetches (same cadence as bulk.js handleDuplicate) — Make's
-  // writes land asynchronously after the webhook responds.
+  // Refresh both panels so the adopted line appears on the CO worksheet and
+  // this panel's ✓ Added state is data-backed. The PUTs are committed once
+  // they 2xx, so a quick double-tap replaces the old Make-lag stagger.
   function refetchAfterAdopt(adoptViewKey) {
     function refetch() {
       [coViewFor(adoptViewKey), adoptViewKey].forEach(function (vk) {
+        if (!document.getElementById(vk)) return;   // user navigated away
+        if (ns.data && typeof ns.data.refetchAndNotify === 'function') {
+          ns.data.refetchAndNotify(vk);
+          return;
+        }
         var v = window.Knack && Knack.views && Knack.views[vk];
         if (v && v.model && typeof v.model.fetch === 'function') {
-          try { v.model.fetch(); } catch (e) { /* next tick catches it */ }
+          try { v.model.fetch(); } catch (e) { /* second pass catches it */ }
         }
       });
     }
     refetch();
-    setTimeout(refetch, 3000);
-    setTimeout(refetch, 8000);
+    setTimeout(refetch, 1500);
   }
 
   // ── Wiring ────────────────────────────────────────────────────────────
