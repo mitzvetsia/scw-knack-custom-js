@@ -228,34 +228,29 @@
       'value="' + escapeHtml(value) + '"' + attrsFor(rec, viewKey, fieldKey) + '>';
   }
 
-  /** Multi-line read: like readField but PRESERVES line structure —
-   *  <br> and closing block tags become \n instead of vanishing. The
-   *  plain readField flatten was destroying data, not just display: the
-   *  textarea prefilled with the flattened text, so the next blur-save
-   *  committed it back WITHOUT the breaks the record still had. */
+  /** Editable multi-line read: the stored value VERBATIM — tags, entities
+   *  and all — with only <br> converted to \n so line breaks edit as real
+   *  line breaks. These fields deliberately carry hand-written HTML
+   *  (<b>, lists, …) that the proposal renders, so the editor must expose
+   *  the markup for editing rather than a stripped rendering of it; the
+   *  earlier tag-stripping prefill meant the next blur-save destroyed the
+   *  record's formatting. edit.js converts \n back to <br> on save
+   *  (textareas only), so the round trip is lossless. */
   function readMultiline(rec, key) {
     var v = rec[key];
     if (v == null || v === '') {
       var raw = rec[key + '_raw'];
       v = (raw == null || typeof raw === 'object') ? '' : raw;
     }
-    return String(v)
-      .replace(/<br\s*\/?>/gi, '\n')
-      .replace(/<\/(p|div|li|h[1-6])>/gi, '\n')
-      .replace(/<[^>]*>/g, '')
-      .replace(/&nbsp;/g, ' ')
-      .replace(/&amp;/g, '&').replace(/&lt;/g, '<').replace(/&gt;/g, '>')
-      .replace(/&quot;/g, '"').replace(/&#39;/g, "'")
-      .replace(/\n{3,}/g, '\n\n')
-      .trim();
+    return String(v).replace(/<br\s*\/?>/gi, '\n').trim();
   }
 
   /** Multi-line wrapping text field — used for labor description so
    *  the full text is visible without horizontal scroll. Auto-grows
    *  with content via CSS field-sizing / rows attribute fallback.
-   *  NOTE: the value is re-derived via readMultiline (line breaks
-   *  preserved); the caller-passed flattened value is only a fallback
-   *  when the record/field aren't resolvable. */
+   *  NOTE: the value is re-derived via readMultiline (markup verbatim,
+   *  <br> as line breaks); the caller-passed flattened value is only a
+   *  fallback when the record/field aren't resolvable. */
   function textArea(rec, viewKey, fieldKey, value, label) {
     var v = (rec && fieldKey) ? readMultiline(rec, fieldKey) : (value || '');
     return '<textarea class="scw-ws-v2-input scw-ws-v2-input--textarea" ' +
