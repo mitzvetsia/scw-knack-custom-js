@@ -152,6 +152,30 @@
     } catch (e) { /* best-effort — a manual refresh still shows the rename */ }
   }
 
+  /** Patch the hidden source view's table DOM after a save. The L1 detail
+   *  band (photos/SCW Notes) and the survey-notes callout re-SCRAPE that
+   *  DOM on every grid rebuild (readSourceFieldText / findMdfIdfSourceRow)
+   *  — the model sync alone leaves those scrapes stale. Writes the saved
+   *  fields plus the recomposed display name into the row's cells. */
+  function patchSourceViewDom(recId, fields, newLabel) {
+    var own = Object.prototype.hasOwnProperty;
+    try {
+      var viewEl = document.getElementById(mdfViewKey());
+      var tr = viewEl && viewEl.querySelector('tbody tr[id="' + recId + '"]');
+      if (!tr) return;
+      var map = {};
+      for (var fk in fields) { if (own.call(fields, fk)) map[fk] = fields[fk]; }
+      map[F.displayName] = newLabel;
+      for (var k in map) {
+        if (!own.call(map, k)) continue;
+        var td = tr.querySelector('td.' + k);
+        if (!td) continue;
+        var span = td.querySelector('span');
+        (span || td).textContent = map[k];
+      }
+    } catch (e) { /* best-effort */ }
+  }
+
   /** Designator <option> markup: HEADEND/IDF always offered, plus any other
    *  type seen across the loaded location records (dedicated column first,
    *  parsed display name as fallback), plus the current value so the select
@@ -396,17 +420,31 @@
       el.style.display = 'none';
     }
     hideDup(headerTr.querySelector('.scw-bid-review-v2__grp-title'));
+    var notesSection = null;
     var sib = tr.nextElementSibling;
     while (sib && !sib.classList.contains('scw-bid-review-v2__group-header')) {
       if (sib.classList.contains('scw-bid-review-v2__l1-detail-row')) {
         var dSecs = sib.querySelectorAll('.scw-bid-review-v2__l1-detail-section');
         for (var ds = 0; ds < dSecs.length; ds++) {
           var dLbl = dSecs[ds].querySelector('.scw-bid-review-v2__l1-detail-label');
-          if (dLbl && /^scw notes$/i.test((dLbl.textContent || '').trim())) hideDup(dSecs[ds]);
+          if (dLbl && /^scw notes$/i.test((dLbl.textContent || '').trim())) {
+            notesSection = dSecs[ds];
+            hideDup(dSecs[ds]);
+          }
         }
         break;
       }
       sib = sib.nextElementSibling;
+    }
+
+    // Keep the (currently hidden) SCW Notes callout in step with a notes
+    // save, so closing the panel restores the NEW text, not the old. An
+    // emptied callout stays hidden — closePanels skips restoring it.
+    function updateNotesCallout(text) {
+      if (!notesSection) return;
+      var t = notesSection.querySelector('.scw-bid-review-v2__l1-detail-text');
+      if (t) t.textContent = text;
+      if (!String(text).trim()) notesSection.removeAttribute('data-scw-mdf-dup-hidden');
     }
 
     var status = td.querySelector('.' + P + '-status');
@@ -429,15 +467,47 @@
       }
     }
 
-    // Display label after a save — prefer the server-recomputed field_1642
-    // in the PUT response; compose locally as fallback.
-    function labelAfterSave(resp) {
-      var r = (resp && resp.record && resp.record.id) ? resp.record : resp;
-      var dn2 = r ? stripTags(r[F.displayName + '_raw'] != null
-        ? r[F.displayName + '_raw'] : r[F.displayName]) : '';
-      if (dn2) return dn2;
+    // Display label after a save — composed LOCALLY from the saved values.
+    // Never read it back from the PUT response: Knack returns field_1642
+    // stale there (computed lazily, or maintained by form record rules a
+    // REST PUT doesn't trigger), and trusting it re-titled the header with
+    // the OLD name — the "reverts when I close the panel" bug.
+    function composeLabel() {
       return ((saved[F.type] || '') + ': ' + (saved[F.num] || '') + ' : ' +
-        (saved[F.name] || '')).replace(/:\s*:/g, ':');
+        (saved[F.name] || '')).replace(/:\s*:/g, ':').trim();
+    }
+
+    // If the server's display name disagrees with the composed label,
+    // write field_1642 explicitly (silent best-effort). When field_1642 is
+    // rule-maintained rather than a live formula, nothing else ever
+    // updates it after a REST PUT — connection identifiers everywhere
+    // (and every future page load) would keep the old name. If Knack
+    // rejects the write (live formula → read-only), that's fine: the
+    // formula will recompute server-side on its own.
+    function maybeSyncDisplayName(resp, newLabel) {
+      var r = (resp && resp.record && resp.record.id) ? resp.record : resp;
+      var srvLabel = r ? stripTags(r[F.displayName + '_raw'] != null
+        ? r[F.displayName + '_raw'] : r[F.displayName]) : '';
+      if (!srvLabel || srvLabel === newLabel) return;
+      var body = {};
+      body[F.displayName] = newLabel;
+      SCW.knackAjax({
+        url:  SCW.knackRecordUrl(mdfViewKey(), rec.id),
+        type: 'PUT',
+        data: JSON.stringify(body),
+        success: function (resp2) {
+          try {
+            if (typeof SCW.syncKnackModel === 'function') {
+              SCW.syncKnackModel(mdfViewKey(), rec.id, resp2, F.displayName, newLabel);
+            }
+          } catch (e) { /* best-effort */ }
+        },
+        error: function (xhr) {
+          console.info('[scw-brv2-mdf] field_1642 sync write rejected (' +
+            (xhr && xhr.status) + ') — likely a live formula field; ' +
+            'server will recompute it itself.');
+        }
+      });
     }
 
     // Shared commit: diff-only PUT of the given {field: value} map. On
@@ -469,10 +539,16 @@
               }
             } catch (e) { /* best-effort */ }
           }
-          var newLabel = labelAfterSave(resp);
+          var newLabel = composeLabel();
           var title = headerTr.querySelector('.scw-bid-review-v2__grp-title');
-          if (title) title.textContent = newLabel.replace(/:\s*:/g, ':');
+          if (title) title.textContent = newLabel;
+          gear.setAttribute('data-scw-mdf-label', newLabel);
           patchConnectionIdentifiers(rec.id, newLabel);
+          patchSourceViewDom(rec.id, fields, newLabel);
+          maybeSyncDisplayName(resp, newLabel);
+          if (Object.prototype.hasOwnProperty.call(fields, F.notes)) {
+            updateNotesCallout(fields[F.notes]);
+          }
           setStatus('Saved ✓');
         },
         error: function (xhr) {
