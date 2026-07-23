@@ -515,34 +515,45 @@
     return header;
   }
 
+  // ⚠ EVERY write in syncState is CHANGE-GUARDED. This function runs from
+  // MutationObserver→rAF callbacks; an unconditional write (even setting
+  // textContent to the SAME string replaces the text node) fires a fresh
+  // mutation, which re-arms the observer, which re-runs this — a
+  // self-sustaining every-frame loop that burned 1.3–2s rAF handlers
+  // forever on busy pages (observed live 2026-07-22, build-SOW scene).
+  function setText(el, s)     { if (el.textContent !== s) el.textContent = s; }
+  function setStyle(el, k, v) { if (el.style[k] !== v) el.style[k] = v; }
+
   function syncState(wrapper, header, viewKey) {
     // Skip expand/collapse sync while applySavedState is active —
     // prevents the MutationObserver from undoing the restored state.
     if (!_restoreActive) {
       var expanded = isExpanded(viewKey);
       wrapper.classList.toggle('is-expanded', expanded);
-      header.setAttribute('aria-expanded', String(expanded));
-
+      var ariaStr = String(expanded);
+      if (header.getAttribute('aria-expanded') !== ariaStr) {
+        header.setAttribute('aria-expanded', ariaStr);
+      }
       var bodyEl = wrapper.querySelector('.scw-ktl-accordion__body');
-      if (bodyEl) bodyEl.style.display = expanded ? '' : 'none';
+      if (bodyEl) setStyle(bodyEl, 'display', expanded ? '' : 'none');
     }
 
     // Count pill (hidden for views listed in HIDE_COUNT)
     var countEl = header.querySelector('.scw-acc-count');
     if (countEl) {
       if (HIDE_COUNT[viewKey]) {
-        countEl.style.display = 'none';
+        setStyle(countEl, 'display', 'none');
       } else {
         var count = computeCount(viewKey);
         if (count !== null) {
-          countEl.textContent = count;
-          countEl.style.display = '';
-          countEl.style.visibility = '';
+          setText(countEl, String(count));
+          setStyle(countEl, 'display', '');
+          setStyle(countEl, 'visibility', '');
         } else {
           // Reserve space so buttons stay aligned across accordions
-          countEl.textContent = '0';
-          countEl.style.display = '';
-          countEl.style.visibility = 'hidden';
+          setText(countEl, '0');
+          setStyle(countEl, 'display', '');
+          setStyle(countEl, 'visibility', 'hidden');
         }
       }
     }
@@ -551,7 +562,7 @@
     var btn = document.getElementById('hideShow_' + viewKey + '_button');
     if (btn) {
       var accent = readAccentColor(btn);
-      if (accent) {
+      if (accent && wrapper.style.getPropertyValue('--scw-accent') !== accent) {
         wrapper.style.setProperty('--scw-accent', accent);
         var rgb = parseRgb(accent);
         if (rgb) wrapper.style.setProperty('--scw-accent-rgb', rgb);
@@ -1039,10 +1050,12 @@
   function updateStandaloneCount(hdr, viewKey) {
     var el = hdr.querySelector('.scw-acc-count');
     if (!el) return;
-    if (HIDE_COUNT[viewKey]) { el.style.display = 'none'; return; }
+    // Change-guarded writes — see the syncState warning: this also runs
+    // from observer→rAF callbacks and must never mutate when idle.
+    if (HIDE_COUNT[viewKey]) { setStyle(el, 'display', 'none'); return; }
     var c = computeCount(viewKey);
-    if (c !== null) { el.textContent = c; el.style.display = ''; el.style.visibility = ''; }
-    else { el.textContent = '0'; el.style.display = ''; el.style.visibility = 'hidden'; }
+    if (c !== null) { setText(el, String(c)); setStyle(el, 'display', ''); setStyle(el, 'visibility', ''); }
+    else { setText(el, '0'); setStyle(el, 'display', ''); setStyle(el, 'visibility', 'hidden'); }
   }
 
   function bindStandaloneHeader(wrap, hdr, viewKey) {
@@ -1208,9 +1221,30 @@
     });
 
   // Global MutationObserver to catch KTL buttons added outside
-  // normal Knack render events (e.g., lazy KTL init).
+  // normal Knack render events (e.g., lazy KTL init). Its ONLY job is
+  // spotting a hideShow_* button appearing — so filter the mutation
+  // records for that before doing anything. The old unfiltered version
+  // ran the FULL enhance() pass on every body mutation, and since
+  // enhance's own writes are mutations too, it self-sustained as an
+  // every-frame loop (1.3–2s rAF violations forever on busy pages).
+  // Scene/view renders are covered by the event bindings above.
   var globalRaf = 0;
-  var globalObs = new MutationObserver(function () {
+  var globalObs = new MutationObserver(function (muts) {
+    var relevant = false;
+    for (var i = 0; i < muts.length && !relevant; i++) {
+      var added = muts[i].addedNodes;
+      if (!added) continue;
+      for (var j = 0; j < added.length; j++) {
+        var n = added[j];
+        if (!n || n.nodeType !== 1) continue;
+        if ((n.id && n.id.indexOf('hideShow_') === 0) ||
+            (n.querySelector && n.querySelector('[id^="hideShow_"]'))) {
+          relevant = true;
+          break;
+        }
+      }
+    }
+    if (!relevant) return;
     if (globalRaf) cancelAnimationFrame(globalRaf);
     globalRaf = requestAnimationFrame(function () {
       globalRaf = 0;
