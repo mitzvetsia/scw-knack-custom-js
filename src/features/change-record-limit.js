@@ -78,6 +78,30 @@
     document.head.appendChild(s);
   })();
 
+  // Pre-fetch limit push — on ANY view render, sweep every listed view and
+  // stamp rows_per_page=1000 on models that haven't fetched yet. Knack
+  // renders a scene's views serially, so by the time the FIRST view fires
+  // its render event, later views' models usually exist but haven't built
+  // their fetch request — stamping them now means their FIRST fetch loads
+  // the full page. Without this, every listed view loads twice on scene
+  // entry (Builder-default page size first, then our 1000/page refetch) —
+  // double network, double render, and the partial first load is what
+  // bid-review-v2's truncation repair exists to mop up. The per-view
+  // handlers below remain as the safety net for models that appear late.
+  $(document)
+    .off('knack-view-render.any' + EVENT_NS)
+    .on('knack-view-render.any' + EVENT_NS, function () {
+      if (typeof Knack === 'undefined' || !Knack.views) return;
+      for (var i = 0; i < VIEW_IDS.length; i++) {
+        var v = Knack.views[VIEW_IDS[i]];
+        var mv = v && v.model && v.model.view;
+        if (!mv) continue;
+        if (mv.rows_per_page === LIMIT_NUM || mv.rows_per_page === LIMIT_VALUE) continue;
+        mv.rows_per_page = LIMIT_NUM;
+        if (mv.source) mv.source.limit = LIMIT_NUM;
+      }
+    });
+
   VIEW_IDS.forEach((VIEW_ID) => {
     $(document)
       .off(`knack-view-render.${VIEW_ID}${EVENT_NS}`)
