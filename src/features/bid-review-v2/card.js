@@ -1066,17 +1066,19 @@
     var caretHtml =
       '<span class="scw-bid-review-v2__row-caret" aria-hidden="true">' +
         GROUP_CHEVRON_SVG + '</span>';
-    var labelHtml = '';
     // Bulk-select checkbox — keyed on the SOW line-item id so the shared
     // worksheet-v2 bulk module (mounted on the SOW view) drives selection
     // + the floating edit/delete toolbar. Only for rows backed by a SOW
-    // item (the editable record).
-    if (row.sowItem) {
-      labelHtml +=
-        '<input type="checkbox" class="scw-br-v2-rowselect" ' +
+    // item (the editable record). Positioned FAR LEFT with the caret
+    // second (standard selection-then-disclosure order) and a clear gap
+    // between them — adjacent targets caused caret misclicks when aiming
+    // for the box.
+    var selectHtml = row.sowItem
+      ? '<input type="checkbox" class="scw-br-v2-rowselect scw-br-v2-rowselect--row" ' +
         'data-scw-ws-v2-select="' + escapeHtml(row.sowItem) + '" ' +
-        'aria-label="Select line item">';
-    }
+        'aria-label="Select line item">'
+      : '';
+    var labelHtml = '';
     if (isCamReader(row) && row.displayLabel) {
       labelHtml +=
         '<div class="scw-bid-review-v2__row-label">' +
@@ -1105,7 +1107,7 @@
       }
       labelHtml += '</div>';
     }
-    labelTd.innerHTML = caretHtml +
+    labelTd.innerHTML = selectHtml + caretHtml +
       '<div class="scw-bid-review-v2__row-label-inner">' + labelHtml + '</div>';
     tr.appendChild(labelTd);
 

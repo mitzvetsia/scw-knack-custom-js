@@ -647,20 +647,10 @@
     header.className = 'scw-bid-review-v2__panel-header';
     header.setAttribute('title', 'Click to close');
 
-    // Open caret — kept on the LEFT so it doesn't jump position vs. the
-    // closed grid-row caret. Points down (open); the whole header bar is
-    // the click target to close.
-    var caret = document.createElement('span');
-    caret.className = 'scw-bid-review-v2__panel-caret';
-    caret.setAttribute('aria-hidden', 'true');
-    caret.innerHTML =
-      '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" ' +
-      'stroke="currentColor" stroke-width="3" stroke-linecap="round" ' +
-      'stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>';
-    header.appendChild(caret);
-
-    // Bulk-select checkbox — the grid-row checkbox is hidden while the row
-    // is expanded, so surface one here keyed on the same SOW item id.
+    // Bulk-select checkbox FIRST (far left) — the grid-row checkbox is
+    // hidden while the row is expanded, so surface one here keyed on the
+    // same SOW item id. Selection-then-disclosure order matches the grid
+    // rows (checkbox leftmost, caret second).
     var sowItemId = rowTr.getAttribute('data-sow-item-id');
     if (sowItemId) {
       var cb = document.createElement('input');
@@ -670,6 +660,18 @@
       cb.setAttribute('aria-label', 'Select line item');
       header.appendChild(cb);
     }
+
+    // Open caret — second from left, mirroring the closed grid-row layout
+    // so neither control jumps position when a row expands. Points down
+    // (open); the whole header bar is the click target to close.
+    var caret = document.createElement('span');
+    caret.className = 'scw-bid-review-v2__panel-caret';
+    caret.setAttribute('aria-hidden', 'true');
+    caret.innerHTML =
+      '<svg viewBox="0 0 24 24" width="15" height="15" fill="none" ' +
+      'stroke="currentColor" stroke-width="3" stroke-linecap="round" ' +
+      'stroke-linejoin="round"><polyline points="6 9 12 15 18 9"></polyline></svg>';
+    header.appendChild(caret);
 
     var title = document.createElement('div');
     title.className = 'scw-bid-review-v2__panel-title';
