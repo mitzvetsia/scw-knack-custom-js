@@ -101,6 +101,10 @@
     }
     function oneDone() { if (--pending <= 0) finish(); }
     for (var i = 0; i < keys.length; i++) {
+      // Skip views no longer in the DOM — a fetch resolving after the user
+      // navigated to another scene trips Knack's "Scene keys do not match!"
+      // alert (the router processes the response against the wrong scene).
+      if (!document.getElementById(keys[i])) continue;
       var v = Knack.views[keys[i]];
       if (!v || !v.model || typeof v.model.fetch !== 'function') continue;
       var p;
@@ -225,6 +229,10 @@
     if (_truncRepairInflight[k]) return true;   // already refetching — don't burn a retry
     var tries = _truncRepairTries[k] || 0;
     if (tries >= TRUNC_REPAIR_MAX) return false;
+    // Never fire a repair for a view that's no longer in the DOM — the
+    // user navigated away, and a view-scoped fetch resolving against a
+    // different scene trips Knack's "Scene keys do not match!" alert.
+    if (!document.getElementById(k)) return false;
     var v = Knack.views && Knack.views[k];
     if (!v || !v.model || typeof v.model.fetch !== 'function') return false;
     _truncRepairTries[k] = tries + 1;
