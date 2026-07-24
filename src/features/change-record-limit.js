@@ -32,6 +32,11 @@
     // change-order items, and their install cards lose the As Quoted
     // panel); view_3914 = acceptance grid feeding origin/quote chips.
     'view_4072', 'view_3914',
+    // Customer questionnaire scene (scene_1347): view_4031 = install line
+    // items the cards render from; view_4075 = hidden DOC_photos grid the
+    // photo strips scrape (was 100/page — projects past 100 photos lost
+    // strips silently).
+    'view_4031', 'view_4075',
     // Change Order scene: CO line items (v2 source), MDF/IDF locations,
     // project install items (removal source), project SOW/proposal items
     // (adoption source). All read whole via the Backbone model.
@@ -68,6 +73,8 @@
     'view_4098',
     // Deploy-scene As-Quoted source grids (see VIEW_IDS above)
     'view_4072', 'view_3914',
+    // Customer questionnaire scene grids (see VIEW_IDS above)
+    'view_4031', 'view_4075',
     // Change Order scene views (see VIEW_IDS above)
     'view_4079', 'view_4084', 'view_4086', 'view_4088',
     // Sub portal Manage Change Order views (see VIEW_IDS above)
