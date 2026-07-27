@@ -2428,16 +2428,66 @@
             return rec.sowId || rec.name || rec.id;
           },
           multi:         true,
-          onSaved:       function () {
-            // PUT went via view_3610, but v2 reads from view_3962 —
-            // whose Backbone model doesn't auto-refresh, and field_2154
-            // isn't in the mirror-connection-sync cascade so the
-            // scw-cascade-idle path never fires. Refetch explicitly.
-            if (ns.data && typeof ns.data.refetchAndNotify === 'function') {
-              ns.data.refetchAndNotify(viewKey);
-            } else if (ns.data && typeof ns.data.notify === 'function') {
-              ns.data.notify(viewKey);
+          onSaved:       function (newIds) {
+            // Cascade the SOW change to this record's accessory children
+            // (mounting hardware etc. — rows whose accessory back-pointer
+            // names this record). An accessory rides with its parent: the
+            // re-parent flow, CO unlink, and bulk edit all mirror the
+            // parent's field_2154 onto accessories, but this per-row picker
+            // didn't — leaving accessories on a stale/blank SOW, which
+            // silently drops them from every SOW-filtered surface (proposal
+            // grid, PDFs) so they never nest under their parent product.
+            var sowIds = Array.isArray(newIds) ? newIds : (newIds ? [newIds] : []);
+            var accParentKey = 'field_2464';
+            try {
+              var _sF = ns.cfg && typeof ns.cfg.fields === 'function'
+                ? ns.cfg.fields(viewKey) : null;
+              if (_sF && _sF.parent) accParentKey = _sF.parent;
+            } catch (e) { /* SOW fallback */ }
+            var accIds = [];
+            try {
+              var allRecs = (ns.data && typeof ns.data.readRecords === 'function')
+                ? ns.data.readRecords(viewKey) : [];
+              for (var ai = 0; ai < allRecs.length; ai++) {
+                var ar = allRecs[ai];
+                var apRaw = ar && ar[accParentKey + '_raw'];
+                if (Array.isArray(apRaw)) {
+                  for (var aj = 0; aj < apRaw.length; aj++) {
+                    if (apRaw[aj] && apRaw[aj].id === recordId) {
+                      if (accIds.indexOf(ar.id) === -1) accIds.push(ar.id);
+                      break;
+                    }
+                  }
+                }
+              }
+            } catch (e) { /* no cascade — refetch still runs */ }
+
+            var pendingAcc = accIds.length;
+            function refetch() {
+              // PUT went via view_3610, but v2 reads from view_3962 —
+              // whose Backbone model doesn't auto-refresh, and field_2154
+              // isn't in the mirror-connection-sync cascade so the
+              // scw-cascade-idle path never fires. Refetch explicitly.
+              if (ns.data && typeof ns.data.refetchAndNotify === 'function') {
+                ns.data.refetchAndNotify(viewKey);
+              } else if (ns.data && typeof ns.data.notify === 'function') {
+                ns.data.notify(viewKey);
+              }
             }
+            if (!pendingAcc) { refetch(); return; }
+            accIds.forEach(function (accId) {
+              SCW.knackAjax({
+                url:  SCW.knackRecordUrl(viewKey, accId),
+                type: 'PUT',
+                data: JSON.stringify({ field_2154: sowIds }),
+                success: function () { if (--pendingAcc === 0) refetch(); },
+                error: function (xhr) {
+                  console.warn('[scw-ws-v2] SOW cascade PUT failed for accessory ' +
+                    accId, xhr && xhr.status);
+                  if (--pendingAcc === 0) refetch();
+                }
+              });
+            });
           }
         });
         return;
