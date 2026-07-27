@@ -2323,38 +2323,38 @@
           nameDiv.appendChild(pdfA);
         }
 
-        // Inline edit on the proposal expiration date. CFG.proposalSourceView
-        // (view_3920) has inline-edit enabled on field_2659, so PUT through
-        // that view via the same dispatch pattern as SOW Name / Survey
-        // Costs (data-action handled in init.js).
+        // Inline edit on the proposal expiration date — pencil-edit
+        // affordance handled by pq-expiration-edit.js (scene_1155 entry),
+        // NOT a live auto-saving <input type="date">. The old always-live
+        // input PUT on every `change`, and the native date input fires
+        // `change` for each intermediate segment while typing (year "0002",
+        // "0020", …) — so it fired garbage saves mid-keystroke and the
+        // follow-on refetches re-rendered the header under the open
+        // calendar picker. The pencil opens an explicit Save/Cancel editor
+        // (with +30/60/90-day presets) that commits exactly once.
         var expEl       = proposalBlock.querySelector('.scw-pq-exp');
         var proposalRid = proposalBlock.getAttribute('data-proposal-record-id');
         if (expEl && proposalRid) {
-          // Pull the MM/DD/YYYY out of the rendered "Expires: 06/26/2026"
-          // (proposalBlock owns the formatting; we just convert to ISO for
-          // the input's value attribute).
-          var rawExp = (expEl.textContent || '').replace(/^[^0-9]*/, '').trim();
-          var isoExp = '';
-          var mExp   = rawExp.match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
-          if (mExp) {
-            isoExp = mExp[3] + '-' + ('0' + mExp[1]).slice(-2) + '-' + ('0' + mExp[2]).slice(-2);
-          }
-
-          expEl.textContent = '';
-          expEl.appendChild(document.createTextNode('Expires: '));
-          var expInput = document.createElement('input');
-          expInput.type = 'date';
-          expInput.className = 'scw-bid-review__pq-exp-input';
-          expInput.value = isoExp;
-          expInput.setAttribute('data-action',     'proposal_exp_update');
-          expInput.setAttribute('data-record-id',  proposalRid);
-          expInput.setAttribute('data-field',      'field_2659');
-          expInput.setAttribute('data-view',       CFG.proposalSourceView);
-          // The SOW record id — used to mirror field_2659 onto the SOW's
-          // field_2135 (a DIFFERENT record) on save (init.js).
-          expInput.setAttribute('data-sow-id',     sowId || '');
-          expInput.setAttribute('aria-label',      'Edit proposal expiration date');
-          expEl.appendChild(expInput);
+          // The SOW record id — pq-expiration-edit reads it off the block to
+          // mirror field_2659 onto the SOW's field_2135 (a DIFFERENT record).
+          proposalBlock.setAttribute('data-sow-record-id', sowId || '');
+          // Build the pencil here (instead of waiting for that module's
+          // knack-view-render decorate pass) so it exists the moment the v2
+          // grid rebuilds this header; the attribute stops decorate() from
+          // adding a duplicate.
+          expEl.setAttribute('data-scw-exp-editable', '1');
+          var expBtn = document.createElement('button');
+          expBtn.type = 'button';
+          expBtn.className = 'scw-pq-exp-edit-btn';
+          expBtn.title = 'Edit expiration date';
+          expBtn.setAttribute('aria-label', 'Edit proposal expiration date');
+          expBtn.innerHTML =
+            '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" ' +
+            'stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+            '<path d="M12 20h9"></path>' +
+            '<path d="M16.5 3.5a2.121 2.121 0 0 1 3 3L7 19l-4 1 1-4 12.5-12.5z"></path>' +
+            '</svg>';
+          expEl.appendChild(expBtn);
         }
 
         details.appendChild(proposalBlock);

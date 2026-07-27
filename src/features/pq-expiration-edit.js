@@ -2,10 +2,11 @@
  *
  * Ports published-proposal-sow-card.js's pencil-edit affordance for the
  * proposal expiration date to OTHER scenes that render the shared
- * SCW.publishedQuoteInfo block (.scw-pq-info). First target: the ops
+ * SCW.publishedQuoteInfo block (.scw-pq-info). Targets: the ops
  * build-SOW page (scene_1085), where ops-review-pill renders the compact
  * block into view_3325's Next Step cell and sow-grid-cards mirrors it
- * into the SOW cards.
+ * into the SOW cards; and the bid comparison grid (scene_1155), where
+ * bid-review/render.js puts the block in each SOW header.
  *
  * Every block carries data-proposal-record-id, so the record to write is
  * read straight off the DOM. Handlers are DELEGATED (document-level) —
@@ -36,7 +37,11 @@
   // (scene_1116 is intentionally absent — published-proposal-sow-card.js
   // already owns the editable expiration there.)
   var SCENES = {
-    scene_1085: { saveView: 'view_3885', sowExpView: 'view_3325' }
+    scene_1085: { saveView: 'view_3885', sowExpView: 'view_3325' },
+    // Bid comparison grid — the SOW header's published-proposal block
+    // (built by bid-review/render.js, which stamps the pencil itself so
+    // it survives v2 grid rebuilds; decorate() here is the backstop).
+    scene_1155: { saveView: 'view_3920', sowExpView: 'view_3918' }
   };
 
   function sceneCfg() {
@@ -92,7 +97,14 @@
       '.scw-pq-exp-edit-form .scw-pq-exp-cancel {',
       '  background: #fff; color: #475569; border-color: #cbd5e1;',
       '}',
-      '.scw-pq-exp-error { color: #b91c1c; font-size: 11px; margin-left: 4px; }'
+      '.scw-pq-exp-error { color: #b91c1c; font-size: 11px; margin-left: 4px; }',
+      '.scw-pq-exp-presets { display: inline-flex; gap: 3px; }',
+      '.scw-pq-exp-preset {',
+      '  font-size: 10.5px; font-weight: 600; padding: 3px 7px;',
+      '  border-radius: 999px; border: 1px solid #cbd5e1;',
+      '  background: #f8fafc; color: #475569; cursor: pointer;',
+      '}',
+      '.scw-pq-exp-preset:hover { background: #e2e8f0; color: #0f4c75; }'
     ].join('\n');
     document.head.appendChild(s);
   }
@@ -215,7 +227,29 @@
     var err = document.createElement('span');
     err.className = 'scw-pq-exp-error';
 
+    // Quick presets — set the date to today + N days without touching the
+    // (fiddly) native calendar picker. Fills the input; Save commits.
+    var presets = document.createElement('span');
+    presets.className = 'scw-pq-exp-presets';
+    [30, 60, 90].forEach(function (days) {
+      var chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = 'scw-pq-exp-preset';
+      chip.textContent = '+' + days + 'd';
+      chip.title = days + ' days from today';
+      chip.addEventListener('click', function (ev) {
+        ev.stopPropagation();
+        var d = new Date();
+        d.setDate(d.getDate() + days);
+        input.value = d.getFullYear() + '-' +
+          ('0' + (d.getMonth() + 1)).slice(-2) + '-' +
+          ('0' + d.getDate()).slice(-2);
+      });
+      presets.appendChild(chip);
+    });
+
     form.appendChild(input);
+    form.appendChild(presets);
     form.appendChild(save);
     form.appendChild(cancel);
 
