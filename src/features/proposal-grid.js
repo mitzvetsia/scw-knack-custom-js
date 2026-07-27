@@ -2682,11 +2682,15 @@ function makeLineRow({ label, value, rowType, isFirst, isLast }) {
     }
   }
 
-  // Walk every L2/L3 group header and, if no data rows live between
+  // Walk every L1/L2/L3 group header and, if no data rows live between
   // it and the next same-or-higher-level header, tag it with a class
   // so CSS can hide it. Runs after relocateAccessoriesToParents.
+  // L1 matters too: when every record in an MDF/IDF group is an accessory
+  // that got relocated under a parent in ANOTHER group (stale field_1946
+  // on the accessory), the whole L1 is left as an orphan header shell.
   function markEmptyGroupHeaders(tbody) {
     const headers = tbody.querySelectorAll(
+      'tr.kn-table-group.kn-group-level-1, ' +
       'tr.kn-table-group.kn-group-level-2, tr.kn-table-group.kn-group-level-3'
     );
     for (let i = 0; i < headers.length; i++) {
