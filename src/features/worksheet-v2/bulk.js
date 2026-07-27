@@ -33,9 +33,44 @@
   var _sourceViewKey = '';
 
   // ── Selection state ───────────────────────────────────────────
+  // ⚠️ Module-level and keyed by record id only — without guards it
+  // survives Knack SPA navigation. Observed 2026-07-27: rows selected on
+  // one project's build-SOW page rode along to ANOTHER project's page
+  // (same view_3962), and a bulk "add to SOW" there stamped that
+  // project's SOW onto 17 foreign records (view-scoped PUTs accept any
+  // record of the source object, so nothing server-side stops it).
+  // Two guards prevent a recurrence:
+  //   1. mount() clears the selection whenever the page identity changes
+  //      (source view + first record id in the hash).
+  //   2. selList()/selSize() prune ids that aren't loaded in the CURRENT
+  //      source view's model — no bulk action can ever touch a record
+  //      this page didn't load.
   var selectedIds = Object.create(null); // { recordId: true }
-  function selSize() { var n = 0; for (var k in selectedIds) n++; return n; }
-  function selList() { var a = []; for (var k in selectedIds) a.push(k); return a; }
+  var _selScope = '';
+  function pageScope(sourceViewKey) {
+    var base = (window.location.hash || '').replace(/^#/, '').split('?')[0];
+    var m = base.match(/[a-f0-9]{24}/i);
+    return (sourceViewKey || '') + ':' + (m ? m[0] : base);
+  }
+  function pruneToModel() {
+    try {
+      var v = window.Knack && Knack.views && Knack.views[_sourceViewKey];
+      var data = v && v.model && v.model.data;
+      // Skip while the model is missing/empty (mid-render transient) —
+      // pruning then would wrongly wipe a valid selection.
+      if (!data || !data.length || typeof data.get !== 'function') return;
+      var dropped = [];
+      for (var id in selectedIds) {
+        if (!data.get(id)) { dropped.push(id); delete selectedIds[id]; }
+      }
+      if (dropped.length && window.console) {
+        console.warn('[scw-ws-v2] bulk: dropped ' + dropped.length +
+          ' stale selected id(s) not loaded in ' + _sourceViewKey, dropped);
+      }
+    } catch (e) { /* never block selection reads */ }
+  }
+  function selSize() { pruneToModel(); var n = 0; for (var k in selectedIds) n++; return n; }
+  function selList() { pruneToModel(); var a = []; for (var k in selectedIds) a.push(k); return a; }
   function isSelected(id) { return !!selectedIds[id]; }
   function setSelected(id, on) {
     if (on) selectedIds[id] = true;
@@ -2524,6 +2559,13 @@
   // ── Public entry point ───────────────────────────────────────
   function mount(sourceViewKey) {
     _sourceViewKey = sourceViewKey;
+    // Page identity changed (different record/project in the hash, or a
+    // different source view) → the old selection belongs to another page.
+    // Clear it BEFORE syncDomFromState so foreign ids can't re-check boxes
+    // or feed a bulk action on this page.
+    var scope = pageScope(sourceViewKey);
+    if (_selScope && _selScope !== scope) clearAll();
+    _selScope = scope;
     ensureToolbar(sourceViewKey);
     wireGlobalDelegates(sourceViewKey);
     // After each re-render, sync visible boxes to current state.

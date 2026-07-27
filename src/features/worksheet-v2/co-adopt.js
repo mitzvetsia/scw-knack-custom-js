@@ -72,6 +72,7 @@
   // Multi-select state: record id → true. Survives re-renders (decorate
   // re-checks the boxes); cleared per-id once a record is adopted.
   var _sel = {};
+  var _selScope = '';   // page identity guard — see decorate()
   function selCount() { return Object.keys(_sel).length; }
 
   // ── Config ────────────────────────────────────────────────────────────
@@ -524,6 +525,16 @@
     var container = document.getElementById('scw-ws-v2-' + viewKey);
     if (!container) return;
     injectStyles();
+    // _sel is module-level and keyed by record id only — it survives Knack
+    // SPA navigation between different projects' CO scenes (same view
+    // keys). Clear it when the page identity (CO record id in the hash)
+    // changes so a stale selection can't re-check boxes or inflate the
+    // bulk count on another project's page. (fireAdopt already skips ids
+    // missing from the live model, so this is UX hygiene + defense in
+    // depth, mirroring bulk.js's pageScope guard.)
+    var scope = viewKey + ':' + getCoSowId();
+    if (_selScope && _selScope !== scope) clearSelection(viewKey);
+    _selScope = scope;
     ensureCollapsible(viewKey);
 
     var coId = getCoSowId();
