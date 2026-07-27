@@ -3585,15 +3585,21 @@ tr.${CO_RM.bannerCls} td {
     reorderLevel2GroupsBySortField(ctx, $tbody, runId);
     reorderLevel3GroupsBySortField(ctx, $tbody, runId);
 
+    // Rebuild L2/L3 headers Knack suppressed for items identical to a prior
+    // group (so the orphaned data row gets its bucket + product headers back).
+    // MUST run before accessory relocation: relocation anchors each accessory
+    // to its parent's enclosing L3 header, and a parent whose L3 was
+    // Knack-suppressed (same product already seen in an earlier L1 group) has
+    // NO L3 until this pass synthesizes it — relocating first silently skips
+    // those accessories and strands them in the bottom Mounting Hardware
+    // catch-all group.
+    synthesizeMissingAncestorHeaders(ctx);
+
     // Move accessory rows (field_2464 → parent) under their parent
     // device row, before L4 synthesis so synthesized headers respect
     // the new row positions.
     relocateAccessoriesToParents(ctx);
 
-    // Rebuild L2/L3 headers Knack suppressed for items identical to a prior
-    // group (so the orphaned data row gets its bucket + product headers back),
-    // THEN synthesize any missing L4 headers on top.
-    synthesizeMissingAncestorHeaders(ctx);
     synthesizeMissingL4Headers(ctx);
 
     // CO: in-place rose tint + chips on Remove-action rows, removal badges
