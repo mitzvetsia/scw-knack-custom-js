@@ -39,7 +39,14 @@
     changeHtmlField:   'field_2695',   // pre-built HTML card
     changeJsonField:   'field_2696',   // JSON payload (current/requested/action)
     revisionHtmlField: 'field_2687',   // alt HTML storage (kept in sync)
-    revisionJsonField: 'field_2688'    // alt JSON storage (kept in sync)
+    revisionJsonField: 'field_2688',   // alt JSON storage (kept in sync)
+
+    // Edit → "Approve with Changes" flow. DISABLED 2026-07-29: the Make
+    // automation for the 'approve_with_changes' action isn't programmed yet,
+    // so the sub only gets Approve | Reject (matches v1, where the Edit
+    // button is also hidden — Known Issue #3). Flip to true once the
+    // scenario handles the action.
+    enableApproveWithChanges: false
   };
 
   // Editable fields in the revision edit modal (mirrors v1 EDIT_FIELDS).
@@ -747,7 +754,9 @@
     }
 
     // Button order: destructive/negative first, primary last (Edit | Reject | Approve)
-    actions.appendChild(mkBtn('edit',    'edit',    'Edit'));
+    if (CFG.enableApproveWithChanges) {
+      actions.appendChild(mkBtn('edit', 'edit', 'Edit'));
+    }
     actions.appendChild(mkBtn('reject',  'reject',  'Reject'));
     actions.appendChild(mkBtn('approve', 'approve', 'Approve'));
     wrap.appendChild(actions);
@@ -780,6 +789,7 @@
         for (var i = 0; i < siblings.length; i++) siblings[i].disabled = true;
         submitRevisionAction(rid, 'approve', '', wrap, { outcome: 'accepted' });
       } else if (act === 'edit') {
+        if (!CFG.enableApproveWithChanges) return;   // flow disabled (see CFG)
         openEditModal(rid, jsonRef.data, wrap, jsonRef);
       } else if (act === 'reject') {
         // Reject reason is captured in a body-level modal, NOT an inline
