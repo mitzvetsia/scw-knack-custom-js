@@ -37,7 +37,11 @@
   // (scene_1116 is intentionally absent — published-proposal-sow-card.js
   // already owns the editable expiration there.)
   var SCENES = {
-    scene_1085: { saveView: 'view_3885', sowExpView: 'view_3325' },
+    // scene_1085 (ops build-SOW) intentionally ABSENT (removed 2026-07-29):
+    // the expiration is view-only there — edits happen on the bid
+    // comparison grid. Restore { saveView: 'view_3885', sowExpView:
+    // 'view_3325' } to re-enable.
+    //
     // Bid comparison grid — the SOW header's published-proposal block
     // (built by bid-review/render.js, which stamps the pencil itself so
     // it survives v2 grid rebuilds; decorate() here is the backstop).
