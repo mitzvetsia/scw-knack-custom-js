@@ -609,14 +609,11 @@
 
     if (sowRec) {
       mountWorksheetV2Card(cardCol, sowRec);
-    } else {
-      cardCol.innerHTML =
-        '<div class="scw-bid-review-v2__expand-loading">' +
-          'No SOW line item is linked to this bid item — it isn’t part of ' +
-          'any SOW’s scope. Use <b>Re-link</b> (top-right of a bid card) to ' +
-          'point it at the correct SOW line item.' +
-        '</div>';
     }
+    // No SOW record → leave the editor column empty. The old "use Re-link"
+    // instruction read as a to-do in contexts where re-linking is NOT the
+    // right move (e.g. the Removed — no longer on any SOW or bid section,
+    // where the disconnect is intentional).
 
     // Auto-mount the photo viewer when the row has photos, so expanding
     // (by clicking the SOW cell, the row, or a thumb) always surfaces
