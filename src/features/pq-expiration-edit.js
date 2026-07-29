@@ -45,6 +45,19 @@
   };
 
   function sceneCfg() {
+    // Prefer the router's live scene key, then a rendered scene div —
+    // document.body.id doesn't reliably carry the scene key (e.g. the bid
+    // comparison page, scene_1155, reached via nested nav), which left the
+    // pencil unstyled and its click handler dead there.
+    try {
+      var key = window.Knack && Knack.router && Knack.router.current_scene_key;
+      if (key && SCENES[key]) return SCENES[key];
+    } catch (e) { /* fall through */ }
+    for (var k in SCENES) {
+      if (SCENES.hasOwnProperty(k) && document.getElementById('kn-' + k)) {
+        return SCENES[k];
+      }
+    }
     var m = (document.body.id || '').match(/scene_\d+/);
     return (m && SCENES[m[0]]) || null;
   }
