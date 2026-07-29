@@ -49,17 +49,25 @@
     return (m && SCENES[m[0]]) || null;
   }
 
-  // ── Date helpers (mirror published-proposal-sow-card.js) ───────────
-  function toIsoYmd(mdy) {
-    var m = String(mdy || '').match(/^(\d{1,2})\/(\d{1,2})\/(\d{4})/);
-    if (!m) return '';
-    function pad(n) { return (n.length < 2 ? '0' : '') + n; }
-    return m[3] + '-' + pad(m[1]) + '-' + pad(m[2]);
-  }
-  function toMdy(iso) {
-    var m = String(iso || '').match(/^(\d{4})-(\d{2})-(\d{2})/);
-    if (!m) return '';
-    return parseInt(m[2], 10) + '/' + parseInt(m[3], 10) + '/' + m[1];
+  // ── Date helpers ─────────────────────────────────────────────────────
+  // The editor is a plain TEXT input (the native date input's calendar
+  // picker was slow and hated). Accept M/D/YYYY, MM-DD-YYYY, M.D.YY or a
+  // bare MMDDYYYY digit run; return Knack's M/D/YYYY or '' when invalid.
+  function normalizeMdy(s) {
+    s = String(s || '').trim();
+    var m = s.match(/^(\d{1,2})[\/\-.](\d{1,2})[\/\-.](\d{2}|\d{4})$/);
+    if (!m) {
+      var digits = s.replace(/\D/g, '');
+      if (digits.length === 8) {
+        m = [null, digits.slice(0, 2), digits.slice(2, 4), digits.slice(4)];
+      } else {
+        return '';
+      }
+    }
+    var mo = parseInt(m[1], 10), d = parseInt(m[2], 10), y = parseInt(m[3], 10);
+    if (y < 100) y += 2000;
+    if (mo < 1 || mo > 12 || d < 1 || d > 31 || y < 2000 || y > 2100) return '';
+    return mo + '/' + d + '/' + y;
   }
 
   // ── Styles ──────────────────────────────────────────────────────────
@@ -83,9 +91,14 @@
       '.scw-pq-exp-edit-form {',
       '  display: inline-flex; align-items: center; gap: 4px; flex-wrap: wrap;',
       '}',
-      '.scw-pq-exp-edit-form input[type="date"] {',
-      '  font-size: 12px; padding: 2px 5px; border: 1px solid #cbd5e1;',
-      '  border-radius: 4px; background: #fff;',
+      '.scw-pq-exp-edit-form .scw-pq-exp-text-input {',
+      '  font-size: 12px; padding: 3px 6px; border: 1px solid #cbd5e1;',
+      '  border-radius: 4px; background: #fff; width: 92px;',
+      '  font-variant-numeric: tabular-nums;',
+      '}',
+      '.scw-pq-exp-edit-form .scw-pq-exp-text-input:focus {',
+      '  outline: none; border-color: #07467c;',
+      '  box-shadow: 0 0 0 2px rgba(7,70,124,0.15);',
       '}',
       '.scw-pq-exp-edit-form button {',
       '  font-size: 11px; font-weight: 600; padding: 3px 8px;',
@@ -214,8 +227,12 @@
     var form = document.createElement('span');
     form.className = 'scw-pq-exp-edit-form';
     var input = document.createElement('input');
-    input.type = 'date';
-    input.value = toIsoYmd(current);
+    input.type = 'text';
+    input.className = 'scw-pq-exp-text-input';
+    input.placeholder = 'MM/DD/YYYY';
+    input.autocomplete = 'off';
+    input.setAttribute('inputmode', 'numeric');
+    input.value = current || '';
     var save = document.createElement('button');
     save.type = 'button';
     save.className = 'scw-pq-exp-save';
@@ -241,9 +258,8 @@
         ev.stopPropagation();
         var d = new Date();
         d.setDate(d.getDate() + days);
-        input.value = d.getFullYear() + '-' +
-          ('0' + (d.getMonth() + 1)).slice(-2) + '-' +
-          ('0' + d.getDate()).slice(-2);
+        input.value = (d.getMonth() + 1) + '/' + d.getDate() + '/' + d.getFullYear();
+        err.textContent = '';
       });
       presets.appendChild(chip);
     });
@@ -257,6 +273,7 @@
     expEl.appendChild(form);
     expEl.appendChild(err);
     input.focus();
+    input.select();   // whole date selected — type to overwrite
 
     function close() { expEl.innerHTML = restoreHtml; }
     cancel.addEventListener('click', function (ev) { ev.stopPropagation(); close(); });
@@ -267,8 +284,8 @@
     });
     save.addEventListener('click', function (ev) {
       ev.stopPropagation();
-      var mdy = toMdy(input.value);
-      if (!mdy) { err.textContent = 'Pick a valid date.'; return; }
+      var mdy = normalizeMdy(input.value);
+      if (!mdy) { err.textContent = 'Enter a date as MM/DD/YYYY.'; return; }
       save.disabled = true; save.textContent = 'Saving…';
       saveExpiration(recordId, mdy, saveView, function (saveErr) {
         if (saveErr) {
