@@ -40,9 +40,13 @@
       // NEVER offered on a change-order proposal — a CO is accepted via the
       // issued e-signature agreement, not the Accept flow (which would fire
       // the base-scope acceptance pipeline). See isChangeOrderProposal().
+      // Suppressed once the proposal is ACCEPTED (field_2991 flag_accepted)
+      // — injectAcceptedBanner() renders a "this proposal has been
+      // accepted" notice in the CTA's place instead.
       appendRecordId: true,
       gate: function (attrs) {
         if (isChangeOrderProposal()) return false;
+        if (isProposalAccepted()) return false;
         return isYesValue(attrs.field_2747) || isYesValue(attrs.field_2747_raw);
       }
     }
@@ -236,6 +240,11 @@
     // customer's pointer to the actual signing path).
     setTimeout(function () { injectCoNoticeBanner(iframe); }, 250);
     setTimeout(function () { injectCoNoticeBanner(iframe); }, 1200);
+
+    // Accepted proposals (field_2991): green "already accepted" notice
+    // in the Accept CTA's place (the CTA gate suppresses the button).
+    setTimeout(function () { injectAcceptedBanner(iframe); }, 250);
+    setTimeout(function () { injectAcceptedBanner(iframe); }, 1200);
 
     // Inject the CTA bar inside the iframe, just above the first
     // .view-title — typically "Proposed Solution" — so it sits between
@@ -482,6 +491,63 @@
       '<div style="font-weight:500;">' + body + '</div>';
     doc.body.insertBefore(banner, doc.body.firstChild);
   }
+  // ── Accepted proposal (field_2991 flag_accepted) ────────────────
+  // True when the proposal has been accepted. The flag is checked on
+  // BOTH records on this scene (the published-proposal record and the
+  // SOW detail view) so it works wherever Builder ends up exposing
+  // field_2991. Fails safe: missing/blank field → not accepted, the
+  // Accept CTA keeps showing.
+  var ACCEPTED_FIELD = 'field_2991';
+  function isProposalAccepted() {
+    function check(attrs) {
+      return !!attrs && (isYesValue(attrs[ACCEPTED_FIELD]) ||
+                         isYesValue(attrs[ACCEPTED_FIELD + '_raw']) ||
+                         attrs[ACCEPTED_FIELD + '_raw'] === true);
+    }
+    if (check(readPublishedProposalAttrs())) return true;
+    try {
+      var v = window.Knack && Knack.views && Knack.views[SOW_DETAIL_VIEW];
+      var attrs = v && v.model && (v.model.attributes
+                  || (v.model.data && v.model.data.attributes));
+      if (check(attrs)) return true;
+    } catch (e) { /* not accepted */ }
+    return false;
+  }
+
+  // Green "already accepted" notice — takes the Accept CTA's spot (just
+  // above the first .view-title) when field_2991 says the proposal has
+  // been accepted. COs are excluded: they carry their own e-sign banner.
+  function injectAcceptedBanner(iframe) {
+    if (!iframe || isChangeOrderProposal() || !isProposalAccepted()) return;
+    var doc;
+    try { doc = iframe.contentDocument || (iframe.contentWindow && iframe.contentWindow.document); }
+    catch (e) { return; }
+    if (!doc || !doc.body) return;
+    if (doc.body.querySelector('.scw-accepted-banner')) return;  // idempotent
+
+    var banner = doc.createElement('div');
+    banner.className = 'scw-accepted-banner';
+    banner.style.cssText =
+      'margin: 16px 0 24px 0; padding: 14px 18px;' +
+      'background: #f0fdf4; border: 1px solid #86efac;' +
+      'border-radius: 8px; color: #166534;' +
+      'font: 600 14px/1.45 system-ui, -apple-system, sans-serif;' +
+      'text-align: left;';
+    banner.innerHTML =
+      '<div style="font-size:15px; font-weight:800; margin-bottom:4px;">' +
+        '✓ This proposal has been accepted!' +
+      '</div>' +
+      '<div style="font-weight:500;">No further action is needed — ' +
+        'our team will be in touch with next steps.</div>';
+
+    var firstTitle = doc.body.querySelector('.view-title');
+    if (firstTitle && firstTitle.parentNode) {
+      firstTitle.parentNode.insertBefore(banner, firstTitle);
+    } else {
+      doc.body.insertBefore(banner, doc.body.firstChild);
+    }
+  }
+
   function readCrCount() {
     try {
       var v = window.Knack && Knack.views && Knack.views[SOW_DETAIL_VIEW];
