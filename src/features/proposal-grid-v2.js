@@ -363,7 +363,13 @@
     }
     if (!items.length) return '';
     items.sort(function (a, b) { return a.p === b.p ? a.n - b.n : (a.p < b.p ? -1 : 1); });
-    return items.map(function (it) { return it.p + it.n; }).join(', ');
+    // Zero-padded to 3 digits ("I-001") — matches the composed drop labels
+    // used everywhere else (connected devices, worksheet cards).
+    return items.map(function (it) {
+      var s = String(it.n);
+      while (s.length < 3) s = '0' + s;
+      return it.p + s;
+    }).join(', ');
   }
   function isCamReaderRec(rec) {
     // Bucket id shows up on both the bucket connection and the sortOrder
@@ -496,7 +502,8 @@
             var camHtml = '';
             if (context === 'drop') {
               var list = designatorList(l4.items);
-              if (list) camHtml = '<br /><b class="scw-pg2-cams">(' + esc(list) + ')</b>';
+              // Same tight labeled callout as Connected devices.
+              if (list) camHtml = '<span class="scw-pg2-l4-conn"><b>Applies to: ' + esc(list) + '</b></span>';
             }
             // Connected devices (orange, labeled) — beneath the labor
             // description. Only names that resolve to records in THIS view
@@ -546,7 +553,7 @@
               });
               var pl = designatorList(parentRecs);
               pushRow('scw-pg2-mount', [
-                { html: esc(name) + (pl ? ' <b class="scw-pg2-cams">for ' + esc(pl) + '</b>' : '') },
+                { html: esc(name) + (pl ? ' <b class="scw-pg2-cams">&mdash; for ' + esc(pl) + '</b>' : '') },
                 { html: String(Math.round(gQty)) },
                 { html: esc(money(gHardware)) }
               ]);
@@ -706,18 +713,15 @@
       '.scw-pg2-l3 td:nth-child(n+2) { font-weight: 600; }',
       '.scw-pg2-l4-conn { display: block; margin-top: 4px; line-height: 1.2; font-size: 12px; }',
       '.scw-pg2-l4-conn b, .scw-pg2-cams { color: orange; font-weight: 800; }',
-      // L4
+      // L4 — no extra indent beneath the product header (2026-07-30)
       '.scw-pg2-l4 td { padding-top: 5px; font-weight: 300; }',
-      '.scw-pg2-l4 td:first-child { padding-left: 80px; }',
       '.scw-pg2-l4 td:nth-child(n+2) { font-weight: 600; }',
       '.scw-pg2-l4-desc { display: block; line-height: 1.2; }',
       '.scw-pg2-l4-desc b { font-weight: 600; }',
       '.scw-pg2-hide-qtycost td:nth-child(n+2) { visibility: hidden; }',
-      // Mounting cluster
+      // Mounting cluster — flush with the labor description (no indent)
       '.scw-pg2-mount td { color: #07467c; font-size: 14px; font-weight: 500; }',
-      '.scw-pg2-mount td:first-child { padding-left: 80px; }',
       '.scw-pg2-mount-labor td { font-size: 13px; font-weight: 300; line-height: 1.2; }',
-      '.scw-pg2-mount-labor td:first-child { padding-left: 80px; }',
       // L2 footer
       '.scw-pg2-l2foot td { background: aliceblue; border-top: 1px solid #dadada; font-weight: 800; border-bottom: 20px solid transparent; }',
       '.scw-pg2-l2foot td:first-child { text-align: right; }',
