@@ -553,7 +553,7 @@
               });
               var pl = designatorList(parentRecs);
               pushRow('scw-pg2-mount', [
-                { html: esc(name) + (pl ? ' <b class="scw-pg2-cams">&mdash; for ' + esc(pl) + '</b>' : '') },
+                { html: esc(name) + (pl ? '<span class="scw-pg2-l4-conn"><b>' + esc(pl) + '</b></span>' : '') },
                 { html: String(Math.round(gQty)) },
                 { html: esc(money(gHardware)) }
               ]);
@@ -726,8 +726,6 @@
       // Mounting cluster — flush with the labor description (no indent),
       // muted slate so accessories read as secondary to the product
       '.scw-pg2-mount td { color: #5f6b7a; font-size: 14px; font-weight: 400; }',
-      // Parent-designator tail matches the 12px labeled callouts
-      '.scw-pg2-mount .scw-pg2-cams { font-size: 12px; }',
       '.scw-pg2-mount-labor td { font-size: 13px; font-weight: 300; line-height: 1.2; }',
       // L2 footer — border-collapse merges adjacent transparent borders,
       // so this 40px alone sets the gap to the next section header.
