@@ -366,7 +366,12 @@
     return items.map(function (it) { return it.p + it.n; }).join(', ');
   }
   function isCamReaderRec(rec) {
-    var c = connFirst(rec, CONFIG.fields.bucketSort);
+    // Bucket id shows up on both the bucket connection and the sortOrder
+    // connection (same record id) — accept either so a blank one can't
+    // hide the parent designators.
+    var c = connFirst(rec, CONFIG.fields.bucket);
+    if (c && c.id === CONFIG.camReaderBucketId) return true;
+    c = connFirst(rec, CONFIG.fields.bucketSort);
     return !!(c && c.id === CONFIG.camReaderBucketId);
   }
 
@@ -541,7 +546,7 @@
               });
               var pl = designatorList(parentRecs);
               pushRow('scw-pg2-mount', [
-                { html: esc(name) + (pl ? ' <b class="scw-pg2-cams">(' + esc(pl) + ')</b>' : '') },
+                { html: esc(name) + (pl ? ' <b class="scw-pg2-cams">for ' + esc(pl) + '</b>' : '') },
                 { html: String(Math.round(gQty)) },
                 { html: esc(money(gHardware)) }
               ]);
