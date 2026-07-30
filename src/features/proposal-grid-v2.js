@@ -17,7 +17,7 @@
  *
  * Grouping hierarchy (derived from raw fields — v1 got it from Builder
  * groupings, which the flat duplicate doesn't have). Confirmed against
- * view_3301's live grouped DOM 2026-07-30:
+ * view_3341's live grouped DOM 2026-07-30:
  *    L1 = field_1946 (MDF/IDF location connection — "HEADEND: …",
  *         "IDF: 01: …"; blank → the L2s below promote to L1 styling)
  *    L2 = field_2219 (proposal bucket connection), ordered by field_2218
@@ -44,9 +44,13 @@
     views: {
       // v1 view id → per-instance config. dataViewKey MUST be filled in
       // with the flat Builder duplicate before this instance activates.
-      view_3301: {
-        // view_4140 = flat Builder duplicate of view_3301: no groupings,
-        // same filters/sort, all CONFIG.fields as columns, hidden here.
+      // NOTE: keep dataViewKeys UNIQUE across entries — the bindings use a
+      // shared event namespace, so two entries sharing one data view would
+      // unbind each other.
+      view_3341: {
+        // view_4140 = flat Builder duplicate on the Proposal Preview scene
+        // (scene_1096, whose v1 grid is view_3341): no groupings, same
+        // filters/sort, all CONFIG.fields as columns, hidden here.
         dataViewKey: 'view_4140',
         showProjectTotals: true
       }
