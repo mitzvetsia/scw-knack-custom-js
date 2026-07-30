@@ -467,23 +467,8 @@
           if (!hideL3 && !isBlankish(product.label)) {
             var pQty = sumRecs(product.items, F.qty);
             var pHardware = sumRecs(product.items, F.hardware);
-            // Connected devices (orange list) — only names that resolve to
-            // records in THIS view (other-SOW connections are dropped).
-            var connNames = [];
-            product.items.forEach(function (it) {
-              var raw = it[F.connectedDevices + '_raw'];
-              if (!Array.isArray(raw)) return;
-              raw.forEach(function (c) {
-                if (!c || !c.id || !tree.byId[c.id]) return;
-                var t = norm(stripHtml(c.identifier));
-                if (t && !isBlankish(t)) connNames.push(t);
-              });
-            });
-            var connHtml = connNames.length
-              ? '<span class="scw-pg2-l3-conn"><b>(' + esc(connNames.join(', ')) + ')</b></span>'
-              : '';
             pushRow('scw-pg2-l3', [
-              { html: esc(product.label) + connHtml },
+              { html: esc(product.label) },
               { html: '<strong>' + Math.round(pQty) + '</strong>' },
               { html: '<strong>' + amountHtml(pHardware, false) + '</strong>' }
             ], allRemove ? 'remove' : (allAdd ? 'add' : ''));
@@ -508,8 +493,24 @@
               var list = designatorList(l4.items);
               if (list) camHtml = '<br /><b class="scw-pg2-cams">(' + esc(list) + ')</b>';
             }
+            // Connected devices (orange, labeled) — beneath the labor
+            // description. Only names that resolve to records in THIS view
+            // (other-SOW connections are dropped).
+            var connNames = [];
+            l4.items.forEach(function (it) {
+              var raw = it[F.connectedDevices + '_raw'];
+              if (!Array.isArray(raw)) return;
+              raw.forEach(function (c) {
+                if (!c || !c.id || !tree.byId[c.id]) return;
+                var t = norm(stripHtml(c.identifier));
+                if (t && !isBlankish(t)) connNames.push(t);
+              });
+            });
+            var connHtml = connNames.length
+              ? '<span class="scw-pg2-l4-conn"><b>Connected devices: ' + esc(connNames.join(', ')) + '</b></span>'
+              : '';
             pushRow('scw-pg2-l4' + (hideQtyCost ? ' scw-pg2-hide-qtycost' : ''), [
-              { html: '<span class="scw-pg2-l4-desc">' + l4.html + '</span>' + camHtml },
+              { html: '<span class="scw-pg2-l4-desc">' + l4.html + '</span>' + camHtml + connHtml },
               { html: hideQtyCost ? '' : '<strong>' + Math.round(l4Qty) + '</strong>' },
               { html: hideQtyCost ? '' : '<strong>' + (masked ? tbd() : esc(money(l4Labor))) + '</strong>' }
             ], l4Remove ? 'remove' : (l4Add ? 'add' : ''));
@@ -698,8 +699,8 @@
       '.scw-pg2-l3 td { padding-top: 10px; font-weight: 300; }',
       '.scw-pg2-l3 td:first-child { font-size: 20px; }',
       '.scw-pg2-l3 td:nth-child(n+2) { font-weight: 600; }',
-      '.scw-pg2-l3-conn { display: block; margin-top: 5px; padding-left: 40px; line-height: 1.2; font-size: 12px; }',
-      '.scw-pg2-l3-conn b, .scw-pg2-cams { color: orange; font-weight: 800; }',
+      '.scw-pg2-l4-conn { display: block; margin-top: 4px; line-height: 1.2; font-size: 12px; }',
+      '.scw-pg2-l4-conn b, .scw-pg2-cams { color: orange; font-weight: 800; }',
       // L4
       '.scw-pg2-l4 td { padding-top: 5px; font-weight: 300; }',
       '.scw-pg2-l4 td:first-child { padding-left: 80px; }',
