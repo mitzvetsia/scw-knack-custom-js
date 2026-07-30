@@ -620,18 +620,50 @@
   // ======================
   // SCENE DETECTION
   // ======================
+  // Memoized per URL hash. The old fallback ($('[id*="scene_"]')
+  // .filter(':visible')) scanned the whole DOM and forced a style
+  // recalc per matched element on EVERY call — and this runs inside
+  // the document-level click delegate, scene/view render handlers and
+  // the mutation observers. A 30-min trace on the installationservices
+  // app (body id without scene_) showed 41s of main-thread time in
+  // this one function. Same-hash calls now hit the cache; the cold
+  // path asks Knack's router before ever touching the DOM.
+  var _sceneIdCache = { hash: null, id: null };
+
   function getCurrentSceneId() {
+    var hash = window.location.href;
+    if (_sceneIdCache.hash === hash && _sceneIdCache.id) return _sceneIdCache.id;
+
+    var id = null;
+
     const bodyId = $('body').attr('id');
     if (bodyId && bodyId.includes('scene_')) {
       const m = bodyId.match(/scene_\d+/);
-      if (m) return m[0];
+      if (m) id = m[0];
     }
-    const $fallback = $('[id*="scene_"]').filter(':visible').first();
-    if ($fallback.length) {
-      const m = ($fallback.attr('id') || '').match(/scene_\d+/);
-      if (m) return m[0];
+
+    if (!id) {
+      // Scoped, jQuery-free fallback: scene containers only (a page has
+      // 1-2, vs the old any-element [id*="scene_"] scan), and a single
+      // offsetParent visibility probe instead of jQuery :visible. Kept
+      // AHEAD of the router so modal pages keep resolving to the parent
+      // scene like the old code did (first visible container wins) —
+      // storage keys depend on that.
+      var els = document.querySelectorAll('.kn-scene[id*="scene_"], [id^="kn-scene_"]');
+      for (var i = 0; i < els.length; i++) {
+        if (els[i].offsetParent === null) continue;
+        var m2 = (els[i].id || '').match(/scene_\d+/);
+        if (m2) { id = m2[0]; break; }
+      }
     }
-    return null;
+
+    if (!id && window.Knack && Knack.router && Knack.router.current_scene_key) {
+      const m = String(Knack.router.current_scene_key).match(/^scene_\d+$/);
+      if (m) id = m[0];
+    }
+
+    _sceneIdCache = { hash: hash, id: id };
+    return id;
   }
 
   var DISABLED_SCENES = { scene_828: true, scene_833: true, scene_873: true };
