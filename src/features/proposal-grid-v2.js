@@ -16,14 +16,19 @@
  *    testing); `true` hides v1's table and shows only v2.
  *
  * Grouping hierarchy (derived from raw fields — v1 got it from Builder
- * groupings, which the flat duplicate doesn't have):
- *    L1 = field_2228 (project system connection: Video / Access Control;
- *         blank → the L2s below promote to L1 styling)
+ * groupings, which the flat duplicate doesn't have). Confirmed against
+ * view_3301's live grouped DOM 2026-07-30:
+ *    L1 = field_1946 (MDF/IDF location connection — "HEADEND: …",
+ *         "IDF: 01: …"; blank → the L2s below promote to L1 styling)
  *    L2 = field_2219 (proposal bucket connection), ordered by field_2218
- *         (bucket sortOrder connection, numeric identifier) asc
+ *         (bucket sortOrder connection: numeric identifier, id = the
+ *         bucket record id) asc
  *    L3 = field_2208 (product name + SKU display text), ordered by line
  *         total sum desc
  *    L4 = field_2019 (install/labor description rich text), model order
+ * field_2228 (per-row Project Type connection: Video / Access Control /
+ * Cameras / …) is NOT a grouping level — it only drives the per-L1-section
+ * L2 rename rules, exactly like v1's l2Selector.
  */
 (function () {
   'use strict';
@@ -48,7 +53,8 @@
     },
 
     fields: {
-      l1:            'field_2228',  // project system (connection)
+      l1:            'field_1946',  // MDF/IDF location (connection) — the real L1
+      projectType:   'field_2228',  // per-row Project Type (connection) — rename rules only
       bucket:        'field_2219',  // proposal bucket (connection)
       bucketSort:    'field_2218',  // bucket sortOrder (connection, numeric identifier)
       product:       'field_2208',  // product name + SKU (L3 label)
@@ -87,7 +93,9 @@
       'services': 'services'
     },
 
-    // Per-L1-system L2 renames — mirrors v1's level2LabelRewrite.
+    // Per-section L2 renames keyed off the rows' Project Type
+    // (field_2228) — mirrors v1's level2LabelRewrite + l2Selector.
+    // "Cameras" (and anything unlisted) fires no rename.
     renameRules: [
       { when: 'video', match: 'exact', renames: {
           'Camera or Reader': 'Cameras',
@@ -306,16 +314,24 @@
   }
 
   // ── label helpers ─────────────────────────────────────────────────
-  function findRenameRule(l1g) {
-    // Match the L1 system label against the rename rules (v1 matched the
-    // per-row field_2228 values; identical data, cleaner read).
-    var v = norm(l1g.label).toLowerCase();
-    if (!v) return null;
-    for (var i = 0; i < CONFIG.renameRules.length; i++) {
-      var rule = CONFIG.renameRules[i];
-      var w = rule.when.toLowerCase();
-      var hit = rule.match === 'contains' ? v.indexOf(w) !== -1 : v === w;
-      if (hit) return rule;
+  function findRenameRule(recs) {
+    // v1 parity: collect the distinct per-row Project Type (field_2228)
+    // identifiers within the section, then first value → first rule hit.
+    var seen = Object.create(null), values = [], i;
+    for (i = 0; i < recs.length; i++) {
+      var c = connFirst(recs[i], CONFIG.fields.projectType);
+      var v = norm(c ? c.label : readText(recs[i], CONFIG.fields.projectType)).toLowerCase();
+      if (v && !seen[v]) { seen[v] = 1; values.push(v); }
+    }
+    for (i = 0; i < values.length; i++) {
+      for (var ri = 0; ri < CONFIG.renameRules.length; ri++) {
+        var rule = CONFIG.renameRules[ri];
+        var w = rule.when.toLowerCase();
+        var hit = rule.match === 'contains'
+          ? values[i].indexOf(w) !== -1
+          : values[i] === w;
+        if (hit) return rule;
+      }
     }
     return null;
   }
@@ -374,7 +390,6 @@
 
     tree.l1s.forEach(function (l1g) {
       var promoted = isBlankish(l1g.label);   // blank L1 → L2s act as L1
-      var rule = findRenameRule(l1g);
 
       // L1 subtotal across every record (incl. accessories) in this L1.
       var l1Recs = [];
@@ -388,6 +403,7 @@
           });
         });
       });
+      var rule = findRenameRule(l1Recs);
       var l1Hardware = sumRecs(l1Recs, F.hardware);
       var l1Labor = laborSum(l1Recs);
       var l1Subtotal = l1Hardware + l1Labor;
@@ -750,8 +766,8 @@
   // Rendering off an incomplete model produces a degenerate grid (single
   // blank section, accessories duplicated as their own products), so refuse
   // to render and surface the exact missing columns instead.
-  var PROBE_FIELDS = ['l1', 'bucket', 'bucketSort', 'product', 'installDesc',
-    'qty', 'labor', 'hardware', 'cost', 'accessoryParent'];
+  var PROBE_FIELDS = ['l1', 'projectType', 'bucket', 'bucketSort', 'product',
+    'installDesc', 'qty', 'labor', 'hardware', 'cost', 'accessoryParent'];
   function missingColumns(records) {
     if (!records.length) return [];
     var missing = [];
