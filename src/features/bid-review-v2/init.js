@@ -325,18 +325,23 @@
   // ── Revise dropdown (v1 parity) ──────────────────────────────────
   // The menu is positioned FIXED at the trigger's coordinates so the SOW
   // card's overflow:hidden can't clip it (v1's grid has no such clip).
+  // Track the open overflow element instead of scanning the document on
+  // every click (closeReviseMenus runs in the document click path). A
+  // stale ref degrades safely: classList ops on a detached node are
+  // no-ops, so worst case is a redundant close — never a stuck-open menu.
+  var _openOverflow = null;
   function closeReviseMenus() {
-    var open = document.querySelectorAll('.scw-bid-review-v2__overflow--open');
-    for (var i = 0; i < open.length; i++) {
-      open[i].classList.remove('scw-bid-review-v2__overflow--open');
-      var m = open[i].querySelector('.scw-bid-review-v2__overflow-menu');
-      if (m) { m.style.cssText = ''; }
-    }
+    if (!_openOverflow) return;
+    _openOverflow.classList.remove('scw-bid-review-v2__overflow--open');
+    var m = _openOverflow.querySelector('.scw-bid-review-v2__overflow-menu');
+    if (m) { m.style.cssText = ''; }
+    _openOverflow = null;
   }
   function openReviseMenu(ov, trigger) {
     var menu = ov.querySelector('.scw-bid-review-v2__overflow-menu');
     if (!menu) return;
     ov.classList.add('scw-bid-review-v2__overflow--open');
+    _openOverflow = ov;
     var r = trigger.getBoundingClientRect();
     var width = 160;
     var left = Math.min(r.left, window.innerWidth - width - 8);
@@ -600,13 +605,11 @@
     td.appendChild(panel);
 
     expand.appendChild(td);
-    row.parentNode.insertBefore(expand, row.nextSibling);
-    row.classList.add('scw-bid-review-v2__row--open');
-    row.setAttribute('aria-expanded', 'true');
-    // Remember this row is open so a post-edit/-delete grid rebuild can
-    // re-open it (render.js → reopenExpandedRows) instead of collapsing it.
-    if (ns.state) ns.state.setRowExpanded(stateKey, true);
 
+    // Build the worksheet editor card while the panel is still DETACHED —
+    // mounting into live DOM interleaved style/layout work into the click
+    // task (perf traces 2026-07-30). buildBidDetailsColumn above already
+    // runs detached; this brings the card mount in line.
     if (sowRec) {
       mountWorksheetV2Card(cardCol, sowRec);
     }
@@ -615,25 +618,57 @@
     // right move (e.g. the Removed — no longer on any SOW or bid section,
     // where the disconnect is intentional).
 
+    row.parentNode.insertBefore(expand, row.nextSibling);
+    row.classList.add('scw-bid-review-v2__row--open');
+    row.setAttribute('aria-expanded', 'true');
+    // Remember this row is open so a post-edit/-delete grid rebuild can
+    // re-open it (render.js → reopenExpandedRows) instead of collapsing it.
+    if (ns.state) ns.state.setRowExpanded(stateKey, true);
+
     // Auto-mount the photo viewer when the row has photos, so expanding
     // (by clicking the SOW cell, the row, or a thumb) always surfaces
-    // them — matching v1. aria-expanded is already 'true' above, so
-    // openWithPhoto won't recurse back into toggleRowExpand.
+    // them — matching v1. Deferred to the next frame so the photo scrape
+    // + viewer mount stay off the click task. Guards:
+    //   (a) row collapsed before the frame fires → bail, otherwise
+    //       openWithPhoto's expand-if-closed branch would RE-OPEN it;
+    //   (b) a viewer already mounted → bail — the thumb-click path
+    //       (card.js) mounts one synchronously right after this returns,
+    //       at the CLICKED index; clobbering it back to photo 0 would
+    //       regress that flow.
     var scrape = window.SCW && SCW.bidReview && SCW.bidReview.scrapeRowPhotoUrls;
     if (typeof scrape === 'function') {
       var rowId = row.getAttribute('data-row-id');
-      var urls = scrape(sowItemId || null, rowId || null);
-      if (urls && urls.length) openWithPhoto(row, urls, 0);
+      var rafFn = window.requestAnimationFrame ||
+        function (fn) { return window.setTimeout(fn, 16); };
+      rafFn(function () {
+        if (!expand.isConnected ||
+            row.getAttribute('aria-expanded') !== 'true') return;
+        if (expand.querySelector('.scw-bid-review-v2__photo-viewer')) return;
+        var urls = scrape(sowItemId || null, rowId || null);
+        if (urls && urls.length) openWithPhoto(row, urls, 0);
+      });
     }
     syncToolbarRowLabel();
   }
 
   // Keep the toolbar "Expand/Collapse line items" label honest after any
   // single-row toggle (clicking a row, closing a panel via its × button).
+  // Coalesced to one syncLabels per frame: syncLabels scans every row +
+  // group header, so calling it synchronously per toggle made
+  // collapse-all O(rows²) and taxed every single-row click (perf traces
+  // 2026-07-30).
+  var _tbSyncPending = false;
   function syncToolbarRowLabel() {
-    if (ns.toolbar && typeof ns.toolbar.syncLabels === 'function') {
-      try { ns.toolbar.syncLabels(); } catch (e) { /* fail soft */ }
-    }
+    if (_tbSyncPending) return;
+    _tbSyncPending = true;
+    var rafFn = window.requestAnimationFrame ||
+      function (fn) { return window.setTimeout(fn, 16); };
+    rafFn(function () {
+      _tbSyncPending = false;
+      if (ns.toolbar && typeof ns.toolbar.syncLabels === 'function') {
+        try { ns.toolbar.syncLabels(); } catch (e) { /* fail soft */ }
+      }
+    });
   }
 
   // Compact header for the expand panel, built from the (now-hidden)
@@ -855,6 +890,11 @@
     var root = scope || (ns.CONFIG && document.getElementById(ns.CONFIG.mountId));
     if (!root) return;
     var rows = root.querySelectorAll('.scw-bid-review-v2__row--expandable');
+    // Read phase first, then write phase — toggleRowExpand mutates the DOM,
+    // so interleaving it with the offsetParent visibility probe forced one
+    // layout PER re-opened panel (perf traces 2026-07-30). Batched reads
+    // cost at most one forced layout for the whole sweep.
+    var toOpen = [];
     for (var i = 0; i < rows.length; i++) {
       var row = rows[i];
       var rid = row.getAttribute('data-sow-item-id') ||
@@ -862,12 +902,24 @@
       if (!rid || !ns.state.isRowExpanded(rid)) continue;
       // Skip rows hidden by a collapsed MDF/IDF group — don't surface a
       // detached panel; the state stays set so it re-opens if the group opens.
+      // (offsetParent, NOT the collapsed-class test: search-hide classes +
+      // the .scw-br-v2-searching override CSS also hide rows.)
       if (row.offsetParent === null) continue;
       // Already open (panel survived) — leave it.
       var nx = row.nextElementSibling;
       if (nx && nx.classList &&
           nx.classList.contains('scw-bid-review-v2__expand-row')) continue;
-      toggleRowExpand(row);
+      toOpen.push(row);
+    }
+    for (var j = 0; j < toOpen.length; j++) {
+      var r2 = toOpen[j];
+      // Re-check right before the write — a prior toggle's side effects
+      // could have opened/removed a later row (mirrors toggleAllRows).
+      if (!r2.isConnected) continue;
+      var nx2 = r2.nextElementSibling;
+      if (nx2 && nx2.classList &&
+          nx2.classList.contains('scw-bid-review-v2__expand-row')) continue;
+      toggleRowExpand(r2);
     }
   }
   ns.reopenExpandedRows = reopenExpandedRows;

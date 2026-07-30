@@ -236,15 +236,26 @@
   // flushes as a plain rebuild like any other deferred render — a known,
   // accepted gap rather than a bug; the common case is focus has already
   // left the panel (the picker modal closed) by the time the cascade idles.
+  // Double-defer (rAF → task) so the deferred full-grid rebuild can never
+  // flush BEFORE the paint of whatever the focusout belonged to — e.g. a
+  // row close blurs the panel's input, and flushing the 200-800ms
+  // renderSnapshot in the same task made the close feel laggy (perf
+  // traces 2026-07-30). Covers both the mousedown-blur focusout (mouse
+  // close) and the explicit active.blur() in toggleRowExpand (keyboard /
+  // programmatic close). Guards unchanged — they are what make the
+  // delayed flush behavior-preserving.
+  function flushDeferredSnapshot() {
+    if (!_pendingSnapshot) return;
+    var container = document.getElementById(ns.CONFIG && ns.CONFIG.mountId);
+    if (!container || hasFocusInPanel(container)) return;
+    var snap = _pendingSnapshot;
+    _pendingSnapshot = null;
+    renderSnapshot(snap);
+  }
   document.addEventListener('focusout', function () {
-    setTimeout(function () {
-      if (!_pendingSnapshot) return;
-      var container = document.getElementById(ns.CONFIG && ns.CONFIG.mountId);
-      if (!container || hasFocusInPanel(container)) return;
-      var snap = _pendingSnapshot;
-      _pendingSnapshot = null;
-      renderSnapshot(snap);
-    }, 0);
+    var rafFn = window.requestAnimationFrame ||
+      function (fn) { return window.setTimeout(fn, 16); };
+    rafFn(function () { setTimeout(flushDeferredSnapshot, 0); });
   }, true);
 
   ns.render = { renderSnapshot: renderSnapshot };

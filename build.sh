@@ -14,6 +14,7 @@ trap 'rm -f "$TMP_BUNDLE"' EXIT
 cat \
   src/config.js \
   src/util.js \
+  src/features/patch-jquery-delegate-matching.js \
   src/features/session-timeout.js \
   src/features/_design-tokens.js \
   src/features/sow-color.js \

@@ -1154,35 +1154,47 @@
   // 2026-07-30). Index the candidate rows ONCE per synchronous pass;
   // the index self-clears on the next macrotask so later re-renders
   // (and Knack refetches) get a fresh scan.
+  // Buckets build LAZILY — a single-row open (one scrape call) that
+  // resolves in the first bucket must not pay for scanning the other
+  // two. A full-grid render fills whichever buckets its rows actually
+  // need, still once per macrotask. Do NOT shortcut the ws lookup with
+  // getElementById: the native view_3921 <tr> shares the same record-id
+  // id as the wsTr, so the class-scoped scan is load-bearing.
   var _rowIdx = null;
-  function domRowIndex() {
-    if (_rowIdx) return _rowIdx;
-    var idx = _rowIdx = {
-      ws:  Object.create(null),
-      sow: Object.create(null),
-      bid: Object.create(null)
-    };
-    var i, els;
-    els = document.querySelectorAll('tr.scw-ws-row[id]');
-    for (i = 0; i < els.length; i++) {
-      if (!idx.ws[els[i].id]) idx.ws[els[i].id] = els[i];
+  function rowIdxRoot() {
+    if (!_rowIdx) {
+      _rowIdx = { ws: null, sow: null, bid: null };
+      setTimeout(function () { _rowIdx = null; }, 0);
     }
-    var sowRoot = document.getElementById(CFG.sowItemsViewKey || 'view_3921');
-    if (sowRoot) {
-      els = sowRoot.querySelectorAll('tr[id]');
-      for (i = 0; i < els.length; i++) {
-        if (!idx.sow[els[i].id]) idx.sow[els[i].id] = els[i];
-      }
+    return _rowIdx;
+  }
+  function fillBucket(els) {
+    var map = Object.create(null);
+    for (var i = 0; i < els.length; i++) {
+      if (!map[els[i].id]) map[els[i].id] = els[i];
     }
-    var bidRoot = document.getElementById('view_3680');
-    if (bidRoot) {
-      els = bidRoot.querySelectorAll('tr[id]');
-      for (i = 0; i < els.length; i++) {
-        if (!idx.bid[els[i].id]) idx.bid[els[i].id] = els[i];
-      }
+    return map;
+  }
+  function wsRowIdx() {
+    var r = rowIdxRoot();
+    if (!r.ws) r.ws = fillBucket(document.querySelectorAll('tr.scw-ws-row[id]'));
+    return r.ws;
+  }
+  function sowRowIdx() {
+    var r = rowIdxRoot();
+    if (!r.sow) {
+      var root = document.getElementById(CFG.sowItemsViewKey || 'view_3921');
+      r.sow = root ? fillBucket(root.querySelectorAll('tr[id]')) : Object.create(null);
     }
-    setTimeout(function () { _rowIdx = null; }, 0);
-    return idx;
+    return r.sow;
+  }
+  function bidRowIdx() {
+    var r = rowIdxRoot();
+    if (!r.bid) {
+      var root = document.getElementById('view_3680');
+      r.bid = root ? fillBucket(root.querySelectorAll('tr[id]')) : Object.create(null);
+    }
+    return r.bid;
   }
 
   function scrapeRowPhotoUrls(rowId, bidRowId) {
@@ -1192,7 +1204,7 @@
     // photo is a .scw-inline-photo-card injected by inline-photo-row.js.
     // The wsTr may be in view_3921's tbody or moved into our expand
     // panel when the row is open.
-    var wsTr = rowId ? domRowIndex().ws[rowId] : null;
+    var wsTr = rowId ? wsRowIdx()[rowId] : null;
     var urls = [];
     if (wsTr) {
       var cards = wsTr.querySelectorAll(
@@ -1215,7 +1227,7 @@
     // keyed by the SOW item id (rowId). This is what restores SOW-side photos in
     // the v2 comparison grid's Photos column.
     if (!urls.length && rowId) {
-      var sowTr = domRowIndex().sow[rowId];
+      var sowTr = sowRowIdx()[rowId];
       if (sowTr) {
         var sowImgCells = sowTr.querySelectorAll('td[data-field-key="field_771"]');
         for (var sc = 0; sc < sowImgCells.length; sc++) {
@@ -1270,7 +1282,7 @@
       } catch (e) { /* ignore */ }
     }
     if (!urls.length && lookupId) {
-      var bidTr = domRowIndex().bid[lookupId];
+      var bidTr = bidRowIdx()[lookupId];
       if (bidTr) {
         var imgCells = bidTr.querySelectorAll('td[data-field-key="field_771"]');
         for (var ic = 0; ic < imgCells.length; ic++) {
