@@ -43,7 +43,10 @@
     'view_4079', 'view_4084', 'view_4086', 'view_4088',
     // Sub portal Manage Change Order page (scene_1374) — 1:1 analogues of
     // the four CO scene views above, same full-model rationale.
-    'view_4112', 'view_4114', 'view_4116', 'view_4118'
+    'view_4112', 'view_4114', 'view_4116', 'view_4118',
+    // proposal-grid-v2 flat data view (duplicate of view_3301, no
+    // groupings) — v2 renders the whole grid off this model.
+    'view_4140'
   ];
   const LIMIT_VALUE = '1000';
   const LIMIT_NUM = 1000;
@@ -78,7 +81,9 @@
     // Change Order scene views (see VIEW_IDS above)
     'view_4079', 'view_4084', 'view_4086', 'view_4088',
     // Sub portal Manage Change Order views (see VIEW_IDS above)
-    'view_4112', 'view_4114', 'view_4116', 'view_4118'
+    'view_4112', 'view_4114', 'view_4116', 'view_4118',
+    // proposal-grid-v2 flat data view (see VIEW_IDS above)
+    'view_4140'
   ];
 
   (function injectHidePaginationCss() {
