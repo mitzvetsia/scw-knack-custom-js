@@ -1147,6 +1147,44 @@
   var ROW_PHOTO_VISIBLE = 1;
   var _photoCache = Object.create(null);
 
+  // ── Per-pass DOM row index ────────────────────────────────────
+  // scrapeRowPhotoUrls used to run up to three whole-document
+  // querySelector('tr[id=…]') calls PER ROW; on the ~15k-node compare
+  // scene that was ~1.7s of a single grid build (perf trace
+  // 2026-07-30). Index the candidate rows ONCE per synchronous pass;
+  // the index self-clears on the next macrotask so later re-renders
+  // (and Knack refetches) get a fresh scan.
+  var _rowIdx = null;
+  function domRowIndex() {
+    if (_rowIdx) return _rowIdx;
+    var idx = _rowIdx = {
+      ws:  Object.create(null),
+      sow: Object.create(null),
+      bid: Object.create(null)
+    };
+    var i, els;
+    els = document.querySelectorAll('tr.scw-ws-row[id]');
+    for (i = 0; i < els.length; i++) {
+      if (!idx.ws[els[i].id]) idx.ws[els[i].id] = els[i];
+    }
+    var sowRoot = document.getElementById(CFG.sowItemsViewKey || 'view_3921');
+    if (sowRoot) {
+      els = sowRoot.querySelectorAll('tr[id]');
+      for (i = 0; i < els.length; i++) {
+        if (!idx.sow[els[i].id]) idx.sow[els[i].id] = els[i];
+      }
+    }
+    var bidRoot = document.getElementById('view_3680');
+    if (bidRoot) {
+      els = bidRoot.querySelectorAll('tr[id]');
+      for (i = 0; i < els.length; i++) {
+        if (!idx.bid[els[i].id]) idx.bid[els[i].id] = els[i];
+      }
+    }
+    setTimeout(function () { _rowIdx = null; }, 0);
+    return idx;
+  }
+
   function scrapeRowPhotoUrls(rowId, bidRowId) {
     if (!rowId && !bidRowId) return null;
     // Primary path — photos live inside the wsTr (.scw-ws-row) that
@@ -1154,7 +1192,7 @@
     // photo is a .scw-inline-photo-card injected by inline-photo-row.js.
     // The wsTr may be in view_3921's tbody or moved into our expand
     // panel when the row is open.
-    var wsTr = rowId ? document.querySelector('tr.scw-ws-row[id="' + rowId + '"]') : null;
+    var wsTr = rowId ? domRowIndex().ws[rowId] : null;
     var urls = [];
     if (wsTr) {
       var cards = wsTr.querySelectorAll(
@@ -1177,8 +1215,7 @@
     // keyed by the SOW item id (rowId). This is what restores SOW-side photos in
     // the v2 comparison grid's Photos column.
     if (!urls.length && rowId) {
-      var sowItemsView = CFG.sowItemsViewKey || 'view_3921';
-      var sowTr = document.querySelector('#' + sowItemsView + ' tr[id="' + rowId + '"]');
+      var sowTr = domRowIndex().sow[rowId];
       if (sowTr) {
         var sowImgCells = sowTr.querySelectorAll('td[data-field-key="field_771"]');
         for (var sc = 0; sc < sowImgCells.length; sc++) {
@@ -1233,7 +1270,7 @@
       } catch (e) { /* ignore */ }
     }
     if (!urls.length && lookupId) {
-      var bidTr = document.querySelector('#view_3680 tr[id="' + lookupId + '"]');
+      var bidTr = domRowIndex().bid[lookupId];
       if (bidTr) {
         var imgCells = bidTr.querySelectorAll('td[data-field-key="field_771"]');
         for (var ic = 0; ic < imgCells.length; ic++) {
