@@ -48,19 +48,54 @@
 (function () {
   'use strict';
 
-  var $ = window.jQuery;
-  if (!$ || !$.event || typeof $.event.dispatch !== 'function' || !$.fn) return;
+  // ⚠️ TWO jQuery instances coexist on Knack pages: the vendored 1.8.1
+  // inside Knack's runtime (drives ALL knack-* events — window.$ points
+  // at it, proven by every feature's $(document).on('knack-view-render')
+  // binding working) and a cdnjs 1.7.2 that KTL lazy-loads. After a
+  // noConflict(), window.jQuery can point at the 1.7.2 instance while
+  // window.$ stays Knack's — checking window.jQuery alone silently
+  // no-ops on the instance that matters (observed live 2026-07-30:
+  // trace on a patched build still showed the slow matcher). Try BOTH
+  // globals; per-instance guards decide which (if any) gets patched.
+  function attemptAll() {
+    var candidates = [];
+    if (window.$ && window.$.fn) candidates.push(window.$);
+    if (window.jQuery && window.jQuery.fn && window.jQuery !== window.$) {
+      candidates.push(window.jQuery);
+    }
+    for (var ci = 0; ci < candidates.length; ci++) {
+      tryPatch(candidates[ci]);
+    }
+    return candidates.length > 0;
+  }
 
-  var orig = $.event.dispatch;
+  // If the bundle parsed before Knack's runtime (loader-gate scenes),
+  // no jQuery exists yet — retry briefly until one shows up. Once ANY
+  // candidate was evaluated the decision is final (guards are
+  // deterministic); we only retry the nothing-there-yet case.
+  if (!attemptAll()) {
+    var tries = 0;
+    var iv = setInterval(function () {
+      tries++;
+      if (attemptAll() || tries >= 40) clearInterval(iv);
+    }, 250);
+  }
 
-  try {
-    if ($.fn.jquery !== '1.8.1') return;
-    var src = String(orig);
-    if (src.indexOf('needsContext') !== -1) return;   // already fast
-    if (src.indexOf('.index(') === -1) return;        // not the matcher we verified
-    if (typeof $.find !== 'function') return;
-    var NEEDS_CONTEXT = $.expr && $.expr.match && $.expr.match.needsContext;
-    if (!(NEEDS_CONTEXT instanceof RegExp)) return;
+  function tryPatch($) {
+    if (!$ || !$.event || typeof $.event.dispatch !== 'function' || !$.fn) return;
+
+    var orig = $.event.dispatch;
+
+    try {
+      // 1.8.0 and 1.8.1 both ship the slow matcher; 1.8.2+ has the fast
+      // path (and the structural checks below would exclude it anyway).
+      if ($.fn.jquery !== '1.8.1' && $.fn.jquery !== '1.8.0') return;
+      var src = String(orig);
+      if (src.indexOf('needsContext') !== -1) return;   // already fast
+      if (src.indexOf('.index(') === -1) return;        // not the matcher we verified
+      if (typeof $.find !== 'function') return;
+      var NEEDS_CONTEXT = $.expr && $.expr.match && $.expr.match.needsContext;
+      if (!(NEEDS_CONTEXT instanceof RegExp)) return;
 
     function dispatch(event) {
       event = $.event.fix(event || window.event);
@@ -154,19 +189,30 @@
       return event.result;
     }
 
-    $.event.dispatch = dispatch;
-    // The runtime aliases handle by value at jQuery load — re-point it
-    // too so both entries agree.
-    if ($.event.handle === orig) {
-      $.event.handle = dispatch;
+      // Console-verifiable marker: `$.event.dispatch.scwPatched` → tag.
+      dispatch.scwPatched = 'jq-1.8.2-delegate-backport';
+
+      $.event.dispatch = dispatch;
+      // The runtime aliases handle by value at jQuery load — re-point it
+      // too so both entries agree.
+      if ($.event.handle === orig) {
+        $.event.handle = dispatch;
+      }
+      try {
+        if (window.SCW && typeof SCW.debug === 'function') {
+          SCW.debug('[SCW] jQuery delegate-matching patch installed on ' +
+            ($ === window.$ ? 'window.$' : 'window.jQuery') +
+            ' (v' + $.fn.jquery + ')');
+        }
+      } catch (e4) { /* logging only */ }
+    } catch (e) {
+      // Restore the original wholesale — slow but correct beats broken.
+      try {
+        $.event.dispatch = orig;
+        if ($.event.handle && $.event.handle !== orig) $.event.handle = orig;
+      } catch (e2) { /* nothing left to do */ }
+      try { console.warn('[SCW] jQuery delegate-matching patch failed — reverted', e); } catch (e3) {}
     }
-  } catch (e) {
-    // Restore the original wholesale — slow but correct beats broken.
-    try {
-      $.event.dispatch = orig;
-      if ($.event.handle && $.event.handle !== orig) $.event.handle = orig;
-    } catch (e2) { /* nothing left to do */ }
-    try { console.warn('[SCW] jQuery delegate-matching patch failed — reverted', e); } catch (e3) {}
   }
 })();
 /*** END PATCH — jQuery delegated-event matching ***/
