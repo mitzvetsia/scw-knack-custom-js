@@ -1553,7 +1553,7 @@
           // Per-group photo reminder chip rides the header — reinforces
           // the checklist section for the group the tech is standing in.
           html.push('<div class="group-header group-level-1">' +
-            '<span class="ws-grp-photo-chip"><span class="ws-box">☐</span> Photos taken</span>' +
+            '<span class="ws-grp-photo-chip"><span class="ws-box">☐</span> MDF/IDF photos taken</span>' +
             esc(cleanGroupLabel(ent.grp.label)) + '</div>');
           if (ent.equipment.length) html.push(renderEquipmentBlock(ent.equipment));
           for (var xi = 0; xi < ent.other.length; xi++) {
