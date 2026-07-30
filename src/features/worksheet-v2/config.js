@@ -630,6 +630,15 @@
     // candidate source (it warned + bailed on click). Also seeds
     // empty-location L1 groups, same as view_3932 does on deploy.
     clone.mdfSourceViewKey   = 'view_4060';
+    // Full deploy-style MDF/IDF integration (mdf-notes.js): L1 header
+    // pencils (designator/##/name edit + delete), the location detail
+    // band (survey-notes callout + photo strip + inline SCW notes), and
+    // the standalone "Manage MDFs / IDFs" accordion hidden — its grid
+    // stays rendered (display:none) as the manage/photo data source.
+    // NOTE: view_4060 must have inline editing enabled in Builder on
+    // field_1641/field_2458/field_1943/field_1643 (saves PUT through
+    // it) and a Delete link for location delete to authorize.
+    clone.mdfManage          = { viewKey: 'view_4060', notesField: 'field_1643' };
     views.push(clone);
   })();
 

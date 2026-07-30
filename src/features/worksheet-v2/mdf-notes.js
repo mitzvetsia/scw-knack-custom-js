@@ -81,10 +81,13 @@
       /* The standalone manage sections never paint — the worksheet is
          their home now. Static CSS so there is no flash while models load.
          view_3932 = deploy scene; view_3577 = build-SOW scene (view_3962
-         integration). The views still render (display:none keeps their
-         models + rows readable for the pencil panel / photo scrape). */
+         integration); view_4060 = sub-portal deployment dashboard
+         (view_4056 integration). The views still render (display:none
+         keeps their models + rows readable for the pencil panel /
+         photo scrape). */
       '.scw-ktl-accordion:has(.scw-ktl-accordion__header[data-view-key="view_3932"]),',
-      '.scw-ktl-accordion:has(.scw-ktl-accordion__header[data-view-key="view_3577"]) {',
+      '.scw-ktl-accordion:has(.scw-ktl-accordion__header[data-view-key="view_3577"]),',
+      '.scw-ktl-accordion:has(.scw-ktl-accordion__header[data-view-key="view_4060"]) {',
       '  display: none !important;',
       '}',
       /* Icon-only pencil before the L1 title — borderless, quiet; a soft
