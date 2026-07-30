@@ -2765,6 +2765,43 @@
     .off('knack-view-render.any.scwWsV2Mount')
     .on('knack-view-render.any.scwWsV2Mount', function () { tryMountAll(); });
 
+  // ── scw-ws-v2-on html/body class ─────────────────────────────────
+  // Replaces the old `html:has(.scw-ws-v2-body)` / `body:has(...)`
+  // scroll-anchor-kill selectors in styles.js — :has() anchored on
+  // html/body made every style recalc consider the whole document
+  // (perf trace 2026-07-30). Kept in sync on every scene render; the
+  // class stays cheap because it's a plain toggle.
+  function syncWsV2OnClass() {
+    var on = !!document.querySelector('.scw-ws-v2-body');
+    document.documentElement.classList.toggle('scw-ws-v2-on', on);
+    document.body.classList.toggle('scw-ws-v2-on', on);
+  }
+  $(document)
+    .off('knack-scene-render.any.scwWsV2OnClass knack-view-render.any.scwWsV2OnClass')
+    .on('knack-scene-render.any.scwWsV2OnClass knack-view-render.any.scwWsV2OnClass',
+      function () { setTimeout(syncWsV2OnClass, 0); });
+
+  // ── Knack-modal-open body class ──────────────────────────────────
+  // Replaces `body:has([id^="kn-modal-bg"])` (same :has() cost story).
+  // Knack appends/removes its modal bg as a DIRECT child of <body>, so
+  // a childList-only observer (no subtree) is essentially free.
+  function syncModalOpenClass() {
+    var open = !!(document.getElementById('kn-modal-bg') ||
+                  document.querySelector('body > [id^="kn-modal-bg"], ' +
+                                         'body > [id^="kn-page-modal"], ' +
+                                         'body > .kn-modal-bg'));
+    document.body.classList.toggle('scw-kn-modal-open', open);
+  }
+  function armModalObserver() {
+    if (!document.body || document.body.hasAttribute('data-scw-modal-obs')) return;
+    document.body.setAttribute('data-scw-modal-obs', '1');
+    new MutationObserver(syncModalOpenClass)
+      .observe(document.body, { childList: true });
+    syncModalOpenClass();
+  }
+  if (document.body) armModalObserver();
+  else document.addEventListener('DOMContentLoaded', armModalObserver);
+
   // First-paint attempt for hot reload / late bundle load.
   setTimeout(tryMountAll, 0);
 })();

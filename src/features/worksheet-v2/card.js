@@ -1199,7 +1199,9 @@
       ? 'scw-ws-v2-input scw-ws-v2-input--num'
       : 'scw-ws-v2-input scw-ws-v2-input--text';
     var step = kind === 'number' ? ' step="any"' : '';
-    return '<div class="scw-ws-v2-detail-field">' +
+    // data-scw-df carries the field key so per-field CSS (e.g. co-adopt's
+    // readonly hides) can target [data-scw-df="field_X"] instead of :has().
+    return '<div class="scw-ws-v2-detail-field" data-scw-df="' + escapeHtml(fieldKey) + '">' +
       '<div class="scw-ws-v2-detail-label">' + escapeHtml(label) + '</div>' +
       '<input type="' + inputType + '"' + step + ' class="' + inputCls + '" ' +
         'aria-label="' + escapeHtml(label) + '" ' +
@@ -1271,7 +1273,8 @@
       '</div>';
     }
     return '<div class="scw-ws-v2-detail-field scw-ws-v2-detail-field--conn' +
-        (warn ? ' scw-ws-v2-detail-field--warn' : '') + '">' +
+        (warn ? ' scw-ws-v2-detail-field--warn' : '') + '" ' +
+        'data-scw-df="' + escapeHtml(fieldKey) + '">' +
       '<div class="scw-ws-v2-detail-label">' + labelHtml + '</div>' +
       '<button type="button" class="scw-ws-v2-conn-btn" ' +
         'data-scw-ws-v2-conn="' + escapeHtml(fieldKey) + '" ' +
@@ -1332,7 +1335,8 @@
       labelHtml = '<span class="scw-ws-v2-detail-warn-ic">' + warnIc + '</span>' + labelHtml;
     }
     return '<div class="scw-ws-v2-detail-field scw-ws-v2-detail-field--conn' +
-        (warn ? ' scw-ws-v2-detail-field--warn' : '') + '">' +
+        (warn ? ' scw-ws-v2-detail-field--warn' : '') + '" ' +
+        'data-scw-df="' + escapeHtml(fieldKey) + '">' +
       '<div class="scw-ws-v2-detail-label">' + labelHtml + '</div>' +
       '<button type="button" class="scw-ws-v2-conn-btn" ' +
         'data-scw-ws-v2-conn="' + escapeHtml(fieldKey) + '" ' +
@@ -1594,7 +1598,7 @@
     var bid = bucketIdOf(rec);
     var showParent = hasParent || (bid !== NETWORKING_BUCKET);
     return '<div class="scw-ws-v2-detail">' +
-      '<div class="scw-ws-v2-detail-zones">' +
+      '<div class="scw-ws-v2-detail-zones scw-ws-v2-detail-zones--no-identity">' +
         salesPricingDetail(rec, viewKey) +
         '<div class="scw-ws-v2-detail-zone scw-ws-v2-detail-zone--connections">' +
           (showParent ? detailConnection(rec, viewKey, 'field_2464', 'Parent') : '') +
@@ -1609,7 +1613,7 @@
 
   function buildDetail_services(rec, viewKey) {
     return '<div class="scw-ws-v2-detail">' +
-      '<div class="scw-ws-v2-detail-zones">' +
+      '<div class="scw-ws-v2-detail-zones scw-ws-v2-detail-zones--no-identity">' +
         salesPricingDetail(rec, viewKey) +
         '<div class="scw-ws-v2-detail-zone scw-ws-v2-detail-zone--connections">' +
           detailConnection(rec, viewKey, 'field_1946', 'MDF / IDF') +
@@ -1621,7 +1625,7 @@
 
   function buildDetail_assumptions(rec, viewKey) {
     return '<div class="scw-ws-v2-detail">' +
-      '<div class="scw-ws-v2-detail-zones">' +
+      '<div class="scw-ws-v2-detail-zones scw-ws-v2-detail-zones--no-identity">' +
         '<div class="scw-ws-v2-detail-zone scw-ws-v2-detail-zone--connections">' +
           detailConnection(rec, viewKey, 'field_1946', 'MDF / IDF') +
         '</div>' +

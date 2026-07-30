@@ -186,13 +186,10 @@
       '.scw-ws-v2--readonly .scw-ws-v2-row--services[data-scw-co-adopt-row] > .scw-ws-v2-cell--tag {',
       '  grid-column: 3 / span 2 !important;',
       '}',
-      // Promoted-accessory rows keep their attached-to chip in the label
-      // slot (col 3), so the product must NOT absorb it — flow it naturally
-      // into the product track (col 4). Mirrors the stock :has() reset.
-      '.scw-ws-v2--readonly .scw-ws-v2-row--default[data-scw-co-adopt-row]:has(.scw-ws-v2-cell--attached) > .scw-ws-v2-cell--product,',
-      '.scw-ws-v2--readonly .scw-ws-v2-row--services[data-scw-co-adopt-row]:has(.scw-ws-v2-cell--attached) > .scw-ws-v2-cell--tag {',
-      '  grid-column: auto !important;',
-      '}',
+      // (Dead rule removed 2026-07-30: .scw-ws-v2-cell--attached is no
+      // longer emitted — the attached-to indicator moved to the
+      // .scw-ws-v2-attached-caption line, so this :has() reset matched
+      // nothing.)
 
       // Assumptions rows keep the desc as a DIRECT child (see
       // restructureRow) — re-pin the stock 3/10 span to the new
@@ -278,10 +275,10 @@
       // Detail panel: Prefix (field_2240) + Drop # (field_1951) aren\'t
       // editable here, so they\'re pure noise — hide their whole
       // detail-field wrapper. Scoped to the read-only panel so the live
-      // worksheets keep them. :has() lets us key off the inner control\'s
-      // field attribute (the wrapper carries no field key of its own).
-      '.scw-ws-v2--readonly .scw-ws-v2-detail-field:has([data-scw-ws-v2-conn="field_2240"]),',
-      '.scw-ws-v2--readonly .scw-ws-v2-detail-field:has([data-scw-ws-v2-field="field_1951"]) {',
+      // worksheets keep them. card.js stamps data-scw-df with the field
+      // key on every detail-field wrapper (replaces the old :has()).
+      '.scw-ws-v2--readonly .scw-ws-v2-detail-field[data-scw-df="field_2240"],',
+      '.scw-ws-v2--readonly .scw-ws-v2-detail-field[data-scw-df="field_1951"] {',
       '  display: none !important;',
       '}',
 

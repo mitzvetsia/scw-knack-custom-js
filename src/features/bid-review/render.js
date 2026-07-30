@@ -313,11 +313,13 @@
       var stray = document.querySelector(CFG.mountSelector);
       if (stray && stray.parentNode) stray.parentNode.removeChild(stray);
       document.body.classList.remove('scw-bid-review-active');
+      document.documentElement.classList.remove('scw-bid-review-active');
       return null;
     }
     // Flag the body so view_3921's accordion hides via CSS while the
     // bid review grid is on screen.
     document.body.classList.add('scw-bid-review-active');
+    document.documentElement.classList.add('scw-bid-review-active');
     var mount = document.querySelector(CFG.mountSelector);
     if (!mount) {
       mount = el('div');

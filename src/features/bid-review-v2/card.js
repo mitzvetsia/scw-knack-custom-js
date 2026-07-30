@@ -495,6 +495,8 @@
     // shows the note itself instead of just a generic label.
     var warnHtml = (ns.warnings && row && row.sowItem)
       ? ns.warnings.chipsHtml(row.sowItem, sowItemData.scwNotes) : '';
+    // Modifier replaces the old :has(.__warn-chips) CSS lookup.
+    if (warnHtml) td.classList.add('scw-bid-review-v2__sow-cell--has-warns');
     // Accessory rows get an "attached to <parent>" line so the relationship
     // is explicit even when scrolled away from the parent.
     var attachHtml = (row && row.isAccessory && row.parentLabel)

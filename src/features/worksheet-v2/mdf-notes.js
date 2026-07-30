@@ -85,9 +85,9 @@
          (view_4056 integration). The views still render (display:none
          keeps their models + rows readable for the pencil panel /
          photo scrape). */
-      '.scw-ktl-accordion:has(.scw-ktl-accordion__header[data-view-key="view_3932"]),',
-      '.scw-ktl-accordion:has(.scw-ktl-accordion__header[data-view-key="view_3577"]),',
-      '.scw-ktl-accordion:has(.scw-ktl-accordion__header[data-view-key="view_4060"]) {',
+      '.scw-acc-for-view_3932,',
+      '.scw-acc-for-view_3577,',
+      '.scw-acc-for-view_4060 {',
       '  display: none !important;',
       '}',
       /* Icon-only pencil before the L1 title — borderless, quiet; a soft

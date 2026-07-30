@@ -152,8 +152,13 @@
       // make these conditional. The CSS rules are kept tight: column
       // must have NO other direct child element; accordion must have
       // NO other view-key headers inside.
-      selectors.push('.view-column:has(> #' + v + '):not(:has(> *:not(#' + v + '):not(.scw-ktl-accordion):not([class*="kn-view"])))');
-      selectors.push('.scw-ktl-accordion:has(.scw-ktl-accordion__header[data-view-key="' + v + '"]):not(:has(.scw-ktl-accordion__header[data-view-key]:not([data-view-key="' + v + '"])))');
+      // ktl-accordion stamps scw-acc-for-<viewKey> on the wrapper it
+      // builds (one view per wrapper), so the shell hide is an exact
+      // class match — the old :has()/:not(:has()) pair taxed every
+      // style recalc document-wide. The column-wrapper hide is now
+      // JS-only (hideOnRender below) — worst case the empty column
+      // holds layout for one render pass.
+      selectors.push('.scw-acc-for-' + v);
     }
     var style = document.createElement('style');
     style.id = STYLE_ID;

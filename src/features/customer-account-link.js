@@ -47,7 +47,7 @@
     if (document.getElementById(STYLE_ID)) return;
     var css = [
       // Hide the companion details view's accordion (links harvested from it).
-      '.scw-ktl-accordion:has(> .scw-ktl-accordion__header[data-view-key="' + DETAIL_VIEW + '"]) { display: none !important; }',
+      '.scw-acc-for-' + DETAIL_VIEW + ' { display: none !important; }',
       '#' + DETAIL_VIEW + ' { display: none !important; }',
       // Customer name → clearly-clickable edit link (underline + pencil).
       '#' + GRID_VIEW + ' td.' + CONN_FIELD + ' .scw-cust-edit-link {',

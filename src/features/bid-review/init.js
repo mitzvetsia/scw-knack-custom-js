@@ -4530,6 +4530,7 @@
         var matrix = document.querySelector(CFG.mountSelector);
         if (matrix && matrix.parentNode) matrix.parentNode.removeChild(matrix);
         document.body.classList.remove('scw-bid-review-active');
+      document.documentElement.classList.remove('scw-bid-review-active');
         // Reset readiness flags so the next visit to scene_1155 does
         // a fresh load instead of believing it's still primed.
         _viewsReady = {};
