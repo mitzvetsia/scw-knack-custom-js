@@ -707,8 +707,8 @@
       '.scw-pg2-l2 td { background: aliceblue; font-size: 16px; padding: 5px 0 5px 20px; border-top: 20px solid transparent; }',
       '.scw-pg2-l2--assumptions td { font-weight: 600; background: #f0f7ff; }',
       '.scw-pg2-l2--promoted td { background: #fff; }',
-      // L3
-      '.scw-pg2-l3 td { padding-top: 10px; font-weight: 300; }',
+      // L3 — extra air above each product block
+      '.scw-pg2-l3 td { padding-top: 18px; font-weight: 300; }',
       '.scw-pg2-l3 td:first-child { font-size: 20px; }',
       '.scw-pg2-l3 td:nth-child(n+2) { font-weight: 600; }',
       '.scw-pg2-l4-conn { display: block; margin-top: 4px; line-height: 1.2; font-size: 12px; }',
@@ -716,14 +716,17 @@
       // L4 — no extra indent beneath the product header (2026-07-30)
       '.scw-pg2-l4 td { padding-top: 5px; font-weight: 300; }',
       '.scw-pg2-l4 td:nth-child(n+2) { font-weight: 600; }',
-      '.scw-pg2-l4-desc { display: block; line-height: 1.2; }',
+      '.scw-pg2-l4-desc { display: block; line-height: 1.35; max-width: 110ch; }',
       '.scw-pg2-l4-desc b { font-weight: 600; }',
       '.scw-pg2-hide-qtycost td:nth-child(n+2) { visibility: hidden; }',
       // Mounting cluster — flush with the labor description (no indent)
       '.scw-pg2-mount td { color: #07467c; font-size: 14px; font-weight: 500; }',
+      // Parent-designator tail matches the 12px labeled callouts
+      '.scw-pg2-mount .scw-pg2-cams { font-size: 12px; }',
       '.scw-pg2-mount-labor td { font-size: 13px; font-weight: 300; line-height: 1.2; }',
-      // L2 footer
-      '.scw-pg2-l2foot td { background: aliceblue; border-top: 1px solid #dadada; font-weight: 800; border-bottom: 20px solid transparent; }',
+      // L2 footer — border-collapse merges adjacent transparent borders,
+      // so this 40px alone sets the gap to the next section header.
+      '.scw-pg2-l2foot td { background: aliceblue; border-top: 1px solid #dadada; font-weight: 800; border-bottom: 40px solid transparent; }',
       '.scw-pg2-l2foot td:first-child { text-align: right; }',
       // L1 footer + project totals
       '.scw-pg2-l1foot td, .scw-pg2-pt td { text-align: right; font-size: 16px; }',
