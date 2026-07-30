@@ -351,25 +351,52 @@
     if (bucket.bucketId === CONFIG.camReaderBucketId) return 'drop';
     return CONFIG.contextByLabel[norm(displayLabel).toLowerCase()] || 'default';
   }
+  function pad3(n) {
+    var s = String(n);
+    while (s.length < 3) s = '0' + s;
+    return s;
+  }
+  // Compress a list of designator labels ("I-068", "RA-I-122", …) into
+  // sorted, deduped, range-collapsed form: consecutive runs of 3+ within a
+  // prefix become "I-068–I-071". Labels with no trailing number pass
+  // through untouched (appended at the end).
+  function compressLabels(labels) {
+    var seen = Object.create(null), parsed = [], plain = [], i;
+    for (i = 0; i < labels.length; i++) {
+      var lbl = norm(labels[i]);
+      if (!lbl || seen[lbl]) continue;
+      seen[lbl] = 1;
+      var m = /^(.*?)(\d+)$/.exec(lbl);
+      if (m) parsed.push({ p: m[1], n: parseInt(m[2], 10), lbl: lbl });
+      else plain.push(lbl);
+    }
+    parsed.sort(function (a, b) { return a.p === b.p ? a.n - b.n : (a.p < b.p ? -1 : 1); });
+    var out = [], runStart = -1;
+    for (i = 0; i < parsed.length; i++) {
+      var cur = parsed[i], next = parsed[i + 1];
+      if (runStart === -1) runStart = i;
+      var continues = next && next.p === cur.p && next.n === cur.n + 1;
+      if (continues) continue;
+      var len = i - runStart + 1;
+      if (len >= 3) out.push(parsed[runStart].lbl + '–' + cur.lbl);
+      else for (var j = runStart; j <= i; j++) out.push(parsed[j].lbl);
+      runStart = -1;
+    }
+    return out.concat(plain).join(', ');
+  }
   function designatorList(recs) {
-    var F = CONFIG.fields, items = [];
+    var F = CONFIG.fields, labels = [];
     for (var i = 0; i < recs.length; i++) {
       var pc = connFirst(recs[i], F.prefix);
       var prefix = pc ? pc.label : readText(recs[i], F.prefix);
       var digits = readText(recs[i], F.number).replace(/\D/g, '');
       var n = parseInt(digits, 10);
       if (!prefix || !isFinite(n)) continue;
-      items.push({ p: prefix.toUpperCase(), n: n });
+      // Zero-padded ("I-001") — matches the composed drop labels used
+      // everywhere else (connected devices, worksheet cards).
+      labels.push(prefix.toUpperCase() + pad3(n));
     }
-    if (!items.length) return '';
-    items.sort(function (a, b) { return a.p === b.p ? a.n - b.n : (a.p < b.p ? -1 : 1); });
-    // Zero-padded to 3 digits ("I-001") — matches the composed drop labels
-    // used everywhere else (connected devices, worksheet cards).
-    return items.map(function (it) {
-      var s = String(it.n);
-      while (s.length < 3) s = '0' + s;
-      return it.p + s;
-    }).join(', ');
+    return compressLabels(labels);
   }
   function isCamReaderRec(rec) {
     // Bucket id shows up on both the bucket connection and the sortOrder
@@ -503,7 +530,7 @@
             if (context === 'drop') {
               var list = designatorList(l4.items);
               // Same tight labeled callout as Connected devices.
-              if (list) camHtml = '<span class="scw-pg2-l4-conn"><b>Applies to: ' + esc(list) + '</b></span>';
+              if (list) camHtml = '<span class="scw-pg2-l4-conn"><b>Applies to:</b> ' + esc(list) + '</span>';
             }
             // Connected devices (orange, labeled) — beneath the labor
             // description. Only names that resolve to records in THIS view
@@ -519,7 +546,7 @@
               });
             });
             var connHtml = connNames.length
-              ? '<span class="scw-pg2-l4-conn"><b>Connected devices: ' + esc(connNames.join(', ')) + '</b></span>'
+              ? '<span class="scw-pg2-l4-conn"><b>Connected devices:</b> ' + esc(compressLabels(connNames)) + '</span>'
               : '';
             pushRow('scw-pg2-l4' + (hideQtyCost ? ' scw-pg2-hide-qtycost' : ''), [
               { html: '<span class="scw-pg2-l4-desc">' + l4.html + '</span>' + camHtml + connHtml },
@@ -715,8 +742,10 @@
       '.scw-pg2-l3--first td { border-top: 0; }',
       '.scw-pg2-l3 td:first-child { font-size: 20px; }',
       '.scw-pg2-l3 td:nth-child(n+2) { font-weight: 600; }',
-      '.scw-pg2-l4-conn { display: block; margin-top: 4px; line-height: 1.2; font-size: 12px; }',
-      '.scw-pg2-l4-conn b, .scw-pg2-cams { color: orange; font-weight: 800; }',
+      // Callouts: orange for the LABEL only; the designator list itself is
+      // quiet gray fine print (dense projects were a wall of bold orange).
+      '.scw-pg2-l4-conn { display: block; margin-top: 4px; line-height: 1.4; font-size: 12px; color: #64748b; font-weight: 400; max-width: 110ch; }',
+      '.scw-pg2-l4-conn b { color: orange; font-weight: 800; }',
       // L4 — no extra indent beneath the product header (2026-07-30)
       '.scw-pg2-l4 td { padding-top: 5px; font-weight: 300; }',
       '.scw-pg2-l4 td:nth-child(n+2) { font-weight: 600; }',
