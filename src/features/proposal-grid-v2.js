@@ -463,7 +463,7 @@
             : [{ html: esc(displayLabel) }, { html: '' }, { html: '' }]
         );
 
-        bucket.productOrder.forEach(function (pk) {
+        bucket.productOrder.forEach(function (pk, pi) {
           var product = bucket.products[pk];
           var accessories = [];
           product.items.forEach(function (it) {
@@ -478,7 +478,7 @@
           if (!hideL3 && !isBlankish(product.label)) {
             var pQty = sumRecs(product.items, F.qty);
             var pHardware = sumRecs(product.items, F.hardware);
-            pushRow('scw-pg2-l3', [
+            pushRow('scw-pg2-l3' + (pi === 0 ? ' scw-pg2-l3--first' : ''), [
               { html: esc(product.label) },
               { html: '<strong>' + Math.round(pQty) + '</strong>' },
               { html: '<strong>' + amountHtml(pHardware, false) + '</strong>' }
@@ -698,17 +698,21 @@
       '.scw-pg2-table { width: 100%; border-collapse: collapse; }',
       '.scw-pg2-table td { padding: 4px 8px; vertical-align: middle; border: 0; }',
       '.scw-pg2-col-qty { width: 90px; } .scw-pg2-col-cost { width: 140px; }',
-      '.scw-pg2-table td:nth-child(2), .scw-pg2-table td:nth-child(3) { text-align: center; white-space: nowrap; }',
+      '.scw-pg2-table td:nth-child(2) { text-align: center; white-space: nowrap; }',
+      '.scw-pg2-table td:nth-child(3) { text-align: right; white-space: nowrap; }',
       '.scw-pg2-tbd { color: #94a3b8; font-style: italic; font-weight: 600; }',
       // L1
       '.scw-pg2-l1 td, .scw-pg2-l2--promoted td { border-bottom: 20px solid #07467c !important; padding-top: 30px; }',
       '.scw-pg2-l1 td:first-child, .scw-pg2-l2--promoted td:first-child { font-size: 24px; font-weight: 200; padding-left: 20px; }',
-      // L2
-      '.scw-pg2-l2 td { background: aliceblue; font-size: 16px; padding: 5px 0 5px 20px; border-top: 20px solid transparent; }',
+      // L2 — background-clip keeps the aliceblue bar from bleeding into
+      // the transparent spacing borders (the "big blue blur").
+      '.scw-pg2-l2 td { background: aliceblue; background-clip: padding-box; font-size: 16px; padding: 5px 0 5px 20px; border-top: 20px solid transparent; }',
       '.scw-pg2-l2--assumptions td { font-weight: 600; background: #f0f7ff; }',
       '.scw-pg2-l2--promoted td { background: #fff; }',
-      // L3 — extra air above each product block
-      '.scw-pg2-l3 td { padding-top: 18px; font-weight: 300; }',
+      // L3 — extra air + hairline above each product block (suppressed on
+      // the first product in a section, right under the bucket bar)
+      '.scw-pg2-l3 td { padding-top: 18px; font-weight: 300; border-top: 1px solid #e2e8f0; }',
+      '.scw-pg2-l3--first td { border-top: 0; }',
       '.scw-pg2-l3 td:first-child { font-size: 20px; }',
       '.scw-pg2-l3 td:nth-child(n+2) { font-weight: 600; }',
       '.scw-pg2-l4-conn { display: block; margin-top: 4px; line-height: 1.2; font-size: 12px; }',
@@ -719,14 +723,15 @@
       '.scw-pg2-l4-desc { display: block; line-height: 1.35; max-width: 110ch; }',
       '.scw-pg2-l4-desc b { font-weight: 600; }',
       '.scw-pg2-hide-qtycost td:nth-child(n+2) { visibility: hidden; }',
-      // Mounting cluster — flush with the labor description (no indent)
-      '.scw-pg2-mount td { color: #07467c; font-size: 14px; font-weight: 500; }',
+      // Mounting cluster — flush with the labor description (no indent),
+      // muted slate so accessories read as secondary to the product
+      '.scw-pg2-mount td { color: #5f6b7a; font-size: 14px; font-weight: 400; }',
       // Parent-designator tail matches the 12px labeled callouts
       '.scw-pg2-mount .scw-pg2-cams { font-size: 12px; }',
       '.scw-pg2-mount-labor td { font-size: 13px; font-weight: 300; line-height: 1.2; }',
       // L2 footer — border-collapse merges adjacent transparent borders,
       // so this 40px alone sets the gap to the next section header.
-      '.scw-pg2-l2foot td { background: aliceblue; border-top: 1px solid #dadada; font-weight: 800; border-bottom: 40px solid transparent; }',
+      '.scw-pg2-l2foot td { background: aliceblue; background-clip: padding-box; border-top: 1px solid #dadada; font-weight: 800; border-bottom: 40px solid transparent; }',
       '.scw-pg2-l2foot td:first-child { text-align: right; }',
       // L1 footer + project totals
       '.scw-pg2-l1foot td, .scw-pg2-pt td { text-align: right; font-size: 16px; }',
