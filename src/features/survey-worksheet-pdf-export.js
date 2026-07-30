@@ -278,6 +278,28 @@
     return norm(td.textContent || '');
   }
 
+  // ── Required-photo slots ─────────────────────────────────────────
+  // Both photo strips (v1 inline-photo-row .scw-inline-photo-card and
+  // worksheet-v2 .scw-ws-v2-photo-card) stamp data-photo-required /
+  // data-photo-type / data-photo-has-image on every photo card —
+  // including empty "required but missing" placeholder slots. Scrape
+  // them into { type, done } so the PDF can print a take-this-photo
+  // checkbox per required slot (gray-prechecked when already uploaded).
+  function scrapeRequiredPhotos(cardEl) {
+    var out = [];
+    if (!cardEl) return out;
+    var slots = cardEl.querySelectorAll(
+      '.scw-inline-photo-card[data-photo-required="true"], ' +
+      '.scw-ws-v2-photo-card[data-photo-required="true"]');
+    for (var i = 0; i < slots.length; i++) {
+      out.push({
+        type: norm(slots[i].getAttribute('data-photo-type') || ''),
+        done: slots[i].getAttribute('data-photo-has-image') === 'true'
+      });
+    }
+    return out;
+  }
+
   // ── Image downsampling ───────────────────────────────────────────
   //
   // Given an already-loaded <img> element, draw it to a canvas at a
@@ -573,6 +595,7 @@
       scwText: detailValues.field_2418 || detailValues.field_1953 || '',
       connectedText: '',                 // resolveConnections fills this from raw
       photos: [],
+      requiredPhotos: scrapeRequiredPhotos(card),
       showDetail: true,
       showPhotos: false,
       recordId: recordId,
@@ -1339,6 +1362,11 @@
       scwText: scwText,
       connectedText: connectedText,
       photos: photos,
+      // Scrape required slots off the whole card (NOT gated on the
+      // photo-wrap hidden class — the strip hides when only empty
+      // required placeholders exist, which is exactly the case the
+      // printed checklist must surface).
+      requiredPhotos: scrapeRequiredPhotos(card),
       showDetail: showDetail,
       showPhotos: photos.length > 0
     };
@@ -1481,6 +1509,13 @@
       html.push(renderCameraReaderBatchTable(allCams));
     }
 
+    // (1b) MDF/IDF PHOTO CHECKLIST — one check-off row per location.
+    // Techs habitually skip MDF/IDF photos, so this is a loud amber
+    // callout rather than a quiet note.
+    if (mdfGroups.length) {
+      html.push(renderMdfPhotoChecklist(mdfGroups));
+    }
+
     if (mdfGroups.length && allCams.length) {
       // (2) MDF/IDF EQUIPMENT BREAKDOWN — the non-camera, non-distribution
       // gear (PoE converters, racks, UPS, …) per MDF/IDF, plus any service
@@ -1515,7 +1550,10 @@
         html.push('<h2 class="ws-sec-title">MDF / IDF Equipment</h2>');
         for (var pg = 0; pg < perGroup.length; pg++) {
           var ent = perGroup[pg];
+          // Per-group photo reminder chip rides the header — reinforces
+          // the checklist section for the group the tech is standing in.
           html.push('<div class="group-header group-level-1">' +
+            '<span class="ws-grp-photo-chip"><span class="ws-box">☐</span> Photos taken</span>' +
             esc(cleanGroupLabel(ent.grp.label)) + '</div>');
           if (ent.equipment.length) html.push(renderEquipmentBlock(ent.equipment));
           for (var xi = 0; xi < ent.other.length; xi++) {
@@ -2020,6 +2058,10 @@
         h.push('<div class="ws-equip-scw"><span class="ws-equip-scw-label">SCW Notes</span> ' +
           esc(scw) + '</div>');
       }
+      if (card.requiredPhotos && card.requiredPhotos.length) {
+        h.push('<div class="ws-equip-photos"><span class="ws-equip-scw-label">Photos Req&#8217;d</span> ' +
+          reqPhotoChecks(card.requiredPhotos) + '</div>');
+      }
       h.push('</div>');
     }
     h.push('</div>');
@@ -2036,7 +2078,7 @@
     h.push('<table class="cr-sheet-table"><colgroup>');
     h.push('<col class="cr-col-label"><col class="cr-col-product"><col class="cr-col-mount">');
     h.push('<col class="cr-col-yn"><col class="cr-col-yn"><col class="cr-col-yn">');
-    h.push('<col class="cr-col-height"><col class="cr-col-drop"><col class="cr-col-drop"><col class="cr-col-notes">');
+    h.push('<col class="cr-col-height"><col class="cr-col-drop"><col class="cr-col-drop"><col class="cr-col-photos"><col class="cr-col-notes">');
     h.push('</colgroup><thead><tr>');
     h.push('<th>Label</th>');
     h.push('<th>Product</th>');
@@ -2047,6 +2089,7 @@
     h.push('<th>Height</th>');
     h.push('<th>Drop ft</th>');
     h.push('<th>Conduit ft</th>');
+    h.push('<th>Photos Req&#8217;d</th>');
     h.push('<th>Notes</th>');
     h.push('</tr></thead><tbody>');
     for (var ri = 0; ri < cards.length; ri++) {
@@ -2063,6 +2106,7 @@
       // Conduit always blank — survey is the source of truth (same
       // rule as the inline measure-row renderer).
       h.push('<td class="cr-cell-fill"></td>');
+      h.push('<td class="cr-cell-photos">' + reqPhotoChecks(card.requiredPhotos) + '</td>');
       h.push('<td></td>');
       h.push('</tr>');
     }
@@ -2083,6 +2127,45 @@
       '<span class="cr-yn-sep"></span>' +
       '<span class="ws-box' + (noOn  ? ' is-on' : '') + '">' + (noOn  ? '☒' : '☐') + '</span>N'
     );
+  }
+
+  // ── Required-photo checkboxes ──
+  // One checkbox per required photo slot, labeled with the photo type.
+  // Gray ☒ pre-fill when the photo is already uploaded (same ink-over
+  // convention as the flag rows); empty ☐ = tech still owes the shot.
+  function reqPhotoChecks(requiredPhotos) {
+    var rp = requiredPhotos || [];
+    var bits = [];
+    for (var i = 0; i < rp.length; i++) {
+      bits.push(
+        '<span class="ws-req-photo">' +
+          '<span class="ws-box' + (rp[i].done ? ' is-on' : '') + '">' +
+            (rp[i].done ? '☒' : '☐') + '</span>' +
+          esc(rp[i].type || 'Photo') +
+        '</span>'
+      );
+    }
+    return bits.join('');
+  }
+
+  // ── MDF/IDF photo checklist (amber callout) ──
+  // One check-off row per real MDF/IDF group. Deliberately loud —
+  // techs keep coming home without pictures of the MDF/IDFs.
+  function renderMdfPhotoChecklist(mdfGroups) {
+    var h = [];
+    h.push('<section class="ws-mdf-photos">');
+    h.push('<div class="ws-mdf-photos-title">&#9888; MDF / IDF Photos &mdash; required for every location</div>');
+    h.push('<div class="ws-mdf-photos-note">Photograph each MDF / IDF before leaving the site: ' +
+      'full room / closet, rack or backboard (straight-on), and cable entry / pathways. ' +
+      'Check off each location once its photos are taken.</div>');
+    h.push('<div class="ws-mdf-photos-list">');
+    for (var i = 0; i < mdfGroups.length; i++) {
+      h.push('<span class="ws-mdf-photos-item"><span class="ws-box">☐</span> ' +
+        esc(cleanGroupLabel(mdfGroups[i].label)) + '</span>');
+    }
+    h.push('</div>');
+    h.push('</section>');
+    return h.join('');
   }
 
   // Height-style multi-choice with pre-fill on the matching option.
@@ -2528,6 +2611,14 @@
     // (Assumptions never get one — reference text only.)
     if (isService) {
       h.push('<div class="ws-service-notes"></div>');
+    }
+
+    // ── Required-photo checklist (full width, above the photo strip) ──
+    if (card.requiredPhotos && card.requiredPhotos.length) {
+      h.push('<div class="ws-req-photos">' +
+        '<span class="ws-req-photos-label">Photos Req&#8217;d</span>' +
+        reqPhotoChecks(card.requiredPhotos) +
+      '</div>');
     }
 
     // ── Photo strip (full width below the 2-col body) ──
@@ -3208,12 +3299,13 @@
       // Column width hints — sum to ~100%. Y/N cols share width; the
       // notes column gets the remainder for write-in space.
       '.cr-col-label   { width: 6%; }',
-      '.cr-col-product { width: 26%; }',
-      '.cr-col-mount   { width: 13%; }',
+      '.cr-col-product { width: 23%; }',
+      '.cr-col-mount   { width: 11%; }',
       '.cr-col-yn      { width: 6%; }',
       '.cr-col-height  { width: 11%; }',
       '.cr-col-drop    { width: 5%; }',
-      '.cr-col-notes   { width: 16%; }',
+      '.cr-col-photos  { width: 9%; }',
+      '.cr-col-notes   { width: 12%; }',
       '.cr-cell-id { font-weight: 600; }',
       // Product — the user wanted it bigger; left-aligned reads better
       // than the table-default centering for a multi-word product name.
@@ -3232,6 +3324,48 @@
       // Write-in cells (Drop, Conduit) — give the tech an underline-y',
       // floor to scribble on rather than a blank cell.',
       '.cr-cell-fill { background: #fdfdfe; }',
+      '',
+      '/* ── Required-photo checkboxes ────────────────────────────── */',
+      '/* One ☐ per required photo slot, labeled by photo type. Gray  */',
+      '/* ☒ = already uploaded (same ink-over convention as flags).   */',
+      '.ws-req-photo {',
+      '  display: inline-block; white-space: nowrap;',
+      '  margin-right: 5px; font-size: 7.5px; color: #111827;',
+      '}',
+      '.ws-req-photo .ws-box { font-size: 8px; margin-right: 1px; }',
+      '.cr-cell-photos { text-align: left; line-height: 1.35; padding: 2px 3px; }',
+      '.ws-equip-photos { font-size: 8px; color: #374151; line-height: 1.3; margin-top: 1px; }',
+      '.ws-req-photos {',
+      '  margin-top: 3px; padding-top: 2px;',
+      '  border-top: 1px dashed #e5e7eb;',
+      '  font-size: 8px; line-height: 1.4;',
+      '}',
+      '.ws-req-photos-label {',
+      '  font-weight: 700; color: #b45309; text-transform: uppercase;',
+      '  font-size: 6.5px; letter-spacing: 0.4px; margin-right: 4px;',
+      '}',
+      '',
+      '/* ── MDF/IDF photo checklist (amber callout) ──────────────── */',
+      '.ws-mdf-photos {',
+      '  margin: 10px 0 8px; padding: 6px 10px;',
+      '  border: 2px solid #b45309; border-radius: 4px; background: #fffbeb;',
+      '  page-break-inside: avoid; break-inside: avoid;',
+      '}',
+      '.ws-mdf-photos-title {',
+      '  font-size: 11px; font-weight: 800; color: #b45309;',
+      '  text-transform: uppercase; letter-spacing: 0.3px;',
+      '}',
+      '.ws-mdf-photos-note { font-size: 9px; color: #374151; margin: 2px 0 5px; line-height: 1.35; }',
+      '.ws-mdf-photos-list { display: flex; flex-wrap: wrap; gap: 4px 16px; }',
+      '.ws-mdf-photos-item {',
+      '  font-size: 9.5px; font-weight: 600; color: #111827; white-space: nowrap;',
+      '}',
+      '.ws-mdf-photos-item .ws-box { font-size: 12px; margin-right: 3px; }',
+      '/* Photo reminder chip riding each MDF/IDF equipment header */',
+      '.ws-grp-photo-chip {',
+      '  float: right; font-weight: 600; font-size: 8px; color: #b45309;',
+      '}',
+      '.ws-grp-photo-chip .ws-box { font-size: 10px; margin-right: 2px; color: #b45309; }',
       '',
       '/* ── MDF/IDF assignment sections + camera checklist ───────── */',
       '.ws-sec-title {',
