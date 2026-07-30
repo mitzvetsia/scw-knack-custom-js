@@ -718,6 +718,9 @@
       '.scw-pg2-co-add td { background: #f0fdf4 !important; }',
       '.scw-pg2-co-add td:first-child { box-shadow: inset 4px 0 0 #059669; }',
       '.scw-pg2-co-banner td { background: #e11d48 !important; color: #fff; padding: 3px 12px; font: 700 10px/1.7 system-ui, -apple-system, sans-serif; letter-spacing: .08em; text-transform: uppercase; white-space: nowrap; }',
+      // Missing-columns notice
+      '.scw-pg2-notice { margin: 10px 0; padding: 10px 14px; border: 1px solid #f5d199; border-radius: 8px; background: #fff9ec; color: #7a4a09; font: 13px/1.5 system-ui, sans-serif; }',
+      '.scw-pg2-notice code { font-size: 12px; color: #92400e; }',
       // Side-by-side parity frame (replaceV1: false)
       '.scw-pg2--preview { margin-top: 28px; border-top: 3px dashed #94a3b8; padding-top: 10px; }',
       '.scw-pg2--preview::before { content: "v2 preview (model-driven rebuild)"; display: block; font: 600 11px/1.6 system-ui, sans-serif; letter-spacing: .06em; text-transform: uppercase; color: #64748b; margin-bottom: 6px; }'
@@ -730,12 +733,50 @@
     if (document.getElementById(ID)) return;
     var s = document.createElement('style');
     s.id = ID;
-    var css = '#' + dataViewKey + ' { position: absolute !important; width: 1px !important; height: 1px !important; overflow: hidden !important; clip: rect(0,0,0,0) !important; margin: -1px !important; padding: 0 !important; border: 0 !important; }';
+    // display:none (not the clip trick): the data view is never read from
+    // the DOM — model only — and a 1000-row grid left renderable is real
+    // layout/paint weight on an already-heavy scene.
+    var css = '#' + dataViewKey + ' { display: none !important; }';
     if (CONFIG.replaceV1) {
       css += '\n#' + v1ViewId + ' .kn-table-wrapper, #' + v1ViewId + ' .kn-records-nav { display: none !important; }';
     }
     s.textContent = css;
     document.head.appendChild(s);
+  }
+
+  // The data view's model must actually carry the fields the tree is built
+  // from — a Builder duplicate can silently drop grouping columns (removing
+  // a grouping can remove its column) and view_3301 never had field_2464.
+  // Rendering off an incomplete model produces a degenerate grid (single
+  // blank section, accessories duplicated as their own products), so refuse
+  // to render and surface the exact missing columns instead.
+  var PROBE_FIELDS = ['l1', 'bucket', 'bucketSort', 'product', 'installDesc',
+    'qty', 'labor', 'hardware', 'cost', 'accessoryParent'];
+  function missingColumns(records) {
+    if (!records.length) return [];
+    var missing = [];
+    for (var i = 0; i < PROBE_FIELDS.length; i++) {
+      var f = CONFIG.fields[PROBE_FIELDS[i]];
+      var present = false;
+      // Check several records — a single record can legitimately have a
+      // field omitted from its attrs when blank.
+      for (var r = 0; r < records.length && r < 25; r++) {
+        var rec = records[r];
+        if (rec && ((f in rec) || ((f + '_raw') in rec))) { present = true; break; }
+      }
+      if (!present) missing.push(f + ' (' + PROBE_FIELDS[i] + ')');
+    }
+    return missing;
+  }
+  function renderMissingNotice(root, dataViewKey, missing) {
+    var el = document.createElement('div');
+    el.className = 'scw-pg2 scw-pg2--notice';
+    el.innerHTML = '<div class="scw-pg2-notice">' +
+      '<b>Proposal grid v2 is waiting on Builder columns.</b><br>' +
+      'The data view <b>' + esc(dataViewKey) + '</b> is missing these fields ' +
+      'as columns (add them to the view in Builder — they can be narrow, ' +
+      'the view is hidden):<br><code>' + esc(missing.join(', ')) + '</code></div>';
+    return el;
   }
 
   // ── data plumbing ─────────────────────────────────────────────────
@@ -791,24 +832,42 @@
     var root = document.getElementById(v1ViewId);
     if (!root) return;
 
-    injectCss();
-    injectViewCss(v1ViewId, vcfg.dataViewKey);
+    try {
+      injectCss();
+      injectViewCss(v1ViewId, vcfg.dataViewKey);
 
-    if (!ensureFullPage(vcfg.dataViewKey)) return;   // refetch in flight
-    var records = readRecords(vcfg.dataViewKey);
-    if (!records) { dbg('data view model not ready', vcfg.dataViewKey); return; }
+      if (!ensureFullPage(vcfg.dataViewKey)) return;   // refetch in flight
+      var records = readRecords(vcfg.dataViewKey);
+      if (!records) { dbg('data view model not ready', vcfg.dataViewKey); return; }
 
-    var tree = buildTree(records);
-    var el = renderGrid(tree, {
-      masked: isInstallationMasked(),
-      showProjectTotals: vcfg.showProjectTotals !== false
-    });
-    if (!CONFIG.replaceV1) el.classList.add('scw-pg2--preview');
+      var el;
+      var missing = missingColumns(records);
+      if (missing.length) {
+        console.warn(NS + ' NOT rendering — ' + vcfg.dataViewKey +
+          ' model is missing columns: ' + missing.join(', '));
+        el = renderMissingNotice(root, vcfg.dataViewKey, missing);
+      } else {
+        var tree = buildTree(records);
+        el = renderGrid(tree, {
+          masked: isInstallationMasked(),
+          showProjectTotals: vcfg.showProjectTotals !== false
+        });
+      }
+      if (!CONFIG.replaceV1) el.classList.add('scw-pg2--preview');
 
-    var existing = root.querySelector(':scope > .scw-pg2, .scw-pg2');
-    if (existing) existing.replaceWith(el);
-    else root.appendChild(el);
-    dbg('rendered', v1ViewId, records.length + ' records');
+      var existing = root.querySelector('.scw-pg2');
+      if (existing) existing.replaceWith(el);
+      else root.appendChild(el);
+      dbg('rendered', v1ViewId, records.length + ' records');
+    } catch (e) {
+      // Never leave a half-rendered grid or break the page — v1 is still
+      // the live surface; v2 failing must be loud in the console only.
+      console.error(NS + ' render failed for ' + v1ViewId, e);
+      try {
+        var stale = root.querySelector('.scw-pg2');
+        if (stale) stale.remove();
+      } catch (e2) { /* nothing */ }
+    }
   }
 
   // ── bindings ──────────────────────────────────────────────────────
@@ -816,6 +875,11 @@
   Object.keys(CONFIG.views).forEach(function (v1ViewId) {
     var vcfg = CONFIG.views[v1ViewId];
     if (!vcfg.dataViewKey) return;   // inert until the duplicate exists
+    // Hide the data view IMMEDIATELY at parse — if the render bails for any
+    // reason (missing columns, model race, exception) the raw 1000-row flat
+    // grid must never paint. This was the "doubled accessories + page
+    // struggling" failure: view_4140 rendered visibly as a full raw grid.
+    injectViewCss(v1ViewId, vcfg.dataViewKey);
     $(document)
       .off('knack-view-render.' + v1ViewId + EV)
       .on('knack-view-render.' + v1ViewId + EV, function () { scheduleRun(v1ViewId); });
